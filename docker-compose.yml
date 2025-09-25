@@ -1,0 +1,18 @@
+services:
+  meshmonitor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: meshmonitor
+    ports:
+      - "8080:3001"
+    restart: unless-stopped
+    volumes:
+      - meshmonitor-data:/data
+    env_file: .env
+    environment:
+      - NODE_ENV=production
+
+volumes:
+  meshmonitor-data:
+    driver: local
