@@ -99,6 +99,119 @@ export class MeshtasticProtobufService {
   }
 
   /**
+   * Parse multiple concatenated FromRadio messages from a buffer
+   *
+   * The HTTP API returns concatenated FromRadio messages without message-level length prefixes.
+   * We need to manually parse each message by reading the protobuf wire format.
+   */
+  async parseMultipleMessages(data: Uint8Array): Promise<Array<{ type: string; data: any }>> {
+    const messages: Array<{ type: string; data: any }> = [];
+
+    if (data.length === 0) return messages;
+
+    const root = getProtobufRoot();
+    if (!root) {
+      console.error('❌ Protobuf definitions not loaded');
+      return messages;
+    }
+
+    try {
+      const FromRadio = root.lookupType('meshtastic.FromRadio');
+      const { default: protobufjs } = await import('protobufjs');
+
+      let offset = 0;
+
+      while (offset < data.length) {
+        try {
+          // Create a reader for the remaining data
+          const remainingData = data.subarray(offset);
+          const reader = protobufjs.Reader.create(remainingData);
+
+          // Track initial position
+          const initialPos = reader.pos;
+          let lastValidPos = initialPos;
+          const seenFields = new Set<number>();
+
+          // Read fields until we can't read anymore or hit a repeated field
+          while (reader.pos < reader.len) {
+            const posBeforeTag = reader.pos;
+            const tag = reader.uint32();
+            const fieldNumber = tag >>> 3;
+            const wireType = tag & 7;
+
+            // Check if this is a valid FromRadio field (fields 1-16)
+            if (fieldNumber < 1 || fieldNumber > 16) {
+              reader.pos = lastValidPos;
+              break;
+            }
+
+            // KEY INSIGHT: If we see a field number we've already seen, this is a NEW message!
+            // FromRadio fields are all optional and NOT repeated
+            if (seenFields.has(fieldNumber)) {
+              console.log(`🔍 Field ${fieldNumber} repeated at offset ${offset + posBeforeTag} - new message starts here`);
+              // Rewind to before this tag
+              reader.pos = posBeforeTag;
+              break;
+            }
+
+            seenFields.add(fieldNumber);
+            lastValidPos = reader.pos;
+
+            // Skip the field data
+            try {
+              reader.skipType(wireType);
+              lastValidPos = reader.pos;
+            } catch (skipError) {
+              console.log(`⚠️ Error skipping field ${fieldNumber} at offset ${offset + posBeforeTag}`);
+              reader.pos = lastValidPos;
+              break;
+            }
+          }
+
+          // Now decode the message properly from the identified range
+          const messageLength = lastValidPos - initialPos;
+          if (messageLength > 0) {
+            const messageData = remainingData.subarray(0, messageLength);
+            const messageReader = protobufjs.Reader.create(messageData);
+            const decodedMessage = FromRadio.decode(messageReader) as FromRadio;
+
+            console.log(`📦 Decoded FromRadio at offset ${offset}, length ${messageLength}, next offset ${offset + messageLength}`);
+
+            // Extract the actual message
+            if (decodedMessage.packet) {
+              messages.push({ type: 'meshPacket', data: decodedMessage.packet });
+            } else if (decodedMessage.myInfo) {
+              messages.push({ type: 'myInfo', data: decodedMessage.myInfo });
+            } else if (decodedMessage.nodeInfo) {
+              messages.push({ type: 'nodeInfo', data: decodedMessage.nodeInfo });
+            } else if (decodedMessage.config) {
+              messages.push({ type: 'config', data: decodedMessage.config });
+            } else if (decodedMessage.channel) {
+              messages.push({ type: 'channel', data: decodedMessage.channel });
+            } else {
+              messages.push({ type: 'fromRadio', data: decodedMessage });
+            }
+
+            offset += messageLength;
+          } else {
+            console.log(`⚠️ No valid message data at offset ${offset}`);
+            break;
+          }
+        } catch (error) {
+          console.log(`⚠️ Error decoding message at offset ${offset}:`, (error as Error).message);
+          break;
+        }
+      }
+
+      console.log(`✅ Successfully parsed ${messages.length} FromRadio messages`);
+    } catch (error) {
+      console.error('❌ Error parsing multiple messages:', error);
+    }
+
+    return messages;
+  }
+
+  /**
    * Parse any incoming data and attempt to decode as various message types
    */
   parseIncomingData(data: Uint8Array): {

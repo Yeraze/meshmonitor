@@ -138,14 +138,16 @@ app.get('/api/channels', (_req, res) => {
     const primaryChannels = allChannels.filter(ch => ch.name === 'Primary' || ch.name === 'Channel 0');
 
     if (primaryChannels.length === 0) {
-      // Create a new primary channel if none exists
+      // Create a new primary channel with ID 0 if none exists
+      // ID 0 is the default Meshtastic channel index
       const newPrimary = {
+        id: 0,
         name: 'Primary',
         psk: undefined
       };
       try {
         databaseService.upsertChannel(newPrimary);
-        console.log('📡 Created missing Primary channel');
+        console.log('📡 Created missing Primary channel with ID 0');
       } catch (error) {
         console.error('❌ Failed to create Primary channel:', error);
       }
@@ -394,6 +396,60 @@ app.get('/api/device-config', async (_req, res) => {
   } catch (error) {
     console.error('Error fetching device config:', error);
     res.status(500).json({ error: 'Failed to fetch device configuration' });
+  }
+});
+
+// Refresh nodes from device endpoint
+app.post('/api/nodes/refresh', async (_req, res) => {
+  try {
+    console.log('🔄 Manual node database refresh requested...');
+
+    // Trigger full node database refresh
+    await meshtasticManager.refreshNodeDatabase();
+
+    const nodeCount = databaseService.getNodeCount();
+    const channelCount = databaseService.getChannelCount();
+
+    console.log(`✅ Node refresh complete: ${nodeCount} nodes, ${channelCount} channels`);
+
+    res.json({
+      success: true,
+      nodeCount,
+      channelCount,
+      message: `Refreshed ${nodeCount} nodes and ${channelCount} channels`
+    });
+  } catch (error) {
+    console.error('❌ Failed to refresh nodes:', error);
+    res.status(500).json({
+      error: 'Failed to refresh node database',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Refresh channels from device endpoint
+app.post('/api/channels/refresh', async (_req, res) => {
+  try {
+    console.log('🔄 Manual channel refresh requested...');
+
+    // Trigger full node database refresh (includes channels)
+    await meshtasticManager.refreshNodeDatabase();
+
+    const channelCount = databaseService.getChannelCount();
+
+    console.log(`✅ Channel refresh complete: ${channelCount} channels`);
+
+    res.json({
+      success: true,
+      channelCount,
+      message: `Refreshed ${channelCount} channels`
+    });
+  } catch (error) {
+    console.error('❌ Failed to refresh channels:', error);
+    res.status(500).json({
+      error: 'Failed to refresh channel database',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 });
 

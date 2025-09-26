@@ -116,6 +116,11 @@ body {
   animation: pulse 1s infinite;
 }
 
+.status-indicator.configuring {
+  background: var(--ctp-blue);
+  animation: pulse 1.5s infinite;
+}
+
 .status-indicator.disconnected {
   background: var(--ctp-red);
 }
@@ -1561,5 +1566,99 @@ body {
 
   .map-container {
     height: 400px;
+  }
+}
+
+/* Clickable Sender Icons */
+.sender-dot.clickable {
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.sender-dot.clickable:hover {
+  background-color: var(--ctp-blue);
+  transform: scale(1.1);
+  box-shadow: 0 2px 8px rgba(137, 180, 250, 0.3);
+}
+
+/* Node Popup Styles */
+.node-popup {
+  background: var(--ctp-surface0);
+  border: 1px solid var(--ctp-surface2);
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  max-width: 280px;
+  font-size: 14px;
+  z-index: 1000;
+}
+
+.node-popup .popup-header {
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--ctp-surface2);
+}
+
+.node-popup .popup-header strong {
+  color: var(--ctp-text);
+  font-size: 15px;
+}
+
+.node-popup .popup-short {
+  color: var(--ctp-subtext1);
+  font-weight: normal;
+  margin-left: 4px;
+}
+
+.node-popup .popup-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.node-popup .popup-details > div {
+  color: var(--ctp-subtext0);
+  font-size: 13px;
+}
+
+/* Message Meta Styles */
+.message-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.hop-count {
+  font-size: 11px;
+  color: var(--ctp-overlay1);
+  font-style: italic;
+  white-space: nowrap;
+}
+
+/* Node Role Styles */
+.node-role {
+  font-size: 12px;
+  color: var(--ctp-overlay1);
+  font-weight: normal;
+  margin-left: 6px;
+}
+
+/* Responsive Node Popup */
+@media (max-width: 768px) {
+  .node-popup {
+    max-width: 240px;
+    padding: 10px;
+    font-size: 13px;
+  }
+
+  .node-popup .popup-header strong {
+    font-size: 14px;
+  }
+
+  .node-popup .popup-details > div {
+    font-size: 12px;
   }
 }
