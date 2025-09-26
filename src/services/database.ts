@@ -147,8 +147,13 @@ class DatabaseService {
 
   // Node operations
   upsertNode(nodeData: Partial<DbNode>): void {
-    if (!nodeData.nodeNum || !nodeData.nodeId) {
-      console.warn('Cannot upsert node: missing nodeNum or nodeId');
+    console.log(`DEBUG: upsertNode called with nodeData:`, JSON.stringify(nodeData));
+    console.log(`DEBUG: nodeNum type: ${typeof nodeData.nodeNum}, value: ${nodeData.nodeNum}`);
+    console.log(`DEBUG: nodeId type: ${typeof nodeData.nodeId}, value: ${nodeData.nodeId}`);
+    if (nodeData.nodeNum === undefined || nodeData.nodeNum === null || !nodeData.nodeId) {
+      console.error('Cannot upsert node: missing nodeNum or nodeId');
+      console.error('STACK TRACE FOR FAILED UPSERT:');
+      console.error(new Error().stack);
       return;
     }
 
@@ -458,18 +463,28 @@ class DatabaseService {
   // Channel operations
   upsertChannel(channelData: { id?: number; name: string; psk?: string }): void {
     const now = Date.now();
-    const existingChannel = this.getChannelByName(channelData.name);
+
+    // Check for existing channel by name first
+    let existingChannel = this.getChannelByName(channelData.name);
+
+    // If no channel by name exists but we have an ID, check by ID
+    if (!existingChannel && channelData.id !== undefined) {
+      existingChannel = this.getChannelById(channelData.id);
+    }
 
     if (existingChannel) {
+      // Update existing channel (by name match or ID match)
       const stmt = this.db.prepare(`
         UPDATE channels SET
+          name = ?,
           psk = COALESCE(?, psk),
           updatedAt = ?
-        WHERE name = ?
+        WHERE id = ?
       `);
-      stmt.run(channelData.psk, now, channelData.name);
-      console.log(`Updated channel: ${channelData.name}`);
+      stmt.run(channelData.name, channelData.psk, now, existingChannel.id);
+      console.log(`Updated channel: ${channelData.name} (ID: ${existingChannel.id})`);
     } else {
+      // Create new channel
       const stmt = this.db.prepare(`
         INSERT INTO channels (id, name, psk, uplinkEnabled, downlinkEnabled, createdAt, updatedAt)
         VALUES (?, ?, ?, 1, 1, ?, ?)
@@ -481,13 +496,19 @@ class DatabaseService {
         now,
         now
       );
-      console.log(`Created channel: ${channelData.name}`);
+      console.log(`Created channel: ${channelData.name} (ID: ${channelData.id || 'auto'})`);
     }
   }
 
   getChannelByName(name: string): DbChannel | null {
     const stmt = this.db.prepare('SELECT * FROM channels WHERE name = ?');
     const channel = stmt.get(name) as DbChannel | null;
+    return channel ? this.normalizeBigInts(channel) : null;
+  }
+
+  getChannelById(id: number): DbChannel | null {
+    const stmt = this.db.prepare('SELECT * FROM channels WHERE id = ?');
+    const channel = stmt.get(id) as DbChannel | null;
     return channel ? this.normalizeBigInts(channel) : null;
   }
 
@@ -509,6 +530,19 @@ class DatabaseService {
     const placeholders = validChannelNames.map(() => '?').join(', ');
     const stmt = this.db.prepare(`DELETE FROM channels WHERE name NOT IN (${placeholders})`);
     const result = stmt.run(...validChannelNames);
+    return Number(result.changes);
+  }
+
+  // Clean up channels that appear to be empty/unused
+  cleanupEmptyChannels(): number {
+    const stmt = this.db.prepare(`
+      DELETE FROM channels
+      WHERE name LIKE 'Channel %'
+      AND id NOT IN (0, 1)
+      AND psk IS NULL
+    `);
+    const result = stmt.run();
+    console.log(`🧹 Cleaned up ${result.changes} empty channels`);
     return Number(result.changes);
   }
 }

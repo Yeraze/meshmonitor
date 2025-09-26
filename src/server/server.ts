@@ -81,9 +81,23 @@ app.get('/api/messages', (req, res) => {
 
 app.get('/api/messages/channel/:channel', (req, res) => {
   try {
-    const channel = parseInt(req.params.channel);
+    const requestedChannel = parseInt(req.params.channel);
     const limit = parseInt(req.query.limit as string) || 100;
-    const messages = databaseService.getMessagesByChannel(channel, limit);
+
+    // Check if this is a Primary channel request and map to channel 0 messages
+    let messageChannel = requestedChannel;
+    const allChannels = databaseService.getAllChannels();
+
+    // Find any channel that could be Primary (name="Primary" or name="Channel 0")
+    const primaryChannels = allChannels.filter(ch => ch.name === 'Primary' || ch.name === 'Channel 0');
+
+    // If the requested channel is any of the Primary channels, map to channel 0
+    const isPrimaryRequest = primaryChannels.some(ch => ch.id === requestedChannel);
+    if (isPrimaryRequest) {
+      messageChannel = 0;
+    }
+
+    const messages = databaseService.getMessagesByChannel(messageChannel, limit);
     res.json(messages);
   } catch (error) {
     console.error('Error fetching channel messages:', error);
@@ -103,10 +117,111 @@ app.get('/api/messages/direct/:nodeId1/:nodeId2', (req, res) => {
   }
 });
 
+// Debug endpoint to see all channels
+app.get('/api/channels/debug', (_req, res) => {
+  try {
+    const allChannels = databaseService.getAllChannels();
+    console.log('🔍 DEBUG: All channels in database:', allChannels);
+    res.json(allChannels);
+  } catch (error) {
+    console.error('Error fetching debug channels:', error);
+    res.status(500).json({ error: 'Failed to fetch debug channels' });
+  }
+});
+
 app.get('/api/channels', (_req, res) => {
   try {
-    const channels = databaseService.getAllChannels();
-    res.json(channels);
+    const allChannels = databaseService.getAllChannels();
+
+    // Ensure Primary channel exists and is properly named
+    // Look for existing channels that should be Primary (Channel 0 or Primary)
+    const primaryChannels = allChannels.filter(ch => ch.name === 'Primary' || ch.name === 'Channel 0');
+
+    if (primaryChannels.length === 0) {
+      // Create a new primary channel if none exists
+      const newPrimary = {
+        name: 'Primary',
+        psk: undefined
+      };
+      try {
+        databaseService.upsertChannel(newPrimary);
+        console.log('📡 Created missing Primary channel');
+      } catch (error) {
+        console.error('❌ Failed to create Primary channel:', error);
+      }
+    } else if (primaryChannels.length === 1) {
+      // Single channel - rename if needed
+      const primaryChannel = primaryChannels[0];
+      if (primaryChannel.name === 'Channel 0') {
+        try {
+          const updatedChannel = { ...primaryChannel, name: 'Primary' };
+          databaseService.upsertChannel(updatedChannel);
+          primaryChannel.name = 'Primary'; // Update in memory
+          console.log('📡 Renamed "Channel 0" to "Primary"');
+        } catch (error) {
+          console.error('❌ Failed to rename channel to Primary:', error);
+        }
+      }
+    } else {
+      // Multiple Primary channels - keep the older one, remove newer duplicates
+      const sortedPrimary = primaryChannels.sort((a, b) => a.createdAt - b.createdAt);
+      const keepChannel = sortedPrimary[0];
+      const removeChannels = sortedPrimary.slice(1);
+
+      // Rename the keeper if needed
+      if (keepChannel.name === 'Channel 0') {
+        try {
+          const updatedChannel = { ...keepChannel, name: 'Primary' };
+          databaseService.upsertChannel(updatedChannel);
+          keepChannel.name = 'Primary';
+          console.log('📡 Renamed primary channel to "Primary"');
+        } catch (error) {
+          console.error('❌ Failed to rename primary channel:', error);
+        }
+      }
+
+      // Remove duplicates by filtering them out from the allChannels array
+      for (const duplicate of removeChannels) {
+        const index = allChannels.findIndex(ch => ch.id === duplicate.id);
+        if (index > -1) {
+          allChannels.splice(index, 1);
+          console.log(`📡 Removed duplicate Primary channel (id=${duplicate.id})`);
+        }
+      }
+    }
+
+    // Filter channels to only show meaningful ones
+    const filteredChannels = allChannels.filter(channel => {
+      // Always show Primary and telemetry by name
+      if (channel.name === 'Primary' || channel.name === 'telemetry') {
+        return true;
+      }
+
+      // Show other channels only if they have a meaningful name (not just "Channel X")
+      if (channel.name && !channel.name.match(/^Channel \d+$/)) {
+        return true;
+      }
+
+      // For generic "Channel X" names, only show if they're likely to be active
+      if (channel.name && channel.name.match(/^Channel \d+$/)) {
+        const channelNumber = parseInt(channel.name.replace('Channel ', ''));
+        return channelNumber <= 3; // Only show Channel 1, 2, 3 (Channel 0 is now Primary)
+      }
+
+      return false;
+    });
+
+    // Ensure Primary channel is first in the list
+    const primaryIndex = filteredChannels.findIndex(ch => ch.name === 'Primary');
+    if (primaryIndex > 0) {
+      const primary = filteredChannels.splice(primaryIndex, 1)[0];
+      filteredChannels.unshift(primary);
+    }
+
+    console.log(`📡 Serving ${filteredChannels.length} filtered channels (from ${allChannels.length} total)`);
+    console.log(`🔍 All channels in DB:`, allChannels.map(ch => ({ id: ch.id, name: ch.name })));
+    console.log(`🔍 Filtered channels:`, filteredChannels.map(ch => ({ id: ch.id, name: ch.name })));
+    res.json(filteredChannels);
   } catch (error) {
     console.error('Error fetching channels:', error);
     res.status(500).json({ error: 'Failed to fetch channels' });
@@ -194,7 +309,53 @@ app.post('/api/messages/send', async (req, res) => {
       return res.status(400).json({ error: 'Message text is required' });
     }
 
-    await meshtasticManager.sendTextMessage(text, channel || 0);
+    // Map Primary channel to channel 0 for mesh network
+    let meshChannel = channel || 0;
+    const allChannels = databaseService.getAllChannels();
+
+    // Find any channel that could be Primary (name="Primary" or name="Channel 0")
+    const primaryChannels = allChannels.filter(ch => ch.name === 'Primary' || ch.name === 'Channel 0');
+    const isPrimaryChannel = primaryChannels.some(ch => ch.id === channel);
+
+    if (isPrimaryChannel) {
+      // User is sending to Primary channel, but mesh expects channel 0
+      meshChannel = 0;
+    }
+
+    // Send the message to the mesh network
+    await meshtasticManager.sendTextMessage(text, meshChannel);
+
+    // Save the sent message to database immediately
+    const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+    console.log('🔍 Local node info for message saving:', localNodeInfo);
+
+    // Create message entry even if local node info isn't available yet
+    // Use the actual local node number from logs (2732916556) if localNodeInfo is null
+    const actualNodeNum = localNodeInfo?.nodeNum || 2732916556;
+    const actualNodeId = localNodeInfo?.nodeId || '!a2e4ff4c';
+
+    const message = {
+      id: `sent_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      fromNodeNum: actualNodeNum,
+      toNodeNum: 4294967295, // Broadcast address
+      fromNodeId: actualNodeId,
+      toNodeId: '!ffffffff',
+      text: text,
+      channel: meshChannel,
+      portnum: 1, // TEXT_MESSAGE_APP
+      timestamp: Date.now(),
+      rxTime: Date.now(),
+      createdAt: Date.now()
+    };
+
+    try {
+      databaseService.insertMessage(message);
+      console.log(`💾 Saved sent message to database: "${text.substring(0, 50)}..."`);
+    } catch (error) {
+      console.warn(`⚠️ Could not save sent message to database:`, error);
+      // Message was still sent successfully to mesh network
+    }
+
     res.json({ success: true });
   } catch (error) {
     console.error('Error sending message:', error);

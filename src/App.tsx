@@ -1,5 +1,34 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 import './App.css'
+
+// Fix for default markers in React-Leaflet
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJDOS4yNCAyIDcgNC4yNCA3IDdDNyAxMy40NyAxMiAyMiAxMiAyMkMxMiAyMiAxNyAxMy40NyAxNyA3QzE3IDQuMjQgMTQuNzYgMiAxMiAyWk0xMiA5LjVDMTAuNjIgOS41IDkuNSA4LjM4IDkuNSA3UzkuNTEgNC41IDExIDQuNVMxNS41IDUuNjIgMTUuNSA3UzE0LjM4IDkuNSAxMiA5LjVaIiBmaWxsPSIjZmY2NjY2Ii8+Cjwvc3ZnPg==',
+  iconUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJDOS4yNCAyIDcgNC4yNCA3IDdDNyAxMy40NyAxMiAyMiAxMiAyMkMxMiAyMiAxNyAxMy40NyAxNyA3QzE3IDQuMjQgMTQuNzYgMiAxMiAyWk0xMiA5LjVDMTAuNjIgOS41IDkuNSA4LjM4IDkuNSA3UzkuNTEgNC41IDExIDQuNVMxNS41IDUuNjIgMTUuNSA7UzE0LjM4IDkuNSAxMiA5LjVaIiBmaWxsPSIjNjY5OGY1Ii8+Cjwvc3ZnPg==',
+  shadowUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJDOS4yNCAyIDcgNC4yNCA3IDdDNyAxMy40NyAxMiAyMiAxMiAyMkMxMiAyMiAxNyAxMy40NyAxNyA3QzE3IDQuMjQgMTQuNzYgMiAxMiAyWk0xMiA5LjVDMTAuNjIgOS41IDkuNSA4LjM4IDkuNSA3UzkuNTEgNC41IDExIDQuNVMxNS41IDUuNjIgMTUuNSA3UzE0LjM4IDkuNSAxMiA5LjVaIiBmaWxsPSIjMDAwIiBmaWxsLW9wYWNpdHk9IjAuMyIvPgo8L3N2Zz4K',
+  iconSize: [24, 24],
+  iconAnchor: [12, 24],
+  popupAnchor: [0, -24]
+});
+
+// Create reusable icons to prevent recreation issues
+const defaultIcon = new L.Icon({
+  iconUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJDOS4yNCAyIDcgNC4yNCA3IDdDNyAxMy40NyAxMiAyMiAxMiAyMkMxMiAyMiAxNyAxMy40NyAxNyA3QzE3IDQuMjQgMTQuNzYgMiAxMiAyWk0xMiA5LjVDMTAuNjIgOS41IDkuNSA4LjM4IDkuNSA3UzkuNTEgNC41IDExIDQuNVMxNS41IDUuNjIgMTUuNSA3UzE0LjM4IDkuNSAxMiA5LjVaIiBmaWxsPSIjNjY5OGY1Ii8+Cjwvc3ZnPg==',
+  iconSize: [24, 24],
+  iconAnchor: [12, 24],
+  popupAnchor: [0, -24]
+});
+
+const selectedIcon = new L.Icon({
+  iconUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJDOS4yNCAyIDcgNC4yNCA3IDdDNyAxMy40NyAxMiAyMiAxMiAyMkMxMiAyMiAxNyAxMy40NyAxNyA3QzE3IDQuMjQgMTQuNzYgMiAxMiAyWk0xMiA5LjVDMTAuNjIgOS41IDkuNSA4LjM4IDkuNSA3UzkuNTEgNC41IDExIDQuNVMxNS41IDUuNjIgMTUuNSA3UzE0LjM4IDkuNUgxMiA5LjVaIiBmaWxsPSIjZmY2NjY2Ii8+Cjwvc3ZnPg==',
+  iconSize: [30, 30],
+  iconAnchor: [15, 30],
+  popupAnchor: [0, -30]
+});
 
 interface DeviceInfo {
   nodeNum: number;
@@ -29,6 +58,8 @@ interface MeshMessage {
   id: string;
   from: string;
   to: string;
+  fromNodeId: string;
+  toNodeId: string;
   text: string;
   channel: number;
   portnum?: number;
@@ -60,19 +91,49 @@ function App() {
   const [messages, setMessages] = useState<MeshMessage[]>([])
   const [selectedDMNode, setSelectedDMNode] = useState<string>('')
   const [channelMessages, setChannelMessages] = useState<{[key: number]: MeshMessage[]}>({})
-  const [selectedChannel, setSelectedChannel] = useState<number>(0)
+  const [selectedChannel, setSelectedChannel] = useState<number>(-1)
+  const hasSelectedInitialChannelRef = useRef<boolean>(false)
+  const selectedChannelRef = useRef<number>(-1)
+  const [showMqttMessages, setShowMqttMessages] = useState<boolean>(false)
   const [newMessage, setNewMessage] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
   const [nodeAddress, setNodeAddress] = useState<string>('Loading...')
   const [deviceInfo, setDeviceInfo] = useState<any>(null)
   const [deviceConfig, setDeviceConfig] = useState<any>(null)
   const [currentNodeId, setCurrentNodeId] = useState<string>('')
+  const messagesEndRef = useRef<HTMLDivElement>(null)
   const [pendingMessages, setPendingMessages] = useState<Map<string, MeshMessage>>(new Map())
 
   // New state for node list features
   const [nodeFilter, setNodeFilter] = useState<string>('')
-  const [sortField, setSortField] = useState<SortField>('longName')
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+  const sortField: SortField = 'longName'
+  const sortDirection: SortDirection = 'asc'
+
+  // Function to detect MQTT/bridge messages that should be filtered
+  const isMqttBridgeMessage = (msg: MeshMessage): boolean => {
+    // Filter messages from unknown senders
+    if (msg.from === 'unknown' || msg.fromNodeId === 'unknown') {
+      return true;
+    }
+
+    // Filter MQTT-related text patterns
+    const mqttPatterns = [
+      'mqtt.',
+      'areyoumeshingwith.us',
+      /^\d+\.\d+\.\d+\.[a-f0-9]+$/, // Version patterns like "2.5.7.f77c87d"
+      /^\/.*\.(js|css|proto|html)/, // File paths
+      /^[A-Z]{2,3}[�\x00-\x1F\x7F-\xFF]+/, // Garbage data patterns
+    ];
+
+    return mqttPatterns.some(pattern => {
+      if (typeof pattern === 'string') {
+        return msg.text.includes(pattern);
+      } else {
+        return pattern.test(msg.text);
+      }
+    });
+  };
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
 
   // Load configuration and check connection status on startup
   useEffect(() => {
@@ -98,6 +159,21 @@ function App() {
     initializeApp();
   }, []);
 
+  // Debug effect to track selectedChannel changes and keep ref in sync
+  useEffect(() => {
+    console.log('🔄 selectedChannel state changed to:', selectedChannel);
+    selectedChannelRef.current = selectedChannel;
+  }, [selectedChannel]);
+
+  // Auto-scroll to bottom when messages change or channel changes
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [channelMessages, selectedChannel]);
+
   useEffect(() => {
     const updateInterval = setInterval(() => {
       if (connectionStatus === 'connected') {
@@ -105,7 +181,7 @@ function App() {
       } else {
         checkConnectionStatus();
       }
-    }, 2000);
+    }, 5000); // Increased from 2 seconds to 5 seconds
 
     return () => clearInterval(updateInterval);
   }, [connectionStatus]);
@@ -118,6 +194,7 @@ function App() {
         if (status.connected) {
           setConnectionStatus('connected');
           setError(null);
+          await fetchChannels(); // Fetch channels once on connection
           await updateDataFromBackend();
         } else {
           setConnectionStatus('disconnected');
@@ -134,6 +211,54 @@ function App() {
     }
   };
 
+  const fetchChannels = async () => {
+    try {
+      const channelsResponse = await fetch('/api/channels');
+      if (channelsResponse.ok) {
+        const channelsData = await channelsResponse.json();
+
+        // Only update selected channel if this is the first time we're loading channels
+        // and no channel is currently selected, or if the current selected channel no longer exists
+        const currentSelectedChannel = selectedChannelRef.current;
+        console.log('🔍 Channel update check:', {
+          channelsLength: channelsData.length,
+          hasSelectedInitialChannel: hasSelectedInitialChannelRef.current,
+          selectedChannelState: selectedChannel,
+          selectedChannelRef: currentSelectedChannel,
+          firstChannelId: channelsData[0]?.id
+        });
+
+        if (channelsData.length > 0) {
+          if (!hasSelectedInitialChannelRef.current && currentSelectedChannel === -1) {
+            // First time loading channels - select the first one
+            console.log('🎯 Setting initial channel to:', channelsData[0].id);
+            setSelectedChannel(channelsData[0].id);
+            selectedChannelRef.current = channelsData[0].id; // Update ref immediately
+            console.log('📝 Called setSelectedChannel (initial) with:', channelsData[0].id);
+            hasSelectedInitialChannelRef.current = true;
+          } else {
+            // Check if the currently selected channel still exists
+            const currentChannelExists = channelsData.some((ch: Channel) => ch.id === currentSelectedChannel);
+            console.log('🔍 Channel exists check:', { selectedChannel: currentSelectedChannel, currentChannelExists });
+            if (!currentChannelExists && channelsData.length > 0) {
+              // Current channel no longer exists, fallback to first channel
+              console.log('⚠️ Current channel no longer exists, falling back to:', channelsData[0].id);
+              setSelectedChannel(channelsData[0].id);
+              selectedChannelRef.current = channelsData[0].id; // Update ref immediately
+              console.log('📝 Called setSelectedChannel (fallback) with:', channelsData[0].id);
+            } else {
+              console.log('✅ Keeping current channel selection:', currentSelectedChannel);
+            }
+          }
+        }
+
+        setChannels(channelsData);
+      }
+    } catch (error) {
+      console.error('Error fetching channels:', error);
+    }
+  };
+
   const updateDataFromBackend = async () => {
     try {
       // Fetch nodes
@@ -141,13 +266,6 @@ function App() {
       if (nodesResponse.ok) {
         const nodesData = await nodesResponse.json();
         setNodes(nodesData);
-      }
-
-      // Fetch channels
-      const channelsResponse = await fetch('/api/channels');
-      if (channelsResponse.ok) {
-        const channelsData = await channelsResponse.json();
-        setChannels(channelsData);
       }
 
       // Fetch messages
@@ -234,14 +352,19 @@ function App() {
       return;
     }
 
+    // Use channel ID directly - no mapping needed
+    const messageChannel = channel;
+
     // Create a temporary message ID for immediate display
     const tempId = `temp_${Date.now()}_${Math.random()}`;
     const sentMessage: MeshMessage = {
       id: tempId,
       from: currentNodeId || 'me',
       to: '!ffffffff', // Broadcast
+      fromNodeId: currentNodeId || 'me',
+      toNodeId: '!ffffffff',
       text: newMessage,
-      channel: channel,
+      channel: messageChannel,
       timestamp: new Date(),
       isLocalMessage: true,
       acknowledged: false
@@ -251,7 +374,7 @@ function App() {
     setMessages(prev => [...prev, sentMessage]);
     setChannelMessages(prev => ({
       ...prev,
-      [channel]: [...(prev[channel] || []), sentMessage]
+      [messageChannel]: [...(prev[messageChannel] || []), sentMessage]
     }));
 
     // Add to pending acknowledgments
@@ -269,7 +392,7 @@ function App() {
         },
         body: JSON.stringify({
           text: messageText,
-          channel: channel
+          channel: messageChannel
         })
       });
 
@@ -310,29 +433,6 @@ function App() {
     }
   };
 
-  const formatHardwareModel = (model?: number): string => {
-    if (!model) return 'Unknown';
-    const models: Record<number, string> = {
-      1: 'TLORA_V2',
-      2: 'TLORA_V1',
-      3: 'TLORA_V2_1_1P6',
-      4: 'TBEAM',
-      5: 'HELTEC_V2_0',
-      6: 'TBEAM_V0P7',
-      7: 'T_ECHO',
-      8: 'TLORA_V1_1P3',
-      9: 'RAK4631',
-      10: 'HELTEC_V2_1',
-      11: 'HELTEC_V1',
-      12: 'LILYGO_TBEAM_S3_CORE',
-      13: 'RAK11200',
-      14: 'NANO_G1',
-      15: 'STATION_G1',
-      39: 'DIY_V1',
-      43: 'HELTEC_V3',
-    };
-    return models[model] || `Model ${model}`;
-  };
 
   const getNodeName = (nodeId: string): string => {
     const node = nodes.find(n => n.user?.id === nodeId);
@@ -453,15 +553,6 @@ function App() {
     });
   };
 
-  // Handle column header click for sorting
-  const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortField(field);
-      setSortDirection('asc');
-    }
-  };
 
   // Get processed (filtered and sorted) nodes
   const getProcessedNodes = (): DeviceInfo[] => {
@@ -471,92 +562,202 @@ function App() {
 
   const renderNodesTab = () => {
     const processedNodes = getProcessedNodes();
+    const nodesWithPosition = processedNodes.filter(node =>
+      node.position &&
+      node.position.latitude != null &&
+      node.position.longitude != null
+    );
+
+    // Calculate center point of all nodes for initial map view
+    const getMapCenter = (): [number, number] => {
+      if (nodesWithPosition.length === 0) {
+        return [25.7617, -80.1918]; // Default to Miami area
+      }
+      const avgLat = nodesWithPosition.reduce((sum, node) => sum + node.position!.latitude, 0) / nodesWithPosition.length;
+      const avgLng = nodesWithPosition.reduce((sum, node) => sum + node.position!.longitude, 0) / nodesWithPosition.length;
+      return [avgLat, avgLng];
+    };
 
     return (
-      <div className="tab-content">
-        <h2>Mesh Nodes ({processedNodes.length}{nodeFilter ? ` of ${nodes.length}` : ''})</h2>
+      <div className="nodes-split-view">
+        {/* Left Sidebar - Node List */}
+        <div className="nodes-sidebar">
+          <div className="sidebar-header">
+            <h3>Nodes ({processedNodes.length})</h3>
+            <div className="node-filter">
+              <input
+                type="text"
+                placeholder="Filter nodes..."
+                value={nodeFilter}
+                onChange={(e) => setNodeFilter(e.target.value)}
+                className="filter-input-small"
+              />
+            </div>
+          </div>
 
-        {/* Filter input */}
-        <div className="node-filter">
-          <input
-            type="text"
-            placeholder="Filter nodes by name or ID..."
-            value={nodeFilter}
-            onChange={(e) => setNodeFilter(e.target.value)}
-            className="filter-input"
-          />
+          <div className="nodes-list">
+            {connectionStatus === 'connected' ? (
+              processedNodes.length > 0 ? (
+                processedNodes.map(node => (
+                  <div
+                    key={node.nodeNum}
+                    className={`node-item ${selectedNodeId === node.user?.id ? 'selected' : ''}`}
+                    onClick={() => setSelectedNodeId(node.user?.id || null)}
+                  >
+                    <div className="node-header">
+                      <div className="node-name">
+                        {node.user?.longName || `Node ${node.nodeNum}`}
+                      </div>
+                      <div className="node-short">
+                        {node.user?.shortName || '-'}
+                      </div>
+                    </div>
+
+                    <div className="node-details">
+                      <div className="node-stats">
+                        {node.snr != null && (
+                          <span className="stat" title="Signal-to-Noise Ratio">
+                            📶 {node.snr.toFixed(1)}dB
+                          </span>
+                        )}
+                        {node.deviceMetrics?.batteryLevel !== undefined && (
+                          <span className="stat" title="Battery Level">
+                            🔋 {node.deviceMetrics.batteryLevel}%
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="node-time">
+                        {node.lastHeard ?
+                          new Date(node.lastHeard * 1000).toLocaleString([], {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })
+                          : 'Never'
+                        }
+                      </div>
+                    </div>
+
+                    {node.position && node.position.latitude != null && node.position.longitude != null && (
+                      <div className="node-location" title="Location">
+                        📍 {node.position.latitude.toFixed(3)}, {node.position.longitude.toFixed(3)}
+                      </div>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <div className="no-data">
+                  {nodeFilter ? 'No nodes match filter' : 'No nodes detected'}
+                </div>
+              )
+            ) : (
+              <div className="no-data">
+                Connect to Meshtastic node
+              </div>
+            )}
+          </div>
         </div>
 
-        {connectionStatus === 'connected' ? (
-          processedNodes.length > 0 ? (
-            <div className="nodes-table">
-              <table>
-                <thead>
-                  <tr>
-                    <th className="sortable" onClick={() => handleSort('longName')}>
-                      Node {sortField === 'longName' && (sortDirection === 'asc' ? '↑' : '↓')}
-                    </th>
-                    <th className="sortable" onClick={() => handleSort('shortName')}>
-                      Short Name {sortField === 'shortName' && (sortDirection === 'asc' ? '↑' : '↓')}
-                    </th>
-                    <th className="sortable" onClick={() => handleSort('id')}>
-                      ID {sortField === 'id' && (sortDirection === 'asc' ? '↑' : '↓')}
-                    </th>
-                    <th className="sortable" onClick={() => handleSort('lastHeard')}>
-                      Last Seen {sortField === 'lastHeard' && (sortDirection === 'asc' ? '↑' : '↓')}
-                    </th>
-                    <th className="sortable" onClick={() => handleSort('snr')}>
-                      SNR {sortField === 'snr' && (sortDirection === 'asc' ? '↑' : '↓')}
-                    </th>
-                    <th className="sortable" onClick={() => handleSort('battery')}>
-                      Battery {sortField === 'battery' && (sortDirection === 'asc' ? '↑' : '↓')}
-                    </th>
-                    <th className="sortable" onClick={() => handleSort('hwModel')}>
-                      Hardware {sortField === 'hwModel' && (sortDirection === 'asc' ? '↑' : '↓')}
-                    </th>
-                    <th className="sortable" onClick={() => handleSort('location')}>
-                      Location {sortField === 'location' && (sortDirection === 'asc' ? '↑' : '↓')}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {processedNodes.map(node => (
-                    <tr key={node.nodeNum}>
-                      <td>{node.user?.longName || `Node ${node.nodeNum}`}</td>
-                      <td>{node.user?.shortName || '-'}</td>
-                      <td>{node.user?.id || node.nodeNum}</td>
-                      <td>
-                        {node.lastHeard ? new Date(node.lastHeard * 1000).toLocaleString() : 'Never'}
-                      </td>
-                      <td>{node.snr !== undefined ? `${node.snr} dB` : '-'}</td>
-                      <td>{node.deviceMetrics?.batteryLevel !== undefined ? `${node.deviceMetrics.batteryLevel}%` : '-'}</td>
-                      <td>{node.user?.hwModel ? formatHardwareModel(node.user.hwModel) : '-'}</td>
-                      <td>
-                        {node.position ?
-                          `${node.position.latitude.toFixed(4)}, ${node.position.longitude.toFixed(4)}` :
-                          '-'
-                        }
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+        {/* Right Side - Map */}
+        <div className="map-container">
+          {connectionStatus === 'connected' ? (
+            <>
+              <MapContainer
+                center={getMapCenter()}
+                zoom={nodesWithPosition.length > 0 ? 10 : 8}
+                style={{ height: '100%', width: '100%' }}
+              >
+                <TileLayer
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
+                {nodesWithPosition.map(node => (
+                <Marker
+                  key={node.nodeNum}
+                  position={[node.position!.latitude, node.position!.longitude]}
+                  eventHandlers={{
+                    click: () => {
+                      setSelectedNodeId(node.user?.id || null);
+                    }
+                  }}
+                  icon={selectedNodeId === node.user?.id ? selectedIcon : defaultIcon}
+                >
+                  <Popup>
+                    <div className="node-popup">
+                      <div className="popup-header">
+                        <strong>{node.user?.longName || `Node ${node.nodeNum}`}</strong>
+                        {node.user?.shortName && (
+                          <span className="popup-short">({node.user.shortName})</span>
+                        )}
+                      </div>
+
+                      <div className="popup-details">
+                        {node.user?.id && (
+                          <div>ID: {node.user.id}</div>
+                        )}
+
+                        {node.snr != null && (
+                          <div>SNR: {node.snr.toFixed(1)} dB</div>
+                        )}
+
+                        {node.deviceMetrics?.batteryLevel !== undefined && (
+                          <div>Battery: {node.deviceMetrics.batteryLevel}%</div>
+                        )}
+
+                        {node.lastHeard && (
+                          <div>Last Seen: {new Date(node.lastHeard * 1000).toLocaleString()}</div>
+                        )}
+
+                        <div>
+                          Position: {node.position!.latitude?.toFixed(4) || 'N/A'}, {node.position!.longitude?.toFixed(4) || 'N/A'}
+                          {node.position!.altitude && ` (${node.position!.altitude}m)`}
+                        </div>
+                      </div>
+                    </div>
+                  </Popup>
+                </Marker>
+              ))}
+            </MapContainer>
+            {nodesWithPosition.length === 0 && (
+              <div className="map-overlay">
+                <div className="overlay-content">
+                  <h3>📍 No Node Locations</h3>
+                  <p>No nodes in your network are currently sharing location data.</p>
+                  <p>Nodes with GPS enabled will appear as markers on this map.</p>
+                </div>
+              </div>
+            )}
+            </>
           ) : (
-            <p className="no-data">
-              {nodeFilter ? 'No nodes match the current filter.' : 'No nodes detected yet. Waiting for mesh updates...'}
-            </p>
-          )
-        ) : (
-          <p className="no-data">Connect to a Meshtastic node to view mesh network</p>
-        )}
+            <div className="map-placeholder">
+              <div className="placeholder-content">
+                <h3>Map View</h3>
+                <p>Connect to a Meshtastic node to view node locations on the map</p>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     );
   };
 
   const renderChannelsTab = () => (
     <div className="tab-content">
-      <h2>Channels ({channels.length})</h2>
+      <div className="channels-header">
+        <h2>Channels ({channels.length})</h2>
+        <div className="channels-controls">
+          <label className="mqtt-toggle">
+            <input
+              type="checkbox"
+              checked={showMqttMessages}
+              onChange={(e) => setShowMqttMessages(e.target.checked)}
+            />
+            Show MQTT/Bridge Messages
+          </label>
+        </div>
+      </div>
       {connectionStatus === 'connected' ? (
         channels.length > 0 ? (
           <>
@@ -566,7 +767,12 @@ function App() {
                 <button
                   key={channel.id}
                   className={`channel-button ${selectedChannel === channel.id ? 'selected' : ''}`}
-                  onClick={() => setSelectedChannel(channel.id)}
+                  onClick={() => {
+                    console.log('👆 User manually selected channel:', channel.id, 'Current selectedChannel:', selectedChannel);
+                    setSelectedChannel(channel.id);
+                    selectedChannelRef.current = channel.id; // Update ref immediately
+                    console.log('📝 Called setSelectedChannel with:', channel.id);
+                  }}
                 >
                   <div className="channel-button-header">
                     <span className="channel-name">{channel.name}</span>
@@ -594,8 +800,24 @@ function App() {
 
                 <div className="channel-conversation">
                   <div className="messages-container">
-                    {channelMessages[selectedChannel] && channelMessages[selectedChannel].length > 0 ? (
-                      channelMessages[selectedChannel].map(msg => {
+                    {(() => {
+                      // Use selected channel ID directly - no mapping needed
+                      const messageChannel = selectedChannel;
+                      let messagesForChannel = channelMessages[messageChannel] || [];
+                      console.log(`🔍 Channel display debug: selectedChannel=${selectedChannel}, messageChannel=${messageChannel}, messagesFound=${messagesForChannel.length}`);
+
+                      // Filter MQTT messages if the option is disabled
+                      if (!showMqttMessages) {
+                        messagesForChannel = messagesForChannel.filter(msg => !isMqttBridgeMessage(msg));
+                      }
+
+                      // Sort messages by timestamp (oldest first)
+                      messagesForChannel = messagesForChannel.sort((a, b) =>
+                        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+                      );
+
+                      return messagesForChannel && messagesForChannel.length > 0 ? (
+                      messagesForChannel.map(msg => {
                         const isMine = isMyMessage(msg);
                         const isPending = pendingMessages.has(msg.id);
                         return (
@@ -631,7 +853,9 @@ function App() {
                       })
                     ) : (
                       <p className="no-messages">No messages in this channel yet</p>
-                    )}
+                    );
+                    })()}
+                    <div ref={messagesEndRef} />
                   </div>
 
                   {/* Send message form */}

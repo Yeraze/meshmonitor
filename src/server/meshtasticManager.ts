@@ -1,4 +1,6 @@
 import databaseService from '../services/database.js';
+import meshtasticProtobufService from './meshtasticProtobufService.js';
+import protobufService from './protobufService.js';
 
 export interface MeshtasticConfig {
   nodeIp: string;
@@ -33,6 +35,8 @@ export interface MeshMessage {
   id: string;
   from: string;
   to: string;
+  fromNodeId: string;  // For consistency with database
+  toNodeId: string;    // For consistency with database
   text: string;
   channel: number;
   portnum?: number;
@@ -43,6 +47,7 @@ class MeshtasticManager {
   private config: MeshtasticConfig;
   private isConnected = false;
   private pollingInterval: NodeJS.Timeout | null = null;
+  private localNodeInfo: { nodeNum: number; nodeId: string; longName: string; shortName: string } | null = null;
 
   constructor() {
     this.config = {
@@ -72,6 +77,9 @@ class MeshtasticManager {
     try {
       console.log(`Connecting to Meshtastic node at ${this.config.nodeIp}...`);
 
+      // Initialize protobuf service first
+      await meshtasticProtobufService.initialize();
+
       // Test connection by trying to get node info
       const response = await this.makeRequest('/api/v1/fromradio');
       if (response.ok) {
@@ -100,75 +108,91 @@ class MeshtasticManager {
 
   private async requestFullConfiguration(): Promise<void> {
     try {
-      console.log('Requesting full configuration from node...');
+      console.log('🔧 Requesting full configuration from node...');
 
       // Strategy 1: Standard want_config_id approach with extended timeout
       await this.sendWantConfigId();
-      console.log('Waiting 10 seconds for device to populate fromradio queue...');
-      await new Promise(resolve => setTimeout(resolve, 10000));
+      console.log('⏳ Waiting 15 seconds for device to populate fromradio queue...');
+      await new Promise(resolve => setTimeout(resolve, 15000));
 
       let totalDataReceived = 0;
+      let nodesFound = 0;
+      let channelsFound = 0;
 
       // Try multiple requests to get all configuration data
-      for (let attempt = 1; attempt <= 5; attempt++) {
-        console.log(`Configuration request attempt ${attempt}...`);
+      for (let attempt = 1; attempt <= 7; attempt++) {
+        console.log(`📡 Configuration request attempt ${attempt}...`);
 
         const response = await this.makeRequest('/api/v1/fromradio?all=true');
         if (response.ok) {
           const data = await response.arrayBuffer();
-          console.log(`Attempt ${attempt}: Received ${data.byteLength} bytes`);
+          console.log(`📊 Attempt ${attempt}: Received ${data.byteLength} bytes`);
           totalDataReceived += data.byteLength;
 
           if (data.byteLength > 0) {
             const uint8Array = new Uint8Array(data);
 
-            // Log configuration data for debugging on first attempt
-            if (attempt === 1) {
+            // Log configuration data for debugging on first few attempts
+            if (attempt <= 2) {
               const hexString = Array.from(uint8Array.slice(0, 100))
                 .map(b => b.toString(16).padStart(2, '0'))
                 .join(' ');
-              console.log('Config hex data (first 100 bytes):', hexString);
+              console.log(`🔍 Config hex data (first 100 bytes):`, hexString);
             }
 
             await this.processIncomingData(uint8Array);
-            console.log(`Processed data from attempt ${attempt}`);
+            console.log(`✅ Processed data from attempt ${attempt}`);
+
+            // Check how many nodes and channels we have now
+            const currentNodes = databaseService.getNodeCount();
+            const currentChannels = databaseService.getChannelCount();
+            if (currentNodes > nodesFound) {
+              nodesFound = currentNodes;
+              console.log(`📈 Total nodes discovered: ${nodesFound}`);
+            }
+            if (currentChannels > channelsFound) {
+              channelsFound = currentChannels;
+              console.log(`📈 Total channels discovered: ${channelsFound}`);
+            }
           }
         } else {
-          console.warn(`Attempt ${attempt} failed, status:`, response.status);
+          console.warn(`⚠️ Attempt ${attempt} failed, status:`, response.status);
         }
 
         // Small delay between attempts
-        if (attempt < 5) {
-          await new Promise(resolve => setTimeout(resolve, 2000));
+        if (attempt < 7) {
+          await new Promise(resolve => setTimeout(resolve, 3000));
         }
       }
 
-      console.log(`Total configuration data received: ${totalDataReceived} bytes`);
+      console.log(`📊 Configuration summary: ${totalDataReceived} bytes, ${nodesFound} nodes, ${channelsFound} channels`);
 
-      // Strategy 2: If we didn't get much data, try alternative approaches
-      if (totalDataReceived < 100) {
-        console.log('Limited data received, trying alternative approaches...');
+      // Strategy 2: Alternative approaches if limited data received
+      if (totalDataReceived < 100 || nodesFound === 0) {
+        console.log('🔄 Limited initial data, trying alternative approaches...');
 
-        // Try sending want_config_id again
-        await this.sendWantConfigId();
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        // Send multiple want_config_id requests
+        for (let i = 0; i < 3; i++) {
+          await this.sendWantConfigId();
+          await new Promise(resolve => setTimeout(resolve, 8000));
 
-        // Try without 'all' parameter
-        const altResponse = await this.makeRequest('/api/v1/fromradio');
-        if (altResponse.ok) {
-          const altData = await altResponse.arrayBuffer();
-          if (altData.byteLength > 0) {
-            console.log(`Alternative approach: ${altData.byteLength} bytes`);
-            await this.processIncomingData(new Uint8Array(altData));
+          const altResponse = await this.makeRequest('/api/v1/fromradio');
+          if (altResponse.ok) {
+            const altData = await altResponse.arrayBuffer();
+            if (altData.byteLength > 0) {
+              console.log(`🔄 Alternative attempt ${i + 1}: ${altData.byteLength} bytes`);
+              await this.processIncomingData(new Uint8Array(altData));
+            }
           }
         }
 
-        // Strategy 3: Try to request device info and stats
+        // Strategy 3: Try to get device info from JSON endpoint
         try {
+          console.log('📱 Trying to fetch device info from JSON endpoint...');
           const nodeInfoResponse = await this.makeRequest('/json/info');
           if (nodeInfoResponse.ok) {
             const nodeInfo = await nodeInfoResponse.json();
-            console.log('Device info:', nodeInfo);
+            console.log('📱 Device info received:', nodeInfo);
 
             // If we have device info, create a basic node entry
             if (nodeInfo.num && nodeInfo.user) {
@@ -183,37 +207,125 @@ class MeshtasticManager {
                 updatedAt: Date.now()
               };
 
-              console.log('Creating node from device info:', nodeData);
+              console.log('📱 Creating local node from device info:', nodeData);
               databaseService.upsertNode(nodeData);
             }
           }
         } catch (infoError) {
-          console.log('Could not fetch device info:', infoError);
+          console.log('⚠️ Could not fetch device info:', infoError);
+        }
+
+        // Strategy 4: Try other JSON endpoints for more data
+        try {
+          console.log('📡 Trying to fetch from JSON stats endpoint...');
+          const statsResponse = await this.makeRequest('/json/stats');
+          if (statsResponse.ok) {
+            const stats = await statsResponse.json();
+            console.log('📊 Stats received:', stats);
+          }
+        } catch (statsError) {
+          console.log('⚠️ Could not fetch stats:', statsError);
+        }
+
+        // Strategy 5: Try to get node database from hotspot JSON endpoints
+        try {
+          console.log('🏠 Trying to fetch node database from JSON endpoints...');
+          const nodesResponse = await this.makeRequest('/json/nodes');
+          if (nodesResponse.ok) {
+            const nodesData = await nodesResponse.json();
+            console.log('🏠 Nodes data from JSON:', nodesData);
+
+            // Process nodes from JSON if available
+            if (Array.isArray(nodesData) && nodesData.length > 0) {
+              for (const node of nodesData) {
+                if (node.num && node.user?.id) {
+                  const nodeData = {
+                    nodeNum: node.num,
+                    nodeId: node.user.id,
+                    longName: node.user.longName || `Node ${node.user.id}`,
+                    shortName: node.user.shortName || node.user.id?.substring(1, 5) || 'UNK',
+                    hwModel: node.user.hwModel || 0,
+                    latitude: node.position?.latitude,
+                    longitude: node.position?.longitude,
+                    altitude: node.position?.altitude,
+                    batteryLevel: node.deviceMetrics?.batteryLevel,
+                    voltage: node.deviceMetrics?.voltage,
+                    lastHeard: node.lastHeard || Date.now() / 1000,
+                    snr: node.snr,
+                    createdAt: Date.now(),
+                    updatedAt: Date.now()
+                  };
+                  console.log('🏠 Creating node from JSON data:', nodeData.longName);
+                  databaseService.upsertNode(nodeData);
+                }
+              }
+            }
+          }
+        } catch (nodesError) {
+          console.log('⚠️ Could not fetch nodes from JSON:', nodesError);
         }
       }
 
+      // Strategy 6: Ensure we have basic channels even if none were discovered
+      const finalChannelCount = databaseService.getChannelCount();
+      if (finalChannelCount === 0) {
+        console.log('📡 No channels discovered, creating default channels...');
+        this.createDefaultChannels();
+      }
+
+      // Final summary
+      const finalNodeCount = databaseService.getNodeCount();
+      const finalChannelCountAfter = databaseService.getChannelCount();
+      console.log(`✅ Configuration complete: ${finalNodeCount} nodes, ${finalChannelCountAfter} channels`);
+
     } catch (error) {
-      console.error('Failed to request full configuration:', error);
+      console.error('❌ Failed to request full configuration:', error);
+      // Even if configuration fails, ensure we have basic setup
+      this.ensureBasicSetup();
     }
+  }
+
+  private createDefaultChannels(): void {
+    console.log('📡 Creating default channel configuration...');
+
+    // Create Primary channel by default
+    try {
+      databaseService.upsertChannel({
+        id: 0,
+        name: 'Primary'
+      });
+      console.log('📡 Created Primary channel');
+    } catch (error) {
+      console.error('❌ Failed to create Primary channel:', error);
+    }
+  }
+
+  private ensureBasicSetup(): void {
+    console.log('🔧 Ensuring basic setup is complete...');
+
+    // Ensure we have at least a Primary channel
+    const channelCount = databaseService.getChannelCount();
+    if (channelCount === 0) {
+      this.createDefaultChannels();
+    }
+
+    // Note: Don't create fake nodes - they will be discovered naturally through mesh traffic
+    console.log('✅ Basic setup ensured');
   }
 
   private async sendWantConfigId(): Promise<void> {
     try {
       console.log('Sending want_config_id to trigger configuration data...');
 
-      // Create a minimal ToRadio protobuf with want_config_id
-      // From mesh.proto: want_config_id is field number 3 in ToRadio message
-      // Format: field number 3, wire type 0 (varint), value 1
-      const wantConfigIdMessage = new Uint8Array([
-        0x18, 0x01  // Field 3 (want_config_id), value 1 (true)
-      ]);
+      // Use the new protobuf service to create a proper want_config_id message
+      const wantConfigMessage = meshtasticProtobufService.createWantConfigRequest();
 
       const response = await this.makeRequest('/api/v1/toradio', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/x-protobuf'
         },
-        body: wantConfigIdMessage
+        body: wantConfigMessage as BodyInit
       });
 
       if (response.ok) {
@@ -295,97 +407,607 @@ class MeshtasticManager {
         return; // Empty response
       }
 
-      // Basic protobuf parsing - look for node information in binary data
-      const parsedData = this.parseFromRadioProtobuf(data);
+      console.log(`📦 Processing ${data.length} bytes with unified protobuf service...`);
+
+      // Use the unified protobuf service to parse incoming data
+      const parsedData = meshtasticProtobufService.parseIncomingData(data);
 
       if (parsedData) {
-        console.log('Parsed protobuf data:', parsedData.type, parsedData.data.longName || parsedData.data.text?.substring(0, 30) || 'unknown');
+        console.log(`✅ Decoded ${parsedData.type}:`, parsedData.data);
 
-        if (parsedData.type === 'nodeInfo') {
-          await this.processNodeInfo(parsedData.data);
-        } else if (parsedData.type === 'packet') {
-          await this.processPacket(parsedData.data);
-        } else if (parsedData.type === 'nodeDatabase') {
-          console.log(parsedData.data.message);
-          // Node processing already happened in extractAllNodesFromDatabase
-        } else if (parsedData.type === 'channelConfig') {
-          console.log(parsedData.data.message);
-          // Channel processing - just log for now, prevents message processing
+        switch (parsedData.type) {
+          case 'fromRadio':
+            await this.processFromRadio(parsedData.data);
+            break;
+          case 'meshPacket':
+            await this.processMeshPacket(parsedData.data);
+            break;
+          case 'myInfo':
+            await this.processMyNodeInfo(parsedData.data);
+            break;
+          case 'nodeInfo':
+            await this.processNodeInfoProtobuf(parsedData.data);
+            break;
+          case 'config':
+            await this.processConfigProtobuf(parsedData.data);
+            break;
+          case 'channel':
+            await this.processChannelProtobuf(parsedData.data);
+            break;
+          default:
+            console.log(`🤷 Unhandled protobuf type: ${parsedData.type}`);
         }
       } else {
-        console.log('No parseable data found in', data.length, 'bytes');
+        console.log('⚠️ No parseable protobuf data found in', data.length, 'bytes');
+        // Log hex data for debugging
+        const hexString = Array.from(data.slice(0, 100))
+          .map(b => b.toString(16).padStart(2, '0'))
+          .join(' ');
+        console.log('Raw hex data (first 100 bytes):', hexString);
       }
     } catch (error) {
-      console.error('Error processing incoming data:', error);
+      console.error('❌ Error processing incoming data:', error);
     }
   }
 
-  private parseFromRadioProtobuf(data: Uint8Array): any {
-    try {
-      // Basic protobuf parsing for Meshtastic FromRadio messages
-      // This is a simplified parser that looks for common patterns
+  /**
+   * Process FromRadio protobuf message
+   */
+  private async processFromRadio(fromRadio: any): Promise<void> {
+    console.log('📻 Processing FromRadio message');
 
-      if (data.length < 5) return null;
+    switch (fromRadio.payloadVariant.case) {
+      case 'packet':
+        if (fromRadio.payloadVariant.value) {
+          await this.processMeshPacket(fromRadio.payloadVariant.value);
+        }
+        break;
+      case 'myInfo':
+        console.log('📱 Received MyNodeInfo:', fromRadio.payloadVariant.value);
+        if (fromRadio.payloadVariant.value) {
+          await this.processMyNodeInfo(fromRadio.payloadVariant.value);
+        }
+        break;
+      case 'nodeInfo':
+        console.log('🏠 Received NodeInfo:', fromRadio.payloadVariant.value);
+        if (fromRadio.payloadVariant.value) {
+          await this.processNodeInfoProtobuf(fromRadio.payloadVariant.value);
+        }
+        break;
+      case 'config':
+        console.log('⚙️ Received Config:', fromRadio.payloadVariant.value);
+        // Handle device configuration
+        break;
+      case 'logRecord':
+        console.log('📝 Received LogRecord:', fromRadio.payloadVariant.value);
+        // Handle log records
+        break;
+      case 'configCompleteId':
+        console.log('✅ Configuration complete, ID:', fromRadio.payloadVariant.value);
+        // Configuration is complete
+        break;
+      case 'rebooted':
+        console.log('🔄 Device rebooted');
+        // Device has rebooted
+        break;
+      case 'moduleConfig':
+        console.log('💭 Module config:', fromRadio.payloadVariant.value);
+        // Handle module configuration
+        break;
+      case 'channel':
+        console.log('📡 Received Channel:', fromRadio.payloadVariant.value);
+        await this.processChannelProtobuf(fromRadio.payloadVariant.value);
+        break;
+      case 'queueStatus':
+        console.log('📋 Queue status:', fromRadio.payloadVariant.value);
+        // Handle queue status
+        break;
+      case 'xmodemPacket':
+        console.log('📦 XModem packet received');
+        // Handle XModem packets for file transfer
+        break;
+      case 'metadata':
+        console.log('📊 Metadata:', fromRadio.payloadVariant.value);
+        // Handle metadata
+        break;
+      case 'mqttClientProxyMessage':
+        console.log('🌐 MQTT proxy message:', fromRadio.payloadVariant.value);
+        // Handle MQTT proxy messages
+        break;
+      default:
+        console.log('🤷 Unknown FromRadio variant:', fromRadio.payloadVariant.case);
+    }
+  }
 
-      // Decode as text for pattern matching
-      const text = new TextDecoder('utf-8', { fatal: false }).decode(data);
+  /**
+   * Process MyNodeInfo protobuf message
+   */
+  private async processMyNodeInfo(myNodeInfo: any): Promise<void> {
+    console.log('📱 Processing MyNodeInfo for local device');
 
-      // Log all potential node IDs we find
-      const nodeIdMatches = text.match(/!([a-f0-9]{8})/g);
-      if (nodeIdMatches && nodeIdMatches.length > 0) {
-        console.log('Found node IDs in data:', nodeIdMatches);
+    const nodeData = {
+      nodeNum: Number(myNodeInfo.myNodeNum),
+      nodeId: `!${myNodeInfo.myNodeNum.toString(16).padStart(8, '0')}`,
+      longName: 'Local Device',
+      shortName: 'LOCAL',
+      hwModel: myNodeInfo.hwModel || 0,
+      lastHeard: Date.now() / 1000,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+
+    // Store local node info for message sending
+    this.localNodeInfo = {
+      nodeNum: nodeData.nodeNum,
+      nodeId: nodeData.nodeId,
+      longName: nodeData.longName,
+      shortName: nodeData.shortName
+    };
+
+    databaseService.upsertNode(nodeData);
+    console.log('📱 Updated local device info in database');
+  }
+
+  getLocalNodeInfo(): { nodeNum: number; nodeId: string; longName: string; shortName: string } | null {
+    return this.localNodeInfo;
+  }
+
+  /**
+   * Process Channel protobuf message
+   */
+  private async processChannelProtobuf(channel: any): Promise<void> {
+    console.log('📡 Processing Channel protobuf', {
+      index: channel.index,
+      role: channel.role,
+      name: channel.settings?.name,
+      hasPsk: !!channel.settings?.psk,
+      uplinkEnabled: channel.settings?.uplinkEnabled,
+      downlinkEnabled: channel.settings?.downlinkEnabled
+    });
+
+    if (channel.settings) {
+      // Only save channels that are actually configured and useful
+      const channelName = channel.settings.name || `Channel ${channel.index}`;
+      const hasValidConfig = channel.settings.name ||
+                            channel.settings.psk ||
+                            channel.role === 1 || // PRIMARY role
+                            channel.role === 2 || // SECONDARY role
+                            channel.index === 0;   // Always include channel 0
+
+      if (hasValidConfig) {
+        try {
+          databaseService.upsertChannel({
+            id: channel.index,
+            name: channelName,
+            psk: channel.settings.psk ? 'Set' : undefined
+          });
+          console.log(`📡 Saved channel: ${channelName} (role: ${channel.role}, index: ${channel.index})`);
+        } catch (error) {
+          console.error('❌ Failed to save channel:', error);
+        }
+      } else {
+        console.log(`📡 Skipping empty/unused channel ${channel.index}`);
       }
+    }
+  }
 
-      // Look for any readable text that might be names or messages
-      const readableMatches = text.match(/[A-Za-z][A-Za-z0-9\s\-_]{2,30}/g);
-      if (readableMatches && readableMatches.length > 0) {
-        console.log('Found readable text:', readableMatches.slice(0, 10));
+  /**
+   * Process Config protobuf message
+   */
+  private async processConfigProtobuf(config: any): Promise<void> {
+    console.log('⚙️ Processing Config protobuf:', config);
+    // Configuration messages don't typically need database storage
+    // They contain device settings like LoRa parameters, GPS settings, etc.
+  }
+
+  /**
+   * Process MeshPacket protobuf message
+   */
+  private async processMeshPacket(meshPacket: any): Promise<void> {
+    console.log(`🔄 Processing MeshPacket: ID=${meshPacket.id}, from=${meshPacket.from}, to=${meshPacket.to}`);
+
+    // Extract node information if available
+    if (meshPacket.from && meshPacket.from !== BigInt(0)) {
+      const fromNum = Number(meshPacket.from);
+      const nodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
+      const nodeData: any = {
+        nodeNum: fromNum,
+        nodeId: nodeId,
+        longName: `Node ${nodeId}`,
+        shortName: nodeId.substring(1, 5),
+        lastHeard: meshPacket.rxTime ? Number(meshPacket.rxTime) / 1000 : Date.now() / 1000
+      };
+
+      // Only include SNR/RSSI if they have valid values
+      if (meshPacket.rxSnr && meshPacket.rxSnr !== 0) {
+        nodeData.snr = meshPacket.rxSnr;
       }
+      if (meshPacket.rxRssi && meshPacket.rxRssi !== 0) {
+        nodeData.rssi = meshPacket.rxRssi;
+      }
+      databaseService.upsertNode(nodeData);
+    }
 
-      // If we have node IDs, extract and save them first before processing other data
-      if (nodeIdMatches && nodeIdMatches.length > 0) {
-        // Save all discovered nodes to database first
-        this.saveNodesFromData(nodeIdMatches, readableMatches || [], text);
+    // Process decoded payload if present
+    if (meshPacket.decoded) {
+      const portnum = meshPacket.decoded.portnum;
+      const payload = meshPacket.decoded.payload;
 
-        // If we have many node IDs, this is likely a complete mesh database
-        if (nodeIdMatches.length > 5) {
-          return {
-            type: 'nodeDatabase',
-            data: {
-              nodesProcessed: nodeIdMatches.length,
-              message: `Processed ${nodeIdMatches.length} nodes from mesh database`
-            }
-          };
+      console.log(`📨 Processing payload: portnum=${portnum} (${meshtasticProtobufService.getPortNumName(portnum)}), payload size=${payload?.length || 0}`);
+
+      if (payload && payload.length > 0) {
+        // Use the unified protobuf service to process the payload
+        const processedPayload = meshtasticProtobufService.processPayload(portnum, payload);
+
+        switch (portnum) {
+          case 1: // TEXT_MESSAGE_APP
+            await this.processTextMessageProtobuf(meshPacket, processedPayload as string);
+            break;
+          case 3: // POSITION_APP
+            await this.processPositionMessageProtobuf(meshPacket, processedPayload as any);
+            break;
+          case 4: // NODEINFO_APP
+            await this.processNodeInfoMessageProtobuf(meshPacket, processedPayload as any);
+            break;
+          case 67: // TELEMETRY_APP
+            await this.processTelemetryMessageProtobuf(meshPacket, processedPayload as any);
+            break;
+          case 5: // ROUTING_APP
+            console.log('🗺️ Routing message:', processedPayload);
+            break;
+          case 6: // ADMIN_APP
+            console.log('⚙️ Admin message:', processedPayload);
+            break;
+          case 42: // NEIGHBORINFO_APP
+            console.log('🏠 Neighbor info:', processedPayload);
+            break;
+          case 41: // TRACEROUTE_APP
+            console.log('🗺️ Traceroute:', processedPayload);
+            break;
+          default:
+            console.log(`🤷 Unhandled portnum: ${portnum} (${meshtasticProtobufService.getPortNumName(portnum)})`);
         }
       }
-
-      // Check for channel configuration data after node processing
-      const channelResult = this.extractChannelInfo(data, text, readableMatches);
-      if (channelResult) return channelResult;
-
-      // Look for text messages first (these are more common)
-      const messageResult = this.extractTextMessage(data, text);
-      if (messageResult) return messageResult;
-
-      // Look for node information - be more aggressive
-      const nodeResult = this.extractNodeInfo(data, text);
-      if (nodeResult) return nodeResult;
-
-      // Try to extract any protobuf structure we can recognize
-      const protoResult = this.extractProtobufStructure(data);
-      if (protoResult) return protoResult;
-
-      // Look for other packet types
-      const otherResult = this.extractOtherPackets(data, text);
-      if (otherResult) return otherResult;
-
-    } catch (error) {
-      console.error('Error parsing protobuf:', error);
     }
-
-    return null;
   }
 
+  /**
+   * Process text message using protobuf types
+   */
+  private async processTextMessageProtobuf(meshPacket: any, messageText: string): Promise<void> {
+    try {
+      console.log(`💬 Text message: "${messageText}"`);
+
+      if (messageText && messageText.length > 0 && messageText.length < 500) {
+        const fromNum = Number(meshPacket.from);
+        const toNum = Number(meshPacket.to);
+
+        // Ensure the from node exists in the database
+        const fromNodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
+        const existingFromNode = databaseService.getNode(fromNum);
+        if (!existingFromNode) {
+          // Create a basic node entry if it doesn't exist
+          const basicNodeData = {
+            nodeNum: fromNum,
+            nodeId: fromNodeId,
+            longName: `Node ${fromNodeId}`,
+            shortName: fromNodeId.substring(1, 5),
+            lastHeard: Date.now() / 1000,
+            createdAt: Date.now(),
+            updatedAt: Date.now()
+          };
+          databaseService.upsertNode(basicNodeData);
+          console.log(`📝 Created basic node entry for ${fromNodeId}`);
+        }
+
+        // Handle broadcast address (4294967295 = 0xFFFFFFFF)
+        let actualToNum = toNum;
+        const toNodeId = `!${toNum.toString(16).padStart(8, '0')}`;
+
+        if (toNum === 4294967295) {
+          // For broadcast messages, use a special broadcast node
+          const broadcastNodeNum = 4294967295;
+          const existingBroadcastNode = databaseService.getNode(broadcastNodeNum);
+          if (!existingBroadcastNode) {
+            const broadcastNodeData = {
+              nodeNum: broadcastNodeNum,
+              nodeId: '!ffffffff',
+              longName: 'Broadcast',
+              shortName: 'BCAST',
+              lastHeard: Date.now() / 1000,
+              createdAt: Date.now(),
+              updatedAt: Date.now()
+            };
+            databaseService.upsertNode(broadcastNodeData);
+            console.log(`📝 Created broadcast node entry`);
+          }
+        }
+
+        const message = {
+          id: `${fromNum}_${meshPacket.id || Date.now()}`,
+          fromNodeNum: fromNum,
+          toNodeNum: actualToNum,
+          fromNodeId: fromNodeId,
+          toNodeId: toNodeId,
+          text: messageText,
+          channel: meshPacket.channel || 0,
+          portnum: 1, // TEXT_MESSAGE_APP
+          timestamp: meshPacket.rxTime ? Number(meshPacket.rxTime) * 1000 : Date.now(),
+          rxTime: meshPacket.rxTime ? Number(meshPacket.rxTime) * 1000 : Date.now(),
+          createdAt: Date.now()
+        };
+
+        console.log(`🔍 Channel debug: meshPacket.channel=${meshPacket.channel}, saved channel=${message.channel}, typeof=${typeof meshPacket.channel}`);
+        databaseService.insertMessage(message);
+        console.log(`💾 Saved text message from ${message.fromNodeId}: "${messageText.substring(0, 30)}..."`);
+      }
+    } catch (error) {
+      console.error('❌ Error processing text message:', error);
+    }
+  }
+
+  /**
+   * Legacy text message processing (for backward compatibility)
+   */
+
+  /**
+   * Process position message using protobuf types
+   */
+  private async processPositionMessageProtobuf(meshPacket: any, position: any): Promise<void> {
+    try {
+      console.log(`🗺️ Position message: lat=${position.latitudeI}, lng=${position.longitudeI}`);
+
+      if (position.latitudeI && position.longitudeI) {
+        // Convert coordinates from integer format to decimal degrees
+        const coords = meshtasticProtobufService.convertCoordinates(position.latitudeI, position.longitudeI);
+
+        const fromNum = Number(meshPacket.from);
+        const nodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
+        const nodeData: any = {
+          nodeNum: fromNum,
+          nodeId: nodeId,
+          latitude: coords.latitude,
+          longitude: coords.longitude,
+          altitude: position.altitude,
+          lastHeard: position.time ? Number(position.time) : Date.now() / 1000
+        };
+
+        // Only include SNR/RSSI if they have valid values
+        if (meshPacket.rxSnr && meshPacket.rxSnr !== 0) {
+          nodeData.snr = meshPacket.rxSnr;
+        }
+        if (meshPacket.rxRssi && meshPacket.rxRssi !== 0) {
+          nodeData.rssi = meshPacket.rxRssi;
+        }
+
+        databaseService.upsertNode(nodeData);
+        console.log(`🗺️ Updated node position: ${nodeId} -> ${coords.latitude}, ${coords.longitude}`);
+      }
+    } catch (error) {
+      console.error('❌ Error processing position message:', error);
+    }
+  }
+
+  /**
+   * Legacy position message processing (for backward compatibility)
+   */
+
+  /**
+   * Process user message (node info) using protobuf types
+   */
+  private async processNodeInfoMessageProtobuf(meshPacket: any, user: any): Promise<void> {
+    try {
+      console.log(`👤 User message for: ${user.longName}`);
+
+      const fromNum = Number(meshPacket.from);
+      const nodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
+      const nodeData: any = {
+        nodeNum: fromNum,
+        nodeId: nodeId,
+        longName: user.longName,
+        shortName: user.shortName,
+        hwModel: user.hwModel,
+        lastHeard: Date.now() / 1000
+      };
+
+      // Only include SNR/RSSI if they have valid values
+      if (meshPacket.rxSnr && meshPacket.rxSnr !== 0) {
+        nodeData.snr = meshPacket.rxSnr;
+      }
+      if (meshPacket.rxRssi && meshPacket.rxRssi !== 0) {
+        nodeData.rssi = meshPacket.rxRssi;
+      }
+
+      databaseService.upsertNode(nodeData);
+      console.log(`👤 Updated user info: ${user.longName || nodeId}`);
+    } catch (error) {
+      console.error('❌ Error processing user message:', error);
+    }
+  }
+
+  /**
+   * Legacy node info message processing (for backward compatibility)
+   */
+
+  /**
+   * Process telemetry message using protobuf types
+   */
+  private async processTelemetryMessageProtobuf(meshPacket: any, telemetry: any): Promise<void> {
+    try {
+      console.log('📊 Processing telemetry message');
+
+      const fromNum = Number(meshPacket.from);
+      const nodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
+      const nodeData: any = {
+        nodeNum: fromNum,
+        nodeId: nodeId,
+        lastHeard: telemetry.time ? Number(telemetry.time) : Date.now() / 1000
+      };
+
+      // Only include SNR/RSSI if they have valid values
+      if (meshPacket.rxSnr && meshPacket.rxSnr !== 0) {
+        nodeData.snr = meshPacket.rxSnr;
+      }
+      if (meshPacket.rxRssi && meshPacket.rxRssi !== 0) {
+        nodeData.rssi = meshPacket.rxRssi;
+      }
+
+      // Handle different telemetry types
+      if (telemetry.variant?.case === 'deviceMetrics' && telemetry.variant.value) {
+        const deviceMetrics = telemetry.variant.value;
+        console.log(`📊 Device telemetry: battery=${deviceMetrics.batteryLevel}%, voltage=${deviceMetrics.voltage}V`);
+
+        nodeData.batteryLevel = deviceMetrics.batteryLevel;
+        nodeData.voltage = deviceMetrics.voltage;
+        nodeData.channelUtilization = deviceMetrics.channelUtilization;
+        nodeData.airUtilTx = deviceMetrics.airUtilTx;
+      } else if (telemetry.variant?.case === 'environmentMetrics' && telemetry.variant.value) {
+        const envMetrics = telemetry.variant.value;
+        console.log(`🌡️ Environment telemetry: temp=${envMetrics.temperature}°C, humidity=${envMetrics.relativeHumidity}%`);
+        // Could extend nodeData to include environmental metrics
+      } else if (telemetry.variant?.case === 'powerMetrics' && telemetry.variant.value) {
+        const powerMetrics = telemetry.variant.value;
+        console.log(`⚡ Power telemetry: ch1_voltage=${powerMetrics.ch1Voltage}V`);
+        // Could extend nodeData to include power metrics
+      }
+
+      databaseService.upsertNode(nodeData);
+      console.log(`📊 Updated node telemetry: ${nodeId}`);
+    } catch (error) {
+      console.error('❌ Error processing telemetry message:', error);
+    }
+  }
+
+  /**
+   * Legacy telemetry message processing (for backward compatibility)
+   */
+
+  /**
+   * Process NodeInfo protobuf message directly
+   */
+  private async processNodeInfoProtobuf(nodeInfo: any): Promise<void> {
+    try {
+      console.log(`🏠 Processing NodeInfo for node ${nodeInfo.num}`);
+
+      const nodeId = `!${Number(nodeInfo.num).toString(16).padStart(8, '0')}`;
+      const nodeData: any = {
+        nodeNum: Number(nodeInfo.num),
+        nodeId: nodeId,
+        lastHeard: nodeInfo.lastHeard ? Number(nodeInfo.lastHeard) : Date.now() / 1000,
+        snr: nodeInfo.snr,
+        rssi: 0 // Will be updated from mesh packet if available
+      };
+
+      // Add user information if available
+      if (nodeInfo.user) {
+        nodeData.longName = nodeInfo.user.longName;
+        nodeData.shortName = nodeInfo.user.shortName;
+        nodeData.hwModel = nodeInfo.user.hwModel;
+      }
+
+      // Add position information if available
+      if (nodeInfo.position && (nodeInfo.position.latitudeI || nodeInfo.position.longitudeI)) {
+        const coords = meshtasticProtobufService.convertCoordinates(
+          nodeInfo.position.latitudeI,
+          nodeInfo.position.longitudeI
+        );
+        nodeData.latitude = coords.latitude;
+        nodeData.longitude = coords.longitude;
+        nodeData.altitude = nodeInfo.position.altitude;
+      }
+
+      // Add device metrics if available
+      if (nodeInfo.deviceMetrics) {
+        nodeData.batteryLevel = nodeInfo.deviceMetrics.batteryLevel;
+        nodeData.voltage = nodeInfo.deviceMetrics.voltage;
+        nodeData.channelUtilization = nodeInfo.deviceMetrics.channelUtilization;
+        nodeData.airUtilTx = nodeInfo.deviceMetrics.airUtilTx;
+      }
+
+      databaseService.upsertNode(nodeData);
+      console.log(`🏠 Updated node info: ${nodeData.longName || nodeId}`);
+    } catch (error) {
+      console.error('❌ Error processing NodeInfo protobuf:', error);
+    }
+  }
+
+  /**
+   * Process User protobuf message directly
+   */
+  // @ts-ignore - Legacy function kept for backward compatibility
+  private async processUserProtobuf(user: any): Promise<void> {
+    try {
+      console.log(`👤 Processing User: ${user.longName}`);
+
+      // Extract node number from user ID if possible
+      let nodeNum = 0;
+      if (user.id && user.id.startsWith('!')) {
+        nodeNum = parseInt(user.id.substring(1), 16);
+      }
+
+      if (nodeNum > 0) {
+        const nodeData = {
+          nodeNum: nodeNum,
+          nodeId: user.id,
+          longName: user.longName,
+          shortName: user.shortName,
+          hwModel: user.hwModel,
+          lastHeard: Date.now() / 1000
+        };
+
+        databaseService.upsertNode(nodeData);
+        console.log(`👤 Updated user info: ${user.longName}`);
+      }
+    } catch (error) {
+      console.error('❌ Error processing User protobuf:', error);
+    }
+  }
+
+  /**
+   * Process Position protobuf message directly
+   */
+  // @ts-ignore - Legacy function kept for backward compatibility
+  private async processPositionProtobuf(position: any): Promise<void> {
+    try {
+      console.log(`🗺️ Processing Position: lat=${position.latitudeI}, lng=${position.longitudeI}`);
+
+      if (position.latitudeI && position.longitudeI) {
+        const coords = meshtasticProtobufService.convertCoordinates(position.latitudeI, position.longitudeI);
+        console.log(`🗺️ Position: ${coords.latitude}, ${coords.longitude}`);
+
+        // Note: Without a mesh packet context, we can't determine which node this position belongs to
+        // This would need to be handled at a higher level or with additional context
+      }
+    } catch (error) {
+      console.error('❌ Error processing Position protobuf:', error);
+    }
+  }
+
+  /**
+   * Process Telemetry protobuf message directly
+   */
+  // @ts-ignore - Legacy function kept for backward compatibility
+  private async processTelemetryProtobuf(telemetry: any): Promise<void> {
+    try {
+      console.log('📊 Processing Telemetry protobuf');
+
+      // Note: Without a mesh packet context, we can't determine which node this telemetry belongs to
+      // This would need to be handled at a higher level or with additional context
+
+      if (telemetry.variant?.case === 'deviceMetrics' && telemetry.variant.value) {
+        const deviceMetrics = telemetry.variant.value;
+        console.log(`📊 Device metrics: battery=${deviceMetrics.batteryLevel}%, voltage=${deviceMetrics.voltage}V`);
+      } else if (telemetry.variant?.case === 'environmentMetrics' && telemetry.variant.value) {
+        const envMetrics = telemetry.variant.value;
+        console.log(`🌡️ Environment metrics: temp=${envMetrics.temperature}°C, humidity=${envMetrics.relativeHumidity}%`);
+      }
+    } catch (error) {
+      console.error('❌ Error processing Telemetry protobuf:', error);
+    }
+  }
+
+
+  // @ts-ignore - Legacy function kept for backward compatibility
   private saveNodesFromData(nodeIds: string[], readableText: string[], text: string): void {
     // Extract and save all discovered nodes to database
     const uniqueNodeIds = [...new Set(nodeIds)];
@@ -426,6 +1048,7 @@ class MeshtasticManager {
     }
   }
 
+  // @ts-ignore - Legacy function kept for backward compatibility
   private extractChannelInfo(_data: Uint8Array, text: string, readableMatches: string[] | null): any {
     // Extract channel names from both readableMatches and direct text analysis
     const knownMeshtasticChannels = ['Primary', 'admin', 'gauntlet', 'telemetry', 'Secondary', 'LongFast', 'VeryLong'];
@@ -487,8 +1110,8 @@ class MeshtasticManager {
   private ensurePrimaryChannel(): void {
     const existingChannels = databaseService.getAllChannels();
     if (existingChannels.length === 0) {
-      console.log('Creating default Primary channel');
-      this.saveChannelsToDatabase(['Primary']);
+      console.log('📡 Creating default Primary channel');
+      this.createDefaultChannels();
     }
   }
 
@@ -623,6 +1246,37 @@ class MeshtasticManager {
   private parseNodeProtobufData(data: Uint8Array, nodeId: string): any {
     // Enhanced protobuf parsing specifically for node information
     const result: any = {};
+
+    try {
+      // First, try to decode the entire data block as a NodeInfo message
+      const nodeInfo = protobufService.decodeNodeInfo(data);
+      if (nodeInfo && nodeInfo.position) {
+        console.log(`🗺️ Extracted position from NodeInfo during config parsing for ${nodeId}`);
+        const coords = protobufService.convertCoordinates(
+          nodeInfo.position.latitude_i,
+          nodeInfo.position.longitude_i
+        );
+        result.latitude = coords.latitude;
+        result.longitude = coords.longitude;
+        result.altitude = nodeInfo.position.altitude;
+
+        // Also extract other NodeInfo data if available
+        if (nodeInfo.user) {
+          result.longName = nodeInfo.user.long_name;
+          result.shortName = nodeInfo.user.short_name;
+          result.hwModel = nodeInfo.user.hw_model;
+        }
+
+        if (nodeInfo.device_metrics) {
+          result.batteryLevel = nodeInfo.device_metrics.battery_level;
+          result.voltage = nodeInfo.device_metrics.voltage;
+        }
+
+        console.log(`📍 Config position data: ${coords.latitude}, ${coords.longitude} for ${nodeId}`);
+      }
+    } catch (nodeInfoError) {
+      // NodeInfo parsing failed, try manual field parsing as fallback
+    }
 
     try {
       let offset = 0;
@@ -761,47 +1415,140 @@ class MeshtasticManager {
   }
 
   private parseEmbeddedTelemetry(data: Uint8Array, result: any): void {
-    // Try to parse embedded telemetry data
+    // Parse embedded protobuf messages that may contain position data
+    console.log(`🔍 parseEmbeddedTelemetry called with ${data.length} bytes: [${Array.from(data.slice(0, Math.min(20, data.length))).map(b => b.toString(16).padStart(2, '0')).join(' ')}${data.length > 20 ? '...' : ''}]`);
+
+    // Strategy 1: Look for encoded integer patterns that could be coordinates
+    // Meshtastic encodes lat/lng as integers * 10^7
+    for (let i = 0; i <= data.length - 4; i++) {
+      try {
+        // Try to decode as little-endian 32-bit signed integer
+        const view = new DataView(data.buffer, data.byteOffset + i, 4);
+        const value = view.getInt32(0, true); // little endian
+
+        const isValidLatitude = Math.abs(value) >= 100000000 && Math.abs(value) <= 900000000;
+        const isValidLongitude = Math.abs(value) >= 100000000 && Math.abs(value) <= 1800000000;
+
+        if (isValidLatitude) {
+          console.log(`🌍 Found potential latitude at byte ${i}: ${value / 10000000} (raw: ${value})`);
+          if (!result.position) result.position = {};
+          result.position.latitude = value / 10000000;
+          result.latitude = value / 10000000;
+        } else if (isValidLongitude) {
+          console.log(`🌍 Found potential longitude at byte ${i}: ${value / 10000000} (raw: ${value})`);
+          if (!result.position) result.position = {};
+          result.position.longitude = value / 10000000;
+          result.longitude = value / 10000000;
+        }
+      } catch (e) {
+        // Skip invalid positions
+      }
+    }
+
     try {
-      for (let i = 0; i < data.length - 4; i++) {
-        const value = new DataView(data.buffer, data.byteOffset + i, 4);
+      let offset = 0;
+      while (offset < data.length - 1) {
+        if (data[offset] === 0) {
+          offset++;
+          continue;
+        }
 
-        try {
-          // Try as float32 for SNR, voltage, coordinates
-          const floatVal = value.getFloat32(0, true); // little endian
+        const tag = data[offset];
+        const fieldNumber = tag >> 3;
+        const wireType = tag & 0x07;
 
-          // SNR typically ranges from -25 to +15
-          if (floatVal >= -30 && floatVal <= 20 && Number.isFinite(floatVal) && !result.snr) {
-            result.snr = Math.round(floatVal * 100) / 100;
+        offset++;
+
+        if (wireType === 0) { // Varint - this is where position data lives!
+          let value = 0;
+          let shift = 0;
+          let hasMore = true;
+
+          while (offset < data.length && hasMore && shift < 64) {
+            const byte = data[offset];
+            hasMore = (byte & 0x80) !== 0;
+            value |= (byte & 0x7F) << shift;
+            shift += 7;
+            offset++;
+
+            if (!hasMore) break;
           }
 
-          // Voltage typically ranges from 3.0V to 5.0V
-          if (floatVal >= 2.5 && floatVal <= 6.0 && Number.isFinite(floatVal) && !result.voltage) {
-            result.voltage = Math.round(floatVal * 100) / 100;
+          console.log(`Embedded Field ${fieldNumber} Varint value: ${value} (0x${value.toString(16)})`);
+
+          // Look for Meshtastic Position message structure
+          // latitudeI and longitudeI are typically * 10^7 integers
+          const isValidLatitude = Math.abs(value) >= 100000000 && Math.abs(value) <= 900000000; // -90 to +90 degrees
+          const isValidLongitude = Math.abs(value) >= 100000000 && Math.abs(value) <= 1800000000; // -180 to +180 degrees
+
+          // Position message: field 1=latitudeI, field 2=longitudeI, field 3=altitude
+          if (fieldNumber === 1 && isValidLatitude) {
+            console.log(`🌍 Found embedded latitude in field ${fieldNumber}: ${value / 10000000}`);
+            if (!result.position) result.position = {};
+            result.position.latitude = value / 10000000;
+            result.latitude = value / 10000000; // Also set flat field for database
+          } else if (fieldNumber === 2 && isValidLongitude) {
+            console.log(`🌍 Found embedded longitude in field ${fieldNumber}: ${value / 10000000}`);
+            if (!result.position) result.position = {};
+            result.position.longitude = value / 10000000;
+            result.longitude = value / 10000000; // Also set flat field for database
+          } else if (fieldNumber === 3 && value >= -1000 && value <= 10000) {
+            // Altitude in meters
+            console.log(`🌍 Found embedded altitude in field ${fieldNumber}: ${value}m`);
+            if (!result.position) result.position = {};
+            result.position.altitude = value;
+            result.altitude = value; // Also set flat field for database
+          } else if (fieldNumber === 4 && value >= -200 && value <= -20) {
+            // RSSI
+            result.rssi = value;
+          } else if (fieldNumber === 5 && value >= 0 && value <= 100) {
+            // Battery level
+            result.batteryLevel = value;
           }
 
-          // Try as int32 for RSSI
-          const intVal = value.getInt32(0, true);
+        } else if (wireType === 2) { // Length-delimited - could contain nested position message
+          if (offset < data.length) {
+            const length = data[offset];
+            offset++;
 
-          // RSSI typically ranges from -150 to -30
-          if (intVal >= -200 && intVal <= -20 && !result.rssi) {
-            result.rssi = intVal;
+            if (offset + length <= data.length && length > 0) {
+              const nestedData = data.slice(offset, offset + length);
+              console.log(`Found nested message in field ${fieldNumber}, length ${length} bytes`);
+
+              // Recursively parse nested messages that might contain position data
+              this.parseEmbeddedTelemetry(nestedData, result);
+
+              offset += length;
+            }
           }
+        } else if (wireType === 5) { // Fixed32 - float values
+          if (offset + 4 <= data.length) {
+            const floatVal = new DataView(data.buffer, data.byteOffset + offset, 4).getFloat32(0, true);
 
-          // Battery level as percentage (0-100)
-          if (intVal >= 0 && intVal <= 100 && !result.batteryLevel) {
-            result.batteryLevel = intVal;
+            if (Number.isFinite(floatVal)) {
+              // SNR as float (typical range -25 to +15)
+              if (floatVal >= -30 && floatVal <= 20 && !result.snr) {
+                result.snr = Math.round(floatVal * 100) / 100;
+              }
+              // Voltage (typical range 3.0V to 5.0V)
+              if (floatVal >= 2.5 && floatVal <= 6.0 && !result.voltage) {
+                result.voltage = Math.round(floatVal * 100) / 100;
+              }
+            }
+
+            offset += 4;
           }
-
-        } catch (e) {
-          // Continue trying different interpretations
+        } else {
+          // Skip unknown wire types
+          offset++;
         }
       }
     } catch (error) {
-      // Ignore telemetry parsing errors
+      // Ignore parsing errors, this is experimental
     }
   }
 
+  // @ts-ignore - Legacy function kept for backward compatibility
   private extractProtobufStructure(data: Uint8Array): any {
     // Try to extract basic protobuf field structure
     // Protobuf uses varint encoding, look for common patterns
@@ -916,6 +1663,7 @@ class MeshtasticManager {
     return null;
   }
 
+  // @ts-ignore - Legacy function kept for backward compatibility
   private extractTextMessage(data: Uint8Array, text: string): any {
     // Look for text message indicators
     if (text.includes('TEXT_MESSAGE_APP') || this.containsReadableText(text)) {
@@ -948,6 +1696,7 @@ class MeshtasticManager {
     return null;
   }
 
+  // @ts-ignore - Legacy function kept for backward compatibility
   private extractNodeInfo(data: Uint8Array, text: string): any {
     // Look for node ID patterns (starts with '!')
     const nodeIdMatch = text.match(/!([a-f0-9]{8})/);
@@ -982,6 +1731,7 @@ class MeshtasticManager {
     return null;
   }
 
+  // @ts-ignore - Legacy function kept for backward compatibility
   private extractOtherPackets(_data: Uint8Array, _text: string): any {
     // Handle other packet types like telemetry, position, etc.
     return null;
@@ -1116,10 +1866,34 @@ class MeshtasticManager {
               if (!hasMore) break;
             }
 
-            // Interpret based on field number and value range
-            if (fieldNumber === 3 && value >= -200 && value <= -20) {
-              // Likely RSSI
-              telemetry.rssi = value;
+            // Debug: Log all Varint values to diagnose position parsing
+            if (fieldNumber >= 1 && fieldNumber <= 10) {
+              console.log(`Field ${fieldNumber} Varint value: ${value} (0x${value.toString(16)})`);
+            }
+
+            // Look for position data in various field numbers - Meshtastic Position message
+            // latitudeI and longitudeI are typically * 10^7 integers
+            const isValidLatitude = Math.abs(value) >= 100000000 && Math.abs(value) <= 900000000; // -90 to +90 degrees
+            const isValidLongitude = Math.abs(value) >= 100000000 && Math.abs(value) <= 1800000000; // -180 to +180 degrees
+
+            if (isValidLatitude && (fieldNumber === 1 || fieldNumber === 3 || fieldNumber === 5)) {
+              console.log(`🌍 Found latitude in field ${fieldNumber}: ${value / 10000000}`);
+              if (!telemetry.position) telemetry.position = {};
+              telemetry.position.latitude = value / 10000000;
+            } else if (isValidLongitude && (fieldNumber === 2 || fieldNumber === 4 || fieldNumber === 6)) {
+              console.log(`🌍 Found longitude in field ${fieldNumber}: ${value / 10000000}`);
+              if (!telemetry.position) telemetry.position = {};
+              telemetry.position.longitude = value / 10000000;
+            } else if (fieldNumber === 3 && value >= -1000 && value <= 10000) {
+              // Could be altitude in meters, or RSSI if negative and in different range
+              if (value >= -200 && value <= -20) {
+                // Likely RSSI
+                telemetry.rssi = value;
+              } else if (value >= -1000 && value <= 10000) {
+                // Likely altitude
+                if (!telemetry.position) telemetry.position = {};
+                telemetry.position.altitude = value;
+              }
             } else if (fieldNumber === 4 && value >= -30 && value <= 20) {
               // Likely SNR (but as integer * 4 or * 100)
               telemetry.snr = value > 100 ? value / 100 : value / 4;
@@ -1214,6 +1988,7 @@ class MeshtasticManager {
   }
 
 
+  // @ts-ignore - Legacy function kept for backward compatibility
   private async processPacket(packet: any): Promise<void> {
     // Handle the new packet structure from enhanced protobuf parsing
     if (packet.text && packet.text.length > 0) {
@@ -1223,43 +1998,49 @@ class MeshtasticManager {
       const fromNodeNum = packet.from || packet.fromNodeNum || 0;
       const toNodeNum = packet.to || packet.toNodeNum || 0xFFFFFFFF;
 
-      // Make sure fromNode exists in database
-      if (fromNodeId !== 'unknown' && fromNodeNum !== 0) {
-        const existingNode = databaseService.getNode(fromNodeNum);
-        if (!existingNode) {
-          // Create a basic node entry if it doesn't exist
-          const nodeData = {
-            nodeNum: fromNodeNum,
-            nodeId: fromNodeId,
-            longName: fromNodeId,
-            shortName: fromNodeId.substring(1, 5),
-            hwModel: 0,
-            lastHeard: Date.now() / 1000,
-            createdAt: Date.now(),
-            updatedAt: Date.now()
-          };
-          console.log(`Creating missing fromNode: ${fromNodeId} (${fromNodeNum})`);
-          databaseService.upsertNode(nodeData);
-        }
+      // Make sure fromNode exists in database (including unknown nodes)
+      const existingFromNode = databaseService.getNode(fromNodeNum);
+      if (!existingFromNode) {
+        // Create a basic node entry if it doesn't exist
+        const nodeData = {
+          nodeNum: fromNodeNum,
+          nodeId: fromNodeId,
+          longName: fromNodeId === 'unknown' ? 'Unknown Node' : fromNodeId,
+          shortName: fromNodeId === 'unknown' ? 'UNK' : fromNodeId.substring(1, 5),
+          hwModel: 0,
+          lastHeard: Date.now() / 1000,
+          createdAt: Date.now(),
+          updatedAt: Date.now()
+        };
+        console.log(`Creating missing fromNode: ${fromNodeId} (${fromNodeNum})`);
+        console.log(`DEBUG nodeData values: nodeNum=${nodeData.nodeNum}, nodeId="${nodeData.nodeId}"`);
+        console.log(`DEBUG nodeData types: nodeNum type=${typeof nodeData.nodeNum}, nodeId type=${typeof nodeData.nodeId}`);
+        console.log(`DEBUG validation check: nodeNum undefined? ${nodeData.nodeNum === undefined}, nodeNum null? ${nodeData.nodeNum === null}, nodeId falsy? ${!nodeData.nodeId}`);
+
+        // Force output with console.error to bypass any buffering
+        console.error(`FORCE DEBUG: nodeData:`, JSON.stringify(nodeData));
+
+        databaseService.upsertNode(nodeData);
+        console.log(`DEBUG: Called upsertNode, checking if node was created...`);
+        const checkNode = databaseService.getNode(fromNodeNum);
+        console.log(`DEBUG: Node exists after upsert:`, checkNode ? 'YES' : 'NO');
       }
 
-      // Make sure toNode exists in database (for non-broadcast messages)
-      if (toNodeId !== '!ffffffff' && toNodeNum !== 0xFFFFFFFF) {
-        const existingToNode = databaseService.getNode(toNodeNum);
-        if (!existingToNode) {
-          const nodeData = {
-            nodeNum: toNodeNum,
-            nodeId: toNodeId,
-            longName: toNodeId,
-            shortName: toNodeId.substring(1, 5),
-            hwModel: 0,
-            lastHeard: Date.now() / 1000,
-            createdAt: Date.now(),
-            updatedAt: Date.now()
-          };
-          console.log(`Creating missing toNode: ${toNodeId} (${toNodeNum})`);
-          databaseService.upsertNode(nodeData);
-        }
+      // Make sure toNode exists in database (including broadcast node)
+      const existingToNode = databaseService.getNode(toNodeNum);
+      if (!existingToNode) {
+        const nodeData = {
+          nodeNum: toNodeNum,
+          nodeId: toNodeId,
+          longName: toNodeId === '!ffffffff' ? 'Broadcast' : toNodeId,
+          shortName: toNodeId === '!ffffffff' ? 'BCST' : toNodeId.substring(1, 5),
+          hwModel: 0,
+          lastHeard: Date.now() / 1000,
+          createdAt: Date.now(),
+          updatedAt: Date.now()
+        };
+        console.log(`Creating missing toNode: ${toNodeId} (${toNodeNum})`);
+        databaseService.upsertNode(nodeData);
       }
 
       const message = {
@@ -1286,6 +2067,7 @@ class MeshtasticManager {
     }
   }
 
+  // @ts-ignore - Legacy function kept for backward compatibility
   private async processNodeInfo(nodeInfo: any): Promise<void> {
     const nodeData = {
       nodeNum: nodeInfo.num,
@@ -1381,29 +2163,20 @@ class MeshtasticManager {
     };
   }
 
-  async sendTextMessage(text: string, channel: number = 0): Promise<void> {
+  async sendTextMessage(text: string, channel: number = 0, destination?: number): Promise<void> {
     if (!this.isConnected) {
       throw new Error('Not connected to Meshtastic node');
     }
 
     try {
-      const message = {
-        type: 'sendtext',
-        payload: {
-          text: text,
-          channel: channel,
-          wantAck: true
-        }
-      };
-
-      const encoder = new TextEncoder();
-      const data = encoder.encode(JSON.stringify(message));
+      // Use the new protobuf service to create a proper text message
+      const textMessageData = meshtasticProtobufService.createTextMessage(text, destination, channel);
 
       const response = await this.makeRequest('/api/v1/toradio', {
         method: 'PUT',
-        body: data,
+        body: textMessageData as BodyInit,
         headers: {
-          'Content-Type': 'application/octet-stream'
+          'Content-Type': 'application/x-protobuf'
         }
       });
 
@@ -1459,6 +2232,8 @@ class MeshtasticManager {
       id: msg.id,
       from: msg.fromNodeId,
       to: msg.toNodeId,
+      fromNodeId: msg.fromNodeId,
+      toNodeId: msg.toNodeId,
       text: msg.text,
       channel: msg.channel,
       portnum: msg.portnum,

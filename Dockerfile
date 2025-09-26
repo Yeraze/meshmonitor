@@ -30,6 +30,9 @@ RUN npm ci --only=production
 # Copy built assets from builder stage
 COPY --from=builder /app/dist ./dist
 
+# Copy protobuf definitions needed by the server
+COPY --from=builder /app/protobufs ./protobufs
+
 # Create data directory for SQLite database
 RUN mkdir -p /data && chown -R node:node /data
 
