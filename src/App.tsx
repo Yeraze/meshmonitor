@@ -33,6 +33,8 @@ interface MeshMessage {
   channel: number;
   portnum?: number;
   timestamp: Date;
+  acknowledged?: boolean;
+  isLocalMessage?: boolean;
 }
 
 interface Channel {
@@ -46,6 +48,9 @@ interface Channel {
 }
 
 type TabType = 'nodes' | 'channels' | 'messages' | 'info' | 'settings';
+
+type SortField = 'longName' | 'shortName' | 'id' | 'lastHeard' | 'snr' | 'battery' | 'hwModel' | 'location';
+type SortDirection = 'asc' | 'desc';
 
 function App() {
   const [activeTab, setActiveTab] = useState<TabType>('nodes')
@@ -61,6 +66,13 @@ function App() {
   const [nodeAddress, setNodeAddress] = useState<string>('Loading...')
   const [deviceInfo, setDeviceInfo] = useState<any>(null)
   const [deviceConfig, setDeviceConfig] = useState<any>(null)
+  const [currentNodeId, setCurrentNodeId] = useState<string>('')
+  const [pendingMessages, setPendingMessages] = useState<Map<string, MeshMessage>>(new Map())
+
+  // New state for node list features
+  const [nodeFilter, setNodeFilter] = useState<string>('')
+  const [sortField, setSortField] = useState<SortField>('longName')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
 
   // Load configuration and check connection status on startup
   useEffect(() => {
@@ -158,6 +170,40 @@ function App() {
           channelGroups[msg.channel].push(msg);
         });
         setChannelMessages(channelGroups);
+
+        // Check for message acknowledgments
+        if (pendingMessages.size > 0) {
+          const updatedPending = new Map(pendingMessages);
+          let hasUpdates = false;
+
+          // For each pending message, check if a matching message appears in recent messages
+          // Match by text content, channel, and approximate timestamp (within 30 seconds)
+          updatedPending.forEach((pendingMsg, tempId) => {
+            const matchingMessage = processedMessages.find((msg: MeshMessage) =>
+              msg.text === pendingMsg.text &&
+              msg.channel === pendingMsg.channel &&
+              Math.abs(msg.timestamp.getTime() - pendingMsg.timestamp.getTime()) < 30000 &&
+              msg.from === currentNodeId
+            );
+
+            if (matchingMessage) {
+              // Found a matching message from server, so this message was acknowledged
+              updatedPending.delete(tempId);
+              hasUpdates = true;
+
+              // Update the messages list to replace the temporary message with the server one
+              setMessages(prev => prev.map(m => m.id === tempId ? matchingMessage : m));
+              setChannelMessages(prev => ({
+                ...prev,
+                [pendingMsg.channel]: prev[pendingMsg.channel]?.map(m => m.id === tempId ? matchingMessage : m) || []
+              }));
+            }
+          });
+
+          if (hasUpdates) {
+            setPendingMessages(updatedPending);
+          }
+        }
       }
 
       // Fetch device info
@@ -172,6 +218,11 @@ function App() {
       if (deviceConfigResponse.ok) {
         const deviceConfigData = await deviceConfigResponse.json();
         setDeviceConfig(deviceConfigData);
+
+        // Extract current node ID from device config
+        if (deviceConfigData.basic?.nodeId) {
+          setCurrentNodeId(deviceConfigData.basic.nodeId);
+        }
       }
     } catch (error) {
       console.error('Failed to update data from backend:', error);
@@ -183,6 +234,33 @@ function App() {
       return;
     }
 
+    // Create a temporary message ID for immediate display
+    const tempId = `temp_${Date.now()}_${Math.random()}`;
+    const sentMessage: MeshMessage = {
+      id: tempId,
+      from: currentNodeId || 'me',
+      to: '!ffffffff', // Broadcast
+      text: newMessage,
+      channel: channel,
+      timestamp: new Date(),
+      isLocalMessage: true,
+      acknowledged: false
+    };
+
+    // Add message to local state immediately
+    setMessages(prev => [...prev, sentMessage]);
+    setChannelMessages(prev => ({
+      ...prev,
+      [channel]: [...(prev[channel] || []), sentMessage]
+    }));
+
+    // Add to pending acknowledgments
+    setPendingMessages(prev => new Map(prev).set(tempId, sentMessage));
+
+    // Clear the input
+    const messageText = newMessage;
+    setNewMessage('');
+
     try {
       const response = await fetch('/api/messages/send', {
         method: 'POST',
@@ -190,21 +268,45 @@ function App() {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          text: newMessage,
+          text: messageText,
           channel: channel
         })
       });
 
       if (response.ok) {
-        setNewMessage('');
-        // Refresh data after sending
-        await updateDataFromBackend();
+        // The message was sent successfully
+        // We'll wait for it to appear in the backend data to confirm acknowledgment
+        setTimeout(() => updateDataFromBackend(), 1000);
       } else {
         const errorData = await response.json();
         setError(`Failed to send message: ${errorData.error}`);
+
+        // Remove the message from local state if sending failed
+        setMessages(prev => prev.filter(msg => msg.id !== tempId));
+        setChannelMessages(prev => ({
+          ...prev,
+          [channel]: prev[channel]?.filter(msg => msg.id !== tempId) || []
+        }));
+        setPendingMessages(prev => {
+          const updated = new Map(prev);
+          updated.delete(tempId);
+          return updated;
+        });
       }
     } catch (err) {
       setError(`Failed to send message: ${err instanceof Error ? err.message : 'Unknown error'}`);
+
+      // Remove the message from local state if sending failed
+      setMessages(prev => prev.filter(msg => msg.id !== tempId));
+      setChannelMessages(prev => ({
+        ...prev,
+        [channel]: prev[channel]?.filter(msg => msg.id !== tempId) || []
+      }));
+      setPendingMessages(prev => {
+        const updated = new Map(prev);
+        updated.delete(tempId);
+        return updated;
+      });
     }
   };
 
@@ -235,6 +337,16 @@ function App() {
   const getNodeName = (nodeId: string): string => {
     const node = nodes.find(n => n.user?.id === nodeId);
     return node?.user?.longName || node?.user?.shortName || nodeId;
+  };
+
+  const getNodeShortName = (nodeId: string): string => {
+    const node = nodes.find(n => n.user?.id === nodeId);
+    // Prefer the actual shortName field, fallback to truncated ID only if shortName is empty/null
+    return (node?.user?.shortName && node.user.shortName.trim()) || nodeId.substring(1, 5);
+  };
+
+  const isMyMessage = (msg: MeshMessage): boolean => {
+    return msg.from === currentNodeId || (msg.isLocalMessage === true);
   };
 
   const getChannelName = (channelNum: number): string => {
@@ -273,58 +385,174 @@ function App() {
     );
   };
 
-  const renderNodesTab = () => (
-    <div className="tab-content">
-      <h2>Mesh Nodes ({nodes.length})</h2>
-      {connectionStatus === 'connected' ? (
-        nodes.length > 0 ? (
-          <div className="nodes-table">
-            <table>
-              <thead>
-                <tr>
-                  <th>Node</th>
-                  <th>Short Name</th>
-                  <th>ID</th>
-                  <th>Last Seen</th>
-                  <th>SNR</th>
-                  <th>RSSI</th>
-                  <th>Battery</th>
-                  <th>Hardware</th>
-                  <th>Location</th>
-                </tr>
-              </thead>
-              <tbody>
-                {nodes.map(node => (
-                  <tr key={node.nodeNum}>
-                    <td>{node.user?.longName || `Node ${node.nodeNum}`}</td>
-                    <td>{node.user?.shortName || '-'}</td>
-                    <td>{node.user?.id || node.nodeNum}</td>
-                    <td>
-                      {node.lastHeard ? new Date(node.lastHeard * 1000).toLocaleString() : 'Never'}
-                    </td>
-                    <td>{node.snr !== undefined ? `${node.snr} dB` : '-'}</td>
-                    <td>{node.rssi !== undefined && node.rssi !== 0 ? `${node.rssi} dBm` : '-'}</td>
-                    <td>{node.deviceMetrics?.batteryLevel !== undefined ? `${node.deviceMetrics.batteryLevel}%` : '-'}</td>
-                    <td>{node.user?.hwModel ? formatHardwareModel(node.user.hwModel) : '-'}</td>
-                    <td>
-                      {node.position ?
-                        `${node.position.latitude.toFixed(4)}, ${node.position.longitude.toFixed(4)}` :
-                        '-'
-                      }
-                    </td>
+  // Helper function to sort nodes
+  const sortNodes = (nodes: DeviceInfo[], field: SortField, direction: SortDirection): DeviceInfo[] => {
+    return [...nodes].sort((a, b) => {
+      let aVal: any, bVal: any;
+
+      switch (field) {
+        case 'longName':
+          aVal = a.user?.longName || `Node ${a.nodeNum}`;
+          bVal = b.user?.longName || `Node ${b.nodeNum}`;
+          break;
+        case 'shortName':
+          aVal = a.user?.shortName || '';
+          bVal = b.user?.shortName || '';
+          break;
+        case 'id':
+          aVal = a.user?.id || a.nodeNum;
+          bVal = b.user?.id || b.nodeNum;
+          break;
+        case 'lastHeard':
+          aVal = a.lastHeard || 0;
+          bVal = b.lastHeard || 0;
+          break;
+        case 'snr':
+          aVal = a.snr || -999;
+          bVal = b.snr || -999;
+          break;
+        case 'battery':
+          aVal = a.deviceMetrics?.batteryLevel || -1;
+          bVal = b.deviceMetrics?.batteryLevel || -1;
+          break;
+        case 'hwModel':
+          aVal = a.user?.hwModel || 0;
+          bVal = b.user?.hwModel || 0;
+          break;
+        case 'location':
+          aVal = a.position ? `${a.position.latitude},${a.position.longitude}` : '';
+          bVal = b.position ? `${b.position.latitude},${b.position.longitude}` : '';
+          break;
+        default:
+          return 0;
+      }
+
+      if (typeof aVal === 'string' && typeof bVal === 'string') {
+        const comparison = aVal.toLowerCase().localeCompare(bVal.toLowerCase());
+        return direction === 'asc' ? comparison : -comparison;
+      } else {
+        const comparison = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+        return direction === 'asc' ? comparison : -comparison;
+      }
+    });
+  };
+
+  // Helper function to filter nodes
+  const filterNodes = (nodes: DeviceInfo[], filter: string): DeviceInfo[] => {
+    if (!filter.trim()) return nodes;
+
+    const lowerFilter = filter.toLowerCase();
+    return nodes.filter(node => {
+      const longName = (node.user?.longName || '').toLowerCase();
+      const shortName = (node.user?.shortName || '').toLowerCase();
+      const id = (node.user?.id || '').toLowerCase();
+
+      return longName.includes(lowerFilter) ||
+             shortName.includes(lowerFilter) ||
+             id.includes(lowerFilter);
+    });
+  };
+
+  // Handle column header click for sorting
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  // Get processed (filtered and sorted) nodes
+  const getProcessedNodes = (): DeviceInfo[] => {
+    const filtered = filterNodes(nodes, nodeFilter);
+    return sortNodes(filtered, sortField, sortDirection);
+  };
+
+  const renderNodesTab = () => {
+    const processedNodes = getProcessedNodes();
+
+    return (
+      <div className="tab-content">
+        <h2>Mesh Nodes ({processedNodes.length}{nodeFilter ? ` of ${nodes.length}` : ''})</h2>
+
+        {/* Filter input */}
+        <div className="node-filter">
+          <input
+            type="text"
+            placeholder="Filter nodes by name or ID..."
+            value={nodeFilter}
+            onChange={(e) => setNodeFilter(e.target.value)}
+            className="filter-input"
+          />
+        </div>
+
+        {connectionStatus === 'connected' ? (
+          processedNodes.length > 0 ? (
+            <div className="nodes-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th className="sortable" onClick={() => handleSort('longName')}>
+                      Node {sortField === 'longName' && (sortDirection === 'asc' ? '↑' : '↓')}
+                    </th>
+                    <th className="sortable" onClick={() => handleSort('shortName')}>
+                      Short Name {sortField === 'shortName' && (sortDirection === 'asc' ? '↑' : '↓')}
+                    </th>
+                    <th className="sortable" onClick={() => handleSort('id')}>
+                      ID {sortField === 'id' && (sortDirection === 'asc' ? '↑' : '↓')}
+                    </th>
+                    <th className="sortable" onClick={() => handleSort('lastHeard')}>
+                      Last Seen {sortField === 'lastHeard' && (sortDirection === 'asc' ? '↑' : '↓')}
+                    </th>
+                    <th className="sortable" onClick={() => handleSort('snr')}>
+                      SNR {sortField === 'snr' && (sortDirection === 'asc' ? '↑' : '↓')}
+                    </th>
+                    <th className="sortable" onClick={() => handleSort('battery')}>
+                      Battery {sortField === 'battery' && (sortDirection === 'asc' ? '↑' : '↓')}
+                    </th>
+                    <th className="sortable" onClick={() => handleSort('hwModel')}>
+                      Hardware {sortField === 'hwModel' && (sortDirection === 'asc' ? '↑' : '↓')}
+                    </th>
+                    <th className="sortable" onClick={() => handleSort('location')}>
+                      Location {sortField === 'location' && (sortDirection === 'asc' ? '↑' : '↓')}
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {processedNodes.map(node => (
+                    <tr key={node.nodeNum}>
+                      <td>{node.user?.longName || `Node ${node.nodeNum}`}</td>
+                      <td>{node.user?.shortName || '-'}</td>
+                      <td>{node.user?.id || node.nodeNum}</td>
+                      <td>
+                        {node.lastHeard ? new Date(node.lastHeard * 1000).toLocaleString() : 'Never'}
+                      </td>
+                      <td>{node.snr !== undefined ? `${node.snr} dB` : '-'}</td>
+                      <td>{node.deviceMetrics?.batteryLevel !== undefined ? `${node.deviceMetrics.batteryLevel}%` : '-'}</td>
+                      <td>{node.user?.hwModel ? formatHardwareModel(node.user.hwModel) : '-'}</td>
+                      <td>
+                        {node.position ?
+                          `${node.position.latitude.toFixed(4)}, ${node.position.longitude.toFixed(4)}` :
+                          '-'
+                        }
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="no-data">
+              {nodeFilter ? 'No nodes match the current filter.' : 'No nodes detected yet. Waiting for mesh updates...'}
+            </p>
+          )
         ) : (
-          <p className="no-data">No nodes detected yet. Waiting for mesh updates...</p>
-        )
-      ) : (
-        <p className="no-data">Connect to a Meshtastic node to view mesh network</p>
-      )}
-    </div>
-  );
+          <p className="no-data">Connect to a Meshtastic node to view mesh network</p>
+        )}
+      </div>
+    );
+  };
 
   const renderChannelsTab = () => (
     <div className="tab-content">
@@ -367,15 +595,40 @@ function App() {
                 <div className="channel-conversation">
                   <div className="messages-container">
                     {channelMessages[selectedChannel] && channelMessages[selectedChannel].length > 0 ? (
-                      channelMessages[selectedChannel].map(msg => (
-                        <div key={msg.id} className="message-item">
-                          <div className="message-header">
-                            <span className="message-from">{getNodeName(msg.from)}</span>
-                            <span className="message-time">{msg.timestamp.toLocaleTimeString()}</span>
+                      channelMessages[selectedChannel].map(msg => {
+                        const isMine = isMyMessage(msg);
+                        const isPending = pendingMessages.has(msg.id);
+                        return (
+                          <div key={msg.id} className={`message-bubble-container ${isMine ? 'mine' : 'theirs'}`}>
+                            {!isMine && (
+                              <div
+                                className="sender-dot"
+                                title={getNodeName(msg.from)}
+                              >
+                                {getNodeShortName(msg.from)}
+                              </div>
+                            )}
+                            <div className={`message-bubble ${isMine ? 'mine' : 'theirs'}`}>
+                              <div className="message-text">{msg.text}</div>
+                              <div className="message-time">
+                                {msg.timestamp.toLocaleTimeString([], {
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </div>
+                            </div>
+                            {isMine && (
+                              <div className="message-status">
+                                {isPending ? (
+                                  <span className="status-pending" title="Sending...">⏳</span>
+                                ) : (
+                                  <span className="status-delivered" title="Delivered">✓</span>
+                                )}
+                              </div>
+                            )}
                           </div>
-                          <div className="message-text">{msg.text}</div>
-                        </div>
-                      ))
+                        );
+                      })
                     ) : (
                       <p className="no-messages">No messages in this channel yet</p>
                     )}

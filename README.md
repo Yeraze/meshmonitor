@@ -13,12 +13,14 @@ A comprehensive web application for monitoring Meshtastic mesh networks over IP.
 - GPS position tracking
 - Battery and voltage telemetry
 
-### 💬 **Message Management**
+### 💬 **iPhone Messages-Style UI**
+- Beautiful message bubbles with proper alignment
+- Sender identification dots with tooltips
+- Real-time message delivery status
 - Send and receive text messages
 - Direct messaging and channel broadcasts
 - Message persistence across restarts
-- Channel-based message filtering
-- Message search and pagination
+- Optimistic UI updates for instant feedback
 
 ### 🗄️ **Persistent Data Storage**
 - SQLite database for messages and nodes
@@ -150,6 +152,7 @@ Your Meshtastic device must have:
 
 ### Messages
 - `GET /api/messages` - Get messages with pagination
+- `POST /api/messages/send` - Send message to channel
 - `GET /api/messages/channel/:channel` - Channel-specific messages
 - `GET /api/messages/direct/:nodeId1/:nodeId2` - Direct messages
 
@@ -162,6 +165,15 @@ Your Meshtastic device must have:
 - `POST /api/import` - Import data
 - `POST /api/cleanup/messages` - Cleanup old messages
 - `POST /api/cleanup/nodes` - Cleanup inactive nodes
+- `POST /api/cleanup/channels` - Cleanup invalid channels
+
+### Channels
+- `GET /api/channels` - Get all channels
+- `GET /api/config` - Get configuration
+- `GET /api/device-config` - Get device configuration
+
+### Connection
+- `GET /api/connection` - Get connection status
 
 ## Data Structures
 
@@ -200,6 +212,21 @@ interface MeshMessage {
   timestamp: Date;
   channel: number;
   portnum?: number;
+  acknowledged?: boolean;
+  isLocalMessage?: boolean;
+}
+```
+
+### Channel Information
+```typescript
+interface Channel {
+  id: number;
+  name: string;
+  psk?: string;
+  uplinkEnabled: boolean;
+  downlinkEnabled: boolean;
+  createdAt: number;
+  updatedAt: number;
 }
 ```
 

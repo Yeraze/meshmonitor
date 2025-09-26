@@ -502,6 +502,15 @@ class DatabaseService {
     const result = stmt.get() as { count: number };
     return Number(result.count);
   }
+
+  // Clean up invalid channels that shouldn't have been created
+  cleanupInvalidChannels(): number {
+    const validChannelNames = ['Primary', 'admin', 'gauntlet', 'telemetry', 'Secondary', 'LongFast', 'VeryLong'];
+    const placeholders = validChannelNames.map(() => '?').join(', ');
+    const stmt = this.db.prepare(`DELETE FROM channels WHERE name NOT IN (${placeholders})`);
+    const result = stmt.run(...validChannelNames);
+    return Number(result.changes);
+  }
 }
 
 export default new DatabaseService();

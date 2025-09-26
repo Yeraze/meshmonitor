@@ -175,6 +175,16 @@ app.post('/api/cleanup/nodes', (req, res) => {
   }
 });
 
+app.post('/api/cleanup/channels', (_req, res) => {
+  try {
+    const deletedCount = databaseService.cleanupInvalidChannels();
+    res.json({ deletedCount });
+  } catch (error) {
+    console.error('Error cleaning up channels:', error);
+    res.status(500).json({ error: 'Failed to cleanup channels' });
+  }
+});
+
 
 // Send message endpoint
 app.post('/api/messages/send', async (req, res) => {

@@ -395,16 +395,23 @@ class MeshtasticManager {
       try {
         const nodeNum = parseInt(nodeId.substring(1), 16);
 
-        // Try to find a name for this node in the readable text
-        const possibleName = this.findNameForNode(nodeId, readableText, text);
+        // Try to find a name for this node in the readable text using enhanced protobuf parsing
+        const possibleName = this.findNameForNodeEnhanced(nodeId, readableText, text);
 
         const nodeData = {
           nodeNum: nodeNum,
           nodeId: nodeId,
           longName: possibleName.longName || `Node ${nodeId}`,
           shortName: possibleName.shortName || nodeId.substring(1, 5),
-          hwModel: 0, // We don't have this info yet
+          hwModel: possibleName.hwModel || 0,
           lastHeard: Date.now() / 1000,
+          snr: possibleName.snr,
+          rssi: possibleName.rssi,
+          batteryLevel: possibleName.batteryLevel,
+          voltage: possibleName.voltage,
+          latitude: possibleName.latitude,
+          longitude: possibleName.longitude,
+          altitude: possibleName.altitude,
           createdAt: Date.now(),
           updatedAt: Date.now()
         };
@@ -419,17 +426,32 @@ class MeshtasticManager {
     }
   }
 
-  private extractChannelInfo(_data: Uint8Array, _text: string, readableMatches: string[] | null): any {
-    if (!readableMatches) return null;
+  private extractChannelInfo(_data: Uint8Array, text: string, readableMatches: string[] | null): any {
+    // Extract channel names from both readableMatches and direct text analysis
+    const knownMeshtasticChannels = ['Primary', 'admin', 'gauntlet', 'telemetry', 'Secondary', 'LongFast', 'VeryLong'];
+    const foundChannels = new Set<string>();
 
-    // Filter readable matches to exclude WiFi-related terms but allow any legitimate channel names
-    const validChannels = readableMatches.filter(match =>
-      match.length >= 2 && // Must be at least 2 characters
-      match.length <= 20 && // Reasonable channel name length
-      !/wifi|ssid|network|5g|2\.4g|hotspot|router|access.*point/i.test(match) && // Explicitly exclude WiFi-related terms
-      !/^[0-9]+$/.test(match) && // Exclude pure numbers (likely not channel names)
-      /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(match) // Must start with letter, contain only alphanumeric, underscore, hyphen
-    );
+    // Check readableMatches first
+    if (readableMatches) {
+      readableMatches.forEach(match => {
+        const normalizedMatch = match.trim().toLowerCase();
+        knownMeshtasticChannels.forEach(channel => {
+          if (channel.toLowerCase() === normalizedMatch) {
+            foundChannels.add(channel);
+          }
+        });
+      });
+    }
+
+    // Also check direct text for channel names (case-insensitive)
+    const textLower = text.toLowerCase();
+    knownMeshtasticChannels.forEach(channel => {
+      if (textLower.includes(channel.toLowerCase())) {
+        foundChannels.add(channel);
+      }
+    });
+
+    const validChannels = Array.from(foundChannels);
 
     if (validChannels.length > 0) {
       console.log('Found valid Meshtastic channels:', validChannels);
@@ -486,32 +508,298 @@ class MeshtasticManager {
     }
   }
 
-  private findNameForNode(nodeId: string, _readableText: string[], fullText: string): {longName?: string, shortName?: string} {
-    // Try to find text near this node ID that might be its name
+  private findNameForNodeEnhanced(nodeId: string, readableText: string[], fullText: string): any {
+    // Enhanced protobuf parsing to extract all node information including telemetry
+    const result: any = {
+      longName: undefined,
+      shortName: undefined,
+      hwModel: undefined,
+      snr: undefined,
+      rssi: undefined,
+      batteryLevel: undefined,
+      voltage: undefined,
+      latitude: undefined,
+      longitude: undefined,
+      altitude: undefined
+    };
+
+    // Find the position of this node ID in the binary data
     const nodeIndex = fullText.indexOf(nodeId);
-    if (nodeIndex === -1) return {};
+    if (nodeIndex === -1) return result;
 
-    // Look for readable text before and after the node ID
-    const contextBefore = fullText.substring(Math.max(0, nodeIndex - 50), nodeIndex);
-    const contextAfter = fullText.substring(nodeIndex + nodeId.length, nodeIndex + nodeId.length + 50);
+    // Extract a larger context around the node ID for detailed parsing
+    const contextStart = Math.max(0, nodeIndex - 100);
+    const contextEnd = Math.min(fullText.length, nodeIndex + nodeId.length + 200);
+    const context = fullText.substring(contextStart, contextEnd);
 
-    // Look for name patterns in the context
-    const nameMatch = contextAfter.match(/([A-Za-z][A-Za-z0-9\s\-_]{2,20})/);
-    if (nameMatch) {
-      const longName = nameMatch[1].trim();
-      const shortName = longName.length > 4 ? longName.substring(0, 4) : longName;
-      return { longName, shortName };
+    // Parse the protobuf structure around this node ID
+    try {
+      const contextBytes = new TextEncoder().encode(context);
+      const parsedData = this.parseNodeProtobufData(contextBytes, nodeId);
+      if (parsedData) {
+        Object.assign(result, parsedData);
+      }
+    } catch (error) {
+      console.error(`Error parsing node data for ${nodeId}:`, error);
     }
 
-    // Try before the node ID
-    const beforeMatch = contextBefore.match(/([A-Za-z][A-Za-z0-9\s\-_]{2,20})\s*$/);
-    if (beforeMatch) {
-      const longName = beforeMatch[1].trim();
-      const shortName = longName.length > 4 ? longName.substring(0, 4) : longName;
-      return { longName, shortName };
+    // Fallback: Look for readable text patterns near the node ID
+    if (!result.longName) {
+      // Look for known good names from the readableText array first
+      for (const text of readableText) {
+        if (this.isValidNodeName(text) && text !== nodeId && text.length >= 3) {
+          result.longName = text.trim();
+          break;
+        }
+      }
+
+      // If still no good name, try pattern matching in the context with stricter validation
+      if (!result.longName) {
+        const afterContext = fullText.substring(nodeIndex + nodeId.length, nodeIndex + nodeId.length + 100);
+        const nameMatch = afterContext.match(/([\p{L}\p{S}][\p{L}\p{N}\p{S}\p{P}\s\-_.]{1,30})/gu);
+
+        if (nameMatch && nameMatch[0] && this.isValidNodeName(nameMatch[0]) && nameMatch[0].length >= 3) {
+          result.longName = nameMatch[0].trim();
+        }
+      }
+
+      // Validate shortName length (must be 2-4 characters)
+      if (result.shortName && (result.shortName.length < 2 || result.shortName.length > 4)) {
+        // Try to create a valid shortName from longName
+        if (result.longName && result.longName.length >= 3) {
+          result.shortName = result.longName.substring(0, 4).toUpperCase();
+        } else {
+          delete result.shortName;
+        }
+      }
+
+      // Generate shortName if we have a longName
+      if (result.longName && !result.shortName) {
+        // Look for a separate short name in readableText
+        for (const text of readableText) {
+          if (text !== result.longName && text.length >= 2 && text.length <= 8 &&
+              this.isValidNodeName(text) && text !== nodeId) {
+            result.shortName = text.trim();
+            break;
+          }
+        }
+
+        // If no separate shortName found, generate from longName
+        if (!result.shortName) {
+          const alphanumeric = result.longName.replace(/[^\w]/g, '');
+          result.shortName = alphanumeric.substring(0, 4) || result.longName.substring(0, 4);
+        }
+      }
     }
 
-    return {};
+    // Try to extract telemetry data from readable text patterns
+    for (const text of readableText) {
+      // Look for battery level patterns
+      const batteryMatch = text.match(/(\d{1,3})%/);
+      if (batteryMatch && !result.batteryLevel) {
+        const batteryLevel = parseInt(batteryMatch[1]);
+        if (batteryLevel >= 0 && batteryLevel <= 100) {
+          result.batteryLevel = batteryLevel;
+        }
+      }
+
+      // Look for voltage patterns
+      const voltageMatch = text.match(/(\d+\.\d+)V/);
+      if (voltageMatch && !result.voltage) {
+        result.voltage = parseFloat(voltageMatch[1]);
+      }
+
+      // Look for coordinate patterns
+      const latMatch = text.match(/(-?\d+\.\d+),\s*(-?\d+\.\d+)/);
+      if (latMatch && !result.latitude) {
+        result.latitude = parseFloat(latMatch[1]);
+        result.longitude = parseFloat(latMatch[2]);
+      }
+    }
+
+    return result;
+  }
+
+  private parseNodeProtobufData(data: Uint8Array, nodeId: string): any {
+    // Enhanced protobuf parsing specifically for node information
+    const result: any = {};
+
+    try {
+      let offset = 0;
+
+      while (offset < data.length - 10) {
+        // Look for protobuf field patterns
+        const tag = data[offset];
+        if (tag === 0) {
+          offset++;
+          continue;
+        }
+
+        const fieldNumber = tag >> 3;
+        const wireType = tag & 0x07;
+
+        if (fieldNumber > 0 && fieldNumber < 50) {
+          offset++;
+
+          if (wireType === 2) { // Length-delimited field (strings, embedded messages)
+            if (offset < data.length) {
+              const length = data[offset];
+              offset++;
+
+              if (offset + length <= data.length && length > 0 && length < 50) {
+                const fieldData = data.slice(offset, offset + length);
+
+                try {
+                  // Try to decode as UTF-8 string (non-fatal for better emoji support)
+                  const str = new TextDecoder('utf-8', { fatal: false }).decode(fieldData);
+
+                  // Debug: log raw bytes for troubleshooting Unicode issues
+                  if (fieldData.length <= 10) {
+                    const hex = Array.from(fieldData).map(b => b.toString(16).padStart(2, '0')).join(' ');
+                    console.log(`Field ${fieldNumber} raw bytes for "${str}": [${hex}]`);
+                  }
+
+                  // Parse based on actual protobuf field numbers (Meshtastic User message schema)
+                  if (fieldNumber === 2) { // longName field
+                    if (this.isValidNodeName(str) && str !== nodeId && str.length >= 3) {
+                      result.longName = str;
+                      console.log(`Extracted longName from protobuf field 2: ${str}`);
+                    }
+                  } else if (fieldNumber === 3) { // shortName field
+                    // For shortName, count actual Unicode characters, not bytes
+                    const unicodeLength = Array.from(str).length;
+                    if (unicodeLength >= 1 && unicodeLength <= 4 && this.isValidNodeName(str)) {
+                      result.shortName = str;
+                      console.log(`Extracted shortName from protobuf field 3: ${str} (${unicodeLength} chars)`);
+                    }
+                  }
+                } catch (e) {
+                  // Not valid UTF-8 text, might be binary data
+                  // Try to parse as embedded message with telemetry data
+                  this.parseEmbeddedTelemetry(fieldData, result);
+                }
+
+                offset += length;
+              }
+            }
+          } else if (wireType === 0) { // Varint (numbers)
+            let value = 0;
+            let shift = 0;
+            let hasMore = true;
+
+            while (offset < data.length && hasMore) {
+              const byte = data[offset];
+              hasMore = (byte & 0x80) !== 0;
+              value |= (byte & 0x7F) << shift;
+              shift += 7;
+              offset++;
+
+              if (!hasMore || shift >= 64) break;
+            }
+
+            // Try to identify what this number represents based on field number and value range
+            if (fieldNumber === 1 && value > 1000000) {
+              // Likely node number
+            } else if (fieldNumber === 5 && value >= 0 && value <= 100) {
+              // Might be battery level
+              result.batteryLevel = value;
+            } else if (fieldNumber === 7 && value > 0) {
+              // Might be hardware model
+              result.hwModel = value;
+            }
+          } else {
+            offset++;
+          }
+        } else {
+          offset++;
+        }
+
+        if (offset >= data.length) break;
+      }
+    } catch (error) {
+      // Ignore parsing errors, this is experimental
+    }
+
+    return Object.keys(result).length > 0 ? result : null;
+  }
+
+  private isValidNodeName(str: string): boolean {
+    // Validate that this is a legitimate node name
+    if (str.length < 2 || str.length > 30) return false;
+
+    // Must contain at least some Unicode letters or numbers (full Unicode support)
+    if (!/[\p{L}\p{N}]/u.test(str)) return false;
+
+    // Reject strings that are mostly control characters (using Unicode categories)
+    const controlCharCount = (str.match(/[\p{C}]/gu) || []).length;
+    if (controlCharCount > str.length * 0.3) return false;
+
+    // Reject binary null bytes and similar problematic characters
+    if (str.includes('\x00') || str.includes('\xFF')) return false;
+
+    // Count printable/displayable characters using Unicode categories
+    // Letters, Numbers, Symbols, Punctuation, and some Marks are considered valid
+    const validChars = str.match(/[\p{L}\p{N}\p{S}\p{P}\p{M}\s]/gu) || [];
+    const validCharRatio = validChars.length / str.length;
+
+    // At least 70% of characters should be valid/printable Unicode characters
+    if (validCharRatio < 0.7) return false;
+
+    // Reject strings that are mostly punctuation/symbols without letters/numbers
+    const letterNumberCount = (str.match(/[\p{L}\p{N}]/gu) || []).length;
+    const letterNumberRatio = letterNumberCount / str.length;
+    if (letterNumberRatio < 0.3) return false;
+
+    // Additional validation for common binary/garbage patterns
+    // Reject strings with too many identical consecutive characters
+    if (/(.)\1{4,}/.test(str)) return false;
+
+    // Reject strings that look like hex dumps or similar patterns
+    if (/^[A-F0-9\s]{8,}$/i.test(str) && !/[G-Z]/i.test(str)) return false;
+
+    return true;
+  }
+
+  private parseEmbeddedTelemetry(data: Uint8Array, result: any): void {
+    // Try to parse embedded telemetry data
+    try {
+      for (let i = 0; i < data.length - 4; i++) {
+        const value = new DataView(data.buffer, data.byteOffset + i, 4);
+
+        try {
+          // Try as float32 for SNR, voltage, coordinates
+          const floatVal = value.getFloat32(0, true); // little endian
+
+          // SNR typically ranges from -25 to +15
+          if (floatVal >= -30 && floatVal <= 20 && Number.isFinite(floatVal) && !result.snr) {
+            result.snr = Math.round(floatVal * 100) / 100;
+          }
+
+          // Voltage typically ranges from 3.0V to 5.0V
+          if (floatVal >= 2.5 && floatVal <= 6.0 && Number.isFinite(floatVal) && !result.voltage) {
+            result.voltage = Math.round(floatVal * 100) / 100;
+          }
+
+          // Try as int32 for RSSI
+          const intVal = value.getInt32(0, true);
+
+          // RSSI typically ranges from -150 to -30
+          if (intVal >= -200 && intVal <= -20 && !result.rssi) {
+            result.rssi = intVal;
+          }
+
+          // Battery level as percentage (0-100)
+          if (intVal >= 0 && intVal <= 100 && !result.batteryLevel) {
+            result.batteryLevel = intVal;
+          }
+
+        } catch (e) {
+          // Continue trying different interpretations
+        }
+      }
+    } catch (error) {
+      // Ignore telemetry parsing errors
+    }
   }
 
   private extractProtobufStructure(data: Uint8Array): any {
@@ -759,7 +1047,7 @@ class MeshtasticManager {
 
     for (const part of parts) {
       // Look for readable name patterns
-      const nameMatches = part.match(/([A-Za-z0-9\s\-_.\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}]{2,31})/gu);
+      const nameMatches = part.match(/([\p{L}\p{N}\p{S}\p{P}\s\-_.]{2,31})/gu);
 
       if (nameMatches) {
         const validNames = nameMatches.filter(match =>
@@ -788,9 +1076,7 @@ class MeshtasticManager {
   }
 
   private extractTelemetryData(data: Uint8Array): any {
-    // Enhanced telemetry extraction
-    // This is still simplified but could be improved with proper protobuf parsing
-
+    // Enhanced telemetry extraction using improved protobuf parsing
     const telemetry: any = {
       hwModel: undefined,
       snr: undefined,
@@ -799,24 +1085,128 @@ class MeshtasticManager {
       deviceMetrics: undefined
     };
 
-    // Look for SNR/RSSI patterns in the binary data
-    for (let i = 0; i < data.length - 4; i++) {
-      const value = new DataView(data.buffer, data.byteOffset + i, 4);
-
+    // Parse protobuf structure looking for telemetry fields
+    let offset = 0;
+    while (offset < data.length - 5) {
       try {
-        const floatVal = value.getFloat32(0, true); // little endian
-
-        // SNR typically ranges from -20 to +10
-        if (floatVal >= -25 && floatVal <= 15 && !telemetry.snr) {
-          telemetry.snr = Math.round(floatVal * 100) / 100;
+        const tag = data[offset];
+        if (tag === 0) {
+          offset++;
+          continue;
         }
 
-        // RSSI typically ranges from -120 to -30
-        if (floatVal >= -150 && floatVal <= -20 && !telemetry.rssi) {
-          telemetry.rssi = Math.round(floatVal);
+        const fieldNumber = tag >> 3;
+        const wireType = tag & 0x07;
+
+        if (fieldNumber > 0 && fieldNumber < 100) {
+          offset++;
+
+          if (wireType === 0) { // Varint (integers)
+            let value = 0;
+            let shift = 0;
+            let hasMore = true;
+
+            while (offset < data.length && hasMore && shift < 64) {
+              const byte = data[offset];
+              hasMore = (byte & 0x80) !== 0;
+              value |= (byte & 0x7F) << shift;
+              shift += 7;
+              offset++;
+
+              if (!hasMore) break;
+            }
+
+            // Interpret based on field number and value range
+            if (fieldNumber === 3 && value >= -200 && value <= -20) {
+              // Likely RSSI
+              telemetry.rssi = value;
+            } else if (fieldNumber === 4 && value >= -30 && value <= 20) {
+              // Likely SNR (but as integer * 4 or * 100)
+              telemetry.snr = value > 100 ? value / 100 : value / 4;
+            } else if (fieldNumber === 5 && value >= 0 && value <= 100) {
+              // Likely battery percentage
+              if (!telemetry.deviceMetrics) telemetry.deviceMetrics = {};
+              telemetry.deviceMetrics.batteryLevel = value;
+            } else if (fieldNumber === 7 && value > 0) {
+              // Hardware model
+              telemetry.hwModel = value;
+            }
+
+          } else if (wireType === 1) { // Fixed64 (double)
+            if (offset + 8 <= data.length) {
+              const value = new DataView(data.buffer, data.byteOffset + offset, 8);
+              const doubleVal = value.getFloat64(0, true); // little endian
+
+              // Check for coordinate values
+              if (doubleVal >= -180 && doubleVal <= 180 && Math.abs(doubleVal) > 0.001) {
+                if (!telemetry.position) telemetry.position = {};
+                if (fieldNumber === 1 && doubleVal >= -90 && doubleVal <= 90) {
+                  telemetry.position.latitude = doubleVal;
+                } else if (fieldNumber === 2 && doubleVal >= -180 && doubleVal <= 180) {
+                  telemetry.position.longitude = doubleVal;
+                } else if (fieldNumber === 3 && doubleVal >= -1000 && doubleVal <= 10000) {
+                  telemetry.position.altitude = doubleVal;
+                }
+              }
+
+              offset += 8;
+            }
+
+          } else if (wireType === 5) { // Fixed32 (float)
+            if (offset + 4 <= data.length) {
+              const value = new DataView(data.buffer, data.byteOffset + offset, 4);
+              const floatVal = value.getFloat32(0, true); // little endian
+
+              if (Number.isFinite(floatVal)) {
+                // SNR as float (typical range -25 to +15)
+                if (floatVal >= -30 && floatVal <= 20 && !telemetry.snr) {
+                  telemetry.snr = Math.round(floatVal * 100) / 100;
+                }
+
+                // Voltage (typical range 3.0V to 5.0V)
+                if (floatVal >= 2.5 && floatVal <= 6.0) {
+                  if (!telemetry.deviceMetrics) telemetry.deviceMetrics = {};
+                  if (!telemetry.deviceMetrics.voltage) {
+                    telemetry.deviceMetrics.voltage = Math.round(floatVal * 100) / 100;
+                  }
+                }
+
+                // Channel utilization (0.0 to 1.0)
+                if (floatVal >= 0.0 && floatVal <= 1.0) {
+                  if (!telemetry.deviceMetrics) telemetry.deviceMetrics = {};
+                  if (!telemetry.deviceMetrics.channelUtilization) {
+                    telemetry.deviceMetrics.channelUtilization = Math.round(floatVal * 1000) / 1000;
+                  }
+                }
+              }
+
+              offset += 4;
+            }
+
+          } else if (wireType === 2) { // Length-delimited (embedded messages, strings)
+            if (offset < data.length) {
+              const length = data[offset];
+              offset++;
+
+              if (offset + length <= data.length && length > 0) {
+                const fieldData = data.slice(offset, offset + length);
+
+                // Try to parse as embedded telemetry message
+                if (length >= 4) {
+                  this.parseEmbeddedTelemetry(fieldData, telemetry);
+                }
+
+                offset += length;
+              }
+            }
+          } else {
+            offset++;
+          }
+        } else {
+          offset++;
         }
-      } catch (e) {
-        // Continue searching
+      } catch (error) {
+        offset++;
       }
     }
 
@@ -827,12 +1217,57 @@ class MeshtasticManager {
   private async processPacket(packet: any): Promise<void> {
     // Handle the new packet structure from enhanced protobuf parsing
     if (packet.text && packet.text.length > 0) {
+      // Ensure nodes exist in database before creating message
+      const fromNodeId = packet.fromNodeId || 'unknown';
+      const toNodeId = packet.toNodeId || '!ffffffff';
+      const fromNodeNum = packet.from || packet.fromNodeNum || 0;
+      const toNodeNum = packet.to || packet.toNodeNum || 0xFFFFFFFF;
+
+      // Make sure fromNode exists in database
+      if (fromNodeId !== 'unknown' && fromNodeNum !== 0) {
+        const existingNode = databaseService.getNode(fromNodeNum);
+        if (!existingNode) {
+          // Create a basic node entry if it doesn't exist
+          const nodeData = {
+            nodeNum: fromNodeNum,
+            nodeId: fromNodeId,
+            longName: fromNodeId,
+            shortName: fromNodeId.substring(1, 5),
+            hwModel: 0,
+            lastHeard: Date.now() / 1000,
+            createdAt: Date.now(),
+            updatedAt: Date.now()
+          };
+          console.log(`Creating missing fromNode: ${fromNodeId} (${fromNodeNum})`);
+          databaseService.upsertNode(nodeData);
+        }
+      }
+
+      // Make sure toNode exists in database (for non-broadcast messages)
+      if (toNodeId !== '!ffffffff' && toNodeNum !== 0xFFFFFFFF) {
+        const existingToNode = databaseService.getNode(toNodeNum);
+        if (!existingToNode) {
+          const nodeData = {
+            nodeNum: toNodeNum,
+            nodeId: toNodeId,
+            longName: toNodeId,
+            shortName: toNodeId.substring(1, 5),
+            hwModel: 0,
+            lastHeard: Date.now() / 1000,
+            createdAt: Date.now(),
+            updatedAt: Date.now()
+          };
+          console.log(`Creating missing toNode: ${toNodeId} (${toNodeNum})`);
+          databaseService.upsertNode(nodeData);
+        }
+      }
+
       const message = {
-        id: packet.id || `${packet.fromNodeId}_${Date.now()}`,
-        fromNodeNum: packet.from || packet.fromNodeNum || 0,
-        toNodeNum: packet.to || packet.toNodeNum || 0xFFFFFFFF,
-        fromNodeId: packet.fromNodeId || packet.from?.toString() || 'unknown',
-        toNodeId: packet.toNodeId || packet.to?.toString() || '!ffffffff',
+        id: packet.id || `${fromNodeId}_${Date.now()}`,
+        fromNodeNum: fromNodeNum,
+        toNodeNum: toNodeNum,
+        fromNodeId: fromNodeId,
+        toNodeId: toNodeId,
         text: packet.text,
         channel: packet.channel || 0,
         portnum: packet.portnum,
@@ -846,6 +1281,7 @@ class MeshtasticManager {
         console.log('Saved message to database:', message.text.substring(0, 50) + (message.text.length > 50 ? '...' : ''));
       } catch (error) {
         console.error('Failed to save message:', error);
+        console.error('Message data:', message);
       }
     }
   }
