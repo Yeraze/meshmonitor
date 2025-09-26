@@ -51,10 +51,11 @@ export interface DbChannel {
 }
 
 class DatabaseService {
-  private db: Database.Database;
+  public db: Database.Database;
   private isInitialized = false;
 
   constructor() {
+    console.log('🔧🔧🔧 DatabaseService constructor called');
     const dbPath = process.env.NODE_ENV === 'production'
       ? '/data/meshmonitor.db'
       : path.join(__dirname, '../../data/meshmonitor.db');
@@ -64,6 +65,8 @@ class DatabaseService {
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
     this.initialize();
+    // Always ensure Primary channel exists, even if database already initialized
+    this.ensurePrimaryChannel();
   }
 
   private initialize(): void {
@@ -74,7 +77,29 @@ class DatabaseService {
     this.isInitialized = true;
   }
 
+  private ensurePrimaryChannel(): void {
+    console.log('🔍 ensurePrimaryChannel() called');
+    try {
+      const existingChannel0 = this.getChannelById(0);
+      console.log('🔍 getChannelById(0) returned:', existingChannel0);
+
+      if (!existingChannel0) {
+        console.log('🔍 No channel 0 found, calling upsertChannel with id: 0, name: Primary');
+        this.upsertChannel({ id: 0, name: 'Primary' });
+
+        // Verify it was created
+        const verify = this.getChannelById(0);
+        console.log('🔍 After upsert, getChannelById(0) returns:', verify);
+      } else {
+        console.log(`✅ Channel 0 already exists: ${existingChannel0.name}`);
+      }
+    } catch (error) {
+      console.error('❌ Error in ensurePrimaryChannel:', error);
+    }
+  }
+
   private createTables(): void {
+    console.log('Creating database tables...');
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS nodes (
         nodeNum INTEGER PRIMARY KEY,
@@ -127,6 +152,19 @@ class DatabaseService {
         updatedAt INTEGER NOT NULL
       );
     `);
+
+    // Insert Primary channel with ID 0 if it doesn't exist
+    const now = Date.now();
+    try {
+      const stmt = this.db.prepare(`
+        INSERT OR IGNORE INTO channels (id, name, uplinkEnabled, downlinkEnabled, createdAt, updatedAt)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+      const result = stmt.run(0, 'Primary', 1, 1, now, now);
+      console.log('✅ Primary channel INSERT result:', result);
+    } catch (error) {
+      console.error('❌ Error inserting Primary channel:', error);
+    }
 
     console.log('Database tables created successfully');
   }
@@ -464,12 +502,20 @@ class DatabaseService {
   upsertChannel(channelData: { id?: number; name: string; psk?: string }): void {
     const now = Date.now();
 
-    // Check for existing channel by name first
-    let existingChannel = this.getChannelByName(channelData.name);
+    console.log(`📝 upsertChannel called with:`, JSON.stringify(channelData));
 
-    // If no channel by name exists but we have an ID, check by ID
-    if (!existingChannel && channelData.id !== undefined) {
+    let existingChannel: DbChannel | null = null;
+
+    // If we have an ID, check by ID FIRST (to support creating channel 0 even if "Primary" exists elsewhere)
+    if (channelData.id !== undefined) {
       existingChannel = this.getChannelById(channelData.id);
+      console.log(`📝 getChannelById(${channelData.id}) returned:`, existingChannel);
+    }
+
+    // Only check by name if we didn't find a channel by ID
+    if (!existingChannel) {
+      existingChannel = this.getChannelByName(channelData.name);
+      console.log(`📝 getChannelByName(${channelData.name}) returned:`, existingChannel);
     }
 
     if (existingChannel) {
@@ -485,18 +531,19 @@ class DatabaseService {
       console.log(`Updated channel: ${channelData.name} (ID: ${existingChannel.id})`);
     } else {
       // Create new channel
+      console.log(`📝 Creating new channel with ID: ${channelData.id !== undefined ? channelData.id : null}`);
       const stmt = this.db.prepare(`
         INSERT INTO channels (id, name, psk, uplinkEnabled, downlinkEnabled, createdAt, updatedAt)
         VALUES (?, ?, ?, 1, 1, ?, ?)
       `);
-      stmt.run(
-        channelData.id || null,
+      const result = stmt.run(
+        channelData.id !== undefined ? channelData.id : null,
         channelData.name,
         channelData.psk || null,
         now,
         now
       );
-      console.log(`Created channel: ${channelData.name} (ID: ${channelData.id || 'auto'})`);
+      console.log(`Created channel: ${channelData.name} (ID: ${channelData.id !== undefined ? channelData.id : 'auto'}), lastInsertRowid: ${result.lastInsertRowid}`);
     }
   }
 

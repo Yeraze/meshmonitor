@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import './App.css'
@@ -37,6 +37,7 @@ interface DeviceInfo {
     longName: string;
     shortName: string;
     hwModel?: number;
+    role?: string;
   };
   position?: {
     latitude: number;
@@ -66,6 +67,7 @@ interface MeshMessage {
   timestamp: Date;
   acknowledged?: boolean;
   isLocalMessage?: boolean;
+  hopCount?: number;
 }
 
 interface Channel {
@@ -83,11 +85,30 @@ type TabType = 'nodes' | 'channels' | 'messages' | 'info' | 'settings';
 type SortField = 'longName' | 'shortName' | 'id' | 'lastHeard' | 'snr' | 'battery' | 'hwModel' | 'location';
 type SortDirection = 'asc' | 'desc';
 
+// Map centering component that uses useMap hook
+interface MapCenterControllerProps {
+  centerTarget: [number, number] | null;
+  onCenterComplete: () => void;
+}
+
+const MapCenterController: React.FC<MapCenterControllerProps> = ({ centerTarget, onCenterComplete }) => {
+  const map = useMap();
+
+  useEffect(() => {
+    if (centerTarget) {
+      map.setView(centerTarget, 15); // Zoom level 15 for close view
+      onCenterComplete(); // Reset target after centering
+    }
+  }, [map, centerTarget, onCenterComplete]);
+
+  return null;
+};
+
 function App() {
   const [activeTab, setActiveTab] = useState<TabType>('nodes')
   const [nodes, setNodes] = useState<DeviceInfo[]>([])
   const [channels, setChannels] = useState<Channel[]>([])
-  const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected')
+  const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'configuring'>('disconnected')
   const [messages, setMessages] = useState<MeshMessage[]>([])
   const [selectedDMNode, setSelectedDMNode] = useState<string>('')
   const [channelMessages, setChannelMessages] = useState<{[key: number]: MeshMessage[]}>({})
@@ -134,6 +155,8 @@ function App() {
     });
   };
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const [mapCenterTarget, setMapCenterTarget] = useState<[number, number] | null>(null)
+  const [nodePopup, setNodePopup] = useState<{nodeId: string, position: {x: number, y: number}} | null>(null)
 
   // Load configuration and check connection status on startup
   useEffect(() => {
@@ -174,6 +197,7 @@ function App() {
     scrollToBottom();
   }, [channelMessages, selectedChannel]);
 
+  // Regular data updates (every 5 seconds)
   useEffect(() => {
     const updateInterval = setInterval(() => {
       if (connectionStatus === 'connected') {
@@ -181,10 +205,54 @@ function App() {
       } else {
         checkConnectionStatus();
       }
-    }, 5000); // Increased from 2 seconds to 5 seconds
+    }, 5000);
 
     return () => clearInterval(updateInterval);
   }, [connectionStatus]);
+
+  // Scheduled node database refresh (every 60 minutes)
+  useEffect(() => {
+    const scheduleNodeRefresh = () => {
+      if (connectionStatus === 'connected') {
+        console.log('🔄 Performing scheduled node database refresh...');
+        requestFullNodeDatabase();
+      }
+    };
+
+    // Initial refresh after 5 minutes of being connected
+    const initialRefreshTimer = setTimeout(() => {
+      scheduleNodeRefresh();
+    }, 5 * 60 * 1000);
+
+    // Then every 60 minutes
+    const regularRefreshInterval = setInterval(() => {
+      scheduleNodeRefresh();
+    }, 60 * 60 * 1000);
+
+    return () => {
+      clearTimeout(initialRefreshTimer);
+      clearInterval(regularRefreshInterval);
+    };
+  }, [connectionStatus]);
+
+  const requestFullNodeDatabase = async () => {
+    try {
+      console.log('📡 Requesting full node database refresh...');
+      const response = await fetch('/api/nodes/refresh', {
+        method: 'POST'
+      });
+
+      if (response.ok) {
+        console.log('✅ Node database refresh initiated');
+        // Immediately update local data after refresh
+        setTimeout(() => updateDataFromBackend(), 2000);
+      } else {
+        console.warn('⚠️ Node database refresh request failed');
+      }
+    } catch (error) {
+      console.error('❌ Error requesting node database refresh:', error);
+    }
+  };
 
   const checkConnectionStatus = async () => {
     try {
@@ -192,10 +260,24 @@ function App() {
       if (response.ok) {
         const status = await response.json();
         if (status.connected) {
-          setConnectionStatus('connected');
-          setError(null);
-          await fetchChannels(); // Fetch channels once on connection
-          await updateDataFromBackend();
+          if (connectionStatus !== 'connected') {
+            console.log('🔗 Connection established, initializing...');
+            setConnectionStatus('configuring');
+            setError(null);
+
+            // Improved initialization sequence
+            // Backend already requested full configuration on startup,
+            // so we just need to fetch the data that's already available
+            try {
+              await fetchChannels(); // Fetch channels first
+              await updateDataFromBackend(); // Then get current data
+              setConnectionStatus('connected');
+              console.log('✅ Initialization complete');
+            } catch (initError) {
+              console.error('❌ Initialization failed:', initError);
+              setConnectionStatus('connected'); // Still mark as connected even if init partially fails
+            }
+          }
         } else {
           setConnectionStatus('disconnected');
           setError(`Cannot connect to Meshtastic node at ${nodeAddress}. Please ensure the node is reachable and has HTTP API enabled.`);
@@ -456,24 +538,20 @@ function App() {
       return channel.name;
     }
 
-    // Fallback to generic channel names
-    if (channelNum === 0) return 'Primary';
+    // Fallback to generic channel names - no special cases
     return `Channel ${channelNum}`;
   };
 
   const getAvailableChannels = (): number[] => {
     const channelSet = new Set<number>();
 
-    // Add channels from messages (if any)
-    messages.forEach(msg => channelSet.add(msg.channel));
-
-    // Add channels from channel configurations (use their IDs)
+    // Add channels from channel configurations first (these are authoritative)
     channels.forEach(ch => channelSet.add(ch.id));
 
-    // If no channels are available, add Primary (0) as fallback
-    if (channelSet.size === 0) {
-      channelSet.add(0);
-    }
+    // Add channels from messages
+    messages.forEach(msg => {
+      channelSet.add(msg.channel);
+    });
 
     return Array.from(channelSet).sort((a, b) => a - b);
   };
@@ -560,6 +638,42 @@ function App() {
     return sortNodes(filtered, sortField, sortDirection);
   };
 
+  // Function to center map on a specific node
+  const centerMapOnNode = useCallback((node: DeviceInfo) => {
+    if (node.position && node.position.latitude != null && node.position.longitude != null) {
+      setMapCenterTarget([node.position.latitude, node.position.longitude]);
+    }
+  }, []);
+
+  // Function to reset map center target
+  const handleCenterComplete = useCallback(() => {
+    setMapCenterTarget(null);
+  }, []);
+
+  // Function to handle sender icon clicks
+  const handleSenderClick = useCallback((nodeId: string, event: React.MouseEvent) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    setNodePopup({
+      nodeId,
+      position: {
+        x: rect.left + rect.width / 2,
+        y: rect.top
+      }
+    });
+  }, []);
+
+  // Close popup when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (nodePopup && !(event.target as Element).closest('.node-popup, .sender-dot')) {
+        setNodePopup(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [nodePopup]);
+
   const renderNodesTab = () => {
     const processedNodes = getProcessedNodes();
     const nodesWithPosition = processedNodes.filter(node =>
@@ -602,11 +716,17 @@ function App() {
                   <div
                     key={node.nodeNum}
                     className={`node-item ${selectedNodeId === node.user?.id ? 'selected' : ''}`}
-                    onClick={() => setSelectedNodeId(node.user?.id || null)}
+                    onClick={() => {
+                      setSelectedNodeId(node.user?.id || null);
+                      centerMapOnNode(node);
+                    }}
                   >
                     <div className="node-header">
                       <div className="node-name">
                         {node.user?.longName || `Node ${node.nodeNum}`}
+                        {node.user?.role && (
+                          <span className="node-role">({node.user.role})</span>
+                        )}
                       </div>
                       <div className="node-short">
                         {node.user?.shortName || '-'}
@@ -669,6 +789,10 @@ function App() {
                 zoom={nodesWithPosition.length > 0 ? 10 : 8}
                 style={{ height: '100%', width: '100%' }}
               >
+                <MapCenterController
+                  centerTarget={mapCenterTarget}
+                  onCenterComplete={handleCenterComplete}
+                />
                 <TileLayer
                   attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                   url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -696,6 +820,10 @@ function App() {
                       <div className="popup-details">
                         {node.user?.id && (
                           <div>ID: {node.user.id}</div>
+                        )}
+
+                        {node.user?.role && (
+                          <div>Role: {node.user.role}</div>
                         )}
 
                         {node.snr != null && (
@@ -743,10 +871,12 @@ function App() {
     );
   };
 
-  const renderChannelsTab = () => (
+  const renderChannelsTab = () => {
+    const availableChannels = getAvailableChannels();
+    return (
     <div className="tab-content">
       <div className="channels-header">
-        <h2>Channels ({channels.length})</h2>
+        <h2>Channels ({availableChannels.length})</h2>
         <div className="channels-controls">
           <label className="mqtt-toggle">
             <input
@@ -759,39 +889,43 @@ function App() {
         </div>
       </div>
       {connectionStatus === 'connected' ? (
-        channels.length > 0 ? (
+        availableChannels.length > 0 ? (
           <>
             {/* Channel Buttons */}
             <div className="channels-grid">
-              {channels.map(channel => (
+              {availableChannels.map(channelId => {
+                const channelConfig = channels.find(ch => ch.id === channelId);
+                const displayName = channelConfig?.name || getChannelName(channelId);
+                return (
                 <button
-                  key={channel.id}
-                  className={`channel-button ${selectedChannel === channel.id ? 'selected' : ''}`}
+                  key={channelId}
+                  className={`channel-button ${selectedChannel === channelId ? 'selected' : ''}`}
                   onClick={() => {
-                    console.log('👆 User manually selected channel:', channel.id, 'Current selectedChannel:', selectedChannel);
-                    setSelectedChannel(channel.id);
-                    selectedChannelRef.current = channel.id; // Update ref immediately
-                    console.log('📝 Called setSelectedChannel with:', channel.id);
+                    console.log('👆 User manually selected channel:', channelId, 'Current selectedChannel:', selectedChannel);
+                    setSelectedChannel(channelId);
+                    selectedChannelRef.current = channelId; // Update ref immediately
+                    console.log('📝 Called setSelectedChannel with:', channelId);
                   }}
                 >
                   <div className="channel-button-header">
-                    <span className="channel-name">{channel.name}</span>
-                    <span className="channel-id">#{channel.id}</span>
+                    <span className="channel-name">{displayName}</span>
+                    <span className="channel-id">#{channelId}</span>
                   </div>
                   <div className="channel-button-status">
-                    <span className={`arrow-icon uplink ${channel.uplinkEnabled ? 'enabled' : 'disabled'}`} title="Uplink">
+                    <span className={`arrow-icon uplink ${channelConfig?.uplinkEnabled ? 'enabled' : 'disabled'}`} title="Uplink">
                       ↑
                     </span>
-                    <span className={`arrow-icon downlink ${channel.downlinkEnabled ? 'enabled' : 'disabled'}`} title="Downlink">
+                    <span className={`arrow-icon downlink ${channelConfig?.downlinkEnabled ? 'enabled' : 'disabled'}`} title="Downlink">
                       ↓
                     </span>
                   </div>
                 </button>
-              ))}
+                );
+              })}
             </div>
 
             {/* Selected Channel Messaging */}
-            {selectedChannel && (
+            {selectedChannel !== -1 && (
               <div className="channel-conversation-section">
                 <h3>
                   {getChannelName(selectedChannel)}
@@ -824,19 +958,27 @@ function App() {
                           <div key={msg.id} className={`message-bubble-container ${isMine ? 'mine' : 'theirs'}`}>
                             {!isMine && (
                               <div
-                                className="sender-dot"
-                                title={getNodeName(msg.from)}
+                                className="sender-dot clickable"
+                                title={`Click for ${getNodeName(msg.from)} details`}
+                                onClick={(e) => handleSenderClick(msg.from, e)}
                               >
                                 {getNodeShortName(msg.from)}
                               </div>
                             )}
                             <div className={`message-bubble ${isMine ? 'mine' : 'theirs'}`}>
                               <div className="message-text">{msg.text}</div>
-                              <div className="message-time">
-                                {msg.timestamp.toLocaleTimeString([], {
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                })}
+                              <div className="message-meta">
+                                <span className="message-time">
+                                  {msg.timestamp.toLocaleTimeString([], {
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </span>
+                                {msg.hopCount !== undefined && (
+                                  <span className="hop-count">
+                                    {msg.hopCount} hop{msg.hopCount !== 1 ? 's' : ''}
+                                  </span>
+                                )}
                               </div>
                             </div>
                             {isMine && (
@@ -888,7 +1030,7 @@ function App() {
               </div>
             )}
 
-            {!selectedChannel && (
+            {selectedChannel === -1 && (
               <p className="no-data">Select a channel above to view messages and send messages</p>
             )}
           </>
@@ -899,7 +1041,8 @@ function App() {
         <p className="no-data">Connect to a Meshtastic node to view channel configurations</p>
       )}
     </div>
-  );
+    );
+  };
 
   const renderMessagesTab = () => (
     <div className="tab-content">
@@ -1009,29 +1152,12 @@ function App() {
               <p><strong>Enabled:</strong> {deviceConfig.mqtt?.enabled ? 'Yes' : 'No'}</p>
               <p><strong>Server:</strong> {deviceConfig.mqtt?.server || 'Not configured'}</p>
               <p><strong>Username:</strong> {deviceConfig.mqtt?.username || 'Not set'}</p>
-              <p><strong>Encryption:</strong> {deviceConfig.mqtt?.encryption ? 'Enabled' : 'Disabled'}</p>
+              <p><strong>Encryption Enabled:</strong> {deviceConfig.mqtt?.encryption ? 'Yes' : 'No'}</p>
               <p><strong>JSON Format:</strong> {deviceConfig.mqtt?.json ? 'Enabled' : 'Disabled'}</p>
-              <p><strong>TLS:</strong> {deviceConfig.mqtt?.tls ? 'Enabled' : 'Disabled'}</p>
+              <p><strong>TLS Enabled:</strong> {deviceConfig.mqtt?.tls ? 'Yes' : 'No'}</p>
               <p><strong>Root Topic:</strong> {deviceConfig.mqtt?.rootTopic || 'msh'}</p>
             </div>
 
-            <div className="info-section">
-              <h3>Channel Configuration</h3>
-              {deviceConfig.channels && deviceConfig.channels.length > 0 ? (
-                <div className="channel-config">
-                  {deviceConfig.channels.map((channel: any, index: number) => (
-                    <div key={index} className="channel-item">
-                      <p><strong>Channel {channel.index}:</strong> {channel.name}</p>
-                      <p><strong>Uplink:</strong> {channel.uplinkEnabled ? 'Enabled' : 'Disabled'}</p>
-                      <p><strong>Downlink:</strong> {channel.downlinkEnabled ? 'Enabled' : 'Disabled'}</p>
-                      {index < deviceConfig.channels.length - 1 && <hr />}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p>No channels configured</p>
-              )}
-            </div>
           </>
         )}
 
@@ -1081,7 +1207,7 @@ function App() {
         </div>
         <div className="connection-status">
           <span className={`status-indicator ${connectionStatus}`}></span>
-          <span>{connectionStatus}</span>
+          <span>{connectionStatus === 'configuring' ? 'initializing' : connectionStatus}</span>
         </div>
       </header>
 
@@ -1140,6 +1266,61 @@ function App() {
         {activeTab === 'info' && renderInfoTab()}
         {activeTab === 'settings' && renderSettingsTab()}
       </main>
+
+      {/* Node Popup */}
+      {nodePopup && (() => {
+        const node = nodes.find(n => n.user?.id === nodePopup.nodeId);
+        if (!node) return null;
+
+        return (
+          <div
+            className="node-popup"
+            style={{
+              position: 'fixed',
+              left: nodePopup.position.x,
+              top: nodePopup.position.y - 10,
+              transform: 'translateX(-50%) translateY(-100%)',
+              zIndex: 1000
+            }}
+          >
+            <div className="popup-header">
+              <strong>{node.user?.longName || `Node ${node.nodeNum}`}</strong>
+              {node.user?.shortName && (
+                <span className="popup-short">({node.user.shortName})</span>
+              )}
+            </div>
+
+            <div className="popup-details">
+              {node.user?.id && (
+                <div>ID: {node.user.id}</div>
+              )}
+
+              {node.user?.role && (
+                <div>Role: {node.user.role}</div>
+              )}
+
+              {node.snr != null && (
+                <div>SNR: {node.snr.toFixed(1)} dB</div>
+              )}
+
+              {node.deviceMetrics?.batteryLevel !== undefined && (
+                <div>Battery: {node.deviceMetrics.batteryLevel}%</div>
+              )}
+
+              {node.lastHeard && (
+                <div>Last Seen: {new Date(node.lastHeard * 1000).toLocaleString()}</div>
+              )}
+
+              {node.position && (
+                <div>
+                  Position: {node.position.latitude?.toFixed(4) || 'N/A'}, {node.position.longitude?.toFixed(4) || 'N/A'}
+                  {node.position.altitude && ` (${node.position.altitude}m)`}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   )
 }
