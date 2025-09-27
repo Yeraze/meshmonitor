@@ -4,6 +4,8 @@ A comprehensive web application for monitoring Meshtastic mesh networks over IP.
 
 ![MeshMonitor Interface](docs/images/meshmonitor-screenshot.png)
 
+![MeshMonitor Interface](docs/images/screenshot-2.png)
+
 ## Features
 
 ### 🌐 **Real-time Mesh Network Monitoring**
@@ -61,32 +63,6 @@ A comprehensive web application for monitoring Meshtastic mesh networks over IP.
 - A Meshtastic device with WiFi/Ethernet connectivity
 - Network access to your Meshtastic node
 
-### Development Setup
-
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd meshmonitor
-   ```
-
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
-
-3. **Configure environment**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your Meshtastic node's IP address
-   ```
-
-4. **Start development servers**
-   ```bash
-   npm run dev:full
-   ```
-
-   This starts both the React dev server (port 5173) and the Express API server (port 3001).
-
 ### Docker Deployment
 
 1. **Using Docker Compose (Recommended)**
@@ -112,6 +88,32 @@ A comprehensive web application for monitoring Meshtastic mesh networks over IP.
 3. **Access the application**
    - Open http://localhost:8080 in your browser
    - The application will automatically attempt to connect to your Meshtastic node
+
+### Development Setup
+
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd meshmonitor
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Configure environment**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your Meshtastic node's IP address
+   ```
+
+4. **Start development servers**
+   ```bash
+   npm run dev:full
+   ```
+
+   This starts both the React dev server (port 5173) and the Express API server (port 3001).
 
 ## Configuration
 
