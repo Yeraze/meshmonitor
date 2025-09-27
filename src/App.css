@@ -2250,3 +2250,76 @@ body {
 .setting-input:hover {
   border-color: var(--ctp-overlay0);
 }
+
+/* Danger Zone Styles */
+.danger-zone {
+  border: 2px solid var(--ctp-red);
+  border-radius: 8px;
+  padding: 1.5rem;
+  background: rgba(243, 139, 168, 0.05);
+  margin-top: 2rem;
+}
+
+.danger-zone h3 {
+  color: var(--ctp-red);
+  border-bottom-color: var(--ctp-red);
+}
+
+.danger-zone-description {
+  color: var(--ctp-subtext0);
+  font-size: 0.95rem;
+  margin-bottom: 1.5rem;
+  font-style: italic;
+}
+
+.danger-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  background: var(--ctp-surface0);
+  border-radius: 8px;
+  border: 1px solid var(--ctp-surface2);
+}
+
+.danger-action:last-child {
+  margin-bottom: 0;
+}
+
+.danger-action-info h4 {
+  color: var(--ctp-text);
+  font-size: 1rem;
+  margin: 0 0 0.5rem 0;
+  font-weight: 600;
+}
+
+.danger-action-info p {
+  color: var(--ctp-subtext0);
+  font-size: 0.875rem;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.danger-button {
+  background: var(--ctp-red);
+  color: var(--ctp-base);
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s, transform 0.1s;
+  white-space: nowrap;
+  min-width: 150px;
+}
+
+.danger-button:hover {
+  background: var(--ctp-maroon);
+  transform: translateY(-1px);
+}
+
+.danger-button:active {
+  transform: translateY(0);
+}
