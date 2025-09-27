@@ -375,3 +375,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ---
 
 **MeshMonitor** - Monitor your mesh, beautifully. 🌐✨
+
+_This application was entirely vibe coded with [Claude Code](https://claude.ai/code)._
