@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import './App.css'
+import TelemetryGraphs from './components/TelemetryGraphs'
 
 // Fix for default markers in React-Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -147,6 +148,8 @@ function App() {
   const [tracerouteLoading, setTracerouteLoading] = useState<string | null>(null)
   const [showRoutes, setShowRoutes] = useState<boolean>(false)
   const [traceroutes, setTraceroutes] = useState<any[]>([])
+  const [nodesWithTelemetry, setNodesWithTelemetry] = useState<Set<string>>(new Set())
+  const [nodesWithWeatherTelemetry, setNodesWithWeatherTelemetry] = useState<Set<string>>(new Set())
 
   // New state for node list features
   const [nodeFilter, setNodeFilter] = useState<string>('')
@@ -352,6 +355,19 @@ function App() {
     }
   };
 
+  const fetchNodesWithTelemetry = async () => {
+    try {
+      const response = await fetch('/api/telemetry/available/nodes');
+      if (response.ok) {
+        const data = await response.json();
+        setNodesWithTelemetry(new Set(data.nodes));
+        setNodesWithWeatherTelemetry(new Set(data.weather || []));
+      }
+    } catch (error) {
+      console.error('Error fetching telemetry availability:', error);
+    }
+  };
+
   const fetchChannels = async () => {
     try {
       const channelsResponse = await fetch('/api/channels');
@@ -546,6 +562,9 @@ function App() {
           setCurrentNodeId(deviceConfigData.basic.nodeId);
         }
       }
+
+      // Fetch telemetry availability
+      await fetchNodesWithTelemetry();
     } catch (error) {
       console.error('Failed to update data from backend:', error);
     }
@@ -988,9 +1007,9 @@ function App() {
                             📶 {node.snr.toFixed(1)}dB
                           </span>
                         )}
-                        {node.deviceMetrics?.batteryLevel !== undefined && (
-                          <span className="stat" title="Battery Level">
-                            🔋 {node.deviceMetrics.batteryLevel}%
+                        {node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null && (
+                          <span className="stat" title={node.deviceMetrics.batteryLevel === 101 ? "Plugged In" : "Battery Level"}>
+                            {node.deviceMetrics.batteryLevel === 101 ? '🔌' : '🔋'} {node.deviceMetrics.batteryLevel === 101 ? 'Plugged In' : `${node.deviceMetrics.batteryLevel}%`}
                           </span>
                         )}
                         {node.hopsAway != null && (
@@ -1013,11 +1032,23 @@ function App() {
                       </div>
                     </div>
 
-                    {node.position && node.position.latitude != null && node.position.longitude != null && (
-                      <div className="node-location" title="Location">
-                        📍 {node.position.latitude.toFixed(3)}, {node.position.longitude.toFixed(3)}
-                      </div>
-                    )}
+                    <div className="node-indicators">
+                      {node.position && node.position.latitude != null && node.position.longitude != null && (
+                        <div className="node-location" title="Location">
+                          📍 {node.position.latitude.toFixed(3)}, {node.position.longitude.toFixed(3)}
+                        </div>
+                      )}
+                      {node.user?.id && nodesWithTelemetry.has(node.user.id) && (
+                        <div className="node-telemetry" title="Has Telemetry Data">
+                          📊
+                        </div>
+                      )}
+                      {node.user?.id && nodesWithWeatherTelemetry.has(node.user.id) && (
+                        <div className="node-weather" title="Has Weather Data">
+                          ☀️
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ))}
                 </>
@@ -1094,8 +1125,10 @@ function App() {
                           <div>SNR: {node.snr.toFixed(1)} dB</div>
                         )}
 
-                        {node.deviceMetrics?.batteryLevel !== undefined && (
-                          <div>Battery: {node.deviceMetrics.batteryLevel}%</div>
+                        {node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null && (
+                          <div>
+                            {node.deviceMetrics.batteryLevel === 101 ? 'Power: Plugged In' : `Battery: ${node.deviceMetrics.batteryLevel}%`}
+                          </div>
                         )}
 
                         {node.lastHeard && (
@@ -1574,6 +1607,7 @@ function App() {
                 return null;
               })()}
             </div>
+            <TelemetryGraphs nodeId={selectedDMNode} />
             <div className="messages-container">
               {getDMMessages(selectedDMNode).length > 0 ? (
                 getDMMessages(selectedDMNode).map(msg => {
@@ -1826,8 +1860,10 @@ function App() {
                 <div>SNR: {node.snr.toFixed(1)} dB</div>
               )}
 
-              {node.deviceMetrics?.batteryLevel !== undefined && (
-                <div>Battery: {node.deviceMetrics.batteryLevel}%</div>
+              {node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null && (
+                <div>
+                  {node.deviceMetrics.batteryLevel === 101 ? 'Power: Plugged In' : `Battery: ${node.deviceMetrics.batteryLevel}%`}
+                </div>
               )}
 
               {node.lastHeard && (
