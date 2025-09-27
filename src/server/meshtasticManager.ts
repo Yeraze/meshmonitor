@@ -1060,41 +1060,13 @@ class MeshtasticManager {
         nodeData.altitude = nodeInfo.position.altitude;
       }
 
-      // Add device metrics if available
+      // Add device metrics if available (updates node's current state only)
       if (nodeInfo.deviceMetrics) {
         nodeData.batteryLevel = nodeInfo.deviceMetrics.batteryLevel;
         nodeData.voltage = nodeInfo.deviceMetrics.voltage;
         nodeData.channelUtilization = nodeInfo.deviceMetrics.channelUtilization;
         nodeData.airUtilTx = nodeInfo.deviceMetrics.airUtilTx;
-
-        // Also save to telemetry table for historical tracking
-        const timestamp = nodeInfo.lastHeard ? Number(nodeInfo.lastHeard) * 1000 : Date.now();
-        const now = Date.now();
-
-        if (nodeInfo.deviceMetrics.batteryLevel !== undefined) {
-          databaseService.insertTelemetry({
-            nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'batteryLevel',
-            timestamp, value: nodeInfo.deviceMetrics.batteryLevel, unit: '%', createdAt: now
-          });
-        }
-        if (nodeInfo.deviceMetrics.voltage !== undefined) {
-          databaseService.insertTelemetry({
-            nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'voltage',
-            timestamp, value: nodeInfo.deviceMetrics.voltage, unit: 'V', createdAt: now
-          });
-        }
-        if (nodeInfo.deviceMetrics.channelUtilization !== undefined) {
-          databaseService.insertTelemetry({
-            nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'channelUtilization',
-            timestamp, value: nodeInfo.deviceMetrics.channelUtilization, unit: '%', createdAt: now
-          });
-        }
-        if (nodeInfo.deviceMetrics.airUtilTx !== undefined) {
-          databaseService.insertTelemetry({
-            nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'airUtilTx',
-            timestamp, value: nodeInfo.deviceMetrics.airUtilTx, unit: '%', createdAt: now
-          });
-        }
+        // Note: Historical telemetry is saved only from TELEMETRY_APP packets in processTelemetryProtobuf()
       }
 
       databaseService.upsertNode(nodeData);
