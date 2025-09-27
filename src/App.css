@@ -1383,6 +1383,34 @@ body {
   line-height: 1.3;
 }
 
+.node-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dm-icon {
+  background: var(--ctp-blue);
+  border: none;
+  border-radius: 6px;
+  padding: 0.25rem 0.5rem;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dm-icon:hover {
+  background: var(--ctp-sapphire);
+  transform: scale(1.1);
+}
+
+.dm-icon:active {
+  transform: scale(0.95);
+}
+
 .node-short {
   font-size: 0.8rem;
   font-weight: 500;

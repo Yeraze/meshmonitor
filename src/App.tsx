@@ -840,8 +840,21 @@ function App() {
                           <span className="node-role" title="Node Role"> {getRoleName(node.user.role)}</span>
                         )}
                       </div>
-                      <div className="node-short">
-                        {node.user?.shortName || '-'}
+                      <div className="node-actions">
+                        <button
+                          className="dm-icon"
+                          title="Send Direct Message"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedDMNode(node.user?.id || '');
+                            setActiveTab('messages');
+                          }}
+                        >
+                          💬
+                        </button>
+                        <div className="node-short">
+                          {node.user?.shortName || '-'}
+                        </div>
                       </div>
                     </div>
 
