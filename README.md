@@ -12,6 +12,8 @@ A comprehensive web application for monitoring Meshtastic mesh networks over IP.
 - Signal strength monitoring (SNR, RSSI)
 - GPS position tracking
 - Battery and voltage telemetry
+- Node role display (Client, Router, Repeater, etc.)
+- Hops Away tracking for network distance
 
 ### 💬 **iPhone Messages-Style UI**
 - Beautiful message bubbles with proper alignment
@@ -23,11 +25,12 @@ A comprehensive web application for monitoring Meshtastic mesh networks over IP.
 - Optimistic UI updates for instant feedback
 
 ### 🗄️ **Persistent Data Storage**
-- SQLite database for messages and nodes
+- SQLite database for messages, nodes, and traceroutes
 - Automatic data deduplication
 - Export/import functionality
 - Data cleanup utilities
 - Cross-restart persistence
+- Traceroute history storage with SNR data
 
 ### 🎨 **Modern UI/UX**
 - Catppuccin Mocha dark theme
@@ -35,6 +38,14 @@ A comprehensive web application for monitoring Meshtastic mesh networks over IP.
 - Real-time connection status
 - Interactive node cards
 - Smooth animations and transitions
+
+### 🗺️ **Network Mapping & Traceroutes**
+- Interactive map with node positions
+- Automatic traceroute scheduler (runs every 3 minutes)
+- Weighted route visualization (thickness based on usage)
+- Route display with "Show Routes" toggle
+- Network topology discovery
+- Traceroute history with SNR tracking
 
 ### 🐳 **Docker Support**
 - Full containerization with Docker
@@ -159,6 +170,10 @@ Your Meshtastic device must have:
 ### Statistics
 - `GET /api/stats` - Database statistics
 - `GET /api/health` - Health check
+
+### Traceroutes
+- `GET /api/traceroutes/recent` - Get recent traceroutes
+- `POST /api/traceroutes/send` - Send traceroute request
 
 ### Data Management
 - `POST /api/export` - Export all data

@@ -70,6 +70,8 @@ Retrieves all nodes from the database.
     "longName": "Base Station Alpha",
     "shortName": "BSA",
     "hwModel": 9,
+    "role": 2,
+    "hopsAway": 3,
     "macaddr": null,
     "latitude": 40.7128,
     "longitude": -74.0060,
@@ -292,6 +294,83 @@ curl -X POST \
   -d @backup.json \
   http://localhost:8080/api/import
 ```
+
+---
+
+## Traceroute Management
+
+### Get Recent Traceroutes
+
+#### GET /api/traceroutes/recent
+
+Retrieves recent traceroute data with route paths and SNR information for network topology visualization.
+
+**Query Parameters:**
+- `hours` (optional, integer): Number of hours to look back (default: 24)
+- `limit` (optional, integer): Maximum number of traceroutes to return (default: 100)
+
+**Response:**
+```json
+[
+  {
+    "id": 1,
+    "fromNodeNum": 123456789,
+    "toNodeNum": 987654321,
+    "fromNodeId": "!075bcd15",
+    "toNodeId": "!3ade68b1",
+    "route": "[123456789,555555555,987654321]",
+    "routeBack": "[987654321,555555555,123456789]",
+    "snrTowards": "[12.5,8.3,10.1]",
+    "snrBack": "[10.5,9.2,11.3]",
+    "timestamp": 1640995200000,
+    "createdAt": 1640995201000
+  }
+]
+```
+
+**Example:**
+```bash
+# Get traceroutes from last 12 hours
+curl -X GET "http://localhost:8080/api/traceroutes/recent?hours=12&limit=50"
+```
+
+### Send Traceroute
+
+#### POST /api/traceroutes/send
+
+Manually trigger a traceroute request to a specific node to discover the network path.
+
+**Request Body:**
+```json
+{
+  "destination": "!3ade68b1"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Traceroute sent to !3ade68b1"
+}
+```
+
+**Error Responses:**
+- `400`: Missing or invalid destination node ID
+- `500`: Failed to send traceroute
+
+**Example:**
+```bash
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"destination":"!3ade68b1"}' \
+  http://localhost:8080/api/traceroutes/send
+```
+
+**Notes:**
+- Traceroutes are automatically scheduled every 3 minutes by the system
+- Manual traceroutes can be useful for immediate path discovery
+- Results are stored in the database for historical analysis
 
 ---
 

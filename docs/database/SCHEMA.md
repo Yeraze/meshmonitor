@@ -25,6 +25,8 @@ PRAGMA temp_store = memory;
 │ longName (TEXT)                                             │
 │ shortName (TEXT)                                            │
 │ hwModel (INTEGER)                                           │
+│ role (INTEGER)                                              │
+│ hopsAway (INTEGER)                                          │
 │ macaddr (TEXT)                                              │
 │ latitude (REAL)                                             │
 │ longitude (REAL)                                            │
@@ -69,6 +71,22 @@ PRAGMA temp_store = memory;
 │ createdAt (INTEGER, NOT NULL)                               │
 │ updatedAt (INTEGER, NOT NULL)                               │
 └─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│                      TRACEROUTES                            │
+├─────────────────────────────────────────────────────────────┤
+│ id (INTEGER, PK, AUTOINCREMENT)                             │
+│ fromNodeNum (INTEGER, FK → NODES.nodeNum)                   │
+│ toNodeNum (INTEGER, FK → NODES.nodeNum)                     │
+│ fromNodeId (TEXT, NOT NULL)                                 │
+│ toNodeId (TEXT, NOT NULL)                                   │
+│ route (TEXT)                                                │
+│ routeBack (TEXT)                                            │
+│ snrTowards (TEXT)                                           │
+│ snrBack (TEXT)                                              │
+│ timestamp (INTEGER, NOT NULL)                               │
+│ createdAt (INTEGER, NOT NULL)                               │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ## Table Definitions
@@ -84,6 +102,8 @@ CREATE TABLE nodes (
   longName TEXT,
   shortName TEXT,
   hwModel INTEGER,
+  role INTEGER,
+  hopsAway INTEGER,
   macaddr TEXT,
   latitude REAL,
   longitude REAL,
@@ -109,6 +129,8 @@ CREATE TABLE nodes (
 | `longName` | TEXT | User-defined long name | `Base Station Alpha` |
 | `shortName` | TEXT | User-defined short name (3-4 chars) | `BSA` |
 | `hwModel` | INTEGER | Hardware model enum (see Hardware Models) | `9` (RAK4631) |
+| `role` | INTEGER | Node role enum (0=Client, 2=Router, 4=Repeater) | `2` (Router) |
+| `hopsAway` | INTEGER | Network distance from local node | `3` |
 | `macaddr` | TEXT | MAC address as hex string | `07:5b:cd:15:a1:b2` |
 | `latitude` | REAL | GPS latitude in decimal degrees | `40.7128` |
 | `longitude` | REAL | GPS longitude in decimal degrees | `-74.0060` |
@@ -195,6 +217,52 @@ CREATE TABLE channels (
 );
 ```
 
+### TRACEROUTES Table
+
+Stores traceroute data for network topology discovery and path analysis.
+
+```sql
+CREATE TABLE traceroutes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  fromNodeNum INTEGER NOT NULL,
+  toNodeNum INTEGER NOT NULL,
+  fromNodeId TEXT NOT NULL,
+  toNodeId TEXT NOT NULL,
+  route TEXT,
+  routeBack TEXT,
+  snrTowards TEXT,
+  snrBack TEXT,
+  timestamp INTEGER NOT NULL,
+  createdAt INTEGER NOT NULL,
+  FOREIGN KEY (fromNodeNum) REFERENCES nodes(nodeNum),
+  FOREIGN KEY (toNodeNum) REFERENCES nodes(nodeNum)
+);
+```
+
+#### Field Descriptions
+
+| Field | Type | Description | Example |
+|-------|------|-------------|------|
+| `id` | INTEGER | Auto-incrementing primary key | `1` |
+| `fromNodeNum` | INTEGER | Originating node number (Foreign Key) | `123456789` |
+| `toNodeNum` | INTEGER | Destination node number (Foreign Key) | `987654321` |
+| `fromNodeId` | TEXT | Originating node hex ID | `!075bcd15` |
+| `toNodeId` | TEXT | Destination node hex ID | `!3ade68b1` |
+| `route` | TEXT | JSON array of node numbers in forward path | `[123456789,555555555,987654321]` |
+| `routeBack` | TEXT | JSON array of node numbers in return path | `[987654321,555555555,123456789]` |
+| `snrTowards` | TEXT | JSON array of SNR values for forward path | `[12.5,8.3,10.1]` |
+| `snrBack` | TEXT | JSON array of SNR values for return path | `[10.5,9.2,11.3]` |
+| `timestamp` | INTEGER | When traceroute was completed | `1640995200000` |
+| `createdAt` | INTEGER | Database insertion timestamp | `1640995201000` |
+
+#### Business Rules
+
+- `fromNodeNum` and `toNodeNum` must reference valid nodes
+- `route` and `routeBack` are stored as JSON arrays
+- `snrTowards` and `snrBack` arrays should match route array lengths
+- `timestamp` is in milliseconds
+- Used for network topology mapping and visualization
+
 #### Field Descriptions
 
 | Field | Type | Description | Example |
@@ -239,6 +307,12 @@ CREATE INDEX idx_messages_createdAt ON messages(createdAt);
 -- Composite indexes for common queries
 CREATE INDEX idx_messages_channel_timestamp ON messages(channel, timestamp);
 CREATE INDEX idx_messages_from_to_timestamp ON messages(fromNodeId, toNodeId, timestamp);
+
+-- Traceroute indexes
+CREATE INDEX idx_traceroutes_timestamp ON traceroutes(timestamp);
+CREATE INDEX idx_traceroutes_fromNode ON traceroutes(fromNodeNum);
+CREATE INDEX idx_traceroutes_toNode ON traceroutes(toNodeNum);
+CREATE INDEX idx_traceroutes_nodes ON traceroutes(fromNodeNum, toNodeNum);
 ```
 
 ## Data Types and Constraints

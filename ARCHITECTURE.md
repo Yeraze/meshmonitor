@@ -77,13 +77,17 @@ The central service for Meshtastic node communication:
 - **Real-time Polling** for continuous data synchronization
 - **Channel Detection** with whitelist-based filtering
 - **Node Discovery** and telemetry data extraction
+- **Automatic Traceroute Scheduler** running every 3 minutes
+- **Route Path Discovery** for network topology mapping
 
 Key Methods:
 ```typescript
 connect(): Promise<boolean>                    // Connect to Meshtastic node
 sendTextMessage(text: string, channel: number) // Send messages
+sendTraceroute(destination: string)            // Send traceroute request
 getAllNodes(): DeviceInfo[]                    // Get node information
 getRecentMessages(limit: number)               // Get message history
+startTracerouteScheduler()                     // Start automatic traceroutes
 ```
 
 Channel Management:
@@ -110,6 +114,8 @@ CREATE TABLE nodes (
   longName TEXT,
   shortName TEXT,
   hwModel INTEGER,
+  role INTEGER,
+  hopsAway INTEGER,
   lastHeard INTEGER,
   snr REAL,
   rssi INTEGER,
@@ -137,6 +143,23 @@ CREATE TABLE channels (
   uplinkEnabled BOOLEAN DEFAULT 1,
   downlinkEnabled BOOLEAN DEFAULT 1
 );
+
+-- Traceroutes table
+CREATE TABLE traceroutes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  fromNodeNum INTEGER NOT NULL,
+  toNodeNum INTEGER NOT NULL,
+  fromNodeId TEXT NOT NULL,
+  toNodeId TEXT NOT NULL,
+  route TEXT,
+  routeBack TEXT,
+  snrTowards TEXT,
+  snrBack TEXT,
+  timestamp INTEGER NOT NULL,
+  createdAt INTEGER NOT NULL,
+  FOREIGN KEY (fromNodeNum) REFERENCES nodes(nodeNum),
+  FOREIGN KEY (toNodeNum) REFERENCES nodes(nodeNum)
+);
 ```
 
 ### API Design
@@ -151,6 +174,10 @@ CREATE TABLE channels (
 - `GET /api/messages?limit=100` - Get paginated messages
 - `POST /api/messages/send` - Send message to channel
 - `GET /api/messages/channel/:channel` - Channel-specific messages
+
+**Traceroute Operations**:
+- `GET /api/traceroutes/recent` - Get recent traceroutes with route paths
+- `POST /api/traceroutes/send` - Send traceroute to specific node
 
 **System Management**:
 - `GET /api/health` - Health check endpoint
@@ -292,6 +319,46 @@ npm start          # Start production server
 - **Consistent formatting** standards
 - **Git hooks** for pre-commit validation
 
+## Traceroute Scheduler
+
+### Automatic Network Discovery
+
+The MeshMonitor application includes an intelligent traceroute scheduler that automatically discovers network topology:
+
+**Scheduling Logic:**
+- Runs every 3 minutes when connected to a Meshtastic node
+- Selects nodes that either have no traceroute data or oldest traceroute
+- Automatically sends traceroute requests to discover routes
+- Stores complete route paths with SNR data for each hop
+
+**Data Collection:**
+- Route paths (both forward and return routes)
+- SNR values for each hop in the path
+- Timestamp for traceroute completion
+- Node-to-node relationship mapping
+
+**Filtering:**
+- Traceroute messages are filtered from Primary channel display
+- Prevents clutter while maintaining network discovery
+- Data stored in dedicated traceroutes table
+
+## Map Visualization
+
+### Route Display Features
+
+**Interactive Route Mapping:**
+- "Show Routes" checkbox to toggle route display
+- Weighted polylines showing route segments
+- Thickness varies from 2-8px based on segment usage
+- Routes that appear in multiple traceroutes are drawn thicker
+- Purple color scheme matching Catppuccin theme
+
+**Segment Weight Calculation:**
+- Base weight: 2px
+- Additional weight: +1px per usage occurrence
+- Maximum weight: 8px for heavily used routes
+- Bidirectional segments counted once (normalized)
+
 ## Future Enhancements
 
 ### Planned Improvements
@@ -301,6 +368,7 @@ npm start          # Start production server
 4. **Message Search** - Full-text search across message history
 5. **Data Visualization** - Charts and graphs for network analytics
 6. **Mobile App** - React Native companion application
+7. **Advanced Traceroute Analytics** - Network path optimization and analysis
 
 ### Scalability Considerations
 - **Database migration** to PostgreSQL for larger deployments

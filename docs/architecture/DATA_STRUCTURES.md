@@ -19,7 +19,9 @@ interface DeviceInfo {
     shortName: string;               // User-defined short name (usually 3-4 chars)
     macaddr: Uint8Array;            // MAC address bytes
     hwModel: number;                 // Hardware model enum value
+    role?: number;                   // Node role (0=Client, 2=Router, 4=Repeater)
   };
+  hopsAway?: number;                  // Network distance from local node
   position?: {
     latitude: number;                // GPS latitude in decimal degrees
     longitude: number;               // GPS longitude in decimal degrees
@@ -52,8 +54,10 @@ const exampleNode: DeviceInfo = {
     longName: "Base Station Alpha",
     shortName: "BSA",
     macaddr: new Uint8Array([0x07, 0x5b, 0xcd, 0x15]),
-    hwModel: 9 // RAK4631
+    hwModel: 9, // RAK4631
+    role: 2 // Router
   },
+  hopsAway: 3,
   position: {
     latitude: 40.7128,
     longitude: -74.0060,
@@ -123,6 +127,8 @@ interface DbNode {
   longName: string;                  // Display name
   shortName: string;                 // Short name/call sign
   hwModel: number;                   // Hardware model enum
+  role?: number;                     // Node role enum
+  hopsAway?: number;                 // Network distance from local node
   macaddr?: string;                  // MAC address as string
   latitude?: number;                 // GPS coordinates
   longitude?: number;
@@ -184,6 +190,42 @@ const HardwareModels: Record<number, string> = {
   15: 'STATION_G1',
   39: 'DIY_V1',
   43: 'HELTEC_V3'
+};
+```
+
+### Node Role Enum
+
+Node role types in Meshtastic mesh networks.
+
+```typescript
+enum NodeRole {
+  CLIENT = 0,
+  CLIENT_MUTE = 1,
+  ROUTER = 2,
+  ROUTER_CLIENT = 3,
+  REPEATER = 4,
+  TRACKER = 5,
+  SENSOR = 6,
+  TAK = 7,
+  CLIENT_HIDDEN = 8,
+  LOST_AND_FOUND = 9,
+  TAK_TRACKER = 10,
+  ROUTER_LATE = 11
+}
+
+const RoleNames: Record<number, string> = {
+  0: 'Client',
+  1: 'Client Mute',
+  2: 'Router',
+  3: 'Router Client',
+  4: 'Repeater',
+  5: 'Tracker',
+  6: 'Sensor',
+  7: 'TAK',
+  8: 'Client Hidden',
+  9: 'Lost and Found',
+  10: 'TAK Tracker',
+  11: 'Router Late'
 };
 ```
 
@@ -258,6 +300,24 @@ interface HealthResponse {
     connected: boolean;
     tables: string[];
   };
+}
+```
+
+### Traceroute Response
+
+```typescript
+interface TracerouteData {
+  id?: number;
+  fromNodeNum: number;
+  toNodeNum: number;
+  fromNodeId: string;
+  toNodeId: string;
+  route: string;           // JSON array: "[123456789,555555555,987654321]"
+  routeBack: string;       // JSON array: "[987654321,555555555,123456789]"
+  snrTowards: string;      // JSON array: "[12.5,8.3,10.1]"
+  snrBack: string;         // JSON array: "[10.5,9.2,11.3]"
+  timestamp: number;
+  createdAt: number;
 }
 ```
 
@@ -342,6 +402,8 @@ function deviceInfoToDbNode(deviceInfo: DeviceInfo): Partial<DbNode> {
     longName: deviceInfo.user?.longName,
     shortName: deviceInfo.user?.shortName,
     hwModel: deviceInfo.user?.hwModel,
+    role: deviceInfo.user?.role,
+    hopsAway: deviceInfo.hopsAway,
     latitude: deviceInfo.position?.latitude,
     longitude: deviceInfo.position?.longitude,
     altitude: deviceInfo.position?.altitude,
@@ -448,6 +510,67 @@ function isValidChannel(channel: number): boolean {
 // Validate message text
 function isValidMessageText(text: string): boolean {
   return typeof text === 'string' && text.length > 0 && text.length <= 237;
+}
+
+// Validate node role
+function isValidRole(role: number): boolean {
+  return Number.isInteger(role) && role >= 0 && role <= 11;
+}
+
+// Parse traceroute route array
+function parseRouteArray(route: string): number[] {
+  try {
+    return JSON.parse(route);
+  } catch {
+    return [];
+  }
+}
+```
+
+## Traceroute Data Structures
+
+### Route Segment
+
+```typescript
+interface RouteSegment {
+  fromNodeNum: number;
+  toNodeNum: number;
+  snr?: number;
+  distance?: number;
+}
+```
+
+### Route Path
+
+```typescript
+interface RoutePath {
+  nodes: number[];         // Array of node numbers in order
+  snrValues: number[];     // SNR value for each hop
+  totalHops: number;
+  averageSnr: number;
+}
+```
+
+### Network Topology
+
+```typescript
+interface NetworkTopology {
+  nodes: Map<number, DeviceInfo>;
+  routes: Map<string, RouteSegment[]>;
+  lastUpdated: number;
+}
+```
+
+### Map Visualization Data
+
+```typescript
+interface MapRouteData {
+  key: string;                    // Unique identifier for route segment
+  positions: [number, number][];  // [lat, lng] coordinates
+  nodeNums: number[];             // Node numbers in segment
+  weight: number;                 // Line thickness (2-8)
+  color: string;                  // Line color
+  opacity: number;                // Line opacity
 }
 ```
 

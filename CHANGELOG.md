@@ -4,7 +4,53 @@ All notable changes to MeshMonitor will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.2.0] - 2024-01-XX (Current Development)
+## [1.3.0] - 2024-01-XX (Current Development)
+
+### Added
+- **Automatic Traceroute Scheduler**: Intelligent network topology discovery
+  - Runs every 3 minutes to discover mesh network routes
+  - Selects nodes needing traceroutes (no data or oldest traceroute)
+  - Stores complete route paths with SNR data for each hop
+  - Traceroute messages filtered from Primary channel display
+
+- **Network Mapping & Route Visualization**:
+  - Interactive map with \"Show Routes\" toggle checkbox
+  - Weighted route lines (2-8px thickness based on segment usage)
+  - Routes appearing in multiple traceroutes shown with thicker lines
+  - Purple polylines matching Catppuccin theme
+  - Real-time route data refresh every 10 seconds
+
+- **Node Role Display**:
+  - Role information displayed in node list (Client, Router, Repeater, etc.)
+  - Role badges shown next to node names
+  - Database schema updated with `role` column
+
+- **Hops Away Tracking**:
+  - Network distance display for each node
+  - Shows how many hops away each node is from local node
+  - Database schema updated with `hopsAway` column
+
+- **Traceroute API Endpoints**:
+  - `GET /api/traceroutes/recent` - Retrieve recent traceroutes with filtering
+  - `POST /api/traceroutes/send` - Manually trigger traceroute to specific node
+
+- **Database Enhancements**:
+  - New `traceroutes` table with route path and SNR storage
+  - `role` and `hopsAway` columns added to `nodes` table
+  - Foreign key relationships for data integrity
+  - Automatic schema migration on startup
+
+### Changed
+- Map controls repositioned to right side of interface
+- Route visualization made toggleable for cleaner map view
+- Traceroute data persistence for historical network analysis
+
+### Technical Improvements
+- Protobuf parsing enhanced for traceroute response handling
+- Intelligent node selection algorithm for traceroute scheduling
+- Optimized database queries for traceroute data retrieval
+
+## [1.2.0] - 2024-01-XX
 
 ### Added
 - **iPhone Messages-Style UI**: Complete redesign of channel messaging interface

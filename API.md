@@ -185,6 +185,58 @@ Retrieve all configured channels.
 ]
 ```
 
+### Traceroute Management
+
+#### GET /api/traceroutes/recent
+Get recently collected traceroute data with route paths and SNR information.
+
+**Query Parameters:**
+- `hours` (optional): Hours to look back (default: 24)
+- `limit` (optional): Maximum number of traceroutes to return (default: 100)
+
+**Example:** `/api/traceroutes/recent?hours=12&limit=50`
+
+**Response:**
+```json
+[
+  {
+    "id": 1,
+    "fromNodeNum": 123456789,
+    "toNodeNum": 987654321,
+    "fromNodeId": "!075bcd15",
+    "toNodeId": "!3ade68b1",
+    "route": "[123456789,555555555,987654321]",
+    "routeBack": "[987654321,555555555,123456789]",
+    "snrTowards": "[12.5,8.3,10.1]",
+    "snrBack": "[10.5,9.2,11.3]",
+    "timestamp": 1640995200000,
+    "createdAt": 1640995201000
+  }
+]
+```
+
+#### POST /api/traceroutes/send
+Send a traceroute request to a specific node.
+
+**Request Body:**
+```json
+{
+  "destination": "!3ade68b1"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Traceroute sent to !3ade68b1"
+}
+```
+
+**Error Responses:**
+- `400`: Missing or invalid destination node ID
+- `500`: Failed to send traceroute
+
 ### System Information
 
 #### GET /api/health
@@ -404,7 +456,9 @@ interface DeviceInfo {
     longName: string;
     shortName: string;
     hwModel?: number;
+    role?: number;
   };
+  hopsAway?: number;
   position?: {
     latitude: number;
     longitude: number;
@@ -492,6 +546,14 @@ curl http://localhost:8080/api/stats
 curl -X POST http://localhost:8080/api/cleanup/messages \
   -H "Content-Type: application/json" \
   -d '{"days":30}'
+
+# Get recent traceroutes
+curl http://localhost:8080/api/traceroutes/recent?hours=24
+
+# Send traceroute to a node
+curl -X POST http://localhost:8080/api/traceroutes/send \
+  -H "Content-Type: application/json" \
+  -d '{"destination":"!12345678"}'
 ```
 
 ## Development
