@@ -6,3 +6,4 @@ tools to resolve library id and get library docs without me having to explicitly
 - Always start the Dev environment via docker, and make sure to 'build' first
 - You can't have both the Docker and the local npm version running at the same time, or they interfere. If you want to switch, you need to let me know.
 - Load up the system on port 8080
+- Never push directly to main, always push to a branch.
