@@ -565,8 +565,8 @@ class MeshtasticManager {
           case 42: // NEIGHBORINFO_APP
             console.log('🏠 Neighbor info:', processedPayload);
             break;
-          case 41: // TRACEROUTE_APP
-            console.log('🗺️ Traceroute:', processedPayload);
+          case 70: // TRACEROUTE_APP
+            await this.processTracerouteMessage(meshPacket, processedPayload as any);
             break;
           default:
             console.log(`🤷 Unhandled portnum: ${portnum} (${meshtasticProtobufService.getPortNumName(portnum)})`);
@@ -860,6 +860,93 @@ class MeshtasticManager {
       console.log(`📊 Updated node telemetry and saved to telemetry table: ${nodeId}`);
     } catch (error) {
       console.error('❌ Error processing telemetry message:', error);
+    }
+  }
+
+  /**
+   * Process traceroute message
+   */
+  private async processTracerouteMessage(meshPacket: any, routeDiscovery: any): Promise<void> {
+    try {
+      const fromNum = Number(meshPacket.from);
+      const fromNodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
+      const toNum = Number(meshPacket.to);
+      const toNodeId = `!${toNum.toString(16).padStart(8, '0')}`;
+
+      console.log(`🗺️ Traceroute response from ${fromNodeId}:`, routeDiscovery);
+
+      // Ensure from node exists in database
+      databaseService.upsertNode({
+        nodeNum: fromNum,
+        nodeId: fromNodeId,
+        longName: `Node ${fromNodeId}`,
+        shortName: fromNodeId.substring(1, 5),
+        lastHeard: Date.now() / 1000
+      });
+
+      // Ensure to node exists in database
+      databaseService.upsertNode({
+        nodeNum: toNum,
+        nodeId: toNodeId,
+        longName: `Node ${toNodeId}`,
+        shortName: toNodeId.substring(1, 5),
+        lastHeard: Date.now() / 1000
+      });
+
+      // Build the route string
+      const route = routeDiscovery.route || [];
+      const routeBack = routeDiscovery.routeBack || [];
+      const snrTowards = routeDiscovery.snrTowards || [];
+      const snrBack = routeDiscovery.snrBack || [];
+
+      const fromNode = databaseService.getNode(fromNum);
+      const fromName = fromNode?.longName || fromNodeId;
+
+      let routeText = `📍 Traceroute to ${fromName} (${fromNodeId})\n\n`;
+
+      if (route.length > 0) {
+        routeText += `Forward path (${route.length} hops):\n`;
+        route.forEach((nodeNum: number, index: number) => {
+          const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
+          const node = databaseService.getNode(nodeNum);
+          const nodeName = node?.longName || nodeId;
+          const snr = snrTowards[index] ? `${(snrTowards[index] / 4).toFixed(1)}dB` : 'N/A';
+          routeText += `  ${index + 1}. ${nodeName} (${nodeId}) - SNR: ${snr}\n`;
+        });
+      }
+
+      if (routeBack.length > 0) {
+        routeText += `\nReturn path (${routeBack.length} hops):\n`;
+        routeBack.forEach((nodeNum: number, index: number) => {
+          const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
+          const node = databaseService.getNode(nodeNum);
+          const nodeName = node?.longName || nodeId;
+          const snr = snrBack[index] ? `${(snrBack[index] / 4).toFixed(1)}dB` : 'N/A';
+          routeText += `  ${index + 1}. ${nodeName} (${nodeId}) - SNR: ${snr}\n`;
+        });
+      }
+
+      const channelIndex = meshPacket.channel !== undefined ? meshPacket.channel : 0;
+
+      // Save as a special message in the database
+      const message = {
+        id: `traceroute_${fromNum}_${Date.now()}`,
+        fromNodeNum: fromNum,
+        toNodeNum: toNum,
+        fromNodeId: fromNodeId,
+        toNodeId: toNodeId,
+        text: routeText,
+        channel: channelIndex,
+        portnum: 70, // TRACEROUTE_APP
+        timestamp: meshPacket.rxTime ? Number(meshPacket.rxTime) * 1000 : Date.now(),
+        rxTime: meshPacket.rxTime ? Number(meshPacket.rxTime) * 1000 : Date.now(),
+        createdAt: Date.now()
+      };
+
+      databaseService.insertMessage(message);
+      console.log(`💾 Saved traceroute result from ${fromNodeId}`);
+    } catch (error) {
+      console.error('❌ Error processing traceroute message:', error);
     }
   }
 
@@ -2180,6 +2267,33 @@ class MeshtasticManager {
       console.log('Message sent successfully:', text);
     } catch (error) {
       console.error('Error sending message:', error);
+      throw error;
+    }
+  }
+
+  async sendTraceroute(destination: number, channel: number = 0): Promise<void> {
+    if (!this.isConnected) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    try {
+      const tracerouteData = meshtasticProtobufService.createTracerouteMessage(destination, channel);
+
+      const response = await this.makeRequest('/api/v1/toradio', {
+        method: 'PUT',
+        body: tracerouteData as BodyInit,
+        headers: {
+          'Content-Type': 'application/x-protobuf'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to send traceroute: ${response.status} ${response.statusText}`);
+      }
+
+      console.log(`Traceroute request sent to node: !${destination.toString(16).padStart(8, '0')}`);
+    } catch (error) {
+      console.error('Error sending traceroute:', error);
       throw error;
     }
   }

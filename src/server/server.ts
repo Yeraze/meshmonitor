@@ -306,9 +306,16 @@ app.post('/api/cleanup/channels', (_req, res) => {
 // Send message endpoint
 app.post('/api/messages/send', async (req, res) => {
   try {
-    const { text, channel } = req.body;
+    const { text, channel, destination } = req.body;
     if (!text || typeof text !== 'string') {
       return res.status(400).json({ error: 'Message text is required' });
+    }
+
+    // Convert destination nodeId to nodeNum if provided
+    let destinationNum: number | undefined = undefined;
+    if (destination) {
+      const nodeIdStr = destination.replace('!', '');
+      destinationNum = parseInt(nodeIdStr, 16);
     }
 
     // Map Primary channel to channel 0 for mesh network
@@ -324,8 +331,8 @@ app.post('/api/messages/send', async (req, res) => {
       meshChannel = 0;
     }
 
-    // Send the message to the mesh network
-    await meshtasticManager.sendTextMessage(text, meshChannel);
+    // Send the message to the mesh network (with optional destination for DMs)
+    await meshtasticManager.sendTextMessage(text, meshChannel, destinationNum);
 
     // Save the sent message to database immediately
     const localNodeInfo = meshtasticManager.getLocalNodeInfo();
@@ -339,9 +346,9 @@ app.post('/api/messages/send', async (req, res) => {
     const message = {
       id: `sent_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       fromNodeNum: actualNodeNum,
-      toNodeNum: 4294967295, // Broadcast address
+      toNodeNum: destinationNum || 4294967295, // Use destination if provided, otherwise broadcast
       fromNodeId: actualNodeId,
-      toNodeId: '!ffffffff',
+      toNodeId: destination || '!ffffffff',
       text: text,
       channel: meshChannel,
       portnum: 1, // TEXT_MESSAGE_APP
@@ -362,6 +369,24 @@ app.post('/api/messages/send', async (req, res) => {
   } catch (error) {
     console.error('Error sending message:', error);
     res.status(500).json({ error: 'Failed to send message' });
+  }
+});
+
+// Traceroute endpoint
+app.post('/api/traceroute', async (req, res) => {
+  try {
+    const { destination } = req.body;
+    if (!destination) {
+      return res.status(400).json({ error: 'Destination node number is required' });
+    }
+
+    const destinationNum = typeof destination === 'string' ? parseInt(destination, 16) : destination;
+
+    await meshtasticManager.sendTraceroute(destinationNum, 0);
+    res.json({ success: true, message: `Traceroute request sent to ${destinationNum.toString(16)}` });
+  } catch (error) {
+    console.error('Error sending traceroute:', error);
+    res.status(500).json({ error: 'Failed to send traceroute' });
   }
 });
 

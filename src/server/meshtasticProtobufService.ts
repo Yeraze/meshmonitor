@@ -59,6 +59,58 @@ export class MeshtasticProtobufService {
   }
 
   /**
+   * Create a traceroute request ToRadio using proper protobuf encoding
+   */
+  createTracerouteMessage(destination: number, channel?: number): Uint8Array {
+    const root = getProtobufRoot();
+    if (!root) {
+      console.error('❌ Protobuf definitions not loaded');
+      return new Uint8Array();
+    }
+
+    try {
+      // Create the RouteDiscovery message (empty for request)
+      const RouteDiscovery = root.lookupType('meshtastic.RouteDiscovery');
+      const routeDiscovery = RouteDiscovery.create({
+        route: []
+      });
+
+      // Encode the RouteDiscovery as payload
+      const payload = RouteDiscovery.encode(routeDiscovery).finish();
+
+      // Create the Data message with TRACEROUTE_APP portnum
+      const Data = root.lookupType('meshtastic.Data');
+      const dataMessage = Data.create({
+        portnum: 70, // TRACEROUTE_APP
+        payload: payload,
+        dest: destination,
+        wantResponse: true
+      });
+
+      // Create the MeshPacket
+      const MeshPacket = root.lookupType('meshtastic.MeshPacket');
+      const meshPacket = MeshPacket.create({
+        to: destination,
+        channel: channel || 0,
+        decoded: dataMessage,
+        wantAck: false, // Traceroute doesn't need ack
+        hopLimit: 7 // Default hop limit
+      });
+
+      // Create the ToRadio message
+      const ToRadio = root.lookupType('meshtastic.ToRadio');
+      const toRadio = ToRadio.create({
+        packet: meshPacket
+      });
+
+      return ToRadio.encode(toRadio).finish();
+    } catch (error) {
+      console.error('❌ Failed to create traceroute message:', error);
+      return new Uint8Array();
+    }
+  }
+
+  /**
    * Create a text message ToRadio using proper protobuf encoding
    */
   createTextMessage(text: string, destination?: number, channel?: number): Uint8Array {
@@ -343,6 +395,11 @@ export class MeshtasticProtobufService {
           const Telemetry = root.lookupType('meshtastic.Telemetry');
           const telemetry = Telemetry.decode(payload);
           return telemetry;
+
+        case 70: // TRACEROUTE_APP
+          const RouteDiscovery = root.lookupType('meshtastic.RouteDiscovery');
+          const routeDiscovery = RouteDiscovery.decode(payload);
+          return routeDiscovery;
 
         default:
           console.log(`⚠️ Unhandled port number: ${portnum}`);

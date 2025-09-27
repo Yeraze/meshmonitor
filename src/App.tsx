@@ -143,6 +143,7 @@ function App() {
   const [unreadCounts, setUnreadCounts] = useState<{[key: number]: number}>({})
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const lastNotificationTime = useRef<number>(0)
+  const [tracerouteLoading, setTracerouteLoading] = useState<string | null>(null)
 
   // New state for node list features
   const [nodeFilter, setNodeFilter] = useState<string>('')
@@ -523,6 +524,68 @@ function App() {
       }
     } catch (error) {
       console.error('Failed to update data from backend:', error);
+    }
+  };
+
+  const handleTraceroute = async (nodeId: string) => {
+    if (connectionStatus !== 'connected') {
+      return;
+    }
+
+    try {
+      // Set loading state
+      setTracerouteLoading(nodeId);
+
+      // Convert nodeId to node number
+      const nodeNumStr = nodeId.replace('!', '');
+      const nodeNum = parseInt(nodeNumStr, 16);
+
+      await fetch('/api/traceroute', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ destination: nodeNum })
+      });
+
+      console.log(`🗺️ Traceroute request sent to ${nodeId}`);
+
+      // Clear loading state after 30 seconds
+      setTimeout(() => {
+        setTracerouteLoading(null);
+      }, 30000);
+    } catch (error) {
+      console.error('Failed to send traceroute:', error);
+      setTracerouteLoading(null);
+    }
+  };
+
+  const handleSendDirectMessage = async (destinationNodeId: string) => {
+    if (!newMessage.trim() || connectionStatus !== 'connected') {
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/messages/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          text: newMessage,
+          channel: 0,
+          destination: destinationNodeId
+        })
+      });
+
+      if (response.ok) {
+        console.log('Direct message sent successfully');
+        setNewMessage('');
+      } else {
+        console.error('Failed to send direct message');
+      }
+    } catch (error) {
+      console.error('Error sending direct message:', error);
     }
   };
 
@@ -1236,18 +1299,35 @@ function App() {
 
         {selectedDMNode ? (
           <div className="dm-conversation">
-            <h3>Conversation with {getNodeName(selectedDMNode)}</h3>
+            <div className="dm-header">
+              <h3>Conversation with {getNodeName(selectedDMNode)}</h3>
+              <button
+                onClick={() => handleTraceroute(selectedDMNode)}
+                disabled={connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode}
+                className="traceroute-btn"
+                title="Run traceroute to this node"
+              >
+                🗺️ Traceroute
+                {tracerouteLoading === selectedDMNode && (
+                  <span className="spinner"></span>
+                )}
+              </button>
+            </div>
             <div className="messages-container">
               {getDMMessages(selectedDMNode).length > 0 ? (
-                getDMMessages(selectedDMNode).map(msg => (
-                  <div key={msg.id} className={`message-item ${msg.from === selectedDMNode ? 'received' : 'sent'}`}>
-                    <div className="message-header">
-                      <span className="message-from">{getNodeName(msg.from)}</span>
-                      <span className="message-time">{msg.timestamp.toLocaleTimeString()}</span>
+                getDMMessages(selectedDMNode).map(msg => {
+                  const isTraceroute = msg.portnum === 70;
+                  return (
+                    <div key={msg.id} className={`message-item ${isTraceroute ? 'traceroute' : msg.from === selectedDMNode ? 'received' : 'sent'}`}>
+                      <div className="message-header">
+                        <span className="message-from">{getNodeName(msg.from)}</span>
+                        <span className="message-time">{msg.timestamp.toLocaleTimeString()}</span>
+                        {isTraceroute && <span className="traceroute-badge">TRACEROUTE</span>}
+                      </div>
+                      <div className="message-text" style={isTraceroute ? {whiteSpace: 'pre-line', fontFamily: 'monospace'} : {}}>{msg.text}</div>
                     </div>
-                    <div className="message-text">{msg.text}</div>
-                  </div>
-                ))
+                  );
+                })
               ) : (
                 <p className="no-messages">No direct messages with this node yet</p>
               )}
@@ -1265,13 +1345,12 @@ function App() {
                     className="message-input"
                     onKeyPress={(e) => {
                       if (e.key === 'Enter') {
-                        // Note: Direct messaging may need different API endpoint
-                        handleSendMessage(0); // For now, use channel 0
+                        handleSendDirectMessage(selectedDMNode);
                       }
                     }}
                   />
                   <button
-                    onClick={() => handleSendMessage(0)} // For now, use channel 0
+                    onClick={() => handleSendDirectMessage(selectedDMNode)}
                     disabled={!newMessage.trim()}
                     className="send-btn"
                   >

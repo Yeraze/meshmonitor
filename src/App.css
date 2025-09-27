@@ -1806,3 +1806,67 @@ body {
 .tab-btn {
   position: relative;
 }
+
+/* Traceroute Styles */
+.dm-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.traceroute-btn {
+  background: var(--ctp-mauve);
+  color: var(--ctp-base);
+  border: none;
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.traceroute-btn:hover:not(:disabled) {
+  background: var(--ctp-pink);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.traceroute-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.message-item.traceroute {
+  background: var(--ctp-surface1);
+  border-left: 4px solid var(--ctp-mauve);
+}
+
+.traceroute-badge {
+  background: var(--ctp-mauve);
+  color: var(--ctp-base);
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top: 2px solid var(--ctp-base);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
