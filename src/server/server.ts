@@ -406,7 +406,21 @@ app.get('/api/traceroutes/recent', (req, res) => {
     const cutoffTime = Date.now() - (hoursParam * 60 * 60 * 1000);
 
     const recentTraceroutes = allTraceroutes.filter(tr => tr.timestamp >= cutoffTime);
-    res.json(recentTraceroutes);
+
+    const traceroutesWithHops = recentTraceroutes.map(tr => {
+      let hopCount = 999;
+      try {
+        if (tr.route) {
+          const routeArray = JSON.parse(tr.route);
+          hopCount = routeArray.length;
+        }
+      } catch (e) {
+        hopCount = 999;
+      }
+      return { ...tr, hopCount };
+    });
+
+    res.json(traceroutesWithHops);
   } catch (error) {
     console.error('Error fetching recent traceroutes:', error);
     res.status(500).json({ error: 'Failed to fetch recent traceroutes' });
@@ -548,6 +562,22 @@ app.post('/api/channels/refresh', async (_req, res) => {
       error: 'Failed to refresh channel database',
       details: error instanceof Error ? error.message : 'Unknown error'
     });
+  }
+});
+
+// Settings endpoints
+app.post('/api/settings/traceroute-interval', (req, res) => {
+  try {
+    const { intervalMinutes } = req.body;
+    if (typeof intervalMinutes !== 'number' || intervalMinutes < 1 || intervalMinutes > 60) {
+      return res.status(400).json({ error: 'Invalid interval. Must be between 1 and 60 minutes.' });
+    }
+
+    meshtasticManager.setTracerouteInterval(intervalMinutes);
+    res.json({ success: true, intervalMinutes });
+  } catch (error) {
+    console.error('Error setting traceroute interval:', error);
+    res.status(500).json({ error: 'Failed to set traceroute interval' });
   }
 });
 

@@ -100,7 +100,7 @@ interface Channel {
 
 type TabType = 'nodes' | 'channels' | 'messages' | 'info' | 'settings';
 
-type SortField = 'longName' | 'shortName' | 'id' | 'lastHeard' | 'snr' | 'battery' | 'hwModel' | 'location';
+type SortField = 'longName' | 'shortName' | 'id' | 'lastHeard' | 'snr' | 'battery' | 'hwModel' | 'location' | 'hops';
 type SortDirection = 'asc' | 'desc';
 
 // Map centering component that uses useMap hook
@@ -151,10 +151,20 @@ function App() {
   const [nodesWithTelemetry, setNodesWithTelemetry] = useState<Set<string>>(new Set())
   const [nodesWithWeatherTelemetry, setNodesWithWeatherTelemetry] = useState<Set<string>>(new Set())
 
+  // Settings
+  const [maxNodeAgeHours, setMaxNodeAgeHours] = useState<number>(() => {
+    const saved = localStorage.getItem('maxNodeAgeHours');
+    return saved ? parseInt(saved) : 24;
+  });
+  const [tracerouteIntervalMinutes, setTracerouteIntervalMinutes] = useState<number>(() => {
+    const saved = localStorage.getItem('tracerouteIntervalMinutes');
+    return saved ? parseInt(saved) : 3;
+  });
+
   // New state for node list features
   const [nodeFilter, setNodeFilter] = useState<string>('')
-  const sortField: SortField = 'longName'
-  const sortDirection: SortDirection = 'asc'
+  const [sortField, setSortField] = useState<SortField>('longName')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
 
   // Function to detect MQTT/bridge messages that should be filtered
   const isMqttBridgeMessage = (msg: MeshMessage): boolean => {
@@ -229,9 +239,9 @@ function App() {
     selectedChannelRef.current = selectedChannel;
   }, [selectedChannel]);
 
-  // Fetch traceroutes when showRoutes is enabled or Messages tab is active
+  // Fetch traceroutes when showRoutes is enabled or Messages/Nodes tab is active
   useEffect(() => {
-    if ((showRoutes || activeTab === 'messages') && connectionStatus === 'connected') {
+    if ((showRoutes || activeTab === 'messages' || activeTab === 'nodes') && connectionStatus === 'connected') {
       fetchTraceroutes();
       const interval = setInterval(fetchTraceroutes, 10000); // Refresh every 10 seconds
       return () => clearInterval(interval);
@@ -574,13 +584,19 @@ function App() {
     const nodeNumStr = nodeId.replace('!', '');
     const nodeNum = parseInt(nodeNumStr, 16);
 
-    // Find most recent traceroute to this node within last 24 hours
+    // Find most recent traceroute from this node within last 24 hours
     const cutoff = Date.now() - (24 * 60 * 60 * 1000);
     const recentTraceroutes = traceroutes
-      .filter(tr => tr.toNodeNum === nodeNum && tr.timestamp >= cutoff)
+      .filter(tr => tr.fromNodeNum === nodeNum && tr.timestamp >= cutoff)
       .sort((a, b) => b.timestamp - a.timestamp);
 
     return recentTraceroutes.length > 0 ? recentTraceroutes[0] : null;
+  };
+
+  const getTracerouteHopCount = (nodeId: string): number => {
+    const traceroute = getRecentTraceroute(nodeId);
+    if (!traceroute || traceroute.hopCount === undefined) return 999;
+    return traceroute.hopCount;
   };
 
   const formatTracerouteRoute = (route: string, snr: string) => {
@@ -837,6 +853,10 @@ function App() {
           aVal = a.position ? `${a.position.latitude},${a.position.longitude}` : '';
           bVal = b.position ? `${b.position.latitude},${b.position.longitude}` : '';
           break;
+        case 'hops':
+          aVal = a.user?.id ? getTracerouteHopCount(a.user.id) : 999;
+          bVal = b.user?.id ? getTracerouteHopCount(b.user.id) : 999;
+          break;
         default:
           return 0;
       }
@@ -870,8 +890,15 @@ function App() {
 
   // Get processed (filtered and sorted) nodes
   const getProcessedNodes = (): DeviceInfo[] => {
-    const filtered = filterNodes(nodes, nodeFilter);
-    return sortNodes(filtered, sortField, sortDirection);
+    const cutoffTime = Date.now() / 1000 - (maxNodeAgeHours * 60 * 60);
+
+    const ageFiltered = nodes.filter(node => {
+      if (!node.lastHeard) return false;
+      return node.lastHeard >= cutoffTime;
+    });
+
+    const textFiltered = filterNodes(ageFiltered, nodeFilter);
+    return sortNodes(textFiltered, sortField, sortDirection);
   };
 
   // Function to center map on a specific node
@@ -951,7 +978,7 @@ function App() {
         <div className="nodes-sidebar">
           <div className="sidebar-header">
             <h3>Nodes ({processedNodes.length})</h3>
-            <div className="node-filter">
+            <div className="node-controls">
               <input
                 type="text"
                 placeholder="Filter nodes..."
@@ -959,6 +986,28 @@ function App() {
                 onChange={(e) => setNodeFilter(e.target.value)}
                 className="filter-input-small"
               />
+              <div className="sort-controls">
+                <select
+                  value={sortField}
+                  onChange={(e) => setSortField(e.target.value as SortField)}
+                  className="sort-dropdown"
+                  title="Sort nodes by"
+                >
+                  <option value="longName">Sort: Name</option>
+                  <option value="shortName">Sort: Short Name</option>
+                  <option value="lastHeard">Sort: Updated</option>
+                  <option value="snr">Sort: Signal</option>
+                  <option value="battery">Sort: Charge</option>
+                  <option value="hops">Sort: Hops</option>
+                </select>
+                <button
+                  className="sort-direction-btn"
+                  onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
+                  title={sortDirection === 'asc' ? 'Ascending' : 'Descending'}
+                >
+                  {sortDirection === 'asc' ? '↑' : '↓'}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1046,6 +1095,17 @@ function App() {
                       {node.user?.id && nodesWithWeatherTelemetry.has(node.user.id) && (
                         <div className="node-weather" title="Has Weather Data">
                           ☀️
+                        </div>
+                      )}
+                      {node.user?.id && (() => {
+                        const hopCount = getTracerouteHopCount(node.user.id);
+                        if (hopCount < 999) {
+                          console.log(`Node ${node.user.longName} (${node.user.id}): ${hopCount} hops`);
+                        }
+                        return hopCount < 999;
+                      })() && (
+                        <div className="node-hops" title="Traceroute Hops">
+                          {getTracerouteHopCount(node.user.id)}
                         </div>
                       )}
                     </div>
@@ -1242,50 +1302,29 @@ function App() {
 
                 {/* Draw selected node's traceroute in red */}
                 {selectedNodeId && (() => {
-                  console.log('🔴 RED LINE: selectedNodeId:', selectedNodeId);
-                  console.log('🔴 RED LINE: traceroutes count:', traceroutes.length);
-                  console.log('🔴 RED LINE: first 3 traceroutes FULL:', traceroutes.slice(0, 3));
-
-                  // Also check what the selected node looks like
-                  const selectedNode = processedNodes.find(n => n.user?.id === selectedNodeId);
-                  console.log('🔴 RED LINE: selected node:', selectedNode ? { id: selectedNode.user?.id, nodeNum: selectedNode.nodeNum } : 'NOT FOUND');
-
-                  // Find any traceroute where the selected node is either source or destination
                   const selectedTrace = traceroutes.find(tr =>
                     tr.toNodeId === selectedNodeId || tr.fromNodeId === selectedNodeId
                   );
-
-                  console.log('🔴 RED LINE: selectedTrace found:', selectedTrace ? 'YES' : 'NO');
-                  if (selectedTrace) {
-                    console.log('🔴 RED LINE: selectedTrace details:', { from: selectedTrace.fromNodeId, to: selectedTrace.toNodeId, route: selectedTrace.route });
-                  }
 
                   if (!selectedTrace) return null;
 
                   try {
                     const route = JSON.parse(selectedTrace.route || '[]');
                     const nodeSequence: number[] = [selectedTrace.fromNodeNum, ...route, selectedTrace.toNodeNum];
-                    console.log('🔴 RED LINE: nodeSequence:', nodeSequence);
 
                     const positions: [number, number][] = [];
 
-                    // Build position array
                     nodeSequence.forEach((nodeNum) => {
                       const node = processedNodes.find(n => n.nodeNum === nodeNum);
-                      console.log('🔴 RED LINE: Looking for node:', nodeNum, 'found:', node ? 'YES' : 'NO');
                       if (node?.position?.latitude && node?.position?.longitude) {
-                        console.log('🔴 RED LINE: Adding position:', [node.position.latitude, node.position.longitude]);
                         positions.push([node.position.latitude, node.position.longitude]);
                       }
                     });
 
-                    console.log('🔴 RED LINE: Final positions count:', positions.length);
                     if (positions.length < 2) {
-                      console.log('🔴 RED LINE: Not enough positions (need 2+)');
                       return null;
                     }
 
-                    console.log('🔴 RED LINE: RENDERING POLYLINE with positions:', positions);
                     return (
                       <Polyline
                         key="selected-traceroute"
@@ -1297,7 +1336,6 @@ function App() {
                       />
                     );
                   } catch (error) {
-                    console.error('🔴 RED LINE: Error rendering selected traceroute:', error);
                     return null;
                   }
                 })()}
@@ -1732,6 +1770,26 @@ function App() {
     </div>
   );
 
+  const handleMaxNodeAgeChange = (value: number) => {
+    setMaxNodeAgeHours(value);
+    localStorage.setItem('maxNodeAgeHours', value.toString());
+  };
+
+  const handleTracerouteIntervalChange = async (value: number) => {
+    setTracerouteIntervalMinutes(value);
+    localStorage.setItem('tracerouteIntervalMinutes', value.toString());
+
+    try {
+      await fetch('/api/settings/traceroute-interval', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ intervalMinutes: value })
+      });
+    } catch (error) {
+      console.error('Error updating traceroute interval:', error);
+    }
+  };
+
   const renderSettingsTab = () => (
     <div className="tab-content">
       <div className="settings-header-card">
@@ -1742,7 +1800,43 @@ function App() {
         </div>
       </div>
       <div className="settings-content">
-        <p className="no-data">Settings coming soon...</p>
+        <div className="settings-section">
+          <h3>Node Display</h3>
+          <div className="setting-item">
+            <label htmlFor="maxNodeAge">
+              Maximum Age of Active Nodes (hours)
+              <span className="setting-description">Nodes older than this will not appear in the Node List</span>
+            </label>
+            <input
+              id="maxNodeAge"
+              type="number"
+              min="1"
+              max="168"
+              value={maxNodeAgeHours}
+              onChange={(e) => handleMaxNodeAgeChange(parseInt(e.target.value))}
+              className="setting-input"
+            />
+          </div>
+        </div>
+
+        <div className="settings-section">
+          <h3>Traceroute</h3>
+          <div className="setting-item">
+            <label htmlFor="tracerouteInterval">
+              Automatic Traceroute Interval (minutes)
+              <span className="setting-description">How often to automatically send traceroutes to nodes</span>
+            </label>
+            <input
+              id="tracerouteInterval"
+              type="number"
+              min="1"
+              max="60"
+              value={tracerouteIntervalMinutes}
+              onChange={(e) => handleTracerouteIntervalChange(parseInt(e.target.value))}
+              className="setting-input"
+            />
+          </div>
+        </div>
       </div>
     </div>
   );
