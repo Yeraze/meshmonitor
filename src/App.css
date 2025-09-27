@@ -66,6 +66,18 @@ body {
   gap: 0.25rem;
 }
 
+.header-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.header-logo {
+  height: 2rem;
+  width: auto;
+  object-fit: contain;
+}
+
 .app-header h1 {
   margin: 0;
   color: var(--ctp-lavender);
@@ -173,8 +185,8 @@ body {
 
 .app-main {
   padding: 2rem;
-  max-width: 1400px;
-  margin: 0 auto;
+  width: 100%;
+  margin: 0;
   flex: 1;
 }
 
@@ -1582,6 +1594,30 @@ body {
   color: var(--ctp-subtext1);
 }
 
+.popup-dm-btn {
+  width: 100%;
+  margin-top: 0.75rem;
+  padding: 0.5rem 1rem;
+  background: var(--ctp-blue);
+  color: var(--ctp-base);
+  border: none;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.popup-dm-btn:hover {
+  background: var(--ctp-sapphire);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
 /* Responsive design */
 @media (max-width: 768px) {
   .nodes-split-view {
@@ -2026,4 +2062,51 @@ body {
 .footer-link:hover {
   color: var(--ctp-sapphire);
   text-decoration: underline;
+}
+
+/* Settings Page Styles */
+.settings-header-card {
+  background: var(--ctp-surface0);
+  border: 1px solid var(--ctp-surface1);
+  border-radius: 12px;
+  padding: 2rem;
+  margin-bottom: 2rem;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.settings-logo {
+  height: 4rem;
+  width: auto;
+  object-fit: contain;
+}
+
+.settings-title-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.settings-app-name {
+  margin: 0;
+  color: var(--ctp-lavender);
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+.settings-version {
+  margin: 0;
+  color: var(--ctp-subtext1);
+  font-size: 1rem;
+  font-family: 'Courier New', monospace;
+}
+
+.settings-content {
+  background: var(--ctp-surface0);
+  border: 1px solid var(--ctp-surface1);
+  border-radius: 12px;
+  padding: 2rem;
+  min-height: 200px;
 }

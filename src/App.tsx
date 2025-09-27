@@ -406,13 +406,6 @@ function App() {
       const nodesResponse = await fetch('/api/nodes');
       if (nodesResponse.ok) {
         const nodesData = await nodesResponse.json();
-        if (nodesData.length > 0) {
-          console.log('🔍 Frontend received node:', {
-            longName: nodesData[0].user?.longName,
-            role: nodesData[0].user?.role,
-            hopsAway: nodesData[0].hopsAway
-          });
-        }
         setNodes(nodesData);
       }
 
@@ -921,6 +914,8 @@ function App() {
       node.position.longitude != null
     );
 
+    console.log('🗺️ Map render:', { currentNodeId, selectedNodeId, tracerouteCount: traceroutes.length });
+
     // Calculate center point of all nodes for initial map view
     const getMapCenter = (): [number, number] => {
       if (nodesWithPosition.length === 0) {
@@ -952,13 +947,6 @@ function App() {
             {connectionStatus === 'connected' ? (
               processedNodes.length > 0 ? (
                 <>
-                {processedNodes.length > 0 && console.log('🔍 First processed node in UI:', {
-                  longName: processedNodes[0].user?.longName,
-                  role: processedNodes[0].user?.role,
-                  hopsAway: processedNodes[0].hopsAway,
-                  roleCheck: processedNodes[0].user?.role !== undefined && processedNodes[0].user?.role !== null,
-                  roleName: getRoleName(processedNodes[0].user?.role)
-                })}
                 {processedNodes.map(node => (
                   <div
                     key={node.nodeNum}
@@ -1119,6 +1107,18 @@ function App() {
                           {node.position!.altitude && ` (${node.position!.altitude}m)`}
                         </div>
                       </div>
+
+                      {node.user?.id && (
+                        <button
+                          className="popup-dm-btn"
+                          onClick={() => {
+                            setSelectedDMNode(node.user!.id);
+                            setActiveTab('messages');
+                          }}
+                        >
+                          💬 Direct Message
+                        </button>
+                      )}
                     </div>
                   </Popup>
                 </Marker>
@@ -1205,6 +1205,68 @@ function App() {
                       </Polyline>
                     );
                   });
+                })()}
+
+                {/* Draw selected node's traceroute in red */}
+                {selectedNodeId && (() => {
+                  console.log('🔴 RED LINE: selectedNodeId:', selectedNodeId);
+                  console.log('🔴 RED LINE: traceroutes count:', traceroutes.length);
+                  console.log('🔴 RED LINE: first 3 traceroutes FULL:', traceroutes.slice(0, 3));
+
+                  // Also check what the selected node looks like
+                  const selectedNode = processedNodes.find(n => n.user?.id === selectedNodeId);
+                  console.log('🔴 RED LINE: selected node:', selectedNode ? { id: selectedNode.user?.id, nodeNum: selectedNode.nodeNum } : 'NOT FOUND');
+
+                  // Find any traceroute where the selected node is either source or destination
+                  const selectedTrace = traceroutes.find(tr =>
+                    tr.toNodeId === selectedNodeId || tr.fromNodeId === selectedNodeId
+                  );
+
+                  console.log('🔴 RED LINE: selectedTrace found:', selectedTrace ? 'YES' : 'NO');
+                  if (selectedTrace) {
+                    console.log('🔴 RED LINE: selectedTrace details:', { from: selectedTrace.fromNodeId, to: selectedTrace.toNodeId, route: selectedTrace.route });
+                  }
+
+                  if (!selectedTrace) return null;
+
+                  try {
+                    const route = JSON.parse(selectedTrace.route || '[]');
+                    const nodeSequence: number[] = [selectedTrace.fromNodeNum, ...route, selectedTrace.toNodeNum];
+                    console.log('🔴 RED LINE: nodeSequence:', nodeSequence);
+
+                    const positions: [number, number][] = [];
+
+                    // Build position array
+                    nodeSequence.forEach((nodeNum) => {
+                      const node = processedNodes.find(n => n.nodeNum === nodeNum);
+                      console.log('🔴 RED LINE: Looking for node:', nodeNum, 'found:', node ? 'YES' : 'NO');
+                      if (node?.position?.latitude && node?.position?.longitude) {
+                        console.log('🔴 RED LINE: Adding position:', [node.position.latitude, node.position.longitude]);
+                        positions.push([node.position.latitude, node.position.longitude]);
+                      }
+                    });
+
+                    console.log('🔴 RED LINE: Final positions count:', positions.length);
+                    if (positions.length < 2) {
+                      console.log('🔴 RED LINE: Not enough positions (need 2+)');
+                      return null;
+                    }
+
+                    console.log('🔴 RED LINE: RENDERING POLYLINE with positions:', positions);
+                    return (
+                      <Polyline
+                        key="selected-traceroute"
+                        positions={positions}
+                        color="#f38ba8"
+                        weight={4}
+                        opacity={0.9}
+                        dashArray="10, 5"
+                      />
+                    );
+                  } catch (error) {
+                    console.error('🔴 RED LINE: Error rendering selected traceroute:', error);
+                    return null;
+                  }
                 })()}
             </MapContainer>
             {nodesWithPosition.length === 0 && (
@@ -1638,8 +1700,16 @@ function App() {
 
   const renderSettingsTab = () => (
     <div className="tab-content">
-      <h2>Settings</h2>
-      <p className="no-data">Settings coming soon...</p>
+      <div className="settings-header-card">
+        <img src="/logo.png" alt="MeshMonitor Logo" className="settings-logo" />
+        <div className="settings-title-section">
+          <h1 className="settings-app-name">MeshMonitor</h1>
+          <p className="settings-version">Version 0.1</p>
+        </div>
+      </div>
+      <div className="settings-content">
+        <p className="no-data">Settings coming soon...</p>
+      </div>
     </div>
   );
 
@@ -1647,7 +1717,10 @@ function App() {
     <div className="app">
       <header className="app-header">
         <div className="header-left">
-          <h1>MeshMonitor</h1>
+          <div className="header-title">
+            <img src="/logo.png" alt="MeshMonitor Logo" className="header-logo" />
+            <h1>MeshMonitor</h1>
+          </div>
           <div className="node-info">
             <span className="node-address">{nodeAddress}</span>
           </div>
@@ -1768,6 +1841,19 @@ function App() {
                 </div>
               )}
             </div>
+
+            {node.user?.id && (
+              <button
+                className="popup-dm-btn"
+                onClick={() => {
+                  setSelectedDMNode(node.user!.id);
+                  setActiveTab('messages');
+                  setNodePopup(null);
+                }}
+              >
+                💬 Direct Message
+              </button>
+            )}
           </div>
         );
       })()}
