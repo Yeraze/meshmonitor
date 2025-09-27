@@ -1,0 +1,188 @@
+import React, { useState, useEffect } from 'react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import './TelemetryGraphs.css';
+
+interface TelemetryData {
+  id?: number;
+  nodeId: string;
+  nodeNum: number;
+  telemetryType: string;
+  timestamp: number;
+  value: number;
+  unit?: string;
+  createdAt: number;
+}
+
+interface TelemetryGraphsProps {
+  nodeId: string;
+}
+
+interface ChartData {
+  timestamp: number;
+  value: number;
+  time: string;
+}
+
+const TelemetryGraphs: React.FC<TelemetryGraphsProps> = ({ nodeId }) => {
+  const [telemetryData, setTelemetryData] = useState<TelemetryData[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchTelemetry = async () => {
+      try {
+        if (isMounted) setLoading(true);
+        const response = await fetch(`/api/telemetry/${nodeId}?hours=24`);
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch telemetry: ${response.status} ${response.statusText}`);
+        }
+
+        const data: TelemetryData[] = await response.json();
+
+        if (isMounted) {
+          setTelemetryData(data);
+          setError(null);
+        }
+      } catch (error) {
+        console.error('Error fetching telemetry:', error);
+        if (isMounted) {
+          setError(error instanceof Error ? error.message : 'Failed to load telemetry data');
+        }
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    fetchTelemetry();
+    const interval = setInterval(fetchTelemetry, 30000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [nodeId]);
+
+  const groupByType = (data: TelemetryData[]): Map<string, TelemetryData[]> => {
+    const grouped = new Map<string, TelemetryData[]>();
+    data.forEach(item => {
+      if (!grouped.has(item.telemetryType)) {
+        grouped.set(item.telemetryType, []);
+      }
+      grouped.get(item.telemetryType)!.push(item);
+    });
+    return grouped;
+  };
+
+  const prepareChartData = (data: TelemetryData[]): ChartData[] => {
+    return data
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .map(item => ({
+        timestamp: item.timestamp,
+        value: item.value,
+        time: new Date(item.timestamp).toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit'
+        })
+      }));
+  };
+
+  const getTelemetryLabel = (type: string): string => {
+    const labels: { [key: string]: string } = {
+      batteryLevel: 'Battery Level',
+      voltage: 'Voltage',
+      channelUtilization: 'Channel Utilization',
+      airUtilTx: 'Air Utilization (TX)',
+      temperature: 'Temperature',
+      humidity: 'Humidity',
+      pressure: 'Barometric Pressure',
+      ch1Voltage: 'Channel 1 Voltage',
+      ch1Current: 'Channel 1 Current'
+    };
+    return labels[type] || type;
+  };
+
+  const getColor = (type: string): string => {
+    const colors: { [key: string]: string } = {
+      batteryLevel: '#82ca9d',
+      voltage: '#8884d8',
+      channelUtilization: '#ffc658',
+      airUtilTx: '#ff7c7c',
+      temperature: '#ff8042',
+      humidity: '#00c4cc',
+      pressure: '#a28dff',
+      ch1Voltage: '#d084d8',
+      ch1Current: '#ff6b9d'
+    };
+    return colors[type] || '#8884d8';
+  };
+
+  if (loading) {
+    return <div className="telemetry-loading">Loading telemetry data...</div>;
+  }
+
+  if (error) {
+    return <div className="telemetry-empty" style={{ color: '#f38ba8' }}>Error: {error}</div>;
+  }
+
+  if (telemetryData.length === 0) {
+    return <div className="telemetry-empty">No telemetry data available for this node</div>;
+  }
+
+  const groupedData = groupByType(telemetryData);
+
+  return (
+    <div className="telemetry-graphs">
+      <h3 className="telemetry-title">Last 24 Hours Telemetry</h3>
+      <div className="graphs-grid">
+        {Array.from(groupedData.entries()).map(([type, data]) => {
+          const chartData = prepareChartData(data);
+          const unit = data[0]?.unit || '';
+          const label = getTelemetryLabel(type);
+          const color = getColor(type);
+
+          return (
+            <div key={type} className="graph-container">
+              <h4 className="graph-title">{label} {unit && `(${unit})`}</h4>
+              <ResponsiveContainer width="100%" height={200}>
+                <LineChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#ccc" />
+                  <XAxis
+                    dataKey="time"
+                    tick={{ fontSize: 12 }}
+                    interval="preserveStartEnd"
+                  />
+                  <YAxis
+                    tick={{ fontSize: 12 }}
+                    domain={['auto', 'auto']}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#1e1e2e',
+                      border: '1px solid #45475a',
+                      borderRadius: '4px',
+                      color: '#cdd6f4'
+                    }}
+                    labelStyle={{ color: '#cdd6f4' }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="value"
+                    stroke={color}
+                    strokeWidth={2}
+                    dot={{ fill: color, r: 3 }}
+                    activeDot={{ r: 5 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+export default TelemetryGraphs;
