@@ -1289,7 +1289,8 @@ body {
 /* Split View Layout for Nodes */
 .nodes-split-view {
   display: flex;
-  height: calc(100vh - 140px); /* Account for header */
+  min-height: 600px;
+  max-height: calc(100vh - 240px); /* Account for header, tabs, and footer */
   gap: 0;
 }
 
