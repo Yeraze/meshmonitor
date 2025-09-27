@@ -581,6 +581,39 @@ app.post('/api/settings/traceroute-interval', (req, res) => {
   }
 });
 
+// Danger zone endpoints
+app.post('/api/purge/nodes', async (_req, res) => {
+  try {
+    databaseService.purgeAllNodes();
+    // Trigger a node refresh after purging
+    await meshtasticManager.refreshNodeDatabase();
+    res.json({ success: true, message: 'All nodes and traceroutes purged, refresh triggered' });
+  } catch (error) {
+    console.error('Error purging nodes:', error);
+    res.status(500).json({ error: 'Failed to purge nodes' });
+  }
+});
+
+app.post('/api/purge/telemetry', (_req, res) => {
+  try {
+    databaseService.purgeAllTelemetry();
+    res.json({ success: true, message: 'All telemetry data purged' });
+  } catch (error) {
+    console.error('Error purging telemetry:', error);
+    res.status(500).json({ error: 'Failed to purge telemetry' });
+  }
+});
+
+app.post('/api/purge/messages', (_req, res) => {
+  try {
+    databaseService.purgeAllMessages();
+    res.json({ success: true, message: 'All messages purged' });
+  } catch (error) {
+    console.error('Error purging messages:', error);
+    res.status(500).json({ error: 'Failed to purge messages' });
+  }
+});
+
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
   res.json({
