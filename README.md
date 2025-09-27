@@ -131,6 +131,33 @@ Your Meshtastic device must have:
 - HTTP API enabled
 - Network accessibility from MeshMonitor
 
+## Authentication
+
+**MeshMonitor does not include internal authentication.** The application assumes it is running in a trusted environment or behind an authentication layer.
+
+If you need to secure access to MeshMonitor, you should proxy it behind an authentication provider such as:
+
+- **[Authentik](https://goauthentik.io/)** - Open-source Identity Provider
+- **[Pocketbase](https://pocketbase.io/)** - Lightweight auth backend
+- **[Authelia](https://www.authelia.com/)** - Authentication and authorization server
+- **nginx with basic auth** - Simple username/password protection
+
+### Example: nginx with Basic Auth
+
+```nginx
+location / {
+    auth_basic "MeshMonitor";
+    auth_basic_user_file /etc/nginx/.htpasswd;
+    proxy_pass http://localhost:8080;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+}
+```
+
+### Example: Docker Compose with Authentik
+
+Refer to [Authentik's documentation](https://docs.goauthentik.io/) for setting up a reverse proxy with authentication.
+
 ## Architecture
 
 ```
@@ -348,3 +375,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ---
 
 **MeshMonitor** - Monitor your mesh, beautifully. 🌐✨
+
+_This application was entirely vibe coded with [Claude Code](https://claude.ai/code)._
