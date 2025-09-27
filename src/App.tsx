@@ -963,8 +963,6 @@ function App() {
       node.position.longitude != null
     );
 
-    console.log('🗺️ Map render:', { currentNodeId, selectedNodeId, tracerouteCount: traceroutes.length });
-
     // Calculate center point of all nodes for initial map view
     const getMapCenter = (): [number, number] => {
       if (nodesWithPosition.length === 0) {
@@ -1102,9 +1100,6 @@ function App() {
                       )}
                       {node.user?.id && (() => {
                         const hopCount = getTracerouteHopCount(node.user.id);
-                        if (hopCount < 999) {
-                          console.log(`Node ${node.user.longName} (${node.user.id}): ${hopCount} hops`);
-                        }
                         return hopCount < 999;
                       })() && (
                         <div className="node-hops" title="Traceroute Hops">
@@ -2009,15 +2004,25 @@ function App() {
           onClick={() => setActiveTab('channels')}
         >
           Channels
-          {Object.values(unreadCounts).some(count => count > 0) && (
+          {Object.entries(unreadCounts).some(([channel, count]) => parseInt(channel) !== -1 && count > 0) && (
             <span className="tab-notification-dot"></span>
           )}
         </button>
         <button
           className={`tab-btn ${activeTab === 'messages' ? 'active' : ''}`}
-          onClick={() => setActiveTab('messages')}
+          onClick={() => {
+            setActiveTab('messages');
+            // Clear unread count for direct messages (channel -1)
+            setUnreadCounts(prev => ({ ...prev, [-1]: 0 }));
+            // Set selected channel to -1 so new DMs don't create unread notifications
+            setSelectedChannel(-1);
+            selectedChannelRef.current = -1;
+          }}
         >
           Messages
+          {unreadCounts[-1] > 0 && (
+            <span className="tab-notification-dot"></span>
+          )}
         </button>
         <button
           className={`tab-btn ${activeTab === 'info' ? 'active' : ''}`}
