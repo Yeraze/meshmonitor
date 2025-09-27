@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -889,7 +889,7 @@ function App() {
 
 
   // Get processed (filtered and sorted) nodes
-  const getProcessedNodes = (): DeviceInfo[] => {
+  const processedNodes = useMemo((): DeviceInfo[] => {
     const cutoffTime = Date.now() / 1000 - (maxNodeAgeHours * 60 * 60);
 
     const ageFiltered = nodes.filter(node => {
@@ -899,7 +899,7 @@ function App() {
 
     const textFiltered = filterNodes(ageFiltered, nodeFilter);
     return sortNodes(textFiltered, sortField, sortDirection);
-  };
+  }, [nodes, maxNodeAgeHours, nodeFilter, sortField, sortDirection]);
 
   // Function to center map on a specific node
   const centerMapOnNode = useCallback((node: DeviceInfo) => {
@@ -953,7 +953,6 @@ function App() {
   };
 
   const renderNodesTab = () => {
-    const processedNodes = getProcessedNodes();
     const nodesWithPosition = processedNodes.filter(node =>
       node.position &&
       node.position.latitude != null &&
