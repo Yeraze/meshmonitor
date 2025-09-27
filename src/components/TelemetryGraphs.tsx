@@ -26,26 +26,43 @@ interface ChartData {
 const TelemetryGraphs: React.FC<TelemetryGraphsProps> = ({ nodeId }) => {
   const [telemetryData, setTelemetryData] = useState<TelemetryData[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let isMounted = true;
+
     const fetchTelemetry = async () => {
       try {
-        setLoading(true);
+        if (isMounted) setLoading(true);
         const response = await fetch(`/api/telemetry/${nodeId}?hours=24`);
-        if (response.ok) {
-          const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch telemetry: ${response.status} ${response.statusText}`);
+        }
+
+        const data: TelemetryData[] = await response.json();
+
+        if (isMounted) {
           setTelemetryData(data);
+          setError(null);
         }
       } catch (error) {
         console.error('Error fetching telemetry:', error);
+        if (isMounted) {
+          setError(error instanceof Error ? error.message : 'Failed to load telemetry data');
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     };
 
     fetchTelemetry();
     const interval = setInterval(fetchTelemetry, 30000);
-    return () => clearInterval(interval);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, [nodeId]);
 
   const groupByType = (data: TelemetryData[]): Map<string, TelemetryData[]> => {
@@ -104,6 +121,10 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = ({ nodeId }) => {
 
   if (loading) {
     return <div className="telemetry-loading">Loading telemetry data...</div>;
+  }
+
+  if (error) {
+    return <div className="telemetry-empty" style={{ color: '#f38ba8' }}>Error: {error}</div>;
   }
 
   if (telemetryData.length === 0) {
