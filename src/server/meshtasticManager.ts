@@ -2348,6 +2348,7 @@ class MeshtasticManager {
         throw new Error(`Failed to send traceroute: ${response.status} ${response.statusText}`);
       }
 
+      databaseService.recordTracerouteRequest(destination);
       console.log(`Traceroute request sent to node: !${destination.toString(16).padStart(8, '0')}`);
     } catch (error) {
       console.error('Error sending traceroute:', error);
