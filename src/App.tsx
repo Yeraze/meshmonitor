@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import './App.css'
@@ -64,6 +64,7 @@ interface DeviceInfo {
     channelUtilization?: number;
     airUtilTx?: number;
   };
+  hopsAway?: number;
   lastHeard?: number;
   snr?: number;
   rssi?: number;
@@ -144,6 +145,8 @@ function App() {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const lastNotificationTime = useRef<number>(0)
   const [tracerouteLoading, setTracerouteLoading] = useState<string | null>(null)
+  const [showRoutes, setShowRoutes] = useState<boolean>(false)
+  const [traceroutes, setTraceroutes] = useState<any[]>([])
 
   // New state for node list features
   const [nodeFilter, setNodeFilter] = useState<string>('')
@@ -222,6 +225,15 @@ function App() {
     console.log('🔄 selectedChannel state changed to:', selectedChannel);
     selectedChannelRef.current = selectedChannel;
   }, [selectedChannel]);
+
+  // Fetch traceroutes when showRoutes is enabled
+  useEffect(() => {
+    if (showRoutes && connectionStatus === 'connected') {
+      fetchTraceroutes();
+      const interval = setInterval(fetchTraceroutes, 10000); // Refresh every 10 seconds
+      return () => clearInterval(interval);
+    }
+  }, [showRoutes, connectionStatus]);
 
   // Auto-scroll to bottom when messages change or channel changes
   const scrollToBottom = () => {
@@ -328,6 +340,20 @@ function App() {
     }
   };
 
+  const fetchTraceroutes = async () => {
+    if (!showRoutes) return;
+
+    try {
+      const response = await fetch('/api/traceroutes/recent');
+      if (response.ok) {
+        const data = await response.json();
+        setTraceroutes(data);
+      }
+    } catch (error) {
+      console.error('Error fetching traceroutes:', error);
+    }
+  };
+
   const fetchChannels = async () => {
     try {
       const channelsResponse = await fetch('/api/channels');
@@ -382,6 +408,13 @@ function App() {
       const nodesResponse = await fetch('/api/nodes');
       if (nodesResponse.ok) {
         const nodesData = await nodesResponse.json();
+        if (nodesData.length > 0) {
+          console.log('🔍 Frontend received node:', {
+            longName: nodesData[0].user?.longName,
+            role: nodesData[0].user?.role,
+            hopsAway: nodesData[0].hopsAway
+          });
+        }
         setNodes(nodesData);
       }
 
@@ -887,7 +920,15 @@ function App() {
           <div className="nodes-list">
             {connectionStatus === 'connected' ? (
               processedNodes.length > 0 ? (
-                processedNodes.map(node => (
+                <>
+                {processedNodes.length > 0 && console.log('🔍 First processed node in UI:', {
+                  longName: processedNodes[0].user?.longName,
+                  role: processedNodes[0].user?.role,
+                  hopsAway: processedNodes[0].hopsAway,
+                  roleCheck: processedNodes[0].user?.role !== undefined && processedNodes[0].user?.role !== null,
+                  roleName: getRoleName(processedNodes[0].user?.role)
+                })}
+                {processedNodes.map(node => (
                   <div
                     key={node.nodeNum}
                     className={`node-item ${selectedNodeId === node.user?.id ? 'selected' : ''}`}
@@ -899,7 +940,7 @@ function App() {
                     <div className="node-header">
                       <div className="node-name">
                         {node.user?.longName || `Node ${node.nodeNum}`}
-                        {node.user?.role && getRoleName(node.user.role) && (
+                        {node.user?.role !== undefined && node.user?.role !== null && getRoleName(node.user.role) && (
                           <span className="node-role" title="Node Role"> {getRoleName(node.user.role)}</span>
                         )}
                       </div>
@@ -933,6 +974,11 @@ function App() {
                             🔋 {node.deviceMetrics.batteryLevel}%
                           </span>
                         )}
+                        {node.hopsAway != null && (
+                          <span className="stat" title="Hops Away">
+                            🔗 {node.hopsAway} hop{node.hopsAway !== 1 ? 's' : ''}
+                          </span>
+                        )}
                       </div>
 
                       <div className="node-time">
@@ -954,7 +1000,8 @@ function App() {
                       </div>
                     )}
                   </div>
-                ))
+                ))}
+                </>
               ) : (
                 <div className="no-data">
                   {nodeFilter ? 'No nodes match filter' : 'No nodes detected'}
@@ -972,6 +1019,16 @@ function App() {
         <div className="map-container">
           {connectionStatus === 'connected' ? (
             <>
+              <div className="map-controls">
+                <label className="map-control-item">
+                  <input
+                    type="checkbox"
+                    checked={showRoutes}
+                    onChange={(e) => setShowRoutes(e.target.checked)}
+                  />
+                  <span>Show Routes</span>
+                </label>
+              </div>
               <MapContainer
                 center={getMapCenter()}
                 zoom={nodesWithPosition.length > 0 ? 10 : 8}
@@ -1035,6 +1092,71 @@ function App() {
                   </Popup>
                 </Marker>
               ))}
+
+                {/* Draw traceroute paths */}
+                {showRoutes && (() => {
+                  // Calculate segment usage counts
+                  const segmentUsage = new Map<string, number>();
+                  const segmentsList: Array<{
+                    key: string;
+                    positions: [number, number][];
+                    nodeNums: number[];
+                  }> = [];
+
+                  traceroutes.forEach((tr, idx) => {
+                    try {
+                      const route = JSON.parse(tr.route || '[]');
+                      const nodeSequence: number[] = [tr.fromNodeNum, ...route, tr.toNodeNum];
+                      const positions: Array<{nodeNum: number; pos: [number, number]}> = [];
+
+                      // Build node sequence with positions
+                      nodeSequence.forEach((nodeNum) => {
+                        const node = nodes.find(n => n.nodeNum === nodeNum);
+                        if (node?.position?.latitude && node?.position?.longitude) {
+                          positions.push({
+                            nodeNum,
+                            pos: [node.position.latitude, node.position.longitude]
+                          });
+                        }
+                      });
+
+                      // Create segments and count usage
+                      for (let i = 0; i < positions.length - 1; i++) {
+                        const from = positions[i];
+                        const to = positions[i + 1];
+                        const segmentKey = [from.nodeNum, to.nodeNum].sort().join('-');
+
+                        segmentUsage.set(segmentKey, (segmentUsage.get(segmentKey) || 0) + 1);
+
+                        segmentsList.push({
+                          key: `tr-${idx}-seg-${i}`,
+                          positions: [from.pos, to.pos],
+                          nodeNums: [from.nodeNum, to.nodeNum]
+                        });
+                      }
+                    } catch (error) {
+                      console.error('Error parsing traceroute:', error);
+                    }
+                  });
+
+                  // Render segments with weighted lines
+                  return segmentsList.map((segment) => {
+                    const segmentKey = segment.nodeNums.sort().join('-');
+                    const usage = segmentUsage.get(segmentKey) || 1;
+                    // Base weight 2, add 1 per usage, max 8
+                    const weight = Math.min(2 + usage, 8);
+
+                    return (
+                      <Polyline
+                        key={segment.key}
+                        positions={segment.positions}
+                        color="#cba6f7"
+                        weight={weight}
+                        opacity={0.7}
+                      />
+                    );
+                  });
+                })()}
             </MapContainer>
             {nodesWithPosition.length === 0 && (
               <div className="map-overlay">
@@ -1138,6 +1260,12 @@ function App() {
                       // Filter MQTT messages if the option is disabled
                       if (!showMqttMessages) {
                         messagesForChannel = messagesForChannel.filter(msg => !isMqttBridgeMessage(msg));
+                      }
+
+                      // Filter traceroutes from Primary channel
+                      const primaryChannel = channels.find(ch => ch.name === 'Primary');
+                      if (primaryChannel && messageChannel === primaryChannel.id) {
+                        messagesForChannel = messagesForChannel.filter(msg => msg.portnum !== 70);
                       }
 
                       // Sort messages by timestamp (oldest first)

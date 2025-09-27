@@ -14,6 +14,7 @@ export interface DeviceInfo {
     longName: string;
     shortName: string;
     hwModel?: number;
+    role?: string;
   };
   position?: {
     latitude: number;
@@ -26,6 +27,7 @@ export interface DeviceInfo {
     channelUtilization?: number;
     airUtilTx?: number;
   };
+  hopsAway?: number;
   lastHeard?: number;
   snr?: number;
   rssi?: number;
@@ -47,6 +49,7 @@ class MeshtasticManager {
   private config: MeshtasticConfig;
   private isConnected = false;
   private pollingInterval: NodeJS.Timeout | null = null;
+  private tracerouteInterval: NodeJS.Timeout | null = null;
   private localNodeInfo: { nodeNum: number; nodeId: string; longName: string; shortName: string } | null = null;
 
   constructor() {
@@ -92,6 +95,9 @@ class MeshtasticManager {
 
         // Start polling for updates AFTER configuration is complete
         this.startPolling();
+
+        // Start automatic traceroute scheduler
+        this.startTracerouteScheduler();
 
         // Ensure we have a Primary channel
         console.log('➡️ About to call ensurePrimaryChannel()...');
@@ -212,6 +218,8 @@ class MeshtasticManager {
             longName: nodeInfo.user.longName || 'Connected Node',
             shortName: nodeInfo.user.shortName || nodeInfo.user.id?.substring(1, 5) || 'NODE',
             hwModel: nodeInfo.user.hwModel || 0,
+            role: nodeInfo.user.role,
+            hopsAway: nodeInfo.hopsAway,
             lastHeard: Date.now() / 1000,
             createdAt: Date.now(),
             updatedAt: Date.now()
@@ -242,6 +250,8 @@ class MeshtasticManager {
                 longName: node.user.longName || `Node ${node.user.id}`,
                 shortName: node.user.shortName || node.user.id?.substring(1, 5) || 'UNK',
                 hwModel: node.user.hwModel || 0,
+                role: node.user.role,
+                hopsAway: node.hopsAway,
                 latitude: node.position?.latitude,
                 longitude: node.position?.longitude,
                 altitude: node.position?.altitude,
@@ -336,6 +346,10 @@ class MeshtasticManager {
       clearInterval(this.pollingInterval);
       this.pollingInterval = null;
     }
+    if (this.tracerouteInterval) {
+      clearInterval(this.tracerouteInterval);
+      this.tracerouteInterval = null;
+    }
     console.log('Disconnected from Meshtastic node');
   }
 
@@ -359,6 +373,29 @@ class MeshtasticManager {
         }
       }
     }, 2000);
+  }
+
+  private startTracerouteScheduler(): void {
+    if (this.tracerouteInterval) {
+      clearInterval(this.tracerouteInterval);
+    }
+
+    // Run traceroutes every 3 minutes
+    this.tracerouteInterval = setInterval(async () => {
+      if (this.isConnected && this.localNodeInfo) {
+        try {
+          const targetNode = databaseService.getNodeNeedingTraceroute(this.localNodeInfo.nodeNum);
+          if (targetNode) {
+            console.log(`🗺️ Auto-traceroute: Sending traceroute to ${targetNode.longName || targetNode.nodeId} (${targetNode.nodeId})`);
+            await this.sendTraceroute(targetNode.nodeNum, 0);
+          } else {
+            console.log('🗺️ Auto-traceroute: No nodes available for traceroute');
+          }
+        } catch (error) {
+          console.error('❌ Error in auto-traceroute:', error);
+        }
+      }
+    }, 180000); // 3 minutes = 180000ms
   }
 
   private async pollForUpdates(): Promise<void> {
@@ -733,6 +770,7 @@ class MeshtasticManager {
         shortName: user.shortName,
         hwModel: user.hwModel,
         role: user.role,
+        hopsAway: meshPacket.hopsAway,
         lastHeard: Date.now() / 1000
       };
 
@@ -744,6 +782,7 @@ class MeshtasticManager {
         nodeData.rssi = meshPacket.rxRssi;
       }
 
+      console.log(`🔍 Saving node with role=${user.role}, hopsAway=${meshPacket.hopsAway}`);
       databaseService.upsertNode(nodeData);
       console.log(`👤 Updated user info: ${user.longName || nodeId}`);
     } catch (error) {
@@ -927,6 +966,7 @@ class MeshtasticManager {
       }
 
       const channelIndex = meshPacket.channel !== undefined ? meshPacket.channel : 0;
+      const timestamp = meshPacket.rxTime ? Number(meshPacket.rxTime) * 1000 : Date.now();
 
       // Save as a special message in the database
       const message = {
@@ -938,13 +978,30 @@ class MeshtasticManager {
         text: routeText,
         channel: channelIndex,
         portnum: 70, // TRACEROUTE_APP
-        timestamp: meshPacket.rxTime ? Number(meshPacket.rxTime) * 1000 : Date.now(),
-        rxTime: meshPacket.rxTime ? Number(meshPacket.rxTime) * 1000 : Date.now(),
+        timestamp: timestamp,
+        rxTime: timestamp,
         createdAt: Date.now()
       };
 
       databaseService.insertMessage(message);
       console.log(`💾 Saved traceroute result from ${fromNodeId}`);
+
+      // Save to traceroutes table
+      const tracerouteRecord = {
+        fromNodeNum: fromNum,
+        toNodeNum: toNum,
+        fromNodeId: fromNodeId,
+        toNodeId: toNodeId,
+        route: JSON.stringify(route),
+        routeBack: JSON.stringify(routeBack),
+        snrTowards: JSON.stringify(snrTowards),
+        snrBack: JSON.stringify(snrBack),
+        timestamp: timestamp,
+        createdAt: Date.now()
+      };
+
+      databaseService.insertTraceroute(tracerouteRecord);
+      console.log(`💾 Saved traceroute record to traceroutes table`);
     } catch (error) {
       console.error('❌ Error processing traceroute message:', error);
     }
@@ -2308,30 +2365,55 @@ class MeshtasticManager {
   // Get data from database instead of maintaining in-memory state
   getAllNodes(): DeviceInfo[] {
     const dbNodes = databaseService.getAllNodes();
-    return dbNodes.map(node => ({
-      nodeNum: node.nodeNum,
-      user: {
-        id: node.nodeId,
-        longName: node.longName || '',
-        shortName: node.shortName || '',
-        hwModel: node.hwModel,
-        role: node.role?.toString()
-      },
-      position: node.latitude && node.longitude ? {
-        latitude: node.latitude,
-        longitude: node.longitude,
-        altitude: node.altitude
-      } : undefined,
-      deviceMetrics: {
-        batteryLevel: node.batteryLevel,
-        voltage: node.voltage,
-        channelUtilization: node.channelUtilization,
-        airUtilTx: node.airUtilTx
-      },
-      lastHeard: node.lastHeard,
-      snr: node.snr,
-      rssi: node.rssi
-    }));
+    if (dbNodes.length > 0) {
+      console.log('🔍 Sample dbNode from database:', {
+        nodeId: dbNodes[0].nodeId,
+        longName: dbNodes[0].longName,
+        role: dbNodes[0].role,
+        hopsAway: dbNodes[0].hopsAway
+      });
+    }
+    return dbNodes.map(node => {
+      const deviceInfo: any = {
+        nodeNum: node.nodeNum,
+        user: {
+          id: node.nodeId,
+          longName: node.longName || '',
+          shortName: node.shortName || '',
+          hwModel: node.hwModel
+        },
+        deviceMetrics: {
+          batteryLevel: node.batteryLevel,
+          voltage: node.voltage,
+          channelUtilization: node.channelUtilization,
+          airUtilTx: node.airUtilTx
+        },
+        lastHeard: node.lastHeard,
+        snr: node.snr,
+        rssi: node.rssi
+      };
+
+      // Add role if it exists
+      if (node.role !== null && node.role !== undefined) {
+        deviceInfo.user.role = node.role.toString();
+      }
+
+      // Add hopsAway if it exists
+      if (node.hopsAway !== null && node.hopsAway !== undefined) {
+        deviceInfo.hopsAway = node.hopsAway;
+      }
+
+      // Add position if coordinates exist
+      if (node.latitude && node.longitude) {
+        deviceInfo.position = {
+          latitude: node.latitude,
+          longitude: node.longitude,
+          altitude: node.altitude
+        };
+      }
+
+      return deviceInfo;
+    });
   }
 
   getRecentMessages(limit: number = 50): MeshMessage[] {

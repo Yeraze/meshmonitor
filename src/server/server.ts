@@ -50,6 +50,12 @@ app.use(express.static(buildPath));
 app.get('/api/nodes', (_req, res) => {
   try {
     const nodes = meshtasticManager.getAllNodes();
+    console.log('🔍 Sending nodes to frontend, sample node:', nodes[0] ? {
+      nodeNum: nodes[0].nodeNum,
+      longName: nodes[0].user?.longName,
+      role: nodes[0].user?.role,
+      hopsAway: nodes[0].hopsAway
+    } : 'No nodes');
     res.json(nodes);
   } catch (error) {
     console.error('Error fetching nodes:', error);
@@ -387,6 +393,23 @@ app.post('/api/traceroute', async (req, res) => {
   } catch (error) {
     console.error('Error sending traceroute:', error);
     res.status(500).json({ error: 'Failed to send traceroute' });
+  }
+});
+
+// Get recent traceroutes (last 24 hours)
+app.get('/api/traceroutes/recent', (req, res) => {
+  try {
+    const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 24;
+    const limit = req.query.limit ? parseInt(req.query.limit as string) : 100;
+
+    const allTraceroutes = databaseService.getAllTraceroutes(limit);
+    const cutoffTime = Date.now() - (hoursParam * 60 * 60 * 1000);
+
+    const recentTraceroutes = allTraceroutes.filter(tr => tr.timestamp >= cutoffTime);
+    res.json(recentTraceroutes);
+  } catch (error) {
+    console.error('Error fetching recent traceroutes:', error);
+    res.status(500).json({ error: 'Failed to fetch recent traceroutes' });
   }
 });
 

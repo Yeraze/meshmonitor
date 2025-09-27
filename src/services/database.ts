@@ -12,6 +12,7 @@ export interface DbNode {
   shortName: string;
   hwModel: number;
   role?: number;
+  hopsAway?: number;
   macaddr?: string;
   latitude?: number;
   longitude?: number;
@@ -62,6 +63,20 @@ export interface DbTelemetry {
   timestamp: number;
   value: number;
   unit?: string;
+  createdAt: number;
+}
+
+export interface DbTraceroute {
+  id?: number;
+  fromNodeNum: number;
+  toNodeNum: number;
+  fromNodeId: string;
+  toNodeId: string;
+  route: string;
+  routeBack: string;
+  snrTowards: string;
+  snrBack: string;
+  timestamp: number;
   createdAt: number;
 }
 
@@ -124,6 +139,7 @@ class DatabaseService {
         shortName TEXT,
         hwModel INTEGER,
         role INTEGER,
+        hopsAway INTEGER,
         macaddr TEXT,
         latitude REAL,
         longitude REAL,
@@ -184,6 +200,24 @@ class DatabaseService {
         unit TEXT,
         createdAt INTEGER NOT NULL,
         FOREIGN KEY (nodeNum) REFERENCES nodes(nodeNum)
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS traceroutes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fromNodeNum INTEGER NOT NULL,
+        toNodeNum INTEGER NOT NULL,
+        fromNodeId TEXT NOT NULL,
+        toNodeId TEXT NOT NULL,
+        route TEXT,
+        routeBack TEXT,
+        snrTowards TEXT,
+        snrBack TEXT,
+        timestamp INTEGER NOT NULL,
+        createdAt INTEGER NOT NULL,
+        FOREIGN KEY (fromNodeNum) REFERENCES nodes(nodeNum),
+        FOREIGN KEY (toNodeNum) REFERENCES nodes(nodeNum)
       );
     `);
 
@@ -250,6 +284,17 @@ class DatabaseService {
       }
     }
 
+    try {
+      this.db.exec(`
+        ALTER TABLE nodes ADD COLUMN hopsAway INTEGER;
+      `);
+      console.log('✅ Added hopsAway column');
+    } catch (error: any) {
+      if (!error.message?.includes('duplicate column')) {
+        console.log('⚠️ hopsAway column already exists or other error:', error.message);
+      }
+    }
+
     console.log('Database migrations completed');
   }
 
@@ -293,6 +338,7 @@ class DatabaseService {
           shortName = COALESCE(?, shortName),
           hwModel = COALESCE(?, hwModel),
           role = COALESCE(?, role),
+          hopsAway = COALESCE(?, hopsAway),
           macaddr = COALESCE(?, macaddr),
           latitude = COALESCE(?, latitude),
           longitude = COALESCE(?, longitude),
@@ -314,6 +360,7 @@ class DatabaseService {
         nodeData.shortName,
         nodeData.hwModel,
         nodeData.role,
+        nodeData.hopsAway,
         nodeData.macaddr,
         nodeData.latitude,
         nodeData.longitude,
@@ -331,11 +378,11 @@ class DatabaseService {
     } else {
       const stmt = this.db.prepare(`
         INSERT INTO nodes (
-          nodeNum, nodeId, longName, shortName, hwModel, role, macaddr,
+          nodeNum, nodeId, longName, shortName, hwModel, role, hopsAway, macaddr,
           latitude, longitude, altitude, batteryLevel, voltage,
           channelUtilization, airUtilTx, lastHeard, snr, rssi,
           createdAt, updatedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       stmt.run(
@@ -345,6 +392,7 @@ class DatabaseService {
         nodeData.shortName || null,
         nodeData.hwModel || null,
         nodeData.role || null,
+        nodeData.hopsAway || null,
         nodeData.macaddr || null,
         nodeData.latitude || null,
         nodeData.longitude || null,
@@ -714,6 +762,80 @@ class DatabaseService {
     `);
     const telemetry = stmt.all(nodeId, limit) as DbTelemetry[];
     return telemetry.map(t => this.normalizeBigInts(t));
+  }
+
+  insertTraceroute(tracerouteData: DbTraceroute): void {
+    const stmt = this.db.prepare(`
+      INSERT INTO traceroutes (
+        fromNodeNum, toNodeNum, fromNodeId, toNodeId, route, routeBack, snrTowards, snrBack, timestamp, createdAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    stmt.run(
+      tracerouteData.fromNodeNum,
+      tracerouteData.toNodeNum,
+      tracerouteData.fromNodeId,
+      tracerouteData.toNodeId,
+      tracerouteData.route || null,
+      tracerouteData.routeBack || null,
+      tracerouteData.snrTowards || null,
+      tracerouteData.snrBack || null,
+      tracerouteData.timestamp,
+      tracerouteData.createdAt
+    );
+  }
+
+  getTraceroutesByNodes(fromNodeNum: number, toNodeNum: number, limit: number = 10): DbTraceroute[] {
+    const stmt = this.db.prepare(`
+      SELECT * FROM traceroutes
+      WHERE fromNodeNum = ? AND toNodeNum = ?
+      ORDER BY timestamp DESC
+      LIMIT ?
+    `);
+    const traceroutes = stmt.all(fromNodeNum, toNodeNum, limit) as DbTraceroute[];
+    return traceroutes.map(t => this.normalizeBigInts(t));
+  }
+
+  getAllTraceroutes(limit: number = 100): DbTraceroute[] {
+    const stmt = this.db.prepare(`
+      SELECT * FROM traceroutes
+      ORDER BY timestamp DESC
+      LIMIT ?
+    `);
+    const traceroutes = stmt.all(limit) as DbTraceroute[];
+    return traceroutes.map(t => this.normalizeBigInts(t));
+  }
+
+  getNodeNeedingTraceroute(localNodeNum: number): DbNode | null {
+    // First, try to find a node with no traceroute at all
+    const stmtNoTraceroute = this.db.prepare(`
+      SELECT n.* FROM nodes n
+      LEFT JOIN traceroutes t ON n.nodeNum = t.toNodeNum
+      WHERE n.nodeNum != ? AND t.toNodeNum IS NULL
+      ORDER BY n.lastHeard DESC
+      LIMIT 1
+    `);
+    const nodeWithoutTraceroute = stmtNoTraceroute.get(localNodeNum) as DbNode | null;
+
+    if (nodeWithoutTraceroute) {
+      return this.normalizeBigInts(nodeWithoutTraceroute);
+    }
+
+    // If all nodes have traceroutes, find the one with the oldest traceroute
+    const stmtOldestTraceroute = this.db.prepare(`
+      SELECT n.* FROM nodes n
+      LEFT JOIN (
+        SELECT toNodeNum, MAX(timestamp) as lastTraceroute
+        FROM traceroutes
+        GROUP BY toNodeNum
+      ) t ON n.nodeNum = t.toNodeNum
+      WHERE n.nodeNum != ?
+      ORDER BY t.lastTraceroute ASC, n.lastHeard DESC
+      LIMIT 1
+    `);
+    const nodeWithOldestTraceroute = stmtOldestTraceroute.get(localNodeNum) as DbNode | null;
+
+    return nodeWithOldestTraceroute ? this.normalizeBigInts(nodeWithOldestTraceroute) : null;
   }
 
   getTelemetryByType(telemetryType: string, limit: number = 100): DbTelemetry[] {
