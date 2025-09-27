@@ -50,6 +50,7 @@ class MeshtasticManager {
   private isConnected = false;
   private pollingInterval: NodeJS.Timeout | null = null;
   private tracerouteInterval: NodeJS.Timeout | null = null;
+  private tracerouteIntervalMinutes: number = 3;
   private localNodeInfo: { nodeNum: number; nodeId: string; longName: string; shortName: string } | null = null;
 
   constructor() {
@@ -380,7 +381,9 @@ class MeshtasticManager {
       clearInterval(this.tracerouteInterval);
     }
 
-    // Run traceroutes every 3 minutes
+    const intervalMs = this.tracerouteIntervalMinutes * 60 * 1000;
+    console.log(`🗺️ Starting traceroute scheduler with ${this.tracerouteIntervalMinutes} minute interval`);
+
     this.tracerouteInterval = setInterval(async () => {
       if (this.isConnected && this.localNodeInfo) {
         try {
@@ -395,7 +398,19 @@ class MeshtasticManager {
           console.error('❌ Error in auto-traceroute:', error);
         }
       }
-    }, 180000); // 3 minutes = 180000ms
+    }, intervalMs);
+  }
+
+  setTracerouteInterval(minutes: number): void {
+    if (minutes < 1 || minutes > 60) {
+      throw new Error('Traceroute interval must be between 1 and 60 minutes');
+    }
+    this.tracerouteIntervalMinutes = minutes;
+    console.log(`🗺️ Traceroute interval updated to ${minutes} minutes`);
+
+    if (this.isConnected) {
+      this.startTracerouteScheduler();
+    }
   }
 
   private async pollForUpdates(): Promise<void> {
@@ -1045,12 +1060,13 @@ class MeshtasticManager {
         nodeData.altitude = nodeInfo.position.altitude;
       }
 
-      // Add device metrics if available
+      // Add device metrics if available (updates node's current state only)
       if (nodeInfo.deviceMetrics) {
         nodeData.batteryLevel = nodeInfo.deviceMetrics.batteryLevel;
         nodeData.voltage = nodeInfo.deviceMetrics.voltage;
         nodeData.channelUtilization = nodeInfo.deviceMetrics.channelUtilization;
         nodeData.airUtilTx = nodeInfo.deviceMetrics.airUtilTx;
+        // Note: Historical telemetry is saved only from TELEMETRY_APP packets in processTelemetryProtobuf()
       }
 
       databaseService.upsertNode(nodeData);
