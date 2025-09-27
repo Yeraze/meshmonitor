@@ -563,16 +563,26 @@ class MeshtasticManager {
     console.log(`🔄 Processing MeshPacket: ID=${meshPacket.id}, from=${meshPacket.from}, to=${meshPacket.to}`);
 
     // Extract node information if available
+    // Note: Only update technical fields (SNR/RSSI/lastHeard), not names
+    // Names should only come from NODEINFO packets
     if (meshPacket.from && meshPacket.from !== BigInt(0)) {
       const fromNum = Number(meshPacket.from);
       const nodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
+
+      // Check if node exists first
+      const existingNode = databaseService.getNode(fromNum);
+
       const nodeData: any = {
         nodeNum: fromNum,
         nodeId: nodeId,
-        longName: `Node ${nodeId}`,
-        shortName: nodeId.substring(1, 5),
         lastHeard: meshPacket.rxTime ? Number(meshPacket.rxTime) / 1000 : Date.now() / 1000
       };
+
+      // Only set default name if this is a brand new node
+      if (!existingNode) {
+        nodeData.longName = `Node ${nodeId}`;
+        nodeData.shortName = nodeId.substring(1, 5);
+      }
 
       // Only include SNR/RSSI if they have valid values
       if (meshPacket.rxSnr && meshPacket.rxSnr !== 0) {
@@ -679,10 +689,13 @@ class MeshtasticManager {
           }
         }
 
-        const channelIndex = meshPacket.channel !== undefined ? meshPacket.channel : 0;
+        // Determine if this is a direct message or a channel message
+        // Direct messages (not broadcast) should use channel -1
+        const isDirectMessage = toNum !== 4294967295;
+        const channelIndex = isDirectMessage ? -1 : (meshPacket.channel !== undefined ? meshPacket.channel : 0);
 
         // Ensure channel 0 (Primary) exists if this message uses it
-        if (channelIndex === 0) {
+        if (!isDirectMessage && channelIndex === 0) {
           const channel0 = databaseService.getChannelById(0);
           if (!channel0) {
             console.log('📡 Creating Primary channel (ID 0) for message with channel=0');
@@ -716,7 +729,11 @@ class MeshtasticManager {
           createdAt: Date.now()
         };
         databaseService.insertMessage(message);
-        console.log(`💾 Saved text message from ${message.fromNodeId}: "${messageText.substring(0, 30)}..." (replyId: ${message.replyId})`);
+        if (isDirectMessage) {
+          console.log(`💾 Saved direct message from ${message.fromNodeId} to ${message.toNodeId}: "${messageText.substring(0, 30)}..." (replyId: ${message.replyId})`);
+        } else {
+          console.log(`💾 Saved channel message from ${message.fromNodeId} on channel ${channelIndex}: "${messageText.substring(0, 30)}..." (replyId: ${message.replyId})`);
+        }
       }
     } catch (error) {
       console.error('❌ Error processing text message:', error);
@@ -836,8 +853,9 @@ class MeshtasticManager {
       }
 
       // Handle different telemetry types
-      if (telemetry.variant?.case === 'deviceMetrics' && telemetry.variant.value) {
-        const deviceMetrics = telemetry.variant.value;
+      // Note: The protobuf decoder puts variant fields directly on the telemetry object
+      if (telemetry.deviceMetrics) {
+        const deviceMetrics = telemetry.deviceMetrics;
         console.log(`📊 Device telemetry: battery=${deviceMetrics.batteryLevel}%, voltage=${deviceMetrics.voltage}V`);
 
         nodeData.batteryLevel = deviceMetrics.batteryLevel;
@@ -870,8 +888,8 @@ class MeshtasticManager {
             timestamp, value: deviceMetrics.airUtilTx, unit: '%', createdAt: now
           });
         }
-      } else if (telemetry.variant?.case === 'environmentMetrics' && telemetry.variant.value) {
-        const envMetrics = telemetry.variant.value;
+      } else if (telemetry.environmentMetrics) {
+        const envMetrics = telemetry.environmentMetrics;
         console.log(`🌡️ Environment telemetry: temp=${envMetrics.temperature}°C, humidity=${envMetrics.relativeHumidity}%`);
 
         if (envMetrics.temperature !== undefined) {
@@ -892,8 +910,8 @@ class MeshtasticManager {
             timestamp, value: envMetrics.barometricPressure, unit: 'hPa', createdAt: now
           });
         }
-      } else if (telemetry.variant?.case === 'powerMetrics' && telemetry.variant.value) {
-        const powerMetrics = telemetry.variant.value;
+      } else if (telemetry.powerMetrics) {
+        const powerMetrics = telemetry.powerMetrics;
         console.log(`⚡ Power telemetry: ch1_voltage=${powerMetrics.ch1Voltage}V`);
 
         if (powerMetrics.ch1Voltage !== undefined) {
@@ -929,23 +947,43 @@ class MeshtasticManager {
 
       console.log(`🗺️ Traceroute response from ${fromNodeId}:`, routeDiscovery);
 
-      // Ensure from node exists in database
-      databaseService.upsertNode({
-        nodeNum: fromNum,
-        nodeId: fromNodeId,
-        longName: `Node ${fromNodeId}`,
-        shortName: fromNodeId.substring(1, 5),
-        lastHeard: Date.now() / 1000
-      });
+      // Ensure from node exists in database (don't overwrite existing names)
+      const existingFromNode = databaseService.getNode(fromNum);
+      if (!existingFromNode) {
+        databaseService.upsertNode({
+          nodeNum: fromNum,
+          nodeId: fromNodeId,
+          longName: `Node ${fromNodeId}`,
+          shortName: fromNodeId.substring(1, 5),
+          lastHeard: Date.now() / 1000
+        });
+      } else {
+        // Just update lastHeard, don't touch the name
+        databaseService.upsertNode({
+          nodeNum: fromNum,
+          nodeId: fromNodeId,
+          lastHeard: Date.now() / 1000
+        });
+      }
 
-      // Ensure to node exists in database
-      databaseService.upsertNode({
-        nodeNum: toNum,
-        nodeId: toNodeId,
-        longName: `Node ${toNodeId}`,
-        shortName: toNodeId.substring(1, 5),
-        lastHeard: Date.now() / 1000
-      });
+      // Ensure to node exists in database (don't overwrite existing names)
+      const existingToNode = databaseService.getNode(toNum);
+      if (!existingToNode) {
+        databaseService.upsertNode({
+          nodeNum: toNum,
+          nodeId: toNodeId,
+          longName: `Node ${toNodeId}`,
+          shortName: toNodeId.substring(1, 5),
+          lastHeard: Date.now() / 1000
+        });
+      } else {
+        // Just update lastHeard, don't touch the name
+        databaseService.upsertNode({
+          nodeNum: toNum,
+          nodeId: toNodeId,
+          lastHeard: Date.now() / 1000
+        });
+      }
 
       // Build the route string
       const route = routeDiscovery.route || [];
@@ -980,7 +1018,9 @@ class MeshtasticManager {
         });
       }
 
-      const channelIndex = meshPacket.channel !== undefined ? meshPacket.channel : 0;
+      // Traceroute responses are direct messages, not channel messages
+      const isDirectMessage = toNum !== 4294967295;
+      const channelIndex = isDirectMessage ? -1 : (meshPacket.channel !== undefined ? meshPacket.channel : 0);
       const timestamp = meshPacket.rxTime ? Number(meshPacket.rxTime) * 1000 : Date.now();
 
       // Save as a special message in the database
@@ -999,7 +1039,7 @@ class MeshtasticManager {
       };
 
       databaseService.insertMessage(message);
-      console.log(`💾 Saved traceroute result from ${fromNodeId}`);
+      console.log(`💾 Saved traceroute result from ${fromNodeId} (channel: ${channelIndex})`);
 
       // Save to traceroutes table
       const tracerouteRecord = {
@@ -1060,14 +1100,8 @@ class MeshtasticManager {
         nodeData.altitude = nodeInfo.position.altitude;
       }
 
-      // Add device metrics if available (updates node's current state only)
-      if (nodeInfo.deviceMetrics) {
-        nodeData.batteryLevel = nodeInfo.deviceMetrics.batteryLevel;
-        nodeData.voltage = nodeInfo.deviceMetrics.voltage;
-        nodeData.channelUtilization = nodeInfo.deviceMetrics.channelUtilization;
-        nodeData.airUtilTx = nodeInfo.deviceMetrics.airUtilTx;
-        // Note: Historical telemetry is saved only from TELEMETRY_APP packets in processTelemetryProtobuf()
-      }
+      // Note: Telemetry data (batteryLevel, voltage, etc.) is NOT saved from NodeInfo packets
+      // It is only saved from actual TELEMETRY_APP packets in processTelemetryMessageProtobuf()
 
       databaseService.upsertNode(nodeData);
       console.log(`🏠 Updated node info: ${nodeData.longName || nodeId}`);
@@ -1420,10 +1454,8 @@ class MeshtasticManager {
           result.hwModel = nodeInfo.user.hw_model;
         }
 
-        if (nodeInfo.device_metrics) {
-          result.batteryLevel = nodeInfo.device_metrics.battery_level;
-          result.voltage = nodeInfo.device_metrics.voltage;
-        }
+        // Note: Telemetry data (batteryLevel, voltage, etc.) is NOT extracted from NodeInfo during config parsing
+        // It is only saved from actual TELEMETRY_APP packets in processTelemetryMessageProtobuf()
 
         console.log(`📍 Config position data: ${coords.latitude}, ${coords.longitude} for ${nodeId}`);
       }
@@ -1876,8 +1908,8 @@ class MeshtasticManager {
           lastHeard: Date.now() / 1000,
           snr: telemetry.snr,
           rssi: telemetry.rssi,
-          position: telemetry.position,
-          deviceMetrics: telemetry.deviceMetrics
+          position: telemetry.position
+          // Note: deviceMetrics are NOT included - telemetry is only saved from TELEMETRY_APP packets
         }
       };
     }
@@ -2196,6 +2228,10 @@ class MeshtasticManager {
         databaseService.upsertNode(nodeData);
       }
 
+      // Determine if this is a direct message or a channel message
+      const isDirectMessage = toNodeNum !== 4294967295;
+      const channelIndex = isDirectMessage ? -1 : (packet.channel || 0);
+
       const message = {
         id: packet.id || `${fromNodeId}_${Date.now()}`,
         fromNodeNum: fromNodeNum,
@@ -2203,7 +2239,7 @@ class MeshtasticManager {
         fromNodeId: fromNodeId,
         toNodeId: toNodeId,
         text: packet.text,
-        channel: packet.channel || 0,
+        channel: channelIndex,
         portnum: packet.portnum,
         timestamp: packet.timestamp || Date.now(),
         rxTime: packet.rxTime || packet.timestamp || Date.now(),
@@ -2212,7 +2248,11 @@ class MeshtasticManager {
 
       try {
         databaseService.insertMessage(message);
-        console.log('Saved message to database:', message.text.substring(0, 50) + (message.text.length > 50 ? '...' : ''));
+        if (isDirectMessage) {
+          console.log('Saved direct message to database:', message.text.substring(0, 50) + (message.text.length > 50 ? '...' : ''));
+        } else {
+          console.log('Saved channel message to database:', message.text.substring(0, 50) + (message.text.length > 50 ? '...' : ''));
+        }
       } catch (error) {
         console.error('Failed to save message:', error);
         console.error('Message data:', message);
@@ -2232,10 +2272,8 @@ class MeshtasticManager {
       latitude: nodeInfo.position?.latitude,
       longitude: nodeInfo.position?.longitude,
       altitude: nodeInfo.position?.altitude,
-      batteryLevel: nodeInfo.deviceMetrics?.batteryLevel,
-      voltage: nodeInfo.deviceMetrics?.voltage,
-      channelUtilization: nodeInfo.deviceMetrics?.channelUtilization,
-      airUtilTx: nodeInfo.deviceMetrics?.airUtilTx,
+      // Note: Telemetry data (batteryLevel, voltage, etc.) is NOT saved from NodeInfo packets
+      // It is only saved from actual TELEMETRY_APP packets in processTelemetryMessageProtobuf()
       lastHeard: nodeInfo.lastHeard ? Math.floor(nodeInfo.lastHeard) : Math.floor(Date.now() / 1000),
       snr: nodeInfo.snr,
       rssi: nodeInfo.rssi
