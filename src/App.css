@@ -1809,10 +1809,47 @@ body {
 
 /* Traceroute Styles */
 .dm-header {
+  margin-bottom: 1rem;
+}
+
+.dm-header-top {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.traceroute-info {
+  background: var(--ctp-surface1);
+  border-left: 4px solid var(--ctp-mauve);
+  padding: 0.75rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+}
+
+.traceroute-route {
+  margin-bottom: 0.5rem;
+  color: var(--ctp-text);
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.traceroute-route:last-of-type {
+  margin-bottom: 0.25rem;
+}
+
+.traceroute-route strong {
+  color: var(--ctp-mauve);
+  margin-right: 0.5rem;
+  display: inline-block;
+  min-width: 80px;
+}
+
+.traceroute-age {
+  font-size: 0.75rem;
+  color: var(--ctp-subtext0);
+  font-style: italic;
+  margin-top: 0.5rem;
 }
 
 .traceroute-btn {
@@ -1869,6 +1906,45 @@ body {
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
+}
+
+/* Route Popup Styles */
+.route-popup {
+  min-width: 200px;
+}
+
+.route-popup h4 {
+  margin: 0 0 0.5rem 0;
+  color: var(--ctp-mauve);
+  font-size: 1rem;
+  border-bottom: 2px solid var(--ctp-mauve);
+  padding-bottom: 0.25rem;
+}
+
+.route-endpoints {
+  margin: 0.75rem 0;
+  padding: 0.5rem;
+  background: var(--ctp-surface1);
+  border-radius: 4px;
+  text-align: center;
+  font-size: 0.9rem;
+}
+
+.route-endpoints strong {
+  color: var(--ctp-text);
+  font-weight: 600;
+}
+
+.route-usage {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--ctp-subtext1);
+  text-align: center;
+}
+
+.route-usage strong {
+  color: var(--ctp-mauve);
+  font-weight: 600;
 }
 
 /* Map Controls */

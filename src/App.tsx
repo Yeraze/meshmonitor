@@ -226,14 +226,14 @@ function App() {
     selectedChannelRef.current = selectedChannel;
   }, [selectedChannel]);
 
-  // Fetch traceroutes when showRoutes is enabled
+  // Fetch traceroutes when showRoutes is enabled or Messages tab is active
   useEffect(() => {
-    if (showRoutes && connectionStatus === 'connected') {
+    if ((showRoutes || activeTab === 'messages') && connectionStatus === 'connected') {
       fetchTraceroutes();
       const interval = setInterval(fetchTraceroutes, 10000); // Refresh every 10 seconds
       return () => clearInterval(interval);
     }
-  }, [showRoutes, connectionStatus]);
+  }, [showRoutes, activeTab, connectionStatus]);
 
   // Auto-scroll to bottom when messages change or channel changes
   const scrollToBottom = () => {
@@ -341,8 +341,6 @@ function App() {
   };
 
   const fetchTraceroutes = async () => {
-    if (!showRoutes) return;
-
     try {
       const response = await fetch('/api/traceroutes/recent');
       if (response.ok) {
@@ -557,6 +555,39 @@ function App() {
       }
     } catch (error) {
       console.error('Failed to update data from backend:', error);
+    }
+  };
+
+  const getRecentTraceroute = (nodeId: string) => {
+    const nodeNumStr = nodeId.replace('!', '');
+    const nodeNum = parseInt(nodeNumStr, 16);
+
+    // Find most recent traceroute to this node within last 24 hours
+    const cutoff = Date.now() - (24 * 60 * 60 * 1000);
+    const recentTraceroutes = traceroutes
+      .filter(tr => tr.toNodeNum === nodeNum && tr.timestamp >= cutoff)
+      .sort((a, b) => b.timestamp - a.timestamp);
+
+    return recentTraceroutes.length > 0 ? recentTraceroutes[0] : null;
+  };
+
+  const formatTracerouteRoute = (route: string, snr: string) => {
+    try {
+      const routeArray = JSON.parse(route || '[]');
+      const snrArray = JSON.parse(snr || '[]');
+
+      if (routeArray.length === 0) {
+        return 'Direct connection';
+      }
+
+      return routeArray.map((nodeNum: number, idx: number) => {
+        const node = nodes.find(n => n.nodeNum === nodeNum);
+        const nodeName = node?.user?.longName || node?.user?.shortName || `!${nodeNum.toString(16)}`;
+        const snrValue = snrArray[idx] !== undefined ? ` (${snrArray[idx]}dB)` : '';
+        return nodeName + snrValue;
+      }).join(' → ');
+    } catch (error) {
+      return 'Error parsing route';
     }
   };
 
@@ -1146,6 +1177,12 @@ function App() {
                     // Base weight 2, add 1 per usage, max 8
                     const weight = Math.min(2 + usage, 8);
 
+                    // Get node names for popup
+                    const node1 = nodes.find(n => n.nodeNum === segment.nodeNums[0]);
+                    const node2 = nodes.find(n => n.nodeNum === segment.nodeNums[1]);
+                    const node1Name = node1?.user?.longName || node1?.user?.shortName || `!${segment.nodeNums[0].toString(16)}`;
+                    const node2Name = node2?.user?.longName || node2?.user?.shortName || `!${segment.nodeNums[1].toString(16)}`;
+
                     return (
                       <Polyline
                         key={segment.key}
@@ -1153,7 +1190,19 @@ function App() {
                         color="#cba6f7"
                         weight={weight}
                         opacity={0.7}
-                      />
+                      >
+                        <Popup>
+                          <div className="route-popup">
+                            <h4>Route Segment</h4>
+                            <div className="route-endpoints">
+                              <strong>{node1Name}</strong> ↔ <strong>{node2Name}</strong>
+                            </div>
+                            <div className="route-usage">
+                              Used in <strong>{usage}</strong> traceroute{usage !== 1 ? 's' : ''}
+                            </div>
+                          </div>
+                        </Popup>
+                      </Polyline>
                     );
                   });
                 })()}
@@ -1428,18 +1477,40 @@ function App() {
         {selectedDMNode ? (
           <div className="dm-conversation">
             <div className="dm-header">
-              <h3>Conversation with {getNodeName(selectedDMNode)}</h3>
-              <button
-                onClick={() => handleTraceroute(selectedDMNode)}
-                disabled={connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode}
-                className="traceroute-btn"
-                title="Run traceroute to this node"
-              >
-                🗺️ Traceroute
-                {tracerouteLoading === selectedDMNode && (
-                  <span className="spinner"></span>
-                )}
-              </button>
+              <div className="dm-header-top">
+                <h3>Conversation with {getNodeName(selectedDMNode)}</h3>
+                <button
+                  onClick={() => handleTraceroute(selectedDMNode)}
+                  disabled={connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode}
+                  className="traceroute-btn"
+                  title="Run traceroute to this node"
+                >
+                  🗺️ Traceroute
+                  {tracerouteLoading === selectedDMNode && (
+                    <span className="spinner"></span>
+                  )}
+                </button>
+              </div>
+              {(() => {
+                const recentTrace = getRecentTraceroute(selectedDMNode);
+                if (recentTrace) {
+                  const age = Math.floor((Date.now() - recentTrace.timestamp) / (1000 * 60));
+                  const ageStr = age < 60 ? `${age}m ago` : `${Math.floor(age / 60)}h ago`;
+
+                  return (
+                    <div className="traceroute-info">
+                      <div className="traceroute-route">
+                        <strong>→ Forward:</strong> {formatTracerouteRoute(recentTrace.route, recentTrace.snrTowards)}
+                      </div>
+                      <div className="traceroute-route">
+                        <strong>← Return:</strong> {formatTracerouteRoute(recentTrace.routeBack, recentTrace.snrBack)}
+                      </div>
+                      <div className="traceroute-age">Last traced {ageStr}</div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
             </div>
             <div className="messages-container">
               {getDMMessages(selectedDMNode).length > 0 ? (
