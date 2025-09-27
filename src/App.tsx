@@ -30,6 +30,20 @@ const selectedIcon = new L.Icon({
   popupAnchor: [0, -30]
 });
 
+// Helper function to convert role number to readable string
+const getRoleName = (role: number | string | undefined): string | null => {
+  if (role === undefined || role === null) return null;
+  const roleNum = typeof role === 'string' ? parseInt(role) : role;
+  switch (roleNum) {
+    case 0: return 'Client';
+    case 1: return 'Client Mute';
+    case 2: return 'Router';
+    case 4: return 'Repeater';
+    case 11: return 'Router Late';
+    default: return `Role ${roleNum}`;
+  }
+};
+
 interface DeviceInfo {
   nodeNum: number;
   user?: {
@@ -67,7 +81,9 @@ interface MeshMessage {
   timestamp: Date;
   acknowledged?: boolean;
   isLocalMessage?: boolean;
-  hopCount?: number;
+  hopStart?: number;
+  hopLimit?: number;
+  replyId?: number;
 }
 
 interface Channel {
@@ -124,6 +140,9 @@ function App() {
   const [currentNodeId, setCurrentNodeId] = useState<string>('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [pendingMessages, setPendingMessages] = useState<Map<string, MeshMessage>>(new Map())
+  const [unreadCounts, setUnreadCounts] = useState<{[key: number]: number}>({})
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const lastNotificationTime = useRef<number>(0)
 
   // New state for node list features
   const [nodeFilter, setNodeFilter] = useState<string>('')
@@ -157,6 +176,21 @@ function App() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [mapCenterTarget, setMapCenterTarget] = useState<[number, number] | null>(null)
   const [nodePopup, setNodePopup] = useState<{nodeId: string, position: {x: number, y: number}} | null>(null)
+
+  // Initialize notification sound
+  useEffect(() => {
+    const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBiqG0PLSfzcGG2O56+OdTgwOUpzq66NRDwg+ltbyvW0qBSl+z/DV');
+    audioRef.current = audio;
+    audioRef.current.volume = 0.3;
+  }, []);
+
+  // Function to play notification sound
+  const playNotificationSound = () => {
+    if (audioRef.current) {
+      audioRef.current.currentTime = 0;
+      audioRef.current.play().catch(err => console.log('Audio play failed:', err));
+    }
+  };
 
   // Load configuration and check connection status on startup
   useEffect(() => {
@@ -359,6 +393,30 @@ function App() {
           ...msg,
           timestamp: new Date(msg.timestamp)
         }));
+
+        // Check for new messages by comparing message IDs
+        const previousMessageIds = new Set(messages.map(m => m.id));
+        const isInitialLoad = previousMessageIds.size === 0;
+        const newMessages = processedMessages.filter((m: MeshMessage) => !previousMessageIds.has(m.id));
+
+        // Play notification sound only if:
+        // 1. There are new messages
+        // 2. This is not the initial load
+        // 3. At least one new message is in a channel OTHER than the currently selected one
+        // 4. At least 3 seconds have passed since the last notification (debouncing)
+        if (newMessages.length > 0 && !isInitialLoad) {
+          const currentSelected = selectedChannelRef.current;
+          const hasNewMessagesInOtherChannels = newMessages.some((m: MeshMessage) => m.channel !== currentSelected);
+          const now = Date.now();
+          const timeSinceLastNotification = now - lastNotificationTime.current;
+
+          if (hasNewMessagesInOtherChannels && timeSinceLastNotification > 3000) {
+            console.log('🔔 Playing notification sound for new messages in other channels');
+            playNotificationSound();
+            lastNotificationTime.current = now;
+          }
+        }
+
         setMessages(processedMessages);
 
         // Group messages by channel
@@ -369,6 +427,45 @@ function App() {
           }
           channelGroups[msg.channel].push(msg);
         });
+
+        // Update unread counts ONLY for truly NEW messages (not on initial load)
+        const currentSelected = selectedChannelRef.current;
+
+        // Calculate new unread counts
+        let newUnreadCounts: {[key: number]: number};
+
+        if (isInitialLoad) {
+          // On initial load, set all channels to 0 unread
+          newUnreadCounts = {};
+        } else {
+          // Start with current counts
+          newUnreadCounts = { ...unreadCounts };
+
+          // Add ONLY the new messages that arrived in this polling cycle
+          // for channels that are NOT currently selected
+          // ALSO: Only count messages less than 10 seconds old to avoid counting
+          // messages that were already in DB when viewing the channel
+          const now = Date.now();
+          newMessages.forEach((msg: MeshMessage) => {
+            const messageAge = now - msg.timestamp.getTime();
+            if (msg.channel !== currentSelected && messageAge < 10000) {
+              newUnreadCounts[msg.channel] = (newUnreadCounts[msg.channel] || 0) + 1;
+            }
+          });
+        }
+
+        // ALWAYS set currently selected channel to 0
+        // This ensures viewing a channel clears its unread count permanently
+        newUnreadCounts[currentSelected] = 0;
+
+        console.log('📊 Updating unread counts:', {
+          currentSelected,
+          newUnreadCounts,
+          isInitialLoad
+        });
+
+        setUnreadCounts(newUnreadCounts);
+
         setChannelMessages(channelGroups);
 
         // Check for message acknowledgments
@@ -674,6 +771,21 @@ function App() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [nodePopup]);
 
+  // Helper function to check if a message is a single emoji
+  const isSingleEmoji = (text: string): boolean => {
+    const emojiRegex = /^(\p{Emoji_Presentation}|\p{Extended_Pictographic})$/u;
+    return emojiRegex.test(text.trim());
+  };
+
+  // Helper function to find a message by its ID
+  const findMessageById = (messageId: number, channelId: number): MeshMessage | null => {
+    const messagesForChannel = channelMessages[channelId] || [];
+    return messagesForChannel.find(msg => {
+      const msgIdNum = parseInt(msg.id.split('_')[1] || '0');
+      return msgIdNum === messageId;
+    }) || null;
+  };
+
   const renderNodesTab = () => {
     const processedNodes = getProcessedNodes();
     const nodesWithPosition = processedNodes.filter(node =>
@@ -724,8 +836,8 @@ function App() {
                     <div className="node-header">
                       <div className="node-name">
                         {node.user?.longName || `Node ${node.nodeNum}`}
-                        {node.user?.role && (
-                          <span className="node-role">({node.user.role})</span>
+                        {node.user?.role && getRoleName(node.user.role) && (
+                          <span className="node-role" title="Node Role"> {getRoleName(node.user.role)}</span>
                         )}
                       </div>
                       <div className="node-short">
@@ -901,15 +1013,22 @@ function App() {
                   key={channelId}
                   className={`channel-button ${selectedChannel === channelId ? 'selected' : ''}`}
                   onClick={() => {
-                    console.log('👆 User manually selected channel:', channelId, 'Current selectedChannel:', selectedChannel);
+                    console.log('👆 User clicked channel:', channelId, 'Previous selected:', selectedChannel);
                     setSelectedChannel(channelId);
                     selectedChannelRef.current = channelId; // Update ref immediately
-                    console.log('📝 Called setSelectedChannel with:', channelId);
+                    setUnreadCounts(prev => {
+                      const updated = { ...prev, [channelId]: 0 };
+                      console.log('📝 Setting unread counts:', updated);
+                      return updated;
+                    });
                   }}
                 >
                   <div className="channel-button-header">
                     <span className="channel-name">{displayName}</span>
                     <span className="channel-id">#{channelId}</span>
+                    {unreadCounts[channelId] > 0 && (
+                      <span className="unread-badge">{unreadCounts[channelId]}</span>
+                    )}
                   </div>
                   <div className="channel-button-status">
                     <span className={`arrow-icon uplink ${channelConfig?.uplinkEnabled ? 'enabled' : 'disabled'}`} title="Uplink">
@@ -954,6 +1073,18 @@ function App() {
                       messagesForChannel.map(msg => {
                         const isMine = isMyMessage(msg);
                         const isPending = pendingMessages.has(msg.id);
+                        const repliedMessage = msg.replyId ? findMessageById(msg.replyId, messageChannel) : null;
+                        const isReaction = msg.replyId && isSingleEmoji(msg.text) && repliedMessage;
+
+                        if (isReaction) {
+                          return null;
+                        }
+
+                        const reactions = messagesForChannel.filter(m =>
+                          m.replyId && isSingleEmoji(m.text) &&
+                          findMessageById(m.replyId, messageChannel)?.id === msg.id
+                        );
+
                         return (
                           <div key={msg.id} className={`message-bubble-container ${isMine ? 'mine' : 'theirs'}`}>
                             {!isMine && (
@@ -965,20 +1096,45 @@ function App() {
                                 {getNodeShortName(msg.from)}
                               </div>
                             )}
-                            <div className={`message-bubble ${isMine ? 'mine' : 'theirs'}`}>
-                              <div className="message-text">{msg.text}</div>
-                              <div className="message-meta">
-                                <span className="message-time">
-                                  {msg.timestamp.toLocaleTimeString([], {
-                                    hour: '2-digit',
-                                    minute: '2-digit'
-                                  })}
-                                </span>
-                                {msg.hopCount !== undefined && (
-                                  <span className="hop-count">
-                                    {msg.hopCount} hop{msg.hopCount !== 1 ? 's' : ''}
-                                  </span>
+                            <div className="message-content">
+                              {repliedMessage && !isReaction && (
+                                <div className="replied-message">
+                                  <div className="reply-arrow">↳</div>
+                                  <div className="reply-content">
+                                    <div className="reply-from">{getNodeShortName(repliedMessage.from)}</div>
+                                    <div className="reply-text">{repliedMessage.text || "Empty Message"}</div>
+                                  </div>
+                                </div>
+                              )}
+                              <div className={`message-bubble ${isMine ? 'mine' : 'theirs'}`}>
+                                <div className="message-text">{msg.text}</div>
+                                {reactions.length > 0 && (
+                                  <div className="message-reactions">
+                                    {reactions.map(reaction => (
+                                      <span key={reaction.id} className="reaction" title={`From ${getNodeShortName(reaction.from)}`}>
+                                        {reaction.text}
+                                      </span>
+                                    ))}
+                                  </div>
                                 )}
+                                <div className="message-meta">
+                                  <span className="message-time">
+                                    {msg.timestamp.toLocaleTimeString([], {
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    })}
+                                  </span>
+                                  <span className="hop-count">
+                                    {(() => {
+                                      const hopCount = (msg.hopStart && msg.hopLimit !== undefined)
+                                        ? msg.hopStart - msg.hopLimit
+                                        : 0;
+                                      return hopCount > 0
+                                        ? `${hopCount} hop${hopCount !== 1 ? 's' : ''}`
+                                        : 'Direct';
+                                    })()}
+                                  </span>
+                                </div>
                               </div>
                             </div>
                             {isMine && (
@@ -1223,6 +1379,9 @@ function App() {
           onClick={() => setActiveTab('channels')}
         >
           Channels
+          {Object.values(unreadCounts).some(count => count > 0) && (
+            <span className="tab-notification-dot"></span>
+          )}
         </button>
         <button
           className={`tab-btn ${activeTab === 'messages' ? 'active' : ''}`}

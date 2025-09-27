@@ -4,3 +4,5 @@ tools to resolve library id and get library docs without me having to explicitly
 - Only the backend talks to the Node. the Frontend never talks directly to the node.
 - When sending messages for testing, use the "gauntlet" channel. Never send on Primary!
 - Always start the Dev environment via docker, and make sure to 'build' first
+- You can't have both the Docker and the local npm version running at the same time, or they interfere. If you want to switch, you need to let me know.
+- Load up the system on port 8080

@@ -638,6 +638,15 @@ class MeshtasticManager {
           }
         }
 
+        // Extract replyId from decoded Data message
+        const decodedReplyId = (meshPacket.decoded as any)?.replyId;
+        const replyId = (decodedReplyId !== undefined && decodedReplyId > 0) ? decodedReplyId : undefined;
+
+        // Extract hop fields - protobufjs uses camelCase
+        const hopStart = (meshPacket as any).hopStart || 0;
+        const hopLimit = (meshPacket as any).hopLimit || 0;
+        console.log(`🔍 Hop fields: hopStart=${hopStart}, hopLimit=${hopLimit}, hopCount=${hopStart - hopLimit}`);
+
         const message = {
           id: `${fromNum}_${meshPacket.id || Date.now()}`,
           fromNodeNum: fromNum,
@@ -649,10 +658,13 @@ class MeshtasticManager {
           portnum: 1, // TEXT_MESSAGE_APP
           timestamp: meshPacket.rxTime ? Number(meshPacket.rxTime) * 1000 : Date.now(),
           rxTime: meshPacket.rxTime ? Number(meshPacket.rxTime) * 1000 : Date.now(),
+          hopStart: hopStart,
+          hopLimit: hopLimit,
+          replyId: replyId && replyId > 0 ? replyId : undefined,
           createdAt: Date.now()
         };
         databaseService.insertMessage(message);
-        console.log(`💾 Saved text message from ${message.fromNodeId}: "${messageText.substring(0, 30)}..."`);
+        console.log(`💾 Saved text message from ${message.fromNodeId}: "${messageText.substring(0, 30)}..." (replyId: ${message.replyId})`);
       }
     } catch (error) {
       console.error('❌ Error processing text message:', error);
@@ -720,6 +732,7 @@ class MeshtasticManager {
         longName: user.longName,
         shortName: user.shortName,
         hwModel: user.hwModel,
+        role: user.role,
         lastHeard: Date.now() / 1000
       };
 
@@ -751,6 +764,9 @@ class MeshtasticManager {
 
       const fromNum = Number(meshPacket.from);
       const nodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
+      const timestamp = telemetry.time ? Number(telemetry.time) * 1000 : Date.now();
+      const now = Date.now();
+
       const nodeData: any = {
         nodeNum: fromNum,
         nodeId: nodeId,
@@ -774,18 +790,74 @@ class MeshtasticManager {
         nodeData.voltage = deviceMetrics.voltage;
         nodeData.channelUtilization = deviceMetrics.channelUtilization;
         nodeData.airUtilTx = deviceMetrics.airUtilTx;
+
+        // Save individual telemetry values
+        if (deviceMetrics.batteryLevel !== undefined) {
+          databaseService.insertTelemetry({
+            nodeId, nodeNum: fromNum, telemetryType: 'batteryLevel',
+            timestamp, value: deviceMetrics.batteryLevel, unit: '%', createdAt: now
+          });
+        }
+        if (deviceMetrics.voltage !== undefined) {
+          databaseService.insertTelemetry({
+            nodeId, nodeNum: fromNum, telemetryType: 'voltage',
+            timestamp, value: deviceMetrics.voltage, unit: 'V', createdAt: now
+          });
+        }
+        if (deviceMetrics.channelUtilization !== undefined) {
+          databaseService.insertTelemetry({
+            nodeId, nodeNum: fromNum, telemetryType: 'channelUtilization',
+            timestamp, value: deviceMetrics.channelUtilization, unit: '%', createdAt: now
+          });
+        }
+        if (deviceMetrics.airUtilTx !== undefined) {
+          databaseService.insertTelemetry({
+            nodeId, nodeNum: fromNum, telemetryType: 'airUtilTx',
+            timestamp, value: deviceMetrics.airUtilTx, unit: '%', createdAt: now
+          });
+        }
       } else if (telemetry.variant?.case === 'environmentMetrics' && telemetry.variant.value) {
         const envMetrics = telemetry.variant.value;
         console.log(`🌡️ Environment telemetry: temp=${envMetrics.temperature}°C, humidity=${envMetrics.relativeHumidity}%`);
-        // Could extend nodeData to include environmental metrics
+
+        if (envMetrics.temperature !== undefined) {
+          databaseService.insertTelemetry({
+            nodeId, nodeNum: fromNum, telemetryType: 'temperature',
+            timestamp, value: envMetrics.temperature, unit: '°C', createdAt: now
+          });
+        }
+        if (envMetrics.relativeHumidity !== undefined) {
+          databaseService.insertTelemetry({
+            nodeId, nodeNum: fromNum, telemetryType: 'humidity',
+            timestamp, value: envMetrics.relativeHumidity, unit: '%', createdAt: now
+          });
+        }
+        if (envMetrics.barometricPressure !== undefined) {
+          databaseService.insertTelemetry({
+            nodeId, nodeNum: fromNum, telemetryType: 'pressure',
+            timestamp, value: envMetrics.barometricPressure, unit: 'hPa', createdAt: now
+          });
+        }
       } else if (telemetry.variant?.case === 'powerMetrics' && telemetry.variant.value) {
         const powerMetrics = telemetry.variant.value;
         console.log(`⚡ Power telemetry: ch1_voltage=${powerMetrics.ch1Voltage}V`);
-        // Could extend nodeData to include power metrics
+
+        if (powerMetrics.ch1Voltage !== undefined) {
+          databaseService.insertTelemetry({
+            nodeId, nodeNum: fromNum, telemetryType: 'ch1Voltage',
+            timestamp, value: powerMetrics.ch1Voltage, unit: 'V', createdAt: now
+          });
+        }
+        if (powerMetrics.ch1Current !== undefined) {
+          databaseService.insertTelemetry({
+            nodeId, nodeNum: fromNum, telemetryType: 'ch1Current',
+            timestamp, value: powerMetrics.ch1Current, unit: 'mA', createdAt: now
+          });
+        }
       }
 
       databaseService.upsertNode(nodeData);
-      console.log(`📊 Updated node telemetry: ${nodeId}`);
+      console.log(`📊 Updated node telemetry and saved to telemetry table: ${nodeId}`);
     } catch (error) {
       console.error('❌ Error processing telemetry message:', error);
     }
@@ -2128,7 +2200,8 @@ class MeshtasticManager {
         id: node.nodeId,
         longName: node.longName || '',
         shortName: node.shortName || '',
-        hwModel: node.hwModel
+        hwModel: node.hwModel,
+        role: node.role?.toString()
       },
       position: node.latitude && node.longitude ? {
         latitude: node.latitude,

@@ -11,6 +11,7 @@ export interface DbNode {
   longName: string;
   shortName: string;
   hwModel: number;
+  role?: number;
   macaddr?: string;
   latitude?: number;
   longitude?: number;
@@ -37,6 +38,9 @@ export interface DbMessage {
   portnum?: number;
   timestamp: number;
   rxTime?: number;
+  hopStart?: number;
+  hopLimit?: number;
+  replyId?: number;
   createdAt: number;
 }
 
@@ -48,6 +52,17 @@ export interface DbChannel {
   downlinkEnabled: boolean;
   createdAt: number;
   updatedAt: number;
+}
+
+export interface DbTelemetry {
+  id?: number;
+  nodeId: string;
+  nodeNum: number;
+  telemetryType: string;
+  timestamp: number;
+  value: number;
+  unit?: string;
+  createdAt: number;
 }
 
 class DatabaseService {
@@ -73,6 +88,7 @@ class DatabaseService {
     if (this.isInitialized) return;
 
     this.createTables();
+    this.migrateSchema();
     this.createIndexes();
     this.isInitialized = true;
   }
@@ -107,6 +123,7 @@ class DatabaseService {
         longName TEXT,
         shortName TEXT,
         hwModel INTEGER,
+        role INTEGER,
         macaddr TEXT,
         latitude REAL,
         longitude REAL,
@@ -135,6 +152,9 @@ class DatabaseService {
         portnum INTEGER,
         timestamp INTEGER NOT NULL,
         rxTime INTEGER,
+        hopStart INTEGER,
+        hopLimit INTEGER,
+        replyId INTEGER,
         createdAt INTEGER NOT NULL,
         FOREIGN KEY (fromNodeNum) REFERENCES nodes(nodeNum),
         FOREIGN KEY (toNodeNum) REFERENCES nodes(nodeNum)
@@ -150,6 +170,20 @@ class DatabaseService {
         downlinkEnabled BOOLEAN DEFAULT 1,
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS telemetry (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nodeId TEXT NOT NULL,
+        nodeNum INTEGER NOT NULL,
+        telemetryType TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        value REAL NOT NULL,
+        unit TEXT,
+        createdAt INTEGER NOT NULL,
+        FOREIGN KEY (nodeNum) REFERENCES nodes(nodeNum)
       );
     `);
 
@@ -169,6 +203,56 @@ class DatabaseService {
     console.log('Database tables created successfully');
   }
 
+  private migrateSchema(): void {
+    console.log('Running database migrations...');
+
+    try {
+      this.db.exec(`
+        ALTER TABLE messages ADD COLUMN hopStart INTEGER;
+      `);
+      console.log('✅ Added hopStart column');
+    } catch (error: any) {
+      if (!error.message?.includes('duplicate column')) {
+        console.log('⚠️ hopStart column already exists or other error:', error.message);
+      }
+    }
+
+    try {
+      this.db.exec(`
+        ALTER TABLE messages ADD COLUMN hopLimit INTEGER;
+      `);
+      console.log('✅ Added hopLimit column');
+    } catch (error: any) {
+      if (!error.message?.includes('duplicate column')) {
+        console.log('⚠️ hopLimit column already exists or other error:', error.message);
+      }
+    }
+
+    try {
+      this.db.exec(`
+        ALTER TABLE messages ADD COLUMN replyId INTEGER;
+      `);
+      console.log('✅ Added replyId column');
+    } catch (error: any) {
+      if (!error.message?.includes('duplicate column')) {
+        console.log('⚠️ replyId column already exists or other error:', error.message);
+      }
+    }
+
+    try {
+      this.db.exec(`
+        ALTER TABLE nodes ADD COLUMN role INTEGER;
+      `);
+      console.log('✅ Added role column');
+    } catch (error: any) {
+      if (!error.message?.includes('duplicate column')) {
+        console.log('⚠️ role column already exists or other error:', error.message);
+      }
+    }
+
+    console.log('Database migrations completed');
+  }
+
   private createIndexes(): void {
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_nodes_nodeId ON nodes(nodeId);
@@ -177,6 +261,9 @@ class DatabaseService {
 
       CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);
       CREATE INDEX IF NOT EXISTS idx_messages_fromNodeId ON messages(fromNodeId);
+      CREATE INDEX IF NOT EXISTS idx_telemetry_nodeId ON telemetry(nodeId);
+      CREATE INDEX IF NOT EXISTS idx_telemetry_timestamp ON telemetry(timestamp);
+      CREATE INDEX IF NOT EXISTS idx_telemetry_type ON telemetry(telemetryType);
       CREATE INDEX IF NOT EXISTS idx_messages_toNodeId ON messages(toNodeId);
       CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages(channel);
       CREATE INDEX IF NOT EXISTS idx_messages_createdAt ON messages(createdAt);
@@ -205,6 +292,7 @@ class DatabaseService {
           longName = COALESCE(?, longName),
           shortName = COALESCE(?, shortName),
           hwModel = COALESCE(?, hwModel),
+          role = COALESCE(?, role),
           macaddr = COALESCE(?, macaddr),
           latitude = COALESCE(?, latitude),
           longitude = COALESCE(?, longitude),
@@ -225,6 +313,7 @@ class DatabaseService {
         nodeData.longName,
         nodeData.shortName,
         nodeData.hwModel,
+        nodeData.role,
         nodeData.macaddr,
         nodeData.latitude,
         nodeData.longitude,
@@ -242,11 +331,11 @@ class DatabaseService {
     } else {
       const stmt = this.db.prepare(`
         INSERT INTO nodes (
-          nodeNum, nodeId, longName, shortName, hwModel, macaddr,
+          nodeNum, nodeId, longName, shortName, hwModel, role, macaddr,
           latitude, longitude, altitude, batteryLevel, voltage,
           channelUtilization, airUtilTx, lastHeard, snr, rssi,
           createdAt, updatedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       stmt.run(
@@ -255,6 +344,7 @@ class DatabaseService {
         nodeData.longName || null,
         nodeData.shortName || null,
         nodeData.hwModel || null,
+        nodeData.role || null,
         nodeData.macaddr || null,
         nodeData.latitude || null,
         nodeData.longitude || null,
@@ -296,8 +386,8 @@ class DatabaseService {
     const stmt = this.db.prepare(`
       INSERT INTO messages (
         id, fromNodeNum, toNodeNum, fromNodeId, toNodeId,
-        text, channel, portnum, timestamp, rxTime, createdAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        text, channel, portnum, timestamp, rxTime, hopStart, hopLimit, replyId, createdAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -311,6 +401,9 @@ class DatabaseService {
       messageData.portnum || null,
       messageData.timestamp,
       messageData.rxTime || null,
+      messageData.hopStart || null,
+      messageData.hopLimit || null,
+      messageData.replyId || null,
       messageData.createdAt
     );
   }
@@ -591,6 +684,60 @@ class DatabaseService {
     const result = stmt.run();
     console.log(`🧹 Cleaned up ${result.changes} empty channels`);
     return Number(result.changes);
+  }
+
+  // Telemetry operations
+  insertTelemetry(telemetryData: DbTelemetry): void {
+    const stmt = this.db.prepare(`
+      INSERT INTO telemetry (
+        nodeId, nodeNum, telemetryType, timestamp, value, unit, createdAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    stmt.run(
+      telemetryData.nodeId,
+      telemetryData.nodeNum,
+      telemetryData.telemetryType,
+      telemetryData.timestamp,
+      telemetryData.value,
+      telemetryData.unit || null,
+      telemetryData.createdAt
+    );
+  }
+
+  getTelemetryByNode(nodeId: string, limit: number = 100): DbTelemetry[] {
+    const stmt = this.db.prepare(`
+      SELECT * FROM telemetry
+      WHERE nodeId = ?
+      ORDER BY timestamp DESC
+      LIMIT ?
+    `);
+    const telemetry = stmt.all(nodeId, limit) as DbTelemetry[];
+    return telemetry.map(t => this.normalizeBigInts(t));
+  }
+
+  getTelemetryByType(telemetryType: string, limit: number = 100): DbTelemetry[] {
+    const stmt = this.db.prepare(`
+      SELECT * FROM telemetry
+      WHERE telemetryType = ?
+      ORDER BY timestamp DESC
+      LIMIT ?
+    `);
+    const telemetry = stmt.all(telemetryType, limit) as DbTelemetry[];
+    return telemetry.map(t => this.normalizeBigInts(t));
+  }
+
+  getLatestTelemetryByNode(nodeId: string): DbTelemetry[] {
+    const stmt = this.db.prepare(`
+      SELECT * FROM telemetry t1
+      WHERE nodeId = ? AND timestamp = (
+        SELECT MAX(timestamp) FROM telemetry t2
+        WHERE t2.nodeId = t1.nodeId AND t2.telemetryType = t1.telemetryType
+      )
+      ORDER BY telemetryType ASC
+    `);
+    const telemetry = stmt.all(nodeId) as DbTelemetry[];
+    return telemetry.map(t => this.normalizeBigInts(t));
   }
 }
 

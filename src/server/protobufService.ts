@@ -77,6 +77,7 @@ export interface MeshtasticMessage {
   rx_snr: number;
   rx_rssi: number;
   hop_limit: number;
+  hop_start: number;
   want_ack: boolean;
   priority: number;
   channel: number;
@@ -428,12 +429,26 @@ class ProtobufService {
         }
       }
 
+      if (unencrypted) {
+        console.log('🔍 Unencrypted Data fields:', {
+          portnum: unencrypted.portnum,
+          payloadLength: unencrypted.payload?.length,
+          wantResponse: unencrypted.wantResponse,
+          dest: unencrypted.dest,
+          source: unencrypted.source,
+          requestId: unencrypted.requestId,
+          replyId: unencrypted.replyId,
+          emoji: unencrypted.emoji
+        });
+      }
+
       const result: MeshtasticMessage = {
         id: meshPacket.id || 0,
         rx_time: meshPacket.rxTime || 0,
         rx_snr: meshPacket.rxSnr || 0,
         rx_rssi: meshPacket.rxRssi || 0,
         hop_limit: meshPacket.hopLimit || 0,
+        hop_start: meshPacket.hopStart || 0,
         want_ack: meshPacket.wantAck || false,
         priority: meshPacket.priority || 0,
         channel: meshPacket.channel || 0,
@@ -444,11 +459,11 @@ class ProtobufService {
         decoded: unencrypted ? {
           portnum: unencrypted.portnum,
           payload: unencrypted.payload,
-          want_response: unencrypted.want_response,
+          want_response: unencrypted.wantResponse,
           dest: unencrypted.dest,
           source: unencrypted.source,
-          request_id: unencrypted.request_id,
-          reply_id: unencrypted.reply_id,
+          request_id: unencrypted.requestId,
+          reply_id: unencrypted.replyId,
           emoji: unencrypted.emoji
         } : undefined
       };

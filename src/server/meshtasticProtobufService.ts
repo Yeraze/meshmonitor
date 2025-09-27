@@ -179,6 +179,17 @@ export class MeshtasticProtobufService {
 
             // Extract the actual message
             if (decodedMessage.packet) {
+              // Check if decoded is Uint8Array and manually decode it as a Data message
+              if (decodedMessage.packet.decoded && decodedMessage.packet.decoded instanceof Uint8Array) {
+                try {
+                  const Data = root.lookupType('meshtastic.Data');
+                  const decodedData = Data.decode(decodedMessage.packet.decoded);
+                  (decodedMessage.packet as any).decoded = decodedData;
+                } catch (e) {
+                  console.error('❌ Failed to manually decode Data:', e);
+                }
+              }
+
               messages.push({ type: 'meshPacket', data: decodedMessage.packet });
             } else if (decodedMessage.myInfo) {
               messages.push({ type: 'myInfo', data: decodedMessage.myInfo });
