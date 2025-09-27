@@ -805,13 +805,17 @@ function App() {
       channelSet.add(msg.channel);
     });
 
-    return Array.from(channelSet).sort((a, b) => a - b);
+    // Filter out channel -1 (used for direct messages) and sort
+    return Array.from(channelSet)
+      .filter(ch => ch !== -1)
+      .sort((a, b) => a - b);
   };
 
   const getDMMessages = (nodeId: string): MeshMessage[] => {
     return messages.filter(msg =>
       (msg.from === nodeId || msg.to === nodeId) &&
-      msg.to !== '!ffffffff' // Exclude broadcasts
+      msg.to !== '!ffffffff' && // Exclude broadcasts
+      msg.channel === -1 // Only direct messages
     );
   };
 
@@ -1789,6 +1793,97 @@ function App() {
     }
   };
 
+  const handlePurgeNodes = async () => {
+    const confirmed = window.confirm(
+      'Are you sure you want to erase all nodes and traceroute history?\n\n' +
+      'Impact:\n' +
+      '• All node information will be deleted\n' +
+      '• All traceroute history will be deleted\n' +
+      '• A node refresh will be triggered to repopulate the list\n\n' +
+      'This action cannot be undone!'
+    );
+
+    if (!confirmed) return;
+
+    try {
+      const response = await fetch('/api/purge/nodes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      if (response.ok) {
+        alert('Node list and traceroutes have been purged. Refreshing...');
+        window.location.reload();
+      } else {
+        alert('Failed to purge nodes. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error purging nodes:', error);
+      alert('Error purging nodes. Please try again.');
+    }
+  };
+
+  const handlePurgeTelemetry = async () => {
+    const confirmed = window.confirm(
+      'Are you sure you want to purge all telemetry data?\n\n' +
+      'Impact:\n' +
+      '• All historical telemetry records will be deleted\n' +
+      '• Telemetry graphs will show no historical data\n' +
+      '• Current node states (battery, voltage) will be preserved\n' +
+      '• New telemetry will continue to be collected\n\n' +
+      'This action cannot be undone!'
+    );
+
+    if (!confirmed) return;
+
+    try {
+      const response = await fetch('/api/purge/telemetry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      if (response.ok) {
+        alert('Telemetry data has been purged.');
+      } else {
+        alert('Failed to purge telemetry. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error purging telemetry:', error);
+      alert('Error purging telemetry. Please try again.');
+    }
+  };
+
+  const handlePurgeMessages = async () => {
+    const confirmed = window.confirm(
+      'Are you sure you want to purge all messages?\n\n' +
+      'Impact:\n' +
+      '• All channel messages will be deleted\n' +
+      '• All direct messages will be deleted\n' +
+      '• Message history will be permanently lost\n' +
+      '• New messages will continue to be received\n\n' +
+      'This action cannot be undone!'
+    );
+
+    if (!confirmed) return;
+
+    try {
+      const response = await fetch('/api/purge/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      if (response.ok) {
+        alert('Messages have been purged. Refreshing...');
+        window.location.reload();
+      } else {
+        alert('Failed to purge messages. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error purging messages:', error);
+      alert('Error purging messages. Please try again.');
+    }
+  };
+
   const renderSettingsTab = () => (
     <div className="tab-content">
       <div className="settings-header-card">
@@ -1834,6 +1929,50 @@ function App() {
               onChange={(e) => handleTracerouteIntervalChange(parseInt(e.target.value))}
               className="setting-input"
             />
+          </div>
+        </div>
+
+        <div className="settings-section danger-zone">
+          <h3>⚠️ Danger Zone</h3>
+          <p className="danger-zone-description">These actions cannot be undone. Use with caution.</p>
+
+          <div className="danger-action">
+            <div className="danger-action-info">
+              <h4>Erase Node List</h4>
+              <p>Removes all nodes and traceroute history from the database. A node refresh will be triggered to repopulate the list.</p>
+            </div>
+            <button
+              className="danger-button"
+              onClick={handlePurgeNodes}
+            >
+              Erase Nodes
+            </button>
+          </div>
+
+          <div className="danger-action">
+            <div className="danger-action-info">
+              <h4>Purge Telemetry</h4>
+              <p>Removes all historical telemetry data (battery, voltage, temperature, etc.). Current node states will be preserved.</p>
+            </div>
+            <button
+              className="danger-button"
+              onClick={handlePurgeTelemetry}
+            >
+              Purge Telemetry
+            </button>
+          </div>
+
+          <div className="danger-action">
+            <div className="danger-action-info">
+              <h4>Purge Messages</h4>
+              <p>Removes all messages from channels and direct message conversations. This action is permanent.</p>
+            </div>
+            <button
+              className="danger-button"
+              onClick={handlePurgeMessages}
+            >
+              Purge Messages
+            </button>
           </div>
         </div>
       </div>

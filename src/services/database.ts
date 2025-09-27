@@ -890,6 +890,23 @@ class DatabaseService {
     const telemetry = stmt.all(nodeId) as DbTelemetry[];
     return telemetry.map(t => this.normalizeBigInts(t));
   }
+
+  // Danger zone operations
+  purgeAllNodes(): void {
+    console.log('⚠️ PURGING all nodes and traceroutes from database');
+    this.db.exec('DELETE FROM traceroutes');
+    this.db.exec('DELETE FROM nodes');
+  }
+
+  purgeAllTelemetry(): void {
+    console.log('⚠️ PURGING all telemetry from database');
+    this.db.exec('DELETE FROM telemetry');
+  }
+
+  purgeAllMessages(): void {
+    console.log('⚠️ PURGING all messages from database');
+    this.db.exec('DELETE FROM messages');
+  }
 }
 
 export default new DatabaseService();
