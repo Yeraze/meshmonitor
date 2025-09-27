@@ -24,6 +24,7 @@ export interface DbNode {
   lastHeard?: number;
   snr?: number;
   rssi?: number;
+  lastTracerouteRequest?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -292,6 +293,17 @@ class DatabaseService {
     } catch (error: any) {
       if (!error.message?.includes('duplicate column')) {
         console.log('⚠️ hopsAway column already exists or other error:', error.message);
+      }
+    }
+
+    try {
+      this.db.exec(`
+        ALTER TABLE nodes ADD COLUMN lastTracerouteRequest INTEGER;
+      `);
+      console.log('✅ Added lastTracerouteRequest column');
+    } catch (error: any) {
+      if (!error.message?.includes('duplicate column')) {
+        console.log('⚠️ lastTracerouteRequest column already exists or other error:', error.message);
       }
     }
 
@@ -822,35 +834,37 @@ class DatabaseService {
   }
 
   getNodeNeedingTraceroute(localNodeNum: number): DbNode | null {
-    // First, try to find a node with no traceroute at all
-    const stmtNoTraceroute = this.db.prepare(`
+    // First, try to find a node that has never been requested for a traceroute
+    const stmtNoRequest = this.db.prepare(`
       SELECT n.* FROM nodes n
-      LEFT JOIN traceroutes t ON n.nodeNum = t.toNodeNum
-      WHERE n.nodeNum != ? AND t.toNodeNum IS NULL
+      WHERE n.nodeNum != ? AND n.lastTracerouteRequest IS NULL
       ORDER BY n.lastHeard DESC
       LIMIT 1
     `);
-    const nodeWithoutTraceroute = stmtNoTraceroute.get(localNodeNum) as DbNode | null;
+    const nodeWithoutRequest = stmtNoRequest.get(localNodeNum) as DbNode | null;
 
-    if (nodeWithoutTraceroute) {
-      return this.normalizeBigInts(nodeWithoutTraceroute);
+    if (nodeWithoutRequest) {
+      return this.normalizeBigInts(nodeWithoutRequest);
     }
 
-    // If all nodes have traceroutes, find the one with the oldest traceroute
-    const stmtOldestTraceroute = this.db.prepare(`
+    // If all nodes have been requested, find the one with the oldest request
+    const stmtOldestRequest = this.db.prepare(`
       SELECT n.* FROM nodes n
-      LEFT JOIN (
-        SELECT toNodeNum, MAX(timestamp) as lastTraceroute
-        FROM traceroutes
-        GROUP BY toNodeNum
-      ) t ON n.nodeNum = t.toNodeNum
       WHERE n.nodeNum != ?
-      ORDER BY t.lastTraceroute ASC, n.lastHeard DESC
+      ORDER BY n.lastTracerouteRequest ASC, n.lastHeard DESC
       LIMIT 1
     `);
-    const nodeWithOldestTraceroute = stmtOldestTraceroute.get(localNodeNum) as DbNode | null;
+    const nodeWithOldestRequest = stmtOldestRequest.get(localNodeNum) as DbNode | null;
 
-    return nodeWithOldestTraceroute ? this.normalizeBigInts(nodeWithOldestTraceroute) : null;
+    return nodeWithOldestRequest ? this.normalizeBigInts(nodeWithOldestRequest) : null;
+  }
+
+  recordTracerouteRequest(nodeNum: number): void {
+    const now = Date.now();
+    const stmt = this.db.prepare(`
+      UPDATE nodes SET lastTracerouteRequest = ? WHERE nodeNum = ?
+    `);
+    stmt.run(now, nodeNum);
   }
 
   getTelemetryByType(telemetryType: string, limit: number = 100): DbTelemetry[] {
