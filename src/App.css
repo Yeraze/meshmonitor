@@ -1481,9 +1481,11 @@ body {
 }
 
 .map-container {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 500px;
   position: relative;
   background: var(--ctp-surface0);
+  height: 100%;
 }
 
 .map-placeholder {
