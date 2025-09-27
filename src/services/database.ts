@@ -765,6 +765,14 @@ class DatabaseService {
   }
 
   insertTraceroute(tracerouteData: DbTraceroute): void {
+    // Delete any existing traceroute for the same source and destination
+    const deleteStmt = this.db.prepare(`
+      DELETE FROM traceroutes
+      WHERE fromNodeNum = ? AND toNodeNum = ?
+    `);
+    deleteStmt.run(tracerouteData.fromNodeNum, tracerouteData.toNodeNum);
+
+    // Insert the new traceroute
     const stmt = this.db.prepare(`
       INSERT INTO traceroutes (
         fromNodeNum, toNodeNum, fromNodeId, toNodeId, route, routeBack, snrTowards, snrBack, timestamp, createdAt
@@ -798,8 +806,15 @@ class DatabaseService {
 
   getAllTraceroutes(limit: number = 100): DbTraceroute[] {
     const stmt = this.db.prepare(`
-      SELECT * FROM traceroutes
-      ORDER BY timestamp DESC
+      SELECT t.* FROM traceroutes t
+      INNER JOIN (
+        SELECT fromNodeNum, toNodeNum, MAX(timestamp) as maxTimestamp
+        FROM traceroutes
+        GROUP BY fromNodeNum, toNodeNum
+      ) latest ON t.fromNodeNum = latest.fromNodeNum
+        AND t.toNodeNum = latest.toNodeNum
+        AND t.timestamp = latest.maxTimestamp
+      ORDER BY t.timestamp DESC
       LIMIT ?
     `);
     const traceroutes = stmt.all(limit) as DbTraceroute[];
