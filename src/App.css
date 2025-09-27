@@ -1469,10 +1469,28 @@ body {
   text-align: right;
 }
 
+.node-indicators {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+  flex-wrap: wrap;
+}
+
 .node-location {
   font-size: 0.75rem;
   color: var(--ctp-subtext0);
-  margin-top: 0.25rem;
+}
+
+.node-telemetry {
+  font-size: 0.75rem;
+  color: var(--ctp-subtext0);
+  cursor: help;
+}
+
+.node-weather {
+  font-size: 0.75rem;
+  color: var(--ctp-subtext0);
+  cursor: help;
 }
 
 .nodes-list::-webkit-scrollbar {

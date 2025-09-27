@@ -413,6 +413,56 @@ app.get('/api/traceroutes/recent', (req, res) => {
   }
 });
 
+// Get telemetry data for a node
+app.get('/api/telemetry/:nodeId', (req, res) => {
+  try {
+    const { nodeId } = req.params;
+    const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 24;
+    const limit = req.query.limit ? parseInt(req.query.limit as string) : 1000;
+
+    const allTelemetry = databaseService.getTelemetryByNode(nodeId, limit);
+    const cutoffTime = Date.now() - (hoursParam * 60 * 60 * 1000);
+
+    const recentTelemetry = allTelemetry.filter(t => t.timestamp >= cutoffTime);
+    res.json(recentTelemetry);
+  } catch (error) {
+    console.error('Error fetching telemetry:', error);
+    res.status(500).json({ error: 'Failed to fetch telemetry' });
+  }
+});
+
+// Check which nodes have telemetry data
+app.get('/api/telemetry/available/nodes', (_req, res) => {
+  try {
+    const nodes = databaseService.getAllNodes();
+    const nodesWithTelemetry: string[] = [];
+    const nodesWithWeather: string[] = [];
+
+    const weatherTypes = ['temperature', 'humidity', 'pressure'];
+
+    nodes.forEach(node => {
+      const telemetry = databaseService.getTelemetryByNode(node.nodeId, 10);
+      if (telemetry.length > 0) {
+        nodesWithTelemetry.push(node.nodeId);
+
+        // Check if any telemetry is weather-related
+        const hasWeather = telemetry.some(t => weatherTypes.includes(t.telemetryType));
+        if (hasWeather) {
+          nodesWithWeather.push(node.nodeId);
+        }
+      }
+    });
+
+    res.json({
+      nodes: nodesWithTelemetry,
+      weather: nodesWithWeather
+    });
+  } catch (error) {
+    console.error('Error checking telemetry availability:', error);
+    res.status(500).json({ error: 'Failed to check telemetry availability' });
+  }
+});
+
 // Connection status endpoint
 app.get('/api/connection', (_req, res) => {
   try {
