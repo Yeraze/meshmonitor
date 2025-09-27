@@ -1771,6 +1771,22 @@ function App() {
           </div>
         );
       })()}
+
+      {/* Footer */}
+      <footer className="app-footer">
+        <div className="footer-content">
+          <span className="footer-title">MeshMonitor</span>
+          <span className="footer-version">v0.1</span>
+          <a
+            href="https://github.com/Yeraze/meshmonitor"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="footer-link"
+          >
+            GitHub
+          </a>
+        </div>
+      </footer>
     </div>
   )
 }

@@ -47,6 +47,8 @@ body {
 .app {
   min-height: 100vh;
   background: var(--ctp-base);
+  display: flex;
+  flex-direction: column;
 }
 
 .app-header {
@@ -173,6 +175,7 @@ body {
   padding: 2rem;
   max-width: 1400px;
   margin: 0 auto;
+  flex: 1;
 }
 
 .tab-content {
@@ -1978,4 +1981,46 @@ body {
   color: var(--ctp-text);
   font-size: 0.9rem;
   font-weight: 500;
+}
+
+/* Footer Styles */
+.app-footer {
+  background: var(--ctp-crust);
+  border-top: 1px solid var(--ctp-surface0);
+  padding: 0.75rem 1rem;
+  margin-top: auto;
+}
+
+.footer-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  font-size: 0.85rem;
+  color: var(--ctp-subtext0);
+}
+
+.footer-title {
+  font-weight: 600;
+  color: var(--ctp-mauve);
+}
+
+.footer-version {
+  color: var(--ctp-subtext1);
+  font-family: 'Courier New', monospace;
+  background: var(--ctp-surface0);
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+}
+
+.footer-link {
+  color: var(--ctp-blue);
+  text-decoration: none;
+  transition: color 0.2s ease;
+  font-weight: 500;
+}
+
+.footer-link:hover {
+  color: var(--ctp-sapphire);
+  text-decoration: underline;
 }
