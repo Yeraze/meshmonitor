@@ -6,6 +6,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [1.1.0] - 2025-09-28
+
+### Added
+- **GitHub Container Registry Publishing**: Pre-built Docker images now available
+  - Automated Docker image building and publishing to `ghcr.io/yeraze/meshmonitor`
+  - GitHub Actions workflow for continuous image publishing
+  - Multi-tag strategy: `latest`, version tags (`1.1.0`, `1.1`, `1`), and branch names
+  - Docker buildx with layer caching for optimal build performance
+  - No local build step required for deployment
+
+- **Enhanced Deployment Options**:
+  - Pre-built images available at GitHub Container Registry
+  - Updated docker-compose.yml to use GHCR images by default
+  - Documented local build option for developers
+  - Version pinning support for production stability
+
+- **Improved Documentation**:
+  - Docker image version and size badges in README
+  - Comprehensive deployment instructions for both pre-built and local builds
+  - Available image tags documentation
+  - Quick start guide updated with GHCR instructions
+
+### Changed
+- docker-compose.yml now uses `ghcr.io/yeraze/meshmonitor:latest` by default
+- Enhanced .dockerignore for optimized build context
+- Updated Docker support feature list
+
+### Technical Improvements
+- GitHub Actions workflow with PR build validation
+- Automated multi-architecture image builds
+- Layer caching for faster subsequent builds
+- Public GHCR package for easy access
+
 ## [1.0.0] - 2025-09-28
 
 This is the initial stable release of MeshMonitor, a comprehensive web application for monitoring Meshtastic mesh networks over IP.
