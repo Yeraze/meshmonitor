@@ -2,22 +2,21 @@
  * @vitest-environment jsdom
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { act } from '@testing-library/react';
 import TelemetryGraphs from './TelemetryGraphs';
-import { formatTemperature } from '../utils/temperature';
 
 // Mock Recharts components to avoid rendering issues in tests
 vi.mock('recharts', () => ({
-  LineChart: ({ children }: any) => <div data-testid="line-chart">{children}</div>,
+  LineChart: ({ children }: { children?: React.ReactNode }) => <div data-testid="line-chart">{children}</div>,
   Line: () => null,
   XAxis: () => null,
   YAxis: () => null,
   CartesianGrid: () => null,
   Tooltip: () => null,
   Legend: () => null,
-  ResponsiveContainer: ({ children }: any) => <div>{children}</div>
+  ResponsiveContainer: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>
 }));
 
 // Mock fetch API
@@ -66,7 +65,7 @@ describe('TelemetryGraphs Component', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    (global.fetch as any).mockResolvedValue({
+    (global.fetch as Mock).mockResolvedValue({
       ok: true,
       json: async () => mockTelemetryData
     });
@@ -74,7 +73,7 @@ describe('TelemetryGraphs Component', () => {
 
   it('should render loading state initially', async () => {
     // Mock fetch to be slow
-    (global.fetch as any).mockImplementation(() =>
+    (global.fetch as Mock).mockImplementation(() =>
       new Promise(resolve => setTimeout(resolve, 100))
     );
 
@@ -102,7 +101,7 @@ describe('TelemetryGraphs Component', () => {
   });
 
   it('should display error state when fetch fails', async () => {
-    (global.fetch as any).mockRejectedValueOnce(new Error('Network error'));
+    (global.fetch as Mock).mockRejectedValueOnce(new Error('Network error'));
 
     render(<TelemetryGraphs nodeId={mockNodeId} />);
 
@@ -112,7 +111,7 @@ describe('TelemetryGraphs Component', () => {
   });
 
   it('should display no data message when telemetry is empty', async () => {
-    (global.fetch as any).mockResolvedValueOnce({
+    (global.fetch as Mock).mockResolvedValueOnce({
       ok: true,
       json: async () => []
     });
@@ -174,7 +173,7 @@ describe('TelemetryGraphs Component', () => {
   });
 
   it('should handle API returning non-ok status', async () => {
-    (global.fetch as any).mockResolvedValueOnce({
+    (global.fetch as Mock).mockResolvedValueOnce({
       ok: false,
       status: 404,
       statusText: 'Not Found'
@@ -195,7 +194,7 @@ describe('TelemetryGraphs Component', () => {
       { nodeId: mockNodeId, telemetryType: 'batteryLevel', value: 75, timestamp: Date.now() }
     ];
 
-    (global.fetch as any).mockResolvedValueOnce({
+    (global.fetch as Mock).mockResolvedValueOnce({
       ok: true,
       json: async () => mockData
     });
@@ -221,7 +220,7 @@ describe('TelemetryGraphs Component', () => {
       }
     ];
 
-    (global.fetch as any).mockResolvedValueOnce({
+    (global.fetch as Mock).mockResolvedValueOnce({
       ok: true,
       json: async () => incompleteData
     });
@@ -242,7 +241,7 @@ describe('TelemetryGraphs Component', () => {
       { nodeId: mockNodeId, telemetryType: 'airUtilTx', value: 5, timestamp: Date.now() }
     ];
 
-    (global.fetch as any).mockResolvedValueOnce({
+    (global.fetch as Mock).mockResolvedValueOnce({
       ok: true,
       json: async () => mockData
     });
@@ -264,7 +263,7 @@ describe('TelemetryGraphs Component', () => {
       { nodeId: mockNodeId, telemetryType: 'voltage', value: 3.7, timestamp: Date.now(), unit: 'V' }
     ];
 
-    (global.fetch as any).mockResolvedValueOnce({
+    (global.fetch as Mock).mockResolvedValueOnce({
       ok: true,
       json: async () => mockDataWithUnits
     });
@@ -304,7 +303,7 @@ describe('TelemetryGraphs Component', () => {
         }
       ];
 
-      (global.fetch as any).mockResolvedValueOnce({
+      (global.fetch as Mock).mockResolvedValueOnce({
         ok: true,
         json: async () => mockData
       });
@@ -329,7 +328,7 @@ describe('TelemetryGraphs Component', () => {
         }
       ];
 
-      (global.fetch as any).mockResolvedValueOnce({
+      (global.fetch as Mock).mockResolvedValueOnce({
         ok: true,
         json: async () => mockData
       });
@@ -372,7 +371,7 @@ describe('TelemetryGraphs Component', () => {
         }
       ];
 
-      (global.fetch as any).mockResolvedValueOnce({
+      (global.fetch as Mock).mockResolvedValueOnce({
         ok: true,
         json: async () => mockData
       });
@@ -413,7 +412,7 @@ describe('TelemetryGraphs Component', () => {
         }
       ];
 
-      (global.fetch as any)
+      (global.fetch as Mock)
         .mockResolvedValueOnce({
           ok: true,
           json: async () => initialData
