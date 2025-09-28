@@ -1,5 +1,12 @@
 import { DeviceInfo, Channel } from '../types/device';
 import { MeshMessage } from '../types/message';
+import {
+  sanitizeTextInput,
+  validateChannel,
+  validateNodeId,
+  validateHours,
+  validateIntervalMinutes
+} from '../utils/validation';
 
 class ApiService {
   private baseUrl = '';
@@ -63,10 +70,21 @@ class ApiService {
     text: string;
     destination?: string;
   }): Promise<any> {
+    // Validate and sanitize inputs
+    const sanitizedPayload = {
+      channel: validateChannel(payload.channel),
+      text: sanitizeTextInput(payload.text),
+      destination: validateNodeId(payload.destination)
+    };
+
+    if (!sanitizedPayload.text) {
+      throw new Error('Message text cannot be empty');
+    }
+
     const response = await fetch(`${this.baseUrl}/api/messages/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(sanitizedPayload),
     });
 
     if (!response.ok) {
@@ -78,10 +96,16 @@ class ApiService {
   }
 
   async sendTraceroute(nodeId: string) {
+    // Validate node ID format
+    const validatedNodeId = validateNodeId(nodeId);
+    if (!validatedNodeId) {
+      throw new Error('Invalid node ID provided for traceroute');
+    }
+
     const response = await fetch(`${this.baseUrl}/api/traceroute`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ destination: nodeId }),
+      body: JSON.stringify({ destination: validatedNodeId }),
     });
 
     if (!response.ok) {
@@ -106,10 +130,13 @@ class ApiService {
   }
 
   async updateTracerouteInterval(minutes: number) {
+    // Validate interval minutes
+    const validatedMinutes = validateIntervalMinutes(minutes);
+
     const response = await fetch(`${this.baseUrl}/api/settings/traceroute-interval`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ intervalMinutes: minutes }),
+      body: JSON.stringify({ intervalMinutes: validatedMinutes }),
     });
 
     if (!response.ok) {
@@ -120,10 +147,13 @@ class ApiService {
   }
 
   async purgeNodes(olderThanHours: number) {
+    // Validate hours parameter
+    const validatedHours = validateHours(olderThanHours);
+
     const response = await fetch(`${this.baseUrl}/api/purge/nodes`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ olderThanHours }),
+      body: JSON.stringify({ olderThanHours: validatedHours }),
     });
 
     if (!response.ok) {
@@ -135,10 +165,13 @@ class ApiService {
   }
 
   async purgeTelemetry(olderThanHours: number) {
+    // Validate hours parameter
+    const validatedHours = validateHours(olderThanHours);
+
     const response = await fetch(`${this.baseUrl}/api/purge/telemetry`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ olderThanHours }),
+      body: JSON.stringify({ olderThanHours: validatedHours }),
     });
 
     if (!response.ok) {
@@ -150,10 +183,13 @@ class ApiService {
   }
 
   async purgeMessages(olderThanHours: number) {
+    // Validate hours parameter
+    const validatedHours = validateHours(olderThanHours);
+
     const response = await fetch(`${this.baseUrl}/api/purge/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ olderThanHours }),
+      body: JSON.stringify({ olderThanHours: validatedHours }),
     });
 
     if (!response.ok) {

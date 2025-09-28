@@ -51,7 +51,13 @@ class MeshtasticManager {
   private pollingInterval: NodeJS.Timeout | null = null;
   private tracerouteInterval: NodeJS.Timeout | null = null;
   private tracerouteIntervalMinutes: number = 3;
-  private localNodeInfo: { nodeNum: number; nodeId: string; longName: string; shortName: string } | null = null;
+  private localNodeInfo: {
+    nodeNum: number;
+    nodeId: string;
+    longName: string;
+    shortName: string;
+    firmwareVersion?: string;
+  } | null = null;
 
   constructor() {
     this.config = {
@@ -584,13 +590,13 @@ class MeshtasticManager {
 
     // Update local node info with firmware version
     if (this.localNodeInfo && metadata.firmwareVersion) {
-      (this.localNodeInfo as any).firmwareVersion = metadata.firmwareVersion;
+      this.localNodeInfo.firmwareVersion = metadata.firmwareVersion;
       console.log(`📱 Updated firmware version: ${metadata.firmwareVersion}`);
 
       // Update the database with the firmware version
-      if ((this.localNodeInfo as any).nodeNum) {
+      if (this.localNodeInfo.nodeNum) {
         const nodeData = {
-          nodeNum: (this.localNodeInfo as any).nodeNum,
+          nodeNum: this.localNodeInfo.nodeNum,
           nodeId: this.localNodeInfo.nodeId,
           firmwareVersion: metadata.firmwareVersion
         };
@@ -1201,8 +1207,8 @@ class MeshtasticManager {
       if (this.localNodeInfo && this.localNodeInfo.nodeNum === Number(nodeInfo.num)) {
         console.log(`📱 Updating local node info with names from NodeInfo`);
         if (nodeInfo.user) {
-          (this.localNodeInfo as any).longName = nodeInfo.user.longName || this.localNodeInfo.longName;
-          (this.localNodeInfo as any).shortName = nodeInfo.user.shortName || this.localNodeInfo.shortName;
+          this.localNodeInfo.longName = nodeInfo.user.longName || this.localNodeInfo.longName;
+          this.localNodeInfo.shortName = nodeInfo.user.shortName || this.localNodeInfo.shortName;
           console.log(`📱 Local node: ${nodeInfo.user.longName} (${nodeInfo.user.shortName})`);
         }
       }
