@@ -515,16 +515,10 @@ class MeshtasticManager {
       const nodes = databaseService.getAllNodes();
       console.log(`📱 Found ${nodes.length} nodes in database to search`);
 
-      // Try multiple strategies to find the local node:
-      // 1. Look for node with longName containing "Station" (typical local naming)
-      // 2. Look for node with role 0 (CLIENT)
-      // 3. Look for node with specific nodeId pattern
-      // 4. Use first node with complete information
-
-      let localNode = nodes.find((n: any) => n.longName && n.longName.includes('Station'));
-      if (!localNode) localNode = nodes.find((n: any) => n.role === 0 || n.role === '0');
-      if (!localNode) localNode = nodes.find((n: any) => n.nodeId === '!a2e4ff4c'); // Known local ID
-      if (!localNode) localNode = nodes.find((n: any) => n.longName && n.shortName);
+      // Use generic fallback: first node with complete information
+      // This works universally since Device Info gathering (MyNodeInfo, NodeInfo, DeviceMetadata)
+      // properly identifies the local node during normal operation
+      const localNode = nodes.find((n: any) => n.longName && n.shortName);
 
       if (localNode) {
         this.localNodeInfo = {
