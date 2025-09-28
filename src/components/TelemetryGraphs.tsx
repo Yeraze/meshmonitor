@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import './TelemetryGraphs.css';
+import { type TemperatureUnit, formatTemperature, getTemperatureUnit } from '../utils/temperature';
 
 interface TelemetryData {
   id?: number;
@@ -15,6 +16,7 @@ interface TelemetryData {
 
 interface TelemetryGraphsProps {
   nodeId: string;
+  temperatureUnit?: TemperatureUnit;
 }
 
 interface ChartData {
@@ -23,7 +25,7 @@ interface ChartData {
   time: string;
 }
 
-const TelemetryGraphs: React.FC<TelemetryGraphsProps> = ({ nodeId }) => {
+const TelemetryGraphs: React.FC<TelemetryGraphsProps> = ({ nodeId, temperatureUnit = 'C' }) => {
   const [telemetryData, setTelemetryData] = useState<TelemetryData[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -76,12 +78,12 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = ({ nodeId }) => {
     return grouped;
   };
 
-  const prepareChartData = (data: TelemetryData[]): ChartData[] => {
+  const prepareChartData = (data: TelemetryData[], isTemperature: boolean = false): ChartData[] => {
     return data
       .sort((a, b) => a.timestamp - b.timestamp)
       .map(item => ({
         timestamp: item.timestamp,
-        value: item.value,
+        value: isTemperature ? formatTemperature(item.value, 'C', temperatureUnit) : item.value,
         time: new Date(item.timestamp).toLocaleTimeString([], {
           hour: '2-digit',
           minute: '2-digit'
@@ -138,8 +140,9 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = ({ nodeId }) => {
       <h3 className="telemetry-title">Last 24 Hours Telemetry</h3>
       <div className="graphs-grid">
         {Array.from(groupedData.entries()).map(([type, data]) => {
-          const chartData = prepareChartData(data);
-          const unit = data[0]?.unit || '';
+          const isTemperature = type === 'temperature';
+          const chartData = prepareChartData(data, isTemperature);
+          const unit = isTemperature ? getTemperatureUnit(temperatureUnit) : (data[0]?.unit || '');
           const label = getTelemetryLabel(type);
           const color = getColor(type);
 
