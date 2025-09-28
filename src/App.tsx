@@ -143,7 +143,8 @@ function App() {
   const [deviceInfo, setDeviceInfo] = useState<any>(null)
   const [deviceConfig, setDeviceConfig] = useState<any>(null)
   const [currentNodeId, setCurrentNodeId] = useState<string>('')
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const channelMessagesContainerRef = useRef<HTMLDivElement>(null)
+  const dmMessagesContainerRef = useRef<HTMLDivElement>(null)
   const [pendingMessages, setPendingMessages] = useState<Map<string, MeshMessage>>(new Map())
   const [unreadCounts, setUnreadCounts] = useState<{[key: number]: number}>({})
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -260,13 +261,26 @@ function App() {
   }, [showRoutes, activeTab, connectionStatus]);
 
   // Auto-scroll to bottom when messages change or channel changes
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  const scrollToBottom = useCallback(() => {
+    // Scroll the appropriate container based on active tab
+    if (activeTab === 'channels' && channelMessagesContainerRef.current) {
+      channelMessagesContainerRef.current.scrollTop = channelMessagesContainerRef.current.scrollHeight;
+    } else if (activeTab === 'nodes' && dmMessagesContainerRef.current) {
+      dmMessagesContainerRef.current.scrollTop = dmMessagesContainerRef.current.scrollHeight;
+    }
+  }, [activeTab]);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [channelMessages, selectedChannel]);
+    if (activeTab === 'channels') {
+      scrollToBottom();
+    }
+  }, [channelMessages, selectedChannel, activeTab, scrollToBottom]);
+
+  useEffect(() => {
+    if (activeTab === 'nodes' && selectedDMNode) {
+      scrollToBottom();
+    }
+  }, [messages, selectedDMNode, activeTab, scrollToBottom]);
 
   // Regular data updates (every 5 seconds)
   useEffect(() => {
@@ -1468,7 +1482,7 @@ function App() {
                 </h3>
 
                 <div className="channel-conversation">
-                  <div className="messages-container">
+                  <div className="messages-container" ref={channelMessagesContainerRef}>
                     {(() => {
                       // Use selected channel ID directly - no mapping needed
                       const messageChannel = selectedChannel;
@@ -1567,7 +1581,6 @@ function App() {
                       <p className="no-messages">No messages in this channel yet</p>
                     );
                     })()}
-                    <div ref={messagesEndRef} />
                   </div>
 
                   {/* Send message form */}
@@ -1794,7 +1807,7 @@ function App() {
                 })()}
               </div>
 
-              <div className="messages-container">
+              <div className="messages-container" ref={dmMessagesContainerRef}>
                 {getDMMessages(selectedDMNode).length > 0 ? (
                   getDMMessages(selectedDMNode).map(msg => {
                     const isTraceroute = msg.portnum === 70;
