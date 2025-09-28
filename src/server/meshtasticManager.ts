@@ -703,14 +703,16 @@ class MeshtasticManager {
           }
         }
 
-        // Extract replyId from decoded Data message
-        const decodedReplyId = (meshPacket.decoded as any)?.replyId;
+        // Extract replyId and emoji from decoded Data message - check both camelCase and snake_case
+        const decodedReplyId = (meshPacket.decoded as any)?.replyId ?? (meshPacket.decoded as any)?.reply_id;
         const replyId = (decodedReplyId !== undefined && decodedReplyId > 0) ? decodedReplyId : undefined;
+        const decodedEmoji = (meshPacket.decoded as any)?.emoji;
+        const emoji = (decodedEmoji !== undefined && decodedEmoji > 0) ? decodedEmoji : undefined;
 
-        // Extract hop fields - protobufjs uses camelCase
-        const hopStart = (meshPacket as any).hopStart || 0;
-        const hopLimit = (meshPacket as any).hopLimit || 0;
-        console.log(`🔍 Hop fields: hopStart=${hopStart}, hopLimit=${hopLimit}, hopCount=${hopStart - hopLimit}`);
+        // Extract hop fields - check both camelCase and snake_case
+        // Note: hopStart is the INITIAL hop limit when message was sent, hopLimit is current remaining hops
+        const hopStart = (meshPacket as any).hopStart ?? (meshPacket as any).hop_start ?? null;
+        const hopLimit = (meshPacket as any).hopLimit ?? (meshPacket as any).hop_limit ?? null;
 
         const message = {
           id: `${fromNum}_${meshPacket.id || Date.now()}`,
@@ -726,6 +728,7 @@ class MeshtasticManager {
           hopStart: hopStart,
           hopLimit: hopLimit,
           replyId: replyId && replyId > 0 ? replyId : undefined,
+          emoji: emoji,
           createdAt: Date.now()
         };
         databaseService.insertMessage(message);
@@ -892,19 +895,19 @@ class MeshtasticManager {
         const envMetrics = telemetry.environmentMetrics;
         console.log(`🌡️ Environment telemetry: temp=${envMetrics.temperature}°C, humidity=${envMetrics.relativeHumidity}%`);
 
-        if (envMetrics.temperature !== undefined) {
+        if (envMetrics.temperature !== undefined && envMetrics.temperature !== null) {
           databaseService.insertTelemetry({
             nodeId, nodeNum: fromNum, telemetryType: 'temperature',
             timestamp, value: envMetrics.temperature, unit: '°C', createdAt: now
           });
         }
-        if (envMetrics.relativeHumidity !== undefined) {
+        if (envMetrics.relativeHumidity !== undefined && envMetrics.relativeHumidity !== null) {
           databaseService.insertTelemetry({
             nodeId, nodeNum: fromNum, telemetryType: 'humidity',
             timestamp, value: envMetrics.relativeHumidity, unit: '%', createdAt: now
           });
         }
-        if (envMetrics.barometricPressure !== undefined) {
+        if (envMetrics.barometricPressure !== undefined && envMetrics.barometricPressure !== null) {
           databaseService.insertTelemetry({
             nodeId, nodeNum: fromNum, telemetryType: 'pressure',
             timestamp, value: envMetrics.barometricPressure, unit: 'hPa', createdAt: now
@@ -2482,7 +2485,11 @@ class MeshtasticManager {
       text: msg.text,
       channel: msg.channel,
       portnum: msg.portnum,
-      timestamp: new Date(msg.timestamp)
+      timestamp: new Date(msg.timestamp),
+      hopStart: msg.hopStart,
+      hopLimit: msg.hopLimit,
+      replyId: msg.replyId,
+      emoji: msg.emoji
     }));
   }
 
