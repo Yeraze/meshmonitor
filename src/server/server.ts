@@ -4,12 +4,17 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import databaseService from '../services/database.js';
 import meshtasticManager from './meshtasticManager.js';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+const packageJson = require('../../package.json');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const serverStartTime = Date.now();
 
 // Custom JSON replacer to handle BigInt values
 const jsonReplacer = (_key: string, value: any) => {
@@ -340,35 +345,33 @@ app.post('/api/messages/send', async (req, res) => {
     // Send the message to the mesh network (with optional destination for DMs)
     await meshtasticManager.sendTextMessage(text, meshChannel, destinationNum);
 
-    // Save the sent message to database immediately
+    // Save the sent message to database immediately (if local node info is available)
     const localNodeInfo = meshtasticManager.getLocalNodeInfo();
-    console.log('🔍 Local node info for message saving:', localNodeInfo);
 
-    // Create message entry even if local node info isn't available yet
-    // Use the actual local node number from logs (2732916556) if localNodeInfo is null
-    const actualNodeNum = localNodeInfo?.nodeNum || 2732916556;
-    const actualNodeId = localNodeInfo?.nodeId || '!a2e4ff4c';
+    if (localNodeInfo) {
+      const message = {
+        id: `sent_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        fromNodeNum: localNodeInfo.nodeNum,
+        toNodeNum: destinationNum || 4294967295, // Use destination if provided, otherwise broadcast
+        fromNodeId: localNodeInfo.nodeId,
+        toNodeId: destination || '!ffffffff',
+        text: text,
+        channel: meshChannel,
+        portnum: 1, // TEXT_MESSAGE_APP
+        timestamp: Date.now(),
+        rxTime: Date.now(),
+        createdAt: Date.now()
+      };
 
-    const message = {
-      id: `sent_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      fromNodeNum: actualNodeNum,
-      toNodeNum: destinationNum || 4294967295, // Use destination if provided, otherwise broadcast
-      fromNodeId: actualNodeId,
-      toNodeId: destination || '!ffffffff',
-      text: text,
-      channel: meshChannel,
-      portnum: 1, // TEXT_MESSAGE_APP
-      timestamp: Date.now(),
-      rxTime: Date.now(),
-      createdAt: Date.now()
-    };
-
-    try {
-      databaseService.insertMessage(message);
-      console.log(`💾 Saved sent message to database: "${text.substring(0, 50)}..."`);
-    } catch (error) {
-      console.warn(`⚠️ Could not save sent message to database:`, error);
-      // Message was still sent successfully to mesh network
+      try {
+        databaseService.insertMessage(message);
+        console.log(`💾 Saved sent message to database: "${text.substring(0, 50)}..."`);
+      } catch (error) {
+        console.warn(`⚠️ Could not save sent message to database:`, error);
+      }
+    } else {
+      console.warn('⚠️ Local node info not available yet, skipping database save');
+      console.warn('   Message will be saved when it arrives back from the mesh network');
     }
 
     res.json({ success: true });
@@ -612,6 +615,36 @@ app.post('/api/purge/messages', (_req, res) => {
     console.error('Error purging messages:', error);
     res.status(500).json({ error: 'Failed to purge messages' });
   }
+});
+
+// System status endpoint
+app.get('/api/system/status', (_req, res) => {
+  const uptimeSeconds = Math.floor((Date.now() - serverStartTime) / 1000);
+  const days = Math.floor(uptimeSeconds / 86400);
+  const hours = Math.floor((uptimeSeconds % 86400) / 3600);
+  const minutes = Math.floor((uptimeSeconds % 3600) / 60);
+  const seconds = uptimeSeconds % 60;
+
+  let uptimeString = '';
+  if (days > 0) uptimeString += `${days}d `;
+  if (hours > 0 || days > 0) uptimeString += `${hours}h `;
+  if (minutes > 0 || hours > 0 || days > 0) uptimeString += `${minutes}m `;
+  uptimeString += `${seconds}s`;
+
+  res.json({
+    version: packageJson.version,
+    nodeVersion: process.version,
+    platform: process.platform,
+    architecture: process.arch,
+    uptime: uptimeString,
+    uptimeSeconds,
+    environment: process.env.NODE_ENV || 'development',
+    memoryUsage: {
+      heapUsed: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + ' MB',
+      heapTotal: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + ' MB',
+      rss: Math.round(process.memoryUsage().rss / 1024 / 1024) + ' MB'
+    }
+  });
 });
 
 // Health check endpoint
