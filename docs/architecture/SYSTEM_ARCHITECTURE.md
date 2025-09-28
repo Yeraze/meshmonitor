@@ -40,23 +40,31 @@ MeshMonitor is a full-stack web application designed to monitor Meshtastic mesh 
 src/
 ├── App.tsx                 # Main application component
 ├── App.css                 # Catppuccin theme styles
-├── services/
-│   └── meshtasticService.ts # Meshtastic API client
-└── main.tsx               # Application entry point
+├── components/
+│   ├── TelemetryGraphs.tsx # Telemetry visualization component
+│   └── TelemetryGraphs.css # Telemetry graph styles
+├── main.tsx               # Application entry point
+└── services/
+    └── database.ts        # Database service (shared)
 ```
 
 **Responsibilities:**
 - User interface rendering and interaction
 - Real-time connection status display
 - Message composition and display
-- Node information visualization
+- Node information visualization with map integration
+- Telemetry data visualization with graphs
+- Traceroute visualization and management
+- Channel management interface
 - Client-side state management
 
 **Data Flow:**
-1. User interactions trigger service calls
-2. MeshtasticService handles HTTP API communication
-3. Local state updates trigger UI re-renders
-4. Real-time polling maintains data freshness
+1. User interactions trigger API calls to Express backend
+2. Backend communicates with Meshtastic node via HTTP/Protobuf
+3. Database persists all node, message, and telemetry data
+4. Frontend polls backend for updates every 2 seconds
+5. Local state updates trigger UI re-renders
+6. Map and telemetry graphs update in real-time
 
 ### 2. Backend Layer (Express API Server)
 
@@ -69,12 +77,18 @@ src/
 **Key Components:**
 ```
 src/server/
-└── server.ts              # Express server with API routes
+├── server.ts                     # Express server with API routes
+├── meshtasticManager.ts          # Meshtastic connection manager
+├── meshtasticProtobufService.ts # Protobuf message handling
+├── protobufService.ts           # Core protobuf serialization
+└── protobufLoader.ts            # Protobuf schema loader
 ```
 
 **API Design:**
 - RESTful endpoints following OpenAPI standards
 - JSON request/response format
+- Protobuf message handling for Meshtastic communication
+- WebSocket-like polling for real-time updates
 - Error handling and validation
 - Static file serving for production
 
@@ -98,6 +112,13 @@ src/services/
 └── database.ts            # Database service and schema
 ```
 
+**Schema includes:**
+- **nodes**: Device information and telemetry
+- **messages**: Text messages and communications
+- **channels**: Channel configuration
+- **telemetry**: Time-series telemetry data
+- **traceroutes**: Network path analysis
+
 **Responsibilities:**
 - Persistent storage of messages and node information
 - Data deduplication and integrity
@@ -111,52 +132,87 @@ src/services/
 ```mermaid
 erDiagram
     NODES {
-        int nodeNum PK
-        string nodeId UNIQUE
-        string longName
-        string shortName
-        int hwModel
-        string macaddr
-        real latitude
-        real longitude
-        real altitude
-        int batteryLevel
-        real voltage
-        real channelUtilization
-        real airUtilTx
-        int lastHeard
-        real snr
-        int rssi
-        int createdAt
-        int updatedAt
+        nodeNum int PK
+        nodeId string "UNIQUE"
+        longName string
+        shortName string
+        hwModel int
+        role int
+        hopsAway int
+        macaddr string
+        latitude real
+        longitude real
+        altitude real
+        batteryLevel int
+        voltage real
+        channelUtilization real
+        airUtilTx real
+        lastHeard int
+        snr real
+        rssi int
+        lastTracerouteRequest int
+        createdAt int
+        updatedAt int
     }
 
     MESSAGES {
-        string id PK
-        int fromNodeNum FK
-        int toNodeNum FK
-        string fromNodeId
-        string toNodeId
-        string text
-        int channel
-        int portnum
-        int timestamp
-        int rxTime
-        int createdAt
+        id string PK
+        fromNodeNum int FK
+        toNodeNum int FK
+        fromNodeId string
+        toNodeId string
+        text string
+        channel int
+        portnum int
+        timestamp int
+        rxTime int
+        hopStart int
+        hopLimit int
+        replyId int
+        emoji int
+        createdAt int
     }
 
     CHANNELS {
-        int id PK
-        string name
-        string psk
-        boolean uplinkEnabled
-        boolean downlinkEnabled
-        int createdAt
-        int updatedAt
+        id int PK
+        name string
+        psk string
+        uplinkEnabled boolean
+        downlinkEnabled boolean
+        createdAt int
+        updatedAt int
+    }
+
+    TELEMETRY {
+        id int PK
+        nodeId string
+        nodeNum int FK
+        telemetryType string
+        timestamp int
+        value real
+        unit string
+        createdAt int
+    }
+
+    TRACEROUTES {
+        id int PK
+        fromNodeNum int FK
+        toNodeNum int FK
+        fromNodeId string
+        toNodeId string
+        route string
+        routeBack string
+        snrTowards string
+        snrBack string
+        timestamp int
+        createdAt int
     }
 
     NODES ||--o{ MESSAGES : sends
     NODES ||--o{ MESSAGES : receives
+    NODES ||--o{ TELEMETRY : generates
+    NODES ||--o{ TRACEROUTES : initiates
+    NODES ||--o{ TRACEROUTES : targets
 ```
 
 ### Data Flow Patterns
@@ -190,10 +246,12 @@ UI Input → MeshtasticService → ToRadio API → Meshtastic Network
 ```
 
 **Packet Processing:**
-- **NodeInfo packets**: Device information and user details
-- **Position packets**: GPS coordinates and altitude
-- **Telemetry packets**: Battery, voltage, and radio metrics
-- **Text Message packets**: User communications
+- **NodeInfo packets**: Device information, user details, and role configuration
+- **Position packets**: GPS coordinates, altitude, and location timestamps
+- **Telemetry packets**: Battery level, voltage, channel utilization, air utilization
+- **Text Message packets**: User communications with emoji support
+- **Traceroute packets**: Network path analysis and SNR measurements
+- **Admin packets**: Channel configuration and node management
 
 **Error Handling:**
 - Connection retry logic with exponential backoff
@@ -231,16 +289,20 @@ UI Input → MeshtasticService → ToRadio API → Meshtastic Network
 
 ## Scalability Considerations
 
-### Current Limitations
-- Single SQLite database instance
-- In-memory caching for active data
-- Single Meshtastic node connection
+### Current Design
+- Single SQLite database instance with WAL mode for concurrency
+- In-memory caching for active session data
+- Single Meshtastic node connection via HTTP API
+- Telemetry data retention with configurable cleanup
+- Traceroute automation for network topology mapping
 
 ### Future Scaling Options
-- Database connection pooling
-- Redis for distributed caching
+- Database connection pooling for higher concurrency
+- Redis for distributed caching across instances
 - Multiple node support with load balancing
 - WebSocket connections for real-time updates
+- Time-series database for telemetry data
+- GraphQL API for flexible data queries
 
 ## Performance Architecture
 
@@ -266,11 +328,11 @@ UI Input → MeshtasticService → ToRadio API → Meshtastic Network
 
 ### Development Environment
 ```
-┌─────────────────┐    ┌─────────────────┐
-│  Vite Dev       │    │  Express Dev    │
-│  Server         │    │  Server         │
-│  (Port 5173)    │    │  (Port 3001)    │
-└─────────────────┘    └─────────────────┘
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│  Vite Dev       │    │  Express Dev    │    │  Meshtastic     │
+│  Server         │    │  Server         │    │  Node           │
+│  (Port 5173)    │    │  (Port 3001)    │    │  (HTTP API)     │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
 ### Production Environment
@@ -316,14 +378,39 @@ UI Input → MeshtasticService → ToRadio API → Meshtastic Network
 - Detailed error logging for debugging
 - Automatic error recovery where possible
 
+## Feature Architecture
+
+### Telemetry System
+The application tracks and visualizes various telemetry metrics:
+- **Battery Monitoring**: Tracks battery level and voltage over time
+- **Channel Utilization**: Monitors radio channel usage
+- **Air Utilization**: Tracks transmit air time utilization
+- **SNR/RSSI Tracking**: Signal quality metrics for network analysis
+- **Time-series Storage**: Efficient storage with periodic cleanup
+
+### Traceroute System
+Automated network topology discovery:
+- **Automatic Traceroute**: Periodically discovers network paths
+- **Bidirectional Analysis**: Tracks routes in both directions
+- **SNR Mapping**: Records signal quality along each hop
+- **Route Visualization**: Display network paths on the map
+- **Historical Tracking**: Maintains route history for analysis
+
+### Channel Management
+Multi-channel support for Meshtastic networks:
+- **Primary Channel**: Default channel 0 for main communications
+- **Named Channels**: Support for admin, secondary, and custom channels
+- **Channel Configuration**: PSK and uplink/downlink settings
+- **Message Routing**: Automatic routing to appropriate channels
+
 ## Development Workflow
 
 ### Build Process
-1. **TypeScript Compilation**: Source code type checking
-2. **React Build**: Production bundle creation with Vite
-3. **Server Build**: Express application compilation
-4. **Docker Build**: Container image creation
-5. **Testing**: Automated test execution
+1. **TypeScript Compilation**: Source code type checking for both frontend and backend
+2. **React Build**: Production bundle creation with Vite, including code splitting
+3. **Server Build**: Express application compilation with protobuf support
+4. **Docker Build**: Multi-stage container image creation
+5. **Database Migration**: Automatic schema updates on startup
 
 ### Deployment Process
 1. **Environment Preparation**: Configuration setup
