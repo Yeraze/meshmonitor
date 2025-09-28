@@ -703,9 +703,11 @@ class MeshtasticManager {
           }
         }
 
-        // Extract replyId from decoded Data message
+        // Extract replyId and emoji from decoded Data message
         const decodedReplyId = (meshPacket.decoded as any)?.replyId;
         const replyId = (decodedReplyId !== undefined && decodedReplyId > 0) ? decodedReplyId : undefined;
+        const decodedEmoji = (meshPacket.decoded as any)?.emoji;
+        const emoji = (decodedEmoji !== undefined && decodedEmoji > 0) ? decodedEmoji : undefined;
 
         // Extract hop fields - check both camelCase and snake_case
         // Note: hopStart is the INITIAL hop limit when message was sent, hopLimit is current remaining hops
@@ -726,6 +728,7 @@ class MeshtasticManager {
           hopStart: hopStart,
           hopLimit: hopLimit,
           replyId: replyId && replyId > 0 ? replyId : undefined,
+          emoji: emoji,
           createdAt: Date.now()
         };
         databaseService.insertMessage(message);
@@ -2484,7 +2487,9 @@ class MeshtasticManager {
       portnum: msg.portnum,
       timestamp: new Date(msg.timestamp),
       hopStart: msg.hopStart,
-      hopLimit: msg.hopLimit
+      hopLimit: msg.hopLimit,
+      replyId: msg.replyId,
+      emoji: msg.emoji
     }));
   }
 

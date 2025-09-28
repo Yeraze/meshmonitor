@@ -43,6 +43,7 @@ export interface DbMessage {
   hopStart?: number;
   hopLimit?: number;
   replyId?: number;
+  emoji?: number;
   createdAt: number;
 }
 
@@ -307,6 +308,17 @@ class DatabaseService {
       }
     }
 
+    try {
+      this.db.exec(`
+        ALTER TABLE messages ADD COLUMN emoji INTEGER;
+      `);
+      console.log('✅ Added emoji column');
+    } catch (error: any) {
+      if (!error.message?.includes('duplicate column')) {
+        console.log('⚠️ emoji column already exists or other error:', error.message);
+      }
+    }
+
     console.log('Database migrations completed');
   }
 
@@ -446,8 +458,8 @@ class DatabaseService {
     const stmt = this.db.prepare(`
       INSERT INTO messages (
         id, fromNodeNum, toNodeNum, fromNodeId, toNodeId,
-        text, channel, portnum, timestamp, rxTime, hopStart, hopLimit, replyId, createdAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        text, channel, portnum, timestamp, rxTime, hopStart, hopLimit, replyId, emoji, createdAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -464,6 +476,7 @@ class DatabaseService {
       messageData.hopStart ?? null,
       messageData.hopLimit ?? null,
       messageData.replyId ?? null,
+      messageData.emoji ?? null,
       messageData.createdAt
     );
   }

@@ -86,6 +86,7 @@ interface MeshMessage {
   hopStart?: number;
   hopLimit?: number;
   replyId?: number;
+  emoji?: number;
 }
 
 interface Channel {
@@ -1487,7 +1488,9 @@ function App() {
                                 </div>
                               )}
                               <div className={`message-bubble ${isMine ? 'mine' : 'theirs'}`}>
-                                <div className="message-text">{msg.text}</div>
+                                <div className="message-text">
+                                  {msg.emoji ? String.fromCodePoint(msg.emoji) : msg.text}
+                                </div>
                                 {reactions.length > 0 && (
                                   <div className="message-reactions">
                                     {reactions.map(reaction => (
