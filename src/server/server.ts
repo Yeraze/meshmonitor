@@ -4,12 +4,17 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import databaseService from '../services/database.js';
 import meshtasticManager from './meshtasticManager.js';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+const packageJson = require('../../package.json');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const serverStartTime = Date.now();
 
 // Custom JSON replacer to handle BigInt values
 const jsonReplacer = (_key: string, value: any) => {
@@ -612,6 +617,36 @@ app.post('/api/purge/messages', (_req, res) => {
     console.error('Error purging messages:', error);
     res.status(500).json({ error: 'Failed to purge messages' });
   }
+});
+
+// System status endpoint
+app.get('/api/system/status', (_req, res) => {
+  const uptimeSeconds = Math.floor((Date.now() - serverStartTime) / 1000);
+  const days = Math.floor(uptimeSeconds / 86400);
+  const hours = Math.floor((uptimeSeconds % 86400) / 3600);
+  const minutes = Math.floor((uptimeSeconds % 3600) / 60);
+  const seconds = uptimeSeconds % 60;
+
+  let uptimeString = '';
+  if (days > 0) uptimeString += `${days}d `;
+  if (hours > 0 || days > 0) uptimeString += `${hours}h `;
+  if (minutes > 0 || hours > 0 || days > 0) uptimeString += `${minutes}m `;
+  uptimeString += `${seconds}s`;
+
+  res.json({
+    version: packageJson.version,
+    nodeVersion: process.version,
+    platform: process.platform,
+    architecture: process.arch,
+    uptime: uptimeString,
+    uptimeSeconds,
+    environment: process.env.NODE_ENV || 'development',
+    memoryUsage: {
+      heapUsed: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + ' MB',
+      heapTotal: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + ' MB',
+      rss: Math.round(process.memoryUsage().rss / 1024 / 1024) + ' MB'
+    }
+  });
 });
 
 // Health check endpoint
