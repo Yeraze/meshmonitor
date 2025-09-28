@@ -1,5 +1,8 @@
 # MeshMonitor
 
+[![Docker Image](https://ghcr-badge.egpl.dev/yeraze/meshmonitor/latest_tag?color=%235b4566&ignore=latest,main&label=version&trim=)](https://github.com/Yeraze/meshmonitor/pkgs/container/meshmonitor)
+[![Docker Pulls](https://ghcr-badge.egpl.dev/yeraze/meshmonitor/size?color=%235b4566&tag=latest&label=image%20size&trim=)](https://github.com/Yeraze/meshmonitor/pkgs/container/meshmonitor)
+
 A comprehensive web application for monitoring Meshtastic mesh networks over IP. Built with React, TypeScript, and Node.js, featuring a beautiful Catppuccin Mocha dark theme and persistent SQLite database storage.
 
 ![MeshMonitor Interface](docs/images/meshmonitor-screenshot.png)
@@ -50,10 +53,12 @@ A comprehensive web application for monitoring Meshtastic mesh networks over IP.
 - Traceroute history with SNR tracking
 
 ### 🐳 **Docker Support**
-- Full containerization with Docker
+- Pre-built images on GitHub Container Registry
+- Full containerization with Docker and Docker Compose
 - Persistent data volumes
 - Production-ready deployment
 - Environment-based configuration
+- Multi-architecture support
 
 ## Quick Start
 
@@ -65,29 +70,56 @@ A comprehensive web application for monitoring Meshtastic mesh networks over IP.
 
 ### Docker Deployment
 
-1. **Using Docker Compose (Recommended)**
-   ```bash
-   # Set environment variables
-   export MESHTASTIC_NODE_IP=192.168.1.100
-   export MESHTASTIC_USE_TLS=false
+#### Option 1: Using Pre-built Image from GitHub Container Registry (Recommended)
 
-   # Start the application
-   docker-compose up -d
+The easiest way to deploy MeshMonitor is using the pre-built Docker images published to GitHub Container Registry:
+
+```bash
+# Set environment variables
+export MESHTASTIC_NODE_IP=192.168.1.100
+export MESHTASTIC_USE_TLS=false
+
+# Pull and start the application
+docker-compose up -d
+```
+
+The default `docker-compose.yml` is configured to use `ghcr.io/yeraze/meshmonitor:latest`.
+
+You can also specify a specific version:
+```bash
+docker pull ghcr.io/yeraze/meshmonitor:1.0.0
+docker run -d \
+  -p 8080:3001 \
+  -v meshmonitor-data:/data \
+  -e MESHTASTIC_NODE_IP=192.168.1.100 \
+  ghcr.io/yeraze/meshmonitor:1.0.0
+```
+
+#### Option 2: Build Locally
+
+If you want to build from source:
+
+1. **Edit docker-compose.yml** - Comment out the `image` line and uncomment the `build` section:
+   ```yaml
+   # image: ghcr.io/yeraze/meshmonitor:latest
+   build:
+     context: .
+     dockerfile: Dockerfile
    ```
 
-2. **Manual Docker Build**
+2. **Build and start**:
    ```bash
-   docker build -t meshmonitor .
-   docker run -d \
-     -p 8080:3001 \
-     -v meshmonitor-data:/data \
-     -e MESHTASTIC_NODE_IP=192.168.1.100 \
-     meshmonitor
+   docker-compose up -d --build
    ```
 
-3. **Access the application**
-   - Open http://localhost:8080 in your browser
-   - The application will automatically attempt to connect to your Meshtastic node
+#### Access the Application
+- Open http://localhost:8080 in your browser
+- The application will automatically attempt to connect to your Meshtastic node
+
+#### Available Image Tags
+- `latest` - Latest build from main branch
+- `1.0.0`, `1.0`, `1` - Specific version tags
+- `main` - Development builds from main branch
 
 ### Development Setup
 
