@@ -2482,7 +2482,9 @@ class MeshtasticManager {
       text: msg.text,
       channel: msg.channel,
       portnum: msg.portnum,
-      timestamp: new Date(msg.timestamp)
+      timestamp: new Date(msg.timestamp),
+      hopStart: msg.hopStart,
+      hopLimit: msg.hopLimit
     }));
   }
 
