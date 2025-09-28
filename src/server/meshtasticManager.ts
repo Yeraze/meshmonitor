@@ -51,7 +51,13 @@ class MeshtasticManager {
   private pollingInterval: NodeJS.Timeout | null = null;
   private tracerouteInterval: NodeJS.Timeout | null = null;
   private tracerouteIntervalMinutes: number = 3;
-  private localNodeInfo: { nodeNum: number; nodeId: string; longName: string; shortName: string } | null = null;
+  private localNodeInfo: {
+    nodeNum: number;
+    nodeId: string;
+    longName: string;
+    shortName: string;
+    firmwareVersion?: string;
+  } | null = null;
 
   constructor() {
     this.config = {
@@ -515,10 +521,15 @@ class MeshtasticManager {
       const nodes = databaseService.getAllNodes();
       console.log(`📱 Found ${nodes.length} nodes in database to search`);
 
-      // Use generic fallback: first node with complete information
-      // This works universally since Device Info gathering (MyNodeInfo, NodeInfo, DeviceMetadata)
-      // properly identifies the local node during normal operation
-      const localNode = nodes.find((n: any) => n.longName && n.shortName);
+      // Skip nodes with generic names that likely aren't the actual local device
+      // Find a node with complete information that isn't a placeholder
+      const localNode = nodes.find((n: any) =>
+        n.longName &&
+        n.shortName &&
+        n.longName !== 'Local Device' &&
+        n.longName !== 'Unknown' &&
+        !n.longName.startsWith('Meshtastic ')
+      );
 
       if (localNode) {
         this.localNodeInfo = {
@@ -530,7 +541,7 @@ class MeshtasticManager {
         } as any;
         console.log(`📱 Initialized localNodeInfo from database: ${localNode.longName} (${localNode.nodeId})`);
       } else {
-        console.log('⚠️ Could not find suitable local node in database, will wait for periodic updates');
+        console.log('⚠️ Could not find suitable local node in database, will wait for MyNodeInfo');
       }
     } catch (error) {
       console.error('❌ Failed to initialize localNodeInfo from database:', error);
@@ -541,35 +552,51 @@ class MeshtasticManager {
     console.log('📱 Processing MyNodeInfo for local device');
     console.log('📱 MyNodeInfo contents:', JSON.stringify(myNodeInfo, null, 2));
 
-    // Decode firmware version from minAppVersion if available
-    let firmwareVersion = null;
+    // Log minAppVersion for debugging but don't use it as firmware version
     if (myNodeInfo.minAppVersion) {
-      firmwareVersion = `v${this.decodeMinAppVersion(myNodeInfo.minAppVersion)} (min app)`;
-      console.log(`📱 Decoded firmware version from minAppVersion: ${firmwareVersion}`);
+      const minVersion = `v${this.decodeMinAppVersion(myNodeInfo.minAppVersion)}`;
+      console.log(`📱 Minimum app version required: ${minVersion}`);
     }
 
-    const nodeData = {
-      nodeNum: Number(myNodeInfo.myNodeNum),
-      nodeId: `!${myNodeInfo.myNodeNum.toString(16).padStart(8, '0')}`,
-      longName: 'Local Device',
-      shortName: 'LOCAL',
-      hwModel: myNodeInfo.hwModel || 0,
-      lastHeard: Date.now() / 1000,
-      createdAt: Date.now(),
-      updatedAt: Date.now()
-    };
+    const nodeNum = Number(myNodeInfo.myNodeNum);
+    const nodeId = `!${myNodeInfo.myNodeNum.toString(16).padStart(8, '0')}`;
 
-    // Store local node info for message sending (including firmware version if available)
-    this.localNodeInfo = {
-      nodeNum: nodeData.nodeNum,
-      nodeId: nodeData.nodeId,
-      longName: nodeData.longName,
-      shortName: nodeData.shortName,
-      firmwareVersion: firmwareVersion
-    } as any;
+    // Check if we already have this node with actual names in the database
+    const existingNode = databaseService.getNode(nodeNum);
 
-    databaseService.upsertNode(nodeData);
-    console.log('📱 Updated local device info in database');
+    if (existingNode && existingNode.longName && existingNode.longName !== 'Local Device') {
+      // We already have real node info, use it
+      this.localNodeInfo = {
+        nodeNum: nodeNum,
+        nodeId: nodeId,
+        longName: existingNode.longName,
+        shortName: existingNode.shortName || 'LOCAL',
+        firmwareVersion: (existingNode as any).firmwareVersion || null
+      } as any;
+      console.log(`📱 Using existing node info for local device: ${existingNode.longName} (${nodeId})`);
+    } else {
+      // We don't have real node info yet, store basic info and wait for NodeInfo
+      const nodeData = {
+        nodeNum: nodeNum,
+        nodeId: nodeId,
+        hwModel: myNodeInfo.hwModel || 0,
+        lastHeard: Date.now() / 1000,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      };
+
+      // Store minimal local node info - actual names will come from NodeInfo
+      this.localNodeInfo = {
+        nodeNum: nodeNum,
+        nodeId: nodeId,
+        longName: null,  // Will be set when NodeInfo is received
+        shortName: null,  // Will be set when NodeInfo is received
+        firmwareVersion: null // Will be set when DeviceMetadata is received
+      } as any;
+
+      databaseService.upsertNode(nodeData);
+      console.log(`📱 Stored basic local node info, waiting for NodeInfo for names (${nodeId})`);
+    }
   }
 
   getLocalNodeInfo(): { nodeNum: number; nodeId: string; longName: string; shortName: string } | null {
@@ -585,8 +612,19 @@ class MeshtasticManager {
 
     // Update local node info with firmware version
     if (this.localNodeInfo && metadata.firmwareVersion) {
-      (this.localNodeInfo as any).firmwareVersion = metadata.firmwareVersion;
+      this.localNodeInfo.firmwareVersion = metadata.firmwareVersion;
       console.log(`📱 Updated firmware version: ${metadata.firmwareVersion}`);
+
+      // Update the database with the firmware version
+      if (this.localNodeInfo.nodeNum) {
+        const nodeData = {
+          nodeNum: this.localNodeInfo.nodeNum,
+          nodeId: this.localNodeInfo.nodeId,
+          firmwareVersion: metadata.firmwareVersion
+        };
+        databaseService.upsertNode(nodeData);
+        console.log(`📱 Saved firmware version to database for node ${this.localNodeInfo.nodeId}`);
+      }
     } else {
       console.log('⚠️ Cannot update firmware - localNodeInfo not initialized yet');
     }
@@ -1191,8 +1229,8 @@ class MeshtasticManager {
       if (this.localNodeInfo && this.localNodeInfo.nodeNum === Number(nodeInfo.num)) {
         console.log(`📱 Updating local node info with names from NodeInfo`);
         if (nodeInfo.user) {
-          (this.localNodeInfo as any).longName = nodeInfo.user.longName || this.localNodeInfo.longName;
-          (this.localNodeInfo as any).shortName = nodeInfo.user.shortName || this.localNodeInfo.shortName;
+          this.localNodeInfo.longName = nodeInfo.user.longName || this.localNodeInfo.longName;
+          this.localNodeInfo.shortName = nodeInfo.user.shortName || this.localNodeInfo.shortName;
           console.log(`📱 Local node: ${nodeInfo.user.longName} (${nodeInfo.user.shortName})`);
         }
       }
