@@ -362,6 +362,22 @@ body {
   border: 1px solid var(--ctp-surface1);
 }
 
+.dm-conversation-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.no-selection {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--ctp-subtext0);
+  font-size: 1.1rem;
+}
+
 .message-item.sent {
   margin-left: 2rem;
 }
@@ -655,7 +671,7 @@ body {
 }
 
 .messages-container {
-  max-height: 400px;
+  max-height: 600px;
   overflow-y: auto;
   border: 1px solid var(--ctp-surface1);
   border-radius: 8px;
@@ -982,6 +998,7 @@ body {
 }
 
 .send-message-form {
+  flex-shrink: 0;
   margin-top: 1rem;
   padding-top: 1rem;
   border-top: 1px solid var(--ctp-surface2);
@@ -1274,7 +1291,9 @@ body {
 
 /* Messages container adjustments */
 .messages-container {
-  max-height: 400px;
+  flex: 1;
+  min-height: 300px;
+  max-height: 600px;
   overflow-y: auto;
   padding: 1rem;
   display: flex;
@@ -1315,6 +1334,15 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.nodes-main-content {
+  flex: 1;
+  padding-left: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  min-width: 0; /* Prevents flex item from overflowing */
 }
 
 .sidebar-header {
@@ -1902,6 +1930,21 @@ body {
   margin-left: 8px;
 }
 
+.unread-badge-inline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  background: var(--ctp-red);
+  color: var(--ctp-base);
+  border-radius: 9px;
+  font-size: 10px;
+  font-weight: 600;
+  margin-left: 6px;
+}
+
 .tab-notification-dot {
   position: absolute;
   top: 8px;
@@ -1930,6 +1973,7 @@ body {
 
 /* Traceroute Styles */
 .dm-header {
+  flex-shrink: 0;
   margin-bottom: 1rem;
 }
 
