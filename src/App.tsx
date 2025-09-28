@@ -641,6 +641,25 @@ function App() {
       return;
     }
 
+    // Create a temporary message ID for immediate display
+    const tempId = `temp_dm_${Date.now()}_${Math.random()}`;
+    const sentMessage: MeshMessage = {
+      id: tempId,
+      from: currentNodeId || 'me',
+      to: destinationNodeId,
+      fromNodeId: currentNodeId || 'me',
+      toNodeId: destinationNodeId,
+      text: newMessage,
+      channel: -1, // -1 indicates a direct message
+      timestamp: new Date(),
+      isLocalMessage: true,
+      acknowledged: false,
+      portnum: 1 // Text message
+    };
+
+    // Add message to local state immediately for instant feedback
+    setMessages(prev => [...prev, sentMessage]);
+
     try {
       const response = await fetch('/api/messages/send', {
         method: 'POST',
@@ -649,7 +668,7 @@ function App() {
         },
         body: JSON.stringify({
           text: newMessage,
-          channel: 0,
+          channel: 0, // Backend may expect channel 0 for DMs
           destination: destinationNodeId
         })
       });
@@ -657,11 +676,18 @@ function App() {
       if (response.ok) {
         console.log('Direct message sent successfully');
         setNewMessage('');
+        // The message will be updated when we receive the acknowledgment from backend
       } else {
         console.error('Failed to send direct message');
+        // Remove the message from local state if sending failed
+        setMessages(prev => prev.filter(msg => msg.id !== tempId));
+        setError('Failed to send direct message');
       }
     } catch (error) {
       console.error('Error sending direct message:', error);
+      // Remove the message from local state if sending failed
+      setMessages(prev => prev.filter(msg => msg.id !== tempId));
+      setError(`Failed to send direct message: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
