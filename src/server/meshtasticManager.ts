@@ -703,8 +703,8 @@ class MeshtasticManager {
           }
         }
 
-        // Extract replyId and emoji from decoded Data message
-        const decodedReplyId = (meshPacket.decoded as any)?.replyId;
+        // Extract replyId and emoji from decoded Data message - check both camelCase and snake_case
+        const decodedReplyId = (meshPacket.decoded as any)?.replyId ?? (meshPacket.decoded as any)?.reply_id;
         const replyId = (decodedReplyId !== undefined && decodedReplyId > 0) ? decodedReplyId : undefined;
         const decodedEmoji = (meshPacket.decoded as any)?.emoji;
         const emoji = (decodedEmoji !== undefined && decodedEmoji > 0) ? decodedEmoji : undefined;
