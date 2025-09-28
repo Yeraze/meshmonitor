@@ -148,11 +148,20 @@ function App() {
   const [mapCenterTarget, setMapCenterTarget] = useState<[number, number] | null>(null)
   const [nodePopup, setNodePopup] = useState<{nodeId: string, position: {x: number, y: number}} | null>(null)
 
-  // Initialize notification sound
+  // Initialize notification sound with cleanup
   useEffect(() => {
     const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBiqG0PLSfzcGG2O56+OdTgwOUpzq66NRDwg+ltbyvW0qBSl+z/DV');
     audioRef.current = audio;
     audioRef.current.volume = 0.3;
+
+    // Cleanup function to prevent memory leak
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = '';
+        audioRef.current = null;
+      }
+    };
   }, []);
 
   // Function to play notification sound - disabled for now

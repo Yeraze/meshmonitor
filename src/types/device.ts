@@ -22,6 +22,7 @@ export interface DeviceInfo {
   lastHeard?: number
   snr?: number
   rssi?: number
+  firmwareVersion?: string
 }
 
 export interface Channel {
@@ -32,4 +33,24 @@ export interface Channel {
   downlinkEnabled: boolean
   createdAt: number
   updatedAt: number
+}
+
+/**
+ * Database node type with additional fields
+ */
+export interface DbNode extends Partial<DeviceInfo> {
+  nodeId?: string
+  longName?: string
+  shortName?: string
+  macaddr?: string
+  latitude?: number
+  longitude?: number
+  altitude?: number
+  batteryLevel?: number
+  voltage?: number
+  channelUtilization?: number
+  airUtilTx?: number
+  createdAt?: number
+  updatedAt?: number
+  lastTracerouteRequest?: number
 }

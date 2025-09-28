@@ -25,6 +25,7 @@ export interface DbNode {
   snr?: number;
   rssi?: number;
   lastTracerouteRequest?: number;
+  firmwareVersion?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -409,7 +410,7 @@ class DatabaseService {
         nodeData.lastHeard,
         nodeData.snr,
         nodeData.rssi,
-        (nodeData as any).firmwareVersion || null,
+        nodeData.firmwareVersion || null,
         now,
         nodeData.nodeNum
       );
@@ -442,7 +443,7 @@ class DatabaseService {
         nodeData.lastHeard || null,
         nodeData.snr || null,
         nodeData.rssi || null,
-        (nodeData as any).firmwareVersion || null,
+        nodeData.firmwareVersion || null,
         now,
         now
       );
