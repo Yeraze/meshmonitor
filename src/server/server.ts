@@ -356,7 +356,8 @@ app.post('/api/messages/send', async (req, res) => {
         fromNodeId: localNodeInfo.nodeId,
         toNodeId: destination || '!ffffffff',
         text: text,
-        channel: meshChannel,
+        // Use channel -1 for direct messages, otherwise use the actual channel
+        channel: destination ? -1 : meshChannel,
         portnum: 1, // TEXT_MESSAGE_APP
         timestamp: Date.now(),
         rxTime: Date.now(),

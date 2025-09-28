@@ -25,6 +25,7 @@ export interface DbNode {
   snr?: number;
   rssi?: number;
   lastTracerouteRequest?: number;
+  firmwareVersion?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -153,6 +154,7 @@ class DatabaseService {
         lastHeard INTEGER,
         snr REAL,
         rssi INTEGER,
+        firmwareVersion TEXT,
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL
       );
@@ -310,6 +312,17 @@ class DatabaseService {
 
     try {
       this.db.exec(`
+        ALTER TABLE nodes ADD COLUMN firmwareVersion TEXT;
+      `);
+      console.log('✅ Added firmwareVersion column');
+    } catch (error: any) {
+      if (!error.message?.includes('duplicate column')) {
+        console.log('⚠️ firmwareVersion column already exists or other error:', error.message);
+      }
+    }
+
+    try {
+      this.db.exec(`
         ALTER TABLE messages ADD COLUMN emoji INTEGER;
       `);
       console.log('✅ Added emoji column');
@@ -374,6 +387,7 @@ class DatabaseService {
           lastHeard = COALESCE(?, lastHeard),
           snr = COALESCE(?, snr),
           rssi = COALESCE(?, rssi),
+          firmwareVersion = COALESCE(?, firmwareVersion),
           updatedAt = ?
         WHERE nodeNum = ?
       `);
@@ -396,6 +410,7 @@ class DatabaseService {
         nodeData.lastHeard,
         nodeData.snr,
         nodeData.rssi,
+        nodeData.firmwareVersion || null,
         now,
         nodeData.nodeNum
       );
@@ -404,9 +419,9 @@ class DatabaseService {
         INSERT INTO nodes (
           nodeNum, nodeId, longName, shortName, hwModel, role, hopsAway, macaddr,
           latitude, longitude, altitude, batteryLevel, voltage,
-          channelUtilization, airUtilTx, lastHeard, snr, rssi,
+          channelUtilization, airUtilTx, lastHeard, snr, rssi, firmwareVersion,
           createdAt, updatedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       stmt.run(
@@ -428,6 +443,7 @@ class DatabaseService {
         nodeData.lastHeard || null,
         nodeData.snr || null,
         nodeData.rssi || null,
+        nodeData.firmwareVersion || null,
         now,
         now
       );
