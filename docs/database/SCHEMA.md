@@ -38,6 +38,7 @@ PRAGMA temp_store = memory;
 │ lastHeard (INTEGER)                                         │
 │ snr (REAL)                                                  │
 │ rssi (INTEGER)                                              │
+│ lastTracerouteRequest (INTEGER)                             │
 │ createdAt (INTEGER, NOT NULL)                               │
 │ updatedAt (INTEGER, NOT NULL)                               │
 └─────────────────────────────────────────────────────────────┘
@@ -57,6 +58,10 @@ PRAGMA temp_store = memory;
 │ portnum (INTEGER)                                           │
 │ timestamp (INTEGER, NOT NULL)                               │
 │ rxTime (INTEGER)                                            │
+│ hopStart (INTEGER)                                          │
+│ hopLimit (INTEGER)                                          │
+│ replyId (INTEGER)                                           │
+│ emoji (INTEGER)                                             │
 │ createdAt (INTEGER, NOT NULL)                               │
 └─────────────────────────────────────────────────────────────┘
 
@@ -87,6 +92,19 @@ PRAGMA temp_store = memory;
 │ timestamp (INTEGER, NOT NULL)                               │
 │ createdAt (INTEGER, NOT NULL)                               │
 └─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│                      TELEMETRY                              │
+├─────────────────────────────────────────────────────────────┤
+│ id (INTEGER, PK, AUTOINCREMENT)                             │
+│ nodeId (TEXT, NOT NULL)                                     │
+│ nodeNum (INTEGER, FK → NODES.nodeNum)                       │
+│ telemetryType (TEXT, NOT NULL)                              │
+│ timestamp (INTEGER, NOT NULL)                               │
+│ value (REAL, NOT NULL)                                      │
+│ unit (TEXT)                                                 │
+│ createdAt (INTEGER, NOT NULL)                               │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ## Table Definitions
@@ -115,6 +133,7 @@ CREATE TABLE nodes (
   lastHeard INTEGER,
   snr REAL,
   rssi INTEGER,
+  lastTracerouteRequest INTEGER,
   createdAt INTEGER NOT NULL,
   updatedAt INTEGER NOT NULL
 );
@@ -142,6 +161,7 @@ CREATE TABLE nodes (
 | `lastHeard` | INTEGER | Unix timestamp of last communication | `1640995200` |
 | `snr` | REAL | Signal-to-noise ratio in dB | `12.5` |
 | `rssi` | INTEGER | Received signal strength in dBm | `-45` |
+| `lastTracerouteRequest` | INTEGER | Timestamp of last traceroute request | `1640994000` |
 | `createdAt` | INTEGER | Record creation timestamp | `1640990000` |
 | `updatedAt` | INTEGER | Last update timestamp | `1640995200` |
 
@@ -170,6 +190,10 @@ CREATE TABLE messages (
   portnum INTEGER,
   timestamp INTEGER NOT NULL,
   rxTime INTEGER,
+  hopStart INTEGER,
+  hopLimit INTEGER,
+  replyId INTEGER,
+  emoji INTEGER,
   createdAt INTEGER NOT NULL,
   FOREIGN KEY (fromNodeNum) REFERENCES nodes(nodeNum),
   FOREIGN KEY (toNodeNum) REFERENCES nodes(nodeNum)
@@ -190,6 +214,10 @@ CREATE TABLE messages (
 | `portnum` | INTEGER | Meshtastic port number | `1` |
 | `timestamp` | INTEGER | Message timestamp in milliseconds | `1640995200000` |
 | `rxTime` | INTEGER | Reception timestamp (Unix) | `1640995201` |
+| `hopStart` | INTEGER | Initial hop count for message routing | `3` |
+| `hopLimit` | INTEGER | Maximum hop count for message routing | `3` |
+| `replyId` | INTEGER | ID of message being replied to | `123456` |
+| `emoji` | INTEGER | Emoji reaction code | `1` |
 | `createdAt` | INTEGER | Database insertion timestamp | `1640995201000` |
 
 #### Business Rules
@@ -216,6 +244,47 @@ CREATE TABLE channels (
   updatedAt INTEGER NOT NULL
 );
 ```
+
+### TELEMETRY Table
+
+Stores time-series telemetry data from nodes.
+
+```sql
+CREATE TABLE telemetry (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nodeId TEXT NOT NULL,
+  nodeNum INTEGER NOT NULL,
+  telemetryType TEXT NOT NULL,
+  timestamp INTEGER NOT NULL,
+  value REAL NOT NULL,
+  unit TEXT,
+  createdAt INTEGER NOT NULL,
+  FOREIGN KEY (nodeNum) REFERENCES nodes(nodeNum)
+);
+```
+
+#### Field Descriptions
+
+| Field | Type | Description | Example |
+|-------|------|-------------|---------|
+| `id` | INTEGER | Auto-incrementing primary key | `1` |
+| `nodeId` | TEXT | Node's hex ID | `!075bcd15` |
+| `nodeNum` | INTEGER | Node's numeric ID (Foreign Key) | `123456789` |
+| `telemetryType` | TEXT | Type of telemetry data | `batteryLevel` |
+| `timestamp` | INTEGER | When telemetry was recorded | `1640995200000` |
+| `value` | REAL | Telemetry value | `85.5` |
+| `unit` | TEXT | Unit of measurement | `%` |
+| `createdAt` | INTEGER | Database insertion timestamp | `1640995201000` |
+
+#### Telemetry Types
+
+- `batteryLevel` - Battery percentage (0-100)
+- `voltage` - Battery voltage in volts
+- `channelUtilization` - Channel usage percentage
+- `airUtilTx` - Transmit air time utilization
+- `temperature` - Temperature in Celsius
+- `humidity` - Humidity percentage
+- `pressure` - Barometric pressure in hPa
 
 ### TRACEROUTES Table
 
@@ -303,6 +372,12 @@ CREATE INDEX idx_messages_fromNodeId ON messages(fromNodeId);
 CREATE INDEX idx_messages_toNodeId ON messages(toNodeId);
 CREATE INDEX idx_messages_channel ON messages(channel);
 CREATE INDEX idx_messages_createdAt ON messages(createdAt);
+
+-- Telemetry indexes
+CREATE INDEX idx_telemetry_nodeId ON telemetry(nodeId);
+CREATE INDEX idx_telemetry_timestamp ON telemetry(timestamp);
+CREATE INDEX idx_telemetry_type ON telemetry(telemetryType);
+CREATE INDEX idx_telemetry_node_type ON telemetry(nodeId, telemetryType);
 
 -- Composite indexes for common queries
 CREATE INDEX idx_messages_channel_timestamp ON messages(channel, timestamp);
