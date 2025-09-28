@@ -345,35 +345,33 @@ app.post('/api/messages/send', async (req, res) => {
     // Send the message to the mesh network (with optional destination for DMs)
     await meshtasticManager.sendTextMessage(text, meshChannel, destinationNum);
 
-    // Save the sent message to database immediately
+    // Save the sent message to database immediately (if local node info is available)
     const localNodeInfo = meshtasticManager.getLocalNodeInfo();
-    console.log('🔍 Local node info for message saving:', localNodeInfo);
 
-    // Create message entry even if local node info isn't available yet
-    // Use the actual local node number from logs (2732916556) if localNodeInfo is null
-    const actualNodeNum = localNodeInfo?.nodeNum || 2732916556;
-    const actualNodeId = localNodeInfo?.nodeId || '!a2e4ff4c';
+    if (localNodeInfo) {
+      const message = {
+        id: `sent_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        fromNodeNum: localNodeInfo.nodeNum,
+        toNodeNum: destinationNum || 4294967295, // Use destination if provided, otherwise broadcast
+        fromNodeId: localNodeInfo.nodeId,
+        toNodeId: destination || '!ffffffff',
+        text: text,
+        channel: meshChannel,
+        portnum: 1, // TEXT_MESSAGE_APP
+        timestamp: Date.now(),
+        rxTime: Date.now(),
+        createdAt: Date.now()
+      };
 
-    const message = {
-      id: `sent_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      fromNodeNum: actualNodeNum,
-      toNodeNum: destinationNum || 4294967295, // Use destination if provided, otherwise broadcast
-      fromNodeId: actualNodeId,
-      toNodeId: destination || '!ffffffff',
-      text: text,
-      channel: meshChannel,
-      portnum: 1, // TEXT_MESSAGE_APP
-      timestamp: Date.now(),
-      rxTime: Date.now(),
-      createdAt: Date.now()
-    };
-
-    try {
-      databaseService.insertMessage(message);
-      console.log(`💾 Saved sent message to database: "${text.substring(0, 50)}..."`);
-    } catch (error) {
-      console.warn(`⚠️ Could not save sent message to database:`, error);
-      // Message was still sent successfully to mesh network
+      try {
+        databaseService.insertMessage(message);
+        console.log(`💾 Saved sent message to database: "${text.substring(0, 50)}..."`);
+      } catch (error) {
+        console.warn(`⚠️ Could not save sent message to database:`, error);
+      }
+    } else {
+      console.warn('⚠️ Local node info not available yet, skipping database save');
+      console.warn('   Message will be saved when it arrives back from the mesh network');
     }
 
     res.json({ success: true });
