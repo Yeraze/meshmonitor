@@ -131,31 +131,31 @@ class MeshtasticManager {
 
       console.log('📡 Beginning continuous read from device...');
 
-      // Continuous reading loop (like official meshtastic.js)
-      // Read until device queue is empty (data-driven, not time-driven)
-      let readBuffer = new Uint8Array(1);
+      // Continuous reading loop using ?all=false (like official Meshtastic web UI)
+      // Each request returns ONE FromRadio message at a time
       let totalBytes = 0;
       let iterationCount = 0;
-      const maxIterations = 50; // Safety limit to prevent infinite loop
+      const maxIterations = 100; // Safety limit (official UI makes ~11 requests)
 
-      while (readBuffer.byteLength > 0 && iterationCount < maxIterations) {
+      while (iterationCount < maxIterations) {
         iterationCount++;
         console.log(`📡 Read iteration ${iterationCount}...`);
 
         try {
-          // Use ?all=true to get all available protobufs in one request
-          const response = await this.makeRequest('/api/v1/fromradio?all=true');
+          // Use ?all=false to get one message at a time (official UI approach)
+          const response = await this.makeRequest('/api/v1/fromradio?all=false');
 
           if (response.ok) {
             const data = await response.arrayBuffer();
-            readBuffer = new Uint8Array(data);
+            const messageData = new Uint8Array(data);
 
-            console.log(`📊 Received ${readBuffer.byteLength} bytes`);
-            totalBytes += readBuffer.byteLength;
+            console.log(`📊 Received ${messageData.byteLength} bytes`);
 
-            if (readBuffer.byteLength > 0) {
-              // Process the received data
-              await this.processIncomingData(readBuffer);
+            if (messageData.byteLength > 0) {
+              totalBytes += messageData.byteLength;
+
+              // Process single FromRadio message
+              await this.processIncomingData(messageData);
 
               // Log current status
               const currentNodes = databaseService.getNodeCount();
@@ -163,6 +163,7 @@ class MeshtasticManager {
               console.log(`📈 Current state: ${currentNodes} nodes, ${currentChannels} channels`);
             } else {
               console.log('✅ Device queue empty, configuration transfer complete');
+              break;
             }
           } else {
             console.warn(`⚠️ Request failed with status ${response.status}`);
@@ -174,9 +175,7 @@ class MeshtasticManager {
         }
 
         // Small delay between reads to avoid overwhelming the device
-        if (readBuffer.byteLength > 0) {
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
+        await new Promise(resolve => setTimeout(resolve, 50));
       }
 
       if (iterationCount >= maxIterations) {
@@ -195,6 +194,12 @@ class MeshtasticManager {
       }
 
       console.log(`✅ Configuration complete: ${finalNodeCount} nodes, ${finalChannelCount} channels`);
+
+      // If localNodeInfo wasn't set during configuration (device didn't send MyNodeInfo),
+      // initialize it from database
+      if (!this.localNodeInfo) {
+        await this.initializeLocalNodeInfoFromDatabase();
+      }
 
     } catch (error) {
       console.error('❌ Failed to request full configuration:', error);
@@ -415,8 +420,8 @@ class MeshtasticManager {
 
   private async pollForUpdates(): Promise<void> {
     try {
-      // Use ?all=true to get all available protobufs (like official meshtastic.js)
-      const response = await this.makeRequest('/api/v1/fromradio?all=true');
+      // Use ?all=false to get one message at a time (official UI approach)
+      const response = await this.makeRequest('/api/v1/fromradio?all=false');
       if (!response.ok) {
         console.warn('Failed to poll for updates:', response.status);
         return;
@@ -440,38 +445,44 @@ class MeshtasticManager {
         return;
       }
 
-      console.log(`📦 Processing ${data.length} bytes with protobufjs Reader for concatenated messages...`);
+      console.log(`📦 Processing single FromRadio message (${data.length} bytes)...`);
 
-      // Use the new parseMultipleMessages method
-      const messages = await meshtasticProtobufService.parseMultipleMessages(data);
+      // Parse single message (using ?all=false approach)
+      const parsed = meshtasticProtobufService.parseIncomingData(data);
 
-      console.log(`📦 Parsed ${messages.length} messages from ${data.length} bytes`);
-
-      // Process each message
-      for (const parsed of messages) {
-        switch (parsed.type) {
-          case 'fromRadio':
-            // This shouldn't happen as parseMultipleMessages extracts the inner fields
-            break;
-          case 'meshPacket':
-            await this.processMeshPacket(parsed.data);
-            break;
-          case 'myInfo':
-            await this.processMyNodeInfo(parsed.data);
-            break;
-          case 'nodeInfo':
-            await this.processNodeInfoProtobuf(parsed.data);
-            break;
-          case 'config':
-            console.log('⚙️ Received Config');
-            break;
-          case 'channel':
-            await this.processChannelProtobuf(parsed.data);
-            break;
-        }
+      if (!parsed) {
+        console.warn('⚠️ Failed to parse message');
+        return;
       }
 
-      console.log(`✅ Processed ${messages.length} messages`);
+      console.log(`📦 Parsed message type: ${parsed.type}`);
+
+      // Process the message
+      switch (parsed.type) {
+        case 'fromRadio':
+          console.log('⚠️ Generic FromRadio message (no specific field set)');
+          break;
+        case 'meshPacket':
+          await this.processMeshPacket(parsed.data);
+          break;
+        case 'myInfo':
+          await this.processMyNodeInfo(parsed.data);
+          break;
+        case 'nodeInfo':
+          await this.processNodeInfoProtobuf(parsed.data);
+          break;
+        case 'metadata':
+          await this.processDeviceMetadata(parsed.data);
+          break;
+        case 'config':
+          console.log('⚙️ Received Config:', JSON.stringify(parsed.data, null, 2));
+          break;
+        case 'channel':
+          await this.processChannelProtobuf(parsed.data);
+          break;
+      }
+
+      console.log(`✅ Processed message type: ${parsed.type}`);
     } catch (error) {
       console.error('❌ Error processing incoming data:', error);
     }
@@ -481,8 +492,61 @@ class MeshtasticManager {
   /**
    * Process MyNodeInfo protobuf message
    */
+  /**
+   * Decode Meshtastic minAppVersion to version string
+   * Format is Mmmss where M = 1 + major version
+   * Example: 30200 = 2.2.0 (M=3 -> major=2, mm=02, ss=00)
+   */
+  private decodeMinAppVersion(minAppVersion: number): string {
+    const versionStr = minAppVersion.toString().padStart(5, '0');
+    const major = parseInt(versionStr[0]) - 1;
+    const minor = parseInt(versionStr.substring(1, 3));
+    const patch = parseInt(versionStr.substring(3, 5));
+    return `${major}.${minor}.${patch}`;
+  }
+
+  /**
+   * Initialize localNodeInfo from database when MyNodeInfo wasn't received
+   */
+  private async initializeLocalNodeInfoFromDatabase(): Promise<void> {
+    try {
+      console.log('📱 Initializing localNodeInfo from database...');
+
+      const nodes = databaseService.getAllNodes();
+      console.log(`📱 Found ${nodes.length} nodes in database to search`);
+
+      // Use generic fallback: first node with complete information
+      // This works universally since Device Info gathering (MyNodeInfo, NodeInfo, DeviceMetadata)
+      // properly identifies the local node during normal operation
+      const localNode = nodes.find((n: any) => n.longName && n.shortName);
+
+      if (localNode) {
+        this.localNodeInfo = {
+          nodeNum: localNode.nodeNum,
+          nodeId: localNode.nodeId,
+          longName: localNode.longName || 'Local Device',
+          shortName: localNode.shortName || 'LOCAL',
+          firmwareVersion: (localNode as any).firmwareVersion || null
+        } as any;
+        console.log(`📱 Initialized localNodeInfo from database: ${localNode.longName} (${localNode.nodeId})`);
+      } else {
+        console.log('⚠️ Could not find suitable local node in database, will wait for periodic updates');
+      }
+    } catch (error) {
+      console.error('❌ Failed to initialize localNodeInfo from database:', error);
+    }
+  }
+
   private async processMyNodeInfo(myNodeInfo: any): Promise<void> {
     console.log('📱 Processing MyNodeInfo for local device');
+    console.log('📱 MyNodeInfo contents:', JSON.stringify(myNodeInfo, null, 2));
+
+    // Decode firmware version from minAppVersion if available
+    let firmwareVersion = null;
+    if (myNodeInfo.minAppVersion) {
+      firmwareVersion = `v${this.decodeMinAppVersion(myNodeInfo.minAppVersion)} (min app)`;
+      console.log(`📱 Decoded firmware version from minAppVersion: ${firmwareVersion}`);
+    }
 
     const nodeData = {
       nodeNum: Number(myNodeInfo.myNodeNum),
@@ -495,13 +559,14 @@ class MeshtasticManager {
       updatedAt: Date.now()
     };
 
-    // Store local node info for message sending
+    // Store local node info for message sending (including firmware version if available)
     this.localNodeInfo = {
       nodeNum: nodeData.nodeNum,
       nodeId: nodeData.nodeId,
       longName: nodeData.longName,
-      shortName: nodeData.shortName
-    };
+      shortName: nodeData.shortName,
+      firmwareVersion: firmwareVersion
+    } as any;
 
     databaseService.upsertNode(nodeData);
     console.log('📱 Updated local device info in database');
@@ -509,6 +574,22 @@ class MeshtasticManager {
 
   getLocalNodeInfo(): { nodeNum: number; nodeId: string; longName: string; shortName: string } | null {
     return this.localNodeInfo;
+  }
+
+  /**
+   * Process DeviceMetadata protobuf message
+   */
+  private async processDeviceMetadata(metadata: any): Promise<void> {
+    console.log('📱 Processing DeviceMetadata:', JSON.stringify(metadata, null, 2));
+    console.log('📱 Firmware version:', metadata.firmwareVersion);
+
+    // Update local node info with firmware version
+    if (this.localNodeInfo && metadata.firmwareVersion) {
+      (this.localNodeInfo as any).firmwareVersion = metadata.firmwareVersion;
+      console.log(`📱 Updated firmware version: ${metadata.firmwareVersion}`);
+    } else {
+      console.log('⚠️ Cannot update firmware - localNodeInfo not initialized yet');
+    }
   }
 
   /**
@@ -1105,6 +1186,16 @@ class MeshtasticManager {
 
       // Note: Telemetry data (batteryLevel, voltage, etc.) is NOT saved from NodeInfo packets
       // It is only saved from actual TELEMETRY_APP packets in processTelemetryMessageProtobuf()
+
+      // If this is the local node, update localNodeInfo with names
+      if (this.localNodeInfo && this.localNodeInfo.nodeNum === Number(nodeInfo.num)) {
+        console.log(`📱 Updating local node info with names from NodeInfo`);
+        if (nodeInfo.user) {
+          (this.localNodeInfo as any).longName = nodeInfo.user.longName || this.localNodeInfo.longName;
+          (this.localNodeInfo as any).shortName = nodeInfo.user.shortName || this.localNodeInfo.shortName;
+          console.log(`📱 Local node: ${nodeInfo.user.longName} (${nodeInfo.user.shortName})`);
+        }
+      }
 
       databaseService.upsertNode(nodeData);
       console.log(`🏠 Updated node info: ${nodeData.longName || nodeId}`);
@@ -2310,12 +2401,19 @@ class MeshtasticManager {
     const text = new TextDecoder('utf-8', { fatal: false }).decode(data);
 
     // Look for MQTT configuration in the text
-    const mqttEnabled = text.includes('mqtt') || text.includes('areyoumeshingwith');
-    const mqttServer = text.match(/([a-z0-9.-]+\.(?:us|com|org|net))/i)?.[1] || '';
+    // Note: This is a best-effort detection. Proper implementation would parse ModuleConfig protobuf
+    const mqttServerMatch = text.match(/([a-z0-9.-]+\.(?:us|com|org|net))/i);
+    const mqttServer = mqttServerMatch?.[1] || '';
+    // Default to true as we cannot reliably detect MQTT status from current data
+    // TODO: Parse ModuleConfig protobuf for accurate MQTT configuration
+    const mqttEnabled = true;
 
     // Look for radio configuration hints
     const regionMatch = text.match(/US|EU|JP|KR|TW|RU|IN|NZ|TH|UA|MY|SG|PH/);
     const region = regionMatch ? regionMatch[0] : 'US';
+
+    // TODO: Parse DeviceMetadata protobuf to get firmware version
+    // For now, firmware version is not available from the current data
 
     // Extract channels from the database instead of hardcoded
     const dbChannels = databaseService.getAllChannels();
@@ -2327,11 +2425,16 @@ class MeshtasticManager {
       downlinkEnabled: ch.downlinkEnabled
     }));
 
+    const localNode = this.localNodeInfo as any;
+
     return {
       basic: {
         nodeAddress: this.config.nodeIp,
         useTls: this.config.useTls,
-        connected: this.isConnected
+        connected: this.isConnected,
+        nodeId: localNode?.nodeId || null,
+        nodeName: localNode?.longName || null,
+        firmwareVersion: localNode?.firmwareVersion || null
       },
       radio: {
         region: region,

@@ -255,6 +255,8 @@ export class MeshtasticProtobufService {
               messages.push({ type: 'config', data: decodedMessage.config });
             } else if (decodedMessage.channel) {
               messages.push({ type: 'channel', data: decodedMessage.channel });
+            } else if (decodedMessage.metadata) {
+              messages.push({ type: 'metadata', data: decodedMessage.metadata });
             } else {
               messages.push({ type: 'fromRadio', data: decodedMessage });
             }
@@ -306,10 +308,22 @@ export class MeshtasticProtobufService {
         hasMyInfo: !!fromRadio.myInfo,
         hasNodeInfo: !!fromRadio.nodeInfo,
         hasConfig: !!fromRadio.config,
-        hasChannel: !!fromRadio.channel
+        hasChannel: !!fromRadio.channel,
+        hasMetadata: !!fromRadio.metadata
       });
 
       if (fromRadio.packet) {
+        if (fromRadio.packet.decoded && fromRadio.packet.decoded instanceof Uint8Array) {
+          try {
+            const Data = root.lookupType('meshtastic.Data');
+            const decodedData = Data.decode(fromRadio.packet.decoded);
+            (fromRadio.packet as any).decoded = decodedData;
+            console.log('✅ Manually decoded Data message in parseIncomingData');
+          } catch (e) {
+            console.error('❌ Failed to manually decode Data in parseIncomingData:', e);
+          }
+        }
+
         return {
           type: 'meshPacket',
           data: fromRadio.packet
@@ -323,6 +337,11 @@ export class MeshtasticProtobufService {
         return {
           type: 'nodeInfo',
           data: fromRadio.nodeInfo
+        };
+      } else if (fromRadio.metadata) {
+        return {
+          type: 'metadata',
+          data: fromRadio.metadata
         };
       } else if (fromRadio.config) {
         return {

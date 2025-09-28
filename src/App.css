@@ -410,7 +410,17 @@ body {
   border: 1px solid var(--ctp-surface1);
 }
 
-.info-section h3 {
+.info-section-full-width {
+  background: var(--ctp-surface0);
+  border-radius: 12px;
+  padding: 1.5rem;
+  border: 1px solid var(--ctp-surface1);
+  margin-top: 1.5rem;
+  width: 100%;
+}
+
+.info-section h3,
+.info-section-full-width h3 {
   color: var(--ctp-lavender);
   margin-bottom: 1rem;
   font-size: 1.25rem;
@@ -2366,4 +2376,94 @@ body {
 
 .danger-button:active {
   transform: translateY(0);
+}
+
+/* System Status Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  backdrop-filter: blur(4px);
+}
+
+.modal-content {
+  background: var(--ctp-base);
+  border: 1px solid var(--ctp-surface2);
+  border-radius: 12px;
+  max-width: 600px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  border-bottom: 1px solid var(--ctp-surface2);
+}
+
+.modal-header h2 {
+  margin: 0;
+  color: var(--ctp-text);
+  font-size: 1.5em;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 2em;
+  color: var(--ctp-subtext0);
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.modal-close:hover {
+  background: var(--ctp-surface2);
+  color: var(--ctp-text);
+}
+
+.modal-body {
+  padding: 20px;
+}
+
+.status-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.status-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: var(--ctp-surface0);
+  border-radius: 8px;
+  border: 1px solid var(--ctp-surface1);
+}
+
+.status-item strong {
+  color: var(--ctp-subtext1);
+  font-weight: 600;
+}
+
+.status-item span {
+  color: var(--ctp-text);
+  font-family: 'Courier New', monospace;
 }

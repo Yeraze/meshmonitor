@@ -7,3 +7,4 @@ tools to resolve library id and get library docs without me having to explicitly
 - You can't have both the Docker and the local npm version running at the same time, or they interfere. If you want to switch, you need to let me know.
 - Load up the system on port 8080
 - Never push directly to main, always push to a branch.
+- Our container doesn't have sqlite3 as a binary available.
