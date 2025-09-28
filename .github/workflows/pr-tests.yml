@@ -144,40 +144,7 @@ jobs:
             npm run build
           fi
 
-  pr-status:
-    name: PR Status Check
-    runs-on: ubuntu-latest
-    needs: [quick-test, focused-tests]
-    if: always()
-
-    steps:
-      - name: Set PR status
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const { owner, repo } = context.repo;
-            const sha = context.payload.pull_request.head.sha;
-
-            const quickTestStatus = '${{ needs.quick-test.result }}';
-            const focusedTestStatus = '${{ needs.focused-tests.result }}';
-
-            let state = 'success';
-            let description = '✅ All checks passed';
-
-            if (quickTestStatus === 'failure' || focusedTestStatus === 'failure') {
-              state = 'failure';
-              description = '❌ Some checks failed';
-            } else if (quickTestStatus === 'cancelled' || focusedTestStatus === 'cancelled') {
-              state = 'error';
-              description = '⚠️ Checks were cancelled';
-            }
-
-            await github.rest.repos.createCommitStatus({
-              owner,
-              repo,
-              sha,
-              state,
-              description,
-              context: 'MeshMonitor CI'
-            });
+  # The PR Status Check job has been removed as GitHub Actions
+  # automatically provides its own status checks for each job.
+  # Attempting to create additional commit statuses requires
+  # special permissions that are not available by default.
