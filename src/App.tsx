@@ -5,6 +5,7 @@ import 'leaflet/dist/leaflet.css'
 import './App.css'
 import TelemetryGraphs from './components/TelemetryGraphs'
 import { version } from '../package.json'
+import { type TemperatureUnit } from './utils/temperature'
 
 // Fix for default markers in React-Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -161,6 +162,10 @@ function App() {
   const [tracerouteIntervalMinutes, setTracerouteIntervalMinutes] = useState<number>(() => {
     const saved = localStorage.getItem('tracerouteIntervalMinutes');
     return saved ? parseInt(saved) : 3;
+  });
+  const [temperatureUnit, setTemperatureUnit] = useState<TemperatureUnit>(() => {
+    const saved = localStorage.getItem('temperatureUnit');
+    return (saved === 'F' ? 'F' : 'C') as TemperatureUnit;
   });
 
   // New state for node list features
@@ -1836,7 +1841,7 @@ function App() {
                 </div>
               )}
 
-              <TelemetryGraphs nodeId={selectedDMNode} />
+              <TelemetryGraphs nodeId={selectedDMNode} temperatureUnit={temperatureUnit} />
             </div>
           ) : (
             <div className="no-selection">
@@ -1929,7 +1934,7 @@ function App() {
       {currentNodeId && connectionStatus === 'connected' && (
         <div className="info-section-full-width">
           <h3>Local Node Telemetry</h3>
-          <TelemetryGraphs nodeId={currentNodeId} />
+          <TelemetryGraphs nodeId={currentNodeId} temperatureUnit={temperatureUnit} />
         </div>
       )}
     </div>
@@ -1953,6 +1958,11 @@ function App() {
     } catch (error) {
       console.error('Error updating traceroute interval:', error);
     }
+  };
+
+  const handleTemperatureUnitChange = (unit: TemperatureUnit) => {
+    setTemperatureUnit(unit);
+    localStorage.setItem('temperatureUnit', unit);
   };
 
   const handlePurgeNodes = async () => {
@@ -2091,6 +2101,25 @@ function App() {
               onChange={(e) => handleTracerouteIntervalChange(parseInt(e.target.value))}
               className="setting-input"
             />
+          </div>
+        </div>
+
+        <div className="settings-section">
+          <h3>Display Preferences</h3>
+          <div className="setting-item">
+            <label htmlFor="temperatureUnit">
+              Temperature Unit
+              <span className="setting-description">Choose between Celsius and Fahrenheit for temperature display</span>
+            </label>
+            <select
+              id="temperatureUnit"
+              value={temperatureUnit}
+              onChange={(e) => handleTemperatureUnitChange(e.target.value as TemperatureUnit)}
+              className="setting-input"
+            >
+              <option value="C">Celsius (°C)</option>
+              <option value="F">Fahrenheit (°F)</option>
+            </select>
           </div>
         </div>
 
