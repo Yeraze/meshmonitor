@@ -1543,28 +1543,6 @@ function App() {
                                       minute: '2-digit'
                                     })}
                                   </span>
-                                  <span className="hop-count">
-                                    {(() => {
-                                      // Calculate hops traveled: hopStart - hopLimit
-                                      // If hopStart is missing/null/0, assume the message started with
-                                      // a hopLimit of 7 (common max) or use current hopLimit if it's the same
-                                      if (msg.hopStart && msg.hopStart > 0 && msg.hopLimit !== undefined) {
-                                        const hopCount = msg.hopStart - msg.hopLimit;
-                                        return hopCount > 0
-                                          ? `${hopCount} hop${hopCount !== 1 ? 's' : ''}`
-                                          : 'Direct';
-                                      }
-                                      // Fallback: assume hopStart was 7 (common max config)
-                                      if (msg.hopLimit !== undefined && msg.hopLimit !== null) {
-                                        const assumedHopStart = Math.max(7, msg.hopLimit);
-                                        const hopCount = assumedHopStart - msg.hopLimit;
-                                        return hopCount > 0
-                                          ? `~${hopCount} hop${hopCount !== 1 ? 's' : ''}`
-                                          : 'Direct';
-                                      }
-                                      return 'Direct';
-                                    })()}
-                                  </span>
                                 </div>
                               </div>
                             </div>
