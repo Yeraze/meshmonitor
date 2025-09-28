@@ -1,8 +1,13 @@
 services:
   meshmonitor:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    # Option 1: Use pre-built image from GitHub Container Registry (recommended for production)
+    image: ghcr.io/yeraze/meshmonitor:latest
+
+    # Option 2: Build locally (comment out 'image' above and uncomment below for development)
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+
     container_name: meshmonitor
     ports:
       - "8080:3001"
