@@ -255,6 +255,8 @@ export class MeshtasticProtobufService {
               messages.push({ type: 'config', data: decodedMessage.config });
             } else if (decodedMessage.channel) {
               messages.push({ type: 'channel', data: decodedMessage.channel });
+            } else if (decodedMessage.metadata) {
+              messages.push({ type: 'metadata', data: decodedMessage.metadata });
             } else {
               messages.push({ type: 'fromRadio', data: decodedMessage });
             }
@@ -306,7 +308,8 @@ export class MeshtasticProtobufService {
         hasMyInfo: !!fromRadio.myInfo,
         hasNodeInfo: !!fromRadio.nodeInfo,
         hasConfig: !!fromRadio.config,
-        hasChannel: !!fromRadio.channel
+        hasChannel: !!fromRadio.channel,
+        hasMetadata: !!fromRadio.metadata
       });
 
       if (fromRadio.packet) {
@@ -323,6 +326,11 @@ export class MeshtasticProtobufService {
         return {
           type: 'nodeInfo',
           data: fromRadio.nodeInfo
+        };
+      } else if (fromRadio.metadata) {
+        return {
+          type: 'metadata',
+          data: fromRadio.metadata
         };
       } else if (fromRadio.config) {
         return {
