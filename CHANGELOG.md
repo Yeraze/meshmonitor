@@ -4,7 +4,13 @@ All notable changes to MeshMonitor will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.3.0] - 2024-01-XX (Current Development)
+## [Unreleased]
+
+## [1.0.0] - 2025-09-28
+
+This is the initial stable release of MeshMonitor, a comprehensive web application for monitoring Meshtastic mesh networks over IP.
+
+### Features Included in 1.0.0
 
 ### Added
 - **Automatic Traceroute Scheduler**: Intelligent network topology discovery
@@ -50,9 +56,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Intelligent node selection algorithm for traceroute scheduling
 - Optimized database queries for traceroute data retrieval
 
-## [1.2.0] - 2024-01-XX
-
-### Added
 - **iPhone Messages-Style UI**: Complete redesign of channel messaging interface
   - Message bubbles with proper left/right alignment based on sender
   - Sender identification dots showing shortName with longName tooltips
@@ -69,33 +72,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
   - Content-based message matching for accurate delivery confirmation
   - Temporary message ID handling for optimistic updates
   - Automatic replacement of temporary messages with server-confirmed ones
-  - Prevention of message disappearing after sending
+  - Message persistence across sessions
 
-- **Improved Node Data Handling**:
-  - Better shortName field usage with proper fallback logic
-  - Enhanced null checking for node data fields
-  - Consistent node identification across UI components
-
-### Fixed
-- **Message Persistence**: Sent messages no longer disappear after brief display
-- **Channel Detection**: Eliminated creation of invalid channels from random text
-- **ShortName Display**: Improved logic to properly use actual shortName field from node data
-- **Message Acknowledgment**: Fixed logic that was incorrectly removing legitimate messages
-
-### Changed
-- **Channel Processing**: More restrictive channel detection algorithm
-- **Message UI**: Complete redesign with iPhone Messages aesthetic
-- **Database Schema**: Enhanced message tracking with acknowledgment fields
-
-### Technical Improvements
-- Added comprehensive debugging and logging for message acknowledgment
-- Improved TypeScript type safety across components
-- Enhanced error handling for channel processing
-- Better separation of concerns between frontend and backend
-
-## [1.1.0] - 2024-01-XX
-
-### Added
 - **Full Docker Support**:
   - Multi-stage Docker builds for optimized production images
   - Docker Compose configuration for easy deployment
@@ -114,19 +92,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
   - Comprehensive error handling and logging
   - CORS support for cross-origin requests
 
-### Fixed
-- Database connection stability
-- Memory leaks in protobuf parsing
-- Graceful error handling for network issues
-
-### Changed
-- Migrated to TypeScript for better type safety
-- Improved project structure and organization
-- Enhanced development workflow with hot reloading
-
-## [1.0.0] - 2024-01-XX
-
-### Added
 - **Core Functionality**:
   - Real-time Meshtastic node monitoring via HTTP API
   - Node discovery and telemetry data collection
@@ -138,42 +103,58 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
   - Catppuccin Mocha dark theme
   - Responsive design for mobile and desktop
   - Real-time connection status indicator
+  - Interactive telemetry graphs and node indicators
+  - Node list sorting and filtering
 
 - **Data Persistence**:
-  - SQLite database for messages and nodes
+  - SQLite database for messages, nodes, and traceroutes
   - Automatic data deduplication
   - Cross-restart persistence
   - Node relationship tracking
+  - Foreign key relationships for data integrity
 
 - **Meshtastic Integration**:
   - HTTP API client for node communication
-  - Protobuf message parsing (basic)
+  - Enhanced protobuf message parsing
   - Automatic node discovery
-  - Configuration data retrieval
+  - Configuration and device data retrieval
+
+### Fixed
+- Message persistence issues (sent messages no longer disappear)
+- Channel detection and invalid channel creation
+- ShortName display logic improvements
+- Database connection stability
+- Memory leaks in protobuf parsing
+- Graceful error handling for network issues
+- Telemetry parsing and direct message handling
+- Environment telemetry storage
+
+### Changed
+- Migrated to TypeScript for better type safety
+- Enhanced message UI with iPhone Messages aesthetic
+- More restrictive channel detection algorithm
+- Improved project structure and organization
+- Enhanced development workflow with hot reloading
 
 ### Technical Foundation
 - React 18 with modern hooks and TypeScript
 - Express.js backend with comprehensive API
 - Better-sqlite3 for high-performance database operations
 - Vite for fast development and optimized builds
+- Docker with multi-stage builds for production deployment
+- Comprehensive TypeScript type safety
+- Enhanced error handling and logging throughout
 
 ---
 
-## Development Roadmap
+## Future Enhancements
 
-### Planned for v1.3.0
-- **Enhanced Telemetry Parsing**: More sophisticated protobuf decoding for SNR, RSSI, and battery data
+### Planned Features
 - **Real-time WebSocket Updates**: Replace polling with WebSocket connections
 - **Message Search**: Full-text search across message history
-- **Advanced Analytics**: Network statistics and visualization
-
-### Future Enhancements
+- **Advanced Analytics**: Network statistics and visualization dashboards
 - **Mobile Application**: React Native companion app
 - **Multi-node Support**: Connect to multiple Meshtastic nodes simultaneously
 - **Advanced Channel Management**: Custom channel creation and PSK management
-- **Data Visualization**: Charts and graphs for network analytics
 - **Plugin System**: Extensible architecture for custom functionality
-
----
-
-**Note**: Version numbers and dates are placeholders. The changelog will be updated with actual release information during the release process.
+- **Enhanced Authentication**: Built-in user authentication and access control
