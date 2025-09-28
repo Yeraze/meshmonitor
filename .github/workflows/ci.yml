@@ -156,10 +156,11 @@ jobs:
     steps:
       - name: Comment on PR
         uses: actions/github-script@v7
+        continue-on-error: true  # Don't fail if we can't comment
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const { issue_number } = context.issue;
+            const issue_number = context.payload.pull_request.number;
             const { owner, repo } = context.repo;
 
             const comment = `## ✅ CI Checks Passed
