@@ -541,11 +541,10 @@ class MeshtasticManager {
     console.log('📱 Processing MyNodeInfo for local device');
     console.log('📱 MyNodeInfo contents:', JSON.stringify(myNodeInfo, null, 2));
 
-    // Decode firmware version from minAppVersion if available
-    let firmwareVersion = null;
+    // Log minAppVersion for debugging but don't use it as firmware version
     if (myNodeInfo.minAppVersion) {
-      firmwareVersion = `v${this.decodeMinAppVersion(myNodeInfo.minAppVersion)} (min app)`;
-      console.log(`📱 Decoded firmware version from minAppVersion: ${firmwareVersion}`);
+      const minVersion = `v${this.decodeMinAppVersion(myNodeInfo.minAppVersion)}`;
+      console.log(`📱 Minimum app version required: ${minVersion}`);
     }
 
     const nodeData = {
@@ -559,13 +558,13 @@ class MeshtasticManager {
       updatedAt: Date.now()
     };
 
-    // Store local node info for message sending (including firmware version if available)
+    // Store local node info for message sending (firmware version will come from DeviceMetadata)
     this.localNodeInfo = {
       nodeNum: nodeData.nodeNum,
       nodeId: nodeData.nodeId,
       longName: nodeData.longName,
       shortName: nodeData.shortName,
-      firmwareVersion: firmwareVersion
+      firmwareVersion: null // Will be set when DeviceMetadata is received
     } as any;
 
     databaseService.upsertNode(nodeData);
@@ -587,6 +586,17 @@ class MeshtasticManager {
     if (this.localNodeInfo && metadata.firmwareVersion) {
       (this.localNodeInfo as any).firmwareVersion = metadata.firmwareVersion;
       console.log(`📱 Updated firmware version: ${metadata.firmwareVersion}`);
+
+      // Update the database with the firmware version
+      if ((this.localNodeInfo as any).nodeNum) {
+        const nodeData = {
+          nodeNum: (this.localNodeInfo as any).nodeNum,
+          nodeId: this.localNodeInfo.nodeId,
+          firmwareVersion: metadata.firmwareVersion
+        };
+        databaseService.upsertNode(nodeData);
+        console.log(`📱 Saved firmware version to database for node ${this.localNodeInfo.nodeId}`);
+      }
     } else {
       console.log('⚠️ Cannot update firmware - localNodeInfo not initialized yet');
     }
