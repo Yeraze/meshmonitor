@@ -708,11 +708,9 @@ class MeshtasticManager {
         const replyId = (decodedReplyId !== undefined && decodedReplyId > 0) ? decodedReplyId : undefined;
 
         // Extract hop fields - check both camelCase and snake_case
-        console.log(`🔍 DEBUG All meshPacket fields:`, JSON.stringify(meshPacket, null, 2).substring(0, 500));
+        // Note: hopStart is the INITIAL hop limit when message was sent, hopLimit is current remaining hops
         const hopStart = (meshPacket as any).hopStart ?? (meshPacket as any).hop_start ?? null;
         const hopLimit = (meshPacket as any).hopLimit ?? (meshPacket as any).hop_limit ?? null;
-        const hopCount = (hopStart !== null && hopLimit !== null) ? hopStart - hopLimit : null;
-        console.log(`🔍 Hop fields: hopStart=${hopStart}, hopLimit=${hopLimit}, hopCount=${hopCount}`);
 
         const message = {
           id: `${fromNum}_${meshPacket.id || Date.now()}`,

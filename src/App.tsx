@@ -144,7 +144,7 @@ function App() {
   const [pendingMessages, setPendingMessages] = useState<Map<string, MeshMessage>>(new Map())
   const [unreadCounts, setUnreadCounts] = useState<{[key: number]: number}>({})
   const audioRef = useRef<HTMLAudioElement | null>(null)
-  const lastNotificationTime = useRef<number>(0)
+  // const lastNotificationTime = useRef<number>(0) // Disabled for now
   const [tracerouteLoading, setTracerouteLoading] = useState<string | null>(null)
   const [showRoutes, setShowRoutes] = useState<boolean>(false)
   const [traceroutes, setTraceroutes] = useState<any[]>([])
@@ -201,13 +201,13 @@ function App() {
     audioRef.current.volume = 0.3;
   }, []);
 
-  // Function to play notification sound
-  const playNotificationSound = () => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = 0;
-      audioRef.current.play().catch(err => console.log('Audio play failed:', err));
-    }
-  };
+  // Function to play notification sound - disabled for now
+  // const playNotificationSound = () => {
+  //   if (audioRef.current) {
+  //     audioRef.current.currentTime = 0;
+  //     audioRef.current.play().catch(err => console.log('Audio play failed:', err));
+  //   }
+  // };
 
   // Load configuration and check connection status on startup
   useEffect(() => {
@@ -450,23 +450,18 @@ function App() {
         const isInitialLoad = previousMessageIds.size === 0;
         const newMessages = processedMessages.filter((m: MeshMessage) => !previousMessageIds.has(m.id));
 
-        // Play notification sound only if:
-        // 1. There are new messages
-        // 2. This is not the initial load
-        // 3. At least one new message is in a channel OTHER than the currently selected one
-        // 4. At least 3 seconds have passed since the last notification (debouncing)
-        if (newMessages.length > 0 && !isInitialLoad) {
-          const currentSelected = selectedChannelRef.current;
-          const hasNewMessagesInOtherChannels = newMessages.some((m: MeshMessage) => m.channel !== currentSelected);
-          const now = Date.now();
-          const timeSinceLastNotification = now - lastNotificationTime.current;
-
-          if (hasNewMessagesInOtherChannels && timeSinceLastNotification > 3000) {
-            console.log('🔔 Playing notification sound for new messages in other channels');
-            playNotificationSound();
-            lastNotificationTime.current = now;
-          }
-        }
+        // Notification sound disabled - too frequent
+        // TODO: Add user-configurable notification settings
+        // if (newMessages.length > 0 && !isInitialLoad) {
+        //   const currentSelected = selectedChannelRef.current;
+        //   const hasNewMessagesInOtherChannels = newMessages.some((m: MeshMessage) => m.channel !== currentSelected);
+        //   const now = Date.now();
+        //   const timeSinceLastNotification = now - lastNotificationTime.current;
+        //   if (hasNewMessagesInOtherChannels && timeSinceLastNotification > 3000) {
+        //     playNotificationSound();
+        //     lastNotificationTime.current = now;
+        //   }
+        // }
 
         setMessages(processedMessages);
 
