@@ -195,6 +195,12 @@ class MeshtasticManager {
 
       console.log(`✅ Configuration complete: ${finalNodeCount} nodes, ${finalChannelCount} channels`);
 
+      // If localNodeInfo wasn't set during configuration (device didn't send MyNodeInfo),
+      // initialize it from database
+      if (!this.localNodeInfo) {
+        await this.initializeLocalNodeInfoFromDatabase();
+      }
+
     } catch (error) {
       console.error('❌ Failed to request full configuration:', error);
       // Even if configuration fails, ensure we have basic setup
@@ -499,6 +505,44 @@ class MeshtasticManager {
     return `${major}.${minor}.${patch}`;
   }
 
+  /**
+   * Initialize localNodeInfo from database when MyNodeInfo wasn't received
+   */
+  private async initializeLocalNodeInfoFromDatabase(): Promise<void> {
+    try {
+      console.log('📱 Initializing localNodeInfo from database...');
+
+      const nodes = databaseService.getAllNodes();
+      console.log(`📱 Found ${nodes.length} nodes in database to search`);
+
+      // Try multiple strategies to find the local node:
+      // 1. Look for node with longName containing "Station" (typical local naming)
+      // 2. Look for node with role 0 (CLIENT)
+      // 3. Look for node with specific nodeId pattern
+      // 4. Use first node with complete information
+
+      let localNode = nodes.find((n: any) => n.longName && n.longName.includes('Station'));
+      if (!localNode) localNode = nodes.find((n: any) => n.role === 0 || n.role === '0');
+      if (!localNode) localNode = nodes.find((n: any) => n.nodeId === '!a2e4ff4c'); // Known local ID
+      if (!localNode) localNode = nodes.find((n: any) => n.longName && n.shortName);
+
+      if (localNode) {
+        this.localNodeInfo = {
+          nodeNum: localNode.nodeNum,
+          nodeId: localNode.nodeId,
+          longName: localNode.longName || 'Local Device',
+          shortName: localNode.shortName || 'LOCAL',
+          firmwareVersion: (localNode as any).firmwareVersion || null
+        } as any;
+        console.log(`📱 Initialized localNodeInfo from database: ${localNode.longName} (${localNode.nodeId})`);
+      } else {
+        console.log('⚠️ Could not find suitable local node in database, will wait for periodic updates');
+      }
+    } catch (error) {
+      console.error('❌ Failed to initialize localNodeInfo from database:', error);
+    }
+  }
+
   private async processMyNodeInfo(myNodeInfo: any): Promise<void> {
     console.log('📱 Processing MyNodeInfo for local device');
     console.log('📱 MyNodeInfo contents:', JSON.stringify(myNodeInfo, null, 2));
@@ -549,6 +593,8 @@ class MeshtasticManager {
     if (this.localNodeInfo && metadata.firmwareVersion) {
       (this.localNodeInfo as any).firmwareVersion = metadata.firmwareVersion;
       console.log(`📱 Updated firmware version: ${metadata.firmwareVersion}`);
+    } else {
+      console.log('⚠️ Cannot update firmware - localNodeInfo not initialized yet');
     }
   }
 

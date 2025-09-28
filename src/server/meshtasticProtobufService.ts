@@ -313,6 +313,17 @@ export class MeshtasticProtobufService {
       });
 
       if (fromRadio.packet) {
+        if (fromRadio.packet.decoded && fromRadio.packet.decoded instanceof Uint8Array) {
+          try {
+            const Data = root.lookupType('meshtastic.Data');
+            const decodedData = Data.decode(fromRadio.packet.decoded);
+            (fromRadio.packet as any).decoded = decodedData;
+            console.log('✅ Manually decoded Data message in parseIncomingData');
+          } catch (e) {
+            console.error('❌ Failed to manually decode Data in parseIncomingData:', e);
+          }
+        }
+
         return {
           type: 'meshPacket',
           data: fromRadio.packet
