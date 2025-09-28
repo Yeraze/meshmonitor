@@ -12,7 +12,7 @@ services:
       - meshmonitor-data:/data
     env_file: .env
     environment:
-      - NODE_ENV=dev
+      - NODE_ENV=production
 
 volumes:
   meshmonitor-data:
