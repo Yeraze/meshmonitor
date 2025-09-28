@@ -458,12 +458,12 @@ class DatabaseService {
       messageData.toNodeId,
       messageData.text,
       messageData.channel,
-      messageData.portnum || null,
+      messageData.portnum ?? null,
       messageData.timestamp,
-      messageData.rxTime || null,
-      messageData.hopStart || null,
-      messageData.hopLimit || null,
-      messageData.replyId || null,
+      messageData.rxTime ?? null,
+      messageData.hopStart ?? null,
+      messageData.hopLimit ?? null,
+      messageData.replyId ?? null,
       messageData.createdAt
     );
   }

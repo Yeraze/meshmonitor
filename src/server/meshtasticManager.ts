@@ -707,10 +707,12 @@ class MeshtasticManager {
         const decodedReplyId = (meshPacket.decoded as any)?.replyId;
         const replyId = (decodedReplyId !== undefined && decodedReplyId > 0) ? decodedReplyId : undefined;
 
-        // Extract hop fields - protobufjs uses camelCase
-        const hopStart = (meshPacket as any).hopStart || 0;
-        const hopLimit = (meshPacket as any).hopLimit || 0;
-        console.log(`🔍 Hop fields: hopStart=${hopStart}, hopLimit=${hopLimit}, hopCount=${hopStart - hopLimit}`);
+        // Extract hop fields - check both camelCase and snake_case
+        console.log(`🔍 DEBUG All meshPacket fields:`, JSON.stringify(meshPacket, null, 2).substring(0, 500));
+        const hopStart = (meshPacket as any).hopStart ?? (meshPacket as any).hop_start ?? null;
+        const hopLimit = (meshPacket as any).hopLimit ?? (meshPacket as any).hop_limit ?? null;
+        const hopCount = (hopStart !== null && hopLimit !== null) ? hopStart - hopLimit : null;
+        console.log(`🔍 Hop fields: hopStart=${hopStart}, hopLimit=${hopLimit}, hopCount=${hopCount}`);
 
         const message = {
           id: `${fromNum}_${meshPacket.id || Date.now()}`,
@@ -892,19 +894,19 @@ class MeshtasticManager {
         const envMetrics = telemetry.environmentMetrics;
         console.log(`🌡️ Environment telemetry: temp=${envMetrics.temperature}°C, humidity=${envMetrics.relativeHumidity}%`);
 
-        if (envMetrics.temperature !== undefined) {
+        if (envMetrics.temperature !== undefined && envMetrics.temperature !== null) {
           databaseService.insertTelemetry({
             nodeId, nodeNum: fromNum, telemetryType: 'temperature',
             timestamp, value: envMetrics.temperature, unit: '°C', createdAt: now
           });
         }
-        if (envMetrics.relativeHumidity !== undefined) {
+        if (envMetrics.relativeHumidity !== undefined && envMetrics.relativeHumidity !== null) {
           databaseService.insertTelemetry({
             nodeId, nodeNum: fromNum, telemetryType: 'humidity',
             timestamp, value: envMetrics.relativeHumidity, unit: '%', createdAt: now
           });
         }
-        if (envMetrics.barometricPressure !== undefined) {
+        if (envMetrics.barometricPressure !== undefined && envMetrics.barometricPressure !== null) {
           databaseService.insertTelemetry({
             nodeId, nodeNum: fromNum, telemetryType: 'pressure',
             timestamp, value: envMetrics.barometricPressure, unit: 'hPa', createdAt: now
