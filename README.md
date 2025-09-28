@@ -1,7 +1,10 @@
 # MeshMonitor
 
+[![CI](https://github.com/Yeraze/meshmonitor/actions/workflows/ci.yml/badge.svg)](https://github.com/Yeraze/meshmonitor/actions/workflows/ci.yml)
+[![PR Tests](https://github.com/Yeraze/meshmonitor/actions/workflows/pr-tests.yml/badge.svg)](https://github.com/Yeraze/meshmonitor/actions/workflows/pr-tests.yml)
 [![Docker Image](https://ghcr-badge.egpl.dev/yeraze/meshmonitor/latest_tag?color=%235b4566&ignore=latest,main&label=version&trim=)](https://github.com/Yeraze/meshmonitor/pkgs/container/meshmonitor)
 [![Docker Pulls](https://ghcr-badge.egpl.dev/yeraze/meshmonitor/size?color=%235b4566&tag=latest&label=image%20size&trim=)](https://github.com/Yeraze/meshmonitor/pkgs/container/meshmonitor)
+[![License](https://img.shields.io/github/license/Yeraze/meshmonitor)](https://github.com/Yeraze/meshmonitor/blob/main/LICENSE)
 
 A comprehensive web application for monitoring Meshtastic mesh networks over IP. Built with React, TypeScript, and Node.js, featuring a beautiful Catppuccin Mocha dark theme and persistent SQLite database storage.
 
@@ -310,14 +313,42 @@ interface Channel {
 
 ### Available Scripts
 
+#### Development
 - `npm run dev` - Start React development server
 - `npm run dev:server` - Start Express API server
 - `npm run dev:full` - Start both development servers
 - `npm run build` - Build React app for production
 - `npm run build:server` - Build Express server for production
 - `npm start` - Start production server
+
+#### Testing & Quality
+- `npm run test` - Run tests in watch mode
+- `npm run test:run` - Run all tests once
+- `npm run test:ui` - Run tests with interactive UI
+- `npm run test:coverage` - Generate coverage report
 - `npm run lint` - Run ESLint
 - `npm run typecheck` - Run TypeScript compiler checks
+
+### Testing
+
+MeshMonitor includes a comprehensive test suite using Vitest and Testing Library:
+
+- **Unit Tests**: Database operations, API endpoints, and utility functions
+- **Component Tests**: React components with user interaction testing
+- **Integration Tests**: API integration and data flow validation
+- **100% passing tests** maintained through CI/CD
+
+All pull requests must pass automated testing before merge. See [CONTRIBUTING.md](CONTRIBUTING.md) for testing guidelines.
+
+### CI/CD Pipeline
+
+Our GitHub Actions workflows ensure code quality:
+
+- **PR Tests**: Quick validation on every pull request
+- **Full CI**: Comprehensive testing across Node.js versions
+- **Docker Builds**: Multi-platform image creation
+- **Security Scanning**: Vulnerability detection with Trivy
+- **Release Automation**: Automated versioning and publishing
 
 ### Project Structure
 
@@ -389,11 +420,21 @@ docker-compose logs -f meshmonitor
 
 ## Contributing
 
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details on:
+
+- Development setup
+- Testing requirements
+- Code style guidelines
+- Pull request process
+- CI/CD workflows
+
+Quick start:
 1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes and add tests
+4. Run tests locally (`npm run test:run`)
+5. Commit with conventional commits (`feat: add amazing feature`)
+6. Push and create a Pull Request
 
 ## License
 
