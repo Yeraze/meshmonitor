@@ -4,6 +4,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import './App.css'
 import TelemetryGraphs from './components/TelemetryGraphs'
+import { version } from '../package.json'
 
 // Fix for default markers in React-Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -166,6 +167,10 @@ function App() {
   const [nodeFilter, setNodeFilter] = useState<string>('')
   const [sortField, setSortField] = useState<SortField>('longName')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+
+  // System status modal state
+  const [showStatusModal, setShowStatusModal] = useState<boolean>(false)
+  const [systemStatus, setSystemStatus] = useState<any>(null)
 
   // Function to detect MQTT/bridge messages that should be filtered
   const isMqttBridgeMessage = (msg: MeshMessage): boolean => {
@@ -376,6 +381,19 @@ function App() {
       }
     } catch (error) {
       console.error('Error fetching telemetry availability:', error);
+    }
+  };
+
+  const fetchSystemStatus = async () => {
+    try {
+      const response = await fetch('/api/system/status');
+      if (response.ok) {
+        const data = await response.json();
+        setSystemStatus(data);
+        setShowStatusModal(true);
+      }
+    } catch (error) {
+      console.error('Error fetching system status:', error);
     }
   };
 
@@ -1320,6 +1338,12 @@ function App() {
                       return null;
                     }
 
+                    const fromNode = nodes.find(n => n.nodeNum === selectedTrace.fromNodeNum);
+                    const toNode = nodes.find(n => n.nodeNum === selectedTrace.toNodeNum);
+                    const fromName = fromNode?.user?.longName || fromNode?.user?.shortName || selectedTrace.fromNodeId;
+                    const toName = toNode?.user?.longName || toNode?.user?.shortName || selectedTrace.toNodeId;
+                    const hops = route.length;
+
                     return (
                       <Polyline
                         key="selected-traceroute"
@@ -1328,7 +1352,19 @@ function App() {
                         weight={4}
                         opacity={0.9}
                         dashArray="10, 5"
-                      />
+                      >
+                        <Popup>
+                          <div className="route-popup">
+                            <h4>Selected Traceroute</h4>
+                            <div className="route-endpoints">
+                              <strong>{fromName}</strong> → <strong>{toName}</strong>
+                            </div>
+                            <div className="route-usage">
+                              <strong>{hops}</strong> hop{hops !== 1 ? 's' : ''}
+                            </div>
+                          </div>
+                        </Popup>
+                      </Polyline>
                     );
                   } catch (error) {
                     return null;
@@ -1841,6 +1877,15 @@ function App() {
         <div className="info-section">
           <h3>Connection Status</h3>
           <p><strong>Node Address:</strong> {nodeAddress}</p>
+          {deviceConfig?.basic?.nodeId && (
+            <p><strong>Node ID:</strong> {deviceConfig.basic.nodeId}</p>
+          )}
+          {deviceConfig?.basic?.nodeName && (
+            <p><strong>Node Name:</strong> {deviceConfig.basic.nodeName}</p>
+          )}
+          {deviceConfig?.basic && (
+            <p><strong>Firmware Version:</strong> {deviceConfig.basic.firmwareVersion || 'Not available'}</p>
+          )}
           <p><strong>Connection Status:</strong> <span className={`status-text ${connectionStatus}`}>{connectionStatus}</span></p>
           <p><strong>Uses TLS:</strong> {deviceInfo?.meshtasticUseTls ? 'Yes' : 'No'}</p>
         </div>
@@ -1873,6 +1918,11 @@ function App() {
         )}
 
         <div className="info-section">
+          <h3>Application Information</h3>
+          <p><strong>Version:</strong> {version}</p>
+        </div>
+
+        <div className="info-section">
           <h3>Network Statistics</h3>
           <p><strong>Total Nodes:</strong> {nodes.length}</p>
           <p><strong>Total Channels:</strong> {channels.length}</p>
@@ -1897,6 +1947,13 @@ function App() {
           </div>
         )}
       </div>
+
+      {currentNodeId && connectionStatus === 'connected' && (
+        <div className="info-section-full-width">
+          <h3>Local Node Telemetry</h3>
+          <TelemetryGraphs nodeId={currentNodeId} />
+        </div>
+      )}
     </div>
   );
 
@@ -2017,7 +2074,7 @@ function App() {
         <img src="/logo.png" alt="MeshMonitor Logo" className="settings-logo" />
         <div className="settings-title-section">
           <h1 className="settings-app-name">MeshMonitor</h1>
-          <p className="settings-version">Version 0.1</p>
+          <p className="settings-version">Version {version}</p>
         </div>
       </div>
       <div className="settings-content">
@@ -2118,7 +2175,7 @@ function App() {
             <span className="node-address">{nodeAddress}</span>
           </div>
         </div>
-        <div className="connection-status">
+        <div className="connection-status" onClick={fetchSystemStatus} style={{ cursor: 'pointer' }} title="Click for system status">
           <span className={`status-indicator ${connectionStatus}`}></span>
           <span>{connectionStatus === 'configuring' ? 'initializing' : connectionStatus}</span>
         </div>
@@ -2263,11 +2320,59 @@ function App() {
         );
       })()}
 
+      {/* System Status Modal */}
+      {showStatusModal && systemStatus && (
+        <div className="modal-overlay" onClick={() => setShowStatusModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>System Status</h2>
+              <button className="modal-close" onClick={() => setShowStatusModal(false)}>&times;</button>
+            </div>
+            <div className="modal-body">
+              <div className="status-grid">
+                <div className="status-item">
+                  <strong>Version:</strong>
+                  <span>{systemStatus.version}</span>
+                </div>
+                <div className="status-item">
+                  <strong>Node.js Version:</strong>
+                  <span>{systemStatus.nodeVersion}</span>
+                </div>
+                <div className="status-item">
+                  <strong>Uptime:</strong>
+                  <span>{systemStatus.uptime}</span>
+                </div>
+                <div className="status-item">
+                  <strong>Platform:</strong>
+                  <span>{systemStatus.platform} ({systemStatus.architecture})</span>
+                </div>
+                <div className="status-item">
+                  <strong>Environment:</strong>
+                  <span>{systemStatus.environment}</span>
+                </div>
+                <div className="status-item">
+                  <strong>Memory (Heap Used):</strong>
+                  <span>{systemStatus.memoryUsage.heapUsed}</span>
+                </div>
+                <div className="status-item">
+                  <strong>Memory (Heap Total):</strong>
+                  <span>{systemStatus.memoryUsage.heapTotal}</span>
+                </div>
+                <div className="status-item">
+                  <strong>Memory (RSS):</strong>
+                  <span>{systemStatus.memoryUsage.rss}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Footer */}
       <footer className="app-footer">
         <div className="footer-content">
           <span className="footer-title">MeshMonitor</span>
-          <span className="footer-version">v0.1</span>
+          <span className="footer-version">v{version}</span>
           <a
             href="https://github.com/Yeraze/meshmonitor"
             target="_blank"
