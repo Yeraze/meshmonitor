@@ -86,6 +86,7 @@ interface MeshMessage {
   hopStart?: number;
   hopLimit?: number;
   replyId?: number;
+  emoji?: number;
 }
 
 interface Channel {
@@ -144,7 +145,7 @@ function App() {
   const [pendingMessages, setPendingMessages] = useState<Map<string, MeshMessage>>(new Map())
   const [unreadCounts, setUnreadCounts] = useState<{[key: number]: number}>({})
   const audioRef = useRef<HTMLAudioElement | null>(null)
-  const lastNotificationTime = useRef<number>(0)
+  // const lastNotificationTime = useRef<number>(0) // Disabled for now
   const [tracerouteLoading, setTracerouteLoading] = useState<string | null>(null)
   const [showRoutes, setShowRoutes] = useState<boolean>(false)
   const [traceroutes, setTraceroutes] = useState<any[]>([])
@@ -201,13 +202,13 @@ function App() {
     audioRef.current.volume = 0.3;
   }, []);
 
-  // Function to play notification sound
-  const playNotificationSound = () => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = 0;
-      audioRef.current.play().catch(err => console.log('Audio play failed:', err));
-    }
-  };
+  // Function to play notification sound - disabled for now
+  // const playNotificationSound = () => {
+  //   if (audioRef.current) {
+  //     audioRef.current.currentTime = 0;
+  //     audioRef.current.play().catch(err => console.log('Audio play failed:', err));
+  //   }
+  // };
 
   // Load configuration and check connection status on startup
   useEffect(() => {
@@ -450,23 +451,18 @@ function App() {
         const isInitialLoad = previousMessageIds.size === 0;
         const newMessages = processedMessages.filter((m: MeshMessage) => !previousMessageIds.has(m.id));
 
-        // Play notification sound only if:
-        // 1. There are new messages
-        // 2. This is not the initial load
-        // 3. At least one new message is in a channel OTHER than the currently selected one
-        // 4. At least 3 seconds have passed since the last notification (debouncing)
-        if (newMessages.length > 0 && !isInitialLoad) {
-          const currentSelected = selectedChannelRef.current;
-          const hasNewMessagesInOtherChannels = newMessages.some((m: MeshMessage) => m.channel !== currentSelected);
-          const now = Date.now();
-          const timeSinceLastNotification = now - lastNotificationTime.current;
-
-          if (hasNewMessagesInOtherChannels && timeSinceLastNotification > 3000) {
-            console.log('🔔 Playing notification sound for new messages in other channels');
-            playNotificationSound();
-            lastNotificationTime.current = now;
-          }
-        }
+        // Notification sound disabled - too frequent
+        // TODO: Add user-configurable notification settings
+        // if (newMessages.length > 0 && !isInitialLoad) {
+        //   const currentSelected = selectedChannelRef.current;
+        //   const hasNewMessagesInOtherChannels = newMessages.some((m: MeshMessage) => m.channel !== currentSelected);
+        //   const now = Date.now();
+        //   const timeSinceLastNotification = now - lastNotificationTime.current;
+        //   if (hasNewMessagesInOtherChannels && timeSinceLastNotification > 3000) {
+        //     playNotificationSound();
+        //     lastNotificationTime.current = now;
+        //   }
+        // }
 
         setMessages(processedMessages);
 
@@ -815,7 +811,8 @@ function App() {
     return messages.filter(msg =>
       (msg.from === nodeId || msg.to === nodeId) &&
       msg.to !== '!ffffffff' && // Exclude broadcasts
-      msg.channel === -1 // Only direct messages
+      msg.channel === -1 && // Only direct messages
+      msg.portnum === 1 // Only text messages, exclude traceroutes (portnum 70)
     );
   };
 
@@ -1491,7 +1488,9 @@ function App() {
                                 </div>
                               )}
                               <div className={`message-bubble ${isMine ? 'mine' : 'theirs'}`}>
-                                <div className="message-text">{msg.text}</div>
+                                <div className="message-text">
+                                  {msg.emoji ? String.fromCodePoint(msg.emoji) : msg.text}
+                                </div>
                                 {reactions.length > 0 && (
                                   <div className="message-reactions">
                                     {reactions.map(reaction => (
@@ -1510,12 +1509,24 @@ function App() {
                                   </span>
                                   <span className="hop-count">
                                     {(() => {
-                                      const hopCount = (msg.hopStart && msg.hopLimit !== undefined)
-                                        ? msg.hopStart - msg.hopLimit
-                                        : 0;
-                                      return hopCount > 0
-                                        ? `${hopCount} hop${hopCount !== 1 ? 's' : ''}`
-                                        : 'Direct';
+                                      // Calculate hops traveled: hopStart - hopLimit
+                                      // If hopStart is missing/null/0, assume the message started with
+                                      // a hopLimit of 7 (common max) or use current hopLimit if it's the same
+                                      if (msg.hopStart && msg.hopStart > 0 && msg.hopLimit !== undefined) {
+                                        const hopCount = msg.hopStart - msg.hopLimit;
+                                        return hopCount > 0
+                                          ? `${hopCount} hop${hopCount !== 1 ? 's' : ''}`
+                                          : 'Direct';
+                                      }
+                                      // Fallback: assume hopStart was 7 (common max config)
+                                      if (msg.hopLimit !== undefined && msg.hopLimit !== null) {
+                                        const assumedHopStart = Math.max(7, msg.hopLimit);
+                                        const hopCount = assumedHopStart - msg.hopLimit;
+                                        return hopCount > 0
+                                          ? `~${hopCount} hop${hopCount !== 1 ? 's' : ''}`
+                                          : 'Direct';
+                                      }
+                                      return 'Direct';
                                     })()}
                                   </span>
                                 </div>
@@ -1584,123 +1595,225 @@ function App() {
     );
   };
 
-  const renderMessagesTab = () => (
-    <div className="tab-content">
-      <h2>Direct Messages</h2>
+  const renderMessagesTab = () => {
+    // Get nodes that have direct messages with unread counts
+    const nodesWithMessages = nodes.filter(node => {
+      const nodeId = node.user?.id;
+      if (!nodeId) return false;
+      const dmMessages = getDMMessages(nodeId);
+      return dmMessages.length > 0;
+    }).map(node => {
+      const nodeId = node.user?.id!;
+      const dmMessages = getDMMessages(nodeId);
+      const unreadCount = dmMessages.filter(msg => {
+        // Count messages from the other node that we haven't "seen"
+        // For simplicity, we'll use whether this node is selected
+        return msg.from === nodeId && selectedDMNode !== nodeId;
+      }).length;
 
-      {/* Direct Messages Section */}
-      <div className="dm-section">
-        <div className="dm-selector">
-          <select
-            value={selectedDMNode}
-            onChange={(e) => setSelectedDMNode(e.target.value)}
-            className="node-select"
-          >
-            <option value="">Select a node...</option>
-            {nodes.map(node => (
-              <option key={node.nodeNum} value={node.user?.id || node.nodeNum.toString()}>
-                {node.user?.longName || node.user?.shortName || `Node ${node.nodeNum}`}
-              </option>
-            ))}
-          </select>
-        </div>
+      return {
+        ...node,
+        messageCount: dmMessages.length,
+        unreadCount: unreadCount,
+        lastMessageTime: dmMessages.length > 0 ? Math.max(...dmMessages.map(m => m.timestamp.getTime())) : 0
+      };
+    });
 
-        {selectedDMNode ? (
-          <div className="dm-conversation">
-            <div className="dm-header">
-              <div className="dm-header-top">
-                <h3>Conversation with {getNodeName(selectedDMNode)}</h3>
-                <button
-                  onClick={() => handleTraceroute(selectedDMNode)}
-                  disabled={connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode}
-                  className="traceroute-btn"
-                  title="Run traceroute to this node"
-                >
-                  🗺️ Traceroute
-                  {tracerouteLoading === selectedDMNode && (
-                    <span className="spinner"></span>
-                  )}
-                </button>
-              </div>
-              {(() => {
-                const recentTrace = getRecentTraceroute(selectedDMNode);
-                if (recentTrace) {
-                  const age = Math.floor((Date.now() - recentTrace.timestamp) / (1000 * 60));
-                  const ageStr = age < 60 ? `${age}m ago` : `${Math.floor(age / 60)}h ago`;
+    // Sort: unread messages first, then by last message time
+    const sortedNodesWithMessages = [...nodesWithMessages].sort((a, b) => {
+      if (a.unreadCount !== b.unreadCount) {
+        return b.unreadCount - a.unreadCount; // More unread first
+      }
+      return b.lastMessageTime - a.lastMessageTime; // More recent first
+    });
 
-                  return (
-                    <div className="traceroute-info">
-                      <div className="traceroute-route">
-                        <strong>→ Forward:</strong> {formatTracerouteRoute(recentTrace.route, recentTrace.snrTowards)}
-                      </div>
-                      <div className="traceroute-route">
-                        <strong>← Return:</strong> {formatTracerouteRoute(recentTrace.routeBack, recentTrace.snrBack)}
-                      </div>
-                      <div className="traceroute-age">Last traced {ageStr}</div>
-                    </div>
-                  );
-                }
-                return null;
-              })()}
+    return (
+      <div className="nodes-split-view">
+        {/* Left Sidebar - Node List with Messages */}
+        <div className="nodes-sidebar">
+          <div className="sidebar-header">
+            <h3>Messages ({nodesWithMessages.length})</h3>
+            <div className="node-controls">
+              <input
+                type="text"
+                placeholder="Filter nodes..."
+                value={nodeFilter}
+                onChange={(e) => setNodeFilter(e.target.value)}
+                className="filter-input-small"
+              />
             </div>
-            <TelemetryGraphs nodeId={selectedDMNode} />
-            <div className="messages-container">
-              {getDMMessages(selectedDMNode).length > 0 ? (
-                getDMMessages(selectedDMNode).map(msg => {
-                  const isTraceroute = msg.portnum === 70;
-                  return (
-                    <div key={msg.id} className={`message-item ${isTraceroute ? 'traceroute' : msg.from === selectedDMNode ? 'received' : 'sent'}`}>
-                      <div className="message-header">
-                        <span className="message-from">{getNodeName(msg.from)}</span>
-                        <span className="message-time">{msg.timestamp.toLocaleTimeString()}</span>
-                        {isTraceroute && <span className="traceroute-badge">TRACEROUTE</span>}
+          </div>
+
+          <div className="nodes-list">
+            {connectionStatus === 'connected' ? (
+              sortedNodesWithMessages.length > 0 ? (
+                <>
+                  {sortedNodesWithMessages
+                    .filter(node => {
+                      if (!nodeFilter) return true;
+                      const searchTerm = nodeFilter.toLowerCase();
+                      return (
+                        node.user?.longName?.toLowerCase().includes(searchTerm) ||
+                        node.user?.shortName?.toLowerCase().includes(searchTerm) ||
+                        node.user?.id?.toLowerCase().includes(searchTerm)
+                      );
+                    })
+                    .map(node => (
+                      <div
+                        key={node.nodeNum}
+                        className={`node-item ${selectedDMNode === node.user?.id ? 'selected' : ''}`}
+                        onClick={() => {
+                          setSelectedDMNode(node.user?.id || '');
+                        }}
+                      >
+                        <div className="node-header">
+                          <div className="node-name">
+                            {node.user?.longName || `Node ${node.nodeNum}`}
+                            {node.unreadCount > 0 && (
+                              <span className="unread-badge-inline">{node.unreadCount}</span>
+                            )}
+                          </div>
+                          <div className="node-short">
+                            {node.user?.shortName || '-'}
+                          </div>
+                        </div>
+
+                        <div className="node-details">
+                          <div className="node-stats">
+                            <span className="stat" title="Total Messages">
+                              💬 {node.messageCount}
+                            </span>
+                            {node.snr != null && (
+                              <span className="stat" title="Signal-to-Noise Ratio">
+                                📶 {node.snr.toFixed(1)}dB
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="node-time">
+                            {node.lastMessageTime ?
+                              new Date(node.lastMessageTime).toLocaleString([], {
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })
+                              : 'Never'
+                            }
+                          </div>
+                        </div>
                       </div>
-                      <div className="message-text" style={isTraceroute ? {whiteSpace: 'pre-line', fontFamily: 'monospace'} : {}}>{msg.text}</div>
-                    </div>
-                  );
-                })
+                    ))
+                  }
+                </>
               ) : (
-                <p className="no-messages">No direct messages with this node yet</p>
-              )}
-            </div>
-
-            {/* Send DM form */}
-            {connectionStatus === 'connected' && (
-              <div className="send-message-form">
-                <div className="message-input-container">
-                  <input
-                    type="text"
-                    value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
-                    placeholder={`Send direct message to ${getNodeName(selectedDMNode)}...`}
-                    className="message-input"
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter') {
-                        handleSendDirectMessage(selectedDMNode);
-                      }
-                    }}
-                  />
-                  <button
-                    onClick={() => handleSendDirectMessage(selectedDMNode)}
-                    disabled={!newMessage.trim()}
-                    className="send-btn"
-                  >
-                    Send
-                  </button>
-                </div>
-              </div>
+                <div className="no-data">No direct message conversations yet</div>
+              )
+            ) : (
+              <div className="no-data">Connect to a Meshtastic node to view messages</div>
             )}
           </div>
-        ) : (
-          <p className="no-data">Select a node above to view and send direct messages</p>
-        )}
+        </div>
 
-        {connectionStatus !== 'connected' && (
-          <p className="no-data">Connect to a Meshtastic node to view direct messages</p>
-        )}
+        {/* Right Panel - Conversation View */}
+        <div className="nodes-main-content">
+          {selectedDMNode ? (
+            <div className="dm-conversation-panel">
+              <div className="dm-header">
+                <div className="dm-header-top">
+                  <h3>Conversation with {getNodeName(selectedDMNode)}</h3>
+                  <button
+                    onClick={() => handleTraceroute(selectedDMNode)}
+                    disabled={connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode}
+                    className="traceroute-btn"
+                    title="Run traceroute to this node"
+                  >
+                    🗺️ Traceroute
+                    {tracerouteLoading === selectedDMNode && (
+                      <span className="spinner"></span>
+                    )}
+                  </button>
+                </div>
+                {(() => {
+                  const recentTrace = getRecentTraceroute(selectedDMNode);
+                  if (recentTrace) {
+                    const age = Math.floor((Date.now() - recentTrace.timestamp) / (1000 * 60));
+                    const ageStr = age < 60 ? `${age}m ago` : `${Math.floor(age / 60)}h ago`;
+
+                    return (
+                      <div className="traceroute-info">
+                        <div className="traceroute-route">
+                          <strong>→ Forward:</strong> {formatTracerouteRoute(recentTrace.route, recentTrace.snrTowards)}
+                        </div>
+                        <div className="traceroute-route">
+                          <strong>← Return:</strong> {formatTracerouteRoute(recentTrace.routeBack, recentTrace.snrBack)}
+                        </div>
+                        <div className="traceroute-age">Last traced {ageStr}</div>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+              </div>
+
+              <div className="messages-container">
+                {getDMMessages(selectedDMNode).length > 0 ? (
+                  getDMMessages(selectedDMNode).map(msg => {
+                    const isTraceroute = msg.portnum === 70;
+                    return (
+                      <div key={msg.id} className={`message-item ${isTraceroute ? 'traceroute' : msg.from === selectedDMNode ? 'received' : 'sent'}`}>
+                        <div className="message-header">
+                          <span className="message-from">{getNodeName(msg.from)}</span>
+                          <span className="message-time">{msg.timestamp.toLocaleTimeString()}</span>
+                          {isTraceroute && <span className="traceroute-badge">TRACEROUTE</span>}
+                        </div>
+                        <div className="message-text" style={isTraceroute ? {whiteSpace: 'pre-line', fontFamily: 'monospace'} : {}}>{msg.text}</div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p className="no-messages">No direct messages with this node yet</p>
+                )}
+              </div>
+
+              {/* Send DM form */}
+              {connectionStatus === 'connected' && (
+                <div className="send-message-form">
+                  <div className="message-input-container">
+                    <input
+                      type="text"
+                      value={newMessage}
+                      onChange={(e) => setNewMessage(e.target.value)}
+                      placeholder={`Send direct message to ${getNodeName(selectedDMNode)}...`}
+                      className="message-input"
+                      onKeyPress={(e) => {
+                        if (e.key === 'Enter') {
+                          handleSendDirectMessage(selectedDMNode);
+                        }
+                      }}
+                    />
+                    <button
+                      onClick={() => handleSendDirectMessage(selectedDMNode)}
+                      disabled={!newMessage.trim()}
+                      className="send-btn"
+                    >
+                      Send
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <TelemetryGraphs nodeId={selectedDMNode} />
+            </div>
+          ) : (
+            <div className="no-selection">
+              <p>Select a conversation from the list to view messages</p>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderInfoTab = () => (
     <div className="tab-content">
