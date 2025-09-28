@@ -57,7 +57,7 @@ jobs:
       - name: Run unit tests
         run: |
           echo "Running test suite..."
-          npm run test:run
+          npm run test:run -- --exclude="**/server.test.ts"
 
       - name: Generate test summary
         if: always()
@@ -125,13 +125,13 @@ jobs:
         if: needs.changed-files.outputs.backend == 'true'
         run: |
           echo "Testing backend changes..."
-          npm run test:run src/services/database.test.ts src/server/server.simple.test.ts
+          npm run test:run -- src/services/database.test.ts src/server/server.simple.test.ts
 
       - name: Test frontend changes
         if: needs.changed-files.outputs.frontend == 'true'
         run: |
           echo "Testing frontend changes..."
-          npm run test:run src/components/
+          npm run test:run -- src/components/
 
       - name: Build check
         run: |

@@ -34,10 +34,10 @@ describe('Server Module Mocks', () => {
       expect(managerMock.isConnected()).toBe(true);
       expect(managerMock.getNodeId()).toBe('!localNode');
 
-      const sendResult = await managerMock.sendTextMessage('test', '!node2', 0);
+      const sendResult = await managerMock.sendTextMessage();
       expect(sendResult.success).toBe(true);
 
-      const traceResult = await managerMock.sendTraceroute(2);
+      const traceResult = await managerMock.sendTraceroute();
       expect(traceResult.success).toBe(true);
     });
   });
@@ -130,7 +130,7 @@ describe('Server Module Mocks', () => {
         })
       };
 
-      await expect(managerMock.sendTextMessage('test', '!node2', 0))
+      await expect(managerMock.sendTextMessage())
         .rejects.toThrow('Network timeout');
     });
 
