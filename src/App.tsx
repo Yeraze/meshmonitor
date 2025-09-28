@@ -1596,18 +1596,17 @@ function App() {
   };
 
   const renderMessagesTab = () => {
-    // Get nodes that have direct messages with unread counts
-    const nodesWithMessages = nodes.filter(node => {
+    const nodesWithMessages = processedNodes.map(node => {
       const nodeId = node.user?.id;
-      if (!nodeId) return false;
-      const dmMessages = getDMMessages(nodeId);
-      return dmMessages.length > 0;
-    }).map(node => {
-      const nodeId = node.user?.id!;
+      if (!nodeId) return {
+        ...node,
+        messageCount: 0,
+        unreadCount: 0,
+        lastMessageTime: 0
+      };
+
       const dmMessages = getDMMessages(nodeId);
       const unreadCount = dmMessages.filter(msg => {
-        // Count messages from the other node that we haven't "seen"
-        // For simplicity, we'll use whether this node is selected
         return msg.from === nodeId && selectedDMNode !== nodeId;
       }).length;
 
@@ -1619,12 +1618,14 @@ function App() {
       };
     });
 
-    // Sort: unread messages first, then by last message time
     const sortedNodesWithMessages = [...nodesWithMessages].sort((a, b) => {
       if (a.unreadCount !== b.unreadCount) {
-        return b.unreadCount - a.unreadCount; // More unread first
+        return b.unreadCount - a.unreadCount;
       }
-      return b.lastMessageTime - a.lastMessageTime; // More recent first
+      if (a.lastMessageTime !== b.lastMessageTime) {
+        return b.lastMessageTime - a.lastMessageTime;
+      }
+      return (b.lastHeard || 0) - (a.lastHeard || 0);
     });
 
     return (
@@ -1632,7 +1633,7 @@ function App() {
         {/* Left Sidebar - Node List with Messages */}
         <div className="nodes-sidebar">
           <div className="sidebar-header">
-            <h3>Messages ({nodesWithMessages.length})</h3>
+            <h3>Messages ({processedNodes.length})</h3>
             <div className="node-controls">
               <input
                 type="text"
@@ -1646,7 +1647,7 @@ function App() {
 
           <div className="nodes-list">
             {connectionStatus === 'connected' ? (
-              sortedNodesWithMessages.length > 0 ? (
+              processedNodes.length > 0 ? (
                 <>
                   {sortedNodesWithMessages
                     .filter(node => {
@@ -1707,7 +1708,7 @@ function App() {
                   }
                 </>
               ) : (
-                <div className="no-data">No direct message conversations yet</div>
+                <div className="no-data">No nodes available</div>
               )
             ) : (
               <div className="no-data">Connect to a Meshtastic node to view messages</div>
@@ -1721,7 +1722,25 @@ function App() {
             <div className="dm-conversation-panel">
               <div className="dm-header">
                 <div className="dm-header-top">
-                  <h3>Conversation with {getNodeName(selectedDMNode)}</h3>
+                  <h3>
+                    Conversation with {getNodeName(selectedDMNode)}
+                    {(() => {
+                      const selectedNode = nodes.find(n => n.user?.id === selectedDMNode);
+                      if (selectedNode?.lastHeard) {
+                        return (
+                          <div style={{ fontSize: '0.75em', fontWeight: 'normal', color: '#888', marginTop: '4px' }}>
+                            Last seen: {new Date(selectedNode.lastHeard * 1000).toLocaleString([], {
+                              month: 'short',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </h3>
                   <button
                     onClick={() => handleTraceroute(selectedDMNode)}
                     disabled={connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode}
