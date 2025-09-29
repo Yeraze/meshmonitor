@@ -4,7 +4,13 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import './App.css'
 import TelemetryGraphs from './components/TelemetryGraphs'
+import InfoTab from './components/InfoTab'
+import SettingsTab from './components/SettingsTab'
 import { version } from '../package.json'
+import { type TemperatureUnit } from './utils/temperature'
+import { DeviceInfo, Channel } from './types/device'
+import { MeshMessage } from './types/message'
+import { TabType, SortField, SortDirection, ConnectionStatus, MapCenterControllerProps } from './types/ui'
 
 // Fix for default markers in React-Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -32,7 +38,7 @@ const selectedIcon = new L.Icon({
   popupAnchor: [0, -30]
 });
 
-// Helper function to convert role number to readable string
+// Helper function to convert role number to readable string - kept for compatibility
 const getRoleName = (role: number | string | undefined): string | null => {
   if (role === undefined || role === null) return null;
   const roleNum = typeof role === 'string' ? parseInt(role) : role;
@@ -46,70 +52,7 @@ const getRoleName = (role: number | string | undefined): string | null => {
   }
 };
 
-interface DeviceInfo {
-  nodeNum: number;
-  user?: {
-    id: string;
-    longName: string;
-    shortName: string;
-    hwModel?: number;
-    role?: string;
-  };
-  position?: {
-    latitude: number;
-    longitude: number;
-    altitude?: number;
-  };
-  deviceMetrics?: {
-    batteryLevel?: number;
-    voltage?: number;
-    channelUtilization?: number;
-    airUtilTx?: number;
-  };
-  hopsAway?: number;
-  lastHeard?: number;
-  snr?: number;
-  rssi?: number;
-}
-
-interface MeshMessage {
-  id: string;
-  from: string;
-  to: string;
-  fromNodeId: string;
-  toNodeId: string;
-  text: string;
-  channel: number;
-  portnum?: number;
-  timestamp: Date;
-  acknowledged?: boolean;
-  isLocalMessage?: boolean;
-  hopStart?: number;
-  hopLimit?: number;
-  replyId?: number;
-  emoji?: number;
-}
-
-interface Channel {
-  id: number;
-  name: string;
-  psk?: string;
-  uplinkEnabled: boolean;
-  downlinkEnabled: boolean;
-  createdAt: number;
-  updatedAt: number;
-}
-
-type TabType = 'nodes' | 'channels' | 'messages' | 'info' | 'settings';
-
-type SortField = 'longName' | 'shortName' | 'id' | 'lastHeard' | 'snr' | 'battery' | 'hwModel' | 'location' | 'hops';
-type SortDirection = 'asc' | 'desc';
-
-// Map centering component that uses useMap hook
-interface MapCenterControllerProps {
-  centerTarget: [number, number] | null;
-  onCenterComplete: () => void;
-}
+// Types are now imported from separate files
 
 const MapCenterController: React.FC<MapCenterControllerProps> = ({ centerTarget, onCenterComplete }) => {
   const map = useMap();
@@ -128,7 +71,7 @@ function App() {
   const [activeTab, setActiveTab] = useState<TabType>('nodes')
   const [nodes, setNodes] = useState<DeviceInfo[]>([])
   const [channels, setChannels] = useState<Channel[]>([])
-  const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'configuring'>('disconnected')
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected')
   const [messages, setMessages] = useState<MeshMessage[]>([])
   const [selectedDMNode, setSelectedDMNode] = useState<string>('')
   const [channelMessages, setChannelMessages] = useState<{[key: number]: MeshMessage[]}>({})
@@ -142,7 +85,8 @@ function App() {
   const [deviceInfo, setDeviceInfo] = useState<any>(null)
   const [deviceConfig, setDeviceConfig] = useState<any>(null)
   const [currentNodeId, setCurrentNodeId] = useState<string>('')
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const channelMessagesContainerRef = useRef<HTMLDivElement>(null)
+  const dmMessagesContainerRef = useRef<HTMLDivElement>(null)
   const [pendingMessages, setPendingMessages] = useState<Map<string, MeshMessage>>(new Map())
   const [unreadCounts, setUnreadCounts] = useState<{[key: number]: number}>({})
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -161,6 +105,10 @@ function App() {
   const [tracerouteIntervalMinutes, setTracerouteIntervalMinutes] = useState<number>(() => {
     const saved = localStorage.getItem('tracerouteIntervalMinutes');
     return saved ? parseInt(saved) : 3;
+  });
+  const [temperatureUnit, setTemperatureUnit] = useState<TemperatureUnit>(() => {
+    const saved = localStorage.getItem('temperatureUnit');
+    return (saved === 'F' ? 'F' : 'C') as TemperatureUnit;
   });
 
   // New state for node list features
@@ -200,11 +148,20 @@ function App() {
   const [mapCenterTarget, setMapCenterTarget] = useState<[number, number] | null>(null)
   const [nodePopup, setNodePopup] = useState<{nodeId: string, position: {x: number, y: number}} | null>(null)
 
-  // Initialize notification sound
+  // Initialize notification sound with cleanup
   useEffect(() => {
     const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBiqG0PLSfzcGG2O56+OdTgwOUpzq66NRDwg+ltbyvW0qBSl+z/DV');
     audioRef.current = audio;
     audioRef.current.volume = 0.3;
+
+    // Cleanup function to prevent memory leak
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = '';
+        audioRef.current = null;
+      }
+    };
   }, []);
 
   // Function to play notification sound - disabled for now
@@ -255,13 +212,26 @@ function App() {
   }, [showRoutes, activeTab, connectionStatus]);
 
   // Auto-scroll to bottom when messages change or channel changes
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  const scrollToBottom = useCallback(() => {
+    // Scroll the appropriate container based on active tab
+    if (activeTab === 'channels' && channelMessagesContainerRef.current) {
+      channelMessagesContainerRef.current.scrollTop = channelMessagesContainerRef.current.scrollHeight;
+    } else if (activeTab === 'nodes' && dmMessagesContainerRef.current) {
+      dmMessagesContainerRef.current.scrollTop = dmMessagesContainerRef.current.scrollHeight;
+    }
+  }, [activeTab]);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [channelMessages, selectedChannel]);
+    if (activeTab === 'channels') {
+      scrollToBottom();
+    }
+  }, [channelMessages, selectedChannel, activeTab, scrollToBottom]);
+
+  useEffect(() => {
+    if (activeTab === 'nodes' && selectedDMNode) {
+      scrollToBottom();
+    }
+  }, [messages, selectedDMNode, activeTab, scrollToBottom]);
 
   // Regular data updates (every 5 seconds)
   useEffect(() => {
@@ -671,6 +641,25 @@ function App() {
       return;
     }
 
+    // Create a temporary message ID for immediate display
+    const tempId = `temp_dm_${Date.now()}_${Math.random()}`;
+    const sentMessage: MeshMessage = {
+      id: tempId,
+      from: currentNodeId || 'me',
+      to: destinationNodeId,
+      fromNodeId: currentNodeId || 'me',
+      toNodeId: destinationNodeId,
+      text: newMessage,
+      channel: -1, // -1 indicates a direct message
+      timestamp: new Date(),
+      isLocalMessage: true,
+      acknowledged: false,
+      portnum: 1 // Text message
+    };
+
+    // Add message to local state immediately for instant feedback
+    setMessages(prev => [...prev, sentMessage]);
+
     try {
       const response = await fetch('/api/messages/send', {
         method: 'POST',
@@ -679,7 +668,7 @@ function App() {
         },
         body: JSON.stringify({
           text: newMessage,
-          channel: 0,
+          channel: 0, // Backend may expect channel 0 for DMs
           destination: destinationNodeId
         })
       });
@@ -687,11 +676,18 @@ function App() {
       if (response.ok) {
         console.log('Direct message sent successfully');
         setNewMessage('');
+        // The message will be updated when we receive the acknowledgment from backend
       } else {
         console.error('Failed to send direct message');
+        // Remove the message from local state if sending failed
+        setMessages(prev => prev.filter(msg => msg.id !== tempId));
+        setError('Failed to send direct message');
       }
     } catch (error) {
       console.error('Error sending direct message:', error);
+      // Remove the message from local state if sending failed
+      setMessages(prev => prev.filter(msg => msg.id !== tempId));
+      setError(`Failed to send direct message: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -782,6 +778,7 @@ function App() {
   };
 
 
+  // Use imported helpers with current nodes state
   const getNodeName = (nodeId: string): string => {
     const node = nodes.find(n => n.user?.id === nodeId);
     return node?.user?.longName || node?.user?.shortName || nodeId;
@@ -789,7 +786,6 @@ function App() {
 
   const getNodeShortName = (nodeId: string): string => {
     const node = nodes.find(n => n.user?.id === nodeId);
-    // Prefer the actual shortName field, fallback to truncated ID only if shortName is empty/null
     return (node?.user?.shortName && node.user.shortName.trim()) || nodeId.substring(1, 5);
   };
 
@@ -1463,7 +1459,7 @@ function App() {
                 </h3>
 
                 <div className="channel-conversation">
-                  <div className="messages-container">
+                  <div className="messages-container" ref={channelMessagesContainerRef}>
                     {(() => {
                       // Use selected channel ID directly - no mapping needed
                       const messageChannel = selectedChannel;
@@ -1562,7 +1558,6 @@ function App() {
                       <p className="no-messages">No messages in this channel yet</p>
                     );
                     })()}
-                    <div ref={messagesEndRef} />
                   </div>
 
                   {/* Send message form */}
@@ -1789,7 +1784,7 @@ function App() {
                 })()}
               </div>
 
-              <div className="messages-container">
+              <div className="messages-container" ref={dmMessagesContainerRef}>
                 {getDMMessages(selectedDMNode).length > 0 ? (
                   getDMMessages(selectedDMNode).map(msg => {
                     const isTraceroute = msg.portnum === 70;
@@ -1836,7 +1831,7 @@ function App() {
                 </div>
               )}
 
-              <TelemetryGraphs nodeId={selectedDMNode} />
+              <TelemetryGraphs nodeId={selectedDMNode} temperatureUnit={temperatureUnit} />
             </div>
           ) : (
             <div className="no-selection">
@@ -1848,92 +1843,7 @@ function App() {
     );
   };
 
-  const renderInfoTab = () => (
-    <div className="tab-content">
-      <h2>Device Information & Configuration</h2>
-      <div className="device-info">
-        <div className="info-section">
-          <h3>Connection Status</h3>
-          <p><strong>Node Address:</strong> {nodeAddress}</p>
-          {deviceConfig?.basic?.nodeId && (
-            <p><strong>Node ID:</strong> {deviceConfig.basic.nodeId}</p>
-          )}
-          {deviceConfig?.basic?.nodeName && (
-            <p><strong>Node Name:</strong> {deviceConfig.basic.nodeName}</p>
-          )}
-          {deviceConfig?.basic && (
-            <p><strong>Firmware Version:</strong> {deviceConfig.basic.firmwareVersion || 'Not available'}</p>
-          )}
-          <p><strong>Connection Status:</strong> <span className={`status-text ${connectionStatus}`}>{connectionStatus}</span></p>
-          <p><strong>Uses TLS:</strong> {deviceInfo?.meshtasticUseTls ? 'Yes' : 'No'}</p>
-        </div>
-
-        {deviceConfig && (
-          <>
-            <div className="info-section">
-              <h3>LoRa Radio Configuration</h3>
-              <p><strong>Region:</strong> {deviceConfig.radio?.region || 'Unknown'}</p>
-              <p><strong>Modem Preset:</strong> {deviceConfig.radio?.modemPreset || 'Unknown'}</p>
-              <p><strong>Hop Limit:</strong> {deviceConfig.radio?.hopLimit || 'Unknown'}</p>
-              <p><strong>TX Power:</strong> {deviceConfig.radio?.txPower ? `${deviceConfig.radio.txPower} dBm` : 'Unknown'}</p>
-              <p><strong>Bandwidth:</strong> {deviceConfig.radio?.bandwidth ? `${deviceConfig.radio.bandwidth} kHz` : 'Unknown'}</p>
-              <p><strong>Spread Factor:</strong> {deviceConfig.radio?.spreadFactor || 'Unknown'}</p>
-              <p><strong>Coding Rate:</strong> {deviceConfig.radio?.codingRate || 'Unknown'}</p>
-            </div>
-
-            <div className="info-section">
-              <h3>MQTT Configuration</h3>
-              <p><strong>Enabled:</strong> {deviceConfig.mqtt?.enabled ? 'Yes' : 'No'}</p>
-              <p><strong>Server:</strong> {deviceConfig.mqtt?.server || 'Not configured'}</p>
-              <p><strong>Username:</strong> {deviceConfig.mqtt?.username || 'Not set'}</p>
-              <p><strong>Encryption Enabled:</strong> {deviceConfig.mqtt?.encryption ? 'Yes' : 'No'}</p>
-              <p><strong>JSON Format:</strong> {deviceConfig.mqtt?.json ? 'Enabled' : 'Disabled'}</p>
-              <p><strong>TLS Enabled:</strong> {deviceConfig.mqtt?.tls ? 'Yes' : 'No'}</p>
-              <p><strong>Root Topic:</strong> {deviceConfig.mqtt?.rootTopic || 'msh'}</p>
-            </div>
-
-          </>
-        )}
-
-        <div className="info-section">
-          <h3>Application Information</h3>
-          <p><strong>Version:</strong> {version}</p>
-        </div>
-
-        <div className="info-section">
-          <h3>Network Statistics</h3>
-          <p><strong>Total Nodes:</strong> {nodes.length}</p>
-          <p><strong>Total Channels:</strong> {channels.length}</p>
-          <p><strong>Total Messages:</strong> {messages.length}</p>
-          <p><strong>Active Message Channels:</strong> {getAvailableChannels().length}</p>
-        </div>
-
-        <div className="info-section">
-          <h3>Recent Activity</h3>
-          <p><strong>Last Message:</strong> {messages.length > 0 ? messages[0].timestamp.toLocaleString() : 'None'}</p>
-          <p><strong>Most Active Node:</strong> {
-            nodes.length > 0 ?
-            nodes.reduce((prev, current) =>
-              (prev.lastHeard || 0) > (current.lastHeard || 0) ? prev : current
-            ).user?.longName || 'Unknown' : 'None'
-          }</p>
-        </div>
-
-        {!deviceConfig && (
-          <div className="info-section">
-            <p className="no-data">Device configuration not available. Ensure connection is established.</p>
-          </div>
-        )}
-      </div>
-
-      {currentNodeId && connectionStatus === 'connected' && (
-        <div className="info-section-full-width">
-          <h3>Local Node Telemetry</h3>
-          <TelemetryGraphs nodeId={currentNodeId} />
-        </div>
-      )}
-    </div>
-  );
+  // Removed renderInfoTab - using InfoTab component instead
 
   const handleMaxNodeAgeChange = (value: number) => {
     setMaxNodeAgeHours(value);
@@ -1955,191 +1865,14 @@ function App() {
     }
   };
 
-  const handlePurgeNodes = async () => {
-    const confirmed = window.confirm(
-      'Are you sure you want to erase all nodes and traceroute history?\n\n' +
-      'Impact:\n' +
-      '• All node information will be deleted\n' +
-      '• All traceroute history will be deleted\n' +
-      '• A node refresh will be triggered to repopulate the list\n\n' +
-      'This action cannot be undone!'
-    );
-
-    if (!confirmed) return;
-
-    try {
-      const response = await fetch('/api/purge/nodes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
-
-      if (response.ok) {
-        alert('Node list and traceroutes have been purged. Refreshing...');
-        window.location.reload();
-      } else {
-        alert('Failed to purge nodes. Please try again.');
-      }
-    } catch (error) {
-      console.error('Error purging nodes:', error);
-      alert('Error purging nodes. Please try again.');
-    }
+  const handleTemperatureUnitChange = (unit: TemperatureUnit) => {
+    setTemperatureUnit(unit);
+    localStorage.setItem('temperatureUnit', unit);
   };
 
-  const handlePurgeTelemetry = async () => {
-    const confirmed = window.confirm(
-      'Are you sure you want to purge all telemetry data?\n\n' +
-      'Impact:\n' +
-      '• All historical telemetry records will be deleted\n' +
-      '• Telemetry graphs will show no historical data\n' +
-      '• Current node states (battery, voltage) will be preserved\n' +
-      '• New telemetry will continue to be collected\n\n' +
-      'This action cannot be undone!'
-    );
+  // Purge handlers moved to SettingsTab component
 
-    if (!confirmed) return;
-
-    try {
-      const response = await fetch('/api/purge/telemetry', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
-
-      if (response.ok) {
-        alert('Telemetry data has been purged.');
-      } else {
-        alert('Failed to purge telemetry. Please try again.');
-      }
-    } catch (error) {
-      console.error('Error purging telemetry:', error);
-      alert('Error purging telemetry. Please try again.');
-    }
-  };
-
-  const handlePurgeMessages = async () => {
-    const confirmed = window.confirm(
-      'Are you sure you want to purge all messages?\n\n' +
-      'Impact:\n' +
-      '• All channel messages will be deleted\n' +
-      '• All direct messages will be deleted\n' +
-      '• Message history will be permanently lost\n' +
-      '• New messages will continue to be received\n\n' +
-      'This action cannot be undone!'
-    );
-
-    if (!confirmed) return;
-
-    try {
-      const response = await fetch('/api/purge/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
-
-      if (response.ok) {
-        alert('Messages have been purged. Refreshing...');
-        window.location.reload();
-      } else {
-        alert('Failed to purge messages. Please try again.');
-      }
-    } catch (error) {
-      console.error('Error purging messages:', error);
-      alert('Error purging messages. Please try again.');
-    }
-  };
-
-  const renderSettingsTab = () => (
-    <div className="tab-content">
-      <div className="settings-header-card">
-        <img src="/logo.png" alt="MeshMonitor Logo" className="settings-logo" />
-        <div className="settings-title-section">
-          <h1 className="settings-app-name">MeshMonitor</h1>
-          <p className="settings-version">Version {version}</p>
-        </div>
-      </div>
-      <div className="settings-content">
-        <div className="settings-section">
-          <h3>Node Display</h3>
-          <div className="setting-item">
-            <label htmlFor="maxNodeAge">
-              Maximum Age of Active Nodes (hours)
-              <span className="setting-description">Nodes older than this will not appear in the Node List</span>
-            </label>
-            <input
-              id="maxNodeAge"
-              type="number"
-              min="1"
-              max="168"
-              value={maxNodeAgeHours}
-              onChange={(e) => handleMaxNodeAgeChange(parseInt(e.target.value))}
-              className="setting-input"
-            />
-          </div>
-        </div>
-
-        <div className="settings-section">
-          <h3>Traceroute</h3>
-          <div className="setting-item">
-            <label htmlFor="tracerouteInterval">
-              Automatic Traceroute Interval (minutes)
-              <span className="setting-description">How often to automatically send traceroutes to nodes</span>
-            </label>
-            <input
-              id="tracerouteInterval"
-              type="number"
-              min="1"
-              max="60"
-              value={tracerouteIntervalMinutes}
-              onChange={(e) => handleTracerouteIntervalChange(parseInt(e.target.value))}
-              className="setting-input"
-            />
-          </div>
-        </div>
-
-        <div className="settings-section danger-zone">
-          <h3>⚠️ Danger Zone</h3>
-          <p className="danger-zone-description">These actions cannot be undone. Use with caution.</p>
-
-          <div className="danger-action">
-            <div className="danger-action-info">
-              <h4>Erase Node List</h4>
-              <p>Removes all nodes and traceroute history from the database. A node refresh will be triggered to repopulate the list.</p>
-            </div>
-            <button
-              className="danger-button"
-              onClick={handlePurgeNodes}
-            >
-              Erase Nodes
-            </button>
-          </div>
-
-          <div className="danger-action">
-            <div className="danger-action-info">
-              <h4>Purge Telemetry</h4>
-              <p>Removes all historical telemetry data (battery, voltage, temperature, etc.). Current node states will be preserved.</p>
-            </div>
-            <button
-              className="danger-button"
-              onClick={handlePurgeTelemetry}
-            >
-              Purge Telemetry
-            </button>
-          </div>
-
-          <div className="danger-action">
-            <div className="danger-action-info">
-              <h4>Purge Messages</h4>
-              <p>Removes all messages from channels and direct message conversations. This action is permanent.</p>
-            </div>
-            <button
-              className="danger-button"
-              onClick={handlePurgeMessages}
-            >
-              Purge Messages
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+  // Removed renderSettingsTab - using SettingsTab component instead
 
   return (
     <div className="app">
@@ -2224,8 +1957,30 @@ function App() {
         {activeTab === 'nodes' && renderNodesTab()}
         {activeTab === 'channels' && renderChannelsTab()}
         {activeTab === 'messages' && renderMessagesTab()}
-        {activeTab === 'info' && renderInfoTab()}
-        {activeTab === 'settings' && renderSettingsTab()}
+        {activeTab === 'info' && (
+          <InfoTab
+            connectionStatus={connectionStatus}
+            nodeAddress={nodeAddress}
+            deviceInfo={deviceInfo}
+            deviceConfig={deviceConfig}
+            nodes={nodes}
+            channels={channels}
+            messages={messages}
+            currentNodeId={currentNodeId}
+            temperatureUnit={temperatureUnit}
+            getAvailableChannels={getAvailableChannels}
+          />
+        )}
+        {activeTab === 'settings' && (
+          <SettingsTab
+            maxNodeAgeHours={maxNodeAgeHours}
+            tracerouteIntervalMinutes={tracerouteIntervalMinutes}
+            temperatureUnit={temperatureUnit}
+            onMaxNodeAgeChange={handleMaxNodeAgeChange}
+            onTracerouteIntervalChange={handleTracerouteIntervalChange}
+            onTemperatureUnitChange={handleTemperatureUnitChange}
+          />
+        )}
       </main>
 
       {/* Node Popup */}
