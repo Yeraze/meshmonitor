@@ -67,7 +67,8 @@ A comprehensive web application for monitoring Meshtastic mesh networks over IP.
 
 ### Prerequisites
 
-- Node.js 20+ or Docker
+- Node.js 20+ or 22+ (Node.js 18 is deprecated and will lose support April 2025)
+- Docker (recommended) or local Node.js environment
 - A Meshtastic device with WiFi/Ethernet connectivity
 - Network access to your Meshtastic node
 
