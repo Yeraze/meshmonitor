@@ -88,7 +88,7 @@ describe('TelemetryGraphs Component', () => {
     render(<TelemetryGraphs nodeId={mockNodeId} />);
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith(`/api/telemetry/${mockNodeId}?hours=24&limit=5000`);
+      expect(global.fetch).toHaveBeenCalledWith(`/api/telemetry/${mockNodeId}?hours=24`);
     });
   });
 
@@ -158,7 +158,7 @@ describe('TelemetryGraphs Component', () => {
     );
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith(`/api/telemetry/${mockNodeId}?hours=24&limit=5000`);
+      expect(global.fetch).toHaveBeenCalledWith(`/api/telemetry/${mockNodeId}?hours=24`);
     });
 
     const newNodeId = '!newNode';
@@ -168,7 +168,7 @@ describe('TelemetryGraphs Component', () => {
     );
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith(`/api/telemetry/${newNodeId}?hours=24&limit=5000`);
+      expect(global.fetch).toHaveBeenCalledWith(`/api/telemetry/${newNodeId}?hours=24`);
     });
   });
 
