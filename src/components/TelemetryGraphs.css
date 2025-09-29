@@ -34,11 +34,41 @@
   padding: 15px;
 }
 
+.graph-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
 .graph-title {
   color: #cdd6f4;
-  margin: 0 0 10px 0;
+  margin: 0;
   font-size: 1rem;
   font-weight: 500;
+}
+
+.favorite-btn {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #585b70;
+  transition: color 0.2s ease;
+}
+
+.favorite-btn:hover {
+  color: #f9e2af;
+}
+
+.favorite-btn.favorited {
+  color: #f9e2af;
 }
 
 @media (max-width: 768px) {

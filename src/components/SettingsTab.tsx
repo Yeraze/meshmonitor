@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { TemperatureUnit } from '../utils/temperature';
 import { version } from '../../package.json';
 import apiService from '../services/api';
@@ -24,6 +24,106 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   onTemperatureUnitChange,
   onTelemetryVisualizationChange
 }) => {
+  // Local state for editing
+  const [localMaxNodeAge, setLocalMaxNodeAge] = useState(maxNodeAgeHours);
+  const [localTracerouteInterval, setLocalTracerouteInterval] = useState(tracerouteIntervalMinutes);
+  const [localTemperatureUnit, setLocalTemperatureUnit] = useState(temperatureUnit);
+  const [localTelemetryHours, setLocalTelemetryHours] = useState(telemetryVisualizationHours);
+  const [hasChanges, setHasChanges] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Update local state when props change
+  useEffect(() => {
+    setLocalMaxNodeAge(maxNodeAgeHours);
+    setLocalTracerouteInterval(tracerouteIntervalMinutes);
+    setLocalTemperatureUnit(temperatureUnit);
+    setLocalTelemetryHours(telemetryVisualizationHours);
+  }, [maxNodeAgeHours, tracerouteIntervalMinutes, temperatureUnit, telemetryVisualizationHours]);
+
+  // Check if any settings have changed
+  useEffect(() => {
+    const changed =
+      localMaxNodeAge !== maxNodeAgeHours ||
+      localTracerouteInterval !== tracerouteIntervalMinutes ||
+      localTemperatureUnit !== temperatureUnit ||
+      localTelemetryHours !== telemetryVisualizationHours;
+    setHasChanges(changed);
+  }, [localMaxNodeAge, localTracerouteInterval, localTemperatureUnit, localTelemetryHours,
+      maxNodeAgeHours, tracerouteIntervalMinutes, temperatureUnit, telemetryVisualizationHours]);
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      const settings = {
+        maxNodeAgeHours: localMaxNodeAge,
+        tracerouteIntervalMinutes: localTracerouteInterval,
+        temperatureUnit: localTemperatureUnit,
+        telemetryVisualizationHours: localTelemetryHours
+      };
+
+      // Save to server
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings)
+      });
+
+      // Update parent component state
+      onMaxNodeAgeChange(localMaxNodeAge);
+      onTracerouteIntervalChange(localTracerouteInterval);
+      onTemperatureUnitChange(localTemperatureUnit);
+      onTelemetryVisualizationChange(localTelemetryHours);
+
+      alert('Settings saved successfully!');
+      setHasChanges(false);
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      alert('Failed to save settings. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleReset = async () => {
+    const confirmed = window.confirm(
+      'Are you sure you want to reset all settings to defaults?\n\n' +
+      'Default values:\n' +
+      '• Max Node Age: 24 hours\n' +
+      '• Traceroute Interval: 3 minutes\n' +
+      '• Temperature Unit: Celsius\n' +
+      '• Telemetry Hours: 24\n\n' +
+      'This will affect all browsers accessing this system.'
+    );
+
+    if (!confirmed) return;
+
+    setIsSaving(true);
+    try {
+      await fetch('/api/settings', {
+        method: 'DELETE'
+      });
+
+      // Set local state to defaults
+      setLocalMaxNodeAge(24);
+      setLocalTracerouteInterval(3);
+      setLocalTemperatureUnit('C');
+      setLocalTelemetryHours(24);
+
+      // Update parent component with defaults
+      onMaxNodeAgeChange(24);
+      onTracerouteIntervalChange(3);
+      onTemperatureUnitChange('C');
+      onTelemetryVisualizationChange(24);
+
+      alert('Settings reset to defaults!');
+      setHasChanges(false);
+    } catch (error) {
+      console.error('Error resetting settings:', error);
+      alert('Failed to reset settings. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
   const handlePurgeNodes = async () => {
     const confirmed = window.confirm(
       'Are you sure you want to erase all nodes and traceroute history?\n\n' +
@@ -113,8 +213,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               type="number"
               min="1"
               max="168"
-              value={maxNodeAgeHours}
-              onChange={(e) => onMaxNodeAgeChange(parseInt(e.target.value))}
+              value={localMaxNodeAge}
+              onChange={(e) => setLocalMaxNodeAge(parseInt(e.target.value))}
               className="setting-input"
             />
           </div>
@@ -132,8 +232,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               type="number"
               min="1"
               max="60"
-              value={tracerouteIntervalMinutes}
-              onChange={(e) => onTracerouteIntervalChange(parseInt(e.target.value))}
+              value={localTracerouteInterval}
+              onChange={(e) => setLocalTracerouteInterval(parseInt(e.target.value))}
               className="setting-input"
             />
           </div>
@@ -148,8 +248,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             </label>
             <select
               id="temperatureUnit"
-              value={temperatureUnit}
-              onChange={(e) => onTemperatureUnitChange(e.target.value as TemperatureUnit)}
+              value={localTemperatureUnit}
+              onChange={(e) => setLocalTemperatureUnit(e.target.value as TemperatureUnit)}
               className="setting-input"
             >
               <option value="C">Celsius (°C)</option>
@@ -166,10 +266,31 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               id="telemetryVisualizationHours"
               min="1"
               max="168"
-              value={telemetryVisualizationHours}
-              onChange={(e) => onTelemetryVisualizationChange(Math.min(168, Math.max(1, parseInt(e.target.value) || 24)))}
+              value={localTelemetryHours}
+              onChange={(e) => setLocalTelemetryHours(Math.min(168, Math.max(1, parseInt(e.target.value) || 24)))}
               className="setting-input"
             />
+          </div>
+        </div>
+
+        <div className="settings-section">
+          <h3>Settings Management</h3>
+          <p className="setting-description">Changes are not applied until saved. Settings are stored on the server and persist across all browsers.</p>
+          <div className="settings-buttons">
+            <button
+              className="save-button"
+              onClick={handleSave}
+              disabled={!hasChanges || isSaving}
+            >
+              {isSaving ? 'Saving...' : 'Save Settings'}
+            </button>
+            <button
+              className="reset-button"
+              onClick={handleReset}
+              disabled={isSaving}
+            >
+              Reset to Defaults
+            </button>
           </div>
         </div>
 

@@ -225,6 +225,15 @@ class DatabaseService {
       );
     `);
 
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        createdAt INTEGER NOT NULL,
+        updatedAt INTEGER NOT NULL
+      );
+    `);
+
     // Insert Primary channel with ID 0 if it doesn't exist
     const now = Date.now();
     try {
@@ -1003,6 +1012,57 @@ class DatabaseService {
   purgeAllMessages(): void {
     console.log('⚠️ PURGING all messages from database');
     this.db.exec('DELETE FROM messages');
+  }
+
+  // Settings methods
+  getSetting(key: string): string | null {
+    const stmt = this.db.prepare('SELECT value FROM settings WHERE key = ?');
+    const row = stmt.get(key) as { value: string } | undefined;
+    return row ? row.value : null;
+  }
+
+  getAllSettings(): Record<string, string> {
+    const stmt = this.db.prepare('SELECT key, value FROM settings');
+    const rows = stmt.all() as Array<{ key: string; value: string }>;
+    const settings: Record<string, string> = {};
+    rows.forEach(row => {
+      settings[row.key] = row.value;
+    });
+    return settings;
+  }
+
+  setSetting(key: string, value: string): void {
+    const now = Date.now();
+    const stmt = this.db.prepare(`
+      INSERT INTO settings (key, value, createdAt, updatedAt)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET
+        value = excluded.value,
+        updatedAt = excluded.updatedAt
+    `);
+    stmt.run(key, value, now, now);
+  }
+
+  setSettings(settings: Record<string, string>): void {
+    const now = Date.now();
+    const stmt = this.db.prepare(`
+      INSERT INTO settings (key, value, createdAt, updatedAt)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET
+        value = excluded.value,
+        updatedAt = excluded.updatedAt
+    `);
+
+    this.db.transaction(() => {
+      Object.entries(settings).forEach(([key, value]) => {
+        stmt.run(key, value, now, now);
+      });
+    })();
+  }
+
+  deleteAllSettings(): void {
+    console.log('🔄 Resetting all settings to defaults');
+    this.db.exec('DELETE FROM settings');
   }
 }
 

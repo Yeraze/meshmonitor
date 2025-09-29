@@ -26,10 +26,40 @@ interface ChartData {
   time: string;
 }
 
+interface FavoriteChart {
+  nodeId: string;
+  telemetryType: string;
+}
+
 const TelemetryGraphs: React.FC<TelemetryGraphsProps> = ({ nodeId, temperatureUnit = 'C', telemetryHours = 24 }) => {
   const [telemetryData, setTelemetryData] = useState<TelemetryData[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
+
+  // Fetch favorites on component mount
+  useEffect(() => {
+    const fetchFavorites = async () => {
+      try {
+        const response = await fetch('/api/settings');
+        if (response.ok) {
+          const settings = await response.json();
+          if (settings.telemetryFavorites) {
+            const favoritesArray: FavoriteChart[] = JSON.parse(settings.telemetryFavorites);
+            const favoritesSet = new Set(
+              favoritesArray
+                .filter(f => f.nodeId === nodeId)
+                .map(f => f.telemetryType)
+            );
+            setFavorites(favoritesSet);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching favorites:', error);
+      }
+    };
+    fetchFavorites();
+  }, [nodeId]);
 
   useEffect(() => {
     let isMounted = true;
@@ -67,6 +97,50 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = ({ nodeId, temperatureUn
       clearInterval(interval);
     };
   }, [nodeId, telemetryHours]);
+
+  const toggleFavorite = async (telemetryType: string) => {
+    const newFavorites = new Set(favorites);
+
+    if (newFavorites.has(telemetryType)) {
+      newFavorites.delete(telemetryType);
+    } else {
+      newFavorites.add(telemetryType);
+    }
+
+    setFavorites(newFavorites);
+
+    // Save to server
+    try {
+      // First fetch existing favorites for all nodes
+      const settingsResponse = await fetch('/api/settings');
+      let allFavorites: FavoriteChart[] = [];
+
+      if (settingsResponse.ok) {
+        const settings = await settingsResponse.json();
+        if (settings.telemetryFavorites) {
+          allFavorites = JSON.parse(settings.telemetryFavorites);
+          // Remove favorites for current node
+          allFavorites = allFavorites.filter(f => f.nodeId !== nodeId);
+        }
+      }
+
+      // Add new favorites for current node
+      newFavorites.forEach(type => {
+        allFavorites.push({ nodeId, telemetryType: type });
+      });
+
+      // Save updated favorites
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ telemetryFavorites: JSON.stringify(allFavorites) })
+      });
+    } catch (error) {
+      console.error('Error saving favorite:', error);
+      // Revert on error
+      setFavorites(favorites);
+    }
+  };
 
   const groupByType = (data: TelemetryData[]): Map<string, TelemetryData[]> => {
     const grouped = new Map<string, TelemetryData[]>();
@@ -149,7 +223,16 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = ({ nodeId, temperatureUn
 
           return (
             <div key={type} className="graph-container">
-              <h4 className="graph-title">{label} {unit && `(${unit})`}</h4>
+              <div className="graph-header">
+                <h4 className="graph-title">{label} {unit && `(${unit})`}</h4>
+                <button
+                  className={`favorite-btn ${favorites.has(type) ? 'favorited' : ''}`}
+                  onClick={() => toggleFavorite(type)}
+                  aria-label={favorites.has(type) ? 'Remove from favorites' : 'Add to favorites'}
+                >
+                  {favorites.has(type) ? '★' : '☆'}
+                </button>
+              </div>
               <ResponsiveContainer width="100%" height={200}>
                 <LineChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#ccc" />
