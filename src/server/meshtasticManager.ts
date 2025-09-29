@@ -686,7 +686,7 @@ class MeshtasticManager {
       const nodeData: any = {
         nodeNum: fromNum,
         nodeId: nodeId,
-        lastHeard: meshPacket.rxTime ? Number(meshPacket.rxTime) / 1000 : Date.now() / 1000
+        lastHeard: meshPacket.rxTime ? Number(meshPacket.rxTime) : Date.now() / 1000
       };
 
       // Only set default name if this is a brand new node
