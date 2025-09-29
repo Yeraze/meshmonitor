@@ -9,7 +9,7 @@ const databaseMock = {
     { nodeNum: 1, nodeId: '!node1', longName: 'Test Node 1', shortName: 'TN1' },
     { nodeNum: 2, nodeId: '!node2', longName: 'Test Node 2', shortName: 'TN2' }
   ]),
-  getActiveNodes: vi.fn(() => [
+  getActiveNodes: vi.fn((_days?: number) => [
     { nodeNum: 1, nodeId: '!node1', longName: 'Test Node 1', shortName: 'TN1', lastHeard: Date.now() }
   ]),
   getMessages: vi.fn((limit) => {
@@ -29,7 +29,7 @@ const databaseMock = {
     }
     return messages;
   }),
-  getMessagesByChannel: vi.fn((channel) => [
+  getMessagesByChannel: vi.fn((channel: number, _limit?: number) => [
     {
       id: 'msg-channel',
       fromNodeNum: 1,
@@ -42,7 +42,7 @@ const databaseMock = {
       createdAt: Date.now()
     }
   ]),
-  getDirectMessages: vi.fn(() => [
+  getDirectMessages: vi.fn((_nodeId1?: string, _nodeId2?: string, _limit?: number) => [
     {
       id: 'msg-direct',
       fromNodeNum: 1,
@@ -70,9 +70,9 @@ const databaseMock = {
     nodes: [{ nodeNum: 1, nodeId: '!node1' }],
     messages: [{ id: 'msg-1', text: 'Test' }]
   })),
-  importData: vi.fn(),
-  cleanupOldMessages: vi.fn(() => 5),
-  cleanupInactiveNodes: vi.fn(() => 3),
+  importData: vi.fn((_data: any) => undefined),
+  cleanupOldMessages: vi.fn((_days?: number) => 5),
+  cleanupInactiveNodes: vi.fn((_days?: number) => 3),
   cleanupEmptyChannels: vi.fn(() => 1),
   getAllTraceroutes: vi.fn(() => [
     {
@@ -85,7 +85,7 @@ const databaseMock = {
       timestamp: Date.now()
     }
   ]),
-  getTelemetryByNode: vi.fn(() => [
+  getTelemetryByNode: vi.fn((_nodeId: string, _hours?: number) => [
     {
       id: 1,
       nodeId: '!node1',
@@ -119,8 +119,8 @@ const meshtasticManagerMock = {
     { id: 0, name: 'Primary' },
     { id: 1, name: 'Secondary' }
   ]),
-  sendTextMessage: vi.fn(async () => true),
-  sendTraceroute: vi.fn(async () => true),
+  sendTextMessage: vi.fn(async (_text: string, _toNodeId: string, _channelIndex?: number) => true),
+  sendTraceroute: vi.fn(async (_toNodeNum: number) => true),
   refreshNodeInfo: vi.fn(async () => ({ success: true })),
   getDeviceConfig: vi.fn(async () => ({
     lora: { region: 'US', hopLimit: 3 },
