@@ -627,7 +627,7 @@ app.post('/api/settings', (req, res) => {
     const settings = req.body;
 
     // Validate settings
-    const validKeys = ['maxNodeAgeHours', 'tracerouteIntervalMinutes', 'temperatureUnit', 'telemetryVisualizationHours'];
+    const validKeys = ['maxNodeAgeHours', 'tracerouteIntervalMinutes', 'temperatureUnit', 'telemetryVisualizationHours', 'telemetryFavorites'];
     const filteredSettings: Record<string, string> = {};
 
     for (const key of validKeys) {

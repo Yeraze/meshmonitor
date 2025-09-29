@@ -6,6 +6,7 @@ import './App.css'
 import TelemetryGraphs from './components/TelemetryGraphs'
 import InfoTab from './components/InfoTab'
 import SettingsTab from './components/SettingsTab'
+import Dashboard from './components/Dashboard'
 import { version } from '../package.json'
 import { type TemperatureUnit } from './utils/temperature'
 import { DeviceInfo, Channel } from './types/device'
@@ -1964,6 +1965,12 @@ function App() {
           )}
         </button>
         <button
+          className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
+          onClick={() => setActiveTab('dashboard')}
+        >
+          Dashboard
+        </button>
+        <button
           className={`tab-btn ${activeTab === 'info' ? 'active' : ''}`}
           onClick={() => setActiveTab('info')}
         >
@@ -2009,6 +2016,12 @@ function App() {
             temperatureUnit={temperatureUnit}
             telemetryHours={telemetryVisualizationHours}
             getAvailableChannels={getAvailableChannels}
+          />
+        )}
+        {activeTab === 'dashboard' && (
+          <Dashboard
+            temperatureUnit={temperatureUnit}
+            telemetryHours={telemetryVisualizationHours}
           />
         )}
         {activeTab === 'settings' && (
