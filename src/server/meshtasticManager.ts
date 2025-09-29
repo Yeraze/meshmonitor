@@ -57,6 +57,7 @@ class MeshtasticManager {
     longName: string;
     shortName: string;
     firmwareVersion?: string;
+    isLocked?: boolean;  // Flag to prevent overwrites after initial setup
   } | null = null;
 
   constructor() {
@@ -516,41 +517,29 @@ class MeshtasticManager {
    */
   private async initializeLocalNodeInfoFromDatabase(): Promise<void> {
     try {
-      console.log('📱 Initializing localNodeInfo from database...');
+      console.log('📱 Checking for local node info in database...');
 
-      const nodes = databaseService.getAllNodes();
-      console.log(`📱 Found ${nodes.length} nodes in database to search`);
+      // Don't try to guess which node is local from the database
+      // We should only use database info if we already know the local node's nodeNum
+      // from a previous MyNodeInfo packet
+      console.log('⚠️ No MyNodeInfo received yet, waiting for device to send local node identification');
 
-      // Skip nodes with generic names that likely aren't the actual local device
-      // Find a node with complete information that isn't a placeholder
-      const localNode = nodes.find((n: any) =>
-        n.longName &&
-        n.shortName &&
-        n.longName !== 'Local Device' &&
-        n.longName !== 'Unknown' &&
-        !n.longName.startsWith('Meshtastic ')
-      );
-
-      if (localNode) {
-        this.localNodeInfo = {
-          nodeNum: localNode.nodeNum,
-          nodeId: localNode.nodeId,
-          longName: localNode.longName || 'Local Device',
-          shortName: localNode.shortName || 'LOCAL',
-          firmwareVersion: (localNode as any).firmwareVersion || null
-        } as any;
-        console.log(`📱 Initialized localNodeInfo from database: ${localNode.longName} (${localNode.nodeId})`);
-      } else {
-        console.log('⚠️ Could not find suitable local node in database, will wait for MyNodeInfo');
-      }
+      // Do not initialize localNodeInfo here - wait for MyNodeInfo packet
+      // This prevents picking a random node from the database as the local node
     } catch (error) {
-      console.error('❌ Failed to initialize localNodeInfo from database:', error);
+      console.error('❌ Failed to check local node info:', error);
     }
   }
 
   private async processMyNodeInfo(myNodeInfo: any): Promise<void> {
     console.log('📱 Processing MyNodeInfo for local device');
     console.log('📱 MyNodeInfo contents:', JSON.stringify(myNodeInfo, null, 2));
+
+    // If we already have locked local node info, don't overwrite it
+    if (this.localNodeInfo?.isLocked) {
+      console.log('📱 Local node info already locked, skipping update');
+      return;
+    }
 
     // Log minAppVersion for debugging but don't use it as firmware version
     if (myNodeInfo.minAppVersion) {
@@ -565,15 +554,16 @@ class MeshtasticManager {
     const existingNode = databaseService.getNode(nodeNum);
 
     if (existingNode && existingNode.longName && existingNode.longName !== 'Local Device') {
-      // We already have real node info, use it
+      // We already have real node info, use it and lock it
       this.localNodeInfo = {
         nodeNum: nodeNum,
         nodeId: nodeId,
         longName: existingNode.longName,
         shortName: existingNode.shortName || 'LOCAL',
-        firmwareVersion: (existingNode as any).firmwareVersion || null
+        firmwareVersion: (existingNode as any).firmwareVersion || null,
+        isLocked: true  // Lock it to prevent overwrites
       } as any;
-      console.log(`📱 Using existing node info for local device: ${existingNode.longName} (${nodeId})`);
+      console.log(`📱 Using existing node info for local device: ${existingNode.longName} (${nodeId}) - LOCKED`);
     } else {
       // We don't have real node info yet, store basic info and wait for NodeInfo
       const nodeData = {
@@ -591,7 +581,8 @@ class MeshtasticManager {
         nodeId: nodeId,
         longName: null,  // Will be set when NodeInfo is received
         shortName: null,  // Will be set when NodeInfo is received
-        firmwareVersion: null // Will be set when DeviceMetadata is received
+        firmwareVersion: null, // Will be set when DeviceMetadata is received
+        isLocked: false  // Not locked yet, waiting for complete info
       } as any;
 
       databaseService.upsertNode(nodeData);
@@ -610,8 +601,9 @@ class MeshtasticManager {
     console.log('📱 Processing DeviceMetadata:', JSON.stringify(metadata, null, 2));
     console.log('📱 Firmware version:', metadata.firmwareVersion);
 
-    // Update local node info with firmware version
+    // Update local node info with firmware version (always allowed, even if locked)
     if (this.localNodeInfo && metadata.firmwareVersion) {
+      // Only update firmware version, don't touch other fields
       this.localNodeInfo.firmwareVersion = metadata.firmwareVersion;
       console.log(`📱 Updated firmware version: ${metadata.firmwareVersion}`);
 
@@ -1225,13 +1217,14 @@ class MeshtasticManager {
       // Note: Telemetry data (batteryLevel, voltage, etc.) is NOT saved from NodeInfo packets
       // It is only saved from actual TELEMETRY_APP packets in processTelemetryMessageProtobuf()
 
-      // If this is the local node, update localNodeInfo with names
-      if (this.localNodeInfo && this.localNodeInfo.nodeNum === Number(nodeInfo.num)) {
+      // If this is the local node, update localNodeInfo with names (only if not locked)
+      if (this.localNodeInfo && this.localNodeInfo.nodeNum === Number(nodeInfo.num) && !this.localNodeInfo.isLocked) {
         console.log(`📱 Updating local node info with names from NodeInfo`);
-        if (nodeInfo.user) {
-          this.localNodeInfo.longName = nodeInfo.user.longName || this.localNodeInfo.longName;
-          this.localNodeInfo.shortName = nodeInfo.user.shortName || this.localNodeInfo.shortName;
-          console.log(`📱 Local node: ${nodeInfo.user.longName} (${nodeInfo.user.shortName})`);
+        if (nodeInfo.user && nodeInfo.user.longName && nodeInfo.user.shortName) {
+          this.localNodeInfo.longName = nodeInfo.user.longName;
+          this.localNodeInfo.shortName = nodeInfo.user.shortName;
+          this.localNodeInfo.isLocked = true;  // Lock it now that we have complete info
+          console.log(`📱 Local node: ${nodeInfo.user.longName} (${nodeInfo.user.shortName}) - LOCKED`);
         }
       }
 
