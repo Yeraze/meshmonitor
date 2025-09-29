@@ -794,14 +794,74 @@ class DatabaseService {
     );
   }
 
-  getTelemetryByNode(nodeId: string, limit: number = 100): DbTelemetry[] {
-    const stmt = this.db.prepare(`
+  getTelemetryByNode(nodeId: string, limit: number = 100, sinceTimestamp?: number): DbTelemetry[] {
+    let query = `
       SELECT * FROM telemetry
       WHERE nodeId = ?
+    `;
+    const params: any[] = [nodeId];
+
+    if (sinceTimestamp !== undefined) {
+      query += ` AND timestamp >= ?`;
+      params.push(sinceTimestamp);
+    }
+
+    query += `
       ORDER BY timestamp DESC
       LIMIT ?
-    `);
-    const telemetry = stmt.all(nodeId, limit) as DbTelemetry[];
+    `;
+    params.push(limit);
+
+    const stmt = this.db.prepare(query);
+    const telemetry = stmt.all(...params) as DbTelemetry[];
+    return telemetry.map(t => this.normalizeBigInts(t));
+  }
+
+  getTelemetryByNodeAveraged(nodeId: string, sinceTimestamp?: number, intervalMinutes: number = 3, maxHours?: number): DbTelemetry[] {
+    // Calculate the interval in milliseconds
+    const intervalMs = intervalMinutes * 60 * 1000;
+
+    // Build the query to group and average telemetry data by time intervals
+    let query = `
+      SELECT
+        nodeId,
+        nodeNum,
+        telemetryType,
+        CAST((timestamp / ?) * ? AS INTEGER) as timestamp,
+        AVG(value) as value,
+        unit,
+        MIN(createdAt) as createdAt
+      FROM telemetry
+      WHERE nodeId = ?
+    `;
+    const params: any[] = [intervalMs, intervalMs, nodeId];
+
+    if (sinceTimestamp !== undefined) {
+      query += ` AND timestamp >= ?`;
+      params.push(sinceTimestamp);
+    }
+
+    query += `
+      GROUP BY
+        nodeId,
+        nodeNum,
+        telemetryType,
+        CAST(timestamp / ? AS INTEGER),
+        unit
+      ORDER BY timestamp DESC
+    `;
+    params.push(intervalMs);
+
+    // Add limit based on max hours if specified
+    // With 3-minute intervals: 20 points per hour, add 1 hour padding
+    if (maxHours !== undefined) {
+      const limit = (maxHours + 1) * 20;
+      query += ` LIMIT ?`;
+      params.push(limit);
+    }
+
+    const stmt = this.db.prepare(query);
+    const telemetry = stmt.all(...params) as DbTelemetry[];
     return telemetry.map(t => this.normalizeBigInts(t));
   }
 
@@ -930,6 +990,14 @@ class DatabaseService {
   purgeAllTelemetry(): void {
     console.log('⚠️ PURGING all telemetry from database');
     this.db.exec('DELETE FROM telemetry');
+  }
+
+  purgeOldTelemetry(hoursToKeep: number): number {
+    const cutoffTime = Date.now() - (hoursToKeep * 60 * 60 * 1000);
+    const stmt = this.db.prepare('DELETE FROM telemetry WHERE timestamp < ?');
+    const result = stmt.run(cutoffTime);
+    console.log(`🧹 Purged ${result.changes} old telemetry records (keeping last ${hoursToKeep} hours)`);
+    return Number(result.changes);
   }
 
   purgeAllMessages(): void {

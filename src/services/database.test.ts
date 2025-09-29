@@ -255,14 +255,26 @@ const createTestDatabase = () => {
       );
     }
 
-    getTelemetryByNode(nodeId: string, limit: number = 100): DbTelemetry[] {
-      const stmt = this.db.prepare(`
+    getTelemetryByNode(nodeId: string, limit: number = 100, sinceTimestamp?: number): DbTelemetry[] {
+      let query = `
         SELECT * FROM telemetry
         WHERE nodeId = ?
+      `;
+      const params: any[] = [nodeId];
+
+      if (sinceTimestamp !== undefined) {
+        query += ` AND timestamp >= ?`;
+        params.push(sinceTimestamp);
+      }
+
+      query += `
         ORDER BY timestamp DESC
         LIMIT ?
-      `);
-      return stmt.all(nodeId, limit) as DbTelemetry[];
+      `;
+      params.push(limit);
+
+      const stmt = this.db.prepare(query);
+      return stmt.all(...params) as DbTelemetry[];
     }
 
     insertTraceroute(tracerouteData: DbTraceroute): void {
