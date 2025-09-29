@@ -3,130 +3,136 @@ import request from 'supertest';
 import express from 'express';
 import cors from 'cors';
 
+// Create database mock
+const databaseMock = {
+  getAllNodes: vi.fn(() => [
+    { nodeNum: 1, nodeId: '!node1', longName: 'Test Node 1', shortName: 'TN1' },
+    { nodeNum: 2, nodeId: '!node2', longName: 'Test Node 2', shortName: 'TN2' }
+  ]),
+  getActiveNodes: vi.fn(() => [
+    { nodeNum: 1, nodeId: '!node1', longName: 'Test Node 1', shortName: 'TN1', lastHeard: Date.now() }
+  ]),
+  getMessages: vi.fn((limit) => {
+    const messages = [];
+    for (let i = 0; i < Math.min(limit, 5); i++) {
+      messages.push({
+        id: `msg-${i}`,
+        fromNodeNum: 1,
+        toNodeNum: 2,
+        fromNodeId: '!node1',
+        toNodeId: '!node2',
+        text: `Message ${i}`,
+        channel: 0,
+        timestamp: Date.now() - i * 1000,
+        createdAt: Date.now()
+      });
+    }
+    return messages;
+  }),
+  getMessagesByChannel: vi.fn((channel) => [
+    {
+      id: 'msg-channel',
+      fromNodeNum: 1,
+      toNodeNum: 2,
+      fromNodeId: '!node1',
+      toNodeId: '!node2',
+      text: `Message on channel ${channel}`,
+      channel,
+      timestamp: Date.now(),
+      createdAt: Date.now()
+    }
+  ]),
+  getDirectMessages: vi.fn(() => [
+    {
+      id: 'msg-direct',
+      fromNodeNum: 1,
+      toNodeNum: 2,
+      fromNodeId: '!node1',
+      toNodeId: '!node2',
+      text: 'Direct message',
+      channel: 0,
+      timestamp: Date.now(),
+      createdAt: Date.now()
+    }
+  ]),
+  getAllChannels: vi.fn(() => [
+    { id: 0, name: 'Primary', uplinkEnabled: true, downlinkEnabled: true },
+    { id: 1, name: 'Secondary', uplinkEnabled: true, downlinkEnabled: true }
+  ]),
+  getMessageCount: vi.fn(() => 100),
+  getNodeCount: vi.fn(() => 10),
+  getChannelCount: vi.fn(() => 2),
+  getMessagesByDay: vi.fn(() => [
+    { date: '2024-01-01', count: 10 },
+    { date: '2024-01-02', count: 15 }
+  ]),
+  exportData: vi.fn(() => ({
+    nodes: [{ nodeNum: 1, nodeId: '!node1' }],
+    messages: [{ id: 'msg-1', text: 'Test' }]
+  })),
+  importData: vi.fn(),
+  cleanupOldMessages: vi.fn(() => 5),
+  cleanupInactiveNodes: vi.fn(() => 3),
+  cleanupEmptyChannels: vi.fn(() => 1),
+  getAllTraceroutes: vi.fn(() => [
+    {
+      id: 1,
+      fromNodeNum: 1,
+      toNodeNum: 2,
+      fromNodeId: '!node1',
+      toNodeId: '!node2',
+      route: '1,3,2',
+      timestamp: Date.now()
+    }
+  ]),
+  getTelemetryByNode: vi.fn(() => [
+    {
+      id: 1,
+      nodeId: '!node1',
+      nodeNum: 1,
+      telemetryType: 'battery',
+      value: 85.5,
+      timestamp: Date.now()
+    }
+  ]),
+  getNode: vi.fn((nodeNum) => {
+    if (nodeNum === 1) {
+      return { nodeNum: 1, nodeId: '!node1', longName: 'Test Node 1' };
+    }
+    return null;
+  }),
+  purgeAllNodes: vi.fn(),
+  purgeAllTelemetry: vi.fn(),
+  purgeAllMessages: vi.fn()
+};
+
 // Mock the database module
 vi.mock('../services/database', () => ({
-  default: {
-    getAllNodes: vi.fn(() => [
-      { nodeNum: 1, nodeId: '!node1', longName: 'Test Node 1', shortName: 'TN1' },
-      { nodeNum: 2, nodeId: '!node2', longName: 'Test Node 2', shortName: 'TN2' }
-    ]),
-    getActiveNodes: vi.fn(() => [
-      { nodeNum: 1, nodeId: '!node1', longName: 'Test Node 1', shortName: 'TN1', lastHeard: Date.now() }
-    ]),
-    getMessages: vi.fn((limit) => {
-      const messages = [];
-      for (let i = 0; i < Math.min(limit, 5); i++) {
-        messages.push({
-          id: `msg-${i}`,
-          fromNodeNum: 1,
-          toNodeNum: 2,
-          fromNodeId: '!node1',
-          toNodeId: '!node2',
-          text: `Message ${i}`,
-          channel: 0,
-          timestamp: Date.now() - i * 1000,
-          createdAt: Date.now()
-        });
-      }
-      return messages;
-    }),
-    getMessagesByChannel: vi.fn((channel) => [
-      {
-        id: 'msg-channel',
-        fromNodeNum: 1,
-        toNodeNum: 2,
-        fromNodeId: '!node1',
-        toNodeId: '!node2',
-        text: `Message on channel ${channel}`,
-        channel,
-        timestamp: Date.now(),
-        createdAt: Date.now()
-      }
-    ]),
-    getDirectMessages: vi.fn(() => [
-      {
-        id: 'msg-direct',
-        fromNodeNum: 1,
-        toNodeNum: 2,
-        fromNodeId: '!node1',
-        toNodeId: '!node2',
-        text: 'Direct message',
-        channel: 0,
-        timestamp: Date.now(),
-        createdAt: Date.now()
-      }
-    ]),
-    getAllChannels: vi.fn(() => [
-      { id: 0, name: 'Primary', uplinkEnabled: true, downlinkEnabled: true },
-      { id: 1, name: 'Secondary', uplinkEnabled: true, downlinkEnabled: true }
-    ]),
-    getMessageCount: vi.fn(() => 100),
-    getNodeCount: vi.fn(() => 10),
-    getChannelCount: vi.fn(() => 2),
-    getMessagesByDay: vi.fn(() => [
-      { date: '2024-01-01', count: 10 },
-      { date: '2024-01-02', count: 15 }
-    ]),
-    exportData: vi.fn(() => ({
-      nodes: [{ nodeNum: 1, nodeId: '!node1' }],
-      messages: [{ id: 'msg-1', text: 'Test' }]
-    })),
-    importData: vi.fn(),
-    cleanupOldMessages: vi.fn(() => 5),
-    cleanupInactiveNodes: vi.fn(() => 3),
-    cleanupEmptyChannels: vi.fn(() => 1),
-    getAllTraceroutes: vi.fn(() => [
-      {
-        id: 1,
-        fromNodeNum: 1,
-        toNodeNum: 2,
-        fromNodeId: '!node1',
-        toNodeId: '!node2',
-        route: '1,3,2',
-        timestamp: Date.now()
-      }
-    ]),
-    getTelemetryByNode: vi.fn(() => [
-      {
-        id: 1,
-        nodeId: '!node1',
-        nodeNum: 1,
-        telemetryType: 'battery',
-        value: 85.5,
-        timestamp: Date.now()
-      }
-    ]),
-    getNode: vi.fn((nodeNum) => {
-      if (nodeNum === 1) {
-        return { nodeNum: 1, nodeId: '!node1', longName: 'Test Node 1' };
-      }
-      return null;
-    }),
-    purgeAllNodes: vi.fn(),
-    purgeAllTelemetry: vi.fn(),
-    purgeAllMessages: vi.fn()
-  }
+  default: databaseMock
 }));
+
+// Create meshtasticManager mock
+const meshtasticManagerMock = {
+  isConnected: vi.fn(() => true),
+  getNodeId: vi.fn(() => '!localNode'),
+  getChannels: vi.fn(() => [
+    { id: 0, name: 'Primary' },
+    { id: 1, name: 'Secondary' }
+  ]),
+  sendTextMessage: vi.fn(async () => true),
+  sendTraceroute: vi.fn(async () => true),
+  refreshNodeInfo: vi.fn(async () => ({ success: true })),
+  getDeviceConfig: vi.fn(async () => ({
+    lora: { region: 'US', hopLimit: 3 },
+    bluetooth: { enabled: true }
+  })),
+  tracerouteInterval: 300000,
+  refreshChannels: vi.fn(async () => ({ success: true, channels: 2 }))
+};
 
 // Mock the meshtasticManager
 vi.mock('../server/meshtasticManager', () => ({
-  default: {
-    isConnected: () => true,
-    getNodeId: () => '!localNode',
-    getChannels: () => [
-      { id: 0, name: 'Primary' },
-      { id: 1, name: 'Secondary' }
-    ],
-    sendTextMessage: vi.fn(async () => true),
-    sendTraceroute: vi.fn(async () => true),
-    refreshNodeInfo: vi.fn(async () => ({ success: true })),
-    getDeviceConfig: vi.fn(async () => ({
-      lora: { region: 'US', hopLimit: 3 },
-      bluetooth: { enabled: true }
-    })),
-    tracerouteInterval: 300000,
-    refreshChannels: vi.fn(async () => ({ success: true, channels: 2 }))
-  }
+  default: meshtasticManagerMock
 }));
 
 describe('Server API Endpoints', () => {
@@ -138,24 +144,19 @@ describe('Server API Endpoints', () => {
     app.use(cors());
     app.use(express.json());
 
-    // Import API routes from the server
-    // Note: In a real scenario, you'd extract the routes to a separate module
-    // For this test, we'll recreate the essential routes
-
     // Node endpoints
     app.get('/api/nodes', (_req, res) => {
       try {
-        const db = require('../services/database').default;
-        res.json(db.getAllNodes());
+        res.json(databaseMock.getAllNodes());
       } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
       }
     });
 
-    app.get('/api/nodes/active', (_req, res) => {
+    app.get('/api/nodes/active', (req, res) => {
       try {
-        const db = require('../services/database').default;
-        res.json(db.getActiveNodes());
+        const days = parseInt(req.query.days as string) || 7;
+        res.json(databaseMock.getActiveNodes(days));
       } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
       }
@@ -164,9 +165,8 @@ describe('Server API Endpoints', () => {
     // Message endpoints
     app.get('/api/messages', (req, res) => {
       try {
-        const db = require('../services/database').default;
         const limit = parseInt(req.query.limit as string) || 100;
-        res.json(db.getMessages(limit));
+        res.json(databaseMock.getMessages(limit));
       } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
       }
@@ -174,25 +174,25 @@ describe('Server API Endpoints', () => {
 
     app.get('/api/messages/channel/:channel', (req, res) => {
       try {
-        const db = require('../services/database').default;
         const channel = parseInt(req.params.channel);
-        res.json(db.getMessagesByChannel(channel));
+        const limit = parseInt(req.query.limit as string) || 100;
+        res.json(databaseMock.getMessagesByChannel(channel, limit));
       } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
       }
     });
 
-    app.get('/api/messages/direct/:nodeId1/:nodeId2', (_req, res) => {
+    app.get('/api/messages/direct/:nodeId1/:nodeId2', (req, res) => {
       try {
-        const db = require('../services/database').default;
-        res.json(db.getDirectMessages());
+        const { nodeId1, nodeId2 } = req.params;
+        const limit = parseInt(req.query.limit as string) || 100;
+        res.json(databaseMock.getDirectMessages(nodeId1, nodeId2, limit));
       } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
       }
     });
 
     app.post('/api/messages/send', async (req, res) => {
-      const manager = require('../server/meshtasticManager').default;
       const { text, toNodeId, channelIndex } = req.body;
 
       if (!text || !toNodeId) {
@@ -200,7 +200,7 @@ describe('Server API Endpoints', () => {
       }
 
       try {
-        const result = await manager.sendTextMessage(text, toNodeId, channelIndex);
+        const result = await meshtasticManagerMock.sendTextMessage(text, toNodeId, channelIndex);
         res.json({ success: result });
       } catch (error) {
         res.status(500).json({ error: 'Failed to send message' });
@@ -210,8 +210,7 @@ describe('Server API Endpoints', () => {
     // Channel endpoints
     app.get('/api/channels', (_req, res) => {
       try {
-        const db = require('../services/database').default;
-        res.json(db.getAllChannels());
+        res.json(databaseMock.getAllChannels());
       } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
       }
@@ -220,13 +219,12 @@ describe('Server API Endpoints', () => {
     // Stats endpoint
     app.get('/api/stats', (_req, res) => {
       try {
-        const db = require('../services/database').default;
-      res.json({
-        messageCount: db.getMessageCount(),
-        nodeCount: db.getNodeCount(),
-        channelCount: db.getChannelCount(),
-        messagesByDay: db.getMessagesByDay()
-      });
+        res.json({
+          messageCount: databaseMock.getMessageCount(),
+          nodeCount: databaseMock.getNodeCount(),
+          channelCount: databaseMock.getChannelCount(),
+          messagesByDay: databaseMock.getMessagesByDay()
+        });
       } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
       }
@@ -240,11 +238,10 @@ describe('Server API Endpoints', () => {
     // Connection status
     app.get('/api/connection', (_req, res) => {
       try {
-        const manager = require('../server/meshtasticManager').default;
-      res.json({
-        connected: manager.isConnected(),
-        nodeId: manager.getNodeId()
-      });
+        res.json({
+          connected: meshtasticManagerMock.isConnected(),
+          nodeId: meshtasticManagerMock.getNodeId()
+        });
       } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
       }
@@ -253,8 +250,7 @@ describe('Server API Endpoints', () => {
     // Export/Import
     app.post('/api/export', (_req, res) => {
       try {
-        const db = require('../services/database').default;
-        res.json(db.exportData());
+        res.json(databaseMock.exportData());
       } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
       }
@@ -262,25 +258,19 @@ describe('Server API Endpoints', () => {
 
     app.post('/api/import', (req, res) => {
       try {
-        const db = require('../services/database').default;
-      try {
-        db.importData(req.body);
+        databaseMock.importData(req.body);
         res.json({ success: true });
       } catch (error) {
         res.status(400).json({ error: 'Invalid data format' });
-      }
-      } catch (error) {
-        res.status(500).json({ error: 'Internal server error' });
       }
     });
 
     // Cleanup endpoints
     app.post('/api/cleanup/messages', (req, res) => {
       try {
-        const db = require('../services/database').default;
-      const days = parseInt(req.body.days) || 30;
-      const deleted = db.cleanupOldMessages(days);
-      res.json({ deleted });
+        const days = parseInt(req.body.days) || 30;
+        const deleted = databaseMock.cleanupOldMessages(days);
+        res.json({ deleted });
       } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
       }
@@ -288,10 +278,9 @@ describe('Server API Endpoints', () => {
 
     app.post('/api/cleanup/nodes', (req, res) => {
       try {
-        const db = require('../services/database').default;
-      const days = parseInt(req.body.days) || 30;
-      const deleted = db.cleanupInactiveNodes(days);
-      res.json({ deleted });
+        const days = parseInt(req.body.days) || 30;
+        const deleted = databaseMock.cleanupInactiveNodes(days);
+        res.json({ deleted });
       } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
       }
@@ -299,16 +288,15 @@ describe('Server API Endpoints', () => {
 
     // Traceroute endpoints
     app.post('/api/traceroute', async (req, res) => {
-      const manager = require('../server/meshtasticManager').default;
       const { toNodeNum } = req.body;
 
       if (!toNodeNum) {
-        return res.status(400).json({ error: 'Missing toNodeNum' });
+        return res.status(400).json({ error: 'toNodeNum is required' });
       }
 
       try {
-        await manager.sendTraceroute(toNodeNum);
-        res.json({ success: true });
+        const result = await meshtasticManagerMock.sendTraceroute(toNodeNum);
+        res.json({ success: result });
       } catch (error) {
         res.status(500).json({ error: 'Failed to send traceroute' });
       }
@@ -316,8 +304,7 @@ describe('Server API Endpoints', () => {
 
     app.get('/api/traceroutes/recent', (_req, res) => {
       try {
-        const db = require('../services/database').default;
-        res.json(db.getAllTraceroutes());
+        res.json(databaseMock.getAllTraceroutes());
       } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
       }
@@ -326,8 +313,9 @@ describe('Server API Endpoints', () => {
     // Telemetry endpoints
     app.get('/api/telemetry/:nodeId', (req, res) => {
       try {
-        const db = require('../services/database').default;
-        res.json(db.getTelemetryByNode(req.params.nodeId));
+        const { nodeId } = req.params;
+        const hours = parseInt(req.query.hours as string) || 24;
+        res.json(databaseMock.getTelemetryByNode(nodeId, hours));
       } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
       }
@@ -336,36 +324,34 @@ describe('Server API Endpoints', () => {
     // Purge endpoints
     app.post('/api/purge/nodes', (_req, res) => {
       try {
-        const db = require('../services/database').default;
-      db.purgeAllNodes();
-      res.json({ success: true });
+        databaseMock.purgeAllNodes();
+        res.json({ success: true, message: 'All nodes purged' });
       } catch (error) {
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ error: 'Failed to purge nodes' });
       }
     });
 
     app.post('/api/purge/telemetry', (_req, res) => {
       try {
-        const db = require('../services/database').default;
-      db.purgeAllTelemetry();
-      res.json({ success: true });
+        databaseMock.purgeAllTelemetry();
+        res.json({ success: true, message: 'All telemetry purged' });
       } catch (error) {
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ error: 'Failed to purge telemetry' });
       }
     });
 
     app.post('/api/purge/messages', (_req, res) => {
       try {
-        const db = require('../services/database').default;
-      db.purgeAllMessages();
-      res.json({ success: true });
+        databaseMock.purgeAllMessages();
+        res.json({ success: true, message: 'All messages purged' });
       } catch (error) {
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ error: 'Failed to purge messages' });
       }
     });
   });
 
   beforeEach(() => {
+    // Reset all mock functions before each test
     vi.clearAllMocks();
   });
 
@@ -377,6 +363,7 @@ describe('Server API Endpoints', () => {
 
       expect(response.body).toHaveLength(2);
       expect(response.body[0].nodeId).toBe('!node1');
+      expect(response.body[1].nodeId).toBe('!node2');
     });
 
     it('GET /api/nodes/active should return active nodes', async () => {
@@ -396,7 +383,7 @@ describe('Server API Endpoints', () => {
         .expect(200);
 
       expect(response.body).toHaveLength(5);
-      expect(response.body[0].id).toBe('msg-0');
+      expect(response.body[0].text).toBe('Message 0');
     });
 
     it('GET /api/messages should respect limit parameter', async () => {
@@ -413,7 +400,7 @@ describe('Server API Endpoints', () => {
         .expect(200);
 
       expect(response.body).toHaveLength(1);
-      expect(response.body[0].channel).toBe(1);
+      expect(response.body[0].text).toContain('channel 1');
     });
 
     it('GET /api/messages/direct/:nodeId1/:nodeId2 should return direct messages', async () => {
@@ -436,12 +423,15 @@ describe('Server API Endpoints', () => {
         .expect(200);
 
       expect(response.body.success).toBe(true);
+      expect(meshtasticManagerMock.sendTextMessage).toHaveBeenCalledWith('Test message', '!node2', 0);
     });
 
     it('POST /api/messages/send should reject without required fields', async () => {
       const response = await request(app)
         .post('/api/messages/send')
-        .send({ text: 'Test message' })
+        .send({
+          text: 'Test message'
+        })
         .expect(400);
 
       expect(response.body.error).toBe('Missing required fields');
@@ -456,6 +446,7 @@ describe('Server API Endpoints', () => {
 
       expect(response.body).toHaveLength(2);
       expect(response.body[0].name).toBe('Primary');
+      expect(response.body[1].name).toBe('Secondary');
     });
   });
 
@@ -465,10 +456,10 @@ describe('Server API Endpoints', () => {
         .get('/api/stats')
         .expect(200);
 
-      expect(response.body).toHaveProperty('messageCount', 100);
-      expect(response.body).toHaveProperty('nodeCount', 10);
-      expect(response.body).toHaveProperty('channelCount', 2);
-      expect(response.body).toHaveProperty('messagesByDay');
+      expect(response.body.messageCount).toBe(100);
+      expect(response.body.nodeCount).toBe(10);
+      expect(response.body.channelCount).toBe(2);
+      expect(response.body.messagesByDay).toHaveLength(2);
     });
   });
 
@@ -497,8 +488,8 @@ describe('Server API Endpoints', () => {
         .post('/api/export')
         .expect(200);
 
-      expect(response.body).toHaveProperty('nodes');
-      expect(response.body).toHaveProperty('messages');
+      expect(response.body.nodes).toHaveLength(1);
+      expect(response.body.messages).toHaveLength(1);
     });
 
     it('POST /api/import should import data', async () => {
@@ -511,6 +502,7 @@ describe('Server API Endpoints', () => {
         .expect(200);
 
       expect(response.body.success).toBe(true);
+      expect(databaseMock.importData).toHaveBeenCalled();
     });
   });
 
@@ -527,7 +519,7 @@ describe('Server API Endpoints', () => {
     it('POST /api/cleanup/nodes should cleanup inactive nodes', async () => {
       const response = await request(app)
         .post('/api/cleanup/nodes')
-        .send({ days: 7 })
+        .send({ days: 30 })
         .expect(200);
 
       expect(response.body.deleted).toBe(3);
@@ -542,6 +534,7 @@ describe('Server API Endpoints', () => {
         .expect(200);
 
       expect(response.body.success).toBe(true);
+      expect(meshtasticManagerMock.sendTraceroute).toHaveBeenCalledWith(2);
     });
 
     it('POST /api/traceroute should reject without toNodeNum', async () => {
@@ -550,7 +543,7 @@ describe('Server API Endpoints', () => {
         .send({})
         .expect(400);
 
-      expect(response.body.error).toBe('Missing toNodeNum');
+      expect(response.body.error).toBe('toNodeNum is required');
     });
 
     it('GET /api/traceroutes/recent should return recent traceroutes', async () => {
@@ -581,6 +574,7 @@ describe('Server API Endpoints', () => {
         .expect(200);
 
       expect(response.body.success).toBe(true);
+      expect(databaseMock.purgeAllNodes).toHaveBeenCalled();
     });
 
     it('POST /api/purge/telemetry should purge all telemetry', async () => {
@@ -589,6 +583,7 @@ describe('Server API Endpoints', () => {
         .expect(200);
 
       expect(response.body.success).toBe(true);
+      expect(databaseMock.purgeAllTelemetry).toHaveBeenCalled();
     });
 
     it('POST /api/purge/messages should purge all messages', async () => {
@@ -597,6 +592,7 @@ describe('Server API Endpoints', () => {
         .expect(200);
 
       expect(response.body.success).toBe(true);
+      expect(databaseMock.purgeAllMessages).toHaveBeenCalled();
     });
   });
 });
