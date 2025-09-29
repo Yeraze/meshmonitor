@@ -47,6 +47,29 @@ setTimeout(async () => {
   }
 }, 1000);
 
+// Schedule hourly telemetry purge to keep database performant
+// Keep telemetry for 7 days (168 hours) by default
+const TELEMETRY_RETENTION_HOURS = 168; // 7 days
+setInterval(() => {
+  try {
+    const purgedCount = databaseService.purgeOldTelemetry(TELEMETRY_RETENTION_HOURS);
+    if (purgedCount > 0) {
+      console.log(`⏰ Hourly telemetry purge completed: removed ${purgedCount} records`);
+    }
+  } catch (error) {
+    console.error('Error during telemetry purge:', error);
+  }
+}, 60 * 60 * 1000); // Run every hour
+
+// Run initial purge on startup
+setTimeout(() => {
+  try {
+    databaseService.purgeOldTelemetry(TELEMETRY_RETENTION_HOURS);
+  } catch (error) {
+    console.error('Error during initial telemetry purge:', error);
+  }
+}, 5000); // Wait 5 seconds after startup
+
 // Serve static files from the React app build
 const buildPath = path.join(__dirname, '../../dist');
 app.use(express.static(buildPath));
@@ -436,12 +459,14 @@ app.get('/api/telemetry/:nodeId', (req, res) => {
   try {
     const { nodeId } = req.params;
     const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 24;
-    const limit = req.query.limit ? parseInt(req.query.limit as string) : 1000;
 
-    const allTelemetry = databaseService.getTelemetryByNode(nodeId, limit);
+    // Calculate cutoff timestamp for filtering
     const cutoffTime = Date.now() - (hoursParam * 60 * 60 * 1000);
 
-    const recentTelemetry = allTelemetry.filter(t => t.timestamp >= cutoffTime);
+    // Use averaged query for graph data to reduce data points
+    // This ensures max 20 points per hour (60 minutes / 3 minute intervals = 20)
+    // Pass hours to apply LIMIT for performance
+    const recentTelemetry = databaseService.getTelemetryByNodeAveraged(nodeId, cutoffTime, 3, hoursParam);
     res.json(recentTelemetry);
   } catch (error) {
     console.error('Error fetching telemetry:', error);

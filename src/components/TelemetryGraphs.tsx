@@ -17,6 +17,7 @@ interface TelemetryData {
 interface TelemetryGraphsProps {
   nodeId: string;
   temperatureUnit?: TemperatureUnit;
+  telemetryHours?: number;
 }
 
 interface ChartData {
@@ -25,7 +26,7 @@ interface ChartData {
   time: string;
 }
 
-const TelemetryGraphs: React.FC<TelemetryGraphsProps> = ({ nodeId, temperatureUnit = 'C' }) => {
+const TelemetryGraphs: React.FC<TelemetryGraphsProps> = ({ nodeId, temperatureUnit = 'C', telemetryHours = 24 }) => {
   const [telemetryData, setTelemetryData] = useState<TelemetryData[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +37,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = ({ nodeId, temperatureUn
     const fetchTelemetry = async () => {
       try {
         if (isMounted) setLoading(true);
-        const response = await fetch(`/api/telemetry/${nodeId}?hours=24`);
+        const response = await fetch(`/api/telemetry/${nodeId}?hours=${telemetryHours}`);
 
         if (!response.ok) {
           throw new Error(`Failed to fetch telemetry: ${response.status} ${response.statusText}`);
@@ -65,7 +66,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = ({ nodeId, temperatureUn
       isMounted = false;
       clearInterval(interval);
     };
-  }, [nodeId]);
+  }, [nodeId, telemetryHours]);
 
   const groupByType = (data: TelemetryData[]): Map<string, TelemetryData[]> => {
     const grouped = new Map<string, TelemetryData[]>();
@@ -137,7 +138,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = ({ nodeId, temperatureUn
 
   return (
     <div className="telemetry-graphs">
-      <h3 className="telemetry-title">Last 24 Hours Telemetry</h3>
+      <h3 className="telemetry-title">Last {telemetryHours} Hour{telemetryHours !== 1 ? 's' : ''} Telemetry</h3>
       <div className="graphs-grid">
         {Array.from(groupedData.entries()).map(([type, data]) => {
           const isTemperature = type === 'temperature';
@@ -153,9 +154,14 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = ({ nodeId, temperatureUn
                 <LineChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#ccc" />
                   <XAxis
-                    dataKey="time"
+                    dataKey="timestamp"
+                    type="number"
+                    domain={['dataMin', 'dataMax']}
                     tick={{ fontSize: 12 }}
-                    interval="preserveStartEnd"
+                    tickFormatter={(timestamp) => new Date(timestamp).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
                   />
                   <YAxis
                     tick={{ fontSize: 12 }}
@@ -169,6 +175,16 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = ({ nodeId, temperatureUn
                       color: '#cdd6f4'
                     }}
                     labelStyle={{ color: '#cdd6f4' }}
+                    labelFormatter={(value) => {
+                      const date = new Date(value);
+                      return date.toLocaleString([], {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit'
+                      });
+                    }}
                   />
                   <Line
                     type="monotone"

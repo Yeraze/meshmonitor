@@ -459,13 +459,14 @@ export class MeshtasticProtobufService {
       38: 'TELEMETRY_APP',
       39: 'ZPS_APP',
       40: 'SIMULATOR_APP',
-      41: 'TRACEROUTE_APP',
-      42: 'NEIGHBORINFO_APP',
-      43: 'ATAK_PLUGIN_APP',
-      44: 'MAP_REPORT_APP',
       64: 'PRIVATE_APP',
       65: 'ATAK_FORWARDER_APP',
-      67: 'TELEMETRY_APP'
+      67: 'TELEMETRY_APP',
+      69: 'SIMULATOR_APP',
+      70: 'TRACEROUTE_APP',
+      71: 'NEIGHBORINFO_APP',
+      72: 'ATAK_PLUGIN_APP',
+      73: 'MAP_REPORT_APP'
     };
 
     return portNames[portnum] || `UNKNOWN_${portnum}`;
