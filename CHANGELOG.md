@@ -6,6 +6,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [1.4.0] - 2025-09-29
+
+### Added
+- **Telemetry Favorites Dashboard**: Pin your favorite telemetry metrics for quick access
+  - Star/unstar nodes to mark as favorites
+  - Dedicated favorites dashboard showing only starred nodes
+  - Persistent favorites storage in database
+  - Quick toggle between all nodes and favorites view
+
+### Changed
+- **Major Dependency Updates**:
+  - Upgraded to React 19 with improved performance and features
+  - Upgraded to react-leaflet v5 for better map functionality
+  - Upgraded to Express 5 for enhanced server capabilities
+  - Upgraded to Node.js 22 (deprecated Node 18 support)
+  - Upgraded to ESLint 9 and TypeScript ESLint 8
+  - Upgraded to Vite 6 for faster builds
+
+### Fixed
+- Express 5 wildcard route compatibility issue preventing server startup
+- Docker build issues with missing @meshtastic/protobufs dependency
+- Server test failures after jsdom v27 upgrade
+- Various dependency vulnerabilities through updates
+
+### Technical Improvements
+- Modernized entire dependency stack for better security and performance
+- Improved build times with updated tooling
+- Enhanced type safety with latest TypeScript ESLint
+- Better development experience with latest Vite and React
+
 ## [1.1.0] - 2025-09-28
 
 ### Added
