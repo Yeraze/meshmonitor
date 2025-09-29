@@ -153,9 +153,14 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = ({ nodeId, temperatureUn
                 <LineChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#ccc" />
                   <XAxis
-                    dataKey="time"
+                    dataKey="timestamp"
+                    type="number"
+                    domain={['dataMin', 'dataMax']}
                     tick={{ fontSize: 12 }}
-                    interval="preserveStartEnd"
+                    tickFormatter={(timestamp) => new Date(timestamp).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
                   />
                   <YAxis
                     tick={{ fontSize: 12 }}
@@ -169,6 +174,16 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = ({ nodeId, temperatureUn
                       color: '#cdd6f4'
                     }}
                     labelStyle={{ color: '#cdd6f4' }}
+                    labelFormatter={(value) => {
+                      const date = new Date(value);
+                      return date.toLocaleString([], {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit'
+                      });
+                    }}
                   />
                   <Line
                     type="monotone"
