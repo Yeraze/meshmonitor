@@ -438,10 +438,11 @@ app.get('/api/telemetry/:nodeId', (req, res) => {
     const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 24;
     const limit = req.query.limit ? parseInt(req.query.limit as string) : 1000;
 
-    const allTelemetry = databaseService.getTelemetryByNode(nodeId, limit);
+    // Calculate cutoff timestamp for filtering
     const cutoffTime = Date.now() - (hoursParam * 60 * 60 * 1000);
 
-    const recentTelemetry = allTelemetry.filter(t => t.timestamp >= cutoffTime);
+    // Pass the cutoff time to the database query to filter at the database level
+    const recentTelemetry = databaseService.getTelemetryByNode(nodeId, limit, cutoffTime);
     res.json(recentTelemetry);
   } catch (error) {
     console.error('Error fetching telemetry:', error);
