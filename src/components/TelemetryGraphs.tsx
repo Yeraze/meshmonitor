@@ -36,7 +36,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = ({ nodeId, temperatureUn
     const fetchTelemetry = async () => {
       try {
         if (isMounted) setLoading(true);
-        const response = await fetch(`/api/telemetry/${nodeId}?hours=24`);
+        const response = await fetch(`/api/telemetry/${nodeId}?hours=24&limit=5000`);
 
         if (!response.ok) {
           throw new Error(`Failed to fetch telemetry: ${response.status} ${response.statusText}`);
