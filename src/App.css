@@ -2378,6 +2378,69 @@ body {
   transform: translateY(0);
 }
 
+/* Settings Management Buttons */
+.settings-buttons {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.save-button {
+  background: var(--ctp-green);
+  color: var(--ctp-base);
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s, transform 0.1s, opacity 0.2s;
+  white-space: nowrap;
+  min-width: 120px;
+}
+
+.save-button:hover:not(:disabled) {
+  background: var(--ctp-teal);
+  transform: translateY(-1px);
+}
+
+.save-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.save-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.reset-button {
+  background: var(--ctp-yellow);
+  color: var(--ctp-base);
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s, transform 0.1s, opacity 0.2s;
+  white-space: nowrap;
+  min-width: 120px;
+}
+
+.reset-button:hover:not(:disabled) {
+  background: var(--ctp-peach);
+  transform: translateY(-1px);
+}
+
+.reset-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.reset-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* System Status Modal */
 .modal-overlay {
   position: fixed;

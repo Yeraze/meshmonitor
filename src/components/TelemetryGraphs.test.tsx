@@ -65,16 +65,38 @@ describe('TelemetryGraphs Component', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    (global.fetch as Mock).mockResolvedValue({
-      ok: true,
-      json: async () => mockTelemetryData
+    // Mock both settings fetch (for favorites) and telemetry fetch
+    (global.fetch as Mock).mockImplementation((url: string) => {
+      if (url.includes('/api/settings')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({})  // No favorites by default
+        });
+      }
+      // Default to telemetry data
+      return Promise.resolve({
+        ok: true,
+        json: async () => mockTelemetryData
+      });
     });
   });
 
   it('should render loading state initially', async () => {
     // Mock fetch to be slow
-    (global.fetch as Mock).mockImplementation(() =>
-      new Promise(resolve => setTimeout(resolve, 100))
+    (global.fetch as Mock).mockImplementation((url: string) =>
+      new Promise(resolve => setTimeout(() => {
+        if (url.includes('/api/settings')) {
+          resolve({
+            ok: true,
+            json: async () => ({})
+          });
+        } else {
+          resolve({
+            ok: true,
+            json: async () => mockTelemetryData
+          });
+        }
+      }, 100))
     );
 
     await act(async () => {
@@ -101,7 +123,16 @@ describe('TelemetryGraphs Component', () => {
   });
 
   it('should display error state when fetch fails', async () => {
-    (global.fetch as Mock).mockRejectedValueOnce(new Error('Network error'));
+    (global.fetch as Mock).mockImplementation((url: string) => {
+      if (url.includes('/api/settings')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({})  // No favorites
+        });
+      }
+      // Telemetry fetch fails
+      return Promise.reject(new Error('Network error'));
+    });
 
     render(<TelemetryGraphs nodeId={mockNodeId} />);
 
@@ -111,9 +142,18 @@ describe('TelemetryGraphs Component', () => {
   });
 
   it('should display no data message when telemetry is empty', async () => {
-    (global.fetch as Mock).mockResolvedValueOnce({
-      ok: true,
-      json: async () => []
+    (global.fetch as Mock).mockImplementation((url: string) => {
+      if (url.includes('/api/settings')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({})  // No favorites
+        });
+      }
+      // Return empty telemetry
+      return Promise.resolve({
+        ok: true,
+        json: async () => []
+      });
     });
 
     render(<TelemetryGraphs nodeId={mockNodeId} />);
@@ -173,10 +213,19 @@ describe('TelemetryGraphs Component', () => {
   });
 
   it('should handle API returning non-ok status', async () => {
-    (global.fetch as Mock).mockResolvedValueOnce({
-      ok: false,
-      status: 404,
-      statusText: 'Not Found'
+    (global.fetch as Mock).mockImplementation((url: string) => {
+      if (url.includes('/api/settings')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({})
+        });
+      }
+      // Telemetry fetch returns non-ok
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        statusText: 'Not Found'
+      });
     });
 
     render(<TelemetryGraphs nodeId={mockNodeId} />);
@@ -194,9 +243,17 @@ describe('TelemetryGraphs Component', () => {
       { nodeId: mockNodeId, telemetryType: 'batteryLevel', value: 75, timestamp: Date.now() }
     ];
 
-    (global.fetch as Mock).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockData
+    (global.fetch as Mock).mockImplementation((url: string) => {
+      if (url.includes('/api/settings')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({})
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => mockData
+      });
     });
 
     render(<TelemetryGraphs nodeId={mockNodeId} />);
@@ -263,9 +320,17 @@ describe('TelemetryGraphs Component', () => {
       { nodeId: mockNodeId, telemetryType: 'voltage', value: 3.7, timestamp: Date.now(), unit: 'V' }
     ];
 
-    (global.fetch as Mock).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockDataWithUnits
+    (global.fetch as Mock).mockImplementation((url: string) => {
+      if (url.includes('/api/settings')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({})
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => mockDataWithUnits
+      });
     });
 
     render(<TelemetryGraphs nodeId={mockNodeId} />);
@@ -303,9 +368,17 @@ describe('TelemetryGraphs Component', () => {
         }
       ];
 
-      (global.fetch as Mock).mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockData
+      (global.fetch as Mock).mockImplementation((url: string) => {
+        if (url.includes('/api/settings')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({})
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => mockData
+        });
       });
 
       render(<TelemetryGraphs nodeId={mockNodeId} />);
@@ -328,9 +401,17 @@ describe('TelemetryGraphs Component', () => {
         }
       ];
 
-      (global.fetch as Mock).mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockData
+      (global.fetch as Mock).mockImplementation((url: string) => {
+        if (url.includes('/api/settings')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({})
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => mockData
+        });
       });
 
       render(<TelemetryGraphs nodeId={mockNodeId} temperatureUnit="F" />);
@@ -371,9 +452,17 @@ describe('TelemetryGraphs Component', () => {
         }
       ];
 
-      (global.fetch as Mock).mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockData
+      (global.fetch as Mock).mockImplementation((url: string) => {
+        if (url.includes('/api/settings')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({})
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => mockData
+        });
       });
 
       render(<TelemetryGraphs nodeId={mockNodeId} temperatureUnit="F" />);

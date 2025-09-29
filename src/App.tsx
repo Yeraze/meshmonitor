@@ -6,6 +6,7 @@ import './App.css'
 import TelemetryGraphs from './components/TelemetryGraphs'
 import InfoTab from './components/InfoTab'
 import SettingsTab from './components/SettingsTab'
+import Dashboard from './components/Dashboard'
 import { version } from '../package.json'
 import { type TemperatureUnit } from './utils/temperature'
 import { DeviceInfo, Channel } from './types/device'
@@ -187,6 +188,36 @@ function App() {
           setNodeAddress(config.meshtasticNodeIp);
         } else {
           setNodeAddress('192.168.1.100');
+        }
+
+        // Load settings from server
+        const settingsResponse = await fetch('/api/settings');
+        if (settingsResponse.ok) {
+          const settings = await settingsResponse.json();
+
+          // Apply server settings if they exist, otherwise use localStorage/defaults
+          if (settings.maxNodeAgeHours) {
+            const value = parseInt(settings.maxNodeAgeHours);
+            setMaxNodeAgeHours(value);
+            localStorage.setItem('maxNodeAgeHours', value.toString());
+          }
+
+          if (settings.tracerouteIntervalMinutes) {
+            const value = parseInt(settings.tracerouteIntervalMinutes);
+            setTracerouteIntervalMinutes(value);
+            localStorage.setItem('tracerouteIntervalMinutes', value.toString());
+          }
+
+          if (settings.temperatureUnit) {
+            setTemperatureUnit(settings.temperatureUnit as TemperatureUnit);
+            localStorage.setItem('temperatureUnit', settings.temperatureUnit);
+          }
+
+          if (settings.telemetryVisualizationHours) {
+            const value = parseInt(settings.telemetryVisualizationHours);
+            setTelemetryVisualizationHours(value);
+            localStorage.setItem('telemetryVisualizationHours', value.toString());
+          }
         }
 
         // Check connection status
@@ -1934,6 +1965,12 @@ function App() {
           )}
         </button>
         <button
+          className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
+          onClick={() => setActiveTab('dashboard')}
+        >
+          Dashboard
+        </button>
+        <button
           className={`tab-btn ${activeTab === 'info' ? 'active' : ''}`}
           onClick={() => setActiveTab('info')}
         >
@@ -1977,7 +2014,14 @@ function App() {
             messages={messages}
             currentNodeId={currentNodeId}
             temperatureUnit={temperatureUnit}
+            telemetryHours={telemetryVisualizationHours}
             getAvailableChannels={getAvailableChannels}
+          />
+        )}
+        {activeTab === 'dashboard' && (
+          <Dashboard
+            temperatureUnit={temperatureUnit}
+            telemetryHours={telemetryVisualizationHours}
           />
         )}
         {activeTab === 'settings' && (

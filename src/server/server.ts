@@ -610,6 +610,63 @@ app.post('/api/settings/traceroute-interval', (req, res) => {
   }
 });
 
+// Get all settings
+app.get('/api/settings', (_req, res) => {
+  try {
+    const settings = databaseService.getAllSettings();
+    res.json(settings);
+  } catch (error) {
+    console.error('Error fetching settings:', error);
+    res.status(500).json({ error: 'Failed to fetch settings' });
+  }
+});
+
+// Save settings
+app.post('/api/settings', (req, res) => {
+  try {
+    const settings = req.body;
+
+    // Validate settings
+    const validKeys = ['maxNodeAgeHours', 'tracerouteIntervalMinutes', 'temperatureUnit', 'telemetryVisualizationHours', 'telemetryFavorites'];
+    const filteredSettings: Record<string, string> = {};
+
+    for (const key of validKeys) {
+      if (key in settings) {
+        filteredSettings[key] = String(settings[key]);
+      }
+    }
+
+    // Save to database
+    databaseService.setSettings(filteredSettings);
+
+    // Apply traceroute interval if changed
+    if ('tracerouteIntervalMinutes' in filteredSettings) {
+      const interval = parseInt(filteredSettings.tracerouteIntervalMinutes);
+      if (!isNaN(interval) && interval >= 1 && interval <= 60) {
+        meshtasticManager.setTracerouteInterval(interval);
+      }
+    }
+
+    res.json({ success: true, settings: filteredSettings });
+  } catch (error) {
+    console.error('Error saving settings:', error);
+    res.status(500).json({ error: 'Failed to save settings' });
+  }
+});
+
+// Reset settings to defaults
+app.delete('/api/settings', (_req, res) => {
+  try {
+    databaseService.deleteAllSettings();
+    // Reset traceroute interval to default
+    meshtasticManager.setTracerouteInterval(3);
+    res.json({ success: true, message: 'Settings reset to defaults' });
+  } catch (error) {
+    console.error('Error resetting settings:', error);
+    res.status(500).json({ error: 'Failed to reset settings' });
+  }
+});
+
 // Danger zone endpoints
 app.post('/api/purge/nodes', async (_req, res) => {
   try {
