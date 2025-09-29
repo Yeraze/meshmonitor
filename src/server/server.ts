@@ -740,7 +740,7 @@ app.get('/api/health', (_req, res) => {
 });
 
 // Catch all handler: send back React's index.html file for client-side routing
-app.get('*', (_req, res) => {
+app.use((_req: express.Request, res: express.Response) => {
   res.sendFile(path.join(buildPath, 'index.html'));
 });
 
