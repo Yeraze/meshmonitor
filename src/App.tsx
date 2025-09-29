@@ -110,6 +110,10 @@ function App() {
     const saved = localStorage.getItem('temperatureUnit');
     return (saved === 'F' ? 'F' : 'C') as TemperatureUnit;
   });
+  const [telemetryVisualizationHours, setTelemetryVisualizationHours] = useState<number>(() => {
+    const saved = localStorage.getItem('telemetryVisualizationHours');
+    return saved ? parseInt(saved) : 24;
+  });
 
   // New state for node list features
   const [nodeFilter, setNodeFilter] = useState<string>('')
@@ -1831,7 +1835,7 @@ function App() {
                 </div>
               )}
 
-              <TelemetryGraphs nodeId={selectedDMNode} temperatureUnit={temperatureUnit} />
+              <TelemetryGraphs nodeId={selectedDMNode} temperatureUnit={temperatureUnit} telemetryHours={telemetryVisualizationHours} />
             </div>
           ) : (
             <div className="no-selection">
@@ -1868,6 +1872,11 @@ function App() {
   const handleTemperatureUnitChange = (unit: TemperatureUnit) => {
     setTemperatureUnit(unit);
     localStorage.setItem('temperatureUnit', unit);
+  };
+
+  const handleTelemetryVisualizationChange = (hours: number) => {
+    setTelemetryVisualizationHours(hours);
+    localStorage.setItem('telemetryVisualizationHours', hours.toString());
   };
 
   // Purge handlers moved to SettingsTab component
@@ -1976,9 +1985,11 @@ function App() {
             maxNodeAgeHours={maxNodeAgeHours}
             tracerouteIntervalMinutes={tracerouteIntervalMinutes}
             temperatureUnit={temperatureUnit}
+            telemetryVisualizationHours={telemetryVisualizationHours}
             onMaxNodeAgeChange={handleMaxNodeAgeChange}
             onTracerouteIntervalChange={handleTracerouteIntervalChange}
             onTemperatureUnitChange={handleTemperatureUnitChange}
+            onTelemetryVisualizationChange={handleTelemetryVisualizationChange}
           />
         )}
       </main>
