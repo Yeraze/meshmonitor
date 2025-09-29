@@ -7,18 +7,22 @@ interface SettingsTabProps {
   maxNodeAgeHours: number;
   tracerouteIntervalMinutes: number;
   temperatureUnit: TemperatureUnit;
+  telemetryVisualizationHours: number;
   onMaxNodeAgeChange: (hours: number) => void;
   onTracerouteIntervalChange: (minutes: number) => void;
   onTemperatureUnitChange: (unit: TemperatureUnit) => void;
+  onTelemetryVisualizationChange: (hours: number) => void;
 }
 
 const SettingsTab: React.FC<SettingsTabProps> = ({
   maxNodeAgeHours,
   tracerouteIntervalMinutes,
   temperatureUnit,
+  telemetryVisualizationHours,
   onMaxNodeAgeChange,
   onTracerouteIntervalChange,
-  onTemperatureUnitChange
+  onTemperatureUnitChange,
+  onTelemetryVisualizationChange
 }) => {
   const handlePurgeNodes = async () => {
     const confirmed = window.confirm(
@@ -151,6 +155,21 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               <option value="C">Celsius (°C)</option>
               <option value="F">Fahrenheit (°F)</option>
             </select>
+          </div>
+          <div className="setting-item">
+            <label htmlFor="telemetryVisualizationHours">
+              Telemetry Visualization (Hours)
+              <span className="setting-description">How many hours of telemetry data to display in graphs (1-168)</span>
+            </label>
+            <input
+              type="number"
+              id="telemetryVisualizationHours"
+              min="1"
+              max="168"
+              value={telemetryVisualizationHours}
+              onChange={(e) => onTelemetryVisualizationChange(Math.min(168, Math.max(1, parseInt(e.target.value) || 24)))}
+              className="setting-input"
+            />
           </div>
         </div>
 
