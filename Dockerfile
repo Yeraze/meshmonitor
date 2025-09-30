@@ -1,9 +1,6 @@
 # Build stage
 FROM node:22-alpine AS builder
 
-# Accept BASE_URL as a build argument
-ARG BASE_URL=""
-
 WORKDIR /app
 
 # Copy package files
@@ -18,8 +15,7 @@ RUN rm -f package-lock.json && \
 # Copy source files
 COPY . .
 
-# Build the React application with BASE_URL if provided
-ENV BASE_URL=${BASE_URL}
+# Build the React application (always for root, will be rewritten at runtime)
 RUN npm run build
 
 # Build the server

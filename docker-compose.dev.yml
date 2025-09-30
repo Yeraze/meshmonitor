@@ -3,8 +3,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        BASE_URL: ${BASE_URL:-}
     container_name: meshmonitor
     ports:
       - "8080:3001"

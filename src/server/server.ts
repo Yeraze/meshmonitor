@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import databaseService from '../services/database.js';
 import meshtasticManager from './meshtasticManager.js';
@@ -750,6 +751,17 @@ if (BASE_URL) {
   app.use('/api', apiRouter);
 }
 
+// Function to rewrite HTML with BASE_URL at runtime
+const rewriteHtml = (htmlContent: string, baseUrl: string): string => {
+  if (!baseUrl) return htmlContent;
+
+  // Replace asset paths in the HTML
+  return htmlContent
+    .replace(/href="\/assets\//g, `href="${baseUrl}/assets/`)
+    .replace(/src="\/assets\//g, `src="${baseUrl}/assets/`)
+    .replace(/href="\/vite\.svg"/g, `href="${baseUrl}/vite.svg"`);
+};
+
 // Serve static assets (JS, CSS, images)
 if (BASE_URL) {
   // Serve assets folder specifically
@@ -765,7 +777,11 @@ if (BASE_URL) {
 
   // Catch all handler for SPA routing - but exclude /api
   app.get(`${BASE_URL}`, (_req: express.Request, res: express.Response) => {
-    res.sendFile(path.join(buildPath, 'index.html'));
+    // Read and rewrite HTML at runtime
+    const htmlPath = path.join(buildPath, 'index.html');
+    const html = fs.readFileSync(htmlPath, 'utf-8');
+    const rewrittenHtml = rewriteHtml(html, BASE_URL);
+    res.type('html').send(rewrittenHtml);
   });
   // Use a route pattern that Express 5 can handle
   app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -777,8 +793,11 @@ if (BASE_URL) {
     if (req.path.startsWith(`${BASE_URL}/api`)) {
       return next();
     }
-    // Serve index.html for all other routes under BASE_URL
-    res.sendFile(path.join(buildPath, 'index.html'));
+    // Serve rewritten index.html for all other routes under BASE_URL
+    const htmlPath = path.join(buildPath, 'index.html');
+    const html = fs.readFileSync(htmlPath, 'utf-8');
+    const rewrittenHtml = rewriteHtml(html, BASE_URL);
+    res.type('html').send(rewrittenHtml);
   });
 } else {
   // Normal static file serving for root deployment

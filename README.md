@@ -161,7 +161,7 @@ If you want to build from source:
 | `MESHTASTIC_USE_TLS` | `false` | Enable HTTPS connection to node |
 | `NODE_ENV` | `development` | Environment mode |
 | `PORT` | `3001` | Server port (production) |
-| `BASE_URL` | (empty) | Base URL path if serving from a subfolder (e.g., `/meshmonitor`) |
+| `BASE_URL` | (empty) | Runtime base URL path for subfolder deployment (e.g., `/meshmonitor`) |
 
 ### Meshtastic Node Requirements
 
@@ -201,6 +201,8 @@ Refer to [Authentik's documentation](https://docs.goauthentik.io/) for setting u
 
 MeshMonitor supports being served from a subfolder using the `BASE_URL` environment variable. This allows you to host MeshMonitor at a path like `https://example.com/meshmonitor/` instead of the root.
 
+**Important:** BASE_URL is now a **runtime-only** configuration. You can use the same Docker image for any base path - just set the BASE_URL environment variable when running the container.
+
 ### nginx Subfolder Example
 
 ```nginx
@@ -216,23 +218,34 @@ location ^~ /meshmonitor {
 }
 ```
 
-When using Docker, set the `BASE_URL` environment variable:
+### Docker Configuration
+
+Simply set the `BASE_URL` environment variable at runtime:
 
 ```yaml
 services:
   meshmonitor:
     image: ghcr.io/yeraze/meshmonitor:latest
     environment:
-      - BASE_URL=/meshmonitor
+      - BASE_URL=/meshmonitor  # Set at runtime, no rebuild needed!
       - MESHTASTIC_NODE_IP=192.168.1.100
     # ... rest of configuration
 ```
 
-Or build with a custom base URL:
+Or with docker run:
 
 ```bash
-docker build --build-arg BASE_URL=/meshmonitor -t meshmonitor .
+docker run -d \
+  -p 8080:3001 \
+  -e BASE_URL=/meshmonitor \
+  -e MESHTASTIC_NODE_IP=192.168.1.100 \
+  ghcr.io/yeraze/meshmonitor:latest
 ```
+
+The HTML is dynamically rewritten at runtime to include the correct base path for all assets and API calls. This means:
+- ✅ No need to rebuild the image for different base paths
+- ✅ The same image works for root (`/`) or any subfolder path
+- ✅ Can be changed by simply restarting the container with a different BASE_URL
 
 ## Architecture
 
