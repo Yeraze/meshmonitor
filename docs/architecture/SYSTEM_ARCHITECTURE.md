@@ -30,7 +30,7 @@ MeshMonitor is a full-stack web application designed to monitor Meshtastic mesh 
 ### 1. Frontend Layer (React Application)
 
 **Technology Stack:**
-- React 18 with TypeScript
+- React 19 with TypeScript
 - Vite for build tooling
 - CSS3 with Catppuccin Mocha theme
 - Modern ES modules

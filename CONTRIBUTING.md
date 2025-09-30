@@ -5,7 +5,7 @@ Thank you for your interest in contributing to MeshMonitor! This guide will help
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Node.js 18.x or 20.x
+- Node.js 20+ or 22+ (Node.js 18 is deprecated and will lose support April 2025)
 - npm 9.x or later
 - Docker (optional, for container testing)
 - A Meshtastic node with HTTP API enabled (for full testing)
