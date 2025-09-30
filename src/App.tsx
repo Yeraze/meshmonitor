@@ -1306,31 +1306,65 @@ function App() {
 
                   traceroutes.forEach((tr, idx) => {
                     try {
-                      const route = JSON.parse(tr.route || '[]');
-                      const nodeSequence: number[] = [tr.fromNodeNum, ...route, tr.toNodeNum];
-                      const positions: Array<{nodeNum: number; pos: [number, number]}> = [];
+                      // Process forward path
+                      const routeForward = JSON.parse(tr.route || '[]');
+                      // Reverse intermediate hops to get correct direction: source -> hops -> destination
+                      const forwardSequence: number[] = [tr.fromNodeNum, ...routeForward.slice().reverse(), tr.toNodeNum];
+                      const forwardPositions: Array<{nodeNum: number; pos: [number, number]}> = [];
 
-                      // Build node sequence with positions
-                      nodeSequence.forEach((nodeNum) => {
+                      // Build forward sequence with positions
+                      forwardSequence.forEach((nodeNum) => {
                         const node = nodes.find(n => n.nodeNum === nodeNum);
                         if (node?.position?.latitude && node?.position?.longitude) {
-                          positions.push({
+                          forwardPositions.push({
                             nodeNum,
                             pos: [node.position.latitude, node.position.longitude]
                           });
                         }
                       });
 
-                      // Create segments and count usage
-                      for (let i = 0; i < positions.length - 1; i++) {
-                        const from = positions[i];
-                        const to = positions[i + 1];
+                      // Create forward segments and count usage
+                      for (let i = 0; i < forwardPositions.length - 1; i++) {
+                        const from = forwardPositions[i];
+                        const to = forwardPositions[i + 1];
                         const segmentKey = [from.nodeNum, to.nodeNum].sort().join('-');
 
                         segmentUsage.set(segmentKey, (segmentUsage.get(segmentKey) || 0) + 1);
 
                         segmentsList.push({
-                          key: `tr-${idx}-seg-${i}`,
+                          key: `tr-${idx}-fwd-seg-${i}`,
+                          positions: [from.pos, to.pos],
+                          nodeNums: [from.nodeNum, to.nodeNum]
+                        });
+                      }
+
+                      // Process return path
+                      const routeBack = JSON.parse(tr.routeBack || '[]');
+                      // routeBack hops need to be reversed to get correct direction: destination -> hops -> source
+                      const backSequence: number[] = [tr.toNodeNum, ...routeBack.slice().reverse(), tr.fromNodeNum];
+                      const backPositions: Array<{nodeNum: number; pos: [number, number]}> = [];
+
+                      // Build back sequence with positions
+                      backSequence.forEach((nodeNum) => {
+                        const node = nodes.find(n => n.nodeNum === nodeNum);
+                        if (node?.position?.latitude && node?.position?.longitude) {
+                          backPositions.push({
+                            nodeNum,
+                            pos: [node.position.latitude, node.position.longitude]
+                          });
+                        }
+                      });
+
+                      // Create back segments and count usage
+                      for (let i = 0; i < backPositions.length - 1; i++) {
+                        const from = backPositions[i];
+                        const to = backPositions[i + 1];
+                        const segmentKey = [from.nodeNum, to.nodeNum].sort().join('-');
+
+                        segmentUsage.set(segmentKey, (segmentUsage.get(segmentKey) || 0) + 1);
+
+                        segmentsList.push({
+                          key: `tr-${idx}-back-seg-${i}`,
                           positions: [from.pos, to.pos],
                           nodeNums: [from.nodeNum, to.nodeNum]
                         });
@@ -1425,10 +1459,10 @@ function App() {
                               <div className="route-popup">
                                 <h4>Forward Path</h4>
                                 <div className="route-endpoints">
-                                  <strong>{fromName}</strong> → <strong>{toName}</strong>
+                                  <strong>{toName}</strong> → <strong>{fromName}</strong>
                                 </div>
                                 <div className="route-usage">
-                                  Path: {forwardSequence.map(num => {
+                                  Path: {forwardSequence.slice().reverse().map(num => {
                                     const n = nodes.find(nd => nd.nodeNum === num);
                                     return n?.user?.longName || n?.user?.shortName || `!${num.toString(16)}`;
                                   }).join(' → ')}
@@ -1484,9 +1518,8 @@ function App() {
 
                     // Back path (to -> from) - routeBack contains hops from destination back to source
                     if (routeBack.length >= 0) {
-                      // routeBack already represents the path from destination to source
-                      // So we build: [destination, ...intermediate hops..., source]
-                      const backSequence: number[] = [selectedTrace.toNodeNum, ...routeBack, selectedTrace.fromNodeNum];
+                      // routeBack hops need to be reversed to get correct direction: destination -> hops -> source
+                      const backSequence: number[] = [selectedTrace.toNodeNum, ...routeBack.slice().reverse(), selectedTrace.fromNodeNum];
                       const backPositions: [number, number][] = [];
 
                       backSequence.forEach((nodeNum) => {
@@ -1510,10 +1543,10 @@ function App() {
                               <div className="route-popup">
                                 <h4>Return Path</h4>
                                 <div className="route-endpoints">
-                                  <strong>{toName}</strong> → <strong>{fromName}</strong>
+                                  <strong>{fromName}</strong> → <strong>{toName}</strong>
                                 </div>
                                 <div className="route-usage">
-                                  Path: {backSequence.map(num => {
+                                  Path: {backSequence.slice().reverse().map(num => {
                                     const n = nodes.find(nd => nd.nodeNum === num);
                                     return n?.user?.longName || n?.user?.shortName || `!${num.toString(16)}`;
                                   }).join(' → ')}
