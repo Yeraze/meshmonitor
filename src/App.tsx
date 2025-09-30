@@ -13,6 +13,8 @@ import { DeviceInfo, Channel } from './types/device'
 import { MeshMessage } from './types/message'
 import { TabType, SortField, SortDirection, ConnectionStatus, MapCenterControllerProps } from './types/ui'
 import api from './services/api'
+import { defaultIcon, selectedIcon, routerIcon, selectedRouterIcon } from './utils/mapIcons'
+import { getRoleName, generateArrowMarkers } from './utils/mapHelpers.tsx'
 
 // Fix for default markers in React-Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -25,118 +27,7 @@ L.Icon.Default.mergeOptions({
   popupAnchor: [0, -24]
 });
 
-// Create reusable icons to prevent recreation issues
-const defaultIcon = new L.Icon({
-  iconUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJDOS4yNCAyIDcgNC4yNCA3IDdDNyAxMy40NyAxMiAyMiAxMiAyMkMxMiAyMiAxNyAxMy40NyAxNyA3QzE3IDQuMjQgMTQuNzYgMiAxMiAyWk0xMiA5LjVDMTAuNjIgOS41IDkuNSA4LjM4IDkuNSA3UzkuNTEgNC41IDExIDQuNVMxNS41IDUuNjIgMTUuNSA3UzE0LjM4IDkuNSAxMiA5LjVaIiBmaWxsPSIjNjY5OGY1Ii8+Cjwvc3ZnPg==',
-  iconSize: [24, 24],
-  iconAnchor: [12, 24],
-  popupAnchor: [0, -24]
-});
-
-const selectedIcon = new L.Icon({
-  iconUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJDOS4yNCAyIDcgNC4yNCA3IDdDNyAxMy40NyAxMiAyMiAxMiAyMkMxMiAyMiAxNyAxMy40NyAxNyA3QzE3IDQuMjQgMTQuNzYgMiAxMiAyWk0xMiA5LjVDMTAuNjIgOS41IDkuNSA4LjM4IDkuNSA3UzkuNTEgNC41IDExIDQuNVMxNS41IDUuNjIgMTUuNSA3UzE0LjM4IDkuNUgxMiA5LjVaIiBmaWxsPSIjZmY2NjY2Ii8+Cjwvc3ZnPg==',
-  iconSize: [30, 30],
-  iconAnchor: [15, 30],
-  popupAnchor: [0, -30]
-});
-
-const routerIcon = new L.Icon({
-  iconUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8IS0tIEJhY2tncm91bmQgY2lyY2xlIC0tPgogIDxjaXJjbGUgY3g9IjEyIiBjeT0iMTIiIHI9IjEwIiBmaWxsPSIjZmZmIiBmaWxsLW9wYWNpdHk9IjAuOSIgc3Ryb2tlPSIjNjY2IiBzdHJva2Utd2lkdGg9IjAuNSIgLz4KICA8IS0tIFRvd2VyIGJhc2UgLS0+CiAgPHJlY3QgeD0iMTAiIHk9IjE2IiB3aWR0aD0iNCIgaGVpZ2h0PSI2IiBmaWxsPSIjODg4IiAvPgogIDwhLS0gVG93ZXIgYm9keSAtLT4KICA8cmVjdCB4PSIxMSIgeT0iOCIgd2lkdGg9IjIiIGhlaWdodD0iOCIgZmlsbD0iIzg4OCIgLz4KICA8IS0tIFRvcCBhbnRlbm5hIC0tPgogIDxyZWN0IHg9IjExLjUiIHk9IjIiIHdpZHRoPSIxIiBoZWlnaHQ9IjYiIGZpbGw9IiM4ODgiIC8+CiAgPGNpcmNsZSBjeD0iMTIiIGN5PSIyIiByPSIxLjUiIGZpbGw9IiNmNjYiIC8+CiAgPCEtLSBMZWZ0IHNpZ25hbCB3YXZlcyAtLT4KICA8cGF0aCBkPSJNIDggMTAgQyA2IDEwIDQgMTEuNSA0IDEzIiBzdHJva2U9IiNmNjYiIHN0cm9rZS13aWR0aD0iMS41IiBmaWxsPSJub25lIiAvPgogIDxwYXRoIGQ9Ik0gOSAxMiBDIDcuNSAxMiA2IDEyLjUgNiAxMyIgc3Ryb2tlPSIjZjY2IiBzdHJva2Utd2lkdGg9IjEuNSIgZmlsbD0ibm9uZSIgLz4KICA8IS0tIFJpZ2h0IHNpZ25hbCB3YXZlcyAtLT4KICA8cGF0aCBkPSJNIDE2IDEwIEMgMTggMTAgMjAgMTEuNSAyMCAxMyIgc3Ryb2tlPSIjZjY2IiBzdHJva2Utd2lkdGg9IjEuNSIgZmlsbD0ibm9uZSIgLz4KICA8cGF0aCBkPSJNIDE1IDEyIEMgMTYuNSAxMiAxOCAxMi41IDE4IDEzIiBzdHJva2U9IiNmNjYiIHN0cm9rZS13aWR0aD0iMS41IiBmaWxsPSJub25lIiAvPgo8L3N2Zz4=',
-  iconSize: [24, 24],
-  iconAnchor: [12, 24],
-  popupAnchor: [0, -24]
-});
-
-const selectedRouterIcon = new L.Icon({
-  iconUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAiIGhlaWdodD0iMzAiIHZpZXdCb3g9IjAgMCAzMCAzMCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8IS0tIEJhY2tncm91bmQgY2lyY2xlIC0tPgogIDxjaXJjbGUgY3g9IjE1IiBjeT0iMTUiIHI9IjEzIiBmaWxsPSIjZmZmIiBmaWxsLW9wYWNpdHk9IjAuOTUiIHN0cm9rZT0iI2Y2NiIgc3Ryb2tlLXdpZHRoPSIxLjUiIC8+CiAgPCEtLSBUb3dlciBiYXNlIC0tPgogIDxyZWN0IHg9IjEyLjUiIHk9IjIwIiB3aWR0aD0iNSIgaGVpZ2h0PSI4IiBmaWxsPSIjNTU1IiAvPgogIDwhLS0gVG93ZXIgYm9keSAtLT4KICA8cmVjdCB4PSIxMy43NSIgeT0iMTAiIHdpZHRoPSIyLjUiIGhlaWdodD0iMTAiIGZpbGw9IiM1NTUiIC8+CiAgPCEtLSBUb3AgYW50ZW5uYSAtLT4KICA8cmVjdCB4PSIxNC4zNzUiIHk9IjIuNSIgd2lkdGg9IjEuMjUiIGhlaWdodD0iNy41IiBmaWxsPSIjNTU1IiAvPgogIDxjaXJjbGUgY3g9IjE1IiBjeT0iMi41IiByPSIyIiBmaWxsPSIjZjY2IiAvPgogIDwhLS0gTGVmdCBzaWduYWwgd2F2ZXMgLS0+CiAgPHBhdGggZD0iTSAxMCAxMi41IEMgNy41IDEyLjUgNSAxNC4zNzUgNSAxNi4yNSIgc3Ryb2tlPSIjZjY2IiBzdHJva2Utd2lkdGg9IjIuNSIgZmlsbD0ibm9uZSIgLz4KICA8cGF0aCBkPSJNIDExLjI1IDE1IEMgOS4zNzUgMTUgNy41IDE1LjYyNSA3LjUgMTYuMjUiIHN0cm9rZT0iI2Y2NiIgc3Ryb2tlLXdpZHRoPSIyLjUiIGZpbGw9Im5vbmUiIC8+CiAgPCEtLSBSaWdodCBzaWduYWwgd2F2ZXMgLS0+CiAgPHBhdGggZD0iTSAyMCAxMi41IEMgMjIuNSAxMi41IDI1IDE0LjM3NSAyNSAxNi4yNSIgc3Ryb2tlPSIjZjY2IiBzdHJva2Utd2lkdGg9IjIuNSIgZmlsbD0ibm9uZSIgLz4KICA8cGF0aCBkPSJNIDE4Ljc1IDE1IEMgMjAuNjI1IDE1IDIyLjUgMTUuNjI1IDIyLjUgMTYuMjUiIHN0cm9rZT0iI2Y2NiIgc3Ryb2tlLXdpZHRoPSIyLjUiIGZpbGw9Im5vbmUiIC8+Cjwvc3ZnPg==',
-  iconSize: [30, 30],
-  iconAnchor: [15, 30],
-  popupAnchor: [0, -30]
-});
-
-// Constants for arrow generation
-const ARROW_DISTANCE_THRESHOLD = 0.05; // One arrow per 0.05 degrees
-const MIN_ARROWS_PER_SEGMENT = 1;
-const MAX_ARROWS_PER_SEGMENT = 5;
-const MAX_TOTAL_ARROWS = 50; // Global limit to prevent performance issues
-const ARROW_ROTATION_OFFSET = 180; // Degrees to rotate arrow to point forward
-
-// Helper function to convert role number to readable string - kept for compatibility
-const getRoleName = (role: number | string | undefined): string | null => {
-  if (role === undefined || role === null) return null;
-  const roleNum = typeof role === 'string' ? parseInt(role, 10) : role;
-  if (isNaN(roleNum)) return null;
-  switch (roleNum) {
-    case 0: return 'Client';
-    case 1: return 'Client Mute';
-    case 2: return 'Router';
-    case 4: return 'Repeater';
-    case 11: return 'Router Late';
-    default: return `Role ${roleNum}`;
-  }
-};
-
-// Helper function to generate arrow markers along a path
-const generateArrowMarkers = (
-  positions: [number, number][],
-  pathKey: string,
-  color: string,
-  currentArrowCount: number
-): React.ReactElement[] => {
-  const arrows: React.ReactElement[] = [];
-  let arrowsGenerated = 0;
-
-  for (let i = 0; i < positions.length - 1 && currentArrowCount + arrowsGenerated < MAX_TOTAL_ARROWS; i++) {
-    const start = positions[i];
-    const end = positions[i + 1];
-
-    // Calculate distance to determine number of arrows
-    const latDiff = end[0] - start[0];
-    const lngDiff = end[1] - start[1];
-    const distance = Math.sqrt(latDiff * latDiff + lngDiff * lngDiff);
-
-    // Calculate number of arrows for this segment
-    const numArrows = Math.max(
-      MIN_ARROWS_PER_SEGMENT,
-      Math.min(MAX_ARROWS_PER_SEGMENT, Math.floor(distance / ARROW_DISTANCE_THRESHOLD))
-    );
-
-    // Limit arrows if we're approaching the global limit
-    const arrowsToAdd = Math.min(numArrows, MAX_TOTAL_ARROWS - (currentArrowCount + arrowsGenerated));
-
-    // Calculate angle for arrow direction (pointing from start to end)
-    const angle = Math.atan2(lngDiff, latDiff) * 180 / Math.PI + ARROW_ROTATION_OFFSET;
-
-    for (let j = 0; j < arrowsToAdd; j++) {
-      // Distribute arrows evenly along the segment
-      const t = (j + 1) / (arrowsToAdd + 1);
-      const arrowLat = start[0] + latDiff * t;
-      const arrowLng = start[1] + lngDiff * t;
-
-      const arrowIcon = L.divIcon({
-        html: `<div style="transform: rotate(${angle}deg); font-size: 20px; font-weight: bold;">
-          <span style="color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;">▲</span>
-        </div>`,
-        className: 'arrow-icon',
-        iconSize: [24, 24],
-        iconAnchor: [12, 12]
-      });
-
-      arrows.push(
-        <Marker
-          key={`${pathKey}-arrow-${i}-${j}`}
-          position={[arrowLat, arrowLng]}
-          icon={arrowIcon}
-        />
-      );
-      arrowsGenerated++;
-    }
-  }
-
-  return arrows;
-};
-
-// Types are now imported from separate files
+// Icons and helpers are now imported from utils/
 
 const MapCenterController: React.FC<MapCenterControllerProps> = ({ centerTarget, onCenterComplete }) => {
   const map = useMap();
