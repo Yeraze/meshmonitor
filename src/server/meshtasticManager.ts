@@ -380,12 +380,10 @@ class MeshtasticManager {
       if (this.isConnected) {
         await this.pollForUpdates();
 
-        // Every 30 polls (1 minute), try to request node database again
+        // Note: Removed periodic sendWantConfigId() calls as they trigger full
+        // config dumps from the node, blocking normal mesh traffic. The node
+        // will naturally send nodeInfo updates as they occur on the mesh.
         pollCount++;
-        if (pollCount % 30 === 0) {
-          console.log('Periodic node database refresh...');
-          await this.sendWantConfigId();
-        }
       }
     }, 2000);
   }
