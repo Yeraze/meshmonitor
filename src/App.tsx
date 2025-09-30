@@ -54,10 +54,18 @@ const selectedRouterIcon = new L.Icon({
   popupAnchor: [0, -30]
 });
 
+// Constants for arrow generation
+const ARROW_DISTANCE_THRESHOLD = 0.05; // One arrow per 0.05 degrees
+const MIN_ARROWS_PER_SEGMENT = 1;
+const MAX_ARROWS_PER_SEGMENT = 5;
+const MAX_TOTAL_ARROWS = 50; // Global limit to prevent performance issues
+const ARROW_ROTATION_OFFSET = 180; // Degrees to rotate arrow to point forward
+
 // Helper function to convert role number to readable string - kept for compatibility
 const getRoleName = (role: number | string | undefined): string | null => {
   if (role === undefined || role === null) return null;
-  const roleNum = typeof role === 'string' ? parseInt(role) : role;
+  const roleNum = typeof role === 'string' ? parseInt(role, 10) : role;
+  if (isNaN(roleNum)) return null;
   switch (roleNum) {
     case 0: return 'Client';
     case 1: return 'Client Mute';
@@ -66,6 +74,66 @@ const getRoleName = (role: number | string | undefined): string | null => {
     case 11: return 'Router Late';
     default: return `Role ${roleNum}`;
   }
+};
+
+// Helper function to generate arrow markers along a path
+const generateArrowMarkers = (
+  positions: [number, number][],
+  pathKey: string,
+  color: string,
+  currentArrowCount: number
+): React.ReactElement[] => {
+  const arrows: React.ReactElement[] = [];
+  let arrowsGenerated = 0;
+
+  for (let i = 0; i < positions.length - 1 && currentArrowCount + arrowsGenerated < MAX_TOTAL_ARROWS; i++) {
+    const start = positions[i];
+    const end = positions[i + 1];
+
+    // Calculate distance to determine number of arrows
+    const latDiff = end[0] - start[0];
+    const lngDiff = end[1] - start[1];
+    const distance = Math.sqrt(latDiff * latDiff + lngDiff * lngDiff);
+
+    // Calculate number of arrows for this segment
+    const numArrows = Math.max(
+      MIN_ARROWS_PER_SEGMENT,
+      Math.min(MAX_ARROWS_PER_SEGMENT, Math.floor(distance / ARROW_DISTANCE_THRESHOLD))
+    );
+
+    // Limit arrows if we're approaching the global limit
+    const arrowsToAdd = Math.min(numArrows, MAX_TOTAL_ARROWS - (currentArrowCount + arrowsGenerated));
+
+    // Calculate angle for arrow direction (pointing from start to end)
+    const angle = Math.atan2(lngDiff, latDiff) * 180 / Math.PI + ARROW_ROTATION_OFFSET;
+
+    for (let j = 0; j < arrowsToAdd; j++) {
+      // Distribute arrows evenly along the segment
+      const t = (j + 1) / (arrowsToAdd + 1);
+      const arrowLat = start[0] + latDiff * t;
+      const arrowLng = start[1] + lngDiff * t;
+
+      const arrowIcon = L.divIcon({
+        html: `<div style="transform: rotate(${angle}deg); font-size: 20px; font-weight: bold;">
+          <span style="color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;">▲</span>
+        </div>`,
+        className: 'arrow-icon',
+        iconSize: [24, 24],
+        iconAnchor: [12, 12]
+      });
+
+      arrows.push(
+        <Marker
+          key={`${pathKey}-arrow-${i}-${j}`}
+          position={[arrowLat, arrowLng]}
+          icon={arrowIcon}
+        />
+      );
+      arrowsGenerated++;
+    }
+  }
+
+  return arrows;
 };
 
 // Types are now imported from separate files
@@ -1221,7 +1289,9 @@ function App() {
                   url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                 />
                 {nodesWithPosition.map(node => {
-                  const roleNum = typeof node.user?.role === 'string' ? parseInt(node.user.role) : node.user?.role;
+                  const roleNum = typeof node.user?.role === 'string'
+                    ? parseInt(node.user.role, 10)
+                    : (typeof node.user?.role === 'number' ? node.user.role : 0);
                   const isRouter = roleNum === 2;
                   const isSelected = selectedNodeId === node.user?.id;
                   const markerIcon = isRouter
@@ -1472,47 +1542,14 @@ function App() {
                           </Polyline>
                         );
 
-                        // Add larger, more visible arrow markers along the forward path
-                        for (let i = 0; i < forwardPositions.length - 1; i++) {
-                          const start = forwardPositions[i];
-                          const end = forwardPositions[i + 1];
-
-                          // Calculate distance to determine number of arrows
-                          const latDiff = end[0] - start[0];
-                          const lngDiff = end[1] - start[1];
-                          const distance = Math.sqrt(latDiff * latDiff + lngDiff * lngDiff);
-
-                          // Add more arrows for longer segments (one arrow per 0.05 degrees, minimum 1, maximum 5)
-                          const numArrows = Math.max(1, Math.min(5, Math.floor(distance / 0.05)));
-
-                          // Calculate angle for arrow direction (pointing from start to end)
-                          // Add 180 degrees to flip the arrow direction
-                          const angle = Math.atan2(lngDiff, latDiff) * 180 / Math.PI + 180;
-
-                          for (let j = 0; j < numArrows; j++) {
-                            // Distribute arrows evenly along the segment
-                            const t = (j + 1) / (numArrows + 1);
-                            const arrowLat = start[0] + latDiff * t;
-                            const arrowLng = start[1] + lngDiff * t;
-
-                            const arrowIcon = L.divIcon({
-                              html: `<div style="transform: rotate(${angle}deg); font-size: 20px; font-weight: bold;">
-                                <span style="color: #f38ba8; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;">▲</span>
-                              </div>`,
-                              className: 'arrow-icon',
-                              iconSize: [24, 24],
-                              iconAnchor: [12, 12]
-                            });
-
-                            paths.push(
-                              <Marker
-                                key={`arrow-forward-${i}-${j}`}
-                                position={[arrowLat, arrowLng]}
-                                icon={arrowIcon}
-                              />
-                            );
-                          }
-                        }
+                        // Generate arrow markers for forward path
+                        const forwardArrows = generateArrowMarkers(
+                          forwardPositions,
+                          'forward',
+                          '#f38ba8',
+                          paths.length
+                        );
+                        paths.push(...forwardArrows);
                       }
                     }
 
@@ -1556,47 +1593,14 @@ function App() {
                           </Polyline>
                         );
 
-                        // Add larger, more visible arrow markers along the back path
-                        for (let i = 0; i < backPositions.length - 1; i++) {
-                          const start = backPositions[i];
-                          const end = backPositions[i + 1];
-
-                          // Calculate distance to determine number of arrows
-                          const latDiff = end[0] - start[0];
-                          const lngDiff = end[1] - start[1];
-                          const distance = Math.sqrt(latDiff * latDiff + lngDiff * lngDiff);
-
-                          // Add more arrows for longer segments (one arrow per 0.05 degrees, minimum 1, maximum 5)
-                          const numArrows = Math.max(1, Math.min(5, Math.floor(distance / 0.05)));
-
-                          // Calculate angle for arrow direction (pointing from start to end)
-                          // Add 180 degrees to flip the arrow direction
-                          const angle = Math.atan2(lngDiff, latDiff) * 180 / Math.PI + 180;
-
-                          for (let j = 0; j < numArrows; j++) {
-                            // Distribute arrows evenly along the segment
-                            const t = (j + 1) / (numArrows + 1);
-                            const arrowLat = start[0] + latDiff * t;
-                            const arrowLng = start[1] + lngDiff * t;
-
-                            const arrowIcon = L.divIcon({
-                              html: `<div style="transform: rotate(${angle}deg); font-size: 20px; font-weight: bold;">
-                                <span style="color: #f38ba8; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;">▲</span>
-                              </div>`,
-                              className: 'arrow-icon',
-                              iconSize: [24, 24],
-                              iconAnchor: [12, 12]
-                            });
-
-                            paths.push(
-                              <Marker
-                                key={`arrow-back-${i}-${j}`}
-                                position={[arrowLat, arrowLng]}
-                                icon={arrowIcon}
-                              />
-                            );
-                          }
-                        }
+                        // Generate arrow markers for back path
+                        const backArrows = generateArrowMarkers(
+                          backPositions,
+                          'back',
+                          '#f38ba8',
+                          paths.length
+                        );
+                        paths.push(...backArrows);
                       }
                     }
 
