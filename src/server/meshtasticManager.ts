@@ -59,6 +59,8 @@ class MeshtasticManager {
     firmwareVersion?: string;
     isLocked?: boolean;  // Flag to prevent overwrites after initial setup
   } | null = null;
+  private actualDeviceConfig: any = null;  // Store actual device config
+  private actualModuleConfig: any = null;  // Store actual module config
 
   constructor() {
     this.config = {
@@ -483,9 +485,20 @@ class MeshtasticManager {
           break;
         case 'config':
           console.log('⚙️ Received Config:', JSON.stringify(parsed.data, null, 2));
+          // Merge the actual device configuration (don't overwrite)
+          this.actualDeviceConfig = { ...this.actualDeviceConfig, ...parsed.data };
+          console.log('📊 Merged actualDeviceConfig now has:', Object.keys(this.actualDeviceConfig));
+          break;
+        case 'moduleConfig':
+          console.log('⚙️ Received Module Config:', JSON.stringify(parsed.data, null, 2));
+          // Merge the actual module configuration (don't overwrite)
+          this.actualModuleConfig = { ...this.actualModuleConfig, ...parsed.data };
           break;
         case 'channel':
           await this.processChannelProtobuf(parsed.data);
+          break;
+        case 'configComplete':
+          console.log('✅ Config complete received, ID:', parsed.data.configCompleteId);
           break;
       }
 
@@ -2414,12 +2427,31 @@ class MeshtasticManager {
 
   // Configuration retrieval methods
   async getDeviceConfig(): Promise<any> {
+    // Try to get additional info from JSON report endpoint
+    let jsonReportData: any = null;
+    try {
+      const reportResponse = await this.makeRequest('/json/report');
+      if (reportResponse.ok) {
+        const report = await reportResponse.json();
+        jsonReportData = report.data;
+      }
+    } catch (error) {
+      console.log('Could not fetch JSON report:', error);
+    }
+
+    // If we have actual config data with lora config, use it
+    if (this.actualDeviceConfig?.lora || this.actualModuleConfig) {
+      console.log('Using actualDeviceConfig:', JSON.stringify(this.actualDeviceConfig, null, 2));
+      return this.buildDeviceConfigFromActual(jsonReportData);
+    }
+
+    // Fallback to parsed data if no actual config is available
     try {
       // Request device configuration from Meshtastic node
       const response = await this.makeRequest('/api/v1/fromradio?all=true');
       if (response.ok) {
         const data = await response.arrayBuffer();
-        return this.parseConfigData(new Uint8Array(data));
+        return this.parseConfigDataWithReport(new Uint8Array(data), jsonReportData);
       }
     } catch (error) {
       console.error('Failed to get device config:', error);
@@ -2427,26 +2459,163 @@ class MeshtasticManager {
     return null;
   }
 
-  private parseConfigData(data: Uint8Array): any {
+  private buildDeviceConfigFromActual(jsonReportData?: any): any {
+    const dbChannels = databaseService.getAllChannels();
+    const channels = dbChannels.map(ch => ({
+      index: ch.id,
+      name: ch.name,
+      psk: ch.psk ? 'Set' : 'None',
+      uplinkEnabled: ch.uplinkEnabled,
+      downlinkEnabled: ch.downlinkEnabled
+    }));
+
+    const localNode = this.localNodeInfo as any;
+
+    // Extract actual values from stored config or use sensible defaults
+    const loraConfig = this.actualDeviceConfig?.lora || {};
+    const mqttConfig = this.actualModuleConfig?.mqtt || {};
+
+    console.log('🔍 loraConfig being used:', JSON.stringify(loraConfig, null, 2));
+    console.log('🔍 mqttConfig being used:', JSON.stringify(mqttConfig, null, 2));
+
+    // Map region enum values to strings
+    const regionMap: { [key: number]: string } = {
+      0: 'UNSET',
+      1: 'US',
+      2: 'EU_433',
+      3: 'EU_868',
+      4: 'CN',
+      5: 'JP',
+      6: 'ANZ',
+      7: 'KR',
+      8: 'TW',
+      9: 'RU',
+      10: 'IN',
+      11: 'NZ_865',
+      12: 'TH',
+      13: 'LORA_24',
+      14: 'UA_433',
+      15: 'UA_868'
+    };
+
+    // Map modem preset enum values to strings
+    const modemPresetMap: { [key: number]: string } = {
+      0: 'Long Fast',
+      1: 'Long Slow',
+      2: 'Very Long Slow',
+      3: 'Medium Slow',
+      4: 'Medium Fast',
+      5: 'Short Slow',
+      6: 'Short Fast',
+      7: 'Long Moderate',
+      8: 'Short Turbo'
+    };
+
+    // Convert enum values to human-readable strings
+    const regionValue = typeof loraConfig.region === 'number' ? regionMap[loraConfig.region] || `Unknown (${loraConfig.region})` : loraConfig.region || 'Unknown';
+    const modemPresetValue = typeof loraConfig.modemPreset === 'number' ? modemPresetMap[loraConfig.modemPreset] || `Unknown (${loraConfig.modemPreset})` : loraConfig.modemPreset || 'Unknown';
+
+    // Use JSON report data to supplement missing config
+    const radioData = jsonReportData?.radio || {};
+
+    return {
+      basic: {
+        nodeAddress: this.config.nodeIp,
+        useTls: this.config.useTls,
+        connected: this.isConnected,
+        nodeId: localNode?.nodeId || null,
+        nodeName: localNode?.longName || null,
+        firmwareVersion: localNode?.firmwareVersion || null
+      },
+      radio: {
+        region: regionValue,
+        modemPreset: modemPresetValue,
+        hopLimit: loraConfig.hopLimit !== undefined ? loraConfig.hopLimit : 'Unknown',
+        txPower: loraConfig.txPower !== undefined ? loraConfig.txPower : 'Unknown',
+        bandwidth: loraConfig.bandwidth || 'Unknown',
+        spreadFactor: loraConfig.spreadFactor || 'Unknown',
+        codingRate: loraConfig.codingRate || 'Unknown',
+        channelNum: loraConfig.channelNum !== undefined ? loraConfig.channelNum : (radioData.lora_channel || 'Unknown'),
+        frequency: radioData.frequency ? `${radioData.frequency} MHz` : 'Unknown',
+        txEnabled: loraConfig.txEnabled !== undefined ? loraConfig.txEnabled : 'Unknown',
+        sx126xRxBoostedGain: loraConfig.sx126xRxBoostedGain !== undefined ? loraConfig.sx126xRxBoostedGain : 'Unknown',
+        configOkToMqtt: loraConfig.configOkToMqtt !== undefined ? loraConfig.configOkToMqtt : 'Unknown'
+      },
+      mqtt: {
+        enabled: mqttConfig.enabled || false,
+        server: mqttConfig.address || 'Not configured',
+        username: mqttConfig.username || 'Not set',
+        encryption: mqttConfig.encryptionEnabled || false,
+        json: mqttConfig.jsonEnabled || false,
+        tls: mqttConfig.tlsEnabled || false,
+        rootTopic: mqttConfig.root || 'msh'
+      },
+      channels: channels.length > 0 ? channels : [
+        { index: 0, name: 'Primary', psk: 'None', uplinkEnabled: true, downlinkEnabled: true }
+      ]
+    };
+  }
+
+  private parseConfigDataWithReport(data: Uint8Array, jsonReportData?: any): any {
+    const radioData = jsonReportData?.radio || {};
+
     // Parse actual device configuration from protobuf data
     const text = new TextDecoder('utf-8', { fatal: false }).decode(data);
 
-    // Look for MQTT configuration in the text
-    // Note: This is a best-effort detection. Proper implementation would parse ModuleConfig protobuf
-    const mqttServerMatch = text.match(/([a-z0-9.-]+\.(?:us|com|org|net))/i);
-    const mqttServer = mqttServerMatch?.[1] || '';
-    // Default to true as we cannot reliably detect MQTT status from current data
-    // TODO: Parse ModuleConfig protobuf for accurate MQTT configuration
-    const mqttEnabled = true;
+    // Intelligent region detection based on frequency
+    let region = 'Unknown';
+    const frequency = radioData.frequency;
+    if (frequency) {
+      // Determine region based on frequency band
+      if (frequency >= 902 && frequency <= 928) {
+        region = 'US';
+      } else if (frequency >= 863 && frequency <= 870) {
+        region = 'EU_868';
+      } else if (frequency >= 433.05 && frequency <= 434.79) {
+        region = 'EU_433';
+      } else if (frequency >= 915 && frequency <= 928) {
+        region = 'ANZ';
+      } else if (frequency >= 920 && frequency <= 925) {
+        region = 'JP';
+      } else if (frequency >= 865 && frequency <= 867) {
+        region = 'IN';
+      }
+    }
 
-    // Look for radio configuration hints
-    const regionMatch = text.match(/US|EU|JP|KR|TW|RU|IN|NZ|TH|UA|MY|SG|PH/);
-    const region = regionMatch ? regionMatch[0] : 'US';
+    // Try to infer modem preset from frequency and channel combination
+    // This is based on common Meshtastic configurations
+    let modemPreset = 'Unknown';
+    if (frequency && radioData.lora_channel !== undefined) {
+      // US region channel 45 at 913.125 MHz is commonly Medium Fast
+      // These are heuristics based on common configurations
+      if (region === 'US' && radioData.lora_channel === 45 && Math.abs(frequency - 913.125) < 0.1) {
+        modemPreset = 'Medium Fast';
+      }
+      // Add more heuristics as we learn common patterns
+    }
 
-    // TODO: Parse DeviceMetadata protobuf to get firmware version
-    // For now, firmware version is not available from the current data
+    // MQTT server detection from raw data
+    let mqttEnabled = false;
+    let mqttServer = 'Not configured';
 
-    // Extract channels from the database instead of hardcoded
+    // Look for MQTT server patterns in the raw data
+    const mqttPatterns = [
+      'mqtt.areyoumeshingwith.us',
+      'mqtt.meshtastic.org',
+      'broker.hivemq.com',
+      'test.mosquitto.org'
+    ];
+
+    for (const pattern of mqttPatterns) {
+      if (text.includes(pattern)) {
+        mqttEnabled = true;
+        mqttServer = pattern;
+        console.log(`🔍 Detected MQTT server in raw data: ${pattern}`);
+        break;
+      }
+    }
+
+    // Extract channels from the database
     const dbChannels = databaseService.getAllChannels();
     const channels = dbChannels.map(ch => ({
       index: ch.id,
@@ -2469,20 +2638,25 @@ class MeshtasticManager {
       },
       radio: {
         region: region,
-        modemPreset: 'Medium_Fast',
-        hopLimit: 3,
-        txPower: 30,
-        bandwidth: 250,
-        spreadFactor: 9,
-        codingRate: 8
+        modemPreset: modemPreset,
+        hopLimit: 'Unknown',
+        txPower: 'Unknown',
+        bandwidth: 'Unknown',
+        spreadFactor: 'Unknown',
+        codingRate: 'Unknown',
+        channelNum: radioData.lora_channel || 'Unknown',
+        frequency: radioData.frequency ? `${radioData.frequency} MHz` : 'Unknown',
+        txEnabled: 'Unknown',
+        sx126xRxBoostedGain: 'Unknown',
+        configOkToMqtt: 'Unknown'
       },
       mqtt: {
         enabled: mqttEnabled,
-        server: mqttServer || 'mqtt.areyoumeshingwith.us',
-        username: 'uplink',
-        encryption: true,
-        json: true,
-        tls: true,
+        server: mqttServer,
+        username: 'Not set',
+        encryption: false,
+        json: false,
+        tls: false,
         rootTopic: 'msh'
       },
       channels: channels.length > 0 ? channels : [
