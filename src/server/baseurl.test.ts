@@ -20,15 +20,16 @@ describe('BASE_URL Validation and Normalization', () => {
       url = `/${url}`;
     }
 
+    // Validate against path traversal attempts BEFORE normalization
+    // Check for any form of path traversal: ../, ..\, or .. as a segment
+    if (url.includes('../') || url.includes('..\\') || url.includes('/..')) {
+      console.error(`Invalid BASE_URL: path traversal detected in '${url}'. Using default.`);
+      return '';
+    }
+
     // Remove trailing slashes
     if (url.endsWith('/')) {
       url = url.slice(0, -1);
-    }
-
-    // Validate against path traversal attempts
-    if (url.includes('../') || url.includes('..\\')) {
-      console.error(`Invalid BASE_URL: path traversal detected. Using default.`);
-      return '';
     }
 
     // Validate URL path segments
@@ -36,7 +37,14 @@ describe('BASE_URL Validation and Normalization', () => {
       const segments = url.split('/').filter(Boolean);
       const validSegment = /^[a-zA-Z0-9-_]+$/;
 
+      // Check each segment for path traversal or invalid characters
       for (const segment of segments) {
+        // Reject segments that are exactly '..'
+        if (segment === '..') {
+          console.error(`Invalid BASE_URL: path traversal segment detected. Using default.`);
+          return '';
+        }
+
         if (!validSegment.test(segment)) {
           console.warn(
             `BASE_URL contains invalid characters in segment: ${segment}. Only alphanumeric, hyphens, and underscores are allowed.`
@@ -161,10 +169,11 @@ describe('BASE_URL Validation and Normalization', () => {
 
       const result = validateBaseUrl('/../');
 
-      // The current implementation removes trailing slash leaving '/..'
-      // which still contains traversal and gets logged but isn't fully rejected
-      // This is acceptable since the path traversal check happens
-      expect(result).toBe('/..');
+      // Should now properly detect /.. and reject it completely
+      expect(result).toBe('');
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('path traversal detected')
+      );
 
       consoleErrorSpy.mockRestore();
       consoleWarnSpy.mockRestore();
@@ -187,6 +196,46 @@ describe('BASE_URL Validation and Normalization', () => {
       expect(result).toBe('/mesh monitor');
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining('invalid characters')
+      );
+      consoleSpy.mockRestore();
+    });
+
+    it('should reject path starting with ..', () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const result = validateBaseUrl('/..');
+      expect(result).toBe('');
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('path traversal detected')
+      );
+      consoleSpy.mockRestore();
+    });
+
+    it('should reject path with .. in the middle', () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const result = validateBaseUrl('/foo/../bar');
+      expect(result).toBe('');
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('path traversal detected')
+      );
+      consoleSpy.mockRestore();
+    });
+
+    it('should reject path ending with /..', () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const result = validateBaseUrl('/foo/..');
+      expect(result).toBe('');
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('path traversal detected')
+      );
+      consoleSpy.mockRestore();
+    });
+
+    it('should reject multiple path traversal attempts', () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const result = validateBaseUrl('/../../etc/passwd');
+      expect(result).toBe('');
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('path traversal detected')
       );
       consoleSpy.mockRestore();
     });

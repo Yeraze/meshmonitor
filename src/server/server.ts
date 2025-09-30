@@ -25,15 +25,16 @@ const BASE_URL = (() => {
     baseUrl = `/${baseUrl}`;
   }
 
+  // Validate against path traversal attempts BEFORE normalization
+  // Check for any form of path traversal: ../, ..\, or .. as a segment
+  if (baseUrl.includes('../') || baseUrl.includes('..\\') || baseUrl.includes('/..')) {
+    console.error(`Invalid BASE_URL: path traversal detected in '${baseUrl}'. Using default.`);
+    return '';
+  }
+
   // Remove trailing slashes
   if (baseUrl.endsWith('/')) {
     baseUrl = baseUrl.slice(0, -1);
-  }
-
-  // Validate against path traversal attempts
-  if (baseUrl.includes('../') || baseUrl.includes('..\\')) {
-    console.error(`Invalid BASE_URL: path traversal detected. Using default.`);
-    return '';
   }
 
   // Validate URL path segments
@@ -41,7 +42,14 @@ const BASE_URL = (() => {
     const segments = baseUrl.split('/').filter(Boolean);
     const validSegment = /^[a-zA-Z0-9-_]+$/;
 
+    // Check each segment for path traversal or invalid characters
     for (const segment of segments) {
+      // Reject segments that are exactly '..'
+      if (segment === '..') {
+        console.error(`Invalid BASE_URL: path traversal segment detected. Using default.`);
+        return '';
+      }
+
       if (!validSegment.test(segment)) {
         console.warn(`BASE_URL contains invalid characters in segment: ${segment}. Only alphanumeric, hyphens, and underscores are allowed.`);
       }
