@@ -57,13 +57,20 @@ const InfoTab: React.FC<InfoTabProps> = ({
           <>
             <div className="info-section">
               <h3>LoRa Radio Configuration</h3>
+              {(deviceConfig.radio?.region !== 'Unknown' || deviceConfig.radio?.modemPreset !== 'Unknown') &&
+                deviceConfig.radio?.modemPreset !== 'Long Fast' && deviceConfig.radio?.modemPreset !== 'Short Fast' && (
+                <p style={{ fontSize: '0.9em', fontStyle: 'italic', color: '#888' }}>
+                  ⚠️ Some values are inferred from available data when device config is not fully accessible via HTTP API
+                </p>
+              )}
               <p><strong>Region:</strong> {deviceConfig.radio?.region || 'Unknown'}</p>
               <p><strong>Modem Preset:</strong> {deviceConfig.radio?.modemPreset || 'Unknown'}</p>
-              <p><strong>Hop Limit:</strong> {deviceConfig.radio?.hopLimit || 'Unknown'}</p>
-              <p><strong>TX Power:</strong> {deviceConfig.radio?.txPower ? `${deviceConfig.radio.txPower} dBm` : 'Unknown'}</p>
-              <p><strong>Bandwidth:</strong> {deviceConfig.radio?.bandwidth ? `${deviceConfig.radio.bandwidth} kHz` : 'Unknown'}</p>
-              <p><strong>Spread Factor:</strong> {deviceConfig.radio?.spreadFactor || 'Unknown'}</p>
-              <p><strong>Coding Rate:</strong> {deviceConfig.radio?.codingRate || 'Unknown'}</p>
+              <p><strong>Channel Number:</strong> {deviceConfig.radio?.channelNum !== undefined ? deviceConfig.radio.channelNum : 'Unknown'}</p>
+              <p><strong>Frequency:</strong> {deviceConfig.radio?.frequency || 'Unknown'}</p>
+              <p><strong>Hop Limit:</strong> {deviceConfig.radio?.hopLimit !== undefined ? deviceConfig.radio.hopLimit : 'Unknown'}</p>
+              <p><strong>TX Power:</strong> {deviceConfig.radio?.txPower !== undefined ? `${deviceConfig.radio.txPower} dBm` : 'Unknown'}</p>
+              <p><strong>TX Enabled:</strong> {deviceConfig.radio?.txEnabled !== undefined ? (deviceConfig.radio.txEnabled ? 'Yes' : 'No') : 'Unknown'}</p>
+              <p><strong>Boosted RX Gain:</strong> {deviceConfig.radio?.sx126xRxBoostedGain !== undefined ? (deviceConfig.radio.sx126xRxBoostedGain ? 'Yes' : 'No') : 'Unknown'}</p>
             </div>
 
             <div className="info-section">
