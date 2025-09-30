@@ -2530,3 +2530,19 @@ body {
   color: var(--ctp-text);
   font-family: 'Courier New', monospace;
 }
+
+/* Map Arrow Icons */
+.leaflet-marker-icon.arrow-icon {
+  background: transparent !important;
+  border: none !important;
+  pointer-events: none;
+}
+
+.leaflet-marker-icon.arrow-icon div {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.8);
+}
