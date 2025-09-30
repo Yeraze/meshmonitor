@@ -6,8 +6,11 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies (including native dependencies)
-RUN npm ci
+# Install dependencies with platform-specific handling
+# Delete package-lock to force npm to resolve platform-specific deps
+RUN rm -f package-lock.json && \
+    npm install && \
+    npm rebuild
 
 # Copy source files
 COPY . .
