@@ -145,6 +145,8 @@ class MeshtasticManager {
       let totalBytes = 0;
       let iterationCount = 0;
       const maxIterations = 100; // Safety limit (official UI makes ~11 requests)
+      let consecutiveEmptyCount = 0;
+      const maxConsecutiveEmpty = 3; // Stop after 3 consecutive empty responses
 
       while (iterationCount < maxIterations) {
         iterationCount++;
@@ -162,6 +164,7 @@ class MeshtasticManager {
 
             if (messageData.byteLength > 0) {
               totalBytes += messageData.byteLength;
+              consecutiveEmptyCount = 0; // Reset counter on data received
 
               // Process single FromRadio message
               await this.processIncomingData(messageData);
@@ -171,8 +174,15 @@ class MeshtasticManager {
               const currentChannels = databaseService.getChannelCount();
               console.log(`📈 Current state: ${currentNodes} nodes, ${currentChannels} channels`);
             } else {
-              console.log('✅ Device queue empty, configuration transfer complete');
-              break;
+              consecutiveEmptyCount++;
+              console.log(`📭 Device queue empty (${consecutiveEmptyCount}/${maxConsecutiveEmpty})`);
+
+              // Continue polling a few more times even when queue appears empty
+              // MyNodeInfo and other config data may arrive shortly after initial queue drain
+              if (consecutiveEmptyCount >= maxConsecutiveEmpty) {
+                console.log('✅ Device queue empty, configuration transfer complete');
+                break;
+              }
             }
           } else {
             console.warn(`⚠️ Request failed with status ${response.status}`);
@@ -530,13 +540,40 @@ class MeshtasticManager {
     try {
       console.log('📱 Checking for local node info in database...');
 
-      // Don't try to guess which node is local from the database
-      // We should only use database info if we already know the local node's nodeNum
-      // from a previous MyNodeInfo packet
-      console.log('⚠️ No MyNodeInfo received yet, waiting for device to send local node identification');
+      // Try to load previously saved local node info from settings
+      const savedNodeNum = databaseService.getSetting('localNodeNum');
+      const savedNodeId = databaseService.getSetting('localNodeId');
 
-      // Do not initialize localNodeInfo here - wait for MyNodeInfo packet
-      // This prevents picking a random node from the database as the local node
+      if (savedNodeNum && savedNodeId) {
+        const nodeNum = parseInt(savedNodeNum);
+        console.log(`📱 Found saved local node info: ${savedNodeId} (${nodeNum})`);
+
+        // Try to get full node info from database
+        const node = databaseService.getNode(nodeNum);
+        if (node) {
+          this.localNodeInfo = {
+            nodeNum: nodeNum,
+            nodeId: savedNodeId,
+            longName: node.longName || 'Unknown',
+            shortName: node.shortName || 'UNK',
+            hwModel: node.hwModel || undefined,
+            isLocked: false // Allow updates if MyNodeInfo arrives later
+          } as any;
+          console.log(`✅ Restored local node info from settings: ${savedNodeId}`);
+        } else {
+          // Create minimal local node info
+          this.localNodeInfo = {
+            nodeNum: nodeNum,
+            nodeId: savedNodeId,
+            longName: 'Unknown',
+            shortName: 'UNK',
+            isLocked: false
+          } as any;
+          console.log(`✅ Restored minimal local node info from settings: ${savedNodeId}`);
+        }
+      } else {
+        console.log('⚠️ No MyNodeInfo received yet, waiting for device to send local node identification');
+      }
     } catch (error) {
       console.error('❌ Failed to check local node info:', error);
     }
@@ -560,6 +597,11 @@ class MeshtasticManager {
 
     const nodeNum = Number(myNodeInfo.myNodeNum);
     const nodeId = `!${myNodeInfo.myNodeNum.toString(16).padStart(8, '0')}`;
+
+    // Save local node info to settings for persistence
+    databaseService.setSetting('localNodeNum', nodeNum.toString());
+    databaseService.setSetting('localNodeId', nodeId);
+    console.log(`💾 Saved local node info to settings: ${nodeId} (${nodeNum})`);
 
     // Check if we already have this node with actual names in the database
     const existingNode = databaseService.getNode(nodeNum);
