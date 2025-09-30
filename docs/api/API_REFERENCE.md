@@ -297,6 +297,8 @@ Get list of nodes that have telemetry data.
 ### POST /api/purge/telemetry
 Delete all telemetry data from the database.
 
+**Request Body:** None required
+
 **Response:**
 ```json
 {
@@ -534,24 +536,28 @@ Clean up inactive nodes.
 ```
 
 ### POST /api/purge/nodes
-Delete ALL nodes from the database (dangerous!).
+Delete ALL nodes and traceroutes from the database, then trigger a refresh (dangerous!).
+
+**Request Body:** None required
 
 **Response:**
 ```json
 {
   "success": true,
-  "message": "All nodes purged from database"
+  "message": "All nodes and traceroutes purged, refresh triggered"
 }
 ```
 
 ### POST /api/purge/messages
 Delete ALL messages from the database (dangerous!).
 
+**Request Body:** None required
+
 **Response:**
 ```json
 {
   "success": true,
-  "message": "All messages purged from database"
+  "message": "All messages purged"
 }
 ```
 
