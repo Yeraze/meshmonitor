@@ -161,6 +161,7 @@ If you want to build from source:
 | `MESHTASTIC_USE_TLS` | `false` | Enable HTTPS connection to node |
 | `NODE_ENV` | `development` | Environment mode |
 | `PORT` | `3001` | Server port (production) |
+| `BASE_URL` | (empty) | Base URL path if serving from a subfolder (e.g., `/meshmonitor`) |
 
 ### Meshtastic Node Requirements
 
@@ -195,6 +196,43 @@ location / {
 ### Example: Docker Compose with Authentik
 
 Refer to [Authentik's documentation](https://docs.goauthentik.io/) for setting up a reverse proxy with authentication.
+
+## Reverse Proxy Configuration
+
+MeshMonitor supports being served from a subfolder using the `BASE_URL` environment variable. This allows you to host MeshMonitor at a path like `https://example.com/meshmonitor/` instead of the root.
+
+### nginx Subfolder Example
+
+```nginx
+location ^~ /meshmonitor {
+    # Strip the /meshmonitor prefix when proxying
+    rewrite /meshmonitor(.*) /$1 break;
+
+    proxy_pass http://localhost:8080;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+When using Docker, set the `BASE_URL` environment variable:
+
+```yaml
+services:
+  meshmonitor:
+    image: ghcr.io/yeraze/meshmonitor:latest
+    environment:
+      - BASE_URL=/meshmonitor
+      - MESHTASTIC_NODE_IP=192.168.1.100
+    # ... rest of configuration
+```
+
+Or build with a custom base URL:
+
+```bash
+docker build --build-arg BASE_URL=/meshmonitor -t meshmonitor .
+```
 
 ## Architecture
 
