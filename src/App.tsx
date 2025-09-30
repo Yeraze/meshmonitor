@@ -13,6 +13,8 @@ import { DeviceInfo, Channel } from './types/device'
 import { MeshMessage } from './types/message'
 import { TabType, SortField, SortDirection, ConnectionStatus, MapCenterControllerProps } from './types/ui'
 import api from './services/api'
+import { defaultIcon, selectedIcon, routerIcon, selectedRouterIcon } from './utils/mapIcons'
+import { getRoleName, generateArrowMarkers } from './utils/mapHelpers.tsx'
 
 // Fix for default markers in React-Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -25,36 +27,7 @@ L.Icon.Default.mergeOptions({
   popupAnchor: [0, -24]
 });
 
-// Create reusable icons to prevent recreation issues
-const defaultIcon = new L.Icon({
-  iconUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJDOS4yNCAyIDcgNC4yNCA3IDdDNyAxMy40NyAxMiAyMiAxMiAyMkMxMiAyMiAxNyAxMy40NyAxNyA3QzE3IDQuMjQgMTQuNzYgMiAxMiAyWk0xMiA5LjVDMTAuNjIgOS41IDkuNSA4LjM4IDkuNSA3UzkuNTEgNC41IDExIDQuNVMxNS41IDUuNjIgMTUuNSA3UzE0LjM4IDkuNSAxMiA5LjVaIiBmaWxsPSIjNjY5OGY1Ii8+Cjwvc3ZnPg==',
-  iconSize: [24, 24],
-  iconAnchor: [12, 24],
-  popupAnchor: [0, -24]
-});
-
-const selectedIcon = new L.Icon({
-  iconUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJDOS4yNCAyIDcgNC4yNCA3IDdDNyAxMy40NyAxMiAyMiAxMiAyMkMxMiAyMiAxNyAxMy40NyAxNyA3QzE3IDQuMjQgMTQuNzYgMiAxMiAyWk0xMiA5LjVDMTAuNjIgOS41IDkuNSA4LjM4IDkuNSA3UzkuNTEgNC41IDExIDQuNVMxNS41IDUuNjIgMTUuNSA3UzE0LjM4IDkuNUgxMiA5LjVaIiBmaWxsPSIjZmY2NjY2Ii8+Cjwvc3ZnPg==',
-  iconSize: [30, 30],
-  iconAnchor: [15, 30],
-  popupAnchor: [0, -30]
-});
-
-// Helper function to convert role number to readable string - kept for compatibility
-const getRoleName = (role: number | string | undefined): string | null => {
-  if (role === undefined || role === null) return null;
-  const roleNum = typeof role === 'string' ? parseInt(role) : role;
-  switch (roleNum) {
-    case 0: return 'Client';
-    case 1: return 'Client Mute';
-    case 2: return 'Router';
-    case 4: return 'Repeater';
-    case 11: return 'Router Late';
-    default: return `Role ${roleNum}`;
-  }
-};
-
-// Types are now imported from separate files
+// Icons and helpers are now imported from utils/
 
 const MapCenterController: React.FC<MapCenterControllerProps> = ({ centerTarget, onCenterComplete }) => {
   const map = useMap();
@@ -1206,7 +1179,17 @@ function App() {
                   attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                   url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                 />
-                {nodesWithPosition.map(node => (
+                {nodesWithPosition.map(node => {
+                  const roleNum = typeof node.user?.role === 'string'
+                    ? parseInt(node.user.role, 10)
+                    : (typeof node.user?.role === 'number' ? node.user.role : 0);
+                  const isRouter = roleNum === 2;
+                  const isSelected = selectedNodeId === node.user?.id;
+                  const markerIcon = isRouter
+                    ? (isSelected ? selectedRouterIcon : routerIcon)
+                    : (isSelected ? selectedIcon : defaultIcon);
+
+                  return (
                 <Marker
                   key={node.nodeNum}
                   position={[node.position!.latitude, node.position!.longitude]}
@@ -1215,7 +1198,7 @@ function App() {
                       setSelectedNodeId(node.user?.id || null);
                     }
                   }}
-                  icon={selectedNodeId === node.user?.id ? selectedIcon : defaultIcon}
+                  icon={markerIcon}
                 >
                   <Popup>
                     <div className="node-popup">
@@ -1269,7 +1252,8 @@ function App() {
                     </div>
                   </Popup>
                 </Marker>
-              ))}
+                  );
+                })}
 
                 {/* Draw traceroute paths */}
                 {showRoutes && (() => {
@@ -1283,31 +1267,65 @@ function App() {
 
                   traceroutes.forEach((tr, idx) => {
                     try {
-                      const route = JSON.parse(tr.route || '[]');
-                      const nodeSequence: number[] = [tr.fromNodeNum, ...route, tr.toNodeNum];
-                      const positions: Array<{nodeNum: number; pos: [number, number]}> = [];
+                      // Process forward path
+                      const routeForward = JSON.parse(tr.route || '[]');
+                      // Reverse intermediate hops to get correct direction: source -> hops -> destination
+                      const forwardSequence: number[] = [tr.fromNodeNum, ...routeForward.slice().reverse(), tr.toNodeNum];
+                      const forwardPositions: Array<{nodeNum: number; pos: [number, number]}> = [];
 
-                      // Build node sequence with positions
-                      nodeSequence.forEach((nodeNum) => {
+                      // Build forward sequence with positions
+                      forwardSequence.forEach((nodeNum) => {
                         const node = nodes.find(n => n.nodeNum === nodeNum);
                         if (node?.position?.latitude && node?.position?.longitude) {
-                          positions.push({
+                          forwardPositions.push({
                             nodeNum,
                             pos: [node.position.latitude, node.position.longitude]
                           });
                         }
                       });
 
-                      // Create segments and count usage
-                      for (let i = 0; i < positions.length - 1; i++) {
-                        const from = positions[i];
-                        const to = positions[i + 1];
+                      // Create forward segments and count usage
+                      for (let i = 0; i < forwardPositions.length - 1; i++) {
+                        const from = forwardPositions[i];
+                        const to = forwardPositions[i + 1];
                         const segmentKey = [from.nodeNum, to.nodeNum].sort().join('-');
 
                         segmentUsage.set(segmentKey, (segmentUsage.get(segmentKey) || 0) + 1);
 
                         segmentsList.push({
-                          key: `tr-${idx}-seg-${i}`,
+                          key: `tr-${idx}-fwd-seg-${i}`,
+                          positions: [from.pos, to.pos],
+                          nodeNums: [from.nodeNum, to.nodeNum]
+                        });
+                      }
+
+                      // Process return path
+                      const routeBack = JSON.parse(tr.routeBack || '[]');
+                      // routeBack hops need to be reversed to get correct direction: destination -> hops -> source
+                      const backSequence: number[] = [tr.toNodeNum, ...routeBack.slice().reverse(), tr.fromNodeNum];
+                      const backPositions: Array<{nodeNum: number; pos: [number, number]}> = [];
+
+                      // Build back sequence with positions
+                      backSequence.forEach((nodeNum) => {
+                        const node = nodes.find(n => n.nodeNum === nodeNum);
+                        if (node?.position?.latitude && node?.position?.longitude) {
+                          backPositions.push({
+                            nodeNum,
+                            pos: [node.position.latitude, node.position.longitude]
+                          });
+                        }
+                      });
+
+                      // Create back segments and count usage
+                      for (let i = 0; i < backPositions.length - 1; i++) {
+                        const from = backPositions[i];
+                        const to = backPositions[i + 1];
+                        const segmentKey = [from.nodeNum, to.nodeNum].sort().join('-');
+
+                        segmentUsage.set(segmentKey, (segmentUsage.get(segmentKey) || 0) + 1);
+
+                        segmentsList.push({
+                          key: `tr-${idx}-back-seg-${i}`,
                           positions: [from.pos, to.pos],
                           nodeNums: [from.nodeNum, to.nodeNum]
                         });
@@ -1354,7 +1372,7 @@ function App() {
                   });
                 })()}
 
-                {/* Draw selected node's traceroute in red */}
+                {/* Draw selected node's traceroute with separate forward and back paths */}
                 {selectedNodeId && (() => {
                   const selectedTrace = traceroutes.find(tr =>
                     tr.toNodeId === selectedNodeId || tr.fromNodeId === selectedNodeId
@@ -1363,51 +1381,123 @@ function App() {
                   if (!selectedTrace) return null;
 
                   try {
-                    const route = JSON.parse(selectedTrace.route || '[]');
-                    const nodeSequence: number[] = [selectedTrace.fromNodeNum, ...route, selectedTrace.toNodeNum];
-
-                    const positions: [number, number][] = [];
-
-                    nodeSequence.forEach((nodeNum) => {
-                      const node = processedNodes.find(n => n.nodeNum === nodeNum);
-                      if (node?.position?.latitude && node?.position?.longitude) {
-                        positions.push([node.position.latitude, node.position.longitude]);
-                      }
-                    });
-
-                    if (positions.length < 2) {
-                      return null;
-                    }
+                    const routeForward = JSON.parse(selectedTrace.route || '[]');
+                    const routeBack = JSON.parse(selectedTrace.routeBack || '[]');
 
                     const fromNode = nodes.find(n => n.nodeNum === selectedTrace.fromNodeNum);
                     const toNode = nodes.find(n => n.nodeNum === selectedTrace.toNodeNum);
                     const fromName = fromNode?.user?.longName || fromNode?.user?.shortName || selectedTrace.fromNodeId;
                     const toName = toNode?.user?.longName || toNode?.user?.shortName || selectedTrace.toNodeId;
-                    const hops = route.length;
 
-                    return (
-                      <Polyline
-                        key="selected-traceroute"
-                        positions={positions}
-                        color="#f38ba8"
-                        weight={4}
-                        opacity={0.9}
-                        dashArray="10, 5"
-                      >
-                        <Popup>
-                          <div className="route-popup">
-                            <h4>Selected Traceroute</h4>
-                            <div className="route-endpoints">
-                              <strong>{fromName}</strong> → <strong>{toName}</strong>
-                            </div>
-                            <div className="route-usage">
-                              <strong>{hops}</strong> hop{hops !== 1 ? 's' : ''}
-                            </div>
-                          </div>
-                        </Popup>
-                      </Polyline>
-                    );
+                    const paths = [];
+
+                    // Forward path (from -> to)
+                    // route contains intermediate hops but they're stored in reverse order
+                    // Need to reverse the intermediate hops but keep endpoints correct
+                    if (routeForward.length >= 0) {
+                      // Build path: [source, ...intermediate hops reversed..., destination]
+                      const forwardSequence: number[] = [selectedTrace.fromNodeNum, ...routeForward.slice().reverse(), selectedTrace.toNodeNum];
+                      const forwardPositions: [number, number][] = [];
+
+                      forwardSequence.forEach((nodeNum) => {
+                        const node = processedNodes.find(n => n.nodeNum === nodeNum);
+                        if (node?.position?.latitude && node?.position?.longitude) {
+                          forwardPositions.push([node.position.latitude, node.position.longitude]);
+                        }
+                      });
+
+                      if (forwardPositions.length >= 2) {
+                        paths.push(
+                          <Polyline
+                            key="selected-traceroute-forward"
+                            positions={forwardPositions}
+                            color="#f38ba8"
+                            weight={4}
+                            opacity={0.9}
+                            dashArray="10, 5"
+                          >
+                            <Popup>
+                              <div className="route-popup">
+                                <h4>Forward Path</h4>
+                                <div className="route-endpoints">
+                                  <strong>{toName}</strong> → <strong>{fromName}</strong>
+                                </div>
+                                <div className="route-usage">
+                                  Path: {forwardSequence.slice().reverse().map(num => {
+                                    const n = nodes.find(nd => nd.nodeNum === num);
+                                    return n?.user?.longName || n?.user?.shortName || `!${num.toString(16)}`;
+                                  }).join(' → ')}
+                                </div>
+                              </div>
+                            </Popup>
+                          </Polyline>
+                        );
+
+                        // Generate arrow markers for forward path
+                        const forwardArrows = generateArrowMarkers(
+                          forwardPositions,
+                          'forward',
+                          '#f38ba8',
+                          paths.length
+                        );
+                        paths.push(...forwardArrows);
+                      }
+                    }
+
+                    // Back path (to -> from) - routeBack contains hops from destination back to source
+                    if (routeBack.length >= 0) {
+                      // routeBack hops need to be reversed to get correct direction: destination -> hops -> source
+                      const backSequence: number[] = [selectedTrace.toNodeNum, ...routeBack.slice().reverse(), selectedTrace.fromNodeNum];
+                      const backPositions: [number, number][] = [];
+
+                      backSequence.forEach((nodeNum) => {
+                        const node = processedNodes.find(n => n.nodeNum === nodeNum);
+                        if (node?.position?.latitude && node?.position?.longitude) {
+                          backPositions.push([node.position.latitude, node.position.longitude]);
+                        }
+                      });
+
+                      if (backPositions.length >= 2) {
+                        paths.push(
+                          <Polyline
+                            key="selected-traceroute-back"
+                            positions={backPositions}
+                            color="#f38ba8"
+                            weight={4}
+                            opacity={0.9}
+                            dashArray="5, 10"
+                          >
+                            <Popup>
+                              <div className="route-popup">
+                                <h4>Return Path</h4>
+                                <div className="route-endpoints">
+                                  <strong>{fromName}</strong> → <strong>{toName}</strong>
+                                </div>
+                                <div className="route-usage">
+                                  Path: {backSequence.slice().reverse().map(num => {
+                                    const n = nodes.find(nd => nd.nodeNum === num);
+                                    return n?.user?.longName || n?.user?.shortName || `!${num.toString(16)}`;
+                                  }).join(' → ')}
+                                </div>
+                              </div>
+                            </Popup>
+                          </Polyline>
+                        );
+
+                        // Generate arrow markers for back path
+                        const backArrows = generateArrowMarkers(
+                          backPositions,
+                          'back',
+                          '#f38ba8',
+                          paths.length
+                        );
+                        paths.push(...backArrows);
+                      }
+                    }
+
+                    return paths;
                   } catch (error) {
+                    console.error('Error rendering traceroute:', error);
                     return null;
                   }
                 })()}
