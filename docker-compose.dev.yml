@@ -3,7 +3,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-
     container_name: meshmonitor
     ports:
       - "8080:3001"
@@ -13,6 +12,7 @@ services:
     env_file: .env
     environment:
       - NODE_ENV=production
+      - BASE_URL=${BASE_URL:-}
 
 volumes:
   meshmonitor-data:

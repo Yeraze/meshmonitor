@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import databaseService from '../services/database.js';
 import meshtasticManager from './meshtasticManager.js';
@@ -14,6 +15,15 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+// Validate and normalize BASE_URL
+const BASE_URL = (() => {
+  const baseUrl = process.env.BASE_URL || '';
+  if (baseUrl && !baseUrl.startsWith('/')) {
+    console.warn(`BASE_URL should start with '/'. Fixing: ${baseUrl} -> /${baseUrl}`);
+    return `/${baseUrl}`;
+  }
+  return baseUrl;
+})();
 const serverStartTime = Date.now();
 
 // Custom JSON replacer to handle BigInt values
@@ -70,12 +80,11 @@ setTimeout(() => {
   }
 }, 5000); // Wait 5 seconds after startup
 
-// Serve static files from the React app build
-const buildPath = path.join(__dirname, '../../dist');
-app.use(express.static(buildPath));
+// Create router for API routes
+const apiRouter = express.Router();
 
 // API Routes
-app.get('/api/nodes', (_req, res) => {
+apiRouter.get('/nodes', (_req, res) => {
   try {
     const nodes = meshtasticManager.getAllNodes();
     console.log('🔍 Sending nodes to frontend, sample node:', nodes[0] ? {
@@ -91,7 +100,7 @@ app.get('/api/nodes', (_req, res) => {
   }
 });
 
-app.get('/api/nodes/active', (req, res) => {
+apiRouter.get('/nodes/active', (req, res) => {
   try {
     const days = parseInt(req.query.days as string) || 7;
     const nodes = databaseService.getActiveNodes(days);
@@ -102,7 +111,7 @@ app.get('/api/nodes/active', (req, res) => {
   }
 });
 
-app.get('/api/messages', (req, res) => {
+apiRouter.get('/messages', (req, res) => {
   try {
     const limit = parseInt(req.query.limit as string) || 100;
     const messages = meshtasticManager.getRecentMessages(limit);
@@ -113,7 +122,7 @@ app.get('/api/messages', (req, res) => {
   }
 });
 
-app.get('/api/messages/channel/:channel', (req, res) => {
+apiRouter.get('/messages/channel/:channel', (req, res) => {
   try {
     const requestedChannel = parseInt(req.params.channel);
     const limit = parseInt(req.query.limit as string) || 100;
@@ -139,7 +148,7 @@ app.get('/api/messages/channel/:channel', (req, res) => {
   }
 });
 
-app.get('/api/messages/direct/:nodeId1/:nodeId2', (req, res) => {
+apiRouter.get('/messages/direct/:nodeId1/:nodeId2', (req, res) => {
   try {
     const { nodeId1, nodeId2 } = req.params;
     const limit = parseInt(req.query.limit as string) || 100;
@@ -152,7 +161,7 @@ app.get('/api/messages/direct/:nodeId1/:nodeId2', (req, res) => {
 });
 
 // Debug endpoint to see all channels
-app.get('/api/channels/debug', (_req, res) => {
+apiRouter.get('/channels/debug', (_req, res) => {
   try {
     const allChannels = databaseService.getAllChannels();
     console.log('🔍 DEBUG: All channels in database:', allChannels);
@@ -163,7 +172,7 @@ app.get('/api/channels/debug', (_req, res) => {
   }
 });
 
-app.get('/api/channels', (_req, res) => {
+apiRouter.get('/channels', (_req, res) => {
   try {
     const allChannels = databaseService.getAllChannels();
 
@@ -264,7 +273,7 @@ app.get('/api/channels', (_req, res) => {
   }
 });
 
-app.get('/api/stats', (_req, res) => {
+apiRouter.get('/stats', (_req, res) => {
   try {
     const messageCount = databaseService.getMessageCount();
     const nodeCount = databaseService.getNodeCount();
@@ -283,7 +292,7 @@ app.get('/api/stats', (_req, res) => {
   }
 });
 
-app.post('/api/export', (_req, res) => {
+apiRouter.post('/export', (_req, res) => {
   try {
     const data = databaseService.exportData();
     res.json(data);
@@ -293,7 +302,7 @@ app.post('/api/export', (_req, res) => {
   }
 });
 
-app.post('/api/import', (req, res) => {
+apiRouter.post('/import', (req, res) => {
   try {
     const data = req.body;
     databaseService.importData(data);
@@ -304,7 +313,7 @@ app.post('/api/import', (req, res) => {
   }
 });
 
-app.post('/api/cleanup/messages', (req, res) => {
+apiRouter.post('/cleanup/messages', (req, res) => {
   try {
     const days = parseInt(req.body.days) || 30;
     const deletedCount = databaseService.cleanupOldMessages(days);
@@ -315,7 +324,7 @@ app.post('/api/cleanup/messages', (req, res) => {
   }
 });
 
-app.post('/api/cleanup/nodes', (req, res) => {
+apiRouter.post('/cleanup/nodes', (req, res) => {
   try {
     const days = parseInt(req.body.days) || 30;
     const deletedCount = databaseService.cleanupInactiveNodes(days);
@@ -326,7 +335,7 @@ app.post('/api/cleanup/nodes', (req, res) => {
   }
 });
 
-app.post('/api/cleanup/channels', (_req, res) => {
+apiRouter.post('/cleanup/channels', (_req, res) => {
   try {
     const deletedCount = databaseService.cleanupInvalidChannels();
     res.json({ deletedCount });
@@ -338,7 +347,7 @@ app.post('/api/cleanup/channels', (_req, res) => {
 
 
 // Send message endpoint
-app.post('/api/messages/send', async (req, res) => {
+apiRouter.post('/messages/send', async (req, res) => {
   try {
     const { text, channel, destination } = req.body;
     if (!text || typeof text !== 'string') {
@@ -406,7 +415,7 @@ app.post('/api/messages/send', async (req, res) => {
 });
 
 // Traceroute endpoint
-app.post('/api/traceroute', async (req, res) => {
+apiRouter.post('/traceroute', async (req, res) => {
   try {
     const { destination } = req.body;
     if (!destination) {
@@ -424,7 +433,7 @@ app.post('/api/traceroute', async (req, res) => {
 });
 
 // Get recent traceroutes (last 24 hours)
-app.get('/api/traceroutes/recent', (req, res) => {
+apiRouter.get('/traceroutes/recent', (req, res) => {
   try {
     const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 24;
     const limit = req.query.limit ? parseInt(req.query.limit as string) : 100;
@@ -455,7 +464,7 @@ app.get('/api/traceroutes/recent', (req, res) => {
 });
 
 // Get telemetry data for a node
-app.get('/api/telemetry/:nodeId', (req, res) => {
+apiRouter.get('/telemetry/:nodeId', (req, res) => {
   try {
     const { nodeId } = req.params;
     const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 24;
@@ -475,7 +484,7 @@ app.get('/api/telemetry/:nodeId', (req, res) => {
 });
 
 // Check which nodes have telemetry data
-app.get('/api/telemetry/available/nodes', (_req, res) => {
+apiRouter.get('/telemetry/available/nodes', (_req, res) => {
   try {
     const nodes = databaseService.getAllNodes();
     const nodesWithTelemetry: string[] = [];
@@ -507,7 +516,7 @@ app.get('/api/telemetry/available/nodes', (_req, res) => {
 });
 
 // Connection status endpoint
-app.get('/api/connection', (_req, res) => {
+apiRouter.get('/connection', (_req, res) => {
   try {
     const status = meshtasticManager.getConnectionStatus();
     res.json(status);
@@ -518,15 +527,16 @@ app.get('/api/connection', (_req, res) => {
 });
 
 // Configuration endpoint for frontend
-app.get('/api/config', (_req, res) => {
+apiRouter.get('/config', (_req, res) => {
   res.json({
     meshtasticNodeIp: process.env.MESHTASTIC_NODE_IP || '192.168.1.100',
-    meshtasticUseTls: process.env.MESHTASTIC_USE_TLS === 'true'
+    meshtasticUseTls: process.env.MESHTASTIC_USE_TLS === 'true',
+    baseUrl: BASE_URL
   });
 });
 
 // Device configuration endpoint
-app.get('/api/device-config', async (_req, res) => {
+apiRouter.get('/device-config', async (_req, res) => {
   try {
     const config = await meshtasticManager.getDeviceConfig();
     if (config) {
@@ -541,7 +551,7 @@ app.get('/api/device-config', async (_req, res) => {
 });
 
 // Refresh nodes from device endpoint
-app.post('/api/nodes/refresh', async (_req, res) => {
+apiRouter.post('/nodes/refresh', async (_req, res) => {
   try {
     console.log('🔄 Manual node database refresh requested...');
 
@@ -569,7 +579,7 @@ app.post('/api/nodes/refresh', async (_req, res) => {
 });
 
 // Refresh channels from device endpoint
-app.post('/api/channels/refresh', async (_req, res) => {
+apiRouter.post('/channels/refresh', async (_req, res) => {
   try {
     console.log('🔄 Manual channel refresh requested...');
 
@@ -595,7 +605,7 @@ app.post('/api/channels/refresh', async (_req, res) => {
 });
 
 // Settings endpoints
-app.post('/api/settings/traceroute-interval', (req, res) => {
+apiRouter.post('/settings/traceroute-interval', (req, res) => {
   try {
     const { intervalMinutes } = req.body;
     if (typeof intervalMinutes !== 'number' || intervalMinutes < 1 || intervalMinutes > 60) {
@@ -611,7 +621,7 @@ app.post('/api/settings/traceroute-interval', (req, res) => {
 });
 
 // Get all settings
-app.get('/api/settings', (_req, res) => {
+apiRouter.get('/settings', (_req, res) => {
   try {
     const settings = databaseService.getAllSettings();
     res.json(settings);
@@ -622,7 +632,7 @@ app.get('/api/settings', (_req, res) => {
 });
 
 // Save settings
-app.post('/api/settings', (req, res) => {
+apiRouter.post('/settings', (req, res) => {
   try {
     const settings = req.body;
 
@@ -655,7 +665,7 @@ app.post('/api/settings', (req, res) => {
 });
 
 // Reset settings to defaults
-app.delete('/api/settings', (_req, res) => {
+apiRouter.delete('/settings', (_req, res) => {
   try {
     databaseService.deleteAllSettings();
     // Reset traceroute interval to default
@@ -668,7 +678,7 @@ app.delete('/api/settings', (_req, res) => {
 });
 
 // Danger zone endpoints
-app.post('/api/purge/nodes', async (_req, res) => {
+apiRouter.post('/purge/nodes', async (_req, res) => {
   try {
     databaseService.purgeAllNodes();
     // Trigger a node refresh after purging
@@ -680,7 +690,7 @@ app.post('/api/purge/nodes', async (_req, res) => {
   }
 });
 
-app.post('/api/purge/telemetry', (_req, res) => {
+apiRouter.post('/purge/telemetry', (_req, res) => {
   try {
     databaseService.purgeAllTelemetry();
     res.json({ success: true, message: 'All telemetry data purged' });
@@ -690,7 +700,7 @@ app.post('/api/purge/telemetry', (_req, res) => {
   }
 });
 
-app.post('/api/purge/messages', (_req, res) => {
+apiRouter.post('/purge/messages', (_req, res) => {
   try {
     databaseService.purgeAllMessages();
     res.json({ success: true, message: 'All messages purged' });
@@ -701,7 +711,7 @@ app.post('/api/purge/messages', (_req, res) => {
 });
 
 // System status endpoint
-app.get('/api/system/status', (_req, res) => {
+apiRouter.get('/system/status', (_req, res) => {
   const uptimeSeconds = Math.floor((Date.now() - serverStartTime) / 1000);
   const days = Math.floor(uptimeSeconds / 86400);
   const hours = Math.floor((uptimeSeconds % 86400) / 3600);
@@ -731,7 +741,7 @@ app.get('/api/system/status', (_req, res) => {
 });
 
 // Health check endpoint
-app.get('/api/health', (_req, res) => {
+apiRouter.get('/health', (_req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
@@ -739,10 +749,81 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
-// Catch all handler: send back React's index.html file for client-side routing
-app.use((_req: express.Request, res: express.Response) => {
-  res.sendFile(path.join(buildPath, 'index.html'));
-});
+// Serve static files from the React app build
+const buildPath = path.join(__dirname, '../../dist');
+
+// Mount API router first - this must come before static file serving
+if (BASE_URL) {
+  app.use(`${BASE_URL}/api`, apiRouter);
+} else {
+  app.use('/api', apiRouter);
+}
+
+// Function to rewrite HTML with BASE_URL at runtime
+const rewriteHtml = (htmlContent: string, baseUrl: string): string => {
+  if (!baseUrl) return htmlContent;
+
+  // Replace asset paths in the HTML
+  return htmlContent
+    .replace(/href="\/assets\//g, `href="${baseUrl}/assets/`)
+    .replace(/src="\/assets\//g, `src="${baseUrl}/assets/`)
+    .replace(/href="\/vite\.svg"/g, `href="${baseUrl}/vite.svg"`);
+};
+
+// Cache for rewritten HTML to avoid repeated file reads
+let cachedHtml: string | null = null;
+let cachedRewrittenHtml: string | null = null;
+
+// Serve static assets (JS, CSS, images)
+if (BASE_URL) {
+  // Serve assets folder specifically
+  app.use(`${BASE_URL}/assets`, express.static(path.join(buildPath, 'assets')));
+  // Serve other static files (like vite.svg) - but exclude /api
+  app.use(BASE_URL, (req, res, next) => {
+    // Skip if this is an API route
+    if (req.path.startsWith('/api')) {
+      return next();
+    }
+    express.static(buildPath, { index: false })(req, res, next);
+  });
+
+  // Catch all handler for SPA routing - but exclude /api
+  app.get(`${BASE_URL}`, (_req: express.Request, res: express.Response) => {
+    // Use cached HTML if available, otherwise read and cache
+    if (!cachedRewrittenHtml) {
+      const htmlPath = path.join(buildPath, 'index.html');
+      cachedHtml = fs.readFileSync(htmlPath, 'utf-8');
+      cachedRewrittenHtml = rewriteHtml(cachedHtml, BASE_URL);
+    }
+    res.type('html').send(cachedRewrittenHtml);
+  });
+  // Use a route pattern that Express 5 can handle
+  app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+    // Skip if this is not under our BASE_URL
+    if (!req.path.startsWith(BASE_URL)) {
+      return next();
+    }
+    // Skip if this is an API route
+    if (req.path.startsWith(`${BASE_URL}/api`)) {
+      return next();
+    }
+    // Serve cached rewritten HTML for all other routes under BASE_URL
+    if (!cachedRewrittenHtml) {
+      const htmlPath = path.join(buildPath, 'index.html');
+      cachedHtml = fs.readFileSync(htmlPath, 'utf-8');
+      cachedRewrittenHtml = rewriteHtml(cachedHtml, BASE_URL);
+    }
+    res.type('html').send(cachedRewrittenHtml);
+  });
+} else {
+  // Normal static file serving for root deployment
+  app.use(express.static(buildPath));
+
+  // Catch all handler for SPA routing
+  app.use((_req: express.Request, res: express.Response) => {
+    res.sendFile(path.join(buildPath, 'index.html'));
+  });
+}
 
 // Error handling middleware
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

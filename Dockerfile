@@ -15,7 +15,7 @@ RUN rm -f package-lock.json && \
 # Copy source files
 COPY . .
 
-# Build the React application
+# Build the React application (always for root, will be rewritten at runtime)
 RUN npm run build
 
 # Build the server
