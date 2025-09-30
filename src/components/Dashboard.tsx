@@ -125,7 +125,7 @@ const Dashboard: React.FC<DashboardProps> = ({ temperatureUnit = 'C', telemetryH
     const interval = setInterval(fetchFavoritesAndNodes, 30000); // Refresh every 30 seconds
 
     return () => clearInterval(interval);
-  }, [telemetryHours]);
+  }, [telemetryHours, baseUrl]);
 
   const prepareChartData = (data: TelemetryData[], isTemperature: boolean = false): ChartData[] => {
     return data
@@ -168,6 +168,25 @@ const Dashboard: React.FC<DashboardProps> = ({ temperatureUnit = 'C', telemetryH
       ch1Current: '#ff6b9d'
     };
     return colors[type] || '#8884d8';
+  };
+
+  // Calculate global time range across all telemetry data
+  const getGlobalTimeRange = (): [number, number] | null => {
+    let minTime = Infinity;
+    let maxTime = -Infinity;
+
+    telemetryData.forEach((data) => {
+      data.forEach((item) => {
+        if (item.timestamp < minTime) minTime = item.timestamp;
+        if (item.timestamp > maxTime) maxTime = item.timestamp;
+      });
+    });
+
+    if (minTime === Infinity || maxTime === -Infinity) {
+      return null;
+    }
+
+    return [minTime, maxTime];
   };
 
   const removeFavorite = async (nodeId: string, telemetryType: string) => {
@@ -214,6 +233,9 @@ const Dashboard: React.FC<DashboardProps> = ({ temperatureUnit = 'C', telemetryH
       </div>
     );
   }
+
+  // Get global time range for all charts
+  const globalTimeRange = getGlobalTimeRange();
 
   return (
     <div className="dashboard">
@@ -288,7 +310,7 @@ const Dashboard: React.FC<DashboardProps> = ({ temperatureUnit = 'C', telemetryH
                   <XAxis
                     dataKey="timestamp"
                     type="number"
-                    domain={['dataMin', 'dataMax']}
+                    domain={globalTimeRange || ['dataMin', 'dataMax']}
                     tick={{ fontSize: 12 }}
                     tickFormatter={(timestamp) => new Date(timestamp).toLocaleTimeString([], {
                       hour: '2-digit',
