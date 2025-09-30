@@ -161,6 +161,7 @@ If you want to build from source:
 | `MESHTASTIC_USE_TLS` | `false` | Enable HTTPS connection to node |
 | `NODE_ENV` | `development` | Environment mode |
 | `PORT` | `3001` | Server port (production) |
+| `BASE_URL` | (empty) | Runtime base URL path for subfolder deployment (e.g., `/meshmonitor`) |
 
 ### Meshtastic Node Requirements
 
@@ -195,6 +196,56 @@ location / {
 ### Example: Docker Compose with Authentik
 
 Refer to [Authentik's documentation](https://docs.goauthentik.io/) for setting up a reverse proxy with authentication.
+
+## Reverse Proxy Configuration
+
+MeshMonitor supports being served from a subfolder using the `BASE_URL` environment variable. This allows you to host MeshMonitor at a path like `https://example.com/meshmonitor/` instead of the root.
+
+**Important:** BASE_URL is now a **runtime-only** configuration. You can use the same Docker image for any base path - just set the BASE_URL environment variable when running the container.
+
+### nginx Subfolder Example
+
+```nginx
+location ^~ /meshmonitor {
+    # Strip the /meshmonitor prefix when proxying
+    rewrite /meshmonitor(.*) /$1 break;
+
+    proxy_pass http://localhost:8080;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+### Docker Configuration
+
+Simply set the `BASE_URL` environment variable at runtime:
+
+```yaml
+services:
+  meshmonitor:
+    image: ghcr.io/yeraze/meshmonitor:latest
+    environment:
+      - BASE_URL=/meshmonitor  # Set at runtime, no rebuild needed!
+      - MESHTASTIC_NODE_IP=192.168.1.100
+    # ... rest of configuration
+```
+
+Or with docker run:
+
+```bash
+docker run -d \
+  -p 8080:3001 \
+  -e BASE_URL=/meshmonitor \
+  -e MESHTASTIC_NODE_IP=192.168.1.100 \
+  ghcr.io/yeraze/meshmonitor:latest
+```
+
+The HTML is dynamically rewritten at runtime to include the correct base path for all assets and API calls. This means:
+- ✅ No need to rebuild the image for different base paths
+- ✅ The same image works for root (`/`) or any subfolder path
+- ✅ Can be changed by simply restarting the container with a different BASE_URL
 
 ## Architecture
 
