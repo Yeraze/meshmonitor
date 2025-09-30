@@ -15,7 +15,15 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-const BASE_URL = process.env.BASE_URL || '';
+// Validate and normalize BASE_URL
+const BASE_URL = (() => {
+  const baseUrl = process.env.BASE_URL || '';
+  if (baseUrl && !baseUrl.startsWith('/')) {
+    console.warn(`BASE_URL should start with '/'. Fixing: ${baseUrl} -> /${baseUrl}`);
+    return `/${baseUrl}`;
+  }
+  return baseUrl;
+})();
 const serverStartTime = Date.now();
 
 // Custom JSON replacer to handle BigInt values
@@ -762,6 +770,10 @@ const rewriteHtml = (htmlContent: string, baseUrl: string): string => {
     .replace(/href="\/vite\.svg"/g, `href="${baseUrl}/vite.svg"`);
 };
 
+// Cache for rewritten HTML to avoid repeated file reads
+let cachedHtml: string | null = null;
+let cachedRewrittenHtml: string | null = null;
+
 // Serve static assets (JS, CSS, images)
 if (BASE_URL) {
   // Serve assets folder specifically
@@ -777,11 +789,13 @@ if (BASE_URL) {
 
   // Catch all handler for SPA routing - but exclude /api
   app.get(`${BASE_URL}`, (_req: express.Request, res: express.Response) => {
-    // Read and rewrite HTML at runtime
-    const htmlPath = path.join(buildPath, 'index.html');
-    const html = fs.readFileSync(htmlPath, 'utf-8');
-    const rewrittenHtml = rewriteHtml(html, BASE_URL);
-    res.type('html').send(rewrittenHtml);
+    // Use cached HTML if available, otherwise read and cache
+    if (!cachedRewrittenHtml) {
+      const htmlPath = path.join(buildPath, 'index.html');
+      cachedHtml = fs.readFileSync(htmlPath, 'utf-8');
+      cachedRewrittenHtml = rewriteHtml(cachedHtml, BASE_URL);
+    }
+    res.type('html').send(cachedRewrittenHtml);
   });
   // Use a route pattern that Express 5 can handle
   app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -793,11 +807,13 @@ if (BASE_URL) {
     if (req.path.startsWith(`${BASE_URL}/api`)) {
       return next();
     }
-    // Serve rewritten index.html for all other routes under BASE_URL
-    const htmlPath = path.join(buildPath, 'index.html');
-    const html = fs.readFileSync(htmlPath, 'utf-8');
-    const rewrittenHtml = rewriteHtml(html, BASE_URL);
-    res.type('html').send(rewrittenHtml);
+    // Serve cached rewritten HTML for all other routes under BASE_URL
+    if (!cachedRewrittenHtml) {
+      const htmlPath = path.join(buildPath, 'index.html');
+      cachedHtml = fs.readFileSync(htmlPath, 'utf-8');
+      cachedRewrittenHtml = rewriteHtml(cachedHtml, BASE_URL);
+    }
+    res.type('html').send(cachedRewrittenHtml);
   });
 } else {
   // Normal static file serving for root deployment
