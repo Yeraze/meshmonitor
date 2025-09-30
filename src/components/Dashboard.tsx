@@ -47,9 +47,10 @@ interface ChartData {
 interface DashboardProps {
   temperatureUnit?: TemperatureUnit;
   telemetryHours?: number;
+  baseUrl: string;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ temperatureUnit = 'C', telemetryHours = 24 }) => {
+const Dashboard: React.FC<DashboardProps> = ({ temperatureUnit = 'C', telemetryHours = 24, baseUrl }) => {
   const [favorites, setFavorites] = useState<FavoriteChart[]>([]);
   const [telemetryData, setTelemetryData] = useState<Map<string, TelemetryData[]>>(new Map());
   const [nodes, setNodes] = useState<Map<string, NodeInfo>>(new Map());
@@ -63,7 +64,7 @@ const Dashboard: React.FC<DashboardProps> = ({ temperatureUnit = 'C', telemetryH
         setLoading(true);
 
         // Fetch favorites from settings
-        const settingsResponse = await fetch('/api/settings');
+        const settingsResponse = await fetch(`${baseUrl}/api/settings`);
         if (!settingsResponse.ok) {
           throw new Error('Failed to fetch settings');
         }
@@ -76,7 +77,7 @@ const Dashboard: React.FC<DashboardProps> = ({ temperatureUnit = 'C', telemetryH
         setFavorites(favoritesArray);
 
         // Fetch node information
-        const nodesResponse = await fetch('/api/nodes');
+        const nodesResponse = await fetch(`${baseUrl}/api/nodes`);
         if (!nodesResponse.ok) {
           throw new Error('Failed to fetch nodes');
         }
@@ -96,7 +97,7 @@ const Dashboard: React.FC<DashboardProps> = ({ temperatureUnit = 'C', telemetryH
         await Promise.all(
           favoritesArray.map(async (favorite) => {
             try {
-              const response = await fetch(`/api/telemetry/${favorite.nodeId}?hours=${telemetryHours}`);
+              const response = await fetch(`${baseUrl}/api/telemetry/${favorite.nodeId}?hours=${telemetryHours}`);
               if (response.ok) {
                 const data: TelemetryData[] = await response.json();
                 // Filter to only get the specific telemetry type
@@ -185,7 +186,7 @@ const Dashboard: React.FC<DashboardProps> = ({ temperatureUnit = 'C', telemetryH
       setTelemetryData(newTelemetryData);
 
       // Save to server
-      await fetch('/api/settings', {
+      await fetch(`${baseUrl}/api/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ telemetryFavorites: JSON.stringify(newFavorites) })

@@ -18,6 +18,7 @@ interface TelemetryGraphsProps {
   nodeId: string;
   temperatureUnit?: TemperatureUnit;
   telemetryHours?: number;
+  baseUrl?: string;
 }
 
 interface ChartData {
@@ -31,7 +32,7 @@ interface FavoriteChart {
   telemetryType: string;
 }
 
-const TelemetryGraphs: React.FC<TelemetryGraphsProps> = ({ nodeId, temperatureUnit = 'C', telemetryHours = 24 }) => {
+const TelemetryGraphs: React.FC<TelemetryGraphsProps> = ({ nodeId, temperatureUnit = 'C', telemetryHours = 24, baseUrl = '' }) => {
   const [telemetryData, setTelemetryData] = useState<TelemetryData[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +42,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = ({ nodeId, temperatureUn
   useEffect(() => {
     const fetchFavorites = async () => {
       try {
-        const response = await fetch('/api/settings');
+        const response = await fetch(`${baseUrl}/api/settings`);
         if (response.ok) {
           const settings = await response.json();
           if (settings.telemetryFavorites) {
@@ -67,7 +68,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = ({ nodeId, temperatureUn
     const fetchTelemetry = async () => {
       try {
         if (isMounted) setLoading(true);
-        const response = await fetch(`/api/telemetry/${nodeId}?hours=${telemetryHours}`);
+        const response = await fetch(`${baseUrl}/api/telemetry/${nodeId}?hours=${telemetryHours}`);
 
         if (!response.ok) {
           throw new Error(`Failed to fetch telemetry: ${response.status} ${response.statusText}`);
@@ -112,7 +113,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = ({ nodeId, temperatureUn
     // Save to server
     try {
       // First fetch existing favorites for all nodes
-      const settingsResponse = await fetch('/api/settings');
+      const settingsResponse = await fetch(`${baseUrl}/api/settings`);
       let allFavorites: FavoriteChart[] = [];
 
       if (settingsResponse.ok) {
@@ -130,7 +131,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = ({ nodeId, temperatureUn
       });
 
       // Save updated favorites
-      await fetch('/api/settings', {
+      await fetch(`${baseUrl}/api/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ telemetryFavorites: JSON.stringify(allFavorites) })

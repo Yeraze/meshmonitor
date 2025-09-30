@@ -171,6 +171,11 @@ class ApiService {
     return response.json();
   }
 
+  async getBaseUrl(): Promise<string> {
+    await this.ensureBaseUrl();
+    return this.baseUrl;
+  }
+
   async getNodesWithTelemetry(): Promise<string[]> {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/telemetry/available/nodes`);
