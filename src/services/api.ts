@@ -11,42 +11,112 @@ import {
 class ApiService {
   private baseUrl = '';
   private configFetched = false;
+  private configPromise: Promise<void> | null = null;
 
   private async ensureBaseUrl() {
-    if (!this.configFetched) {
+    // If config is already fetched, return immediately
+    if (this.configFetched) {
+      return;
+    }
+
+    // If a config fetch is already in progress, wait for it
+    if (this.configPromise) {
+      return this.configPromise;
+    }
+
+    // Start the config fetch and store the promise for deduplication
+    this.configPromise = this.fetchConfigWithRetry();
+
+    try {
+      await this.configPromise;
+    } finally {
+      // Clear the promise after completion (success or failure)
+      this.configPromise = null;
+    }
+  }
+
+  private async fetchConfigWithRetry(maxRetries = 3): Promise<void> {
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
         // Get the base path from the current location
-        // If we're at /meshmonitor/something, extract /meshmonitor
         const pathname = window.location.pathname;
         const pathParts = pathname.split('/').filter(Boolean);
 
-        // Try to determine if we're running under a base path
-        let potentialBase = '';
+        // Build potential base paths from multiple segments
+        // For /company/tools/meshmonitor, try:
+        // 1. /api/config (root)
+        // 2. /company/tools/meshmonitor/api/config
+        // 3. /company/tools/api/config
+        // 4. /company/api/config
+        const potentialPaths: string[] = ['/api/config'];
 
-        // First try to fetch config from root
-        let response = await fetch('/api/config');
-
-        // If that fails and we're not at root, try with a potential base path
-        if (!response.ok && pathParts.length > 0) {
-          potentialBase = '/' + pathParts[0];
-          response = await fetch(`${potentialBase}/api/config`);
+        // Add paths from most specific to least specific
+        for (let i = pathParts.length; i > 0; i--) {
+          const basePath = '/' + pathParts.slice(0, i).join('/');
+          potentialPaths.push(`${basePath}/api/config`);
         }
 
-        if (response.ok) {
-          const config = await response.json();
-          this.baseUrl = config.baseUrl || potentialBase || '';
-          this.configFetched = true;
-        } else {
-          this.baseUrl = potentialBase || '';
-          this.configFetched = true;
+        // Try each potential path
+        for (const configPath of potentialPaths) {
+          try {
+            const response = await fetch(configPath);
+
+            if (response.ok) {
+              const config = await response.json();
+              this.baseUrl = config.baseUrl || '';
+              this.configFetched = true;
+              return; // Success, exit
+            }
+          } catch {
+            // Continue to next path
+            continue;
+          }
         }
-      } catch (error) {
-        // Fallback to no base URL if config fetch fails
-        console.warn('Failed to fetch initial config, using default base URL');
+
+        // If no config endpoint worked but we have path segments,
+        // use the full path as the base URL (most likely scenario)
+        if (pathParts.length > 0) {
+          // Remove any trailing segments that look like app routes (not part of base path)
+          // Keep segments until we hit something that looks like a route
+          const appRoutes = ['nodes', 'channels', 'messages', 'settings', 'info', 'dashboard'];
+          let baseSegments = [];
+
+          for (const segment of pathParts) {
+            if (appRoutes.includes(segment.toLowerCase())) {
+              break; // Stop at app routes
+            }
+            baseSegments.push(segment);
+          }
+
+          if (baseSegments.length > 0) {
+            this.baseUrl = '/' + baseSegments.join('/');
+            this.configFetched = true;
+            console.warn(`Using inferred base URL: ${this.baseUrl}`);
+            return;
+          }
+        }
+
+        // Default to no base URL
         this.baseUrl = '';
         this.configFetched = true;
+        return;
+
+      } catch (error) {
+        lastError = error as Error;
+
+        // Wait before retrying (exponential backoff)
+        if (attempt < maxRetries - 1) {
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+        }
       }
     }
+
+    // All retries failed, use fallback
+    console.warn('Failed to fetch config after retries, using default base URL', lastError);
+    this.baseUrl = '';
+    this.configFetched = true;
   }
 
   async getConfig() {

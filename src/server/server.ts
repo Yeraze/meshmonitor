@@ -17,11 +17,42 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 // Validate and normalize BASE_URL
 const BASE_URL = (() => {
-  const baseUrl = process.env.BASE_URL || '';
+  let baseUrl = process.env.BASE_URL || '';
+
+  // Ensure BASE_URL starts with /
   if (baseUrl && !baseUrl.startsWith('/')) {
     console.warn(`BASE_URL should start with '/'. Fixing: ${baseUrl} -> /${baseUrl}`);
-    return `/${baseUrl}`;
+    baseUrl = `/${baseUrl}`;
   }
+
+  // Remove trailing slashes
+  if (baseUrl.endsWith('/')) {
+    baseUrl = baseUrl.slice(0, -1);
+  }
+
+  // Validate against path traversal attempts
+  if (baseUrl.includes('../') || baseUrl.includes('..\\')) {
+    console.error(`Invalid BASE_URL: path traversal detected. Using default.`);
+    return '';
+  }
+
+  // Validate URL path segments
+  if (baseUrl) {
+    const segments = baseUrl.split('/').filter(Boolean);
+    const validSegment = /^[a-zA-Z0-9-_]+$/;
+
+    for (const segment of segments) {
+      if (!validSegment.test(segment)) {
+        console.warn(`BASE_URL contains invalid characters in segment: ${segment}. Only alphanumeric, hyphens, and underscores are allowed.`);
+      }
+    }
+
+    // Log multi-segment paths for visibility
+    if (segments.length > 1) {
+      console.log(`Using multi-segment BASE_URL: ${baseUrl} (${segments.length} segments)`);
+    }
+  }
+
   return baseUrl;
 })();
 const serverStartTime = Date.now();
