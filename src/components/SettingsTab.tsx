@@ -8,6 +8,7 @@ interface SettingsTabProps {
   tracerouteIntervalMinutes: number;
   temperatureUnit: TemperatureUnit;
   telemetryVisualizationHours: number;
+  baseUrl: string;
   onMaxNodeAgeChange: (hours: number) => void;
   onTracerouteIntervalChange: (minutes: number) => void;
   onTemperatureUnitChange: (unit: TemperatureUnit) => void;
@@ -19,6 +20,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   tracerouteIntervalMinutes,
   temperatureUnit,
   telemetryVisualizationHours,
+  baseUrl,
   onMaxNodeAgeChange,
   onTracerouteIntervalChange,
   onTemperatureUnitChange,
@@ -62,7 +64,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       };
 
       // Save to server
-      await fetch('/api/settings', {
+      await fetch(`${baseUrl}/api/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(settings)
@@ -99,7 +101,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
 
     setIsSaving(true);
     try {
-      await fetch('/api/settings', {
+      await fetch(`${baseUrl}/api/settings`, {
         method: 'DELETE'
       });
 
@@ -194,7 +196,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   return (
     <div className="tab-content">
       <div className="settings-header-card">
-        <img src="/logo.png" alt="MeshMonitor Logo" className="settings-logo" />
+        <img src={`${baseUrl}/logo.png`} alt="MeshMonitor Logo" className="settings-logo" />
         <div className="settings-title-section">
           <h1 className="settings-app-name">MeshMonitor</h1>
           <p className="settings-version">Version {version}</p>

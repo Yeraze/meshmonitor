@@ -17,6 +17,7 @@ interface InfoTabProps {
   currentNodeId: string;
   temperatureUnit: TemperatureUnit;
   telemetryHours: number;
+  baseUrl: string;
   getAvailableChannels: () => number[];
 }
 
@@ -31,6 +32,7 @@ const InfoTab: React.FC<InfoTabProps> = ({
   currentNodeId,
   temperatureUnit,
   telemetryHours,
+  baseUrl,
   getAvailableChannels
 }) => {
   return (
@@ -120,7 +122,7 @@ const InfoTab: React.FC<InfoTabProps> = ({
       {currentNodeId && connectionStatus === 'connected' && (
         <div className="info-section-full-width">
           <h3>Local Node Telemetry</h3>
-          <TelemetryGraphs nodeId={currentNodeId} temperatureUnit={temperatureUnit} telemetryHours={telemetryHours} />
+          <TelemetryGraphs nodeId={currentNodeId} temperatureUnit={temperatureUnit} telemetryHours={telemetryHours} baseUrl={baseUrl} />
         </div>
       )}
     </div>
