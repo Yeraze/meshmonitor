@@ -12,6 +12,7 @@ import { type TemperatureUnit } from './utils/temperature'
 import { DeviceInfo, Channel } from './types/device'
 import { MeshMessage } from './types/message'
 import { TabType, SortField, SortDirection, ConnectionStatus, MapCenterControllerProps } from './types/ui'
+import api from './services/api'
 
 // Fix for default markers in React-Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -97,6 +98,7 @@ function App() {
   const [traceroutes, setTraceroutes] = useState<any[]>([])
   const [nodesWithTelemetry, setNodesWithTelemetry] = useState<Set<string>>(new Set())
   const [nodesWithWeatherTelemetry, setNodesWithWeatherTelemetry] = useState<Set<string>>(new Set())
+  const [baseUrl, setBaseUrl] = useState<string>('')
 
   // Settings
   const [maxNodeAgeHours, setMaxNodeAgeHours] = useState<number>(() => {
@@ -182,16 +184,20 @@ function App() {
     const initializeApp = async () => {
       try {
         // Load configuration from server
-        const configResponse = await fetch('/api/config');
-        if (configResponse.ok) {
-          const config = await configResponse.json();
+        let configBaseUrl = '';
+        try {
+          const config = await api.getConfig();
           setNodeAddress(config.meshtasticNodeIp);
-        } else {
+          configBaseUrl = config.baseUrl || '';
+          setBaseUrl(configBaseUrl);
+        } catch (error) {
+          console.error('Failed to load config:', error);
           setNodeAddress('192.168.1.100');
+          setBaseUrl('');
         }
 
         // Load settings from server
-        const settingsResponse = await fetch('/api/settings');
+        const settingsResponse = await fetch(`${configBaseUrl}/api/settings`);
         if (settingsResponse.ok) {
           const settings = await settingsResponse.json();
 
@@ -220,8 +226,8 @@ function App() {
           }
         }
 
-        // Check connection status
-        await checkConnectionStatus();
+        // Check connection status with the loaded baseUrl
+        await checkConnectionStatus(configBaseUrl);
       } catch (error) {
         setNodeAddress('192.168.1.100');
         setError('Failed to load configuration');
@@ -309,7 +315,7 @@ function App() {
   const requestFullNodeDatabase = async () => {
     try {
       console.log('📡 Requesting full node database refresh...');
-      const response = await fetch('/api/nodes/refresh', {
+      const response = await fetch(`${baseUrl}/api/nodes/refresh`, {
         method: 'POST'
       });
 
@@ -325,9 +331,11 @@ function App() {
     }
   };
 
-  const checkConnectionStatus = async () => {
+  const checkConnectionStatus = async (providedBaseUrl?: string) => {
+    // Use the provided baseUrl or fall back to the state value
+    const urlBase = providedBaseUrl !== undefined ? providedBaseUrl : baseUrl;
     try {
-      const response = await fetch('/api/connection');
+      const response = await fetch(`${urlBase}/api/connection`);
       if (response.ok) {
         const status = await response.json();
         if (status.connected) {
@@ -340,7 +348,7 @@ function App() {
             // Backend already requested full configuration on startup,
             // so we just need to fetch the data that's already available
             try {
-              await fetchChannels(); // Fetch channels first
+              await fetchChannels(urlBase); // Fetch channels first with the correct baseUrl
               await updateDataFromBackend(); // Then get current data
               setConnectionStatus('connected');
               console.log('✅ Initialization complete');
@@ -366,7 +374,7 @@ function App() {
 
   const fetchTraceroutes = async () => {
     try {
-      const response = await fetch('/api/traceroutes/recent');
+      const response = await fetch(`${baseUrl}/api/traceroutes/recent`);
       if (response.ok) {
         const data = await response.json();
         setTraceroutes(data);
@@ -378,7 +386,7 @@ function App() {
 
   const fetchNodesWithTelemetry = async () => {
     try {
-      const response = await fetch('/api/telemetry/available/nodes');
+      const response = await fetch(`${baseUrl}/api/telemetry/available/nodes`);
       if (response.ok) {
         const data = await response.json();
         setNodesWithTelemetry(new Set(data.nodes));
@@ -391,7 +399,7 @@ function App() {
 
   const fetchSystemStatus = async () => {
     try {
-      const response = await fetch('/api/system/status');
+      const response = await fetch(`${baseUrl}/api/system/status`);
       if (response.ok) {
         const data = await response.json();
         setSystemStatus(data);
@@ -402,9 +410,11 @@ function App() {
     }
   };
 
-  const fetchChannels = async () => {
+  const fetchChannels = async (providedBaseUrl?: string) => {
+    // Use the provided baseUrl or fall back to the state value
+    const urlBase = providedBaseUrl !== undefined ? providedBaseUrl : baseUrl;
     try {
-      const channelsResponse = await fetch('/api/channels');
+      const channelsResponse = await fetch(`${urlBase}/api/channels`);
       if (channelsResponse.ok) {
         const channelsData = await channelsResponse.json();
 
@@ -453,14 +463,14 @@ function App() {
   const updateDataFromBackend = async () => {
     try {
       // Fetch nodes
-      const nodesResponse = await fetch('/api/nodes');
+      const nodesResponse = await fetch(`${baseUrl}/api/nodes`);
       if (nodesResponse.ok) {
         const nodesData = await nodesResponse.json();
         setNodes(nodesData);
       }
 
       // Fetch messages
-      const messagesResponse = await fetch('/api/messages?limit=100');
+      const messagesResponse = await fetch(`${baseUrl}/api/messages?limit=100`);
       if (messagesResponse.ok) {
         const messagesData = await messagesResponse.json();
         // Convert timestamp strings back to Date objects
@@ -574,14 +584,14 @@ function App() {
       }
 
       // Fetch device info
-      const configResponse = await fetch('/api/config');
+      const configResponse = await fetch(`${baseUrl}/api/config`);
       if (configResponse.ok) {
         const configData = await configResponse.json();
         setDeviceInfo(configData);
       }
 
       // Fetch device configuration
-      const deviceConfigResponse = await fetch('/api/device-config');
+      const deviceConfigResponse = await fetch(`${baseUrl}/api/device-config`);
       if (deviceConfigResponse.ok) {
         const deviceConfigData = await deviceConfigResponse.json();
         setDeviceConfig(deviceConfigData);
@@ -651,7 +661,7 @@ function App() {
       const nodeNumStr = nodeId.replace('!', '');
       const nodeNum = parseInt(nodeNumStr, 16);
 
-      await fetch('/api/traceroute', {
+      await fetch(`${baseUrl}/api/traceroute`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -696,7 +706,7 @@ function App() {
     setMessages(prev => [...prev, sentMessage]);
 
     try {
-      const response = await fetch('/api/messages/send', {
+      const response = await fetch(`${baseUrl}/api/messages/send`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -764,7 +774,7 @@ function App() {
     setNewMessage('');
 
     try {
-      const response = await fetch('/api/messages/send', {
+      const response = await fetch(`${baseUrl}/api/messages/send`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -1866,7 +1876,7 @@ function App() {
                 </div>
               )}
 
-              <TelemetryGraphs nodeId={selectedDMNode} temperatureUnit={temperatureUnit} telemetryHours={telemetryVisualizationHours} />
+              <TelemetryGraphs nodeId={selectedDMNode} temperatureUnit={temperatureUnit} telemetryHours={telemetryVisualizationHours} baseUrl={baseUrl} />
             </div>
           ) : (
             <div className="no-selection">
@@ -1890,7 +1900,7 @@ function App() {
     localStorage.setItem('tracerouteIntervalMinutes', value.toString());
 
     try {
-      await fetch('/api/settings/traceroute-interval', {
+      await fetch(`${baseUrl}/api/settings/traceroute-interval`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ intervalMinutes: value })
@@ -1919,7 +1929,7 @@ function App() {
       <header className="app-header">
         <div className="header-left">
           <div className="header-title">
-            <img src="/logo.png" alt="MeshMonitor Logo" className="header-logo" />
+            <img src={`${baseUrl}/logo.png`} alt="MeshMonitor Logo" className="header-logo" />
             <h1>MeshMonitor</h1>
           </div>
           <div className="node-info">
@@ -1990,7 +2000,7 @@ function App() {
             <h3>Connection Error</h3>
             <p>{error}</p>
             <div className="error-actions">
-              <button onClick={checkConnectionStatus} className="retry-btn">
+              <button onClick={() => checkConnectionStatus()} className="retry-btn">
                 Retry Connection
               </button>
               <button onClick={() => setError(null)} className="dismiss-error">
@@ -2015,6 +2025,7 @@ function App() {
             currentNodeId={currentNodeId}
             temperatureUnit={temperatureUnit}
             telemetryHours={telemetryVisualizationHours}
+            baseUrl={baseUrl}
             getAvailableChannels={getAvailableChannels}
           />
         )}
@@ -2022,6 +2033,7 @@ function App() {
           <Dashboard
             temperatureUnit={temperatureUnit}
             telemetryHours={telemetryVisualizationHours}
+            baseUrl={baseUrl}
           />
         )}
         {activeTab === 'settings' && (
@@ -2030,6 +2042,7 @@ function App() {
             tracerouteIntervalMinutes={tracerouteIntervalMinutes}
             temperatureUnit={temperatureUnit}
             telemetryVisualizationHours={telemetryVisualizationHours}
+            baseUrl={baseUrl}
             onMaxNodeAgeChange={handleMaxNodeAgeChange}
             onTracerouteIntervalChange={handleTracerouteIntervalChange}
             onTemperatureUnitChange={handleTemperatureUnitChange}
