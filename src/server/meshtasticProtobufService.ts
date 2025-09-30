@@ -46,8 +46,9 @@ export class MeshtasticProtobufService {
 
     try {
       const ToRadio = root.lookupType('meshtastic.ToRadio');
+      // Try sending a different config ID - maybe 0xFFFFFFFF to request all configs
       const toRadio = ToRadio.create({
-        wantConfigId: 1
+        wantConfigId: 0xFFFFFFFF  // Request ALL config sections
       });
 
       return ToRadio.encode(toRadio).finish();
@@ -309,7 +310,9 @@ export class MeshtasticProtobufService {
         hasNodeInfo: !!fromRadio.nodeInfo,
         hasConfig: !!fromRadio.config,
         hasChannel: !!fromRadio.channel,
-        hasMetadata: !!fromRadio.metadata
+        hasMetadata: !!fromRadio.metadata,
+        hasModuleConfig: !!fromRadio.moduleConfig,
+        configCompleteId: fromRadio.configCompleteId
       });
 
       if (fromRadio.packet) {
@@ -352,6 +355,16 @@ export class MeshtasticProtobufService {
         return {
           type: 'channel',
           data: fromRadio.channel
+        };
+      } else if (fromRadio.moduleConfig) {
+        return {
+          type: 'moduleConfig',
+          data: fromRadio.moduleConfig
+        };
+      } else if (fromRadio.configCompleteId) {
+        return {
+          type: 'configComplete',
+          data: { configCompleteId: fromRadio.configCompleteId }
         };
       } else {
         return {
