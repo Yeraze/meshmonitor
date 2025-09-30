@@ -20,7 +20,7 @@ describe('Dashboard', () => {
       let maxTime = -Infinity;
 
       telemetryData.forEach((data) => {
-        data.forEach((item) => {
+        data.forEach((item: any) => {
           if (item.timestamp < minTime) minTime = item.timestamp;
           if (item.timestamp > maxTime) maxTime = item.timestamp;
         });
@@ -38,7 +38,7 @@ describe('Dashboard', () => {
       let maxTime = -Infinity;
 
       telemetryData.forEach((data) => {
-        data.forEach((item) => {
+        data.forEach((item: any) => {
           if (item.timestamp < minTime) minTime = item.timestamp;
           if (item.timestamp > maxTime) maxTime = item.timestamp;
         });
@@ -60,7 +60,7 @@ describe('Dashboard', () => {
       let maxTime = -Infinity;
 
       telemetryData.forEach((data) => {
-        data.forEach((item) => {
+        data.forEach((item: any) => {
           if (item.timestamp < minTime) minTime = item.timestamp;
           if (item.timestamp > maxTime) maxTime = item.timestamp;
         });
@@ -92,7 +92,7 @@ describe('Dashboard', () => {
       let maxTime = -Infinity;
 
       telemetryData.forEach((data) => {
-        data.forEach((item) => {
+        data.forEach((item: any) => {
           if (item.timestamp < minTime) minTime = item.timestamp;
           if (item.timestamp > maxTime) maxTime = item.timestamp;
         });

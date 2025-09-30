@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
 describe('MeshtasticManager - Configuration Polling', () => {
   describe('fromradio polling behavior', () => {
@@ -23,7 +23,7 @@ describe('MeshtasticManager - Configuration Polling', () => {
         return mockResponses[pollCount++] || { ok: true, arrayBuffer: async () => new ArrayBuffer(0) };
       });
 
-      global.fetch = mockFetch;
+      global.fetch = mockFetch as any;
 
       // Simulate the polling loop logic
       let consecutiveEmptyCount = 0;
@@ -34,7 +34,7 @@ describe('MeshtasticManager - Configuration Polling', () => {
 
       while (iterationCount < maxIterations) {
         iterationCount++;
-        const response = await mockFetch('/api/v1/fromradio?all=false');
+        const response = await mockFetch();
 
         if (response.ok) {
           const data = await response.arrayBuffer();
@@ -67,7 +67,7 @@ describe('MeshtasticManager - Configuration Polling', () => {
 
       let pollCount = 0;
       const mockFetch = vi.fn(async () => mockResponses[pollCount++]);
-      global.fetch = mockFetch;
+      global.fetch = mockFetch as any;
 
       let consecutiveEmptyCount = 0;
       const maxConsecutiveEmpty = 3;
@@ -76,7 +76,7 @@ describe('MeshtasticManager - Configuration Polling', () => {
 
       while (iterationCount < maxIterations) {
         iterationCount++;
-        const response = await mockFetch('/api/v1/fromradio?all=false');
+        const response = await mockFetch();
 
         if (response.ok) {
           const data = await response.arrayBuffer();
@@ -109,7 +109,7 @@ describe('MeshtasticManager - Configuration Polling', () => {
 
       let pollCount = 0;
       const mockFetch = vi.fn(async () => mockResponses[pollCount++]);
-      global.fetch = mockFetch;
+      global.fetch = mockFetch as any;
 
       let consecutiveEmptyCount = 0;
       const maxConsecutiveEmpty = 3;
@@ -118,7 +118,7 @@ describe('MeshtasticManager - Configuration Polling', () => {
 
       while (iterationCount < maxIterations) {
         iterationCount++;
-        const response = await mockFetch('/api/v1/fromradio?all=false');
+        const response = await mockFetch();
 
         if (response.ok) {
           const data = await response.arrayBuffer();
@@ -147,7 +147,7 @@ describe('MeshtasticManager - Configuration Polling', () => {
         setSetting: vi.fn((key: string, value: string) => {
           mockSettings[key] = value;
         }),
-        getSetting: vi.fn((key: string) => mockSettings[key] || null),
+        getSetting: vi.fn((key: string): string | null => mockSettings[key] || null),
       };
 
       // Simulate receiving MyNodeInfo
@@ -175,7 +175,7 @@ describe('MeshtasticManager - Configuration Polling', () => {
       };
 
       const mockDatabaseService = {
-        getSetting: vi.fn((key: string) => mockSettings[key] || null),
+        getSetting: vi.fn((key: string): string | null => mockSettings[key] || null),
         getNode: vi.fn((nodeNum: number) => ({
           nodeNum,
           nodeId: '!a2e4ff4c',
@@ -202,7 +202,7 @@ describe('MeshtasticManager - Configuration Polling', () => {
 
     it('should handle missing local node info gracefully', () => {
       const mockDatabaseService = {
-        getSetting: vi.fn(() => null),
+        getSetting: vi.fn((_key: string): null => null),
       };
 
       const savedNodeNum = mockDatabaseService.getSetting('localNodeNum');
