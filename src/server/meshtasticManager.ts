@@ -93,12 +93,26 @@ class MeshtasticManager {
 
     try {
       const response = await fetch(url, options);
-      if (!response.ok && response.status === 400) {
-        console.error(`❌ HTTP 400 Bad Request for: ${url}`);
-        console.error(`   Method: ${options.method || 'GET'}`);
-        console.error(`   Endpoint: ${endpoint}`);
-        console.error(`   Full URL: ${url}`);
+
+      // Debug logging for problematic responses
+      if (!response.ok) {
+        if (response.status === 400) {
+          console.error(`❌ HTTP 400 Bad Request for: ${url}`);
+          console.error(`   Method: ${options.method || 'GET'}`);
+          console.error(`   Endpoint: ${endpoint}`);
+          console.error(`   Full URL: ${url}`);
+        }
+      } else if (endpoint.includes('/api/v1/fromradio')) {
+        // Log Content-Type for fromradio endpoints to help debug encoding issues
+        const contentType = response.headers.get('content-type');
+        const contentEncoding = response.headers.get('content-encoding');
+        const contentLength = response.headers.get('content-length');
+        console.log(`📡 Response headers for ${endpoint}:`);
+        console.log(`   Content-Type: ${contentType || 'not specified'}`);
+        console.log(`   Content-Encoding: ${contentEncoding || 'none'}`);
+        console.log(`   Content-Length: ${contentLength || 'unknown'}`);
       }
+
       return response;
     } catch (error) {
       console.error(`Meshtastic API request failed (${endpoint}):`, error);
@@ -183,6 +197,13 @@ class MeshtasticManager {
             console.log(`📊 Received ${messageData.byteLength} bytes`);
 
             if (messageData.byteLength > 0) {
+              // Log first 32 bytes to help identify data format
+              const preview = messageData.slice(0, Math.min(32, messageData.byteLength));
+              const hexPreview = Array.from(preview).map(b => b.toString(16).padStart(2, '0')).join(' ');
+              const asciiPreview = Array.from(preview).map(b => (b >= 32 && b <= 126) ? String.fromCharCode(b) : '.').join('');
+              console.log(`📊 First ${preview.length} bytes (hex): ${hexPreview}`);
+              console.log(`📊 First ${preview.length} bytes (ascii): ${asciiPreview}`);
+
               totalBytes += messageData.byteLength;
               consecutiveEmptyCount = 0; // Reset counter on data received
 
