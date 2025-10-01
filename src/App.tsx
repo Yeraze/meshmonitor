@@ -37,7 +37,7 @@ const MapCenterController: React.FC<MapCenterControllerProps> = ({ centerTarget,
       map.setView(centerTarget, 15); // Zoom level 15 for close view
       onCenterComplete(); // Reset target after centering
     }
-  }, [map, centerTarget, onCenterComplete]);
+  }, [centerTarget, onCenterComplete]); // Removed 'map' from dependencies to prevent repeated re-centering
 
   return null;
 };
