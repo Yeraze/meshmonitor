@@ -170,7 +170,9 @@ For complete Kubernetes documentation, configuration options, and examples, see 
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MESHTASTIC_NODE_IP` | `192.168.1.100` | IP address of your Meshtastic node |
+| `MESHTASTIC_NODE_IP` | `192.168.1.100` | IP address or hostname of your Meshtastic node |
+| `MESHTASTIC_PORT` | (empty) | Port number (optional, defaults to 80/443 based on TLS setting) |
+| `MESHTASTIC_BASE_PATH` | (empty) | API base path for proxies (e.g., `/api/meshtastic/gateway1` for Home Assistant) |
 | `MESHTASTIC_USE_TLS` | `false` | Enable HTTPS connection to node |
 | `NODE_ENV` | `development` | Environment mode |
 | `PORT` | `3001` | Server port (production) |
@@ -182,6 +184,31 @@ Your Meshtastic device must have:
 - WiFi or Ethernet connectivity
 - HTTP API enabled
 - Network accessibility from MeshMonitor
+
+### Home Assistant Proxy Support
+
+MeshMonitor can connect to Meshtastic nodes through the [Home Assistant Meshtastic Integration](https://github.com/meshtastic/home-assistant) proxy. This is useful for:
+- Connecting to serial or Bluetooth Meshtastic devices
+- Sharing access to a node with multiple applications
+- Integrating with existing Home Assistant infrastructure
+
+**Example Configuration:**
+```bash
+MESHTASTIC_NODE_IP=homeassistant.local
+MESHTASTIC_PORT=8123
+MESHTASTIC_BASE_PATH=/api/meshtastic/gateway1
+MESHTASTIC_USE_TLS=false
+```
+
+Or with Docker:
+```yaml
+environment:
+  - MESHTASTIC_NODE_IP=homeassistant.local
+  - MESHTASTIC_PORT=8123
+  - MESHTASTIC_BASE_PATH=/api/meshtastic/gateway1
+```
+
+**Note:** The exact base path will depend on your Home Assistant configuration. Check your Home Assistant integration settings for the correct API endpoint path.
 
 ## Authentication
 

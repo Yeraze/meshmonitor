@@ -4,6 +4,8 @@ import protobufService from './protobufService.js';
 
 export interface MeshtasticConfig {
   nodeIp: string;
+  nodePort?: number;
+  basePath?: string;
   useTls: boolean;
 }
 
@@ -65,13 +67,25 @@ class MeshtasticManager {
   constructor() {
     this.config = {
       nodeIp: process.env.MESHTASTIC_NODE_IP || '192.168.1.100',
+      nodePort: process.env.MESHTASTIC_PORT ? parseInt(process.env.MESHTASTIC_PORT, 10) : undefined,
+      basePath: process.env.MESHTASTIC_BASE_PATH || '',
       useTls: process.env.MESHTASTIC_USE_TLS === 'true'
     };
   }
 
   private getBaseUrl(): string {
     const protocol = this.config.useTls ? 'https' : 'http';
-    return `${protocol}://${this.config.nodeIp}`;
+    const host = this.config.nodeIp;
+    const port = this.config.nodePort ? `:${this.config.nodePort}` : '';
+    const basePath = this.config.basePath || '';
+    return `${protocol}://${host}${port}${basePath}`;
+  }
+
+  private getNodeAddress(): string {
+    const host = this.config.nodeIp;
+    const port = this.config.nodePort ? `:${this.config.nodePort}` : '';
+    const basePath = this.config.basePath || '';
+    return `${host}${port}${basePath}`;
   }
 
   private async makeRequest(endpoint: string, options: RequestInit = {}): Promise<Response> {
@@ -88,7 +102,7 @@ class MeshtasticManager {
 
   async connect(): Promise<boolean> {
     try {
-      console.log(`Connecting to Meshtastic node at ${this.config.nodeIp}...`);
+      console.log(`Connecting to Meshtastic node at ${this.getBaseUrl()}...`);
 
       // Initialize protobuf service first
       await meshtasticProtobufService.initialize();
@@ -2560,7 +2574,7 @@ class MeshtasticManager {
 
     return {
       basic: {
-        nodeAddress: this.config.nodeIp,
+        nodeAddress: this.getNodeAddress(),
         useTls: this.config.useTls,
         connected: this.isConnected,
         nodeId: localNode?.nodeId || null,
@@ -2669,7 +2683,7 @@ class MeshtasticManager {
 
     return {
       basic: {
-        nodeAddress: this.config.nodeIp,
+        nodeAddress: this.getNodeAddress(),
         useTls: this.config.useTls,
         connected: this.isConnected,
         nodeId: localNode?.nodeId || null,
@@ -2764,7 +2778,7 @@ class MeshtasticManager {
   getConnectionStatus(): { connected: boolean; nodeIp: string } {
     return {
       connected: this.isConnected,
-      nodeIp: this.config.nodeIp
+      nodeIp: this.getNodeAddress()
     };
   }
 
