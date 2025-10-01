@@ -93,6 +93,12 @@ class MeshtasticManager {
 
     try {
       const response = await fetch(url, options);
+      if (!response.ok && response.status === 400) {
+        console.error(`❌ HTTP 400 Bad Request for: ${url}`);
+        console.error(`   Method: ${options.method || 'GET'}`);
+        console.error(`   Endpoint: ${endpoint}`);
+        console.error(`   Full URL: ${url}`);
+      }
       return response;
     } catch (error) {
       console.error(`Meshtastic API request failed (${endpoint}):`, error);
