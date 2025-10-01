@@ -125,6 +125,19 @@ If you want to build from source:
 - `1.0.0`, `1.0`, `1` - Specific version tags
 - `main` - Development builds from main branch
 
+### Kubernetes Deployment
+
+MeshMonitor includes a Helm chart for easy deployment to Kubernetes clusters. The chart supports all Docker environment variables, persistent storage, ingress, and subfolder deployments.
+
+**Quick Install:**
+```bash
+helm install meshmonitor ./helm/meshmonitor \
+  --set env.meshtasticNodeIp=192.168.1.100 \
+  --set env.meshtasticUseTls=false
+```
+
+For complete Kubernetes documentation, configuration options, and examples, see the [Helm Chart README](helm/README.md).
+
 ### Development Setup
 
 1. **Clone the repository**
