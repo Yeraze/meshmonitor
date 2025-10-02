@@ -1163,41 +1163,72 @@ class MeshtasticManager {
 
       let routeText = `📍 Traceroute to ${fromName} (${fromNodeId})\n\n`;
 
-      if (route.length > 0) {
-        routeText += `Forward path (${route.length} hops):\n`;
+      // Handle direct connection (0 hops)
+      if (route.length === 0 && snrTowards.length > 0) {
+        const snr = (snrTowards[0] / 4).toFixed(1);
+        const toNode = databaseService.getNode(toNum);
+        const toName = toNode?.longName || toNodeId;
+        routeText += `Forward path:\n`;
+        routeText += `  1. ${toName} (${toNodeId})\n`;
+        routeText += `  2. ${fromName} (${fromNodeId}) - SNR: ${snr}dB\n`;
+      } else if (route.length > 0) {
+        const toNode = databaseService.getNode(toNum);
+        const toName = toNode?.longName || toNodeId;
+        routeText += `Forward path (${route.length + 2} nodes):\n`;
+
+        // Start with source node
+        routeText += `  1. ${toName} (${toNodeId})\n`;
+
+        // Show intermediate hops
         route.forEach((nodeNum: number, index: number) => {
           const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
           const node = databaseService.getNode(nodeNum);
           const nodeName = node?.longName || nodeId;
           const snr = snrTowards[index] !== undefined ? `${(snrTowards[index] / 4).toFixed(1)}dB` : 'N/A';
-          routeText += `  ${index + 1}. ${nodeName} (${nodeId}) - SNR: ${snr}\n`;
+          routeText += `  ${index + 2}. ${nodeName} (${nodeId}) - SNR: ${snr}\n`;
         });
 
-        // Show destination and final hop SNR if available
+        // Show destination with final hop SNR
         const finalSnrIndex = route.length;
         if (snrTowards[finalSnrIndex] !== undefined) {
           const finalSnr = (snrTowards[finalSnrIndex] / 4).toFixed(1);
-          routeText += `  → ${fromName} (${fromNodeId}) - SNR: ${finalSnr}dB\n`;
+          routeText += `  ${route.length + 2}. ${fromName} (${fromNodeId}) - SNR: ${finalSnr}dB\n`;
+        } else {
+          routeText += `  ${route.length + 2}. ${fromName} (${fromNodeId})\n`;
         }
       }
 
-      if (routeBack.length > 0) {
-        routeText += `\nReturn path (${routeBack.length} hops):\n`;
+      if (routeBack.length === 0 && snrBack.length > 0) {
+        const snr = (snrBack[0] / 4).toFixed(1);
+        const toNode = databaseService.getNode(toNum);
+        const toName = toNode?.longName || toNodeId;
+        routeText += `\nReturn path:\n`;
+        routeText += `  1. ${fromName} (${fromNodeId})\n`;
+        routeText += `  2. ${toName} (${toNodeId}) - SNR: ${snr}dB\n`;
+      } else if (routeBack.length > 0) {
+        const toNode = databaseService.getNode(toNum);
+        const toName = toNode?.longName || toNodeId;
+        routeText += `\nReturn path (${routeBack.length + 2} nodes):\n`;
+
+        // Start with source (destination of forward path)
+        routeText += `  1. ${fromName} (${fromNodeId})\n`;
+
+        // Show intermediate hops
         routeBack.forEach((nodeNum: number, index: number) => {
           const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
           const node = databaseService.getNode(nodeNum);
           const nodeName = node?.longName || nodeId;
           const snr = snrBack[index] !== undefined ? `${(snrBack[index] / 4).toFixed(1)}dB` : 'N/A';
-          routeText += `  ${index + 1}. ${nodeName} (${nodeId}) - SNR: ${snr}\n`;
+          routeText += `  ${index + 2}. ${nodeName} (${nodeId}) - SNR: ${snr}\n`;
         });
 
-        // Show final destination and SNR if available
+        // Show final destination with SNR
         const finalSnrIndex = routeBack.length;
         if (snrBack[finalSnrIndex] !== undefined) {
           const finalSnr = (snrBack[finalSnrIndex] / 4).toFixed(1);
-          const toNode = databaseService.getNode(toNum);
-          const toName = toNode?.longName || toNodeId;
-          routeText += `  → ${toName} (${toNodeId}) - SNR: ${finalSnr}dB\n`;
+          routeText += `  ${routeBack.length + 2}. ${toName} (${toNodeId}) - SNR: ${finalSnr}dB\n`;
+        } else {
+          routeText += `  ${routeBack.length + 2}. ${toName} (${toNodeId})\n`;
         }
       }
 
