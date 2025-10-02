@@ -73,10 +73,14 @@ class ApiService {
             const response = await fetch(configPath);
 
             if (response.ok) {
-              const config = await response.json();
-              this.baseUrl = config.baseUrl || '';
-              this.configFetched = true;
-              return; // Success, exit
+              // Check content type to ensure we got JSON, not HTML
+              const contentType = response.headers.get('content-type');
+              if (contentType && contentType.includes('application/json')) {
+                const config = await response.json();
+                this.baseUrl = config.baseUrl || '';
+                this.configFetched = true;
+                return; // Success, exit
+              }
             }
           } catch {
             // Continue to next path
@@ -132,6 +136,13 @@ class ApiService {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config`);
     if (!response.ok) throw new Error('Failed to fetch config');
+
+    // Verify we got JSON, not HTML
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      throw new Error('Config endpoint returned non-JSON response');
+    }
+
     return response.json();
   }
 
