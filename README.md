@@ -12,6 +12,96 @@ A comprehensive web application for monitoring Meshtastic mesh networks over IP.
 
 ![MeshMonitor Interface](docs/images/screenshot-2.png)
 
+## 🚀 Getting Started
+
+Get MeshMonitor running in minutes with these simple copy-paste commands:
+
+### Quick Start with Docker (Recommended)
+
+The fastest way to run MeshMonitor is using our pre-built Docker images:
+
+```bash
+# Create a docker-compose.yml file
+cat > docker-compose.yml << 'EOF'
+version: '3.8'
+services:
+  meshmonitor:
+    image: ghcr.io/yeraze/meshmonitor:latest
+    container_name: meshmonitor
+    ports:
+      - "8080:3001"
+    volumes:
+      - meshmonitor-data:/data
+    environment:
+      - MESHTASTIC_NODE_IP=192.168.1.100  # Change to your node's IP
+      - MESHTASTIC_TCP_PORT=4403
+      - NODE_ENV=production
+    restart: unless-stopped
+
+volumes:
+  meshmonitor-data:
+EOF
+
+# Start the application
+docker compose up -d
+
+# View logs
+docker compose logs -f meshmonitor
+```
+
+**Access the app:** Open http://localhost:8080 in your browser
+
+### Requirements
+
+- **A Meshtastic node** with WiFi/Ethernet connectivity
+- **TCP port 4403** accessible from your MeshMonitor host
+- **Docker** (or Node.js 20+ for manual deployment)
+
+### Common Configuration Scenarios
+
+**1. Remote Node Connection**
+```bash
+# Connect to a node on your network
+export MESHTASTIC_NODE_IP=192.168.5.25
+docker compose up -d
+```
+
+**2. Subfolder Deployment (e.g., /meshmonitor)**
+```bash
+# Run at https://example.com/meshmonitor/
+export BASE_URL=/meshmonitor
+export MESHTASTIC_NODE_IP=192.168.1.100
+docker compose up -d
+```
+
+**3. Kubernetes/Helm Deployment**
+```bash
+helm install meshmonitor ./helm/meshmonitor \
+  --set env.meshtasticNodeIp=192.168.1.100 \
+  --set env.meshtasticTcpPort=4403
+```
+
+**4. Using meshtasticd for BLE/Serial Nodes**
+
+If your Meshtastic device uses Bluetooth or Serial (not WiFi/Ethernet), you can use [meshtasticd](https://github.com/meshtastic/python/tree/master/meshtasticd) as a TCP proxy:
+
+```bash
+# Install meshtasticd
+pip install meshtasticd
+
+# Run meshtasticd to bridge BLE -> TCP
+meshtasticd --ble-device "Meshtastic_1234"
+
+# Or for Serial devices
+meshtasticd --serial-port /dev/ttyUSB0
+
+# Point MeshMonitor to meshtasticd (default: localhost:4403)
+export MESHTASTIC_NODE_IP=localhost
+docker compose up -d
+```
+
+This allows MeshMonitor to connect to **any** Meshtastic device (BLE, Serial, or TCP) through meshtasticd's TCP interface.
+
 ## Features
 
 ### 🌐 **Real-time Mesh Network Monitoring**
@@ -265,6 +355,8 @@ The HTML is dynamically rewritten at runtime to include the correct base path fo
 
 ## Architecture
 
+### System Overview
+
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   React App     │────│   Express API   │────│  SQLite Database│
@@ -274,18 +366,80 @@ The HTML is dynamically rewritten at runtime to include the correct base path fo
          │                        │                        │
          └────────────────────────┼────────────────────────┘
                                   │
-                     ┌─────────────────┐
-                     │ Meshtastic Node │
-                     │ (TCP Port 4403) │
-                     └─────────────────┘
+                                  │ TCP Connection
+                                  │ (Event-Driven)
+                                  ↓
+                     ┌─────────────────────────┐
+                     │   Meshtastic Node       │
+                     │   TCP Port 4403         │
+                     │   (WiFi/Ethernet)       │
+                     └─────────────────────────┘
 ```
+
+### How It Works
+
+**TCP Streaming Protocol** (New in v1.10.0)
+
+MeshMonitor connects directly to Meshtastic devices using their native TCP streaming protocol on port 4403. This provides:
+
+- **Real-time event delivery** - Messages arrive instantly (no polling delays)
+- **Efficient bandwidth usage** - ~90% reduction vs HTTP polling
+- **Automatic reconnection** - Exponential backoff recovery from connection drops
+- **Binary protocol** - 4-byte framed packets (0x94 0xc3 + length MSB/LSB + protobuf payload)
+
+**Connection Flow:**
+1. TCP socket connects to node on port 4403
+2. Backend sends `want_config_id` message to request configuration
+3. Node streams configuration (myInfo, channels, nodes) as individual frames
+4. Event-driven message processing begins
+5. All messages, position updates, and telemetry arrive as TCP frames
+
+**Frame Protocol:**
+```
+[0x94][0x93][LENGTH_MSB][LENGTH_LSB][PROTOBUF_PAYLOAD]
+  │     │        │            │              │
+  │     │        │            │              └─ Encoded FromRadio/ToRadio message
+  │     │        │            └─ Payload length low byte (0-255)
+  │     │        └─ Payload length high byte (0-512)
+  │     └─ Frame marker byte 2
+  └─ Frame marker byte 1 (Meshtastic protocol identifier)
+```
+
+### Integration Options
+
+MeshMonitor's TCP-based architecture is compatible with multiple Meshtastic connection methods:
+
+**1. Direct TCP Connection (WiFi/Ethernet nodes)**
+```
+MeshMonitor → TCP:4403 → Meshtastic Node
+```
+Standard deployment for nodes with network connectivity.
+
+**2. meshtasticd Proxy (BLE/Serial nodes)**
+```
+MeshMonitor → TCP:4403 → meshtasticd → BLE/Serial → Meshtastic Node
+```
+[meshtasticd](https://github.com/meshtastic/python/tree/master/meshtasticd) bridges Bluetooth or Serial connections to TCP, allowing MeshMonitor to work with **any** Meshtastic device.
+
+**3. HomeAssistant Integration**
+```
+MeshMonitor → TCP:4403 → HomeAssistant MQTT Bridge → Meshtastic
+```
+Connect through HomeAssistant's Meshtastic integration for unified smart home monitoring.
+
+**4. Other TCP Implementations**
+```
+MeshMonitor → TCP:4403 → Custom Proxy → Meshtastic Network
+```
+Any proxy implementing the Meshtastic TCP protocol can bridge to MeshMonitor.
 
 ### Key Components
 
-- **Frontend (React)**: User interface with Catppuccin theme
-- **Backend (Express)**: REST API and static file serving
-- **Database (SQLite)**: Message and node data persistence
-- **Meshtastic Integration**: Direct TCP client for real-time mesh communication
+- **Frontend (React)**: User interface with Catppuccin theme and real-time updates
+- **Backend (Express)**: REST API, static file serving, and TCP transport layer
+- **Database (SQLite)**: Message, node, and telemetry data persistence
+- **TCP Transport**: Event-driven connection to Meshtastic with automatic reconnection
+- **Frame Parser**: Robust buffer management and protobuf message extraction
 
 ## API Endpoints
 
