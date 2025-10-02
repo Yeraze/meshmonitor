@@ -1284,8 +1284,9 @@ function App() {
 
                 {/* Draw traceroute paths */}
                 {showRoutes && (() => {
-                  // Calculate segment usage counts
+                  // Calculate segment usage counts and collect SNR values
                   const segmentUsage = new Map<string, number>();
+                  const segmentSNRs = new Map<string, number[]>();
                   const segmentsList: Array<{
                     key: string;
                     positions: [number, number][];
@@ -1296,6 +1297,7 @@ function App() {
                     try {
                       // Process forward path
                       const routeForward = JSON.parse(tr.route || '[]');
+                      const snrForward = JSON.parse(tr.snrTowards || '[]');
                       // Reverse intermediate hops to get correct direction: source -> hops -> destination
                       const forwardSequence: number[] = [tr.fromNodeNum, ...routeForward.slice().reverse(), tr.toNodeNum];
                       const forwardPositions: Array<{nodeNum: number; pos: [number, number]}> = [];
@@ -1319,6 +1321,16 @@ function App() {
 
                         segmentUsage.set(segmentKey, (segmentUsage.get(segmentKey) || 0) + 1);
 
+                        // Collect SNR value for this segment
+                        // SNR array is in order of path: snrForward[i] is for the i-th link
+                        if (snrForward[i] !== undefined) {
+                          const snrValue = snrForward[i] / 4; // Scale SNR value
+                          if (!segmentSNRs.has(segmentKey)) {
+                            segmentSNRs.set(segmentKey, []);
+                          }
+                          segmentSNRs.get(segmentKey)!.push(snrValue);
+                        }
+
                         segmentsList.push({
                           key: `tr-${idx}-fwd-seg-${i}`,
                           positions: [from.pos, to.pos],
@@ -1328,6 +1340,7 @@ function App() {
 
                       // Process return path
                       const routeBack = JSON.parse(tr.routeBack || '[]');
+                      const snrBack = JSON.parse(tr.snrBack || '[]');
                       // routeBack hops need to be reversed to get correct direction: destination -> hops -> source
                       const backSequence: number[] = [tr.toNodeNum, ...routeBack.slice().reverse(), tr.fromNodeNum];
                       const backPositions: Array<{nodeNum: number; pos: [number, number]}> = [];
@@ -1350,6 +1363,15 @@ function App() {
                         const segmentKey = [from.nodeNum, to.nodeNum].sort().join('-');
 
                         segmentUsage.set(segmentKey, (segmentUsage.get(segmentKey) || 0) + 1);
+
+                        // Collect SNR value for this segment
+                        if (snrBack[i] !== undefined) {
+                          const snrValue = snrBack[i] / 4; // Scale SNR value
+                          if (!segmentSNRs.has(segmentKey)) {
+                            segmentSNRs.set(segmentKey, []);
+                          }
+                          segmentSNRs.get(segmentKey)!.push(snrValue);
+                        }
 
                         segmentsList.push({
                           key: `tr-${idx}-back-seg-${i}`,
@@ -1375,6 +1397,21 @@ function App() {
                     const node1Name = node1?.user?.longName || node1?.user?.shortName || `!${segment.nodeNums[0].toString(16)}`;
                     const node2Name = node2?.user?.longName || node2?.user?.shortName || `!${segment.nodeNums[1].toString(16)}`;
 
+                    // Calculate SNR statistics
+                    const snrValues = segmentSNRs.get(segmentKey) || [];
+                    let snrStats = null;
+                    if (snrValues.length > 0) {
+                      const minSNR = Math.min(...snrValues);
+                      const maxSNR = Math.max(...snrValues);
+                      const avgSNR = snrValues.reduce((sum, val) => sum + val, 0) / snrValues.length;
+                      snrStats = {
+                        min: minSNR.toFixed(1),
+                        max: maxSNR.toFixed(1),
+                        avg: avgSNR.toFixed(1),
+                        count: snrValues.length
+                      };
+                    }
+
                     return (
                       <Polyline
                         key={segment.key}
@@ -1392,6 +1429,27 @@ function App() {
                             <div className="route-usage">
                               Used in <strong>{usage}</strong> traceroute{usage !== 1 ? 's' : ''}
                             </div>
+                            {snrStats && (
+                              <div className="route-snr-stats">
+                                <h5>SNR Statistics:</h5>
+                                <div className="snr-stat-row">
+                                  <span className="stat-label">Min:</span>
+                                  <span className="stat-value">{snrStats.min} dB</span>
+                                </div>
+                                <div className="snr-stat-row">
+                                  <span className="stat-label">Max:</span>
+                                  <span className="stat-value">{snrStats.max} dB</span>
+                                </div>
+                                <div className="snr-stat-row">
+                                  <span className="stat-label">Average:</span>
+                                  <span className="stat-value">{snrStats.avg} dB</span>
+                                </div>
+                                <div className="snr-stat-row">
+                                  <span className="stat-label">Samples:</span>
+                                  <span className="stat-value">{snrStats.count}</span>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </Popup>
                       </Polyline>

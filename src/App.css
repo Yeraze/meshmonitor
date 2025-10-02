@@ -2122,6 +2122,41 @@ body {
   font-weight: 600;
 }
 
+.route-snr-stats {
+  margin-top: 0.75rem;
+  padding: 0.5rem;
+  background: var(--ctp-surface1);
+  border-radius: 4px;
+  border: 1px solid var(--ctp-surface2);
+}
+
+.route-snr-stats h5 {
+  margin: 0 0 0.5rem 0;
+  color: var(--ctp-mauve);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.snr-stat-row {
+  display: flex;
+  justify-content: space-between;
+  margin: 0.25rem 0;
+  font-size: 0.85rem;
+}
+
+.snr-stat-row .stat-label {
+  color: var(--ctp-subtext1);
+  font-weight: 500;
+}
+
+.snr-stat-row .stat-value {
+  color: var(--ctp-text);
+  font-weight: 600;
+  font-family: 'Courier New', monospace;
+}
+
 /* Map Controls */
 .map-controls {
   position: absolute;
