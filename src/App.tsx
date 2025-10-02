@@ -72,8 +72,8 @@ function App() {
   const [traceroutes, setTraceroutes] = useState<any[]>([])
   const [nodesWithTelemetry, setNodesWithTelemetry] = useState<Set<string>>(new Set())
   const [nodesWithWeatherTelemetry, setNodesWithWeatherTelemetry] = useState<Set<string>>(new Set())
-  // Initialize baseUrl from pathname immediately to avoid 404s on initial render
-  const [baseUrl, setBaseUrl] = useState<string>(() => {
+  // Detect base URL from pathname
+  const detectBaseUrl = () => {
     const pathname = window.location.pathname;
     const pathParts = pathname.split('/').filter(Boolean);
 
@@ -95,7 +95,14 @@ function App() {
     }
 
     return '';
-  })
+  };
+
+  // Initialize baseUrl from pathname immediately to avoid 404s on initial render
+  const initialBaseUrl = detectBaseUrl();
+  const [baseUrl, setBaseUrl] = useState<string>(initialBaseUrl);
+
+  // Also set the baseUrl in the api service to skip its auto-detection
+  api.setBaseUrl(initialBaseUrl);
 
   // Settings
   const [maxNodeAgeHours, setMaxNodeAgeHours] = useState<number>(() => {
