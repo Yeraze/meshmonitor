@@ -2146,6 +2146,11 @@ body {
   font-size: 0.85rem;
 }
 
+.snr-stat-row:only-child {
+  justify-content: center;
+  font-size: 1rem;
+}
+
 .snr-stat-row .stat-label {
   color: var(--ctp-subtext1);
   font-weight: 500;

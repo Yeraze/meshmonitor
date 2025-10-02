@@ -1431,23 +1431,50 @@ function App() {
                             </div>
                             {snrStats && (
                               <div className="route-snr-stats">
-                                <h5>SNR Statistics:</h5>
-                                <div className="snr-stat-row">
-                                  <span className="stat-label">Min:</span>
-                                  <span className="stat-value">{snrStats.min} dB</span>
-                                </div>
-                                <div className="snr-stat-row">
-                                  <span className="stat-label">Max:</span>
-                                  <span className="stat-value">{snrStats.max} dB</span>
-                                </div>
-                                <div className="snr-stat-row">
-                                  <span className="stat-label">Average:</span>
-                                  <span className="stat-value">{snrStats.avg} dB</span>
-                                </div>
-                                <div className="snr-stat-row">
-                                  <span className="stat-label">Samples:</span>
-                                  <span className="stat-value">{snrStats.count}</span>
-                                </div>
+                                {snrStats.count === 1 ? (
+                                  <>
+                                    <h5>SNR:</h5>
+                                    <div className="snr-stat-row">
+                                      <span className="stat-value">{snrStats.min} dB</span>
+                                    </div>
+                                  </>
+                                ) : snrStats.count === 2 ? (
+                                  <>
+                                    <h5>SNR Statistics:</h5>
+                                    <div className="snr-stat-row">
+                                      <span className="stat-label">Min:</span>
+                                      <span className="stat-value">{snrStats.min} dB</span>
+                                    </div>
+                                    <div className="snr-stat-row">
+                                      <span className="stat-label">Max:</span>
+                                      <span className="stat-value">{snrStats.max} dB</span>
+                                    </div>
+                                    <div className="snr-stat-row">
+                                      <span className="stat-label">Samples:</span>
+                                      <span className="stat-value">{snrStats.count}</span>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <>
+                                    <h5>SNR Statistics:</h5>
+                                    <div className="snr-stat-row">
+                                      <span className="stat-label">Min:</span>
+                                      <span className="stat-value">{snrStats.min} dB</span>
+                                    </div>
+                                    <div className="snr-stat-row">
+                                      <span className="stat-label">Max:</span>
+                                      <span className="stat-value">{snrStats.max} dB</span>
+                                    </div>
+                                    <div className="snr-stat-row">
+                                      <span className="stat-label">Average:</span>
+                                      <span className="stat-value">{snrStats.avg} dB</span>
+                                    </div>
+                                    <div className="snr-stat-row">
+                                      <span className="stat-label">Samples:</span>
+                                      <span className="stat-value">{snrStats.count}</span>
+                                    </div>
+                                  </>
+                                )}
                               </div>
                             )}
                           </div>
