@@ -601,21 +601,48 @@ function App() {
     return traceroute.hopCount;
   };
 
-  const formatTracerouteRoute = (route: string, snr: string) => {
+  const formatTracerouteRoute = (route: string, snr: string, fromNodeNum?: number, toNodeNum?: number) => {
     try {
       const routeArray = JSON.parse(route || '[]');
       const snrArray = JSON.parse(snr || '[]');
 
-      if (routeArray.length === 0) {
-        return 'Direct connection';
+      const pathNodes: string[] = [];
+
+      // Add source node if provided
+      if (toNodeNum !== undefined) {
+        const node = nodes.find(n => n.nodeNum === toNodeNum);
+        const nodeName = node?.user?.longName || node?.user?.shortName || `!${toNodeNum.toString(16)}`;
+        pathNodes.push(nodeName);
       }
 
-      return routeArray.map((nodeNum: number, idx: number) => {
-        const node = nodes.find(n => n.nodeNum === nodeNum);
-        const nodeName = node?.user?.longName || node?.user?.shortName || `!${nodeNum.toString(16)}`;
-        const snrValue = snrArray[idx] !== undefined ? ` (${snrArray[idx]}dB)` : '';
-        return nodeName + snrValue;
-      }).join(' → ');
+      // Add intermediate hops
+      if (routeArray.length > 0) {
+        routeArray.forEach((nodeNum: number, idx: number) => {
+          const node = nodes.find(n => n.nodeNum === nodeNum);
+          const nodeName = node?.user?.longName || node?.user?.shortName || `!${nodeNum.toString(16)}`;
+          const snrValue = snrArray[idx] !== undefined ? ` (${(snrArray[idx]/4).toFixed(1)}dB)` : '';
+          pathNodes.push(nodeName + snrValue);
+        });
+      }
+
+      // Add destination node if provided
+      if (fromNodeNum !== undefined) {
+        const node = nodes.find(n => n.nodeNum === fromNodeNum);
+        const nodeName = node?.user?.longName || node?.user?.shortName || `!${fromNodeNum.toString(16)}`;
+        const finalSnrIdx = routeArray.length;
+        const snrValue = snrArray[finalSnrIdx] !== undefined ? ` (${(snrArray[finalSnrIdx]/4).toFixed(1)}dB)` : '';
+        pathNodes.push(nodeName + snrValue);
+      }
+
+      if (pathNodes.length === 0) {
+        return 'No route data';
+      }
+
+      if (pathNodes.length === 2 && routeArray.length === 0) {
+        return `${pathNodes[0]} ↔ ${pathNodes[1]} (direct)`;
+      }
+
+      return pathNodes.join(' → ');
     } catch (error) {
       return 'Error parsing route';
     }
@@ -1906,10 +1933,10 @@ function App() {
                     return (
                       <div className="traceroute-info">
                         <div className="traceroute-route">
-                          <strong>→ Forward:</strong> {formatTracerouteRoute(recentTrace.route, recentTrace.snrTowards)}
+                          <strong>→ Forward:</strong> {formatTracerouteRoute(recentTrace.route, recentTrace.snrTowards, recentTrace.fromNodeNum, recentTrace.toNodeNum)}
                         </div>
                         <div className="traceroute-route">
-                          <strong>← Return:</strong> {formatTracerouteRoute(recentTrace.routeBack, recentTrace.snrBack)}
+                          <strong>← Return:</strong> {formatTracerouteRoute(recentTrace.routeBack, recentTrace.snrBack, recentTrace.toNodeNum, recentTrace.fromNodeNum)}
                         </div>
                         <div className="traceroute-age">Last traced {ageStr}</div>
                       </div>
