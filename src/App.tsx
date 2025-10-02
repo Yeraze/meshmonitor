@@ -72,7 +72,30 @@ function App() {
   const [traceroutes, setTraceroutes] = useState<any[]>([])
   const [nodesWithTelemetry, setNodesWithTelemetry] = useState<Set<string>>(new Set())
   const [nodesWithWeatherTelemetry, setNodesWithWeatherTelemetry] = useState<Set<string>>(new Set())
-  const [baseUrl, setBaseUrl] = useState<string>('')
+  // Initialize baseUrl from pathname immediately to avoid 404s on initial render
+  const [baseUrl, setBaseUrl] = useState<string>(() => {
+    const pathname = window.location.pathname;
+    const pathParts = pathname.split('/').filter(Boolean);
+
+    if (pathParts.length > 0) {
+      // Remove any trailing segments that look like app routes
+      const appRoutes = ['nodes', 'channels', 'messages', 'settings', 'info', 'dashboard'];
+      const baseSegments = [];
+
+      for (const segment of pathParts) {
+        if (appRoutes.includes(segment.toLowerCase())) {
+          break;
+        }
+        baseSegments.push(segment);
+      }
+
+      if (baseSegments.length > 0) {
+        return '/' + baseSegments.join('/');
+      }
+    }
+
+    return '';
+  })
 
   // Settings
   const [maxNodeAgeHours, setMaxNodeAgeHours] = useState<number>(() => {
