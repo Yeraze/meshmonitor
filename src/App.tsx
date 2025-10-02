@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import './App.css'
@@ -1284,9 +1285,9 @@ function App() {
 
                 {/* Draw traceroute paths */}
                 {showRoutes && (() => {
-                  // Calculate segment usage counts and collect SNR values
+                  // Calculate segment usage counts and collect SNR values with timestamps
                   const segmentUsage = new Map<string, number>();
-                  const segmentSNRs = new Map<string, number[]>();
+                  const segmentSNRs = new Map<string, Array<{snr: number; timestamp: number}>>();
                   const segmentsList: Array<{
                     key: string;
                     positions: [number, number][];
@@ -1298,6 +1299,7 @@ function App() {
                       // Process forward path
                       const routeForward = JSON.parse(tr.route || '[]');
                       const snrForward = JSON.parse(tr.snrTowards || '[]');
+                      const timestamp = tr.timestamp || tr.createdAt || Date.now();
                       // Reverse intermediate hops to get correct direction: source -> hops -> destination
                       const forwardSequence: number[] = [tr.fromNodeNum, ...routeForward.slice().reverse(), tr.toNodeNum];
                       const forwardPositions: Array<{nodeNum: number; pos: [number, number]}> = [];
@@ -1321,14 +1323,14 @@ function App() {
 
                         segmentUsage.set(segmentKey, (segmentUsage.get(segmentKey) || 0) + 1);
 
-                        // Collect SNR value for this segment
+                        // Collect SNR value with timestamp for this segment
                         // SNR array is in order of path: snrForward[i] is for the i-th link
                         if (snrForward[i] !== undefined) {
                           const snrValue = snrForward[i] / 4; // Scale SNR value
                           if (!segmentSNRs.has(segmentKey)) {
                             segmentSNRs.set(segmentKey, []);
                           }
-                          segmentSNRs.get(segmentKey)!.push(snrValue);
+                          segmentSNRs.get(segmentKey)!.push({snr: snrValue, timestamp});
                         }
 
                         segmentsList.push({
@@ -1364,13 +1366,13 @@ function App() {
 
                         segmentUsage.set(segmentKey, (segmentUsage.get(segmentKey) || 0) + 1);
 
-                        // Collect SNR value for this segment
+                        // Collect SNR value with timestamp for this segment
                         if (snrBack[i] !== undefined) {
                           const snrValue = snrBack[i] / 4; // Scale SNR value
                           if (!segmentSNRs.has(segmentKey)) {
                             segmentSNRs.set(segmentKey, []);
                           }
-                          segmentSNRs.get(segmentKey)!.push(snrValue);
+                          segmentSNRs.get(segmentKey)!.push({snr: snrValue, timestamp});
                         }
 
                         segmentsList.push({
@@ -1398,9 +1400,11 @@ function App() {
                     const node2Name = node2?.user?.longName || node2?.user?.shortName || `!${segment.nodeNums[1].toString(16)}`;
 
                     // Calculate SNR statistics
-                    const snrValues = segmentSNRs.get(segmentKey) || [];
+                    const snrData = segmentSNRs.get(segmentKey) || [];
                     let snrStats = null;
-                    if (snrValues.length > 0) {
+                    let chartData = null;
+                    if (snrData.length > 0) {
+                      const snrValues = snrData.map(d => d.snr);
                       const minSNR = Math.min(...snrValues);
                       const maxSNR = Math.max(...snrValues);
                       const avgSNR = snrValues.reduce((sum, val) => sum + val, 0) / snrValues.length;
@@ -1408,8 +1412,25 @@ function App() {
                         min: minSNR.toFixed(1),
                         max: maxSNR.toFixed(1),
                         avg: avgSNR.toFixed(1),
-                        count: snrValues.length
+                        count: snrData.length
                       };
+
+                      // Prepare chart data for 3+ samples (sorted by time of day)
+                      if (snrData.length >= 3) {
+                        chartData = snrData.map(d => {
+                          const date = new Date(d.timestamp);
+                          const hours = date.getHours();
+                          const minutes = date.getMinutes();
+                          // Convert to decimal hours (0-24) for continuous time axis
+                          const timeDecimal = hours + (minutes / 60);
+                          return {
+                            timeDecimal,
+                            timeLabel: `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`,
+                            snr: parseFloat(d.snr.toFixed(1)),
+                            fullTimestamp: d.timestamp
+                          };
+                        }).sort((a, b) => a.timeDecimal - b.timeDecimal);
+                      }
                     }
 
                     return (
@@ -1473,6 +1494,53 @@ function App() {
                                       <span className="stat-label">Samples:</span>
                                       <span className="stat-value">{snrStats.count}</span>
                                     </div>
+                                    {chartData && (
+                                      <div className="snr-timeline-chart">
+                                        <ResponsiveContainer width="100%" height={150}>
+                                          <LineChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="var(--ctp-surface2)" />
+                                            <XAxis
+                                              dataKey="timeDecimal"
+                                              type="number"
+                                              domain={[0, 24]}
+                                              ticks={[0, 6, 12, 18, 24]}
+                                              tickFormatter={(value) => {
+                                                const hours = Math.floor(value);
+                                                const minutes = Math.round((value - hours) * 60);
+                                                return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+                                              }}
+                                              tick={{ fill: 'var(--ctp-subtext1)', fontSize: 10 }}
+                                              stroke="var(--ctp-surface2)"
+                                            />
+                                            <YAxis
+                                              tick={{ fill: 'var(--ctp-subtext1)', fontSize: 10 }}
+                                              stroke="var(--ctp-surface2)"
+                                              label={{ value: 'SNR (dB)', angle: -90, position: 'insideLeft', style: { fill: 'var(--ctp-subtext1)', fontSize: 10 } }}
+                                            />
+                                            <Tooltip
+                                              contentStyle={{
+                                                backgroundColor: 'var(--ctp-surface0)',
+                                                border: '1px solid var(--ctp-surface2)',
+                                                borderRadius: '4px',
+                                                fontSize: '12px'
+                                              }}
+                                              labelStyle={{ color: 'var(--ctp-text)' }}
+                                              labelFormatter={(value) => {
+                                                const item = chartData.find(d => d.timeDecimal === value);
+                                                return item ? item.timeLabel : value;
+                                              }}
+                                            />
+                                            <Line
+                                              type="monotone"
+                                              dataKey="snr"
+                                              stroke="var(--ctp-mauve)"
+                                              strokeWidth={2}
+                                              dot={{ fill: 'var(--ctp-mauve)', r: 3 }}
+                                            />
+                                          </LineChart>
+                                        </ResponsiveContainer>
+                                      </div>
+                                    )}
                                   </>
                                 )}
                               </div>

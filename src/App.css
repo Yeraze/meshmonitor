@@ -2162,6 +2162,16 @@ body {
   font-family: 'Courier New', monospace;
 }
 
+.snr-timeline-chart {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--ctp-surface2);
+}
+
+.snr-timeline-chart .recharts-wrapper {
+  font-size: 10px;
+}
+
 /* Map Controls */
 .map-controls {
   position: absolute;
