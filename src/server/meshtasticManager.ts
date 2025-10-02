@@ -1169,9 +1169,16 @@ class MeshtasticManager {
           const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
           const node = databaseService.getNode(nodeNum);
           const nodeName = node?.longName || nodeId;
-          const snr = snrTowards[index] ? `${(snrTowards[index] / 4).toFixed(1)}dB` : 'N/A';
+          const snr = snrTowards[index] !== undefined ? `${(snrTowards[index] / 4).toFixed(1)}dB` : 'N/A';
           routeText += `  ${index + 1}. ${nodeName} (${nodeId}) - SNR: ${snr}\n`;
         });
+
+        // Show destination and final hop SNR if available
+        const finalSnrIndex = route.length;
+        if (snrTowards[finalSnrIndex] !== undefined) {
+          const finalSnr = (snrTowards[finalSnrIndex] / 4).toFixed(1);
+          routeText += `  → ${fromName} (${fromNodeId}) - SNR: ${finalSnr}dB\n`;
+        }
       }
 
       if (routeBack.length > 0) {
@@ -1180,9 +1187,18 @@ class MeshtasticManager {
           const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
           const node = databaseService.getNode(nodeNum);
           const nodeName = node?.longName || nodeId;
-          const snr = snrBack[index] ? `${(snrBack[index] / 4).toFixed(1)}dB` : 'N/A';
+          const snr = snrBack[index] !== undefined ? `${(snrBack[index] / 4).toFixed(1)}dB` : 'N/A';
           routeText += `  ${index + 1}. ${nodeName} (${nodeId}) - SNR: ${snr}\n`;
         });
+
+        // Show final destination and SNR if available
+        const finalSnrIndex = routeBack.length;
+        if (snrBack[finalSnrIndex] !== undefined) {
+          const finalSnr = (snrBack[finalSnrIndex] / 4).toFixed(1);
+          const toNode = databaseService.getNode(toNum);
+          const toName = toNode?.longName || toNodeId;
+          routeText += `  → ${toName} (${toNodeId}) - SNR: ${finalSnr}dB\n`;
+        }
       }
 
       // Traceroute responses are direct messages, not channel messages
@@ -1191,8 +1207,9 @@ class MeshtasticManager {
       const timestamp = meshPacket.rxTime ? Number(meshPacket.rxTime) * 1000 : Date.now();
 
       // Save as a special message in the database
+      // Use meshPacket.id for deduplication (same as text messages)
       const message = {
-        id: `traceroute_${fromNum}_${Date.now()}`,
+        id: `traceroute_${fromNum}_${meshPacket.id || Date.now()}`,
         fromNodeNum: fromNum,
         toNodeNum: toNum,
         fromNodeId: fromNodeId,
