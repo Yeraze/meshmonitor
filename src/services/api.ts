@@ -13,6 +13,15 @@ class ApiService {
   private configFetched = false;
   private configPromise: Promise<void> | null = null;
 
+  /**
+   * Set the base URL directly, skipping auto-detection
+   * Useful when the app already knows the base path from pathname
+   */
+  public setBaseUrl(url: string) {
+    this.baseUrl = url;
+    this.configFetched = true; // Skip auto-detection
+  }
+
   private async ensureBaseUrl() {
     // If config is already fetched, return immediately
     if (this.configFetched) {
