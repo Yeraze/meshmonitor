@@ -1,10 +1,11 @@
 import databaseService from '../services/database.js';
 import meshtasticProtobufService from './meshtasticProtobufService.js';
 import protobufService from './protobufService.js';
+import { TcpTransport } from './tcpTransport.js';
 
 export interface MeshtasticConfig {
   nodeIp: string;
-  useTls: boolean;
+  tcpPort: number;
 }
 
 export interface DeviceInfo {
@@ -47,8 +48,8 @@ export interface MeshMessage {
 
 class MeshtasticManager {
   private config: MeshtasticConfig;
+  private transport: TcpTransport | null = null;
   private isConnected = false;
-  private pollingInterval: NodeJS.Timeout | null = null;
   private tracerouteInterval: NodeJS.Timeout | null = null;
   private tracerouteIntervalMinutes: number = 3;
   private localNodeInfo: {
@@ -65,59 +66,43 @@ class MeshtasticManager {
   constructor() {
     this.config = {
       nodeIp: process.env.MESHTASTIC_NODE_IP || '192.168.1.100',
-      useTls: process.env.MESHTASTIC_USE_TLS === 'true'
+      tcpPort: parseInt(process.env.MESHTASTIC_TCP_PORT || '4403', 10)
     };
-  }
-
-  private getBaseUrl(): string {
-    const protocol = this.config.useTls ? 'https' : 'http';
-    return `${protocol}://${this.config.nodeIp}`;
-  }
-
-  private async makeRequest(endpoint: string, options: RequestInit = {}): Promise<Response> {
-    const url = `${this.getBaseUrl()}${endpoint}`;
-
-    try {
-      const response = await fetch(url, options);
-      return response;
-    } catch (error) {
-      console.error(`Meshtastic API request failed (${endpoint}):`, error);
-      throw error;
-    }
   }
 
   async connect(): Promise<boolean> {
     try {
-      console.log(`Connecting to Meshtastic node at ${this.config.nodeIp}...`);
+      console.log(`Connecting to Meshtastic node at ${this.config.nodeIp}:${this.config.tcpPort}...`);
 
       // Initialize protobuf service first
       await meshtasticProtobufService.initialize();
 
-      // Test connection with a simple HTTP request (don't read fromradio yet)
-      const response = await this.makeRequest('/hotspot-detect.html');
-      if (response.status === 200 || response.status === 404) {
-        this.isConnected = true;
-        console.log('Connected to Meshtastic node successfully');
+      // Create TCP transport
+      this.transport = new TcpTransport();
 
-        // Send want_config_id to request full node DB and config
-        // IMPORTANT: Do this BEFORE starting polling so we don't consume the queue
-        await this.requestFullConfiguration();
+      // Setup event handlers
+      this.transport.on('connect', () => {
+        this.handleConnected();
+      });
 
-        // Start polling for updates AFTER configuration is complete
-        this.startPolling();
+      this.transport.on('message', (data: Uint8Array) => {
+        this.processIncomingData(data);
+      });
 
-        // Start automatic traceroute scheduler
-        this.startTracerouteScheduler();
+      this.transport.on('disconnect', () => {
+        this.handleDisconnected();
+      });
 
-        // Ensure we have a Primary channel
-        console.log('➡️ About to call ensurePrimaryChannel()...');
-        this.ensurePrimaryChannel();
-        console.log('✅ ensurePrimaryChannel() completed');
+      this.transport.on('error', (error: Error) => {
+        console.error('❌ TCP transport error:', error.message);
+      });
 
-        return true;
-      } else {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
+      // Connect to node
+      await this.transport.connect(this.config.nodeIp, this.config.tcpPort);
+
+      this.isConnected = true;
+
+      return true;
     } catch (error) {
       this.isConnected = false;
       console.error('Failed to connect to Meshtastic node:', error);
@@ -125,184 +110,44 @@ class MeshtasticManager {
     }
   }
 
-  private async requestFullConfiguration(): Promise<void> {
-    try {
-      console.log('🔧 Requesting full configuration from node...');
+  private async handleConnected(): Promise<void> {
+    console.log('✅ TCP connection established, requesting configuration...');
 
-      // Send want_config_id to trigger device configuration transfer
+    try {
+      // Send want_config_id to request full node DB and config
       await this.sendWantConfigId();
 
-      // Small delay to allow device to populate the fromradio queue
-      // The device needs a moment to prepare all configuration data
-      // Testing shows 2-5 seconds is typically needed
-      console.log('⏳ Waiting 5 seconds for device to prepare configuration...');
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      console.log('⏳ Waiting for configuration data from node...');
 
-      console.log('📡 Beginning continuous read from device...');
+      // Note: With TCP, we don't need to poll - messages arrive via events
+      // The configuration will come in automatically as the node sends it
 
-      // Continuous reading loop using ?all=false (like official Meshtastic web UI)
-      // Each request returns ONE FromRadio message at a time
-      let totalBytes = 0;
-      let iterationCount = 0;
-      const maxIterations = 100; // Safety limit (official UI makes ~11 requests)
-      let consecutiveEmptyCount = 0;
-      const maxConsecutiveEmpty = 3; // Stop after 3 consecutive empty responses
+      // Give the node a moment to send initial config, then do basic setup
+      setTimeout(async () => {
+        // Ensure we have a Primary channel
+        this.ensurePrimaryChannel();
 
-      while (iterationCount < maxIterations) {
-        iterationCount++;
-        console.log(`📡 Read iteration ${iterationCount}...`);
-
-        try {
-          // Use ?all=false to get one message at a time (official UI approach)
-          const response = await this.makeRequest('/api/v1/fromradio?all=false');
-
-          if (response.ok) {
-            const data = await response.arrayBuffer();
-            const messageData = new Uint8Array(data);
-
-            console.log(`📊 Received ${messageData.byteLength} bytes`);
-
-            if (messageData.byteLength > 0) {
-              totalBytes += messageData.byteLength;
-              consecutiveEmptyCount = 0; // Reset counter on data received
-
-              // Process single FromRadio message
-              await this.processIncomingData(messageData);
-
-              // Log current status
-              const currentNodes = databaseService.getNodeCount();
-              const currentChannels = databaseService.getChannelCount();
-              console.log(`📈 Current state: ${currentNodes} nodes, ${currentChannels} channels`);
-            } else {
-              consecutiveEmptyCount++;
-              console.log(`📭 Device queue empty (${consecutiveEmptyCount}/${maxConsecutiveEmpty})`);
-
-              // Continue polling a few more times even when queue appears empty
-              // MyNodeInfo and other config data may arrive shortly after initial queue drain
-              if (consecutiveEmptyCount >= maxConsecutiveEmpty) {
-                console.log('✅ Device queue empty, configuration transfer complete');
-                break;
-              }
-            }
-          } else {
-            console.warn(`⚠️ Request failed with status ${response.status}`);
-            break;
-          }
-        } catch (readError) {
-          console.error('❌ Error during read iteration:', readError);
-          break;
+        // If localNodeInfo wasn't set during configuration, initialize it from database
+        if (!this.localNodeInfo) {
+          await this.initializeLocalNodeInfoFromDatabase();
         }
 
-        // Small delay between reads to avoid overwhelming the device
-        await new Promise(resolve => setTimeout(resolve, 50));
-      }
+        // Start automatic traceroute scheduler
+        this.startTracerouteScheduler();
 
-      if (iterationCount >= maxIterations) {
-        console.warn(`⚠️ Reached maximum iteration limit (${maxIterations})`);
-      }
-
-      console.log(`📊 Configuration transfer complete: ${totalBytes} total bytes in ${iterationCount} iterations`);
-
-      // Check if we received meaningful data
-      const finalNodeCount = databaseService.getNodeCount();
-      const finalChannelCount = databaseService.getChannelCount();
-
-      if (finalNodeCount === 0 || finalChannelCount === 0) {
-        console.log('⚠️ Limited data received, trying fallback approaches...');
-        await this.tryFallbackDataSources();
-      }
-
-      console.log(`✅ Configuration complete: ${finalNodeCount} nodes, ${finalChannelCount} channels`);
-
-      // If localNodeInfo wasn't set during configuration (device didn't send MyNodeInfo),
-      // initialize it from database
-      if (!this.localNodeInfo) {
-        await this.initializeLocalNodeInfoFromDatabase();
-      }
+        console.log(`✅ Configuration complete: ${databaseService.getNodeCount()} nodes, ${databaseService.getChannelCount()} channels`);
+      }, 5000);
 
     } catch (error) {
-      console.error('❌ Failed to request full configuration:', error);
-      // Even if configuration fails, ensure we have basic setup
+      console.error('❌ Failed to request configuration:', error);
       this.ensureBasicSetup();
     }
   }
 
-  private async tryFallbackDataSources(): Promise<void> {
-    // Fallback 1: Try JSON endpoint for device info
-    try {
-      console.log('📱 Trying JSON /json/info endpoint...');
-      const nodeInfoResponse = await this.makeRequest('/json/info');
-      if (nodeInfoResponse.ok) {
-        const nodeInfo = await nodeInfoResponse.json();
-        console.log('📱 Device info received:', nodeInfo);
-
-        if (nodeInfo.num && nodeInfo.user) {
-          const nodeData = {
-            nodeNum: nodeInfo.num,
-            nodeId: nodeInfo.user.id,
-            longName: nodeInfo.user.longName || 'Connected Node',
-            shortName: nodeInfo.user.shortName || nodeInfo.user.id?.substring(1, 5) || 'NODE',
-            hwModel: nodeInfo.user.hwModel || 0,
-            role: nodeInfo.user.role,
-            hopsAway: nodeInfo.hopsAway,
-            lastHeard: Date.now() / 1000,
-            createdAt: Date.now(),
-            updatedAt: Date.now()
-          };
-          databaseService.upsertNode(nodeData);
-          console.log('✅ Created local node from JSON');
-        }
-      }
-    } catch (error) {
-      console.log('⚠️ Could not fetch /json/info:', error);
-    }
-
-    // Fallback 2: Try JSON endpoint for node database
-    try {
-      console.log('🏠 Trying JSON /json/nodes endpoint...');
-      const nodesResponse = await this.makeRequest('/json/nodes');
-      if (nodesResponse.ok) {
-        const nodesData = await nodesResponse.json();
-
-        if (Array.isArray(nodesData) && nodesData.length > 0) {
-          console.log(`🏠 Found ${nodesData.length} nodes in JSON data`);
-
-          for (const node of nodesData) {
-            if (node.num && node.user?.id) {
-              const nodeData = {
-                nodeNum: node.num,
-                nodeId: node.user.id,
-                longName: node.user.longName || `Node ${node.user.id}`,
-                shortName: node.user.shortName || node.user.id?.substring(1, 5) || 'UNK',
-                hwModel: node.user.hwModel || 0,
-                role: node.user.role,
-                hopsAway: node.hopsAway,
-                latitude: node.position?.latitude,
-                longitude: node.position?.longitude,
-                altitude: node.position?.altitude,
-                batteryLevel: node.deviceMetrics?.batteryLevel,
-                voltage: node.deviceMetrics?.voltage,
-                lastHeard: node.lastHeard || Date.now() / 1000,
-                snr: node.snr,
-                createdAt: Date.now(),
-                updatedAt: Date.now()
-              };
-              databaseService.upsertNode(nodeData);
-            }
-          }
-          console.log('✅ Imported nodes from JSON');
-        }
-      }
-    } catch (error) {
-      console.log('⚠️ Could not fetch /json/nodes:', error);
-    }
-
-    // Fallback 3: Ensure basic channel setup
-    const channelCount = databaseService.getChannelCount();
-    if (channelCount === 0) {
-      console.log('📡 No channels found, creating default Primary channel...');
-      this.createDefaultChannels();
-    }
+  private handleDisconnected(): void {
+    console.log('🔌 TCP connection lost');
+    this.isConnected = false;
+    // Transport will handle automatic reconnection
   }
 
   private createDefaultChannels(): void {
@@ -341,61 +186,38 @@ class MeshtasticManager {
   }
 
   private async sendWantConfigId(): Promise<void> {
+    if (!this.transport) {
+      throw new Error('Transport not initialized');
+    }
+
     try {
       console.log('Sending want_config_id to trigger configuration data...');
 
       // Use the new protobuf service to create a proper want_config_id message
       const wantConfigMessage = meshtasticProtobufService.createWantConfigRequest();
 
-      const response = await this.makeRequest('/api/v1/toradio', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/x-protobuf'
-        },
-        body: wantConfigMessage as BodyInit
-      });
-
-      if (response.ok) {
-        console.log('Successfully sent want_config_id request');
-      } else {
-        console.warn('Failed to send want_config_id, status:', response.status);
-      }
+      await this.transport.send(wantConfigMessage);
+      console.log('Successfully sent want_config_id request');
     } catch (error) {
       console.error('Error sending want_config_id:', error);
+      throw error;
     }
   }
 
   disconnect(): void {
     this.isConnected = false;
-    if (this.pollingInterval) {
-      clearInterval(this.pollingInterval);
-      this.pollingInterval = null;
+
+    if (this.transport) {
+      this.transport.disconnect();
+      this.transport = null;
     }
+
     if (this.tracerouteInterval) {
       clearInterval(this.tracerouteInterval);
       this.tracerouteInterval = null;
     }
+
     console.log('Disconnected from Meshtastic node');
-  }
-
-  private startPolling(): void {
-    if (this.pollingInterval) {
-      clearInterval(this.pollingInterval);
-    }
-
-    let pollCount = 0;
-
-    // Poll every 2 seconds for new data
-    this.pollingInterval = setInterval(async () => {
-      if (this.isConnected) {
-        await this.pollForUpdates();
-
-        // Note: Removed periodic sendWantConfigId() calls as they trigger full
-        // config dumps from the node, blocking normal mesh traffic. The node
-        // will naturally send nodeInfo updates as they occur on the mesh.
-        pollCount++;
-      }
-    }, 2000);
   }
 
   private startTracerouteScheduler(): void {
@@ -432,27 +254,6 @@ class MeshtasticManager {
 
     if (this.isConnected) {
       this.startTracerouteScheduler();
-    }
-  }
-
-  private async pollForUpdates(): Promise<void> {
-    try {
-      // Use ?all=false to get one message at a time (official UI approach)
-      const response = await this.makeRequest('/api/v1/fromradio?all=false');
-      if (!response.ok) {
-        console.warn('Failed to poll for updates:', response.status);
-        return;
-      }
-
-      const data = await response.arrayBuffer();
-      if (data.byteLength > 0) {
-        console.log(`Received ${data.byteLength} bytes from Meshtastic node`);
-
-        const uint8Array = new Uint8Array(data);
-        await this.processIncomingData(uint8Array);
-      }
-    } catch (error) {
-      console.error('Error polling for updates:', error);
     }
   }
 
@@ -2515,39 +2316,17 @@ class MeshtasticManager {
 
   // Configuration retrieval methods
   async getDeviceConfig(): Promise<any> {
-    // Try to get additional info from JSON report endpoint
-    let jsonReportData: any = null;
-    try {
-      const reportResponse = await this.makeRequest('/json/report');
-      if (reportResponse.ok) {
-        const report = await reportResponse.json();
-        jsonReportData = report.data;
-      }
-    } catch (error) {
-      console.log('Could not fetch JSON report:', error);
-    }
-
-    // If we have actual config data with lora config, use it
+    // Return config data from what we've received via TCP stream
     if (this.actualDeviceConfig?.lora || this.actualModuleConfig) {
       console.log('Using actualDeviceConfig:', JSON.stringify(this.actualDeviceConfig, null, 2));
-      return this.buildDeviceConfigFromActual(jsonReportData);
+      return this.buildDeviceConfigFromActual();
     }
 
-    // Fallback to parsed data if no actual config is available
-    try {
-      // Request device configuration from Meshtastic node
-      const response = await this.makeRequest('/api/v1/fromradio?all=true');
-      if (response.ok) {
-        const data = await response.arrayBuffer();
-        return this.parseConfigDataWithReport(new Uint8Array(data), jsonReportData);
-      }
-    } catch (error) {
-      console.error('Failed to get device config:', error);
-    }
+    console.log('No device config available yet');
     return null;
   }
 
-  private buildDeviceConfigFromActual(jsonReportData?: any): any {
+  private buildDeviceConfigFromActual(): any {
     const dbChannels = databaseService.getAllChannels();
     const channels = dbChannels.map(ch => ({
       index: ch.id,
@@ -2603,13 +2382,10 @@ class MeshtasticManager {
     const regionValue = typeof loraConfig.region === 'number' ? regionMap[loraConfig.region] || `Unknown (${loraConfig.region})` : loraConfig.region || 'Unknown';
     const modemPresetValue = typeof loraConfig.modemPreset === 'number' ? modemPresetMap[loraConfig.modemPreset] || `Unknown (${loraConfig.modemPreset})` : loraConfig.modemPreset || 'Unknown';
 
-    // Use JSON report data to supplement missing config
-    const radioData = jsonReportData?.radio || {};
-
     return {
       basic: {
         nodeAddress: this.config.nodeIp,
-        useTls: this.config.useTls,
+        tcpPort: this.config.tcpPort,
         connected: this.isConnected,
         nodeId: localNode?.nodeId || null,
         nodeName: localNode?.longName || null,
@@ -2623,8 +2399,8 @@ class MeshtasticManager {
         bandwidth: loraConfig.bandwidth || 'Unknown',
         spreadFactor: loraConfig.spreadFactor || 'Unknown',
         codingRate: loraConfig.codingRate || 'Unknown',
-        channelNum: loraConfig.channelNum !== undefined ? loraConfig.channelNum : (radioData.lora_channel || 'Unknown'),
-        frequency: radioData.frequency ? `${radioData.frequency} MHz` : 'Unknown',
+        channelNum: loraConfig.channelNum !== undefined ? loraConfig.channelNum : 'Unknown',
+        frequency: 'Unknown',
         txEnabled: loraConfig.txEnabled !== undefined ? loraConfig.txEnabled : 'Unknown',
         sx126xRxBoostedGain: loraConfig.sx126xRxBoostedGain !== undefined ? loraConfig.sx126xRxBoostedGain : 'Unknown',
         configOkToMqtt: loraConfig.configOkToMqtt !== undefined ? loraConfig.configOkToMqtt : 'Unknown'
@@ -2644,117 +2420,9 @@ class MeshtasticManager {
     };
   }
 
-  private parseConfigDataWithReport(data: Uint8Array, jsonReportData?: any): any {
-    const radioData = jsonReportData?.radio || {};
-
-    // Parse actual device configuration from protobuf data
-    const text = new TextDecoder('utf-8', { fatal: false }).decode(data);
-
-    // Intelligent region detection based on frequency
-    let region = 'Unknown';
-    const frequency = radioData.frequency;
-    if (frequency) {
-      // Determine region based on frequency band
-      if (frequency >= 902 && frequency <= 928) {
-        region = 'US';
-      } else if (frequency >= 863 && frequency <= 870) {
-        region = 'EU_868';
-      } else if (frequency >= 433.05 && frequency <= 434.79) {
-        region = 'EU_433';
-      } else if (frequency >= 915 && frequency <= 928) {
-        region = 'ANZ';
-      } else if (frequency >= 920 && frequency <= 925) {
-        region = 'JP';
-      } else if (frequency >= 865 && frequency <= 867) {
-        region = 'IN';
-      }
-    }
-
-    // Try to infer modem preset from frequency and channel combination
-    // This is based on common Meshtastic configurations
-    let modemPreset = 'Unknown';
-    if (frequency && radioData.lora_channel !== undefined) {
-      // US region channel 45 at 913.125 MHz is commonly Medium Fast
-      // These are heuristics based on common configurations
-      if (region === 'US' && radioData.lora_channel === 45 && Math.abs(frequency - 913.125) < 0.1) {
-        modemPreset = 'Medium Fast';
-      }
-      // Add more heuristics as we learn common patterns
-    }
-
-    // MQTT server detection from raw data
-    let mqttEnabled = false;
-    let mqttServer = 'Not configured';
-
-    // Look for MQTT server patterns in the raw data
-    const mqttPatterns = [
-      'mqtt.areyoumeshingwith.us',
-      'mqtt.meshtastic.org',
-      'broker.hivemq.com',
-      'test.mosquitto.org'
-    ];
-
-    for (const pattern of mqttPatterns) {
-      if (text.includes(pattern)) {
-        mqttEnabled = true;
-        mqttServer = pattern;
-        console.log(`🔍 Detected MQTT server in raw data: ${pattern}`);
-        break;
-      }
-    }
-
-    // Extract channels from the database
-    const dbChannels = databaseService.getAllChannels();
-    const channels = dbChannels.map(ch => ({
-      index: ch.id,
-      name: ch.name,
-      psk: ch.psk ? 'Set' : 'None',
-      uplinkEnabled: ch.uplinkEnabled,
-      downlinkEnabled: ch.downlinkEnabled
-    }));
-
-    const localNode = this.localNodeInfo as any;
-
-    return {
-      basic: {
-        nodeAddress: this.config.nodeIp,
-        useTls: this.config.useTls,
-        connected: this.isConnected,
-        nodeId: localNode?.nodeId || null,
-        nodeName: localNode?.longName || null,
-        firmwareVersion: localNode?.firmwareVersion || null
-      },
-      radio: {
-        region: region,
-        modemPreset: modemPreset,
-        hopLimit: 'Unknown',
-        txPower: 'Unknown',
-        bandwidth: 'Unknown',
-        spreadFactor: 'Unknown',
-        codingRate: 'Unknown',
-        channelNum: radioData.lora_channel || 'Unknown',
-        frequency: radioData.frequency ? `${radioData.frequency} MHz` : 'Unknown',
-        txEnabled: 'Unknown',
-        sx126xRxBoostedGain: 'Unknown',
-        configOkToMqtt: 'Unknown'
-      },
-      mqtt: {
-        enabled: mqttEnabled,
-        server: mqttServer,
-        username: 'Not set',
-        encryption: false,
-        json: false,
-        tls: false,
-        rootTopic: 'msh'
-      },
-      channels: channels.length > 0 ? channels : [
-        { index: 0, name: 'Primary', psk: 'None', uplinkEnabled: true, downlinkEnabled: true }
-      ]
-    };
-  }
 
   async sendTextMessage(text: string, channel: number = 0, destination?: number): Promise<void> {
-    if (!this.isConnected) {
+    if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
     }
 
@@ -2762,17 +2430,7 @@ class MeshtasticManager {
       // Use the new protobuf service to create a proper text message
       const textMessageData = meshtasticProtobufService.createTextMessage(text, destination, channel);
 
-      const response = await this.makeRequest('/api/v1/toradio', {
-        method: 'PUT',
-        body: textMessageData as BodyInit,
-        headers: {
-          'Content-Type': 'application/x-protobuf'
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to send message: ${response.status} ${response.statusText}`);
-      }
+      await this.transport.send(textMessageData);
 
       console.log('Message sent successfully:', text);
     } catch (error) {
@@ -2782,24 +2440,14 @@ class MeshtasticManager {
   }
 
   async sendTraceroute(destination: number, channel: number = 0): Promise<void> {
-    if (!this.isConnected) {
+    if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
     }
 
     try {
       const tracerouteData = meshtasticProtobufService.createTracerouteMessage(destination, channel);
 
-      const response = await this.makeRequest('/api/v1/toradio', {
-        method: 'PUT',
-        body: tracerouteData as BodyInit,
-        headers: {
-          'Content-Type': 'application/x-protobuf'
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to send traceroute: ${response.status} ${response.statusText}`);
-      }
+      await this.transport.send(tracerouteData);
 
       databaseService.recordTracerouteRequest(destination);
       console.log(`Traceroute request sent to node: !${destination.toString(16).padStart(8, '0')}`);
@@ -2898,8 +2546,8 @@ class MeshtasticManager {
       await this.connect();
     }
 
-    // Trigger the full configuration request
-    await this.requestFullConfiguration();
+    // Send want_config_id to trigger node to send updated info
+    await this.sendWantConfigId();
   }
 }
 

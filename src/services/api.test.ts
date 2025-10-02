@@ -25,6 +25,20 @@ if (typeof window === 'undefined') {
 // Import ApiService after mocks are set up
 const { default: apiService } = await import('./api');
 
+// Helper to create mock response with headers
+const createMockResponse = (data: any, ok = true, contentType = 'application/json') => ({
+  ok,
+  headers: {
+    get: (name: string) => {
+      if (name.toLowerCase() === 'content-type') {
+        return contentType;
+      }
+      return null;
+    }
+  },
+  json: async () => data,
+});
+
 describe('ApiService BASE_URL Support', () => {
   beforeEach(() => {
     // Reset the ApiService internal state before each test
@@ -49,10 +63,7 @@ describe('ApiService BASE_URL Support', () => {
       (apiService as any).configFetched = false;
       (apiService as any).baseUrl = '';
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ baseUrl: '' }),
-      });
+      mockFetch.mockResolvedValueOnce(createMockResponse({ baseUrl: '' }));
 
       await apiService.getBaseUrl();
 
@@ -78,10 +89,7 @@ describe('ApiService BASE_URL Support', () => {
       });
 
       // Third fetch to /meshmonitor/api/config succeeds
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ baseUrl: '/meshmonitor' }),
-      });
+      mockFetch.mockResolvedValueOnce(createMockResponse({ baseUrl: '/meshmonitor' }));
 
       const baseUrl = await apiService.getBaseUrl();
 
@@ -148,10 +156,7 @@ describe('ApiService BASE_URL Support', () => {
   describe('Race Condition Prevention', () => {
     it('should prevent multiple concurrent config fetches', async () => {
       mockLocation.pathname = '/';
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ baseUrl: '' }),
-      });
+      mockFetch.mockResolvedValueOnce(createMockResponse({ baseUrl: '' }));
 
       // Make multiple concurrent calls
       const promises = [
@@ -174,18 +179,9 @@ describe('ApiService BASE_URL Support', () => {
       (apiService as any).baseUrl = '/meshmonitor';
 
       // Setup responses for actual API calls
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ baseUrl: '/meshmonitor' }),
-      });
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ connected: true }),
-      });
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ nodes: [] }),
-      });
+      mockFetch.mockResolvedValueOnce(createMockResponse({ baseUrl: '/meshmonitor' }));
+      mockFetch.mockResolvedValueOnce(createMockResponse({ connected: true }));
+      mockFetch.mockResolvedValueOnce(createMockResponse({ nodes: [] }));
 
       // Simulate multiple API calls happening at the same time
       const results = await Promise.all([
@@ -209,10 +205,7 @@ describe('ApiService BASE_URL Support', () => {
       (apiService as any).baseUrl = '';
 
       // First call to /api/config succeeds after initial attempt
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ baseUrl: '' }),
-      });
+      mockFetch.mockResolvedValueOnce(createMockResponse({ baseUrl: '' }));
 
       const baseUrl = await apiService.getBaseUrl();
 
@@ -247,10 +240,7 @@ describe('ApiService BASE_URL Support', () => {
       (apiService as any).configFetched = true;
       (apiService as any).baseUrl = '/meshmonitor';
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ connected: true }),
-      });
+      mockFetch.mockResolvedValueOnce(createMockResponse({ connected: true }));
 
       await apiService.getConnectionStatus();
 
@@ -265,10 +255,7 @@ describe('ApiService BASE_URL Support', () => {
       (apiService as any).configFetched = true;
       (apiService as any).baseUrl = '';
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ nodes: [] }),
-      });
+      mockFetch.mockResolvedValueOnce(createMockResponse({ nodes: [] }));
 
       await apiService.getNodes();
 
@@ -283,10 +270,7 @@ describe('ApiService BASE_URL Support', () => {
       (apiService as any).configFetched = true;
       (apiService as any).baseUrl = '/company/tools/meshmonitor';
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ channels: [] }),
-      });
+      mockFetch.mockResolvedValueOnce(createMockResponse({ channels: [] }));
 
       await apiService.getChannels();
 
@@ -303,10 +287,7 @@ describe('ApiService BASE_URL Support', () => {
       (apiService as any).configFetched = false;
       (apiService as any).baseUrl = '';
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: async () => ({ baseUrl: '/meshmonitor' }),
-      });
+      mockFetch.mockResolvedValue(createMockResponse({ baseUrl: '/meshmonitor' }));
 
       // First call fetches config
       await apiService.getBaseUrl();

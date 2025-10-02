@@ -569,7 +569,7 @@ apiRouter.get('/connection', (_req, res) => {
 apiRouter.get('/config', (_req, res) => {
   res.json({
     meshtasticNodeIp: process.env.MESHTASTIC_NODE_IP || '192.168.1.100',
-    meshtasticUseTls: process.env.MESHTASTIC_USE_TLS === 'true',
+    meshtasticTcpPort: parseInt(process.env.MESHTASTIC_TCP_PORT || '4403', 10),
     baseUrl: BASE_URL
   });
 });

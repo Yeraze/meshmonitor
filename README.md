@@ -15,8 +15,8 @@ A comprehensive web application for monitoring Meshtastic mesh networks over IP.
 ## Features
 
 ### 🌐 **Real-time Mesh Network Monitoring**
-- Connect to Meshtastic nodes via HTTP/HTTPS
-- Real-time node discovery and status updates
+- Connect to Meshtastic nodes via direct TCP connection (port 4403)
+- Real-time node discovery and status updates via event-driven architecture
 - Signal strength monitoring (SNR, RSSI)
 - GPS position tracking
 - Battery and voltage telemetry
@@ -81,7 +81,7 @@ The easiest way to deploy MeshMonitor is using the pre-built Docker images publi
 ```bash
 # Set environment variables
 export MESHTASTIC_NODE_IP=192.168.1.100
-export MESHTASTIC_USE_TLS=false
+export MESHTASTIC_TCP_PORT=4403
 
 # Pull and start the application
 docker-compose up -d
@@ -91,12 +91,13 @@ The default `docker-compose.yml` is configured to use `ghcr.io/yeraze/meshmonito
 
 You can also specify a specific version:
 ```bash
-docker pull ghcr.io/yeraze/meshmonitor:1.0.0
+docker pull ghcr.io/yeraze/meshmonitor:1.10.0
 docker run -d \
   -p 8080:3001 \
   -v meshmonitor-data:/data \
   -e MESHTASTIC_NODE_IP=192.168.1.100 \
-  ghcr.io/yeraze/meshmonitor:1.0.0
+  -e MESHTASTIC_TCP_PORT=4403 \
+  ghcr.io/yeraze/meshmonitor:1.10.0
 ```
 
 #### Option 2: Build Locally
@@ -133,7 +134,7 @@ MeshMonitor includes a Helm chart for easy deployment to Kubernetes clusters. Th
 ```bash
 helm install meshmonitor ./helm/meshmonitor \
   --set env.meshtasticNodeIp=192.168.1.100 \
-  --set env.meshtasticUseTls=false
+  --set env.meshtasticTcpPort=4403
 ```
 
 For complete Kubernetes documentation, configuration options, and examples, see the [Helm Chart README](helm/README.md).
@@ -171,7 +172,7 @@ For complete Kubernetes documentation, configuration options, and examples, see 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `MESHTASTIC_NODE_IP` | `192.168.1.100` | IP address of your Meshtastic node |
-| `MESHTASTIC_USE_TLS` | `false` | Enable HTTPS connection to node |
+| `MESHTASTIC_TCP_PORT` | `4403` | TCP port for Meshtastic node connection |
 | `NODE_ENV` | `development` | Environment mode |
 | `PORT` | `3001` | Server port (production) |
 | `BASE_URL` | (empty) | Runtime base URL path for subfolder deployment (e.g., `/meshmonitor`) |
@@ -180,7 +181,7 @@ For complete Kubernetes documentation, configuration options, and examples, see 
 
 Your Meshtastic device must have:
 - WiFi or Ethernet connectivity
-- HTTP API enabled
+- TCP port 4403 accessible (standard Meshtastic port)
 - Network accessibility from MeshMonitor
 
 ## Authentication
@@ -242,6 +243,7 @@ services:
     environment:
       - BASE_URL=/meshmonitor  # Set at runtime, no rebuild needed!
       - MESHTASTIC_NODE_IP=192.168.1.100
+      - MESHTASTIC_TCP_PORT=4403
     # ... rest of configuration
 ```
 
@@ -252,6 +254,7 @@ docker run -d \
   -p 8080:3001 \
   -e BASE_URL=/meshmonitor \
   -e MESHTASTIC_NODE_IP=192.168.1.100 \
+  -e MESHTASTIC_TCP_PORT=4403 \
   ghcr.io/yeraze/meshmonitor:latest
 ```
 
@@ -273,7 +276,7 @@ The HTML is dynamically rewritten at runtime to include the correct base path fo
                                   │
                      ┌─────────────────┐
                      │ Meshtastic Node │
-                     │   (HTTP API)    │
+                     │ (TCP Port 4403) │
                      └─────────────────┘
 ```
 
@@ -282,7 +285,7 @@ The HTML is dynamically rewritten at runtime to include the correct base path fo
 - **Frontend (React)**: User interface with Catppuccin theme
 - **Backend (Express)**: REST API and static file serving
 - **Database (SQLite)**: Message and node data persistence
-- **Meshtastic Integration**: HTTP API client for mesh communication
+- **Meshtastic Integration**: Direct TCP client for real-time mesh communication
 
 ## API Endpoints
 
@@ -457,9 +460,9 @@ meshmonitor/
 
 1. **Cannot connect to Meshtastic node**
    - Check IP address in `.env` file
-   - Ensure node has HTTP API enabled
+   - Ensure TCP port 4403 is accessible
    - Verify network connectivity
-   - Check firewall settings
+   - Check firewall settings (allow TCP port 4403)
 
 2. **Database errors**
    - Ensure `/data` directory is writable
