@@ -729,6 +729,9 @@ class MeshtasticManager {
 
         const fromNum = Number(meshPacket.from);
         const nodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
+        const timestamp = position.time ? Number(position.time) * 1000 : Date.now();
+        const now = Date.now();
+
         const nodeData: any = {
           nodeNum: fromNum,
           nodeId: nodeId,
@@ -746,7 +749,25 @@ class MeshtasticManager {
           nodeData.rssi = meshPacket.rxRssi;
         }
 
+        // Save position to nodes table (current position)
         databaseService.upsertNode(nodeData);
+
+        // Save position to telemetry table (historical tracking)
+        databaseService.insertTelemetry({
+          nodeId, nodeNum: fromNum, telemetryType: 'latitude',
+          timestamp, value: coords.latitude, unit: '°', createdAt: now
+        });
+        databaseService.insertTelemetry({
+          nodeId, nodeNum: fromNum, telemetryType: 'longitude',
+          timestamp, value: coords.longitude, unit: '°', createdAt: now
+        });
+        if (position.altitude !== undefined && position.altitude !== null) {
+          databaseService.insertTelemetry({
+            nodeId, nodeNum: fromNum, telemetryType: 'altitude',
+            timestamp, value: position.altitude, unit: 'm', createdAt: now
+          });
+        }
+
         console.log(`🗺️ Updated node position: ${nodeId} -> ${coords.latitude}, ${coords.longitude}`);
       }
     } catch (error) {
@@ -1270,10 +1291,29 @@ class MeshtasticManager {
         nodeData.latitude = coords.latitude;
         nodeData.longitude = coords.longitude;
         nodeData.altitude = nodeInfo.position.altitude;
+
+        // Save position to telemetry table (historical tracking)
+        const timestamp = nodeInfo.position.time ? Number(nodeInfo.position.time) * 1000 : Date.now();
+        const now = Date.now();
+        databaseService.insertTelemetry({
+          nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'latitude',
+          timestamp, value: coords.latitude, unit: '°', createdAt: now
+        });
+        databaseService.insertTelemetry({
+          nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'longitude',
+          timestamp, value: coords.longitude, unit: '°', createdAt: now
+        });
+        if (nodeInfo.position.altitude !== undefined && nodeInfo.position.altitude !== null) {
+          databaseService.insertTelemetry({
+            nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'altitude',
+            timestamp, value: nodeInfo.position.altitude, unit: 'm', createdAt: now
+          });
+        }
       }
 
-      // Note: Telemetry data (batteryLevel, voltage, etc.) is NOT saved from NodeInfo packets
+      // Note: Device telemetry (batteryLevel, voltage, etc.) is NOT saved from NodeInfo packets
       // It is only saved from actual TELEMETRY_APP packets in processTelemetryMessageProtobuf()
+      // However, position data IS saved as telemetry for historical tracking
 
       // If this is the local node, update localNodeInfo with names (only if not locked)
       if (this.localNodeInfo && this.localNodeInfo.nodeNum === Number(nodeInfo.num) && !this.localNodeInfo.isLocked) {
