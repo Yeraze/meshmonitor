@@ -23,7 +23,6 @@
   "dependencies": {
     "@bufbuild/protobuf": "^2.9.0",
     "@meshtastic/js": "^2.6.0-0",
-    "@meshtastic/protobufs": "^2.7.8",
     "better-sqlite3": "^12.4.1",
     "cors": "^2.8.5",
     "express": "^5.1.0",

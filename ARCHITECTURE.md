@@ -231,6 +231,13 @@ CREATE TABLE traceroutes (
 Raw Binary Data → Field Extraction → Type Detection → Data Processing → Database Storage
 ```
 
+**Protobuf Definitions:**
+- Official Meshtastic protobufs integrated as **git submodule**
+- Pinned to specific release versions (e.g., v2.7.11)
+- Located at `protobufs/` directory (submodule)
+- Automatically stays in sync with official Meshtastic protocol definitions
+- Update via `git submodule update --remote` and checkout desired tag
+
 Message Types Handled:
 - **Node Information** (device details, telemetry, hardware model)
 - **Text Messages** (user communications)
