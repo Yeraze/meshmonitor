@@ -2584,7 +2584,7 @@ function App() {
 
         return (
           <div
-            className="node-popup"
+            className="route-popup node-popup"
             style={{
               position: 'fixed',
               left: nodePopup.position.x,
@@ -2593,43 +2593,43 @@ function App() {
               zIndex: 1000
             }}
           >
-            <div className="popup-header">
-              <strong>{node.user?.longName || `Node ${node.nodeNum}`}</strong>
-              {node.user?.shortName && (
-                <span className="popup-short">({node.user.shortName})</span>
-              )}
-            </div>
+            <h4>{node.user?.longName || `Node ${node.nodeNum}`}</h4>
+            {node.user?.shortName && (
+              <div className="route-endpoints">
+                <strong>{node.user.shortName}</strong>
+              </div>
+            )}
 
-            <div className="popup-details">
-              {node.user?.id && (
-                <div>ID: {node.user.id}</div>
-              )}
+            {node.user?.id && (
+              <div className="route-usage">ID: {node.user.id}</div>
+            )}
 
-              {node.user?.role && (
-                <div>Role: {node.user.role}</div>
-              )}
+            {node.user?.role !== undefined && (() => {
+              const roleNum = typeof node.user.role === 'string'
+                ? parseInt(node.user.role, 10)
+                : node.user.role;
+              const roleName = getRoleName(roleNum);
+              return roleName ? <div className="route-usage">Role: {roleName}</div> : null;
+            })()}
 
-              {node.snr != null && (
-                <div>SNR: {node.snr.toFixed(1)} dB</div>
-              )}
+            {node.user?.hwModel !== undefined && (() => {
+              const hwModelName = getHardwareModelName(node.user.hwModel);
+              return hwModelName ? <div className="route-usage">Hardware: {hwModelName}</div> : null;
+            })()}
 
-              {node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null && (
-                <div>
-                  {node.deviceMetrics.batteryLevel === 101 ? 'Power: Plugged In' : `Battery: ${node.deviceMetrics.batteryLevel}%`}
-                </div>
-              )}
+            {node.snr != null && (
+              <div className="route-usage">SNR: {node.snr.toFixed(1)} dB</div>
+            )}
 
-              {node.lastHeard && (
-                <div>Last Seen: {new Date(node.lastHeard * 1000).toLocaleString()}</div>
-              )}
+            {node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null && (
+              <div className="route-usage">
+                {node.deviceMetrics.batteryLevel === 101 ? 'Power: Plugged In' : `Battery: ${node.deviceMetrics.batteryLevel}%`}
+              </div>
+            )}
 
-              {node.position && (
-                <div>
-                  Position: {node.position.latitude?.toFixed(4) || 'N/A'}, {node.position.longitude?.toFixed(4) || 'N/A'}
-                  {node.position.altitude && ` (${node.position.altitude}m)`}
-                </div>
-              )}
-            </div>
+            {node.lastHeard && (
+              <div className="route-usage">Last Seen: {new Date(node.lastHeard * 1000).toLocaleString()}</div>
+            )}
 
             {node.user?.id && (
               <button
