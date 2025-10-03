@@ -17,6 +17,7 @@ import { TabType, SortField, SortDirection, ConnectionStatus, MapCenterControlle
 import api from './services/api'
 import { defaultIcon, selectedIcon, routerIcon, selectedRouterIcon } from './utils/mapIcons'
 import { getRoleName, generateArrowMarkers } from './utils/mapHelpers.tsx'
+import { getHardwareModelName } from './utils/nodeHelpers'
 
 // Fix for default markers in React-Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -166,6 +167,7 @@ function App() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [mapCenterTarget, setMapCenterTarget] = useState<[number, number] | null>(null)
   const [nodePopup, setNodePopup] = useState<{nodeId: string, position: {x: number, y: number}} | null>(null)
+  const markerRefs = useRef<Map<string, L.Marker>>(new Map())
 
   // Initialize notification sound with cleanup
   useEffect(() => {
@@ -296,6 +298,16 @@ function App() {
 
     fetchPositionHistory();
   }, [selectedNodeId, nodes, baseUrl]);
+
+  // Open popup for selected node
+  useEffect(() => {
+    if (selectedNodeId) {
+      const marker = markerRefs.current.get(selectedNodeId);
+      if (marker) {
+        marker.openPopup();
+      }
+    }
+  }, [selectedNodeId]);
 
   // Auto-scroll to bottom when messages change or channel changes
   const scrollToBottom = useCallback(() => {
@@ -1339,44 +1351,51 @@ function App() {
                     }
                   }}
                   icon={markerIcon}
+                  ref={(ref) => {
+                    if (ref && node.user?.id) {
+                      markerRefs.current.set(node.user.id, ref);
+                    }
+                  }}
                 >
-                  <Popup>
-                    <div className="node-popup">
-                      <div className="popup-header">
-                        <strong>{node.user?.longName || `Node ${node.nodeNum}`}</strong>
-                        {node.user?.shortName && (
-                          <span className="popup-short">({node.user.shortName})</span>
-                        )}
-                      </div>
-
-                      <div className="popup-details">
-                        {node.user?.id && (
-                          <div>ID: {node.user.id}</div>
-                        )}
-
-                        {node.user?.role && (
-                          <div>Role: {node.user.role}</div>
-                        )}
-
-                        {node.snr != null && (
-                          <div>SNR: {node.snr.toFixed(1)} dB</div>
-                        )}
-
-                        {node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null && (
-                          <div>
-                            {node.deviceMetrics.batteryLevel === 101 ? 'Power: Plugged In' : `Battery: ${node.deviceMetrics.batteryLevel}%`}
-                          </div>
-                        )}
-
-                        {node.lastHeard && (
-                          <div>Last Seen: {new Date(node.lastHeard * 1000).toLocaleString()}</div>
-                        )}
-
-                        <div>
-                          Position: {node.position!.latitude?.toFixed(4) || 'N/A'}, {node.position!.longitude?.toFixed(4) || 'N/A'}
-                          {node.position!.altitude && ` (${node.position!.altitude}m)`}
+                  <Popup autoPan={false}>
+                    <div className="route-popup">
+                      <h4>{node.user?.longName || `Node ${node.nodeNum}`}</h4>
+                      {node.user?.shortName && (
+                        <div className="route-endpoints">
+                          <strong>{node.user.shortName}</strong>
                         </div>
-                      </div>
+                      )}
+
+                      {node.user?.id && (
+                        <div className="route-usage">ID: {node.user.id}</div>
+                      )}
+
+                      {node.user?.role !== undefined && (() => {
+                        const roleNum = typeof node.user.role === 'string'
+                          ? parseInt(node.user.role, 10)
+                          : node.user.role;
+                        const roleName = getRoleName(roleNum);
+                        return roleName ? <div className="route-usage">Role: {roleName}</div> : null;
+                      })()}
+
+                      {node.user?.hwModel !== undefined && (() => {
+                        const hwModelName = getHardwareModelName(node.user.hwModel);
+                        return hwModelName ? <div className="route-usage">Hardware: {hwModelName}</div> : null;
+                      })()}
+
+                      {node.snr != null && (
+                        <div className="route-usage">SNR: {node.snr.toFixed(1)} dB</div>
+                      )}
+
+                      {node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null && (
+                        <div className="route-usage">
+                          {node.deviceMetrics.batteryLevel === 101 ? 'Power: Plugged In' : `Battery: ${node.deviceMetrics.batteryLevel}%`}
+                        </div>
+                      )}
+
+                      {node.lastHeard && (
+                        <div className="route-usage">Last Seen: {new Date(node.lastHeard * 1000).toLocaleString()}</div>
+                      )}
 
                       {node.user?.id && (
                         <button

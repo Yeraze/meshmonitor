@@ -717,6 +717,32 @@ class MeshtasticManager {
    */
 
   /**
+   * Validate position coordinates
+   */
+  private isValidPosition(latitude: number, longitude: number): boolean {
+    // Check for valid numbers
+    if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+      return false;
+    }
+    if (!isFinite(latitude) || !isFinite(longitude)) {
+      return false;
+    }
+    if (isNaN(latitude) || isNaN(longitude)) {
+      return false;
+    }
+
+    // Check ranges
+    if (latitude < -90 || latitude > 90) {
+      return false;
+    }
+    if (longitude < -180 || longitude > 180) {
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
    * Process position message using protobuf types
    */
   private async processPositionMessageProtobuf(meshPacket: any, position: any): Promise<void> {
@@ -726,6 +752,12 @@ class MeshtasticManager {
       if (position.latitudeI && position.longitudeI) {
         // Convert coordinates from integer format to decimal degrees
         const coords = meshtasticProtobufService.convertCoordinates(position.latitudeI, position.longitudeI);
+
+        // Validate coordinates
+        if (!this.isValidPosition(coords.latitude, coords.longitude)) {
+          console.warn(`⚠️ Invalid position coordinates: lat=${coords.latitude}, lon=${coords.longitude}. Skipping position update.`);
+          return;
+        }
 
         const fromNum = Number(meshPacket.from);
         const nodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
@@ -1288,26 +1320,32 @@ class MeshtasticManager {
           nodeInfo.position.latitudeI,
           nodeInfo.position.longitudeI
         );
-        nodeData.latitude = coords.latitude;
-        nodeData.longitude = coords.longitude;
-        nodeData.altitude = nodeInfo.position.altitude;
 
-        // Save position to telemetry table (historical tracking)
-        const timestamp = nodeInfo.position.time ? Number(nodeInfo.position.time) * 1000 : Date.now();
-        const now = Date.now();
-        databaseService.insertTelemetry({
-          nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'latitude',
-          timestamp, value: coords.latitude, unit: '°', createdAt: now
-        });
-        databaseService.insertTelemetry({
-          nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'longitude',
-          timestamp, value: coords.longitude, unit: '°', createdAt: now
-        });
-        if (nodeInfo.position.altitude !== undefined && nodeInfo.position.altitude !== null) {
+        // Validate coordinates before saving
+        if (this.isValidPosition(coords.latitude, coords.longitude)) {
+          nodeData.latitude = coords.latitude;
+          nodeData.longitude = coords.longitude;
+          nodeData.altitude = nodeInfo.position.altitude;
+
+          // Save position to telemetry table (historical tracking)
+          const timestamp = nodeInfo.position.time ? Number(nodeInfo.position.time) * 1000 : Date.now();
+          const now = Date.now();
           databaseService.insertTelemetry({
-            nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'altitude',
-            timestamp, value: nodeInfo.position.altitude, unit: 'm', createdAt: now
+            nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'latitude',
+            timestamp, value: coords.latitude, unit: '°', createdAt: now
           });
+          databaseService.insertTelemetry({
+            nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'longitude',
+            timestamp, value: coords.longitude, unit: '°', createdAt: now
+          });
+          if (nodeInfo.position.altitude !== undefined && nodeInfo.position.altitude !== null) {
+            databaseService.insertTelemetry({
+              nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'altitude',
+              timestamp, value: nodeInfo.position.altitude, unit: 'm', createdAt: now
+            });
+          }
+        } else {
+          console.warn(`⚠️ Invalid position coordinates for node ${nodeId}: lat=${coords.latitude}, lon=${coords.longitude}. Skipping position save.`);
         }
       }
 
