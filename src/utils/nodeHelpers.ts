@@ -1,11 +1,16 @@
 import { DeviceInfo } from '../types/device';
-import { ROLE_NAMES } from '../constants';
+import { ROLE_NAMES, HARDWARE_MODELS } from '../constants';
 
 export const getRoleName = (role: number | string | undefined): string | null => {
   if (role === undefined || role === null) return null;
   const roleNum = typeof role === 'string' ? parseInt(role) : role;
   if (isNaN(roleNum)) return null;
   return ROLE_NAMES[roleNum] || `Unknown (${roleNum})`;
+};
+
+export const getHardwareModelName = (hwModel: number | undefined): string | null => {
+  if (hwModel === undefined || hwModel === null) return null;
+  return HARDWARE_MODELS[hwModel] || `Unknown (${hwModel})`;
 };
 
 export const getNodeName = (nodes: DeviceInfo[], nodeId: string): string => {
