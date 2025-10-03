@@ -2,7 +2,6 @@ import databaseService from '../services/database.js';
 import meshtasticProtobufService from './meshtasticProtobufService.js';
 import protobufService from './protobufService.js';
 import { TcpTransport } from './tcpTransport.js';
-import { calculateDistance } from '../utils/distance.js';
 
 export interface MeshtasticConfig {
   nodeIp: string;
@@ -58,7 +57,6 @@ class MeshtasticManager {
     nodeId: string;
     longName: string;
     shortName: string;
-    hwModel?: number;
     firmwareVersion?: string;
     isLocked?: boolean;  // Flag to prevent overwrites after initial setup
   } | null = null;
@@ -416,7 +414,6 @@ class MeshtasticManager {
         nodeId: nodeId,
         longName: existingNode.longName,
         shortName: existingNode.shortName || 'LOCAL',
-        hwModel: existingNode.hwModel || undefined,
         firmwareVersion: (existingNode as any).firmwareVersion || null,
         isLocked: true  // Lock it to prevent overwrites
       } as any;
@@ -438,7 +435,6 @@ class MeshtasticManager {
         nodeId: nodeId,
         longName: null,  // Will be set when NodeInfo is received
         shortName: null,  // Will be set when NodeInfo is received
-        hwModel: myNodeInfo.hwModel || undefined,
         firmwareVersion: null, // Will be set when DeviceMetadata is received
         isLocked: false  // Not locked yet, waiting for complete info
       } as any;
@@ -448,7 +444,7 @@ class MeshtasticManager {
     }
   }
 
-  getLocalNodeInfo(): { nodeNum: number; nodeId: string; longName: string; shortName: string; hwModel?: number } | null {
+  getLocalNodeInfo(): { nodeNum: number; nodeId: string; longName: string; shortName: string } | null {
     return this.localNodeInfo;
   }
 
@@ -672,13 +668,9 @@ class MeshtasticManager {
           }
         }
 
-        // Extract replyId and emoji from decoded Data message
-        // Note: reply_id field was added in Meshtastic firmware 2.0+
-        // The field is present in protobufs v2.7.11+ but may not be properly set by all app versions
-        const decodedData = meshPacket.decoded as any;
-
-        const decodedReplyId = decodedData.replyId ?? decodedData.reply_id;
-        const replyId = (decodedReplyId !== undefined && decodedReplyId !== null && decodedReplyId > 0) ? decodedReplyId : undefined;
+        // Extract replyId and emoji from decoded Data message - check both camelCase and snake_case
+        const decodedReplyId = (meshPacket.decoded as any)?.replyId ?? (meshPacket.decoded as any)?.reply_id;
+        const replyId = (decodedReplyId !== undefined && decodedReplyId > 0) ? decodedReplyId : undefined;
         const decodedEmoji = (meshPacket.decoded as any)?.emoji;
         const emoji = (decodedEmoji !== undefined && decodedEmoji > 0) ? decodedEmoji : undefined;
 
@@ -721,32 +713,6 @@ class MeshtasticManager {
    */
 
   /**
-   * Validate position coordinates
-   */
-  private isValidPosition(latitude: number, longitude: number): boolean {
-    // Check for valid numbers
-    if (typeof latitude !== 'number' || typeof longitude !== 'number') {
-      return false;
-    }
-    if (!isFinite(latitude) || !isFinite(longitude)) {
-      return false;
-    }
-    if (isNaN(latitude) || isNaN(longitude)) {
-      return false;
-    }
-
-    // Check ranges
-    if (latitude < -90 || latitude > 90) {
-      return false;
-    }
-    if (longitude < -180 || longitude > 180) {
-      return false;
-    }
-
-    return true;
-  }
-
-  /**
    * Process position message using protobuf types
    */
   private async processPositionMessageProtobuf(meshPacket: any, position: any): Promise<void> {
@@ -757,17 +723,8 @@ class MeshtasticManager {
         // Convert coordinates from integer format to decimal degrees
         const coords = meshtasticProtobufService.convertCoordinates(position.latitudeI, position.longitudeI);
 
-        // Validate coordinates
-        if (!this.isValidPosition(coords.latitude, coords.longitude)) {
-          console.warn(`⚠️ Invalid position coordinates: lat=${coords.latitude}, lon=${coords.longitude}. Skipping position update.`);
-          return;
-        }
-
         const fromNum = Number(meshPacket.from);
         const nodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
-        const timestamp = position.time ? Number(position.time) * 1000 : Date.now();
-        const now = Date.now();
-
         const nodeData: any = {
           nodeNum: fromNum,
           nodeId: nodeId,
@@ -785,25 +742,7 @@ class MeshtasticManager {
           nodeData.rssi = meshPacket.rxRssi;
         }
 
-        // Save position to nodes table (current position)
         databaseService.upsertNode(nodeData);
-
-        // Save position to telemetry table (historical tracking)
-        databaseService.insertTelemetry({
-          nodeId, nodeNum: fromNum, telemetryType: 'latitude',
-          timestamp, value: coords.latitude, unit: '°', createdAt: now
-        });
-        databaseService.insertTelemetry({
-          nodeId, nodeNum: fromNum, telemetryType: 'longitude',
-          timestamp, value: coords.longitude, unit: '°', createdAt: now
-        });
-        if (position.altitude !== undefined && position.altitude !== null) {
-          databaseService.insertTelemetry({
-            nodeId, nodeNum: fromNum, telemetryType: 'altitude',
-            timestamp, value: position.altitude, unit: 'm', createdAt: now
-          });
-        }
-
         console.log(`🗺️ Updated node position: ${nodeId} -> ${coords.latitude}, ${coords.longitude}`);
       }
     } catch (error) {
@@ -1023,41 +962,16 @@ class MeshtasticManager {
       const fromNode = databaseService.getNode(fromNum);
       const fromName = fromNode?.longName || fromNodeId;
 
-      // Get distance unit from settings (default to km)
-      const distanceUnit = (databaseService.getSetting('distanceUnit') || 'km') as 'km' | 'mi';
-
       let routeText = `📍 Traceroute to ${fromName} (${fromNodeId})\n\n`;
-      let totalDistanceKm = 0;
-
-      // Helper function to calculate and format distance
-      const calcDistance = (node1Num: number, node2Num: number): string | null => {
-        const n1 = databaseService.getNode(node1Num);
-        const n2 = databaseService.getNode(node2Num);
-        if (n1?.latitude && n1?.longitude && n2?.latitude && n2?.longitude) {
-          const distKm = calculateDistance(n1.latitude, n1.longitude, n2.latitude, n2.longitude);
-          totalDistanceKm += distKm;
-          if (distanceUnit === 'mi') {
-            const distMi = distKm * 0.621371;
-            return `${distMi.toFixed(1)} mi`;
-          }
-          return `${distKm.toFixed(1)} km`;
-        }
-        return null;
-      };
 
       // Handle direct connection (0 hops)
       if (route.length === 0 && snrTowards.length > 0) {
         const snr = (snrTowards[0] / 4).toFixed(1);
         const toNode = databaseService.getNode(toNum);
         const toName = toNode?.longName || toNodeId;
-        const dist = calcDistance(toNum, fromNum);
         routeText += `Forward path:\n`;
         routeText += `  1. ${toName} (${toNodeId})\n`;
-        if (dist) {
-          routeText += `  2. ${fromName} (${fromNodeId}) - SNR: ${snr}dB, Distance: ${dist}\n`;
-        } else {
-          routeText += `  2. ${fromName} (${fromNodeId}) - SNR: ${snr}dB\n`;
-        }
+        routeText += `  2. ${fromName} (${fromNodeId}) - SNR: ${snr}dB\n`;
       } else if (route.length > 0) {
         const toNode = databaseService.getNode(toNum);
         const toName = toNode?.longName || toNodeId;
@@ -1066,72 +980,32 @@ class MeshtasticManager {
         // Start with source node
         routeText += `  1. ${toName} (${toNodeId})\n`;
 
-        // Build full path to calculate distances
-        const fullPath = [toNum, ...route, fromNum];
-
         // Show intermediate hops
         route.forEach((nodeNum: number, index: number) => {
           const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
           const node = databaseService.getNode(nodeNum);
           const nodeName = node?.longName || nodeId;
           const snr = snrTowards[index] !== undefined ? `${(snrTowards[index] / 4).toFixed(1)}dB` : 'N/A';
-          const dist = calcDistance(fullPath[index], nodeNum);
-          if (dist) {
-            routeText += `  ${index + 2}. ${nodeName} (${nodeId}) - SNR: ${snr}, Distance: ${dist}\n`;
-          } else {
-            routeText += `  ${index + 2}. ${nodeName} (${nodeId}) - SNR: ${snr}\n`;
-          }
+          routeText += `  ${index + 2}. ${nodeName} (${nodeId}) - SNR: ${snr}\n`;
         });
 
-        // Show destination with final hop SNR and distance
+        // Show destination with final hop SNR
         const finalSnrIndex = route.length;
-        const prevNodeNum = route.length > 0 ? route[route.length - 1] : toNum;
-        const finalDist = calcDistance(prevNodeNum, fromNum);
         if (snrTowards[finalSnrIndex] !== undefined) {
           const finalSnr = (snrTowards[finalSnrIndex] / 4).toFixed(1);
-          if (finalDist) {
-            routeText += `  ${route.length + 2}. ${fromName} (${fromNodeId}) - SNR: ${finalSnr}dB, Distance: ${finalDist}\n`;
-          } else {
-            routeText += `  ${route.length + 2}. ${fromName} (${fromNodeId}) - SNR: ${finalSnr}dB\n`;
-          }
+          routeText += `  ${route.length + 2}. ${fromName} (${fromNodeId}) - SNR: ${finalSnr}dB\n`;
         } else {
-          if (finalDist) {
-            routeText += `  ${route.length + 2}. ${fromName} (${fromNodeId}) - Distance: ${finalDist}\n`;
-          } else {
-            routeText += `  ${route.length + 2}. ${fromName} (${fromNodeId})\n`;
-          }
+          routeText += `  ${route.length + 2}. ${fromName} (${fromNodeId})\n`;
         }
       }
-
-      // Track total distance for return path separately
-      let returnTotalDistanceKm = 0;
-      const calcDistanceReturn = (node1Num: number, node2Num: number): string | null => {
-        const n1 = databaseService.getNode(node1Num);
-        const n2 = databaseService.getNode(node2Num);
-        if (n1?.latitude && n1?.longitude && n2?.latitude && n2?.longitude) {
-          const distKm = calculateDistance(n1.latitude, n1.longitude, n2.latitude, n2.longitude);
-          returnTotalDistanceKm += distKm;
-          if (distanceUnit === 'mi') {
-            const distMi = distKm * 0.621371;
-            return `${distMi.toFixed(1)} mi`;
-          }
-          return `${distKm.toFixed(1)} km`;
-        }
-        return null;
-      };
 
       if (routeBack.length === 0 && snrBack.length > 0) {
         const snr = (snrBack[0] / 4).toFixed(1);
         const toNode = databaseService.getNode(toNum);
         const toName = toNode?.longName || toNodeId;
-        const dist = calcDistanceReturn(fromNum, toNum);
         routeText += `\nReturn path:\n`;
         routeText += `  1. ${fromName} (${fromNodeId})\n`;
-        if (dist) {
-          routeText += `  2. ${toName} (${toNodeId}) - SNR: ${snr}dB, Distance: ${dist}\n`;
-        } else {
-          routeText += `  2. ${toName} (${toNodeId}) - SNR: ${snr}dB\n`;
-        }
+        routeText += `  2. ${toName} (${toNodeId}) - SNR: ${snr}dB\n`;
       } else if (routeBack.length > 0) {
         const toNode = databaseService.getNode(toNum);
         const toName = toNode?.longName || toNodeId;
@@ -1140,61 +1014,23 @@ class MeshtasticManager {
         // Start with source (destination of forward path)
         routeText += `  1. ${fromName} (${fromNodeId})\n`;
 
-        // Build full return path
-        const fullReturnPath = [fromNum, ...routeBack, toNum];
-
         // Show intermediate hops
         routeBack.forEach((nodeNum: number, index: number) => {
           const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
           const node = databaseService.getNode(nodeNum);
           const nodeName = node?.longName || nodeId;
           const snr = snrBack[index] !== undefined ? `${(snrBack[index] / 4).toFixed(1)}dB` : 'N/A';
-          const dist = calcDistanceReturn(fullReturnPath[index], nodeNum);
-          if (dist) {
-            routeText += `  ${index + 2}. ${nodeName} (${nodeId}) - SNR: ${snr}, Distance: ${dist}\n`;
-          } else {
-            routeText += `  ${index + 2}. ${nodeName} (${nodeId}) - SNR: ${snr}\n`;
-          }
+          routeText += `  ${index + 2}. ${nodeName} (${nodeId}) - SNR: ${snr}\n`;
         });
 
-        // Show final destination with SNR and distance
+        // Show final destination with SNR
         const finalSnrIndex = routeBack.length;
-        const prevNodeNum = routeBack.length > 0 ? routeBack[routeBack.length - 1] : fromNum;
-        const finalDist = calcDistanceReturn(prevNodeNum, toNum);
         if (snrBack[finalSnrIndex] !== undefined) {
           const finalSnr = (snrBack[finalSnrIndex] / 4).toFixed(1);
-          if (finalDist) {
-            routeText += `  ${routeBack.length + 2}. ${toName} (${toNodeId}) - SNR: ${finalSnr}dB, Distance: ${finalDist}\n`;
-          } else {
-            routeText += `  ${routeBack.length + 2}. ${toName} (${toNodeId}) - SNR: ${finalSnr}dB\n`;
-          }
+          routeText += `  ${routeBack.length + 2}. ${toName} (${toNodeId}) - SNR: ${finalSnr}dB\n`;
         } else {
-          if (finalDist) {
-            routeText += `  ${routeBack.length + 2}. ${toName} (${toNodeId}) - Distance: ${finalDist}\n`;
-          } else {
-            routeText += `  ${routeBack.length + 2}. ${toName} (${toNodeId})\n`;
-          }
+          routeText += `  ${routeBack.length + 2}. ${toName} (${toNodeId})\n`;
         }
-      }
-
-      // Add total distance summary
-      if (totalDistanceKm > 0) {
-        if (distanceUnit === 'mi') {
-          const totalMi = totalDistanceKm * 0.621371;
-          routeText += `\n📏 Total Forward Distance: ${totalMi.toFixed(1)} mi`;
-        } else {
-          routeText += `\n📏 Total Forward Distance: ${totalDistanceKm.toFixed(1)} km`;
-        }
-      }
-      if (returnTotalDistanceKm > 0) {
-        if (distanceUnit === 'mi') {
-          const totalMi = returnTotalDistanceKm * 0.621371;
-          routeText += ` | Return: ${totalMi.toFixed(1)} mi\n`;
-        } else {
-          routeText += ` | Return: ${returnTotalDistanceKm.toFixed(1)} km\n`;
-        }
-      } else if (totalDistanceKm > 0) {
-        routeText += `\n`;
       }
 
       // Traceroute responses are direct messages, not channel messages
@@ -1237,55 +1073,6 @@ class MeshtasticManager {
 
       databaseService.insertTraceroute(tracerouteRecord);
       console.log(`💾 Saved traceroute record to traceroutes table`);
-
-      // Calculate and store route segment distances
-      try {
-        // Build the full route path: toNode -> intermediates -> fromNode
-        const fullRoute = [toNum, ...route, fromNum];
-
-        // Calculate distance for each consecutive pair of nodes
-        for (let i = 0; i < fullRoute.length - 1; i++) {
-          const node1Num = fullRoute[i];
-          const node2Num = fullRoute[i + 1];
-
-          const node1 = databaseService.getNode(node1Num);
-          const node2 = databaseService.getNode(node2Num);
-
-          // Only calculate if both nodes have position data
-          if (node1?.latitude && node1?.longitude && node2?.latitude && node2?.longitude) {
-            const distanceKm = calculateDistance(
-              node1.latitude,
-              node1.longitude,
-              node2.latitude,
-              node2.longitude
-            );
-
-            const node1Id = `!${node1Num.toString(16).padStart(8, '0')}`;
-            const node2Id = `!${node2Num.toString(16).padStart(8, '0')}`;
-
-            // Store the segment
-            const segment = {
-              fromNodeNum: node1Num,
-              toNodeNum: node2Num,
-              fromNodeId: node1Id,
-              toNodeId: node2Id,
-              distanceKm: distanceKm,
-              isRecordHolder: false,
-              timestamp: timestamp,
-              createdAt: Date.now()
-            };
-
-            databaseService.insertRouteSegment(segment);
-
-            // Check if this is a new record holder
-            databaseService.updateRecordHolderSegment(segment);
-
-            console.log(`📏 Stored route segment: ${node1Id} -> ${node2Id}, distance: ${distanceKm.toFixed(2)} km`);
-          }
-        }
-      } catch (error) {
-        console.error('❌ Error calculating route segment distances:', error);
-      }
     } catch (error) {
       console.error('❌ Error processing traceroute message:', error);
     }
@@ -1324,38 +1111,13 @@ class MeshtasticManager {
           nodeInfo.position.latitudeI,
           nodeInfo.position.longitudeI
         );
-
-        // Validate coordinates before saving
-        if (this.isValidPosition(coords.latitude, coords.longitude)) {
-          nodeData.latitude = coords.latitude;
-          nodeData.longitude = coords.longitude;
-          nodeData.altitude = nodeInfo.position.altitude;
-
-          // Save position to telemetry table (historical tracking)
-          const timestamp = nodeInfo.position.time ? Number(nodeInfo.position.time) * 1000 : Date.now();
-          const now = Date.now();
-          databaseService.insertTelemetry({
-            nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'latitude',
-            timestamp, value: coords.latitude, unit: '°', createdAt: now
-          });
-          databaseService.insertTelemetry({
-            nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'longitude',
-            timestamp, value: coords.longitude, unit: '°', createdAt: now
-          });
-          if (nodeInfo.position.altitude !== undefined && nodeInfo.position.altitude !== null) {
-            databaseService.insertTelemetry({
-              nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'altitude',
-              timestamp, value: nodeInfo.position.altitude, unit: 'm', createdAt: now
-            });
-          }
-        } else {
-          console.warn(`⚠️ Invalid position coordinates for node ${nodeId}: lat=${coords.latitude}, lon=${coords.longitude}. Skipping position save.`);
-        }
+        nodeData.latitude = coords.latitude;
+        nodeData.longitude = coords.longitude;
+        nodeData.altitude = nodeInfo.position.altitude;
       }
 
-      // Note: Device telemetry (batteryLevel, voltage, etc.) is NOT saved from NodeInfo packets
+      // Note: Telemetry data (batteryLevel, voltage, etc.) is NOT saved from NodeInfo packets
       // It is only saved from actual TELEMETRY_APP packets in processTelemetryMessageProtobuf()
-      // However, position data IS saved as telemetry for historical tracking
 
       // If this is the local node, update localNodeInfo with names (only if not locked)
       if (this.localNodeInfo && this.localNodeInfo.nodeNum === Number(nodeInfo.num) && !this.localNodeInfo.isLocked) {
@@ -1724,7 +1486,7 @@ class MeshtasticManager {
 
         console.log(`📍 Config position data: ${coords.latitude}, ${coords.longitude} for ${nodeId}`);
       }
-    } catch (_nodeInfoError) {
+    } catch (nodeInfoError) {
       // NodeInfo parsing failed, try manual field parsing as fallback
     }
 
@@ -2620,6 +2382,9 @@ class MeshtasticManager {
     const regionValue = typeof loraConfig.region === 'number' ? regionMap[loraConfig.region] || `Unknown (${loraConfig.region})` : loraConfig.region || 'Unknown';
     const modemPresetValue = typeof loraConfig.modemPreset === 'number' ? modemPresetMap[loraConfig.modemPreset] || `Unknown (${loraConfig.modemPreset})` : loraConfig.modemPreset || 'Unknown';
 
+    // Radio data from TCP stream
+    const radioData = {};
+
     return {
       basic: {
         nodeAddress: this.config.nodeIp,
@@ -2658,6 +2423,114 @@ class MeshtasticManager {
     };
   }
 
+  private parseConfigDataWithReport(data: Uint8Array, jsonReportData?: any): any {
+    const radioData = jsonReportData?.radio || {};
+
+    // Parse actual device configuration from protobuf data
+    const text = new TextDecoder('utf-8', { fatal: false }).decode(data);
+
+    // Intelligent region detection based on frequency
+    let region = 'Unknown';
+    const frequency = radioData.frequency;
+    if (frequency) {
+      // Determine region based on frequency band
+      if (frequency >= 902 && frequency <= 928) {
+        region = 'US';
+      } else if (frequency >= 863 && frequency <= 870) {
+        region = 'EU_868';
+      } else if (frequency >= 433.05 && frequency <= 434.79) {
+        region = 'EU_433';
+      } else if (frequency >= 915 && frequency <= 928) {
+        region = 'ANZ';
+      } else if (frequency >= 920 && frequency <= 925) {
+        region = 'JP';
+      } else if (frequency >= 865 && frequency <= 867) {
+        region = 'IN';
+      }
+    }
+
+    // Try to infer modem preset from frequency and channel combination
+    // This is based on common Meshtastic configurations
+    let modemPreset = 'Unknown';
+    if (frequency && radioData.lora_channel !== undefined) {
+      // US region channel 45 at 913.125 MHz is commonly Medium Fast
+      // These are heuristics based on common configurations
+      if (region === 'US' && radioData.lora_channel === 45 && Math.abs(frequency - 913.125) < 0.1) {
+        modemPreset = 'Medium Fast';
+      }
+      // Add more heuristics as we learn common patterns
+    }
+
+    // MQTT server detection from raw data
+    let mqttEnabled = false;
+    let mqttServer = 'Not configured';
+
+    // Look for MQTT server patterns in the raw data
+    const mqttPatterns = [
+      'mqtt.areyoumeshingwith.us',
+      'mqtt.meshtastic.org',
+      'broker.hivemq.com',
+      'test.mosquitto.org'
+    ];
+
+    for (const pattern of mqttPatterns) {
+      if (text.includes(pattern)) {
+        mqttEnabled = true;
+        mqttServer = pattern;
+        console.log(`🔍 Detected MQTT server in raw data: ${pattern}`);
+        break;
+      }
+    }
+
+    // Extract channels from the database
+    const dbChannels = databaseService.getAllChannels();
+    const channels = dbChannels.map(ch => ({
+      index: ch.id,
+      name: ch.name,
+      psk: ch.psk ? 'Set' : 'None',
+      uplinkEnabled: ch.uplinkEnabled,
+      downlinkEnabled: ch.downlinkEnabled
+    }));
+
+    const localNode = this.localNodeInfo as any;
+
+    return {
+      basic: {
+        nodeAddress: this.config.nodeIp,
+        tcpPort: this.config.tcpPort,
+        connected: this.isConnected,
+        nodeId: localNode?.nodeId || null,
+        nodeName: localNode?.longName || null,
+        firmwareVersion: localNode?.firmwareVersion || null
+      },
+      radio: {
+        region: region,
+        modemPreset: modemPreset,
+        hopLimit: 'Unknown',
+        txPower: 'Unknown',
+        bandwidth: 'Unknown',
+        spreadFactor: 'Unknown',
+        codingRate: 'Unknown',
+        channelNum: radioData.lora_channel || 'Unknown',
+        frequency: radioData.frequency ? `${radioData.frequency} MHz` : 'Unknown',
+        txEnabled: 'Unknown',
+        sx126xRxBoostedGain: 'Unknown',
+        configOkToMqtt: 'Unknown'
+      },
+      mqtt: {
+        enabled: mqttEnabled,
+        server: mqttServer,
+        username: 'Not set',
+        encryption: false,
+        json: false,
+        tls: false,
+        rootTopic: 'msh'
+      },
+      channels: channels.length > 0 ? channels : [
+        { index: 0, name: 'Primary', psk: 'None', uplinkEnabled: true, downlinkEnabled: true }
+      ]
+    };
+  }
 
   async sendTextMessage(text: string, channel: number = 0, destination?: number): Promise<void> {
     if (!this.isConnected || !this.transport) {
@@ -2784,8 +2657,8 @@ class MeshtasticManager {
       await this.connect();
     }
 
-    // Send want_config_id to trigger node to send updated info
-    await this.sendWantConfigId();
+    // Trigger the full configuration request
+    await this.requestFullConfiguration();
   }
 }
 

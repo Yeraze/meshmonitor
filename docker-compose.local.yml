@@ -1,0 +1,23 @@
+services:
+  # MeshMonitor only - connects to proxy running on host
+  meshmonitor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: meshmonitor
+    ports:
+      - "8081:3001"
+    restart: unless-stopped
+    volumes:
+      - meshmonitor-data:/data
+    env_file: .env
+    environment:
+      - NODE_ENV=production
+      - BASE_URL=${BASE_URL:-}
+      - WEBSOCKET_PROXY_URL=${WEBSOCKET_PROXY_URL:-ws://host.docker.internal:8080}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # Enable host.docker.internal on Linux
+
+volumes:
+  meshmonitor-data:
+    driver: local

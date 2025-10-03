@@ -241,10 +241,6 @@ export class MeshtasticProtobufService {
                 } catch (e) {
                   console.error('❌ Failed to manually decode Data:', e);
                 }
-              } else if (decodedMessage.packet.decoded) {
-                // Already decoded, just log what we have
-                console.log('🔍 DEBUG Already decoded Data:', JSON.stringify(decodedMessage.packet.decoded, null, 2));
-                console.log('🔍 DEBUG Decoded keys:', Object.keys(decodedMessage.packet.decoded));
               }
 
               messages.push({ type: 'meshPacket', data: decodedMessage.packet });
