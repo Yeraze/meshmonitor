@@ -2659,14 +2659,14 @@ class MeshtasticManager {
   }
 
 
-  async sendTextMessage(text: string, channel: number = 0, destination?: number): Promise<number> {
+  async sendTextMessage(text: string, channel: number = 0, destination?: number, replyId?: number, emoji?: number): Promise<number> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
     }
 
     try {
       // Use the new protobuf service to create a proper text message
-      const { data: textMessageData, messageId } = meshtasticProtobufService.createTextMessage(text, destination, channel);
+      const { data: textMessageData, messageId } = meshtasticProtobufService.createTextMessage(text, destination, channel, replyId, emoji);
 
       await this.transport.send(textMessageData);
 

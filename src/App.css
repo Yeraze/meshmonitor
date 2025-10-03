@@ -1281,6 +1281,109 @@ body {
   color: rgba(30, 30, 46, 0.7);
 }
 
+/* Reply button that appears on hover */
+.message-bubble {
+  position: relative;
+}
+
+.message-actions {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  display: flex;
+  gap: 0.25rem;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  z-index: 10;
+}
+
+.message-bubble-container:hover .message-actions {
+  opacity: 1;
+}
+
+.reply-button, .emoji-button {
+  background: var(--ctp-surface2);
+  color: var(--ctp-text);
+  border: 1px solid var(--ctp-overlay0);
+  border-radius: 12px;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.1s ease;
+  white-space: nowrap;
+}
+
+.emoji-button {
+  padding: 0.25rem 0.4rem;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.reply-button:hover, .emoji-button:hover {
+  background: var(--ctp-surface1);
+  border-color: var(--ctp-overlay1);
+  transform: scale(1.1);
+}
+
+.emoji-button:active {
+  transform: scale(0.95);
+}
+
+/* Reply indicator in send box */
+.reply-indicator {
+  background: var(--ctp-surface1);
+  border: 1px solid var(--ctp-surface2);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.reply-indicator-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.reply-indicator-label {
+  font-size: 0.75rem;
+  color: var(--ctp-blue);
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.reply-indicator-text {
+  font-size: 0.85rem;
+  color: var(--ctp-subtext0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reply-indicator-close {
+  background: transparent;
+  border: none;
+  color: var(--ctp-overlay1);
+  cursor: pointer;
+  font-size: 1.2rem;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  flex-shrink: 0;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.reply-indicator-close:hover {
+  background: var(--ctp-surface2);
+  color: var(--ctp-text);
+}
+
 .message-status {
   display: flex;
   align-items: center;
