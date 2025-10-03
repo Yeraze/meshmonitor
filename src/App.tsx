@@ -58,8 +58,21 @@ function App() {
   const selectedChannelRef = useRef<number>(-1)
   const [showMqttMessages, setShowMqttMessages] = useState<boolean>(false)
   const [newMessage, setNewMessage] = useState<string>('')
+  const [replyingTo, setReplyingTo] = useState<MeshMessage | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [nodeAddress, setNodeAddress] = useState<string>('Loading...')
+
+  // Constants for emoji tapbacks
+  const EMOJI_FLAG = 1; // Protobuf flag indicating this is a tapback/reaction
+  const TAPBACK_EMOJIS = [
+    { emoji: '👍', title: 'Thumbs up' },
+    { emoji: '👎', title: 'Thumbs down' },
+    { emoji: '❓', title: 'Question' },
+    { emoji: '❗', title: 'Exclamation' },
+    { emoji: '😂', title: 'Laugh' },
+    { emoji: '😢', title: 'Cry' },
+    { emoji: '💩', title: 'Poop' }
+  ] as const;
   const [deviceInfo, setDeviceInfo] = useState<any>(null)
   const [deviceConfig, setDeviceConfig] = useState<any>(null)
   const [currentNodeId, setCurrentNodeId] = useState<string>('')
@@ -849,6 +862,52 @@ function App() {
     }
   };
 
+  const handleSendTapback = async (emoji: string, originalMessage: MeshMessage) => {
+    if (connectionStatus !== 'connected') {
+      setError('Cannot send reaction: not connected to mesh network');
+      return;
+    }
+
+    // Extract replyId from original message
+    const idParts = originalMessage.id.split('_');
+    if (idParts.length < 2) {
+      setError('Cannot send reaction: invalid message format');
+      return;
+    }
+    const replyId = parseInt(idParts[1], 10);
+
+    // Validate replyId is a valid number
+    if (isNaN(replyId) || replyId < 0) {
+      setError('Cannot send reaction: invalid message ID');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${baseUrl}/api/messages/send`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          text: emoji,
+          channel: originalMessage.channel,
+          replyId: replyId,
+          emoji: EMOJI_FLAG
+        })
+      });
+
+      if (response.ok) {
+        // Refresh messages to show the new tapback
+        setTimeout(() => updateDataFromBackend(), 500);
+      } else {
+        const errorData = await response.json();
+        setError(`Failed to send reaction: ${errorData.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      setError(`Failed to send reaction: ${err instanceof Error ? err.message : 'Network error'}`);
+    }
+  };
+
   const handleSendMessage = async (channel: number = 0) => {
     if (!newMessage.trim() || connectionStatus !== 'connected') {
       return;
@@ -856,6 +915,15 @@ function App() {
 
     // Use channel ID directly - no mapping needed
     const messageChannel = channel;
+
+    // Extract replyId from replyingTo message if present
+    let replyId: number | undefined = undefined;
+    if (replyingTo) {
+      const idParts = replyingTo.id.split('_');
+      if (idParts.length > 1) {
+        replyId = parseInt(idParts[1], 10);
+      }
+    }
 
     // Create a temporary message ID for immediate display
     const tempId = `temp_${Date.now()}_${Math.random()}`;
@@ -869,7 +937,8 @@ function App() {
       channel: messageChannel,
       timestamp: new Date(),
       isLocalMessage: true,
-      acknowledged: false
+      acknowledged: false,
+      replyId: replyId
     };
 
     // Add message to local state immediately
@@ -882,9 +951,10 @@ function App() {
     // Add to pending acknowledgments
     setPendingMessages(prev => new Map(prev).set(tempId, sentMessage));
 
-    // Clear the input
+    // Clear the input and reply state
     const messageText = newMessage;
     setNewMessage('');
+    setReplyingTo(null);
 
     try {
       const response = await fetch(`${baseUrl}/api/messages/send`, {
@@ -894,7 +964,8 @@ function App() {
         },
         body: JSON.stringify({
           text: messageText,
-          channel: messageChannel
+          channel: messageChannel,
+          replyId: replyId
         })
       });
 
@@ -2076,13 +2147,37 @@ function App() {
                                 </div>
                               )}
                               <div className={`message-bubble ${isMine ? 'mine' : 'theirs'}`}>
+                                <div className="message-actions">
+                                  <button
+                                    className="reply-button"
+                                    onClick={() => setReplyingTo(msg)}
+                                    title="Reply to this message"
+                                  >
+                                    ↩
+                                  </button>
+                                  {TAPBACK_EMOJIS.map(({ emoji, title }) => (
+                                    <button
+                                      key={emoji}
+                                      className="emoji-button"
+                                      onClick={() => handleSendTapback(emoji, msg)}
+                                      title={title}
+                                    >
+                                      {emoji}
+                                    </button>
+                                  ))}
+                                </div>
                                 <div className="message-text">
                                   {msg.text}
                                 </div>
                                 {reactions.length > 0 && (
                                   <div className="message-reactions">
                                     {reactions.map(reaction => (
-                                      <span key={reaction.id} className="reaction" title={`From ${getNodeShortName(reaction.from)}`}>
+                                      <span
+                                        key={reaction.id}
+                                        className="reaction"
+                                        title={`From ${getNodeShortName(reaction.from)} - Click to send same reaction`}
+                                        onClick={() => handleSendTapback(reaction.text, msg)}
+                                      >
                                         {reaction.text}
                                       </span>
                                     ))}
@@ -2126,6 +2221,21 @@ function App() {
                   {/* Send message form */}
                   {connectionStatus === 'connected' && (
                     <div className="send-message-form">
+                      {replyingTo && (
+                        <div className="reply-indicator">
+                          <div className="reply-indicator-content">
+                            <div className="reply-indicator-label">Replying to {getNodeName(replyingTo.from)}</div>
+                            <div className="reply-indicator-text">{replyingTo.text}</div>
+                          </div>
+                          <button
+                            className="reply-indicator-close"
+                            onClick={() => setReplyingTo(null)}
+                            title="Cancel reply"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      )}
                       <div className="message-input-container">
                         <input
                           type="text"

@@ -114,7 +114,7 @@ export class MeshtasticProtobufService {
   /**
    * Create a text message ToRadio using proper protobuf encoding
    */
-  createTextMessage(text: string, destination?: number, channel?: number): { data: Uint8Array; messageId: number } {
+  createTextMessage(text: string, destination?: number, channel?: number, replyId?: number, emoji?: number): { data: Uint8Array; messageId: number } {
     const root = getProtobufRoot();
     if (!root) {
       console.error('❌ Protobuf definitions not loaded');
@@ -126,7 +126,9 @@ export class MeshtasticProtobufService {
       const Data = root.lookupType('meshtastic.Data');
       const dataMessage = Data.create({
         portnum: 1, // TEXT_MESSAGE_APP
-        payload: new TextEncoder().encode(text)
+        payload: new TextEncoder().encode(text),
+        replyId: replyId,
+        emoji: emoji
       });
 
       // Generate a unique message ID so we can track this message
