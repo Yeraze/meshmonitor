@@ -1519,8 +1519,8 @@ function App() {
                               Used in <strong>{usage}</strong> traceroute{usage !== 1 ? 's' : ''}
                             </div>
                             {segmentDistanceKm > 0 && (
-                              <div className="route-distance">
-                                Distance: {formatDistance(segmentDistanceKm, distanceUnit)}
+                              <div className="route-usage">
+                                Distance: <strong>{formatDistance(segmentDistanceKm, distanceUnit)}</strong>
                               </div>
                             )}
                             {snrStats && (
@@ -1696,8 +1696,8 @@ function App() {
                                   }).join(' → ')}
                                 </div>
                                 {forwardTotalDistanceKm > 0 && (
-                                  <div className="route-distance">
-                                    Distance: {formatDistance(forwardTotalDistanceKm, distanceUnit)}
+                                  <div className="route-usage">
+                                    Distance: <strong>{formatDistance(forwardTotalDistanceKm, distanceUnit)}</strong>
                                   </div>
                                 )}
                               </div>
@@ -1766,8 +1766,8 @@ function App() {
                                   }).join(' → ')}
                                 </div>
                                 {backTotalDistanceKm > 0 && (
-                                  <div className="route-distance">
-                                    Distance: {formatDistance(backTotalDistanceKm, distanceUnit)}
+                                  <div className="route-usage">
+                                    Distance: <strong>{formatDistance(backTotalDistanceKm, distanceUnit)}</strong>
                                   </div>
                                 )}
                               </div>
