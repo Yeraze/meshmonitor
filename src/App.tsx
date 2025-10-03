@@ -2063,7 +2063,7 @@ function App() {
                               )}
                               <div className={`message-bubble ${isMine ? 'mine' : 'theirs'}`}>
                                 <div className="message-text">
-                                  {msg.emoji ? String.fromCodePoint(msg.emoji) : msg.text}
+                                  {msg.text}
                                 </div>
                                 {reactions.length > 0 && (
                                   <div className="message-reactions">
