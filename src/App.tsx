@@ -16,9 +16,11 @@ import { DeviceInfo, Channel } from './types/device'
 import { MeshMessage } from './types/message'
 import { TabType, SortField, SortDirection, ConnectionStatus, MapCenterControllerProps } from './types/ui'
 import api from './services/api'
-import { defaultIcon, selectedIcon, routerIcon, selectedRouterIcon } from './utils/mapIcons'
+import { createNodeIcon } from './utils/mapIcons'
 import { getRoleName, generateArrowMarkers } from './utils/mapHelpers.tsx'
 import { getHardwareModelName } from './utils/nodeHelpers'
+import MapLegend from './components/MapLegend'
+import ZoomHandler from './components/ZoomHandler'
 
 // Fix for default markers in React-Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -180,6 +182,7 @@ function App() {
   };
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [mapCenterTarget, setMapCenterTarget] = useState<[number, number] | null>(null)
+  const [mapZoom, setMapZoom] = useState<number>(10)
   const [nodePopup, setNodePopup] = useState<{nodeId: string, position: {x: number, y: number}} | null>(null)
   const markerRefs = useRef<Map<string, L.Marker>>(new Map())
 
@@ -1408,15 +1411,26 @@ function App() {
                   attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                   url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                 />
+                <ZoomHandler onZoomChange={setMapZoom} />
+                <MapLegend />
                 {nodesWithPosition.map(node => {
                   const roleNum = typeof node.user?.role === 'string'
                     ? parseInt(node.user.role, 10)
                     : (typeof node.user?.role === 'number' ? node.user.role : 0);
                   const isRouter = roleNum === 2;
                   const isSelected = selectedNodeId === node.user?.id;
-                  const markerIcon = isRouter
-                    ? (isSelected ? selectedRouterIcon : routerIcon)
-                    : (isSelected ? selectedIcon : defaultIcon);
+
+                  // Get hop count for this node
+                  const hops = node.user?.id ? getTracerouteHopCount(node.user.id) : 999;
+                  const showLabel = mapZoom >= 13; // Show labels when zoomed in
+
+                  const markerIcon = createNodeIcon({
+                    hops: hops, // 999 (no traceroute) will show as red
+                    isSelected,
+                    isRouter,
+                    shortName: node.user?.shortName,
+                    showLabel
+                  });
 
                   return (
                 <Marker
