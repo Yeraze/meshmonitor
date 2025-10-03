@@ -8,6 +8,7 @@ import TelemetryGraphs from './components/TelemetryGraphs'
 import InfoTab from './components/InfoTab'
 import SettingsTab from './components/SettingsTab'
 import Dashboard from './components/Dashboard'
+import HopCountDisplay from './components/HopCountDisplay'
 import { version } from '../package.json'
 import { type TemperatureUnit } from './utils/temperature'
 import { calculateDistance, formatDistance } from './utils/distance'
@@ -2189,11 +2190,7 @@ function App() {
                                       hour: '2-digit',
                                       minute: '2-digit'
                                     })}
-                                    {msg.hopStart !== undefined && msg.hopLimit !== undefined && (
-                                      <span style={{ fontSize: '0.75em', marginLeft: '4px', opacity: 0.7 }}>
-                                        ({msg.hopStart - msg.hopLimit} hop{msg.hopStart - msg.hopLimit !== 1 ? 's' : ''})
-                                      </span>
-                                    )}
+                                    <HopCountDisplay hopStart={msg.hopStart} hopLimit={msg.hopLimit} />
                                   </span>
                                 </div>
                               </div>
@@ -2472,11 +2469,7 @@ function App() {
                           <span className="message-from">{getNodeName(msg.from)}</span>
                           <span className="message-time">
                             {msg.timestamp.toLocaleTimeString()}
-                            {msg.hopStart !== undefined && msg.hopLimit !== undefined && (
-                              <span style={{ fontSize: '0.75em', marginLeft: '4px', opacity: 0.7 }}>
-                                ({msg.hopStart - msg.hopLimit} hop{msg.hopStart - msg.hopLimit !== 1 ? 's' : ''})
-                              </span>
-                            )}
+                            <HopCountDisplay hopStart={msg.hopStart} hopLimit={msg.hopLimit} />
                           </span>
                           {isTraceroute && <span className="traceroute-badge">TRACEROUTE</span>}
                         </div>
