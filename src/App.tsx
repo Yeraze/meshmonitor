@@ -10,6 +10,7 @@ import SettingsTab from './components/SettingsTab'
 import Dashboard from './components/Dashboard'
 import { version } from '../package.json'
 import { type TemperatureUnit } from './utils/temperature'
+import { calculateDistance, formatDistance } from './utils/distance'
 import { DeviceInfo, Channel } from './types/device'
 import { MeshMessage } from './types/message'
 import { TabType, SortField, SortDirection, ConnectionStatus, MapCenterControllerProps } from './types/ui'
@@ -117,6 +118,10 @@ function App() {
     const saved = localStorage.getItem('temperatureUnit');
     return (saved === 'F' ? 'F' : 'C') as TemperatureUnit;
   });
+  const [distanceUnit, setDistanceUnit] = useState<'km' | 'mi'>(() => {
+    const saved = localStorage.getItem('distanceUnit');
+    return (saved === 'mi' ? 'mi' : 'km') as 'km' | 'mi';
+  });
   const [telemetryVisualizationHours, setTelemetryVisualizationHours] = useState<number>(() => {
     const saved = localStorage.getItem('telemetryVisualizationHours');
     return saved ? parseInt(saved) : 24;
@@ -221,6 +226,11 @@ function App() {
           if (settings.temperatureUnit) {
             setTemperatureUnit(settings.temperatureUnit as TemperatureUnit);
             localStorage.setItem('temperatureUnit', settings.temperatureUnit);
+          }
+
+          if (settings.distanceUnit) {
+            setDistanceUnit(settings.distanceUnit as 'km' | 'mi');
+            localStorage.setItem('distanceUnit', settings.distanceUnit);
           }
 
           if (settings.telemetryVisualizationHours) {
@@ -638,42 +648,60 @@ function App() {
       const snrArray = JSON.parse(snr || '[]');
 
       const pathNodes: string[] = [];
+      const nodeNums: number[] = [];
+      let totalDistanceKm = 0;
 
-      // Add source node if provided
+      // Build full sequence of node numbers
       if (toNodeNum !== undefined) {
-        const node = nodes.find(n => n.nodeNum === toNodeNum);
-        const nodeName = node?.user?.longName || node?.user?.shortName || `!${toNodeNum.toString(16)}`;
-        pathNodes.push(nodeName);
+        nodeNums.push(toNodeNum);
       }
-
-      // Add intermediate hops
-      if (routeArray.length > 0) {
-        routeArray.forEach((nodeNum: number, idx: number) => {
-          const node = nodes.find(n => n.nodeNum === nodeNum);
-          const nodeName = node?.user?.longName || node?.user?.shortName || `!${nodeNum.toString(16)}`;
-          const snrValue = snrArray[idx] !== undefined ? ` (${(snrArray[idx]/4).toFixed(1)}dB)` : '';
-          pathNodes.push(nodeName + snrValue);
-        });
-      }
-
-      // Add destination node if provided
+      nodeNums.push(...routeArray);
       if (fromNodeNum !== undefined) {
-        const node = nodes.find(n => n.nodeNum === fromNodeNum);
-        const nodeName = node?.user?.longName || node?.user?.shortName || `!${fromNodeNum.toString(16)}`;
-        const finalSnrIdx = routeArray.length;
-        const snrValue = snrArray[finalSnrIdx] !== undefined ? ` (${(snrArray[finalSnrIdx]/4).toFixed(1)}dB)` : '';
-        pathNodes.push(nodeName + snrValue);
+        nodeNums.push(fromNodeNum);
       }
+
+      // Format each hop with SNR and distance
+      nodeNums.forEach((nodeNum, idx) => {
+        const node = nodes.find(n => n.nodeNum === nodeNum);
+        const nodeName = node?.user?.longName || node?.user?.shortName || `!${nodeNum.toString(16)}`;
+
+        // Get SNR for this hop
+        const snrIdx = idx === 0 ? -1 : idx - 1; // First node has no SNR, subsequent nodes use previous indices
+        const snrValue = snrIdx >= 0 && snrArray[snrIdx] !== undefined
+          ? ` (${(snrArray[snrIdx]/4).toFixed(1)}dB)`
+          : '';
+
+        // Calculate distance to next hop if available
+        let distanceStr = '';
+        if (idx < nodeNums.length - 1) {
+          const nextNodeNum = nodeNums[idx + 1];
+          const nextNode = nodes.find(n => n.nodeNum === nextNodeNum);
+
+          if (node?.position?.latitude && node?.position?.longitude &&
+              nextNode?.position?.latitude && nextNode?.position?.longitude) {
+            const distKm = calculateDistance(
+              node.position.latitude, node.position.longitude,
+              nextNode.position.latitude, nextNode.position.longitude
+            );
+            totalDistanceKm += distKm;
+            distanceStr = ` [${formatDistance(distKm, distanceUnit)}]`;
+          }
+        }
+
+        pathNodes.push(nodeName + snrValue + distanceStr);
+      });
 
       if (pathNodes.length === 0) {
         return 'No route data';
       }
 
       if (pathNodes.length === 2 && routeArray.length === 0) {
-        return `${pathNodes[0]} ↔ ${pathNodes[1]} (direct)`;
+        const distanceInfo = totalDistanceKm > 0 ? ` - ${formatDistance(totalDistanceKm, distanceUnit)} (direct)` : ' (direct)';
+        return `${pathNodes[0]} ↔ ${pathNodes[1]}${distanceInfo}`;
       }
 
-      return pathNodes.join(' → ');
+      const totalInfo = totalDistanceKm > 0 ? ` - Total: ${formatDistance(totalDistanceKm, distanceUnit)}` : '';
+      return pathNodes.join(' → ') + totalInfo;
     } catch (error) {
       return 'Error parsing route';
     }
@@ -1429,6 +1457,16 @@ function App() {
                     const node1Name = node1?.user?.longName || node1?.user?.shortName || `!${segment.nodeNums[0].toString(16)}`;
                     const node2Name = node2?.user?.longName || node2?.user?.shortName || `!${segment.nodeNums[1].toString(16)}`;
 
+                    // Calculate distance if both nodes have position data
+                    let segmentDistanceKm = 0;
+                    if (node1?.position?.latitude && node1?.position?.longitude &&
+                        node2?.position?.latitude && node2?.position?.longitude) {
+                      segmentDistanceKm = calculateDistance(
+                        node1.position.latitude, node1.position.longitude,
+                        node2.position.latitude, node2.position.longitude
+                      );
+                    }
+
                     // Calculate SNR statistics
                     const snrData = segmentSNRs.get(segmentKey) || [];
                     let snrStats = null;
@@ -1480,6 +1518,11 @@ function App() {
                             <div className="route-usage">
                               Used in <strong>{usage}</strong> traceroute{usage !== 1 ? 's' : ''}
                             </div>
+                            {segmentDistanceKm > 0 && (
+                              <div className="route-distance">
+                                Distance: {formatDistance(segmentDistanceKm, distanceUnit)}
+                              </div>
+                            )}
                             {snrStats && (
                               <div className="route-snr-stats">
                                 {snrStats.count === 1 ? (
@@ -1617,6 +1660,20 @@ function App() {
                       });
 
                       if (forwardPositions.length >= 2) {
+                        // Calculate total distance for forward path
+                        let forwardTotalDistanceKm = 0;
+                        for (let i = 0; i < forwardSequence.length - 1; i++) {
+                          const node1 = processedNodes.find(n => n.nodeNum === forwardSequence[i]);
+                          const node2 = processedNodes.find(n => n.nodeNum === forwardSequence[i + 1]);
+                          if (node1?.position?.latitude && node1?.position?.longitude &&
+                              node2?.position?.latitude && node2?.position?.longitude) {
+                            forwardTotalDistanceKm += calculateDistance(
+                              node1.position.latitude, node1.position.longitude,
+                              node2.position.latitude, node2.position.longitude
+                            );
+                          }
+                        }
+
                         paths.push(
                           <Polyline
                             key="selected-traceroute-forward"
@@ -1638,6 +1695,11 @@ function App() {
                                     return n?.user?.longName || n?.user?.shortName || `!${num.toString(16)}`;
                                   }).join(' → ')}
                                 </div>
+                                {forwardTotalDistanceKm > 0 && (
+                                  <div className="route-distance">
+                                    Distance: {formatDistance(forwardTotalDistanceKm, distanceUnit)}
+                                  </div>
+                                )}
                               </div>
                             </Popup>
                           </Polyline>
@@ -1668,6 +1730,20 @@ function App() {
                       });
 
                       if (backPositions.length >= 2) {
+                        // Calculate total distance for back path
+                        let backTotalDistanceKm = 0;
+                        for (let i = 0; i < backSequence.length - 1; i++) {
+                          const node1 = processedNodes.find(n => n.nodeNum === backSequence[i]);
+                          const node2 = processedNodes.find(n => n.nodeNum === backSequence[i + 1]);
+                          if (node1?.position?.latitude && node1?.position?.longitude &&
+                              node2?.position?.latitude && node2?.position?.longitude) {
+                            backTotalDistanceKm += calculateDistance(
+                              node1.position.latitude, node1.position.longitude,
+                              node2.position.latitude, node2.position.longitude
+                            );
+                          }
+                        }
+
                         paths.push(
                           <Polyline
                             key="selected-traceroute-back"
@@ -1689,6 +1765,11 @@ function App() {
                                     return n?.user?.longName || n?.user?.shortName || `!${num.toString(16)}`;
                                   }).join(' → ')}
                                 </div>
+                                {backTotalDistanceKm > 0 && (
+                                  <div className="route-distance">
+                                    Distance: {formatDistance(backTotalDistanceKm, distanceUnit)}
+                                  </div>
+                                )}
                               </div>
                             </Popup>
                           </Polyline>
@@ -2215,6 +2296,11 @@ function App() {
     localStorage.setItem('temperatureUnit', unit);
   };
 
+  const handleDistanceUnitChange = (unit: 'km' | 'mi') => {
+    setDistanceUnit(unit);
+    localStorage.setItem('distanceUnit', unit);
+  };
+
   const handleTelemetryVisualizationChange = (hours: number) => {
     setTelemetryVisualizationHours(hours);
     localStorage.setItem('telemetryVisualizationHours', hours.toString());
@@ -2327,6 +2413,7 @@ function App() {
             telemetryHours={telemetryVisualizationHours}
             baseUrl={baseUrl}
             getAvailableChannels={getAvailableChannels}
+            distanceUnit={distanceUnit}
           />
         )}
         {activeTab === 'dashboard' && (
@@ -2341,11 +2428,13 @@ function App() {
             maxNodeAgeHours={maxNodeAgeHours}
             tracerouteIntervalMinutes={tracerouteIntervalMinutes}
             temperatureUnit={temperatureUnit}
+            distanceUnit={distanceUnit}
             telemetryVisualizationHours={telemetryVisualizationHours}
             baseUrl={baseUrl}
             onMaxNodeAgeChange={handleMaxNodeAgeChange}
             onTracerouteIntervalChange={handleTracerouteIntervalChange}
             onTemperatureUnitChange={handleTemperatureUnitChange}
+            onDistanceUnitChange={handleDistanceUnitChange}
             onTelemetryVisualizationChange={handleTelemetryVisualizationChange}
           />
         )}
