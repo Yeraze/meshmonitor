@@ -2189,6 +2189,11 @@ function App() {
                                       hour: '2-digit',
                                       minute: '2-digit'
                                     })}
+                                    {msg.hopStart !== undefined && msg.hopLimit !== undefined && (
+                                      <span style={{ fontSize: '0.75em', marginLeft: '4px', opacity: 0.7 }}>
+                                        ({msg.hopStart - msg.hopLimit} hop{msg.hopStart - msg.hopLimit !== 1 ? 's' : ''})
+                                      </span>
+                                    )}
                                   </span>
                                 </div>
                               </div>
@@ -2465,7 +2470,14 @@ function App() {
                       <div key={msg.id} className={`message-item ${isTraceroute ? 'traceroute' : msg.from === selectedDMNode ? 'received' : 'sent'}`}>
                         <div className="message-header">
                           <span className="message-from">{getNodeName(msg.from)}</span>
-                          <span className="message-time">{msg.timestamp.toLocaleTimeString()}</span>
+                          <span className="message-time">
+                            {msg.timestamp.toLocaleTimeString()}
+                            {msg.hopStart !== undefined && msg.hopLimit !== undefined && (
+                              <span style={{ fontSize: '0.75em', marginLeft: '4px', opacity: 0.7 }}>
+                                ({msg.hopStart - msg.hopLimit} hop{msg.hopStart - msg.hopLimit !== 1 ? 's' : ''})
+                              </span>
+                            )}
+                          </span>
                           {isTraceroute && <span className="traceroute-badge">TRACEROUTE</span>}
                         </div>
                         <div className="message-text" style={isTraceroute ? {whiteSpace: 'pre-line', fontFamily: 'monospace'} : {}}>{msg.text}</div>
