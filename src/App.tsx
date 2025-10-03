@@ -2049,12 +2049,20 @@ function App() {
                               </div>
                             )}
                             <div className="message-content">
-                              {repliedMessage && !isReaction && (
+                              {msg.replyId && !isReaction && (
                                 <div className="replied-message">
                                   <div className="reply-arrow">↳</div>
                                   <div className="reply-content">
-                                    <div className="reply-from">{getNodeShortName(repliedMessage.from)}</div>
-                                    <div className="reply-text">{repliedMessage.text || "Empty Message"}</div>
+                                    {repliedMessage ? (
+                                      <>
+                                        <div className="reply-from">{getNodeShortName(repliedMessage.from)}</div>
+                                        <div className="reply-text">{repliedMessage.text || "Empty Message"}</div>
+                                      </>
+                                    ) : (
+                                      <div className="reply-text" style={{ fontStyle: 'italic', opacity: 0.6 }}>
+                                        Message not available
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                               )}
