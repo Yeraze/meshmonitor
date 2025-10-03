@@ -235,14 +235,15 @@ For complete Kubernetes documentation, configuration options, and examples, see 
 
 ### Development Setup
 
-1. **Clone the repository**
+1. **Clone the repository with submodules**
    ```bash
-   git clone <repository-url>
+   git clone --recurse-submodules https://github.com/Yeraze/meshmonitor.git
    cd meshmonitor
+   ```
 
-   # Initialize and update git submodules (required for protobufs)
-   git submodule init
-   git submodule update
+   **Important:** If you already cloned without `--recurse-submodules`:
+   ```bash
+   git submodule update --init --recursive
    ```
 
 2. **Install dependencies**

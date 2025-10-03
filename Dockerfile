@@ -15,6 +15,13 @@ RUN rm -f package-lock.json && \
 # Copy source files
 COPY . .
 
+# Verify protobufs are present (fail fast if git submodule wasn't initialized)
+RUN if [ ! -f "protobufs/meshtastic/mesh.proto" ]; then \
+      echo "ERROR: Protobuf files not found! Git submodule may not be initialized."; \
+      echo "Run: git submodule update --init --recursive"; \
+      exit 1; \
+    fi
+
 # Build the React application (always for root, will be rewritten at runtime)
 RUN npm run build
 
