@@ -113,6 +113,8 @@ class DatabaseService {
     this.initialize();
     // Always ensure Primary channel exists, even if database already initialized
     this.ensurePrimaryChannel();
+    // Always ensure broadcast node exists for channel messages
+    this.ensureBroadcastNode();
   }
 
   private initialize(): void {
@@ -143,6 +145,35 @@ class DatabaseService {
       }
     } catch (error) {
       console.error('❌ Error in ensurePrimaryChannel:', error);
+    }
+  }
+
+  private ensureBroadcastNode(): void {
+    console.log('🔍 ensureBroadcastNode() called');
+    try {
+      const broadcastNodeNum = 4294967295; // 0xFFFFFFFF
+      const broadcastNodeId = '!ffffffff';
+
+      const existingNode = this.getNode(broadcastNodeNum);
+      console.log('🔍 getNode(4294967295) returned:', existingNode);
+
+      if (!existingNode) {
+        console.log('🔍 No broadcast node found, creating it');
+        this.upsertNode({
+          nodeNum: broadcastNodeNum,
+          nodeId: broadcastNodeId,
+          longName: 'Broadcast',
+          shortName: 'BCAST'
+        });
+
+        // Verify it was created
+        const verify = this.getNode(broadcastNodeNum);
+        console.log('🔍 After upsert, getNode(4294967295) returns:', verify);
+      } else {
+        console.log(`✅ Broadcast node already exists`);
+      }
+    } catch (error) {
+      console.error('❌ Error in ensureBroadcastNode:', error);
     }
   }
 
