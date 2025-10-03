@@ -1682,7 +1682,7 @@ class MeshtasticManager {
 
         console.log(`📍 Config position data: ${coords.latitude}, ${coords.longitude} for ${nodeId}`);
       }
-    } catch (nodeInfoError) {
+    } catch (_nodeInfoError) {
       // NodeInfo parsing failed, try manual field parsing as fallback
     }
 
