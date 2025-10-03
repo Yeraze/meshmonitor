@@ -38,6 +38,8 @@ PRAGMA temp_store = memory;
 │ lastHeard (INTEGER)                                         │
 │ snr (REAL)                                                  │
 │ rssi (INTEGER)                                              │
+│ firmwareVersion (TEXT)                                      │
+│ isMobile (BOOLEAN)                                          │
 │ lastTracerouteRequest (INTEGER)                             │
 │ createdAt (INTEGER, NOT NULL)                               │
 │ updatedAt (INTEGER, NOT NULL)                               │
@@ -133,6 +135,8 @@ CREATE TABLE nodes (
   lastHeard INTEGER,
   snr REAL,
   rssi INTEGER,
+  firmwareVersion TEXT,
+  isMobile BOOLEAN,
   lastTracerouteRequest INTEGER,
   createdAt INTEGER NOT NULL,
   updatedAt INTEGER NOT NULL
@@ -161,6 +165,8 @@ CREATE TABLE nodes (
 | `lastHeard` | INTEGER | Unix timestamp of last communication | `1640995200` |
 | `snr` | REAL | Signal-to-noise ratio in dB | `12.5` |
 | `rssi` | INTEGER | Received signal strength in dBm | `-45` |
+| `firmwareVersion` | TEXT | Firmware version string | `2.3.0.abc123` |
+| `isMobile` | BOOLEAN | True if node has moved >1km (mobile detection) | `1` (true) |
 | `lastTracerouteRequest` | INTEGER | Timestamp of last traceroute request | `1640994000` |
 | `createdAt` | INTEGER | Record creation timestamp | `1640990000` |
 | `updatedAt` | INTEGER | Last update timestamp | `1640995200` |
@@ -170,7 +176,17 @@ CREATE TABLE nodes (
 - `nodeNum` is the primary key and must be unique
 - `nodeId` must be unique and follow format `![0-9a-fA-F]{8}`
 - `latitude` and `longitude` should be present together or both NULL
+- **Position Validation**: Coordinates are validated before storage:
+  - Latitude must be between -90 and 90 degrees
+  - Longitude must be between -180 and 180 degrees
+  - Values must be valid numbers (not NaN or Infinity)
+  - Invalid coordinates are rejected and logged as warnings
 - `batteryLevel` should be between 0 and 100 if present
+- **Mobile Node Detection**: `isMobile` is automatically set based on position telemetry:
+  - Position data is tracked in the telemetry table
+  - Movement variance is calculated from historical position data
+  - Nodes with >1km total movement are marked as mobile
+  - Detection uses Haversine formula for accurate distance calculation
 - `lastHeard`, `createdAt`, and `updatedAt` are Unix timestamps
 - Records are automatically updated with current timestamp on modification
 
@@ -422,28 +438,30 @@ FOREIGN KEY (toNodeNum) REFERENCES nodes(nodeNum)
 
 ## Hardware Model Reference
 
-Hardware model enum values used in the `hwModel` field:
+Hardware model enum values used in the `hwModel` field (66 models supported):
 
-```sql
--- Hardware model constants
-SELECT 1 as hwModel, 'TLORA_V2' as name
-UNION SELECT 2, 'TLORA_V1'
-UNION SELECT 3, 'TLORA_V2_1_1P6'
-UNION SELECT 4, 'TBEAM'
-UNION SELECT 5, 'HELTEC_V2_0'
-UNION SELECT 6, 'TBEAM_V0P7'
-UNION SELECT 7, 'T_ECHO'
-UNION SELECT 8, 'TLORA_V1_1P3'
-UNION SELECT 9, 'RAK4631'
-UNION SELECT 10, 'HELTEC_V2_1'
-UNION SELECT 11, 'HELTEC_V1'
-UNION SELECT 12, 'LILYGO_TBEAM_S3_CORE'
-UNION SELECT 13, 'RAK11200'
-UNION SELECT 14, 'NANO_G1'
-UNION SELECT 15, 'STATION_G1'
-UNION SELECT 39, 'DIY_V1'
-UNION SELECT 43, 'HELTEC_V3';
-```
+| ID | Technical Name | Formatted Name |
+|----|----------------|----------------|
+| 1 | TLORA_V2 | TLora V2 |
+| 2 | TLORA_V1 | TLora V1 |
+| 3 | TLORA_V2_1_1P6 | TLora V2 1 1.6 |
+| 4 | TBEAM | TBeam |
+| 5 | HELTEC_V2_0 | Heltec V2 0 |
+| 9 | RAK4631 | RAK4631 |
+| 12 | LILYGO_TBEAM_S3_CORE | Lilygo TBeam S3 Core |
+| 31 | STATION_G2 | Station G2 |
+| 43 | HELTEC_WIRELESS_PAPER | Heltec Wireless Paper |
+| 56 | HELTEC_V3 | Heltec V3 |
+| 58 | BETAFPV_2400_TX | BetaFPV 2400 TX |
+| 66 | HELTEC_WIRELESS_TRACKER_VPLUS | Heltec Wireless Tracker VPlus |
+
+*Note: Full list of 66 models defined in `src/constants/index.ts`. Hardware names are automatically formatted for display using `formatHardwareName()` from `src/utils/nodeHelpers.ts`.*
+
+**Hardware Name Formatting:**
+- Technical names (e.g., `STATION_G2`) are converted to readable format (e.g., "Station G2")
+- Brand names use proper capitalization (Heltec, Lilygo, BetaFPV)
+- Version numbers are formatted with periods (V2P0 becomes V2.0)
+- Abbreviations are preserved uppercase (LR, TX, RAK, NRF, etc.)
 
 ## Common Queries
 

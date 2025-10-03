@@ -88,7 +88,16 @@ sendTraceroute(destination: string)            // Send traceroute request
 getAllNodes(): DeviceInfo[]                    // Get node information
 getRecentMessages(limit: number)               // Get message history
 startTracerouteScheduler()                     // Start automatic traceroutes
+isValidPosition(lat: number, lon: number)      // Validate position coordinates
 ```
+
+**Position Validation:**
+- All position coordinates are validated before database storage
+- Latitude must be between -90 and 90 degrees
+- Longitude must be between -180 and 180 degrees
+- Values must be valid numbers (not NaN or Infinity)
+- Invalid coordinates are rejected with warning logs
+- Applied in both position messages and node info packets
 
 Channel Management:
 - **Whitelist-based filtering** prevents invalid channels
@@ -223,10 +232,11 @@ Raw Binary Data → Field Extraction → Type Detection → Data Processing → 
 ```
 
 Message Types Handled:
-- **Node Information** (device details, telemetry)
+- **Node Information** (device details, telemetry, hardware model)
 - **Text Messages** (user communications)
 - **Channel Configuration** (network settings)
 - **Telemetry Data** (battery, GPS, signal strength)
+- **Position Telemetry** (latitude/longitude tracking for mobile detection)
 
 #### Channel Management Strategy
 - **Whitelist approach** for known Meshtastic channels
@@ -319,6 +329,24 @@ npm start          # Start production server
 - **Consistent formatting** standards
 - **Git hooks** for pre-commit validation
 
+## Mobile Node Detection
+
+### Position Tracking and Movement Analysis
+
+MeshMonitor automatically detects mobile nodes based on position telemetry:
+
+**Detection Logic:**
+- Position data (latitude/longitude) is saved to the telemetry table
+- Historical position data is analyzed for variance
+- Haversine formula calculates distance between positions
+- Nodes with >1km total movement are marked as `isMobile: true`
+- Mobile status is included in API responses and node display
+
+**Benefits:**
+- Identify mobile nodes (vehicles, hikers, etc.) vs. stationary nodes
+- Optimize network topology understanding
+- Enable mobile-specific features and visualizations
+
 ## Traceroute Scheduler
 
 ### Automatic Network Discovery
@@ -353,11 +381,26 @@ The MeshMonitor application includes an intelligent traceroute scheduler that au
 - Routes that appear in multiple traceroutes are drawn thicker
 - Purple color scheme matching Catppuccin theme
 
+**Node Popup Information:**
+- iPhone Messages-style popup with route-popup styling
+- Displays readable node role (e.g., "Router", "Client")
+- Shows formatted hardware model name (e.g., "Station G2", "Heltec Wireless Paper")
+- Hardware names converted from technical format (STATION_G2) to readable format
+- Auto-opens when selecting node from node list
+- Includes SNR, battery level, and last heard timestamp
+
 **Segment Weight Calculation:**
 - Base weight: 2px
 - Additional weight: +1px per usage occurrence
 - Maximum weight: 8px for heavily used routes
 - Bidirectional segments counted once (normalized)
+
+**Hardware Model Display:**
+- 66 Meshtastic hardware models supported
+- Technical names (e.g., `STATION_G2`) formatted for readability
+- Brand name capitalization (Heltec, Lilygo, BetaFPV)
+- Version number formatting (V2P0 → V2.0)
+- Abbreviations preserved uppercase (LR, TX, RAK, etc.)
 
 ## Future Enhancements
 

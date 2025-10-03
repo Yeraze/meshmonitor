@@ -37,6 +37,8 @@ interface DeviceInfo {
   lastHeard?: number;                // Unix timestamp of last communication
   snr?: number;                      // Signal-to-noise ratio in dB
   rssi?: number;                     // Received signal strength in dBm
+  firmwareVersion?: string;          // Firmware version string
+  isMobile?: boolean;                // True if node has moved >1km based on position telemetry
 }
 ```
 
@@ -72,7 +74,9 @@ const exampleNode: DeviceInfo = {
   },
   lastHeard: 1640995200,
   snr: 12.5,
-  rssi: -45
+  rssi: -45,
+  firmwareVersion: "2.3.0.abc123",
+  isMobile: false
 };
 ```
 
@@ -140,6 +144,9 @@ interface DbNode {
   lastHeard?: number;                // Radio metrics
   snr?: number;
   rssi?: number;
+  firmwareVersion?: string;          // Firmware version string
+  isMobile?: boolean;                // Mobile node detection (>1km movement)
+  lastTracerouteRequest?: number;    // Last traceroute request timestamp
   createdAt: number;                 // Record creation timestamp
   updatedAt: number;                 // Last update timestamp
 }
@@ -169,10 +176,10 @@ interface DbMessage {
 
 ### Hardware Model Enum
 
-Maps numeric hardware model IDs to human-readable names.
+Maps numeric hardware model IDs to technical names (66 models supported).
 
 ```typescript
-const HardwareModels: Record<number, string> = {
+const HARDWARE_MODELS: Record<number, string> = {
   1: 'TLORA_V2',
   2: 'TLORA_V1',
   3: 'TLORA_V2_1_1P6',
@@ -187,11 +194,85 @@ const HardwareModels: Record<number, string> = {
   12: 'LILYGO_TBEAM_S3_CORE',
   13: 'RAK11200',
   14: 'NANO_G1',
-  15: 'STATION_G1',
-  39: 'DIY_V1',
-  43: 'HELTEC_V3'
+  15: 'TLORA_V2_1_1P8',
+  16: 'TLORA_T3_S3',
+  17: 'NANO_G1_EXPLORER',
+  18: 'NANO_G2_ULTRA',
+  19: 'LORA_TYPE',
+  20: 'WIPHONE',
+  21: 'WIO_WM1110',
+  22: 'RAK2560',
+  23: 'HELTEC_HRU_3601',
+  24: 'HELTEC_VISION_MASTER_T190',
+  25: 'HELTEC_VISION_MASTER_E213',
+  26: 'HELTEC_VISION_MASTER_E290',
+  27: 'HELTEC_MESH_NODE_T114',
+  28: 'SENSECAP_INDICATOR',
+  29: 'TRACKER_T1000_E',
+  30: 'RAK3172',
+  31: 'STATION_G2',
+  32: 'LR1110',
+  33: 'LR1120',
+  34: 'LR1121',
+  35: 'RADIOMASTER_900_BANDIT_NANO',
+  36: 'HELTEC_CAPSULE_SENSOR_V3',
+  37: 'HELTEC_WIRELESS_TRACKER',
+  38: 'HELTEC_WIRELESS_PAPER_V1_0',
+  39: 'T_DECK',
+  40: 'T_WATCH_S3',
+  41: 'PICOMPUTER_S3',
+  42: 'HELTEC_HT62',
+  43: 'HELTEC_WIRELESS_PAPER',
+  44: 'HELTEC_WIRELESS_TRACKER_V1_0',
+  45: 'UNPHONE',
+  46: 'TD_LORAC',
+  47: 'CDEBYTE_EORA_S3',
+  48: 'TWC_MESH_V4',
+  49: 'NRF52_UNKNOWN',
+  50: 'PORTDUINO',
+  51: 'ANDROID_SIM',
+  52: 'DIY_V1',
+  53: 'NRF52840_PCA10056',
+  54: 'DR_DEV',
+  55: 'M5STACK',
+  56: 'HELTEC_V3',
+  57: 'HELTEC_WSL_V3',
+  58: 'BETAFPV_2400_TX',
+  59: 'BETAFPV_900_NANO_TX',
+  60: 'RPI_PICO',
+  61: 'SEEED_XIAO_S3',
+  62: 'RADIOMASTER_900_BANDIT',
+  63: 'ME_CONNECT',
+  64: 'CHATTER_2',
+  65: 'ME_LR1110',
+  66: 'HELTEC_WIRELESS_TRACKER_VPLUS'
 };
 ```
+
+**Hardware Model Name Formatting:**
+
+Technical hardware names are formatted into readable display names using `formatHardwareName()`:
+
+```typescript
+function formatHardwareName(name: string): string {
+  // Splits on underscores and applies proper casing
+  // Preserves abbreviations (LR, TX, RAK, NRF, etc.)
+  // Maps brand names to proper capitalization
+}
+
+function getHardwareModelName(hwModel: number): string | null {
+  const modelName = HARDWARE_MODELS[hwModel];
+  if (!modelName) return `Unknown (${hwModel})`;
+  return formatHardwareName(modelName);
+}
+```
+
+**Examples:**
+- `STATION_G2` → **Station G2**
+- `HELTEC_WIRELESS_PAPER` → **Heltec Wireless Paper**
+- `TLORA_V2_1_1P6` → **TLora V2 1 1.6**
+- `BETAFPV_2400_TX` → **BetaFPV 2400 TX**
+- `LILYGO_TBEAM_S3_CORE` → **Lilygo TBeam S3 Core**
 
 ### Node Role Enum
 
