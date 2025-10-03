@@ -126,13 +126,53 @@ const apiRouter = express.Router();
 apiRouter.get('/nodes', (_req, res) => {
   try {
     const nodes = meshtasticManager.getAllNodes();
-    console.log('🔍 Sending nodes to frontend, sample node:', nodes[0] ? {
-      nodeNum: nodes[0].nodeNum,
-      longName: nodes[0].user?.longName,
-      role: nodes[0].user?.role,
-      hopsAway: nodes[0].hopsAway
+
+    // Enhance nodes with mobility detection
+    const enhancedNodes = nodes.map(node => {
+      if (!node.user?.id) return { ...node, isMobile: false };
+
+      // Check position telemetry for this node
+      const positionTelemetry = databaseService.getTelemetryByNode(node.user.id, 100);
+      const latitudes = positionTelemetry.filter(t => t.telemetryType === 'latitude');
+      const longitudes = positionTelemetry.filter(t => t.telemetryType === 'longitude');
+
+      let isMobile = false;
+
+      if (latitudes.length >= 2 && longitudes.length >= 2) {
+        // Calculate distance variation
+        const latValues = latitudes.map(t => t.value);
+        const lonValues = longitudes.map(t => t.value);
+
+        const minLat = Math.min(...latValues);
+        const maxLat = Math.max(...latValues);
+        const minLon = Math.min(...lonValues);
+        const maxLon = Math.max(...lonValues);
+
+        // Calculate distance between min/max corners using Haversine formula
+        const R = 6371; // Earth's radius in km
+        const dLat = (maxLat - minLat) * Math.PI / 180;
+        const dLon = (maxLon - minLon) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                  Math.cos(minLat * Math.PI / 180) * Math.cos(maxLat * Math.PI / 180) *
+                  Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const distance = R * c;
+
+        // If movement is greater than 1km, mark as mobile
+        isMobile = distance > 1.0;
+      }
+
+      return { ...node, isMobile };
+    });
+
+    console.log('🔍 Sending nodes to frontend, sample node:', enhancedNodes[0] ? {
+      nodeNum: enhancedNodes[0].nodeNum,
+      longName: enhancedNodes[0].user?.longName,
+      role: enhancedNodes[0].user?.role,
+      hopsAway: enhancedNodes[0].hopsAway,
+      isMobile: enhancedNodes[0].isMobile
     } : 'No nodes');
-    res.json(nodes);
+    res.json(enhancedNodes);
   } catch (error) {
     console.error('Error fetching nodes:', error);
     res.status(500).json({ error: 'Failed to fetch nodes' });
@@ -147,6 +187,53 @@ apiRouter.get('/nodes/active', (req, res) => {
   } catch (error) {
     console.error('Error fetching active nodes:', error);
     res.status(500).json({ error: 'Failed to fetch active nodes' });
+  }
+});
+
+// Get position history for a node (for mobile node visualization)
+apiRouter.get('/nodes/:nodeId/position-history', (req, res) => {
+  try {
+    const { nodeId } = req.params;
+    const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 168; // Default 7 days
+
+    const cutoffTime = Date.now() - (hoursParam * 60 * 60 * 1000);
+
+    // Get position telemetry
+    const positionTelemetry = databaseService.getTelemetryByNode(nodeId, 1000, cutoffTime);
+
+    // Group by timestamp to get lat/lon pairs
+    const positionMap = new Map<number, { lat?: number; lon?: number; alt?: number }>();
+
+    positionTelemetry.forEach(t => {
+      if (!positionMap.has(t.timestamp)) {
+        positionMap.set(t.timestamp, {});
+      }
+      const pos = positionMap.get(t.timestamp)!;
+
+      if (t.telemetryType === 'latitude') {
+        pos.lat = t.value;
+      } else if (t.telemetryType === 'longitude') {
+        pos.lon = t.value;
+      } else if (t.telemetryType === 'altitude') {
+        pos.alt = t.value;
+      }
+    });
+
+    // Convert to array of positions, filter incomplete ones
+    const positions = Array.from(positionMap.entries())
+      .filter(([_timestamp, pos]) => pos.lat !== undefined && pos.lon !== undefined)
+      .map(([timestamp, pos]) => ({
+        timestamp,
+        latitude: pos.lat!,
+        longitude: pos.lon!,
+        altitude: pos.alt
+      }))
+      .sort((a, b) => a.timestamp - b.timestamp);
+
+    res.json(positions);
+  } catch (error) {
+    console.error('Error fetching position history:', error);
+    res.status(500).json({ error: 'Failed to fetch position history' });
   }
 });
 

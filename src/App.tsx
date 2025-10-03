@@ -69,10 +69,13 @@ function App() {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   // const lastNotificationTime = useRef<number>(0) // Disabled for now
   const [tracerouteLoading, setTracerouteLoading] = useState<string | null>(null)
-  const [showRoutes, setShowRoutes] = useState<boolean>(false)
+  const [showPaths, setShowPaths] = useState<boolean>(false)
+  const [showRoute, setShowRoute] = useState<boolean>(true)
+  const [showMotion, setShowMotion] = useState<boolean>(true)
   const [traceroutes, setTraceroutes] = useState<any[]>([])
   const [nodesWithTelemetry, setNodesWithTelemetry] = useState<Set<string>>(new Set())
   const [nodesWithWeatherTelemetry, setNodesWithWeatherTelemetry] = useState<Set<string>>(new Set())
+  const [positionHistory, setPositionHistory] = useState<{latitude: number; longitude: number; timestamp: number}[]>([])
   // Detect base URL from pathname
   const detectBaseUrl = () => {
     const pathname = window.location.pathname;
@@ -257,14 +260,42 @@ function App() {
     selectedChannelRef.current = selectedChannel;
   }, [selectedChannel]);
 
-  // Fetch traceroutes when showRoutes is enabled or Messages/Nodes tab is active
+  // Fetch traceroutes when showPaths is enabled or Messages/Nodes tab is active
   useEffect(() => {
-    if ((showRoutes || activeTab === 'messages' || activeTab === 'nodes') && connectionStatus === 'connected') {
+    if ((showPaths || activeTab === 'messages' || activeTab === 'nodes') && connectionStatus === 'connected') {
       fetchTraceroutes();
       const interval = setInterval(fetchTraceroutes, 10000); // Refresh every 10 seconds
       return () => clearInterval(interval);
     }
-  }, [showRoutes, activeTab, connectionStatus]);
+  }, [showPaths, activeTab, connectionStatus]);
+
+  // Fetch position history when a mobile node is selected
+  useEffect(() => {
+    if (!selectedNodeId) {
+      setPositionHistory([]);
+      return;
+    }
+
+    const selectedNode = nodes.find(n => n.user?.id === selectedNodeId);
+    if (!selectedNode || !selectedNode.isMobile) {
+      setPositionHistory([]);
+      return;
+    }
+
+    const fetchPositionHistory = async () => {
+      try {
+        const response = await fetch(`${baseUrl}/api/nodes/${selectedNodeId}/position-history?hours=168`);
+        if (response.ok) {
+          const history = await response.json();
+          setPositionHistory(history);
+        }
+      } catch (error) {
+        console.error('Error fetching position history:', error);
+      }
+    };
+
+    fetchPositionHistory();
+  }, [selectedNodeId, nodes, baseUrl]);
 
   // Auto-scroll to bottom when messages change or channel changes
   const scrollToBottom = useCallback(() => {
@@ -973,8 +1004,14 @@ function App() {
           bVal = b.position ? `${b.position.latitude},${b.position.longitude}` : '';
           break;
         case 'hops':
-          aVal = a.user?.id ? getTracerouteHopCount(a.user.id) : 999;
-          bVal = b.user?.id ? getTracerouteHopCount(b.user.id) : 999;
+          // For nodes without hop data, use fallback values that push them to bottom
+          // Ascending: use 999 (high value = bottom), Descending: use -1 (low value = bottom)
+          const noHopFallback = direction === 'asc' ? 999 : -1;
+          aVal = a.user?.id ? getTracerouteHopCount(a.user.id) : noHopFallback;
+          bVal = b.user?.id ? getTracerouteHopCount(b.user.id) : noHopFallback;
+          // Also treat 999 from getTracerouteHopCount as no data
+          if (aVal === 999) aVal = noHopFallback;
+          if (bVal === 999) bVal = noHopFallback;
           break;
         default:
           return 0;
@@ -1174,7 +1211,7 @@ function App() {
                         )}
                         {node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null && (
                           <span className="stat" title={node.deviceMetrics.batteryLevel === 101 ? "Plugged In" : "Battery Level"}>
-                            {node.deviceMetrics.batteryLevel === 101 ? '🔌' : '🔋'} {node.deviceMetrics.batteryLevel === 101 ? 'Plugged In' : `${node.deviceMetrics.batteryLevel}%`}
+                            {node.deviceMetrics.batteryLevel === 101 ? '🔌' : `🔋 ${node.deviceMetrics.batteryLevel}%`}
                           </span>
                         )}
                         {node.hopsAway != null && (
@@ -1201,6 +1238,7 @@ function App() {
                       {node.position && node.position.latitude != null && node.position.longitude != null && (
                         <div className="node-location" title="Location">
                           📍 {node.position.latitude.toFixed(3)}, {node.position.longitude.toFixed(3)}
+                          {node.isMobile && <span title="Mobile Node (position varies > 1km)" style={{ marginLeft: '4px' }}>🚶</span>}
                         </div>
                       )}
                       {node.user?.id && nodesWithTelemetry.has(node.user.id) && (
@@ -1246,10 +1284,26 @@ function App() {
                 <label className="map-control-item">
                   <input
                     type="checkbox"
-                    checked={showRoutes}
-                    onChange={(e) => setShowRoutes(e.target.checked)}
+                    checked={showPaths}
+                    onChange={(e) => setShowPaths(e.target.checked)}
                   />
-                  <span>Show Routes</span>
+                  <span>Show Paths</span>
+                </label>
+                <label className="map-control-item">
+                  <input
+                    type="checkbox"
+                    checked={showRoute}
+                    onChange={(e) => setShowRoute(e.target.checked)}
+                  />
+                  <span>Show Route</span>
+                </label>
+                <label className="map-control-item">
+                  <input
+                    type="checkbox"
+                    checked={showMotion}
+                    onChange={(e) => setShowMotion(e.target.checked)}
+                  />
+                  <span>Show Motion</span>
                 </label>
               </div>
               <MapContainer
@@ -1342,7 +1396,7 @@ function App() {
                 })}
 
                 {/* Draw traceroute paths */}
-                {showRoutes && (() => {
+                {showPaths && (() => {
                   // Calculate segment usage counts and collect SNR values with timestamps
                   const segmentUsage = new Map<string, number>();
                   const segmentSNRs = new Map<string, Array<{snr: number; timestamp: number}>>();
@@ -1626,7 +1680,7 @@ function App() {
                 })()}
 
                 {/* Draw selected node's traceroute with separate forward and back paths */}
-                {selectedNodeId && (() => {
+                {showRoute && selectedNodeId && (() => {
                   const selectedTrace = traceroutes.find(tr =>
                     tr.toNodeId === selectedNodeId || tr.fromNodeId === selectedNodeId
                   );
@@ -1791,6 +1845,49 @@ function App() {
                     console.error('Error rendering traceroute:', error);
                     return null;
                   }
+                })()}
+
+                {/* Draw position history for mobile nodes */}
+                {showMotion && positionHistory.length > 1 && (() => {
+                  const historyPositions: [number, number][] = positionHistory.map(p =>
+                    [p.latitude, p.longitude] as [number, number]
+                  );
+
+                  const elements: React.ReactElement[] = [];
+
+                  // Draw blue line for position history
+                  elements.push(
+                    <Polyline
+                      key="position-history-line"
+                      positions={historyPositions}
+                      color="#0066ff"
+                      weight={3}
+                      opacity={0.7}
+                    >
+                      <Popup>
+                        <div className="route-popup">
+                          <h4>Position History</h4>
+                          <div className="route-usage">
+                            {positionHistory.length} position{positionHistory.length !== 1 ? 's' : ''} recorded
+                          </div>
+                          <div className="route-usage">
+                            {new Date(positionHistory[0].timestamp).toLocaleString()} - {new Date(positionHistory[positionHistory.length - 1].timestamp).toLocaleString()}
+                          </div>
+                        </div>
+                      </Popup>
+                    </Polyline>
+                  );
+
+                  // Generate arrow markers for position history
+                  const historyArrows = generateArrowMarkers(
+                    historyPositions,
+                    'position-history',
+                    '#0066ff',
+                    0
+                  );
+                  elements.push(...historyArrows);
+
+                  return elements;
                 })()}
             </MapContainer>
             {nodesWithPosition.length === 0 && (

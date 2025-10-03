@@ -285,6 +285,9 @@ CREATE TABLE telemetry (
 - `temperature` - Temperature in Celsius
 - `humidity` - Humidity percentage
 - `pressure` - Barometric pressure in hPa
+- `latitude` - GPS latitude in decimal degrees
+- `longitude` - GPS longitude in decimal degrees
+- `altitude` - GPS altitude in meters
 
 ### TRACEROUTES Table
 

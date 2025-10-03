@@ -23,6 +23,7 @@ export interface DeviceInfo {
   snr?: number
   rssi?: number
   firmwareVersion?: string
+  isMobile?: boolean
 }
 
 export interface Channel {

@@ -177,7 +177,8 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = ({ nodeId, temperatureUn
       humidity: 'Humidity',
       pressure: 'Barometric Pressure',
       ch1Voltage: 'Channel 1 Voltage',
-      ch1Current: 'Channel 1 Current'
+      ch1Current: 'Channel 1 Current',
+      altitude: 'Altitude'
     };
     return labels[type] || type;
   };
@@ -192,7 +193,8 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = ({ nodeId, temperatureUn
       humidity: '#00c4cc',
       pressure: '#a28dff',
       ch1Voltage: '#d084d8',
-      ch1Current: '#ff6b9d'
+      ch1Current: '#ff6b9d',
+      altitude: '#74c0fc'
     };
     return colors[type] || '#8884d8';
   };
@@ -211,11 +213,30 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = ({ nodeId, temperatureUn
 
   const groupedData = groupByType(telemetryData);
 
+  // Filter out position telemetry (latitude, longitude)
+  // Filter out altitude if it hasn't changed
+  const filteredData = Array.from(groupedData.entries()).filter(([type, data]) => {
+    // Never show latitude or longitude graphs
+    if (type === 'latitude' || type === 'longitude') {
+      return false;
+    }
+
+    // For altitude, only show if values have changed
+    if (type === 'altitude') {
+      const values = data.map(d => d.value);
+      const uniqueValues = new Set(values);
+      // If all values are the same, don't show the graph
+      return uniqueValues.size > 1;
+    }
+
+    return true;
+  });
+
   return (
     <div className="telemetry-graphs">
       <h3 className="telemetry-title">Last {telemetryHours} Hour{telemetryHours !== 1 ? 's' : ''} Telemetry</h3>
       <div className="graphs-grid">
-        {Array.from(groupedData.entries()).map(([type, data]) => {
+        {filteredData.map(([type, data]) => {
           const isTemperature = type === 'temperature';
           const chartData = prepareChartData(data, isTemperature);
           const unit = isTemperature ? getTemperatureUnit(temperatureUnit) : (data[0]?.unit || '');
