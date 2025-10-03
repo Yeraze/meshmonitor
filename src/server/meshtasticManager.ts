@@ -58,6 +58,7 @@ class MeshtasticManager {
     nodeId: string;
     longName: string;
     shortName: string;
+    hwModel?: number;
     firmwareVersion?: string;
     isLocked?: boolean;  // Flag to prevent overwrites after initial setup
   } | null = null;
@@ -415,6 +416,7 @@ class MeshtasticManager {
         nodeId: nodeId,
         longName: existingNode.longName,
         shortName: existingNode.shortName || 'LOCAL',
+        hwModel: existingNode.hwModel || undefined,
         firmwareVersion: (existingNode as any).firmwareVersion || null,
         isLocked: true  // Lock it to prevent overwrites
       } as any;
@@ -436,6 +438,7 @@ class MeshtasticManager {
         nodeId: nodeId,
         longName: null,  // Will be set when NodeInfo is received
         shortName: null,  // Will be set when NodeInfo is received
+        hwModel: myNodeInfo.hwModel || undefined,
         firmwareVersion: null, // Will be set when DeviceMetadata is received
         isLocked: false  // Not locked yet, waiting for complete info
       } as any;
@@ -445,7 +448,7 @@ class MeshtasticManager {
     }
   }
 
-  getLocalNodeInfo(): { nodeNum: number; nodeId: string; longName: string; shortName: string } | null {
+  getLocalNodeInfo(): { nodeNum: number; nodeId: string; longName: string; shortName: string; hwModel?: number } | null {
     return this.localNodeInfo;
   }
 
