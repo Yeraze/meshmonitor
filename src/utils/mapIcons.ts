@@ -1,30 +1,107 @@
 import L from 'leaflet';
 
-// Create reusable icons to prevent recreation issues
-export const defaultIcon = new L.Icon({
-  iconUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJDOS4yNCAyIDcgNC4yNCA3IDdDNyAxMy40NyAxMiAyMiAxMiAyMkMxMiAyMiAxNyAxMy40NyAxNyA3QzE3IDQuMjQgMTQuNzYgMiAxMiAyWk0xMiA5LjVDMTAuNjIgOS41IDkuNSA4LjM4IDkuNSA3UzkuNTEgNC41IDExIDQuNVMxNS41IDUuNjIgMTUuNSA3UzE0LjM4IDkuNSAxMiA5LjVaIiBmaWxsPSIjNjY5OGY1Ii8+Cjwvc3ZnPg==',
-  iconSize: [24, 24],
-  iconAnchor: [12, 24],
-  popupAnchor: [0, -24]
-});
+/**
+ * Get color based on hop count
+ * 0 hops: Green (#22c55e) - Direct connection
+ * 1-3 hops: Blue (#3b82f6 -> #1d4ed8)
+ * 4-5 hops: Orange (#f59e0b -> #ea580c)
+ * 6+ hops: Red (#ef4444)
+ */
+export function getHopColor(hops: number): string {
+  if (hops === 0) {
+    return '#22c55e'; // Green for direct connection
+  } else if (hops <= 3) {
+    // Blue gradient for 1-3 hops
+    if (hops === 1) return '#3b82f6';
+    if (hops === 2) return '#2563eb';
+    return '#1d4ed8'; // hops === 3
+  } else if (hops <= 5) {
+    return hops === 4 ? '#f59e0b' : '#ea580c'; // Orange gradient
+  } else {
+    return '#ef4444'; // Red for 6+ hops or unknown
+  }
+}
 
-export const selectedIcon = new L.Icon({
-  iconUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJDOS4yNCAyIDcgNC4yNCA3IDdDNyAxMy40NyAxMiAyMiAxMiAyMkMxMiAyMiAxNyAxMy40NyAxNyA3QzE3IDQuMjQgMTQuNzYgMiAxMiAyWk0xMiA5LjVDMTAuNjIgOS41IDkuNSA4LjM4IDkuNSA3UzkuNTEgNC41IDExIDQuNVMxNS41IDUuNjIgMTUuNSA3UzE0LjM4IDkuNUgxMiA5LjVaIiBmaWxsPSIjZmY2NjY2Ii8+Cjwvc3ZnPg==',
-  iconSize: [30, 30],
-  iconAnchor: [15, 30],
-  popupAnchor: [0, -30]
-});
+/**
+ * Create a custom map icon with hop-based coloring and optional label
+ */
+export function createNodeIcon(options: {
+  hops: number;
+  isSelected: boolean;
+  isRouter: boolean;
+  shortName?: string;
+  showLabel: boolean;
+}): L.DivIcon {
+  const { hops, isSelected, isRouter, shortName, showLabel } = options;
+  const color = getHopColor(hops);
+  const size = isSelected ? 60 : 48;
+  const strokeWidth = isSelected ? 3 : 2;
 
-export const routerIcon = new L.Icon({
-  iconUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8IS0tIEJhY2tncm91bmQgY2lyY2xlIC0tPgogIDxjaXJjbGUgY3g9IjEyIiBjeT0iMTIiIHI9IjEwIiBmaWxsPSIjZmZmIiBmaWxsLW9wYWNpdHk9IjAuOSIgc3Ryb2tlPSIjNjY2IiBzdHJva2Utd2lkdGg9IjAuNSIgLz4KICA8IS0tIFRvd2VyIGJhc2UgLS0+CiAgPHJlY3QgeD0iMTAiIHk9IjE2IiB3aWR0aD0iNCIgaGVpZ2h0PSI2IiBmaWxsPSIjODg4IiAvPgogIDwhLS0gVG93ZXIgYm9keSAtLT4KICA8cmVjdCB4PSIxMSIgeT0iOCIgd2lkdGg9IjIiIGhlaWdodD0iOCIgZmlsbD0iIzg4OCIgLz4KICA8IS0tIFRvcCBhbnRlbm5hIC0tPgogIDxyZWN0IHg9IjExLjUiIHk9IjIiIHdpZHRoPSIxIiBoZWlnaHQ9IjYiIGZpbGw9IiM4ODgiIC8+CiAgPGNpcmNsZSBjeD0iMTIiIGN5PSIyIiByPSIxLjUiIGZpbGw9IiNmNjYiIC8+CiAgPCEtLSBMZWZ0IHNpZ25hbCB3YXZlcyAtLT4KICA8cGF0aCBkPSJNIDggMTAgQyA2IDEwIDQgMTEuNSA0IDEzIiBzdHJva2U9IiNmNjYiIHN0cm9rZS13aWR0aD0iMS41IiBmaWxsPSJub25lIiAvPgogIDxwYXRoIGQ9Ik0gOSAxMiBDIDcuNSAxMiA2IDEyLjUgNiAxMyIgc3Ryb2tlPSIjZjY2IiBzdHJva2Utd2lkdGg9IjEuNSIgZmlsbD0ibm9uZSIgLz4KICA8IS0tIFJpZ2h0IHNpZ25hbCB3YXZlcyAtLT4KICA8cGF0aCBkPSJNIDE2IDEwIEMgMTggMTAgMjAgMTEuNSAyMCAxMyIgc3Ryb2tlPSIjZjY2IiBzdHJva2Utd2lkdGg9IjEuNSIgZmlsbD0ibm9uZSIgLz4KICA8cGF0aCBkPSJNIDE1IDEyIEMgMTYuNSAxMiAxOCAxMi41IDE4IDEzIiBzdHJva2U9IiNmNjYiIHN0cm9rZS13aWR0aD0iMS41IiBmaWxsPSJub25lIiAvPgo8L3N2Zz4=',
-  iconSize: [24, 24],
-  iconAnchor: [12, 24],
-  popupAnchor: [0, -24]
-});
+  // Create SVG for the marker
+  const markerSvg = isRouter ? `
+    <svg width="${size}" height="${size}" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+      <!-- Background circle -->
+      <circle cx="24" cy="24" r="20" fill="white" fill-opacity="0.95" stroke="${color}" stroke-width="${strokeWidth}" />
+      <!-- Tower base -->
+      <rect x="19" y="32" width="10" height="12" fill="#555" />
+      <!-- Tower body -->
+      <rect x="21" y="16" width="6" height="16" fill="#555" />
+      <!-- Top antenna -->
+      <rect x="22.5" y="4" width="3" height="12" fill="#555" />
+      <circle cx="24" cy="4" r="3" fill="${color}" />
+      <!-- Left signal waves -->
+      <path d="M 16 20 C 12 20 8 23 8 26" stroke="${color}" stroke-width="3" fill="none" />
+      <path d="M 18 24 C 15 24 12 25 12 26" stroke="${color}" stroke-width="3" fill="none" />
+      <!-- Right signal waves -->
+      <path d="M 32 20 C 36 20 40 23 40 26" stroke="${color}" stroke-width="3" fill="none" />
+      <path d="M 30 24 C 33 24 36 25 36 26" stroke="${color}" stroke-width="3" fill="none" />
+    </svg>
+  ` : `
+    <svg width="${size}" height="${size}" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+      <!-- Pin shape -->
+      <path d="M 24 4 C 16 4 10 10 10 18 C 10 30 24 44 24 44 C 24 44 38 30 38 18 C 38 10 32 4 24 4 Z"
+            fill="${color}" stroke="white" stroke-width="${strokeWidth}" />
+      <!-- Inner circle -->
+      <circle cx="24" cy="18" r="6" fill="white" />
+    </svg>
+  `;
 
-export const selectedRouterIcon = new L.Icon({
-  iconUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAiIGhlaWdodD0iMzAiIHZpZXdCb3g9IjAgMCAzMCAzMCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8IS0tIEJhY2tncm91bmQgY2lyY2xlIC0tPgogIDxjaXJjbGUgY3g9IjE1IiBjeT0iMTUiIHI9IjEzIiBmaWxsPSIjZmZmIiBmaWxsLW9wYWNpdHk9IjAuOTUiIHN0cm9rZT0iI2Y2NiIgc3Ryb2tlLXdpZHRoPSIxLjUiIC8+CiAgPCEtLSBUb3dlciBiYXNlIC0tPgogIDxyZWN0IHg9IjEyLjUiIHk9IjIwIiB3aWR0aD0iNSIgaGVpZ2h0PSI4IiBmaWxsPSIjNTU1IiAvPgogIDwhLS0gVG93ZXIgYm9keSAtLT4KICA8cmVjdCB4PSIxMy43NSIgeT0iMTAiIHdpZHRoPSIyLjUiIGhlaWdodD0iMTAiIGZpbGw9IiM1NTUiIC8+CiAgPCEtLSBUb3AgYW50ZW5uYSAtLT4KICA8cmVjdCB4PSIxNC4zNzUiIHk9IjIuNSIgd2lkdGg9IjEuMjUiIGhlaWdodD0iNy41IiBmaWxsPSIjNTU1IiAvPgogIDxjaXJjbGUgY3g9IjE1IiBjeT0iMi41IiByPSIyIiBmaWxsPSIjZjY2IiAvPgogIDwhLS0gTGVmdCBzaWduYWwgd2F2ZXMgLS0+CiAgPHBhdGggZD0iTSAxMCAxMi41IEMgNy41IDEyLjUgNSAxNC4zNzUgNSAxNi4yNSIgc3Ryb2tlPSIjZjY2IiBzdHJva2Utd2lkdGg9IjIuNSIgZmlsbD0ibm9uZSIgLz4KICA8cGF0aCBkPSJNIDExLjI1IDE1IEMgOS4zNzUgMTUgNy41IDE1LjYyNSA3LjUgMTYuMjUiIHN0cm9rZT0iI2Y2NiIgc3Ryb2tlLXdpZHRoPSIyLjUiIGZpbGw9Im5vbmUiIC8+CiAgPCEtLSBSaWdodCBzaWduYWwgd2F2ZXMgLS0+CiAgPHBhdGggZD0iTSAyMCAxMi41IEMgMjIuNSAxMi41IDI1IDE0LjM3NSAyNSAxNi4yNSIgc3Ryb2tlPSIjZjY2IiBzdHJva2Utd2lkdGg9IjIuNSIgZmlsbD0ibm9uZSIgLz4KICA8cGF0aCBkPSJNIDE4Ljc1IDE1IEMgMjAuNjI1IDE1IDIyLjUgMTUuNjI1IDIyLjUgMTYuMjUiIHN0cm9rZT0iI2Y2NiIgc3Ryb2tlLXdpZHRoPSIyLjUiIGZpbGw9Im5vbmUiIC8+Cjwvc3ZnPg==',
-  iconSize: [30, 30],
-  iconAnchor: [15, 30],
-  popupAnchor: [0, -30]
-});
+  const label = showLabel && shortName ? `
+    <div style="
+      position: absolute;
+      top: ${size + 2}px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: white;
+      padding: 2px 6px;
+      border-radius: 3px;
+      border: 1px solid ${color};
+      font-weight: bold;
+      font-size: 11px;
+      white-space: nowrap;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+      color: #333;
+    ">${shortName}</div>
+  ` : '';
+
+  const html = `
+    <div style="position: relative; width: ${size}px; height: ${size}px;">
+      ${markerSvg}
+      ${label}
+    </div>
+  `;
+
+  return L.divIcon({
+    html,
+    className: 'custom-node-icon',
+    iconSize: [size, size + (showLabel && shortName ? 20 : 0)],
+    iconAnchor: [size / 2, size],
+    popupAnchor: [0, -size]
+  });
+}
+
+// Legacy exports for backward compatibility (deprecated)
+export const defaultIcon = createNodeIcon({ hops: 3, isSelected: false, isRouter: false, showLabel: false });
+export const selectedIcon = createNodeIcon({ hops: 3, isSelected: true, isRouter: false, showLabel: false });
+export const routerIcon = createNodeIcon({ hops: 3, isSelected: false, isRouter: true, showLabel: false });
+export const selectedRouterIcon = createNodeIcon({ hops: 3, isSelected: true, isRouter: true, showLabel: false });
