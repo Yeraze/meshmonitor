@@ -348,6 +348,42 @@ class ApiService {
 
     return response.json();
   }
+
+  async getLongestActiveRouteSegment() {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/route-segments/longest-active`);
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch longest active route segment');
+    }
+
+    return response.json();
+  }
+
+  async getRecordHolderRouteSegment() {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/route-segments/record-holder`);
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch record holder route segment');
+    }
+
+    return response.json();
+  }
+
+  async clearRecordHolderSegment() {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/route-segments/record-holder`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to clear record holder');
+    }
+
+    return response.json();
+  }
 }
 
 export default new ApiService();

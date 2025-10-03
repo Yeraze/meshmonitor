@@ -2,6 +2,7 @@ import databaseService from '../services/database.js';
 import meshtasticProtobufService from './meshtasticProtobufService.js';
 import protobufService from './protobufService.js';
 import { TcpTransport } from './tcpTransport.js';
+import { calculateDistance } from '../utils/distance.js';
 
 export interface MeshtasticConfig {
   nodeIp: string;
@@ -962,16 +963,41 @@ class MeshtasticManager {
       const fromNode = databaseService.getNode(fromNum);
       const fromName = fromNode?.longName || fromNodeId;
 
+      // Get distance unit from settings (default to km)
+      const distanceUnit = (databaseService.getSetting('distanceUnit') || 'km') as 'km' | 'mi';
+
       let routeText = `📍 Traceroute to ${fromName} (${fromNodeId})\n\n`;
+      let totalDistanceKm = 0;
+
+      // Helper function to calculate and format distance
+      const calcDistance = (node1Num: number, node2Num: number): string | null => {
+        const n1 = databaseService.getNode(node1Num);
+        const n2 = databaseService.getNode(node2Num);
+        if (n1?.latitude && n1?.longitude && n2?.latitude && n2?.longitude) {
+          const distKm = calculateDistance(n1.latitude, n1.longitude, n2.latitude, n2.longitude);
+          totalDistanceKm += distKm;
+          if (distanceUnit === 'mi') {
+            const distMi = distKm * 0.621371;
+            return `${distMi.toFixed(1)} mi`;
+          }
+          return `${distKm.toFixed(1)} km`;
+        }
+        return null;
+      };
 
       // Handle direct connection (0 hops)
       if (route.length === 0 && snrTowards.length > 0) {
         const snr = (snrTowards[0] / 4).toFixed(1);
         const toNode = databaseService.getNode(toNum);
         const toName = toNode?.longName || toNodeId;
+        const dist = calcDistance(toNum, fromNum);
         routeText += `Forward path:\n`;
         routeText += `  1. ${toName} (${toNodeId})\n`;
-        routeText += `  2. ${fromName} (${fromNodeId}) - SNR: ${snr}dB\n`;
+        if (dist) {
+          routeText += `  2. ${fromName} (${fromNodeId}) - SNR: ${snr}dB, Distance: ${dist}\n`;
+        } else {
+          routeText += `  2. ${fromName} (${fromNodeId}) - SNR: ${snr}dB\n`;
+        }
       } else if (route.length > 0) {
         const toNode = databaseService.getNode(toNum);
         const toName = toNode?.longName || toNodeId;
@@ -980,32 +1006,72 @@ class MeshtasticManager {
         // Start with source node
         routeText += `  1. ${toName} (${toNodeId})\n`;
 
+        // Build full path to calculate distances
+        const fullPath = [toNum, ...route, fromNum];
+
         // Show intermediate hops
         route.forEach((nodeNum: number, index: number) => {
           const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
           const node = databaseService.getNode(nodeNum);
           const nodeName = node?.longName || nodeId;
           const snr = snrTowards[index] !== undefined ? `${(snrTowards[index] / 4).toFixed(1)}dB` : 'N/A';
-          routeText += `  ${index + 2}. ${nodeName} (${nodeId}) - SNR: ${snr}\n`;
+          const dist = calcDistance(fullPath[index], nodeNum);
+          if (dist) {
+            routeText += `  ${index + 2}. ${nodeName} (${nodeId}) - SNR: ${snr}, Distance: ${dist}\n`;
+          } else {
+            routeText += `  ${index + 2}. ${nodeName} (${nodeId}) - SNR: ${snr}\n`;
+          }
         });
 
-        // Show destination with final hop SNR
+        // Show destination with final hop SNR and distance
         const finalSnrIndex = route.length;
+        const prevNodeNum = route.length > 0 ? route[route.length - 1] : toNum;
+        const finalDist = calcDistance(prevNodeNum, fromNum);
         if (snrTowards[finalSnrIndex] !== undefined) {
           const finalSnr = (snrTowards[finalSnrIndex] / 4).toFixed(1);
-          routeText += `  ${route.length + 2}. ${fromName} (${fromNodeId}) - SNR: ${finalSnr}dB\n`;
+          if (finalDist) {
+            routeText += `  ${route.length + 2}. ${fromName} (${fromNodeId}) - SNR: ${finalSnr}dB, Distance: ${finalDist}\n`;
+          } else {
+            routeText += `  ${route.length + 2}. ${fromName} (${fromNodeId}) - SNR: ${finalSnr}dB\n`;
+          }
         } else {
-          routeText += `  ${route.length + 2}. ${fromName} (${fromNodeId})\n`;
+          if (finalDist) {
+            routeText += `  ${route.length + 2}. ${fromName} (${fromNodeId}) - Distance: ${finalDist}\n`;
+          } else {
+            routeText += `  ${route.length + 2}. ${fromName} (${fromNodeId})\n`;
+          }
         }
       }
+
+      // Track total distance for return path separately
+      let returnTotalDistanceKm = 0;
+      const calcDistanceReturn = (node1Num: number, node2Num: number): string | null => {
+        const n1 = databaseService.getNode(node1Num);
+        const n2 = databaseService.getNode(node2Num);
+        if (n1?.latitude && n1?.longitude && n2?.latitude && n2?.longitude) {
+          const distKm = calculateDistance(n1.latitude, n1.longitude, n2.latitude, n2.longitude);
+          returnTotalDistanceKm += distKm;
+          if (distanceUnit === 'mi') {
+            const distMi = distKm * 0.621371;
+            return `${distMi.toFixed(1)} mi`;
+          }
+          return `${distKm.toFixed(1)} km`;
+        }
+        return null;
+      };
 
       if (routeBack.length === 0 && snrBack.length > 0) {
         const snr = (snrBack[0] / 4).toFixed(1);
         const toNode = databaseService.getNode(toNum);
         const toName = toNode?.longName || toNodeId;
+        const dist = calcDistanceReturn(fromNum, toNum);
         routeText += `\nReturn path:\n`;
         routeText += `  1. ${fromName} (${fromNodeId})\n`;
-        routeText += `  2. ${toName} (${toNodeId}) - SNR: ${snr}dB\n`;
+        if (dist) {
+          routeText += `  2. ${toName} (${toNodeId}) - SNR: ${snr}dB, Distance: ${dist}\n`;
+        } else {
+          routeText += `  2. ${toName} (${toNodeId}) - SNR: ${snr}dB\n`;
+        }
       } else if (routeBack.length > 0) {
         const toNode = databaseService.getNode(toNum);
         const toName = toNode?.longName || toNodeId;
@@ -1014,23 +1080,61 @@ class MeshtasticManager {
         // Start with source (destination of forward path)
         routeText += `  1. ${fromName} (${fromNodeId})\n`;
 
+        // Build full return path
+        const fullReturnPath = [fromNum, ...routeBack, toNum];
+
         // Show intermediate hops
         routeBack.forEach((nodeNum: number, index: number) => {
           const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
           const node = databaseService.getNode(nodeNum);
           const nodeName = node?.longName || nodeId;
           const snr = snrBack[index] !== undefined ? `${(snrBack[index] / 4).toFixed(1)}dB` : 'N/A';
-          routeText += `  ${index + 2}. ${nodeName} (${nodeId}) - SNR: ${snr}\n`;
+          const dist = calcDistanceReturn(fullReturnPath[index], nodeNum);
+          if (dist) {
+            routeText += `  ${index + 2}. ${nodeName} (${nodeId}) - SNR: ${snr}, Distance: ${dist}\n`;
+          } else {
+            routeText += `  ${index + 2}. ${nodeName} (${nodeId}) - SNR: ${snr}\n`;
+          }
         });
 
-        // Show final destination with SNR
+        // Show final destination with SNR and distance
         const finalSnrIndex = routeBack.length;
+        const prevNodeNum = routeBack.length > 0 ? routeBack[routeBack.length - 1] : fromNum;
+        const finalDist = calcDistanceReturn(prevNodeNum, toNum);
         if (snrBack[finalSnrIndex] !== undefined) {
           const finalSnr = (snrBack[finalSnrIndex] / 4).toFixed(1);
-          routeText += `  ${routeBack.length + 2}. ${toName} (${toNodeId}) - SNR: ${finalSnr}dB\n`;
+          if (finalDist) {
+            routeText += `  ${routeBack.length + 2}. ${toName} (${toNodeId}) - SNR: ${finalSnr}dB, Distance: ${finalDist}\n`;
+          } else {
+            routeText += `  ${routeBack.length + 2}. ${toName} (${toNodeId}) - SNR: ${finalSnr}dB\n`;
+          }
         } else {
-          routeText += `  ${routeBack.length + 2}. ${toName} (${toNodeId})\n`;
+          if (finalDist) {
+            routeText += `  ${routeBack.length + 2}. ${toName} (${toNodeId}) - Distance: ${finalDist}\n`;
+          } else {
+            routeText += `  ${routeBack.length + 2}. ${toName} (${toNodeId})\n`;
+          }
         }
+      }
+
+      // Add total distance summary
+      if (totalDistanceKm > 0) {
+        if (distanceUnit === 'mi') {
+          const totalMi = totalDistanceKm * 0.621371;
+          routeText += `\n📏 Total Forward Distance: ${totalMi.toFixed(1)} mi`;
+        } else {
+          routeText += `\n📏 Total Forward Distance: ${totalDistanceKm.toFixed(1)} km`;
+        }
+      }
+      if (returnTotalDistanceKm > 0) {
+        if (distanceUnit === 'mi') {
+          const totalMi = returnTotalDistanceKm * 0.621371;
+          routeText += ` | Return: ${totalMi.toFixed(1)} mi\n`;
+        } else {
+          routeText += ` | Return: ${returnTotalDistanceKm.toFixed(1)} km\n`;
+        }
+      } else if (totalDistanceKm > 0) {
+        routeText += `\n`;
       }
 
       // Traceroute responses are direct messages, not channel messages
@@ -1073,6 +1177,55 @@ class MeshtasticManager {
 
       databaseService.insertTraceroute(tracerouteRecord);
       console.log(`💾 Saved traceroute record to traceroutes table`);
+
+      // Calculate and store route segment distances
+      try {
+        // Build the full route path: toNode -> intermediates -> fromNode
+        const fullRoute = [toNum, ...route, fromNum];
+
+        // Calculate distance for each consecutive pair of nodes
+        for (let i = 0; i < fullRoute.length - 1; i++) {
+          const node1Num = fullRoute[i];
+          const node2Num = fullRoute[i + 1];
+
+          const node1 = databaseService.getNode(node1Num);
+          const node2 = databaseService.getNode(node2Num);
+
+          // Only calculate if both nodes have position data
+          if (node1?.latitude && node1?.longitude && node2?.latitude && node2?.longitude) {
+            const distanceKm = calculateDistance(
+              node1.latitude,
+              node1.longitude,
+              node2.latitude,
+              node2.longitude
+            );
+
+            const node1Id = `!${node1Num.toString(16).padStart(8, '0')}`;
+            const node2Id = `!${node2Num.toString(16).padStart(8, '0')}`;
+
+            // Store the segment
+            const segment = {
+              fromNodeNum: node1Num,
+              toNodeNum: node2Num,
+              fromNodeId: node1Id,
+              toNodeId: node2Id,
+              distanceKm: distanceKm,
+              isRecordHolder: false,
+              timestamp: timestamp,
+              createdAt: Date.now()
+            };
+
+            databaseService.insertRouteSegment(segment);
+
+            // Check if this is a new record holder
+            databaseService.updateRecordHolderSegment(segment);
+
+            console.log(`📏 Stored route segment: ${node1Id} -> ${node2Id}, distance: ${distanceKm.toFixed(2)} km`);
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error calculating route segment distances:', error);
+      }
     } catch (error) {
       console.error('❌ Error processing traceroute message:', error);
     }

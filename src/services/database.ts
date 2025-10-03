@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { calculateDistance } from '../utils/distance.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -83,6 +84,18 @@ export interface DbTraceroute {
   createdAt: number;
 }
 
+export interface DbRouteSegment {
+  id?: number;
+  fromNodeNum: number;
+  toNodeNum: number;
+  fromNodeId: string;
+  toNodeId: string;
+  distanceKm: number;
+  isRecordHolder: boolean;
+  timestamp: number;
+  createdAt: number;
+}
+
 class DatabaseService {
   public db: Database.Database;
   private isInitialized = false;
@@ -108,6 +121,7 @@ class DatabaseService {
     this.createTables();
     this.migrateSchema();
     this.createIndexes();
+    this.runDataMigrations();
     this.isInitialized = true;
   }
 
@@ -218,6 +232,22 @@ class DatabaseService {
         routeBack TEXT,
         snrTowards TEXT,
         snrBack TEXT,
+        timestamp INTEGER NOT NULL,
+        createdAt INTEGER NOT NULL,
+        FOREIGN KEY (fromNodeNum) REFERENCES nodes(nodeNum),
+        FOREIGN KEY (toNodeNum) REFERENCES nodes(nodeNum)
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS route_segments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fromNodeNum INTEGER NOT NULL,
+        toNodeNum INTEGER NOT NULL,
+        fromNodeId TEXT NOT NULL,
+        toNodeId TEXT NOT NULL,
+        distanceKm REAL NOT NULL,
+        isRecordHolder BOOLEAN DEFAULT 0,
         timestamp INTEGER NOT NULL,
         createdAt INTEGER NOT NULL,
         FOREIGN KEY (fromNodeNum) REFERENCES nodes(nodeNum),
@@ -358,7 +388,129 @@ class DatabaseService {
       CREATE INDEX IF NOT EXISTS idx_messages_toNodeId ON messages(toNodeId);
       CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages(channel);
       CREATE INDEX IF NOT EXISTS idx_messages_createdAt ON messages(createdAt);
+
+      CREATE INDEX IF NOT EXISTS idx_route_segments_distance ON route_segments(distanceKm DESC);
+      CREATE INDEX IF NOT EXISTS idx_route_segments_timestamp ON route_segments(timestamp);
+      CREATE INDEX IF NOT EXISTS idx_route_segments_recordholder ON route_segments(isRecordHolder);
     `);
+  }
+
+  private runDataMigrations(): void {
+    // Migration: Calculate distances for all existing traceroutes
+    const migrationKey = 'route_segments_migration_v1';
+    const migrationCompleted = this.getSetting(migrationKey);
+
+    if (migrationCompleted === 'completed') {
+      console.log('✅ Route segments migration already completed');
+      return;
+    }
+
+    console.log('🔄 Running route segments migration...');
+
+    try {
+      // Get ALL traceroutes from the database
+      const stmt = this.db.prepare('SELECT * FROM traceroutes ORDER BY timestamp ASC');
+      const allTraceroutes = stmt.all() as DbTraceroute[];
+
+      console.log(`📊 Processing ${allTraceroutes.length} traceroutes for distance calculation...`);
+
+      let processedCount = 0;
+      let segmentsCreated = 0;
+
+      for (const traceroute of allTraceroutes) {
+        try {
+          // Parse the route arrays
+          const route = traceroute.route ? JSON.parse(traceroute.route) : [];
+          const routeBack = traceroute.routeBack ? JSON.parse(traceroute.routeBack) : [];
+
+          // Process forward route segments
+          for (let i = 0; i < route.length - 1; i++) {
+            const fromNodeNum = route[i];
+            const toNodeNum = route[i + 1];
+
+            const fromNode = this.getNode(fromNodeNum);
+            const toNode = this.getNode(toNodeNum);
+
+            // Only calculate distance if both nodes have position data
+            if (fromNode?.latitude && fromNode?.longitude &&
+                toNode?.latitude && toNode?.longitude) {
+
+              const distanceKm = calculateDistance(
+                fromNode.latitude, fromNode.longitude,
+                toNode.latitude, toNode.longitude
+              );
+
+              const segment: DbRouteSegment = {
+                fromNodeNum,
+                toNodeNum,
+                fromNodeId: fromNode.nodeId,
+                toNodeId: toNode.nodeId,
+                distanceKm,
+                isRecordHolder: false,
+                timestamp: traceroute.timestamp,
+                createdAt: Date.now()
+              };
+
+              this.insertRouteSegment(segment);
+              this.updateRecordHolderSegment(segment);
+              segmentsCreated++;
+            }
+          }
+
+          // Process return route segments
+          for (let i = 0; i < routeBack.length - 1; i++) {
+            const fromNodeNum = routeBack[i];
+            const toNodeNum = routeBack[i + 1];
+
+            const fromNode = this.getNode(fromNodeNum);
+            const toNode = this.getNode(toNodeNum);
+
+            // Only calculate distance if both nodes have position data
+            if (fromNode?.latitude && fromNode?.longitude &&
+                toNode?.latitude && toNode?.longitude) {
+
+              const distanceKm = calculateDistance(
+                fromNode.latitude, fromNode.longitude,
+                toNode.latitude, toNode.longitude
+              );
+
+              const segment: DbRouteSegment = {
+                fromNodeNum,
+                toNodeNum,
+                fromNodeId: fromNode.nodeId,
+                toNodeId: toNode.nodeId,
+                distanceKm,
+                isRecordHolder: false,
+                timestamp: traceroute.timestamp,
+                createdAt: Date.now()
+              };
+
+              this.insertRouteSegment(segment);
+              this.updateRecordHolderSegment(segment);
+              segmentsCreated++;
+            }
+          }
+
+          processedCount++;
+
+          // Log progress every 100 traceroutes
+          if (processedCount % 100 === 0) {
+            console.log(`   Processed ${processedCount}/${allTraceroutes.length} traceroutes...`);
+          }
+        } catch (error) {
+          console.error(`   Error processing traceroute ${traceroute.id}:`, error);
+          // Continue with next traceroute
+        }
+      }
+
+      // Mark migration as completed
+      this.setSetting(migrationKey, 'completed');
+      console.log(`✅ Migration completed! Processed ${processedCount} traceroutes, created ${segmentsCreated} route segments`);
+
+    } catch (error) {
+      console.error('❌ Error during route segments migration:', error);
+      // Don't mark as completed if there was an error
+    }
   }
 
   // Node operations
@@ -1063,6 +1215,83 @@ class DatabaseService {
   deleteAllSettings(): void {
     console.log('🔄 Resetting all settings to defaults');
     this.db.exec('DELETE FROM settings');
+  }
+
+  // Route segment operations
+  insertRouteSegment(segmentData: DbRouteSegment): void {
+    const stmt = this.db.prepare(`
+      INSERT INTO route_segments (
+        fromNodeNum, toNodeNum, fromNodeId, toNodeId, distanceKm, isRecordHolder, timestamp, createdAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    stmt.run(
+      segmentData.fromNodeNum,
+      segmentData.toNodeNum,
+      segmentData.fromNodeId,
+      segmentData.toNodeId,
+      segmentData.distanceKm,
+      segmentData.isRecordHolder ? 1 : 0,
+      segmentData.timestamp,
+      segmentData.createdAt
+    );
+  }
+
+  getLongestActiveRouteSegment(): DbRouteSegment | null {
+    // Get the longest segment from recent traceroutes (within last 7 days)
+    const cutoff = Date.now() - (7 * 24 * 60 * 60 * 1000);
+    const stmt = this.db.prepare(`
+      SELECT * FROM route_segments
+      WHERE timestamp > ?
+      ORDER BY distanceKm DESC
+      LIMIT 1
+    `);
+    const segment = stmt.get(cutoff) as DbRouteSegment | null;
+    return segment ? this.normalizeBigInts(segment) : null;
+  }
+
+  getRecordHolderRouteSegment(): DbRouteSegment | null {
+    const stmt = this.db.prepare(`
+      SELECT * FROM route_segments
+      WHERE isRecordHolder = 1
+      ORDER BY distanceKm DESC
+      LIMIT 1
+    `);
+    const segment = stmt.get() as DbRouteSegment | null;
+    return segment ? this.normalizeBigInts(segment) : null;
+  }
+
+  updateRecordHolderSegment(newSegment: DbRouteSegment): void {
+    const currentRecord = this.getRecordHolderRouteSegment();
+
+    // If no current record or new segment is longer, update
+    if (!currentRecord || newSegment.distanceKm > currentRecord.distanceKm) {
+      // Clear all existing record holders
+      this.db.exec('UPDATE route_segments SET isRecordHolder = 0');
+
+      // Insert new record holder
+      this.insertRouteSegment({
+        ...newSegment,
+        isRecordHolder: true
+      });
+
+      console.log(`🏆 New record holder route segment: ${newSegment.distanceKm.toFixed(2)} km from ${newSegment.fromNodeId} to ${newSegment.toNodeId}`);
+    }
+  }
+
+  clearRecordHolderSegment(): void {
+    this.db.exec('UPDATE route_segments SET isRecordHolder = 0');
+    console.log('🗑️ Cleared record holder route segment');
+  }
+
+  cleanupOldRouteSegments(days: number = 30): number {
+    const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+    const stmt = this.db.prepare(`
+      DELETE FROM route_segments
+      WHERE timestamp < ? AND isRecordHolder = 0
+    `);
+    const result = stmt.run(cutoff);
+    return Number(result.changes);
   }
 }
 
