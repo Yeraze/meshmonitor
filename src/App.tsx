@@ -1105,7 +1105,6 @@ function App() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [nodePopup]);
 
-  // Helper function to check if a message is a single emoji
   // Helper function to find a message by its ID
   const findMessageById = (messageId: number, channelId: number): MeshMessage | null => {
     const messagesForChannel = channelMessages[channelId] || [];
@@ -2001,7 +2000,6 @@ function App() {
                       // Use selected channel ID directly - no mapping needed
                       const messageChannel = selectedChannel;
                       let messagesForChannel = channelMessages[messageChannel] || [];
-                      console.log(`🔍 Channel display debug: selectedChannel=${selectedChannel}, messageChannel=${messageChannel}, messagesFound=${messagesForChannel.length}`);
 
                       // Filter MQTT messages if the option is disabled
                       if (!showMqttMessages) {
@@ -2032,9 +2030,10 @@ function App() {
                           return null;
                         }
 
-                        const reactions = messagesForChannel.filter(m =>
-                          m.emoji === 1 && m.replyId &&
-                          findMessageById(m.replyId, messageChannel)?.id === msg.id
+                        // Find ALL reactions in the full channel message list (not filtered)
+                        const allChannelMessages = channelMessages[messageChannel] || [];
+                        const reactions = allChannelMessages.filter(m =>
+                          m.emoji === 1 && m.replyId && m.replyId.toString() === msg.id.split('_')[1]
                         );
 
                         return (
