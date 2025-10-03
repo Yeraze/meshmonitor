@@ -2024,8 +2024,10 @@ function App() {
                         const isMine = isMyMessage(msg);
                         const isPending = pendingMessages.has(msg.id);
                         const repliedMessage = msg.replyId ? findMessageById(msg.replyId, messageChannel) : null;
-                        const isReaction = msg.emoji === 1 && repliedMessage;
+                        const isReaction = msg.emoji === 1;
 
+                        // Hide reactions (tapbacks) from main message list
+                        // They will be shown inline under the original message if it exists
                         if (isReaction) {
                           return null;
                         }
