@@ -8,6 +8,7 @@ import TelemetryGraphs from './components/TelemetryGraphs'
 import InfoTab from './components/InfoTab'
 import SettingsTab from './components/SettingsTab'
 import Dashboard from './components/Dashboard'
+import HopCountDisplay from './components/HopCountDisplay'
 import { version } from '../package.json'
 import { type TemperatureUnit } from './utils/temperature'
 import { calculateDistance, formatDistance } from './utils/distance'
@@ -2203,6 +2204,7 @@ function App() {
                                       hour: '2-digit',
                                       minute: '2-digit'
                                     })}
+                                    <HopCountDisplay hopStart={msg.hopStart} hopLimit={msg.hopLimit} />
                                   </span>
                                 </div>
                               </div>
@@ -2479,7 +2481,10 @@ function App() {
                       <div key={msg.id} className={`message-item ${isTraceroute ? 'traceroute' : msg.from === selectedDMNode ? 'received' : 'sent'}`}>
                         <div className="message-header">
                           <span className="message-from">{getNodeName(msg.from)}</span>
-                          <span className="message-time">{msg.timestamp.toLocaleTimeString()}</span>
+                          <span className="message-time">
+                            {msg.timestamp.toLocaleTimeString()}
+                            <HopCountDisplay hopStart={msg.hopStart} hopLimit={msg.hopLimit} />
+                          </span>
                           {isTraceroute && <span className="traceroute-badge">TRACEROUTE</span>}
                         </div>
                         <div className="message-text" style={isTraceroute ? {whiteSpace: 'pre-line', fontFamily: 'monospace'} : {}}>{msg.text}</div>
