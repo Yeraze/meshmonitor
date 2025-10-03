@@ -1000,8 +1000,8 @@ describe('DatabaseService - Extended Coverage', () => {
 
       const directMessages = db.getDirectMessages('!node1', '!node2');
       expect(directMessages).toHaveLength(2);
-      expect(directMessages.some(m => m.text === 'Direct 1->2')).toBe(true);
-      expect(directMessages.some(m => m.text === 'Direct 2->1')).toBe(true);
+      expect(directMessages.some((m: DbMessage) => m.text === 'Direct 1->2')).toBe(true);
+      expect(directMessages.some((m: DbMessage) => m.text === 'Direct 2->1')).toBe(true);
     });
   });
 
@@ -1046,7 +1046,7 @@ describe('DatabaseService - Extended Coverage', () => {
 
       const tempTelemetry = db.getTelemetryByType('temperature');
       expect(tempTelemetry).toHaveLength(2);
-      expect(tempTelemetry.every(t => t.telemetryType === 'temperature')).toBe(true);
+      expect(tempTelemetry.every((t: DbTelemetry) => t.telemetryType === 'temperature')).toBe(true);
     });
 
     it('should get latest telemetry by node', () => {
@@ -1086,7 +1086,7 @@ describe('DatabaseService - Extended Coverage', () => {
       const latestTelemetry = db.getLatestTelemetryByNode('!node1');
       expect(latestTelemetry).toHaveLength(2); // One for each type
 
-      const tempReading = latestTelemetry.find(t => t.telemetryType === 'temperature');
+      const tempReading = latestTelemetry.find((t: DbTelemetry) => t.telemetryType === 'temperature');
       expect(tempReading?.value).toBe(25.5); // Should be the latest temperature
     });
   });
