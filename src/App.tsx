@@ -1106,11 +1106,6 @@ function App() {
   }, [nodePopup]);
 
   // Helper function to check if a message is a single emoji
-  const isSingleEmoji = (text: string): boolean => {
-    const emojiRegex = /^(\p{Emoji_Presentation}|\p{Extended_Pictographic})$/u;
-    return emojiRegex.test(text.trim());
-  };
-
   // Helper function to find a message by its ID
   const findMessageById = (messageId: number, channelId: number): MeshMessage | null => {
     const messagesForChannel = channelMessages[channelId] || [];
@@ -2029,14 +2024,14 @@ function App() {
                         const isMine = isMyMessage(msg);
                         const isPending = pendingMessages.has(msg.id);
                         const repliedMessage = msg.replyId ? findMessageById(msg.replyId, messageChannel) : null;
-                        const isReaction = msg.replyId && isSingleEmoji(msg.text) && repliedMessage;
+                        const isReaction = msg.emoji === 1 && repliedMessage;
 
                         if (isReaction) {
                           return null;
                         }
 
                         const reactions = messagesForChannel.filter(m =>
-                          m.replyId && isSingleEmoji(m.text) &&
+                          m.emoji === 1 && m.replyId &&
                           findMessageById(m.replyId, messageChannel)?.id === msg.id
                         );
 
