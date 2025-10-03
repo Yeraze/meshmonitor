@@ -114,11 +114,11 @@ export class MeshtasticProtobufService {
   /**
    * Create a text message ToRadio using proper protobuf encoding
    */
-  createTextMessage(text: string, destination?: number, channel?: number): Uint8Array {
+  createTextMessage(text: string, destination?: number, channel?: number): { data: Uint8Array; messageId: number } {
     const root = getProtobufRoot();
     if (!root) {
       console.error('❌ Protobuf definitions not loaded');
-      return new Uint8Array();
+      return { data: new Uint8Array(), messageId: 0 };
     }
 
     try {
@@ -129,14 +129,20 @@ export class MeshtasticProtobufService {
         payload: new TextEncoder().encode(text)
       });
 
+      // Generate a unique message ID so we can track this message
+      const messageId = Math.floor(Math.random() * 0xFFFFFFFF);
+
       // Create the MeshPacket
       const MeshPacket = root.lookupType('meshtastic.MeshPacket');
       const meshPacket = MeshPacket.create({
+        id: messageId,
         to: destination || 0xFFFFFFFF, // Broadcast if no destination
         channel: channel || 0,
         decoded: dataMessage,
         wantAck: true
       });
+
+      console.log(`📤 Sending message with ID: ${messageId}`);
 
       // Create the ToRadio message
       const ToRadio = root.lookupType('meshtastic.ToRadio');
@@ -144,10 +150,10 @@ export class MeshtasticProtobufService {
         packet: meshPacket
       });
 
-      return ToRadio.encode(toRadio).finish();
+      return { data: ToRadio.encode(toRadio).finish(), messageId };
     } catch (error) {
       console.error('❌ Failed to create text message:', error);
-      return new Uint8Array();
+      return { data: new Uint8Array(), messageId: 0 };
     }
   }
 
@@ -241,10 +247,6 @@ export class MeshtasticProtobufService {
                 } catch (e) {
                   console.error('❌ Failed to manually decode Data:', e);
                 }
-              } else if (decodedMessage.packet.decoded) {
-                // Already decoded, just log what we have
-                console.log('🔍 DEBUG Already decoded Data:', JSON.stringify(decodedMessage.packet.decoded, null, 2));
-                console.log('🔍 DEBUG Decoded keys:', Object.keys(decodedMessage.packet.decoded));
               }
 
               messages.push({ type: 'meshPacket', data: decodedMessage.packet });

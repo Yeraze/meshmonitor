@@ -13,7 +13,7 @@ export async function loadProtobufDefinitions(): Promise<protobuf.Root> {
 
   try {
     // Set up the include paths for protobuf loading
-    const protoRoot = path.join(process.cwd(), 'protobufs/protobufs');
+    const protoRoot = path.join(process.cwd(), 'protobufs');
 
     // Load the main mesh.proto file which imports all others
     const protoPath = path.join(protoRoot, 'meshtastic/mesh.proto');

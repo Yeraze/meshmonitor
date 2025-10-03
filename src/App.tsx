@@ -369,6 +369,17 @@ function App() {
     };
   }, [connectionStatus]);
 
+  // Timer to update message status indicators (waiting -> delivered after 10s)
+  const [, setStatusTick] = useState(0);
+  useEffect(() => {
+    const interval = setInterval(() => {
+      // Force re-render to update message status indicators
+      setStatusTick(prev => prev + 1);
+    }, 1000); // Update every second
+
+    return () => clearInterval(interval);
+  }, []);
+
   const requestFullNodeDatabase = async () => {
     try {
       console.log('📡 Requesting full node database refresh...');
@@ -1104,12 +1115,6 @@ function App() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [nodePopup]);
-
-  // Helper function to check if a message is a single emoji
-  const isSingleEmoji = (text: string): boolean => {
-    const emojiRegex = /^(\p{Emoji_Presentation}|\p{Extended_Pictographic})$/u;
-    return emojiRegex.test(text.trim());
-  };
 
   // Helper function to find a message by its ID
   const findMessageById = (messageId: number, channelId: number): MeshMessage | null => {
@@ -2006,7 +2011,6 @@ function App() {
                       // Use selected channel ID directly - no mapping needed
                       const messageChannel = selectedChannel;
                       let messagesForChannel = channelMessages[messageChannel] || [];
-                      console.log(`🔍 Channel display debug: selectedChannel=${selectedChannel}, messageChannel=${messageChannel}, messagesFound=${messagesForChannel.length}`);
 
                       // Filter MQTT messages if the option is disabled
                       if (!showMqttMessages) {
@@ -2027,17 +2031,19 @@ function App() {
                       return messagesForChannel && messagesForChannel.length > 0 ? (
                       messagesForChannel.map(msg => {
                         const isMine = isMyMessage(msg);
-                        const isPending = pendingMessages.has(msg.id);
                         const repliedMessage = msg.replyId ? findMessageById(msg.replyId, messageChannel) : null;
-                        const isReaction = msg.replyId && isSingleEmoji(msg.text) && repliedMessage;
+                        const isReaction = msg.emoji === 1;
 
+                        // Hide reactions (tapbacks) from main message list
+                        // They will be shown inline under the original message if it exists
                         if (isReaction) {
                           return null;
                         }
 
-                        const reactions = messagesForChannel.filter(m =>
-                          m.replyId && isSingleEmoji(m.text) &&
-                          findMessageById(m.replyId, messageChannel)?.id === msg.id
+                        // Find ALL reactions in the full channel message list (not filtered)
+                        const allChannelMessages = channelMessages[messageChannel] || [];
+                        const reactions = allChannelMessages.filter(m =>
+                          m.emoji === 1 && m.replyId && m.replyId.toString() === msg.id.split('_')[1]
                         );
 
                         return (
@@ -2052,18 +2058,26 @@ function App() {
                               </div>
                             )}
                             <div className="message-content">
-                              {repliedMessage && !isReaction && (
+                              {msg.replyId && !isReaction && (
                                 <div className="replied-message">
                                   <div className="reply-arrow">↳</div>
                                   <div className="reply-content">
-                                    <div className="reply-from">{getNodeShortName(repliedMessage.from)}</div>
-                                    <div className="reply-text">{repliedMessage.text || "Empty Message"}</div>
+                                    {repliedMessage ? (
+                                      <>
+                                        <div className="reply-from">{getNodeShortName(repliedMessage.from)}</div>
+                                        <div className="reply-text">{repliedMessage.text || "Empty Message"}</div>
+                                      </>
+                                    ) : (
+                                      <div className="reply-text" style={{ fontStyle: 'italic', opacity: 0.6 }}>
+                                        Message not available
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                               )}
                               <div className={`message-bubble ${isMine ? 'mine' : 'theirs'}`}>
                                 <div className="message-text">
-                                  {msg.emoji ? String.fromCodePoint(msg.emoji) : msg.text}
+                                  {msg.text}
                                 </div>
                                 {reactions.length > 0 && (
                                   <div className="message-reactions">
@@ -2086,11 +2100,18 @@ function App() {
                             </div>
                             {isMine && (
                               <div className="message-status">
-                                {isPending ? (
-                                  <span className="status-pending" title="Sending...">⏳</span>
-                                ) : (
-                                  <span className="status-delivered" title="Delivered">✓</span>
-                                )}
+                                {(() => {
+                                  const messageAge = Date.now() - msg.timestamp.getTime();
+                                  const isWaiting = messageAge < 10000 && !msg.acknowledged;
+
+                                  if (msg.ackFailed) {
+                                    return <span className="status-failed" title="Failed to send">✗</span>;
+                                  } else if (isWaiting) {
+                                    return <span className="status-pending" title="Sending...">⏳</span>;
+                                  } else {
+                                    return <span className="status-delivered" title="Delivered">✓</span>;
+                                  }
+                                })()}
                               </div>
                             )}
                           </div>
