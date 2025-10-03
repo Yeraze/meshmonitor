@@ -119,7 +119,7 @@ const meshtasticManagerMock = {
     { id: 0, name: 'Primary' },
     { id: 1, name: 'Secondary' }
   ]),
-  sendTextMessage: vi.fn(async (_text: string, _toNodeId: string, _channelIndex?: number) => true),
+  sendTextMessage: vi.fn(async (_text: string, _toNodeId: string, _channelIndex?: number) => 123456789), // Returns message ID
   sendTraceroute: vi.fn(async (_toNodeNum: number) => true),
   refreshNodeInfo: vi.fn(async () => ({ success: true })),
   getDeviceConfig: vi.fn(async () => ({
@@ -200,8 +200,8 @@ describe('Server API Endpoints', () => {
       }
 
       try {
-        const result = await meshtasticManagerMock.sendTextMessage(text, toNodeId, channelIndex);
-        res.json({ success: result });
+        await meshtasticManagerMock.sendTextMessage(text, toNodeId, channelIndex);
+        res.json({ success: true });
       } catch (error) {
         res.status(500).json({ error: 'Failed to send message' });
       }

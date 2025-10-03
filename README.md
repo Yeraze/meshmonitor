@@ -235,6 +235,10 @@ For complete Kubernetes documentation, configuration options, and examples, see 
    ```bash
    git clone <repository-url>
    cd meshmonitor
+
+   # Initialize and update git submodules (required for protobufs)
+   git submodule init
+   git submodule update
    ```
 
 2. **Install dependencies**

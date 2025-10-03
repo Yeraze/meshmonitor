@@ -27,7 +27,7 @@ describe('Server Module Mocks', () => {
       const managerMock = {
         isConnected: vi.fn(() => true),
         getNodeId: vi.fn(() => '!localNode'),
-        sendTextMessage: vi.fn(async () => ({ success: true })),
+        sendTextMessage: vi.fn(async () => 123456789), // Returns message ID
         sendTraceroute: vi.fn(async () => ({ success: true }))
       };
 
@@ -35,7 +35,7 @@ describe('Server Module Mocks', () => {
       expect(managerMock.getNodeId()).toBe('!localNode');
 
       const sendResult = await managerMock.sendTextMessage();
-      expect(sendResult.success).toBe(true);
+      expect(sendResult).toBe(123456789);
 
       const traceResult = await managerMock.sendTraceroute();
       expect(traceResult.success).toBe(true);

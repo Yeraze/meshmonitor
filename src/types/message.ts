@@ -9,6 +9,7 @@ export interface MeshMessage {
   portnum?: number
   timestamp: Date
   acknowledged?: boolean
+  ackFailed?: boolean
   isLocalMessage?: boolean
   hopStart?: number
   hopLimit?: number

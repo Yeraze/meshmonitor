@@ -501,14 +501,15 @@ apiRouter.post('/messages/send', async (req, res) => {
     }
 
     // Send the message to the mesh network (with optional destination for DMs)
-    await meshtasticManager.sendTextMessage(text, meshChannel, destinationNum);
+    // Returns the message ID that was assigned by the firmware
+    const messageId = await meshtasticManager.sendTextMessage(text, meshChannel, destinationNum);
 
     // Save the sent message to database immediately (if local node info is available)
     const localNodeInfo = meshtasticManager.getLocalNodeInfo();
 
     if (localNodeInfo) {
       const message = {
-        id: `sent_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        id: `${localNodeInfo.nodeNum}_${messageId}`, // Use the real message ID from firmware
         fromNodeNum: localNodeInfo.nodeNum,
         toNodeNum: destinationNum || 4294967295, // Use destination if provided, otherwise broadcast
         fromNodeId: localNodeInfo.nodeId,
@@ -545,7 +546,7 @@ apiRouter.post('/messages/send', async (req, res) => {
         }
 
         databaseService.insertMessage(message);
-        console.log(`💾 Saved sent message to database: "${text.substring(0, 50)}..."`);
+        console.log(`💾 Saved sent message to database with ID ${messageId}: "${text.substring(0, 50)}..."`);
       } catch (error) {
         console.warn(`⚠️ Could not save sent message to database:`, error);
       }
