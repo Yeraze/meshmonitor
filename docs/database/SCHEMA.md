@@ -438,7 +438,7 @@ FOREIGN KEY (toNodeNum) REFERENCES nodes(nodeNum)
 
 ## Hardware Model Reference
 
-Hardware model enum values used in the `hwModel` field (66 models supported):
+Hardware model enum values used in the `hwModel` field (116 models supported: 0-114 plus 255):
 
 | ID | Technical Name | Formatted Name |
 |----|----------------|----------------|
@@ -450,12 +450,17 @@ Hardware model enum values used in the `hwModel` field (66 models supported):
 | 9 | RAK4631 | RAK4631 |
 | 12 | LILYGO_TBEAM_S3_CORE | Lilygo TBeam S3 Core |
 | 31 | STATION_G2 | Station G2 |
-| 43 | HELTEC_WIRELESS_PAPER | Heltec Wireless Paper |
-| 56 | HELTEC_V3 | Heltec V3 |
-| 58 | BETAFPV_2400_TX | BetaFPV 2400 TX |
-| 66 | HELTEC_WIRELESS_TRACKER_VPLUS | Heltec Wireless Tracker VPlus |
+| 43 | HELTEC_V3 | Heltec V3 |
+| 48 | HELTEC_WIRELESS_TRACKER | Heltec Wireless Tracker |
+| 49 | HELTEC_WIRELESS_PAPER | Heltec Wireless Paper |
+| 50 | T_DECK | T Deck |
+| 80 | M5STACK_CORES3 | M5Stack CoreS3 |
+| 96 | NOMADSTAR_METEOR_PRO | NomadStar Meteor Pro |
+| 110 | HELTEC_V4 | Heltec V4 |
+| 114 | T_WATCH_ULTRA | T Watch Ultra |
+| 255 | PRIVATE_HW | Private HW |
 
-*Note: Full list of 66 models defined in `src/constants/index.ts`. Hardware names are automatically formatted for display using `formatHardwareName()` from `src/utils/nodeHelpers.ts`.*
+*Note: Full list of 116 models (0-114 plus 255) defined in `src/constants/index.ts`. Hardware names are automatically formatted for display using `formatHardwareName()` from `src/utils/nodeHelpers.ts`.*
 
 **Hardware Name Formatting:**
 - Technical names (e.g., `STATION_G2`) are converted to readable format (e.g., "Station G2")

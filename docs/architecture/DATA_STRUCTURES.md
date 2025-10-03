@@ -176,7 +176,7 @@ interface DbMessage {
 
 ### Hardware Model Enum
 
-Maps numeric hardware model IDs to technical names (66 models supported).
+Maps numeric hardware model IDs to technical names (116 models supported: 0-114 plus 255).
 
 ```typescript
 const HARDWARE_MODELS: Record<number, string> = {
@@ -244,8 +244,11 @@ const HARDWARE_MODELS: Record<number, string> = {
   62: 'RADIOMASTER_900_BANDIT',
   63: 'ME_CONNECT',
   64: 'CHATTER_2',
-  65: 'ME_LR1110',
-  66: 'HELTEC_WIRELESS_TRACKER_VPLUS'
+  65: 'HELTEC_CAPSULE_SENSOR_V3',
+  66: 'HELTEC_VISION_MASTER_T190',
+  // ... 67-114 (additional models)
+  114: 'T_WATCH_ULTRA',
+  255: 'PRIVATE_HW'
 };
 ```
 

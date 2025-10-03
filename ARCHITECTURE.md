@@ -396,9 +396,9 @@ The MeshMonitor application includes an intelligent traceroute scheduler that au
 - Bidirectional segments counted once (normalized)
 
 **Hardware Model Display:**
-- 66 Meshtastic hardware models supported
+- 116 Meshtastic hardware models supported (models 0-114 plus 255)
 - Technical names (e.g., `STATION_G2`) formatted for readability
-- Brand name capitalization (Heltec, Lilygo, BetaFPV)
+- Brand name capitalization (Heltec, Lilygo, BetaFPV, NomadStar, etc.)
 - Version number formatting (V2P0 → V2.0)
 - Abbreviations preserved uppercase (LR, TX, RAK, etc.)
 
