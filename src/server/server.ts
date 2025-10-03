@@ -475,7 +475,7 @@ apiRouter.post('/cleanup/channels', (_req, res) => {
 // Send message endpoint
 apiRouter.post('/messages/send', async (req, res) => {
   try {
-    const { text, channel, destination } = req.body;
+    const { text, channel, destination, replyId, emoji } = req.body;
     if (!text || typeof text !== 'string') {
       return res.status(400).json({ error: 'Message text is required' });
     }
@@ -500,9 +500,9 @@ apiRouter.post('/messages/send', async (req, res) => {
       meshChannel = 0;
     }
 
-    // Send the message to the mesh network (with optional destination for DMs)
+    // Send the message to the mesh network (with optional destination for DMs, replyId, and emoji flag)
     // Returns the message ID that was assigned by the firmware
-    const messageId = await meshtasticManager.sendTextMessage(text, meshChannel, destinationNum);
+    const messageId = await meshtasticManager.sendTextMessage(text, meshChannel, destinationNum, replyId, emoji);
 
     // Save the sent message to database immediately (if local node info is available)
     const localNodeInfo = meshtasticManager.getLocalNodeInfo();
@@ -520,7 +520,9 @@ apiRouter.post('/messages/send', async (req, res) => {
         portnum: 1, // TEXT_MESSAGE_APP
         timestamp: Date.now(),
         rxTime: Date.now(),
-        createdAt: Date.now()
+        createdAt: Date.now(),
+        replyId: replyId,
+        emoji: emoji
       };
 
       try {
