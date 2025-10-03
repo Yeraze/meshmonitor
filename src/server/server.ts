@@ -436,6 +436,27 @@ apiRouter.post('/messages/send', async (req, res) => {
       };
 
       try {
+        // Ensure the local node exists in the database
+        databaseService.upsertNode({
+          nodeNum: localNodeInfo.nodeNum,
+          nodeId: localNodeInfo.nodeId,
+          longName: localNodeInfo.longName,
+          shortName: localNodeInfo.shortName,
+          hwModel: localNodeInfo.hwModel
+        });
+
+        // Ensure the destination node exists (if it's a DM)
+        if (destinationNum && destinationNum !== 4294967295) {
+          const destNode = databaseService.getNode(destinationNum);
+          if (!destNode) {
+            // Create a minimal node entry for the destination
+            databaseService.upsertNode({
+              nodeNum: destinationNum,
+              nodeId: destination || `!${destinationNum.toString(16).padStart(8, '0')}`
+            });
+          }
+        }
+
         databaseService.insertMessage(message);
         console.log(`💾 Saved sent message to database: "${text.substring(0, 50)}..."`);
       } catch (error) {

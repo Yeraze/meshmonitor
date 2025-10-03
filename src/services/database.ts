@@ -1143,9 +1143,16 @@ class DatabaseService {
 
   // Danger zone operations
   purgeAllNodes(): void {
-    console.log('⚠️ PURGING all nodes and traceroutes from database');
+    console.log('⚠️ PURGING all nodes and related data from database');
+    // Delete in order to respect foreign key constraints
+    // First delete all child records that reference nodes
+    this.db.exec('DELETE FROM messages');
+    this.db.exec('DELETE FROM telemetry');
     this.db.exec('DELETE FROM traceroutes');
+    this.db.exec('DELETE FROM route_segments');
+    // Finally delete the nodes themselves
     this.db.exec('DELETE FROM nodes');
+    console.log('✅ Successfully purged all nodes and related data');
   }
 
   purgeAllTelemetry(): void {
