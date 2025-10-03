@@ -1,10 +1,24 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { DeviceInfo, Channel } from '../types/device';
 import { MeshMessage } from '../types/message';
 import { ConnectionStatus } from '../types/ui';
 import { TemperatureUnit } from '../utils/temperature';
 import TelemetryGraphs from './TelemetryGraphs';
 import { version } from '../../package.json';
+import apiService from '../services/api';
+import { formatDistance } from '../utils/distance';
+
+interface RouteSegment {
+  id: number;
+  fromNodeNum: number;
+  toNodeNum: number;
+  fromNodeId: string;
+  toNodeId: string;
+  fromNodeName: string;
+  toNodeName: string;
+  distanceKm: number;
+  timestamp: number;
+}
 
 interface InfoTabProps {
   connectionStatus: ConnectionStatus;
@@ -19,6 +33,7 @@ interface InfoTabProps {
   telemetryHours: number;
   baseUrl: string;
   getAvailableChannels: () => number[];
+  distanceUnit?: 'km' | 'mi';
 }
 
 const InfoTab: React.FC<InfoTabProps> = ({
@@ -33,8 +48,51 @@ const InfoTab: React.FC<InfoTabProps> = ({
   temperatureUnit,
   telemetryHours,
   baseUrl,
-  getAvailableChannels
+  getAvailableChannels,
+  distanceUnit = 'km'
 }) => {
+  const [longestActiveSegment, setLongestActiveSegment] = useState<RouteSegment | null>(null);
+  const [recordHolderSegment, setRecordHolderSegment] = useState<RouteSegment | null>(null);
+  const [loadingSegments, setLoadingSegments] = useState(false);
+
+  const fetchRouteSegments = async () => {
+    if (connectionStatus !== 'connected') return;
+
+    setLoadingSegments(true);
+    try {
+      const [longest, recordHolder] = await Promise.all([
+        apiService.getLongestActiveRouteSegment(),
+        apiService.getRecordHolderRouteSegment()
+      ]);
+      setLongestActiveSegment(longest);
+      setRecordHolderSegment(recordHolder);
+    } catch (error) {
+      console.error('Error fetching route segments:', error);
+    } finally {
+      setLoadingSegments(false);
+    }
+  };
+
+  const handleClearRecordHolder = async () => {
+    if (!confirm('Are you sure you want to clear the record holder?')) {
+      return;
+    }
+
+    try {
+      await apiService.clearRecordHolderSegment();
+      setRecordHolderSegment(null);
+    } catch (error) {
+      console.error('Error clearing record holder:', error);
+      alert('Failed to clear record holder');
+    }
+  };
+
+  useEffect(() => {
+    fetchRouteSegments();
+    const interval = setInterval(fetchRouteSegments, 60000); // Refresh every minute
+    return () => clearInterval(interval);
+  }, [connectionStatus]);
+
   return (
     <div className="tab-content">
       <h2>Device Information & Configuration</h2>
@@ -110,6 +168,49 @@ const InfoTab: React.FC<InfoTabProps> = ({
               (prev.lastHeard || 0) > (current.lastHeard || 0) ? prev : current
             ).user?.longName || 'Unknown' : 'None'
           }</p>
+        </div>
+
+        <div className="info-section">
+          <h3>Longest Active Route Segment</h3>
+          {loadingSegments && <p>Loading...</p>}
+          {!loadingSegments && longestActiveSegment && (
+            <>
+              <p><strong>Distance:</strong> {formatDistance(longestActiveSegment.distanceKm, distanceUnit)}</p>
+              <p><strong>From:</strong> {longestActiveSegment.fromNodeName} ({longestActiveSegment.fromNodeId})</p>
+              <p><strong>To:</strong> {longestActiveSegment.toNodeName} ({longestActiveSegment.toNodeId})</p>
+              <p style={{ fontSize: '0.85em', color: '#888' }}>
+                Last seen: {new Date(longestActiveSegment.timestamp).toLocaleString()}
+              </p>
+            </>
+          )}
+          {!loadingSegments && !longestActiveSegment && (
+            <p className="no-data">No active route segments found</p>
+          )}
+        </div>
+
+        <div className="info-section">
+          <h3>Record Holder Route Segment</h3>
+          {loadingSegments && <p>Loading...</p>}
+          {!loadingSegments && recordHolderSegment && (
+            <>
+              <p><strong>Distance:</strong> {formatDistance(recordHolderSegment.distanceKm, distanceUnit)} 🏆</p>
+              <p><strong>From:</strong> {recordHolderSegment.fromNodeName} ({recordHolderSegment.fromNodeId})</p>
+              <p><strong>To:</strong> {recordHolderSegment.toNodeName} ({recordHolderSegment.toNodeId})</p>
+              <p style={{ fontSize: '0.85em', color: '#888' }}>
+                Achieved: {new Date(recordHolderSegment.timestamp).toLocaleString()}
+              </p>
+              <button
+                onClick={handleClearRecordHolder}
+                className="danger-button"
+                style={{ marginTop: '8px' }}
+              >
+                Clear Record
+              </button>
+            </>
+          )}
+          {!loadingSegments && !recordHolderSegment && (
+            <p className="no-data">No record holder set yet</p>
+          )}
         </div>
 
         {!deviceConfig && (

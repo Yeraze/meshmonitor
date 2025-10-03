@@ -502,6 +502,69 @@ apiRouter.get('/traceroutes/recent', (req, res) => {
   }
 });
 
+// Get longest active route segment (within last 7 days)
+apiRouter.get('/route-segments/longest-active', (_req, res) => {
+  try {
+    const segment = databaseService.getLongestActiveRouteSegment();
+    if (!segment) {
+      res.json(null);
+      return;
+    }
+
+    // Enrich with node names
+    const fromNode = databaseService.getNode(segment.fromNodeNum);
+    const toNode = databaseService.getNode(segment.toNodeNum);
+
+    const enrichedSegment = {
+      ...segment,
+      fromNodeName: fromNode?.longName || segment.fromNodeId,
+      toNodeName: toNode?.longName || segment.toNodeId
+    };
+
+    res.json(enrichedSegment);
+  } catch (error) {
+    console.error('Error fetching longest active route segment:', error);
+    res.status(500).json({ error: 'Failed to fetch longest active route segment' });
+  }
+});
+
+// Get record holder route segment
+apiRouter.get('/route-segments/record-holder', (_req, res) => {
+  try {
+    const segment = databaseService.getRecordHolderRouteSegment();
+    if (!segment) {
+      res.json(null);
+      return;
+    }
+
+    // Enrich with node names
+    const fromNode = databaseService.getNode(segment.fromNodeNum);
+    const toNode = databaseService.getNode(segment.toNodeNum);
+
+    const enrichedSegment = {
+      ...segment,
+      fromNodeName: fromNode?.longName || segment.fromNodeId,
+      toNodeName: toNode?.longName || segment.toNodeId
+    };
+
+    res.json(enrichedSegment);
+  } catch (error) {
+    console.error('Error fetching record holder route segment:', error);
+    res.status(500).json({ error: 'Failed to fetch record holder route segment' });
+  }
+});
+
+// Clear record holder route segment
+apiRouter.delete('/route-segments/record-holder', (_req, res) => {
+  try {
+    databaseService.clearRecordHolderSegment();
+    res.json({ success: true, message: 'Record holder cleared' });
+  } catch (error) {
+    console.error('Error clearing record holder:', error);
+    res.status(500).json({ error: 'Failed to clear record holder' });
+  }
+});
+
 // Get telemetry data for a node
 apiRouter.get('/telemetry/:nodeId', (req, res) => {
   try {
@@ -676,7 +739,7 @@ apiRouter.post('/settings', (req, res) => {
     const settings = req.body;
 
     // Validate settings
-    const validKeys = ['maxNodeAgeHours', 'tracerouteIntervalMinutes', 'temperatureUnit', 'telemetryVisualizationHours', 'telemetryFavorites'];
+    const validKeys = ['maxNodeAgeHours', 'tracerouteIntervalMinutes', 'temperatureUnit', 'distanceUnit', 'telemetryVisualizationHours', 'telemetryFavorites'];
     const filteredSettings: Record<string, string> = {};
 
     for (const key of validKeys) {

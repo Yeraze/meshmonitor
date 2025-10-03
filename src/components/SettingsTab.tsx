@@ -3,15 +3,19 @@ import { TemperatureUnit } from '../utils/temperature';
 import { version } from '../../package.json';
 import apiService from '../services/api';
 
+type DistanceUnit = 'km' | 'mi';
+
 interface SettingsTabProps {
   maxNodeAgeHours: number;
   tracerouteIntervalMinutes: number;
   temperatureUnit: TemperatureUnit;
+  distanceUnit: DistanceUnit;
   telemetryVisualizationHours: number;
   baseUrl: string;
   onMaxNodeAgeChange: (hours: number) => void;
   onTracerouteIntervalChange: (minutes: number) => void;
   onTemperatureUnitChange: (unit: TemperatureUnit) => void;
+  onDistanceUnitChange: (unit: DistanceUnit) => void;
   onTelemetryVisualizationChange: (hours: number) => void;
 }
 
@@ -19,17 +23,20 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   maxNodeAgeHours,
   tracerouteIntervalMinutes,
   temperatureUnit,
+  distanceUnit,
   telemetryVisualizationHours,
   baseUrl,
   onMaxNodeAgeChange,
   onTracerouteIntervalChange,
   onTemperatureUnitChange,
+  onDistanceUnitChange,
   onTelemetryVisualizationChange
 }) => {
   // Local state for editing
   const [localMaxNodeAge, setLocalMaxNodeAge] = useState(maxNodeAgeHours);
   const [localTracerouteInterval, setLocalTracerouteInterval] = useState(tracerouteIntervalMinutes);
   const [localTemperatureUnit, setLocalTemperatureUnit] = useState(temperatureUnit);
+  const [localDistanceUnit, setLocalDistanceUnit] = useState(distanceUnit);
   const [localTelemetryHours, setLocalTelemetryHours] = useState(telemetryVisualizationHours);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -39,8 +46,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLocalMaxNodeAge(maxNodeAgeHours);
     setLocalTracerouteInterval(tracerouteIntervalMinutes);
     setLocalTemperatureUnit(temperatureUnit);
+    setLocalDistanceUnit(distanceUnit);
     setLocalTelemetryHours(telemetryVisualizationHours);
-  }, [maxNodeAgeHours, tracerouteIntervalMinutes, temperatureUnit, telemetryVisualizationHours]);
+  }, [maxNodeAgeHours, tracerouteIntervalMinutes, temperatureUnit, distanceUnit, telemetryVisualizationHours]);
 
   // Check if any settings have changed
   useEffect(() => {
@@ -48,10 +56,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localMaxNodeAge !== maxNodeAgeHours ||
       localTracerouteInterval !== tracerouteIntervalMinutes ||
       localTemperatureUnit !== temperatureUnit ||
+      localDistanceUnit !== distanceUnit ||
       localTelemetryHours !== telemetryVisualizationHours;
     setHasChanges(changed);
-  }, [localMaxNodeAge, localTracerouteInterval, localTemperatureUnit, localTelemetryHours,
-      maxNodeAgeHours, tracerouteIntervalMinutes, temperatureUnit, telemetryVisualizationHours]);
+  }, [localMaxNodeAge, localTracerouteInterval, localTemperatureUnit, localDistanceUnit, localTelemetryHours,
+      maxNodeAgeHours, tracerouteIntervalMinutes, temperatureUnit, distanceUnit, telemetryVisualizationHours]);
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -60,6 +69,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         maxNodeAgeHours: localMaxNodeAge,
         tracerouteIntervalMinutes: localTracerouteInterval,
         temperatureUnit: localTemperatureUnit,
+        distanceUnit: localDistanceUnit,
         telemetryVisualizationHours: localTelemetryHours
       };
 
@@ -74,6 +84,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onMaxNodeAgeChange(localMaxNodeAge);
       onTracerouteIntervalChange(localTracerouteInterval);
       onTemperatureUnitChange(localTemperatureUnit);
+      onDistanceUnitChange(localDistanceUnit);
       onTelemetryVisualizationChange(localTelemetryHours);
 
       alert('Settings saved successfully!');
@@ -93,6 +104,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       '• Max Node Age: 24 hours\n' +
       '• Traceroute Interval: 3 minutes\n' +
       '• Temperature Unit: Celsius\n' +
+      '• Distance Unit: Kilometers\n' +
       '• Telemetry Hours: 24\n\n' +
       'This will affect all browsers accessing this system.'
     );
@@ -109,12 +121,14 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       setLocalMaxNodeAge(24);
       setLocalTracerouteInterval(3);
       setLocalTemperatureUnit('C');
+      setLocalDistanceUnit('km');
       setLocalTelemetryHours(24);
 
       // Update parent component with defaults
       onMaxNodeAgeChange(24);
       onTracerouteIntervalChange(3);
       onTemperatureUnitChange('C');
+      onDistanceUnitChange('km');
       onTelemetryVisualizationChange(24);
 
       alert('Settings reset to defaults!');
@@ -256,6 +270,21 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             >
               <option value="C">Celsius (°C)</option>
               <option value="F">Fahrenheit (°F)</option>
+            </select>
+          </div>
+          <div className="setting-item">
+            <label htmlFor="distanceUnit">
+              Distance Unit
+              <span className="setting-description">Choose between Kilometers and Miles for distance display</span>
+            </label>
+            <select
+              id="distanceUnit"
+              value={localDistanceUnit}
+              onChange={(e) => setLocalDistanceUnit(e.target.value as DistanceUnit)}
+              className="setting-input"
+            >
+              <option value="km">Kilometers (km)</option>
+              <option value="mi">Miles (mi)</option>
             </select>
           </div>
           <div className="setting-item">
