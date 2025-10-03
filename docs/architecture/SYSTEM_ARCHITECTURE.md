@@ -54,7 +54,11 @@ src/
 **Responsibilities:**
 - User interface rendering and interaction
 - Real-time connection status display
-- Message composition and display
+- Message composition and display with threaded replies and emoji reactions
+  - Interactive hover-based reply button on each message
+  - Instant emoji tapback reactions (👍 👎 ❓ ❗ 😂 😢 💩)
+  - Reply context display in send box
+  - Clickable reactions to send the same emoji
 - Node information visualization with map integration
 - Telemetry data visualization with graphs
 - Traceroute visualization and management
@@ -290,7 +294,11 @@ TCP Stream → Buffer Accumulator → Frame Detector (0x94 0xc3)
 - **NodeInfo packets**: Device information, user details, and role configuration
 - **Position packets**: GPS coordinates, altitude, and location timestamps
 - **Telemetry packets**: Battery level, voltage, channel utilization, air utilization
-- **Text Message packets**: User communications with replyId and emoji support
+- **Text Message packets**: User communications with threading and reactions
+  - `replyId` field enables threaded conversations and tapbacks
+  - `emoji` flag (0=normal message, 1=tapback) differentiates replies from reactions
+  - Supports instant emoji reactions: 👍 👎 ❓ ❗ 😂 😢 💩
+  - Protobuf fields 7 (replyId) and 8 (emoji) as per Meshtastic spec
 - **Traceroute packets**: Network path analysis and SNR measurements
 - **Admin packets**: Channel configuration and node management
 
