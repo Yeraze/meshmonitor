@@ -33,7 +33,7 @@ MeshMonitor is a full-stack web application designed to monitor and interact wit
 The core application component manages:
 - Connection status to Meshtastic node
 - Node data fetching and state management
-- Message handling with iPhone Messages-style UI
+- Message handling with iPhone Messages-style UI featuring threaded replies and emoji reactions
 - Channel management and filtering
 - Real-time data updates via polling
 
@@ -45,6 +45,12 @@ The core application component manages:
 
 #### UI/UX Features
 - **iPhone Messages-style bubbles** with proper alignment
+- **Interactive reply and tapback system**
+  - Hover-based reply button on each message
+  - Instant emoji reactions: 👍 👎 ❓ ❗ 😂 😢 💩
+  - Reply context display in send box
+  - Clickable existing reactions
+  - Threaded conversation support
 - **Sender identification dots** with tooltips showing node names
 - **Real-time delivery status** (⏳ pending → ✓ delivered)
 - **Optimistic UI updates** for instant feedback
@@ -82,13 +88,14 @@ The central service for Meshtastic node communication:
 
 Key Methods:
 ```typescript
-connect(): Promise<boolean>                    // Connect to Meshtastic node
-sendTextMessage(text: string, channel: number) // Send messages
-sendTraceroute(destination: string)            // Send traceroute request
-getAllNodes(): DeviceInfo[]                    // Get node information
-getRecentMessages(limit: number)               // Get message history
-startTracerouteScheduler()                     // Start automatic traceroutes
-isValidPosition(lat: number, lon: number)      // Validate position coordinates
+connect(): Promise<boolean>                                           // Connect to Meshtastic node
+sendTextMessage(text: string, channel: number, destination?: number,  // Send messages with optional
+                replyId?: number, emoji?: number)                     // reply/tapback support
+sendTraceroute(destination: string)                                   // Send traceroute request
+getAllNodes(): DeviceInfo[]                                           // Get node information
+getRecentMessages(limit: number)                                      // Get message history
+startTracerouteScheduler()                                            // Start automatic traceroutes
+isValidPosition(lat: number, lon: number)                             // Validate position coordinates
 ```
 
 **Position Validation:**
@@ -141,6 +148,10 @@ CREATE TABLE messages (
   text TEXT NOT NULL,
   channel INTEGER NOT NULL DEFAULT 0,
   timestamp INTEGER NOT NULL,
+  hopStart INTEGER,
+  hopLimit INTEGER,
+  replyId INTEGER,  -- Message ID being replied to
+  emoji INTEGER,    -- 0=normal message, 1=tapback reaction
   -- ... FOREIGN KEY constraints
 );
 
@@ -240,7 +251,10 @@ Raw Binary Data → Field Extraction → Type Detection → Data Processing → 
 
 Message Types Handled:
 - **Node Information** (device details, telemetry, hardware model)
-- **Text Messages** (user communications)
+- **Text Messages** (user communications with reply threading and emoji tapbacks)
+  - Threaded replies via `replyId` field (Meshtastic protobuf field 7)
+  - Instant emoji reactions via `emoji` flag (Meshtastic protobuf field 8)
+  - Supports: 👍 👎 ❓ ❗ 😂 😢 💩
 - **Channel Configuration** (network settings)
 - **Telemetry Data** (battery, GPS, signal strength)
 - **Position Telemetry** (latitude/longitude tracking for mobile detection)

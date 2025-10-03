@@ -232,8 +232,8 @@ CREATE TABLE messages (
 | `rxTime` | INTEGER | Reception timestamp (Unix) | `1640995201` |
 | `hopStart` | INTEGER | Initial hop count for message routing | `3` |
 | `hopLimit` | INTEGER | Maximum hop count for message routing | `3` |
-| `replyId` | INTEGER | ID of message being replied to | `123456` |
-| `emoji` | INTEGER | Emoji reaction code | `1` |
+| `replyId` | INTEGER | Message ID being replied to (for threaded conversations and tapbacks) | `987654321` |
+| `emoji` | INTEGER | Emoji flag: 0=normal message, 1=tapback/reaction (requires replyId) | `1` |
 | `createdAt` | INTEGER | Database insertion timestamp | `1640995201000` |
 
 #### Business Rules
@@ -244,6 +244,14 @@ CREATE TABLE messages (
 - `channel` should be between 0 and 7
 - `text` cannot be empty
 - `timestamp` is in milliseconds, others in seconds
+- **Reply Threading**: When `replyId` is set, message is a reply to another message
+  - `replyId` contains the numeric message ID from the original message
+  - Normal replies have `emoji` = 0 or NULL
+  - Tapback reactions have `emoji` = 1 and contain emoji Unicode in `text` field
+- **Emoji Reactions (Tapbacks)**: Quick reactions to messages
+  - Must have both `replyId` (the message being reacted to) and `emoji` = 1
+  - Text field contains the emoji character (👍, 👎, ❓, ❗, 😂, 😢, 💩)
+  - Displayed inline under the original message, not as separate messages
 
 ### CHANNELS Table
 
@@ -520,6 +528,26 @@ FROM messages
 WHERE timestamp > (strftime('%s', 'now', '-30 days') * 1000)
 GROUP BY date(timestamp/1000, 'unixepoch')
 ORDER BY date;
+
+-- Get all replies to a specific message
+SELECT * FROM messages
+WHERE replyId = 123456789
+  AND (emoji IS NULL OR emoji = 0)
+ORDER BY timestamp ASC;
+
+-- Get all tapback reactions for a message
+SELECT * FROM messages
+WHERE replyId = 123456789
+  AND emoji = 1
+ORDER BY timestamp ASC;
+
+-- Get threaded conversation (message and all its replies)
+SELECT m.*, n.longName as fromName
+FROM messages m
+LEFT JOIN nodes n ON m.fromNodeNum = n.nodeNum
+WHERE m.id = '123456789_987654321'
+   OR m.replyId = 987654321
+ORDER BY m.timestamp ASC;
 ```
 
 ### Analytics Queries

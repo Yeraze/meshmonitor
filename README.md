@@ -113,8 +113,12 @@ This allows MeshMonitor to connect to **any** Meshtastic device (BLE, Serial, or
 - Node role display (Client, Router, Repeater, etc.)
 - Hops Away tracking for network distance
 
-### 💬 **iPhone Messages-Style UI**
+### 💬 **iPhone Messages-Style UI with Reactions**
 - Beautiful message bubbles with proper alignment
+- **Interactive reply button** - Reply to any message with proper threading
+- **Instant emoji reactions** - Quick tapback with 👍 👎 ❓ ❗ 😂 😢 💩
+- Hover-based action menu on each message
+- Clickable existing reactions to send the same emoji
 - Sender identification dots with tooltips
 - Real-time message delivery status
 - Send and receive text messages
@@ -453,7 +457,7 @@ Any proxy implementing the Meshtastic TCP protocol can bridge to MeshMonitor.
 
 ### Messages
 - `GET /api/messages` - Get messages with pagination
-- `POST /api/messages/send` - Send message to channel
+- `POST /api/messages/send` - Send message to channel (supports `text`, `channel`, `destination`, `replyId`, `emoji`)
 - `GET /api/messages/channel/:channel` - Channel-specific messages
 - `GET /api/messages/direct/:nodeId1/:nodeId2` - Direct messages
 
@@ -513,12 +517,19 @@ interface MeshMessage {
   id: string;
   from: string;
   to: string;
+  fromNodeId: string;
+  toNodeId: string;
   text: string;
   timestamp: Date;
   channel: number;
   portnum?: number;
   acknowledged?: boolean;
+  ackFailed?: boolean;
   isLocalMessage?: boolean;
+  hopStart?: number;
+  hopLimit?: number;
+  replyId?: number;        // Message ID being replied to
+  emoji?: number;          // 0=normal message, 1=tapback reaction
 }
 ```
 
