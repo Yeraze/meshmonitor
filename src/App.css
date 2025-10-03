@@ -1299,6 +1299,12 @@ body {
   font-weight: bold;
 }
 
+.status-failed {
+  color: var(--ctp-red);
+  font-size: 0.8rem;
+  font-weight: bold;
+}
+
 /* Messages container adjustments */
 .messages-container {
   flex: 1;

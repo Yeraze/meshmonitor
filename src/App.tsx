@@ -369,6 +369,17 @@ function App() {
     };
   }, [connectionStatus]);
 
+  // Timer to update message status indicators (waiting -> delivered after 10s)
+  const [, setStatusTick] = useState(0);
+  useEffect(() => {
+    const interval = setInterval(() => {
+      // Force re-render to update message status indicators
+      setStatusTick(prev => prev + 1);
+    }, 1000); // Update every second
+
+    return () => clearInterval(interval);
+  }, []);
+
   const requestFullNodeDatabase = async () => {
     try {
       console.log('📡 Requesting full node database refresh...');
@@ -2020,7 +2031,6 @@ function App() {
                       return messagesForChannel && messagesForChannel.length > 0 ? (
                       messagesForChannel.map(msg => {
                         const isMine = isMyMessage(msg);
-                        const isPending = pendingMessages.has(msg.id);
                         const repliedMessage = msg.replyId ? findMessageById(msg.replyId, messageChannel) : null;
                         const isReaction = msg.emoji === 1;
 
@@ -2090,11 +2100,18 @@ function App() {
                             </div>
                             {isMine && (
                               <div className="message-status">
-                                {isPending ? (
-                                  <span className="status-pending" title="Sending...">⏳</span>
-                                ) : (
-                                  <span className="status-delivered" title="Delivered">✓</span>
-                                )}
+                                {(() => {
+                                  const messageAge = Date.now() - msg.timestamp.getTime();
+                                  const isWaiting = messageAge < 10000 && !msg.acknowledged;
+
+                                  if (msg.ackFailed) {
+                                    return <span className="status-failed" title="Failed to send">✗</span>;
+                                  } else if (isWaiting) {
+                                    return <span className="status-pending" title="Sending...">⏳</span>;
+                                  } else {
+                                    return <span className="status-delivered" title="Delivered">✓</span>;
+                                  }
+                                })()}
                               </div>
                             )}
                           </div>
