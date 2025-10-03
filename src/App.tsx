@@ -167,6 +167,7 @@ function App() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [mapCenterTarget, setMapCenterTarget] = useState<[number, number] | null>(null)
   const [nodePopup, setNodePopup] = useState<{nodeId: string, position: {x: number, y: number}} | null>(null)
+  const markerRefs = useRef<Map<string, L.Marker>>(new Map())
 
   // Initialize notification sound with cleanup
   useEffect(() => {
@@ -297,6 +298,16 @@ function App() {
 
     fetchPositionHistory();
   }, [selectedNodeId, nodes, baseUrl]);
+
+  // Open popup for selected node
+  useEffect(() => {
+    if (selectedNodeId) {
+      const marker = markerRefs.current.get(selectedNodeId);
+      if (marker) {
+        marker.openPopup();
+      }
+    }
+  }, [selectedNodeId]);
 
   // Auto-scroll to bottom when messages change or channel changes
   const scrollToBottom = useCallback(() => {
@@ -1340,8 +1351,13 @@ function App() {
                     }
                   }}
                   icon={markerIcon}
+                  ref={(ref) => {
+                    if (ref && node.user?.id) {
+                      markerRefs.current.set(node.user.id, ref);
+                    }
+                  }}
                 >
-                  <Popup>
+                  <Popup autoPan={false}>
                     <div className="route-popup">
                       <h4>{node.user?.longName || `Node ${node.nodeNum}`}</h4>
                       {node.user?.shortName && (
