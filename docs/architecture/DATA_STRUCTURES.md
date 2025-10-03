@@ -37,6 +37,8 @@ interface DeviceInfo {
   lastHeard?: number;                // Unix timestamp of last communication
   snr?: number;                      // Signal-to-noise ratio in dB
   rssi?: number;                     // Received signal strength in dBm
+  firmwareVersion?: string;          // Firmware version string
+  isMobile?: boolean;                // True if node has moved >1km based on position telemetry
 }
 ```
 
@@ -72,7 +74,9 @@ const exampleNode: DeviceInfo = {
   },
   lastHeard: 1640995200,
   snr: 12.5,
-  rssi: -45
+  rssi: -45,
+  firmwareVersion: "2.3.0.abc123",
+  isMobile: false
 };
 ```
 
@@ -140,6 +144,9 @@ interface DbNode {
   lastHeard?: number;                // Radio metrics
   snr?: number;
   rssi?: number;
+  firmwareVersion?: string;          // Firmware version string
+  isMobile?: boolean;                // Mobile node detection (>1km movement)
+  lastTracerouteRequest?: number;    // Last traceroute request timestamp
   createdAt: number;                 // Record creation timestamp
   updatedAt: number;                 // Last update timestamp
 }
@@ -169,29 +176,63 @@ interface DbMessage {
 
 ### Hardware Model Enum
 
-Maps numeric hardware model IDs to human-readable names.
+Maps numeric hardware model IDs to technical names (116 models supported: 0-114 plus 255).
 
 ```typescript
-const HardwareModels: Record<number, string> = {
+// Representative sample - see src/constants/index.ts for complete list
+const HARDWARE_MODELS: Record<number, string> = {
+  0: 'UNSET',
   1: 'TLORA_V2',
   2: 'TLORA_V1',
-  3: 'TLORA_V2_1_1P6',
-  4: 'TBEAM',
-  5: 'HELTEC_V2_0',
-  6: 'TBEAM_V0P7',
-  7: 'T_ECHO',
-  8: 'TLORA_V1_1P3',
-  9: 'RAK4631',
-  10: 'HELTEC_V2_1',
-  11: 'HELTEC_V1',
-  12: 'LILYGO_TBEAM_S3_CORE',
-  13: 'RAK11200',
-  14: 'NANO_G1',
-  15: 'STATION_G1',
-  39: 'DIY_V1',
-  43: 'HELTEC_V3'
+  // ... 3-30 (classic models)
+  31: 'STATION_G2',
+  // ... 32-42 (additional models)
+  43: 'HELTEC_V3',
+  // ... 44-47
+  48: 'HELTEC_WIRELESS_TRACKER',
+  49: 'HELTEC_WIRELESS_PAPER',
+  50: 'T_DECK',
+  // ... 51-79
+  80: 'M5STACK_CORES3',
+  // ... 81-95
+  96: 'NOMADSTAR_METEOR_PRO',
+  97: 'CROWPANEL',
+  // ... 98-109
+  110: 'HELTEC_V4',
+  111: 'M5STACK_C6L',
+  112: 'M5STACK_CARDPUTER_ADV',
+  113: 'HELTEC_WIRELESS_TRACKER_V2',
+  114: 'T_WATCH_ULTRA',
+  255: 'PRIVATE_HW'
 };
 ```
+
+*Complete list of 116 models available in `src/constants/index.ts`*
+
+**Hardware Model Name Formatting:**
+
+Technical hardware names are formatted into readable display names using `formatHardwareName()`:
+
+```typescript
+function formatHardwareName(name: string): string {
+  // Splits on underscores and applies proper casing
+  // Preserves abbreviations (LR, TX, RAK, NRF, etc.)
+  // Maps brand names to proper capitalization
+}
+
+function getHardwareModelName(hwModel: number): string | null {
+  const modelName = HARDWARE_MODELS[hwModel];
+  if (!modelName) return `Unknown (${hwModel})`;
+  return formatHardwareName(modelName);
+}
+```
+
+**Examples:**
+- `STATION_G2` → **Station G2**
+- `HELTEC_WIRELESS_PAPER` → **Heltec Wireless Paper**
+- `TLORA_V2_1_1P6` → **TLora V2 1 1.6**
+- `BETAFPV_2400_TX` → **BetaFPV 2400 TX**
+- `LILYGO_TBEAM_S3_CORE` → **Lilygo TBeam S3 Core**
 
 ### Node Role Enum
 
