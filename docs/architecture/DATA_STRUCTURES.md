@@ -89,32 +89,86 @@ interface MeshMessage {
   id: string;                        // Unique message identifier
   from: string;                      // Sender's node ID (hexadecimal)
   to: string;                        // Recipient's node ID (hexadecimal)
+  fromNodeId: string;                // Sender's node ID for display
+  toNodeId: string;                  // Recipient's node ID for display
   text: string;                      // Message content
   timestamp: Date;                   // When message was sent/received
   channel: number;                   // Channel number (0-7)
   portnum?: number;                  // Meshtastic port number
+  acknowledged?: boolean;            // Whether message was acknowledged
+  ackFailed?: boolean;               // Whether acknowledgment failed
+  isLocalMessage?: boolean;          // Message originated from this node
+  hopStart?: number;                 // Initial hop count for routing
+  hopLimit?: number;                 // Maximum hop count for routing
+  replyId?: number;                  // Message ID being replied to (for threading and tapbacks)
+  emoji?: number;                    // Emoji flag: 0=normal message, 1=tapback reaction
 }
 ```
 
 **Usage:**
-- Displayed in the messages panel
+- Displayed in the messages panel with proper threading
 - Stored in the messages database table
-- Sent/received via Meshtastic HTTP API
+- Sent/received via Meshtastic TCP streaming protocol
 
 **Special Values:**
 - `to: "!ffffffff"` indicates a broadcast message
 - `channel: 0` is the default/primary channel
+- `emoji: 1` with `replyId` set indicates a tapback reaction
+- `replyId` set with `emoji: 0` or `undefined` indicates a threaded reply
 
-**Example:**
+**Reply and Tapback Support:**
+- **Normal Reply**: `replyId` set, `emoji` is 0 or undefined, `text` contains reply message
+- **Tapback Reaction**: `replyId` set, `emoji: 1`, `text` contains emoji character (👍, 👎, ❓, ❗, 😂, 😢, 💩)
+- **Regular Message**: `replyId` undefined, `emoji` undefined
+
+**Example - Regular Message:**
 ```typescript
-const exampleMessage: MeshMessage = {
+const regularMessage: MeshMessage = {
   id: "123456789-1640995200",
   from: "!075bcd15",
-  to: "!ffffffff", // Broadcast
+  to: "!ffffffff",
+  fromNodeId: "!075bcd15",
+  toNodeId: "!ffffffff",
   text: "Hello mesh network!",
   timestamp: new Date('2024-01-01T12:00:00Z'),
   channel: 0,
-  portnum: 1
+  portnum: 1,
+  acknowledged: true,
+  isLocalMessage: false
+};
+```
+
+**Example - Reply Message:**
+```typescript
+const replyMessage: MeshMessage = {
+  id: "123456789-1640995250",
+  from: "!a1b2c3d4",
+  to: "!075bcd15",
+  fromNodeId: "!a1b2c3d4",
+  toNodeId: "!075bcd15",
+  text: "Thanks for the update!",
+  timestamp: new Date('2024-01-01T12:01:00Z'),
+  channel: 0,
+  portnum: 1,
+  replyId: 1640995200,  // ID of original message
+  emoji: 0
+};
+```
+
+**Example - Tapback Reaction:**
+```typescript
+const tapbackMessage: MeshMessage = {
+  id: "123456789-1640995260",
+  from: "!e5f6g7h8",
+  to: "!075bcd15",
+  fromNodeId: "!e5f6g7h8",
+  toNodeId: "!075bcd15",
+  text: "👍",  // Emoji character
+  timestamp: new Date('2024-01-01T12:02:00Z'),
+  channel: 0,
+  portnum: 1,
+  replyId: 1640995200,  // ID of message being reacted to
+  emoji: 1  // Flag indicating this is a tapback
 };
 ```
 
@@ -168,6 +222,10 @@ interface DbMessage {
   portnum?: number;                  // Meshtastic port number
   timestamp: number;                 // Message timestamp (Unix)
   rxTime?: number;                   // Reception timestamp
+  hopStart?: number;                 // Initial hop count for routing
+  hopLimit?: number;                 // Maximum hop count for routing
+  replyId?: number;                  // Message ID being replied to
+  emoji?: number;                    // Emoji flag (0=normal, 1=tapback)
   createdAt: number;                 // Database insertion time
 }
 ```
@@ -524,9 +582,11 @@ interface NodeUpdateRequest {
 }
 
 interface MessageSendRequest {
-  text: string;
-  channel?: number;
-  destination?: string;
+  text: string;                      // Message text content (required)
+  channel?: number;                  // Channel number (0-7, default: 0)
+  destination?: string;              // Node ID for direct message (optional)
+  replyId?: number;                  // Message ID being replied to (optional)
+  emoji?: number;                    // Emoji flag: 0=normal, 1=tapback (optional)
 }
 
 interface CleanupRequest {
