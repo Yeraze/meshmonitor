@@ -480,6 +480,16 @@ apiRouter.post('/messages/send', async (req, res) => {
       return res.status(400).json({ error: 'Message text is required' });
     }
 
+    // Validate replyId if provided
+    if (replyId !== undefined && (typeof replyId !== 'number' || replyId < 0 || !Number.isInteger(replyId))) {
+      return res.status(400).json({ error: 'Invalid replyId: must be a positive integer' });
+    }
+
+    // Validate emoji flag if provided (should be 0 or 1)
+    if (emoji !== undefined && (typeof emoji !== 'number' || (emoji !== 0 && emoji !== 1))) {
+      return res.status(400).json({ error: 'Invalid emoji flag: must be 0 or 1' });
+    }
+
     // Convert destination nodeId to nodeNum if provided
     let destinationNum: number | undefined = undefined;
     if (destination) {

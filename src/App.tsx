@@ -61,6 +61,18 @@ function App() {
   const [replyingTo, setReplyingTo] = useState<MeshMessage | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [nodeAddress, setNodeAddress] = useState<string>('Loading...')
+
+  // Constants for emoji tapbacks
+  const EMOJI_FLAG = 1; // Protobuf flag indicating this is a tapback/reaction
+  const TAPBACK_EMOJIS = [
+    { emoji: '👍', title: 'Thumbs up' },
+    { emoji: '👎', title: 'Thumbs down' },
+    { emoji: '❓', title: 'Question' },
+    { emoji: '❗', title: 'Exclamation' },
+    { emoji: '😂', title: 'Laugh' },
+    { emoji: '😢', title: 'Cry' },
+    { emoji: '💩', title: 'Poop' }
+  ] as const;
   const [deviceInfo, setDeviceInfo] = useState<any>(null)
   const [deviceConfig, setDeviceConfig] = useState<any>(null)
   const [currentNodeId, setCurrentNodeId] = useState<string>('')
@@ -852,16 +864,23 @@ function App() {
 
   const handleSendTapback = async (emoji: string, originalMessage: MeshMessage) => {
     if (connectionStatus !== 'connected') {
+      setError('Cannot send reaction: not connected to mesh network');
       return;
     }
 
     // Extract replyId from original message
     const idParts = originalMessage.id.split('_');
     if (idParts.length < 2) {
-      console.error('Invalid message ID format');
+      setError('Cannot send reaction: invalid message format');
       return;
     }
     const replyId = parseInt(idParts[1], 10);
+
+    // Validate replyId is a valid number
+    if (isNaN(replyId) || replyId < 0) {
+      setError('Cannot send reaction: invalid message ID');
+      return;
+    }
 
     try {
       const response = await fetch(`${baseUrl}/api/messages/send`, {
@@ -873,7 +892,7 @@ function App() {
           text: emoji,
           channel: originalMessage.channel,
           replyId: replyId,
-          emoji: 1 // Flag this as a tapback
+          emoji: EMOJI_FLAG
         })
       });
 
@@ -882,10 +901,10 @@ function App() {
         setTimeout(() => updateDataFromBackend(), 500);
       } else {
         const errorData = await response.json();
-        setError(`Failed to send tapback: ${errorData.error}`);
+        setError(`Failed to send reaction: ${errorData.error || 'Unknown error'}`);
       }
     } catch (err) {
-      setError(`Failed to send tapback: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setError(`Failed to send reaction: ${err instanceof Error ? err.message : 'Network error'}`);
     }
   };
 
@@ -2136,55 +2155,16 @@ function App() {
                                   >
                                     ↩
                                   </button>
-                                  <button
-                                    className="emoji-button"
-                                    onClick={() => handleSendTapback('👍', msg)}
-                                    title="Thumbs up"
-                                  >
-                                    👍
-                                  </button>
-                                  <button
-                                    className="emoji-button"
-                                    onClick={() => handleSendTapback('👎', msg)}
-                                    title="Thumbs down"
-                                  >
-                                    👎
-                                  </button>
-                                  <button
-                                    className="emoji-button"
-                                    onClick={() => handleSendTapback('❓', msg)}
-                                    title="Question"
-                                  >
-                                    ❓
-                                  </button>
-                                  <button
-                                    className="emoji-button"
-                                    onClick={() => handleSendTapback('❗', msg)}
-                                    title="Exclamation"
-                                  >
-                                    ❗
-                                  </button>
-                                  <button
-                                    className="emoji-button"
-                                    onClick={() => handleSendTapback('😂', msg)}
-                                    title="Laugh"
-                                  >
-                                    😂
-                                  </button>
-                                  <button
-                                    className="emoji-button"
-                                    onClick={() => handleSendTapback('😢', msg)}
-                                    title="Cry"
-                                  >
-                                    😢
-                                  </button>
-                                  <button
-                                    className="emoji-button"
-                                    onClick={() => handleSendTapback('💩', msg)}
-                                    title="Poop"
-                                  >
-                                    💩
-                                  </button>
+                                  {TAPBACK_EMOJIS.map(({ emoji, title }) => (
+                                    <button
+                                      key={emoji}
+                                      className="emoji-button"
+                                      onClick={() => handleSendTapback(emoji, msg)}
+                                      title={title}
+                                    >
+                                      {emoji}
+                                    </button>
+                                  ))}
                                 </div>
                                 <div className="message-text">
                                   {msg.text}
