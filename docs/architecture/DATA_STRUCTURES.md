@@ -179,78 +179,35 @@ interface DbMessage {
 Maps numeric hardware model IDs to technical names (116 models supported: 0-114 plus 255).
 
 ```typescript
+// Representative sample - see src/constants/index.ts for complete list
 const HARDWARE_MODELS: Record<number, string> = {
+  0: 'UNSET',
   1: 'TLORA_V2',
   2: 'TLORA_V1',
-  3: 'TLORA_V2_1_1P6',
-  4: 'TBEAM',
-  5: 'HELTEC_V2_0',
-  6: 'TBEAM_V0P7',
-  7: 'T_ECHO',
-  8: 'TLORA_V1_1P3',
-  9: 'RAK4631',
-  10: 'HELTEC_V2_1',
-  11: 'HELTEC_V1',
-  12: 'LILYGO_TBEAM_S3_CORE',
-  13: 'RAK11200',
-  14: 'NANO_G1',
-  15: 'TLORA_V2_1_1P8',
-  16: 'TLORA_T3_S3',
-  17: 'NANO_G1_EXPLORER',
-  18: 'NANO_G2_ULTRA',
-  19: 'LORA_TYPE',
-  20: 'WIPHONE',
-  21: 'WIO_WM1110',
-  22: 'RAK2560',
-  23: 'HELTEC_HRU_3601',
-  24: 'HELTEC_VISION_MASTER_T190',
-  25: 'HELTEC_VISION_MASTER_E213',
-  26: 'HELTEC_VISION_MASTER_E290',
-  27: 'HELTEC_MESH_NODE_T114',
-  28: 'SENSECAP_INDICATOR',
-  29: 'TRACKER_T1000_E',
-  30: 'RAK3172',
+  // ... 3-30 (classic models)
   31: 'STATION_G2',
-  32: 'LR1110',
-  33: 'LR1120',
-  34: 'LR1121',
-  35: 'RADIOMASTER_900_BANDIT_NANO',
-  36: 'HELTEC_CAPSULE_SENSOR_V3',
-  37: 'HELTEC_WIRELESS_TRACKER',
-  38: 'HELTEC_WIRELESS_PAPER_V1_0',
-  39: 'T_DECK',
-  40: 'T_WATCH_S3',
-  41: 'PICOMPUTER_S3',
-  42: 'HELTEC_HT62',
-  43: 'HELTEC_WIRELESS_PAPER',
-  44: 'HELTEC_WIRELESS_TRACKER_V1_0',
-  45: 'UNPHONE',
-  46: 'TD_LORAC',
-  47: 'CDEBYTE_EORA_S3',
-  48: 'TWC_MESH_V4',
-  49: 'NRF52_UNKNOWN',
-  50: 'PORTDUINO',
-  51: 'ANDROID_SIM',
-  52: 'DIY_V1',
-  53: 'NRF52840_PCA10056',
-  54: 'DR_DEV',
-  55: 'M5STACK',
-  56: 'HELTEC_V3',
-  57: 'HELTEC_WSL_V3',
-  58: 'BETAFPV_2400_TX',
-  59: 'BETAFPV_900_NANO_TX',
-  60: 'RPI_PICO',
-  61: 'SEEED_XIAO_S3',
-  62: 'RADIOMASTER_900_BANDIT',
-  63: 'ME_CONNECT',
-  64: 'CHATTER_2',
-  65: 'HELTEC_CAPSULE_SENSOR_V3',
-  66: 'HELTEC_VISION_MASTER_T190',
-  // ... 67-114 (additional models)
+  // ... 32-42 (additional models)
+  43: 'HELTEC_V3',
+  // ... 44-47
+  48: 'HELTEC_WIRELESS_TRACKER',
+  49: 'HELTEC_WIRELESS_PAPER',
+  50: 'T_DECK',
+  // ... 51-79
+  80: 'M5STACK_CORES3',
+  // ... 81-95
+  96: 'NOMADSTAR_METEOR_PRO',
+  97: 'CROWPANEL',
+  // ... 98-109
+  110: 'HELTEC_V4',
+  111: 'M5STACK_C6L',
+  112: 'M5STACK_CARDPUTER_ADV',
+  113: 'HELTEC_WIRELESS_TRACKER_V2',
   114: 'T_WATCH_ULTRA',
   255: 'PRIVATE_HW'
 };
 ```
+
+*Complete list of 116 models available in `src/constants/index.ts`*
 
 **Hardware Model Name Formatting:**
 
