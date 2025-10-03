@@ -214,7 +214,7 @@ export class MeshtasticProtobufService {
             try {
               reader.skipType(wireType);
               lastValidPos = reader.pos;
-            } catch (skipError) {
+            } catch (_skipError) {
               console.log(`⚠️ Error skipping field ${fieldNumber} at offset ${offset + posBeforeTag}`);
               reader.pos = lastValidPos;
               break;
