@@ -1556,56 +1556,91 @@ function App() {
                   }}
                 >
                   <Popup autoPan={false}>
-                    <div className="route-popup">
-                      <h4>{node.user?.longName || `Node ${node.nodeNum}`}</h4>
-                      {node.user?.shortName && (
-                        <div className="route-endpoints">
-                          <strong>{node.user.shortName}</strong>
-                        </div>
-                      )}
+                    <div className="node-popup">
+                      <div className="node-popup-header">
+                        <div className="node-popup-title">{node.user?.longName || `Node ${node.nodeNum}`}</div>
+                        {node.user?.shortName && (
+                          <div className="node-popup-subtitle">{node.user.shortName}</div>
+                        )}
+                      </div>
 
-                      {node.user?.id && (
-                        <div className="route-usage">ID: {node.user.id}</div>
-                      )}
+                      <div className="node-popup-grid">
+                        {node.user?.id && (
+                          <div className="node-popup-item">
+                            <span className="node-popup-icon">🆔</span>
+                            <span className="node-popup-value">{node.user.id}</span>
+                          </div>
+                        )}
 
-                      {node.user?.role !== undefined && (() => {
-                        const roleNum = typeof node.user.role === 'string'
-                          ? parseInt(node.user.role, 10)
-                          : node.user.role;
-                        const roleName = getRoleName(roleNum);
-                        return roleName ? <div className="route-usage">Role: {roleName}</div> : null;
-                      })()}
+                        {node.user?.role !== undefined && (() => {
+                          const roleNum = typeof node.user.role === 'string'
+                            ? parseInt(node.user.role, 10)
+                            : node.user.role;
+                          const roleName = getRoleName(roleNum);
+                          return roleName ? (
+                            <div className="node-popup-item">
+                              <span className="node-popup-icon">👤</span>
+                              <span className="node-popup-value">{roleName}</span>
+                            </div>
+                          ) : null;
+                        })()}
 
-                      {node.user?.hwModel !== undefined && (() => {
-                        const hwModelName = getHardwareModelName(node.user.hwModel);
-                        return hwModelName ? <div className="route-usage">Hardware: {hwModelName}</div> : null;
-                      })()}
+                        {node.user?.hwModel !== undefined && (() => {
+                          const hwModelName = getHardwareModelName(node.user.hwModel);
+                          return hwModelName ? (
+                            <div className="node-popup-item">
+                              <span className="node-popup-icon">🖥️</span>
+                              <span className="node-popup-value">{hwModelName}</span>
+                            </div>
+                          ) : null;
+                        })()}
 
-                      {node.snr != null && (
-                        <div className="route-usage">SNR: {node.snr.toFixed(1)} dB</div>
-                      )}
+                        {node.snr != null && (
+                          <div className="node-popup-item">
+                            <span className="node-popup-icon">📶</span>
+                            <span className="node-popup-value">{node.snr.toFixed(1)} dB</span>
+                          </div>
+                        )}
 
-                      {node.hopsAway != null && (
-                        <div className="route-usage">Hops Away: {node.hopsAway}</div>
-                      )}
+                        {node.hopsAway != null && (
+                          <div className="node-popup-item">
+                            <span className="node-popup-icon">🔗</span>
+                            <span className="node-popup-value">{node.hopsAway} hop{node.hopsAway !== 1 ? 's' : ''}</span>
+                          </div>
+                        )}
 
-                      {node.position?.altitude != null && (
-                        <div className="route-usage">Altitude: {node.position.altitude}m</div>
-                      )}
+                        {node.position?.altitude != null && (
+                          <div className="node-popup-item">
+                            <span className="node-popup-icon">⛰️</span>
+                            <span className="node-popup-value">{node.position.altitude}m</span>
+                          </div>
+                        )}
 
-                      {node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null && (
-                        <div className="route-usage">
-                          {node.deviceMetrics.batteryLevel === 101 ? 'Power: Plugged In' : `Battery: ${node.deviceMetrics.batteryLevel}%`}
-                        </div>
-                      )}
+                        {node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null && (
+                          <div className="node-popup-item">
+                            <span className="node-popup-icon">{node.deviceMetrics.batteryLevel === 101 ? '🔌' : '🔋'}</span>
+                            <span className="node-popup-value">
+                              {node.deviceMetrics.batteryLevel === 101 ? 'Plugged In' : `${node.deviceMetrics.batteryLevel}%`}
+                            </span>
+                          </div>
+                        )}
+                      </div>
 
                       {node.lastHeard && (
-                        <div className="route-usage">Last Seen: {new Date(node.lastHeard * 1000).toLocaleString()}</div>
+                        <div className="node-popup-footer">
+                          <span className="node-popup-icon">🕐</span>
+                          {new Date(node.lastHeard * 1000).toLocaleString([], {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </div>
                       )}
 
                       {node.user?.id && (
                         <button
-                          className="popup-dm-btn"
+                          className="node-popup-btn"
                           onClick={() => {
                             setSelectedDMNode(node.user!.id);
                             setActiveTab('messages');
