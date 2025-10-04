@@ -623,7 +623,7 @@ class DatabaseService {
         nodeData.shortName || null,
         nodeData.hwModel || null,
         nodeData.role || null,
-        nodeData.hopsAway || null,
+        nodeData.hopsAway !== undefined ? nodeData.hopsAway : null,
         nodeData.macaddr || null,
         nodeData.latitude || null,
         nodeData.longitude || null,

@@ -329,4 +329,195 @@ describe('ApiService BASE_URL Support', () => {
       expect(mockFetch).toHaveBeenNthCalledWith(3, '/api/channels');
     });
   });
+
+  describe('API Response Data - hopsAway field', () => {
+    beforeEach(() => {
+      mockLocation.pathname = '/';
+      (apiService as any).configFetched = true;
+      (apiService as any).baseUrl = '';
+    });
+
+    it('should return hopsAway field in node data', async () => {
+      const mockNodes = [
+        {
+          nodeNum: 1,
+          nodeId: '!test1',
+          longName: 'Test Node 1',
+          hopsAway: 2,
+          user: {
+            id: '!test1',
+            longName: 'Test Node 1',
+            shortName: 'TN1',
+          },
+        },
+        {
+          nodeNum: 2,
+          nodeId: '!test2',
+          longName: 'Test Node 2',
+          hopsAway: 1,
+          user: {
+            id: '!test2',
+            longName: 'Test Node 2',
+            shortName: 'TN2',
+          },
+        },
+      ];
+
+      mockFetch.mockResolvedValue(createMockResponse({ nodes: mockNodes }));
+
+      const nodes = await apiService.getNodes();
+
+      expect(nodes).toHaveLength(2);
+      expect(nodes[0].hopsAway).toBe(2);
+      expect(nodes[1].hopsAway).toBe(1);
+    });
+
+    it('should handle nodes with hopsAway of 0 (local node)', async () => {
+      const mockNodes = [
+        {
+          nodeNum: 1,
+          nodeId: '!local',
+          longName: 'Local Node',
+          hopsAway: 0,
+          user: {
+            id: '!local',
+            longName: 'Local Node',
+            shortName: 'LOC',
+          },
+        },
+      ];
+
+      mockFetch.mockResolvedValue(createMockResponse({ nodes: mockNodes }));
+
+      const nodes = await apiService.getNodes();
+
+      expect(nodes).toHaveLength(1);
+      expect(nodes[0].hopsAway).toBe(0);
+    });
+
+    it('should handle nodes without hopsAway field (undefined)', async () => {
+      const mockNodes = [
+        {
+          nodeNum: 1,
+          nodeId: '!test1',
+          longName: 'Test Node 1',
+          // hopsAway not included
+          user: {
+            id: '!test1',
+            longName: 'Test Node 1',
+            shortName: 'TN1',
+          },
+        },
+      ];
+
+      mockFetch.mockResolvedValue(createMockResponse({ nodes: mockNodes }));
+
+      const nodes = await apiService.getNodes();
+
+      expect(nodes).toHaveLength(1);
+      expect(nodes[0].hopsAway).toBeUndefined();
+    });
+
+    it('should handle nodes with null hopsAway', async () => {
+      const mockNodes = [
+        {
+          nodeNum: 1,
+          nodeId: '!test1',
+          longName: 'Test Node 1',
+          hopsAway: null,
+          user: {
+            id: '!test1',
+            longName: 'Test Node 1',
+            shortName: 'TN1',
+          },
+        },
+      ];
+
+      mockFetch.mockResolvedValue(createMockResponse({ nodes: mockNodes }));
+
+      const nodes = await apiService.getNodes();
+
+      expect(nodes).toHaveLength(1);
+      expect(nodes[0].hopsAway).toBeNull();
+    });
+
+    it('should handle various hopsAway values (1-6+)', async () => {
+      const mockNodes = [
+        { nodeNum: 1, nodeId: '!n1', hopsAway: 1, user: { id: '!n1', longName: 'Node 1' } },
+        { nodeNum: 2, nodeId: '!n2', hopsAway: 2, user: { id: '!n2', longName: 'Node 2' } },
+        { nodeNum: 3, nodeId: '!n3', hopsAway: 3, user: { id: '!n3', longName: 'Node 3' } },
+        { nodeNum: 4, nodeId: '!n4', hopsAway: 4, user: { id: '!n4', longName: 'Node 4' } },
+        { nodeNum: 5, nodeId: '!n5', hopsAway: 5, user: { id: '!n5', longName: 'Node 5' } },
+        { nodeNum: 6, nodeId: '!n6', hopsAway: 6, user: { id: '!n6', longName: 'Node 6' } },
+        { nodeNum: 7, nodeId: '!n7', hopsAway: 10, user: { id: '!n7', longName: 'Node 7' } },
+      ];
+
+      mockFetch.mockResolvedValue(createMockResponse({ nodes: mockNodes }));
+
+      const nodes = await apiService.getNodes();
+
+      expect(nodes).toHaveLength(7);
+      expect(nodes[0].hopsAway).toBe(1);
+      expect(nodes[1].hopsAway).toBe(2);
+      expect(nodes[2].hopsAway).toBe(3);
+      expect(nodes[3].hopsAway).toBe(4);
+      expect(nodes[4].hopsAway).toBe(5);
+      expect(nodes[5].hopsAway).toBe(6);
+      expect(nodes[6].hopsAway).toBe(10);
+    });
+
+    it('should preserve hopsAway field type as number', async () => {
+      const mockNodes = [
+        {
+          nodeNum: 1,
+          nodeId: '!test1',
+          hopsAway: 3,
+          user: { id: '!test1', longName: 'Node' },
+        },
+      ];
+
+      mockFetch.mockResolvedValue(createMockResponse({ nodes: mockNodes }));
+
+      const nodes = await apiService.getNodes();
+
+      expect(typeof nodes[0].hopsAway).toBe('number');
+      expect(nodes[0].hopsAway).toBe(3);
+    });
+
+    it('should return hopsAway alongside other node properties', async () => {
+      const mockNode = {
+        nodeNum: 1,
+        nodeId: '!test1',
+        longName: 'Test Node',
+        shortName: 'TN',
+        hopsAway: 2,
+        snr: 10.5,
+        rssi: -80,
+        lastHeard: 1234567890,
+        user: {
+          id: '!test1',
+          longName: 'Test Node',
+          shortName: 'TN',
+          hwModel: 31,
+        },
+        position: {
+          latitude: 40.7128,
+          longitude: -74.0060,
+          altitude: 10,
+        },
+      };
+
+      mockFetch.mockResolvedValue(createMockResponse({ nodes: [mockNode] }));
+
+      const nodes = await apiService.getNodes();
+
+      expect(nodes[0]).toMatchObject({
+        nodeNum: 1,
+        nodeId: '!test1',
+        hopsAway: 2,
+        snr: 10.5,
+        rssi: -80,
+      });
+    });
+  });
 });

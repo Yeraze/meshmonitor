@@ -166,6 +166,7 @@ const createTestDatabase = () => {
             nodeId = COALESCE(?, nodeId),
             longName = COALESCE(?, longName),
             shortName = COALESCE(?, shortName),
+            hopsAway = COALESCE(?, hopsAway),
             latitude = COALESCE(?, latitude),
             longitude = COALESCE(?, longitude),
             altitude = COALESCE(?, altitude),
@@ -176,6 +177,7 @@ const createTestDatabase = () => {
         `);
         stmt.run(
           nodeData.nodeId, nodeData.longName, nodeData.shortName,
+          nodeData.hopsAway,
           nodeData.latitude, nodeData.longitude, nodeData.altitude,
           nodeData.lastHeard, nodeData.lastTracerouteRequest,
           now, nodeData.nodeNum
@@ -183,13 +185,14 @@ const createTestDatabase = () => {
       } else {
         const stmt = this.db.prepare(`
           INSERT INTO nodes (
-            nodeNum, nodeId, longName, shortName, latitude, longitude, altitude,
+            nodeNum, nodeId, longName, shortName, hopsAway, latitude, longitude, altitude,
             lastHeard, lastTracerouteRequest, createdAt, updatedAt
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
         stmt.run(
           nodeData.nodeNum, nodeData.nodeId, nodeData.longName, nodeData.shortName,
+          nodeData.hopsAway !== undefined ? nodeData.hopsAway : null,
           nodeData.latitude ?? null, nodeData.longitude ?? null, nodeData.altitude ?? null,
           nodeData.lastHeard ?? null, nodeData.lastTracerouteRequest ?? null,
           now, now
@@ -1373,6 +1376,170 @@ describe('DatabaseService - Extended Coverage', () => {
 
       const remaining = db.getTelemetryByNode('!node1');
       expect(remaining).toHaveLength(1);
+    });
+  });
+
+  describe('hopsAway field support', () => {
+    it('should store and retrieve hopsAway field', () => {
+      const node = {
+        nodeNum: 1,
+        nodeId: '!test1',
+        longName: 'Test Node',
+        shortName: 'TEST',
+        hopsAway: 3,
+      };
+
+      db.upsertNode(node);
+
+      const retrieved = db.getNode(1);
+      expect(retrieved).toBeDefined();
+      expect(retrieved?.hopsAway).toBe(3);
+    });
+
+    it('should handle hopsAway value of 0 (local node)', () => {
+      const node = {
+        nodeNum: 1,
+        nodeId: '!local',
+        longName: 'Local Node',
+        hopsAway: 0,
+      };
+
+      db.upsertNode(node);
+
+      const retrieved = db.getNode(1);
+      expect(retrieved?.hopsAway).toBe(0);
+    });
+
+    it('should handle missing hopsAway field (null)', () => {
+      const node = {
+        nodeNum: 1,
+        nodeId: '!test1',
+        longName: 'Test Node',
+        // hopsAway not provided
+      };
+
+      db.upsertNode(node);
+
+      const retrieved = db.getNode(1);
+      expect(retrieved).toBeDefined();
+      expect(retrieved?.hopsAway).toBeNull();
+    });
+
+    it('should update hopsAway when node info changes', () => {
+      const node = {
+        nodeNum: 1,
+        nodeId: '!test1',
+        longName: 'Test Node',
+        hopsAway: 3,
+      };
+
+      db.upsertNode(node);
+
+      let retrieved = db.getNode(1);
+      expect(retrieved?.hopsAway).toBe(3);
+
+      // Update with new hopsAway value
+      db.upsertNode({
+        ...node,
+        hopsAway: 2,
+      });
+
+      retrieved = db.getNode(1);
+      expect(retrieved?.hopsAway).toBe(2);
+    });
+
+    it('should handle various hopsAway values (1-6+)', () => {
+      const testCases = [
+        { nodeNum: 1, hopsAway: 1 },
+        { nodeNum: 2, hopsAway: 2 },
+        { nodeNum: 3, hopsAway: 3 },
+        { nodeNum: 4, hopsAway: 4 },
+        { nodeNum: 5, hopsAway: 5 },
+        { nodeNum: 6, hopsAway: 6 },
+        { nodeNum: 7, hopsAway: 10 },
+      ];
+
+      testCases.forEach(({ nodeNum, hopsAway }) => {
+        db.upsertNode({
+          nodeNum,
+          nodeId: `!test${nodeNum}`,
+          longName: `Node ${nodeNum}`,
+          hopsAway,
+        });
+
+        const retrieved = db.getNode(nodeNum);
+        expect(retrieved?.hopsAway).toBe(hopsAway);
+      });
+    });
+
+    it('should include hopsAway in getAllNodes results', () => {
+      db.upsertNode({
+        nodeNum: 1,
+        nodeId: '!test1',
+        longName: 'Node 1',
+        hopsAway: 1,
+      });
+
+      db.upsertNode({
+        nodeNum: 2,
+        nodeId: '!test2',
+        longName: 'Node 2',
+        hopsAway: 3,
+      });
+
+      const nodes = db.getAllNodes();
+      expect(nodes).toHaveLength(2);
+
+      const node1 = nodes.find((n: DbNode) => n.nodeNum === 1);
+      const node2 = nodes.find((n: DbNode) => n.nodeNum === 2);
+
+      expect(node1?.hopsAway).toBe(1);
+      expect(node2?.hopsAway).toBe(3);
+    });
+
+    it('should preserve hopsAway when updating other node fields', () => {
+      db.upsertNode({
+        nodeNum: 1,
+        nodeId: '!test1',
+        longName: 'Old Name',
+        hopsAway: 2,
+      });
+
+      // Update only the name, not hopsAway
+      db.upsertNode({
+        nodeNum: 1,
+        nodeId: '!test1',
+        longName: 'New Name',
+      });
+
+      const retrieved = db.getNode(1);
+      expect(retrieved?.longName).toBe('New Name');
+      // hopsAway should remain unchanged (SQLite will keep existing value)
+      expect(retrieved?.hopsAway).toBeDefined();
+    });
+
+    it('should preserve hopsAway when null is passed (COALESCE behavior)', () => {
+      db.upsertNode({
+        nodeNum: 1,
+        nodeId: '!test1',
+        longName: 'Test Node',
+        hopsAway: 3,
+      });
+
+      let retrieved = db.getNode(1);
+      expect(retrieved?.hopsAway).toBe(3);
+
+      // Try to clear hopsAway by passing null - should keep old value due to COALESCE
+      db.upsertNode({
+        nodeNum: 1,
+        nodeId: '!test1',
+        longName: 'Test Node',
+        hopsAway: null as any,
+      });
+
+      retrieved = db.getNode(1);
+      // COALESCE keeps old value when NULL is passed
+      expect(retrieved?.hopsAway).toBe(3);
     });
   });
 });

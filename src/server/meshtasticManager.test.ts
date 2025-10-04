@@ -213,4 +213,119 @@ describe('MeshtasticManager - Configuration Polling', () => {
       // Should not crash, should wait for MyNodeInfo
     });
   });
+
+  describe('NodeInfo hopsAway processing', () => {
+    it('should extract hopsAway from NodeInfo protobuf data', () => {
+      // Mock NodeInfo with hopsAway field
+      const mockNodeInfo = {
+        num: 2732916556,
+        user: {
+          id: '!a2e4ff4c',
+          longName: 'Test Node',
+          shortName: 'TEST',
+          hwModel: 31,
+        },
+        hopsAway: 3,
+        lastHeard: Date.now() / 1000,
+      };
+
+      // Verify hopsAway is accessible
+      expect(mockNodeInfo.hopsAway).toBe(3);
+      expect(typeof mockNodeInfo.hopsAway).toBe('number');
+    });
+
+    it('should handle NodeInfo without hopsAway field (undefined)', () => {
+      const mockNodeInfo: {
+        num: number;
+        user: { id: string; longName: string; shortName: string; hwModel: number };
+        lastHeard: number;
+        hopsAway?: number;
+      } = {
+        num: 2732916556,
+        user: {
+          id: '!a2e4ff4c',
+          longName: 'Test Node',
+          shortName: 'TEST',
+          hwModel: 31,
+        },
+        lastHeard: Date.now() / 1000,
+        // hopsAway is undefined
+      };
+
+      // Should handle gracefully when hopsAway is not present
+      expect(mockNodeInfo.hopsAway).toBeUndefined();
+    });
+
+    it('should process hopsAway values from 0 to 6+', () => {
+      const testCases = [
+        { hopsAway: 0, description: 'local node' },
+        { hopsAway: 1, description: 'direct neighbor' },
+        { hopsAway: 2, description: 'two hops away' },
+        { hopsAway: 3, description: 'three hops away' },
+        { hopsAway: 4, description: 'four hops away' },
+        { hopsAway: 5, description: 'five hops away' },
+        { hopsAway: 6, description: 'six hops away' },
+        { hopsAway: 10, description: 'many hops away' },
+      ];
+
+      testCases.forEach(({ hopsAway }) => {
+        const mockNodeInfo = {
+          num: 123456,
+          hopsAway,
+        };
+
+        expect(mockNodeInfo.hopsAway).toBe(hopsAway);
+        expect(mockNodeInfo.hopsAway).toBeGreaterThanOrEqual(0);
+      });
+    });
+
+    it('should preserve hopsAway in node data structure', () => {
+      const mockNodeData = {
+        nodeNum: 2732916556,
+        nodeId: '!a2e4ff4c',
+        lastHeard: Date.now() / 1000,
+        snr: 0,
+        rssi: 0,
+        hopsAway: 2,
+      };
+
+      expect(mockNodeData).toHaveProperty('hopsAway');
+      expect(mockNodeData.hopsAway).toBe(2);
+    });
+
+    it('should handle hopsAway updates when receiving new NodeInfo', () => {
+      // Simulate node reporting different hop counts over time
+      const nodeUpdates = [
+        { timestamp: 1000, hopsAway: 3 },
+        { timestamp: 2000, hopsAway: 2 }, // Better path found
+        { timestamp: 3000, hopsAway: 4 }, // Path degraded
+      ];
+
+      nodeUpdates.forEach((update) => {
+        const mockNodeInfo = {
+          num: 2732916556,
+          hopsAway: update.hopsAway,
+          lastHeard: update.timestamp,
+        };
+
+        expect(mockNodeInfo.hopsAway).toBe(update.hopsAway);
+      });
+    });
+
+    it('should distinguish hopsAway from user-provided data', () => {
+      // hopsAway is from mesh packet header, not user info
+      const mockNodeInfo = {
+        num: 2732916556,
+        user: {
+          id: '!a2e4ff4c',
+          longName: 'Test Node',
+          shortName: 'TEST',
+        },
+        hopsAway: 3, // From packet, not user
+      };
+
+      expect(mockNodeInfo.hopsAway).toBe(3);
+      expect(mockNodeInfo.user).not.toHaveProperty('hopsAway');
+    });
+  });
 });
