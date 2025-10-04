@@ -2192,7 +2192,113 @@ body {
   100% { transform: rotate(360deg); }
 }
 
-/* Route Popup Styles */
+/* Node Popup Styles */
+.node-popup {
+  min-width: 240px;
+  max-width: 280px;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.node-popup-header {
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid var(--ctp-mauve);
+}
+
+.node-popup-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--ctp-text);
+  margin-bottom: 0.25rem;
+  line-height: 1.3;
+}
+
+.node-popup-subtitle {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ctp-mauve);
+  background: var(--ctp-surface1);
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  display: inline-block;
+  margin-top: 0.25rem;
+}
+
+.node-popup-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.node-popup-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.5rem;
+  background: var(--ctp-surface0);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  transition: background 0.2s ease;
+}
+
+.node-popup-item:hover {
+  background: var(--ctp-surface1);
+}
+
+.node-popup-icon {
+  font-size: 1.1rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.node-popup-value {
+  color: var(--ctp-text);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+}
+
+.node-popup-footer {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  background: var(--ctp-surface0);
+  border-radius: 6px;
+  font-size: 0.8rem;
+  color: var(--ctp-subtext1);
+  margin-bottom: 0.75rem;
+  justify-content: center;
+}
+
+.node-popup-btn {
+  width: 100%;
+  padding: 0.6rem 1rem;
+  background: var(--ctp-blue);
+  color: var(--ctp-base);
+  border: none;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.node-popup-btn:hover {
+  background: var(--ctp-sapphire);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.node-popup-btn:active {
+  transform: translateY(0);
+}
+
+/* Legacy Route Popup Styles (for other popups) */
 .route-popup {
   min-width: 200px;
 }
