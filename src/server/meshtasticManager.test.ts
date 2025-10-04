@@ -235,7 +235,12 @@ describe('MeshtasticManager - Configuration Polling', () => {
     });
 
     it('should handle NodeInfo without hopsAway field (undefined)', () => {
-      const mockNodeInfo = {
+      const mockNodeInfo: {
+        num: number;
+        user: { id: string; longName: string; shortName: string; hwModel: number };
+        lastHeard: number;
+        hopsAway?: number;
+      } = {
         num: 2732916556,
         user: {
           id: '!a2e4ff4c',
@@ -263,7 +268,7 @@ describe('MeshtasticManager - Configuration Polling', () => {
         { hopsAway: 10, description: 'many hops away' },
       ];
 
-      testCases.forEach(({ hopsAway, description }) => {
+      testCases.forEach(({ hopsAway }) => {
         const mockNodeInfo = {
           num: 123456,
           hopsAway,

@@ -177,7 +177,7 @@ describe('MapLegend', () => {
       expect(legendText).toBeInTheDocument();
 
       // Verify each label appears in the correct order
-      orderedLabels.forEach((label, index) => {
+      orderedLabels.forEach((label) => {
         const element = screen.getByText(label);
         expect(element).toBeInTheDocument();
       });

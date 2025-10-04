@@ -162,7 +162,7 @@ describe('getHopColor', () => {
         { hops: 6, label: '6+ Hops', expectedColor: '#FF0000' },
       ];
 
-      legendTests.forEach(({ hops, label, expectedColor }) => {
+      legendTests.forEach(({ hops, expectedColor }) => {
         expect(getHopColor(hops)).toBe(expectedColor);
       });
     });

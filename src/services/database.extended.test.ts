@@ -1490,8 +1490,8 @@ describe('DatabaseService - Extended Coverage', () => {
       const nodes = db.getAllNodes();
       expect(nodes).toHaveLength(2);
 
-      const node1 = nodes.find((n) => n.nodeNum === 1);
-      const node2 = nodes.find((n) => n.nodeNum === 2);
+      const node1 = nodes.find((n: DbNode) => n.nodeNum === 1);
+      const node2 = nodes.find((n: DbNode) => n.nodeNum === 2);
 
       expect(node1?.hopsAway).toBe(1);
       expect(node2?.hopsAway).toBe(3);
