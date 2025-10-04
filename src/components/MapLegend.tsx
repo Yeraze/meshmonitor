@@ -3,10 +3,11 @@ import { getHopColor } from '../utils/mapIcons';
 
 const MapLegend: React.FC = () => {
   const legendItems = [
-    { hops: '0', color: getHopColor(0), label: 'Direct (0 hops)' },
+    { hops: '0', color: getHopColor(0), label: 'Local Node' },
     { hops: '1-3', color: getHopColor(1), label: '1-3 Hops' },
     { hops: '4-5', color: getHopColor(4), label: '4-5 Hops' },
-    { hops: '6+', color: getHopColor(6), label: '6+ / Unknown' }
+    { hops: '6+', color: getHopColor(6), label: '6+ Hops' },
+    { hops: 'No Data', color: getHopColor(999), label: 'No Traceroute' }
   ];
 
   return (

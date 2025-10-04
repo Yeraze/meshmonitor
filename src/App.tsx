@@ -1379,7 +1379,7 @@ function App() {
                     checked={showPaths}
                     onChange={(e) => setShowPaths(e.target.checked)}
                   />
-                  <span>Show Paths</span>
+                  <span>Show Route Segments</span>
                 </label>
                 <label className="map-control-item">
                   <input
@@ -1387,7 +1387,7 @@ function App() {
                     checked={showRoute}
                     onChange={(e) => setShowRoute(e.target.checked)}
                   />
-                  <span>Show Route</span>
+                  <span>Show Traceroute</span>
                 </label>
                 <label className="map-control-item">
                   <input
@@ -1395,7 +1395,7 @@ function App() {
                     checked={showMotion}
                     onChange={(e) => setShowMotion(e.target.checked)}
                   />
-                  <span>Show Motion</span>
+                  <span>Show Position History</span>
                 </label>
               </div>
               <MapContainer
@@ -1421,11 +1421,13 @@ function App() {
                   const isSelected = selectedNodeId === node.user?.id;
 
                   // Get hop count for this node
-                  const hops = node.user?.id ? getTracerouteHopCount(node.user.id) : 999;
+                  // Local node always gets 0 hops (green), otherwise use traceroute data
+                  const isLocalNode = node.user?.id === currentNodeId;
+                  const hops = isLocalNode ? 0 : (node.user?.id ? getTracerouteHopCount(node.user.id) : 999);
                   const showLabel = mapZoom >= 13; // Show labels when zoomed in
 
                   const markerIcon = createNodeIcon({
-                    hops: hops, // 999 (no traceroute) will show as red
+                    hops: hops, // 0 (local) = green, 999 (no traceroute) = grey
                     isSelected,
                     isRouter,
                     shortName: node.user?.shortName,
@@ -2181,7 +2183,7 @@ function App() {
                                     </button>
                                   ))}
                                 </div>
-                                <div className="message-text">
+                                <div className="message-text" style={{whiteSpace: 'pre-line'}}>
                                   {msg.text}
                                 </div>
                                 {reactions.length > 0 && (
@@ -2487,7 +2489,7 @@ function App() {
                           </span>
                           {isTraceroute && <span className="traceroute-badge">TRACEROUTE</span>}
                         </div>
-                        <div className="message-text" style={isTraceroute ? {whiteSpace: 'pre-line', fontFamily: 'monospace'} : {}}>{msg.text}</div>
+                        <div className="message-text" style={isTraceroute ? {whiteSpace: 'pre-line', fontFamily: 'monospace'} : {whiteSpace: 'pre-line'}}>{msg.text}</div>
                       </div>
                     );
                   })

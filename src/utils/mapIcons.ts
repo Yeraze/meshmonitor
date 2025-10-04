@@ -6,10 +6,13 @@ import L from 'leaflet';
  * 1-3 hops: Blue (#3b82f6 -> #1d4ed8)
  * 4-5 hops: Orange (#f59e0b -> #ea580c)
  * 6+ hops: Red (#ef4444)
+ * 999 hops: Grey (#9ca3af) - No traceroute data
  */
 export function getHopColor(hops: number): string {
   if (hops === 0) {
     return '#22c55e'; // Green for direct connection
+  } else if (hops === 999) {
+    return '#9ca3af'; // Grey for no traceroute data
   } else if (hops <= 3) {
     // Blue gradient for 1-3 hops
     if (hops === 1) return '#3b82f6';
@@ -18,7 +21,7 @@ export function getHopColor(hops: number): string {
   } else if (hops <= 5) {
     return hops === 4 ? '#f59e0b' : '#ea580c'; // Orange gradient
   } else {
-    return '#ef4444'; // Red for 6+ hops or unknown
+    return '#ef4444'; // Red for 6+ hops
   }
 }
 
