@@ -86,6 +86,8 @@ function App() {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   // const lastNotificationTime = useRef<number>(0) // Disabled for now
   const [tracerouteLoading, setTracerouteLoading] = useState<string | null>(null)
+  const [isChannelScrolledToBottom, setIsChannelScrolledToBottom] = useState(true)
+  const [isDMScrolledToBottom, setIsDMScrolledToBottom] = useState(true)
   const [showPaths, setShowPaths] = useState<boolean>(false)
   const [showRoute, setShowRoute] = useState<boolean>(true)
   const [showMotion, setShowMotion] = useState<boolean>(true)
@@ -326,27 +328,94 @@ function App() {
     }
   }, [selectedNodeId]);
 
-  // Auto-scroll to bottom when messages change or channel changes
-  const scrollToBottom = useCallback(() => {
+  // Check if container is scrolled near bottom (within 100px)
+  const isScrolledNearBottom = useCallback((container: HTMLDivElement | null): boolean => {
+    if (!container) return true;
+    const threshold = 100;
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    return scrollHeight - scrollTop - clientHeight < threshold;
+  }, []);
+
+  // Handle scroll events to track scroll position
+  const handleChannelScroll = useCallback(() => {
+    if (channelMessagesContainerRef.current) {
+      const atBottom = isScrolledNearBottom(channelMessagesContainerRef.current);
+      setIsChannelScrolledToBottom(atBottom);
+    }
+  }, [isScrolledNearBottom]);
+
+  const handleDMScroll = useCallback(() => {
+    if (dmMessagesContainerRef.current) {
+      const atBottom = isScrolledNearBottom(dmMessagesContainerRef.current);
+      setIsDMScrolledToBottom(atBottom);
+    }
+  }, [isScrolledNearBottom]);
+
+  // Auto-scroll to bottom when messages change or channel changes (only if user is at bottom)
+  const scrollToBottom = useCallback((force: boolean = false) => {
     // Scroll the appropriate container based on active tab
     if (activeTab === 'channels' && channelMessagesContainerRef.current) {
-      channelMessagesContainerRef.current.scrollTop = channelMessagesContainerRef.current.scrollHeight;
+      if (force || isChannelScrolledToBottom) {
+        channelMessagesContainerRef.current.scrollTop = channelMessagesContainerRef.current.scrollHeight;
+        setIsChannelScrolledToBottom(true);
+      }
     } else if (activeTab === 'nodes' && dmMessagesContainerRef.current) {
-      dmMessagesContainerRef.current.scrollTop = dmMessagesContainerRef.current.scrollHeight;
+      if (force || isDMScrolledToBottom) {
+        dmMessagesContainerRef.current.scrollTop = dmMessagesContainerRef.current.scrollHeight;
+        setIsDMScrolledToBottom(true);
+      }
     }
-  }, [activeTab]);
+  }, [activeTab, isChannelScrolledToBottom, isDMScrolledToBottom]);
 
+  // Attach scroll event listeners
+  useEffect(() => {
+    const channelContainer = channelMessagesContainerRef.current;
+    const dmContainer = dmMessagesContainerRef.current;
+
+    if (channelContainer) {
+      channelContainer.addEventListener('scroll', handleChannelScroll);
+    }
+    if (dmContainer) {
+      dmContainer.addEventListener('scroll', handleDMScroll);
+    }
+
+    return () => {
+      if (channelContainer) {
+        channelContainer.removeEventListener('scroll', handleChannelScroll);
+      }
+      if (dmContainer) {
+        dmContainer.removeEventListener('scroll', handleDMScroll);
+      }
+    };
+  }, [handleChannelScroll, handleDMScroll]);
+
+  // Auto-scroll when messages change (only if user is at bottom)
   useEffect(() => {
     if (activeTab === 'channels') {
       scrollToBottom();
     }
-  }, [channelMessages, selectedChannel, activeTab, scrollToBottom]);
+  }, [channelMessages, activeTab, scrollToBottom]);
 
+  // Force scroll to bottom when channel changes (new conversation)
+  useEffect(() => {
+    if (activeTab === 'channels') {
+      scrollToBottom(true);
+    }
+  }, [selectedChannel, activeTab, scrollToBottom]);
+
+  // Auto-scroll when DM messages change (only if user is at bottom)
   useEffect(() => {
     if (activeTab === 'nodes' && selectedDMNode) {
       scrollToBottom();
     }
-  }, [messages, selectedDMNode, activeTab, scrollToBottom]);
+  }, [messages, activeTab, scrollToBottom]);
+
+  // Force scroll to bottom when DM node changes (new conversation)
+  useEffect(() => {
+    if (activeTab === 'nodes' && selectedDMNode) {
+      scrollToBottom(true);
+    }
+  }, [selectedDMNode, activeTab, scrollToBottom]);
 
   // Regular data updates (every 5 seconds)
   useEffect(() => {
@@ -2314,27 +2383,29 @@ function App() {
   };
 
   const renderMessagesTab = () => {
-    const nodesWithMessages = processedNodes.map(node => {
-      const nodeId = node.user?.id;
-      if (!nodeId) return {
-        ...node,
-        messageCount: 0,
-        unreadCount: 0,
-        lastMessageTime: 0
-      };
+    const nodesWithMessages = processedNodes
+      .filter(node => node.user?.id !== currentNodeId) // Exclude local node
+      .map(node => {
+        const nodeId = node.user?.id;
+        if (!nodeId) return {
+          ...node,
+          messageCount: 0,
+          unreadCount: 0,
+          lastMessageTime: 0
+        };
 
-      const dmMessages = getDMMessages(nodeId);
-      const unreadCount = dmMessages.filter(msg => {
-        return msg.from === nodeId && selectedDMNode !== nodeId;
-      }).length;
+        const dmMessages = getDMMessages(nodeId);
+        const unreadCount = dmMessages.filter(msg => {
+          return msg.from === nodeId && selectedDMNode !== nodeId;
+        }).length;
 
-      return {
-        ...node,
-        messageCount: dmMessages.length,
-        unreadCount: unreadCount,
-        lastMessageTime: dmMessages.length > 0 ? Math.max(...dmMessages.map(m => m.timestamp.getTime())) : 0
-      };
-    });
+        return {
+          ...node,
+          messageCount: dmMessages.length,
+          unreadCount: unreadCount,
+          lastMessageTime: dmMessages.length > 0 ? Math.max(...dmMessages.map(m => m.timestamp.getTime())) : 0
+        };
+      });
 
     const sortedNodesWithMessages = [...nodesWithMessages].sort((a, b) => {
       if (a.unreadCount !== b.unreadCount) {
