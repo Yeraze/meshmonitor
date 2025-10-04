@@ -94,6 +94,22 @@ const createTestDatabase = () => {
           FOREIGN KEY (nodeNum) REFERENCES nodes(nodeNum)
         );
 
+        CREATE TABLE IF NOT EXISTS traceroutes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          fromNodeNum INTEGER NOT NULL,
+          toNodeNum INTEGER NOT NULL,
+          fromNodeId TEXT NOT NULL,
+          toNodeId TEXT NOT NULL,
+          route TEXT,
+          routeBack TEXT,
+          snrTowards TEXT,
+          snrBack TEXT,
+          timestamp INTEGER NOT NULL,
+          createdAt INTEGER NOT NULL,
+          FOREIGN KEY (fromNodeNum) REFERENCES nodes(nodeNum),
+          FOREIGN KEY (toNodeNum) REFERENCES nodes(nodeNum)
+        );
+
         CREATE TABLE IF NOT EXISTS route_segments (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           fromNodeNum INTEGER NOT NULL,
@@ -470,27 +486,52 @@ const createTestDatabase = () => {
 
     // Traceroute node selection
     getNodeNeedingTraceroute(localNodeNum: number): DbNode | null {
-      // First, try to find a node that has never been requested for a traceroute
-      const stmtNoRequest = this.db.prepare(`
-        SELECT * FROM nodes
-        WHERE nodeNum != ? AND lastTracerouteRequest IS NULL
-        ORDER BY lastHeard DESC
-        LIMIT 1
-      `);
-      const nodeWithoutRequest = stmtNoRequest.get(localNodeNum) as DbNode | null;
+      const now = Date.now();
+      const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
+      const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 
-      if (nodeWithoutRequest) {
-        return nodeWithoutRequest;
+      // Get all nodes that are eligible for traceroute based on their status
+      const stmt = this.db.prepare(`
+        SELECT n.*,
+          (SELECT COUNT(*) FROM traceroutes t
+           WHERE t.fromNodeNum = ? AND t.toNodeNum = n.nodeNum) as hasTraceroute
+        FROM nodes n
+        WHERE n.nodeNum != ?
+          AND (
+            -- Category 1: No traceroute exists, and (never requested OR requested > 3 hours ago)
+            (
+              (SELECT COUNT(*) FROM traceroutes t
+               WHERE t.fromNodeNum = ? AND t.toNodeNum = n.nodeNum) = 0
+              AND (n.lastTracerouteRequest IS NULL OR n.lastTracerouteRequest < ?)
+            )
+            OR
+            -- Category 2: Traceroute exists, and requested > 24 hours ago
+            (
+              (SELECT COUNT(*) FROM traceroutes t
+               WHERE t.fromNodeNum = ? AND t.toNodeNum = n.nodeNum) > 0
+              AND n.lastTracerouteRequest IS NOT NULL
+              AND n.lastTracerouteRequest < ?
+            )
+          )
+        ORDER BY n.lastHeard DESC
+      `);
+
+      const eligibleNodes = stmt.all(
+        localNodeNum,
+        localNodeNum,
+        localNodeNum,
+        now - THREE_HOURS_MS,
+        localNodeNum,
+        now - TWENTY_FOUR_HOURS_MS
+      ) as DbNode[];
+
+      if (eligibleNodes.length === 0) {
+        return null;
       }
 
-      // If all nodes have been requested, find the one with the oldest request
-      const stmtOldestRequest = this.db.prepare(`
-        SELECT * FROM nodes
-        WHERE nodeNum != ?
-        ORDER BY lastTracerouteRequest ASC, lastHeard DESC
-        LIMIT 1
-      `);
-      return stmtOldestRequest.get(localNodeNum) as DbNode | null;
+      // Randomly select one node from the eligible nodes
+      const randomIndex = Math.floor(Math.random() * eligibleNodes.length);
+      return eligibleNodes[randomIndex];
     }
 
     recordTracerouteRequest(nodeNum: number): void {
@@ -501,6 +542,35 @@ const createTestDatabase = () => {
       stmt.run(now, nodeNum);
     }
 
+    insertTraceroute(tracerouteData: any): void {
+      // Delete any existing traceroute for the same source and destination
+      const deleteStmt = this.db.prepare(`
+        DELETE FROM traceroutes
+        WHERE fromNodeNum = ? AND toNodeNum = ?
+      `);
+      deleteStmt.run(tracerouteData.fromNodeNum, tracerouteData.toNodeNum);
+
+      // Insert the new traceroute
+      const stmt = this.db.prepare(`
+        INSERT INTO traceroutes (
+          fromNodeNum, toNodeNum, fromNodeId, toNodeId, route, routeBack, snrTowards, snrBack, timestamp, createdAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      stmt.run(
+        tracerouteData.fromNodeNum,
+        tracerouteData.toNodeNum,
+        tracerouteData.fromNodeId,
+        tracerouteData.toNodeId,
+        tracerouteData.route || null,
+        tracerouteData.routeBack || null,
+        tracerouteData.snrTowards || null,
+        tracerouteData.snrBack || null,
+        tracerouteData.timestamp,
+        tracerouteData.createdAt
+      );
+    }
+
     close(): void {
       if (this.db) {
         this.db.close();
@@ -509,6 +579,7 @@ const createTestDatabase = () => {
 
     reset(): void {
       this.db.exec('DELETE FROM route_segments');
+      this.db.exec('DELETE FROM traceroutes');
       this.db.exec('DELETE FROM telemetry');
       this.db.exec('DELETE FROM messages');
       this.db.exec('DELETE FROM nodes WHERE nodeNum != 0');
@@ -1092,39 +1163,76 @@ describe('DatabaseService - Extended Coverage', () => {
   });
 
   describe('Traceroute Node Selection', () => {
-    it('should select node without traceroute request first', () => {
+    it('should select from nodes without traceroute when none requested', () => {
       const now = Date.now();
 
       db.upsertNode({
         nodeNum: 1,
         nodeId: '!node1',
         longName: 'Node 1',
-        lastHeard: now / 1000,
-        lastTracerouteRequest: now - 60000
+        lastHeard: now / 1000
       });
 
       db.upsertNode({
         nodeNum: 2,
         nodeId: '!node2',
         longName: 'Node 2',
-        lastHeard: now / 1000,
-        lastTracerouteRequest: undefined
+        lastHeard: now / 1000
       });
 
       const selected = db.getNodeNeedingTraceroute(999);
       expect(selected).toBeTruthy();
-      expect(selected.nodeId).toBe('!node2');
+      expect(['!node1', '!node2']).toContain(selected.nodeId);
     });
 
-    it('should select node with oldest traceroute request', () => {
+    it('should retry nodes without traceroute after 3 hours', () => {
       const now = Date.now();
+      const FOUR_HOURS_AGO = now - (4 * 60 * 60 * 1000);
+      const TWO_HOURS_AGO = now - (2 * 60 * 60 * 1000);
 
+      // Node with request 4 hours ago (should be eligible - no traceroute)
       db.upsertNode({
         nodeNum: 1,
         nodeId: '!node1',
         longName: 'Node 1',
         lastHeard: now / 1000,
-        lastTracerouteRequest: now - 120000 // 2 minutes ago
+        lastTracerouteRequest: FOUR_HOURS_AGO
+      });
+
+      // Node with request 2 hours ago (should NOT be eligible - no traceroute)
+      db.upsertNode({
+        nodeNum: 2,
+        nodeId: '!node2',
+        longName: 'Node 2',
+        lastHeard: now / 1000,
+        lastTracerouteRequest: TWO_HOURS_AGO
+      });
+
+      const selected = db.getNodeNeedingTraceroute(999);
+      expect(selected).toBeTruthy();
+      expect(selected.nodeId).toBe('!node1');
+    });
+
+    it('should retry nodes with traceroute after 24 hours', () => {
+      const now = Date.now();
+      const TWENTY_FIVE_HOURS_AGO = now - (25 * 60 * 60 * 1000);
+      const TWENTY_HOURS_AGO = now - (20 * 60 * 60 * 1000);
+
+      // Create local node (999)
+      db.upsertNode({
+        nodeNum: 999,
+        nodeId: '!local',
+        longName: 'Local Node',
+        lastHeard: now / 1000
+      });
+
+      // Create nodes
+      db.upsertNode({
+        nodeNum: 1,
+        nodeId: '!node1',
+        longName: 'Node 1',
+        lastHeard: now / 1000,
+        lastTracerouteRequest: TWENTY_FIVE_HOURS_AGO
       });
 
       db.upsertNode({
@@ -1132,12 +1240,40 @@ describe('DatabaseService - Extended Coverage', () => {
         nodeId: '!node2',
         longName: 'Node 2',
         lastHeard: now / 1000,
-        lastTracerouteRequest: now - 60000 // 1 minute ago
+        lastTracerouteRequest: TWENTY_HOURS_AGO
+      });
+
+      // Create traceroute records for both nodes (from local node 999)
+      db.insertTraceroute({
+        fromNodeNum: 999,
+        toNodeNum: 1,
+        fromNodeId: '!local',
+        toNodeId: '!node1',
+        route: '[1]',
+        routeBack: '[999]',
+        snrTowards: '[0]',
+        snrBack: '[0]',
+        timestamp: TWENTY_FIVE_HOURS_AGO,
+        createdAt: TWENTY_FIVE_HOURS_AGO
+      });
+
+      db.insertTraceroute({
+        fromNodeNum: 999,
+        toNodeNum: 2,
+        fromNodeId: '!local',
+        toNodeId: '!node2',
+        route: '[2]',
+        routeBack: '[999]',
+        snrTowards: '[0]',
+        snrBack: '[0]',
+        timestamp: TWENTY_HOURS_AGO,
+        createdAt: TWENTY_HOURS_AGO
       });
 
       const selected = db.getNodeNeedingTraceroute(999);
       expect(selected).toBeTruthy();
-      expect(selected.nodeId).toBe('!node1'); // Oldest request
+      // Only node1 should be eligible (request > 24 hours ago, has traceroute)
+      expect(selected.nodeId).toBe('!node1');
     });
 
     it('should exclude local node from selection', () => {

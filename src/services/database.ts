@@ -1115,29 +1115,55 @@ class DatabaseService {
   }
 
   getNodeNeedingTraceroute(localNodeNum: number): DbNode | null {
-    // First, try to find a node that has never been requested for a traceroute
-    const stmtNoRequest = this.db.prepare(`
-      SELECT n.* FROM nodes n
-      WHERE n.nodeNum != ? AND n.lastTracerouteRequest IS NULL
-      ORDER BY n.lastHeard DESC
-      LIMIT 1
-    `);
-    const nodeWithoutRequest = stmtNoRequest.get(localNodeNum) as DbNode | null;
+    const now = Date.now();
+    const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
+    const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 
-    if (nodeWithoutRequest) {
-      return this.normalizeBigInts(nodeWithoutRequest);
+    // Get all nodes that are eligible for traceroute based on their status
+    // Two categories:
+    // 1. Nodes with no successful traceroute: retry every 3 hours
+    // 2. Nodes with successful traceroute: retry every 24 hours
+    const stmt = this.db.prepare(`
+      SELECT n.*,
+        (SELECT COUNT(*) FROM traceroutes t
+         WHERE t.fromNodeNum = ? AND t.toNodeNum = n.nodeNum) as hasTraceroute
+      FROM nodes n
+      WHERE n.nodeNum != ?
+        AND (
+          -- Category 1: No traceroute exists, and (never requested OR requested > 3 hours ago)
+          (
+            (SELECT COUNT(*) FROM traceroutes t
+             WHERE t.fromNodeNum = ? AND t.toNodeNum = n.nodeNum) = 0
+            AND (n.lastTracerouteRequest IS NULL OR n.lastTracerouteRequest < ?)
+          )
+          OR
+          -- Category 2: Traceroute exists, and requested > 24 hours ago
+          (
+            (SELECT COUNT(*) FROM traceroutes t
+             WHERE t.fromNodeNum = ? AND t.toNodeNum = n.nodeNum) > 0
+            AND n.lastTracerouteRequest IS NOT NULL
+            AND n.lastTracerouteRequest < ?
+          )
+        )
+      ORDER BY n.lastHeard DESC
+    `);
+
+    const eligibleNodes = stmt.all(
+      localNodeNum,
+      localNodeNum,
+      localNodeNum,
+      now - THREE_HOURS_MS,
+      localNodeNum,
+      now - TWENTY_FOUR_HOURS_MS
+    ) as DbNode[];
+
+    if (eligibleNodes.length === 0) {
+      return null;
     }
 
-    // If all nodes have been requested, find the one with the oldest request
-    const stmtOldestRequest = this.db.prepare(`
-      SELECT n.* FROM nodes n
-      WHERE n.nodeNum != ?
-      ORDER BY n.lastTracerouteRequest ASC, n.lastHeard DESC
-      LIMIT 1
-    `);
-    const nodeWithOldestRequest = stmtOldestRequest.get(localNodeNum) as DbNode | null;
-
-    return nodeWithOldestRequest ? this.normalizeBigInts(nodeWithOldestRequest) : null;
+    // Randomly select one node from the eligible nodes
+    const randomIndex = Math.floor(Math.random() * eligibleNodes.length);
+    return this.normalizeBigInts(eligibleNodes[randomIndex]);
   }
 
   recordTracerouteRequest(nodeNum: number): void {
