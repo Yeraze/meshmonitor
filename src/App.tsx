@@ -86,6 +86,8 @@ function App() {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   // const lastNotificationTime = useRef<number>(0) // Disabled for now
   const [tracerouteLoading, setTracerouteLoading] = useState<string | null>(null)
+  const [isChannelScrolledToBottom, setIsChannelScrolledToBottom] = useState(true)
+  const [isDMScrolledToBottom, setIsDMScrolledToBottom] = useState(true)
   const [showPaths, setShowPaths] = useState<boolean>(false)
   const [showRoute, setShowRoute] = useState<boolean>(true)
   const [showMotion, setShowMotion] = useState<boolean>(true)
@@ -326,27 +328,89 @@ function App() {
     }
   }, [selectedNodeId]);
 
-  // Auto-scroll to bottom when messages change or channel changes
-  const scrollToBottom = useCallback(() => {
+  // Check if container is scrolled near bottom (within 100px)
+  const isScrolledNearBottom = useCallback((container: HTMLDivElement | null): boolean => {
+    if (!container) return true;
+    const threshold = 100;
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    return scrollHeight - scrollTop - clientHeight < threshold;
+  }, []);
+
+  // Handle scroll events to track scroll position
+  const handleChannelScroll = useCallback(() => {
+    if (channelMessagesContainerRef.current) {
+      const atBottom = isScrolledNearBottom(channelMessagesContainerRef.current);
+      setIsChannelScrolledToBottom(atBottom);
+    }
+  }, [isScrolledNearBottom]);
+
+  const handleDMScroll = useCallback(() => {
+    if (dmMessagesContainerRef.current) {
+      const atBottom = isScrolledNearBottom(dmMessagesContainerRef.current);
+      setIsDMScrolledToBottom(atBottom);
+    }
+  }, [isScrolledNearBottom]);
+
+  // Auto-scroll to bottom when messages change or channel changes (only if user is at bottom)
+  const scrollToBottom = useCallback((force: boolean = false) => {
     // Scroll the appropriate container based on active tab
     if (activeTab === 'channels' && channelMessagesContainerRef.current) {
-      channelMessagesContainerRef.current.scrollTop = channelMessagesContainerRef.current.scrollHeight;
-    } else if (activeTab === 'nodes' && dmMessagesContainerRef.current) {
-      dmMessagesContainerRef.current.scrollTop = dmMessagesContainerRef.current.scrollHeight;
+      if (force || isChannelScrolledToBottom) {
+        channelMessagesContainerRef.current.scrollTop = channelMessagesContainerRef.current.scrollHeight;
+        setIsChannelScrolledToBottom(true);
+      }
+    } else if (activeTab === 'messages' && dmMessagesContainerRef.current) {
+      if (force || isDMScrolledToBottom) {
+        dmMessagesContainerRef.current.scrollTop = dmMessagesContainerRef.current.scrollHeight;
+        setIsDMScrolledToBottom(true);
+      }
     }
-  }, [activeTab]);
+  }, [activeTab, isChannelScrolledToBottom, isDMScrolledToBottom]);
 
+  // Attach scroll event listeners
+  useEffect(() => {
+    const channelContainer = channelMessagesContainerRef.current;
+    const dmContainer = dmMessagesContainerRef.current;
+
+    if (channelContainer) {
+      channelContainer.addEventListener('scroll', handleChannelScroll);
+    }
+    if (dmContainer) {
+      dmContainer.addEventListener('scroll', handleDMScroll);
+    }
+
+    return () => {
+      if (channelContainer) {
+        channelContainer.removeEventListener('scroll', handleChannelScroll);
+      }
+      if (dmContainer) {
+        dmContainer.removeEventListener('scroll', handleDMScroll);
+      }
+    };
+  }, [handleChannelScroll, handleDMScroll]);
+
+  // Force scroll to bottom when channel changes (new conversation)
   useEffect(() => {
     if (activeTab === 'channels') {
-      scrollToBottom();
+      // Use setTimeout to ensure messages are rendered before scrolling
+      setTimeout(() => {
+        scrollToBottom(true);
+      }, 100);
     }
-  }, [channelMessages, selectedChannel, activeTab, scrollToBottom]);
+  }, [selectedChannel, activeTab, scrollToBottom]);
 
+  // Force scroll to bottom when DM node changes (new conversation)
   useEffect(() => {
-    if (activeTab === 'nodes' && selectedDMNode) {
-      scrollToBottom();
+    if (activeTab === 'messages' && selectedDMNode) {
+      // Use setTimeout to ensure messages are rendered before scrolling
+      setTimeout(() => {
+        if (dmMessagesContainerRef.current) {
+          dmMessagesContainerRef.current.scrollTop = dmMessagesContainerRef.current.scrollHeight;
+          setIsDMScrolledToBottom(true);
+        }
+      }, 150);
     }
-  }, [messages, selectedDMNode, activeTab, scrollToBottom]);
+  }, [selectedDMNode, activeTab]);
 
   // Regular data updates (every 5 seconds)
   useEffect(() => {
@@ -816,6 +880,15 @@ function App() {
       return;
     }
 
+    // Extract replyId from replyingTo message if present
+    let replyId: number | undefined = undefined;
+    if (replyingTo) {
+      const idParts = replyingTo.id.split('_');
+      if (idParts.length > 1) {
+        replyId = parseInt(idParts[1], 10);
+      }
+    }
+
     // Create a temporary message ID for immediate display
     const tempId = `temp_dm_${Date.now()}_${Math.random()}`;
     const sentMessage: MeshMessage = {
@@ -829,11 +902,28 @@ function App() {
       timestamp: new Date(),
       isLocalMessage: true,
       acknowledged: false,
-      portnum: 1 // Text message
+      portnum: 1, // Text message
+      replyId: replyId
     };
 
     // Add message to local state immediately for instant feedback
     setMessages(prev => [...prev, sentMessage]);
+
+    // Add to pending acknowledgments
+    setPendingMessages(prev => new Map(prev).set(tempId, sentMessage));
+
+    // Scroll to bottom after sending message
+    setTimeout(() => {
+      if (dmMessagesContainerRef.current) {
+        dmMessagesContainerRef.current.scrollTop = dmMessagesContainerRef.current.scrollHeight;
+        setIsDMScrolledToBottom(true);
+      }
+    }, 50);
+
+    // Clear the input and reply state
+    const messageText = newMessage;
+    setNewMessage('');
+    setReplyingTo(null);
 
     try {
       const response = await fetch(`${baseUrl}/api/messages/send`, {
@@ -842,15 +932,15 @@ function App() {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          text: newMessage,
+          text: messageText,
           channel: 0, // Backend may expect channel 0 for DMs
-          destination: destinationNodeId
+          destination: destinationNodeId,
+          replyId: replyId
         })
       });
 
       if (response.ok) {
         console.log('Direct message sent successfully');
-        setNewMessage('');
         // The message will be updated when we receive the acknowledgment from backend
       } else {
         console.error('Failed to send direct message');
@@ -886,18 +976,42 @@ function App() {
       return;
     }
 
+    // Determine if this is a direct message or channel message
+    const isDirectMessage = originalMessage.channel === -1;
+
     try {
+      let requestBody;
+
+      if (isDirectMessage) {
+        // For DMs: send to the other party in the conversation
+        // If the message is from someone else, reply to them
+        // If the message is from me, send to the original recipient
+        const toNodeId = originalMessage.fromNodeId === currentNodeId
+          ? originalMessage.toNodeId
+          : originalMessage.fromNodeId;
+
+        requestBody = {
+          text: emoji,
+          destination: toNodeId,  // Server expects 'destination' not 'toNodeId'
+          replyId: replyId,
+          emoji: EMOJI_FLAG
+        };
+      } else {
+        // For channel messages: use channel
+        requestBody = {
+          text: emoji,
+          channel: originalMessage.channel,
+          replyId: replyId,
+          emoji: EMOJI_FLAG
+        };
+      }
+
       const response = await fetch(`${baseUrl}/api/messages/send`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          text: emoji,
-          channel: originalMessage.channel,
-          replyId: replyId,
-          emoji: EMOJI_FLAG
-        })
+        body: JSON.stringify(requestBody)
       });
 
       if (response.ok) {
@@ -954,6 +1068,14 @@ function App() {
 
     // Add to pending acknowledgments
     setPendingMessages(prev => new Map(prev).set(tempId, sentMessage));
+
+    // Scroll to bottom after sending message
+    setTimeout(() => {
+      if (channelMessagesContainerRef.current) {
+        channelMessagesContainerRef.current.scrollTop = channelMessagesContainerRef.current.scrollHeight;
+        setIsChannelScrolledToBottom(true);
+      }
+    }, 50);
 
     // Clear the input and reply state
     const messageText = newMessage;
@@ -2296,27 +2418,29 @@ function App() {
   };
 
   const renderMessagesTab = () => {
-    const nodesWithMessages = processedNodes.map(node => {
-      const nodeId = node.user?.id;
-      if (!nodeId) return {
-        ...node,
-        messageCount: 0,
-        unreadCount: 0,
-        lastMessageTime: 0
-      };
+    const nodesWithMessages = processedNodes
+      .filter(node => node.user?.id !== currentNodeId) // Exclude local node
+      .map(node => {
+        const nodeId = node.user?.id;
+        if (!nodeId) return {
+          ...node,
+          messageCount: 0,
+          unreadCount: 0,
+          lastMessageTime: 0
+        };
 
-      const dmMessages = getDMMessages(nodeId);
-      const unreadCount = dmMessages.filter(msg => {
-        return msg.from === nodeId && selectedDMNode !== nodeId;
-      }).length;
+        const dmMessages = getDMMessages(nodeId);
+        const unreadCount = dmMessages.filter(msg => {
+          return msg.from === nodeId && selectedDMNode !== nodeId;
+        }).length;
 
-      return {
-        ...node,
-        messageCount: dmMessages.length,
-        unreadCount: unreadCount,
-        lastMessageTime: dmMessages.length > 0 ? Math.max(...dmMessages.map(m => m.timestamp.getTime())) : 0
-      };
-    });
+        return {
+          ...node,
+          messageCount: dmMessages.length,
+          unreadCount: unreadCount,
+          lastMessageTime: dmMessages.length > 0 ? Math.max(...dmMessages.map(m => m.timestamp.getTime())) : 0
+        };
+      });
 
     const sortedNodesWithMessages = [...nodesWithMessages].sort((a, b) => {
       if (a.unreadCount !== b.unreadCount) {
@@ -2476,31 +2600,173 @@ function App() {
               </div>
 
               <div className="messages-container" ref={dmMessagesContainerRef}>
-                {getDMMessages(selectedDMNode).length > 0 ? (
-                  getDMMessages(selectedDMNode).map(msg => {
-                    const isTraceroute = msg.portnum === 70;
-                    return (
-                      <div key={msg.id} className={`message-item ${isTraceroute ? 'traceroute' : msg.from === selectedDMNode ? 'received' : 'sent'}`}>
-                        <div className="message-header">
-                          <span className="message-from">{getNodeName(msg.from)}</span>
-                          <span className="message-time">
-                            {msg.timestamp.toLocaleTimeString()}
-                            <HopCountDisplay hopStart={msg.hopStart} hopLimit={msg.hopLimit} />
-                          </span>
-                          {isTraceroute && <span className="traceroute-badge">TRACEROUTE</span>}
+                {(() => {
+                  let dmMessages = getDMMessages(selectedDMNode);
+
+                  // Sort messages by timestamp (oldest first, newest at bottom)
+                  dmMessages = dmMessages.sort((a, b) =>
+                    new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+                  );
+
+                  return dmMessages.length > 0 ? (
+                    dmMessages.map(msg => {
+                      const isTraceroute = msg.portnum === 70;
+                      const isMine = isMyMessage(msg);
+                      const isReaction = msg.emoji === 1;
+
+                      // Hide reactions (tapbacks) from main message list
+                      if (isReaction) {
+                        return null;
+                      }
+
+                      // Find ALL reactions to this message
+                      const allDMMessages = getDMMessages(selectedDMNode);
+                      const reactions = allDMMessages.filter(m =>
+                        m.emoji === 1 && m.replyId && m.replyId.toString() === msg.id.split('_')[1]
+                      );
+
+                      // Find replied message if this is a reply
+                      const repliedMessage = msg.replyId ? allDMMessages.find(m =>
+                        m.id.split('_')[1] === msg.replyId?.toString()
+                      ) : null;
+
+                      if (isTraceroute) {
+                        // Keep traceroute messages in simple format
+                        return (
+                          <div key={msg.id} className="message-item traceroute">
+                            <div className="message-header">
+                              <span className="message-from">{getNodeName(msg.from)}</span>
+                              <span className="message-time">
+                                {msg.timestamp.toLocaleTimeString()}
+                                <HopCountDisplay hopStart={msg.hopStart} hopLimit={msg.hopLimit} />
+                              </span>
+                              <span className="traceroute-badge">TRACEROUTE</span>
+                            </div>
+                            <div className="message-text" style={{whiteSpace: 'pre-line', fontFamily: 'monospace'}}>{msg.text}</div>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div key={msg.id} className={`message-bubble-container ${isMine ? 'mine' : 'theirs'}`}>
+                          {!isMine && (
+                            <div
+                              className="sender-dot clickable"
+                              title={`Click for ${getNodeName(msg.from)} details`}
+                              onClick={(e) => handleSenderClick(msg.from, e)}
+                            >
+                              {getNodeShortName(msg.from)}
+                            </div>
+                          )}
+                          <div className="message-content">
+                            {msg.replyId && (
+                              <div className="replied-message">
+                                <div className="reply-arrow">↳</div>
+                                <div className="reply-content">
+                                  {repliedMessage ? (
+                                    <>
+                                      <div className="reply-from">{getNodeShortName(repliedMessage.from)}</div>
+                                      <div className="reply-text">{repliedMessage.text || "Empty Message"}</div>
+                                    </>
+                                  ) : (
+                                    <div className="reply-text" style={{ fontStyle: 'italic', opacity: 0.6 }}>
+                                      Message not available
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                            <div className={`message-bubble ${isMine ? 'mine' : 'theirs'}`}>
+                              <div className="message-actions">
+                                <button
+                                  className="reply-button"
+                                  onClick={() => setReplyingTo(msg)}
+                                  title="Reply to this message"
+                                >
+                                  ↩
+                                </button>
+                                {TAPBACK_EMOJIS.map(({ emoji, title }) => (
+                                  <button
+                                    key={emoji}
+                                    className="emoji-button"
+                                    onClick={() => handleSendTapback(emoji, msg)}
+                                    title={title}
+                                  >
+                                    {emoji}
+                                  </button>
+                                ))}
+                              </div>
+                              <div className="message-text" style={{whiteSpace: 'pre-line'}}>
+                                {msg.text}
+                              </div>
+                              {reactions.length > 0 && (
+                                <div className="message-reactions">
+                                  {reactions.map(reaction => (
+                                    <span
+                                      key={reaction.id}
+                                      className="reaction"
+                                      title={`From ${getNodeShortName(reaction.from)} - Click to send same reaction`}
+                                      onClick={() => handleSendTapback(reaction.text, msg)}
+                                    >
+                                      {reaction.text}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                              <div className="message-meta">
+                                <span className="message-time">
+                                  {msg.timestamp.toLocaleTimeString([], {
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                  <HopCountDisplay hopStart={msg.hopStart} hopLimit={msg.hopLimit} />
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          {isMine && (
+                            <div className="message-status">
+                              {(() => {
+                                const messageAge = Date.now() - msg.timestamp.getTime();
+                                const isWaiting = messageAge < 10000 && !msg.acknowledged;
+
+                                if (msg.ackFailed) {
+                                  return <span className="status-failed" title="Failed to send">✗</span>;
+                                } else if (isWaiting) {
+                                  return <span className="status-pending" title="Sending...">⏳</span>;
+                                } else {
+                                  return <span className="status-delivered" title="Delivered">✓</span>;
+                                }
+                              })()}
+                            </div>
+                          )}
                         </div>
-                        <div className="message-text" style={isTraceroute ? {whiteSpace: 'pre-line', fontFamily: 'monospace'} : {whiteSpace: 'pre-line'}}>{msg.text}</div>
-                      </div>
-                    );
-                  })
-                ) : (
-                  <p className="no-messages">No direct messages with this node yet</p>
-                )}
+                      );
+                    })
+                  ) : (
+                    <p className="no-messages">No direct messages with this node yet</p>
+                  );
+                })()}
               </div>
 
               {/* Send DM form */}
               {connectionStatus === 'connected' && (
                 <div className="send-message-form">
+                  {replyingTo && (
+                    <div className="reply-indicator">
+                      <div className="reply-indicator-content">
+                        <div className="reply-indicator-label">Replying to {getNodeName(replyingTo.from)}</div>
+                        <div className="reply-indicator-text">{replyingTo.text}</div>
+                      </div>
+                      <button
+                        className="reply-indicator-close"
+                        onClick={() => setReplyingTo(null)}
+                        title="Cancel reply"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  )}
                   <div className="message-input-container">
                     <input
                       type="text"

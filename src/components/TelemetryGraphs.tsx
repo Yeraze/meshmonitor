@@ -32,7 +32,7 @@ interface FavoriteChart {
   telemetryType: string;
 }
 
-const TelemetryGraphs: React.FC<TelemetryGraphsProps> = ({ nodeId, temperatureUnit = 'C', telemetryHours = 24, baseUrl = '' }) => {
+const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, temperatureUnit = 'C', telemetryHours = 24, baseUrl = '' }) => {
   const [telemetryData, setTelemetryData] = useState<TelemetryData[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -307,6 +307,8 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = ({ nodeId, temperatureUn
       </div>
     </div>
   );
-};
+});
+
+TelemetryGraphs.displayName = 'TelemetryGraphs';
 
 export default TelemetryGraphs;
