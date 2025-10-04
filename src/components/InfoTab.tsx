@@ -36,7 +36,7 @@ interface InfoTabProps {
   distanceUnit?: 'km' | 'mi';
 }
 
-const InfoTab: React.FC<InfoTabProps> = ({
+const InfoTab: React.FC<InfoTabProps> = React.memo(({
   connectionStatus,
   nodeAddress,
   deviceInfo,
@@ -228,6 +228,8 @@ const InfoTab: React.FC<InfoTabProps> = ({
       )}
     </div>
   );
-};
+});
+
+InfoTab.displayName = 'InfoTab';
 
 export default InfoTab;
