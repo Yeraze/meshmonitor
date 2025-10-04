@@ -976,18 +976,42 @@ function App() {
       return;
     }
 
+    // Determine if this is a direct message or channel message
+    const isDirectMessage = originalMessage.channel === -1;
+
     try {
+      let requestBody;
+
+      if (isDirectMessage) {
+        // For DMs: send to the other party in the conversation
+        // If the message is from someone else, reply to them
+        // If the message is from me, send to the original recipient
+        const toNodeId = originalMessage.fromNodeId === currentNodeId
+          ? originalMessage.toNodeId
+          : originalMessage.fromNodeId;
+
+        requestBody = {
+          text: emoji,
+          destination: toNodeId,  // Server expects 'destination' not 'toNodeId'
+          replyId: replyId,
+          emoji: EMOJI_FLAG
+        };
+      } else {
+        // For channel messages: use channel
+        requestBody = {
+          text: emoji,
+          channel: originalMessage.channel,
+          replyId: replyId,
+          emoji: EMOJI_FLAG
+        };
+      }
+
       const response = await fetch(`${baseUrl}/api/messages/send`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          text: emoji,
-          channel: originalMessage.channel,
-          replyId: replyId,
-          emoji: EMOJI_FLAG
-        })
+        body: JSON.stringify(requestBody)
       });
 
       if (response.ok) {
