@@ -359,7 +359,7 @@ function App() {
         channelMessagesContainerRef.current.scrollTop = channelMessagesContainerRef.current.scrollHeight;
         setIsChannelScrolledToBottom(true);
       }
-    } else if (activeTab === 'nodes' && dmMessagesContainerRef.current) {
+    } else if (activeTab === 'messages' && dmMessagesContainerRef.current) {
       if (force || isDMScrolledToBottom) {
         dmMessagesContainerRef.current.scrollTop = dmMessagesContainerRef.current.scrollHeight;
         setIsDMScrolledToBottom(true);
@@ -389,33 +389,28 @@ function App() {
     };
   }, [handleChannelScroll, handleDMScroll]);
 
-  // Auto-scroll when messages change (only if user is at bottom)
-  useEffect(() => {
-    if (activeTab === 'channels') {
-      scrollToBottom();
-    }
-  }, [channelMessages, activeTab, scrollToBottom]);
-
   // Force scroll to bottom when channel changes (new conversation)
   useEffect(() => {
     if (activeTab === 'channels') {
-      scrollToBottom(true);
+      // Use setTimeout to ensure messages are rendered before scrolling
+      setTimeout(() => {
+        scrollToBottom(true);
+      }, 100);
     }
   }, [selectedChannel, activeTab, scrollToBottom]);
 
-  // Auto-scroll when DM messages change (only if user is at bottom)
-  useEffect(() => {
-    if (activeTab === 'nodes' && selectedDMNode) {
-      scrollToBottom();
-    }
-  }, [messages, activeTab, scrollToBottom]);
-
   // Force scroll to bottom when DM node changes (new conversation)
   useEffect(() => {
-    if (activeTab === 'nodes' && selectedDMNode) {
-      scrollToBottom(true);
+    if (activeTab === 'messages' && selectedDMNode) {
+      // Use setTimeout to ensure messages are rendered before scrolling
+      setTimeout(() => {
+        if (dmMessagesContainerRef.current) {
+          dmMessagesContainerRef.current.scrollTop = dmMessagesContainerRef.current.scrollHeight;
+          setIsDMScrolledToBottom(true);
+        }
+      }, 150);
     }
-  }, [selectedDMNode, activeTab, scrollToBottom]);
+  }, [selectedDMNode, activeTab]);
 
   // Regular data updates (every 5 seconds)
   useEffect(() => {
@@ -917,6 +912,14 @@ function App() {
     // Add to pending acknowledgments
     setPendingMessages(prev => new Map(prev).set(tempId, sentMessage));
 
+    // Scroll to bottom after sending message
+    setTimeout(() => {
+      if (dmMessagesContainerRef.current) {
+        dmMessagesContainerRef.current.scrollTop = dmMessagesContainerRef.current.scrollHeight;
+        setIsDMScrolledToBottom(true);
+      }
+    }, 50);
+
     // Clear the input and reply state
     const messageText = newMessage;
     setNewMessage('');
@@ -1041,6 +1044,14 @@ function App() {
 
     // Add to pending acknowledgments
     setPendingMessages(prev => new Map(prev).set(tempId, sentMessage));
+
+    // Scroll to bottom after sending message
+    setTimeout(() => {
+      if (channelMessagesContainerRef.current) {
+        channelMessagesContainerRef.current.scrollTop = channelMessagesContainerRef.current.scrollHeight;
+        setIsChannelScrolledToBottom(true);
+      }
+    }, 50);
 
     // Clear the input and reply state
     const messageText = newMessage;
