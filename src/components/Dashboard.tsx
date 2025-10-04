@@ -50,7 +50,7 @@ interface DashboardProps {
   baseUrl: string;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ temperatureUnit = 'C', telemetryHours = 24, baseUrl }) => {
+const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C', telemetryHours = 24, baseUrl }) => {
   const [favorites, setFavorites] = useState<FavoriteChart[]>([]);
   const [telemetryData, setTelemetryData] = useState<Map<string, TelemetryData[]>>(new Map());
   const [nodes, setNodes] = useState<Map<string, NodeInfo>>(new Map());
@@ -356,6 +356,8 @@ const Dashboard: React.FC<DashboardProps> = ({ temperatureUnit = 'C', telemetryH
       </div>
     </div>
   );
-};
+});
+
+Dashboard.displayName = 'Dashboard';
 
 export default Dashboard;
