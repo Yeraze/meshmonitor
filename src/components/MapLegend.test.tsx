@@ -52,8 +52,8 @@ describe('MapLegend', () => {
     it('should display colors in blue-to-red gradient order', () => {
       const { container } = render(<MapLegend />);
 
-      // Get all the colored circles using border-radius in kebab-case
-      const circles = container.querySelectorAll('[style*="border-radius"]');
+      // Get all the colored circles - they have border-radius: 50% (circles)
+      const circles = container.querySelectorAll('[style*="border-radius: 50%"]');
 
       // Extract background colors (should be in order: green, blue, purple, red)
       const colors: string[] = [];
@@ -77,7 +77,7 @@ describe('MapLegend', () => {
     it('should use distinct colors for each hop level', () => {
       const { container } = render(<MapLegend />);
 
-      const circles = container.querySelectorAll('[style*="border-radius"]');
+      const circles = container.querySelectorAll('[style*="border-radius: 50%"]');
       const colors = new Set<string>();
 
       circles.forEach((circle) => {
@@ -206,7 +206,7 @@ describe('MapLegend', () => {
       const { container } = render(<MapLegend />);
 
       // Should have 7 colored circles (one for each hop level)
-      const circles = container.querySelectorAll('[style*="border-radius"]');
+      const circles = container.querySelectorAll('[style*="border-radius: 50%"]');
       expect(circles.length).toBeGreaterThanOrEqual(7);
     });
   });
