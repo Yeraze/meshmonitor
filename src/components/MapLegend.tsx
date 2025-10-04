@@ -6,8 +6,7 @@ const MapLegend: React.FC = () => {
     { hops: '0', color: getHopColor(0), label: 'Local Node' },
     { hops: '1-3', color: getHopColor(1), label: '1-3 Hops' },
     { hops: '4-5', color: getHopColor(4), label: '4-5 Hops' },
-    { hops: '6+', color: getHopColor(6), label: '6+ Hops' },
-    { hops: 'No Data', color: getHopColor(999), label: 'No Traceroute' }
+    { hops: '6+', color: getHopColor(6), label: '6+ Hops' }
   ];
 
   return (

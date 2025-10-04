@@ -1308,7 +1308,8 @@ class MeshtasticManager {
         nodeId: nodeId,
         lastHeard: nodeInfo.lastHeard ? Number(nodeInfo.lastHeard) : Date.now() / 1000,
         snr: nodeInfo.snr,
-        rssi: 0 // Will be updated from mesh packet if available
+        rssi: 0, // Will be updated from mesh packet if available
+        hopsAway: nodeInfo.hopsAway !== undefined ? nodeInfo.hopsAway : undefined
       };
 
       // Add user information if available
