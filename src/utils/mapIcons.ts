@@ -2,26 +2,35 @@ import L from 'leaflet';
 
 /**
  * Get color based on hop count
- * 0 hops: Green (#22c55e) - Direct connection
- * 1-3 hops: Blue (#3b82f6 -> #1d4ed8)
- * 4-5 hops: Orange (#f59e0b -> #ea580c)
- * 6+ hops: Red (#ef4444)
- * 999 hops: Grey (#9ca3af) - No traceroute data
+ * Uses a blue-to-red gradient (through purple/magenta)
+ * 0 hops: Green (#22c55e) - Direct connection (local node)
+ * 1 hop: Blue (#0000FF)
+ * 2 hops: Blue-Purple (#3300CC)
+ * 3 hops: Purple (#660099)
+ * 4 hops: Red-Purple (#990066)
+ * 5 hops: Red-Magenta (#CC0033)
+ * 6+ hops: Red (#FF0000)
+ * 999 hops: Grey (#9ca3af) - No hop data
  */
 export function getHopColor(hops: number): string {
   if (hops === 0) {
-    return '#22c55e'; // Green for direct connection
+    return '#22c55e'; // Green for local node (direct connection)
   } else if (hops === 999) {
-    return '#9ca3af'; // Grey for no traceroute data
-  } else if (hops <= 3) {
-    // Blue gradient for 1-3 hops
-    if (hops === 1) return '#3b82f6';
-    if (hops === 2) return '#2563eb';
-    return '#1d4ed8'; // hops === 3
-  } else if (hops <= 5) {
-    return hops === 4 ? '#f59e0b' : '#ea580c'; // Orange gradient
+    return '#9ca3af'; // Grey for no hop data
+  } else if (hops >= 6) {
+    return '#FF0000'; // Red for 6+ hops
   } else {
-    return '#ef4444'; // Red for 6+ hops
+    // Linear gradient from blue to red (1-6 hops)
+    // Using RGB interpolation: Blue(0,0,255) → Red(255,0,0)
+    const colors = [
+      '#0000FF', // 1 hop: Blue
+      '#3300CC', // 2 hops: Blue-Purple
+      '#660099', // 3 hops: Purple
+      '#990066', // 4 hops: Red-Purple
+      '#CC0033', // 5 hops: Red-Magenta
+      '#FF0000'  // 6 hops: Red
+    ];
+    return colors[hops - 1] || colors[colors.length - 1];
   }
 }
 

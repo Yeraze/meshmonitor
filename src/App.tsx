@@ -771,12 +771,6 @@ function App() {
     return recentTraceroutes.length > 0 ? recentTraceroutes[0] : null;
   };
 
-  const getTracerouteHopCount = (nodeId: string): number => {
-    const traceroute = getRecentTraceroute(nodeId);
-    if (!traceroute || traceroute.hopCount === undefined) return 999;
-    return traceroute.hopCount;
-  };
-
   const formatTracerouteRoute = (route: string, snr: string, fromNodeNum?: number, toNodeNum?: number) => {
     try {
       const routeArray = JSON.parse(route || '[]');
@@ -1227,11 +1221,8 @@ function App() {
           // For nodes without hop data, use fallback values that push them to bottom
           // Ascending: use 999 (high value = bottom), Descending: use -1 (low value = bottom)
           const noHopFallback = direction === 'asc' ? 999 : -1;
-          aVal = a.user?.id ? getTracerouteHopCount(a.user.id) : noHopFallback;
-          bVal = b.user?.id ? getTracerouteHopCount(b.user.id) : noHopFallback;
-          // Also treat 999 from getTracerouteHopCount as no data
-          if (aVal === 999) aVal = noHopFallback;
-          if (bVal === 999) bVal = noHopFallback;
+          aVal = a.hopsAway !== undefined && a.hopsAway !== null ? a.hopsAway : noHopFallback;
+          bVal = b.hopsAway !== undefined && b.hopsAway !== null ? b.hopsAway : noHopFallback;
           break;
         default:
           return 0;
@@ -1465,14 +1456,6 @@ function App() {
                           ☀️
                         </div>
                       )}
-                      {node.user?.id && (() => {
-                        const hopCount = getTracerouteHopCount(node.user.id);
-                        return hopCount < 999;
-                      })() && (
-                        <div className="node-hops" title="Traceroute Hops">
-                          {getTracerouteHopCount(node.user.id)}
-                        </div>
-                      )}
                     </div>
                   </div>
                 ))}
@@ -1543,13 +1526,13 @@ function App() {
                   const isSelected = selectedNodeId === node.user?.id;
 
                   // Get hop count for this node
-                  // Local node always gets 0 hops (green), otherwise use traceroute data
+                  // Local node always gets 0 hops (green), otherwise use hopsAway from protobuf
                   const isLocalNode = node.user?.id === currentNodeId;
-                  const hops = isLocalNode ? 0 : (node.user?.id ? getTracerouteHopCount(node.user.id) : 999);
+                  const hops = isLocalNode ? 0 : (node.hopsAway ?? 999);
                   const showLabel = mapZoom >= 13; // Show labels when zoomed in
 
                   const markerIcon = createNodeIcon({
-                    hops: hops, // 0 (local) = green, 999 (no traceroute) = grey
+                    hops: hops, // 0 (local) = green, 999 (no hops_away data) = grey
                     isSelected,
                     isRouter,
                     shortName: node.user?.shortName,
@@ -1600,6 +1583,14 @@ function App() {
 
                       {node.snr != null && (
                         <div className="route-usage">SNR: {node.snr.toFixed(1)} dB</div>
+                      )}
+
+                      {node.hopsAway != null && (
+                        <div className="route-usage">Hops Away: {node.hopsAway}</div>
+                      )}
+
+                      {node.position?.altitude != null && (
+                        <div className="route-usage">Altitude: {node.position.altitude}m</div>
                       )}
 
                       {node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null && (
