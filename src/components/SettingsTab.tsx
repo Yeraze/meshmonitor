@@ -102,7 +102,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       'Are you sure you want to reset all settings to defaults?\n\n' +
       'Default values:\n' +
       '• Max Node Age: 24 hours\n' +
-      '• Traceroute Interval: 3 minutes\n' +
+      '• Traceroute Interval: 3 minutes (set to 0 to disable)\n' +
       '• Temperature Unit: Celsius\n' +
       '• Distance Unit: Kilometers\n' +
       '• Telemetry Hours: 24\n\n' +
@@ -241,12 +241,12 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           <div className="setting-item">
             <label htmlFor="tracerouteInterval">
               Automatic Traceroute Interval (minutes)
-              <span className="setting-description">How often to automatically send traceroutes to nodes</span>
+              <span className="setting-description">How often to automatically send traceroutes to nodes (0 = disabled). Requires container restart to take effect.</span>
             </label>
             <input
               id="tracerouteInterval"
               type="number"
-              min="1"
+              min="0"
               max="60"
               value={localTracerouteInterval}
               onChange={(e) => setLocalTracerouteInterval(parseInt(e.target.value))}

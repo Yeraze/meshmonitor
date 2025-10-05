@@ -89,6 +89,16 @@ app.use(express.json());
 // Initialize Meshtastic connection
 setTimeout(async () => {
   try {
+    // Load saved traceroute interval from database before connecting
+    const savedInterval = databaseService.getSetting('tracerouteIntervalMinutes');
+    if (savedInterval !== null) {
+      const intervalMinutes = parseInt(savedInterval);
+      if (!isNaN(intervalMinutes) && intervalMinutes >= 0 && intervalMinutes <= 60) {
+        meshtasticManager.setTracerouteInterval(intervalMinutes);
+        console.log(`✅ Loaded saved traceroute interval: ${intervalMinutes} minutes${intervalMinutes === 0 ? ' (disabled)' : ''}`);
+      }
+    }
+
     await meshtasticManager.connect();
     console.log('Meshtastic manager connected successfully');
   } catch (error) {
@@ -887,8 +897,8 @@ apiRouter.post('/channels/refresh', async (_req, res) => {
 apiRouter.post('/settings/traceroute-interval', (req, res) => {
   try {
     const { intervalMinutes } = req.body;
-    if (typeof intervalMinutes !== 'number' || intervalMinutes < 1 || intervalMinutes > 60) {
-      return res.status(400).json({ error: 'Invalid interval. Must be between 1 and 60 minutes.' });
+    if (typeof intervalMinutes !== 'number' || intervalMinutes < 0 || intervalMinutes > 60) {
+      return res.status(400).json({ error: 'Invalid interval. Must be between 0 and 60 minutes (0 = disabled).' });
     }
 
     meshtasticManager.setTracerouteInterval(intervalMinutes);
@@ -931,7 +941,7 @@ apiRouter.post('/settings', (req, res) => {
     // Apply traceroute interval if changed
     if ('tracerouteIntervalMinutes' in filteredSettings) {
       const interval = parseInt(filteredSettings.tracerouteIntervalMinutes);
-      if (!isNaN(interval) && interval >= 1 && interval <= 60) {
+      if (!isNaN(interval) && interval >= 0 && interval <= 60) {
         meshtasticManager.setTracerouteInterval(interval);
       }
     }
