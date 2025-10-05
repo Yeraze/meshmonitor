@@ -96,6 +96,16 @@ export interface DbRouteSegment {
   createdAt: number;
 }
 
+export interface DbNeighborInfo {
+  id?: number;
+  nodeNum: number;
+  neighborNodeNum: number;
+  snr?: number;
+  lastRxTime?: number;
+  timestamp: number;
+  createdAt: number;
+}
+
 class DatabaseService {
   public db: Database.Database;
   private isInitialized = false;
@@ -283,6 +293,20 @@ class DatabaseService {
         createdAt INTEGER NOT NULL,
         FOREIGN KEY (fromNodeNum) REFERENCES nodes(nodeNum),
         FOREIGN KEY (toNodeNum) REFERENCES nodes(nodeNum)
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS neighbor_info (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nodeNum INTEGER NOT NULL,
+        neighborNodeNum INTEGER NOT NULL,
+        snr REAL,
+        lastRxTime INTEGER,
+        timestamp INTEGER NOT NULL,
+        createdAt INTEGER NOT NULL,
+        FOREIGN KEY (nodeNum) REFERENCES nodes(nodeNum),
+        FOREIGN KEY (neighborNodeNum) REFERENCES nodes(nodeNum)
       );
     `);
 
@@ -1198,6 +1222,17 @@ class DatabaseService {
     return telemetry.map(t => this.normalizeBigInts(t));
   }
 
+  getLatestTelemetryForType(nodeId: string, telemetryType: string): DbTelemetry | null {
+    const stmt = this.db.prepare(`
+      SELECT * FROM telemetry
+      WHERE nodeId = ? AND telemetryType = ?
+      ORDER BY timestamp DESC
+      LIMIT 1
+    `);
+    const telemetry = stmt.get(nodeId, telemetryType) as DbTelemetry | null;
+    return telemetry ? this.normalizeBigInts(telemetry) : null;
+  }
+
   // Danger zone operations
   purgeAllNodes(): void {
     console.log('⚠️ PURGING all nodes and related data from database');
@@ -1356,6 +1391,54 @@ class DatabaseService {
     `);
     const result = stmt.run(cutoff);
     return Number(result.changes);
+  }
+
+  saveNeighborInfo(neighborInfo: Omit<DbNeighborInfo, 'id' | 'createdAt'>): void {
+    const stmt = this.db.prepare(`
+      INSERT INTO neighbor_info (nodeNum, neighborNodeNum, snr, lastRxTime, timestamp, createdAt)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(
+      neighborInfo.nodeNum,
+      neighborInfo.neighborNodeNum,
+      neighborInfo.snr || null,
+      neighborInfo.lastRxTime || null,
+      neighborInfo.timestamp,
+      Date.now()
+    );
+  }
+
+  getNeighborsForNode(nodeNum: number): DbNeighborInfo[] {
+    const stmt = this.db.prepare(`
+      SELECT * FROM neighbor_info
+      WHERE nodeNum = ?
+      ORDER BY timestamp DESC
+    `);
+    return stmt.all(nodeNum) as DbNeighborInfo[];
+  }
+
+  getAllNeighborInfo(): DbNeighborInfo[] {
+    const stmt = this.db.prepare(`
+      SELECT * FROM neighbor_info
+      ORDER BY timestamp DESC
+    `);
+    return stmt.all() as DbNeighborInfo[];
+  }
+
+  getLatestNeighborInfoPerNode(): DbNeighborInfo[] {
+    const stmt = this.db.prepare(`
+      SELECT ni.*
+      FROM neighbor_info ni
+      INNER JOIN (
+        SELECT nodeNum, neighborNodeNum, MAX(timestamp) as maxTimestamp
+        FROM neighbor_info
+        GROUP BY nodeNum, neighborNodeNum
+      ) latest
+      ON ni.nodeNum = latest.nodeNum
+        AND ni.neighborNodeNum = latest.neighborNodeNum
+        AND ni.timestamp = latest.maxTimestamp
+    `);
+    return stmt.all() as DbNeighborInfo[];
   }
 }
 
