@@ -686,6 +686,62 @@ apiRouter.delete('/route-segments/record-holder', (_req, res) => {
   }
 });
 
+// Get all neighbor info (latest per node pair)
+apiRouter.get('/neighbor-info', (_req, res) => {
+  try {
+    const neighborInfo = databaseService.getLatestNeighborInfoPerNode();
+
+    // Enrich with node names
+    const enrichedNeighborInfo = neighborInfo.map(ni => {
+      const node = databaseService.getNode(ni.nodeNum);
+      const neighbor = databaseService.getNode(ni.neighborNodeNum);
+
+      return {
+        ...ni,
+        nodeId: node?.nodeId || `!${ni.nodeNum.toString(16).padStart(8, '0')}`,
+        nodeName: node?.longName || `Node !${ni.nodeNum.toString(16).padStart(8, '0')}`,
+        neighborNodeId: neighbor?.nodeId || `!${ni.neighborNodeNum.toString(16).padStart(8, '0')}`,
+        neighborName: neighbor?.longName || `Node !${ni.neighborNodeNum.toString(16).padStart(8, '0')}`,
+        nodeLatitude: node?.latitude,
+        nodeLongitude: node?.longitude,
+        neighborLatitude: neighbor?.latitude,
+        neighborLongitude: neighbor?.longitude
+      };
+    });
+
+    res.json(enrichedNeighborInfo);
+  } catch (error) {
+    console.error('Error fetching neighbor info:', error);
+    res.status(500).json({ error: 'Failed to fetch neighbor info' });
+  }
+});
+
+// Get neighbor info for a specific node
+apiRouter.get('/neighbor-info/:nodeNum', (req, res) => {
+  try {
+    const nodeNum = parseInt(req.params.nodeNum);
+    const neighborInfo = databaseService.getNeighborsForNode(nodeNum);
+
+    // Enrich with node names
+    const enrichedNeighborInfo = neighborInfo.map(ni => {
+      const neighbor = databaseService.getNode(ni.neighborNodeNum);
+
+      return {
+        ...ni,
+        neighborNodeId: neighbor?.nodeId || `!${ni.neighborNodeNum.toString(16).padStart(8, '0')}`,
+        neighborName: neighbor?.longName || `Node !${ni.neighborNodeNum.toString(16).padStart(8, '0')}`,
+        neighborLatitude: neighbor?.latitude,
+        neighborLongitude: neighbor?.longitude
+      };
+    });
+
+    res.json(enrichedNeighborInfo);
+  } catch (error) {
+    console.error('Error fetching neighbor info for node:', error);
+    res.status(500).json({ error: 'Failed to fetch neighbor info for node' });
+  }
+});
+
 // Get telemetry data for a node
 apiRouter.get('/telemetry/:nodeId', (req, res) => {
   try {

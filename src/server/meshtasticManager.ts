@@ -593,8 +593,8 @@ class MeshtasticManager {
           case 6: // ADMIN_APP
             console.log('⚙️ Admin message:', processedPayload);
             break;
-          case 42: // NEIGHBORINFO_APP
-            console.log('🏠 Neighbor info:', processedPayload);
+          case 71: // NEIGHBORINFO_APP
+            await this.processNeighborInfoProtobuf(meshPacket, processedPayload as any);
             break;
           case 70: // TRACEROUTE_APP
             await this.processTracerouteMessage(meshPacket, processedPayload as any);
@@ -824,6 +824,7 @@ class MeshtasticManager {
 
       const fromNum = Number(meshPacket.from);
       const nodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
+      const timestamp = Date.now();
       const nodeData: any = {
         nodeNum: fromNum,
         nodeId: nodeId,
@@ -832,12 +833,27 @@ class MeshtasticManager {
         hwModel: user.hwModel,
         role: user.role,
         hopsAway: meshPacket.hopsAway,
-        lastHeard: Date.now() / 1000
+        lastHeard: timestamp / 1000
       };
 
       // Only include SNR/RSSI if they have valid values
       if (meshPacket.rxSnr && meshPacket.rxSnr !== 0) {
         nodeData.snr = meshPacket.rxSnr;
+
+        // Save SNR as telemetry if it has changed from the last value
+        const latestSnrTelemetry = databaseService.getLatestTelemetryForType(nodeId, 'snr');
+        if (!latestSnrTelemetry || latestSnrTelemetry.value !== meshPacket.rxSnr) {
+          databaseService.insertTelemetry({
+            nodeId,
+            nodeNum: fromNum,
+            telemetryType: 'snr',
+            timestamp,
+            value: meshPacket.rxSnr,
+            unit: 'dB',
+            createdAt: timestamp
+          });
+          console.log(`📊 Saved SNR telemetry: ${meshPacket.rxSnr} dB (changed from ${latestSnrTelemetry?.value || 'N/A'})`);
+        }
       }
       if (meshPacket.rxRssi && meshPacket.rxRssi !== 0) {
         nodeData.rssi = meshPacket.rxRssi;
@@ -892,7 +908,7 @@ class MeshtasticManager {
         nodeData.channelUtilization = deviceMetrics.channelUtilization;
         nodeData.airUtilTx = deviceMetrics.airUtilTx;
 
-        // Save individual telemetry values
+        // Save all telemetry values from actual TELEMETRY_APP packets (no deduplication)
         if (deviceMetrics.batteryLevel !== undefined) {
           databaseService.insertTelemetry({
             nodeId, nodeNum: fromNum, telemetryType: 'batteryLevel',
@@ -1288,6 +1304,73 @@ class MeshtasticManager {
       }
     } catch (error) {
       console.error('❌ Error processing traceroute message:', error);
+    }
+  }
+
+  /**
+   * Process NeighborInfo protobuf message
+   */
+  private async processNeighborInfoProtobuf(meshPacket: any, neighborInfo: any): Promise<void> {
+    try {
+      const fromNum = Number(meshPacket.from);
+      const fromNodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
+
+      console.log(`🏠 Neighbor info from ${fromNodeId}:`, neighborInfo);
+
+      // Get the sender node to determine their hopsAway
+      let senderNode = databaseService.getNode(fromNum);
+
+      // Ensure sender node exists in database
+      if (!senderNode) {
+        databaseService.upsertNode({
+          nodeNum: fromNum,
+          nodeId: fromNodeId,
+          longName: `Node ${fromNodeId}`,
+          shortName: fromNodeId.substring(1, 5),
+          lastHeard: Date.now() / 1000
+        });
+        senderNode = databaseService.getNode(fromNum);
+      }
+
+      const senderHopsAway = senderNode?.hopsAway || 0;
+      const timestamp = Date.now();
+
+      // Process each neighbor in the list
+      if (neighborInfo.neighbors && Array.isArray(neighborInfo.neighbors)) {
+        console.log(`📡 Processing ${neighborInfo.neighbors.length} neighbors from ${fromNodeId}`);
+
+        for (const neighbor of neighborInfo.neighbors) {
+          const neighborNodeNum = Number(neighbor.nodeId);
+          const neighborNodeId = `!${neighborNodeNum.toString(16).padStart(8, '0')}`;
+
+          // Check if neighbor node exists, if not create it with hopsAway = sender's hopsAway + 1
+          let neighborNode = databaseService.getNode(neighborNodeNum);
+          if (!neighborNode) {
+            databaseService.upsertNode({
+              nodeNum: neighborNodeNum,
+              nodeId: neighborNodeId,
+              longName: `Node ${neighborNodeId}`,
+              shortName: neighborNodeId.substring(1, 5),
+              hopsAway: senderHopsAway + 1,
+              lastHeard: Date.now() / 1000
+            });
+            console.log(`➕ Created new node ${neighborNodeId} with hopsAway=${senderHopsAway + 1}`);
+          }
+
+          // Save the neighbor relationship
+          databaseService.saveNeighborInfo({
+            nodeNum: fromNum,
+            neighborNodeNum: neighborNodeNum,
+            snr: neighbor.snr ? Number(neighbor.snr) : undefined,
+            lastRxTime: neighbor.lastRxTime ? Number(neighbor.lastRxTime) : undefined,
+            timestamp: timestamp
+          });
+
+          console.log(`🔗 Saved neighbor: ${fromNodeId} -> ${neighborNodeId}, SNR: ${neighbor.snr || 'N/A'}`);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error processing neighbor info message:', error);
     }
   }
 

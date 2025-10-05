@@ -441,6 +441,11 @@ export class MeshtasticProtobufService {
           const routeDiscovery = RouteDiscovery.decode(payload);
           return routeDiscovery;
 
+        case 71: // NEIGHBORINFO_APP
+          const NeighborInfo = root.lookupType('meshtastic.NeighborInfo');
+          const neighborInfo = NeighborInfo.decode(payload);
+          return neighborInfo;
+
         default:
           console.log(`⚠️ Unhandled port number: ${portnum}`);
           return payload;
