@@ -225,6 +225,13 @@ class MeshtasticManager {
   private startTracerouteScheduler(): void {
     if (this.tracerouteInterval) {
       clearInterval(this.tracerouteInterval);
+      this.tracerouteInterval = null;
+    }
+
+    // If interval is 0, traceroute is disabled
+    if (this.tracerouteIntervalMinutes === 0) {
+      console.log('🗺️ Automatic traceroute is disabled');
+      return;
     }
 
     const intervalMs = this.tracerouteIntervalMinutes * 60 * 1000;
@@ -248,11 +255,16 @@ class MeshtasticManager {
   }
 
   setTracerouteInterval(minutes: number): void {
-    if (minutes < 1 || minutes > 60) {
-      throw new Error('Traceroute interval must be between 1 and 60 minutes');
+    if (minutes < 0 || minutes > 60) {
+      throw new Error('Traceroute interval must be between 0 and 60 minutes (0 = disabled)');
     }
     this.tracerouteIntervalMinutes = minutes;
-    console.log(`🗺️ Traceroute interval updated to ${minutes} minutes`);
+
+    if (minutes === 0) {
+      console.log('🗺️ Traceroute interval set to 0 (disabled)');
+    } else {
+      console.log(`🗺️ Traceroute interval updated to ${minutes} minutes`);
+    }
 
     if (this.isConnected) {
       this.startTracerouteScheduler();
