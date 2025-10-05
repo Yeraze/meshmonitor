@@ -89,9 +89,11 @@ function App() {
   const [isChannelScrolledToBottom, setIsChannelScrolledToBottom] = useState(true)
   const [isDMScrolledToBottom, setIsDMScrolledToBottom] = useState(true)
   const [showPaths, setShowPaths] = useState<boolean>(false)
+  const [showNeighborInfo, setShowNeighborInfo] = useState<boolean>(false)
   const [showRoute, setShowRoute] = useState<boolean>(true)
   const [showMotion, setShowMotion] = useState<boolean>(true)
   const [traceroutes, setTraceroutes] = useState<any[]>([])
+  const [neighborInfo, setNeighborInfo] = useState<any[]>([])
   const [nodesWithTelemetry, setNodesWithTelemetry] = useState<Set<string>>(new Set())
   const [nodesWithWeatherTelemetry, setNodesWithWeatherTelemetry] = useState<Set<string>>(new Set())
   const [positionHistory, setPositionHistory] = useState<{latitude: number; longitude: number; timestamp: number}[]>([])
@@ -289,6 +291,15 @@ function App() {
       return () => clearInterval(interval);
     }
   }, [showPaths, activeTab, connectionStatus]);
+
+  // Fetch neighbor info when showNeighborInfo is enabled
+  useEffect(() => {
+    if (showNeighborInfo && connectionStatus === 'connected') {
+      fetchNeighborInfo();
+      const interval = setInterval(fetchNeighborInfo, 10000); // Refresh every 10 seconds
+      return () => clearInterval(interval);
+    }
+  }, [showNeighborInfo, connectionStatus]);
 
   // Fetch position history when a mobile node is selected
   useEffect(() => {
@@ -530,6 +541,18 @@ function App() {
       }
     } catch (error) {
       console.error('Error fetching traceroutes:', error);
+    }
+  };
+
+  const fetchNeighborInfo = async () => {
+    try {
+      const response = await fetch(`${baseUrl}/api/neighbor-info`);
+      if (response.ok) {
+        const data = await response.json();
+        setNeighborInfo(data);
+      }
+    } catch (error) {
+      console.error('Error fetching neighbor info:', error);
     }
   };
 
@@ -1489,6 +1512,14 @@ function App() {
                 <label className="map-control-item">
                   <input
                     type="checkbox"
+                    checked={showNeighborInfo}
+                    onChange={(e) => setShowNeighborInfo(e.target.checked)}
+                  />
+                  <span>Show Neighbor Info</span>
+                </label>
+                <label className="map-control-item">
+                  <input
+                    type="checkbox"
                     checked={showRoute}
                     onChange={(e) => setShowRoute(e.target.checked)}
                   />
@@ -1938,6 +1969,47 @@ function App() {
                     );
                   });
                 })()}
+
+                {/* Draw neighbor info connections */}
+                {showNeighborInfo && neighborInfo.length > 0 && neighborInfo.map((ni, idx) => {
+                  // Skip if either node doesn't have position
+                  if (!ni.nodeLatitude || !ni.nodeLongitude || !ni.neighborLatitude || !ni.neighborLongitude) {
+                    return null;
+                  }
+
+                  const positions: [number, number][] = [
+                    [ni.nodeLatitude, ni.nodeLongitude],
+                    [ni.neighborLatitude, ni.neighborLongitude]
+                  ];
+
+                  return (
+                    <Polyline
+                      key={`neighbor-${idx}`}
+                      positions={positions}
+                      color="#cba6f7"
+                      weight={4}
+                      opacity={0.7}
+                      dashArray="5, 5"
+                    >
+                      <Popup>
+                        <div className="route-popup">
+                          <h4>Neighbor Connection</h4>
+                          <div className="route-endpoints">
+                            <strong>{ni.nodeName}</strong> ↔ <strong>{ni.neighborName}</strong>
+                          </div>
+                          {ni.snr !== null && ni.snr !== undefined && (
+                            <div className="route-usage">
+                              SNR: <strong>{ni.snr.toFixed(1)} dB</strong>
+                            </div>
+                          )}
+                          <div className="route-usage">
+                            Last seen: <strong>{new Date(ni.timestamp).toLocaleString()}</strong>
+                          </div>
+                        </div>
+                      </Popup>
+                    </Polyline>
+                  );
+                })}
 
                 {/* Draw selected node's traceroute with separate forward and back paths */}
                 {showRoute && selectedNodeId && (() => {
