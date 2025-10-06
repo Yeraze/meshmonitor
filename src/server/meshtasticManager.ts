@@ -64,6 +64,9 @@ class MeshtasticManager {
   } | null = null;
   private actualDeviceConfig: any = null;  // Store actual device config
   private actualModuleConfig: any = null;  // Store actual module config
+  private sessionPasskey: Uint8Array | null = null;  // Session passkey for admin messages
+  private sessionPasskeyExpiry: number | null = null;  // Expiry time (expires after 300 seconds)
+  private favoritesSupportCache: boolean | null = null;  // Cache firmware support check result
 
   constructor() {
     this.config = {
@@ -149,6 +152,8 @@ class MeshtasticManager {
   private handleDisconnected(): void {
     console.log('🔌 TCP connection lost');
     this.isConnected = false;
+    // Clear favorites support cache on disconnect
+    this.favoritesSupportCache = null;
     // Transport will handle automatic reconnection
   }
 
@@ -475,6 +480,8 @@ class MeshtasticManager {
     if (this.localNodeInfo && metadata.firmwareVersion) {
       // Only update firmware version, don't touch other fields
       this.localNodeInfo.firmwareVersion = metadata.firmwareVersion;
+      // Clear favorites support cache since firmware version changed
+      this.favoritesSupportCache = null;
       console.log(`📱 Updated firmware version: ${metadata.firmwareVersion}`);
 
       // Update the database with the firmware version
@@ -603,7 +610,7 @@ class MeshtasticManager {
             console.log('🗺️ Routing message:', processedPayload);
             break;
           case 6: // ADMIN_APP
-            console.log('⚙️ Admin message:', processedPayload);
+            await this.processAdminMessage(processedPayload as Uint8Array);
             break;
           case 71: // NEIGHBORINFO_APP
             await this.processNeighborInfoProtobuf(meshPacket, processedPayload as any);
@@ -1404,8 +1411,8 @@ class MeshtasticManager {
         lastHeard: nodeInfo.lastHeard ? Number(nodeInfo.lastHeard) : Date.now() / 1000,
         snr: nodeInfo.snr,
         rssi: 0, // Will be updated from mesh packet if available
-        hopsAway: nodeInfo.hopsAway !== undefined ? nodeInfo.hopsAway : undefined,
-        isFavorite: nodeInfo.isFavorite !== undefined ? nodeInfo.isFavorite : undefined
+        hopsAway: nodeInfo.hopsAway !== undefined ? nodeInfo.hopsAway : undefined
+        // Note: isFavorite is NOT included here - it's a local-only setting that should not be overwritten by device NodeInfo
       };
 
       // Add user information if available
@@ -2789,6 +2796,186 @@ class MeshtasticManager {
       console.log(`Traceroute request sent to node: !${destination.toString(16).padStart(8, '0')}`);
     } catch (error) {
       console.error('Error sending traceroute:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Process incoming admin messages and extract session passkey
+   */
+  private async processAdminMessage(payload: Uint8Array): Promise<void> {
+    try {
+      console.log('⚙️ Processing ADMIN_APP message, payload size:', payload.length);
+      const adminMsg = protobufService.decodeAdminMessage(payload);
+      if (!adminMsg) {
+        console.error('⚙️ Failed to decode admin message');
+        return;
+      }
+
+      console.log('⚙️ Decoded admin message keys:', Object.keys(adminMsg));
+
+      // Extract session passkey if present
+      if (adminMsg.sessionPasskey && adminMsg.sessionPasskey.length > 0) {
+        this.sessionPasskey = new Uint8Array(adminMsg.sessionPasskey);
+        this.sessionPasskeyExpiry = Date.now() + (290 * 1000); // 290 seconds (10 second buffer before 300s expiry)
+        console.log('🔑 Session passkey received and stored (expires in 290 seconds)');
+      }
+
+      // Log the response type for debugging
+      if (adminMsg.getConfigResponse) {
+        console.log('⚙️ Received GetConfigResponse (session key)');
+      }
+      if (adminMsg.getOwnerResponse) {
+        console.log('⚙️ Received GetOwnerResponse');
+      }
+    } catch (error) {
+      console.error('❌ Error processing admin message:', error);
+    }
+  }
+
+  /**
+   * Check if current session passkey is valid
+   */
+  private isSessionPasskeyValid(): boolean {
+    if (!this.sessionPasskey || !this.sessionPasskeyExpiry) {
+      return false;
+    }
+    return Date.now() < this.sessionPasskeyExpiry;
+  }
+
+  /**
+   * Request session passkey from the device
+   */
+  async requestSessionPasskey(): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    try {
+      const getSessionKeyRequest = protobufService.createGetSessionKeyRequest();
+      const adminPacket = protobufService.createAdminPacket(getSessionKeyRequest, 0); // 0 = local node
+
+      await this.transport.send(adminPacket);
+      console.log('🔑 Requested session passkey from device (via SESSIONKEY_CONFIG)');
+
+      // Wait for the response (admin messages can take time)
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
+      // Check if we received the passkey
+      if (!this.isSessionPasskeyValid()) {
+        console.log('⚠️ No session passkey response received from device');
+      }
+    } catch (error) {
+      console.error('❌ Error requesting session passkey:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Parse firmware version string into major.minor.patch
+   */
+  private parseFirmwareVersion(versionString: string): { major: number; minor: number; patch: number } | null {
+    // Firmware version format: "2.7.11.ee68575" or "2.7.11"
+    const match = versionString.match(/^(\d+)\.(\d+)\.(\d+)/);
+    if (!match) {
+      return null;
+    }
+    return {
+      major: parseInt(match[1], 10),
+      minor: parseInt(match[2], 10),
+      patch: parseInt(match[3], 10)
+    };
+  }
+
+  /**
+   * Check if the local device firmware supports favorites feature (>= 2.7.0)
+   * Result is cached to avoid redundant parsing and version comparisons
+   */
+  supportsFavorites(): boolean {
+    // Return cached result if available
+    if (this.favoritesSupportCache !== null) {
+      return this.favoritesSupportCache;
+    }
+
+    if (!this.localNodeInfo?.firmwareVersion) {
+      console.log('⚠️ Firmware version unknown, cannot determine favorites support');
+      this.favoritesSupportCache = false;
+      return false;
+    }
+
+    const version = this.parseFirmwareVersion(this.localNodeInfo.firmwareVersion);
+    if (!version) {
+      console.log(`⚠️ Could not parse firmware version: ${this.localNodeInfo.firmwareVersion}`);
+      this.favoritesSupportCache = false;
+      return false;
+    }
+
+    // Favorites feature added in 2.7.0
+    const supportsFavorites = version.major > 2 || (version.major === 2 && version.minor >= 7);
+
+    if (!supportsFavorites) {
+      console.log(`ℹ️ Firmware ${this.localNodeInfo.firmwareVersion} does not support favorites (requires >= 2.7.0)`);
+    } else {
+      console.log(`✅ Firmware ${this.localNodeInfo.firmwareVersion} supports favorites (cached)`);
+    }
+
+    // Cache the result
+    this.favoritesSupportCache = supportsFavorites;
+    return supportsFavorites;
+  }
+
+  /**
+   * Send admin message to set a node as favorite on the device
+   */
+  async sendFavoriteNode(nodeNum: number): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    // Check firmware version support
+    if (!this.supportsFavorites()) {
+      throw new Error('FIRMWARE_NOT_SUPPORTED');
+    }
+
+    try {
+      // For local TCP connections, try sending without session passkey first
+      // (there's a known bug where session keys don't work properly over TCP)
+      console.log('⭐ Attempting to send favorite without session key (local TCP admin)');
+      const setFavoriteMsg = protobufService.createSetFavoriteNodeMessage(nodeNum, new Uint8Array()); // empty passkey
+      const adminPacket = protobufService.createAdminPacket(setFavoriteMsg, 0); // 0 = local node
+
+      await this.transport.send(adminPacket);
+      console.log(`⭐ Sent set_favorite_node for ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')})`);
+    } catch (error) {
+      console.error('❌ Error sending favorite node admin message:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Send admin message to remove a node from favorites on the device
+   */
+  async sendRemoveFavoriteNode(nodeNum: number): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    // Check firmware version support
+    if (!this.supportsFavorites()) {
+      throw new Error('FIRMWARE_NOT_SUPPORTED');
+    }
+
+    try {
+      // For local TCP connections, try sending without session passkey first
+      // (there's a known bug where session keys don't work properly over TCP)
+      console.log('☆ Attempting to remove favorite without session key (local TCP admin)');
+      const removeFavoriteMsg = protobufService.createRemoveFavoriteNodeMessage(nodeNum, new Uint8Array()); // empty passkey
+      const adminPacket = protobufService.createAdminPacket(removeFavoriteMsg, 0); // 0 = local node
+
+      await this.transport.send(adminPacket);
+      console.log(`☆ Sent remove_favorite_node for ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')})`);
+    } catch (error) {
+      console.error('❌ Error sending remove favorite node admin message:', error);
       throw error;
     }
   }

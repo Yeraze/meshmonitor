@@ -76,6 +76,7 @@ Get all nodes from the database.
     "hwModel": 9,
     "role": 2,
     "hopsAway": 0,
+    "isFavorite": 1,
     "latitude": 40.7128,
     "longitude": -74.0060,
     "altitude": 10.5,
@@ -114,6 +115,83 @@ Force refresh of node information from the Meshtastic device.
   "message": "Node refresh initiated",
   "nodeCount": 42
 }
+```
+
+### POST /api/nodes/:nodeId/favorite
+Set or remove favorite status for a node with optional device synchronization.
+
+**Path Parameters:**
+- `nodeId` (required): Node ID (e.g., "!a2e4ff4c")
+
+**Request Body:**
+```json
+{
+  "isFavorite": true,
+  "syncToDevice": true
+}
+```
+
+**Parameters:**
+- `isFavorite` (required, boolean): Whether to mark the node as favorite
+- `syncToDevice` (optional, boolean): Whether to sync to device via admin messages (default: true)
+
+**Response (success):**
+```json
+{
+  "success": true,
+  "nodeNum": 2732916556,
+  "isFavorite": true,
+  "deviceSync": {
+    "status": "success"
+  }
+}
+```
+
+**Response (database-only mode):**
+```json
+{
+  "success": true,
+  "nodeNum": 2732916556,
+  "isFavorite": false,
+  "deviceSync": {
+    "status": "skipped"
+  }
+}
+```
+
+**Response (device sync failed):**
+```json
+{
+  "success": true,
+  "nodeNum": 2732916556,
+  "isFavorite": true,
+  "deviceSync": {
+    "status": "failed",
+    "error": "Not connected to Meshtastic node"
+  }
+}
+```
+
+**Device Sync Details:**
+- Uses Meshtastic admin messages (ADMIN_APP portnum 6)
+- Local TCP connections do not require session passkeys
+- Requires firmware version >= 2.7.0 for device support
+- Database update succeeds even if device sync fails (graceful degradation)
+- Favorite status is local-only; devices do not broadcast favorites
+
+**Example:**
+```bash
+# Mark node as favorite and sync to device
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"isFavorite": true, "syncToDevice": true}' \
+  http://localhost:3001/api/nodes/!a2e4ff4c/favorite
+
+# Remove favorite (database only)
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"isFavorite": false, "syncToDevice": false}' \
+  http://localhost:3001/api/nodes/!a2e4ff4c/favorite
 ```
 
 ---

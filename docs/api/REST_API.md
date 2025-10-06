@@ -112,6 +112,85 @@ Same as `/api/nodes` but filtered for recent activity.
 curl -X GET "http://localhost:8080/api/nodes/active?days=3"
 ```
 
+### Set Node Favorite Status
+
+#### POST /api/nodes/:nodeId/favorite
+
+Sets or removes favorite status for a node, with optional synchronization to the Meshtastic device.
+
+**Path Parameters:**
+- `nodeId` (required, string): Node ID (e.g., "!a2e4ff4c")
+
+**Request Body:**
+```json
+{
+  "isFavorite": true,
+  "syncToDevice": true
+}
+```
+
+**Parameters:**
+- `isFavorite` (required, boolean): Whether to mark the node as favorite
+- `syncToDevice` (optional, boolean): Whether to sync to device via admin messages (default: true)
+
+**Response:**
+```json
+{
+  "success": true,
+  "nodeNum": 2732916556,
+  "isFavorite": true,
+  "deviceSync": {
+    "status": "success"
+  }
+}
+```
+
+**Device Sync Status:**
+- `success` - Successfully synced to device
+- `failed` - Device sync failed (includes error message)
+- `skipped` - Device sync was not attempted (syncToDevice=false)
+
+**Response with Device Sync Failure:**
+```json
+{
+  "success": true,
+  "nodeNum": 2732916556,
+  "isFavorite": false,
+  "deviceSync": {
+    "status": "failed",
+    "error": "Not connected to Meshtastic node"
+  }
+}
+```
+
+**Error Responses:**
+- `400`: Missing or invalid nodeId
+- `400`: Missing or invalid isFavorite parameter
+- `500`: Failed to update database
+
+**Example:**
+```bash
+# Mark node as favorite and sync to device
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"isFavorite": true, "syncToDevice": true}' \
+  http://localhost:8080/api/nodes/!a2e4ff4c/favorite
+
+# Remove favorite (database only, no device sync)
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"isFavorite": false, "syncToDevice": false}' \
+  http://localhost:8080/api/nodes/!a2e4ff4c/favorite
+```
+
+**Notes:**
+- Database update succeeds even if device sync fails (graceful degradation)
+- Device sync uses Meshtastic admin messages (ADMIN_APP portnum 6)
+- Local TCP connections do not require session passkeys (admin.proto fields 39/40)
+- Requires firmware version >= 2.7.0 for device favorites support
+- Frontend displays sync status in browser console
+- Favorite status is local-only; devices do not broadcast favorite status in NodeInfo
+
 ---
 
 ## Message Management

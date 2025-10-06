@@ -247,33 +247,93 @@ apiRouter.get('/nodes/:nodeId/position-history', (req, res) => {
   }
 });
 
-// Set node favorite status
-apiRouter.post('/nodes/:nodeId/favorite', (req, res) => {
+// Standardized error response types for better client-side handling
+interface ApiErrorResponse {
+  error: string;
+  code: string;
+  details?: string;
+}
+
+// Set node favorite status (with optional device sync)
+apiRouter.post('/nodes/:nodeId/favorite', async (req, res) => {
   try {
     const { nodeId } = req.params;
-    const { isFavorite } = req.body;
+    const { isFavorite, syncToDevice = true } = req.body;
 
     if (typeof isFavorite !== 'boolean') {
-      res.status(400).json({ error: 'isFavorite must be a boolean' });
+      const errorResponse: ApiErrorResponse = {
+        error: 'isFavorite must be a boolean',
+        code: 'INVALID_PARAMETER_TYPE',
+        details: 'Expected boolean value for isFavorite parameter'
+      };
+      res.status(400).json(errorResponse);
       return;
     }
 
     // Convert nodeId (hex string like !a1b2c3d4) to nodeNum (integer)
     const nodeNumStr = nodeId.replace('!', '');
-    const nodeNum = parseInt(nodeNumStr, 16);
 
-    if (isNaN(nodeNum)) {
-      res.status(400).json({ error: 'Invalid nodeId format' });
+    // Validate hex string format (must be exactly 8 hex characters)
+    if (!/^[0-9a-fA-F]{8}$/.test(nodeNumStr)) {
+      const errorResponse: ApiErrorResponse = {
+        error: 'Invalid nodeId format',
+        code: 'INVALID_NODE_ID',
+        details: 'nodeId must be in format !XXXXXXXX (8 hex characters)'
+      };
+      res.status(400).json(errorResponse);
       return;
     }
+
+    const nodeNum = parseInt(nodeNumStr, 16);
 
     // Update favorite status in database
     databaseService.setNodeFavorite(nodeNum, isFavorite);
 
-    res.json({ success: true, nodeNum, isFavorite });
+    // Sync to device if requested
+    let deviceSyncStatus: 'success' | 'failed' | 'skipped' = 'skipped';
+    let deviceSyncError: string | undefined;
+
+    if (syncToDevice) {
+      try {
+        if (isFavorite) {
+          await meshtasticManager.sendFavoriteNode(nodeNum);
+        } else {
+          await meshtasticManager.sendRemoveFavoriteNode(nodeNum);
+        }
+        deviceSyncStatus = 'success';
+        console.log(`✅ Synced favorite status to device for node ${nodeNum}`);
+      } catch (error) {
+        // Special handling for firmware version incompatibility
+        if (error instanceof Error && error.message === 'FIRMWARE_NOT_SUPPORTED') {
+          deviceSyncStatus = 'skipped';
+          console.log(`ℹ️ Device sync skipped for node ${nodeNum}: firmware does not support favorites (requires >= 2.7.0)`);
+          // Don't set deviceSyncError - this is expected behavior for pre-2.7 firmware
+        } else {
+          deviceSyncStatus = 'failed';
+          deviceSyncError = error instanceof Error ? error.message : 'Unknown error';
+          console.error(`⚠️ Failed to sync favorite to device for node ${nodeNum}:`, error);
+        }
+        // Don't fail the whole request if device sync fails
+      }
+    }
+
+    res.json({
+      success: true,
+      nodeNum,
+      isFavorite,
+      deviceSync: {
+        status: deviceSyncStatus,
+        error: deviceSyncError
+      }
+    });
   } catch (error) {
     console.error('Error setting node favorite:', error);
-    res.status(500).json({ error: 'Failed to set node favorite' });
+    const errorResponse: ApiErrorResponse = {
+      error: 'Failed to set node favorite',
+      code: 'INTERNAL_ERROR',
+      details: error instanceof Error ? error.message : 'Unknown error occurred'
+    };
+    res.status(500).json(errorResponse);
   }
 });
 
