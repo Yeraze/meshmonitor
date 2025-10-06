@@ -1,5 +1,6 @@
 import protobuf from 'protobufjs';
 import path from 'path';
+import { getProtobufRoot } from './protobufLoader.js';
 
 export interface MeshtasticPosition {
   latitude_i: number;
@@ -125,6 +126,10 @@ class ProtobufService {
       };
 
       await this.root.load(path.join(protoDir, 'meshtastic/mesh.proto'));
+
+      // Load admin.proto explicitly (not imported by mesh.proto)
+      await this.root.load(path.join(protoDir, 'meshtastic/admin.proto'));
+      console.log('✅ Loaded admin.proto for AdminMessage support');
 
       // Cache available enums
       this.cacheEnum('meshtastic.PortNum');
@@ -524,7 +529,8 @@ class ProtobufService {
    */
   createGetOwnerRequest(): Uint8Array {
     try {
-      const AdminMessage = this.root?.lookupType('meshtastic.AdminMessage');
+      const root = getProtobufRoot();
+      const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
       if (!AdminMessage) {
         throw new Error('AdminMessage type not found in loaded proto files');
       }
@@ -549,7 +555,8 @@ class ProtobufService {
    */
   createSetFavoriteNodeMessage(nodeNum: number, sessionPasskey?: Uint8Array): Uint8Array {
     try {
-      const AdminMessage = this.root?.lookupType('meshtastic.AdminMessage');
+      const root = getProtobufRoot();
+      const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
       if (!AdminMessage) {
         throw new Error('AdminMessage type not found in loaded proto files');
       }
@@ -575,7 +582,8 @@ class ProtobufService {
    */
   createRemoveFavoriteNodeMessage(nodeNum: number, sessionPasskey?: Uint8Array): Uint8Array {
     try {
-      const AdminMessage = this.root?.lookupType('meshtastic.AdminMessage');
+      const root = getProtobufRoot();
+      const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
       if (!AdminMessage) {
         throw new Error('AdminMessage type not found in loaded proto files');
       }
@@ -599,7 +607,8 @@ class ProtobufService {
    */
   decodeAdminMessage(data: Uint8Array): any {
     try {
-      const AdminMessage = this.root?.lookupType('meshtastic.AdminMessage');
+      const root = getProtobufRoot();
+      const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
       if (!AdminMessage) {
         throw new Error('AdminMessage type not found in loaded proto files');
       }
@@ -621,9 +630,10 @@ class ProtobufService {
    */
   createAdminPacket(adminMessagePayload: Uint8Array, destination: number = 0): Uint8Array {
     try {
-      const ToRadio = this.root?.lookupType('meshtastic.ToRadio');
-      const MeshPacket = this.root?.lookupType('meshtastic.MeshPacket');
-      const Data = this.root?.lookupType('meshtastic.Data');
+      const root = getProtobufRoot();
+      const ToRadio = root?.lookupType('meshtastic.ToRadio');
+      const MeshPacket = root?.lookupType('meshtastic.MeshPacket');
+      const Data = root?.lookupType('meshtastic.Data');
 
       if (!ToRadio || !MeshPacket || !Data) {
         throw new Error('Required proto types not found');
