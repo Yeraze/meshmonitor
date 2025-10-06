@@ -24,6 +24,7 @@ export interface DeviceInfo {
   rssi?: number
   firmwareVersion?: string
   isMobile?: boolean
+  isFavorite?: boolean
 }
 
 export interface Channel {

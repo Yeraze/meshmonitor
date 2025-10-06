@@ -101,6 +101,7 @@ const databaseMock = {
     }
     return null;
   }),
+  setNodeFavorite: vi.fn((_nodeNum: number, _isFavorite: boolean) => undefined),
   purgeAllNodes: vi.fn(),
   purgeAllTelemetry: vi.fn(),
   purgeAllMessages: vi.fn()
@@ -159,6 +160,31 @@ describe('Server API Endpoints', () => {
         res.json(databaseMock.getActiveNodes(days));
       } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
+      }
+    });
+
+    app.post('/api/nodes/:nodeId/favorite', (req, res) => {
+      try {
+        const { nodeId } = req.params;
+        const { isFavorite } = req.body;
+
+        if (typeof isFavorite !== 'boolean') {
+          res.status(400).json({ error: 'isFavorite must be a boolean' });
+          return;
+        }
+
+        const nodeNumStr = nodeId.replace('!', '');
+        const nodeNum = parseInt(nodeNumStr, 16);
+
+        if (isNaN(nodeNum)) {
+          res.status(400).json({ error: 'Invalid nodeId format' });
+          return;
+        }
+
+        databaseMock.setNodeFavorite(nodeNum, isFavorite);
+        res.json({ success: true, nodeNum, isFavorite });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to set node favorite' });
       }
     });
 
@@ -373,6 +399,47 @@ describe('Server API Endpoints', () => {
 
       expect(response.body).toHaveLength(1);
       expect(response.body[0].nodeId).toBe('!node1');
+    });
+
+    it('POST /api/nodes/:nodeId/favorite should set node as favorite', async () => {
+      const response = await request(app)
+        .post('/api/nodes/!00000001/favorite')
+        .send({ isFavorite: true })
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.nodeNum).toBe(1);
+      expect(response.body.isFavorite).toBe(true);
+      expect(databaseMock.setNodeFavorite).toHaveBeenCalledWith(1, true);
+    });
+
+    it('POST /api/nodes/:nodeId/favorite should remove favorite status', async () => {
+      const response = await request(app)
+        .post('/api/nodes/!00000001/favorite')
+        .send({ isFavorite: false })
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.isFavorite).toBe(false);
+      expect(databaseMock.setNodeFavorite).toHaveBeenCalledWith(1, false);
+    });
+
+    it('POST /api/nodes/:nodeId/favorite should reject non-boolean isFavorite', async () => {
+      const response = await request(app)
+        .post('/api/nodes/!00000001/favorite')
+        .send({ isFavorite: 'yes' })
+        .expect(400);
+
+      expect(response.body.error).toBe('isFavorite must be a boolean');
+    });
+
+    it('POST /api/nodes/:nodeId/favorite should reject invalid nodeId format', async () => {
+      const response = await request(app)
+        .post('/api/nodes/invalid/favorite')
+        .send({ isFavorite: true })
+        .expect(400);
+
+      expect(response.body.error).toBe('Invalid nodeId format');
     });
   });
 

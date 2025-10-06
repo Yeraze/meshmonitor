@@ -135,6 +135,7 @@ CREATE TABLE nodes (
   lastHeard INTEGER,
   snr REAL,
   rssi INTEGER,
+  isFavorite BOOLEAN DEFAULT 0,  -- Synced from Meshtastic NodeDB
   -- ... additional telemetry fields
 );
 

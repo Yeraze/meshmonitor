@@ -1288,7 +1288,17 @@ function App() {
     });
 
     const textFiltered = filterNodes(ageFiltered, nodeFilter);
-    return sortNodes(textFiltered, sortField, sortDirection);
+
+    // Separate favorites from non-favorites
+    const favorites = textFiltered.filter(node => node.isFavorite);
+    const nonFavorites = textFiltered.filter(node => !node.isFavorite);
+
+    // Sort each group independently
+    const sortedFavorites = sortNodes(favorites, sortField, sortDirection);
+    const sortedNonFavorites = sortNodes(nonFavorites, sortField, sortDirection);
+
+    // Concatenate: favorites first, then non-favorites
+    return [...sortedFavorites, ...sortedNonFavorites];
   }, [nodes, maxNodeAgeHours, nodeFilter, sortField, sortDirection]);
 
   // Function to center map on a specific node
@@ -1297,6 +1307,55 @@ function App() {
       setMapCenterTarget([node.position.latitude, node.position.longitude]);
     }
   }, []);
+
+  // Function to toggle node favorite status
+  const toggleFavorite = async (node: DeviceInfo, event: React.MouseEvent) => {
+    event.stopPropagation(); // Prevent node selection when clicking star
+
+    if (!node.user?.id) {
+      console.error('Cannot toggle favorite: node has no user ID');
+      return;
+    }
+
+    try {
+      const newFavoriteStatus = !node.isFavorite;
+
+      // Optimistically update the UI
+      setNodes(prevNodes =>
+        prevNodes.map(n =>
+          n.nodeNum === node.nodeNum
+            ? { ...n, isFavorite: newFavoriteStatus }
+            : n
+        )
+      );
+
+      // Send update to backend
+      const response = await fetch(`${baseUrl}/api/nodes/${node.user.id}/favorite`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ isFavorite: newFavoriteStatus })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update favorite status');
+      }
+
+      console.log(`${newFavoriteStatus ? '⭐' : '☆'} Node ${node.user.id} favorite status updated`);
+    } catch (error) {
+      console.error('Error toggling favorite:', error);
+      // Revert optimistic update on error
+      setNodes(prevNodes =>
+        prevNodes.map(n =>
+          n.nodeNum === node.nodeNum
+            ? { ...n, isFavorite: !node.isFavorite }
+            : n
+        )
+      );
+      setError('Failed to update favorite status');
+    }
+  };
 
   // Function to reset map center target
   const handleCenterComplete = useCallback(() => {
@@ -1407,6 +1466,13 @@ function App() {
                   >
                     <div className="node-header">
                       <div className="node-name">
+                        <button
+                          className="favorite-star"
+                          title={node.isFavorite ? "Remove from favorites" : "Add to favorites"}
+                          onClick={(e) => toggleFavorite(node, e)}
+                        >
+                          {node.isFavorite ? '⭐' : '☆'}
+                        </button>
                         {node.user?.longName || `Node ${node.nodeNum}`}
                         {node.user?.role !== undefined && node.user?.role !== null && getRoleName(node.user.role) && (
                           <span className="node-role" title="Node Role"> {getRoleName(node.user.role)}</span>
@@ -2540,7 +2606,11 @@ function App() {
         };
       });
 
-    const sortedNodesWithMessages = [...nodesWithMessages].sort((a, b) => {
+    // Sort with favorites first
+    const favorites = nodesWithMessages.filter(node => node.isFavorite);
+    const nonFavorites = nodesWithMessages.filter(node => !node.isFavorite);
+
+    const sortByMessages = (a: any, b: any) => {
       if (a.unreadCount !== b.unreadCount) {
         return b.unreadCount - a.unreadCount;
       }
@@ -2548,7 +2618,11 @@ function App() {
         return b.lastMessageTime - a.lastMessageTime;
       }
       return (b.lastHeard || 0) - (a.lastHeard || 0);
-    });
+    };
+
+    const sortedFavorites = [...favorites].sort(sortByMessages);
+    const sortedNonFavorites = [...nonFavorites].sort(sortByMessages);
+    const sortedNodesWithMessages = [...sortedFavorites, ...sortedNonFavorites];
 
     return (
       <div className="nodes-split-view">
@@ -2591,6 +2665,7 @@ function App() {
                       >
                         <div className="node-header">
                           <div className="node-name">
+                            {node.isFavorite && <span className="favorite-indicator">⭐</span>}
                             {node.user?.longName || `Node ${node.nodeNum}`}
                             {node.unreadCount > 0 && (
                               <span className="unread-badge-inline">{node.unreadCount}</span>
