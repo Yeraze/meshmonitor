@@ -284,15 +284,11 @@ apiRouter.post('/nodes/:nodeId/favorite', async (req, res) => {
         deviceSyncStatus = 'success';
         console.log(`✅ Synced favorite status to device for node ${nodeNum}`);
       } catch (error) {
-        // Special handling for expected limitations
-        if (error instanceof Error && (error.message === 'FIRMWARE_NOT_SUPPORTED' || error.message === 'TRANSPORT_NOT_SUPPORTED')) {
+        // Special handling for firmware version incompatibility
+        if (error instanceof Error && error.message === 'FIRMWARE_NOT_SUPPORTED') {
           deviceSyncStatus = 'skipped';
-          if (error.message === 'FIRMWARE_NOT_SUPPORTED') {
-            console.log(`ℹ️ Device sync skipped for node ${nodeNum}: firmware does not support favorites (requires >= 2.7.0)`);
-          } else {
-            console.log(`ℹ️ Device sync skipped for node ${nodeNum}: TCP connection does not support admin messages (requires serial/BLE)`);
-          }
-          // Don't set deviceSyncError - these are expected limitations
+          console.log(`ℹ️ Device sync skipped for node ${nodeNum}: firmware does not support favorites (requires >= 2.7.0)`);
+          // Don't set deviceSyncError - this is expected behavior for pre-2.7 firmware
         } else {
           deviceSyncStatus = 'failed';
           deviceSyncError = error instanceof Error ? error.message : 'Unknown error';

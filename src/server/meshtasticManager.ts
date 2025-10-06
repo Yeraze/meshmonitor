@@ -2800,11 +2800,14 @@ class MeshtasticManager {
    */
   private async processAdminMessage(payload: Uint8Array): Promise<void> {
     try {
+      console.log('⚙️ Processing ADMIN_APP message, payload size:', payload.length);
       const adminMsg = protobufService.decodeAdminMessage(payload);
       if (!adminMsg) {
         console.error('⚙️ Failed to decode admin message');
         return;
       }
+
+      console.log('⚙️ Decoded admin message keys:', Object.keys(adminMsg));
 
       // Extract session passkey if present
       if (adminMsg.sessionPasskey && adminMsg.sessionPasskey.length > 0) {
@@ -2840,12 +2843,6 @@ class MeshtasticManager {
       throw new Error('Not connected to Meshtastic node');
     }
 
-    // Check if we're using TCP transport (admin messages require serial/BLE)
-    if (this.transport.constructor.name === 'TcpTransport') {
-      console.log('⚠️ Admin messages not supported over TCP connection (requires serial/BLE)');
-      throw new Error('TRANSPORT_NOT_SUPPORTED');
-    }
-
     try {
       const getOwnerRequest = protobufService.createGetOwnerRequest();
       const adminPacket = protobufService.createAdminPacket(getOwnerRequest, 0); // 0 = local node
@@ -2853,8 +2850,13 @@ class MeshtasticManager {
       await this.transport.send(adminPacket);
       console.log('🔑 Requested session passkey from device');
 
-      // Wait for the response (increase timeout for slower connections)
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Wait for the response (admin messages can take time)
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
+      // Check if we received the passkey
+      if (!this.isSessionPasskeyValid()) {
+        console.log('⚠️ No session passkey response received from device');
+      }
     } catch (error) {
       console.error('❌ Error requesting session passkey:', error);
       throw error;
