@@ -1404,7 +1404,8 @@ class MeshtasticManager {
         lastHeard: nodeInfo.lastHeard ? Number(nodeInfo.lastHeard) : Date.now() / 1000,
         snr: nodeInfo.snr,
         rssi: 0, // Will be updated from mesh packet if available
-        hopsAway: nodeInfo.hopsAway !== undefined ? nodeInfo.hopsAway : undefined
+        hopsAway: nodeInfo.hopsAway !== undefined ? nodeInfo.hopsAway : undefined,
+        isFavorite: nodeInfo.isFavorite !== undefined ? nodeInfo.isFavorite : undefined
       };
 
       // Add user information if available
@@ -2838,6 +2839,11 @@ class MeshtasticManager {
       // Add hopsAway if it exists
       if (node.hopsAway !== null && node.hopsAway !== undefined) {
         deviceInfo.hopsAway = node.hopsAway;
+      }
+
+      // Add isFavorite if it exists
+      if (node.isFavorite !== null && node.isFavorite !== undefined) {
+        deviceInfo.isFavorite = Boolean(node.isFavorite);
       }
 
       // Add position if coordinates exist
