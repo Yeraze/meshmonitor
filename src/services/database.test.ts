@@ -144,16 +144,32 @@ const createTestDatabase = () => {
             nodeId = COALESCE(?, nodeId),
             longName = COALESCE(?, longName),
             shortName = COALESCE(?, shortName),
+            isFavorite = COALESCE(?, isFavorite),
             updatedAt = ?
           WHERE nodeNum = ?
         `);
-        stmt.run(nodeData.nodeId, nodeData.longName, nodeData.shortName, now, nodeData.nodeNum);
+        stmt.run(
+          nodeData.nodeId,
+          nodeData.longName,
+          nodeData.shortName,
+          nodeData.isFavorite !== undefined ? (nodeData.isFavorite ? 1 : 0) : null,
+          now,
+          nodeData.nodeNum
+        );
       } else {
         const stmt = this.db.prepare(`
-          INSERT INTO nodes (nodeNum, nodeId, longName, shortName, createdAt, updatedAt)
-          VALUES (?, ?, ?, ?, ?, ?)
+          INSERT INTO nodes (nodeNum, nodeId, longName, shortName, isFavorite, createdAt, updatedAt)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
         `);
-        stmt.run(nodeData.nodeNum, nodeData.nodeId, nodeData.longName, nodeData.shortName, now, now);
+        stmt.run(
+          nodeData.nodeNum,
+          nodeData.nodeId,
+          nodeData.longName,
+          nodeData.shortName,
+          nodeData.isFavorite ? 1 : 0,
+          now,
+          now
+        );
       }
     }
 
