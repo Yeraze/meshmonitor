@@ -1625,6 +1625,31 @@ body {
   transform: scale(0.95);
 }
 
+.favorite-star {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  padding: 0;
+  margin-right: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  line-height: 1;
+}
+
+.favorite-star:hover {
+  transform: scale(1.2);
+  filter: brightness(1.2);
+}
+
+.favorite-star:active {
+  transform: scale(0.9);
+}
+
+.favorite-indicator {
+  font-size: 1rem;
+  margin-right: 0.5rem;
+}
+
 .node-short {
   font-size: 0.8rem;
   font-weight: 500;

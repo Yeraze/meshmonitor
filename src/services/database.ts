@@ -27,6 +27,7 @@ export interface DbNode {
   rssi?: number;
   lastTracerouteRequest?: number;
   firmwareVersion?: string;
+  isFavorite?: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -210,6 +211,7 @@ class DatabaseService {
         snr REAL,
         rssi INTEGER,
         firmwareVersion TEXT,
+        isFavorite BOOLEAN DEFAULT 0,
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL
       );
@@ -426,6 +428,17 @@ class DatabaseService {
       }
     }
 
+    try {
+      this.db.exec(`
+        ALTER TABLE nodes ADD COLUMN isFavorite BOOLEAN DEFAULT 0;
+      `);
+      console.log('✅ Added isFavorite column');
+    } catch (error: any) {
+      if (!error.message?.includes('duplicate column')) {
+        console.log('⚠️ isFavorite column already exists or other error:', error.message);
+      }
+    }
+
     console.log('Database migrations completed');
   }
 
@@ -604,6 +617,7 @@ class DatabaseService {
           snr = COALESCE(?, snr),
           rssi = COALESCE(?, rssi),
           firmwareVersion = COALESCE(?, firmwareVersion),
+          isFavorite = COALESCE(?, isFavorite),
           updatedAt = ?
         WHERE nodeNum = ?
       `);
@@ -627,6 +641,7 @@ class DatabaseService {
         nodeData.snr,
         nodeData.rssi,
         nodeData.firmwareVersion || null,
+        nodeData.isFavorite !== undefined ? (nodeData.isFavorite ? 1 : 0) : null,
         now,
         nodeData.nodeNum
       );
@@ -636,8 +651,8 @@ class DatabaseService {
           nodeNum, nodeId, longName, shortName, hwModel, role, hopsAway, macaddr,
           latitude, longitude, altitude, batteryLevel, voltage,
           channelUtilization, airUtilTx, lastHeard, snr, rssi, firmwareVersion,
-          createdAt, updatedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          isFavorite, createdAt, updatedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       stmt.run(
@@ -660,6 +675,7 @@ class DatabaseService {
         nodeData.snr || null,
         nodeData.rssi || null,
         nodeData.firmwareVersion || null,
+        nodeData.isFavorite ? 1 : 0,
         now,
         now
       );
@@ -1439,6 +1455,19 @@ class DatabaseService {
         AND ni.timestamp = latest.maxTimestamp
     `);
     return stmt.all() as DbNeighborInfo[];
+  }
+
+  // Favorite operations
+  setNodeFavorite(nodeNum: number, isFavorite: boolean): void {
+    const now = Date.now();
+    const stmt = this.db.prepare(`
+      UPDATE nodes SET
+        isFavorite = ?,
+        updatedAt = ?
+      WHERE nodeNum = ?
+    `);
+    stmt.run(isFavorite ? 1 : 0, now, nodeNum);
+    console.log(`${isFavorite ? '⭐' : '☆'} Node ${nodeNum} favorite status set to: ${isFavorite}`);
   }
 }
 

@@ -247,6 +247,36 @@ apiRouter.get('/nodes/:nodeId/position-history', (req, res) => {
   }
 });
 
+// Set node favorite status
+apiRouter.post('/nodes/:nodeId/favorite', (req, res) => {
+  try {
+    const { nodeId } = req.params;
+    const { isFavorite } = req.body;
+
+    if (typeof isFavorite !== 'boolean') {
+      res.status(400).json({ error: 'isFavorite must be a boolean' });
+      return;
+    }
+
+    // Convert nodeId (hex string like !a1b2c3d4) to nodeNum (integer)
+    const nodeNumStr = nodeId.replace('!', '');
+    const nodeNum = parseInt(nodeNumStr, 16);
+
+    if (isNaN(nodeNum)) {
+      res.status(400).json({ error: 'Invalid nodeId format' });
+      return;
+    }
+
+    // Update favorite status in database
+    databaseService.setNodeFavorite(nodeNum, isFavorite);
+
+    res.json({ success: true, nodeNum, isFavorite });
+  } catch (error) {
+    console.error('Error setting node favorite:', error);
+    res.status(500).json({ error: 'Failed to set node favorite' });
+  }
+});
+
 apiRouter.get('/messages', (req, res) => {
   try {
     const limit = parseInt(req.query.limit as string) || 100;
