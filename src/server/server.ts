@@ -260,12 +260,17 @@ apiRouter.post('/nodes/:nodeId/favorite', async (req, res) => {
 
     // Convert nodeId (hex string like !a1b2c3d4) to nodeNum (integer)
     const nodeNumStr = nodeId.replace('!', '');
-    const nodeNum = parseInt(nodeNumStr, 16);
 
-    if (isNaN(nodeNum)) {
-      res.status(400).json({ error: 'Invalid nodeId format' });
+    // Validate hex string format (must be exactly 8 hex characters)
+    if (!/^[0-9a-fA-F]{8}$/.test(nodeNumStr)) {
+      res.status(400).json({
+        error: 'Invalid nodeId format',
+        details: 'nodeId must be in format !XXXXXXXX (8 hex characters)'
+      });
       return;
     }
+
+    const nodeNum = parseInt(nodeNumStr, 16);
 
     // Update favorite status in database
     databaseService.setNodeFavorite(nodeNum, isFavorite);
