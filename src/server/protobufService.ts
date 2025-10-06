@@ -518,6 +518,145 @@ class ProtobufService {
       return null;
     }
   }
+
+  /**
+   * Create an AdminMessage to request owner info (which includes session passkey)
+   */
+  createGetOwnerRequest(): Uint8Array {
+    try {
+      const AdminMessage = this.root?.lookupType('meshtastic.AdminMessage');
+      if (!AdminMessage) {
+        throw new Error('AdminMessage type not found in loaded proto files');
+      }
+
+      const adminMsg = AdminMessage.create({
+        getOwnerRequest: true
+      });
+
+      const encoded = AdminMessage.encode(adminMsg).finish();
+      console.log('⚙️ Created GetOwnerRequest admin message');
+      return encoded;
+    } catch (error) {
+      console.error('Failed to create GetOwnerRequest:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create an AdminMessage to set a node as favorite
+   * @param nodeNum The node number to favorite
+   * @param sessionPasskey The session passkey from the device
+   */
+  createSetFavoriteNodeMessage(nodeNum: number, sessionPasskey?: Uint8Array): Uint8Array {
+    try {
+      const AdminMessage = this.root?.lookupType('meshtastic.AdminMessage');
+      if (!AdminMessage) {
+        throw new Error('AdminMessage type not found in loaded proto files');
+      }
+
+      const adminMsg = AdminMessage.create({
+        setFavoriteNode: nodeNum,
+        sessionPasskey: sessionPasskey || new Uint8Array()
+      });
+
+      const encoded = AdminMessage.encode(adminMsg).finish();
+      console.log(`⚙️ Created SetFavoriteNode admin message for node ${nodeNum}`);
+      return encoded;
+    } catch (error) {
+      console.error('Failed to create SetFavoriteNode message:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create an AdminMessage to remove a node from favorites
+   * @param nodeNum The node number to unfavorite
+   * @param sessionPasskey The session passkey from the device
+   */
+  createRemoveFavoriteNodeMessage(nodeNum: number, sessionPasskey?: Uint8Array): Uint8Array {
+    try {
+      const AdminMessage = this.root?.lookupType('meshtastic.AdminMessage');
+      if (!AdminMessage) {
+        throw new Error('AdminMessage type not found in loaded proto files');
+      }
+
+      const adminMsg = AdminMessage.create({
+        removeFavoriteNode: nodeNum,
+        sessionPasskey: sessionPasskey || new Uint8Array()
+      });
+
+      const encoded = AdminMessage.encode(adminMsg).finish();
+      console.log(`⚙️ Created RemoveFavoriteNode admin message for node ${nodeNum}`);
+      return encoded;
+    } catch (error) {
+      console.error('Failed to create RemoveFavoriteNode message:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Decode an AdminMessage response
+   */
+  decodeAdminMessage(data: Uint8Array): any {
+    try {
+      const AdminMessage = this.root?.lookupType('meshtastic.AdminMessage');
+      if (!AdminMessage) {
+        throw new Error('AdminMessage type not found in loaded proto files');
+      }
+
+      const decoded = AdminMessage.decode(data);
+      const adminMsg = AdminMessage.toObject(decoded);
+      console.log('⚙️ Decoded AdminMessage:', JSON.stringify(adminMsg, null, 2));
+      return adminMsg;
+    } catch (error) {
+      console.error('Failed to decode AdminMessage:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Create a complete ToRadio packet with an admin message
+   * @param adminMessagePayload The encoded admin message
+   * @param destination Optional destination node number (0 for local node)
+   */
+  createAdminPacket(adminMessagePayload: Uint8Array, destination: number = 0): Uint8Array {
+    try {
+      const ToRadio = this.root?.lookupType('meshtastic.ToRadio');
+      const MeshPacket = this.root?.lookupType('meshtastic.MeshPacket');
+      const Data = this.root?.lookupType('meshtastic.Data');
+
+      if (!ToRadio || !MeshPacket || !Data) {
+        throw new Error('Required proto types not found');
+      }
+
+      // Create Data message with admin payload
+      const dataMsg = Data.create({
+        portnum: 6, // ADMIN_APP
+        payload: adminMessagePayload,
+        wantResponse: true
+      });
+
+      // Create MeshPacket
+      const meshPacket = MeshPacket.create({
+        to: destination,
+        decoded: dataMsg,
+        wantAck: true,
+        channel: 0
+      });
+
+      // Wrap in ToRadio
+      const toRadio = ToRadio.create({
+        packet: meshPacket
+      });
+
+      const encoded = ToRadio.encode(toRadio).finish();
+      console.log(`📤 Created admin ToRadio packet (destination: ${destination})`);
+      return encoded;
+    } catch (error) {
+      console.error('Failed to create admin ToRadio packet:', error);
+      throw error;
+    }
+  }
 }
 
 export default new ProtobufService();

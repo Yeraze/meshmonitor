@@ -64,6 +64,8 @@ class MeshtasticManager {
   } | null = null;
   private actualDeviceConfig: any = null;  // Store actual device config
   private actualModuleConfig: any = null;  // Store actual module config
+  private sessionPasskey: Uint8Array | null = null;  // Session passkey for admin messages
+  private sessionPasskeyExpiry: number | null = null;  // Expiry time (expires after 300 seconds)
 
   constructor() {
     this.config = {
@@ -603,7 +605,7 @@ class MeshtasticManager {
             console.log('🗺️ Routing message:', processedPayload);
             break;
           case 6: // ADMIN_APP
-            console.log('⚙️ Admin message:', processedPayload);
+            await this.processAdminMessage(processedPayload as Uint8Array);
             break;
           case 71: // NEIGHBORINFO_APP
             await this.processNeighborInfoProtobuf(meshPacket, processedPayload as any);
@@ -2789,6 +2791,128 @@ class MeshtasticManager {
       console.log(`Traceroute request sent to node: !${destination.toString(16).padStart(8, '0')}`);
     } catch (error) {
       console.error('Error sending traceroute:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Process incoming admin messages and extract session passkey
+   */
+  private async processAdminMessage(payload: Uint8Array): Promise<void> {
+    try {
+      const adminMsg = protobufService.decodeAdminMessage(payload);
+      if (!adminMsg) {
+        console.error('⚙️ Failed to decode admin message');
+        return;
+      }
+
+      // Extract session passkey if present
+      if (adminMsg.sessionPasskey && adminMsg.sessionPasskey.length > 0) {
+        this.sessionPasskey = new Uint8Array(adminMsg.sessionPasskey);
+        this.sessionPasskeyExpiry = Date.now() + (290 * 1000); // 290 seconds (10 second buffer before 300s expiry)
+        console.log('🔑 Session passkey received and stored (expires in 290 seconds)');
+      }
+
+      // Log the response type for debugging
+      if (adminMsg.getOwnerResponse) {
+        console.log('⚙️ Received GetOwnerResponse');
+      }
+    } catch (error) {
+      console.error('❌ Error processing admin message:', error);
+    }
+  }
+
+  /**
+   * Check if current session passkey is valid
+   */
+  private isSessionPasskeyValid(): boolean {
+    if (!this.sessionPasskey || !this.sessionPasskeyExpiry) {
+      return false;
+    }
+    return Date.now() < this.sessionPasskeyExpiry;
+  }
+
+  /**
+   * Request session passkey from the device
+   */
+  async requestSessionPasskey(): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    try {
+      const getOwnerRequest = protobufService.createGetOwnerRequest();
+      const adminPacket = protobufService.createAdminPacket(getOwnerRequest, 0); // 0 = local node
+
+      await this.transport.send(adminPacket);
+      console.log('🔑 Requested session passkey from device');
+
+      // Wait a bit for the response
+      await new Promise(resolve => setTimeout(resolve, 500));
+    } catch (error) {
+      console.error('❌ Error requesting session passkey:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Send admin message to set a node as favorite on the device
+   */
+  async sendFavoriteNode(nodeNum: number): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    try {
+      // Ensure we have a valid session passkey
+      if (!this.isSessionPasskeyValid()) {
+        console.log('🔑 Session passkey expired or missing, requesting new one...');
+        await this.requestSessionPasskey();
+
+        // Check again after requesting
+        if (!this.isSessionPasskeyValid()) {
+          throw new Error('Failed to obtain session passkey');
+        }
+      }
+
+      const setFavoriteMsg = protobufService.createSetFavoriteNodeMessage(nodeNum, this.sessionPasskey!);
+      const adminPacket = protobufService.createAdminPacket(setFavoriteMsg, 0); // 0 = local node
+
+      await this.transport.send(adminPacket);
+      console.log(`⭐ Sent set_favorite_node for ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')})`);
+    } catch (error) {
+      console.error('❌ Error sending favorite node admin message:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Send admin message to remove a node from favorites on the device
+   */
+  async sendRemoveFavoriteNode(nodeNum: number): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    try {
+      // Ensure we have a valid session passkey
+      if (!this.isSessionPasskeyValid()) {
+        console.log('🔑 Session passkey expired or missing, requesting new one...');
+        await this.requestSessionPasskey();
+
+        // Check again after requesting
+        if (!this.isSessionPasskeyValid()) {
+          throw new Error('Failed to obtain session passkey');
+        }
+      }
+
+      const removeFavoriteMsg = protobufService.createRemoveFavoriteNodeMessage(nodeNum, this.sessionPasskey!);
+      const adminPacket = protobufService.createAdminPacket(removeFavoriteMsg, 0); // 0 = local node
+
+      await this.transport.send(adminPacket);
+      console.log(`☆ Sent remove_favorite_node for ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')})`);
+    } catch (error) {
+      console.error('❌ Error sending remove favorite node admin message:', error);
       throw error;
     }
   }

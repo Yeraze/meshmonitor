@@ -1329,20 +1329,34 @@ function App() {
         )
       );
 
-      // Send update to backend
+      // Send update to backend (with device sync enabled by default)
       const response = await fetch(`${baseUrl}/api/nodes/${node.user.id}/favorite`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ isFavorite: newFavoriteStatus })
+        body: JSON.stringify({
+          isFavorite: newFavoriteStatus,
+          syncToDevice: true  // Enable two-way sync to Meshtastic device
+        })
       });
 
       if (!response.ok) {
         throw new Error('Failed to update favorite status');
       }
 
-      console.log(`${newFavoriteStatus ? '⭐' : '☆'} Node ${node.user.id} favorite status updated`);
+      const result = await response.json();
+
+      // Log the result including device sync status
+      let statusMessage = `${newFavoriteStatus ? '⭐' : '☆'} Node ${node.user.id} favorite status updated`;
+      if (result.deviceSync) {
+        if (result.deviceSync.status === 'success') {
+          statusMessage += ' (synced to device ✓)';
+        } else if (result.deviceSync.status === 'failed') {
+          statusMessage += ` (device sync failed: ${result.deviceSync.error || 'unknown error'})`;
+        }
+      }
+      console.log(statusMessage);
     } catch (error) {
       console.error('Error toggling favorite:', error);
       // Revert optimistic update on error
