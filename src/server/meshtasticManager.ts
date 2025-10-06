@@ -66,6 +66,7 @@ class MeshtasticManager {
   private actualModuleConfig: any = null;  // Store actual module config
   private sessionPasskey: Uint8Array | null = null;  // Session passkey for admin messages
   private sessionPasskeyExpiry: number | null = null;  // Expiry time (expires after 300 seconds)
+  private favoritesSupportCache: boolean | null = null;  // Cache firmware support check result
 
   constructor() {
     this.config = {
@@ -151,6 +152,8 @@ class MeshtasticManager {
   private handleDisconnected(): void {
     console.log('🔌 TCP connection lost');
     this.isConnected = false;
+    // Clear favorites support cache on disconnect
+    this.favoritesSupportCache = null;
     // Transport will handle automatic reconnection
   }
 
@@ -477,6 +480,8 @@ class MeshtasticManager {
     if (this.localNodeInfo && metadata.firmwareVersion) {
       // Only update firmware version, don't touch other fields
       this.localNodeInfo.firmwareVersion = metadata.firmwareVersion;
+      // Clear favorites support cache since firmware version changed
+      this.favoritesSupportCache = null;
       console.log(`📱 Updated firmware version: ${metadata.firmwareVersion}`);
 
       // Update the database with the firmware version
@@ -2884,16 +2889,24 @@ class MeshtasticManager {
 
   /**
    * Check if the local device firmware supports favorites feature (>= 2.7.0)
+   * Result is cached to avoid redundant parsing and version comparisons
    */
   supportsFavorites(): boolean {
+    // Return cached result if available
+    if (this.favoritesSupportCache !== null) {
+      return this.favoritesSupportCache;
+    }
+
     if (!this.localNodeInfo?.firmwareVersion) {
       console.log('⚠️ Firmware version unknown, cannot determine favorites support');
+      this.favoritesSupportCache = false;
       return false;
     }
 
     const version = this.parseFirmwareVersion(this.localNodeInfo.firmwareVersion);
     if (!version) {
       console.log(`⚠️ Could not parse firmware version: ${this.localNodeInfo.firmwareVersion}`);
+      this.favoritesSupportCache = false;
       return false;
     }
 
@@ -2902,8 +2915,12 @@ class MeshtasticManager {
 
     if (!supportsFavorites) {
       console.log(`ℹ️ Firmware ${this.localNodeInfo.firmwareVersion} does not support favorites (requires >= 2.7.0)`);
+    } else {
+      console.log(`✅ Firmware ${this.localNodeInfo.firmwareVersion} supports favorites (cached)`);
     }
 
+    // Cache the result
+    this.favoritesSupportCache = supportsFavorites;
     return supportsFavorites;
   }
 
