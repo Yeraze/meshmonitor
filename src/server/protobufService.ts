@@ -109,7 +109,7 @@ class ProtobufService {
     try {
       console.log('🔧 Initializing protobuf service...');
 
-      const protoDir = '/app/protobufs/protobufs';
+      const protoDir = '/app/protobufs';
       console.log(`Loading proto files from: ${protoDir}`);
 
       // Load mesh.proto with the proper root path for imports
