@@ -247,6 +247,13 @@ apiRouter.get('/nodes/:nodeId/position-history', (req, res) => {
   }
 });
 
+// Standardized error response types for better client-side handling
+interface ApiErrorResponse {
+  error: string;
+  code: string;
+  details?: string;
+}
+
 // Set node favorite status (with optional device sync)
 apiRouter.post('/nodes/:nodeId/favorite', async (req, res) => {
   try {
@@ -254,7 +261,12 @@ apiRouter.post('/nodes/:nodeId/favorite', async (req, res) => {
     const { isFavorite, syncToDevice = true } = req.body;
 
     if (typeof isFavorite !== 'boolean') {
-      res.status(400).json({ error: 'isFavorite must be a boolean' });
+      const errorResponse: ApiErrorResponse = {
+        error: 'isFavorite must be a boolean',
+        code: 'INVALID_PARAMETER_TYPE',
+        details: 'Expected boolean value for isFavorite parameter'
+      };
+      res.status(400).json(errorResponse);
       return;
     }
 
@@ -263,10 +275,12 @@ apiRouter.post('/nodes/:nodeId/favorite', async (req, res) => {
 
     // Validate hex string format (must be exactly 8 hex characters)
     if (!/^[0-9a-fA-F]{8}$/.test(nodeNumStr)) {
-      res.status(400).json({
+      const errorResponse: ApiErrorResponse = {
         error: 'Invalid nodeId format',
+        code: 'INVALID_NODE_ID',
         details: 'nodeId must be in format !XXXXXXXX (8 hex characters)'
-      });
+      };
+      res.status(400).json(errorResponse);
       return;
     }
 
@@ -314,7 +328,12 @@ apiRouter.post('/nodes/:nodeId/favorite', async (req, res) => {
     });
   } catch (error) {
     console.error('Error setting node favorite:', error);
-    res.status(500).json({ error: 'Failed to set node favorite' });
+    const errorResponse: ApiErrorResponse = {
+      error: 'Failed to set node favorite',
+      code: 'INTERNAL_ERROR',
+      details: error instanceof Error ? error.message : 'Unknown error occurred'
+    };
+    res.status(500).json(errorResponse);
   }
 });
 
