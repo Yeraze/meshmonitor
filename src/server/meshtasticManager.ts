@@ -2856,11 +2856,57 @@ class MeshtasticManager {
   }
 
   /**
+   * Parse firmware version string into major.minor.patch
+   */
+  private parseFirmwareVersion(versionString: string): { major: number; minor: number; patch: number } | null {
+    // Firmware version format: "2.7.11.ee68575" or "2.7.11"
+    const match = versionString.match(/^(\d+)\.(\d+)\.(\d+)/);
+    if (!match) {
+      return null;
+    }
+    return {
+      major: parseInt(match[1], 10),
+      minor: parseInt(match[2], 10),
+      patch: parseInt(match[3], 10)
+    };
+  }
+
+  /**
+   * Check if the local device firmware supports favorites feature (>= 2.7.0)
+   */
+  supportsFavorites(): boolean {
+    if (!this.localNodeInfo?.firmwareVersion) {
+      console.log('⚠️ Firmware version unknown, cannot determine favorites support');
+      return false;
+    }
+
+    const version = this.parseFirmwareVersion(this.localNodeInfo.firmwareVersion);
+    if (!version) {
+      console.log(`⚠️ Could not parse firmware version: ${this.localNodeInfo.firmwareVersion}`);
+      return false;
+    }
+
+    // Favorites feature added in 2.7.0
+    const supportsFavorites = version.major > 2 || (version.major === 2 && version.minor >= 7);
+
+    if (!supportsFavorites) {
+      console.log(`ℹ️ Firmware ${this.localNodeInfo.firmwareVersion} does not support favorites (requires >= 2.7.0)`);
+    }
+
+    return supportsFavorites;
+  }
+
+  /**
    * Send admin message to set a node as favorite on the device
    */
   async sendFavoriteNode(nodeNum: number): Promise<void> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
+    }
+
+    // Check firmware version support
+    if (!this.supportsFavorites()) {
+      throw new Error('FIRMWARE_NOT_SUPPORTED');
     }
 
     try {
@@ -2892,6 +2938,11 @@ class MeshtasticManager {
   async sendRemoveFavoriteNode(nodeNum: number): Promise<void> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
+    }
+
+    // Check firmware version support
+    if (!this.supportsFavorites()) {
+      throw new Error('FIRMWARE_NOT_SUPPORTED');
     }
 
     try {

@@ -284,9 +284,16 @@ apiRouter.post('/nodes/:nodeId/favorite', async (req, res) => {
         deviceSyncStatus = 'success';
         console.log(`✅ Synced favorite status to device for node ${nodeNum}`);
       } catch (error) {
-        deviceSyncStatus = 'failed';
-        deviceSyncError = error instanceof Error ? error.message : 'Unknown error';
-        console.error(`⚠️ Failed to sync favorite to device for node ${nodeNum}:`, error);
+        // Special handling for firmware version incompatibility
+        if (error instanceof Error && error.message === 'FIRMWARE_NOT_SUPPORTED') {
+          deviceSyncStatus = 'skipped';
+          console.log(`ℹ️ Device sync skipped for node ${nodeNum}: firmware does not support favorites (requires >= 2.7.0)`);
+          // Don't set deviceSyncError - this is expected behavior for pre-2.7 firmware
+        } else {
+          deviceSyncStatus = 'failed';
+          deviceSyncError = error instanceof Error ? error.message : 'Unknown error';
+          console.error(`⚠️ Failed to sync favorite to device for node ${nodeNum}:`, error);
+        }
         // Don't fail the whole request if device sync fails
       }
     }

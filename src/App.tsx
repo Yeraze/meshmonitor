@@ -1353,8 +1353,10 @@ function App() {
         if (result.deviceSync.status === 'success') {
           statusMessage += ' (synced to device ✓)';
         } else if (result.deviceSync.status === 'failed') {
+          // Only show error for actual failures (not firmware compatibility)
           statusMessage += ` (device sync failed: ${result.deviceSync.error || 'unknown error'})`;
         }
+        // 'skipped' status (e.g., pre-2.7 firmware) is not shown to user - logged on server only
       }
       console.log(statusMessage);
     } catch (error) {
