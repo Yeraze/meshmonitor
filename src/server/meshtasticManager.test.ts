@@ -337,7 +337,7 @@ describe('MeshtasticManager - Configuration Polling', () => {
           expect(passkey.length).toBe(0); // Empty passkey for local TCP admin
           return new Uint8Array([0x01, 0x02, 0x03]);
         }),
-        createAdminPacket: vi.fn((adminMsg: Uint8Array, destination: number) => {
+        createAdminPacket: vi.fn((_adminMsg: Uint8Array, destination: number) => {
           expect(destination).toBe(0); // 0 = local node
           return new Uint8Array([0x04, 0x05, 0x06]);
         }),
@@ -358,7 +358,7 @@ describe('MeshtasticManager - Configuration Polling', () => {
           expect(passkey.length).toBe(0); // Empty passkey for local TCP admin
           return new Uint8Array([0x01, 0x02, 0x03]);
         }),
-        createAdminPacket: vi.fn((adminMsg: Uint8Array, destination: number) => {
+        createAdminPacket: vi.fn((_adminMsg: Uint8Array, destination: number) => {
           expect(destination).toBe(0); // 0 = local node
           return new Uint8Array([0x04, 0x05, 0x06]);
         }),
