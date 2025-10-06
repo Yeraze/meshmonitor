@@ -1406,8 +1406,8 @@ class MeshtasticManager {
         lastHeard: nodeInfo.lastHeard ? Number(nodeInfo.lastHeard) : Date.now() / 1000,
         snr: nodeInfo.snr,
         rssi: 0, // Will be updated from mesh packet if available
-        hopsAway: nodeInfo.hopsAway !== undefined ? nodeInfo.hopsAway : undefined,
-        isFavorite: nodeInfo.isFavorite !== undefined ? nodeInfo.isFavorite : undefined
+        hopsAway: nodeInfo.hopsAway !== undefined ? nodeInfo.hopsAway : undefined
+        // Note: isFavorite is NOT included here - it's a local-only setting that should not be overwritten by device NodeInfo
       };
 
       // Add user information if available
@@ -2817,6 +2817,9 @@ class MeshtasticManager {
       }
 
       // Log the response type for debugging
+      if (adminMsg.getConfigResponse) {
+        console.log('⚙️ Received GetConfigResponse (session key)');
+      }
       if (adminMsg.getOwnerResponse) {
         console.log('⚙️ Received GetOwnerResponse');
       }
@@ -2844,11 +2847,11 @@ class MeshtasticManager {
     }
 
     try {
-      const getOwnerRequest = protobufService.createGetOwnerRequest();
-      const adminPacket = protobufService.createAdminPacket(getOwnerRequest, 0); // 0 = local node
+      const getSessionKeyRequest = protobufService.createGetSessionKeyRequest();
+      const adminPacket = protobufService.createAdminPacket(getSessionKeyRequest, 0); // 0 = local node
 
       await this.transport.send(adminPacket);
-      console.log('🔑 Requested session passkey from device');
+      console.log('🔑 Requested session passkey from device (via SESSIONKEY_CONFIG)');
 
       // Wait for the response (admin messages can take time)
       await new Promise(resolve => setTimeout(resolve, 3000));
@@ -2918,18 +2921,10 @@ class MeshtasticManager {
     }
 
     try {
-      // Ensure we have a valid session passkey
-      if (!this.isSessionPasskeyValid()) {
-        console.log('🔑 Session passkey expired or missing, requesting new one...');
-        await this.requestSessionPasskey();
-
-        // Check again after requesting
-        if (!this.isSessionPasskeyValid()) {
-          throw new Error('Failed to obtain session passkey');
-        }
-      }
-
-      const setFavoriteMsg = protobufService.createSetFavoriteNodeMessage(nodeNum, this.sessionPasskey!);
+      // For local TCP connections, try sending without session passkey first
+      // (there's a known bug where session keys don't work properly over TCP)
+      console.log('⭐ Attempting to send favorite without session key (local TCP admin)');
+      const setFavoriteMsg = protobufService.createSetFavoriteNodeMessage(nodeNum, new Uint8Array()); // empty passkey
       const adminPacket = protobufService.createAdminPacket(setFavoriteMsg, 0); // 0 = local node
 
       await this.transport.send(adminPacket);
@@ -2954,18 +2949,10 @@ class MeshtasticManager {
     }
 
     try {
-      // Ensure we have a valid session passkey
-      if (!this.isSessionPasskeyValid()) {
-        console.log('🔑 Session passkey expired or missing, requesting new one...');
-        await this.requestSessionPasskey();
-
-        // Check again after requesting
-        if (!this.isSessionPasskeyValid()) {
-          throw new Error('Failed to obtain session passkey');
-        }
-      }
-
-      const removeFavoriteMsg = protobufService.createRemoveFavoriteNodeMessage(nodeNum, this.sessionPasskey!);
+      // For local TCP connections, try sending without session passkey first
+      // (there's a known bug where session keys don't work properly over TCP)
+      console.log('☆ Attempting to remove favorite without session key (local TCP admin)');
+      const removeFavoriteMsg = protobufService.createRemoveFavoriteNodeMessage(nodeNum, new Uint8Array()); // empty passkey
       const adminPacket = protobufService.createAdminPacket(removeFavoriteMsg, 0); // 0 = local node
 
       await this.transport.send(adminPacket);

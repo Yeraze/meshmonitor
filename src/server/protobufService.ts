@@ -525,9 +525,9 @@ class ProtobufService {
   }
 
   /**
-   * Create an AdminMessage to request owner info (which includes session passkey)
+   * Create an AdminMessage to request session passkey
    */
-  createGetOwnerRequest(): Uint8Array {
+  createGetSessionKeyRequest(): Uint8Array {
     try {
       const root = getProtobufRoot();
       const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
@@ -535,15 +535,16 @@ class ProtobufService {
         throw new Error('AdminMessage type not found in loaded proto files');
       }
 
+      // SESSIONKEY_CONFIG = 8 (from admin.proto ConfigType enum)
       const adminMsg = AdminMessage.create({
-        getOwnerRequest: true
+        getConfigRequest: 8  // SESSIONKEY_CONFIG
       });
 
       const encoded = AdminMessage.encode(adminMsg).finish();
-      console.log('⚙️ Created GetOwnerRequest admin message');
+      console.log('⚙️ Created GetSessionKey request (getConfigRequest=SESSIONKEY_CONFIG)');
       return encoded;
     } catch (error) {
-      console.error('Failed to create GetOwnerRequest:', error);
+      console.error('Failed to create GetSessionKey request:', error);
       throw error;
     }
   }

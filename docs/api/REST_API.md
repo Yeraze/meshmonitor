@@ -158,7 +158,7 @@ Sets or removes favorite status for a node, with optional synchronization to the
   "isFavorite": false,
   "deviceSync": {
     "status": "failed",
-    "error": "Failed to obtain session passkey"
+    "error": "Not connected to Meshtastic node"
   }
 }
 ```
@@ -186,8 +186,10 @@ curl -X POST \
 **Notes:**
 - Database update succeeds even if device sync fails (graceful degradation)
 - Device sync uses Meshtastic admin messages (ADMIN_APP portnum 6)
-- Session passkey is automatically managed and refreshed (300 second expiry)
+- Local TCP connections do not require session passkeys (admin.proto fields 39/40)
+- Requires firmware version >= 2.7.0 for device favorites support
 - Frontend displays sync status in browser console
+- Favorite status is local-only; devices do not broadcast favorite status in NodeInfo
 
 ---
 

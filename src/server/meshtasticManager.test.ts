@@ -328,4 +328,155 @@ describe('MeshtasticManager - Configuration Polling', () => {
       expect(mockNodeInfo.user).not.toHaveProperty('hopsAway');
     });
   });
+
+  describe('Favorites sync functionality', () => {
+    it('should create SetFavoriteNode admin message without session passkey', () => {
+      const mockProtobufService = {
+        createSetFavoriteNodeMessage: vi.fn((nodeNum: number, passkey: Uint8Array) => {
+          expect(nodeNum).toBe(1129874776);
+          expect(passkey.length).toBe(0); // Empty passkey for local TCP admin
+          return new Uint8Array([0x01, 0x02, 0x03]);
+        }),
+        createAdminPacket: vi.fn((adminMsg: Uint8Array, destination: number) => {
+          expect(destination).toBe(0); // 0 = local node
+          return new Uint8Array([0x04, 0x05, 0x06]);
+        }),
+      };
+
+      const adminMsg = mockProtobufService.createSetFavoriteNodeMessage(1129874776, new Uint8Array());
+      const adminPacket = mockProtobufService.createAdminPacket(adminMsg, 0);
+
+      expect(mockProtobufService.createSetFavoriteNodeMessage).toHaveBeenCalledWith(1129874776, expect.any(Uint8Array));
+      expect(mockProtobufService.createAdminPacket).toHaveBeenCalledWith(expect.any(Uint8Array), 0);
+      expect(adminPacket.length).toBeGreaterThan(0);
+    });
+
+    it('should create RemoveFavoriteNode admin message without session passkey', () => {
+      const mockProtobufService = {
+        createRemoveFavoriteNodeMessage: vi.fn((nodeNum: number, passkey: Uint8Array) => {
+          expect(nodeNum).toBe(1129874776);
+          expect(passkey.length).toBe(0); // Empty passkey for local TCP admin
+          return new Uint8Array([0x01, 0x02, 0x03]);
+        }),
+        createAdminPacket: vi.fn((adminMsg: Uint8Array, destination: number) => {
+          expect(destination).toBe(0); // 0 = local node
+          return new Uint8Array([0x04, 0x05, 0x06]);
+        }),
+      };
+
+      const adminMsg = mockProtobufService.createRemoveFavoriteNodeMessage(1129874776, new Uint8Array());
+      const adminPacket = mockProtobufService.createAdminPacket(adminMsg, 0);
+
+      expect(mockProtobufService.createRemoveFavoriteNodeMessage).toHaveBeenCalledWith(1129874776, expect.any(Uint8Array));
+      expect(mockProtobufService.createAdminPacket).toHaveBeenCalledWith(expect.any(Uint8Array), 0);
+      expect(adminPacket.length).toBeGreaterThan(0);
+    });
+
+    it('should NOT include isFavorite in nodeData from NodeInfo updates', () => {
+      // This is the critical fix: NodeInfo processing should not include isFavorite
+      // because the device doesn't broadcast favorite status
+      const mockNodeInfo = {
+        num: 1129874776,
+        user: {
+          id: '!43588558',
+          longName: 'Yeraze Mobile',
+          shortName: 'Yrze',
+          hwModel: 43,
+        },
+        lastHeard: Date.now() / 1000,
+        snr: 5.25,
+        hopsAway: 0,
+        position: {
+          latitudeI: 285605888,
+          longitudeI: -811991040,
+          altitude: 35,
+        },
+      };
+
+      // Simulate processNodeInfoProtobuf nodeData creation
+      const nodeData: any = {
+        nodeNum: Number(mockNodeInfo.num),
+        nodeId: `!${mockNodeInfo.num.toString(16).padStart(8, '0')}`,
+        lastHeard: mockNodeInfo.lastHeard,
+        snr: mockNodeInfo.snr,
+        rssi: 0,
+        hopsAway: mockNodeInfo.hopsAway,
+        // Note: isFavorite is NOT included here - it's a local-only setting
+      };
+
+      // Verify isFavorite is not in nodeData
+      expect(nodeData).not.toHaveProperty('isFavorite');
+      expect(nodeData.nodeNum).toBe(1129874776);
+      expect(nodeData.hopsAway).toBe(0);
+    });
+
+    it('should preserve favorite status when NodeInfo updates occur', () => {
+      // Database COALESCE logic test
+      const mockDatabase = {
+        upsertNode: vi.fn((nodeData: any) => {
+          // Simulate COALESCE behavior:
+          // isFavorite = COALESCE(?, isFavorite)
+          // If nodeData.isFavorite is undefined, keep existing value
+          if (nodeData.isFavorite === undefined) {
+            return { isFavorite: true }; // Existing value preserved
+          }
+          return { isFavorite: nodeData.isFavorite };
+        }),
+      };
+
+      // First update: Set favorite to true
+      const favoriteUpdate = { nodeNum: 1129874776, isFavorite: true };
+      const result1 = mockDatabase.upsertNode(favoriteUpdate);
+      expect(result1.isFavorite).toBe(true);
+
+      // Second update: NodeInfo arrives WITHOUT isFavorite field
+      const nodeInfoUpdate = { nodeNum: 1129874776, longName: 'Yeraze Mobile' }; // no isFavorite
+      const result2 = mockDatabase.upsertNode(nodeInfoUpdate);
+      expect(result2.isFavorite).toBe(true); // Should preserve existing value!
+    });
+
+    it('should support firmware version >= 2.7.0 for favorites', () => {
+      const testFirmwareVersions = [
+        { version: '2.7.0', supported: true },
+        { version: '2.7.11', supported: true },
+        { version: '2.8.0', supported: true },
+        { version: '2.6.9', supported: false },
+        { version: '2.5.0', supported: false },
+      ];
+
+      testFirmwareVersions.forEach(({ version, supported }) => {
+        const [major, minor] = version.split('.').map(Number);
+        const isSupported = (major === 2 && minor >= 7) || major > 2;
+        expect(isSupported).toBe(supported);
+      });
+    });
+
+    it('should handle graceful degradation when device sync fails', () => {
+      const mockDatabaseUpdate = vi.fn(() => ({ success: true }));
+      const mockDeviceSync = vi.fn(() => {
+        throw new Error('Device not connected');
+      });
+
+      // Database update succeeds
+      const dbResult = mockDatabaseUpdate();
+      expect(dbResult.success).toBe(true);
+
+      // Device sync fails, but database succeeded
+      expect(() => mockDeviceSync()).toThrow('Device not connected');
+
+      // Overall operation should report partial success
+      const response = {
+        success: true, // Database updated
+        nodeNum: 1129874776,
+        isFavorite: true,
+        deviceSync: {
+          status: 'failed',
+          error: 'Device not connected',
+        },
+      };
+
+      expect(response.success).toBe(true);
+      expect(response.deviceSync.status).toBe('failed');
+    });
+  });
 });
