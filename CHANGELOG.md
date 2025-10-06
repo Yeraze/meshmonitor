@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [1.15.0] - 2025-10-06
+
+### Added
+- **Two-Way Favorites Sync**: Synchronize favorite nodes to Meshtastic device
+  - Send `set_favorite_node` and `remove_favorite_node` admin messages to device
+  - Session passkey management with automatic refresh (300 second expiry)
+  - Graceful degradation: database updates succeed even if device sync fails
+  - Device sync status reporting in API responses
+  - Frontend displays sync success/failure status in console
+
+### Changed
+- **Favorites API Enhancement**: `/api/nodes/:nodeId/favorite` endpoint now supports device sync
+  - Added `syncToDevice` parameter (default: true) to toggle device synchronization
+  - Response includes `deviceSync` object with status ('success', 'failed', 'skipped') and optional error message
+  - Database update and device sync are independent operations
+
+### Technical Improvements
+- Admin message creation methods in protobufService:
+  - `createGetOwnerRequest()` - Request session passkey from device
+  - `createSetFavoriteNodeMessage()` - Send favorite node to device
+  - `createRemoveFavoriteNodeMessage()` - Remove favorite from device
+  - `decodeAdminMessage()` - Parse admin message responses
+  - `createAdminPacket()` - Wrap admin messages in ToRadio packets
+- Session passkey lifecycle management in meshtasticManager
+- Admin message processing for extracting session passkey from responses
+- Automatic passkey refresh with 290-second buffer before expiry
+
 ## [1.4.0] - 2025-09-29
 
 ### Added

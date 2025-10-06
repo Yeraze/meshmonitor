@@ -29,6 +29,12 @@ export async function loadProtobufDefinitions(): Promise<protobuf.Root> {
     };
 
     await root.load(protoPath);
+
+    // Load admin.proto explicitly (not imported by mesh.proto)
+    const adminProtoPath = path.join(protoRoot, 'meshtastic/admin.proto');
+    await root.load(adminProtoPath);
+    console.log('✅ Loaded admin.proto for AdminMessage support');
+
     console.log('✅ Successfully loaded Meshtastic protobuf definitions');
     return root;
   } catch (error) {
