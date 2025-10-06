@@ -2840,6 +2840,12 @@ class MeshtasticManager {
       throw new Error('Not connected to Meshtastic node');
     }
 
+    // Check if we're using TCP transport (admin messages require serial/BLE)
+    if (this.transport.constructor.name === 'TcpTransport') {
+      console.log('⚠️ Admin messages not supported over TCP connection (requires serial/BLE)');
+      throw new Error('TRANSPORT_NOT_SUPPORTED');
+    }
+
     try {
       const getOwnerRequest = protobufService.createGetOwnerRequest();
       const adminPacket = protobufService.createAdminPacket(getOwnerRequest, 0); // 0 = local node
@@ -2847,8 +2853,8 @@ class MeshtasticManager {
       await this.transport.send(adminPacket);
       console.log('🔑 Requested session passkey from device');
 
-      // Wait a bit for the response
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Wait for the response (increase timeout for slower connections)
+      await new Promise(resolve => setTimeout(resolve, 2000));
     } catch (error) {
       console.error('❌ Error requesting session passkey:', error);
       throw error;
