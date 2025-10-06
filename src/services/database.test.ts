@@ -48,6 +48,7 @@ const createTestDatabase = () => {
           snr REAL,
           rssi INTEGER,
           lastTracerouteRequest INTEGER,
+          isFavorite BOOLEAN DEFAULT 0,
           createdAt INTEGER NOT NULL,
           updatedAt INTEGER NOT NULL
         );
@@ -326,6 +327,18 @@ const createTestDatabase = () => {
 
     purgeAllTelemetry(): void {
       this.db.exec('DELETE FROM telemetry');
+    }
+
+    // Favorite operations
+    setNodeFavorite(nodeNum: number, isFavorite: boolean): void {
+      const now = Date.now();
+      const stmt = this.db.prepare(`
+        UPDATE nodes SET
+          isFavorite = ?,
+          updatedAt = ?
+        WHERE nodeNum = ?
+      `);
+      stmt.run(isFavorite ? 1 : 0, now, nodeNum);
     }
 
     reset(): void {
@@ -620,6 +633,83 @@ describe('DatabaseService', () => {
 
       db.purgeAllMessages();
       expect(db.getMessages()).toHaveLength(0);
+    });
+  });
+
+  describe('Favorite Operations', () => {
+    it('should set node as favorite', () => {
+      const nodeNum = 123456789;
+      db.upsertNode({ nodeNum, nodeId: '!075bcd15', longName: 'Test Node' });
+
+      db.setNodeFavorite(nodeNum, true);
+
+      const node = db.getNode(nodeNum);
+      expect(node).toBeDefined();
+      expect(node?.isFavorite).toBe(1); // SQLite stores boolean as 0/1
+    });
+
+    it('should remove favorite status from node', () => {
+      const nodeNum = 123456789;
+      db.upsertNode({ nodeNum, nodeId: '!075bcd15', longName: 'Test Node', isFavorite: true });
+
+      db.setNodeFavorite(nodeNum, false);
+
+      const node = db.getNode(nodeNum);
+      expect(node).toBeDefined();
+      expect(node?.isFavorite).toBe(0);
+    });
+
+    it('should handle upsert with isFavorite field', () => {
+      const nodeNum = 123456789;
+
+      // Create node with isFavorite=true
+      db.upsertNode({
+        nodeNum,
+        nodeId: '!075bcd15',
+        longName: 'Test Node',
+        isFavorite: true
+      });
+
+      let node = db.getNode(nodeNum);
+      expect(node?.isFavorite).toBe(1);
+
+      // Update node without changing favorite status
+      db.upsertNode({
+        nodeNum,
+        nodeId: '!075bcd15',
+        longName: 'Updated Node'
+      });
+
+      node = db.getNode(nodeNum);
+      expect(node?.isFavorite).toBe(1); // Should remain favorited
+    });
+
+    it('should handle favorite status from NodeInfo protobuf', () => {
+      const nodeNum = 987654321;
+
+      // Simulate NodeInfo packet with isFavorite=true
+      db.upsertNode({
+        nodeNum,
+        nodeId: '!3ade68b1',
+        longName: 'Remote Node',
+        isFavorite: true
+      });
+
+      const node = db.getNode(nodeNum);
+      expect(node?.isFavorite).toBe(1);
+    });
+
+    it('should default to false if isFavorite not specified', () => {
+      const nodeNum = 111222333;
+
+      db.upsertNode({
+        nodeNum,
+        nodeId: '!06a1da8d',
+        longName: 'New Node'
+      });
+
+      const node = db.getNode(nodeNum);
+      expect(node?.isFavorite).toBe(0);
     });
   });
 });

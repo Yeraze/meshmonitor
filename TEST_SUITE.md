@@ -12,6 +12,7 @@ A comprehensive test suite has been implemented for MeshMonitor using Vitest as 
 - **Telemetry Operations**: Telemetry data storage
 - **Traceroute Operations**: Network path tracking
 - **Cleanup Operations**: Data purging functionality
+- **Favorite Operations**: Node favorite status management, sync from NodeInfo protobuf
 
 ### 2. Server API Tests (`src/server/server.test.ts`)
 - **Node Endpoints**: `/api/nodes`, `/api/nodes/active`
@@ -65,6 +66,8 @@ npm run test:coverage
 ✅ Telemetry data handling
 ✅ Traceroute tracking
 ✅ Data cleanup operations
+✅ Favorite node management
+✅ NodeInfo protobuf favorite sync
 
 ### API Layer
 ✅ RESTful endpoints

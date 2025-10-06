@@ -79,6 +79,60 @@ Get nodes that have been active within a specified time frame.
 
 **Response:** Same format as `/api/nodes`
 
+#### GET /api/nodes/:nodeId/position-history
+Get historical position data for a specific node.
+
+**Path Parameters:**
+- `nodeId`: Node identifier (string, e.g., "!a2e4ff4c")
+
+**Query Parameters:**
+- `hours` (optional): Hours of history to retrieve (default: 24)
+
+**Example:** `/api/nodes/!a2e4ff4c/position-history?hours=48`
+
+**Response:**
+```json
+[
+  {
+    "timestamp": 1640995200000,
+    "latitude": 25.7617,
+    "longitude": -80.1918,
+    "altitude": 10
+  }
+]
+```
+
+#### POST /api/nodes/:nodeId/favorite
+Toggle favorite status for a node.
+
+**Path Parameters:**
+- `nodeId`: Node identifier (string, e.g., "!a2e4ff4c")
+
+**Request Body:**
+```json
+{
+  "isFavorite": true
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "nodeNum": 2732916556,
+  "isFavorite": true
+}
+```
+
+**Error Responses:**
+- `400`: Missing or invalid isFavorite value or invalid nodeId format
+- `500`: Failed to set node favorite
+
+**Notes:**
+- Favorite nodes appear at the top of node lists regardless of sorting
+- Favorite status syncs with Meshtastic device's NodeDB via NodeInfo packets
+- Frontend displays star icons (⭐ for favorited, ☆ for not favorited)
+
 ### Message Management
 
 #### GET /api/messages
@@ -473,6 +527,9 @@ interface DeviceInfo {
   lastHeard?: number;
   snr?: number;
   rssi?: number;
+  firmwareVersion?: string;
+  isMobile?: boolean;
+  isFavorite?: boolean; // Synced from Meshtastic device NodeDB
 }
 ```
 
@@ -554,6 +611,16 @@ curl http://localhost:8080/api/traceroutes/recent?hours=24
 curl -X POST http://localhost:8080/api/traceroutes/send \
   -H "Content-Type: application/json" \
   -d '{"destination":"!12345678"}'
+
+# Set node as favorite
+curl -X POST http://localhost:8080/api/nodes/!a2e4ff4c/favorite \
+  -H "Content-Type: application/json" \
+  -d '{"isFavorite":true}'
+
+# Remove node from favorites
+curl -X POST http://localhost:8080/api/nodes/!a2e4ff4c/favorite \
+  -H "Content-Type: application/json" \
+  -d '{"isFavorite":false}'
 ```
 
 ## Development
