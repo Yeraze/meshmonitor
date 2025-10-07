@@ -24,6 +24,7 @@ import { getRoleName, generateArrowMarkers } from './utils/mapHelpers.tsx'
 import { getHardwareModelName } from './utils/nodeHelpers'
 import MapLegend from './components/MapLegend'
 import ZoomHandler from './components/ZoomHandler'
+import { SettingsProvider, useSettings } from './contexts/SettingsContext'
 
 // Fix for default markers in React-Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -132,27 +133,19 @@ function App() {
   // Also set the baseUrl in the api service to skip its auto-detection
   api.setBaseUrl(initialBaseUrl);
 
-  // Settings
-  const [maxNodeAgeHours, setMaxNodeAgeHours] = useState<number>(() => {
-    const saved = localStorage.getItem('maxNodeAgeHours');
-    return saved ? parseInt(saved) : 24;
-  });
-  const [tracerouteIntervalMinutes, setTracerouteIntervalMinutes] = useState<number>(() => {
-    const saved = localStorage.getItem('tracerouteIntervalMinutes');
-    return saved ? parseInt(saved) : 3;
-  });
-  const [temperatureUnit, setTemperatureUnit] = useState<TemperatureUnit>(() => {
-    const saved = localStorage.getItem('temperatureUnit');
-    return (saved === 'F' ? 'F' : 'C') as TemperatureUnit;
-  });
-  const [distanceUnit, setDistanceUnit] = useState<'km' | 'mi'>(() => {
-    const saved = localStorage.getItem('distanceUnit');
-    return (saved === 'mi' ? 'mi' : 'km') as 'km' | 'mi';
-  });
-  const [telemetryVisualizationHours, setTelemetryVisualizationHours] = useState<number>(() => {
-    const saved = localStorage.getItem('telemetryVisualizationHours');
-    return saved ? parseInt(saved) : 24;
-  });
+  // Settings from context
+  const {
+    maxNodeAgeHours,
+    tracerouteIntervalMinutes,
+    temperatureUnit,
+    distanceUnit,
+    telemetryVisualizationHours,
+    setMaxNodeAgeHours,
+    setTracerouteIntervalMinutes,
+    setTemperatureUnit,
+    setDistanceUnit,
+    setTelemetryVisualizationHours
+  } = useSettings();
 
   // New state for node list features
   const [nodeFilter, setNodeFilter] = useState<string>('')
@@ -3087,41 +3080,7 @@ function App() {
   };
 
   // Removed renderInfoTab - using InfoTab component instead
-
-  const handleMaxNodeAgeChange = (value: number) => {
-    setMaxNodeAgeHours(value);
-    localStorage.setItem('maxNodeAgeHours', value.toString());
-  };
-
-  const handleTracerouteIntervalChange = async (value: number) => {
-    setTracerouteIntervalMinutes(value);
-    localStorage.setItem('tracerouteIntervalMinutes', value.toString());
-
-    try {
-      await fetch(`${baseUrl}/api/settings/traceroute-interval`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ intervalMinutes: value })
-      });
-    } catch (error) {
-      logger.error('Error updating traceroute interval:', error);
-    }
-  };
-
-  const handleTemperatureUnitChange = (unit: TemperatureUnit) => {
-    setTemperatureUnit(unit);
-    localStorage.setItem('temperatureUnit', unit);
-  };
-
-  const handleDistanceUnitChange = (unit: 'km' | 'mi') => {
-    setDistanceUnit(unit);
-    localStorage.setItem('distanceUnit', unit);
-  };
-
-  const handleTelemetryVisualizationChange = (hours: number) => {
-    setTelemetryVisualizationHours(hours);
-    localStorage.setItem('telemetryVisualizationHours', hours.toString());
-  };
+  // Handler functions removed - using settings context setters directly
 
   // Purge handlers moved to SettingsTab component
 
@@ -3254,11 +3213,11 @@ function App() {
             distanceUnit={distanceUnit}
             telemetryVisualizationHours={telemetryVisualizationHours}
             baseUrl={baseUrl}
-            onMaxNodeAgeChange={handleMaxNodeAgeChange}
-            onTracerouteIntervalChange={handleTracerouteIntervalChange}
-            onTemperatureUnitChange={handleTemperatureUnitChange}
-            onDistanceUnitChange={handleDistanceUnitChange}
-            onTelemetryVisualizationChange={handleTelemetryVisualizationChange}
+            onMaxNodeAgeChange={setMaxNodeAgeHours}
+            onTracerouteIntervalChange={setTracerouteIntervalMinutes}
+            onTemperatureUnitChange={setTemperatureUnit}
+            onDistanceUnitChange={setDistanceUnit}
+            onTelemetryVisualizationChange={setTelemetryVisualizationHours}
           />
         )}
         {activeTab === 'configuration' && (
@@ -3408,10 +3367,40 @@ function App() {
   )
 }
 
-const AppWithToast = () => (
-  <ToastProvider>
-    <App />
-  </ToastProvider>
-);
+const AppWithToast = () => {
+  // Detect base URL for SettingsProvider
+  const detectBaseUrl = () => {
+    const pathname = window.location.pathname;
+    const pathParts = pathname.split('/').filter(Boolean);
+
+    if (pathParts.length > 0) {
+      const appRoutes = ['nodes', 'channels', 'messages', 'settings', 'info', 'dashboard'];
+      const baseSegments = [];
+
+      for (const segment of pathParts) {
+        if (appRoutes.includes(segment.toLowerCase())) {
+          break;
+        }
+        baseSegments.push(segment);
+      }
+
+      if (baseSegments.length > 0) {
+        return '/' + baseSegments.join('/');
+      }
+    }
+
+    return '';
+  };
+
+  const initialBaseUrl = detectBaseUrl();
+
+  return (
+    <SettingsProvider baseUrl={initialBaseUrl}>
+      <ToastProvider>
+        <App />
+      </ToastProvider>
+    </SettingsProvider>
+  );
+};
 
 export default AppWithToast
