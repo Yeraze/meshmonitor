@@ -7,7 +7,7 @@ import {
   validateHours,
   validateIntervalMinutes
 } from '../utils/validation';
-import { logger } from '../utils/logger';
+import { logger } from '../utils/logger.js';
 
 class ApiService {
   private baseUrl = '';
