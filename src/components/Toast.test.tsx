@@ -65,7 +65,7 @@ describe('Toast Component', () => {
       expect(mockOnClose).not.toHaveBeenCalled();
 
       // Fast-forward 5 seconds
-      vi.advanceTimersByTime(5000);
+      await vi.advanceTimersByTimeAsync(5000);
 
       await waitFor(() => {
         expect(mockOnClose).toHaveBeenCalledWith('test-toast-1');
@@ -79,7 +79,7 @@ describe('Toast Component', () => {
       expect(mockOnClose).not.toHaveBeenCalled();
 
       // Fast-forward 3 seconds
-      vi.advanceTimersByTime(3000);
+      await vi.advanceTimersByTimeAsync(3000);
 
       await waitFor(() => {
         expect(mockOnClose).toHaveBeenCalledWith('test-toast-1');
@@ -140,25 +140,26 @@ describe('Toast Component', () => {
     it('should apply success background color', () => {
       const { container } = render(<Toast {...defaultProps} type="success" />);
       const toastDiv = container.firstChild as HTMLElement;
-      expect(toastDiv.style.backgroundColor).toBe('#4caf50');
+      // Browser returns RGB, not hex
+      expect(toastDiv.style.backgroundColor).toMatch(/#4caf50|rgb\(76, 175, 80\)/);
     });
 
     it('should apply error background color', () => {
       const { container } = render(<Toast {...defaultProps} type="error" />);
       const toastDiv = container.firstChild as HTMLElement;
-      expect(toastDiv.style.backgroundColor).toBe('#f44336');
+      expect(toastDiv.style.backgroundColor).toMatch(/#f44336|rgb\(244, 67, 54\)/);
     });
 
     it('should apply warning background color', () => {
       const { container } = render(<Toast {...defaultProps} type="warning" />);
       const toastDiv = container.firstChild as HTMLElement;
-      expect(toastDiv.style.backgroundColor).toBe('#ff9800');
+      expect(toastDiv.style.backgroundColor).toMatch(/#ff9800|rgb\(255, 152, 0\)/);
     });
 
     it('should apply info background color', () => {
       const { container } = render(<Toast {...defaultProps} type="info" />);
       const toastDiv = container.firstChild as HTMLElement;
-      expect(toastDiv.style.backgroundColor).toBe('#2196f3');
+      expect(toastDiv.style.backgroundColor).toMatch(/#2196f3|rgb\(33, 150, 243\)/);
     });
 
     it('should have slideIn animation', () => {
