@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import apiService from '../services/api';
 import { useToast } from './ToastContainer';
 import type { DeviceInfo } from '../types/device';
+import { logger } from '../utils/logger';
 
 interface ConfigurationTabProps {
   baseUrl?: string; // Optional, not used in component but passed from App.tsx
@@ -162,7 +163,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, onRebootDevi
           setNeighborInfoInterval(config.moduleConfig.neighborInfo.updateInterval || 14400);
         }
       } catch (error) {
-        console.error('Error fetching configuration:', error);
+        logger.error('Error fetching configuration:', error);
         setStatusMessage('Warning: Could not load current configuration. Default values shown.');
       } finally {
         setIsLoading(false);
@@ -185,7 +186,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, onRebootDevi
         const config = await apiService.getCurrentConfig();
         if (config.localNodeInfo?.nodeNum) {
           const localNode = nodes.find((n: any) => n.nodeNum === config.localNodeInfo.nodeNum);
-          console.log('🔍 Loading position from nodes:', config.localNodeInfo.nodeNum, 'found:', !!localNode);
+          logger.debug('🔍 Loading position from nodes:', config.localNodeInfo.nodeNum, 'found:', !!localNode);
           if (localNode?.position) {
             if (localNode.position.latitude !== undefined) {
               setFixedLatitude(localNode.position.latitude);
@@ -199,7 +200,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, onRebootDevi
           }
         }
       } catch (error) {
-        console.error('Failed to load position from nodes:', error);
+        logger.error('Failed to load position from nodes:', error);
       }
     };
 
@@ -350,7 +351,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, onRebootDevi
       // Notify parent that config change will trigger reboot
       onConfigChangeTriggeringReboot?.();
     } catch (error) {
-      console.error('Error saving device config:', error);
+      logger.error('Error saving device config:', error);
       const errorMsg = error instanceof Error ? error.message : 'Failed to save device configuration';
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`Failed to save device configuration: ${errorMsg}`, 'error');
@@ -368,7 +369,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, onRebootDevi
       showToast('Node names saved! Device will reboot...', 'success');
       onConfigChangeTriggeringReboot?.();
     } catch (error) {
-      console.error('Error saving node owner:', error);
+      logger.error('Error saving node owner:', error);
       const errorMsg = error instanceof Error ? error.message : 'Failed to save node names';
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`Failed to save node names: ${errorMsg}`, 'error');
@@ -400,7 +401,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, onRebootDevi
       showToast('LoRa configuration saved! Device will reboot...', 'success');
       onConfigChangeTriggeringReboot?.();
     } catch (error) {
-      console.error('Error saving LoRa config:', error);
+      logger.error('Error saving LoRa config:', error);
       const errorMsg = error instanceof Error ? error.message : 'Failed to save LoRa configuration';
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`Failed to save LoRa configuration: ${errorMsg}`, 'error');
@@ -448,7 +449,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, onRebootDevi
       showToast('Position configuration saved! Device will reboot...', 'success');
       onConfigChangeTriggeringReboot?.();
     } catch (error) {
-      console.error('Error saving position config:', error);
+      logger.error('Error saving position config:', error);
       const errorMsg = error instanceof Error ? error.message : 'Failed to save position configuration';
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`Failed to save position configuration: ${errorMsg}`, 'error');
@@ -474,7 +475,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, onRebootDevi
       showToast('MQTT configuration saved! Device will reboot...', 'success');
       onConfigChangeTriggeringReboot?.();
     } catch (error) {
-      console.error('Error saving MQTT config:', error);
+      logger.error('Error saving MQTT config:', error);
       const errorMsg = error instanceof Error ? error.message : 'Failed to save MQTT configuration';
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`Failed to save MQTT configuration: ${errorMsg}`, 'error');
@@ -502,7 +503,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, onRebootDevi
       showToast('NeighborInfo configuration saved! Device will reboot...', 'success');
       onConfigChangeTriggeringReboot?.();
     } catch (error) {
-      console.error('Error saving NeighborInfo config:', error);
+      logger.error('Error saving NeighborInfo config:', error);
       const errorMsg = error instanceof Error ? error.message : 'Failed to save NeighborInfo configuration';
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`Failed to save NeighborInfo configuration: ${errorMsg}`, 'error');
@@ -543,7 +544,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, onRebootDevi
         showToast('Reboot command sent!', 'success');
       }
     } catch (error) {
-      console.error('Error rebooting device:', error);
+      logger.error('Error rebooting device:', error);
       const errorMsg = error instanceof Error ? error.message : 'Failed to reboot device';
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`Failed to reboot device: ${errorMsg}`, 'error');
