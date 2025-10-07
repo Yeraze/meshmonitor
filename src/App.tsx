@@ -16,7 +16,7 @@ import { type TemperatureUnit } from './utils/temperature'
 import { calculateDistance, formatDistance } from './utils/distance'
 import { DeviceInfo, Channel } from './types/device'
 import { MeshMessage } from './types/message'
-import { TabType, SortField, SortDirection, MapCenterControllerProps } from './types/ui'
+import { MapCenterControllerProps, SortField, SortDirection } from './types/ui'
 import api from './services/api'
 import { logger } from './utils/logger'
 import { createNodeIcon } from './utils/mapIcons'
@@ -28,6 +28,7 @@ import { SettingsProvider, useSettings } from './contexts/SettingsContext'
 import { MapProvider, useMapContext } from './contexts/MapContext'
 import { DataProvider, useData } from './contexts/DataContext'
 import { MessagingProvider, useMessaging } from './contexts/MessagingContext'
+import { UIProvider, useUI } from './contexts/UIContext'
 
 // Fix for default markers in React-Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -56,11 +57,8 @@ const MapCenterController: React.FC<MapCenterControllerProps> = ({ centerTarget,
 };
 
 function App() {
-  const [activeTab, setActiveTab] = useState<TabType>('nodes')
   const hasSelectedInitialChannelRef = useRef<boolean>(false)
   const selectedChannelRef = useRef<number>(-1)
-  const [showMqttMessages, setShowMqttMessages] = useState<boolean>(false)
-  const [error, setError] = useState<string | null>(null)
 
   // Constants for emoji tapbacks
   const EMOJI_FLAG = 1; // Protobuf flag indicating this is a tapback/reaction
@@ -77,7 +75,6 @@ function App() {
   const dmMessagesContainerRef = useRef<HTMLDivElement>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   // const lastNotificationTime = useRef<number>(0) // Disabled for now
-  const [tracerouteLoading, setTracerouteLoading] = useState<string | null>(null)
   // Detect base URL from pathname
   const detectBaseUrl = () => {
     const pathname = window.location.pathname;
@@ -194,14 +191,29 @@ function App() {
     setIsDMScrolledToBottom
   } = useMessaging();
 
-  // New state for node list features
-  const [nodeFilter, setNodeFilter] = useState<string>('')
-  const [sortField, setSortField] = useState<SortField>('longName')
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
-
-  // System status modal state
-  const [showStatusModal, setShowStatusModal] = useState<boolean>(false)
-  const [systemStatus, setSystemStatus] = useState<any>(null)
+  // UI context
+  const {
+    activeTab,
+    setActiveTab,
+    showMqttMessages,
+    setShowMqttMessages,
+    error,
+    setError,
+    tracerouteLoading,
+    setTracerouteLoading,
+    nodeFilter,
+    setNodeFilter,
+    sortField,
+    setSortField,
+    sortDirection,
+    setSortDirection,
+    showStatusModal,
+    setShowStatusModal,
+    systemStatus,
+    setSystemStatus,
+    nodePopup,
+    setNodePopup
+  } = useUI();
 
   // Function to detect MQTT/bridge messages that should be filtered
   const isMqttBridgeMessage = (msg: MeshMessage): boolean => {
@@ -227,7 +239,6 @@ function App() {
       }
     });
   };
-  const [nodePopup, setNodePopup] = useState<{nodeId: string, position: {x: number, y: number}} | null>(null)
   const markerRefs = useRef<Map<string, L.Marker>>(new Map())
 
   // Initialize notification sound with cleanup
@@ -3443,9 +3454,11 @@ const AppWithToast = () => {
       <MapProvider>
         <DataProvider>
           <MessagingProvider>
-            <ToastProvider>
-              <App />
-            </ToastProvider>
+            <UIProvider>
+              <ToastProvider>
+                <App />
+              </ToastProvider>
+            </UIProvider>
           </MessagingProvider>
         </DataProvider>
       </MapProvider>
