@@ -25,6 +25,7 @@ import { getHardwareModelName } from './utils/nodeHelpers'
 import MapLegend from './components/MapLegend'
 import ZoomHandler from './components/ZoomHandler'
 import { SettingsProvider, useSettings } from './contexts/SettingsContext'
+import { MapProvider, useMapContext } from './contexts/MapContext'
 
 // Fix for default markers in React-Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -92,15 +93,8 @@ function App() {
   const [tracerouteLoading, setTracerouteLoading] = useState<string | null>(null)
   const [isChannelScrolledToBottom, setIsChannelScrolledToBottom] = useState(true)
   const [isDMScrolledToBottom, setIsDMScrolledToBottom] = useState(true)
-  const [showPaths, setShowPaths] = useState<boolean>(false)
-  const [showNeighborInfo, setShowNeighborInfo] = useState<boolean>(false)
-  const [showRoute, setShowRoute] = useState<boolean>(true)
-  const [showMotion, setShowMotion] = useState<boolean>(true)
-  const [traceroutes, setTraceroutes] = useState<any[]>([])
-  const [neighborInfo, setNeighborInfo] = useState<any[]>([])
   const [nodesWithTelemetry, setNodesWithTelemetry] = useState<Set<string>>(new Set())
   const [nodesWithWeatherTelemetry, setNodesWithWeatherTelemetry] = useState<Set<string>>(new Set())
-  const [positionHistory, setPositionHistory] = useState<{latitude: number; longitude: number; timestamp: number}[]>([])
   // Detect base URL from pathname
   const detectBaseUrl = () => {
     const pathname = window.location.pathname;
@@ -147,6 +141,30 @@ function App() {
     setTelemetryVisualizationHours
   } = useSettings();
 
+  // Map context
+  const {
+    showPaths,
+    setShowPaths,
+    showNeighborInfo,
+    setShowNeighborInfo,
+    showRoute,
+    setShowRoute,
+    showMotion,
+    setShowMotion,
+    mapCenterTarget,
+    setMapCenterTarget,
+    mapZoom,
+    setMapZoom,
+    traceroutes,
+    setTraceroutes,
+    neighborInfo,
+    setNeighborInfo,
+    positionHistory,
+    setPositionHistory,
+    selectedNodeId,
+    setSelectedNodeId
+  } = useMapContext();
+
   // New state for node list features
   const [nodeFilter, setNodeFilter] = useState<string>('')
   const [sortField, setSortField] = useState<SortField>('longName')
@@ -180,9 +198,6 @@ function App() {
       }
     });
   };
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
-  const [mapCenterTarget, setMapCenterTarget] = useState<[number, number] | null>(null)
-  const [mapZoom, setMapZoom] = useState<number>(10)
   const [nodePopup, setNodePopup] = useState<{nodeId: string, position: {x: number, y: number}} | null>(null)
   const markerRefs = useRef<Map<string, L.Marker>>(new Map())
 
@@ -3396,9 +3411,11 @@ const AppWithToast = () => {
 
   return (
     <SettingsProvider baseUrl={initialBaseUrl}>
-      <ToastProvider>
-        <App />
-      </ToastProvider>
+      <MapProvider>
+        <ToastProvider>
+          <App />
+        </ToastProvider>
+      </MapProvider>
     </SettingsProvider>
   );
 };
