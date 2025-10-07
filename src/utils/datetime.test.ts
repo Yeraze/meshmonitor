@@ -6,7 +6,6 @@ import {
   formatTimestamp,
   formatRelativeTime
 } from './datetime';
-import type { TimeFormat, DateFormat } from '../contexts/SettingsContext';
 
 describe('DateTime Utilities', () => {
   // Use a fixed local date for consistent testing (not UTC)

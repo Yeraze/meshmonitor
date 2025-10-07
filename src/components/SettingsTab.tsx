@@ -4,6 +4,7 @@ import { SortField, SortDirection } from '../types/ui';
 import { version } from '../../package.json';
 import apiService from '../services/api';
 import { logger } from '../utils/logger';
+import { useToast } from './ToastContainer';
 
 type DistanceUnit = 'km' | 'mi';
 type TimeFormat = '12' | '24';
@@ -64,6 +65,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [localDateFormat, setLocalDateFormat] = useState(dateFormat);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const { showToast } = useToast();
 
   // Update local state when props change
   useEffect(() => {
@@ -127,11 +129,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onTimeFormatChange(localTimeFormat);
       onDateFormatChange(localDateFormat);
 
-      alert('Settings saved successfully!');
+      showToast('Settings saved successfully!', 'success');
       setHasChanges(false);
     } catch (error) {
       logger.error('Error saving settings:', error);
-      alert('Failed to save settings. Please try again.');
+      showToast('Failed to save settings. Please try again.', 'error');
     } finally {
       setIsSaving(false);
     }
@@ -182,11 +184,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onTimeFormatChange('24');
       onDateFormatChange('MM/DD/YYYY');
 
-      alert('Settings reset to defaults!');
+      showToast('Settings reset to defaults!', 'success');
       setHasChanges(false);
     } catch (error) {
       logger.error('Error resetting settings:', error);
-      alert('Failed to reset settings. Please try again.');
+      showToast('Failed to reset settings. Please try again.', 'error');
     } finally {
       setIsSaving(false);
     }
@@ -205,11 +207,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
 
     try {
       await apiService.purgeNodes(0);
-      alert('Node list and traceroutes have been purged. Refreshing...');
-      window.location.reload();
+      showToast('Node list and traceroutes have been purged. Refreshing...', 'success');
+      setTimeout(() => window.location.reload(), 1500);
     } catch (error) {
       logger.error('Error purging nodes:', error);
-      alert('Error purging nodes. Please try again.');
+      showToast('Error purging nodes. Please try again.', 'error');
     }
   };
 
@@ -228,11 +230,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
 
     try {
       await apiService.purgeTelemetry(0);
-      alert('Telemetry has been purged. Refreshing...');
-      window.location.reload();
+      showToast('Telemetry has been purged. Refreshing...', 'success');
+      setTimeout(() => window.location.reload(), 1500);
     } catch (error) {
       logger.error('Error purging telemetry:', error);
-      alert('Error purging telemetry. Please try again.');
+      showToast('Error purging telemetry. Please try again.', 'error');
     }
   };
 
@@ -250,11 +252,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
 
     try {
       await apiService.purgeMessages(0);
-      alert('Messages have been purged. Refreshing...');
-      window.location.reload();
+      showToast('Messages have been purged. Refreshing...', 'success');
+      setTimeout(() => window.location.reload(), 1500);
     } catch (error) {
       logger.error('Error purging messages:', error);
-      alert('Error purging messages. Please try again.');
+      showToast('Error purging messages. Please try again.', 'error');
     }
   };
 
