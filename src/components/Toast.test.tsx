@@ -7,7 +7,7 @@ import userEvent from '@testing-library/user-event';
 import Toast, { ToastProps } from './Toast';
 
 describe('Toast Component', () => {
-  let mockOnClose: ReturnType<typeof vi.fn>;
+  let mockOnClose: ReturnType<typeof vi.fn> = vi.fn();
 
   beforeEach(() => {
     mockOnClose = vi.fn();
@@ -190,7 +190,7 @@ describe('Toast Component', () => {
 
   describe('Multiple Toasts', () => {
     it('should render multiple toasts with unique IDs', () => {
-      const { container } = render(
+      render(
         <>
           <Toast {...defaultProps} id="toast-1" message="First toast" />
           <Toast {...defaultProps} id="toast-2" message="Second toast" />

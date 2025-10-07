@@ -3263,6 +3263,7 @@ function App() {
         {activeTab === 'configuration' && (
           <ConfigurationTab
             baseUrl={baseUrl}
+            nodes={nodes}
             onRebootDevice={handleRebootDevice}
             onConfigChangeTriggeringReboot={handleConfigChangeTriggeringReboot}
           />

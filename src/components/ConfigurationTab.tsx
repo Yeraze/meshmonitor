@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import apiService from '../services/api';
 import { useToast } from './ToastContainer';
+import type { DeviceInfo } from '../types/device';
 
 interface ConfigurationTabProps {
   baseUrl?: string; // Optional, not used in component but passed from App.tsx
+  nodes?: DeviceInfo[]; // Pass nodes from App to avoid separate API call
   onRebootDevice?: () => Promise<boolean>;
   onConfigChangeTriggeringReboot?: () => void;
 }
 
-const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ onRebootDevice, onConfigChangeTriggeringReboot }) => {
+const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, onRebootDevice, onConfigChangeTriggeringReboot }) => {
   const { showToast } = useToast();
 
   // Device Config State
@@ -51,7 +53,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ onRebootDevice, onC
   const [isRoleDropdownOpen, setIsRoleDropdownOpen] = useState(false);
   const [isPresetDropdownOpen, setIsPresetDropdownOpen] = useState(false);
 
-  // Fetch current configuration on mount
+  // Fetch current configuration on mount (run once only)
   useEffect(() => {
     const fetchConfig = async () => {
       try {
@@ -143,28 +145,6 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ onRebootDevice, onC
           }
         }
 
-        // Populate fixed position from nodes list (get local node position)
-        // The localNodeInfo doesn't include position, so we need to fetch it from nodes
-        if (config.localNodeInfo?.nodeNum) {
-          try {
-            const nodesResponse = await apiService.getNodes();
-            const localNode = nodesResponse.find((n: any) => n.nodeNum === config.localNodeInfo.nodeNum);
-            if (localNode?.position) {
-              if (localNode.position.latitude !== undefined) {
-                setFixedLatitude(localNode.position.latitude);
-              }
-              if (localNode.position.longitude !== undefined) {
-                setFixedLongitude(localNode.position.longitude);
-              }
-              if (localNode.position.altitude !== undefined) {
-                setFixedAltitude(localNode.position.altitude);
-              }
-            }
-          } catch (error) {
-            console.error('Failed to load node position:', error);
-          }
-        }
-
         // Populate MQTT config
         if (config.moduleConfig?.mqtt) {
           setMqttEnabled(config.moduleConfig.mqtt.enabled || false);
@@ -190,7 +170,41 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ onRebootDevice, onC
     };
 
     fetchConfig();
-  }, []);
+  }, []); // Run once on mount only
+
+  // Separate effect to load position data when nodes become available
+  // This runs independently of config loading to avoid re-fetching config
+  useEffect(() => {
+    const loadPositionFromNodes = async () => {
+      if (!nodes || nodes.length === 0) return;
+
+      // Only load position if we haven't already loaded it
+      if (fixedLatitude !== 0 || fixedLongitude !== 0) return;
+
+      try {
+        const config = await apiService.getCurrentConfig();
+        if (config.localNodeInfo?.nodeNum) {
+          const localNode = nodes.find((n: any) => n.nodeNum === config.localNodeInfo.nodeNum);
+          console.log('🔍 Loading position from nodes:', config.localNodeInfo.nodeNum, 'found:', !!localNode);
+          if (localNode?.position) {
+            if (localNode.position.latitude !== undefined) {
+              setFixedLatitude(localNode.position.latitude);
+            }
+            if (localNode.position.longitude !== undefined) {
+              setFixedLongitude(localNode.position.longitude);
+            }
+            if (localNode.position.altitude !== undefined) {
+              setFixedAltitude(localNode.position.altitude);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load position from nodes:', error);
+      }
+    };
+
+    loadPositionFromNodes();
+  }, [nodes]); // Run when nodes first populate
 
   const roleOptions = [
     {
