@@ -16,7 +16,7 @@ import { type TemperatureUnit } from './utils/temperature'
 import { calculateDistance, formatDistance } from './utils/distance'
 import { DeviceInfo, Channel } from './types/device'
 import { MeshMessage } from './types/message'
-import { TabType, SortField, SortDirection, ConnectionStatus, MapCenterControllerProps } from './types/ui'
+import { TabType, SortField, SortDirection, MapCenterControllerProps } from './types/ui'
 import api from './services/api'
 import { logger } from './utils/logger'
 import { createNodeIcon } from './utils/mapIcons'
@@ -26,6 +26,7 @@ import MapLegend from './components/MapLegend'
 import ZoomHandler from './components/ZoomHandler'
 import { SettingsProvider, useSettings } from './contexts/SettingsContext'
 import { MapProvider, useMapContext } from './contexts/MapContext'
+import { DataProvider, useData } from './contexts/DataContext'
 
 // Fix for default markers in React-Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -55,12 +56,7 @@ const MapCenterController: React.FC<MapCenterControllerProps> = ({ centerTarget,
 
 function App() {
   const [activeTab, setActiveTab] = useState<TabType>('nodes')
-  const [nodes, setNodes] = useState<DeviceInfo[]>([])
-  const [channels, setChannels] = useState<Channel[]>([])
-  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected')
-  const [messages, setMessages] = useState<MeshMessage[]>([])
   const [selectedDMNode, setSelectedDMNode] = useState<string>('')
-  const [channelMessages, setChannelMessages] = useState<{[key: number]: MeshMessage[]}>({})
   const [selectedChannel, setSelectedChannel] = useState<number>(-1)
   const hasSelectedInitialChannelRef = useRef<boolean>(false)
   const selectedChannelRef = useRef<number>(-1)
@@ -68,7 +64,6 @@ function App() {
   const [newMessage, setNewMessage] = useState<string>('')
   const [replyingTo, setReplyingTo] = useState<MeshMessage | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [nodeAddress, setNodeAddress] = useState<string>('Loading...')
 
   // Constants for emoji tapbacks
   const EMOJI_FLAG = 1; // Protobuf flag indicating this is a tapback/reaction
@@ -81,9 +76,6 @@ function App() {
     { emoji: '😢', title: 'Cry' },
     { emoji: '💩', title: 'Poop' }
   ] as const;
-  const [deviceInfo, setDeviceInfo] = useState<any>(null)
-  const [deviceConfig, setDeviceConfig] = useState<any>(null)
-  const [currentNodeId, setCurrentNodeId] = useState<string>('')
   const channelMessagesContainerRef = useRef<HTMLDivElement>(null)
   const dmMessagesContainerRef = useRef<HTMLDivElement>(null)
   const [pendingMessages, setPendingMessages] = useState<Map<string, MeshMessage>>(new Map())
@@ -93,8 +85,6 @@ function App() {
   const [tracerouteLoading, setTracerouteLoading] = useState<string | null>(null)
   const [isChannelScrolledToBottom, setIsChannelScrolledToBottom] = useState(true)
   const [isDMScrolledToBottom, setIsDMScrolledToBottom] = useState(true)
-  const [nodesWithTelemetry, setNodesWithTelemetry] = useState<Set<string>>(new Set())
-  const [nodesWithWeatherTelemetry, setNodesWithWeatherTelemetry] = useState<Set<string>>(new Set())
   // Detect base URL from pathname
   const detectBaseUrl = () => {
     const pathname = window.location.pathname;
@@ -164,6 +154,32 @@ function App() {
     selectedNodeId,
     setSelectedNodeId
   } = useMapContext();
+
+  // Data context
+  const {
+    nodes,
+    setNodes,
+    channels,
+    setChannels,
+    connectionStatus,
+    setConnectionStatus,
+    messages,
+    setMessages,
+    channelMessages,
+    setChannelMessages,
+    deviceInfo,
+    setDeviceInfo,
+    deviceConfig,
+    setDeviceConfig,
+    currentNodeId,
+    setCurrentNodeId,
+    nodeAddress,
+    setNodeAddress,
+    nodesWithTelemetry,
+    setNodesWithTelemetry,
+    nodesWithWeatherTelemetry,
+    setNodesWithWeatherTelemetry
+  } = useData();
 
   // New state for node list features
   const [nodeFilter, setNodeFilter] = useState<string>('')
@@ -3412,9 +3428,11 @@ const AppWithToast = () => {
   return (
     <SettingsProvider baseUrl={initialBaseUrl}>
       <MapProvider>
-        <ToastProvider>
-          <App />
-        </ToastProvider>
+        <DataProvider>
+          <ToastProvider>
+            <App />
+          </ToastProvider>
+        </DataProvider>
       </MapProvider>
     </SettingsProvider>
   );
