@@ -328,7 +328,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               <option value="snr">SNR</option>
               <option value="battery">Battery</option>
               <option value="hwModel">Hardware Model</option>
-              <option value="location">Location</option>
               <option value="hops">Hops</option>
             </select>
           </div>
