@@ -152,7 +152,7 @@ CREATE TABLE nodes (
 | `longName` | TEXT | User-defined long name | `Base Station Alpha` |
 | `shortName` | TEXT | User-defined short name (3-4 chars) | `BSA` |
 | `hwModel` | INTEGER | Hardware model enum (see Hardware Models) | `9` (RAK4631) |
-| `role` | INTEGER | Node role enum (0=Client, 2=Router, 4=Repeater) | `2` (Router) |
+| `role` | INTEGER | Node role enum (see Node Roles below) | `2` (Router) |
 | `hopsAway` | INTEGER | Network distance from local node | `3` |
 | `macaddr` | TEXT | MAC address as hex string | `07:5b:cd:15:a1:b2` |
 | `latitude` | REAL | GPS latitude in decimal degrees | `40.7128` |
@@ -475,6 +475,28 @@ Hardware model enum values used in the `hwModel` field (116 models supported: 0-
 - Brand names use proper capitalization (Heltec, Lilygo, BetaFPV)
 - Version numbers are formatted with periods (V2P0 becomes V2.0)
 - Abbreviations are preserved uppercase (LR, TX, RAK, NRF, etc.)
+
+## Node Role Reference
+
+Node role enum values used in the `role` field (13 roles supported: 0-12):
+
+| ID | Role Name | Description |
+|----|-----------|-------------|
+| 0 | Client | Standard client node |
+| 1 | Client Mute | Client that doesn't retransmit |
+| 2 | Router | Router for mesh network |
+| 3 | Router Client | Router with client capabilities |
+| 4 | Repeater | Simple repeater node |
+| 5 | Tracker | GPS tracker node |
+| 6 | Sensor | Sensor telemetry node |
+| 7 | TAK | Tactical Awareness Kit integration |
+| 8 | Client Hidden | Hidden client node |
+| 9 | Lost and Found | Lost and Found network node |
+| 10 | TAK Tracker | TAK with tracking capabilities |
+| 11 | Router Late | Router with delayed routing |
+| 12 | Client Base | Base station client |
+
+*Note: Role names are defined in `src/constants/index.ts` and displayed throughout the application using the centralized `ROLE_NAMES` constant.*
 
 ## Common Queries
 

@@ -149,6 +149,16 @@ This allows MeshMonitor to connect to **any** Meshtastic device (BLE, Serial, or
 - Network topology discovery
 - Traceroute history with SNR tracking
 
+### ⚙️ **Device Configuration**
+- Comprehensive device configuration UI with toast notifications
+- **Node Settings**: Configure long name, short name, device role, and node info broadcast interval
+- **LoRa Configuration**: Set modem preset, region, and hop limit (1-7 hops)
+- **Position Configuration**: Configure fixed position with GPS coordinates, position broadcast interval, and smart positioning
+- **MQTT Configuration**: Set up MQTT server, credentials, encryption, JSON mode, and root topic
+- **GPS Coordinates Helper**: Quick link to find your exact GPS coordinates
+- Real-time device synchronization with automatic reboot handling
+- Input validation and helpful error messages
+
 ### 🐳 **Docker Support**
 - Pre-built images on GitHub Container Registry
 - Full containerization with Docker and Docker Compose

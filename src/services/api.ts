@@ -384,6 +384,158 @@ class ApiService {
 
     return response.json();
   }
+
+  // Configuration methods
+  async getCurrentConfig() {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/config/current`);
+    if (!response.ok) throw new Error('Failed to fetch current configuration');
+    return response.json();
+  }
+
+  async setDeviceConfig(config: any) {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/config/device`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to set device configuration');
+    }
+
+    return response.json();
+  }
+
+  async setLoRaConfig(config: any) {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/config/lora`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to set LoRa configuration');
+    }
+
+    return response.json();
+  }
+
+  async setPositionConfig(config: any) {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/config/position`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to set position configuration');
+    }
+
+    return response.json();
+  }
+
+  async setMQTTConfig(config: any) {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/config/mqtt`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to set MQTT configuration');
+    }
+
+    return response.json();
+  }
+
+  async setNeighborInfoConfig(config: any) {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/config/neighborinfo`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to set NeighborInfo configuration');
+    }
+
+    return response.json();
+  }
+
+  async setNodeOwner(longName: string, shortName: string) {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/config/owner`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ longName, shortName }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to set node owner');
+    }
+
+    return response.json();
+  }
+
+  async requestConfig(configType: number) {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/config/request`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ configType }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to request configuration');
+    }
+
+    return response.json();
+  }
+
+  async requestModuleConfig(configType: number) {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/config/module/request`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ configType }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to request module configuration');
+    }
+
+    return response.json();
+  }
+
+  async rebootDevice(seconds: number = 5) {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/device/reboot`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seconds }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to reboot device');
+    }
+
+    return response.json();
+  }
 }
 
 export default new ApiService();

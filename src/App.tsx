@@ -7,8 +7,10 @@ import './App.css'
 import TelemetryGraphs from './components/TelemetryGraphs'
 import InfoTab from './components/InfoTab'
 import SettingsTab from './components/SettingsTab'
+import ConfigurationTab from './components/ConfigurationTab'
 import Dashboard from './components/Dashboard'
 import HopCountDisplay from './components/HopCountDisplay'
+import { ToastProvider } from './components/ToastContainer'
 import { version } from '../package.json'
 import { type TemperatureUnit } from './utils/temperature'
 import { calculateDistance, formatDistance } from './utils/distance'
@@ -426,6 +428,11 @@ function App() {
   // Regular data updates (every 5 seconds)
   useEffect(() => {
     const updateInterval = setInterval(() => {
+      // Skip polling while device is rebooting - the reboot handler manages reconnection
+      if (connectionStatus === 'rebooting') {
+        return;
+      }
+
       if (connectionStatus === 'connected') {
         updateDataFromBackend();
       } else {
@@ -491,41 +498,127 @@ function App() {
     }
   };
 
+  // Poll for device reconnection after a reboot
+  const waitForDeviceReconnection = async (): Promise<boolean> => {
+    try {
+      // Wait 30 seconds for device to reboot
+      console.log('⏳ Waiting 30 seconds for device to reboot...');
+      await new Promise(resolve => setTimeout(resolve, 30000));
+
+      // Try to reconnect - poll every 3 seconds for up to 60 seconds
+      console.log('🔌 Attempting to reconnect...');
+      const maxAttempts = 20; // 20 attempts * 3 seconds = 60 seconds
+      let attempts = 0;
+
+      while (attempts < maxAttempts) {
+        try {
+          const response = await fetch(`${baseUrl}/api/connection`);
+          if (response.ok) {
+            const status = await response.json();
+            if (status.connected) {
+              console.log('✅ Device reconnected successfully!');
+              // Trigger full reconnection sequence
+              await checkConnectionStatus();
+              return true;
+            }
+          }
+        } catch (error) {
+          // Connection still not available, continue polling
+        }
+
+        attempts++;
+        console.log(`🔄 Reconnection attempt ${attempts}/${maxAttempts}...`);
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      }
+
+      // Timeout - couldn't reconnect
+      console.error('❌ Failed to reconnect after 60 seconds');
+      setConnectionStatus('disconnected');
+      return false;
+    } catch (error) {
+      console.error('❌ Error during reconnection:', error);
+      setConnectionStatus('disconnected');
+      return false;
+    }
+  };
+
+  const handleConfigChangeTriggeringReboot = async () => {
+    console.log('⚙️ Config change sent, device will reboot to apply changes...');
+    setConnectionStatus('rebooting');
+
+    // Wait for device to reboot and reconnect
+    await waitForDeviceReconnection();
+  };
+
+  const handleRebootDevice = async (): Promise<boolean> => {
+    try {
+      console.log('🔄 Initiating device reboot sequence...');
+
+      // Set status to rebooting
+      setConnectionStatus('rebooting');
+
+      // Send reboot command
+      await api.rebootDevice(5);
+      console.log('✅ Reboot command sent, device will restart in 5 seconds');
+
+      // Wait for reconnection
+      return await waitForDeviceReconnection();
+    } catch (error) {
+      console.error('❌ Error during reboot sequence:', error);
+      setConnectionStatus('disconnected');
+      return false;
+    }
+  };
+
   const checkConnectionStatus = async (providedBaseUrl?: string) => {
     // Use the provided baseUrl or fall back to the state value
     const urlBase = providedBaseUrl !== undefined ? providedBaseUrl : baseUrl;
+
     try {
       const response = await fetch(`${urlBase}/api/connection`);
       if (response.ok) {
         const status = await response.json();
+        console.log(`📡 Connection API response: connected=${status.connected}`);
         if (status.connected) {
-          if (connectionStatus !== 'connected') {
-            console.log('🔗 Connection established, initializing...');
-            setConnectionStatus('configuring');
-            setError(null);
+          // Use updater function to get current state and decide whether to initialize
+          setConnectionStatus(currentStatus => {
+            console.log(`🔍 Current connection status: ${currentStatus}`);
+            if (currentStatus !== 'connected') {
+              console.log(`🔗 Connection established, will initialize... (transitioning from ${currentStatus})`);
+              // Set to configuring and trigger initialization
+              (async () => {
+                setConnectionStatus('configuring');
+                setError(null);
 
-            // Improved initialization sequence
-            // Backend already requested full configuration on startup,
-            // so we just need to fetch the data that's already available
-            try {
-              await fetchChannels(urlBase); // Fetch channels first with the correct baseUrl
-              await updateDataFromBackend(); // Then get current data
-              setConnectionStatus('connected');
-              console.log('✅ Initialization complete');
-            } catch (initError) {
-              console.error('❌ Initialization failed:', initError);
-              setConnectionStatus('connected'); // Still mark as connected even if init partially fails
+                // Improved initialization sequence
+                try {
+                  await fetchChannels(urlBase);
+                  await updateDataFromBackend();
+                  setConnectionStatus('connected');
+                  console.log('✅ Initialization complete, status set to connected');
+                } catch (initError) {
+                  console.error('❌ Initialization failed:', initError);
+                  setConnectionStatus('connected');
+                }
+              })();
+              return 'configuring';
+            } else {
+              console.log('ℹ️ Already connected, skipping initialization');
+              return currentStatus;
             }
-          }
+          });
         } else {
+          console.log('⚠️ Connection API returned connected=false');
           setConnectionStatus('disconnected');
           setError(`Cannot connect to Meshtastic node at ${nodeAddress}. Please ensure the node is reachable and has HTTP API enabled.`);
         }
       } else {
+        console.log('⚠️ Connection API request failed');
         setConnectionStatus('disconnected');
         setError('Failed to get connection status from server');
       }
     } catch (err) {
+      console.log('❌ Connection check error:', err);
       setConnectionStatus('disconnected');
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       setError(`Server connection error: ${errorMessage}`);
@@ -3101,6 +3194,12 @@ function App() {
         >
           Settings
         </button>
+        <button
+          className={`tab-btn ${activeTab === 'configuration' ? 'active' : ''}`}
+          onClick={() => setActiveTab('configuration')}
+        >
+          Configuration
+        </button>
       </nav>
 
       <main className="app-main">
@@ -3159,6 +3258,14 @@ function App() {
             onTemperatureUnitChange={handleTemperatureUnitChange}
             onDistanceUnitChange={handleDistanceUnitChange}
             onTelemetryVisualizationChange={handleTelemetryVisualizationChange}
+          />
+        )}
+        {activeTab === 'configuration' && (
+          <ConfigurationTab
+            baseUrl={baseUrl}
+            nodes={nodes}
+            onRebootDevice={handleRebootDevice}
+            onConfigChangeTriggeringReboot={handleConfigChangeTriggeringReboot}
           />
         )}
       </main>
@@ -3300,4 +3407,10 @@ function App() {
   )
 }
 
-export default App
+const AppWithToast = () => (
+  <ToastProvider>
+    <App />
+  </ToastProvider>
+);
+
+export default AppWithToast
