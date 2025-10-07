@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { calculateDistance } from '../utils/distance.js';
+import { logger } from '../utils/logger';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -113,12 +114,12 @@ class DatabaseService {
   private isInitialized = false;
 
   constructor() {
-    console.log('🔧🔧🔧 DatabaseService constructor called');
+    logger.debug('🔧🔧🔧 DatabaseService constructor called');
     const dbPath = process.env.NODE_ENV === 'production'
       ? '/data/meshmonitor.db'
       : path.join(__dirname, '../../data/meshmonitor.db');
 
-    console.log('Initializing database at:', dbPath);
+    logger.debug('Initializing database at:', dbPath);
     this.db = new Database(dbPath);
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
@@ -140,37 +141,37 @@ class DatabaseService {
   }
 
   private ensurePrimaryChannel(): void {
-    console.log('🔍 ensurePrimaryChannel() called');
+    logger.debug('🔍 ensurePrimaryChannel() called');
     try {
       const existingChannel0 = this.getChannelById(0);
-      console.log('🔍 getChannelById(0) returned:', existingChannel0);
+      logger.debug('🔍 getChannelById(0) returned:', existingChannel0);
 
       if (!existingChannel0) {
-        console.log('🔍 No channel 0 found, calling upsertChannel with id: 0, name: Primary');
+        logger.debug('🔍 No channel 0 found, calling upsertChannel with id: 0, name: Primary');
         this.upsertChannel({ id: 0, name: 'Primary' });
 
         // Verify it was created
         const verify = this.getChannelById(0);
-        console.log('🔍 After upsert, getChannelById(0) returns:', verify);
+        logger.debug('🔍 After upsert, getChannelById(0) returns:', verify);
       } else {
-        console.log(`✅ Channel 0 already exists: ${existingChannel0.name}`);
+        logger.debug(`✅ Channel 0 already exists: ${existingChannel0.name}`);
       }
     } catch (error) {
-      console.error('❌ Error in ensurePrimaryChannel:', error);
+      logger.error('❌ Error in ensurePrimaryChannel:', error);
     }
   }
 
   private ensureBroadcastNode(): void {
-    console.log('🔍 ensureBroadcastNode() called');
+    logger.debug('🔍 ensureBroadcastNode() called');
     try {
       const broadcastNodeNum = 4294967295; // 0xFFFFFFFF
       const broadcastNodeId = '!ffffffff';
 
       const existingNode = this.getNode(broadcastNodeNum);
-      console.log('🔍 getNode(4294967295) returned:', existingNode);
+      logger.debug('🔍 getNode(4294967295) returned:', existingNode);
 
       if (!existingNode) {
-        console.log('🔍 No broadcast node found, creating it');
+        logger.debug('🔍 No broadcast node found, creating it');
         this.upsertNode({
           nodeNum: broadcastNodeNum,
           nodeId: broadcastNodeId,
@@ -180,17 +181,17 @@ class DatabaseService {
 
         // Verify it was created
         const verify = this.getNode(broadcastNodeNum);
-        console.log('🔍 After upsert, getNode(4294967295) returns:', verify);
+        logger.debug('🔍 After upsert, getNode(4294967295) returns:', verify);
       } else {
-        console.log(`✅ Broadcast node already exists`);
+        logger.debug(`✅ Broadcast node already exists`);
       }
     } catch (error) {
-      console.error('❌ Error in ensureBroadcastNode:', error);
+      logger.error('❌ Error in ensureBroadcastNode:', error);
     }
   }
 
   private createTables(): void {
-    console.log('Creating database tables...');
+    logger.debug('Creating database tables...');
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS nodes (
         nodeNum INTEGER PRIMARY KEY,
@@ -330,25 +331,25 @@ class DatabaseService {
         VALUES (?, ?, ?, ?, ?, ?)
       `);
       const result = stmt.run(0, 'Primary', 1, 1, now, now);
-      console.log('✅ Primary channel INSERT result:', result);
+      logger.debug('✅ Primary channel INSERT result:', result);
     } catch (error) {
-      console.error('❌ Error inserting Primary channel:', error);
+      logger.error('❌ Error inserting Primary channel:', error);
     }
 
-    console.log('Database tables created successfully');
+    logger.debug('Database tables created successfully');
   }
 
   private migrateSchema(): void {
-    console.log('Running database migrations...');
+    logger.debug('Running database migrations...');
 
     try {
       this.db.exec(`
         ALTER TABLE messages ADD COLUMN hopStart INTEGER;
       `);
-      console.log('✅ Added hopStart column');
+      logger.debug('✅ Added hopStart column');
     } catch (error: any) {
       if (!error.message?.includes('duplicate column')) {
-        console.log('⚠️ hopStart column already exists or other error:', error.message);
+        logger.debug('⚠️ hopStart column already exists or other error:', error.message);
       }
     }
 
@@ -356,10 +357,10 @@ class DatabaseService {
       this.db.exec(`
         ALTER TABLE messages ADD COLUMN hopLimit INTEGER;
       `);
-      console.log('✅ Added hopLimit column');
+      logger.debug('✅ Added hopLimit column');
     } catch (error: any) {
       if (!error.message?.includes('duplicate column')) {
-        console.log('⚠️ hopLimit column already exists or other error:', error.message);
+        logger.debug('⚠️ hopLimit column already exists or other error:', error.message);
       }
     }
 
@@ -367,10 +368,10 @@ class DatabaseService {
       this.db.exec(`
         ALTER TABLE messages ADD COLUMN replyId INTEGER;
       `);
-      console.log('✅ Added replyId column');
+      logger.debug('✅ Added replyId column');
     } catch (error: any) {
       if (!error.message?.includes('duplicate column')) {
-        console.log('⚠️ replyId column already exists or other error:', error.message);
+        logger.debug('⚠️ replyId column already exists or other error:', error.message);
       }
     }
 
@@ -378,10 +379,10 @@ class DatabaseService {
       this.db.exec(`
         ALTER TABLE nodes ADD COLUMN role INTEGER;
       `);
-      console.log('✅ Added role column');
+      logger.debug('✅ Added role column');
     } catch (error: any) {
       if (!error.message?.includes('duplicate column')) {
-        console.log('⚠️ role column already exists or other error:', error.message);
+        logger.debug('⚠️ role column already exists or other error:', error.message);
       }
     }
 
@@ -389,10 +390,10 @@ class DatabaseService {
       this.db.exec(`
         ALTER TABLE nodes ADD COLUMN hopsAway INTEGER;
       `);
-      console.log('✅ Added hopsAway column');
+      logger.debug('✅ Added hopsAway column');
     } catch (error: any) {
       if (!error.message?.includes('duplicate column')) {
-        console.log('⚠️ hopsAway column already exists or other error:', error.message);
+        logger.debug('⚠️ hopsAway column already exists or other error:', error.message);
       }
     }
 
@@ -400,10 +401,10 @@ class DatabaseService {
       this.db.exec(`
         ALTER TABLE nodes ADD COLUMN lastTracerouteRequest INTEGER;
       `);
-      console.log('✅ Added lastTracerouteRequest column');
+      logger.debug('✅ Added lastTracerouteRequest column');
     } catch (error: any) {
       if (!error.message?.includes('duplicate column')) {
-        console.log('⚠️ lastTracerouteRequest column already exists or other error:', error.message);
+        logger.debug('⚠️ lastTracerouteRequest column already exists or other error:', error.message);
       }
     }
 
@@ -411,10 +412,10 @@ class DatabaseService {
       this.db.exec(`
         ALTER TABLE nodes ADD COLUMN firmwareVersion TEXT;
       `);
-      console.log('✅ Added firmwareVersion column');
+      logger.debug('✅ Added firmwareVersion column');
     } catch (error: any) {
       if (!error.message?.includes('duplicate column')) {
-        console.log('⚠️ firmwareVersion column already exists or other error:', error.message);
+        logger.debug('⚠️ firmwareVersion column already exists or other error:', error.message);
       }
     }
 
@@ -422,10 +423,10 @@ class DatabaseService {
       this.db.exec(`
         ALTER TABLE messages ADD COLUMN emoji INTEGER;
       `);
-      console.log('✅ Added emoji column');
+      logger.debug('✅ Added emoji column');
     } catch (error: any) {
       if (!error.message?.includes('duplicate column')) {
-        console.log('⚠️ emoji column already exists or other error:', error.message);
+        logger.debug('⚠️ emoji column already exists or other error:', error.message);
       }
     }
 
@@ -433,10 +434,10 @@ class DatabaseService {
       this.db.exec(`
         ALTER TABLE nodes ADD COLUMN isFavorite BOOLEAN DEFAULT 0;
       `);
-      console.log('✅ Added isFavorite column');
+      logger.debug('✅ Added isFavorite column');
     } catch (error: any) {
       if (!error.message?.includes('duplicate column')) {
-        console.log('⚠️ isFavorite column already exists or other error:', error.message);
+        logger.debug('⚠️ isFavorite column already exists or other error:', error.message);
       }
     }
 
@@ -444,14 +445,14 @@ class DatabaseService {
       this.db.exec(`
         ALTER TABLE nodes ADD COLUMN rebootCount INTEGER;
       `);
-      console.log('✅ Added rebootCount column');
+      logger.debug('✅ Added rebootCount column');
     } catch (error: any) {
       if (!error.message?.includes('duplicate column')) {
-        console.log('⚠️ rebootCount column already exists or other error:', error.message);
+        logger.debug('⚠️ rebootCount column already exists or other error:', error.message);
       }
     }
 
-    console.log('Database migrations completed');
+    logger.debug('Database migrations completed');
   }
 
   private createIndexes(): void {
@@ -481,18 +482,18 @@ class DatabaseService {
     const migrationCompleted = this.getSetting(migrationKey);
 
     if (migrationCompleted === 'completed') {
-      console.log('✅ Route segments migration already completed');
+      logger.debug('✅ Route segments migration already completed');
       return;
     }
 
-    console.log('🔄 Running route segments migration...');
+    logger.debug('🔄 Running route segments migration...');
 
     try {
       // Get ALL traceroutes from the database
       const stmt = this.db.prepare('SELECT * FROM traceroutes ORDER BY timestamp ASC');
       const allTraceroutes = stmt.all() as DbTraceroute[];
 
-      console.log(`📊 Processing ${allTraceroutes.length} traceroutes for distance calculation...`);
+      logger.debug(`📊 Processing ${allTraceroutes.length} traceroutes for distance calculation...`);
 
       let processedCount = 0;
       let segmentsCreated = 0;
@@ -575,33 +576,33 @@ class DatabaseService {
 
           // Log progress every 100 traceroutes
           if (processedCount % 100 === 0) {
-            console.log(`   Processed ${processedCount}/${allTraceroutes.length} traceroutes...`);
+            logger.debug(`   Processed ${processedCount}/${allTraceroutes.length} traceroutes...`);
           }
         } catch (error) {
-          console.error(`   Error processing traceroute ${traceroute.id}:`, error);
+          logger.error(`   Error processing traceroute ${traceroute.id}:`, error);
           // Continue with next traceroute
         }
       }
 
       // Mark migration as completed
       this.setSetting(migrationKey, 'completed');
-      console.log(`✅ Migration completed! Processed ${processedCount} traceroutes, created ${segmentsCreated} route segments`);
+      logger.debug(`✅ Migration completed! Processed ${processedCount} traceroutes, created ${segmentsCreated} route segments`);
 
     } catch (error) {
-      console.error('❌ Error during route segments migration:', error);
+      logger.error('❌ Error during route segments migration:', error);
       // Don't mark as completed if there was an error
     }
   }
 
   // Node operations
   upsertNode(nodeData: Partial<DbNode>): void {
-    console.log(`DEBUG: upsertNode called with nodeData:`, JSON.stringify(nodeData));
-    console.log(`DEBUG: nodeNum type: ${typeof nodeData.nodeNum}, value: ${nodeData.nodeNum}`);
-    console.log(`DEBUG: nodeId type: ${typeof nodeData.nodeId}, value: ${nodeData.nodeId}`);
+    logger.debug(`DEBUG: upsertNode called with nodeData:`, JSON.stringify(nodeData));
+    logger.debug(`DEBUG: nodeNum type: ${typeof nodeData.nodeNum}, value: ${nodeData.nodeNum}`);
+    logger.debug(`DEBUG: nodeId type: ${typeof nodeData.nodeId}, value: ${nodeData.nodeId}`);
     if (nodeData.nodeNum === undefined || nodeData.nodeNum === null || !nodeData.nodeId) {
-      console.error('Cannot upsert node: missing nodeNum or nodeId');
-      console.error('STACK TRACE FOR FAILED UPSERT:');
-      console.error(new Error().stack);
+      logger.error('Cannot upsert node: missing nodeNum or nodeId');
+      logger.error('STACK TRACE FOR FAILED UPSERT:');
+      logger.error(new Error().stack);
       return;
     }
 
@@ -931,20 +932,20 @@ class DatabaseService {
   upsertChannel(channelData: { id?: number; name: string; psk?: string }): void {
     const now = Date.now();
 
-    console.log(`📝 upsertChannel called with:`, JSON.stringify(channelData));
+    logger.debug(`📝 upsertChannel called with:`, JSON.stringify(channelData));
 
     let existingChannel: DbChannel | null = null;
 
     // If we have an ID, check by ID FIRST (to support creating channel 0 even if "Primary" exists elsewhere)
     if (channelData.id !== undefined) {
       existingChannel = this.getChannelById(channelData.id);
-      console.log(`📝 getChannelById(${channelData.id}) returned:`, existingChannel);
+      logger.debug(`📝 getChannelById(${channelData.id}) returned:`, existingChannel);
     }
 
     // Only check by name if we didn't find a channel by ID
     if (!existingChannel) {
       existingChannel = this.getChannelByName(channelData.name);
-      console.log(`📝 getChannelByName(${channelData.name}) returned:`, existingChannel);
+      logger.debug(`📝 getChannelByName(${channelData.name}) returned:`, existingChannel);
     }
 
     if (existingChannel) {
@@ -957,10 +958,10 @@ class DatabaseService {
         WHERE id = ?
       `);
       stmt.run(channelData.name, channelData.psk, now, existingChannel.id);
-      console.log(`Updated channel: ${channelData.name} (ID: ${existingChannel.id})`);
+      logger.debug(`Updated channel: ${channelData.name} (ID: ${existingChannel.id})`);
     } else {
       // Create new channel
-      console.log(`📝 Creating new channel with ID: ${channelData.id !== undefined ? channelData.id : null}`);
+      logger.debug(`📝 Creating new channel with ID: ${channelData.id !== undefined ? channelData.id : null}`);
       const stmt = this.db.prepare(`
         INSERT INTO channels (id, name, psk, uplinkEnabled, downlinkEnabled, createdAt, updatedAt)
         VALUES (?, ?, ?, 1, 1, ?, ?)
@@ -972,7 +973,7 @@ class DatabaseService {
         now,
         now
       );
-      console.log(`Created channel: ${channelData.name} (ID: ${channelData.id !== undefined ? channelData.id : 'auto'}), lastInsertRowid: ${result.lastInsertRowid}`);
+      logger.debug(`Created channel: ${channelData.name} (ID: ${channelData.id !== undefined ? channelData.id : 'auto'}), lastInsertRowid: ${result.lastInsertRowid}`);
     }
   }
 
@@ -1018,7 +1019,7 @@ class DatabaseService {
       AND psk IS NULL
     `);
     const result = stmt.run();
-    console.log(`🧹 Cleaned up ${result.changes} empty channels`);
+    logger.debug(`🧹 Cleaned up ${result.changes} empty channels`);
     return Number(result.changes);
   }
 
@@ -1266,7 +1267,7 @@ class DatabaseService {
 
   // Danger zone operations
   purgeAllNodes(): void {
-    console.log('⚠️ PURGING all nodes and related data from database');
+    logger.debug('⚠️ PURGING all nodes and related data from database');
     // Delete in order to respect foreign key constraints
     // First delete all child records that reference nodes
     this.db.exec('DELETE FROM messages');
@@ -1276,11 +1277,11 @@ class DatabaseService {
     this.db.exec('DELETE FROM neighbor_info');
     // Finally delete the nodes themselves
     this.db.exec('DELETE FROM nodes');
-    console.log('✅ Successfully purged all nodes and related data');
+    logger.debug('✅ Successfully purged all nodes and related data');
   }
 
   purgeAllTelemetry(): void {
-    console.log('⚠️ PURGING all telemetry from database');
+    logger.debug('⚠️ PURGING all telemetry from database');
     this.db.exec('DELETE FROM telemetry');
   }
 
@@ -1288,12 +1289,12 @@ class DatabaseService {
     const cutoffTime = Date.now() - (hoursToKeep * 60 * 60 * 1000);
     const stmt = this.db.prepare('DELETE FROM telemetry WHERE timestamp < ?');
     const result = stmt.run(cutoffTime);
-    console.log(`🧹 Purged ${result.changes} old telemetry records (keeping last ${hoursToKeep} hours)`);
+    logger.debug(`🧹 Purged ${result.changes} old telemetry records (keeping last ${hoursToKeep} hours)`);
     return Number(result.changes);
   }
 
   purgeAllMessages(): void {
-    console.log('⚠️ PURGING all messages from database');
+    logger.debug('⚠️ PURGING all messages from database');
     this.db.exec('DELETE FROM messages');
   }
 
@@ -1344,7 +1345,7 @@ class DatabaseService {
   }
 
   deleteAllSettings(): void {
-    console.log('🔄 Resetting all settings to defaults');
+    logger.debug('🔄 Resetting all settings to defaults');
     this.db.exec('DELETE FROM settings');
   }
 
@@ -1406,13 +1407,13 @@ class DatabaseService {
         isRecordHolder: true
       });
 
-      console.log(`🏆 New record holder route segment: ${newSegment.distanceKm.toFixed(2)} km from ${newSegment.fromNodeId} to ${newSegment.toNodeId}`);
+      logger.debug(`🏆 New record holder route segment: ${newSegment.distanceKm.toFixed(2)} km from ${newSegment.fromNodeId} to ${newSegment.toNodeId}`);
     }
   }
 
   clearRecordHolderSegment(): void {
     this.db.exec('UPDATE route_segments SET isRecordHolder = 0');
-    console.log('🗑️ Cleared record holder route segment');
+    logger.debug('🗑️ Cleared record holder route segment');
   }
 
   cleanupOldRouteSegments(days: number = 30): number {
@@ -1483,7 +1484,7 @@ class DatabaseService {
       WHERE nodeNum = ?
     `);
     stmt.run(isFavorite ? 1 : 0, now, nodeNum);
-    console.log(`${isFavorite ? '⭐' : '☆'} Node ${nodeNum} favorite status set to: ${isFavorite}`);
+    logger.debug(`${isFavorite ? '⭐' : '☆'} Node ${nodeNum} favorite status set to: ${isFavorite}`);
   }
 }
 

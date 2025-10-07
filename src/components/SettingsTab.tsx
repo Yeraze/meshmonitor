@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { TemperatureUnit } from '../utils/temperature';
 import { version } from '../../package.json';
 import apiService from '../services/api';
+import { logger } from '../utils/logger';
 
 type DistanceUnit = 'km' | 'mi';
 
@@ -90,7 +91,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       alert('Settings saved successfully!');
       setHasChanges(false);
     } catch (error) {
-      console.error('Error saving settings:', error);
+      logger.error('Error saving settings:', error);
       alert('Failed to save settings. Please try again.');
     } finally {
       setIsSaving(false);
@@ -134,7 +135,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       alert('Settings reset to defaults!');
       setHasChanges(false);
     } catch (error) {
-      console.error('Error resetting settings:', error);
+      logger.error('Error resetting settings:', error);
       alert('Failed to reset settings. Please try again.');
     } finally {
       setIsSaving(false);
@@ -157,7 +158,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       alert('Node list and traceroutes have been purged. Refreshing...');
       window.location.reload();
     } catch (error) {
-      console.error('Error purging nodes:', error);
+      logger.error('Error purging nodes:', error);
       alert('Error purging nodes. Please try again.');
     }
   };
@@ -180,7 +181,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       alert('Telemetry has been purged. Refreshing...');
       window.location.reload();
     } catch (error) {
-      console.error('Error purging telemetry:', error);
+      logger.error('Error purging telemetry:', error);
       alert('Error purging telemetry. Please try again.');
     }
   };
@@ -202,7 +203,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       alert('Messages have been purged. Refreshing...');
       window.location.reload();
     } catch (error) {
-      console.error('Error purging messages:', error);
+      logger.error('Error purging messages:', error);
       alert('Error purging messages. Please try again.');
     }
   };
