@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import './TelemetryGraphs.css';
 import { type TemperatureUnit, formatTemperature, getTemperatureUnit } from '../utils/temperature';
+import { logger } from '../utils/logger';
 
 interface TelemetryData {
   id?: number;
@@ -56,7 +57,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
           }
         }
       } catch (error) {
-        console.error('Error fetching favorites:', error);
+        logger.error('Error fetching favorites:', error);
       }
     };
     fetchFavorites();
@@ -81,7 +82,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
           setError(null);
         }
       } catch (error) {
-        console.error('Error fetching telemetry:', error);
+        logger.error('Error fetching telemetry:', error);
         if (isMounted) {
           setError(error instanceof Error ? error.message : 'Failed to load telemetry data');
         }
@@ -137,7 +138,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
         body: JSON.stringify({ telemetryFavorites: JSON.stringify(allFavorites) })
       });
     } catch (error) {
-      console.error('Error saving favorite:', error);
+      logger.error('Error saving favorite:', error);
       // Revert on error
       setFavorites(favorites);
     }

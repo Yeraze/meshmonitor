@@ -7,6 +7,7 @@ import {
   validateHours,
   validateIntervalMinutes
 } from '../utils/validation';
+import { logger } from '../utils/logger';
 
 class ApiService {
   private baseUrl = '';
@@ -106,7 +107,7 @@ class ApiService {
           if (baseSegments.length > 0) {
             this.baseUrl = '/' + baseSegments.join('/');
             this.configFetched = true;
-            console.warn(`Using inferred base URL: ${this.baseUrl}`);
+            logger.warn(`Using inferred base URL: ${this.baseUrl}`);
             return;
           }
         }
@@ -127,7 +128,7 @@ class ApiService {
     }
 
     // All retries failed, use fallback
-    console.warn('Failed to fetch config after retries, using default base URL', lastError);
+    logger.warn('Failed to fetch config after retries, using default base URL', lastError);
     this.baseUrl = '';
     this.configFetched = true;
   }

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import './Dashboard.css';
 import { type TemperatureUnit, formatTemperature, getTemperatureUnit } from '../utils/temperature';
+import { logger } from '../utils/logger';
 
 interface TelemetryData {
   id?: number;
@@ -106,7 +107,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C',
                 telemetryMap.set(key, filteredData);
               }
             } catch (err) {
-              console.error(`Error fetching telemetry for ${favorite.nodeId}:`, err);
+              logger.error(`Error fetching telemetry for ${favorite.nodeId}:`, err);
             }
           })
         );
@@ -114,7 +115,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C',
         setTelemetryData(telemetryMap);
         setError(null);
       } catch (err) {
-        console.error('Error in Dashboard:', err);
+        logger.error('Error in Dashboard:', err);
         setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
       } finally {
         setLoading(false);
@@ -211,7 +212,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C',
         body: JSON.stringify({ telemetryFavorites: JSON.stringify(newFavorites) })
       });
     } catch (error) {
-      console.error('Error removing favorite:', error);
+      logger.error('Error removing favorite:', error);
       // Revert on error
       window.location.reload();
     }
