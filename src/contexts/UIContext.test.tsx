@@ -53,15 +53,23 @@ describe('UIContext Types', () => {
   it('should support SortField values', () => {
     const longName: SortField = 'longName';
     const shortName: SortField = 'shortName';
+    const id: SortField = 'id';
     const lastHeard: SortField = 'lastHeard';
     const snr: SortField = 'snr';
-    const hopsAway: SortField = 'hopsAway';
+    const battery: SortField = 'battery';
+    const hwModel: SortField = 'hwModel';
+    const location: SortField = 'location';
+    const hops: SortField = 'hops';
 
     expect(longName).toBe('longName');
     expect(shortName).toBe('shortName');
+    expect(id).toBe('id');
     expect(lastHeard).toBe('lastHeard');
     expect(snr).toBe('snr');
-    expect(hopsAway).toBe('hopsAway');
+    expect(battery).toBe('battery');
+    expect(hwModel).toBe('hwModel');
+    expect(location).toBe('location');
+    expect(hops).toBe('hops');
   });
 
   it('should support SortDirection values', () => {
