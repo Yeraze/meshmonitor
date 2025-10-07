@@ -906,12 +906,40 @@ apiRouter.get('/connection', (_req, res) => {
 });
 
 // Configuration endpoint for frontend
-apiRouter.get('/config', (_req, res) => {
-  res.json({
-    meshtasticNodeIp: process.env.MESHTASTIC_NODE_IP || '192.168.1.100',
-    meshtasticTcpPort: parseInt(process.env.MESHTASTIC_TCP_PORT || '4403', 10),
-    baseUrl: BASE_URL
-  });
+apiRouter.get('/config', async (_req, res) => {
+  try {
+    // Get the local node number from settings to include rebootCount
+    const localNodeNumStr = databaseService.getSetting('localNodeNum');
+
+    let deviceMetadata = undefined;
+    if (localNodeNumStr) {
+      const localNodeNum = parseInt(localNodeNumStr, 10);
+      const currentNode = databaseService.getNode(localNodeNum);
+
+      if (currentNode) {
+        deviceMetadata = {
+          firmwareVersion: currentNode.firmwareVersion,
+          rebootCount: currentNode.rebootCount
+        };
+      }
+    }
+
+    res.json({
+      meshtasticNodeIp: process.env.MESHTASTIC_NODE_IP || '192.168.1.100',
+      meshtasticTcpPort: parseInt(process.env.MESHTASTIC_TCP_PORT || '4403', 10),
+      meshtasticUseTls: false,  // We're using TCP, not TLS
+      baseUrl: BASE_URL,
+      deviceMetadata: deviceMetadata
+    });
+  } catch (error) {
+    console.error('Error in /api/config:', error);
+    res.json({
+      meshtasticNodeIp: process.env.MESHTASTIC_NODE_IP || '192.168.1.100',
+      meshtasticTcpPort: parseInt(process.env.MESHTASTIC_TCP_PORT || '4403', 10),
+      meshtasticUseTls: false,
+      baseUrl: BASE_URL
+    });
+  }
 });
 
 // Device configuration endpoint
@@ -1086,6 +1114,130 @@ apiRouter.post('/purge/messages', (_req, res) => {
   } catch (error) {
     console.error('Error purging messages:', error);
     res.status(500).json({ error: 'Failed to purge messages' });
+  }
+});
+
+// Configuration endpoints
+// GET current configuration
+apiRouter.get('/config/current', (_req, res) => {
+  try {
+    const config = meshtasticManager.getCurrentConfig();
+    res.json(config);
+  } catch (error) {
+    console.error('Error getting current config:', error);
+    res.status(500).json({ error: 'Failed to get current configuration' });
+  }
+});
+
+apiRouter.post('/config/device', async (req, res) => {
+  try {
+    const config = req.body;
+    await meshtasticManager.setDeviceConfig(config);
+    res.json({ success: true, message: 'Device configuration sent' });
+  } catch (error) {
+    console.error('Error setting device config:', error);
+    res.status(500).json({ error: 'Failed to set device configuration' });
+  }
+});
+
+apiRouter.post('/config/lora', async (req, res) => {
+  try {
+    const config = req.body;
+    await meshtasticManager.setLoRaConfig(config);
+    res.json({ success: true, message: 'LoRa configuration sent' });
+  } catch (error) {
+    console.error('Error setting LoRa config:', error);
+    res.status(500).json({ error: 'Failed to set LoRa configuration' });
+  }
+});
+
+apiRouter.post('/config/position', async (req, res) => {
+  try {
+    const config = req.body;
+    await meshtasticManager.setPositionConfig(config);
+    res.json({ success: true, message: 'Position configuration sent' });
+  } catch (error) {
+    console.error('Error setting position config:', error);
+    res.status(500).json({ error: 'Failed to set position configuration' });
+  }
+});
+
+apiRouter.post('/config/mqtt', async (req, res) => {
+  try {
+    const config = req.body;
+    await meshtasticManager.setMQTTConfig(config);
+    res.json({ success: true, message: 'MQTT configuration sent' });
+  } catch (error) {
+    console.error('Error setting MQTT config:', error);
+    res.status(500).json({ error: 'Failed to set MQTT configuration' });
+  }
+});
+
+apiRouter.post('/config/neighborinfo', async (req, res) => {
+  console.log('🔍 DEBUG: /config/neighborinfo endpoint called with body:', JSON.stringify(req.body));
+  try {
+    const config = req.body;
+    await meshtasticManager.setNeighborInfoConfig(config);
+    res.json({ success: true, message: 'NeighborInfo configuration sent' });
+  } catch (error) {
+    console.error('Error setting NeighborInfo config:', error);
+    res.status(500).json({ error: 'Failed to set NeighborInfo configuration' });
+  }
+});
+
+apiRouter.post('/config/owner', async (req, res) => {
+  try {
+    const { longName, shortName } = req.body;
+    if (!longName || !shortName) {
+      res.status(400).json({ error: 'longName and shortName are required' });
+      return;
+    }
+    await meshtasticManager.setNodeOwner(longName, shortName);
+    res.json({ success: true, message: 'Node owner updated' });
+  } catch (error) {
+    console.error('Error setting node owner:', error);
+    res.status(500).json({ error: 'Failed to set node owner' });
+  }
+});
+
+apiRouter.post('/config/request', async (req, res) => {
+  try {
+    const { configType } = req.body;
+    if (configType === undefined) {
+      res.status(400).json({ error: 'configType is required' });
+      return;
+    }
+    await meshtasticManager.requestConfig(configType);
+    res.json({ success: true, message: 'Config request sent' });
+  } catch (error) {
+    console.error('Error requesting config:', error);
+    res.status(500).json({ error: 'Failed to request configuration' });
+  }
+});
+
+apiRouter.post('/config/module/request', async (req, res) => {
+  try {
+    const { configType } = req.body;
+    if (configType === undefined) {
+      res.status(400).json({ error: 'configType is required' });
+      return;
+    }
+    await meshtasticManager.requestModuleConfig(configType);
+    res.json({ success: true, message: 'Module config request sent' });
+  } catch (error) {
+    console.error('Error requesting module config:', error);
+    res.status(500).json({ error: 'Failed to request module configuration' });
+  }
+});
+
+apiRouter.post('/device/reboot', async (req, res) => {
+  try {
+    const seconds = req.body?.seconds || 5;
+    await meshtasticManager.rebootDevice(seconds);
+    res.json({ success: true, message: `Device will reboot in ${seconds} seconds` });
+  } catch (error) {
+    console.error('Error rebooting device:', error);
+    res.status(500).json({ error: 'Failed to reboot device' });
   }
 });
 

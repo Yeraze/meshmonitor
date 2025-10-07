@@ -1,6 +1,7 @@
 import React from 'react';
 import L from 'leaflet';
 import { Marker } from 'react-leaflet';
+import { ROLE_NAMES } from '../constants';
 
 // Constants for arrow generation
 export const ARROW_DISTANCE_THRESHOLD = 0.05; // One arrow per 0.05 degrees
@@ -16,14 +17,7 @@ export const getRoleName = (role: number | string | undefined): string | null =>
   if (role === undefined || role === null) return null;
   const roleNum = typeof role === 'string' ? parseInt(role, 10) : role;
   if (isNaN(roleNum)) return null;
-  switch (roleNum) {
-    case 0: return 'Client';
-    case 1: return 'Client Mute';
-    case 2: return 'Router';
-    case 4: return 'Repeater';
-    case 11: return 'Router Late';
-    default: return `Role ${roleNum}`;
-  }
+  return ROLE_NAMES[roleNum] || `Role ${roleNum}`;
 };
 
 /**

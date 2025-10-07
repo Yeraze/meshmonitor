@@ -562,10 +562,16 @@ class ProtobufService {
         throw new Error('AdminMessage type not found in loaded proto files');
       }
 
-      const adminMsg = AdminMessage.create({
-        setFavoriteNode: nodeNum,
-        sessionPasskey: sessionPasskey || new Uint8Array()
-      });
+      const adminMsgData: any = {
+        setFavoriteNode: nodeNum
+      };
+
+      // Only include sessionPasskey if provided
+      if (sessionPasskey && sessionPasskey.length > 0) {
+        adminMsgData.sessionPasskey = sessionPasskey;
+      }
+
+      const adminMsg = AdminMessage.create(adminMsgData);
 
       const encoded = AdminMessage.encode(adminMsg).finish();
       console.log(`⚙️ Created SetFavoriteNode admin message for node ${nodeNum}`);
@@ -589,10 +595,16 @@ class ProtobufService {
         throw new Error('AdminMessage type not found in loaded proto files');
       }
 
-      const adminMsg = AdminMessage.create({
-        removeFavoriteNode: nodeNum,
-        sessionPasskey: sessionPasskey || new Uint8Array()
-      });
+      const adminMsgData: any = {
+        removeFavoriteNode: nodeNum
+      };
+
+      // Only include sessionPasskey if provided
+      if (sessionPasskey && sessionPasskey.length > 0) {
+        adminMsgData.sessionPasskey = sessionPasskey;
+      }
+
+      const adminMsg = AdminMessage.create(adminMsgData);
 
       const encoded = AdminMessage.encode(adminMsg).finish();
       console.log(`⚙️ Created RemoveFavoriteNode admin message for node ${nodeNum}`);
@@ -625,11 +637,448 @@ class ProtobufService {
   }
 
   /**
+   * Create an AdminMessage to get a specific config type from the device
+   * @param configType The config type to request (DEVICE_CONFIG=0, LORA_CONFIG=5, etc.)
+   */
+  createGetConfigRequest(configType: number): Uint8Array {
+    try {
+      const root = getProtobufRoot();
+      const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
+      if (!AdminMessage) {
+        throw new Error('AdminMessage type not found in loaded proto files');
+      }
+
+      const adminMsg = AdminMessage.create({
+        getConfigRequest: configType
+      });
+
+      const encoded = AdminMessage.encode(adminMsg).finish();
+      console.log(`⚙️ Created GetConfig request (configType=${configType})`);
+      return encoded;
+    } catch (error) {
+      console.error('Failed to create GetConfig request:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create an AdminMessage to get a specific module config type from the device
+   * @param configType The module config type to request (MQTT_CONFIG=0, NEIGHBORINFO_CONFIG=9, etc.)
+   */
+  createGetModuleConfigRequest(configType: number): Uint8Array {
+    try {
+      const root = getProtobufRoot();
+      const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
+      if (!AdminMessage) {
+        throw new Error('AdminMessage type not found in loaded proto files');
+      }
+
+      const adminMsg = AdminMessage.create({
+        getModuleConfigRequest: configType
+      });
+
+      const encoded = AdminMessage.encode(adminMsg).finish();
+      console.log(`⚙️ Created GetModuleConfig request (configType=${configType})`);
+      return encoded;
+    } catch (error) {
+      console.error('Failed to create GetModuleConfig request:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create an AdminMessage to set device configuration (role, broadcast intervals, etc.)
+   * @param config Device config object with role, node_info_broadcast_secs, etc.
+   * @param sessionPasskey Optional session passkey for authentication
+   */
+  createSetDeviceConfigMessage(config: any, sessionPasskey?: Uint8Array): Uint8Array {
+    try {
+      const root = getProtobufRoot();
+      const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
+      const Config = root?.lookupType('meshtastic.Config');
+      if (!AdminMessage || !Config) {
+        throw new Error('Required proto types not found');
+      }
+
+      // Convert config fields to format expected by protobufjs
+      // Note: protobufjs uses camelCase for field names, not snake_case
+      const deviceConfig: any = {};
+      if (config.role !== undefined) {
+        deviceConfig.role = config.role;
+      }
+      if (config.nodeInfoBroadcastSecs !== undefined) {
+        deviceConfig.nodeInfoBroadcastSecs = config.nodeInfoBroadcastSecs;
+      }
+
+      console.log('⚙️ Sending device config:', JSON.stringify(deviceConfig));
+
+      const configMsg = Config.create({
+        device: deviceConfig
+      });
+
+      const adminMsgData: any = {
+        setConfig: configMsg
+      };
+
+      // Only include sessionPasskey if provided
+      if (sessionPasskey && sessionPasskey.length > 0) {
+        adminMsgData.sessionPasskey = sessionPasskey;
+      }
+
+      const adminMsg = AdminMessage.create(adminMsgData);
+
+      const encoded = AdminMessage.encode(adminMsg).finish();
+      console.log('⚙️ Created SetDeviceConfig admin message');
+      return encoded;
+    } catch (error) {
+      console.error('Failed to create SetDeviceConfig message:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create an AdminMessage to set LoRa configuration (preset, region, etc.)
+   * @param config LoRa config object
+   * @param sessionPasskey Optional session passkey for authentication
+   */
+  createSetLoRaConfigMessage(config: any, sessionPasskey?: Uint8Array): Uint8Array {
+    try {
+      const root = getProtobufRoot();
+      const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
+      const Config = root?.lookupType('meshtastic.Config');
+      if (!AdminMessage || !Config) {
+        throw new Error('Required proto types not found');
+      }
+
+      const configMsg = Config.create({
+        lora: config
+      });
+
+      const adminMsgData: any = {
+        setConfig: configMsg
+      };
+
+      // Only include sessionPasskey if provided
+      if (sessionPasskey && sessionPasskey.length > 0) {
+        adminMsgData.sessionPasskey = sessionPasskey;
+      }
+
+      const adminMsg = AdminMessage.create(adminMsgData);
+
+      const encoded = AdminMessage.encode(adminMsg).finish();
+      console.log('⚙️ Created SetLoRaConfig admin message');
+      return encoded;
+    } catch (error) {
+      console.error('Failed to create SetLoRaConfig message:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create an AdminMessage to set position configuration (broadcast intervals, etc.)
+   * @param config Position config object
+   * @param sessionPasskey Optional session passkey for authentication
+   */
+  createSetPositionConfigMessage(config: any, sessionPasskey?: Uint8Array): Uint8Array {
+    try {
+      const root = getProtobufRoot();
+      const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
+      const Config = root?.lookupType('meshtastic.Config');
+      if (!AdminMessage || !Config) {
+        throw new Error('Required proto types not found');
+      }
+
+      const configMsg = Config.create({
+        position: config
+      });
+
+      const adminMsgData: any = {
+        setConfig: configMsg
+      };
+
+      // Only include sessionPasskey if provided
+      if (sessionPasskey && sessionPasskey.length > 0) {
+        adminMsgData.sessionPasskey = sessionPasskey;
+      }
+
+      const adminMsg = AdminMessage.create(adminMsgData);
+
+      const encoded = AdminMessage.encode(adminMsg).finish();
+      console.log('⚙️ Created SetPositionConfig admin message');
+      return encoded;
+    } catch (error) {
+      console.error('Failed to create SetPositionConfig message:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create an AdminMessage to set MQTT module configuration
+   * @param config MQTT config object
+   * @param sessionPasskey Optional session passkey for authentication
+   */
+  createSetMQTTConfigMessage(config: any, sessionPasskey?: Uint8Array): Uint8Array {
+    try {
+      const root = getProtobufRoot();
+      const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
+      const ModuleConfig = root?.lookupType('meshtastic.ModuleConfig');
+      if (!AdminMessage || !ModuleConfig) {
+        throw new Error('Required proto types not found');
+      }
+
+      const moduleConfigMsg = ModuleConfig.create({
+        mqtt: config
+      });
+
+      const adminMsgData: any = {
+        setModuleConfig: moduleConfigMsg
+      };
+
+      // Only include sessionPasskey if provided
+      if (sessionPasskey && sessionPasskey.length > 0) {
+        adminMsgData.sessionPasskey = sessionPasskey;
+      }
+
+      const adminMsg = AdminMessage.create(adminMsgData);
+
+      const encoded = AdminMessage.encode(adminMsg).finish();
+      console.log('⚙️ Created SetMQTTConfig admin message');
+      return encoded;
+    } catch (error) {
+      console.error('Failed to create SetMQTTConfig message:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create an AdminMessage to set NeighborInfo module configuration
+   * @param config NeighborInfo config object
+   * @param sessionPasskey Optional session passkey for authentication
+   */
+  createSetNeighborInfoConfigMessage(config: any, sessionPasskey?: Uint8Array): Uint8Array {
+    try {
+      const root = getProtobufRoot();
+      const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
+      const ModuleConfig = root?.lookupType('meshtastic.ModuleConfig');
+      if (!AdminMessage || !ModuleConfig) {
+        throw new Error('Required proto types not found');
+      }
+
+      const moduleConfigMsg = ModuleConfig.create({
+        neighborInfo: config
+      });
+
+      const adminMsgData: any = {
+        setModuleConfig: moduleConfigMsg
+      };
+
+      // Only include sessionPasskey if provided
+      if (sessionPasskey && sessionPasskey.length > 0) {
+        adminMsgData.sessionPasskey = sessionPasskey;
+      }
+
+      const adminMsg = AdminMessage.create(adminMsgData);
+
+      const encoded = AdminMessage.encode(adminMsg).finish();
+      console.log('⚙️ Created SetNeighborInfoConfig admin message');
+      console.log('🔍 AdminMessage bytes:', Array.from(encoded).map(b => b.toString(16).padStart(2, '0')).join(' '));
+      console.log('🔍 AdminMessage object:', JSON.stringify(adminMsg, null, 2));
+      return encoded;
+    } catch (error) {
+      console.error('Failed to create SetNeighborInfoConfig message:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create an AdminMessage to set fixed position
+   * @param latitude Latitude in degrees
+   * @param longitude Longitude in degrees
+   * @param altitude Altitude in meters
+   * @param sessionPasskey Optional session passkey for authentication
+   */
+  createSetFixedPositionMessage(latitude: number, longitude: number, altitude: number, sessionPasskey?: Uint8Array): Uint8Array {
+    try {
+      const root = getProtobufRoot();
+      const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
+      const Position = root?.lookupType('meshtastic.Position');
+      if (!AdminMessage || !Position) {
+        throw new Error('Required proto types not found');
+      }
+
+      // Meshtastic uses degrees * 1e-7 for lat/long
+      const positionMsg = Position.create({
+        latitudeI: Math.round(latitude * 1e7),
+        longitudeI: Math.round(longitude * 1e7),
+        altitude: Math.round(altitude)
+      });
+
+      const adminMsgData: any = {
+        setFixedPosition: positionMsg
+      };
+
+      if (sessionPasskey && sessionPasskey.length > 0) {
+        adminMsgData.sessionPasskey = sessionPasskey;
+      }
+
+      const adminMsg = AdminMessage.create(adminMsgData);
+      const encoded = AdminMessage.encode(adminMsg).finish();
+      console.log('⚙️ Created SetFixedPosition admin message');
+      console.log('🔍 Position data:', JSON.stringify(positionMsg));
+      console.log('🔍 AdminMessage data:', JSON.stringify(adminMsgData));
+      console.log('🔍 AdminMessage object:', JSON.stringify(adminMsg, null, 2));
+      console.log('🔍 AdminMessage bytes:', Array.from(encoded).map(b => b.toString(16).padStart(2, '0')).join(' '));
+      return encoded;
+    } catch (error) {
+      console.error('Failed to create SetFixedPosition message:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create an AdminMessage to set node owner (long name and short name)
+   * @param longName Node long name
+   * @param shortName Node short name
+   * @param sessionPasskey Optional session passkey for authentication
+   */
+  createSetOwnerMessage(longName: string, shortName: string, sessionPasskey?: Uint8Array): Uint8Array {
+    try {
+      const root = getProtobufRoot();
+      const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
+      const User = root?.lookupType('meshtastic.User');
+      if (!AdminMessage || !User) {
+        throw new Error('Required proto types not found');
+      }
+
+      const userMsg = User.create({
+        longName: longName,
+        shortName: shortName
+      });
+
+      const adminMsgData: any = {
+        setOwner: userMsg
+      };
+
+      // Only include sessionPasskey if provided
+      if (sessionPasskey && sessionPasskey.length > 0) {
+        adminMsgData.sessionPasskey = sessionPasskey;
+      }
+
+      const adminMsg = AdminMessage.create(adminMsgData);
+
+      const encoded = AdminMessage.encode(adminMsg).finish();
+      console.log(`⚙️ Created SetOwner admin message: "${longName}" (${shortName})`);
+      return encoded;
+    } catch (error) {
+      console.error('Failed to create SetOwner message:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create an AdminMessage to reboot the device
+   * @param seconds Number of seconds to wait before rebooting
+   * @param sessionPasskey Optional session passkey for authentication
+   */
+  createRebootMessage(seconds: number, sessionPasskey?: Uint8Array): Uint8Array {
+    try {
+      const root = getProtobufRoot();
+      const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
+      if (!AdminMessage) {
+        throw new Error('AdminMessage type not found in loaded proto files');
+      }
+
+      const adminMsgData: any = {
+        rebootSeconds: seconds
+      };
+
+      // Only include sessionPasskey if provided
+      if (sessionPasskey && sessionPasskey.length > 0) {
+        adminMsgData.sessionPasskey = sessionPasskey;
+      }
+
+      const adminMsg = AdminMessage.create(adminMsgData);
+
+      const encoded = AdminMessage.encode(adminMsg).finish();
+      console.log(`⚙️ Created Reboot admin message (rebootSeconds=${seconds})`);
+      return encoded;
+    } catch (error) {
+      console.error('Failed to create Reboot message:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create an AdminMessage to begin settings edit transaction
+   * @param sessionPasskey Optional session passkey for authentication
+   */
+  createBeginEditSettingsMessage(sessionPasskey?: Uint8Array): Uint8Array {
+    try {
+      const root = getProtobufRoot();
+      const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
+      if (!AdminMessage) {
+        throw new Error('AdminMessage type not found in loaded proto files');
+      }
+
+      const adminMsgData: any = {
+        beginEditSettings: true
+      };
+
+      // Only include sessionPasskey if provided
+      if (sessionPasskey && sessionPasskey.length > 0) {
+        adminMsgData.sessionPasskey = sessionPasskey;
+      }
+
+      const adminMsg = AdminMessage.create(adminMsgData);
+
+      const encoded = AdminMessage.encode(adminMsg).finish();
+      console.log('⚙️ Created BeginEditSettings admin message');
+      return encoded;
+    } catch (error) {
+      console.error('Failed to create BeginEditSettings message:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create an AdminMessage to commit settings edit transaction
+   * @param sessionPasskey Optional session passkey for authentication
+   */
+  createCommitEditSettingsMessage(sessionPasskey?: Uint8Array): Uint8Array {
+    try {
+      const root = getProtobufRoot();
+      const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
+      if (!AdminMessage) {
+        throw new Error('AdminMessage type not found in loaded proto files');
+      }
+
+      const adminMsgData: any = {
+        commitEditSettings: true
+      };
+
+      // Only include sessionPasskey if provided
+      if (sessionPasskey && sessionPasskey.length > 0) {
+        adminMsgData.sessionPasskey = sessionPasskey;
+      }
+
+      const adminMsg = AdminMessage.create(adminMsgData);
+
+      const encoded = AdminMessage.encode(adminMsg).finish();
+      console.log('⚙️ Created CommitEditSettings admin message');
+      return encoded;
+    } catch (error) {
+      console.error('Failed to create CommitEditSettings message:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Create a complete ToRadio packet with an admin message
    * @param adminMessagePayload The encoded admin message
    * @param destination Optional destination node number (0 for local node)
+   * @param fromNodeNum Optional source node number (required for proper packet routing)
    */
-  createAdminPacket(adminMessagePayload: Uint8Array, destination: number = 0): Uint8Array {
+  createAdminPacket(adminMessagePayload: Uint8Array, destination: number = 0, fromNodeNum?: number): Uint8Array {
     try {
       const root = getProtobufRoot();
       const ToRadio = root?.lookupType('meshtastic.ToRadio');
@@ -644,16 +1093,34 @@ class ProtobufService {
       const dataMsg = Data.create({
         portnum: 6, // ADMIN_APP
         payload: adminMessagePayload,
-        wantResponse: true
+        wantResponse: true  // Request response for admin config changes
       });
 
-      // Create MeshPacket
-      const meshPacket = MeshPacket.create({
+      // Create MeshPacket with random ID
+      // Generate random packet ID (must be non-zero)
+      const packetId = Math.floor(Math.random() * 0xFFFFFFFF) + 1;
+      console.log(`🔍 Generated packet ID: ${packetId} (0x${packetId.toString(16)})`);
+
+      const meshPacketData: any = {
+        id: packetId,
         to: destination,
         decoded: dataMsg,
+        channel: 0,
+        hopLimit: 3,
         wantAck: true,
-        channel: 0
-      });
+        priority: 70,  // RELIABLE priority
+        pkiEncrypted: true  // Python CLI sets this flag even with plaintext admin messages
+      };
+
+      // Include from field if provided
+      if (fromNodeNum !== undefined) {
+        meshPacketData.from = fromNodeNum;
+        console.log(`🔍 Setting from field: ${fromNodeNum} (0x${fromNodeNum.toString(16)})`);
+      }
+
+      const meshPacket = MeshPacket.create(meshPacketData);
+
+      console.log('🔍 MeshPacket created:', JSON.stringify(meshPacket, null, 2));
 
       // Wrap in ToRadio
       const toRadio = ToRadio.create({
@@ -662,6 +1129,7 @@ class ProtobufService {
 
       const encoded = ToRadio.encode(toRadio).finish();
       console.log(`📤 Created admin ToRadio packet (destination: ${destination})`);
+      console.log('🔍 ToRadio bytes:', Array.from(encoded).map(b => b.toString(16).padStart(2, '0')).join(' '));
       return encoded;
     } catch (error) {
       console.error('Failed to create admin ToRadio packet:', error);

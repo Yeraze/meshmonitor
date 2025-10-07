@@ -111,18 +111,33 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
           )}
           <p><strong>Connection Status:</strong> <span className={`status-text ${connectionStatus}`}>{connectionStatus}</span></p>
           <p><strong>Uses TLS:</strong> {deviceInfo?.meshtasticUseTls ? 'Yes' : 'No'}</p>
+          {deviceInfo?.deviceMetadata?.rebootCount !== undefined && (
+            <p><strong>Reboot Count:</strong> {deviceInfo.deviceMetadata.rebootCount}</p>
+          )}
         </div>
 
         {deviceConfig && (
           <>
             <div className="info-section">
               <h3>LoRa Radio Configuration</h3>
-              {(deviceConfig.radio?.region !== 'Unknown' || deviceConfig.radio?.modemPreset !== 'Unknown') &&
-                deviceConfig.radio?.modemPreset !== 'Long Fast' && deviceConfig.radio?.modemPreset !== 'Short Fast' && (
-                <p style={{ fontSize: '0.9em', fontStyle: 'italic', color: '#888' }}>
-                  ⚠️ Some values are inferred from available data when device config is not fully accessible via HTTP API
-                </p>
-              )}
+              {(() => {
+                const localNode = nodes.find(n => n.user?.id === currentNodeId);
+                const roleNames: { [key: string]: string } = {
+                  '0': 'CLIENT',
+                  '2': 'ROUTER',
+                  '12': 'CLIENT_BASE',
+                  '1': 'CLIENT_MUTE',
+                  '3': 'REPEATER',
+                  '4': 'TRACKER',
+                  '5': 'SENSOR',
+                  '6': 'TAK',
+                  '7': 'CLIENT_HIDDEN',
+                  '8': 'LOST_AND_FOUND',
+                  '9': 'TAK_TRACKER'
+                };
+                const roleName = localNode?.user?.role ? roleNames[localNode.user.role] || `Unknown (${localNode.user.role})` : 'Unknown';
+                return <p><strong>Device Role:</strong> {roleName}</p>;
+              })()}
               <p><strong>Region:</strong> {deviceConfig.radio?.region || 'Unknown'}</p>
               <p><strong>Modem Preset:</strong> {deviceConfig.radio?.modemPreset || 'Unknown'}</p>
               <p><strong>Channel Number:</strong> {deviceConfig.radio?.channelNum !== undefined ? deviceConfig.radio.channelNum : 'Unknown'}</p>

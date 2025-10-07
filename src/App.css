@@ -139,6 +139,11 @@ body {
   background: var(--ctp-red);
 }
 
+.status-indicator.rebooting {
+  background: var(--ctp-peach);
+  animation: pulse 1s infinite;
+}
+
 @keyframes pulse {
   0% {
     box-shadow: 0 0 0 0 rgba(166, 227, 161, 0.7);
@@ -450,6 +455,10 @@ body {
 
 .status-text.connecting {
   color: var(--ctp-yellow);
+}
+
+.status-text.rebooting {
+  color: var(--ctp-peach);
 }
 
 .channel-config {

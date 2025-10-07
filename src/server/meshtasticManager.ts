@@ -117,6 +117,7 @@ class MeshtasticManager {
 
   private async handleConnected(): Promise<void> {
     console.log('✅ TCP connection established, requesting configuration...');
+    this.isConnected = true;
 
     try {
       // Send want_config_id to request full node DB and config
@@ -437,6 +438,17 @@ class MeshtasticManager {
         firmwareVersion: (existingNode as any).firmwareVersion || null,
         isLocked: true  // Lock it to prevent overwrites
       } as any;
+
+      // Update rebootCount in the database since it changes over time
+      if (myNodeInfo.rebootCount !== undefined) {
+        databaseService.upsertNode({
+          nodeNum: nodeNum,
+          nodeId: nodeId,
+          rebootCount: myNodeInfo.rebootCount
+        });
+        console.log(`📱 Updated rebootCount to ${myNodeInfo.rebootCount} for local device: ${existingNode.longName} (${nodeId})`);
+      }
+
       console.log(`📱 Using existing node info for local device: ${existingNode.longName} (${nodeId}) - LOCKED`);
     } else {
       // We don't have real node info yet, store basic info and wait for NodeInfo
@@ -444,6 +456,7 @@ class MeshtasticManager {
         nodeNum: nodeNum,
         nodeId: nodeId,
         hwModel: myNodeInfo.hwModel || 0,
+        rebootCount: myNodeInfo.rebootCount !== undefined ? myNodeInfo.rebootCount : undefined,
         lastHeard: Date.now() / 1000,
         createdAt: Date.now(),
         updatedAt: Date.now()
@@ -461,12 +474,23 @@ class MeshtasticManager {
       } as any;
 
       databaseService.upsertNode(nodeData);
-      console.log(`📱 Stored basic local node info, waiting for NodeInfo for names (${nodeId})`);
+      console.log(`📱 Stored basic local node info with rebootCount: ${myNodeInfo.rebootCount}, waiting for NodeInfo for names (${nodeId})`);
     }
   }
 
   getLocalNodeInfo(): { nodeNum: number; nodeId: string; longName: string; shortName: string; hwModel?: number } | null {
     return this.localNodeInfo;
+  }
+
+  /**
+   * Get the current device configuration
+   */
+  getCurrentConfig(): { deviceConfig: any; moduleConfig: any; localNodeInfo: any } {
+    return {
+      deviceConfig: this.actualDeviceConfig || {},
+      moduleConfig: this.actualModuleConfig || {},
+      localNodeInfo: this.localNodeInfo
+    };
   }
 
   /**
@@ -1420,6 +1444,7 @@ class MeshtasticManager {
         nodeData.longName = nodeInfo.user.longName;
         nodeData.shortName = nodeInfo.user.shortName;
         nodeData.hwModel = nodeInfo.user.hwModel;
+        nodeData.role = nodeInfo.user.role;
       }
 
       // Add position information if available
@@ -2853,7 +2878,7 @@ class MeshtasticManager {
 
     try {
       const getSessionKeyRequest = protobufService.createGetSessionKeyRequest();
-      const adminPacket = protobufService.createAdminPacket(getSessionKeyRequest, 0); // 0 = local node
+      const adminPacket = protobufService.createAdminPacket(getSessionKeyRequest, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum); // send to local node
 
       await this.transport.send(adminPacket);
       console.log('🔑 Requested session passkey from device (via SESSIONKEY_CONFIG)');
@@ -2942,7 +2967,7 @@ class MeshtasticManager {
       // (there's a known bug where session keys don't work properly over TCP)
       console.log('⭐ Attempting to send favorite without session key (local TCP admin)');
       const setFavoriteMsg = protobufService.createSetFavoriteNodeMessage(nodeNum, new Uint8Array()); // empty passkey
-      const adminPacket = protobufService.createAdminPacket(setFavoriteMsg, 0); // 0 = local node
+      const adminPacket = protobufService.createAdminPacket(setFavoriteMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum); // send to local node
 
       await this.transport.send(adminPacket);
       console.log(`⭐ Sent set_favorite_node for ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')})`);
@@ -2970,12 +2995,229 @@ class MeshtasticManager {
       // (there's a known bug where session keys don't work properly over TCP)
       console.log('☆ Attempting to remove favorite without session key (local TCP admin)');
       const removeFavoriteMsg = protobufService.createRemoveFavoriteNodeMessage(nodeNum, new Uint8Array()); // empty passkey
-      const adminPacket = protobufService.createAdminPacket(removeFavoriteMsg, 0); // 0 = local node
+      const adminPacket = protobufService.createAdminPacket(removeFavoriteMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum); // send to local node
 
       await this.transport.send(adminPacket);
       console.log(`☆ Sent remove_favorite_node for ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')})`);
     } catch (error) {
       console.error('❌ Error sending remove favorite node admin message:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Request specific config from the device
+   * @param configType Config type to request (0=DEVICE_CONFIG, 5=LORA_CONFIG, etc.)
+   */
+  async requestConfig(configType: number): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    try {
+      console.log(`⚙️ Requesting config type ${configType} from device`);
+      const getConfigMsg = protobufService.createGetConfigRequest(configType);
+      const adminPacket = protobufService.createAdminPacket(getConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+
+      await this.transport.send(adminPacket);
+      console.log(`⚙️ Sent get_config_request for config type ${configType}`);
+    } catch (error) {
+      console.error('❌ Error requesting config:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Request specific module config from the device
+   * @param configType Module config type to request (0=MQTT_CONFIG, 9=NEIGHBORINFO_CONFIG, etc.)
+   */
+  async requestModuleConfig(configType: number): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    try {
+      console.log(`⚙️ Requesting module config type ${configType} from device`);
+      const getModuleConfigMsg = protobufService.createGetModuleConfigRequest(configType);
+      const adminPacket = protobufService.createAdminPacket(getModuleConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+
+      await this.transport.send(adminPacket);
+      console.log(`⚙️ Sent get_module_config_request for config type ${configType}`);
+    } catch (error) {
+      console.error('❌ Error requesting module config:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Reboot the connected Meshtastic device
+   * @param seconds Number of seconds to wait before rebooting
+   */
+  async rebootDevice(seconds: number = 5): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    try {
+      console.log(`⚙️ Sending reboot command: device will reboot in ${seconds} seconds`);
+      // NOTE: Session passkeys are only required for REMOTE admin operations (admin messages sent to other nodes via mesh).
+      // For local TCP connections to the device itself, no session passkey is needed.
+      const rebootMsg = protobufService.createRebootMessage(seconds);
+      const adminPacket = protobufService.createAdminPacket(rebootMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+
+      await this.transport.send(adminPacket);
+      console.log('⚙️ Sent reboot admin message (local operation, no session passkey required)');
+    } catch (error) {
+      console.error('❌ Error sending reboot command:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Set device configuration (role, broadcast intervals, etc.)
+   */
+  async setDeviceConfig(config: any): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    try {
+      console.log('⚙️ Sending device config:', JSON.stringify(config));
+      const setConfigMsg = protobufService.createSetDeviceConfigMessage(config, new Uint8Array());
+      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+
+      await this.transport.send(adminPacket);
+      console.log('⚙️ Sent set_device_config admin message');
+    } catch (error) {
+      console.error('❌ Error sending device config:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Set LoRa configuration (preset, region, etc.)
+   */
+  async setLoRaConfig(config: any): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    try {
+      console.log('⚙️ Sending LoRa config:', JSON.stringify(config));
+      const setConfigMsg = protobufService.createSetLoRaConfigMessage(config, new Uint8Array());
+      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+
+      await this.transport.send(adminPacket);
+      console.log('⚙️ Sent set_lora_config admin message');
+    } catch (error) {
+      console.error('❌ Error sending LoRa config:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Set position configuration (broadcast intervals, etc.)
+   */
+  async setPositionConfig(config: any): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    try {
+      // Extract position data if provided
+      const { latitude, longitude, altitude, ...positionConfig } = config;
+
+      // Per Meshtastic docs: Set fixed position coordinates FIRST, THEN set fixedPosition flag
+      // If lat/long provided, send position update first
+      if (latitude !== undefined && longitude !== undefined) {
+        console.log(`⚙️ Setting fixed position coordinates FIRST: lat=${latitude}, lon=${longitude}, alt=${altitude || 0}`);
+        const setPositionMsg = protobufService.createSetFixedPositionMessage(
+          latitude,
+          longitude,
+          altitude || 0,
+          new Uint8Array()
+        );
+        const positionPacket = protobufService.createAdminPacket(setPositionMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+
+        await this.transport.send(positionPacket);
+        console.log('⚙️ Sent set_fixed_position admin message');
+
+        // Add delay to ensure device processes the position before the config
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+
+      // Then send position configuration (fixedPosition flag, broadcast intervals, etc.)
+      console.log('⚙️ Sending position config:', JSON.stringify(positionConfig));
+      const setConfigMsg = protobufService.createSetPositionConfigMessage(positionConfig, new Uint8Array());
+      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+
+      await this.transport.send(adminPacket);
+      console.log('⚙️ Sent set_position_config admin message');
+    } catch (error) {
+      console.error('❌ Error sending position config:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Set MQTT module configuration
+   */
+  async setMQTTConfig(config: any): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    try {
+      console.log('⚙️ Sending MQTT config:', JSON.stringify(config));
+      const setConfigMsg = protobufService.createSetMQTTConfigMessage(config, new Uint8Array());
+      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+
+      await this.transport.send(adminPacket);
+      console.log('⚙️ Sent set_mqtt_config admin message (direct, no transaction)');
+    } catch (error) {
+      console.error('❌ Error sending MQTT config:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Set NeighborInfo module configuration
+   */
+  async setNeighborInfoConfig(config: any): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    try {
+      console.log('⚙️ Sending NeighborInfo config:', JSON.stringify(config));
+      const setConfigMsg = protobufService.createSetNeighborInfoConfigMessage(config, new Uint8Array());
+      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+
+      await this.transport.send(adminPacket);
+      console.log('⚙️ Sent set_neighborinfo_config admin message (direct, no transaction)');
+    } catch (error) {
+      console.error('❌ Error sending NeighborInfo config:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Set node owner (long name and short name)
+   */
+  async setNodeOwner(longName: string, shortName: string): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    try {
+      console.log(`⚙️ Setting node owner: "${longName}" (${shortName})`);
+      const setOwnerMsg = protobufService.createSetOwnerMessage(longName, shortName, new Uint8Array());
+      const adminPacket = protobufService.createAdminPacket(setOwnerMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+
+      await this.transport.send(adminPacket);
+      console.log('⚙️ Sent set_owner admin message (direct, no transaction)');
+    } catch (error) {
+      console.error('❌ Error setting node owner:', error);
       throw error;
     }
   }

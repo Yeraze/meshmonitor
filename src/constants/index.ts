@@ -1,5 +1,6 @@
 import L from 'leaflet';
 
+// Device role names for Meshtastic nodes
 export const ROLE_NAMES: Record<number, string> = {
   0: 'Client',
   1: 'Client Mute',
@@ -11,7 +12,9 @@ export const ROLE_NAMES: Record<number, string> = {
   7: 'TAK',
   8: 'Client Hidden',
   9: 'Lost and Found',
-  10: 'TAK Tracker'
+  10: 'TAK Tracker',
+  11: 'Router Late',
+  12: 'Client Base'
 };
 
 export const HARDWARE_MODELS: Record<number, string> = {
