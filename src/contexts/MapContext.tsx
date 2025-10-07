@@ -1,4 +1,22 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
+import { DbTraceroute, DbNeighborInfo } from '../services/database';
+
+export interface PositionHistoryItem {
+  latitude: number;
+  longitude: number;
+  timestamp: number;
+}
+
+export interface EnrichedNeighborInfo extends DbNeighborInfo {
+  nodeId?: string;
+  nodeName?: string;
+  neighborNodeId?: string;
+  neighborName?: string;
+  nodeLatitude?: number;
+  nodeLongitude?: number;
+  neighborLatitude?: number;
+  neighborLongitude?: number;
+}
 
 interface MapContextType {
   showPaths: boolean;
@@ -13,12 +31,12 @@ interface MapContextType {
   setMapCenterTarget: (target: [number, number] | null) => void;
   mapZoom: number;
   setMapZoom: (zoom: number) => void;
-  traceroutes: any[];
-  setTraceroutes: (traceroutes: any[]) => void;
-  neighborInfo: any[];
-  setNeighborInfo: (info: any[]) => void;
-  positionHistory: { latitude: number; longitude: number; timestamp: number }[];
-  setPositionHistory: (history: { latitude: number; longitude: number; timestamp: number }[]) => void;
+  traceroutes: DbTraceroute[];
+  setTraceroutes: (traceroutes: DbTraceroute[]) => void;
+  neighborInfo: EnrichedNeighborInfo[];
+  setNeighborInfo: (info: EnrichedNeighborInfo[]) => void;
+  positionHistory: PositionHistoryItem[];
+  setPositionHistory: (history: PositionHistoryItem[]) => void;
   selectedNodeId: string | null;
   setSelectedNodeId: (id: string | null) => void;
 }
@@ -36,9 +54,9 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const [showMotion, setShowMotion] = useState<boolean>(true);
   const [mapCenterTarget, setMapCenterTarget] = useState<[number, number] | null>(null);
   const [mapZoom, setMapZoom] = useState<number>(10);
-  const [traceroutes, setTraceroutes] = useState<any[]>([]);
-  const [neighborInfo, setNeighborInfo] = useState<any[]>([]);
-  const [positionHistory, setPositionHistory] = useState<{ latitude: number; longitude: number; timestamp: number }[]>([]);
+  const [traceroutes, setTraceroutes] = useState<DbTraceroute[]>([]);
+  const [neighborInfo, setNeighborInfo] = useState<EnrichedNeighborInfo[]>([]);
+  const [positionHistory, setPositionHistory] = useState<PositionHistoryItem[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
   return (
