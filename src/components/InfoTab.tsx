@@ -3,6 +3,8 @@ import { DeviceInfo, Channel } from '../types/device';
 import { MeshMessage } from '../types/message';
 import { ConnectionStatus } from '../types/ui';
 import { TemperatureUnit } from '../utils/temperature';
+import { TimeFormat, DateFormat } from '../contexts/SettingsContext';
+import { formatDateTime } from '../utils/datetime';
 import TelemetryGraphs from './TelemetryGraphs';
 import { version } from '../../package.json';
 import apiService from '../services/api';
@@ -35,6 +37,8 @@ interface InfoTabProps {
   baseUrl: string;
   getAvailableChannels: () => number[];
   distanceUnit?: 'km' | 'mi';
+  timeFormat?: TimeFormat;
+  dateFormat?: DateFormat;
 }
 
 const InfoTab: React.FC<InfoTabProps> = React.memo(({
@@ -50,7 +54,9 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
   telemetryHours,
   baseUrl,
   getAvailableChannels,
-  distanceUnit = 'km'
+  distanceUnit = 'km',
+  timeFormat = '24',
+  dateFormat = 'MM/DD/YYYY'
 }) => {
   const [longestActiveSegment, setLongestActiveSegment] = useState<RouteSegment | null>(null);
   const [recordHolderSegment, setRecordHolderSegment] = useState<RouteSegment | null>(null);
@@ -177,7 +183,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
 
         <div className="info-section">
           <h3>Recent Activity</h3>
-          <p><strong>Last Message:</strong> {messages.length > 0 ? messages[0].timestamp.toLocaleString() : 'None'}</p>
+          <p><strong>Last Message:</strong> {messages.length > 0 ? formatDateTime(messages[0].timestamp, timeFormat, dateFormat) : 'None'}</p>
           <p><strong>Most Active Node:</strong> {
             nodes.length > 0 ?
             nodes.reduce((prev, current) =>
@@ -195,7 +201,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
               <p><strong>From:</strong> {longestActiveSegment.fromNodeName} ({longestActiveSegment.fromNodeId})</p>
               <p><strong>To:</strong> {longestActiveSegment.toNodeName} ({longestActiveSegment.toNodeId})</p>
               <p style={{ fontSize: '0.85em', color: '#888' }}>
-                Last seen: {new Date(longestActiveSegment.timestamp).toLocaleString()}
+                Last seen: {formatDateTime(new Date(longestActiveSegment.timestamp), timeFormat, dateFormat)}
               </p>
             </>
           )}
@@ -213,7 +219,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
               <p><strong>From:</strong> {recordHolderSegment.fromNodeName} ({recordHolderSegment.fromNodeId})</p>
               <p><strong>To:</strong> {recordHolderSegment.toNodeName} ({recordHolderSegment.toNodeId})</p>
               <p style={{ fontSize: '0.85em', color: '#888' }}>
-                Achieved: {new Date(recordHolderSegment.timestamp).toLocaleString()}
+                Achieved: {formatDateTime(new Date(recordHolderSegment.timestamp), timeFormat, dateFormat)}
               </p>
               <button
                 onClick={handleClearRecordHolder}
