@@ -27,3 +27,10 @@ dist-ssr
 .env
 .env.local
 .env.productioncoverage/
+
+# Python virtual environment
+bin/
+lib/
+lib64
+pyvenv.cfg
+include/
