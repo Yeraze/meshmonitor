@@ -14,6 +14,7 @@ import { ToastProvider } from './components/ToastContainer'
 import { version } from '../package.json'
 import { type TemperatureUnit } from './utils/temperature'
 import { calculateDistance, formatDistance } from './utils/distance'
+import { formatTime, formatDateTime } from './utils/datetime'
 import { DeviceInfo, Channel } from './types/device'
 import { MeshMessage } from './types/message'
 import { MapCenterControllerProps, SortField, SortDirection } from './types/ui'
@@ -114,11 +115,19 @@ function App() {
     temperatureUnit,
     distanceUnit,
     telemetryVisualizationHours,
+    preferredSortField,
+    preferredSortDirection,
+    timeFormat,
+    dateFormat,
     setMaxNodeAgeHours,
     setTracerouteIntervalMinutes,
     setTemperatureUnit,
     setDistanceUnit,
-    setTelemetryVisualizationHours
+    setTelemetryVisualizationHours,
+    setPreferredSortField,
+    setPreferredSortDirection,
+    setTimeFormat,
+    setDateFormat
   } = useSettings();
 
   // Map context
@@ -1675,12 +1684,7 @@ function App() {
 
                       <div className="node-time">
                         {node.lastHeard ?
-                          new Date(node.lastHeard * 1000).toLocaleString([], {
-                            month: 'short',
-                            day: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })
+                          formatDateTime(new Date(node.lastHeard * 1000), timeFormat, dateFormat)
                           : 'Never'
                         }
                       </div>
@@ -1884,12 +1888,7 @@ function App() {
                       {node.lastHeard && (
                         <div className="node-popup-footer">
                           <span className="node-popup-icon">🕐</span>
-                          {new Date(node.lastHeard * 1000).toLocaleString([], {
-                            month: 'short',
-                            day: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
+                          {formatDateTime(new Date(node.lastHeard * 1000), timeFormat, dateFormat)}
                         </div>
                       )}
 
@@ -2227,7 +2226,7 @@ function App() {
                             </div>
                           )}
                           <div className="route-usage">
-                            Last seen: <strong>{new Date(ni.timestamp).toLocaleString()}</strong>
+                            Last seen: <strong>{formatDateTime(new Date(ni.timestamp), timeFormat, dateFormat)}</strong>
                           </div>
                         </div>
                       </Popup>
@@ -2427,7 +2426,7 @@ function App() {
                             {positionHistory.length} position{positionHistory.length !== 1 ? 's' : ''} recorded
                           </div>
                           <div className="route-usage">
-                            {new Date(positionHistory[0].timestamp).toLocaleString()} - {new Date(positionHistory[positionHistory.length - 1].timestamp).toLocaleString()}
+                            {formatDateTime(new Date(positionHistory[0].timestamp), timeFormat, dateFormat)} - {formatDateTime(new Date(positionHistory[positionHistory.length - 1].timestamp), timeFormat, dateFormat)}
                           </div>
                         </div>
                       </Popup>
@@ -2646,10 +2645,7 @@ function App() {
                                 )}
                                 <div className="message-meta">
                                   <span className="message-time">
-                                    {msg.timestamp.toLocaleTimeString([], {
-                                      hour: '2-digit',
-                                      minute: '2-digit'
-                                    })}
+                                    {formatTime(msg.timestamp, timeFormat)}
                                     <HopCountDisplay hopStart={msg.hopStart} hopLimit={msg.hopLimit} />
                                   </span>
                                 </div>
@@ -2848,12 +2844,7 @@ function App() {
 
                           <div className="node-time">
                             {node.lastMessageTime ?
-                              new Date(node.lastMessageTime).toLocaleString([], {
-                                month: 'short',
-                                day: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })
+                              formatDateTime(new Date(node.lastMessageTime), timeFormat, dateFormat)
                               : 'Never'
                             }
                           </div>
@@ -2884,12 +2875,7 @@ function App() {
                       if (selectedNode?.lastHeard) {
                         return (
                           <div style={{ fontSize: '0.75em', fontWeight: 'normal', color: '#888', marginTop: '4px' }}>
-                            Last seen: {new Date(selectedNode.lastHeard * 1000).toLocaleString([], {
-                              month: 'short',
-                              day: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
+                            Last seen: {formatDateTime(new Date(selectedNode.lastHeard * 1000), timeFormat, dateFormat)}
                           </div>
                         );
                       }
@@ -2968,7 +2954,7 @@ function App() {
                             <div className="message-header">
                               <span className="message-from">{getNodeName(msg.from)}</span>
                               <span className="message-time">
-                                {msg.timestamp.toLocaleTimeString()}
+                                {formatTime(msg.timestamp, timeFormat)}
                                 <HopCountDisplay hopStart={msg.hopStart} hopLimit={msg.hopLimit} />
                               </span>
                               <span className="traceroute-badge">TRACEROUTE</span>
@@ -3046,10 +3032,7 @@ function App() {
                               )}
                               <div className="message-meta">
                                 <span className="message-time">
-                                  {msg.timestamp.toLocaleTimeString([], {
-                                    hour: '2-digit',
-                                    minute: '2-digit'
-                                  })}
+                                  {formatTime(msg.timestamp, timeFormat)}
                                   <HopCountDisplay hopStart={msg.hopStart} hopLimit={msg.hopLimit} />
                                 </span>
                               </div>
@@ -3251,6 +3234,8 @@ function App() {
             baseUrl={baseUrl}
             getAvailableChannels={getAvailableChannels}
             distanceUnit={distanceUnit}
+            timeFormat={timeFormat}
+            dateFormat={dateFormat}
           />
         )}
         {activeTab === 'dashboard' && (
@@ -3267,12 +3252,20 @@ function App() {
             temperatureUnit={temperatureUnit}
             distanceUnit={distanceUnit}
             telemetryVisualizationHours={telemetryVisualizationHours}
+            preferredSortField={preferredSortField}
+            preferredSortDirection={preferredSortDirection}
+            timeFormat={timeFormat}
+            dateFormat={dateFormat}
             baseUrl={baseUrl}
             onMaxNodeAgeChange={setMaxNodeAgeHours}
             onTracerouteIntervalChange={setTracerouteIntervalMinutes}
             onTemperatureUnitChange={setTemperatureUnit}
             onDistanceUnitChange={setDistanceUnit}
             onTelemetryVisualizationChange={setTelemetryVisualizationHours}
+            onPreferredSortFieldChange={setPreferredSortField}
+            onPreferredSortDirectionChange={setPreferredSortDirection}
+            onTimeFormatChange={setTimeFormat}
+            onDateFormatChange={setDateFormat}
           />
         )}
         {activeTab === 'configuration' && (
@@ -3336,7 +3329,7 @@ function App() {
             )}
 
             {node.lastHeard && (
-              <div className="route-usage">Last Seen: {new Date(node.lastHeard * 1000).toLocaleString()}</div>
+              <div className="route-usage">Last Seen: {formatDateTime(new Date(node.lastHeard * 1000), timeFormat, dateFormat)}</div>
             )}
 
             {node.user?.id && (

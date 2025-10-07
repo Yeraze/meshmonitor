@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { TemperatureUnit } from '../utils/temperature';
+import { SortField, SortDirection } from '../types/ui';
 import { version } from '../../package.json';
 import apiService from '../services/api';
 import { logger } from '../utils/logger';
+import { useToast } from './ToastContainer';
 
 type DistanceUnit = 'km' | 'mi';
+type TimeFormat = '12' | '24';
+type DateFormat = 'MM/DD/YYYY' | 'DD/MM/YYYY';
 
 interface SettingsTabProps {
   maxNodeAgeHours: number;
@@ -12,12 +16,20 @@ interface SettingsTabProps {
   temperatureUnit: TemperatureUnit;
   distanceUnit: DistanceUnit;
   telemetryVisualizationHours: number;
+  preferredSortField: SortField;
+  preferredSortDirection: SortDirection;
+  timeFormat: TimeFormat;
+  dateFormat: DateFormat;
   baseUrl: string;
   onMaxNodeAgeChange: (hours: number) => void;
   onTracerouteIntervalChange: (minutes: number) => void;
   onTemperatureUnitChange: (unit: TemperatureUnit) => void;
   onDistanceUnitChange: (unit: DistanceUnit) => void;
   onTelemetryVisualizationChange: (hours: number) => void;
+  onPreferredSortFieldChange: (field: SortField) => void;
+  onPreferredSortDirectionChange: (direction: SortDirection) => void;
+  onTimeFormatChange: (format: TimeFormat) => void;
+  onDateFormatChange: (format: DateFormat) => void;
 }
 
 const SettingsTab: React.FC<SettingsTabProps> = ({
@@ -26,12 +38,20 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   temperatureUnit,
   distanceUnit,
   telemetryVisualizationHours,
+  preferredSortField,
+  preferredSortDirection,
+  timeFormat,
+  dateFormat,
   baseUrl,
   onMaxNodeAgeChange,
   onTracerouteIntervalChange,
   onTemperatureUnitChange,
   onDistanceUnitChange,
-  onTelemetryVisualizationChange
+  onTelemetryVisualizationChange,
+  onPreferredSortFieldChange,
+  onPreferredSortDirectionChange,
+  onTimeFormatChange,
+  onDateFormatChange
 }) => {
   // Local state for editing
   const [localMaxNodeAge, setLocalMaxNodeAge] = useState(maxNodeAgeHours);
@@ -39,8 +59,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [localTemperatureUnit, setLocalTemperatureUnit] = useState(temperatureUnit);
   const [localDistanceUnit, setLocalDistanceUnit] = useState(distanceUnit);
   const [localTelemetryHours, setLocalTelemetryHours] = useState(telemetryVisualizationHours);
+  const [localPreferredSortField, setLocalPreferredSortField] = useState(preferredSortField);
+  const [localPreferredSortDirection, setLocalPreferredSortDirection] = useState(preferredSortDirection);
+  const [localTimeFormat, setLocalTimeFormat] = useState(timeFormat);
+  const [localDateFormat, setLocalDateFormat] = useState(dateFormat);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const { showToast } = useToast();
 
   // Update local state when props change
   useEffect(() => {
@@ -49,7 +74,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLocalTemperatureUnit(temperatureUnit);
     setLocalDistanceUnit(distanceUnit);
     setLocalTelemetryHours(telemetryVisualizationHours);
-  }, [maxNodeAgeHours, tracerouteIntervalMinutes, temperatureUnit, distanceUnit, telemetryVisualizationHours]);
+    setLocalPreferredSortField(preferredSortField);
+    setLocalPreferredSortDirection(preferredSortDirection);
+    setLocalTimeFormat(timeFormat);
+    setLocalDateFormat(dateFormat);
+  }, [maxNodeAgeHours, tracerouteIntervalMinutes, temperatureUnit, distanceUnit, telemetryVisualizationHours, preferredSortField, preferredSortDirection, timeFormat, dateFormat]);
 
   // Check if any settings have changed
   useEffect(() => {
@@ -58,10 +87,14 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localTracerouteInterval !== tracerouteIntervalMinutes ||
       localTemperatureUnit !== temperatureUnit ||
       localDistanceUnit !== distanceUnit ||
-      localTelemetryHours !== telemetryVisualizationHours;
+      localTelemetryHours !== telemetryVisualizationHours ||
+      localPreferredSortField !== preferredSortField ||
+      localPreferredSortDirection !== preferredSortDirection ||
+      localTimeFormat !== timeFormat ||
+      localDateFormat !== dateFormat;
     setHasChanges(changed);
-  }, [localMaxNodeAge, localTracerouteInterval, localTemperatureUnit, localDistanceUnit, localTelemetryHours,
-      maxNodeAgeHours, tracerouteIntervalMinutes, temperatureUnit, distanceUnit, telemetryVisualizationHours]);
+  }, [localMaxNodeAge, localTracerouteInterval, localTemperatureUnit, localDistanceUnit, localTelemetryHours, localPreferredSortField, localPreferredSortDirection, localTimeFormat, localDateFormat,
+      maxNodeAgeHours, tracerouteIntervalMinutes, temperatureUnit, distanceUnit, telemetryVisualizationHours, preferredSortField, preferredSortDirection, timeFormat, dateFormat]);
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -71,7 +104,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         tracerouteIntervalMinutes: localTracerouteInterval,
         temperatureUnit: localTemperatureUnit,
         distanceUnit: localDistanceUnit,
-        telemetryVisualizationHours: localTelemetryHours
+        telemetryVisualizationHours: localTelemetryHours,
+        preferredSortField: localPreferredSortField,
+        preferredSortDirection: localPreferredSortDirection,
+        timeFormat: localTimeFormat,
+        dateFormat: localDateFormat
       };
 
       // Save to server
@@ -87,12 +124,16 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onTemperatureUnitChange(localTemperatureUnit);
       onDistanceUnitChange(localDistanceUnit);
       onTelemetryVisualizationChange(localTelemetryHours);
+      onPreferredSortFieldChange(localPreferredSortField);
+      onPreferredSortDirectionChange(localPreferredSortDirection);
+      onTimeFormatChange(localTimeFormat);
+      onDateFormatChange(localDateFormat);
 
-      alert('Settings saved successfully!');
+      showToast('Settings saved successfully!', 'success');
       setHasChanges(false);
     } catch (error) {
       logger.error('Error saving settings:', error);
-      alert('Failed to save settings. Please try again.');
+      showToast('Failed to save settings. Please try again.', 'error');
     } finally {
       setIsSaving(false);
     }
@@ -106,7 +147,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       '• Traceroute Interval: 3 minutes (set to 0 to disable)\n' +
       '• Temperature Unit: Celsius\n' +
       '• Distance Unit: Kilometers\n' +
-      '• Telemetry Hours: 24\n\n' +
+      '• Telemetry Hours: 24\n' +
+      '• Preferred Sort: Long Name (Ascending)\n' +
+      '• Time Format: 24-hour\n' +
+      '• Date Format: MM/DD/YYYY\n\n' +
       'This will affect all browsers accessing this system.'
     );
 
@@ -124,6 +168,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       setLocalTemperatureUnit('C');
       setLocalDistanceUnit('km');
       setLocalTelemetryHours(24);
+      setLocalPreferredSortField('longName');
+      setLocalPreferredSortDirection('asc');
+      setLocalTimeFormat('24');
+      setLocalDateFormat('MM/DD/YYYY');
 
       // Update parent component with defaults
       onMaxNodeAgeChange(24);
@@ -131,12 +179,16 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onTemperatureUnitChange('C');
       onDistanceUnitChange('km');
       onTelemetryVisualizationChange(24);
+      onPreferredSortFieldChange('longName');
+      onPreferredSortDirectionChange('asc');
+      onTimeFormatChange('24');
+      onDateFormatChange('MM/DD/YYYY');
 
-      alert('Settings reset to defaults!');
+      showToast('Settings reset to defaults!', 'success');
       setHasChanges(false);
     } catch (error) {
       logger.error('Error resetting settings:', error);
-      alert('Failed to reset settings. Please try again.');
+      showToast('Failed to reset settings. Please try again.', 'error');
     } finally {
       setIsSaving(false);
     }
@@ -155,11 +207,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
 
     try {
       await apiService.purgeNodes(0);
-      alert('Node list and traceroutes have been purged. Refreshing...');
-      window.location.reload();
+      showToast('Node list and traceroutes have been purged. Refreshing...', 'success');
+      setTimeout(() => window.location.reload(), 1500);
     } catch (error) {
       logger.error('Error purging nodes:', error);
-      alert('Error purging nodes. Please try again.');
+      showToast('Error purging nodes. Please try again.', 'error');
     }
   };
 
@@ -178,11 +230,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
 
     try {
       await apiService.purgeTelemetry(0);
-      alert('Telemetry has been purged. Refreshing...');
-      window.location.reload();
+      showToast('Telemetry has been purged. Refreshing...', 'success');
+      setTimeout(() => window.location.reload(), 1500);
     } catch (error) {
       logger.error('Error purging telemetry:', error);
-      alert('Error purging telemetry. Please try again.');
+      showToast('Error purging telemetry. Please try again.', 'error');
     }
   };
 
@@ -200,11 +252,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
 
     try {
       await apiService.purgeMessages(0);
-      alert('Messages have been purged. Refreshing...');
-      window.location.reload();
+      showToast('Messages have been purged. Refreshing...', 'success');
+      setTimeout(() => window.location.reload(), 1500);
     } catch (error) {
       logger.error('Error purging messages:', error);
-      alert('Error purging messages. Please try again.');
+      showToast('Error purging messages. Please try again.', 'error');
     }
   };
 
@@ -258,6 +310,73 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
 
         <div className="settings-section">
           <h3>Display Preferences</h3>
+          <div className="setting-item">
+            <label htmlFor="preferredSortField">
+              Preferred Node List Sorting - Field
+              <span className="setting-description">Default sorting field for the Node List on the main page</span>
+            </label>
+            <select
+              id="preferredSortField"
+              value={localPreferredSortField}
+              onChange={(e) => setLocalPreferredSortField(e.target.value as SortField)}
+              className="setting-input"
+            >
+              <option value="longName">Long Name</option>
+              <option value="shortName">Short Name</option>
+              <option value="id">ID</option>
+              <option value="lastHeard">Last Heard</option>
+              <option value="snr">SNR</option>
+              <option value="battery">Battery</option>
+              <option value="hwModel">Hardware Model</option>
+              <option value="location">Location</option>
+              <option value="hops">Hops</option>
+            </select>
+          </div>
+          <div className="setting-item">
+            <label htmlFor="preferredSortDirection">
+              Preferred Node List Sorting - Direction
+              <span className="setting-description">Default sorting direction for the Node List on the main page</span>
+            </label>
+            <select
+              id="preferredSortDirection"
+              value={localPreferredSortDirection}
+              onChange={(e) => setLocalPreferredSortDirection(e.target.value as SortDirection)}
+              className="setting-input"
+            >
+              <option value="asc">Ascending (A-Z, 0-9, oldest-newest)</option>
+              <option value="desc">Descending (Z-A, 9-0, newest-oldest)</option>
+            </select>
+          </div>
+          <div className="setting-item">
+            <label htmlFor="timeFormat">
+              Time Format
+              <span className="setting-description">Choose between 12-hour or 24-hour time display</span>
+            </label>
+            <select
+              id="timeFormat"
+              value={localTimeFormat}
+              onChange={(e) => setLocalTimeFormat(e.target.value as TimeFormat)}
+              className="setting-input"
+            >
+              <option value="12">12-hour (e.g., 3:45 PM)</option>
+              <option value="24">24-hour (e.g., 15:45)</option>
+            </select>
+          </div>
+          <div className="setting-item">
+            <label htmlFor="dateFormat">
+              Date Format
+              <span className="setting-description">Choose your preferred date display format</span>
+            </label>
+            <select
+              id="dateFormat"
+              value={localDateFormat}
+              onChange={(e) => setLocalDateFormat(e.target.value as DateFormat)}
+              className="setting-input"
+            >
+              <option value="MM/DD/YYYY">MM/DD/YYYY (e.g., 12/31/2024)</option>
+              <option value="DD/MM/YYYY">DD/MM/YYYY (e.g., 31/12/2024)</option>
+            </select>
+          </div>
           <div className="setting-item">
             <label htmlFor="temperatureUnit">
               Temperature Unit
