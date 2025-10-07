@@ -11,7 +11,8 @@ export const getRoleName = (role: number | string | undefined): string | null =>
 const formatHardwareName = (name: string): string => {
   // Keep certain abbreviations and codes uppercase
   const keepUppercase = [
-    'LR', 'TX', 'HT', 'WM', 'RAK', 'NRF', 'TWC', 'DIY', 'DR', 'PCA',
+    'LR', 'TX', 'HT', 'WM', 'RAK', 'RAK4631', 'RAK11200', 'RAK2560', 'RAK3172',
+    'NRF', 'TWC', 'DIY', 'DR', 'PCA',
     'V1', 'V2', 'V3', 'V4', 'S3', 'G1', 'G2', 'RPI', 'TAK',
     'E290', 'E213', 'E5', 'T190', 'T114', 'T1000', 'WSL', 'HRU', 'HT62',
     'WM1110', 'MS24SF1', 'RFM95', 'C6', 'C6L', 'LS01', 'Y10TD', 'DK', 'PPR',
@@ -153,7 +154,7 @@ export const getNodeName = (nodes: DeviceInfo[], nodeId: string): string => {
 };
 
 export const getNodeShortName = (nodes: DeviceInfo[], nodeId: string): string => {
-  if (!nodeId) return 'Unknown';
+  if (!nodeId) return '';
   const node = nodes.find(n => n.user?.id === nodeId);
 
   // Check if node has a shortName
