@@ -1,6 +1,7 @@
 import protobuf from 'protobufjs';
 import path from 'path';
 import { getProtobufRoot } from './protobufLoader.js';
+import { logger } from '../utils/logger.js';
 
 export interface MeshtasticPosition {
   latitude_i: number;
@@ -108,18 +109,18 @@ class ProtobufService {
     if (this.isInitialized) return;
 
     try {
-      console.log('🔧 Initializing protobuf service...');
+      logger.debug('🔧 Initializing protobuf service...');
 
       const protoDir = '/app/protobufs';
-      console.log(`Loading proto files from: ${protoDir}`);
+      logger.debug(`Loading proto files from: ${protoDir}`);
 
       // Load mesh.proto with the proper root path for imports
       this.root = new protobuf.Root();
       this.root.resolvePath = (origin: string, target: string) => {
-        console.log(`Resolving import: origin=${origin}, target=${target}`);
+        logger.debug(`Resolving import: origin=${origin}, target=${target}`);
         if (target.startsWith('meshtastic/')) {
           const resolved = path.join(protoDir, target);
-          console.log(`Resolved to: ${resolved}`);
+          logger.debug(`Resolved to: ${resolved}`);
           return resolved;
         }
         return protobuf.util.path.resolve(origin, target);
@@ -129,16 +130,16 @@ class ProtobufService {
 
       // Load admin.proto explicitly (not imported by mesh.proto)
       await this.root.load(path.join(protoDir, 'meshtastic/admin.proto'));
-      console.log('✅ Loaded admin.proto for AdminMessage support');
+      logger.debug('✅ Loaded admin.proto for AdminMessage support');
 
       // Cache available enums
       this.cacheEnum('meshtastic.PortNum');
 
       this.isInitialized = true;
-      console.log('✅ Protobuf service initialized successfully');
+      logger.debug('✅ Protobuf service initialized successfully');
 
     } catch (error) {
-      console.error('❌ Failed to initialize protobuf service:', error);
+      logger.error('❌ Failed to initialize protobuf service:', error);
       throw error;
     }
   }
@@ -149,9 +150,9 @@ class ProtobufService {
     const enumType = this.root?.lookupEnum(enumName);
     if (enumType) {
       this.enums.set(enumName, enumType);
-      console.log(`📦 Cached enum: ${enumName}`);
+      logger.debug(`📦 Cached enum: ${enumName}`);
     } else {
-      console.warn(`⚠️  Could not find enum: ${enumName}`);
+      logger.warn(`⚠️  Could not find enum: ${enumName}`);
     }
   }
 
@@ -166,17 +167,17 @@ class ProtobufService {
   // Position message parsing - decode using mesh.proto definition
   decodePosition(data: Uint8Array): MeshtasticPosition | null {
     try {
-      console.log('🗺️  Attempting to decode position data with protobuf...');
+      logger.debug('🗺️  Attempting to decode position data with protobuf...');
 
       const Position = this.root?.lookupType('meshtastic.Position');
       if (!Position) {
-        console.error('🗺️  Position type not found in loaded proto files');
+        logger.error('🗺️  Position type not found in loaded proto files');
         return null;
       }
 
       const decoded = Position.decode(data);
       const position = Position.toObject(decoded);
-      console.log('🗺️  Decoded position:', JSON.stringify(position, null, 2));
+      logger.debug('🗺️  Decoded position:', JSON.stringify(position, null, 2));
 
       // Map protobuf field names to our interface
       return {
@@ -205,7 +206,7 @@ class ProtobufService {
         precision_bits: position.precisionBits || 0
       };
     } catch (error) {
-      console.error('Failed to decode Position message:', error);
+      logger.error('Failed to decode Position message:', error);
       return null;
     }
   }
@@ -213,17 +214,17 @@ class ProtobufService {
   // User message parsing - decode using mesh.proto definition
   decodeUser(data: Uint8Array): MeshtasticUser | null {
     try {
-      console.log('👤 Attempting to decode user data with protobuf...');
+      logger.debug('👤 Attempting to decode user data with protobuf...');
 
       const User = this.root?.lookupType('meshtastic.User');
       if (!User) {
-        console.error('👤 User type not found in loaded proto files');
+        logger.error('👤 User type not found in loaded proto files');
         return null;
       }
 
       const decoded = User.decode(data);
       const user = User.toObject(decoded);
-      console.log('👤 Decoded user:', JSON.stringify(user, null, 2));
+      logger.debug('👤 Decoded user:', JSON.stringify(user, null, 2));
 
       return {
         id: user.id || '',
@@ -236,7 +237,7 @@ class ProtobufService {
         public_key: user.publicKey || new Uint8Array()
       };
     } catch (error) {
-      console.error('Failed to decode User message:', error);
+      logger.error('Failed to decode User message:', error);
       return null;
     }
   }
@@ -244,17 +245,17 @@ class ProtobufService {
   // NodeInfo message parsing - decode using mesh.proto definition
   decodeNodeInfo(data: Uint8Array): MeshtasticNodeInfo | null {
     try {
-      console.log('🏠 Attempting to decode NodeInfo data with protobuf...');
+      logger.debug('🏠 Attempting to decode NodeInfo data with protobuf...');
 
       const NodeInfo = this.root?.lookupType('meshtastic.NodeInfo');
       if (!NodeInfo) {
-        console.error('🏠 NodeInfo type not found in loaded proto files');
+        logger.error('🏠 NodeInfo type not found in loaded proto files');
         return null;
       }
 
       const decoded = NodeInfo.decode(data);
       const nodeInfo = NodeInfo.toObject(decoded);
-      console.log('🏠 Decoded NodeInfo:', JSON.stringify(nodeInfo, null, 2));
+      logger.debug('🏠 Decoded NodeInfo:', JSON.stringify(nodeInfo, null, 2));
 
       // Extract embedded User and Position data
       let user: MeshtasticUser | undefined = undefined;
@@ -273,7 +274,7 @@ class ProtobufService {
           role: nodeInfo.user.role || 0,
           public_key: nodeInfo.user.publicKey || new Uint8Array()
         };
-        console.log('🏠 NodeInfo contains user data:', user.long_name);
+        logger.debug('🏠 NodeInfo contains user data:', user.long_name);
       }
 
       // Decode embedded Position if present
@@ -303,7 +304,7 @@ class ProtobufService {
           seq_number: nodeInfo.position.seqNumber || 0,
           precision_bits: nodeInfo.position.precisionBits || 0
         };
-        console.log(`🗺️ NodeInfo contains position data: ${position.latitude_i}, ${position.longitude_i}`);
+        logger.debug(`🗺️ NodeInfo contains position data: ${position.latitude_i}, ${position.longitude_i}`);
       }
 
       // Decode embedded DeviceMetrics if present
@@ -315,10 +316,10 @@ class ProtobufService {
           air_util_tx: nodeInfo.deviceMetrics.airUtilTx || 0,
           uptime_seconds: nodeInfo.deviceMetrics.uptimeSeconds || 0
         };
-        console.log('🏠 NodeInfo contains device metrics');
+        logger.debug('🏠 NodeInfo contains device metrics');
       }
 
-      console.log('🏠 NodeInfo components extracted - User:', !!user, 'Position:', !!position, 'DeviceMetrics:', !!deviceMetrics);
+      logger.debug('🏠 NodeInfo components extracted - User:', !!user, 'Position:', !!position, 'DeviceMetrics:', !!deviceMetrics);
 
       // Map the decoded data to our interface
       const result: MeshtasticNodeInfo = {
@@ -336,60 +337,60 @@ class ProtobufService {
 
       return result;
     } catch (error) {
-      console.error('Failed to decode NodeInfo message:', error);
+      logger.error('Failed to decode NodeInfo message:', error);
       return null;
     }
   }
 
   decodeDeviceMetrics(_data: Uint8Array): MeshtasticDeviceMetrics | null {
-    console.log('📊 DeviceMetrics decoding not implemented yet');
+    logger.debug('📊 DeviceMetrics decoding not implemented yet');
     return null;
   }
 
   decodeTelemetry(_data: Uint8Array): MeshtasticTelemetry | null {
-    console.log('📡 Telemetry decoding not implemented yet');
+    logger.debug('📡 Telemetry decoding not implemented yet');
     return null;
   }
 
   decodeFromRadio(data: Uint8Array): any | null {
     try {
-      console.log('📻 Attempting to decode FromRadio with protobuf...');
+      logger.debug('📻 Attempting to decode FromRadio with protobuf...');
 
       const FromRadio = this.root?.lookupType('meshtastic.FromRadio');
       if (!FromRadio) {
-        console.error('📻 FromRadio type not found in loaded proto files');
+        logger.error('📻 FromRadio type not found in loaded proto files');
         return null;
       }
 
       const decoded = FromRadio.decode(data);
       const fromRadio = FromRadio.toObject(decoded);
-      console.log('📻 Decoded FromRadio:', JSON.stringify(fromRadio, null, 2));
+      logger.debug('📻 Decoded FromRadio:', JSON.stringify(fromRadio, null, 2));
 
       return fromRadio;
     } catch (error) {
-      console.error('Failed to decode FromRadio message:', error);
+      logger.error('Failed to decode FromRadio message:', error);
       return null;
     }
   }
 
   decodeMeshPacket(data: Uint8Array): MeshtasticMessage | null {
     try {
-      console.log('📦 Attempting to decode MeshPacket with protobuf...');
+      logger.debug('📦 Attempting to decode MeshPacket with protobuf...');
 
       const MeshPacket = this.root?.lookupType('meshtastic.MeshPacket');
       if (!MeshPacket) {
-        console.error('📦 MeshPacket type not found in loaded proto files');
+        logger.error('📦 MeshPacket type not found in loaded proto files');
         return null;
       }
 
       const decoded = MeshPacket.decode(data);
       const meshPacket = MeshPacket.toObject(decoded);
-      console.log('📦 Decoded MeshPacket:', JSON.stringify(meshPacket, null, 2));
+      logger.debug('📦 Decoded MeshPacket:', JSON.stringify(meshPacket, null, 2));
 
       // Extract the decoded payload if available
       let unencrypted: any = null;
       if (meshPacket.decoded) {
-        console.log('📦 Processing decoded payload...');
+        logger.debug('📦 Processing decoded payload...');
         unencrypted = {
           portnum: meshPacket.decoded.portnum || 0,
           payload: meshPacket.decoded.payload || new Uint8Array(),
@@ -403,39 +404,39 @@ class ProtobufService {
 
         // Try to decode specific payload types based on portnum
         if (unencrypted.payload && unencrypted.payload.length > 0) {
-          console.log(`📦 Attempting to decode payload for port ${unencrypted.portnum} (${this.getPortNumName(unencrypted.portnum)})`);
+          logger.debug(`📦 Attempting to decode payload for port ${unencrypted.portnum} (${this.getPortNumName(unencrypted.portnum)})`);
 
           switch (unencrypted.portnum) {
             case 3: // POSITION_APP
               const position = this.decodePosition(unencrypted.payload);
               if (position) {
-                console.log('📦 Successfully decoded position from MeshPacket payload');
+                logger.debug('📦 Successfully decoded position from MeshPacket payload');
                 unencrypted.decodedPayload = position;
               }
               break;
             case 4: // NODEINFO_APP
               const nodeInfo = this.decodeNodeInfo(unencrypted.payload);
               if (nodeInfo) {
-                console.log('📦 Successfully decoded NodeInfo from MeshPacket payload');
+                logger.debug('📦 Successfully decoded NodeInfo from MeshPacket payload');
                 unencrypted.decodedPayload = nodeInfo;
               }
               break;
             case 67: // TELEMETRY_APP
               const telemetry = this.decodeTelemetry(unencrypted.payload);
               if (telemetry) {
-                console.log('📦 Successfully decoded telemetry from MeshPacket payload');
+                logger.debug('📦 Successfully decoded telemetry from MeshPacket payload');
                 unencrypted.decodedPayload = telemetry;
               }
               break;
             default:
-              console.log(`📦 No specific decoder for port ${unencrypted.portnum}`);
+              logger.debug(`📦 No specific decoder for port ${unencrypted.portnum}`);
               break;
           }
         }
       }
 
       if (unencrypted) {
-        console.log('🔍 Unencrypted Data fields:', {
+        logger.debug('🔍 Unencrypted Data fields:', {
           portnum: unencrypted.portnum,
           payloadLength: unencrypted.payload?.length,
           wantResponse: unencrypted.wantResponse,
@@ -475,7 +476,7 @@ class ProtobufService {
 
       return result;
     } catch (error) {
-      console.error('Failed to decode MeshPacket message:', error);
+      logger.error('Failed to decode MeshPacket message:', error);
       return null;
     }
   }
@@ -511,15 +512,15 @@ class ProtobufService {
     try {
       const MessageType = this.types.get(typeName);
       if (!MessageType) {
-        console.error(`Type ${typeName} not found`);
+        logger.error(`Type ${typeName} not found`);
         return null;
       }
 
       const message = MessageType.decode(data);
-      console.log(`🔍 Inspecting ${typeName}:`, JSON.stringify(message, null, 2));
+      logger.debug(`🔍 Inspecting ${typeName}:`, JSON.stringify(message, null, 2));
       return message;
     } catch (error) {
-      console.error(`Failed to inspect ${typeName}:`, error);
+      logger.error(`Failed to inspect ${typeName}:`, error);
       return null;
     }
   }
@@ -541,10 +542,10 @@ class ProtobufService {
       });
 
       const encoded = AdminMessage.encode(adminMsg).finish();
-      console.log('⚙️ Created GetSessionKey request (getConfigRequest=SESSIONKEY_CONFIG)');
+      logger.debug('⚙️ Created GetSessionKey request (getConfigRequest=SESSIONKEY_CONFIG)');
       return encoded;
     } catch (error) {
-      console.error('Failed to create GetSessionKey request:', error);
+      logger.error('Failed to create GetSessionKey request:', error);
       throw error;
     }
   }
@@ -574,10 +575,10 @@ class ProtobufService {
       const adminMsg = AdminMessage.create(adminMsgData);
 
       const encoded = AdminMessage.encode(adminMsg).finish();
-      console.log(`⚙️ Created SetFavoriteNode admin message for node ${nodeNum}`);
+      logger.debug(`⚙️ Created SetFavoriteNode admin message for node ${nodeNum}`);
       return encoded;
     } catch (error) {
-      console.error('Failed to create SetFavoriteNode message:', error);
+      logger.error('Failed to create SetFavoriteNode message:', error);
       throw error;
     }
   }
@@ -607,10 +608,10 @@ class ProtobufService {
       const adminMsg = AdminMessage.create(adminMsgData);
 
       const encoded = AdminMessage.encode(adminMsg).finish();
-      console.log(`⚙️ Created RemoveFavoriteNode admin message for node ${nodeNum}`);
+      logger.debug(`⚙️ Created RemoveFavoriteNode admin message for node ${nodeNum}`);
       return encoded;
     } catch (error) {
-      console.error('Failed to create RemoveFavoriteNode message:', error);
+      logger.error('Failed to create RemoveFavoriteNode message:', error);
       throw error;
     }
   }
@@ -628,10 +629,10 @@ class ProtobufService {
 
       const decoded = AdminMessage.decode(data);
       const adminMsg = AdminMessage.toObject(decoded);
-      console.log('⚙️ Decoded AdminMessage:', JSON.stringify(adminMsg, null, 2));
+      logger.debug('⚙️ Decoded AdminMessage:', JSON.stringify(adminMsg, null, 2));
       return adminMsg;
     } catch (error) {
-      console.error('Failed to decode AdminMessage:', error);
+      logger.error('Failed to decode AdminMessage:', error);
       return null;
     }
   }
@@ -653,10 +654,10 @@ class ProtobufService {
       });
 
       const encoded = AdminMessage.encode(adminMsg).finish();
-      console.log(`⚙️ Created GetConfig request (configType=${configType})`);
+      logger.debug(`⚙️ Created GetConfig request (configType=${configType})`);
       return encoded;
     } catch (error) {
-      console.error('Failed to create GetConfig request:', error);
+      logger.error('Failed to create GetConfig request:', error);
       throw error;
     }
   }
@@ -678,10 +679,10 @@ class ProtobufService {
       });
 
       const encoded = AdminMessage.encode(adminMsg).finish();
-      console.log(`⚙️ Created GetModuleConfig request (configType=${configType})`);
+      logger.debug(`⚙️ Created GetModuleConfig request (configType=${configType})`);
       return encoded;
     } catch (error) {
-      console.error('Failed to create GetModuleConfig request:', error);
+      logger.error('Failed to create GetModuleConfig request:', error);
       throw error;
     }
   }
@@ -710,7 +711,7 @@ class ProtobufService {
         deviceConfig.nodeInfoBroadcastSecs = config.nodeInfoBroadcastSecs;
       }
 
-      console.log('⚙️ Sending device config:', JSON.stringify(deviceConfig));
+      logger.debug('⚙️ Sending device config:', JSON.stringify(deviceConfig));
 
       const configMsg = Config.create({
         device: deviceConfig
@@ -728,10 +729,10 @@ class ProtobufService {
       const adminMsg = AdminMessage.create(adminMsgData);
 
       const encoded = AdminMessage.encode(adminMsg).finish();
-      console.log('⚙️ Created SetDeviceConfig admin message');
+      logger.debug('⚙️ Created SetDeviceConfig admin message');
       return encoded;
     } catch (error) {
-      console.error('Failed to create SetDeviceConfig message:', error);
+      logger.error('Failed to create SetDeviceConfig message:', error);
       throw error;
     }
   }
@@ -766,10 +767,10 @@ class ProtobufService {
       const adminMsg = AdminMessage.create(adminMsgData);
 
       const encoded = AdminMessage.encode(adminMsg).finish();
-      console.log('⚙️ Created SetLoRaConfig admin message');
+      logger.debug('⚙️ Created SetLoRaConfig admin message');
       return encoded;
     } catch (error) {
-      console.error('Failed to create SetLoRaConfig message:', error);
+      logger.error('Failed to create SetLoRaConfig message:', error);
       throw error;
     }
   }
@@ -804,10 +805,10 @@ class ProtobufService {
       const adminMsg = AdminMessage.create(adminMsgData);
 
       const encoded = AdminMessage.encode(adminMsg).finish();
-      console.log('⚙️ Created SetPositionConfig admin message');
+      logger.debug('⚙️ Created SetPositionConfig admin message');
       return encoded;
     } catch (error) {
-      console.error('Failed to create SetPositionConfig message:', error);
+      logger.error('Failed to create SetPositionConfig message:', error);
       throw error;
     }
   }
@@ -842,10 +843,10 @@ class ProtobufService {
       const adminMsg = AdminMessage.create(adminMsgData);
 
       const encoded = AdminMessage.encode(adminMsg).finish();
-      console.log('⚙️ Created SetMQTTConfig admin message');
+      logger.debug('⚙️ Created SetMQTTConfig admin message');
       return encoded;
     } catch (error) {
-      console.error('Failed to create SetMQTTConfig message:', error);
+      logger.error('Failed to create SetMQTTConfig message:', error);
       throw error;
     }
   }
@@ -880,12 +881,12 @@ class ProtobufService {
       const adminMsg = AdminMessage.create(adminMsgData);
 
       const encoded = AdminMessage.encode(adminMsg).finish();
-      console.log('⚙️ Created SetNeighborInfoConfig admin message');
-      console.log('🔍 AdminMessage bytes:', Array.from(encoded).map(b => b.toString(16).padStart(2, '0')).join(' '));
-      console.log('🔍 AdminMessage object:', JSON.stringify(adminMsg, null, 2));
+      logger.debug('⚙️ Created SetNeighborInfoConfig admin message');
+      logger.debug('🔍 AdminMessage bytes:', Array.from(encoded).map(b => b.toString(16).padStart(2, '0')).join(' '));
+      logger.debug('🔍 AdminMessage object:', JSON.stringify(adminMsg, null, 2));
       return encoded;
     } catch (error) {
-      console.error('Failed to create SetNeighborInfoConfig message:', error);
+      logger.error('Failed to create SetNeighborInfoConfig message:', error);
       throw error;
     }
   }
@@ -923,14 +924,14 @@ class ProtobufService {
 
       const adminMsg = AdminMessage.create(adminMsgData);
       const encoded = AdminMessage.encode(adminMsg).finish();
-      console.log('⚙️ Created SetFixedPosition admin message');
-      console.log('🔍 Position data:', JSON.stringify(positionMsg));
-      console.log('🔍 AdminMessage data:', JSON.stringify(adminMsgData));
-      console.log('🔍 AdminMessage object:', JSON.stringify(adminMsg, null, 2));
-      console.log('🔍 AdminMessage bytes:', Array.from(encoded).map(b => b.toString(16).padStart(2, '0')).join(' '));
+      logger.debug('⚙️ Created SetFixedPosition admin message');
+      logger.debug('🔍 Position data:', JSON.stringify(positionMsg));
+      logger.debug('🔍 AdminMessage data:', JSON.stringify(adminMsgData));
+      logger.debug('🔍 AdminMessage object:', JSON.stringify(adminMsg, null, 2));
+      logger.debug('🔍 AdminMessage bytes:', Array.from(encoded).map(b => b.toString(16).padStart(2, '0')).join(' '));
       return encoded;
     } catch (error) {
-      console.error('Failed to create SetFixedPosition message:', error);
+      logger.error('Failed to create SetFixedPosition message:', error);
       throw error;
     }
   }
@@ -967,10 +968,10 @@ class ProtobufService {
       const adminMsg = AdminMessage.create(adminMsgData);
 
       const encoded = AdminMessage.encode(adminMsg).finish();
-      console.log(`⚙️ Created SetOwner admin message: "${longName}" (${shortName})`);
+      logger.debug(`⚙️ Created SetOwner admin message: "${longName}" (${shortName})`);
       return encoded;
     } catch (error) {
-      console.error('Failed to create SetOwner message:', error);
+      logger.error('Failed to create SetOwner message:', error);
       throw error;
     }
   }
@@ -1000,10 +1001,10 @@ class ProtobufService {
       const adminMsg = AdminMessage.create(adminMsgData);
 
       const encoded = AdminMessage.encode(adminMsg).finish();
-      console.log(`⚙️ Created Reboot admin message (rebootSeconds=${seconds})`);
+      logger.debug(`⚙️ Created Reboot admin message (rebootSeconds=${seconds})`);
       return encoded;
     } catch (error) {
-      console.error('Failed to create Reboot message:', error);
+      logger.error('Failed to create Reboot message:', error);
       throw error;
     }
   }
@@ -1032,10 +1033,10 @@ class ProtobufService {
       const adminMsg = AdminMessage.create(adminMsgData);
 
       const encoded = AdminMessage.encode(adminMsg).finish();
-      console.log('⚙️ Created BeginEditSettings admin message');
+      logger.debug('⚙️ Created BeginEditSettings admin message');
       return encoded;
     } catch (error) {
-      console.error('Failed to create BeginEditSettings message:', error);
+      logger.error('Failed to create BeginEditSettings message:', error);
       throw error;
     }
   }
@@ -1064,10 +1065,10 @@ class ProtobufService {
       const adminMsg = AdminMessage.create(adminMsgData);
 
       const encoded = AdminMessage.encode(adminMsg).finish();
-      console.log('⚙️ Created CommitEditSettings admin message');
+      logger.debug('⚙️ Created CommitEditSettings admin message');
       return encoded;
     } catch (error) {
-      console.error('Failed to create CommitEditSettings message:', error);
+      logger.error('Failed to create CommitEditSettings message:', error);
       throw error;
     }
   }
@@ -1099,7 +1100,7 @@ class ProtobufService {
       // Create MeshPacket with random ID
       // Generate random packet ID (must be non-zero)
       const packetId = Math.floor(Math.random() * 0xFFFFFFFF) + 1;
-      console.log(`🔍 Generated packet ID: ${packetId} (0x${packetId.toString(16)})`);
+      logger.debug(`🔍 Generated packet ID: ${packetId} (0x${packetId.toString(16)})`);
 
       const meshPacketData: any = {
         id: packetId,
@@ -1115,12 +1116,12 @@ class ProtobufService {
       // Include from field if provided
       if (fromNodeNum !== undefined) {
         meshPacketData.from = fromNodeNum;
-        console.log(`🔍 Setting from field: ${fromNodeNum} (0x${fromNodeNum.toString(16)})`);
+        logger.debug(`🔍 Setting from field: ${fromNodeNum} (0x${fromNodeNum.toString(16)})`);
       }
 
       const meshPacket = MeshPacket.create(meshPacketData);
 
-      console.log('🔍 MeshPacket created:', JSON.stringify(meshPacket, null, 2));
+      logger.debug('🔍 MeshPacket created:', JSON.stringify(meshPacket, null, 2));
 
       // Wrap in ToRadio
       const toRadio = ToRadio.create({
@@ -1128,11 +1129,11 @@ class ProtobufService {
       });
 
       const encoded = ToRadio.encode(toRadio).finish();
-      console.log(`📤 Created admin ToRadio packet (destination: ${destination})`);
-      console.log('🔍 ToRadio bytes:', Array.from(encoded).map(b => b.toString(16).padStart(2, '0')).join(' '));
+      logger.debug(`📤 Created admin ToRadio packet (destination: ${destination})`);
+      logger.debug('🔍 ToRadio bytes:', Array.from(encoded).map(b => b.toString(16).padStart(2, '0')).join(' '));
       return encoded;
     } catch (error) {
-      console.error('Failed to create admin ToRadio packet:', error);
+      logger.error('Failed to create admin ToRadio packet:', error);
       throw error;
     }
   }

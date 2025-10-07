@@ -5,6 +5,7 @@
  * protobuf definitions and protobufjs library.
  */
 import { loadProtobufDefinitions, getProtobufRoot, type FromRadio, type MeshPacket } from './protobufLoader.js';
+import { logger } from '../utils/logger.js';
 
 export class MeshtasticProtobufService {
   private static instance: MeshtasticProtobufService;
@@ -23,12 +24,12 @@ export class MeshtasticProtobufService {
     if (this.isInitialized) return;
 
     try {
-      console.log('🔧 Initializing Meshtastic Protobuf Service...');
+      logger.debug('🔧 Initializing Meshtastic Protobuf Service...');
       await loadProtobufDefinitions();
       this.isInitialized = true;
-      console.log('✅ Meshtastic Protobuf Service initialized');
+      logger.debug('✅ Meshtastic Protobuf Service initialized');
     } catch (error) {
-      console.error('❌ Failed to initialize protobuf service:', error);
+      logger.error('❌ Failed to initialize protobuf service:', error);
       throw error;
     }
   }
@@ -39,7 +40,7 @@ export class MeshtasticProtobufService {
   createWantConfigRequest(): Uint8Array {
     const root = getProtobufRoot();
     if (!root) {
-      console.error('❌ Protobuf definitions not loaded');
+      logger.error('❌ Protobuf definitions not loaded');
       // Fallback to simple manual encoding
       return new Uint8Array([0x18, 0x01]);
     }
@@ -53,7 +54,7 @@ export class MeshtasticProtobufService {
 
       return ToRadio.encode(toRadio).finish();
     } catch (error) {
-      console.error('❌ Failed to create want_config_id request:', error);
+      logger.error('❌ Failed to create want_config_id request:', error);
       // Fallback to simple manual encoding
       return new Uint8Array([0x18, 0x01]);
     }
@@ -65,7 +66,7 @@ export class MeshtasticProtobufService {
   createTracerouteMessage(destination: number, channel?: number): Uint8Array {
     const root = getProtobufRoot();
     if (!root) {
-      console.error('❌ Protobuf definitions not loaded');
+      logger.error('❌ Protobuf definitions not loaded');
       return new Uint8Array();
     }
 
@@ -106,7 +107,7 @@ export class MeshtasticProtobufService {
 
       return ToRadio.encode(toRadio).finish();
     } catch (error) {
-      console.error('❌ Failed to create traceroute message:', error);
+      logger.error('❌ Failed to create traceroute message:', error);
       return new Uint8Array();
     }
   }
@@ -117,7 +118,7 @@ export class MeshtasticProtobufService {
   createTextMessage(text: string, destination?: number, channel?: number, replyId?: number, emoji?: number): { data: Uint8Array; messageId: number } {
     const root = getProtobufRoot();
     if (!root) {
-      console.error('❌ Protobuf definitions not loaded');
+      logger.error('❌ Protobuf definitions not loaded');
       return { data: new Uint8Array(), messageId: 0 };
     }
 
@@ -144,7 +145,7 @@ export class MeshtasticProtobufService {
         wantAck: true
       });
 
-      console.log(`📤 Sending message with ID: ${messageId}`);
+      logger.debug(`📤 Sending message with ID: ${messageId}`);
 
       // Create the ToRadio message
       const ToRadio = root.lookupType('meshtastic.ToRadio');
@@ -154,7 +155,7 @@ export class MeshtasticProtobufService {
 
       return { data: ToRadio.encode(toRadio).finish(), messageId };
     } catch (error) {
-      console.error('❌ Failed to create text message:', error);
+      logger.error('❌ Failed to create text message:', error);
       return { data: new Uint8Array(), messageId: 0 };
     }
   }
@@ -172,7 +173,7 @@ export class MeshtasticProtobufService {
 
     const root = getProtobufRoot();
     if (!root) {
-      console.error('❌ Protobuf definitions not loaded');
+      logger.error('❌ Protobuf definitions not loaded');
       return messages;
     }
 
@@ -209,7 +210,7 @@ export class MeshtasticProtobufService {
             // KEY INSIGHT: If we see a field number we've already seen, this is a NEW message!
             // FromRadio fields are all optional and NOT repeated
             if (seenFields.has(fieldNumber)) {
-              console.log(`🔍 Field ${fieldNumber} repeated at offset ${offset + posBeforeTag} - new message starts here`);
+              logger.debug(`🔍 Field ${fieldNumber} repeated at offset ${offset + posBeforeTag} - new message starts here`);
               // Rewind to before this tag
               reader.pos = posBeforeTag;
               break;
@@ -223,7 +224,7 @@ export class MeshtasticProtobufService {
               reader.skipType(wireType);
               lastValidPos = reader.pos;
             } catch (_skipError) {
-              console.log(`⚠️ Error skipping field ${fieldNumber} at offset ${offset + posBeforeTag}`);
+              logger.debug(`⚠️ Error skipping field ${fieldNumber} at offset ${offset + posBeforeTag}`);
               reader.pos = lastValidPos;
               break;
             }
@@ -236,7 +237,7 @@ export class MeshtasticProtobufService {
             const messageReader = protobufjs.Reader.create(messageData);
             const decodedMessage = FromRadio.decode(messageReader) as FromRadio;
 
-            console.log(`📦 Decoded FromRadio at offset ${offset}, length ${messageLength}, next offset ${offset + messageLength}`);
+            logger.debug(`📦 Decoded FromRadio at offset ${offset}, length ${messageLength}, next offset ${offset + messageLength}`);
 
             // Extract the actual message
             if (decodedMessage.packet) {
@@ -247,7 +248,7 @@ export class MeshtasticProtobufService {
                   const decodedData = Data.decode(decodedMessage.packet.decoded);
                   (decodedMessage.packet as any).decoded = decodedData;
                 } catch (e) {
-                  console.error('❌ Failed to manually decode Data:', e);
+                  logger.error('❌ Failed to manually decode Data:', e);
                 }
               }
 
@@ -268,18 +269,18 @@ export class MeshtasticProtobufService {
 
             offset += messageLength;
           } else {
-            console.log(`⚠️ No valid message data at offset ${offset}`);
+            logger.debug(`⚠️ No valid message data at offset ${offset}`);
             break;
           }
         } catch (error) {
-          console.log(`⚠️ Error decoding message at offset ${offset}:`, (error as Error).message);
+          logger.debug(`⚠️ Error decoding message at offset ${offset}:`, (error as Error).message);
           break;
         }
       }
 
-      console.log(`✅ Successfully parsed ${messages.length} FromRadio messages`);
+      logger.debug(`✅ Successfully parsed ${messages.length} FromRadio messages`);
     } catch (error) {
-      console.error('❌ Error parsing multiple messages:', error);
+      logger.error('❌ Error parsing multiple messages:', error);
     }
 
     return messages;
@@ -292,13 +293,13 @@ export class MeshtasticProtobufService {
     type: string;
     data: any;
   } | null {
-    console.log('🔍 Parsing incoming data with Meshtastic protobuf service');
+    logger.debug('🔍 Parsing incoming data with Meshtastic protobuf service');
 
     if (data.length === 0) return null;
 
     const root = getProtobufRoot();
     if (!root) {
-      console.error('❌ Protobuf definitions not loaded');
+      logger.error('❌ Protobuf definitions not loaded');
       return null;
     }
 
@@ -307,7 +308,7 @@ export class MeshtasticProtobufService {
       const FromRadio = root.lookupType('meshtastic.FromRadio');
       const fromRadio = FromRadio.decode(data) as FromRadio;
 
-      console.log('📦 Decoded FromRadio message:', {
+      logger.debug('📦 Decoded FromRadio message:', {
         id: fromRadio.id,
         hasPacket: !!fromRadio.packet,
         hasMyInfo: !!fromRadio.myInfo,
@@ -326,8 +327,8 @@ export class MeshtasticProtobufService {
       // Debug: dump all keys of fromRadio for unknown messages
       if (!fromRadio.packet && !fromRadio.myInfo && !fromRadio.nodeInfo && !fromRadio.config &&
           !fromRadio.channel && !fromRadio.metadata && !fromRadio.moduleConfig && !fromRadio.configCompleteId) {
-        console.log('🔍 DEBUG: All FromRadio keys:', Object.keys(fromRadio));
-        console.log('🔍 DEBUG: Full FromRadio object:', JSON.stringify(fromRadio, null, 2));
+        logger.debug('🔍 DEBUG: All FromRadio keys:', Object.keys(fromRadio));
+        logger.debug('🔍 DEBUG: Full FromRadio object:', JSON.stringify(fromRadio, null, 2));
       }
 
       if (fromRadio.packet) {
@@ -336,9 +337,9 @@ export class MeshtasticProtobufService {
             const Data = root.lookupType('meshtastic.Data');
             const decodedData = Data.decode(fromRadio.packet.decoded);
             (fromRadio.packet as any).decoded = decodedData;
-            console.log('✅ Manually decoded Data message in parseIncomingData');
+            logger.debug('✅ Manually decoded Data message in parseIncomingData');
           } catch (e) {
-            console.error('❌ Failed to manually decode Data in parseIncomingData:', e);
+            logger.error('❌ Failed to manually decode Data in parseIncomingData:', e);
           }
         }
 
@@ -388,14 +389,14 @@ export class MeshtasticProtobufService {
         };
       }
     } catch (error) {
-      console.log('⚠️ Failed to decode as FromRadio, trying as MeshPacket:', (error as Error).message);
+      logger.debug('⚠️ Failed to decode as FromRadio, trying as MeshPacket:', (error as Error).message);
 
       try {
         // Try to decode directly as MeshPacket
         const MeshPacket = root.lookupType('meshtastic.MeshPacket');
         const meshPacket = MeshPacket.decode(data) as MeshPacket;
 
-        console.log('📦 Decoded MeshPacket directly:', {
+        logger.debug('📦 Decoded MeshPacket directly:', {
           from: meshPacket.from,
           to: meshPacket.to,
           id: meshPacket.id,
@@ -408,7 +409,7 @@ export class MeshtasticProtobufService {
           data: meshPacket
         };
       } catch (meshPacketError) {
-        console.log('⚠️ Failed to decode as MeshPacket:', (meshPacketError as Error).message);
+        logger.debug('⚠️ Failed to decode as MeshPacket:', (meshPacketError as Error).message);
         return null;
       }
     }
@@ -419,11 +420,11 @@ export class MeshtasticProtobufService {
    * Process payload based on port number using protobuf definitions
    */
   processPayload(portnum: number, payload: Uint8Array): any {
-    console.log(`🔍 Processing payload for port ${portnum} (${this.getPortNumName(portnum)})`);
+    logger.debug(`🔍 Processing payload for port ${portnum} (${this.getPortNumName(portnum)})`);
 
     const root = getProtobufRoot();
     if (!root) {
-      console.error('❌ Protobuf definitions not loaded');
+      logger.error('❌ Protobuf definitions not loaded');
       return payload;
     }
 
@@ -458,11 +459,11 @@ export class MeshtasticProtobufService {
           return neighborInfo;
 
         default:
-          console.log(`⚠️ Unhandled port number: ${portnum}`);
+          logger.debug(`⚠️ Unhandled port number: ${portnum}`);
           return payload;
       }
     } catch (error) {
-      console.error(`❌ Failed to decode payload for port ${portnum}:`, error);
+      logger.error(`❌ Failed to decode payload for port ${portnum}:`, error);
       return payload;
     }
   }

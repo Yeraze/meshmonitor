@@ -3,6 +3,7 @@ import meshtasticProtobufService from './meshtasticProtobufService.js';
 import protobufService from './protobufService.js';
 import { TcpTransport } from './tcpTransport.js';
 import { calculateDistance } from '../utils/distance.js';
+import { logger } from '../utils/logger.js';
 
 export interface MeshtasticConfig {
   nodeIp: string;
@@ -77,7 +78,7 @@ class MeshtasticManager {
 
   async connect(): Promise<boolean> {
     try {
-      console.log(`Connecting to Meshtastic node at ${this.config.nodeIp}:${this.config.tcpPort}...`);
+      logger.debug(`Connecting to Meshtastic node at ${this.config.nodeIp}:${this.config.tcpPort}...`);
 
       // Initialize protobuf service first
       await meshtasticProtobufService.initialize();
@@ -99,7 +100,7 @@ class MeshtasticManager {
       });
 
       this.transport.on('error', (error: Error) => {
-        console.error('❌ TCP transport error:', error.message);
+        logger.error('❌ TCP transport error:', error.message);
       });
 
       // Connect to node
@@ -110,20 +111,20 @@ class MeshtasticManager {
       return true;
     } catch (error) {
       this.isConnected = false;
-      console.error('Failed to connect to Meshtastic node:', error);
+      logger.error('Failed to connect to Meshtastic node:', error);
       throw error;
     }
   }
 
   private async handleConnected(): Promise<void> {
-    console.log('✅ TCP connection established, requesting configuration...');
+    logger.debug('✅ TCP connection established, requesting configuration...');
     this.isConnected = true;
 
     try {
       // Send want_config_id to request full node DB and config
       await this.sendWantConfigId();
 
-      console.log('⏳ Waiting for configuration data from node...');
+      logger.debug('⏳ Waiting for configuration data from node...');
 
       // Note: With TCP, we don't need to poll - messages arrive via events
       // The configuration will come in automatically as the node sends it
@@ -141,17 +142,17 @@ class MeshtasticManager {
         // Start automatic traceroute scheduler
         this.startTracerouteScheduler();
 
-        console.log(`✅ Configuration complete: ${databaseService.getNodeCount()} nodes, ${databaseService.getChannelCount()} channels`);
+        logger.debug(`✅ Configuration complete: ${databaseService.getNodeCount()} nodes, ${databaseService.getChannelCount()} channels`);
       }, 5000);
 
     } catch (error) {
-      console.error('❌ Failed to request configuration:', error);
+      logger.error('❌ Failed to request configuration:', error);
       this.ensureBasicSetup();
     }
   }
 
   private handleDisconnected(): void {
-    console.log('🔌 TCP connection lost');
+    logger.debug('🔌 TCP connection lost');
     this.isConnected = false;
     // Clear favorites support cache on disconnect
     this.favoritesSupportCache = null;
@@ -159,7 +160,7 @@ class MeshtasticManager {
   }
 
   private createDefaultChannels(): void {
-    console.log('📡 Creating default channel configuration...');
+    logger.debug('📡 Creating default channel configuration...');
 
     // Create default channel with ID 0 for messages that use channel 0
     // This is Meshtastic's default channel when no specific channel is configured
@@ -173,15 +174,15 @@ class MeshtasticManager {
         `);
         const now = Date.now();
         stmt.run(now, now);
-        console.log('📡 Created Primary channel with ID 0');
+        logger.debug('📡 Created Primary channel with ID 0');
       }
     } catch (error) {
-      console.error('❌ Failed to create Primary channel:', error);
+      logger.error('❌ Failed to create Primary channel:', error);
     }
   }
 
   private ensureBasicSetup(): void {
-    console.log('🔧 Ensuring basic setup is complete...');
+    logger.debug('🔧 Ensuring basic setup is complete...');
 
     // Ensure we have at least a Primary channel
     const channelCount = databaseService.getChannelCount();
@@ -190,7 +191,7 @@ class MeshtasticManager {
     }
 
     // Note: Don't create fake nodes - they will be discovered naturally through mesh traffic
-    console.log('✅ Basic setup ensured');
+    logger.debug('✅ Basic setup ensured');
   }
 
   private async sendWantConfigId(): Promise<void> {
@@ -199,15 +200,15 @@ class MeshtasticManager {
     }
 
     try {
-      console.log('Sending want_config_id to trigger configuration data...');
+      logger.debug('Sending want_config_id to trigger configuration data...');
 
       // Use the new protobuf service to create a proper want_config_id message
       const wantConfigMessage = meshtasticProtobufService.createWantConfigRequest();
 
       await this.transport.send(wantConfigMessage);
-      console.log('Successfully sent want_config_id request');
+      logger.debug('Successfully sent want_config_id request');
     } catch (error) {
-      console.error('Error sending want_config_id:', error);
+      logger.error('Error sending want_config_id:', error);
       throw error;
     }
   }
@@ -225,7 +226,7 @@ class MeshtasticManager {
       this.tracerouteInterval = null;
     }
 
-    console.log('Disconnected from Meshtastic node');
+    logger.debug('Disconnected from Meshtastic node');
   }
 
   private startTracerouteScheduler(): void {
@@ -236,25 +237,25 @@ class MeshtasticManager {
 
     // If interval is 0, traceroute is disabled
     if (this.tracerouteIntervalMinutes === 0) {
-      console.log('🗺️ Automatic traceroute is disabled');
+      logger.debug('🗺️ Automatic traceroute is disabled');
       return;
     }
 
     const intervalMs = this.tracerouteIntervalMinutes * 60 * 1000;
-    console.log(`🗺️ Starting traceroute scheduler with ${this.tracerouteIntervalMinutes} minute interval`);
+    logger.debug(`🗺️ Starting traceroute scheduler with ${this.tracerouteIntervalMinutes} minute interval`);
 
     this.tracerouteInterval = setInterval(async () => {
       if (this.isConnected && this.localNodeInfo) {
         try {
           const targetNode = databaseService.getNodeNeedingTraceroute(this.localNodeInfo.nodeNum);
           if (targetNode) {
-            console.log(`🗺️ Auto-traceroute: Sending traceroute to ${targetNode.longName || targetNode.nodeId} (${targetNode.nodeId})`);
+            logger.debug(`🗺️ Auto-traceroute: Sending traceroute to ${targetNode.longName || targetNode.nodeId} (${targetNode.nodeId})`);
             await this.sendTraceroute(targetNode.nodeNum, 0);
           } else {
-            console.log('🗺️ Auto-traceroute: No nodes available for traceroute');
+            logger.debug('🗺️ Auto-traceroute: No nodes available for traceroute');
           }
         } catch (error) {
-          console.error('❌ Error in auto-traceroute:', error);
+          logger.error('❌ Error in auto-traceroute:', error);
         }
       }
     }, intervalMs);
@@ -267,9 +268,9 @@ class MeshtasticManager {
     this.tracerouteIntervalMinutes = minutes;
 
     if (minutes === 0) {
-      console.log('🗺️ Traceroute interval set to 0 (disabled)');
+      logger.debug('🗺️ Traceroute interval set to 0 (disabled)');
     } else {
-      console.log(`🗺️ Traceroute interval updated to ${minutes} minutes`);
+      logger.debug(`🗺️ Traceroute interval updated to ${minutes} minutes`);
     }
 
     if (this.isConnected) {
@@ -283,22 +284,22 @@ class MeshtasticManager {
         return;
       }
 
-      console.log(`📦 Processing single FromRadio message (${data.length} bytes)...`);
+      logger.debug(`📦 Processing single FromRadio message (${data.length} bytes)...`);
 
       // Parse single message (using ?all=false approach)
       const parsed = meshtasticProtobufService.parseIncomingData(data);
 
       if (!parsed) {
-        console.warn('⚠️ Failed to parse message');
+        logger.warn('⚠️ Failed to parse message');
         return;
       }
 
-      console.log(`📦 Parsed message type: ${parsed.type}`);
+      logger.debug(`📦 Parsed message type: ${parsed.type}`);
 
       // Process the message
       switch (parsed.type) {
         case 'fromRadio':
-          console.log('⚠️ Generic FromRadio message (no specific field set)');
+          logger.debug('⚠️ Generic FromRadio message (no specific field set)');
           break;
         case 'meshPacket':
           await this.processMeshPacket(parsed.data);
@@ -313,13 +314,13 @@ class MeshtasticManager {
           await this.processDeviceMetadata(parsed.data);
           break;
         case 'config':
-          console.log('⚙️ Received Config:', JSON.stringify(parsed.data, null, 2));
+          logger.debug('⚙️ Received Config:', JSON.stringify(parsed.data, null, 2));
           // Merge the actual device configuration (don't overwrite)
           this.actualDeviceConfig = { ...this.actualDeviceConfig, ...parsed.data };
-          console.log('📊 Merged actualDeviceConfig now has:', Object.keys(this.actualDeviceConfig));
+          logger.debug('📊 Merged actualDeviceConfig now has:', Object.keys(this.actualDeviceConfig));
           break;
         case 'moduleConfig':
-          console.log('⚙️ Received Module Config:', JSON.stringify(parsed.data, null, 2));
+          logger.debug('⚙️ Received Module Config:', JSON.stringify(parsed.data, null, 2));
           // Merge the actual module configuration (don't overwrite)
           this.actualModuleConfig = { ...this.actualModuleConfig, ...parsed.data };
           break;
@@ -327,13 +328,13 @@ class MeshtasticManager {
           await this.processChannelProtobuf(parsed.data);
           break;
         case 'configComplete':
-          console.log('✅ Config complete received, ID:', parsed.data.configCompleteId);
+          logger.debug('✅ Config complete received, ID:', parsed.data.configCompleteId);
           break;
       }
 
-      console.log(`✅ Processed message type: ${parsed.type}`);
+      logger.debug(`✅ Processed message type: ${parsed.type}`);
     } catch (error) {
-      console.error('❌ Error processing incoming data:', error);
+      logger.error('❌ Error processing incoming data:', error);
     }
   }
 
@@ -359,7 +360,7 @@ class MeshtasticManager {
    */
   private async initializeLocalNodeInfoFromDatabase(): Promise<void> {
     try {
-      console.log('📱 Checking for local node info in database...');
+      logger.debug('📱 Checking for local node info in database...');
 
       // Try to load previously saved local node info from settings
       const savedNodeNum = databaseService.getSetting('localNodeNum');
@@ -367,7 +368,7 @@ class MeshtasticManager {
 
       if (savedNodeNum && savedNodeId) {
         const nodeNum = parseInt(savedNodeNum);
-        console.log(`📱 Found saved local node info: ${savedNodeId} (${nodeNum})`);
+        logger.debug(`📱 Found saved local node info: ${savedNodeId} (${nodeNum})`);
 
         // Try to get full node info from database
         const node = databaseService.getNode(nodeNum);
@@ -380,7 +381,7 @@ class MeshtasticManager {
             hwModel: node.hwModel || undefined,
             isLocked: false // Allow updates if MyNodeInfo arrives later
           } as any;
-          console.log(`✅ Restored local node info from settings: ${savedNodeId}`);
+          logger.debug(`✅ Restored local node info from settings: ${savedNodeId}`);
         } else {
           // Create minimal local node info
           this.localNodeInfo = {
@@ -390,30 +391,30 @@ class MeshtasticManager {
             shortName: 'UNK',
             isLocked: false
           } as any;
-          console.log(`✅ Restored minimal local node info from settings: ${savedNodeId}`);
+          logger.debug(`✅ Restored minimal local node info from settings: ${savedNodeId}`);
         }
       } else {
-        console.log('⚠️ No MyNodeInfo received yet, waiting for device to send local node identification');
+        logger.debug('⚠️ No MyNodeInfo received yet, waiting for device to send local node identification');
       }
     } catch (error) {
-      console.error('❌ Failed to check local node info:', error);
+      logger.error('❌ Failed to check local node info:', error);
     }
   }
 
   private async processMyNodeInfo(myNodeInfo: any): Promise<void> {
-    console.log('📱 Processing MyNodeInfo for local device');
-    console.log('📱 MyNodeInfo contents:', JSON.stringify(myNodeInfo, null, 2));
+    logger.debug('📱 Processing MyNodeInfo for local device');
+    logger.debug('📱 MyNodeInfo contents:', JSON.stringify(myNodeInfo, null, 2));
 
     // If we already have locked local node info, don't overwrite it
     if (this.localNodeInfo?.isLocked) {
-      console.log('📱 Local node info already locked, skipping update');
+      logger.debug('📱 Local node info already locked, skipping update');
       return;
     }
 
     // Log minAppVersion for debugging but don't use it as firmware version
     if (myNodeInfo.minAppVersion) {
       const minVersion = `v${this.decodeMinAppVersion(myNodeInfo.minAppVersion)}`;
-      console.log(`📱 Minimum app version required: ${minVersion}`);
+      logger.debug(`📱 Minimum app version required: ${minVersion}`);
     }
 
     const nodeNum = Number(myNodeInfo.myNodeNum);
@@ -422,7 +423,7 @@ class MeshtasticManager {
     // Save local node info to settings for persistence
     databaseService.setSetting('localNodeNum', nodeNum.toString());
     databaseService.setSetting('localNodeId', nodeId);
-    console.log(`💾 Saved local node info to settings: ${nodeId} (${nodeNum})`);
+    logger.debug(`💾 Saved local node info to settings: ${nodeId} (${nodeNum})`);
 
     // Check if we already have this node with actual names in the database
     const existingNode = databaseService.getNode(nodeNum);
@@ -446,10 +447,10 @@ class MeshtasticManager {
           nodeId: nodeId,
           rebootCount: myNodeInfo.rebootCount
         });
-        console.log(`📱 Updated rebootCount to ${myNodeInfo.rebootCount} for local device: ${existingNode.longName} (${nodeId})`);
+        logger.debug(`📱 Updated rebootCount to ${myNodeInfo.rebootCount} for local device: ${existingNode.longName} (${nodeId})`);
       }
 
-      console.log(`📱 Using existing node info for local device: ${existingNode.longName} (${nodeId}) - LOCKED`);
+      logger.debug(`📱 Using existing node info for local device: ${existingNode.longName} (${nodeId}) - LOCKED`);
     } else {
       // We don't have real node info yet, store basic info and wait for NodeInfo
       const nodeData = {
@@ -474,7 +475,7 @@ class MeshtasticManager {
       } as any;
 
       databaseService.upsertNode(nodeData);
-      console.log(`📱 Stored basic local node info with rebootCount: ${myNodeInfo.rebootCount}, waiting for NodeInfo for names (${nodeId})`);
+      logger.debug(`📱 Stored basic local node info with rebootCount: ${myNodeInfo.rebootCount}, waiting for NodeInfo for names (${nodeId})`);
     }
   }
 
@@ -497,8 +498,8 @@ class MeshtasticManager {
    * Process DeviceMetadata protobuf message
    */
   private async processDeviceMetadata(metadata: any): Promise<void> {
-    console.log('📱 Processing DeviceMetadata:', JSON.stringify(metadata, null, 2));
-    console.log('📱 Firmware version:', metadata.firmwareVersion);
+    logger.debug('📱 Processing DeviceMetadata:', JSON.stringify(metadata, null, 2));
+    logger.debug('📱 Firmware version:', metadata.firmwareVersion);
 
     // Update local node info with firmware version (always allowed, even if locked)
     if (this.localNodeInfo && metadata.firmwareVersion) {
@@ -506,7 +507,7 @@ class MeshtasticManager {
       this.localNodeInfo.firmwareVersion = metadata.firmwareVersion;
       // Clear favorites support cache since firmware version changed
       this.favoritesSupportCache = null;
-      console.log(`📱 Updated firmware version: ${metadata.firmwareVersion}`);
+      logger.debug(`📱 Updated firmware version: ${metadata.firmwareVersion}`);
 
       // Update the database with the firmware version
       if (this.localNodeInfo.nodeNum) {
@@ -516,10 +517,10 @@ class MeshtasticManager {
           firmwareVersion: metadata.firmwareVersion
         };
         databaseService.upsertNode(nodeData);
-        console.log(`📱 Saved firmware version to database for node ${this.localNodeInfo.nodeId}`);
+        logger.debug(`📱 Saved firmware version to database for node ${this.localNodeInfo.nodeId}`);
       }
     } else {
-      console.log('⚠️ Cannot update firmware - localNodeInfo not initialized yet');
+      logger.debug('⚠️ Cannot update firmware - localNodeInfo not initialized yet');
     }
   }
 
@@ -527,7 +528,7 @@ class MeshtasticManager {
    * Process Channel protobuf message
    */
   private async processChannelProtobuf(channel: any): Promise<void> {
-    console.log('📡 Processing Channel protobuf', {
+    logger.debug('📡 Processing Channel protobuf', {
       index: channel.index,
       role: channel.role,
       name: channel.settings?.name,
@@ -552,12 +553,12 @@ class MeshtasticManager {
             name: channelName,
             psk: channel.settings.psk ? 'Set' : undefined
           });
-          console.log(`📡 Saved channel: ${channelName} (role: ${channel.role}, index: ${channel.index})`);
+          logger.debug(`📡 Saved channel: ${channelName} (role: ${channel.role}, index: ${channel.index})`);
         } catch (error) {
-          console.error('❌ Failed to save channel:', error);
+          logger.error('❌ Failed to save channel:', error);
         }
       } else {
-        console.log(`📡 Skipping empty/unused channel ${channel.index}`);
+        logger.debug(`📡 Skipping empty/unused channel ${channel.index}`);
       }
     }
   }
@@ -572,7 +573,7 @@ class MeshtasticManager {
    * Process MeshPacket protobuf message
    */
   private async processMeshPacket(meshPacket: any): Promise<void> {
-    console.log(`🔄 Processing MeshPacket: ID=${meshPacket.id}, from=${meshPacket.from}, to=${meshPacket.to}`);
+    logger.debug(`🔄 Processing MeshPacket: ID=${meshPacket.id}, from=${meshPacket.from}, to=${meshPacket.to}`);
 
     // Extract node information if available
     // Note: Only update technical fields (SNR/RSSI/lastHeard), not names
@@ -611,7 +612,7 @@ class MeshtasticManager {
       const portnum = meshPacket.decoded.portnum;
       const payload = meshPacket.decoded.payload;
 
-      console.log(`📨 Processing payload: portnum=${portnum} (${meshtasticProtobufService.getPortNumName(portnum)}), payload size=${payload?.length || 0}`);
+      logger.debug(`📨 Processing payload: portnum=${portnum} (${meshtasticProtobufService.getPortNumName(portnum)}), payload size=${payload?.length || 0}`);
 
       if (payload && payload.length > 0) {
         // Use the unified protobuf service to process the payload
@@ -631,7 +632,7 @@ class MeshtasticManager {
             await this.processTelemetryMessageProtobuf(meshPacket, processedPayload as any);
             break;
           case 5: // ROUTING_APP
-            console.log('🗺️ Routing message:', processedPayload);
+            logger.debug('🗺️ Routing message:', processedPayload);
             break;
           case 6: // ADMIN_APP
             await this.processAdminMessage(processedPayload as Uint8Array);
@@ -643,7 +644,7 @@ class MeshtasticManager {
             await this.processTracerouteMessage(meshPacket, processedPayload as any);
             break;
           default:
-            console.log(`🤷 Unhandled portnum: ${portnum} (${meshtasticProtobufService.getPortNumName(portnum)})`);
+            logger.debug(`🤷 Unhandled portnum: ${portnum} (${meshtasticProtobufService.getPortNumName(portnum)})`);
         }
       }
     }
@@ -654,7 +655,7 @@ class MeshtasticManager {
    */
   private async processTextMessageProtobuf(meshPacket: any, messageText: string): Promise<void> {
     try {
-      console.log(`💬 Text message: "${messageText}"`);
+      logger.debug(`💬 Text message: "${messageText}"`);
 
       if (messageText && messageText.length > 0 && messageText.length < 500) {
         const fromNum = Number(meshPacket.from);
@@ -675,7 +676,7 @@ class MeshtasticManager {
             updatedAt: Date.now()
           };
           databaseService.upsertNode(basicNodeData);
-          console.log(`📝 Created basic node entry for ${fromNodeId}`);
+          logger.debug(`📝 Created basic node entry for ${fromNodeId}`);
         }
 
         // Handle broadcast address (4294967295 = 0xFFFFFFFF)
@@ -697,7 +698,7 @@ class MeshtasticManager {
               updatedAt: Date.now()
             };
             databaseService.upsertNode(broadcastNodeData);
-            console.log(`📝 Created broadcast node entry`);
+            logger.debug(`📝 Created broadcast node entry`);
           }
         }
 
@@ -710,7 +711,7 @@ class MeshtasticManager {
         if (!isDirectMessage && channelIndex === 0) {
           const channel0 = databaseService.getChannelById(0);
           if (!channel0) {
-            console.log('📡 Creating Primary channel (ID 0) for message with channel=0');
+            logger.debug('📡 Creating Primary channel (ID 0) for message with channel=0');
             databaseService.upsertChannel({ id: 0, name: 'Primary' });
           }
         }
@@ -749,13 +750,13 @@ class MeshtasticManager {
         };
         databaseService.insertMessage(message);
         if (isDirectMessage) {
-          console.log(`💾 Saved direct message from ${message.fromNodeId} to ${message.toNodeId}: "${messageText.substring(0, 30)}..." (replyId: ${message.replyId})`);
+          logger.debug(`💾 Saved direct message from ${message.fromNodeId} to ${message.toNodeId}: "${messageText.substring(0, 30)}..." (replyId: ${message.replyId})`);
         } else {
-          console.log(`💾 Saved channel message from ${message.fromNodeId} on channel ${channelIndex}: "${messageText.substring(0, 30)}..." (replyId: ${message.replyId})`);
+          logger.debug(`💾 Saved channel message from ${message.fromNodeId} on channel ${channelIndex}: "${messageText.substring(0, 30)}..." (replyId: ${message.replyId})`);
         }
       }
     } catch (error) {
-      console.error('❌ Error processing text message:', error);
+      logger.error('❌ Error processing text message:', error);
     }
   }
 
@@ -794,7 +795,7 @@ class MeshtasticManager {
    */
   private async processPositionMessageProtobuf(meshPacket: any, position: any): Promise<void> {
     try {
-      console.log(`🗺️ Position message: lat=${position.latitudeI}, lng=${position.longitudeI}`);
+      logger.debug(`🗺️ Position message: lat=${position.latitudeI}, lng=${position.longitudeI}`);
 
       if (position.latitudeI && position.longitudeI) {
         // Convert coordinates from integer format to decimal degrees
@@ -802,7 +803,7 @@ class MeshtasticManager {
 
         // Validate coordinates
         if (!this.isValidPosition(coords.latitude, coords.longitude)) {
-          console.warn(`⚠️ Invalid position coordinates: lat=${coords.latitude}, lon=${coords.longitude}. Skipping position update.`);
+          logger.warn(`⚠️ Invalid position coordinates: lat=${coords.latitude}, lon=${coords.longitude}. Skipping position update.`);
           return;
         }
 
@@ -847,10 +848,10 @@ class MeshtasticManager {
           });
         }
 
-        console.log(`🗺️ Updated node position: ${nodeId} -> ${coords.latitude}, ${coords.longitude}`);
+        logger.debug(`🗺️ Updated node position: ${nodeId} -> ${coords.latitude}, ${coords.longitude}`);
       }
     } catch (error) {
-      console.error('❌ Error processing position message:', error);
+      logger.error('❌ Error processing position message:', error);
     }
   }
 
@@ -863,7 +864,7 @@ class MeshtasticManager {
    */
   private async processNodeInfoMessageProtobuf(meshPacket: any, user: any): Promise<void> {
     try {
-      console.log(`👤 User message for: ${user.longName}`);
+      logger.debug(`👤 User message for: ${user.longName}`);
 
       const fromNum = Number(meshPacket.from);
       const nodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
@@ -895,18 +896,18 @@ class MeshtasticManager {
             unit: 'dB',
             createdAt: timestamp
           });
-          console.log(`📊 Saved SNR telemetry: ${meshPacket.rxSnr} dB (changed from ${latestSnrTelemetry?.value || 'N/A'})`);
+          logger.debug(`📊 Saved SNR telemetry: ${meshPacket.rxSnr} dB (changed from ${latestSnrTelemetry?.value || 'N/A'})`);
         }
       }
       if (meshPacket.rxRssi && meshPacket.rxRssi !== 0) {
         nodeData.rssi = meshPacket.rxRssi;
       }
 
-      console.log(`🔍 Saving node with role=${user.role}, hopsAway=${meshPacket.hopsAway}`);
+      logger.debug(`🔍 Saving node with role=${user.role}, hopsAway=${meshPacket.hopsAway}`);
       databaseService.upsertNode(nodeData);
-      console.log(`👤 Updated user info: ${user.longName || nodeId}`);
+      logger.debug(`👤 Updated user info: ${user.longName || nodeId}`);
     } catch (error) {
-      console.error('❌ Error processing user message:', error);
+      logger.error('❌ Error processing user message:', error);
     }
   }
 
@@ -919,7 +920,7 @@ class MeshtasticManager {
    */
   private async processTelemetryMessageProtobuf(meshPacket: any, telemetry: any): Promise<void> {
     try {
-      console.log('📊 Processing telemetry message');
+      logger.debug('📊 Processing telemetry message');
 
       const fromNum = Number(meshPacket.from);
       const nodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
@@ -944,7 +945,7 @@ class MeshtasticManager {
       // Note: The protobuf decoder puts variant fields directly on the telemetry object
       if (telemetry.deviceMetrics) {
         const deviceMetrics = telemetry.deviceMetrics;
-        console.log(`📊 Device telemetry: battery=${deviceMetrics.batteryLevel}%, voltage=${deviceMetrics.voltage}V`);
+        logger.debug(`📊 Device telemetry: battery=${deviceMetrics.batteryLevel}%, voltage=${deviceMetrics.voltage}V`);
 
         nodeData.batteryLevel = deviceMetrics.batteryLevel;
         nodeData.voltage = deviceMetrics.voltage;
@@ -978,7 +979,7 @@ class MeshtasticManager {
         }
       } else if (telemetry.environmentMetrics) {
         const envMetrics = telemetry.environmentMetrics;
-        console.log(`🌡️ Environment telemetry: temp=${envMetrics.temperature}°C, humidity=${envMetrics.relativeHumidity}%`);
+        logger.debug(`🌡️ Environment telemetry: temp=${envMetrics.temperature}°C, humidity=${envMetrics.relativeHumidity}%`);
 
         if (envMetrics.temperature !== undefined && envMetrics.temperature !== null) {
           databaseService.insertTelemetry({
@@ -1000,7 +1001,7 @@ class MeshtasticManager {
         }
       } else if (telemetry.powerMetrics) {
         const powerMetrics = telemetry.powerMetrics;
-        console.log(`⚡ Power telemetry: ch1_voltage=${powerMetrics.ch1Voltage}V`);
+        logger.debug(`⚡ Power telemetry: ch1_voltage=${powerMetrics.ch1Voltage}V`);
 
         if (powerMetrics.ch1Voltage !== undefined) {
           databaseService.insertTelemetry({
@@ -1017,9 +1018,9 @@ class MeshtasticManager {
       }
 
       databaseService.upsertNode(nodeData);
-      console.log(`📊 Updated node telemetry and saved to telemetry table: ${nodeId}`);
+      logger.debug(`📊 Updated node telemetry and saved to telemetry table: ${nodeId}`);
     } catch (error) {
-      console.error('❌ Error processing telemetry message:', error);
+      logger.error('❌ Error processing telemetry message:', error);
     }
   }
 
@@ -1033,7 +1034,7 @@ class MeshtasticManager {
       const toNum = Number(meshPacket.to);
       const toNodeId = `!${toNum.toString(16).padStart(8, '0')}`;
 
-      console.log(`🗺️ Traceroute response from ${fromNodeId}:`, routeDiscovery);
+      logger.debug(`🗺️ Traceroute response from ${fromNodeId}:`, routeDiscovery);
 
       // Ensure from node exists in database (don't overwrite existing names)
       const existingFromNode = databaseService.getNode(fromNum);
@@ -1278,7 +1279,7 @@ class MeshtasticManager {
       };
 
       databaseService.insertMessage(message);
-      console.log(`💾 Saved traceroute result from ${fromNodeId} (channel: ${channelIndex})`);
+      logger.debug(`💾 Saved traceroute result from ${fromNodeId} (channel: ${channelIndex})`);
 
       // Save to traceroutes table
       const tracerouteRecord = {
@@ -1295,7 +1296,7 @@ class MeshtasticManager {
       };
 
       databaseService.insertTraceroute(tracerouteRecord);
-      console.log(`💾 Saved traceroute record to traceroutes table`);
+      logger.debug(`💾 Saved traceroute record to traceroutes table`);
 
       // Calculate and store route segment distances
       try {
@@ -1339,14 +1340,14 @@ class MeshtasticManager {
             // Check if this is a new record holder
             databaseService.updateRecordHolderSegment(segment);
 
-            console.log(`📏 Stored route segment: ${node1Id} -> ${node2Id}, distance: ${distanceKm.toFixed(2)} km`);
+            logger.debug(`📏 Stored route segment: ${node1Id} -> ${node2Id}, distance: ${distanceKm.toFixed(2)} km`);
           }
         }
       } catch (error) {
-        console.error('❌ Error calculating route segment distances:', error);
+        logger.error('❌ Error calculating route segment distances:', error);
       }
     } catch (error) {
-      console.error('❌ Error processing traceroute message:', error);
+      logger.error('❌ Error processing traceroute message:', error);
     }
   }
 
@@ -1358,7 +1359,7 @@ class MeshtasticManager {
       const fromNum = Number(meshPacket.from);
       const fromNodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
 
-      console.log(`🏠 Neighbor info from ${fromNodeId}:`, neighborInfo);
+      logger.debug(`🏠 Neighbor info from ${fromNodeId}:`, neighborInfo);
 
       // Get the sender node to determine their hopsAway
       let senderNode = databaseService.getNode(fromNum);
@@ -1380,7 +1381,7 @@ class MeshtasticManager {
 
       // Process each neighbor in the list
       if (neighborInfo.neighbors && Array.isArray(neighborInfo.neighbors)) {
-        console.log(`📡 Processing ${neighborInfo.neighbors.length} neighbors from ${fromNodeId}`);
+        logger.debug(`📡 Processing ${neighborInfo.neighbors.length} neighbors from ${fromNodeId}`);
 
         for (const neighbor of neighborInfo.neighbors) {
           const neighborNodeNum = Number(neighbor.nodeId);
@@ -1397,7 +1398,7 @@ class MeshtasticManager {
               hopsAway: senderHopsAway + 1,
               lastHeard: Date.now() / 1000
             });
-            console.log(`➕ Created new node ${neighborNodeId} with hopsAway=${senderHopsAway + 1}`);
+            logger.debug(`➕ Created new node ${neighborNodeId} with hopsAway=${senderHopsAway + 1}`);
           }
 
           // Save the neighbor relationship
@@ -1409,11 +1410,11 @@ class MeshtasticManager {
             timestamp: timestamp
           });
 
-          console.log(`🔗 Saved neighbor: ${fromNodeId} -> ${neighborNodeId}, SNR: ${neighbor.snr || 'N/A'}`);
+          logger.debug(`🔗 Saved neighbor: ${fromNodeId} -> ${neighborNodeId}, SNR: ${neighbor.snr || 'N/A'}`);
         }
       }
     } catch (error) {
-      console.error('❌ Error processing neighbor info message:', error);
+      logger.error('❌ Error processing neighbor info message:', error);
     }
   }
 
@@ -1426,7 +1427,7 @@ class MeshtasticManager {
    */
   private async processNodeInfoProtobuf(nodeInfo: any): Promise<void> {
     try {
-      console.log(`🏠 Processing NodeInfo for node ${nodeInfo.num}`);
+      logger.debug(`🏠 Processing NodeInfo for node ${nodeInfo.num}`);
 
       const nodeId = `!${Number(nodeInfo.num).toString(16).padStart(8, '0')}`;
       const nodeData: any = {
@@ -1478,7 +1479,7 @@ class MeshtasticManager {
             });
           }
         } else {
-          console.warn(`⚠️ Invalid position coordinates for node ${nodeId}: lat=${coords.latitude}, lon=${coords.longitude}. Skipping position save.`);
+          logger.warn(`⚠️ Invalid position coordinates for node ${nodeId}: lat=${coords.latitude}, lon=${coords.longitude}. Skipping position save.`);
         }
       }
 
@@ -1488,19 +1489,19 @@ class MeshtasticManager {
 
       // If this is the local node, update localNodeInfo with names (only if not locked)
       if (this.localNodeInfo && this.localNodeInfo.nodeNum === Number(nodeInfo.num) && !this.localNodeInfo.isLocked) {
-        console.log(`📱 Updating local node info with names from NodeInfo`);
+        logger.debug(`📱 Updating local node info with names from NodeInfo`);
         if (nodeInfo.user && nodeInfo.user.longName && nodeInfo.user.shortName) {
           this.localNodeInfo.longName = nodeInfo.user.longName;
           this.localNodeInfo.shortName = nodeInfo.user.shortName;
           this.localNodeInfo.isLocked = true;  // Lock it now that we have complete info
-          console.log(`📱 Local node: ${nodeInfo.user.longName} (${nodeInfo.user.shortName}) - LOCKED`);
+          logger.debug(`📱 Local node: ${nodeInfo.user.longName} (${nodeInfo.user.shortName}) - LOCKED`);
         }
       }
 
       databaseService.upsertNode(nodeData);
-      console.log(`🏠 Updated node info: ${nodeData.longName || nodeId}`);
+      logger.debug(`🏠 Updated node info: ${nodeData.longName || nodeId}`);
     } catch (error) {
-      console.error('❌ Error processing NodeInfo protobuf:', error);
+      logger.error('❌ Error processing NodeInfo protobuf:', error);
     }
   }
 
@@ -1510,7 +1511,7 @@ class MeshtasticManager {
   // @ts-ignore - Legacy function kept for backward compatibility
   private async processUserProtobuf(user: any): Promise<void> {
     try {
-      console.log(`👤 Processing User: ${user.longName}`);
+      logger.debug(`👤 Processing User: ${user.longName}`);
 
       // Extract node number from user ID if possible
       let nodeNum = 0;
@@ -1529,10 +1530,10 @@ class MeshtasticManager {
         };
 
         databaseService.upsertNode(nodeData);
-        console.log(`👤 Updated user info: ${user.longName}`);
+        logger.debug(`👤 Updated user info: ${user.longName}`);
       }
     } catch (error) {
-      console.error('❌ Error processing User protobuf:', error);
+      logger.error('❌ Error processing User protobuf:', error);
     }
   }
 
@@ -1542,17 +1543,17 @@ class MeshtasticManager {
   // @ts-ignore - Legacy function kept for backward compatibility
   private async processPositionProtobuf(position: any): Promise<void> {
     try {
-      console.log(`🗺️ Processing Position: lat=${position.latitudeI}, lng=${position.longitudeI}`);
+      logger.debug(`🗺️ Processing Position: lat=${position.latitudeI}, lng=${position.longitudeI}`);
 
       if (position.latitudeI && position.longitudeI) {
         const coords = meshtasticProtobufService.convertCoordinates(position.latitudeI, position.longitudeI);
-        console.log(`🗺️ Position: ${coords.latitude}, ${coords.longitude}`);
+        logger.debug(`🗺️ Position: ${coords.latitude}, ${coords.longitude}`);
 
         // Note: Without a mesh packet context, we can't determine which node this position belongs to
         // This would need to be handled at a higher level or with additional context
       }
     } catch (error) {
-      console.error('❌ Error processing Position protobuf:', error);
+      logger.error('❌ Error processing Position protobuf:', error);
     }
   }
 
@@ -1562,20 +1563,20 @@ class MeshtasticManager {
   // @ts-ignore - Legacy function kept for backward compatibility
   private async processTelemetryProtobuf(telemetry: any): Promise<void> {
     try {
-      console.log('📊 Processing Telemetry protobuf');
+      logger.debug('📊 Processing Telemetry protobuf');
 
       // Note: Without a mesh packet context, we can't determine which node this telemetry belongs to
       // This would need to be handled at a higher level or with additional context
 
       if (telemetry.variant?.case === 'deviceMetrics' && telemetry.variant.value) {
         const deviceMetrics = telemetry.variant.value;
-        console.log(`📊 Device metrics: battery=${deviceMetrics.batteryLevel}%, voltage=${deviceMetrics.voltage}V`);
+        logger.debug(`📊 Device metrics: battery=${deviceMetrics.batteryLevel}%, voltage=${deviceMetrics.voltage}V`);
       } else if (telemetry.variant?.case === 'environmentMetrics' && telemetry.variant.value) {
         const envMetrics = telemetry.variant.value;
-        console.log(`🌡️ Environment metrics: temp=${envMetrics.temperature}°C, humidity=${envMetrics.relativeHumidity}%`);
+        logger.debug(`🌡️ Environment metrics: temp=${envMetrics.temperature}°C, humidity=${envMetrics.relativeHumidity}%`);
       }
     } catch (error) {
-      console.error('❌ Error processing Telemetry protobuf:', error);
+      logger.error('❌ Error processing Telemetry protobuf:', error);
     }
   }
 
@@ -1584,7 +1585,7 @@ class MeshtasticManager {
   private saveNodesFromData(nodeIds: string[], readableText: string[], text: string): void {
     // Extract and save all discovered nodes to database
     const uniqueNodeIds = [...new Set(nodeIds)];
-    console.log(`Saving ${uniqueNodeIds.length} nodes to database`);
+    logger.debug(`Saving ${uniqueNodeIds.length} nodes to database`);
 
     for (const nodeId of uniqueNodeIds) {
       try {
@@ -1613,10 +1614,10 @@ class MeshtasticManager {
 
         // Save to database immediately
         databaseService.upsertNode(nodeData);
-        console.log(`Saved node: ${nodeData.longName} (${nodeData.nodeId})`);
+        logger.debug(`Saved node: ${nodeData.longName} (${nodeData.nodeId})`);
 
       } catch (error) {
-        console.error(`Failed to process node ${nodeId}:`, error);
+        logger.error(`Failed to process node ${nodeId}:`, error);
       }
     }
   }
@@ -1650,7 +1651,7 @@ class MeshtasticManager {
     const validChannels = Array.from(foundChannels);
 
     if (validChannels.length > 0) {
-      console.log('Found valid Meshtastic channels:', validChannels);
+      logger.debug('Found valid Meshtastic channels:', validChannels);
       this.saveChannelsToDatabase(validChannels);
 
       return {
@@ -1665,7 +1666,7 @@ class MeshtasticManager {
     // Ensure we always have a Primary channel
     const existingChannels = databaseService.getAllChannels();
     if (existingChannels.length === 0) {
-      console.log('Creating default Primary channel');
+      logger.debug('Creating default Primary channel');
       this.saveChannelsToDatabase(['Primary']);
 
       return {
@@ -1681,18 +1682,18 @@ class MeshtasticManager {
   }
 
   private ensurePrimaryChannel(): void {
-    console.log('🔍 Checking for Primary channel (ID 0)...');
+    logger.debug('🔍 Checking for Primary channel (ID 0)...');
     const channel0 = databaseService.getChannelById(0);
-    console.log('🔍 getChannelById(0) result:', channel0);
+    logger.debug('🔍 getChannelById(0) result:', channel0);
     if (!channel0) {
-      console.log('📡 Creating Primary channel (ID 0)');
+      logger.debug('📡 Creating Primary channel (ID 0)');
       databaseService.upsertChannel({
         id: 0,
         name: 'Primary'
       });
-      console.log('✅ Primary channel created');
+      logger.debug('✅ Primary channel created');
     } else {
-      console.log('✅ Primary channel already exists');
+      logger.debug('✅ Primary channel already exists');
     }
   }
 
@@ -1706,7 +1707,7 @@ class MeshtasticManager {
             name: channelName
           });
         } catch (error) {
-          console.error(`Failed to save channel ${channelName}:`, error);
+          logger.error(`Failed to save channel ${channelName}:`, error);
         }
       }
     }
@@ -1744,7 +1745,7 @@ class MeshtasticManager {
         Object.assign(result, parsedData);
       }
     } catch (error) {
-      console.error(`Error parsing node data for ${nodeId}:`, error);
+      logger.error(`Error parsing node data for ${nodeId}:`, error);
     }
 
     // Fallback: Look for readable text patterns near the node ID
@@ -1832,7 +1833,7 @@ class MeshtasticManager {
       // First, try to decode the entire data block as a NodeInfo message
       const nodeInfo = protobufService.decodeNodeInfo(data);
       if (nodeInfo && nodeInfo.position) {
-        console.log(`🗺️ Extracted position from NodeInfo during config parsing for ${nodeId}`);
+        logger.debug(`🗺️ Extracted position from NodeInfo during config parsing for ${nodeId}`);
         const coords = protobufService.convertCoordinates(
           nodeInfo.position.latitude_i,
           nodeInfo.position.longitude_i
@@ -1851,7 +1852,7 @@ class MeshtasticManager {
         // Note: Telemetry data (batteryLevel, voltage, etc.) is NOT extracted from NodeInfo during config parsing
         // It is only saved from actual TELEMETRY_APP packets in processTelemetryMessageProtobuf()
 
-        console.log(`📍 Config position data: ${coords.latitude}, ${coords.longitude} for ${nodeId}`);
+        logger.debug(`📍 Config position data: ${coords.latitude}, ${coords.longitude} for ${nodeId}`);
       }
     } catch (_nodeInfoError) {
       // NodeInfo parsing failed, try manual field parsing as fallback
@@ -1889,21 +1890,21 @@ class MeshtasticManager {
                   // Debug: log raw bytes for troubleshooting Unicode issues
                   if (fieldData.length <= 10) {
                     const hex = Array.from(fieldData).map(b => b.toString(16).padStart(2, '0')).join(' ');
-                    console.log(`Field ${fieldNumber} raw bytes for "${str}": [${hex}]`);
+                    logger.debug(`Field ${fieldNumber} raw bytes for "${str}": [${hex}]`);
                   }
 
                   // Parse based on actual protobuf field numbers (Meshtastic User message schema)
                   if (fieldNumber === 2) { // longName field
                     if (this.isValidNodeName(str) && str !== nodeId && str.length >= 3) {
                       result.longName = str;
-                      console.log(`Extracted longName from protobuf field 2: ${str}`);
+                      logger.debug(`Extracted longName from protobuf field 2: ${str}`);
                     }
                   } else if (fieldNumber === 3) { // shortName field
                     // For shortName, count actual Unicode characters, not bytes
                     const unicodeLength = Array.from(str).length;
                     if (unicodeLength >= 1 && unicodeLength <= 4 && this.isValidNodeName(str)) {
                       result.shortName = str;
-                      console.log(`Extracted shortName from protobuf field 3: ${str} (${unicodeLength} chars)`);
+                      logger.debug(`Extracted shortName from protobuf field 3: ${str} (${unicodeLength} chars)`);
                     }
                   }
                 } catch (e) {
@@ -1995,7 +1996,7 @@ class MeshtasticManager {
 
   private parseEmbeddedTelemetry(data: Uint8Array, result: any): void {
     // Parse embedded protobuf messages that may contain position data
-    console.log(`🔍 parseEmbeddedTelemetry called with ${data.length} bytes: [${Array.from(data.slice(0, Math.min(20, data.length))).map(b => b.toString(16).padStart(2, '0')).join(' ')}${data.length > 20 ? '...' : ''}]`);
+    logger.debug(`🔍 parseEmbeddedTelemetry called with ${data.length} bytes: [${Array.from(data.slice(0, Math.min(20, data.length))).map(b => b.toString(16).padStart(2, '0')).join(' ')}${data.length > 20 ? '...' : ''}]`);
 
     // Strategy 1: Look for encoded integer patterns that could be coordinates
     // Meshtastic encodes lat/lng as integers * 10^7
@@ -2009,12 +2010,12 @@ class MeshtasticManager {
         const isValidLongitude = Math.abs(value) >= 100000000 && Math.abs(value) <= 1800000000;
 
         if (isValidLatitude) {
-          console.log(`🌍 Found potential latitude at byte ${i}: ${value / 10000000} (raw: ${value})`);
+          logger.debug(`🌍 Found potential latitude at byte ${i}: ${value / 10000000} (raw: ${value})`);
           if (!result.position) result.position = {};
           result.position.latitude = value / 10000000;
           result.latitude = value / 10000000;
         } else if (isValidLongitude) {
-          console.log(`🌍 Found potential longitude at byte ${i}: ${value / 10000000} (raw: ${value})`);
+          logger.debug(`🌍 Found potential longitude at byte ${i}: ${value / 10000000} (raw: ${value})`);
           if (!result.position) result.position = {};
           result.position.longitude = value / 10000000;
           result.longitude = value / 10000000;
@@ -2053,7 +2054,7 @@ class MeshtasticManager {
             if (!hasMore) break;
           }
 
-          console.log(`Embedded Field ${fieldNumber} Varint value: ${value} (0x${value.toString(16)})`);
+          logger.debug(`Embedded Field ${fieldNumber} Varint value: ${value} (0x${value.toString(16)})`);
 
           // Look for Meshtastic Position message structure
           // latitudeI and longitudeI are typically * 10^7 integers
@@ -2062,18 +2063,18 @@ class MeshtasticManager {
 
           // Position message: field 1=latitudeI, field 2=longitudeI, field 3=altitude
           if (fieldNumber === 1 && isValidLatitude) {
-            console.log(`🌍 Found embedded latitude in field ${fieldNumber}: ${value / 10000000}`);
+            logger.debug(`🌍 Found embedded latitude in field ${fieldNumber}: ${value / 10000000}`);
             if (!result.position) result.position = {};
             result.position.latitude = value / 10000000;
             result.latitude = value / 10000000; // Also set flat field for database
           } else if (fieldNumber === 2 && isValidLongitude) {
-            console.log(`🌍 Found embedded longitude in field ${fieldNumber}: ${value / 10000000}`);
+            logger.debug(`🌍 Found embedded longitude in field ${fieldNumber}: ${value / 10000000}`);
             if (!result.position) result.position = {};
             result.position.longitude = value / 10000000;
             result.longitude = value / 10000000; // Also set flat field for database
           } else if (fieldNumber === 3 && value >= -1000 && value <= 10000) {
             // Altitude in meters
-            console.log(`🌍 Found embedded altitude in field ${fieldNumber}: ${value}m`);
+            logger.debug(`🌍 Found embedded altitude in field ${fieldNumber}: ${value}m`);
             if (!result.position) result.position = {};
             result.position.altitude = value;
             result.altitude = value; // Also set flat field for database
@@ -2092,7 +2093,7 @@ class MeshtasticManager {
 
             if (offset + length <= data.length && length > 0) {
               const nestedData = data.slice(offset, offset + length);
-              console.log(`Found nested message in field ${fieldNumber}, length ${length} bytes`);
+              logger.debug(`Found nested message in field ${fieldNumber}, length ${length} bytes`);
 
               // Recursively parse nested messages that might contain position data
               this.parseEmbeddedTelemetry(nestedData, result);
@@ -2175,7 +2176,7 @@ class MeshtasticManager {
                   const str = new TextDecoder('utf-8', { fatal: true }).decode(fieldData);
                   if (str.length > 0 && /[A-Za-z]/.test(str)) {
                     fields[fieldNumber] = str;
-                    console.log(`Found string field ${fieldNumber}:`, str);
+                    logger.debug(`Found string field ${fieldNumber}:`, str);
                   }
                 } catch (e) {
                   // Not valid UTF-8, store as bytes
@@ -2195,7 +2196,7 @@ class MeshtasticManager {
 
       // If we found some structured data, try to interpret it
       if (Object.keys(fields).length > 0) {
-        console.log('Extracted protobuf fields:', fields);
+        logger.debug('Extracted protobuf fields:', fields);
 
         // Look for node-like data
         if (fields[1] && typeof fields[1] === 'string' && fields[1].startsWith('!')) {
@@ -2447,7 +2448,7 @@ class MeshtasticManager {
 
             // Debug: Log all Varint values to diagnose position parsing
             if (fieldNumber >= 1 && fieldNumber <= 10) {
-              console.log(`Field ${fieldNumber} Varint value: ${value} (0x${value.toString(16)})`);
+              logger.debug(`Field ${fieldNumber} Varint value: ${value} (0x${value.toString(16)})`);
             }
 
             // Look for position data in various field numbers - Meshtastic Position message
@@ -2456,11 +2457,11 @@ class MeshtasticManager {
             const isValidLongitude = Math.abs(value) >= 100000000 && Math.abs(value) <= 1800000000; // -180 to +180 degrees
 
             if (isValidLatitude && (fieldNumber === 1 || fieldNumber === 3 || fieldNumber === 5)) {
-              console.log(`🌍 Found latitude in field ${fieldNumber}: ${value / 10000000}`);
+              logger.debug(`🌍 Found latitude in field ${fieldNumber}: ${value / 10000000}`);
               if (!telemetry.position) telemetry.position = {};
               telemetry.position.latitude = value / 10000000;
             } else if (isValidLongitude && (fieldNumber === 2 || fieldNumber === 4 || fieldNumber === 6)) {
-              console.log(`🌍 Found longitude in field ${fieldNumber}: ${value / 10000000}`);
+              logger.debug(`🌍 Found longitude in field ${fieldNumber}: ${value / 10000000}`);
               if (!telemetry.position) telemetry.position = {};
               telemetry.position.longitude = value / 10000000;
             } else if (fieldNumber === 3 && value >= -1000 && value <= 10000) {
@@ -2591,18 +2592,18 @@ class MeshtasticManager {
           createdAt: Date.now(),
           updatedAt: Date.now()
         };
-        console.log(`Creating missing fromNode: ${fromNodeId} (${fromNodeNum})`);
-        console.log(`DEBUG nodeData values: nodeNum=${nodeData.nodeNum}, nodeId="${nodeData.nodeId}"`);
-        console.log(`DEBUG nodeData types: nodeNum type=${typeof nodeData.nodeNum}, nodeId type=${typeof nodeData.nodeId}`);
-        console.log(`DEBUG validation check: nodeNum undefined? ${nodeData.nodeNum === undefined}, nodeNum null? ${nodeData.nodeNum === null}, nodeId falsy? ${!nodeData.nodeId}`);
+        logger.debug(`Creating missing fromNode: ${fromNodeId} (${fromNodeNum})`);
+        logger.debug(`DEBUG nodeData values: nodeNum=${nodeData.nodeNum}, nodeId="${nodeData.nodeId}"`);
+        logger.debug(`DEBUG nodeData types: nodeNum type=${typeof nodeData.nodeNum}, nodeId type=${typeof nodeData.nodeId}`);
+        logger.debug(`DEBUG validation check: nodeNum undefined? ${nodeData.nodeNum === undefined}, nodeNum null? ${nodeData.nodeNum === null}, nodeId falsy? ${!nodeData.nodeId}`);
 
         // Force output with console.error to bypass any buffering
-        console.error(`FORCE DEBUG: nodeData:`, JSON.stringify(nodeData));
+        logger.error(`FORCE DEBUG: nodeData:`, JSON.stringify(nodeData));
 
         databaseService.upsertNode(nodeData);
-        console.log(`DEBUG: Called upsertNode, checking if node was created...`);
+        logger.debug(`DEBUG: Called upsertNode, checking if node was created...`);
         const checkNode = databaseService.getNode(fromNodeNum);
-        console.log(`DEBUG: Node exists after upsert:`, checkNode ? 'YES' : 'NO');
+        logger.debug(`DEBUG: Node exists after upsert:`, checkNode ? 'YES' : 'NO');
       }
 
       // Make sure toNode exists in database (including broadcast node)
@@ -2618,7 +2619,7 @@ class MeshtasticManager {
           createdAt: Date.now(),
           updatedAt: Date.now()
         };
-        console.log(`Creating missing toNode: ${toNodeId} (${toNodeNum})`);
+        logger.debug(`Creating missing toNode: ${toNodeId} (${toNodeNum})`);
         databaseService.upsertNode(nodeData);
       }
 
@@ -2643,13 +2644,13 @@ class MeshtasticManager {
       try {
         databaseService.insertMessage(message);
         if (isDirectMessage) {
-          console.log('Saved direct message to database:', message.text.substring(0, 50) + (message.text.length > 50 ? '...' : ''));
+          logger.debug('Saved direct message to database:', message.text.substring(0, 50) + (message.text.length > 50 ? '...' : ''));
         } else {
-          console.log('Saved channel message to database:', message.text.substring(0, 50) + (message.text.length > 50 ? '...' : ''));
+          logger.debug('Saved channel message to database:', message.text.substring(0, 50) + (message.text.length > 50 ? '...' : ''));
         }
       } catch (error) {
-        console.error('Failed to save message:', error);
-        console.error('Message data:', message);
+        logger.error('Failed to save message:', error);
+        logger.error('Message data:', message);
       }
     }
   }
@@ -2675,9 +2676,9 @@ class MeshtasticManager {
 
     try {
       databaseService.upsertNode(nodeData);
-      console.log('Updated node in database:', nodeData.longName || nodeData.nodeId);
+      logger.debug('Updated node in database:', nodeData.longName || nodeData.nodeId);
     } catch (error) {
-      console.error('Failed to update node:', error);
+      logger.error('Failed to update node:', error);
     }
   }
 
@@ -2685,11 +2686,11 @@ class MeshtasticManager {
   async getDeviceConfig(): Promise<any> {
     // Return config data from what we've received via TCP stream
     if (this.actualDeviceConfig?.lora || this.actualModuleConfig) {
-      console.log('Using actualDeviceConfig:', JSON.stringify(this.actualDeviceConfig, null, 2));
+      logger.debug('Using actualDeviceConfig:', JSON.stringify(this.actualDeviceConfig, null, 2));
       return this.buildDeviceConfigFromActual();
     }
 
-    console.log('No device config available yet');
+    logger.debug('No device config available yet');
     return null;
   }
 
@@ -2709,8 +2710,8 @@ class MeshtasticManager {
     const loraConfig = this.actualDeviceConfig?.lora || {};
     const mqttConfig = this.actualModuleConfig?.mqtt || {};
 
-    console.log('🔍 loraConfig being used:', JSON.stringify(loraConfig, null, 2));
-    console.log('🔍 mqttConfig being used:', JSON.stringify(mqttConfig, null, 2));
+    logger.debug('🔍 loraConfig being used:', JSON.stringify(loraConfig, null, 2));
+    logger.debug('🔍 mqttConfig being used:', JSON.stringify(mqttConfig, null, 2));
 
     // Map region enum values to strings
     const regionMap: { [key: number]: string } = {
@@ -2799,10 +2800,10 @@ class MeshtasticManager {
 
       await this.transport.send(textMessageData);
 
-      console.log('Message sent successfully:', text, 'with ID:', messageId);
+      logger.debug('Message sent successfully:', text, 'with ID:', messageId);
       return messageId;
     } catch (error) {
-      console.error('Error sending message:', error);
+      logger.error('Error sending message:', error);
       throw error;
     }
   }
@@ -2818,9 +2819,9 @@ class MeshtasticManager {
       await this.transport.send(tracerouteData);
 
       databaseService.recordTracerouteRequest(destination);
-      console.log(`Traceroute request sent to node: !${destination.toString(16).padStart(8, '0')}`);
+      logger.debug(`Traceroute request sent to node: !${destination.toString(16).padStart(8, '0')}`);
     } catch (error) {
-      console.error('Error sending traceroute:', error);
+      logger.error('Error sending traceroute:', error);
       throw error;
     }
   }
@@ -2830,31 +2831,31 @@ class MeshtasticManager {
    */
   private async processAdminMessage(payload: Uint8Array): Promise<void> {
     try {
-      console.log('⚙️ Processing ADMIN_APP message, payload size:', payload.length);
+      logger.debug('⚙️ Processing ADMIN_APP message, payload size:', payload.length);
       const adminMsg = protobufService.decodeAdminMessage(payload);
       if (!adminMsg) {
-        console.error('⚙️ Failed to decode admin message');
+        logger.error('⚙️ Failed to decode admin message');
         return;
       }
 
-      console.log('⚙️ Decoded admin message keys:', Object.keys(adminMsg));
+      logger.debug('⚙️ Decoded admin message keys:', Object.keys(adminMsg));
 
       // Extract session passkey if present
       if (adminMsg.sessionPasskey && adminMsg.sessionPasskey.length > 0) {
         this.sessionPasskey = new Uint8Array(adminMsg.sessionPasskey);
         this.sessionPasskeyExpiry = Date.now() + (290 * 1000); // 290 seconds (10 second buffer before 300s expiry)
-        console.log('🔑 Session passkey received and stored (expires in 290 seconds)');
+        logger.debug('🔑 Session passkey received and stored (expires in 290 seconds)');
       }
 
       // Log the response type for debugging
       if (adminMsg.getConfigResponse) {
-        console.log('⚙️ Received GetConfigResponse (session key)');
+        logger.debug('⚙️ Received GetConfigResponse (session key)');
       }
       if (adminMsg.getOwnerResponse) {
-        console.log('⚙️ Received GetOwnerResponse');
+        logger.debug('⚙️ Received GetOwnerResponse');
       }
     } catch (error) {
-      console.error('❌ Error processing admin message:', error);
+      logger.error('❌ Error processing admin message:', error);
     }
   }
 
@@ -2881,17 +2882,17 @@ class MeshtasticManager {
       const adminPacket = protobufService.createAdminPacket(getSessionKeyRequest, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum); // send to local node
 
       await this.transport.send(adminPacket);
-      console.log('🔑 Requested session passkey from device (via SESSIONKEY_CONFIG)');
+      logger.debug('🔑 Requested session passkey from device (via SESSIONKEY_CONFIG)');
 
       // Wait for the response (admin messages can take time)
       await new Promise(resolve => setTimeout(resolve, 3000));
 
       // Check if we received the passkey
       if (!this.isSessionPasskeyValid()) {
-        console.log('⚠️ No session passkey response received from device');
+        logger.debug('⚠️ No session passkey response received from device');
       }
     } catch (error) {
-      console.error('❌ Error requesting session passkey:', error);
+      logger.error('❌ Error requesting session passkey:', error);
       throw error;
     }
   }
@@ -2923,14 +2924,14 @@ class MeshtasticManager {
     }
 
     if (!this.localNodeInfo?.firmwareVersion) {
-      console.log('⚠️ Firmware version unknown, cannot determine favorites support');
+      logger.debug('⚠️ Firmware version unknown, cannot determine favorites support');
       this.favoritesSupportCache = false;
       return false;
     }
 
     const version = this.parseFirmwareVersion(this.localNodeInfo.firmwareVersion);
     if (!version) {
-      console.log(`⚠️ Could not parse firmware version: ${this.localNodeInfo.firmwareVersion}`);
+      logger.debug(`⚠️ Could not parse firmware version: ${this.localNodeInfo.firmwareVersion}`);
       this.favoritesSupportCache = false;
       return false;
     }
@@ -2939,9 +2940,9 @@ class MeshtasticManager {
     const supportsFavorites = version.major > 2 || (version.major === 2 && version.minor >= 7);
 
     if (!supportsFavorites) {
-      console.log(`ℹ️ Firmware ${this.localNodeInfo.firmwareVersion} does not support favorites (requires >= 2.7.0)`);
+      logger.debug(`ℹ️ Firmware ${this.localNodeInfo.firmwareVersion} does not support favorites (requires >= 2.7.0)`);
     } else {
-      console.log(`✅ Firmware ${this.localNodeInfo.firmwareVersion} supports favorites (cached)`);
+      logger.debug(`✅ Firmware ${this.localNodeInfo.firmwareVersion} supports favorites (cached)`);
     }
 
     // Cache the result
@@ -2965,14 +2966,14 @@ class MeshtasticManager {
     try {
       // For local TCP connections, try sending without session passkey first
       // (there's a known bug where session keys don't work properly over TCP)
-      console.log('⭐ Attempting to send favorite without session key (local TCP admin)');
+      logger.debug('⭐ Attempting to send favorite without session key (local TCP admin)');
       const setFavoriteMsg = protobufService.createSetFavoriteNodeMessage(nodeNum, new Uint8Array()); // empty passkey
       const adminPacket = protobufService.createAdminPacket(setFavoriteMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum); // send to local node
 
       await this.transport.send(adminPacket);
-      console.log(`⭐ Sent set_favorite_node for ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')})`);
+      logger.debug(`⭐ Sent set_favorite_node for ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')})`);
     } catch (error) {
-      console.error('❌ Error sending favorite node admin message:', error);
+      logger.error('❌ Error sending favorite node admin message:', error);
       throw error;
     }
   }
@@ -2993,14 +2994,14 @@ class MeshtasticManager {
     try {
       // For local TCP connections, try sending without session passkey first
       // (there's a known bug where session keys don't work properly over TCP)
-      console.log('☆ Attempting to remove favorite without session key (local TCP admin)');
+      logger.debug('☆ Attempting to remove favorite without session key (local TCP admin)');
       const removeFavoriteMsg = protobufService.createRemoveFavoriteNodeMessage(nodeNum, new Uint8Array()); // empty passkey
       const adminPacket = protobufService.createAdminPacket(removeFavoriteMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum); // send to local node
 
       await this.transport.send(adminPacket);
-      console.log(`☆ Sent remove_favorite_node for ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')})`);
+      logger.debug(`☆ Sent remove_favorite_node for ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')})`);
     } catch (error) {
-      console.error('❌ Error sending remove favorite node admin message:', error);
+      logger.error('❌ Error sending remove favorite node admin message:', error);
       throw error;
     }
   }
@@ -3015,14 +3016,14 @@ class MeshtasticManager {
     }
 
     try {
-      console.log(`⚙️ Requesting config type ${configType} from device`);
+      logger.debug(`⚙️ Requesting config type ${configType} from device`);
       const getConfigMsg = protobufService.createGetConfigRequest(configType);
       const adminPacket = protobufService.createAdminPacket(getConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
 
       await this.transport.send(adminPacket);
-      console.log(`⚙️ Sent get_config_request for config type ${configType}`);
+      logger.debug(`⚙️ Sent get_config_request for config type ${configType}`);
     } catch (error) {
-      console.error('❌ Error requesting config:', error);
+      logger.error('❌ Error requesting config:', error);
       throw error;
     }
   }
@@ -3037,14 +3038,14 @@ class MeshtasticManager {
     }
 
     try {
-      console.log(`⚙️ Requesting module config type ${configType} from device`);
+      logger.debug(`⚙️ Requesting module config type ${configType} from device`);
       const getModuleConfigMsg = protobufService.createGetModuleConfigRequest(configType);
       const adminPacket = protobufService.createAdminPacket(getModuleConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
 
       await this.transport.send(adminPacket);
-      console.log(`⚙️ Sent get_module_config_request for config type ${configType}`);
+      logger.debug(`⚙️ Sent get_module_config_request for config type ${configType}`);
     } catch (error) {
-      console.error('❌ Error requesting module config:', error);
+      logger.error('❌ Error requesting module config:', error);
       throw error;
     }
   }
@@ -3059,16 +3060,16 @@ class MeshtasticManager {
     }
 
     try {
-      console.log(`⚙️ Sending reboot command: device will reboot in ${seconds} seconds`);
+      logger.debug(`⚙️ Sending reboot command: device will reboot in ${seconds} seconds`);
       // NOTE: Session passkeys are only required for REMOTE admin operations (admin messages sent to other nodes via mesh).
       // For local TCP connections to the device itself, no session passkey is needed.
       const rebootMsg = protobufService.createRebootMessage(seconds);
       const adminPacket = protobufService.createAdminPacket(rebootMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
 
       await this.transport.send(adminPacket);
-      console.log('⚙️ Sent reboot admin message (local operation, no session passkey required)');
+      logger.debug('⚙️ Sent reboot admin message (local operation, no session passkey required)');
     } catch (error) {
-      console.error('❌ Error sending reboot command:', error);
+      logger.error('❌ Error sending reboot command:', error);
       throw error;
     }
   }
@@ -3082,14 +3083,14 @@ class MeshtasticManager {
     }
 
     try {
-      console.log('⚙️ Sending device config:', JSON.stringify(config));
+      logger.debug('⚙️ Sending device config:', JSON.stringify(config));
       const setConfigMsg = protobufService.createSetDeviceConfigMessage(config, new Uint8Array());
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
 
       await this.transport.send(adminPacket);
-      console.log('⚙️ Sent set_device_config admin message');
+      logger.debug('⚙️ Sent set_device_config admin message');
     } catch (error) {
-      console.error('❌ Error sending device config:', error);
+      logger.error('❌ Error sending device config:', error);
       throw error;
     }
   }
@@ -3103,14 +3104,14 @@ class MeshtasticManager {
     }
 
     try {
-      console.log('⚙️ Sending LoRa config:', JSON.stringify(config));
+      logger.debug('⚙️ Sending LoRa config:', JSON.stringify(config));
       const setConfigMsg = protobufService.createSetLoRaConfigMessage(config, new Uint8Array());
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
 
       await this.transport.send(adminPacket);
-      console.log('⚙️ Sent set_lora_config admin message');
+      logger.debug('⚙️ Sent set_lora_config admin message');
     } catch (error) {
-      console.error('❌ Error sending LoRa config:', error);
+      logger.error('❌ Error sending LoRa config:', error);
       throw error;
     }
   }
@@ -3130,7 +3131,7 @@ class MeshtasticManager {
       // Per Meshtastic docs: Set fixed position coordinates FIRST, THEN set fixedPosition flag
       // If lat/long provided, send position update first
       if (latitude !== undefined && longitude !== undefined) {
-        console.log(`⚙️ Setting fixed position coordinates FIRST: lat=${latitude}, lon=${longitude}, alt=${altitude || 0}`);
+        logger.debug(`⚙️ Setting fixed position coordinates FIRST: lat=${latitude}, lon=${longitude}, alt=${altitude || 0}`);
         const setPositionMsg = protobufService.createSetFixedPositionMessage(
           latitude,
           longitude,
@@ -3140,21 +3141,21 @@ class MeshtasticManager {
         const positionPacket = protobufService.createAdminPacket(setPositionMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
 
         await this.transport.send(positionPacket);
-        console.log('⚙️ Sent set_fixed_position admin message');
+        logger.debug('⚙️ Sent set_fixed_position admin message');
 
         // Add delay to ensure device processes the position before the config
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
       // Then send position configuration (fixedPosition flag, broadcast intervals, etc.)
-      console.log('⚙️ Sending position config:', JSON.stringify(positionConfig));
+      logger.debug('⚙️ Sending position config:', JSON.stringify(positionConfig));
       const setConfigMsg = protobufService.createSetPositionConfigMessage(positionConfig, new Uint8Array());
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
 
       await this.transport.send(adminPacket);
-      console.log('⚙️ Sent set_position_config admin message');
+      logger.debug('⚙️ Sent set_position_config admin message');
     } catch (error) {
-      console.error('❌ Error sending position config:', error);
+      logger.error('❌ Error sending position config:', error);
       throw error;
     }
   }
@@ -3168,14 +3169,14 @@ class MeshtasticManager {
     }
 
     try {
-      console.log('⚙️ Sending MQTT config:', JSON.stringify(config));
+      logger.debug('⚙️ Sending MQTT config:', JSON.stringify(config));
       const setConfigMsg = protobufService.createSetMQTTConfigMessage(config, new Uint8Array());
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
 
       await this.transport.send(adminPacket);
-      console.log('⚙️ Sent set_mqtt_config admin message (direct, no transaction)');
+      logger.debug('⚙️ Sent set_mqtt_config admin message (direct, no transaction)');
     } catch (error) {
-      console.error('❌ Error sending MQTT config:', error);
+      logger.error('❌ Error sending MQTT config:', error);
       throw error;
     }
   }
@@ -3189,14 +3190,14 @@ class MeshtasticManager {
     }
 
     try {
-      console.log('⚙️ Sending NeighborInfo config:', JSON.stringify(config));
+      logger.debug('⚙️ Sending NeighborInfo config:', JSON.stringify(config));
       const setConfigMsg = protobufService.createSetNeighborInfoConfigMessage(config, new Uint8Array());
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
 
       await this.transport.send(adminPacket);
-      console.log('⚙️ Sent set_neighborinfo_config admin message (direct, no transaction)');
+      logger.debug('⚙️ Sent set_neighborinfo_config admin message (direct, no transaction)');
     } catch (error) {
-      console.error('❌ Error sending NeighborInfo config:', error);
+      logger.error('❌ Error sending NeighborInfo config:', error);
       throw error;
     }
   }
@@ -3210,14 +3211,14 @@ class MeshtasticManager {
     }
 
     try {
-      console.log(`⚙️ Setting node owner: "${longName}" (${shortName})`);
+      logger.debug(`⚙️ Setting node owner: "${longName}" (${shortName})`);
       const setOwnerMsg = protobufService.createSetOwnerMessage(longName, shortName, new Uint8Array());
       const adminPacket = protobufService.createAdminPacket(setOwnerMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
 
       await this.transport.send(adminPacket);
-      console.log('⚙️ Sent set_owner admin message (direct, no transaction)');
+      logger.debug('⚙️ Sent set_owner admin message (direct, no transaction)');
     } catch (error) {
-      console.error('❌ Error setting node owner:', error);
+      logger.error('❌ Error setting node owner:', error);
       throw error;
     }
   }
@@ -3233,7 +3234,7 @@ class MeshtasticManager {
   getAllNodes(): DeviceInfo[] {
     const dbNodes = databaseService.getAllNodes();
     if (dbNodes.length > 0) {
-      console.log('🔍 Sample dbNode from database:', {
+      logger.debug('🔍 Sample dbNode from database:', {
         nodeId: dbNodes[0].nodeId,
         longName: dbNodes[0].longName,
         role: dbNodes[0].role,
@@ -3309,10 +3310,10 @@ class MeshtasticManager {
 
   // Public method to trigger manual refresh of node database
   async refreshNodeDatabase(): Promise<void> {
-    console.log('🔄 Manually refreshing node database...');
+    logger.debug('🔄 Manually refreshing node database...');
 
     if (!this.isConnected) {
-      console.log('⚠️ Not connected, attempting to reconnect...');
+      logger.debug('⚠️ Not connected, attempting to reconnect...');
       await this.connect();
     }
 

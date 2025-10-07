@@ -3,6 +3,7 @@
  */
 import protobuf from 'protobufjs';
 import path from 'path';
+import { logger } from '../utils/logger.js';
 
 let root: protobuf.Root | null = null;
 
@@ -33,12 +34,12 @@ export async function loadProtobufDefinitions(): Promise<protobuf.Root> {
     // Load admin.proto explicitly (not imported by mesh.proto)
     const adminProtoPath = path.join(protoRoot, 'meshtastic/admin.proto');
     await root.load(adminProtoPath);
-    console.log('✅ Loaded admin.proto for AdminMessage support');
+    logger.debug('✅ Loaded admin.proto for AdminMessage support');
 
-    console.log('✅ Successfully loaded Meshtastic protobuf definitions');
+    logger.debug('✅ Successfully loaded Meshtastic protobuf definitions');
     return root;
   } catch (error) {
-    console.error('❌ Failed to load protobuf definitions:', error);
+    logger.error('❌ Failed to load protobuf definitions:', error);
     throw error;
   }
 }
