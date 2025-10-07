@@ -27,6 +27,7 @@ import ZoomHandler from './components/ZoomHandler'
 import { SettingsProvider, useSettings } from './contexts/SettingsContext'
 import { MapProvider, useMapContext } from './contexts/MapContext'
 import { DataProvider, useData } from './contexts/DataContext'
+import { MessagingProvider, useMessaging } from './contexts/MessagingContext'
 
 // Fix for default markers in React-Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -56,13 +57,9 @@ const MapCenterController: React.FC<MapCenterControllerProps> = ({ centerTarget,
 
 function App() {
   const [activeTab, setActiveTab] = useState<TabType>('nodes')
-  const [selectedDMNode, setSelectedDMNode] = useState<string>('')
-  const [selectedChannel, setSelectedChannel] = useState<number>(-1)
   const hasSelectedInitialChannelRef = useRef<boolean>(false)
   const selectedChannelRef = useRef<number>(-1)
   const [showMqttMessages, setShowMqttMessages] = useState<boolean>(false)
-  const [newMessage, setNewMessage] = useState<string>('')
-  const [replyingTo, setReplyingTo] = useState<MeshMessage | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   // Constants for emoji tapbacks
@@ -78,13 +75,9 @@ function App() {
   ] as const;
   const channelMessagesContainerRef = useRef<HTMLDivElement>(null)
   const dmMessagesContainerRef = useRef<HTMLDivElement>(null)
-  const [pendingMessages, setPendingMessages] = useState<Map<string, MeshMessage>>(new Map())
-  const [unreadCounts, setUnreadCounts] = useState<{[key: number]: number}>({})
   const audioRef = useRef<HTMLAudioElement | null>(null)
   // const lastNotificationTime = useRef<number>(0) // Disabled for now
   const [tracerouteLoading, setTracerouteLoading] = useState<string | null>(null)
-  const [isChannelScrolledToBottom, setIsChannelScrolledToBottom] = useState(true)
-  const [isDMScrolledToBottom, setIsDMScrolledToBottom] = useState(true)
   // Detect base URL from pathname
   const detectBaseUrl = () => {
     const pathname = window.location.pathname;
@@ -180,6 +173,26 @@ function App() {
     nodesWithWeatherTelemetry,
     setNodesWithWeatherTelemetry
   } = useData();
+
+  // Messaging context
+  const {
+    selectedDMNode,
+    setSelectedDMNode,
+    selectedChannel,
+    setSelectedChannel,
+    newMessage,
+    setNewMessage,
+    replyingTo,
+    setReplyingTo,
+    pendingMessages,
+    setPendingMessages,
+    unreadCounts,
+    setUnreadCounts,
+    isChannelScrolledToBottom,
+    setIsChannelScrolledToBottom,
+    isDMScrolledToBottom,
+    setIsDMScrolledToBottom
+  } = useMessaging();
 
   // New state for node list features
   const [nodeFilter, setNodeFilter] = useState<string>('')
@@ -3429,9 +3442,11 @@ const AppWithToast = () => {
     <SettingsProvider baseUrl={initialBaseUrl}>
       <MapProvider>
         <DataProvider>
-          <ToastProvider>
-            <App />
-          </ToastProvider>
+          <MessagingProvider>
+            <ToastProvider>
+              <App />
+            </ToastProvider>
+          </MessagingProvider>
         </DataProvider>
       </MapProvider>
     </SettingsProvider>
