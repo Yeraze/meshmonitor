@@ -507,6 +507,172 @@ Update the automatic traceroute interval.
 }
 ```
 
+### POST /api/set-node-owner
+Set the node's long name and short name.
+
+**Request Body:**
+```json
+{
+  "longName": "Base Station Alpha",
+  "shortName": "BSA"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Node names updated successfully"
+}
+```
+
+**Note:** This triggers a device reboot to apply changes.
+
+### POST /api/set-device-config
+Configure device settings including role and broadcast intervals.
+
+**Request Body:**
+```json
+{
+  "role": 2,
+  "nodeInfoBroadcastSecs": 3600
+}
+```
+
+**Parameters:**
+- `role` (required, number): Device role (0=Client, 1=Client Mute, 2=Router, 3=Router Client, 4=Repeater, 5=Tracker, 6=Sensor, 7=TAK, 8=Client Hidden, 9=Lost and Found, 10=TAK Tracker, 11=Router Late, 12=Client Base)
+- `nodeInfoBroadcastSecs` (required, number): Interval for broadcasting node info (minimum 3600 seconds)
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Device configuration updated successfully"
+}
+```
+
+**Note:** This triggers a device reboot to apply changes.
+
+### POST /api/set-lora-config
+Configure LoRa radio settings.
+
+**Request Body:**
+```json
+{
+  "usePreset": true,
+  "modemPreset": 0,
+  "region": 1,
+  "hopLimit": 3
+}
+```
+
+**Parameters:**
+- `usePreset` (optional, boolean): Use modem preset instead of custom settings
+- `modemPreset` (optional, number): Modem preset (0=LONG_FAST, 1=LONG_SLOW, 2=VERY_LONG_SLOW, 3=MEDIUM_SLOW, 4=MEDIUM_FAST, 5=SHORT_SLOW, 6=SHORT_FAST, 7=LONG_MODERATE)
+- `region` (optional, number): LoRa region (e.g., 1=US, 2=EU_433, 3=EU_868, etc.)
+- `hopLimit` (optional, number): Maximum number of hops for mesh routing (1-7)
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "LoRa configuration updated successfully"
+}
+```
+
+**Note:** This triggers a device reboot to apply changes.
+
+### POST /api/set-position-config
+Configure position and GPS settings, including fixed position.
+
+**Request Body:**
+```json
+{
+  "positionBroadcastSecs": 900,
+  "positionBroadcastSmartEnabled": true,
+  "fixedPosition": true,
+  "latitude": 40.7128,
+  "longitude": -74.0060,
+  "altitude": 10
+}
+```
+
+**Parameters:**
+- `positionBroadcastSecs` (optional, number): Position broadcast interval in seconds
+- `positionBroadcastSmartEnabled` (optional, boolean): Enable smart position broadcasting
+- `fixedPosition` (optional, boolean): Enable fixed position mode
+- `latitude` (optional, number): Fixed latitude in decimal degrees (-90 to 90)
+- `longitude` (optional, number): Fixed longitude in decimal degrees (-180 to 180)
+- `altitude` (optional, number): Fixed altitude in meters
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Position configuration updated successfully"
+}
+```
+
+**Important:** When setting a fixed position, coordinates must be sent FIRST using the internal `set_fixed_position` admin message, then the position config flag is set. This is handled automatically by the API.
+
+**Note:** This triggers a device reboot to apply changes.
+
+### POST /api/set-mqtt-config
+Configure MQTT server and settings.
+
+**Request Body:**
+```json
+{
+  "enabled": true,
+  "address": "mqtt.example.com",
+  "username": "user",
+  "password": "pass",
+  "encryptionEnabled": true,
+  "jsonEnabled": false,
+  "root": "msh/US/2/e/"
+}
+```
+
+**Parameters:**
+- `enabled` (optional, boolean): Enable MQTT connection
+- `address` (optional, string): MQTT server address
+- `username` (optional, string): MQTT username
+- `password` (optional, string): MQTT password
+- `encryptionEnabled` (optional, boolean): Use encryption for MQTT messages
+- `jsonEnabled` (optional, boolean): Enable JSON encoding for MQTT messages
+- `root` (optional, string): MQTT root topic
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "MQTT configuration updated successfully"
+}
+```
+
+**Note:** This triggers a device reboot to apply changes.
+
+### POST /api/reboot
+Reboot the connected Meshtastic device.
+
+**Request Body:**
+```json
+{
+  "delay": 5
+}
+```
+
+**Parameters:**
+- `delay` (optional, number): Delay in seconds before reboot (default: 5)
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Device will reboot in 5 seconds"
+}
+```
+
 ---
 
 ## Data Management
