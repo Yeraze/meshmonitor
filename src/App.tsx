@@ -7,6 +7,7 @@ import './App.css'
 import TelemetryGraphs from './components/TelemetryGraphs'
 import InfoTab from './components/InfoTab'
 import SettingsTab from './components/SettingsTab'
+import ConfigurationTab from './components/ConfigurationTab'
 import Dashboard from './components/Dashboard'
 import HopCountDisplay from './components/HopCountDisplay'
 import { version } from '../package.json'
@@ -426,6 +427,11 @@ function App() {
   // Regular data updates (every 5 seconds)
   useEffect(() => {
     const updateInterval = setInterval(() => {
+      // Skip polling while device is rebooting - the reboot handler manages reconnection
+      if (connectionStatus === 'rebooting') {
+        return;
+      }
+
       if (connectionStatus === 'connected') {
         updateDataFromBackend();
       } else {
@@ -488,6 +494,58 @@ function App() {
       }
     } catch (error) {
       console.error('❌ Error requesting node database refresh:', error);
+    }
+  };
+
+  const handleRebootDevice = async (): Promise<boolean> => {
+    try {
+      console.log('🔄 Initiating device reboot sequence...');
+
+      // Set status to rebooting
+      setConnectionStatus('rebooting');
+
+      // Send reboot command
+      await api.rebootDevice(5);
+      console.log('✅ Reboot command sent, device will restart in 5 seconds');
+
+      // Wait 30 seconds for device to reboot
+      console.log('⏳ Waiting 30 seconds for device to reboot...');
+      await new Promise(resolve => setTimeout(resolve, 30000));
+
+      // Try to reconnect - poll every 3 seconds for up to 60 seconds
+      console.log('🔌 Attempting to reconnect...');
+      const maxAttempts = 20; // 20 attempts * 3 seconds = 60 seconds
+      let attempts = 0;
+
+      while (attempts < maxAttempts) {
+        try {
+          const response = await fetch(`${baseUrl}/api/connection`);
+          if (response.ok) {
+            const status = await response.json();
+            if (status.connected) {
+              console.log('✅ Device reconnected successfully!');
+              // Trigger full reconnection sequence
+              await checkConnectionStatus();
+              return true;
+            }
+          }
+        } catch (error) {
+          // Connection still not available, continue polling
+        }
+
+        attempts++;
+        console.log(`🔄 Reconnection attempt ${attempts}/${maxAttempts}...`);
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      }
+
+      // Timeout - couldn't reconnect
+      console.error('❌ Failed to reconnect after 60 seconds');
+      setConnectionStatus('disconnected');
+      return false;
+    } catch (error) {
+      console.error('❌ Error during reboot sequence:', error);
+      setConnectionStatus('disconnected');
+      return false;
     }
   };
 
@@ -3101,6 +3159,12 @@ function App() {
         >
           Settings
         </button>
+        <button
+          className={`tab-btn ${activeTab === 'configuration' ? 'active' : ''}`}
+          onClick={() => setActiveTab('configuration')}
+        >
+          Configuration
+        </button>
       </nav>
 
       <main className="app-main">
@@ -3159,6 +3223,12 @@ function App() {
             onTemperatureUnitChange={handleTemperatureUnitChange}
             onDistanceUnitChange={handleDistanceUnitChange}
             onTelemetryVisualizationChange={handleTelemetryVisualizationChange}
+          />
+        )}
+        {activeTab === 'configuration' && (
+          <ConfigurationTab
+            baseUrl={baseUrl}
+            onRebootDevice={handleRebootDevice}
           />
         )}
       </main>

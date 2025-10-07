@@ -1,10 +1,10 @@
-export type TabType = 'nodes' | 'channels' | 'messages' | 'info' | 'settings' | 'dashboard';
+export type TabType = 'nodes' | 'channels' | 'messages' | 'info' | 'settings' | 'dashboard' | 'configuration';
 
 export type SortField = 'longName' | 'shortName' | 'id' | 'lastHeard' | 'snr' | 'battery' | 'hwModel' | 'location' | 'hops';
 
 export type SortDirection = 'asc' | 'desc';
 
-export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'configuring';
+export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'configuring' | 'rebooting';
 
 export interface MapCenterControllerProps {
   centerTarget: [number, number] | null;

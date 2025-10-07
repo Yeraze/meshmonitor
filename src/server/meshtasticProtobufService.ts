@@ -316,8 +316,19 @@ export class MeshtasticProtobufService {
         hasChannel: !!fromRadio.channel,
         hasMetadata: !!fromRadio.metadata,
         hasModuleConfig: !!fromRadio.moduleConfig,
-        configCompleteId: fromRadio.configCompleteId
+        configCompleteId: fromRadio.configCompleteId,
+        hasClientNotification: !!(fromRadio as any).clientNotification,
+        hasLogRecord: !!(fromRadio as any).logRecord,
+        hasQueueStatus: !!(fromRadio as any).queueStatus,
+        hasFileInfo: !!(fromRadio as any).fileInfo
       });
+
+      // Debug: dump all keys of fromRadio for unknown messages
+      if (!fromRadio.packet && !fromRadio.myInfo && !fromRadio.nodeInfo && !fromRadio.config &&
+          !fromRadio.channel && !fromRadio.metadata && !fromRadio.moduleConfig && !fromRadio.configCompleteId) {
+        console.log('🔍 DEBUG: All FromRadio keys:', Object.keys(fromRadio));
+        console.log('🔍 DEBUG: Full FromRadio object:', JSON.stringify(fromRadio, null, 2));
+      }
 
       if (fromRadio.packet) {
         if (fromRadio.packet.decoded && fromRadio.packet.decoded instanceof Uint8Array) {

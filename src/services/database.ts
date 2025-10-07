@@ -28,6 +28,7 @@ export interface DbNode {
   lastTracerouteRequest?: number;
   firmwareVersion?: string;
   isFavorite?: boolean;
+  rebootCount?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -439,6 +440,17 @@ class DatabaseService {
       }
     }
 
+    try {
+      this.db.exec(`
+        ALTER TABLE nodes ADD COLUMN rebootCount INTEGER;
+      `);
+      console.log('✅ Added rebootCount column');
+    } catch (error: any) {
+      if (!error.message?.includes('duplicate column')) {
+        console.log('⚠️ rebootCount column already exists or other error:', error.message);
+      }
+    }
+
     console.log('Database migrations completed');
   }
 
@@ -618,6 +630,7 @@ class DatabaseService {
           rssi = COALESCE(?, rssi),
           firmwareVersion = COALESCE(?, firmwareVersion),
           isFavorite = COALESCE(?, isFavorite),
+          rebootCount = COALESCE(?, rebootCount),
           updatedAt = ?
         WHERE nodeNum = ?
       `);
@@ -642,6 +655,7 @@ class DatabaseService {
         nodeData.rssi,
         nodeData.firmwareVersion || null,
         nodeData.isFavorite !== undefined ? (nodeData.isFavorite ? 1 : 0) : null,
+        nodeData.rebootCount !== undefined ? nodeData.rebootCount : null,
         now,
         nodeData.nodeNum
       );
@@ -651,8 +665,8 @@ class DatabaseService {
           nodeNum, nodeId, longName, shortName, hwModel, role, hopsAway, macaddr,
           latitude, longitude, altitude, batteryLevel, voltage,
           channelUtilization, airUtilTx, lastHeard, snr, rssi, firmwareVersion,
-          isFavorite, createdAt, updatedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          isFavorite, rebootCount, createdAt, updatedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       stmt.run(
@@ -676,6 +690,7 @@ class DatabaseService {
         nodeData.rssi || null,
         nodeData.firmwareVersion || null,
         nodeData.isFavorite ? 1 : 0,
+        nodeData.rebootCount || null,
         now,
         now
       );
