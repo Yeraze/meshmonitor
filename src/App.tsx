@@ -18,6 +18,7 @@ import { DeviceInfo, Channel } from './types/device'
 import { MeshMessage } from './types/message'
 import { TabType, SortField, SortDirection, ConnectionStatus, MapCenterControllerProps } from './types/ui'
 import api from './services/api'
+import { logger } from './utils/logger'
 import { createNodeIcon } from './utils/mapIcons'
 import { getRoleName, generateArrowMarkers } from './utils/mapHelpers.tsx'
 import { getHardwareModelName } from './utils/nodeHelpers'
@@ -212,7 +213,7 @@ function App() {
   // const playNotificationSound = () => {
   //   if (audioRef.current) {
   //     audioRef.current.currentTime = 0;
-  //     audioRef.current.play().catch(err => console.log('Audio play failed:', err));
+  //     audioRef.current.play().catch(err => logger.debug('Audio play failed:', err));
   //   }
   // };
 
@@ -228,7 +229,7 @@ function App() {
           configBaseUrl = config.baseUrl || '';
           setBaseUrl(configBaseUrl);
         } catch (error) {
-          console.error('Failed to load config:', error);
+          logger.error('Failed to load config:', error);
           setNodeAddress('192.168.1.100');
           setBaseUrl('');
         }
@@ -281,7 +282,7 @@ function App() {
 
   // Debug effect to track selectedChannel changes and keep ref in sync
   useEffect(() => {
-    console.log('🔄 selectedChannel state changed to:', selectedChannel);
+    logger.debug('🔄 selectedChannel state changed to:', selectedChannel);
     selectedChannelRef.current = selectedChannel;
   }, [selectedChannel]);
 
@@ -324,7 +325,7 @@ function App() {
           setPositionHistory(history);
         }
       } catch (error) {
-        console.error('Error fetching position history:', error);
+        logger.error('Error fetching position history:', error);
       }
     };
 
@@ -447,7 +448,7 @@ function App() {
   useEffect(() => {
     const scheduleNodeRefresh = () => {
       if (connectionStatus === 'connected') {
-        console.log('🔄 Performing scheduled node database refresh...');
+        logger.debug('🔄 Performing scheduled node database refresh...');
         requestFullNodeDatabase();
       }
     };
@@ -481,20 +482,20 @@ function App() {
 
   const requestFullNodeDatabase = async () => {
     try {
-      console.log('📡 Requesting full node database refresh...');
+      logger.debug('📡 Requesting full node database refresh...');
       const response = await fetch(`${baseUrl}/api/nodes/refresh`, {
         method: 'POST'
       });
 
       if (response.ok) {
-        console.log('✅ Node database refresh initiated');
+        logger.debug('✅ Node database refresh initiated');
         // Immediately update local data after refresh
         setTimeout(() => updateDataFromBackend(), 2000);
       } else {
-        console.warn('⚠️ Node database refresh request failed');
+        logger.warn('⚠️ Node database refresh request failed');
       }
     } catch (error) {
-      console.error('❌ Error requesting node database refresh:', error);
+      logger.error('❌ Error requesting node database refresh:', error);
     }
   };
 
@@ -502,11 +503,11 @@ function App() {
   const waitForDeviceReconnection = async (): Promise<boolean> => {
     try {
       // Wait 30 seconds for device to reboot
-      console.log('⏳ Waiting 30 seconds for device to reboot...');
+      logger.debug('⏳ Waiting 30 seconds for device to reboot...');
       await new Promise(resolve => setTimeout(resolve, 30000));
 
       // Try to reconnect - poll every 3 seconds for up to 60 seconds
-      console.log('🔌 Attempting to reconnect...');
+      logger.debug('🔌 Attempting to reconnect...');
       const maxAttempts = 20; // 20 attempts * 3 seconds = 60 seconds
       let attempts = 0;
 
@@ -516,7 +517,7 @@ function App() {
           if (response.ok) {
             const status = await response.json();
             if (status.connected) {
-              console.log('✅ Device reconnected successfully!');
+              logger.debug('✅ Device reconnected successfully!');
               // Trigger full reconnection sequence
               await checkConnectionStatus();
               return true;
@@ -527,23 +528,23 @@ function App() {
         }
 
         attempts++;
-        console.log(`🔄 Reconnection attempt ${attempts}/${maxAttempts}...`);
+        logger.debug(`🔄 Reconnection attempt ${attempts}/${maxAttempts}...`);
         await new Promise(resolve => setTimeout(resolve, 3000));
       }
 
       // Timeout - couldn't reconnect
-      console.error('❌ Failed to reconnect after 60 seconds');
+      logger.error('❌ Failed to reconnect after 60 seconds');
       setConnectionStatus('disconnected');
       return false;
     } catch (error) {
-      console.error('❌ Error during reconnection:', error);
+      logger.error('❌ Error during reconnection:', error);
       setConnectionStatus('disconnected');
       return false;
     }
   };
 
   const handleConfigChangeTriggeringReboot = async () => {
-    console.log('⚙️ Config change sent, device will reboot to apply changes...');
+    logger.debug('⚙️ Config change sent, device will reboot to apply changes...');
     setConnectionStatus('rebooting');
 
     // Wait for device to reboot and reconnect
@@ -552,19 +553,19 @@ function App() {
 
   const handleRebootDevice = async (): Promise<boolean> => {
     try {
-      console.log('🔄 Initiating device reboot sequence...');
+      logger.debug('🔄 Initiating device reboot sequence...');
 
       // Set status to rebooting
       setConnectionStatus('rebooting');
 
       // Send reboot command
       await api.rebootDevice(5);
-      console.log('✅ Reboot command sent, device will restart in 5 seconds');
+      logger.debug('✅ Reboot command sent, device will restart in 5 seconds');
 
       // Wait for reconnection
       return await waitForDeviceReconnection();
     } catch (error) {
-      console.error('❌ Error during reboot sequence:', error);
+      logger.error('❌ Error during reboot sequence:', error);
       setConnectionStatus('disconnected');
       return false;
     }
@@ -578,13 +579,13 @@ function App() {
       const response = await fetch(`${urlBase}/api/connection`);
       if (response.ok) {
         const status = await response.json();
-        console.log(`📡 Connection API response: connected=${status.connected}`);
+        logger.debug(`📡 Connection API response: connected=${status.connected}`);
         if (status.connected) {
           // Use updater function to get current state and decide whether to initialize
           setConnectionStatus(currentStatus => {
-            console.log(`🔍 Current connection status: ${currentStatus}`);
+            logger.debug(`🔍 Current connection status: ${currentStatus}`);
             if (currentStatus !== 'connected') {
-              console.log(`🔗 Connection established, will initialize... (transitioning from ${currentStatus})`);
+              logger.debug(`🔗 Connection established, will initialize... (transitioning from ${currentStatus})`);
               // Set to configuring and trigger initialization
               (async () => {
                 setConnectionStatus('configuring');
@@ -595,30 +596,30 @@ function App() {
                   await fetchChannels(urlBase);
                   await updateDataFromBackend();
                   setConnectionStatus('connected');
-                  console.log('✅ Initialization complete, status set to connected');
+                  logger.debug('✅ Initialization complete, status set to connected');
                 } catch (initError) {
-                  console.error('❌ Initialization failed:', initError);
+                  logger.error('❌ Initialization failed:', initError);
                   setConnectionStatus('connected');
                 }
               })();
               return 'configuring';
             } else {
-              console.log('ℹ️ Already connected, skipping initialization');
+              logger.debug('ℹ️ Already connected, skipping initialization');
               return currentStatus;
             }
           });
         } else {
-          console.log('⚠️ Connection API returned connected=false');
+          logger.debug('⚠️ Connection API returned connected=false');
           setConnectionStatus('disconnected');
           setError(`Cannot connect to Meshtastic node at ${nodeAddress}. Please ensure the node is reachable and has HTTP API enabled.`);
         }
       } else {
-        console.log('⚠️ Connection API request failed');
+        logger.debug('⚠️ Connection API request failed');
         setConnectionStatus('disconnected');
         setError('Failed to get connection status from server');
       }
     } catch (err) {
-      console.log('❌ Connection check error:', err);
+      logger.debug('❌ Connection check error:', err);
       setConnectionStatus('disconnected');
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       setError(`Server connection error: ${errorMessage}`);
@@ -633,7 +634,7 @@ function App() {
         setTraceroutes(data);
       }
     } catch (error) {
-      console.error('Error fetching traceroutes:', error);
+      logger.error('Error fetching traceroutes:', error);
     }
   };
 
@@ -645,7 +646,7 @@ function App() {
         setNeighborInfo(data);
       }
     } catch (error) {
-      console.error('Error fetching neighbor info:', error);
+      logger.error('Error fetching neighbor info:', error);
     }
   };
 
@@ -658,7 +659,7 @@ function App() {
         setNodesWithWeatherTelemetry(new Set(data.weather || []));
       }
     } catch (error) {
-      console.error('Error fetching telemetry availability:', error);
+      logger.error('Error fetching telemetry availability:', error);
     }
   };
 
@@ -671,7 +672,7 @@ function App() {
         setShowStatusModal(true);
       }
     } catch (error) {
-      console.error('Error fetching system status:', error);
+      logger.error('Error fetching system status:', error);
     }
   };
 
@@ -686,7 +687,7 @@ function App() {
         // Only update selected channel if this is the first time we're loading channels
         // and no channel is currently selected, or if the current selected channel no longer exists
         const currentSelectedChannel = selectedChannelRef.current;
-        console.log('🔍 Channel update check:', {
+        logger.debug('🔍 Channel update check:', {
           channelsLength: channelsData.length,
           hasSelectedInitialChannel: hasSelectedInitialChannelRef.current,
           selectedChannelState: selectedChannel,
@@ -697,23 +698,23 @@ function App() {
         if (channelsData.length > 0) {
           if (!hasSelectedInitialChannelRef.current && currentSelectedChannel === -1) {
             // First time loading channels - select the first one
-            console.log('🎯 Setting initial channel to:', channelsData[0].id);
+            logger.debug('🎯 Setting initial channel to:', channelsData[0].id);
             setSelectedChannel(channelsData[0].id);
             selectedChannelRef.current = channelsData[0].id; // Update ref immediately
-            console.log('📝 Called setSelectedChannel (initial) with:', channelsData[0].id);
+            logger.debug('📝 Called setSelectedChannel (initial) with:', channelsData[0].id);
             hasSelectedInitialChannelRef.current = true;
           } else {
             // Check if the currently selected channel still exists
             const currentChannelExists = channelsData.some((ch: Channel) => ch.id === currentSelectedChannel);
-            console.log('🔍 Channel exists check:', { selectedChannel: currentSelectedChannel, currentChannelExists });
+            logger.debug('🔍 Channel exists check:', { selectedChannel: currentSelectedChannel, currentChannelExists });
             if (!currentChannelExists && channelsData.length > 0) {
               // Current channel no longer exists, fallback to first channel
-              console.log('⚠️ Current channel no longer exists, falling back to:', channelsData[0].id);
+              logger.debug('⚠️ Current channel no longer exists, falling back to:', channelsData[0].id);
               setSelectedChannel(channelsData[0].id);
               selectedChannelRef.current = channelsData[0].id; // Update ref immediately
-              console.log('📝 Called setSelectedChannel (fallback) with:', channelsData[0].id);
+              logger.debug('📝 Called setSelectedChannel (fallback) with:', channelsData[0].id);
             } else {
-              console.log('✅ Keeping current channel selection:', currentSelectedChannel);
+              logger.debug('✅ Keeping current channel selection:', currentSelectedChannel);
             }
           }
         }
@@ -721,7 +722,7 @@ function App() {
         setChannels(channelsData);
       }
     } catch (error) {
-      console.error('Error fetching channels:', error);
+      logger.error('Error fetching channels:', error);
     }
   };
 
@@ -803,7 +804,7 @@ function App() {
         // This ensures viewing a channel clears its unread count permanently
         newUnreadCounts[currentSelected] = 0;
 
-        console.log('📊 Updating unread counts:', {
+        logger.debug('📊 Updating unread counts:', {
           currentSelected,
           newUnreadCounts,
           isInitialLoad
@@ -870,7 +871,7 @@ function App() {
       // Fetch telemetry availability
       await fetchNodesWithTelemetry();
     } catch (error) {
-      console.error('Failed to update data from backend:', error);
+      logger.error('Failed to update data from backend:', error);
     }
   };
 
@@ -973,14 +974,14 @@ function App() {
         body: JSON.stringify({ destination: nodeNum })
       });
 
-      console.log(`🗺️ Traceroute request sent to ${nodeId}`);
+      logger.debug(`🗺️ Traceroute request sent to ${nodeId}`);
 
       // Clear loading state after 30 seconds
       setTimeout(() => {
         setTracerouteLoading(null);
       }, 30000);
     } catch (error) {
-      console.error('Failed to send traceroute:', error);
+      logger.error('Failed to send traceroute:', error);
       setTracerouteLoading(null);
     }
   };
@@ -1050,16 +1051,16 @@ function App() {
       });
 
       if (response.ok) {
-        console.log('Direct message sent successfully');
+        logger.debug('Direct message sent successfully');
         // The message will be updated when we receive the acknowledgment from backend
       } else {
-        console.error('Failed to send direct message');
+        logger.error('Failed to send direct message');
         // Remove the message from local state if sending failed
         setMessages(prev => prev.filter(msg => msg.id !== tempId));
         setError('Failed to send direct message');
       }
     } catch (error) {
-      console.error('Error sending direct message:', error);
+      logger.error('Error sending direct message:', error);
       // Remove the message from local state if sending failed
       setMessages(prev => prev.filter(msg => msg.id !== tempId));
       setError(`Failed to send direct message: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -1406,7 +1407,7 @@ function App() {
     event.stopPropagation(); // Prevent node selection when clicking star
 
     if (!node.user?.id) {
-      console.error('Cannot toggle favorite: node has no user ID');
+      logger.error('Cannot toggle favorite: node has no user ID');
       return;
     }
 
@@ -1451,9 +1452,9 @@ function App() {
         }
         // 'skipped' status (e.g., pre-2.7 firmware) is not shown to user - logged on server only
       }
-      console.log(statusMessage);
+      logger.debug(statusMessage);
     } catch (error) {
-      console.error('Error toggling favorite:', error);
+      logger.error('Error toggling favorite:', error);
       // Revert optimistic update on error
       setNodes(prevNodes =>
         prevNodes.map(n =>
@@ -1960,7 +1961,7 @@ function App() {
                         });
                       }
                     } catch (error) {
-                      console.error('Error parsing traceroute:', error);
+                      logger.error('Error parsing traceroute:', error);
                     }
                   });
 
@@ -2349,7 +2350,7 @@ function App() {
 
                     return paths;
                   } catch (error) {
-                    console.error('Error rendering traceroute:', error);
+                    logger.error('Error rendering traceroute:', error);
                     return null;
                   }
                 })()}
@@ -2450,12 +2451,12 @@ function App() {
                   key={channelId}
                   className={`channel-button ${selectedChannel === channelId ? 'selected' : ''}`}
                   onClick={() => {
-                    console.log('👆 User clicked channel:', channelId, 'Previous selected:', selectedChannel);
+                    logger.debug('👆 User clicked channel:', channelId, 'Previous selected:', selectedChannel);
                     setSelectedChannel(channelId);
                     selectedChannelRef.current = channelId; // Update ref immediately
                     setUnreadCounts(prev => {
                       const updated = { ...prev, [channelId]: 0 };
-                      console.log('📝 Setting unread counts:', updated);
+                      logger.debug('📝 Setting unread counts:', updated);
                       return updated;
                     });
                   }}
@@ -3103,7 +3104,7 @@ function App() {
         body: JSON.stringify({ intervalMinutes: value })
       });
     } catch (error) {
-      console.error('Error updating traceroute interval:', error);
+      logger.error('Error updating traceroute interval:', error);
     }
   };
 

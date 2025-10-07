@@ -6,6 +6,7 @@ import { render, screen, waitFor, act } from '@testing-library/react';
 import { ToastProvider, useToast } from './ToastContainer';
 import { useState } from 'react';
 
+
 // Test component that uses the toast context
 const TestComponent = () => {
   const { showToast } = useToast();
@@ -70,7 +71,7 @@ describe.skip('ToastContainer and useToast', () => {
 
   describe('useToast hook', () => {
     it('should throw error when used outside ToastProvider', () => {
-      // Suppress console.error for this test
+      // Suppress logger.error for this test
       const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
 
       expect(() => {
