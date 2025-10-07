@@ -7,46 +7,45 @@ describe('DataContext Types', () => {
   it('should have correct DeviceInfo array type structure', () => {
     const mockNodes: DeviceInfo[] = [
       {
-        nodeId: '!12345678',
         nodeNum: 305419896,
-        longName: 'Test Node',
-        shortName: 'TST1',
-        role: 'CLIENT',
-        hardwareModel: 'TBEAM',
-        lastHeard: Date.now(),
-        snr: 10.5,
+        user: {
+          id: '!12345678',
+          longName: 'Test Node',
+          shortName: 'TST1',
+          role: 'CLIENT'
+        },
         position: {
           latitude: 40.7128,
           longitude: -74.0060,
           altitude: 10
         },
-        hopsAway: 0,
-        isFavorite: false
+        hopsAway: 0
       }
     ];
 
     expect(mockNodes).toHaveLength(1);
-    expect(mockNodes[0].nodeId).toBe('!12345678');
-    expect(mockNodes[0].longName).toBe('Test Node');
+    expect(mockNodes[0].nodeNum).toBe(305419896);
+    expect(mockNodes[0].user?.longName).toBe('Test Node');
     expect(mockNodes[0].position?.latitude).toBe(40.7128);
   });
 
   it('should have correct Channel array type structure', () => {
     const mockChannels: Channel[] = [
       {
-        index: 0,
-        role: 'PRIMARY',
-        settings: {
-          name: 'LongFast',
-          psk: Buffer.from('AQ==', 'base64')
-        }
+        id: 0,
+        name: 'LongFast',
+        psk: 'AQ==',
+        uplinkEnabled: true,
+        downlinkEnabled: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
       }
     ];
 
     expect(mockChannels).toHaveLength(1);
-    expect(mockChannels[0].index).toBe(0);
-    expect(mockChannels[0].role).toBe('PRIMARY');
-    expect(mockChannels[0].settings?.name).toBe('LongFast');
+    expect(mockChannels[0].id).toBe(0);
+    expect(mockChannels[0].name).toBe('LongFast');
+    expect(mockChannels[0].uplinkEnabled).toBe(true);
   });
 
   it('should have correct MeshMessage array type structure', () => {
@@ -55,10 +54,11 @@ describe('DataContext Types', () => {
         id: '1',
         from: '!12345678',
         to: '!87654321',
+        fromNodeId: '!12345678',
+        toNodeId: '!87654321',
         channel: 0,
         text: 'Test message',
-        timestamp: Date.now(),
-        rxTime: Date.now()
+        timestamp: new Date()
       }
     ];
 
@@ -84,10 +84,11 @@ describe('DataContext Types', () => {
           id: '1',
           from: '!12345678',
           to: '^all',
+          fromNodeId: '!12345678',
+          toNodeId: '^all',
           channel: 0,
           text: 'Channel message',
-          timestamp: Date.now(),
-          rxTime: Date.now()
+          timestamp: new Date()
         }
       ],
       1: []
