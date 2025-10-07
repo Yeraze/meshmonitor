@@ -49,7 +49,6 @@ describe('SettingsContext Types', () => {
         'snr',
         'battery',
         'hwModel',
-        'location',
         'hops'
       ];
 

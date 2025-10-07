@@ -58,7 +58,6 @@ describe('UIContext Types', () => {
     const snr: SortField = 'snr';
     const battery: SortField = 'battery';
     const hwModel: SortField = 'hwModel';
-    const location: SortField = 'location';
     const hops: SortField = 'hops';
 
     expect(longName).toBe('longName');
@@ -68,7 +67,6 @@ describe('UIContext Types', () => {
     expect(snr).toBe('snr');
     expect(battery).toBe('battery');
     expect(hwModel).toBe('hwModel');
-    expect(location).toBe('location');
     expect(hops).toBe('hops');
   });
 

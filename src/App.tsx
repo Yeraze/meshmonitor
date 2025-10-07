@@ -1387,10 +1387,6 @@ function App() {
           aVal = a.user?.hwModel || 0;
           bVal = b.user?.hwModel || 0;
           break;
-        case 'location':
-          aVal = a.position ? `${a.position.latitude},${a.position.longitude}` : '';
-          bVal = b.position ? `${b.position.latitude},${b.position.longitude}` : '';
-          break;
         case 'hops':
           // For nodes without hop data, use fallback values that push them to bottom
           // Ascending: use 999 (high value = bottom), Descending: use -1 (low value = bottom)
@@ -1602,9 +1598,11 @@ function App() {
                 >
                   <option value="longName">Sort: Name</option>
                   <option value="shortName">Sort: Short Name</option>
+                  <option value="id">Sort: ID</option>
                   <option value="lastHeard">Sort: Updated</option>
                   <option value="snr">Sort: Signal</option>
                   <option value="battery">Sort: Charge</option>
+                  <option value="hwModel">Sort: Hardware</option>
                   <option value="hops">Sort: Hops</option>
                 </select>
                 <button
