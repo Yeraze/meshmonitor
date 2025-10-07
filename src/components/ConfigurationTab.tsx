@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import apiService from '../services/api';
+import { useToast } from './ToastContainer';
 
 interface ConfigurationTabProps {
   baseUrl?: string; // Optional, not used in component but passed from App.tsx
@@ -8,20 +9,27 @@ interface ConfigurationTabProps {
 }
 
 const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ onRebootDevice, onConfigChangeTriggeringReboot }) => {
+  const { showToast } = useToast();
+
   // Device Config State
   const [longName, setLongName] = useState('');
   const [shortName, setShortName] = useState('');
   const [role, setRole] = useState<number>(0);
-  const [nodeInfoBroadcastSecs, setNodeInfoBroadcastSecs] = useState(900);
+  const [nodeInfoBroadcastSecs, setNodeInfoBroadcastSecs] = useState(3600);
 
   // LoRa Config State
   const [usePreset, setUsePreset] = useState(true);
   const [modemPreset, setModemPreset] = useState<number>(0);
   const [region, setRegion] = useState<number>(0);
+  const [hopLimit, setHopLimit] = useState<number>(3);
 
   // Position Config State
   const [positionBroadcastSecs, setPositionBroadcastSecs] = useState(900);
   const [positionSmartEnabled, setPositionSmartEnabled] = useState(true);
+  const [fixedPosition, setFixedPosition] = useState(false);
+  const [fixedLatitude, setFixedLatitude] = useState<number>(0);
+  const [fixedLongitude, setFixedLongitude] = useState<number>(0);
+  const [fixedAltitude, setFixedAltitude] = useState<number>(0);
 
   // MQTT Config State
   const [mqttEnabled, setMqttEnabled] = useState(false);
@@ -30,6 +38,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ onRebootDevice, onC
   const [mqttPassword, setMqttPassword] = useState('');
   const [mqttEncryptionEnabled, setMqttEncryptionEnabled] = useState(true);
   const [mqttJsonEnabled, setMqttJsonEnabled] = useState(false);
+  const [mqttRoot, setMqttRoot] = useState('');
 
   // NeighborInfo Config State
   const [neighborInfoEnabled, setNeighborInfoEnabled] = useState(false);
@@ -58,7 +67,24 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ onRebootDevice, onC
         // Populate device config
         if (config.deviceConfig?.device) {
           if (config.deviceConfig.device.role !== undefined) {
-            setRole(config.deviceConfig.device.role);
+            // Convert string role to number
+            const roleMap: { [key: string]: number } = {
+              'CLIENT': 0,
+              'CLIENT_MUTE': 1,
+              'ROUTER': 2,
+              'TRACKER': 5,
+              'SENSOR': 6,
+              'TAK': 7,
+              'CLIENT_HIDDEN': 8,
+              'LOST_AND_FOUND': 9,
+              'TAK_TRACKER': 10,
+              'ROUTER_LATE': 11,
+              'CLIENT_BASE': 12
+            };
+            const roleValue = typeof config.deviceConfig.device.role === 'string'
+              ? roleMap[config.deviceConfig.device.role] || 0
+              : config.deviceConfig.device.role;
+            setRole(roleValue);
           }
           if (config.deviceConfig.device.nodeInfoBroadcastSecs !== undefined) {
             setNodeInfoBroadcastSecs(config.deviceConfig.device.nodeInfoBroadcastSecs);
@@ -99,6 +125,9 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ onRebootDevice, onC
               : config.deviceConfig.lora.region;
             setRegion(regionValue);
           }
+          if (config.deviceConfig.lora.hopLimit !== undefined) {
+            setHopLimit(config.deviceConfig.lora.hopLimit);
+          }
         }
 
         // Populate position config
@@ -108,6 +137,31 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ onRebootDevice, onC
           }
           if (config.deviceConfig.position.positionBroadcastSmartEnabled !== undefined) {
             setPositionSmartEnabled(config.deviceConfig.position.positionBroadcastSmartEnabled);
+          }
+          if (config.deviceConfig.position.fixedPosition !== undefined) {
+            setFixedPosition(config.deviceConfig.position.fixedPosition);
+          }
+        }
+
+        // Populate fixed position from nodes list (get local node position)
+        // The localNodeInfo doesn't include position, so we need to fetch it from nodes
+        if (config.localNodeInfo?.nodeNum) {
+          try {
+            const nodesResponse = await apiService.getNodes();
+            const localNode = nodesResponse.find((n: any) => n.nodeNum === config.localNodeInfo.nodeNum);
+            if (localNode?.position) {
+              if (localNode.position.latitude !== undefined) {
+                setFixedLatitude(localNode.position.latitude);
+              }
+              if (localNode.position.longitude !== undefined) {
+                setFixedLongitude(localNode.position.longitude);
+              }
+              if (localNode.position.altitude !== undefined) {
+                setFixedAltitude(localNode.position.altitude);
+              }
+            }
+          } catch (error) {
+            console.error('Failed to load node position:', error);
           }
         }
 
@@ -119,6 +173,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ onRebootDevice, onC
           setMqttPassword(config.moduleConfig.mqtt.password || '');
           setMqttEncryptionEnabled(config.moduleConfig.mqtt.encryptionEnabled !== false);
           setMqttJsonEnabled(config.moduleConfig.mqtt.jsonEnabled || false);
+          setMqttRoot(config.moduleConfig.mqtt.root || '');
         }
 
         // Populate NeighborInfo config
@@ -263,16 +318,28 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ onRebootDevice, onC
     setIsSaving(true);
     setStatusMessage('');
     try {
+      // Enforce minimum value for nodeInfoBroadcastSecs
+      const validNodeInfoBroadcastSecs = Math.max(3600, nodeInfoBroadcastSecs);
+      if (validNodeInfoBroadcastSecs !== nodeInfoBroadcastSecs) {
+        setNodeInfoBroadcastSecs(validNodeInfoBroadcastSecs);
+        showToast('Node Info Broadcast Interval adjusted to minimum value of 3600 seconds (1 hour)', 'warning');
+        setIsSaving(false);
+        return;
+      }
+
       await apiService.setDeviceConfig({
         role,
-        nodeInfoBroadcastSecs: nodeInfoBroadcastSecs
+        nodeInfoBroadcastSecs: validNodeInfoBroadcastSecs
       });
       setStatusMessage('Device configuration saved successfully! Device will reboot...');
+      showToast('Device configuration saved! Device will reboot...', 'success');
       // Notify parent that config change will trigger reboot
       onConfigChangeTriggeringReboot?.();
     } catch (error) {
       console.error('Error saving device config:', error);
-      setStatusMessage(`Error: ${error instanceof Error ? error.message : 'Failed to save device configuration'}`);
+      const errorMsg = error instanceof Error ? error.message : 'Failed to save device configuration';
+      setStatusMessage(`Error: ${errorMsg}`);
+      showToast(`Failed to save device configuration: ${errorMsg}`, 'error');
     } finally {
       setIsSaving(false);
     }
@@ -284,10 +351,13 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ onRebootDevice, onC
     try {
       await apiService.setNodeOwner(longName, shortName);
       setStatusMessage('Node names saved successfully! Device will reboot...');
+      showToast('Node names saved! Device will reboot...', 'success');
       onConfigChangeTriggeringReboot?.();
     } catch (error) {
       console.error('Error saving node owner:', error);
-      setStatusMessage(`Error: ${error instanceof Error ? error.message : 'Failed to save node names'}`);
+      const errorMsg = error instanceof Error ? error.message : 'Failed to save node names';
+      setStatusMessage(`Error: ${errorMsg}`);
+      showToast(`Failed to save node names: ${errorMsg}`, 'error');
     } finally {
       setIsSaving(false);
     }
@@ -297,16 +367,29 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ onRebootDevice, onC
     setIsSaving(true);
     setStatusMessage('');
     try {
+      // Validate hop limit (max 7)
+      const validHopLimit = Math.min(7, Math.max(1, hopLimit));
+      if (validHopLimit !== hopLimit) {
+        setHopLimit(validHopLimit);
+        showToast(`Hop Limit adjusted to valid range (1-7)`, 'warning');
+        setIsSaving(false);
+        return;
+      }
+
       await apiService.setLoRaConfig({
         usePreset,
         modemPreset,
-        region
+        region,
+        hopLimit: validHopLimit
       });
       setStatusMessage('LoRa configuration saved successfully! Device will reboot...');
+      showToast('LoRa configuration saved! Device will reboot...', 'success');
       onConfigChangeTriggeringReboot?.();
     } catch (error) {
       console.error('Error saving LoRa config:', error);
-      setStatusMessage(`Error: ${error instanceof Error ? error.message : 'Failed to save LoRa configuration'}`);
+      const errorMsg = error instanceof Error ? error.message : 'Failed to save LoRa configuration';
+      setStatusMessage(`Error: ${errorMsg}`);
+      showToast(`Failed to save LoRa configuration: ${errorMsg}`, 'error');
     } finally {
       setIsSaving(false);
     }
@@ -316,15 +399,45 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ onRebootDevice, onC
     setIsSaving(true);
     setStatusMessage('');
     try {
+      // Enforce minimum value for positionBroadcastSecs (32 seconds minimum per Meshtastic docs)
+      const validPositionBroadcastSecs = Math.max(32, positionBroadcastSecs);
+      if (validPositionBroadcastSecs !== positionBroadcastSecs) {
+        setPositionBroadcastSecs(validPositionBroadcastSecs);
+        showToast('Position Broadcast Interval adjusted to minimum value of 32 seconds', 'warning');
+        setIsSaving(false);
+        return;
+      }
+
+      // Validate lat/long ranges if fixed position is enabled
+      if (fixedPosition) {
+        if (fixedLatitude < -90 || fixedLatitude > 90) {
+          showToast('Latitude must be between -90 and 90', 'error');
+          setIsSaving(false);
+          return;
+        }
+        if (fixedLongitude < -180 || fixedLongitude > 180) {
+          showToast('Longitude must be between -180 and 180', 'error');
+          setIsSaving(false);
+          return;
+        }
+      }
+
       await apiService.setPositionConfig({
-        positionBroadcastSecs,
-        positionBroadcastSmartEnabled: positionSmartEnabled
+        positionBroadcastSecs: validPositionBroadcastSecs,
+        positionBroadcastSmartEnabled: positionSmartEnabled,
+        fixedPosition,
+        latitude: fixedPosition ? fixedLatitude : undefined,
+        longitude: fixedPosition ? fixedLongitude : undefined,
+        altitude: fixedPosition ? fixedAltitude : undefined
       });
       setStatusMessage('Position configuration saved successfully! Device will reboot...');
+      showToast('Position configuration saved! Device will reboot...', 'success');
       onConfigChangeTriggeringReboot?.();
     } catch (error) {
       console.error('Error saving position config:', error);
-      setStatusMessage(`Error: ${error instanceof Error ? error.message : 'Failed to save position configuration'}`);
+      const errorMsg = error instanceof Error ? error.message : 'Failed to save position configuration';
+      setStatusMessage(`Error: ${errorMsg}`);
+      showToast(`Failed to save position configuration: ${errorMsg}`, 'error');
     } finally {
       setIsSaving(false);
     }
@@ -340,13 +453,17 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ onRebootDevice, onC
         username: mqttUsername,
         password: mqttPassword,
         encryptionEnabled: mqttEncryptionEnabled,
-        jsonEnabled: mqttJsonEnabled
+        jsonEnabled: mqttJsonEnabled,
+        root: mqttRoot
       });
       setStatusMessage('MQTT configuration saved successfully! Device will reboot...');
+      showToast('MQTT configuration saved! Device will reboot...', 'success');
       onConfigChangeTriggeringReboot?.();
     } catch (error) {
       console.error('Error saving MQTT config:', error);
-      setStatusMessage(`Error: ${error instanceof Error ? error.message : 'Failed to save MQTT configuration'}`);
+      const errorMsg = error instanceof Error ? error.message : 'Failed to save MQTT configuration';
+      setStatusMessage(`Error: ${errorMsg}`);
+      showToast(`Failed to save MQTT configuration: ${errorMsg}`, 'error');
     } finally {
       setIsSaving(false);
     }
@@ -358,18 +475,23 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ onRebootDevice, onC
     try {
       // Enforce minimum interval
       const validInterval = Math.max(14400, neighborInfoInterval);
+      if (validInterval !== neighborInfoInterval) {
+        setNeighborInfoInterval(validInterval);
+        showToast('NeighborInfo interval adjusted to minimum value of 14400 seconds (4 hours)', 'warning');
+      }
+
       await apiService.setNeighborInfoConfig({
         enabled: neighborInfoEnabled,
         updateInterval: validInterval
       });
       setStatusMessage('NeighborInfo configuration saved successfully! Device will reboot...');
+      showToast('NeighborInfo configuration saved! Device will reboot...', 'success');
       onConfigChangeTriggeringReboot?.();
-      if (validInterval !== neighborInfoInterval) {
-        setNeighborInfoInterval(validInterval);
-      }
     } catch (error) {
       console.error('Error saving NeighborInfo config:', error);
-      setStatusMessage(`Error: ${error instanceof Error ? error.message : 'Failed to save NeighborInfo configuration'}`);
+      const errorMsg = error instanceof Error ? error.message : 'Failed to save NeighborInfo configuration';
+      setStatusMessage(`Error: ${errorMsg}`);
+      showToast(`Failed to save NeighborInfo configuration: ${errorMsg}`, 'error');
     } finally {
       setIsSaving(false);
     }
@@ -391,20 +513,26 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ onRebootDevice, onC
       if (onRebootDevice) {
         // Use the parent handler which manages connection status
         setStatusMessage('Rebooting device... This may take up to 60 seconds.');
+        showToast('Rebooting device...', 'info');
         const success = await onRebootDevice();
         if (success) {
           setStatusMessage('Device rebooted successfully and reconnected!');
+          showToast('Device rebooted successfully!', 'success');
         } else {
           setStatusMessage('Device reboot initiated, but failed to reconnect. Please check connection manually.');
+          showToast('Device reboot initiated, but failed to reconnect', 'warning');
         }
       } else {
         // Fallback to direct API call if handler not provided
         await apiService.rebootDevice(5);
         setStatusMessage('Reboot command sent! Device will restart in 5 seconds.');
+        showToast('Reboot command sent!', 'success');
       }
     } catch (error) {
       console.error('Error rebooting device:', error);
-      setStatusMessage(`Error: ${error instanceof Error ? error.message : 'Failed to reboot device'}`);
+      const errorMsg = error instanceof Error ? error.message : 'Failed to reboot device';
+      setStatusMessage(`Error: ${errorMsg}`);
+      showToast(`Failed to reboot device: ${errorMsg}`, 'error');
     } finally {
       setIsSaving(false);
     }
@@ -613,13 +741,13 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ onRebootDevice, onC
           <div className="setting-item">
             <label htmlFor="nodeInfoBroadcastSecs">
               Node Info Broadcast Interval (seconds)
-              <span className="setting-description">How often to broadcast node info (default: 900 = 15 minutes)</span>
+              <span className="setting-description">How often to broadcast node info. Range: 3600-4294967295 (default: 10800 = 3 hours, minimum: 3600 = 1 hour)</span>
             </label>
             <input
               id="nodeInfoBroadcastSecs"
               type="number"
-              min="60"
-              max="86400"
+              min="3600"
+              max="4294967295"
               value={nodeInfoBroadcastSecs}
               onChange={(e) => setNodeInfoBroadcastSecs(parseInt(e.target.value))}
               className="setting-input"
@@ -760,6 +888,21 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ onRebootDevice, onC
               ))}
             </select>
           </div>
+          <div className="setting-item">
+            <label htmlFor="hopLimit">
+              Hop Limit
+              <span className="setting-description">Maximum number of hops for mesh packets. Range: 1-7 (default: 3)</span>
+            </label>
+            <input
+              id="hopLimit"
+              type="number"
+              min="1"
+              max="7"
+              value={hopLimit}
+              onChange={(e) => setHopLimit(parseInt(e.target.value))}
+              className="setting-input"
+            />
+          </div>
           <button
             className="save-button"
             onClick={handleSaveLoRaConfig}
@@ -775,13 +918,13 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ onRebootDevice, onC
           <div className="setting-item">
             <label htmlFor="positionBroadcastSecs">
               Position Broadcast Interval (seconds)
-              <span className="setting-description">How often to broadcast position (default: 900 = 15 minutes)</span>
+              <span className="setting-description">How often to broadcast position. Range: 32-4294967295 (default: 900 = 15 minutes, minimum: 32 seconds)</span>
             </label>
             <input
               id="positionBroadcastSecs"
               type="number"
-              min="60"
-              max="86400"
+              min="32"
+              max="4294967295"
               value={positionBroadcastSecs}
               onChange={(e) => setPositionBroadcastSecs(parseInt(e.target.value))}
               className="setting-input"
@@ -802,6 +945,73 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ onRebootDevice, onC
               </div>
             </label>
           </div>
+          <div className="setting-item">
+            <label htmlFor="fixedPosition" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+              <input
+                id="fixedPosition"
+                type="checkbox"
+                checked={fixedPosition}
+                onChange={(e) => setFixedPosition(e.target.checked)}
+                style={{ marginTop: '0.2rem', flexShrink: 0 }}
+              />
+              <div style={{ flex: 1 }}>
+                <div>Fixed Position</div>
+                <span className="setting-description">Node is at a fixed position (disables GPS updates)</span>
+              </div>
+            </label>
+          </div>
+          {fixedPosition && (
+            <>
+              <div className="setting-item">
+                <label htmlFor="fixedLatitude">
+                  Latitude
+                  <span className="setting-description">
+                    Range: -90 to 90 (decimal degrees) • <a href="https://gps-coordinates.org/" target="_blank" rel="noopener noreferrer" style={{ color: '#4a9eff', textDecoration: 'underline' }}>Find your GPS coordinates here</a>
+                  </span>
+                </label>
+                <input
+                  id="fixedLatitude"
+                  type="number"
+                  step="0.000001"
+                  min="-90"
+                  max="90"
+                  value={fixedLatitude}
+                  onChange={(e) => setFixedLatitude(parseFloat(e.target.value))}
+                  className="setting-input"
+                />
+              </div>
+              <div className="setting-item">
+                <label htmlFor="fixedLongitude">
+                  Longitude
+                  <span className="setting-description">Range: -180 to 180 (decimal degrees)</span>
+                </label>
+                <input
+                  id="fixedLongitude"
+                  type="number"
+                  step="0.000001"
+                  min="-180"
+                  max="180"
+                  value={fixedLongitude}
+                  onChange={(e) => setFixedLongitude(parseFloat(e.target.value))}
+                  className="setting-input"
+                />
+              </div>
+              <div className="setting-item">
+                <label htmlFor="fixedAltitude">
+                  Altitude (meters)
+                  <span className="setting-description">Elevation above sea level in meters</span>
+                </label>
+                <input
+                  id="fixedAltitude"
+                  type="number"
+                  step="1"
+                  value={fixedAltitude}
+                  onChange={(e) => setFixedAltitude(parseInt(e.target.value))}
+                  className="setting-input"
+                />
+              </div>
+            </>
+          )}
           <button
             className="save-button"
             onClick={handleSavePositionConfig}
@@ -869,6 +1079,20 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ onRebootDevice, onC
                   value={mqttPassword}
                   onChange={(e) => setMqttPassword(e.target.value)}
                   className="setting-input"
+                />
+              </div>
+              <div className="setting-item">
+                <label htmlFor="mqttRoot">
+                  MQTT Root Topic
+                  <span className="setting-description">Root topic for MQTT messages (e.g., "msh/US/MyRegion")</span>
+                </label>
+                <input
+                  id="mqttRoot"
+                  type="text"
+                  value={mqttRoot}
+                  onChange={(e) => setMqttRoot(e.target.value)}
+                  className="setting-input"
+                  placeholder="msh/US"
                 />
               </div>
               <div className="setting-item">

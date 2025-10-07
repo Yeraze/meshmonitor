@@ -3124,8 +3124,31 @@ class MeshtasticManager {
     }
 
     try {
-      console.log('⚙️ Sending position config:', JSON.stringify(config));
-      const setConfigMsg = protobufService.createSetPositionConfigMessage(config, new Uint8Array());
+      // Extract position data if provided
+      const { latitude, longitude, altitude, ...positionConfig } = config;
+
+      // Per Meshtastic docs: Set fixed position coordinates FIRST, THEN set fixedPosition flag
+      // If lat/long provided, send position update first
+      if (latitude !== undefined && longitude !== undefined) {
+        console.log(`⚙️ Setting fixed position coordinates FIRST: lat=${latitude}, lon=${longitude}, alt=${altitude || 0}`);
+        const setPositionMsg = protobufService.createSetFixedPositionMessage(
+          latitude,
+          longitude,
+          altitude || 0,
+          new Uint8Array()
+        );
+        const positionPacket = protobufService.createAdminPacket(setPositionMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+
+        await this.transport.send(positionPacket);
+        console.log('⚙️ Sent set_fixed_position admin message');
+
+        // Add delay to ensure device processes the position before the config
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+
+      // Then send position configuration (fixedPosition flag, broadcast intervals, etc.)
+      console.log('⚙️ Sending position config:', JSON.stringify(positionConfig));
+      const setConfigMsg = protobufService.createSetPositionConfigMessage(positionConfig, new Uint8Array());
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
 
       await this.transport.send(adminPacket);

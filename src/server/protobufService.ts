@@ -700,8 +700,20 @@ class ProtobufService {
         throw new Error('Required proto types not found');
       }
 
+      // Convert config fields to format expected by protobufjs
+      // Note: protobufjs uses camelCase for field names, not snake_case
+      const deviceConfig: any = {};
+      if (config.role !== undefined) {
+        deviceConfig.role = config.role;
+      }
+      if (config.nodeInfoBroadcastSecs !== undefined) {
+        deviceConfig.nodeInfoBroadcastSecs = config.nodeInfoBroadcastSecs;
+      }
+
+      console.log('⚙️ Sending device config:', JSON.stringify(deviceConfig));
+
       const configMsg = Config.create({
-        device: config
+        device: deviceConfig
       });
 
       const adminMsgData: any = {
@@ -874,6 +886,51 @@ class ProtobufService {
       return encoded;
     } catch (error) {
       console.error('Failed to create SetNeighborInfoConfig message:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create an AdminMessage to set fixed position
+   * @param latitude Latitude in degrees
+   * @param longitude Longitude in degrees
+   * @param altitude Altitude in meters
+   * @param sessionPasskey Optional session passkey for authentication
+   */
+  createSetFixedPositionMessage(latitude: number, longitude: number, altitude: number, sessionPasskey?: Uint8Array): Uint8Array {
+    try {
+      const root = getProtobufRoot();
+      const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
+      const Position = root?.lookupType('meshtastic.Position');
+      if (!AdminMessage || !Position) {
+        throw new Error('Required proto types not found');
+      }
+
+      // Meshtastic uses degrees * 1e-7 for lat/long
+      const positionMsg = Position.create({
+        latitudeI: Math.round(latitude * 1e7),
+        longitudeI: Math.round(longitude * 1e7),
+        altitude: Math.round(altitude)
+      });
+
+      const adminMsgData: any = {
+        setFixedPosition: positionMsg
+      };
+
+      if (sessionPasskey && sessionPasskey.length > 0) {
+        adminMsgData.sessionPasskey = sessionPasskey;
+      }
+
+      const adminMsg = AdminMessage.create(adminMsgData);
+      const encoded = AdminMessage.encode(adminMsg).finish();
+      console.log('⚙️ Created SetFixedPosition admin message');
+      console.log('🔍 Position data:', JSON.stringify(positionMsg));
+      console.log('🔍 AdminMessage data:', JSON.stringify(adminMsgData));
+      console.log('🔍 AdminMessage object:', JSON.stringify(adminMsg, null, 2));
+      console.log('🔍 AdminMessage bytes:', Array.from(encoded).map(b => b.toString(16).padStart(2, '0')).join(' '));
+      return encoded;
+    } catch (error) {
+      console.error('Failed to create SetFixedPosition message:', error);
       throw error;
     }
   }
