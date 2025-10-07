@@ -1,6 +1,6 @@
 export type TabType = 'nodes' | 'channels' | 'messages' | 'info' | 'settings' | 'dashboard' | 'configuration';
 
-export type SortField = 'longName' | 'shortName' | 'id' | 'lastHeard' | 'snr' | 'battery' | 'hwModel' | 'location' | 'hops';
+export type SortField = 'longName' | 'shortName' | 'id' | 'lastHeard' | 'snr' | 'battery' | 'hwModel' | 'hops';
 
 export type SortDirection = 'asc' | 'desc';
 
