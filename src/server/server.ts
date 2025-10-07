@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import databaseService from '../services/database.js';
 import meshtasticManager from './meshtasticManager.js';
 import { createRequire } from 'module';
+import { logger } from '../utils/logger.js';
 
 const require = createRequire(import.meta.url);
 const packageJson = require('../../package.json');
@@ -21,14 +22,14 @@ const BASE_URL = (() => {
 
   // Ensure BASE_URL starts with /
   if (baseUrl && !baseUrl.startsWith('/')) {
-    console.warn(`BASE_URL should start with '/'. Fixing: ${baseUrl} -> /${baseUrl}`);
+    logger.warn(`BASE_URL should start with '/'. Fixing: ${baseUrl} -> /${baseUrl}`);
     baseUrl = `/${baseUrl}`;
   }
 
   // Validate against path traversal attempts BEFORE normalization
   // Check for any form of path traversal: ../, ..\, or .. as a segment
   if (baseUrl.includes('../') || baseUrl.includes('..\\') || baseUrl.includes('/..')) {
-    console.error(`Invalid BASE_URL: path traversal detected in '${baseUrl}'. Using default.`);
+    logger.error(`Invalid BASE_URL: path traversal detected in '${baseUrl}'. Using default.`);
     return '';
   }
 
@@ -46,18 +47,18 @@ const BASE_URL = (() => {
     for (const segment of segments) {
       // Reject segments that are exactly '..'
       if (segment === '..') {
-        console.error(`Invalid BASE_URL: path traversal segment detected. Using default.`);
+        logger.error(`Invalid BASE_URL: path traversal segment detected. Using default.`);
         return '';
       }
 
       if (!validSegment.test(segment)) {
-        console.warn(`BASE_URL contains invalid characters in segment: ${segment}. Only alphanumeric, hyphens, and underscores are allowed.`);
+        logger.warn(`BASE_URL contains invalid characters in segment: ${segment}. Only alphanumeric, hyphens, and underscores are allowed.`);
       }
     }
 
     // Log multi-segment paths for visibility
     if (segments.length > 1) {
-      console.log(`Using multi-segment BASE_URL: ${baseUrl} (${segments.length} segments)`);
+      logger.debug(`Using multi-segment BASE_URL: ${baseUrl} (${segments.length} segments)`);
     }
   }
 
@@ -95,14 +96,14 @@ setTimeout(async () => {
       const intervalMinutes = parseInt(savedInterval);
       if (!isNaN(intervalMinutes) && intervalMinutes >= 0 && intervalMinutes <= 60) {
         meshtasticManager.setTracerouteInterval(intervalMinutes);
-        console.log(`✅ Loaded saved traceroute interval: ${intervalMinutes} minutes${intervalMinutes === 0 ? ' (disabled)' : ''}`);
+        logger.debug(`✅ Loaded saved traceroute interval: ${intervalMinutes} minutes${intervalMinutes === 0 ? ' (disabled)' : ''}`);
       }
     }
 
     await meshtasticManager.connect();
-    console.log('Meshtastic manager connected successfully');
+    logger.debug('Meshtastic manager connected successfully');
   } catch (error) {
-    console.error('Failed to connect to Meshtastic node on startup:', error);
+    logger.error('Failed to connect to Meshtastic node on startup:', error);
   }
 }, 1000);
 
@@ -113,10 +114,10 @@ setInterval(() => {
   try {
     const purgedCount = databaseService.purgeOldTelemetry(TELEMETRY_RETENTION_HOURS);
     if (purgedCount > 0) {
-      console.log(`⏰ Hourly telemetry purge completed: removed ${purgedCount} records`);
+      logger.debug(`⏰ Hourly telemetry purge completed: removed ${purgedCount} records`);
     }
   } catch (error) {
-    console.error('Error during telemetry purge:', error);
+    logger.error('Error during telemetry purge:', error);
   }
 }, 60 * 60 * 1000); // Run every hour
 
@@ -125,7 +126,7 @@ setTimeout(() => {
   try {
     databaseService.purgeOldTelemetry(TELEMETRY_RETENTION_HOURS);
   } catch (error) {
-    console.error('Error during initial telemetry purge:', error);
+    logger.error('Error during initial telemetry purge:', error);
   }
 }, 5000); // Wait 5 seconds after startup
 
@@ -175,7 +176,7 @@ apiRouter.get('/nodes', (_req, res) => {
       return { ...node, isMobile };
     });
 
-    console.log('🔍 Sending nodes to frontend, sample node:', enhancedNodes[0] ? {
+    logger.debug('🔍 Sending nodes to frontend, sample node:', enhancedNodes[0] ? {
       nodeNum: enhancedNodes[0].nodeNum,
       longName: enhancedNodes[0].user?.longName,
       role: enhancedNodes[0].user?.role,
@@ -184,7 +185,7 @@ apiRouter.get('/nodes', (_req, res) => {
     } : 'No nodes');
     res.json(enhancedNodes);
   } catch (error) {
-    console.error('Error fetching nodes:', error);
+    logger.error('Error fetching nodes:', error);
     res.status(500).json({ error: 'Failed to fetch nodes' });
   }
 });
@@ -195,7 +196,7 @@ apiRouter.get('/nodes/active', (req, res) => {
     const nodes = databaseService.getActiveNodes(days);
     res.json(nodes);
   } catch (error) {
-    console.error('Error fetching active nodes:', error);
+    logger.error('Error fetching active nodes:', error);
     res.status(500).json({ error: 'Failed to fetch active nodes' });
   }
 });
@@ -242,7 +243,7 @@ apiRouter.get('/nodes/:nodeId/position-history', (req, res) => {
 
     res.json(positions);
   } catch (error) {
-    console.error('Error fetching position history:', error);
+    logger.error('Error fetching position history:', error);
     res.status(500).json({ error: 'Failed to fetch position history' });
   }
 });
@@ -301,17 +302,17 @@ apiRouter.post('/nodes/:nodeId/favorite', async (req, res) => {
           await meshtasticManager.sendRemoveFavoriteNode(nodeNum);
         }
         deviceSyncStatus = 'success';
-        console.log(`✅ Synced favorite status to device for node ${nodeNum}`);
+        logger.debug(`✅ Synced favorite status to device for node ${nodeNum}`);
       } catch (error) {
         // Special handling for firmware version incompatibility
         if (error instanceof Error && error.message === 'FIRMWARE_NOT_SUPPORTED') {
           deviceSyncStatus = 'skipped';
-          console.log(`ℹ️ Device sync skipped for node ${nodeNum}: firmware does not support favorites (requires >= 2.7.0)`);
+          logger.debug(`ℹ️ Device sync skipped for node ${nodeNum}: firmware does not support favorites (requires >= 2.7.0)`);
           // Don't set deviceSyncError - this is expected behavior for pre-2.7 firmware
         } else {
           deviceSyncStatus = 'failed';
           deviceSyncError = error instanceof Error ? error.message : 'Unknown error';
-          console.error(`⚠️ Failed to sync favorite to device for node ${nodeNum}:`, error);
+          logger.error(`⚠️ Failed to sync favorite to device for node ${nodeNum}:`, error);
         }
         // Don't fail the whole request if device sync fails
       }
@@ -327,7 +328,7 @@ apiRouter.post('/nodes/:nodeId/favorite', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error setting node favorite:', error);
+    logger.error('Error setting node favorite:', error);
     const errorResponse: ApiErrorResponse = {
       error: 'Failed to set node favorite',
       code: 'INTERNAL_ERROR',
@@ -343,7 +344,7 @@ apiRouter.get('/messages', (req, res) => {
     const messages = meshtasticManager.getRecentMessages(limit);
     res.json(messages);
   } catch (error) {
-    console.error('Error fetching messages:', error);
+    logger.error('Error fetching messages:', error);
     res.status(500).json({ error: 'Failed to fetch messages' });
   }
 });
@@ -369,7 +370,7 @@ apiRouter.get('/messages/channel/:channel', (req, res) => {
     const messages = databaseService.getMessagesByChannel(messageChannel, limit);
     res.json(messages);
   } catch (error) {
-    console.error('Error fetching channel messages:', error);
+    logger.error('Error fetching channel messages:', error);
     res.status(500).json({ error: 'Failed to fetch channel messages' });
   }
 });
@@ -381,7 +382,7 @@ apiRouter.get('/messages/direct/:nodeId1/:nodeId2', (req, res) => {
     const messages = databaseService.getDirectMessages(nodeId1, nodeId2, limit);
     res.json(messages);
   } catch (error) {
-    console.error('Error fetching direct messages:', error);
+    logger.error('Error fetching direct messages:', error);
     res.status(500).json({ error: 'Failed to fetch direct messages' });
   }
 });
@@ -390,10 +391,10 @@ apiRouter.get('/messages/direct/:nodeId1/:nodeId2', (req, res) => {
 apiRouter.get('/channels/debug', (_req, res) => {
   try {
     const allChannels = databaseService.getAllChannels();
-    console.log('🔍 DEBUG: All channels in database:', allChannels);
+    logger.debug('🔍 DEBUG: All channels in database:', allChannels);
     res.json(allChannels);
   } catch (error) {
-    console.error('Error fetching debug channels:', error);
+    logger.error('Error fetching debug channels:', error);
     res.status(500).json({ error: 'Failed to fetch debug channels' });
   }
 });
@@ -416,9 +417,9 @@ apiRouter.get('/channels', (_req, res) => {
       };
       try {
         databaseService.upsertChannel(newPrimary);
-        console.log('📡 Created missing Primary channel with ID 0');
+        logger.debug('📡 Created missing Primary channel with ID 0');
       } catch (error) {
-        console.error('❌ Failed to create Primary channel:', error);
+        logger.error('❌ Failed to create Primary channel:', error);
       }
     } else if (primaryChannels.length === 1) {
       // Single channel - rename if needed
@@ -428,9 +429,9 @@ apiRouter.get('/channels', (_req, res) => {
           const updatedChannel = { ...primaryChannel, name: 'Primary' };
           databaseService.upsertChannel(updatedChannel);
           primaryChannel.name = 'Primary'; // Update in memory
-          console.log('📡 Renamed "Channel 0" to "Primary"');
+          logger.debug('📡 Renamed "Channel 0" to "Primary"');
         } catch (error) {
-          console.error('❌ Failed to rename channel to Primary:', error);
+          logger.error('❌ Failed to rename channel to Primary:', error);
         }
       }
     } else {
@@ -445,9 +446,9 @@ apiRouter.get('/channels', (_req, res) => {
           const updatedChannel = { ...keepChannel, name: 'Primary' };
           databaseService.upsertChannel(updatedChannel);
           keepChannel.name = 'Primary';
-          console.log('📡 Renamed primary channel to "Primary"');
+          logger.debug('📡 Renamed primary channel to "Primary"');
         } catch (error) {
-          console.error('❌ Failed to rename primary channel:', error);
+          logger.error('❌ Failed to rename primary channel:', error);
         }
       }
 
@@ -456,7 +457,7 @@ apiRouter.get('/channels', (_req, res) => {
         const index = allChannels.findIndex(ch => ch.id === duplicate.id);
         if (index > -1) {
           allChannels.splice(index, 1);
-          console.log(`📡 Removed duplicate Primary channel (id=${duplicate.id})`);
+          logger.debug(`📡 Removed duplicate Primary channel (id=${duplicate.id})`);
         }
       }
     }
@@ -489,12 +490,12 @@ apiRouter.get('/channels', (_req, res) => {
       filteredChannels.unshift(primary);
     }
 
-    console.log(`📡 Serving ${filteredChannels.length} filtered channels (from ${allChannels.length} total)`);
-    console.log(`🔍 All channels in DB:`, allChannels.map(ch => ({ id: ch.id, name: ch.name })));
-    console.log(`🔍 Filtered channels:`, filteredChannels.map(ch => ({ id: ch.id, name: ch.name })));
+    logger.debug(`📡 Serving ${filteredChannels.length} filtered channels (from ${allChannels.length} total)`);
+    logger.debug(`🔍 All channels in DB:`, allChannels.map(ch => ({ id: ch.id, name: ch.name })));
+    logger.debug(`🔍 Filtered channels:`, filteredChannels.map(ch => ({ id: ch.id, name: ch.name })));
     res.json(filteredChannels);
   } catch (error) {
-    console.error('Error fetching channels:', error);
+    logger.error('Error fetching channels:', error);
     res.status(500).json({ error: 'Failed to fetch channels' });
   }
 });
@@ -513,7 +514,7 @@ apiRouter.get('/stats', (_req, res) => {
       messagesByDay
     });
   } catch (error) {
-    console.error('Error fetching stats:', error);
+    logger.error('Error fetching stats:', error);
     res.status(500).json({ error: 'Failed to fetch stats' });
   }
 });
@@ -523,7 +524,7 @@ apiRouter.post('/export', (_req, res) => {
     const data = databaseService.exportData();
     res.json(data);
   } catch (error) {
-    console.error('Error exporting data:', error);
+    logger.error('Error exporting data:', error);
     res.status(500).json({ error: 'Failed to export data' });
   }
 });
@@ -534,7 +535,7 @@ apiRouter.post('/import', (req, res) => {
     databaseService.importData(data);
     res.json({ success: true });
   } catch (error) {
-    console.error('Error importing data:', error);
+    logger.error('Error importing data:', error);
     res.status(500).json({ error: 'Failed to import data' });
   }
 });
@@ -545,7 +546,7 @@ apiRouter.post('/cleanup/messages', (req, res) => {
     const deletedCount = databaseService.cleanupOldMessages(days);
     res.json({ deletedCount });
   } catch (error) {
-    console.error('Error cleaning up messages:', error);
+    logger.error('Error cleaning up messages:', error);
     res.status(500).json({ error: 'Failed to cleanup messages' });
   }
 });
@@ -556,7 +557,7 @@ apiRouter.post('/cleanup/nodes', (req, res) => {
     const deletedCount = databaseService.cleanupInactiveNodes(days);
     res.json({ deletedCount });
   } catch (error) {
-    console.error('Error cleaning up nodes:', error);
+    logger.error('Error cleaning up nodes:', error);
     res.status(500).json({ error: 'Failed to cleanup nodes' });
   }
 });
@@ -566,7 +567,7 @@ apiRouter.post('/cleanup/channels', (_req, res) => {
     const deletedCount = databaseService.cleanupInvalidChannels();
     res.json({ deletedCount });
   } catch (error) {
-    console.error('Error cleaning up channels:', error);
+    logger.error('Error cleaning up channels:', error);
     res.status(500).json({ error: 'Failed to cleanup channels' });
   }
 });
@@ -658,18 +659,18 @@ apiRouter.post('/messages/send', async (req, res) => {
         }
 
         databaseService.insertMessage(message);
-        console.log(`💾 Saved sent message to database with ID ${messageId}: "${text.substring(0, 50)}..."`);
+        logger.debug(`💾 Saved sent message to database with ID ${messageId}: "${text.substring(0, 50)}..."`);
       } catch (error) {
-        console.warn(`⚠️ Could not save sent message to database:`, error);
+        logger.warn(`⚠️ Could not save sent message to database:`, error);
       }
     } else {
-      console.warn('⚠️ Local node info not available yet, skipping database save');
-      console.warn('   Message will be saved when it arrives back from the mesh network');
+      logger.warn('⚠️ Local node info not available yet, skipping database save');
+      logger.warn('   Message will be saved when it arrives back from the mesh network');
     }
 
     res.json({ success: true });
   } catch (error) {
-    console.error('Error sending message:', error);
+    logger.error('Error sending message:', error);
     res.status(500).json({ error: 'Failed to send message' });
   }
 });
@@ -687,7 +688,7 @@ apiRouter.post('/traceroute', async (req, res) => {
     await meshtasticManager.sendTraceroute(destinationNum, 0);
     res.json({ success: true, message: `Traceroute request sent to ${destinationNum.toString(16)}` });
   } catch (error) {
-    console.error('Error sending traceroute:', error);
+    logger.error('Error sending traceroute:', error);
     res.status(500).json({ error: 'Failed to send traceroute' });
   }
 });
@@ -718,7 +719,7 @@ apiRouter.get('/traceroutes/recent', (req, res) => {
 
     res.json(traceroutesWithHops);
   } catch (error) {
-    console.error('Error fetching recent traceroutes:', error);
+    logger.error('Error fetching recent traceroutes:', error);
     res.status(500).json({ error: 'Failed to fetch recent traceroutes' });
   }
 });
@@ -744,7 +745,7 @@ apiRouter.get('/route-segments/longest-active', (_req, res) => {
 
     res.json(enrichedSegment);
   } catch (error) {
-    console.error('Error fetching longest active route segment:', error);
+    logger.error('Error fetching longest active route segment:', error);
     res.status(500).json({ error: 'Failed to fetch longest active route segment' });
   }
 });
@@ -770,7 +771,7 @@ apiRouter.get('/route-segments/record-holder', (_req, res) => {
 
     res.json(enrichedSegment);
   } catch (error) {
-    console.error('Error fetching record holder route segment:', error);
+    logger.error('Error fetching record holder route segment:', error);
     res.status(500).json({ error: 'Failed to fetch record holder route segment' });
   }
 });
@@ -781,7 +782,7 @@ apiRouter.delete('/route-segments/record-holder', (_req, res) => {
     databaseService.clearRecordHolderSegment();
     res.json({ success: true, message: 'Record holder cleared' });
   } catch (error) {
-    console.error('Error clearing record holder:', error);
+    logger.error('Error clearing record holder:', error);
     res.status(500).json({ error: 'Failed to clear record holder' });
   }
 });
@@ -811,7 +812,7 @@ apiRouter.get('/neighbor-info', (_req, res) => {
 
     res.json(enrichedNeighborInfo);
   } catch (error) {
-    console.error('Error fetching neighbor info:', error);
+    logger.error('Error fetching neighbor info:', error);
     res.status(500).json({ error: 'Failed to fetch neighbor info' });
   }
 });
@@ -837,7 +838,7 @@ apiRouter.get('/neighbor-info/:nodeNum', (req, res) => {
 
     res.json(enrichedNeighborInfo);
   } catch (error) {
-    console.error('Error fetching neighbor info for node:', error);
+    logger.error('Error fetching neighbor info for node:', error);
     res.status(500).json({ error: 'Failed to fetch neighbor info for node' });
   }
 });
@@ -857,7 +858,7 @@ apiRouter.get('/telemetry/:nodeId', (req, res) => {
     const recentTelemetry = databaseService.getTelemetryByNodeAveraged(nodeId, cutoffTime, 3, hoursParam);
     res.json(recentTelemetry);
   } catch (error) {
-    console.error('Error fetching telemetry:', error);
+    logger.error('Error fetching telemetry:', error);
     res.status(500).json({ error: 'Failed to fetch telemetry' });
   }
 });
@@ -889,7 +890,7 @@ apiRouter.get('/telemetry/available/nodes', (_req, res) => {
       weather: nodesWithWeather
     });
   } catch (error) {
-    console.error('Error checking telemetry availability:', error);
+    logger.error('Error checking telemetry availability:', error);
     res.status(500).json({ error: 'Failed to check telemetry availability' });
   }
 });
@@ -900,7 +901,7 @@ apiRouter.get('/connection', (_req, res) => {
     const status = meshtasticManager.getConnectionStatus();
     res.json(status);
   } catch (error) {
-    console.error('Error getting connection status:', error);
+    logger.error('Error getting connection status:', error);
     res.status(500).json({ error: 'Failed to get connection status' });
   }
 });
@@ -932,7 +933,7 @@ apiRouter.get('/config', async (_req, res) => {
       deviceMetadata: deviceMetadata
     });
   } catch (error) {
-    console.error('Error in /api/config:', error);
+    logger.error('Error in /api/config:', error);
     res.json({
       meshtasticNodeIp: process.env.MESHTASTIC_NODE_IP || '192.168.1.100',
       meshtasticTcpPort: parseInt(process.env.MESHTASTIC_TCP_PORT || '4403', 10),
@@ -952,7 +953,7 @@ apiRouter.get('/device-config', async (_req, res) => {
       res.status(503).json({ error: 'Unable to retrieve device configuration' });
     }
   } catch (error) {
-    console.error('Error fetching device config:', error);
+    logger.error('Error fetching device config:', error);
     res.status(500).json({ error: 'Failed to fetch device configuration' });
   }
 });
@@ -960,7 +961,7 @@ apiRouter.get('/device-config', async (_req, res) => {
 // Refresh nodes from device endpoint
 apiRouter.post('/nodes/refresh', async (_req, res) => {
   try {
-    console.log('🔄 Manual node database refresh requested...');
+    logger.debug('🔄 Manual node database refresh requested...');
 
     // Trigger full node database refresh
     await meshtasticManager.refreshNodeDatabase();
@@ -968,7 +969,7 @@ apiRouter.post('/nodes/refresh', async (_req, res) => {
     const nodeCount = databaseService.getNodeCount();
     const channelCount = databaseService.getChannelCount();
 
-    console.log(`✅ Node refresh complete: ${nodeCount} nodes, ${channelCount} channels`);
+    logger.debug(`✅ Node refresh complete: ${nodeCount} nodes, ${channelCount} channels`);
 
     res.json({
       success: true,
@@ -977,7 +978,7 @@ apiRouter.post('/nodes/refresh', async (_req, res) => {
       message: `Refreshed ${nodeCount} nodes and ${channelCount} channels`
     });
   } catch (error) {
-    console.error('❌ Failed to refresh nodes:', error);
+    logger.error('❌ Failed to refresh nodes:', error);
     res.status(500).json({
       error: 'Failed to refresh node database',
       details: error instanceof Error ? error.message : 'Unknown error'
@@ -988,14 +989,14 @@ apiRouter.post('/nodes/refresh', async (_req, res) => {
 // Refresh channels from device endpoint
 apiRouter.post('/channels/refresh', async (_req, res) => {
   try {
-    console.log('🔄 Manual channel refresh requested...');
+    logger.debug('🔄 Manual channel refresh requested...');
 
     // Trigger full node database refresh (includes channels)
     await meshtasticManager.refreshNodeDatabase();
 
     const channelCount = databaseService.getChannelCount();
 
-    console.log(`✅ Channel refresh complete: ${channelCount} channels`);
+    logger.debug(`✅ Channel refresh complete: ${channelCount} channels`);
 
     res.json({
       success: true,
@@ -1003,7 +1004,7 @@ apiRouter.post('/channels/refresh', async (_req, res) => {
       message: `Refreshed ${channelCount} channels`
     });
   } catch (error) {
-    console.error('❌ Failed to refresh channels:', error);
+    logger.error('❌ Failed to refresh channels:', error);
     res.status(500).json({
       error: 'Failed to refresh channel database',
       details: error instanceof Error ? error.message : 'Unknown error'
@@ -1022,7 +1023,7 @@ apiRouter.post('/settings/traceroute-interval', (req, res) => {
     meshtasticManager.setTracerouteInterval(intervalMinutes);
     res.json({ success: true, intervalMinutes });
   } catch (error) {
-    console.error('Error setting traceroute interval:', error);
+    logger.error('Error setting traceroute interval:', error);
     res.status(500).json({ error: 'Failed to set traceroute interval' });
   }
 });
@@ -1033,7 +1034,7 @@ apiRouter.get('/settings', (_req, res) => {
     const settings = databaseService.getAllSettings();
     res.json(settings);
   } catch (error) {
-    console.error('Error fetching settings:', error);
+    logger.error('Error fetching settings:', error);
     res.status(500).json({ error: 'Failed to fetch settings' });
   }
 });
@@ -1066,7 +1067,7 @@ apiRouter.post('/settings', (req, res) => {
 
     res.json({ success: true, settings: filteredSettings });
   } catch (error) {
-    console.error('Error saving settings:', error);
+    logger.error('Error saving settings:', error);
     res.status(500).json({ error: 'Failed to save settings' });
   }
 });
@@ -1079,7 +1080,7 @@ apiRouter.delete('/settings', (_req, res) => {
     meshtasticManager.setTracerouteInterval(3);
     res.json({ success: true, message: 'Settings reset to defaults' });
   } catch (error) {
-    console.error('Error resetting settings:', error);
+    logger.error('Error resetting settings:', error);
     res.status(500).json({ error: 'Failed to reset settings' });
   }
 });
@@ -1092,7 +1093,7 @@ apiRouter.post('/purge/nodes', async (_req, res) => {
     await meshtasticManager.refreshNodeDatabase();
     res.json({ success: true, message: 'All nodes and traceroutes purged, refresh triggered' });
   } catch (error) {
-    console.error('Error purging nodes:', error);
+    logger.error('Error purging nodes:', error);
     res.status(500).json({ error: 'Failed to purge nodes' });
   }
 });
@@ -1102,7 +1103,7 @@ apiRouter.post('/purge/telemetry', (_req, res) => {
     databaseService.purgeAllTelemetry();
     res.json({ success: true, message: 'All telemetry data purged' });
   } catch (error) {
-    console.error('Error purging telemetry:', error);
+    logger.error('Error purging telemetry:', error);
     res.status(500).json({ error: 'Failed to purge telemetry' });
   }
 });
@@ -1112,7 +1113,7 @@ apiRouter.post('/purge/messages', (_req, res) => {
     databaseService.purgeAllMessages();
     res.json({ success: true, message: 'All messages purged' });
   } catch (error) {
-    console.error('Error purging messages:', error);
+    logger.error('Error purging messages:', error);
     res.status(500).json({ error: 'Failed to purge messages' });
   }
 });
@@ -1124,7 +1125,7 @@ apiRouter.get('/config/current', (_req, res) => {
     const config = meshtasticManager.getCurrentConfig();
     res.json(config);
   } catch (error) {
-    console.error('Error getting current config:', error);
+    logger.error('Error getting current config:', error);
     res.status(500).json({ error: 'Failed to get current configuration' });
   }
 });
@@ -1135,7 +1136,7 @@ apiRouter.post('/config/device', async (req, res) => {
     await meshtasticManager.setDeviceConfig(config);
     res.json({ success: true, message: 'Device configuration sent' });
   } catch (error) {
-    console.error('Error setting device config:', error);
+    logger.error('Error setting device config:', error);
     res.status(500).json({ error: 'Failed to set device configuration' });
   }
 });
@@ -1146,7 +1147,7 @@ apiRouter.post('/config/lora', async (req, res) => {
     await meshtasticManager.setLoRaConfig(config);
     res.json({ success: true, message: 'LoRa configuration sent' });
   } catch (error) {
-    console.error('Error setting LoRa config:', error);
+    logger.error('Error setting LoRa config:', error);
     res.status(500).json({ error: 'Failed to set LoRa configuration' });
   }
 });
@@ -1157,7 +1158,7 @@ apiRouter.post('/config/position', async (req, res) => {
     await meshtasticManager.setPositionConfig(config);
     res.json({ success: true, message: 'Position configuration sent' });
   } catch (error) {
-    console.error('Error setting position config:', error);
+    logger.error('Error setting position config:', error);
     res.status(500).json({ error: 'Failed to set position configuration' });
   }
 });
@@ -1168,19 +1169,19 @@ apiRouter.post('/config/mqtt', async (req, res) => {
     await meshtasticManager.setMQTTConfig(config);
     res.json({ success: true, message: 'MQTT configuration sent' });
   } catch (error) {
-    console.error('Error setting MQTT config:', error);
+    logger.error('Error setting MQTT config:', error);
     res.status(500).json({ error: 'Failed to set MQTT configuration' });
   }
 });
 
 apiRouter.post('/config/neighborinfo', async (req, res) => {
-  console.log('🔍 DEBUG: /config/neighborinfo endpoint called with body:', JSON.stringify(req.body));
+  logger.debug('🔍 DEBUG: /config/neighborinfo endpoint called with body:', JSON.stringify(req.body));
   try {
     const config = req.body;
     await meshtasticManager.setNeighborInfoConfig(config);
     res.json({ success: true, message: 'NeighborInfo configuration sent' });
   } catch (error) {
-    console.error('Error setting NeighborInfo config:', error);
+    logger.error('Error setting NeighborInfo config:', error);
     res.status(500).json({ error: 'Failed to set NeighborInfo configuration' });
   }
 });
@@ -1195,7 +1196,7 @@ apiRouter.post('/config/owner', async (req, res) => {
     await meshtasticManager.setNodeOwner(longName, shortName);
     res.json({ success: true, message: 'Node owner updated' });
   } catch (error) {
-    console.error('Error setting node owner:', error);
+    logger.error('Error setting node owner:', error);
     res.status(500).json({ error: 'Failed to set node owner' });
   }
 });
@@ -1210,7 +1211,7 @@ apiRouter.post('/config/request', async (req, res) => {
     await meshtasticManager.requestConfig(configType);
     res.json({ success: true, message: 'Config request sent' });
   } catch (error) {
-    console.error('Error requesting config:', error);
+    logger.error('Error requesting config:', error);
     res.status(500).json({ error: 'Failed to request configuration' });
   }
 });
@@ -1225,7 +1226,7 @@ apiRouter.post('/config/module/request', async (req, res) => {
     await meshtasticManager.requestModuleConfig(configType);
     res.json({ success: true, message: 'Module config request sent' });
   } catch (error) {
-    console.error('Error requesting module config:', error);
+    logger.error('Error requesting module config:', error);
     res.status(500).json({ error: 'Failed to request module configuration' });
   }
 });
@@ -1236,7 +1237,7 @@ apiRouter.post('/device/reboot', async (req, res) => {
     await meshtasticManager.rebootDevice(seconds);
     res.json({ success: true, message: `Device will reboot in ${seconds} seconds` });
   } catch (error) {
-    console.error('Error rebooting device:', error);
+    logger.error('Error rebooting device:', error);
     res.status(500).json({ error: 'Failed to reboot device' });
   }
 });
@@ -1358,7 +1359,7 @@ if (BASE_URL) {
 
 // Error handling middleware
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error('Unhandled error:', err);
+  logger.error('Unhandled error:', err);
   res.status(500).json({
     error: 'Internal server error',
     message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
@@ -1367,20 +1368,20 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 
 // Graceful shutdown
 process.on('SIGINT', () => {
-  console.log('Received SIGINT, shutting down gracefully...');
+  logger.debug('Received SIGINT, shutting down gracefully...');
   meshtasticManager.disconnect();
   databaseService.close();
   process.exit(0);
 });
 
 process.on('SIGTERM', () => {
-  console.log('Received SIGTERM, shutting down gracefully...');
+  logger.debug('Received SIGTERM, shutting down gracefully...');
   meshtasticManager.disconnect();
   databaseService.close();
   process.exit(0);
 });
 
 app.listen(PORT, () => {
-  console.log(`MeshMonitor server running on port ${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  logger.debug(`MeshMonitor server running on port ${PORT}`);
+  logger.debug(`Environment: ${process.env.NODE_ENV || 'development'}`);
 });
