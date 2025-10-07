@@ -1602,9 +1602,12 @@ function App() {
                 >
                   <option value="longName">Sort: Name</option>
                   <option value="shortName">Sort: Short Name</option>
+                  <option value="id">Sort: ID</option>
                   <option value="lastHeard">Sort: Updated</option>
                   <option value="snr">Sort: Signal</option>
                   <option value="battery">Sort: Charge</option>
+                  <option value="hwModel">Sort: Hardware</option>
+                  <option value="location">Sort: Location</option>
                   <option value="hops">Sort: Hops</option>
                 </select>
                 <button
