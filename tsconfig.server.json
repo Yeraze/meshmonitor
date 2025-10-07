@@ -14,7 +14,8 @@
   },
   "include": [
     "src/server/**/*",
-    "src/services/**/*"
+    "src/services/**/*",
+    "src/utils/**/*"
   ],
   "exclude": [
     "src/**/*.test.ts",
