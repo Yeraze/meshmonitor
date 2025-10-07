@@ -1,5 +1,6 @@
 import { Socket } from 'net';
 import { EventEmitter } from 'events';
+import { logger } from '../utils/logger.js';
 
 export interface TcpTransportConfig {
   host: string;
@@ -24,7 +25,7 @@ export class TcpTransport extends EventEmitter {
 
   async connect(host: string, port: number = 4403): Promise<void> {
     if (this.isConnecting || this.isConnected) {
-      console.log('Already connected or connecting');
+      logger.debug('Already connected or connecting');
       return;
     }
 
@@ -42,7 +43,7 @@ export class TcpTransport extends EventEmitter {
       }
 
       this.isConnecting = true;
-      console.log(`📡 Connecting to TCP ${this.config.host}:${this.config.port}...`);
+      logger.debug(`📡 Connecting to TCP ${this.config.host}:${this.config.port}...`);
 
       this.socket = new Socket();
 
@@ -65,7 +66,7 @@ export class TcpTransport extends EventEmitter {
         this.reconnectAttempts = 0;
         this.buffer = Buffer.alloc(0); // Reset buffer on new connection
 
-        console.log(`✅ TCP connected to ${this.config?.host}:${this.config?.port}`);
+        logger.debug(`✅ TCP connected to ${this.config?.host}:${this.config?.port}`);
         this.emit('connect');
         resolve();
       });
@@ -76,7 +77,7 @@ export class TcpTransport extends EventEmitter {
 
       this.socket.on('error', (error: Error) => {
         clearTimeout(connectTimeout);
-        console.error('❌ TCP socket error:', error.message);
+        logger.error('❌ TCP socket error:', error.message);
         this.emit('error', error);
 
         if (this.isConnecting) {
@@ -91,7 +92,7 @@ export class TcpTransport extends EventEmitter {
         this.isConnected = false;
 
         if (wasConnected) {
-          console.log('🔌 TCP connection closed');
+          logger.debug('🔌 TCP connection closed');
           this.emit('disconnect');
         }
 
@@ -99,7 +100,7 @@ export class TcpTransport extends EventEmitter {
         if (this.shouldReconnect && this.reconnectAttempts < this.maxReconnectAttempts) {
           this.scheduleReconnect();
         } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-          console.error('❌ Max reconnection attempts reached');
+          logger.error('❌ Max reconnection attempts reached');
           this.emit('error', new Error('Max reconnection attempts reached'));
         }
       });
@@ -118,11 +119,11 @@ export class TcpTransport extends EventEmitter {
     // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 30s (capped)
     const delay = Math.min(Math.pow(2, this.reconnectAttempts - 1) * 1000, 30000);
 
-    console.log(`🔄 Reconnecting in ${delay / 1000}s (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
+    logger.debug(`🔄 Reconnecting in ${delay / 1000}s (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
 
     this.reconnectTimeout = setTimeout(() => {
       this.doConnect().catch((error) => {
-        console.error('Reconnection failed:', error.message);
+        logger.error('Reconnection failed:', error.message);
       });
     }, delay);
   }
@@ -145,7 +146,7 @@ export class TcpTransport extends EventEmitter {
     this.isConnecting = false;
     this.buffer = Buffer.alloc(0);
 
-    console.log('🛑 TCP transport disconnected');
+    logger.debug('🛑 TCP transport disconnected');
   }
 
   async send(data: Uint8Array): Promise<void> {
@@ -173,10 +174,10 @@ export class TcpTransport extends EventEmitter {
 
       this.socket.write(packet, (error) => {
         if (error) {
-          console.error('❌ Failed to send data:', error.message);
+          logger.error('❌ Failed to send data:', error.message);
           reject(error);
         } else {
-          console.log(`📤 Sent ${data.length} bytes`);
+          logger.debug(`📤 Sent ${data.length} bytes`);
           resolve();
         }
       });
@@ -197,7 +198,7 @@ export class TcpTransport extends EventEmitter {
         if (this.buffer.length > 0) {
           const debugOutput = this.buffer.toString('utf8', 0, Math.min(this.buffer.length, 100));
           if (debugOutput.trim().length > 0) {
-            console.log('🐛 Debug output:', debugOutput);
+            logger.debug('🐛 Debug output:', debugOutput);
           }
         }
         this.buffer = Buffer.alloc(0);
@@ -208,7 +209,7 @@ export class TcpTransport extends EventEmitter {
       if (startIndex > 0) {
         const debugOutput = this.buffer.toString('utf8', 0, startIndex);
         if (debugOutput.trim().length > 0) {
-          console.log('🐛 Debug output:', debugOutput);
+          logger.debug('🐛 Debug output:', debugOutput);
         }
         this.buffer = this.buffer.subarray(startIndex);
       }
@@ -225,7 +226,7 @@ export class TcpTransport extends EventEmitter {
 
       // Validate payload length
       if (payloadLength > this.MAX_PACKET_SIZE) {
-        console.warn(`⚠️ Invalid payload length ${payloadLength}, searching for next frame`);
+        logger.warn(`⚠️ Invalid payload length ${payloadLength}, searching for next frame`);
         // Skip this header and look for next frame
         this.buffer = this.buffer.subarray(1);
         continue;
@@ -241,7 +242,7 @@ export class TcpTransport extends EventEmitter {
       // Extract payload
       const payload = this.buffer.subarray(4, frameLength);
 
-      console.log(`📥 Received frame: ${payloadLength} bytes`);
+      logger.debug(`📥 Received frame: ${payloadLength} bytes`);
 
       // Emit the message
       this.emit('message', new Uint8Array(payload));
