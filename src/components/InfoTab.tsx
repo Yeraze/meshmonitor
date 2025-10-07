@@ -7,6 +7,7 @@ import TelemetryGraphs from './TelemetryGraphs';
 import { version } from '../../package.json';
 import apiService from '../services/api';
 import { formatDistance } from '../utils/distance';
+import { logger } from '../utils/logger';
 
 interface RouteSegment {
   id: number;
@@ -67,7 +68,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
       setLongestActiveSegment(longest);
       setRecordHolderSegment(recordHolder);
     } catch (error) {
-      console.error('Error fetching route segments:', error);
+      logger.error('Error fetching route segments:', error);
     } finally {
       setLoadingSegments(false);
     }
@@ -82,7 +83,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
       await apiService.clearRecordHolderSegment();
       setRecordHolderSegment(null);
     } catch (error) {
-      console.error('Error clearing record holder:', error);
+      logger.error('Error clearing record holder:', error);
       alert('Failed to clear record holder');
     }
   };
