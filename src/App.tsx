@@ -497,6 +497,11 @@ function App() {
     }
   };
 
+  const handleConfigChangeTriggeringReboot = () => {
+    console.log('⚙️ Config change sent, device will reboot to apply changes...');
+    setConnectionStatus('rebooting');
+  };
+
   const handleRebootDevice = async (): Promise<boolean> => {
     try {
       console.log('🔄 Initiating device reboot sequence...');
@@ -3229,6 +3234,7 @@ function App() {
           <ConfigurationTab
             baseUrl={baseUrl}
             onRebootDevice={handleRebootDevice}
+            onConfigChangeTriggeringReboot={handleConfigChangeTriggeringReboot}
           />
         )}
       </main>

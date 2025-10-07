@@ -4,9 +4,10 @@ import apiService from '../services/api';
 interface ConfigurationTabProps {
   baseUrl?: string; // Optional, not used in component but passed from App.tsx
   onRebootDevice?: () => Promise<boolean>;
+  onConfigChangeTriggeringReboot?: () => void;
 }
 
-const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ onRebootDevice }) => {
+const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ onRebootDevice, onConfigChangeTriggeringReboot }) => {
   // Device Config State
   const [longName, setLongName] = useState('');
   const [shortName, setShortName] = useState('');
@@ -266,7 +267,9 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ onRebootDevice }) =
         role,
         nodeInfoBroadcastSecs: nodeInfoBroadcastSecs
       });
-      setStatusMessage('Device configuration saved successfully!');
+      setStatusMessage('Device configuration saved successfully! Device will reboot...');
+      // Notify parent that config change will trigger reboot
+      onConfigChangeTriggeringReboot?.();
     } catch (error) {
       console.error('Error saving device config:', error);
       setStatusMessage(`Error: ${error instanceof Error ? error.message : 'Failed to save device configuration'}`);
@@ -280,7 +283,8 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ onRebootDevice }) =
     setStatusMessage('');
     try {
       await apiService.setNodeOwner(longName, shortName);
-      setStatusMessage('Node names saved successfully!');
+      setStatusMessage('Node names saved successfully! Device will reboot...');
+      onConfigChangeTriggeringReboot?.();
     } catch (error) {
       console.error('Error saving node owner:', error);
       setStatusMessage(`Error: ${error instanceof Error ? error.message : 'Failed to save node names'}`);
@@ -298,7 +302,8 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ onRebootDevice }) =
         modemPreset,
         region
       });
-      setStatusMessage('LoRa configuration saved successfully!');
+      setStatusMessage('LoRa configuration saved successfully! Device will reboot...');
+      onConfigChangeTriggeringReboot?.();
     } catch (error) {
       console.error('Error saving LoRa config:', error);
       setStatusMessage(`Error: ${error instanceof Error ? error.message : 'Failed to save LoRa configuration'}`);
@@ -315,7 +320,8 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ onRebootDevice }) =
         positionBroadcastSecs,
         positionBroadcastSmartEnabled: positionSmartEnabled
       });
-      setStatusMessage('Position configuration saved successfully!');
+      setStatusMessage('Position configuration saved successfully! Device will reboot...');
+      onConfigChangeTriggeringReboot?.();
     } catch (error) {
       console.error('Error saving position config:', error);
       setStatusMessage(`Error: ${error instanceof Error ? error.message : 'Failed to save position configuration'}`);
@@ -336,7 +342,8 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ onRebootDevice }) =
         encryptionEnabled: mqttEncryptionEnabled,
         jsonEnabled: mqttJsonEnabled
       });
-      setStatusMessage('MQTT configuration saved successfully!');
+      setStatusMessage('MQTT configuration saved successfully! Device will reboot...');
+      onConfigChangeTriggeringReboot?.();
     } catch (error) {
       console.error('Error saving MQTT config:', error);
       setStatusMessage(`Error: ${error instanceof Error ? error.message : 'Failed to save MQTT configuration'}`);
@@ -355,7 +362,8 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ onRebootDevice }) =
         enabled: neighborInfoEnabled,
         updateInterval: validInterval
       });
-      setStatusMessage('NeighborInfo configuration saved successfully!');
+      setStatusMessage('NeighborInfo configuration saved successfully! Device will reboot...');
+      onConfigChangeTriggeringReboot?.();
       if (validInterval !== neighborInfoInterval) {
         setNeighborInfoInterval(validInterval);
       }

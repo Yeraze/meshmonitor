@@ -1273,6 +1273,7 @@ class DatabaseService {
     this.db.exec('DELETE FROM telemetry');
     this.db.exec('DELETE FROM traceroutes');
     this.db.exec('DELETE FROM route_segments');
+    this.db.exec('DELETE FROM neighbor_info');
     // Finally delete the nodes themselves
     this.db.exec('DELETE FROM nodes');
     console.log('✅ Successfully purged all nodes and related data');
