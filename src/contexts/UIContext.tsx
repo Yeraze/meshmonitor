@@ -36,8 +36,14 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   const [error, setError] = useState<string | null>(null);
   const [tracerouteLoading, setTracerouteLoading] = useState<string | null>(null);
   const [nodeFilter, setNodeFilter] = useState<string>('');
-  const [sortField, setSortField] = useState<SortField>('longName');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [sortField, setSortField] = useState<SortField>(() => {
+    const saved = localStorage.getItem('preferredSortField');
+    return (saved as SortField) || 'longName';
+  });
+  const [sortDirection, setSortDirection] = useState<SortDirection>(() => {
+    const saved = localStorage.getItem('preferredSortDirection');
+    return (saved === 'desc' ? 'desc' : 'asc') as SortDirection;
+  });
   const [showStatusModal, setShowStatusModal] = useState<boolean>(false);
   const [systemStatus, setSystemStatus] = useState<any>(null);
   const [nodePopup, setNodePopup] = useState<{nodeId: string, position: {x: number, y: number}} | null>(null);
