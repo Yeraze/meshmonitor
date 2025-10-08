@@ -12,6 +12,7 @@ import Dashboard from './components/Dashboard'
 import HopCountDisplay from './components/HopCountDisplay'
 import AutoAcknowledgeSection from './components/AutoAcknowledgeSection'
 import AutoTracerouteSection from './components/AutoTracerouteSection'
+import AutoAnnounceSection from './components/AutoAnnounceSection'
 import { ToastProvider } from './components/ToastContainer'
 import { version } from '../package.json'
 import { type TemperatureUnit } from './utils/temperature'
@@ -230,7 +231,17 @@ function App() {
     autoAckEnabled,
     setAutoAckEnabled,
     autoAckRegex,
-    setAutoAckRegex
+    setAutoAckRegex,
+    autoAnnounceEnabled,
+    setAutoAnnounceEnabled,
+    autoAnnounceIntervalHours,
+    setAutoAnnounceIntervalHours,
+    autoAnnounceMessage,
+    setAutoAnnounceMessage,
+    autoAnnounceChannelIndex,
+    setAutoAnnounceChannelIndex,
+    autoAnnounceOnStart,
+    setAutoAnnounceOnStart
   } = useUI();
 
   // Function to detect MQTT/bridge messages that should be filtered
@@ -342,6 +353,33 @@ function App() {
           if (settings.autoAckRegex) {
             setAutoAckRegex(settings.autoAckRegex);
             localStorage.setItem('autoAckRegex', settings.autoAckRegex);
+          }
+
+          if (settings.autoAnnounceEnabled !== undefined) {
+            setAutoAnnounceEnabled(settings.autoAnnounceEnabled === 'true');
+            localStorage.setItem('autoAnnounceEnabled', settings.autoAnnounceEnabled);
+          }
+
+          if (settings.autoAnnounceIntervalHours) {
+            const value = parseInt(settings.autoAnnounceIntervalHours);
+            setAutoAnnounceIntervalHours(value);
+            localStorage.setItem('autoAnnounceIntervalHours', value.toString());
+          }
+
+          if (settings.autoAnnounceMessage) {
+            setAutoAnnounceMessage(settings.autoAnnounceMessage);
+            localStorage.setItem('autoAnnounceMessage', settings.autoAnnounceMessage);
+          }
+
+          if (settings.autoAnnounceChannelIndex !== undefined) {
+            const value = parseInt(settings.autoAnnounceChannelIndex);
+            setAutoAnnounceChannelIndex(value);
+            localStorage.setItem('autoAnnounceChannelIndex', value.toString());
+          }
+
+          if (settings.autoAnnounceOnStart !== undefined) {
+            setAutoAnnounceOnStart(settings.autoAnnounceOnStart === 'true');
+            localStorage.setItem('autoAnnounceOnStart', settings.autoAnnounceOnStart);
           }
         }
 
@@ -3320,6 +3358,20 @@ function App() {
                 baseUrl={baseUrl}
                 onEnabledChange={setAutoAckEnabled}
                 onRegexChange={setAutoAckRegex}
+              />
+              <AutoAnnounceSection
+                enabled={autoAnnounceEnabled}
+                intervalHours={autoAnnounceIntervalHours}
+                message={autoAnnounceMessage}
+                channelIndex={autoAnnounceChannelIndex}
+                announceOnStart={autoAnnounceOnStart}
+                channels={channels}
+                baseUrl={baseUrl}
+                onEnabledChange={setAutoAnnounceEnabled}
+                onIntervalChange={setAutoAnnounceIntervalHours}
+                onMessageChange={setAutoAnnounceMessage}
+                onChannelChange={setAutoAnnounceChannelIndex}
+                onAnnounceOnStartChange={setAutoAnnounceOnStart}
               />
             </div>
           </div>
