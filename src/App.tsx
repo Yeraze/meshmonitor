@@ -1918,288 +1918,7 @@ function App() {
                 })}
 
                 {/* Draw traceroute paths */}
-                {showPaths && (() => {
-                  // Calculate segment usage counts and collect SNR values with timestamps
-                  const segmentUsage = new Map<string, number>();
-                  const segmentSNRs = new Map<string, Array<{snr: number; timestamp: number}>>();
-                  const segmentsList: Array<{
-                    key: string;
-                    positions: [number, number][];
-                    nodeNums: number[];
-                  }> = [];
-
-                  traceroutes.forEach((tr, idx) => {
-                    try {
-                      // Process forward path
-                      const routeForward = JSON.parse(tr.route || '[]');
-                      const snrForward = JSON.parse(tr.snrTowards || '[]');
-                      const timestamp = tr.timestamp || tr.createdAt || Date.now();
-                      // Reverse intermediate hops to get correct direction: source -> hops -> destination
-                      const forwardSequence: number[] = [tr.fromNodeNum, ...routeForward.slice().reverse(), tr.toNodeNum];
-                      const forwardPositions: Array<{nodeNum: number; pos: [number, number]}> = [];
-
-                      // Build forward sequence with positions
-                      forwardSequence.forEach((nodeNum) => {
-                        const node = nodes.find(n => n.nodeNum === nodeNum);
-                        if (node?.position?.latitude && node?.position?.longitude) {
-                          forwardPositions.push({
-                            nodeNum,
-                            pos: [node.position.latitude, node.position.longitude]
-                          });
-                        }
-                      });
-
-                      // Create forward segments and count usage
-                      for (let i = 0; i < forwardPositions.length - 1; i++) {
-                        const from = forwardPositions[i];
-                        const to = forwardPositions[i + 1];
-                        const segmentKey = [from.nodeNum, to.nodeNum].sort().join('-');
-
-                        segmentUsage.set(segmentKey, (segmentUsage.get(segmentKey) || 0) + 1);
-
-                        // Collect SNR value with timestamp for this segment
-                        // SNR array is in order of path: snrForward[i] is for the i-th link
-                        if (snrForward[i] !== undefined) {
-                          const snrValue = snrForward[i] / 4; // Scale SNR value
-                          if (!segmentSNRs.has(segmentKey)) {
-                            segmentSNRs.set(segmentKey, []);
-                          }
-                          segmentSNRs.get(segmentKey)!.push({snr: snrValue, timestamp});
-                        }
-
-                        segmentsList.push({
-                          key: `tr-${idx}-fwd-seg-${i}`,
-                          positions: [from.pos, to.pos],
-                          nodeNums: [from.nodeNum, to.nodeNum]
-                        });
-                      }
-
-                      // Process return path
-                      const routeBack = JSON.parse(tr.routeBack || '[]');
-                      const snrBack = JSON.parse(tr.snrBack || '[]');
-                      // routeBack hops need to be reversed to get correct direction: destination -> hops -> source
-                      const backSequence: number[] = [tr.toNodeNum, ...routeBack.slice().reverse(), tr.fromNodeNum];
-                      const backPositions: Array<{nodeNum: number; pos: [number, number]}> = [];
-
-                      // Build back sequence with positions
-                      backSequence.forEach((nodeNum) => {
-                        const node = nodes.find(n => n.nodeNum === nodeNum);
-                        if (node?.position?.latitude && node?.position?.longitude) {
-                          backPositions.push({
-                            nodeNum,
-                            pos: [node.position.latitude, node.position.longitude]
-                          });
-                        }
-                      });
-
-                      // Create back segments and count usage
-                      for (let i = 0; i < backPositions.length - 1; i++) {
-                        const from = backPositions[i];
-                        const to = backPositions[i + 1];
-                        const segmentKey = [from.nodeNum, to.nodeNum].sort().join('-');
-
-                        segmentUsage.set(segmentKey, (segmentUsage.get(segmentKey) || 0) + 1);
-
-                        // Collect SNR value with timestamp for this segment
-                        if (snrBack[i] !== undefined) {
-                          const snrValue = snrBack[i] / 4; // Scale SNR value
-                          if (!segmentSNRs.has(segmentKey)) {
-                            segmentSNRs.set(segmentKey, []);
-                          }
-                          segmentSNRs.get(segmentKey)!.push({snr: snrValue, timestamp});
-                        }
-
-                        segmentsList.push({
-                          key: `tr-${idx}-back-seg-${i}`,
-                          positions: [from.pos, to.pos],
-                          nodeNums: [from.nodeNum, to.nodeNum]
-                        });
-                      }
-                    } catch (error) {
-                      logger.error('Error parsing traceroute:', error);
-                    }
-                  });
-
-                  // Render segments with weighted lines
-                  return segmentsList.map((segment) => {
-                    const segmentKey = segment.nodeNums.sort().join('-');
-                    const usage = segmentUsage.get(segmentKey) || 1;
-                    // Base weight 2, add 1 per usage, max 8
-                    const weight = Math.min(2 + usage, 8);
-
-                    // Get node names for popup
-                    const node1 = nodes.find(n => n.nodeNum === segment.nodeNums[0]);
-                    const node2 = nodes.find(n => n.nodeNum === segment.nodeNums[1]);
-                    const node1Name = node1?.user?.longName || node1?.user?.shortName || `!${segment.nodeNums[0].toString(16)}`;
-                    const node2Name = node2?.user?.longName || node2?.user?.shortName || `!${segment.nodeNums[1].toString(16)}`;
-
-                    // Calculate distance if both nodes have position data
-                    let segmentDistanceKm = 0;
-                    if (node1?.position?.latitude && node1?.position?.longitude &&
-                        node2?.position?.latitude && node2?.position?.longitude) {
-                      segmentDistanceKm = calculateDistance(
-                        node1.position.latitude, node1.position.longitude,
-                        node2.position.latitude, node2.position.longitude
-                      );
-                    }
-
-                    // Calculate SNR statistics
-                    const snrData = segmentSNRs.get(segmentKey) || [];
-                    let snrStats = null;
-                    let chartData = null;
-                    if (snrData.length > 0) {
-                      const snrValues = snrData.map(d => d.snr);
-                      const minSNR = Math.min(...snrValues);
-                      const maxSNR = Math.max(...snrValues);
-                      const avgSNR = snrValues.reduce((sum, val) => sum + val, 0) / snrValues.length;
-                      snrStats = {
-                        min: minSNR.toFixed(1),
-                        max: maxSNR.toFixed(1),
-                        avg: avgSNR.toFixed(1),
-                        count: snrData.length
-                      };
-
-                      // Prepare chart data for 3+ samples (sorted by time of day)
-                      if (snrData.length >= 3) {
-                        chartData = snrData.map(d => {
-                          const date = new Date(d.timestamp);
-                          const hours = date.getHours();
-                          const minutes = date.getMinutes();
-                          // Convert to decimal hours (0-24) for continuous time axis
-                          const timeDecimal = hours + (minutes / 60);
-                          return {
-                            timeDecimal,
-                            timeLabel: `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`,
-                            snr: parseFloat(d.snr.toFixed(1)),
-                            fullTimestamp: d.timestamp
-                          };
-                        }).sort((a, b) => a.timeDecimal - b.timeDecimal);
-                      }
-                    }
-
-                    return (
-                      <Polyline
-                        key={segment.key}
-                        positions={segment.positions}
-                        color="#cba6f7"
-                        weight={weight}
-                        opacity={0.7}
-                      >
-                        <Popup>
-                          <div className="route-popup">
-                            <h4>Route Segment</h4>
-                            <div className="route-endpoints">
-                              <strong>{node1Name}</strong> ↔ <strong>{node2Name}</strong>
-                            </div>
-                            <div className="route-usage">
-                              Used in <strong>{usage}</strong> traceroute{usage !== 1 ? 's' : ''}
-                            </div>
-                            {segmentDistanceKm > 0 && (
-                              <div className="route-usage">
-                                Distance: <strong>{formatDistance(segmentDistanceKm, distanceUnit)}</strong>
-                              </div>
-                            )}
-                            {snrStats && (
-                              <div className="route-snr-stats">
-                                {snrStats.count === 1 ? (
-                                  <>
-                                    <h5>SNR:</h5>
-                                    <div className="snr-stat-row">
-                                      <span className="stat-value">{snrStats.min} dB</span>
-                                    </div>
-                                  </>
-                                ) : snrStats.count === 2 ? (
-                                  <>
-                                    <h5>SNR Statistics:</h5>
-                                    <div className="snr-stat-row">
-                                      <span className="stat-label">Min:</span>
-                                      <span className="stat-value">{snrStats.min} dB</span>
-                                    </div>
-                                    <div className="snr-stat-row">
-                                      <span className="stat-label">Max:</span>
-                                      <span className="stat-value">{snrStats.max} dB</span>
-                                    </div>
-                                    <div className="snr-stat-row">
-                                      <span className="stat-label">Samples:</span>
-                                      <span className="stat-value">{snrStats.count}</span>
-                                    </div>
-                                  </>
-                                ) : (
-                                  <>
-                                    <h5>SNR Statistics:</h5>
-                                    <div className="snr-stat-row">
-                                      <span className="stat-label">Min:</span>
-                                      <span className="stat-value">{snrStats.min} dB</span>
-                                    </div>
-                                    <div className="snr-stat-row">
-                                      <span className="stat-label">Max:</span>
-                                      <span className="stat-value">{snrStats.max} dB</span>
-                                    </div>
-                                    <div className="snr-stat-row">
-                                      <span className="stat-label">Average:</span>
-                                      <span className="stat-value">{snrStats.avg} dB</span>
-                                    </div>
-                                    <div className="snr-stat-row">
-                                      <span className="stat-label">Samples:</span>
-                                      <span className="stat-value">{snrStats.count}</span>
-                                    </div>
-                                    {chartData && (
-                                      <div className="snr-timeline-chart">
-                                        <ResponsiveContainer width="100%" height={150}>
-                                          <LineChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
-                                            <CartesianGrid strokeDasharray="3 3" stroke="var(--ctp-surface2)" />
-                                            <XAxis
-                                              dataKey="timeDecimal"
-                                              type="number"
-                                              domain={[0, 24]}
-                                              ticks={[0, 6, 12, 18, 24]}
-                                              tickFormatter={(value) => {
-                                                const hours = Math.floor(value);
-                                                const minutes = Math.round((value - hours) * 60);
-                                                return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-                                              }}
-                                              tick={{ fill: 'var(--ctp-subtext1)', fontSize: 10 }}
-                                              stroke="var(--ctp-surface2)"
-                                            />
-                                            <YAxis
-                                              tick={{ fill: 'var(--ctp-subtext1)', fontSize: 10 }}
-                                              stroke="var(--ctp-surface2)"
-                                              label={{ value: 'SNR (dB)', angle: -90, position: 'insideLeft', style: { fill: 'var(--ctp-subtext1)', fontSize: 10 } }}
-                                            />
-                                            <Tooltip
-                                              contentStyle={{
-                                                backgroundColor: 'var(--ctp-surface0)',
-                                                border: '1px solid var(--ctp-surface2)',
-                                                borderRadius: '4px',
-                                                fontSize: '12px'
-                                              }}
-                                              labelStyle={{ color: 'var(--ctp-text)' }}
-                                              labelFormatter={(value) => {
-                                                const item = chartData.find(d => d.timeDecimal === value);
-                                                return item ? item.timeLabel : value;
-                                              }}
-                                            />
-                                            <Line
-                                              type="monotone"
-                                              dataKey="snr"
-                                              stroke="var(--ctp-mauve)"
-                                              strokeWidth={2}
-                                              dot={{ fill: 'var(--ctp-mauve)', r: 3 }}
-                                            />
-                                          </LineChart>
-                                        </ResponsiveContainer>
-                                      </div>
-                                    )}
-                                  </>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </Popup>
-                      </Polyline>
-                    );
-                  });
-                })()}
+                {traceroutePathsElements}
 
                 {/* Draw neighbor info connections */}
                 {showNeighborInfo && neighborInfo.length > 0 && neighborInfo.map((ni, idx) => {
@@ -3136,6 +2855,292 @@ function App() {
   // Purge handlers moved to SettingsTab component
 
   // Removed renderSettingsTab - using SettingsTab component instead
+
+  // Memoize traceroute path rendering to prevent chart flickering
+  const traceroutePathsElements = useMemo(() => {
+    if (!showPaths) return null;
+
+    // Calculate segment usage counts and collect SNR values with timestamps
+    const segmentUsage = new Map<string, number>();
+    const segmentSNRs = new Map<string, Array<{snr: number; timestamp: number}>>();
+    const segmentsList: Array<{
+      key: string;
+      positions: [number, number][];
+      nodeNums: number[];
+    }> = [];
+
+    traceroutes.forEach((tr, idx) => {
+      try {
+        // Process forward path
+        const routeForward = JSON.parse(tr.route || '[]');
+        const snrForward = JSON.parse(tr.snrTowards || '[]');
+        const timestamp = tr.timestamp || tr.createdAt || Date.now();
+        // Reverse intermediate hops to get correct direction: source -> hops -> destination
+        const forwardSequence: number[] = [tr.fromNodeNum, ...routeForward.slice().reverse(), tr.toNodeNum];
+        const forwardPositions: Array<{nodeNum: number; pos: [number, number]}> = [];
+
+        // Build forward sequence with positions
+        forwardSequence.forEach((nodeNum) => {
+          const node = nodes.find(n => n.nodeNum === nodeNum);
+          if (node?.position?.latitude && node?.position?.longitude) {
+            forwardPositions.push({
+              nodeNum,
+              pos: [node.position.latitude, node.position.longitude]
+            });
+          }
+        });
+
+        // Create forward segments and count usage
+        for (let i = 0; i < forwardPositions.length - 1; i++) {
+          const from = forwardPositions[i];
+          const to = forwardPositions[i + 1];
+          const segmentKey = [from.nodeNum, to.nodeNum].sort().join('-');
+
+          segmentUsage.set(segmentKey, (segmentUsage.get(segmentKey) || 0) + 1);
+
+          // Collect SNR value with timestamp for this segment
+          // SNR array is in order of path: snrForward[i] is for the i-th link
+          if (snrForward[i] !== undefined) {
+            const snrValue = snrForward[i] / 4; // Scale SNR value
+            if (!segmentSNRs.has(segmentKey)) {
+              segmentSNRs.set(segmentKey, []);
+            }
+            segmentSNRs.get(segmentKey)!.push({snr: snrValue, timestamp});
+          }
+
+          segmentsList.push({
+            key: `tr-${idx}-fwd-seg-${i}`,
+            positions: [from.pos, to.pos],
+            nodeNums: [from.nodeNum, to.nodeNum]
+          });
+        }
+
+        // Process return path
+        const routeBack = JSON.parse(tr.routeBack || '[]');
+        const snrBack = JSON.parse(tr.snrBack || '[]');
+        // routeBack hops need to be reversed to get correct direction: destination -> hops -> source
+        const backSequence: number[] = [tr.toNodeNum, ...routeBack.slice().reverse(), tr.fromNodeNum];
+        const backPositions: Array<{nodeNum: number; pos: [number, number]}> = [];
+
+        // Build back sequence with positions
+        backSequence.forEach((nodeNum) => {
+          const node = nodes.find(n => n.nodeNum === nodeNum);
+          if (node?.position?.latitude && node?.position?.longitude) {
+            backPositions.push({
+              nodeNum,
+              pos: [node.position.latitude, node.position.longitude]
+            });
+          }
+        });
+
+        // Create back segments and count usage
+        for (let i = 0; i < backPositions.length - 1; i++) {
+          const from = backPositions[i];
+          const to = backPositions[i + 1];
+          const segmentKey = [from.nodeNum, to.nodeNum].sort().join('-');
+
+          segmentUsage.set(segmentKey, (segmentUsage.get(segmentKey) || 0) + 1);
+
+          // Collect SNR value with timestamp for this segment
+          if (snrBack[i] !== undefined) {
+            const snrValue = snrBack[i] / 4; // Scale SNR value
+            if (!segmentSNRs.has(segmentKey)) {
+              segmentSNRs.set(segmentKey, []);
+            }
+            segmentSNRs.get(segmentKey)!.push({snr: snrValue, timestamp});
+          }
+
+          segmentsList.push({
+            key: `tr-${idx}-back-seg-${i}`,
+            positions: [from.pos, to.pos],
+            nodeNums: [from.nodeNum, to.nodeNum]
+          });
+        }
+      } catch (error) {
+        logger.error('Error parsing traceroute:', error);
+      }
+    });
+
+    // Render segments with weighted lines
+    return segmentsList.map((segment) => {
+      const segmentKey = segment.nodeNums.sort().join('-');
+      const usage = segmentUsage.get(segmentKey) || 1;
+      // Base weight 2, add 1 per usage, max 8
+      const weight = Math.min(2 + usage, 8);
+
+      // Get node names for popup
+      const node1 = nodes.find(n => n.nodeNum === segment.nodeNums[0]);
+      const node2 = nodes.find(n => n.nodeNum === segment.nodeNums[1]);
+      const node1Name = node1?.user?.longName || node1?.user?.shortName || `!${segment.nodeNums[0].toString(16)}`;
+      const node2Name = node2?.user?.longName || node2?.user?.shortName || `!${segment.nodeNums[1].toString(16)}`;
+
+      // Calculate distance if both nodes have position data
+      let segmentDistanceKm = 0;
+      if (node1?.position?.latitude && node1?.position?.longitude &&
+          node2?.position?.latitude && node2?.position?.longitude) {
+        segmentDistanceKm = calculateDistance(
+          node1.position.latitude, node1.position.longitude,
+          node2.position.latitude, node2.position.longitude
+        );
+      }
+
+      // Calculate SNR statistics
+      const snrData = segmentSNRs.get(segmentKey) || [];
+      let snrStats = null;
+      let chartData = null;
+      if (snrData.length > 0) {
+        const snrValues = snrData.map(d => d.snr);
+        const minSNR = Math.min(...snrValues);
+        const maxSNR = Math.max(...snrValues);
+        const avgSNR = snrValues.reduce((sum, val) => sum + val, 0) / snrValues.length;
+        snrStats = {
+          min: minSNR.toFixed(1),
+          max: maxSNR.toFixed(1),
+          avg: avgSNR.toFixed(1),
+          count: snrData.length
+        };
+
+        // Prepare chart data for 3+ samples (sorted by time of day)
+        if (snrData.length >= 3) {
+          chartData = snrData.map(d => {
+            const date = new Date(d.timestamp);
+            const hours = date.getHours();
+            const minutes = date.getMinutes();
+            // Convert to decimal hours (0-24) for continuous time axis
+            const timeDecimal = hours + (minutes / 60);
+            return {
+              timeDecimal,
+              timeLabel: `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`,
+              snr: parseFloat(d.snr.toFixed(1)),
+              fullTimestamp: d.timestamp
+            };
+          }).sort((a, b) => a.timeDecimal - b.timeDecimal);
+        }
+      }
+
+      return (
+        <Polyline
+          key={segment.key}
+          positions={segment.positions}
+          color="#cba6f7"
+          weight={weight}
+          opacity={0.7}
+        >
+          <Popup>
+            <div className="route-popup">
+              <h4>Route Segment</h4>
+              <div className="route-endpoints">
+                <strong>{node1Name}</strong> ↔ <strong>{node2Name}</strong>
+              </div>
+              <div className="route-usage">
+                Used in <strong>{usage}</strong> traceroute{usage !== 1 ? 's' : ''}
+              </div>
+              {segmentDistanceKm > 0 && (
+                <div className="route-usage">
+                  Distance: <strong>{formatDistance(segmentDistanceKm, distanceUnit)}</strong>
+                </div>
+              )}
+              {snrStats && (
+                <div className="route-snr-stats">
+                  {snrStats.count === 1 ? (
+                    <>
+                      <h5>SNR:</h5>
+                      <div className="snr-stat-row">
+                        <span className="stat-value">{snrStats.min} dB</span>
+                      </div>
+                    </>
+                  ) : snrStats.count === 2 ? (
+                    <>
+                      <h5>SNR Statistics:</h5>
+                      <div className="snr-stat-row">
+                        <span className="stat-label">Min:</span>
+                        <span className="stat-value">{snrStats.min} dB</span>
+                      </div>
+                      <div className="snr-stat-row">
+                        <span className="stat-label">Max:</span>
+                        <span className="stat-value">{snrStats.max} dB</span>
+                      </div>
+                      <div className="snr-stat-row">
+                        <span className="stat-label">Samples:</span>
+                        <span className="stat-value">{snrStats.count}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <h5>SNR Statistics:</h5>
+                      <div className="snr-stat-row">
+                        <span className="stat-label">Min:</span>
+                        <span className="stat-value">{snrStats.min} dB</span>
+                      </div>
+                      <div className="snr-stat-row">
+                        <span className="stat-label">Max:</span>
+                        <span className="stat-value">{snrStats.max} dB</span>
+                      </div>
+                      <div className="snr-stat-row">
+                        <span className="stat-label">Average:</span>
+                        <span className="stat-value">{snrStats.avg} dB</span>
+                      </div>
+                      <div className="snr-stat-row">
+                        <span className="stat-label">Samples:</span>
+                        <span className="stat-value">{snrStats.count}</span>
+                      </div>
+                      {chartData && (
+                        <div className="snr-timeline-chart">
+                          <ResponsiveContainer width="100%" height={150}>
+                            <LineChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="var(--ctp-surface2)" />
+                              <XAxis
+                                dataKey="timeDecimal"
+                                type="number"
+                                domain={[0, 24]}
+                                ticks={[0, 6, 12, 18, 24]}
+                                tickFormatter={(value) => {
+                                  const hours = Math.floor(value);
+                                  const minutes = Math.round((value - hours) * 60);
+                                  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+                                }}
+                                tick={{ fill: 'var(--ctp-subtext1)', fontSize: 10 }}
+                                stroke="var(--ctp-surface2)"
+                              />
+                              <YAxis
+                                tick={{ fill: 'var(--ctp-subtext1)', fontSize: 10 }}
+                                stroke="var(--ctp-surface2)"
+                                label={{ value: 'SNR (dB)', angle: -90, position: 'insideLeft', style: { fill: 'var(--ctp-subtext1)', fontSize: 10 } }}
+                              />
+                              <Tooltip
+                                contentStyle={{
+                                  backgroundColor: 'var(--ctp-surface0)',
+                                  border: '1px solid var(--ctp-surface2)',
+                                  borderRadius: '4px',
+                                  fontSize: '12px'
+                                }}
+                                labelStyle={{ color: 'var(--ctp-text)' }}
+                                labelFormatter={(value) => {
+                                  const item = chartData.find(d => d.timeDecimal === value);
+                                  return item ? item.timeLabel : value;
+                                }}
+                              />
+                              <Line
+                                type="monotone"
+                                dataKey="snr"
+                                stroke="var(--ctp-mauve)"
+                                strokeWidth={2}
+                                dot={{ fill: 'var(--ctp-mauve)', r: 3 }}
+                              />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </Popup>
+        </Polyline>
+      );
+    });
+  }, [showPaths, traceroutes, nodes, distanceUnit]);
 
   return (
     <div className="app">
