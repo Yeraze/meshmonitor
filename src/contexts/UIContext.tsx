@@ -57,12 +57,12 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   });
   const [autoAckRegex, setAutoAckRegex] = useState<string>(() => {
     const saved = localStorage.getItem('autoAckRegex');
-    // Migrate old (?i)test pattern to new format
-    if (saved === '(?i)test') {
-      localStorage.setItem('autoAckRegex', 'test');
-      return 'test';
+    // Migrate old patterns to new format
+    if (saved === '(?i)test' || saved === 'test') {
+      localStorage.setItem('autoAckRegex', '^(test|ping)');
+      return '^(test|ping)';
     }
-    return saved || 'test';
+    return saved || '^(test|ping)';
   });
 
   return (

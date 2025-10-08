@@ -16,15 +16,15 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   onRegexChange,
 }) => {
   const [localEnabled, setLocalEnabled] = useState(enabled);
-  const [localRegex, setLocalRegex] = useState(regex || 'test');
+  const [localRegex, setLocalRegex] = useState(regex || '^(test|ping)');
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [testMessages, setTestMessages] = useState('test\nTest message\nHello world\nTESTING 123');
+  const [testMessages, setTestMessages] = useState('test\nTest message\nping\nPING\nHello world\nTESTING 123');
 
   // Update local state when props change
   useEffect(() => {
     setLocalEnabled(enabled);
-    setLocalRegex(regex || 'test');
+    setLocalRegex(regex || '^(test|ping)');
   }, [enabled, regex]);
 
   // Check if any settings have changed
@@ -33,9 +33,33 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     setHasChanges(changed);
   }, [localEnabled, localRegex, enabled, regex]);
 
+  // Validate regex pattern for safety
+  const validateRegex = (pattern: string): { valid: boolean; error?: string } => {
+    // Check length
+    if (pattern.length > 100) {
+      return { valid: false, error: 'Pattern too long (max 100 characters)' };
+    }
+
+    // Check for potentially dangerous patterns
+    if (/(\.\*){2,}|(\+.*\+)|(\*.*\*)|(\{[0-9]{3,}\})|(\{[0-9]+,\})/.test(pattern)) {
+      return { valid: false, error: 'Pattern too complex or may cause performance issues' };
+    }
+
+    // Try to compile
+    try {
+      new RegExp(pattern, 'i');
+      return { valid: true };
+    } catch (error) {
+      return { valid: false, error: 'Invalid regex syntax' };
+    }
+  };
+
   // Test if a message matches the regex (same logic as server)
   const testMessageMatch = (message: string): boolean => {
     if (!localRegex) return false;
+    const validation = validateRegex(localRegex);
+    if (!validation.valid) return false;
+
     try {
       const regex = new RegExp(localRegex, 'i');
       return regex.test(message);
@@ -46,18 +70,17 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   };
 
   const handleSave = async () => {
+    // Validate regex before saving
+    const validation = validateRegex(localRegex);
+    if (!validation.valid) {
+      alert(`Invalid regex pattern: ${validation.error}`);
+      return;
+    }
+
     setIsSaving(true);
     try {
-      // Update parent state
-      onEnabledChange(localEnabled);
-      onRegexChange(localRegex);
-
-      // Save to localStorage
-      localStorage.setItem('autoAckEnabled', String(localEnabled));
-      localStorage.setItem('autoAckRegex', localRegex);
-
-      // Sync to backend
-      await fetch(`${baseUrl}/api/settings`, {
+      // Sync to backend first
+      const response = await fetch(`${baseUrl}/api/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -65,6 +88,16 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
           autoAckRegex: localRegex
         })
       });
+
+      if (!response.ok) {
+        throw new Error(`Server returned ${response.status}`);
+      }
+
+      // Only update parent state and localStorage after successful API call
+      onEnabledChange(localEnabled);
+      onRegexChange(localRegex);
+      localStorage.setItem('autoAckEnabled', String(localEnabled));
+      localStorage.setItem('autoAckRegex', localRegex);
 
       setHasChanges(false);
     } catch (error) {
@@ -123,7 +156,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
             Message Pattern (Regular Expression)
             <span className="setting-description">
               Messages matching this pattern will trigger an automatic acknowledgment.
-              Pattern is case-insensitive. Default: <code>test</code>
+              Pattern is case-insensitive. Default: <code>^(test|ping)</code>
             </span>
           </label>
           <input
@@ -131,7 +164,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
             type="text"
             value={localRegex}
             onChange={(e) => setLocalRegex(e.target.value)}
-            placeholder="test"
+            placeholder="^(test|ping)"
             disabled={!localEnabled}
             className="setting-input"
             style={{ fontFamily: 'monospace' }}

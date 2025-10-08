@@ -68,6 +68,7 @@ class MeshtasticManager {
   private sessionPasskey: Uint8Array | null = null;  // Session passkey for admin messages
   private sessionPasskeyExpiry: number | null = null;  // Expiry time (expires after 300 seconds)
   private favoritesSupportCache: boolean | null = null;  // Cache firmware support check result
+  private cachedAutoAckRegex: { pattern: string; regex: RegExp } | null = null;  // Cached compiled regex
 
   constructor() {
     this.config = {
@@ -3005,17 +3006,24 @@ class MeshtasticManager {
       }
 
       // Use default regex if not set
-      const regexPattern = autoAckRegex || 'test';
+      const regexPattern = autoAckRegex || '^(test|ping)';
+
+      // Use cached regex if pattern hasn't changed, otherwise compile and cache
+      let regex: RegExp;
+      if (this.cachedAutoAckRegex && this.cachedAutoAckRegex.pattern === regexPattern) {
+        regex = this.cachedAutoAckRegex.regex;
+      } else {
+        try {
+          regex = new RegExp(regexPattern, 'i');
+          this.cachedAutoAckRegex = { pattern: regexPattern, regex };
+        } catch (error) {
+          logger.error('❌ Invalid auto-acknowledge regex pattern:', regexPattern, error);
+          return;
+        }
+      }
 
       // Test if message matches the pattern (case-insensitive by default)
-      let matches = false;
-      try {
-        const regex = new RegExp(regexPattern, 'i');
-        matches = regex.test(messageText);
-      } catch (error) {
-        logger.error('❌ Invalid auto-acknowledge regex pattern:', regexPattern, error);
-        return;
-      }
+      const matches = regex.test(messageText);
 
       if (!matches) {
         return;

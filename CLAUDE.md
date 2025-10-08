@@ -10,3 +10,4 @@ tools to resolve library id and get library docs without me having to explicitly
 - Our container doesn't have sqlite3 as a binary available.
 - When testing locally, use the docker-compose.dev.yml to build the local code.  Also, always make sure the proper code was deployed once the container is launched.
 - Official meshtastic protobuf definitions can be found at https://github.com/meshtastic/protobufs/
+- When updating the version, make sure you get both the package.json and Helm chart.. and regenerate the package-lock

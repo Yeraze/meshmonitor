@@ -1072,6 +1072,28 @@ apiRouter.post('/settings', (req, res) => {
       }
     }
 
+    // Validate autoAckRegex pattern
+    if ('autoAckRegex' in filteredSettings) {
+      const pattern = filteredSettings.autoAckRegex;
+
+      // Check length
+      if (pattern.length > 100) {
+        return res.status(400).json({ error: 'Regex pattern too long (max 100 characters)' });
+      }
+
+      // Check for potentially dangerous patterns
+      if (/(\.\*){2,}|(\+.*\+)|(\*.*\*)|(\{[0-9]{3,}\})|(\{[0-9]+,\})/.test(pattern)) {
+        return res.status(400).json({ error: 'Regex pattern too complex or may cause performance issues' });
+      }
+
+      // Try to compile
+      try {
+        new RegExp(pattern, 'i');
+      } catch (error) {
+        return res.status(400).json({ error: 'Invalid regex syntax' });
+      }
+    }
+
     // Save to database
     databaseService.setSettings(filteredSettings);
 
