@@ -1561,6 +1561,7 @@ class MeshtasticManager {
       }
 
       // Add position information if available
+      let positionTelemetryData: { timestamp: number; latitude: number; longitude: number; altitude?: number } | null = null;
       if (nodeInfo.position && (nodeInfo.position.latitudeI || nodeInfo.position.longitudeI)) {
         const coords = meshtasticProtobufService.convertCoordinates(
           nodeInfo.position.latitudeI,
@@ -1573,23 +1574,14 @@ class MeshtasticManager {
           nodeData.longitude = coords.longitude;
           nodeData.altitude = nodeInfo.position.altitude;
 
-          // Save position to telemetry table (historical tracking)
+          // Store position telemetry data to be inserted after node is created
           const timestamp = nodeInfo.position.time ? Number(nodeInfo.position.time) * 1000 : Date.now();
-          const now = Date.now();
-          databaseService.insertTelemetry({
-            nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'latitude',
-            timestamp, value: coords.latitude, unit: '°', createdAt: now
-          });
-          databaseService.insertTelemetry({
-            nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'longitude',
-            timestamp, value: coords.longitude, unit: '°', createdAt: now
-          });
-          if (nodeInfo.position.altitude !== undefined && nodeInfo.position.altitude !== null) {
-            databaseService.insertTelemetry({
-              nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'altitude',
-              timestamp, value: nodeInfo.position.altitude, unit: 'm', createdAt: now
-            });
-          }
+          positionTelemetryData = {
+            timestamp,
+            latitude: coords.latitude,
+            longitude: coords.longitude,
+            altitude: nodeInfo.position.altitude
+          };
         } else {
           logger.warn(`⚠️ Invalid position coordinates for node ${nodeId}: lat=${coords.latitude}, lon=${coords.longitude}. Skipping position save.`);
         }
@@ -1610,8 +1602,28 @@ class MeshtasticManager {
         }
       }
 
+      // Upsert node first to ensure it exists before inserting telemetry
       databaseService.upsertNode(nodeData);
       logger.debug(`🏠 Updated node info: ${nodeData.longName || nodeId}`);
+
+      // Now insert position telemetry if we have it (after node exists in database)
+      if (positionTelemetryData) {
+        const now = Date.now();
+        databaseService.insertTelemetry({
+          nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'latitude',
+          timestamp: positionTelemetryData.timestamp, value: positionTelemetryData.latitude, unit: '°', createdAt: now
+        });
+        databaseService.insertTelemetry({
+          nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'longitude',
+          timestamp: positionTelemetryData.timestamp, value: positionTelemetryData.longitude, unit: '°', createdAt: now
+        });
+        if (positionTelemetryData.altitude !== undefined && positionTelemetryData.altitude !== null) {
+          databaseService.insertTelemetry({
+            nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'altitude',
+            timestamp: positionTelemetryData.timestamp, value: positionTelemetryData.altitude, unit: 'm', createdAt: now
+          });
+        }
+      }
     } catch (error) {
       logger.error('❌ Error processing NodeInfo protobuf:', error);
     }
