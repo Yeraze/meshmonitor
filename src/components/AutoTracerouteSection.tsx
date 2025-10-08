@@ -72,7 +72,15 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
         border: '1px solid var(--ctp-surface2)',
         borderRadius: '8px'
       }}>
-        <h2 style={{ margin: 0 }}>Auto Traceroute</h2>
+        <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <input
+            type="checkbox"
+            checked={localEnabled}
+            onChange={(e) => setLocalEnabled(e.target.checked)}
+            style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
+          />
+          Auto Traceroute
+        </h2>
         <button
           onClick={handleSave}
           disabled={!hasChanges || isSaving}
@@ -89,15 +97,6 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
       </div>
 
       <div className="settings-section" style={{ opacity: localEnabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>
-        <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <input
-            type="checkbox"
-            checked={localEnabled}
-            onChange={(e) => setLocalEnabled(e.target.checked)}
-            style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
-          />
-          Auto Traceroute
-        </h3>
         <p style={{ marginBottom: '1rem', color: '#666', lineHeight: '1.5', marginLeft: '1.75rem' }}>
           When enabled, automatically send traceroute requests to all active nodes at the configured interval.
           This helps maintain up-to-date network topology information. <strong>Requires container restart to take effect.</strong>
