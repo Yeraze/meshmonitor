@@ -754,6 +754,9 @@ class MeshtasticManager {
         } else {
           logger.debug(`💾 Saved channel message from ${message.fromNodeId} on channel ${channelIndex}: "${messageText.substring(0, 30)}..." (replyId: ${message.replyId})`);
         }
+
+        // Auto-acknowledge matching messages
+        await this.checkAutoAcknowledge(message, messageText, channelIndex, isDirectMessage, fromNum, meshPacket.id);
       }
     } catch (error) {
       logger.error('❌ Error processing text message:', error);
@@ -2925,6 +2928,36 @@ class MeshtasticManager {
       await this.transport.send(textMessageData);
 
       logger.debug('Message sent successfully:', text, 'with ID:', messageId);
+
+      // Save sent message to database for UI display
+      const localNodeNum = databaseService.getSetting('localNodeNum');
+      const localNodeId = databaseService.getSetting('localNodeId');
+
+      if (localNodeNum && localNodeId) {
+        const toNodeId = destination ? `!${destination.toString(16).padStart(8, '0')}` : 'broadcast';
+
+        const message = {
+          id: `${localNodeNum}_${messageId}`,
+          fromNodeNum: parseInt(localNodeNum),
+          toNodeNum: destination || 0xffffffff,
+          fromNodeId: localNodeId,
+          toNodeId: toNodeId,
+          text: text,
+          channel: channel,
+          portnum: 1, // TEXT_MESSAGE_APP
+          timestamp: Date.now(),
+          rxTime: Date.now(),
+          hopStart: undefined,
+          hopLimit: undefined,
+          replyId: replyId || undefined,
+          emoji: emoji || undefined,
+          createdAt: Date.now()
+        };
+
+        databaseService.insertMessage(message);
+        logger.debug(`💾 Saved sent message to database: "${text.substring(0, 30)}..."`);
+      }
+
       return messageId;
     } catch (error) {
       logger.error('Error sending message:', error);
@@ -2947,6 +2980,68 @@ class MeshtasticManager {
     } catch (error) {
       logger.error('Error sending traceroute:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Check if message matches auto-acknowledge pattern and send automated reply
+   */
+  private async checkAutoAcknowledge(message: any, messageText: string, channelIndex: number, isDirectMessage: boolean, fromNum: number, packetId?: number): Promise<void> {
+    try {
+      // Get auto-acknowledge settings from database
+      const autoAckEnabled = databaseService.getSetting('autoAckEnabled');
+      const autoAckRegex = databaseService.getSetting('autoAckRegex');
+
+      // Skip if auto-acknowledge is disabled
+      if (autoAckEnabled !== 'true') {
+        return;
+      }
+
+      // Skip messages from our own locally connected node
+      const localNodeNum = databaseService.getSetting('localNodeNum');
+      if (localNodeNum && parseInt(localNodeNum) === fromNum) {
+        logger.debug('⏭️  Skipping auto-acknowledge for message from local node');
+        return;
+      }
+
+      // Use default regex if not set
+      const regexPattern = autoAckRegex || 'test';
+
+      // Test if message matches the pattern (case-insensitive by default)
+      let matches = false;
+      try {
+        const regex = new RegExp(regexPattern, 'i');
+        matches = regex.test(messageText);
+      } catch (error) {
+        logger.error('❌ Invalid auto-acknowledge regex pattern:', regexPattern, error);
+        return;
+      }
+
+      if (!matches) {
+        return;
+      }
+
+      // Calculate hop count (hopStart - hopLimit gives hops traveled)
+      const hopsTraveled = message.hopStart !== null && message.hopLimit !== null
+        ? message.hopStart - message.hopLimit
+        : 0;
+
+      // Format timestamp in local timezone (from TZ environment variable)
+      const timezone = process.env.TZ || 'America/New_York';
+      const receivedTime = new Date(message.timestamp).toLocaleString('en-US', { timeZone: timezone });
+
+      // Create auto-acknowledge message with robot emoji
+      const ackText = `🤖 Copy, ${hopsTraveled} hops at ${receivedTime}`;
+
+      // Send reply on same channel or as direct message
+      const destination = isDirectMessage ? fromNum : undefined;
+      const channel = isDirectMessage ? 0 : channelIndex;
+
+      logger.debug(`🤖 Auto-acknowledging message from ${message.fromNodeId}: "${messageText}" with "${ackText}"`);
+
+      await this.sendTextMessage(ackText, channel, destination, packetId);
+    } catch (error) {
+      logger.error('❌ Error in auto-acknowledge:', error);
     }
   }
 

@@ -1063,7 +1063,7 @@ apiRouter.post('/settings', (req, res) => {
     const settings = req.body;
 
     // Validate settings
-    const validKeys = ['maxNodeAgeHours', 'tracerouteIntervalMinutes', 'temperatureUnit', 'distanceUnit', 'telemetryVisualizationHours', 'telemetryFavorites'];
+    const validKeys = ['maxNodeAgeHours', 'tracerouteIntervalMinutes', 'temperatureUnit', 'distanceUnit', 'telemetryVisualizationHours', 'telemetryFavorites', 'autoAckEnabled', 'autoAckRegex'];
     const filteredSettings: Record<string, string> = {};
 
     for (const key of validKeys) {

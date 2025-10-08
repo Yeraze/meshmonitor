@@ -17,6 +17,7 @@ services:
     env_file: .env
     environment:
       - NODE_ENV=production
+      - TZ=America/New_York
 
 volumes:
   meshmonitor-data:
