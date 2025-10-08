@@ -812,6 +812,9 @@ class MeshtasticManager {
         const timestamp = position.time ? Number(position.time) * 1000 : Date.now();
         const now = Date.now();
 
+        // Track PKI encryption
+        this.trackPKIEncryption(meshPacket, fromNum);
+
         const nodeData: any = {
           nodeNum: fromNum,
           nodeId: nodeId,
@@ -860,6 +863,21 @@ class MeshtasticManager {
    */
 
   /**
+   * Track PKI encryption status for a node
+   */
+  private trackPKIEncryption(meshPacket: any, nodeNum: number): void {
+    if (meshPacket.pkiEncrypted || meshPacket.pki_encrypted) {
+      const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
+      databaseService.upsertNode({
+        nodeNum,
+        nodeId,
+        lastPKIPacket: Date.now()
+      });
+      logger.debug(`🔐 PKI-encrypted packet received from ${nodeId}`);
+    }
+  }
+
+  /**
    * Process user message (node info) using protobuf types
    */
   private async processNodeInfoMessageProtobuf(meshPacket: any, user: any): Promise<void> {
@@ -879,6 +897,17 @@ class MeshtasticManager {
         hopsAway: meshPacket.hopsAway,
         lastHeard: timestamp / 1000
       };
+
+      // Capture public key if present
+      if (user.publicKey && user.publicKey.length > 0) {
+        // Convert Uint8Array to base64 for storage
+        nodeData.publicKey = Buffer.from(user.publicKey).toString('base64');
+        nodeData.hasPKC = true;
+        logger.debug(`🔐 Captured public key for ${nodeId} (${user.longName}): ${nodeData.publicKey.substring(0, 16)}...`);
+      }
+
+      // Track if this packet was PKI encrypted (using the helper method)
+      this.trackPKIEncryption(meshPacket, fromNum);
 
       // Only include SNR/RSSI if they have valid values
       if (meshPacket.rxSnr && meshPacket.rxSnr !== 0) {
@@ -926,6 +955,9 @@ class MeshtasticManager {
       const nodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
       const timestamp = telemetry.time ? Number(telemetry.time) * 1000 : Date.now();
       const now = Date.now();
+
+      // Track PKI encryption
+      this.trackPKIEncryption(meshPacket, fromNum);
 
       const nodeData: any = {
         nodeNum: fromNum,
@@ -1298,7 +1330,7 @@ class MeshtasticManager {
       databaseService.insertTraceroute(tracerouteRecord);
       logger.debug(`💾 Saved traceroute record to traceroutes table`);
 
-      // Calculate and store route segment distances
+      // Calculate and store route segment distances, and estimate positions for nodes without GPS
       try {
         // Build the full route path: toNode -> intermediates -> fromNode
         const fullRoute = [toNum, ...route, fromNum];
@@ -1343,11 +1375,91 @@ class MeshtasticManager {
             logger.debug(`📏 Stored route segment: ${node1Id} -> ${node2Id}, distance: ${distanceKm.toFixed(2)} km`);
           }
         }
+
+        // Estimate positions for intermediate nodes without GPS
+        // Process forward route
+        this.estimateIntermediatePositions(fullRoute, timestamp);
+
+        // Process return route if it exists
+        if (routeBack.length > 0) {
+          const fullReturnRoute = [fromNum, ...routeBack, toNum];
+          this.estimateIntermediatePositions(fullReturnRoute, timestamp);
+        }
       } catch (error) {
         logger.error('❌ Error calculating route segment distances:', error);
       }
     } catch (error) {
       logger.error('❌ Error processing traceroute message:', error);
+    }
+  }
+
+  /**
+   * Estimate positions for nodes in a traceroute path that don't have GPS data
+   * by calculating the median (midpoint) between their neighbors
+   */
+  private estimateIntermediatePositions(routePath: number[], timestamp: number): void {
+    try {
+      // For each node in the path (excluding endpoints)
+      for (let i = 1; i < routePath.length - 1; i++) {
+        const nodeNum = routePath[i];
+        const prevNodeNum = routePath[i - 1];
+        const nextNodeNum = routePath[i + 1];
+
+        let node = databaseService.getNode(nodeNum);
+        const prevNode = databaseService.getNode(prevNodeNum);
+        const nextNode = databaseService.getNode(nextNodeNum);
+
+        // Ensure the node exists in the database first (foreign key constraint)
+        if (!node) {
+          const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
+          databaseService.upsertNode({
+            nodeNum,
+            nodeId,
+            longName: `Node ${nodeId}`,
+            shortName: nodeId.substring(1, 5),
+            lastHeard: Date.now() / 1000
+          });
+          node = databaseService.getNode(nodeNum);
+        }
+
+        // Only estimate if this node lacks position but both neighbors have position
+        if (node && (!node.latitude || !node.longitude) &&
+            prevNode?.latitude && prevNode?.longitude &&
+            nextNode?.latitude && nextNode?.longitude) {
+
+          // Calculate midpoint (median) between the two neighbors
+          const estimatedLat = (prevNode.latitude + nextNode.latitude) / 2;
+          const estimatedLon = (prevNode.longitude + nextNode.longitude) / 2;
+
+          const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
+          const now = Date.now();
+
+          // Store estimated position as telemetry with a special type prefix
+          databaseService.insertTelemetry({
+            nodeId,
+            nodeNum,
+            telemetryType: 'estimated_latitude',
+            timestamp,
+            value: estimatedLat,
+            unit: '° (est)',
+            createdAt: now
+          });
+
+          databaseService.insertTelemetry({
+            nodeId,
+            nodeNum,
+            telemetryType: 'estimated_longitude',
+            timestamp,
+            value: estimatedLon,
+            unit: '° (est)',
+            createdAt: now
+          });
+
+          logger.debug(`📍 Estimated position for ${nodeId} (${node.longName || nodeId}): ${estimatedLat.toFixed(6)}, ${estimatedLon.toFixed(6)} (midpoint between neighbors)`);
+        }
+      }
+    } catch (error) {
+      logger.error('❌ Error estimating intermediate positions:', error);
     }
   }
 

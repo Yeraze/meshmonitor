@@ -26,6 +26,10 @@ interface DataContextType {
   setNodesWithTelemetry: React.Dispatch<React.SetStateAction<Set<string>>>;
   nodesWithWeatherTelemetry: Set<string>;
   setNodesWithWeatherTelemetry: React.Dispatch<React.SetStateAction<Set<string>>>;
+  nodesWithEstimatedPosition: Set<string>;
+  setNodesWithEstimatedPosition: React.Dispatch<React.SetStateAction<Set<string>>>;
+  nodesWithPKC: Set<string>;
+  setNodesWithPKC: React.Dispatch<React.SetStateAction<Set<string>>>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -46,6 +50,8 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
   const [nodeAddress, setNodeAddress] = useState<string>('Loading...');
   const [nodesWithTelemetry, setNodesWithTelemetry] = useState<Set<string>>(new Set());
   const [nodesWithWeatherTelemetry, setNodesWithWeatherTelemetry] = useState<Set<string>>(new Set());
+  const [nodesWithEstimatedPosition, setNodesWithEstimatedPosition] = useState<Set<string>>(new Set());
+  const [nodesWithPKC, setNodesWithPKC] = useState<Set<string>>(new Set());
 
   return (
     <DataContext.Provider
@@ -72,6 +78,10 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
         setNodesWithTelemetry,
         nodesWithWeatherTelemetry,
         setNodesWithWeatherTelemetry,
+        nodesWithEstimatedPosition,
+        setNodesWithEstimatedPosition,
+        nodesWithPKC,
+        setNodesWithPKC,
       }}
     >
       {children}

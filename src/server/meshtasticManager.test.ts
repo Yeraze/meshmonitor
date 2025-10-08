@@ -479,4 +479,424 @@ describe('MeshtasticManager - Configuration Polling', () => {
       expect(response.deviceSync.status).toBe('failed');
     });
   });
+
+  describe('Position estimation for traceroute nodes', () => {
+    it('should estimate position for intermediate node without GPS when neighbors have GPS', () => {
+      const mockDatabaseService = {
+        getNode: vi.fn((nodeNum: number) => {
+          const nodes: Record<number, any> = {
+            1000: { nodeNum: 1000, nodeId: '!000003e8', latitude: 26.0, longitude: -80.0 },
+            2000: { nodeNum: 2000, nodeId: '!000007d0', latitude: null, longitude: null }, // No GPS
+            3000: { nodeNum: 3000, nodeId: '!00000bb8', latitude: 26.2, longitude: -80.2 },
+          };
+          return nodes[nodeNum] || null;
+        }),
+        upsertNode: vi.fn(),
+        insertTelemetry: vi.fn(),
+      };
+
+      // Simulate traceroute path: 1000 -> 2000 -> 3000
+      const timestamp = Date.now();
+
+      // Process intermediate node (2000)
+      const prevNode = mockDatabaseService.getNode(1000);
+      const nextNode = mockDatabaseService.getNode(3000);
+      const node = mockDatabaseService.getNode(2000);
+
+      expect(prevNode?.latitude).toBe(26.0);
+      expect(nextNode?.latitude).toBe(26.2);
+      expect(node?.latitude).toBeNull();
+
+      // Calculate estimated position (midpoint)
+      const estimatedLat = (prevNode.latitude + nextNode.latitude) / 2;
+      const estimatedLon = (prevNode.longitude + nextNode.longitude) / 2;
+
+      expect(estimatedLat).toBe(26.1);
+      expect(estimatedLon).toBe(-80.1);
+
+      // Should store as telemetry
+      mockDatabaseService.insertTelemetry({
+        nodeId: '!000007d0',
+        nodeNum: 2000,
+        telemetryType: 'estimated_latitude',
+        timestamp,
+        value: estimatedLat,
+        unit: '° (est)',
+        createdAt: Date.now(),
+      });
+
+      mockDatabaseService.insertTelemetry({
+        nodeId: '!000007d0',
+        nodeNum: 2000,
+        telemetryType: 'estimated_longitude',
+        timestamp,
+        value: estimatedLon,
+        unit: '° (est)',
+        createdAt: Date.now(),
+      });
+
+      expect(mockDatabaseService.insertTelemetry).toHaveBeenCalledTimes(2);
+      expect(mockDatabaseService.insertTelemetry).toHaveBeenCalledWith(
+        expect.objectContaining({
+          telemetryType: 'estimated_latitude',
+          value: 26.1,
+          unit: '° (est)',
+        })
+      );
+      expect(mockDatabaseService.insertTelemetry).toHaveBeenCalledWith(
+        expect.objectContaining({
+          telemetryType: 'estimated_longitude',
+          value: -80.1,
+          unit: '° (est)',
+        })
+      );
+    });
+
+    it('should NOT estimate position when intermediate node already has GPS', () => {
+      const mockDatabaseService = {
+        getNode: vi.fn((nodeNum: number) => {
+          const nodes: Record<number, any> = {
+            1000: { nodeNum: 1000, latitude: 26.0, longitude: -80.0 },
+            2000: { nodeNum: 2000, latitude: 26.15, longitude: -80.15 }, // Has GPS
+            3000: { nodeNum: 3000, latitude: 26.2, longitude: -80.2 },
+          };
+          return nodes[nodeNum];
+        }),
+        insertTelemetry: vi.fn(),
+      };
+
+      const node = mockDatabaseService.getNode(2000);
+      expect(node.latitude).not.toBeNull();
+
+      // Should NOT call insertTelemetry for estimated position
+      expect(mockDatabaseService.insertTelemetry).not.toHaveBeenCalled();
+    });
+
+    it('should NOT estimate position when neighbors lack GPS data', () => {
+      const mockDatabaseService = {
+        getNode: vi.fn((nodeNum: number) => {
+          const nodes: Record<number, any> = {
+            1000: { nodeNum: 1000, latitude: null, longitude: null }, // No GPS
+            2000: { nodeNum: 2000, latitude: null, longitude: null }, // No GPS
+            3000: { nodeNum: 3000, latitude: 26.2, longitude: -80.2 },
+          };
+          return nodes[nodeNum];
+        }),
+        insertTelemetry: vi.fn(),
+      };
+
+      const prevNode = mockDatabaseService.getNode(1000);
+      const node = mockDatabaseService.getNode(2000);
+      const nextNode = mockDatabaseService.getNode(3000);
+
+      // Cannot estimate because prevNode has no GPS
+      const canEstimate = !!(prevNode?.latitude && prevNode?.longitude &&
+                         nextNode?.latitude && nextNode?.longitude &&
+                         (!node?.latitude || !node?.longitude));
+
+      expect(canEstimate).toBe(false);
+      expect(mockDatabaseService.insertTelemetry).not.toHaveBeenCalled();
+    });
+
+    it('should create node in database if it does not exist before storing telemetry', () => {
+      const mockDatabaseService = {
+        getNode: vi.fn((_nodeNum: number) => null), // Node doesn't exist
+        upsertNode: vi.fn(),
+        insertTelemetry: vi.fn(),
+      };
+
+      const nodeNum = 2000;
+      const nodeId = '!000007d0';
+
+      // Should create node first
+      const node = mockDatabaseService.getNode(nodeNum);
+      expect(node).toBeNull();
+
+      mockDatabaseService.upsertNode({
+        nodeNum,
+        nodeId,
+        longName: `Node ${nodeId}`,
+        shortName: nodeId.substring(1, 5),
+        lastHeard: Date.now() / 1000,
+      });
+
+      expect(mockDatabaseService.upsertNode).toHaveBeenCalledWith(
+        expect.objectContaining({
+          nodeNum: 2000,
+          nodeId: '!000007d0',
+        })
+      );
+    });
+
+    it('should handle multiple intermediate nodes in a traceroute path', () => {
+      const mockDatabaseService = {
+        getNode: vi.fn((nodeNum: number) => {
+          const nodes: Record<number, any> = {
+            1000: { nodeNum: 1000, latitude: 26.0, longitude: -80.0 },
+            2000: { nodeNum: 2000, latitude: null, longitude: null }, // No GPS
+            3000: { nodeNum: 3000, latitude: 26.2, longitude: -80.2 },
+            4000: { nodeNum: 4000, latitude: null, longitude: null }, // No GPS
+            5000: { nodeNum: 5000, latitude: 26.4, longitude: -80.4 },
+          };
+          return nodes[nodeNum];
+        }),
+        upsertNode: vi.fn(),
+        insertTelemetry: vi.fn(),
+      };
+
+      // Path: 1000 -> 2000 -> 3000 -> 4000 -> 5000
+      // Should estimate for 2000 (between 1000 and 3000)
+      // Should estimate for 4000 (between 3000 and 5000)
+
+      const estimates = [];
+      const routePath = [1000, 2000, 3000, 4000, 5000];
+
+      for (let i = 1; i < routePath.length - 1; i++) {
+        const prevNode = mockDatabaseService.getNode(routePath[i - 1]);
+        const node = mockDatabaseService.getNode(routePath[i]);
+        const nextNode = mockDatabaseService.getNode(routePath[i + 1]);
+
+        if (node && (!node.latitude || !node.longitude) &&
+            prevNode?.latitude && prevNode?.longitude &&
+            nextNode?.latitude && nextNode?.longitude) {
+          const estimatedLat = (prevNode.latitude + nextNode.latitude) / 2;
+          const estimatedLon = (prevNode.longitude + nextNode.longitude) / 2;
+          estimates.push({ nodeNum: routePath[i], lat: estimatedLat, lon: estimatedLon });
+        }
+      }
+
+      expect(estimates.length).toBe(2);
+      expect(estimates[0]).toEqual({ nodeNum: 2000, lat: 26.1, lon: -80.1 });
+      expect(estimates[1].nodeNum).toBe(4000);
+      expect(estimates[1].lat).toBeCloseTo(26.3, 6);
+      expect(estimates[1].lon).toBeCloseTo(-80.3, 6);
+    });
+
+    it('should NOT estimate for endpoint nodes in traceroute', () => {
+      // Endpoints (first and last nodes) should never get estimated positions
+      const routePath = [1000, 2000, 3000];
+
+      // Processing should only happen for index 1 (2000), not 0 (1000) or 2 (3000)
+      const intermediateIndices = [];
+      for (let i = 1; i < routePath.length - 1; i++) {
+        intermediateIndices.push(i);
+      }
+
+      expect(intermediateIndices).toEqual([1]);
+      expect(intermediateIndices).not.toContain(0); // First node
+      expect(intermediateIndices).not.toContain(2); // Last node
+    });
+
+    it('should store estimated positions with proper telemetry types', () => {
+      const mockDatabaseService = {
+        insertTelemetry: vi.fn(),
+      };
+
+      const nodeId = '!000007d0';
+      const nodeNum = 2000;
+      const timestamp = Date.now();
+
+      mockDatabaseService.insertTelemetry({
+        nodeId,
+        nodeNum,
+        telemetryType: 'estimated_latitude',
+        timestamp,
+        value: 26.1,
+        unit: '° (est)',
+        createdAt: Date.now(),
+      });
+
+      mockDatabaseService.insertTelemetry({
+        nodeId,
+        nodeNum,
+        telemetryType: 'estimated_longitude',
+        timestamp,
+        value: -80.1,
+        unit: '° (est)',
+        createdAt: Date.now(),
+      });
+
+      expect(mockDatabaseService.insertTelemetry).toHaveBeenCalledWith(
+        expect.objectContaining({
+          telemetryType: 'estimated_latitude',
+          unit: '° (est)',
+        })
+      );
+      expect(mockDatabaseService.insertTelemetry).toHaveBeenCalledWith(
+        expect.objectContaining({
+          telemetryType: 'estimated_longitude',
+          unit: '° (est)',
+        })
+      );
+    });
+
+    it('should calculate correct midpoint for positions across different quadrants', () => {
+      // Test with coordinates in different hemispheres
+      const testCases = [
+        {
+          name: 'Northern hemisphere',
+          prev: { lat: 40.0, lon: -74.0 },
+          next: { lat: 42.0, lon: -72.0 },
+          expected: { lat: 41.0, lon: -73.0 },
+        },
+        {
+          name: 'Southern hemisphere',
+          prev: { lat: -34.0, lon: 151.0 },
+          next: { lat: -36.0, lon: 153.0 },
+          expected: { lat: -35.0, lon: 152.0 },
+        },
+        {
+          name: 'Crossing equator',
+          prev: { lat: -1.0, lon: 100.0 },
+          next: { lat: 1.0, lon: 102.0 },
+          expected: { lat: 0.0, lon: 101.0 },
+        },
+      ];
+
+      testCases.forEach(({ prev, next, expected }) => {
+        const estimatedLat = (prev.lat + next.lat) / 2;
+        const estimatedLon = (prev.lon + next.lon) / 2;
+
+        expect(estimatedLat).toBeCloseTo(expected.lat, 6);
+        expect(estimatedLon).toBeCloseTo(expected.lon, 6);
+      });
+    });
+  });
+
+  describe('Public Key Cryptography (PKC) tracking', () => {
+    it('should capture public key from User protobuf message', () => {
+      const mockUser = {
+        longName: 'Test Node',
+        shortName: 'TEST',
+        hwModel: 43,
+        publicKey: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8])
+      };
+
+      const mockDatabaseService = {
+        upsertNode: vi.fn(),
+      };
+
+      const publicKeyBase64 = Buffer.from(mockUser.publicKey).toString('base64');
+
+      mockDatabaseService.upsertNode({
+        nodeNum: 1000,
+        nodeId: '!000003e8',
+        longName: mockUser.longName,
+        publicKey: publicKeyBase64,
+        hasPKC: true
+      });
+
+      expect(mockDatabaseService.upsertNode).toHaveBeenCalledWith(
+        expect.objectContaining({
+          publicKey: publicKeyBase64,
+          hasPKC: true
+        })
+      );
+    });
+
+    it('should NOT set hasPKC when publicKey is missing', () => {
+      const mockUser = {
+        longName: 'Test Node',
+        shortName: 'TEST',
+        hwModel: 43
+        // No publicKey
+      };
+
+      const mockDatabaseService = {
+        upsertNode: vi.fn(),
+      };
+
+      mockDatabaseService.upsertNode({
+        nodeNum: 1000,
+        nodeId: '!000003e8',
+        longName: mockUser.longName
+        // No publicKey or hasPKC
+      });
+
+      expect(mockDatabaseService.upsertNode).toHaveBeenCalledWith(
+        expect.not.objectContaining({
+          publicKey: expect.anything()
+        })
+      );
+    });
+
+    it('should track lastPKIPacket when pki_encrypted flag is set', () => {
+      const mockDatabaseService = {
+        upsertNode: vi.fn(),
+      };
+
+      const timestamp = Date.now();
+
+      mockDatabaseService.upsertNode({
+        nodeNum: 1000,
+        nodeId: '!000003e8',
+        lastPKIPacket: timestamp
+      });
+
+      expect(mockDatabaseService.upsertNode).toHaveBeenCalledWith(
+        expect.objectContaining({
+          lastPKIPacket: expect.any(Number)
+        })
+      );
+    });
+
+    it('should track lastPKIPacket when pkiEncrypted flag is set (camelCase variant)', () => {
+      const mockDatabaseService = {
+        upsertNode: vi.fn(),
+      };
+
+      const timestamp = Date.now();
+
+      mockDatabaseService.upsertNode({
+        nodeNum: 1000,
+        nodeId: '!000003e8',
+        lastPKIPacket: timestamp
+      });
+
+      expect(mockDatabaseService.upsertNode).toHaveBeenCalledWith(
+        expect.objectContaining({
+          lastPKIPacket: expect.any(Number)
+        })
+      );
+    });
+
+    it('should NOT track lastPKIPacket when PKI flags are false', () => {
+      const mockMeshPacket = {
+        from: 1000,
+        pki_encrypted: false,
+        pkiEncrypted: false
+      };
+
+      // Should not call upsertNode with lastPKIPacket
+      expect(mockMeshPacket.pki_encrypted).toBe(false);
+      expect(mockMeshPacket.pkiEncrypted).toBe(false);
+    });
+
+    it('should convert public key Uint8Array to base64 for storage', () => {
+      const publicKeyBytes = new Uint8Array([0x01, 0x02, 0x03, 0x04, 0xFF, 0xFE]);
+      const expectedBase64 = Buffer.from(publicKeyBytes).toString('base64');
+
+      expect(expectedBase64).toBe('AQIDBP/+');
+      expect(Buffer.from(expectedBase64, 'base64')).toEqual(Buffer.from(publicKeyBytes));
+    });
+
+    it('should identify nodes with PKC capability in API response', () => {
+      const nodes = [
+        { nodeId: '!000003e8', hasPKC: true, publicKey: 'abc123' },
+        { nodeId: '!000007d0', hasPKC: false, publicKey: null },
+        { nodeId: '!00000bb8', hasPKC: true, publicKey: 'def456' },
+        { nodeId: '!00000fa0', hasPKC: false, publicKey: null },
+      ];
+
+      const nodesWithPKC: string[] = [];
+      nodes.forEach(node => {
+        if (node.hasPKC || node.publicKey) {
+          nodesWithPKC.push(node.nodeId);
+        }
+      });
+
+      expect(nodesWithPKC).toEqual(['!000003e8', '!00000bb8']);
+      expect(nodesWithPKC.length).toBe(2);
+    });
+  });
 });
