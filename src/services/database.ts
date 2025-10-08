@@ -30,6 +30,9 @@ export interface DbNode {
   firmwareVersion?: string;
   isFavorite?: boolean;
   rebootCount?: number;
+  publicKey?: string;
+  hasPKC?: boolean;
+  lastPKIPacket?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -452,6 +455,39 @@ class DatabaseService {
       }
     }
 
+    try {
+      this.db.exec(`
+        ALTER TABLE nodes ADD COLUMN publicKey TEXT;
+      `);
+      logger.debug('✅ Added publicKey column');
+    } catch (error: any) {
+      if (!error.message?.includes('duplicate column')) {
+        logger.debug('⚠️ publicKey column already exists or other error:', error.message);
+      }
+    }
+
+    try {
+      this.db.exec(`
+        ALTER TABLE nodes ADD COLUMN hasPKC BOOLEAN DEFAULT 0;
+      `);
+      logger.debug('✅ Added hasPKC column');
+    } catch (error: any) {
+      if (!error.message?.includes('duplicate column')) {
+        logger.debug('⚠️ hasPKC column already exists or other error:', error.message);
+      }
+    }
+
+    try {
+      this.db.exec(`
+        ALTER TABLE nodes ADD COLUMN lastPKIPacket INTEGER;
+      `);
+      logger.debug('✅ Added lastPKIPacket column');
+    } catch (error: any) {
+      if (!error.message?.includes('duplicate column')) {
+        logger.debug('⚠️ lastPKIPacket column already exists or other error:', error.message);
+      }
+    }
+
     logger.debug('Database migrations completed');
   }
 
@@ -632,6 +668,9 @@ class DatabaseService {
           firmwareVersion = COALESCE(?, firmwareVersion),
           isFavorite = COALESCE(?, isFavorite),
           rebootCount = COALESCE(?, rebootCount),
+          publicKey = COALESCE(?, publicKey),
+          hasPKC = COALESCE(?, hasPKC),
+          lastPKIPacket = COALESCE(?, lastPKIPacket),
           updatedAt = ?
         WHERE nodeNum = ?
       `);
@@ -657,6 +696,9 @@ class DatabaseService {
         nodeData.firmwareVersion || null,
         nodeData.isFavorite !== undefined ? (nodeData.isFavorite ? 1 : 0) : null,
         nodeData.rebootCount !== undefined ? nodeData.rebootCount : null,
+        nodeData.publicKey || null,
+        nodeData.hasPKC !== undefined ? (nodeData.hasPKC ? 1 : 0) : null,
+        nodeData.lastPKIPacket !== undefined ? nodeData.lastPKIPacket : null,
         now,
         nodeData.nodeNum
       );
@@ -666,8 +708,8 @@ class DatabaseService {
           nodeNum, nodeId, longName, shortName, hwModel, role, hopsAway, macaddr,
           latitude, longitude, altitude, batteryLevel, voltage,
           channelUtilization, airUtilTx, lastHeard, snr, rssi, firmwareVersion,
-          isFavorite, rebootCount, createdAt, updatedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          isFavorite, rebootCount, publicKey, hasPKC, lastPKIPacket, createdAt, updatedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       stmt.run(
@@ -692,6 +734,9 @@ class DatabaseService {
         nodeData.firmwareVersion || null,
         nodeData.isFavorite ? 1 : 0,
         nodeData.rebootCount || null,
+        nodeData.publicKey || null,
+        nodeData.hasPKC ? 1 : 0,
+        nodeData.lastPKIPacket || null,
         now,
         now
       );

@@ -869,8 +869,10 @@ apiRouter.get('/telemetry/available/nodes', (_req, res) => {
     const nodes = databaseService.getAllNodes();
     const nodesWithTelemetry: string[] = [];
     const nodesWithWeather: string[] = [];
+    const nodesWithEstimatedPosition: string[] = [];
 
     const weatherTypes = ['temperature', 'humidity', 'pressure'];
+    const estimatedPositionTypes = ['estimated_latitude', 'estimated_longitude'];
 
     nodes.forEach(node => {
       const telemetry = databaseService.getTelemetryByNode(node.nodeId, 10);
@@ -882,12 +884,28 @@ apiRouter.get('/telemetry/available/nodes', (_req, res) => {
         if (hasWeather) {
           nodesWithWeather.push(node.nodeId);
         }
+
+        // Check if node has estimated position telemetry
+        const hasEstimatedPosition = telemetry.some(t => estimatedPositionTypes.includes(t.telemetryType));
+        if (hasEstimatedPosition) {
+          nodesWithEstimatedPosition.push(node.nodeId);
+        }
+      }
+    });
+
+    // Check for PKC-enabled nodes
+    const nodesWithPKC: string[] = [];
+    nodes.forEach(node => {
+      if (node.hasPKC || node.publicKey) {
+        nodesWithPKC.push(node.nodeId);
       }
     });
 
     res.json({
       nodes: nodesWithTelemetry,
-      weather: nodesWithWeather
+      weather: nodesWithWeather,
+      estimatedPosition: nodesWithEstimatedPosition,
+      pkc: nodesWithPKC
     });
   } catch (error) {
     logger.error('Error checking telemetry availability:', error);
