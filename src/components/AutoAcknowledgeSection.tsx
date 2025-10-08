@@ -119,7 +119,15 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
         border: '1px solid var(--ctp-surface2)',
         borderRadius: '8px'
       }}>
-        <h2 style={{ margin: 0 }}>Automation</h2>
+        <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <input
+            type="checkbox"
+            checked={localEnabled}
+            onChange={(e) => setLocalEnabled(e.target.checked)}
+            style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
+          />
+          Auto Acknowledge
+        </h2>
         <button
           onClick={handleSave}
           disabled={!hasChanges || isSaving}
@@ -136,15 +144,6 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
       </div>
 
       <div className="settings-section" style={{ opacity: localEnabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>
-        <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <input
-            type="checkbox"
-            checked={localEnabled}
-            onChange={(e) => setLocalEnabled(e.target.checked)}
-            style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
-          />
-          Auto Acknowledge
-        </h3>
         <p style={{ marginBottom: '1rem', color: '#666', lineHeight: '1.5', marginLeft: '1.75rem' }}>
           When enabled, automatically reply to any message matching the RegEx pattern with
           <strong> 🤖 Copy, N hops at T</strong> where <strong>N</strong> is the number of hops in the originating
