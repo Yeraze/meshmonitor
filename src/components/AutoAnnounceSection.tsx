@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
 import { Channel } from '../types/device';
+import { useToast } from './ToastContainer';
 
 interface AutoAnnounceSectionProps {
   enabled: boolean;
@@ -33,6 +34,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
   onChannelChange,
   onAnnounceOnStartChange,
 }) => {
+  const { showToast } = useToast();
   const [localEnabled, setLocalEnabled] = useState(enabled);
   const [localInterval, setLocalInterval] = useState(intervalHours || 6);
   const [localMessage, setLocalMessage] = useState(message || DEFAULT_MESSAGE);
@@ -111,10 +113,10 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
       onAnnounceOnStartChange(localAnnounceOnStart);
 
       setHasChanges(false);
-      alert('Settings saved! Container restart required for changes to take effect.');
+      showToast('Settings saved! Container restart required for changes to take effect.', 'success');
     } catch (error) {
       console.error('Failed to save auto-announce settings:', error);
-      alert('Failed to save settings. Please try again.');
+      showToast('Failed to save settings. Please try again.', 'error');
     } finally {
       setIsSaving(false);
     }
@@ -138,13 +140,13 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
       }
 
       const result = await response.json();
-      alert(result.message || 'Announcement sent successfully!');
+      showToast(result.message || 'Announcement sent successfully!', 'success');
 
       // Refresh last announcement time
       setLastAnnouncementTime(Date.now());
     } catch (error: any) {
       console.error('Failed to send announcement:', error);
-      alert(error.message || 'Failed to send announcement. Please try again.');
+      showToast(error.message || 'Failed to send announcement. Please try again.', 'error');
     } finally {
       setIsSendingNow(false);
     }
