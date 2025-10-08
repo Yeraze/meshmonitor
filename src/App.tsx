@@ -10,6 +10,7 @@ import SettingsTab from './components/SettingsTab'
 import ConfigurationTab from './components/ConfigurationTab'
 import Dashboard from './components/Dashboard'
 import HopCountDisplay from './components/HopCountDisplay'
+import AutoAcknowledgeSection from './components/AutoAcknowledgeSection'
 import { ToastProvider } from './components/ToastContainer'
 import { version } from '../package.json'
 import { type TemperatureUnit } from './utils/temperature'
@@ -224,7 +225,11 @@ function App() {
     systemStatus,
     setSystemStatus,
     nodePopup,
-    setNodePopup
+    setNodePopup,
+    autoAckEnabled,
+    setAutoAckEnabled,
+    autoAckRegex,
+    setAutoAckRegex
   } = useUI();
 
   // Function to detect MQTT/bridge messages that should be filtered
@@ -326,6 +331,16 @@ function App() {
             const value = parseInt(settings.telemetryVisualizationHours);
             setTelemetryVisualizationHours(value);
             localStorage.setItem('telemetryVisualizationHours', value.toString());
+          }
+
+          if (settings.autoAckEnabled !== undefined) {
+            setAutoAckEnabled(settings.autoAckEnabled === 'true');
+            localStorage.setItem('autoAckEnabled', settings.autoAckEnabled);
+          }
+
+          if (settings.autoAckRegex) {
+            setAutoAckRegex(settings.autoAckRegex);
+            localStorage.setItem('autoAckRegex', settings.autoAckRegex);
           }
         }
 
@@ -3211,6 +3226,12 @@ function App() {
           Settings
         </button>
         <button
+          className={`tab-btn ${activeTab === 'automation' ? 'active' : ''}`}
+          onClick={() => setActiveTab('automation')}
+        >
+          Automation
+        </button>
+        <button
           className={`tab-btn ${activeTab === 'configuration' ? 'active' : ''}`}
           onClick={() => setActiveTab('configuration')}
         >
@@ -3285,6 +3306,19 @@ function App() {
             onTimeFormatChange={setTimeFormat}
             onDateFormatChange={setDateFormat}
           />
+        )}
+        {activeTab === 'automation' && (
+          <div className="settings-tab">
+            <div className="settings-content">
+              <AutoAcknowledgeSection
+                enabled={autoAckEnabled}
+                regex={autoAckRegex}
+                baseUrl={baseUrl}
+                onEnabledChange={setAutoAckEnabled}
+                onRegexChange={setAutoAckRegex}
+              />
+            </div>
+          </div>
         )}
         {activeTab === 'configuration' && (
           <ConfigurationTab

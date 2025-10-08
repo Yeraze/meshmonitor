@@ -22,6 +22,10 @@ interface UIContextType {
   setSystemStatus: React.Dispatch<React.SetStateAction<any>>;
   nodePopup: {nodeId: string, position: {x: number, y: number}} | null;
   setNodePopup: React.Dispatch<React.SetStateAction<{nodeId: string, position: {x: number, y: number}} | null>>;
+  autoAckEnabled: boolean;
+  setAutoAckEnabled: React.Dispatch<React.SetStateAction<boolean>>;
+  autoAckRegex: string;
+  setAutoAckRegex: React.Dispatch<React.SetStateAction<string>>;
 }
 
 const UIContext = createContext<UIContextType | undefined>(undefined);
@@ -47,6 +51,19 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   const [showStatusModal, setShowStatusModal] = useState<boolean>(false);
   const [systemStatus, setSystemStatus] = useState<any>(null);
   const [nodePopup, setNodePopup] = useState<{nodeId: string, position: {x: number, y: number}} | null>(null);
+  const [autoAckEnabled, setAutoAckEnabled] = useState<boolean>(() => {
+    const saved = localStorage.getItem('autoAckEnabled');
+    return saved === 'true';
+  });
+  const [autoAckRegex, setAutoAckRegex] = useState<string>(() => {
+    const saved = localStorage.getItem('autoAckRegex');
+    // Migrate old patterns to new format
+    if (saved === '(?i)test' || saved === 'test') {
+      localStorage.setItem('autoAckRegex', '^(test|ping)');
+      return '^(test|ping)';
+    }
+    return saved || '^(test|ping)';
+  });
 
   return (
     <UIContext.Provider
@@ -71,6 +88,10 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
         setSystemStatus,
         nodePopup,
         setNodePopup,
+        autoAckEnabled,
+        setAutoAckEnabled,
+        autoAckRegex,
+        setAutoAckRegex,
       }}
     >
       {children}
