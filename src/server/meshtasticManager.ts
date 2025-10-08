@@ -3020,8 +3020,35 @@ class MeshtasticManager {
 
       logger.debug('Message sent successfully:', text, 'with ID:', messageId);
 
-      // Note: Message saving is handled by the caller (server.ts) to ensure correct channel assignment
-      // for direct messages (DMs should use channel -1, not the actual channel they're sent on)
+      // Save sent message to database for UI display
+      const localNodeNum = databaseService.getSetting('localNodeNum');
+      const localNodeId = databaseService.getSetting('localNodeId');
+
+      if (localNodeNum && localNodeId) {
+        const toNodeId = destination ? `!${destination.toString(16).padStart(8, '0')}` : 'broadcast';
+
+        const message = {
+          id: `${localNodeNum}_${messageId}`,
+          fromNodeNum: parseInt(localNodeNum),
+          toNodeNum: destination || 0xffffffff,
+          fromNodeId: localNodeId,
+          toNodeId: toNodeId,
+          text: text,
+          // Use channel -1 for direct messages, otherwise use the actual channel
+          channel: destination ? -1 : channel,
+          portnum: 1, // TEXT_MESSAGE_APP
+          timestamp: Date.now(),
+          rxTime: Date.now(),
+          hopStart: undefined,
+          hopLimit: undefined,
+          replyId: replyId || undefined,
+          emoji: emoji || undefined,
+          createdAt: Date.now()
+        };
+
+        databaseService.insertMessage(message);
+        logger.debug(`💾 Saved sent message to database: "${text.substring(0, 30)}..."`);
+      }
 
       return messageId;
     } catch (error) {
