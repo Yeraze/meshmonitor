@@ -11,7 +11,8 @@ services:
       - meshmonitor-data:/data
     env_file: .env
     environment:
-      - NODE_ENV=production
+      - NODE_ENV=development
+      - DATABASE_PATH=/data/meshmonitor.db
       - BASE_URL=${BASE_URL:-}
       - TZ=America/New_York
 

@@ -118,9 +118,12 @@ class DatabaseService {
 
   constructor() {
     logger.debug('🔧🔧🔧 DatabaseService constructor called');
-    const dbPath = process.env.NODE_ENV === 'production'
-      ? '/data/meshmonitor.db'
-      : path.join(__dirname, '../../data/meshmonitor.db');
+    // Use DATABASE_PATH env var if set, otherwise fall back to NODE_ENV logic
+    const dbPath = process.env.DATABASE_PATH || (
+      process.env.NODE_ENV === 'production'
+        ? '/data/meshmonitor.db'
+        : path.join(__dirname, '../../data/meshmonitor.db')
+    );
 
     logger.debug('Initializing database at:', dbPath);
     this.db = new Database(dbPath);

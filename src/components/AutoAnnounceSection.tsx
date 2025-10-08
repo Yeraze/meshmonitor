@@ -225,6 +225,25 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
         )}
 
         <div className="setting-item" style={{ marginTop: '1rem' }}>
+          <label htmlFor="announceOnStart">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <input
+                id="announceOnStart"
+                type="checkbox"
+                checked={localAnnounceOnStart}
+                onChange={(e) => setLocalAnnounceOnStart(e.target.checked)}
+                disabled={!localEnabled}
+                style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
+              />
+              Announce on Start
+            </div>
+            <span className="setting-description">
+              Automatically send an announcement when the container starts (includes 1-hour spam protection to avoid network flooding)
+            </span>
+          </label>
+        </div>
+
+        <div className="setting-item" style={{ marginTop: '1rem' }}>
           <label htmlFor="announceInterval">
             Announcement Interval (hours)
             <span className="setting-description">
@@ -263,23 +282,6 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
               </option>
             ))}
           </select>
-        </div>
-
-        <div className="setting-item" style={{ marginTop: '1rem' }}>
-          <label htmlFor="announceOnStart" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-            <input
-              id="announceOnStart"
-              type="checkbox"
-              checked={localAnnounceOnStart}
-              onChange={(e) => setLocalAnnounceOnStart(e.target.checked)}
-              disabled={!localEnabled}
-              style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
-            />
-            Announce on Start
-            <span className="setting-description">
-              Automatically send an announcement when the container starts (includes 1-hour spam protection to avoid network flooding)
-            </span>
-          </label>
         </div>
 
         <div className="setting-item" style={{ marginTop: '1rem' }}>

@@ -110,9 +110,9 @@ class MeshtasticManager {
       });
 
       // Connect to node
+      // Note: isConnected will be set to true in handleConnected() callback
+      // when the connection is actually established
       await this.transport.connect(this.config.nodeIp, this.config.tcpPort);
-
-      this.isConnected = true;
 
       return true;
     } catch (error) {
@@ -3020,34 +3020,8 @@ class MeshtasticManager {
 
       logger.debug('Message sent successfully:', text, 'with ID:', messageId);
 
-      // Save sent message to database for UI display
-      const localNodeNum = databaseService.getSetting('localNodeNum');
-      const localNodeId = databaseService.getSetting('localNodeId');
-
-      if (localNodeNum && localNodeId) {
-        const toNodeId = destination ? `!${destination.toString(16).padStart(8, '0')}` : 'broadcast';
-
-        const message = {
-          id: `${localNodeNum}_${messageId}`,
-          fromNodeNum: parseInt(localNodeNum),
-          toNodeNum: destination || 0xffffffff,
-          fromNodeId: localNodeId,
-          toNodeId: toNodeId,
-          text: text,
-          channel: channel,
-          portnum: 1, // TEXT_MESSAGE_APP
-          timestamp: Date.now(),
-          rxTime: Date.now(),
-          hopStart: undefined,
-          hopLimit: undefined,
-          replyId: replyId || undefined,
-          emoji: emoji || undefined,
-          createdAt: Date.now()
-        };
-
-        databaseService.insertMessage(message);
-        logger.debug(`💾 Saved sent message to database: "${text.substring(0, 30)}..."`);
-      }
+      // Note: Message saving is handled by the caller (server.ts) to ensure correct channel assignment
+      // for direct messages (DMs should use channel -1, not the actual channel they're sent on)
 
       return messageId;
     } catch (error) {
@@ -3642,6 +3616,7 @@ class MeshtasticManager {
   }
 
   getConnectionStatus(): { connected: boolean; nodeIp: string } {
+    logger.debug(`🔍 getConnectionStatus called: isConnected=${this.isConnected}`);
     return {
       connected: this.isConnected,
       nodeIp: this.config.nodeIp
