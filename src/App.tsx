@@ -177,7 +177,10 @@ function App() {
     nodesWithTelemetry,
     setNodesWithTelemetry,
     nodesWithWeatherTelemetry,
-    setNodesWithWeatherTelemetry
+    setNodesWithWeatherTelemetry,
+    setNodesWithEstimatedPosition,
+    nodesWithPKC,
+    setNodesWithPKC
   } = useData();
 
   // Messaging context
@@ -714,6 +717,8 @@ function App() {
         const data = await response.json();
         setNodesWithTelemetry(new Set(data.nodes));
         setNodesWithWeatherTelemetry(new Set(data.weather || []));
+        setNodesWithEstimatedPosition(new Set(data.estimatedPosition || []));
+        setNodesWithPKC(new Set(data.pkc || []));
       }
     } catch (error) {
       logger.error('Error fetching telemetry availability:', error);
@@ -1703,6 +1708,11 @@ function App() {
                       {node.user?.id && nodesWithWeatherTelemetry.has(node.user.id) && (
                         <div className="node-weather" title="Has Weather Data">
                           ☀️
+                        </div>
+                      )}
+                      {node.user?.id && nodesWithPKC.has(node.user.id) && (
+                        <div className="node-pkc" title="Has Public Key Cryptography">
+                          🔐
                         </div>
                       )}
                     </div>
@@ -2836,6 +2846,11 @@ function App() {
                             {node.snr != null && (
                               <span className="stat" title="Signal-to-Noise Ratio">
                                 📶 {node.snr.toFixed(1)}dB
+                              </span>
+                            )}
+                            {node.user?.id && nodesWithPKC.has(node.user.id) && (
+                              <span className="stat" title="Has Public Key Cryptography">
+                                🔐
                               </span>
                             )}
                           </div>
