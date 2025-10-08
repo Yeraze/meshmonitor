@@ -54,6 +54,8 @@ class MeshtasticManager {
   private isConnected = false;
   private tracerouteInterval: NodeJS.Timeout | null = null;
   private tracerouteIntervalMinutes: number = 3;
+  private announceInterval: NodeJS.Timeout | null = null;
+  private serverStartTime: number = Date.now();
   private localNodeInfo: {
     nodeNum: number;
     nodeId: string;
@@ -142,6 +144,9 @@ class MeshtasticManager {
 
         // Start automatic traceroute scheduler
         this.startTracerouteScheduler();
+
+        // Start automatic announcement scheduler
+        this.startAnnounceScheduler();
 
         logger.debug(`✅ Configuration complete: ${databaseService.getNodeCount()} nodes, ${databaseService.getChannelCount()} channels`);
       }, 5000);
@@ -276,6 +281,47 @@ class MeshtasticManager {
 
     if (this.isConnected) {
       this.startTracerouteScheduler();
+    }
+  }
+
+  private startAnnounceScheduler(): void {
+    if (this.announceInterval) {
+      clearInterval(this.announceInterval);
+      this.announceInterval = null;
+    }
+
+    // Check if auto-announce is enabled
+    const autoAnnounceEnabled = databaseService.getSetting('autoAnnounceEnabled');
+    if (autoAnnounceEnabled !== 'true') {
+      logger.debug('📢 Auto-announce is disabled');
+      return;
+    }
+
+    const intervalHours = parseInt(databaseService.getSetting('autoAnnounceIntervalHours') || '6');
+    const intervalMs = intervalHours * 60 * 60 * 1000;
+
+    logger.debug(`📢 Starting announce scheduler with ${intervalHours} hour interval`);
+
+    this.announceInterval = setInterval(async () => {
+      if (this.isConnected) {
+        try {
+          await this.sendAutoAnnouncement();
+        } catch (error) {
+          logger.error('❌ Error in auto-announce:', error);
+        }
+      }
+    }, intervalMs);
+  }
+
+  setAnnounceInterval(hours: number): void {
+    if (hours < 3 || hours > 24) {
+      throw new Error('Announce interval must be between 3 and 24 hours');
+    }
+
+    logger.debug(`📢 Announce interval updated to ${hours} hours`);
+
+    if (this.isConnected) {
+      this.startAnnounceScheduler();
     }
   }
 
@@ -3050,6 +3096,102 @@ class MeshtasticManager {
       await this.sendTextMessage(ackText, channel, destination, packetId);
     } catch (error) {
       logger.error('❌ Error in auto-acknowledge:', error);
+    }
+  }
+
+  private async sendAutoAnnouncement(): Promise<void> {
+    try {
+      const message = databaseService.getSetting('autoAnnounceMessage') || 'MeshMonitor {VERSION} online for {DURATION} {FEATURES}';
+      const channelIndex = parseInt(databaseService.getSetting('autoAnnounceChannelIndex') || '0');
+
+      // Replace tokens
+      const replacedMessage = await this.replaceAnnouncementTokens(message);
+
+      logger.debug(`📢 Sending auto-announcement to channel ${channelIndex}: "${replacedMessage}"`);
+
+      await this.sendTextMessage(replacedMessage, channelIndex);
+    } catch (error) {
+      logger.error('❌ Error sending auto-announcement:', error);
+    }
+  }
+
+  private async replaceAnnouncementTokens(message: string): Promise<string> {
+    let result = message;
+
+    // {VERSION} - MeshMonitor version
+    if (result.includes('{VERSION}')) {
+      const packageJson = await import('../../package.json');
+      result = result.replace(/{VERSION}/g, packageJson.version);
+    }
+
+    // {DURATION} - Uptime
+    if (result.includes('{DURATION}')) {
+      const uptimeMs = Date.now() - this.serverStartTime;
+      const duration = this.formatDuration(uptimeMs);
+      result = result.replace(/{DURATION}/g, duration);
+    }
+
+    // {FEATURES} - Enabled features as emojis
+    if (result.includes('{FEATURES}')) {
+      const features: string[] = [];
+
+      // Check traceroute
+      const tracerouteInterval = databaseService.getSetting('tracerouteIntervalMinutes');
+      if (tracerouteInterval && parseInt(tracerouteInterval) > 0) {
+        features.push('🗺️');
+      }
+
+      // Check auto-ack
+      const autoAckEnabled = databaseService.getSetting('autoAckEnabled');
+      if (autoAckEnabled === 'true') {
+        features.push('🤖');
+      }
+
+      // Check auto-announce
+      const autoAnnounceEnabled = databaseService.getSetting('autoAnnounceEnabled');
+      if (autoAnnounceEnabled === 'true') {
+        features.push('📢');
+      }
+
+      result = result.replace(/{FEATURES}/g, features.join(' '));
+    }
+
+    // {NODECOUNT} - Active nodes
+    if (result.includes('{NODECOUNT}')) {
+      const maxNodeAgeHours = parseInt(databaseService.getSetting('maxNodeAgeHours') || '24');
+      const maxNodeAgeDays = maxNodeAgeHours / 24;
+      const nodes = databaseService.getActiveNodes(maxNodeAgeDays);
+      result = result.replace(/{NODECOUNT}/g, nodes.length.toString());
+    }
+
+    // {DIRECTCOUNT} - Direct nodes (0 hops)
+    if (result.includes('{DIRECTCOUNT}')) {
+      const maxNodeAgeHours = parseInt(databaseService.getSetting('maxNodeAgeHours') || '24');
+      const maxNodeAgeDays = maxNodeAgeHours / 24;
+      const nodes = databaseService.getActiveNodes(maxNodeAgeDays);
+      const directCount = nodes.filter((n: any) => n.hopsAway === 0).length;
+      result = result.replace(/{DIRECTCOUNT}/g, directCount.toString());
+    }
+
+    return result;
+  }
+
+  private formatDuration(ms: number): string {
+    const seconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+
+    if (days > 0) {
+      const remainingHours = hours % 24;
+      return `${days}d${remainingHours > 0 ? ` ${remainingHours}h` : ''}`;
+    } else if (hours > 0) {
+      const remainingMinutes = minutes % 60;
+      return `${hours}h${remainingMinutes > 0 ? ` ${remainingMinutes}m` : ''}`;
+    } else if (minutes > 0) {
+      return `${minutes}m`;
+    } else {
+      return `${seconds}s`;
     }
   }
 
