@@ -1063,12 +1063,34 @@ apiRouter.post('/settings', (req, res) => {
     const settings = req.body;
 
     // Validate settings
-    const validKeys = ['maxNodeAgeHours', 'tracerouteIntervalMinutes', 'temperatureUnit', 'distanceUnit', 'telemetryVisualizationHours', 'telemetryFavorites'];
+    const validKeys = ['maxNodeAgeHours', 'tracerouteIntervalMinutes', 'temperatureUnit', 'distanceUnit', 'telemetryVisualizationHours', 'telemetryFavorites', 'autoAckEnabled', 'autoAckRegex'];
     const filteredSettings: Record<string, string> = {};
 
     for (const key of validKeys) {
       if (key in settings) {
         filteredSettings[key] = String(settings[key]);
+      }
+    }
+
+    // Validate autoAckRegex pattern
+    if ('autoAckRegex' in filteredSettings) {
+      const pattern = filteredSettings.autoAckRegex;
+
+      // Check length
+      if (pattern.length > 100) {
+        return res.status(400).json({ error: 'Regex pattern too long (max 100 characters)' });
+      }
+
+      // Check for potentially dangerous patterns
+      if (/(\.\*){2,}|(\+.*\+)|(\*.*\*)|(\{[0-9]{3,}\})|(\{[0-9]+,\})/.test(pattern)) {
+        return res.status(400).json({ error: 'Regex pattern too complex or may cause performance issues' });
+      }
+
+      // Try to compile
+      try {
+        new RegExp(pattern, 'i');
+      } catch (error) {
+        return res.status(400).json({ error: 'Invalid regex syntax' });
       }
     }
 

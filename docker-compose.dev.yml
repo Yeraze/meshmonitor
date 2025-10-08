@@ -13,6 +13,7 @@ services:
     environment:
       - NODE_ENV=production
       - BASE_URL=${BASE_URL:-}
+      - TZ=America/New_York
 
 volumes:
   meshmonitor-data:
