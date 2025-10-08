@@ -7,12 +7,14 @@ interface AutoAnnounceSectionProps {
   intervalHours: number;
   message: string;
   channelIndex: number;
+  announceOnStart: boolean;
   channels: Channel[];
   baseUrl: string;
   onEnabledChange: (enabled: boolean) => void;
   onIntervalChange: (hours: number) => void;
   onMessageChange: (message: string) => void;
   onChannelChange: (channelIndex: number) => void;
+  onAnnounceOnStartChange: (announceOnStart: boolean) => void;
 }
 
 const DEFAULT_MESSAGE = 'MeshMonitor {VERSION} online for {DURATION} {FEATURES}';
@@ -22,19 +24,24 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
   intervalHours,
   message,
   channelIndex,
+  announceOnStart,
   channels,
   baseUrl,
   onEnabledChange,
   onIntervalChange,
   onMessageChange,
   onChannelChange,
+  onAnnounceOnStartChange,
 }) => {
   const [localEnabled, setLocalEnabled] = useState(enabled);
   const [localInterval, setLocalInterval] = useState(intervalHours || 6);
   const [localMessage, setLocalMessage] = useState(message || DEFAULT_MESSAGE);
   const [localChannelIndex, setLocalChannelIndex] = useState(channelIndex || 0);
+  const [localAnnounceOnStart, setLocalAnnounceOnStart] = useState(announceOnStart);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSendingNow, setIsSendingNow] = useState(false);
+  const [lastAnnouncementTime, setLastAnnouncementTime] = useState<number | null>(null);
 
   // Update local state when props change
   useEffect(() => {
@@ -42,7 +49,28 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
     setLocalInterval(intervalHours || 6);
     setLocalMessage(message || DEFAULT_MESSAGE);
     setLocalChannelIndex(channelIndex || 0);
-  }, [enabled, intervalHours, message, channelIndex]);
+    setLocalAnnounceOnStart(announceOnStart);
+  }, [enabled, intervalHours, message, channelIndex, announceOnStart]);
+
+  // Fetch last announcement time
+  useEffect(() => {
+    const fetchLastAnnouncementTime = async () => {
+      try {
+        const response = await fetch(`${baseUrl}/api/announce/last`);
+        if (response.ok) {
+          const data = await response.json();
+          setLastAnnouncementTime(data.lastAnnouncementTime);
+        }
+      } catch (error) {
+        console.error('Failed to fetch last announcement time:', error);
+      }
+    };
+
+    fetchLastAnnouncementTime();
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchLastAnnouncementTime, 30000);
+    return () => clearInterval(interval);
+  }, [baseUrl]);
 
   // Check if any settings have changed
   useEffect(() => {
@@ -50,9 +78,10 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
       localEnabled !== enabled ||
       localInterval !== intervalHours ||
       localMessage !== message ||
-      localChannelIndex !== channelIndex;
+      localChannelIndex !== channelIndex ||
+      localAnnounceOnStart !== announceOnStart;
     setHasChanges(changed);
-  }, [localEnabled, localInterval, localMessage, localChannelIndex, enabled, intervalHours, message, channelIndex]);
+  }, [localEnabled, localInterval, localMessage, localChannelIndex, localAnnounceOnStart, enabled, intervalHours, message, channelIndex, announceOnStart]);
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -65,7 +94,8 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
           autoAnnounceEnabled: String(localEnabled),
           autoAnnounceIntervalHours: localInterval,
           autoAnnounceMessage: localMessage,
-          autoAnnounceChannelIndex: localChannelIndex
+          autoAnnounceChannelIndex: localChannelIndex,
+          autoAnnounceOnStart: String(localAnnounceOnStart)
         })
       });
 
@@ -78,6 +108,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
       onIntervalChange(localInterval);
       onMessageChange(localMessage);
       onChannelChange(localChannelIndex);
+      onAnnounceOnStartChange(localAnnounceOnStart);
 
       setHasChanges(false);
       alert('Settings saved! Container restart required for changes to take effect.');
@@ -91,6 +122,32 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
 
   const insertToken = (token: string) => {
     setLocalMessage(localMessage + token);
+  };
+
+  const handleSendNow = async () => {
+    setIsSendingNow(true);
+    try {
+      const response = await fetch(`${baseUrl}/api/announce/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || `Server returned ${response.status}`);
+      }
+
+      const result = await response.json();
+      alert(result.message || 'Announcement sent successfully!');
+
+      // Refresh last announcement time
+      setLastAnnouncementTime(Date.now());
+    } catch (error: any) {
+      console.error('Failed to send announcement:', error);
+      alert(error.message || 'Failed to send announcement. Please try again.');
+    } finally {
+      setIsSendingNow(false);
+    }
   };
 
   return (
@@ -114,19 +171,34 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
           />
           Auto Announce
         </h2>
-        <button
-          onClick={handleSave}
-          disabled={!hasChanges || isSaving}
-          className="btn-primary"
-          style={{
-            padding: '0.5rem 1.5rem',
-            fontSize: '14px',
-            opacity: hasChanges ? 1 : 0.5,
-            cursor: hasChanges ? 'pointer' : 'not-allowed'
-          }}
-        >
-          {isSaving ? 'Saving...' : 'Save Changes'}
-        </button>
+        <div style={{ display: 'flex', gap: '0.75rem' }}>
+          <button
+            onClick={handleSendNow}
+            disabled={isSendingNow || !localEnabled}
+            className="btn-primary"
+            style={{
+              padding: '0.5rem 1.5rem',
+              fontSize: '14px',
+              opacity: (localEnabled && !isSendingNow) ? 1 : 0.5,
+              cursor: (localEnabled && !isSendingNow) ? 'pointer' : 'not-allowed'
+            }}
+          >
+            {isSendingNow ? 'Sending...' : 'Send Now'}
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={!hasChanges || isSaving}
+            className="btn-primary"
+            style={{
+              padding: '0.5rem 1.5rem',
+              fontSize: '14px',
+              opacity: hasChanges ? 1 : 0.5,
+              cursor: hasChanges ? 'pointer' : 'not-allowed'
+            }}
+          >
+            {isSaving ? 'Saving...' : 'Save Changes'}
+          </button>
+        </div>
       </div>
 
       <div className="settings-section" style={{ opacity: localEnabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>
@@ -135,6 +207,20 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
           Use tokens like <code>{'{VERSION}'}</code>, <code>{'{DURATION}'}</code>, <code>{'{FEATURES}'}</code>, <code>{'{NODECOUNT}'}</code>, and <code>{'{DIRECTCOUNT}'}</code> for dynamic content.
           <strong> Requires container restart to take effect.</strong>
         </p>
+
+        {lastAnnouncementTime && (
+          <div style={{
+            marginBottom: '1rem',
+            padding: '0.75rem',
+            background: 'var(--ctp-surface0)',
+            border: '1px solid var(--ctp-surface2)',
+            borderRadius: '4px',
+            fontSize: '0.9rem',
+            color: 'var(--ctp-subtext0)'
+          }}>
+            <strong>Last Announcement:</strong> {new Date(lastAnnouncementTime).toLocaleString()}
+          </div>
+        )}
 
         <div className="setting-item" style={{ marginTop: '1rem' }}>
           <label htmlFor="announceInterval">
@@ -175,6 +261,23 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
               </option>
             ))}
           </select>
+        </div>
+
+        <div className="setting-item" style={{ marginTop: '1rem' }}>
+          <label htmlFor="announceOnStart" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+            <input
+              id="announceOnStart"
+              type="checkbox"
+              checked={localAnnounceOnStart}
+              onChange={(e) => setLocalAnnounceOnStart(e.target.checked)}
+              disabled={!localEnabled}
+              style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
+            />
+            Announce on Start
+            <span className="setting-description">
+              Automatically send an announcement when the container starts (includes 1-hour spam protection to avoid network flooding)
+            </span>
+          </label>
         </div>
 
         <div className="setting-item" style={{ marginTop: '1rem' }}>

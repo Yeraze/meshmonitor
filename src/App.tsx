@@ -239,7 +239,9 @@ function App() {
     autoAnnounceMessage,
     setAutoAnnounceMessage,
     autoAnnounceChannelIndex,
-    setAutoAnnounceChannelIndex
+    setAutoAnnounceChannelIndex,
+    autoAnnounceOnStart,
+    setAutoAnnounceOnStart
   } = useUI();
 
   // Function to detect MQTT/bridge messages that should be filtered
@@ -373,6 +375,11 @@ function App() {
             const value = parseInt(settings.autoAnnounceChannelIndex);
             setAutoAnnounceChannelIndex(value);
             localStorage.setItem('autoAnnounceChannelIndex', value.toString());
+          }
+
+          if (settings.autoAnnounceOnStart !== undefined) {
+            setAutoAnnounceOnStart(settings.autoAnnounceOnStart === 'true');
+            localStorage.setItem('autoAnnounceOnStart', settings.autoAnnounceOnStart);
           }
         }
 
@@ -3357,12 +3364,14 @@ function App() {
                 intervalHours={autoAnnounceIntervalHours}
                 message={autoAnnounceMessage}
                 channelIndex={autoAnnounceChannelIndex}
+                announceOnStart={autoAnnounceOnStart}
                 channels={channels}
                 baseUrl={baseUrl}
                 onEnabledChange={setAutoAnnounceEnabled}
                 onIntervalChange={setAutoAnnounceIntervalHours}
                 onMessageChange={setAutoAnnounceMessage}
                 onChannelChange={setAutoAnnounceChannelIndex}
+                onAnnounceOnStartChange={setAutoAnnounceOnStart}
               />
             </div>
           </div>

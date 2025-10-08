@@ -34,6 +34,8 @@ interface UIContextType {
   setAutoAnnounceMessage: React.Dispatch<React.SetStateAction<string>>;
   autoAnnounceChannelIndex: number;
   setAutoAnnounceChannelIndex: React.Dispatch<React.SetStateAction<number>>;
+  autoAnnounceOnStart: boolean;
+  setAutoAnnounceOnStart: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 const UIContext = createContext<UIContextType | undefined>(undefined);
@@ -88,6 +90,10 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
     const saved = localStorage.getItem('autoAnnounceChannelIndex');
     return saved ? parseInt(saved) : 0;
   });
+  const [autoAnnounceOnStart, setAutoAnnounceOnStart] = useState<boolean>(() => {
+    const saved = localStorage.getItem('autoAnnounceOnStart');
+    return saved === 'true';
+  });
 
   return (
     <UIContext.Provider
@@ -124,6 +130,8 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
         setAutoAnnounceMessage,
         autoAnnounceChannelIndex,
         setAutoAnnounceChannelIndex,
+        autoAnnounceOnStart,
+        setAutoAnnounceOnStart,
       }}
     >
       {children}

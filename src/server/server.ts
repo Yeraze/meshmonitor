@@ -1063,7 +1063,7 @@ apiRouter.post('/settings', (req, res) => {
     const settings = req.body;
 
     // Validate settings
-    const validKeys = ['maxNodeAgeHours', 'tracerouteIntervalMinutes', 'temperatureUnit', 'distanceUnit', 'telemetryVisualizationHours', 'telemetryFavorites', 'autoAckEnabled', 'autoAckRegex', 'autoAnnounceEnabled', 'autoAnnounceIntervalHours', 'autoAnnounceMessage', 'autoAnnounceChannelIndex'];
+    const validKeys = ['maxNodeAgeHours', 'tracerouteIntervalMinutes', 'temperatureUnit', 'distanceUnit', 'telemetryVisualizationHours', 'telemetryFavorites', 'autoAckEnabled', 'autoAckRegex', 'autoAnnounceEnabled', 'autoAnnounceIntervalHours', 'autoAnnounceMessage', 'autoAnnounceChannelIndex', 'autoAnnounceOnStart'];
     const filteredSettings: Record<string, string> = {};
 
     for (const key of validKeys) {
@@ -1122,6 +1122,29 @@ apiRouter.delete('/settings', (_req, res) => {
   } catch (error) {
     logger.error('Error resetting settings:', error);
     res.status(500).json({ error: 'Failed to reset settings' });
+  }
+});
+
+// Auto-announce endpoints
+apiRouter.post('/announce/send', async (_req, res) => {
+  try {
+    await meshtasticManager.sendAutoAnnouncement();
+    // Update last announcement time
+    databaseService.setSetting('lastAnnouncementTime', Date.now().toString());
+    res.json({ success: true, message: 'Announcement sent successfully' });
+  } catch (error) {
+    logger.error('Error sending announcement:', error);
+    res.status(500).json({ error: 'Failed to send announcement' });
+  }
+});
+
+apiRouter.get('/announce/last', (_req, res) => {
+  try {
+    const lastAnnouncementTime = databaseService.getSetting('lastAnnouncementTime');
+    res.json({ lastAnnouncementTime: lastAnnouncementTime ? parseInt(lastAnnouncementTime) : null });
+  } catch (error) {
+    logger.error('Error fetching last announcement time:', error);
+    res.status(500).json({ error: 'Failed to fetch last announcement time' });
   }
 });
 

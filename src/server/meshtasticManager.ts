@@ -4,6 +4,9 @@ import protobufService from './protobufService.js';
 import { TcpTransport } from './tcpTransport.js';
 import { calculateDistance } from '../utils/distance.js';
 import { logger } from '../utils/logger.js';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const packageJson = require('../../package.json');
 
 export interface MeshtasticConfig {
   nodeIp: string;
@@ -301,6 +304,47 @@ class MeshtasticManager {
     const intervalMs = intervalHours * 60 * 60 * 1000;
 
     logger.debug(`📢 Starting announce scheduler with ${intervalHours} hour interval`);
+
+    // Check if announce-on-start is enabled
+    const announceOnStart = databaseService.getSetting('autoAnnounceOnStart');
+    if (announceOnStart === 'true') {
+      // Check spam protection: don't send if announced within last hour
+      const lastAnnouncementTime = databaseService.getSetting('lastAnnouncementTime');
+      const now = Date.now();
+      const oneHour = 60 * 60 * 1000;
+
+      if (lastAnnouncementTime) {
+        const timeSinceLastAnnouncement = now - parseInt(lastAnnouncementTime);
+        if (timeSinceLastAnnouncement < oneHour) {
+          const minutesRemaining = Math.ceil((oneHour - timeSinceLastAnnouncement) / 60000);
+          logger.debug(`📢 Skipping startup announcement - last announcement was ${Math.floor(timeSinceLastAnnouncement / 60000)} minutes ago (spam protection: ${minutesRemaining} minutes remaining)`);
+        } else {
+          logger.debug('📢 Sending startup announcement');
+          // Send announcement after a short delay to ensure connection is stable
+          setTimeout(async () => {
+            if (this.isConnected) {
+              try {
+                await this.sendAutoAnnouncement();
+              } catch (error) {
+                logger.error('❌ Error in startup announcement:', error);
+              }
+            }
+          }, 5000);
+        }
+      } else {
+        // No previous announcement, send one
+        logger.debug('📢 Sending first startup announcement');
+        setTimeout(async () => {
+          if (this.isConnected) {
+            try {
+              await this.sendAutoAnnouncement();
+            } catch (error) {
+              logger.error('❌ Error in startup announcement:', error);
+            }
+          }
+        }, 5000);
+      }
+    }
 
     this.announceInterval = setInterval(async () => {
       if (this.isConnected) {
@@ -3099,7 +3143,7 @@ class MeshtasticManager {
     }
   }
 
-  private async sendAutoAnnouncement(): Promise<void> {
+  async sendAutoAnnouncement(): Promise<void> {
     try {
       const message = databaseService.getSetting('autoAnnounceMessage') || 'MeshMonitor {VERSION} online for {DURATION} {FEATURES}';
       const channelIndex = parseInt(databaseService.getSetting('autoAnnounceChannelIndex') || '0');
@@ -3107,9 +3151,13 @@ class MeshtasticManager {
       // Replace tokens
       const replacedMessage = await this.replaceAnnouncementTokens(message);
 
-      logger.debug(`📢 Sending auto-announcement to channel ${channelIndex}: "${replacedMessage}"`);
+      logger.info(`📢 Sending auto-announcement to channel ${channelIndex}: "${replacedMessage}"`);
 
       await this.sendTextMessage(replacedMessage, channelIndex);
+
+      // Update last announcement time
+      databaseService.setSetting('lastAnnouncementTime', Date.now().toString());
+      logger.debug('📢 Last announcement time updated');
     } catch (error) {
       logger.error('❌ Error sending auto-announcement:', error);
     }
@@ -3120,7 +3168,6 @@ class MeshtasticManager {
 
     // {VERSION} - MeshMonitor version
     if (result.includes('{VERSION}')) {
-      const packageJson = await import('../../package.json');
       result = result.replace(/{VERSION}/g, packageJson.version);
     }
 
@@ -3156,20 +3203,22 @@ class MeshtasticManager {
       result = result.replace(/{FEATURES}/g, features.join(' '));
     }
 
-    // {NODECOUNT} - Active nodes
+    // {NODECOUNT} - Active nodes based on maxNodeAgeHours setting
     if (result.includes('{NODECOUNT}')) {
       const maxNodeAgeHours = parseInt(databaseService.getSetting('maxNodeAgeHours') || '24');
       const maxNodeAgeDays = maxNodeAgeHours / 24;
       const nodes = databaseService.getActiveNodes(maxNodeAgeDays);
+      logger.info(`📢 Token replacement - NODECOUNT: ${nodes.length} active nodes (maxNodeAgeHours: ${maxNodeAgeHours})`);
       result = result.replace(/{NODECOUNT}/g, nodes.length.toString());
     }
 
-    // {DIRECTCOUNT} - Direct nodes (0 hops)
+    // {DIRECTCOUNT} - Direct nodes (0 hops) from active nodes
     if (result.includes('{DIRECTCOUNT}')) {
       const maxNodeAgeHours = parseInt(databaseService.getSetting('maxNodeAgeHours') || '24');
       const maxNodeAgeDays = maxNodeAgeHours / 24;
       const nodes = databaseService.getActiveNodes(maxNodeAgeDays);
       const directCount = nodes.filter((n: any) => n.hopsAway === 0).length;
+      logger.info(`📢 Token replacement - DIRECTCOUNT: ${directCount} direct nodes out of ${nodes.length} active nodes`);
       result = result.replace(/{DIRECTCOUNT}/g, directCount.toString());
     }
 
