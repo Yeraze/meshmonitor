@@ -612,61 +612,8 @@ apiRouter.post('/messages/send', async (req, res) => {
     }
 
     // Send the message to the mesh network (with optional destination for DMs, replyId, and emoji flag)
-    // Returns the message ID that was assigned by the firmware
-    const messageId = await meshtasticManager.sendTextMessage(text, meshChannel, destinationNum, replyId, emoji);
-
-    // Save the sent message to database immediately (if local node info is available)
-    const localNodeInfo = meshtasticManager.getLocalNodeInfo();
-
-    if (localNodeInfo) {
-      const message = {
-        id: `${localNodeInfo.nodeNum}_${messageId}`, // Use the real message ID from firmware
-        fromNodeNum: localNodeInfo.nodeNum,
-        toNodeNum: destinationNum || 4294967295, // Use destination if provided, otherwise broadcast
-        fromNodeId: localNodeInfo.nodeId,
-        toNodeId: destination || '!ffffffff',
-        text: text,
-        // Use channel -1 for direct messages, otherwise use the actual channel
-        channel: destination ? -1 : meshChannel,
-        portnum: 1, // TEXT_MESSAGE_APP
-        timestamp: Date.now(),
-        rxTime: Date.now(),
-        createdAt: Date.now(),
-        replyId: replyId,
-        emoji: emoji
-      };
-
-      try {
-        // Ensure the local node exists in the database
-        databaseService.upsertNode({
-          nodeNum: localNodeInfo.nodeNum,
-          nodeId: localNodeInfo.nodeId,
-          longName: localNodeInfo.longName,
-          shortName: localNodeInfo.shortName,
-          hwModel: localNodeInfo.hwModel
-        });
-
-        // Ensure the destination node exists (if it's a DM)
-        if (destinationNum && destinationNum !== 4294967295) {
-          const destNode = databaseService.getNode(destinationNum);
-          if (!destNode) {
-            // Create a minimal node entry for the destination
-            databaseService.upsertNode({
-              nodeNum: destinationNum,
-              nodeId: destination || `!${destinationNum.toString(16).padStart(8, '0')}`
-            });
-          }
-        }
-
-        databaseService.insertMessage(message);
-        logger.debug(`💾 Saved sent message to database with ID ${messageId}: "${text.substring(0, 50)}..."`);
-      } catch (error) {
-        logger.warn(`⚠️ Could not save sent message to database:`, error);
-      }
-    } else {
-      logger.warn('⚠️ Local node info not available yet, skipping database save');
-      logger.warn('   Message will be saved when it arrives back from the mesh network');
-    }
+    // Note: sendTextMessage() now handles saving the message to the database
+    await meshtasticManager.sendTextMessage(text, meshChannel, destinationNum, replyId, emoji);
 
     res.json({ success: true });
   } catch (error) {
