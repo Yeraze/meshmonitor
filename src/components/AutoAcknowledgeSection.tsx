@@ -19,6 +19,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   const [localRegex, setLocalRegex] = useState(regex || 'test');
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [testMessages, setTestMessages] = useState('test\nTest message\nHello world\nTESTING 123');
 
   // Update local state when props change
   useEffect(() => {
@@ -31,6 +32,18 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     const changed = localEnabled !== enabled || localRegex !== regex;
     setHasChanges(changed);
   }, [localEnabled, localRegex, enabled, regex]);
+
+  // Test if a message matches the regex (same logic as server)
+  const testMessageMatch = (message: string): boolean => {
+    if (!localRegex) return false;
+    try {
+      const regex = new RegExp(localRegex, 'i');
+      return regex.test(message);
+    } catch (error) {
+      // Invalid regex
+      return false;
+    }
+  };
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -123,6 +136,66 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
             className="setting-input"
             style={{ fontFamily: 'monospace' }}
           />
+        </div>
+
+        <div className="setting-item" style={{ marginTop: '1.5rem' }}>
+          <label htmlFor="testMessages">
+            Pattern Testing
+            <span className="setting-description">
+              Enter sample messages (one per line) to test your regex pattern.
+              Green = will trigger auto-ack, Red = will not trigger
+            </span>
+          </label>
+          <textarea
+            id="testMessages"
+            value={testMessages}
+            onChange={(e) => setTestMessages(e.target.value)}
+            placeholder="Enter test messages, one per line..."
+            disabled={!localEnabled}
+            className="setting-input"
+            rows={6}
+            style={{
+              fontFamily: 'monospace',
+              resize: 'vertical',
+              minHeight: '120px'
+            }}
+          />
+          <div style={{ marginTop: '0.75rem' }}>
+            {testMessages.split('\n').filter(line => line.trim()).map((message, index) => {
+              const matches = testMessageMatch(message);
+              return (
+                <div
+                  key={index}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: '0.5rem',
+                    marginBottom: '0.25rem',
+                    backgroundColor: matches ? 'rgba(166, 227, 161, 0.1)' : 'rgba(243, 139, 168, 0.1)',
+                    border: `1px solid ${matches ? 'var(--ctp-green)' : 'var(--ctp-red)'}`,
+                    borderRadius: '4px',
+                    fontFamily: 'monospace',
+                    fontSize: '0.9rem'
+                  }}
+                >
+                  <span
+                    style={{
+                      display: 'inline-block',
+                      width: '20px',
+                      height: '20px',
+                      borderRadius: '50%',
+                      backgroundColor: matches ? 'var(--ctp-green)' : 'var(--ctp-red)',
+                      marginRight: '0.75rem',
+                      flexShrink: 0
+                    }}
+                  />
+                  <span style={{ color: 'var(--ctp-text)', wordBreak: 'break-word' }}>
+                    {message}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     </>
