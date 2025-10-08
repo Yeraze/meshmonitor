@@ -26,6 +26,16 @@ interface UIContextType {
   setAutoAckEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   autoAckRegex: string;
   setAutoAckRegex: React.Dispatch<React.SetStateAction<string>>;
+  autoAnnounceEnabled: boolean;
+  setAutoAnnounceEnabled: React.Dispatch<React.SetStateAction<boolean>>;
+  autoAnnounceIntervalHours: number;
+  setAutoAnnounceIntervalHours: React.Dispatch<React.SetStateAction<number>>;
+  autoAnnounceMessage: string;
+  setAutoAnnounceMessage: React.Dispatch<React.SetStateAction<string>>;
+  autoAnnounceChannelIndex: number;
+  setAutoAnnounceChannelIndex: React.Dispatch<React.SetStateAction<number>>;
+  autoAnnounceOnStart: boolean;
+  setAutoAnnounceOnStart: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 const UIContext = createContext<UIContextType | undefined>(undefined);
@@ -64,6 +74,26 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
     }
     return saved || '^(test|ping)';
   });
+  const [autoAnnounceEnabled, setAutoAnnounceEnabled] = useState<boolean>(() => {
+    const saved = localStorage.getItem('autoAnnounceEnabled');
+    return saved === 'true';
+  });
+  const [autoAnnounceIntervalHours, setAutoAnnounceIntervalHours] = useState<number>(() => {
+    const saved = localStorage.getItem('autoAnnounceIntervalHours');
+    return saved ? parseInt(saved) : 6;
+  });
+  const [autoAnnounceMessage, setAutoAnnounceMessage] = useState<string>(() => {
+    const saved = localStorage.getItem('autoAnnounceMessage');
+    return saved || 'MeshMonitor {VERSION} online for {DURATION} {FEATURES}';
+  });
+  const [autoAnnounceChannelIndex, setAutoAnnounceChannelIndex] = useState<number>(() => {
+    const saved = localStorage.getItem('autoAnnounceChannelIndex');
+    return saved ? parseInt(saved) : 0;
+  });
+  const [autoAnnounceOnStart, setAutoAnnounceOnStart] = useState<boolean>(() => {
+    const saved = localStorage.getItem('autoAnnounceOnStart');
+    return saved === 'true';
+  });
 
   return (
     <UIContext.Provider
@@ -92,6 +122,16 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
         setAutoAckEnabled,
         autoAckRegex,
         setAutoAckRegex,
+        autoAnnounceEnabled,
+        setAutoAnnounceEnabled,
+        autoAnnounceIntervalHours,
+        setAutoAnnounceIntervalHours,
+        autoAnnounceMessage,
+        setAutoAnnounceMessage,
+        autoAnnounceChannelIndex,
+        setAutoAnnounceChannelIndex,
+        autoAnnounceOnStart,
+        setAutoAnnounceOnStart,
       }}
     >
       {children}

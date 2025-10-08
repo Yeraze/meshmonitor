@@ -756,7 +756,8 @@ class DatabaseService {
   }
 
   getActiveNodes(sinceDays: number = 7): DbNode[] {
-    const cutoff = Date.now() - (sinceDays * 24 * 60 * 60 * 1000);
+    // lastHeard is stored in seconds (Unix timestamp), so convert cutoff to seconds
+    const cutoff = Math.floor(Date.now() / 1000) - (sinceDays * 24 * 60 * 60);
     const stmt = this.db.prepare('SELECT * FROM nodes WHERE lastHeard > ? ORDER BY lastHeard DESC');
     const nodes = stmt.all(cutoff) as DbNode[];
     return nodes.map(node => this.normalizeBigInts(node));
