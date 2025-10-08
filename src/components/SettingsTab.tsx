@@ -12,7 +12,6 @@ type DateFormat = 'MM/DD/YYYY' | 'DD/MM/YYYY';
 
 interface SettingsTabProps {
   maxNodeAgeHours: number;
-  tracerouteIntervalMinutes: number;
   temperatureUnit: TemperatureUnit;
   distanceUnit: DistanceUnit;
   telemetryVisualizationHours: number;
@@ -22,7 +21,6 @@ interface SettingsTabProps {
   dateFormat: DateFormat;
   baseUrl: string;
   onMaxNodeAgeChange: (hours: number) => void;
-  onTracerouteIntervalChange: (minutes: number) => void;
   onTemperatureUnitChange: (unit: TemperatureUnit) => void;
   onDistanceUnitChange: (unit: DistanceUnit) => void;
   onTelemetryVisualizationChange: (hours: number) => void;
@@ -34,7 +32,6 @@ interface SettingsTabProps {
 
 const SettingsTab: React.FC<SettingsTabProps> = ({
   maxNodeAgeHours,
-  tracerouteIntervalMinutes,
   temperatureUnit,
   distanceUnit,
   telemetryVisualizationHours,
@@ -44,7 +41,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   dateFormat,
   baseUrl,
   onMaxNodeAgeChange,
-  onTracerouteIntervalChange,
   onTemperatureUnitChange,
   onDistanceUnitChange,
   onTelemetryVisualizationChange,
@@ -55,7 +51,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
 }) => {
   // Local state for editing
   const [localMaxNodeAge, setLocalMaxNodeAge] = useState(maxNodeAgeHours);
-  const [localTracerouteInterval, setLocalTracerouteInterval] = useState(tracerouteIntervalMinutes);
   const [localTemperatureUnit, setLocalTemperatureUnit] = useState(temperatureUnit);
   const [localDistanceUnit, setLocalDistanceUnit] = useState(distanceUnit);
   const [localTelemetryHours, setLocalTelemetryHours] = useState(telemetryVisualizationHours);
@@ -70,7 +65,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   // Update local state when props change
   useEffect(() => {
     setLocalMaxNodeAge(maxNodeAgeHours);
-    setLocalTracerouteInterval(tracerouteIntervalMinutes);
     setLocalTemperatureUnit(temperatureUnit);
     setLocalDistanceUnit(distanceUnit);
     setLocalTelemetryHours(telemetryVisualizationHours);
@@ -78,13 +72,12 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLocalPreferredSortDirection(preferredSortDirection);
     setLocalTimeFormat(timeFormat);
     setLocalDateFormat(dateFormat);
-  }, [maxNodeAgeHours, tracerouteIntervalMinutes, temperatureUnit, distanceUnit, telemetryVisualizationHours, preferredSortField, preferredSortDirection, timeFormat, dateFormat]);
+  }, [maxNodeAgeHours, temperatureUnit, distanceUnit, telemetryVisualizationHours, preferredSortField, preferredSortDirection, timeFormat, dateFormat]);
 
   // Check if any settings have changed
   useEffect(() => {
     const changed =
       localMaxNodeAge !== maxNodeAgeHours ||
-      localTracerouteInterval !== tracerouteIntervalMinutes ||
       localTemperatureUnit !== temperatureUnit ||
       localDistanceUnit !== distanceUnit ||
       localTelemetryHours !== telemetryVisualizationHours ||
@@ -93,15 +86,14 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localTimeFormat !== timeFormat ||
       localDateFormat !== dateFormat;
     setHasChanges(changed);
-  }, [localMaxNodeAge, localTracerouteInterval, localTemperatureUnit, localDistanceUnit, localTelemetryHours, localPreferredSortField, localPreferredSortDirection, localTimeFormat, localDateFormat,
-      maxNodeAgeHours, tracerouteIntervalMinutes, temperatureUnit, distanceUnit, telemetryVisualizationHours, preferredSortField, preferredSortDirection, timeFormat, dateFormat]);
+  }, [localMaxNodeAge, localTemperatureUnit, localDistanceUnit, localTelemetryHours, localPreferredSortField, localPreferredSortDirection, localTimeFormat, localDateFormat,
+      maxNodeAgeHours, temperatureUnit, distanceUnit, telemetryVisualizationHours, preferredSortField, preferredSortDirection, timeFormat, dateFormat]);
 
   const handleSave = async () => {
     setIsSaving(true);
     try {
       const settings = {
         maxNodeAgeHours: localMaxNodeAge,
-        tracerouteIntervalMinutes: localTracerouteInterval,
         temperatureUnit: localTemperatureUnit,
         distanceUnit: localDistanceUnit,
         telemetryVisualizationHours: localTelemetryHours,
@@ -120,7 +112,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
 
       // Update parent component state
       onMaxNodeAgeChange(localMaxNodeAge);
-      onTracerouteIntervalChange(localTracerouteInterval);
       onTemperatureUnitChange(localTemperatureUnit);
       onDistanceUnitChange(localDistanceUnit);
       onTelemetryVisualizationChange(localTelemetryHours);
@@ -144,7 +135,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       'Are you sure you want to reset all settings to defaults?\n\n' +
       'Default values:\n' +
       '• Max Node Age: 24 hours\n' +
-      '• Traceroute Interval: 3 minutes (set to 0 to disable)\n' +
       '• Temperature Unit: Celsius\n' +
       '• Distance Unit: Kilometers\n' +
       '• Telemetry Hours: 24\n' +
@@ -164,7 +154,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
 
       // Set local state to defaults
       setLocalMaxNodeAge(24);
-      setLocalTracerouteInterval(3);
       setLocalTemperatureUnit('C');
       setLocalDistanceUnit('km');
       setLocalTelemetryHours(24);
@@ -175,7 +164,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
 
       // Update parent component with defaults
       onMaxNodeAgeChange(24);
-      onTracerouteIntervalChange(3);
       onTemperatureUnitChange('C');
       onDistanceUnitChange('km');
       onTelemetryVisualizationChange(24);
@@ -284,25 +272,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               max="168"
               value={localMaxNodeAge}
               onChange={(e) => setLocalMaxNodeAge(parseInt(e.target.value))}
-              className="setting-input"
-            />
-          </div>
-        </div>
-
-        <div className="settings-section">
-          <h3>Traceroute</h3>
-          <div className="setting-item">
-            <label htmlFor="tracerouteInterval">
-              Automatic Traceroute Interval (minutes)
-              <span className="setting-description">How often to automatically send traceroutes to nodes (0 = disabled). Requires container restart to take effect.</span>
-            </label>
-            <input
-              id="tracerouteInterval"
-              type="number"
-              min="0"
-              max="60"
-              value={localTracerouteInterval}
-              onChange={(e) => setLocalTracerouteInterval(parseInt(e.target.value))}
               className="setting-input"
             />
           </div>

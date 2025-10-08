@@ -11,6 +11,7 @@ import ConfigurationTab from './components/ConfigurationTab'
 import Dashboard from './components/Dashboard'
 import HopCountDisplay from './components/HopCountDisplay'
 import AutoAcknowledgeSection from './components/AutoAcknowledgeSection'
+import AutoTracerouteSection from './components/AutoTracerouteSection'
 import { ToastProvider } from './components/ToastContainer'
 import { version } from '../package.json'
 import { type TemperatureUnit } from './utils/temperature'
@@ -3287,7 +3288,6 @@ function App() {
         {activeTab === 'settings' && (
           <SettingsTab
             maxNodeAgeHours={maxNodeAgeHours}
-            tracerouteIntervalMinutes={tracerouteIntervalMinutes}
             temperatureUnit={temperatureUnit}
             distanceUnit={distanceUnit}
             telemetryVisualizationHours={telemetryVisualizationHours}
@@ -3297,7 +3297,6 @@ function App() {
             dateFormat={dateFormat}
             baseUrl={baseUrl}
             onMaxNodeAgeChange={setMaxNodeAgeHours}
-            onTracerouteIntervalChange={setTracerouteIntervalMinutes}
             onTemperatureUnitChange={setTemperatureUnit}
             onDistanceUnitChange={setDistanceUnit}
             onTelemetryVisualizationChange={setTelemetryVisualizationHours}
@@ -3310,6 +3309,11 @@ function App() {
         {activeTab === 'automation' && (
           <div className="settings-tab">
             <div className="settings-content">
+              <AutoTracerouteSection
+                intervalMinutes={tracerouteIntervalMinutes}
+                baseUrl={baseUrl}
+                onIntervalChange={setTracerouteIntervalMinutes}
+              />
               <AutoAcknowledgeSection
                 enabled={autoAckEnabled}
                 regex={autoAckRegex}
