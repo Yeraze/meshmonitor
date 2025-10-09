@@ -6,6 +6,7 @@ import { logger } from '../utils/logger.js';
 import { UserModel } from '../server/models/User.js';
 import { PermissionModel } from '../server/models/Permission.js';
 import { migration as authMigration } from '../server/migrations/001_add_auth_tables.js';
+import { migration as channelsMigration } from '../server/migrations/002_add_channels_permission.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -156,6 +157,7 @@ class DatabaseService {
     this.createIndexes();
     this.runDataMigrations();
     this.runAuthMigration();
+    this.runChannelsMigration();
     this.isInitialized = true;
   }
 
@@ -176,6 +178,29 @@ class DatabaseService {
       }
     } catch (error) {
       logger.error('❌ Failed to run authentication migration:', error);
+      throw error;
+    }
+  }
+
+  private runChannelsMigration(): void {
+    logger.debug('Running channels permission migration...');
+    try {
+      // Check if migration has already been run by checking if 'channels' is in the CHECK constraint
+      // We'll use a setting to track this migration
+      const migrationKey = 'migration_002_channels_permission';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Channels permission migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 002: Add channels permission resource...');
+      channelsMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Channels permission migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run channels permission migration:', error);
       throw error;
     }
   }
