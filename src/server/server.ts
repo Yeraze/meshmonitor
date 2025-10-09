@@ -1,4 +1,5 @@
 import express from 'express';
+import session from 'express-session';
 import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
@@ -7,6 +8,14 @@ import databaseService from '../services/database.js';
 import meshtasticManager from './meshtasticManager.js';
 import { createRequire } from 'module';
 import { logger } from '../utils/logger.js';
+import { getSessionConfig } from './auth/sessionConfig.js';
+import { initializeOIDC } from './auth/oidcAuth.js';
+import {
+  optionalAuth,
+  requirePermission,
+  requireAdmin,
+  hasPermission
+} from './auth/authMiddleware.js';
 
 const require = createRequire(import.meta.url);
 const packageJson = require('../../package.json');
@@ -84,8 +93,25 @@ JSON.stringify = function(value, replacer?: any, space?: any) {
 };
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: true,  // Allow same-origin requests
+  credentials: true  // Allow cookies
+}));
 app.use(express.json());
+
+// Session middleware
+app.use(session(getSessionConfig()));
+
+// Initialize OIDC if configured
+initializeOIDC().then(enabled => {
+  if (enabled) {
+    logger.debug('✅ OIDC authentication enabled');
+  } else {
+    logger.debug('ℹ️  OIDC authentication disabled (not configured)');
+  }
+}).catch(error => {
+  logger.error('Failed to initialize OIDC:', error);
+});
 
 // Initialize Meshtastic connection
 setTimeout(async () => {
@@ -133,8 +159,18 @@ setTimeout(() => {
 // Create router for API routes
 const apiRouter = express.Router();
 
+// Import route handlers
+import authRoutes from './routes/authRoutes.js';
+import userRoutes from './routes/userRoutes.js';
+
+// Authentication routes
+apiRouter.use('/auth', authRoutes);
+
+// User management routes (admin only)
+apiRouter.use('/users', userRoutes);
+
 // API Routes
-apiRouter.get('/nodes', (_req, res) => {
+apiRouter.get('/nodes', optionalAuth(), (_req, res) => {
   try {
     const nodes = meshtasticManager.getAllNodes();
 
@@ -190,7 +226,7 @@ apiRouter.get('/nodes', (_req, res) => {
   }
 });
 
-apiRouter.get('/nodes/active', (req, res) => {
+apiRouter.get('/nodes/active', optionalAuth(), (req, res) => {
   try {
     const days = parseInt(req.query.days as string) || 7;
     const nodes = databaseService.getActiveNodes(days);
@@ -202,7 +238,7 @@ apiRouter.get('/nodes/active', (req, res) => {
 });
 
 // Get position history for a node (for mobile node visualization)
-apiRouter.get('/nodes/:nodeId/position-history', (req, res) => {
+apiRouter.get('/nodes/:nodeId/position-history', optionalAuth(), (req, res) => {
   try {
     const { nodeId } = req.params;
     const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 168; // Default 7 days
@@ -256,7 +292,7 @@ interface ApiErrorResponse {
 }
 
 // Set node favorite status (with optional device sync)
-apiRouter.post('/nodes/:nodeId/favorite', async (req, res) => {
+apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write'), async (req, res) => {
   try {
     const { nodeId } = req.params;
     const { isFavorite, syncToDevice = true } = req.body;
@@ -338,10 +374,35 @@ apiRouter.post('/nodes/:nodeId/favorite', async (req, res) => {
   }
 });
 
-apiRouter.get('/messages', (req, res) => {
+apiRouter.get('/messages', optionalAuth(), (req, res) => {
   try {
+    // Check if user has either channels or messages permission
+    const hasChannelsRead = req.user?.isAdmin || hasPermission(req.user!, 'channels', 'read');
+    const hasMessagesRead = req.user?.isAdmin || hasPermission(req.user!, 'messages', 'read');
+
+    if (!hasChannelsRead && !hasMessagesRead) {
+      return res.status(403).json({
+        error: 'Insufficient permissions',
+        code: 'FORBIDDEN',
+        required: { resource: 'channels or messages', action: 'read' }
+      });
+    }
+
     const limit = parseInt(req.query.limit as string) || 100;
-    const messages = meshtasticManager.getRecentMessages(limit);
+    let messages = meshtasticManager.getRecentMessages(limit);
+
+    // Filter messages based on permissions
+    // If user only has channels permission, exclude direct messages (channel -1)
+    // If user only has messages permission, only include direct messages (channel -1)
+    if (hasChannelsRead && !hasMessagesRead) {
+      // Only channel messages
+      messages = messages.filter(msg => msg.channel !== -1);
+    } else if (hasMessagesRead && !hasChannelsRead) {
+      // Only direct messages
+      messages = messages.filter(msg => msg.channel === -1);
+    }
+    // If both permissions, return all messages
+
     res.json(messages);
   } catch (error) {
     logger.error('Error fetching messages:', error);
@@ -349,7 +410,7 @@ apiRouter.get('/messages', (req, res) => {
   }
 });
 
-apiRouter.get('/messages/channel/:channel', (req, res) => {
+apiRouter.get('/messages/channel/:channel', requirePermission('channels', 'read'), (req, res) => {
   try {
     const requestedChannel = parseInt(req.params.channel);
     const limit = parseInt(req.query.limit as string) || 100;
@@ -375,7 +436,7 @@ apiRouter.get('/messages/channel/:channel', (req, res) => {
   }
 });
 
-apiRouter.get('/messages/direct/:nodeId1/:nodeId2', (req, res) => {
+apiRouter.get('/messages/direct/:nodeId1/:nodeId2', requirePermission('messages', 'read'), (req, res) => {
   try {
     const { nodeId1, nodeId2 } = req.params;
     const limit = parseInt(req.query.limit as string) || 100;
@@ -388,7 +449,7 @@ apiRouter.get('/messages/direct/:nodeId1/:nodeId2', (req, res) => {
 });
 
 // Debug endpoint to see all channels
-apiRouter.get('/channels/debug', (_req, res) => {
+apiRouter.get('/channels/debug', requirePermission('messages', 'read'), (_req, res) => {
   try {
     const allChannels = databaseService.getAllChannels();
     logger.debug('🔍 DEBUG: All channels in database:', allChannels);
@@ -399,7 +460,7 @@ apiRouter.get('/channels/debug', (_req, res) => {
   }
 });
 
-apiRouter.get('/channels', (_req, res) => {
+apiRouter.get('/channels', requirePermission('channels', 'read'), (_req, res) => {
   try {
     const allChannels = databaseService.getAllChannels();
 
@@ -500,7 +561,7 @@ apiRouter.get('/channels', (_req, res) => {
   }
 });
 
-apiRouter.get('/stats', (_req, res) => {
+apiRouter.get('/stats', requirePermission('dashboard', 'read'), (_req, res) => {
   try {
     const messageCount = databaseService.getMessageCount();
     const nodeCount = databaseService.getNodeCount();
@@ -519,7 +580,7 @@ apiRouter.get('/stats', (_req, res) => {
   }
 });
 
-apiRouter.post('/export', (_req, res) => {
+apiRouter.post('/export', requireAdmin(), (_req, res) => {
   try {
     const data = databaseService.exportData();
     res.json(data);
@@ -529,7 +590,7 @@ apiRouter.post('/export', (_req, res) => {
   }
 });
 
-apiRouter.post('/import', (req, res) => {
+apiRouter.post('/import', requireAdmin(), (req, res) => {
   try {
     const data = req.body;
     databaseService.importData(data);
@@ -540,7 +601,7 @@ apiRouter.post('/import', (req, res) => {
   }
 });
 
-apiRouter.post('/cleanup/messages', (req, res) => {
+apiRouter.post('/cleanup/messages', requireAdmin(), (req, res) => {
   try {
     const days = parseInt(req.body.days) || 30;
     const deletedCount = databaseService.cleanupOldMessages(days);
@@ -551,7 +612,7 @@ apiRouter.post('/cleanup/messages', (req, res) => {
   }
 });
 
-apiRouter.post('/cleanup/nodes', (req, res) => {
+apiRouter.post('/cleanup/nodes', requireAdmin(), (req, res) => {
   try {
     const days = parseInt(req.body.days) || 30;
     const deletedCount = databaseService.cleanupInactiveNodes(days);
@@ -562,7 +623,7 @@ apiRouter.post('/cleanup/nodes', (req, res) => {
   }
 });
 
-apiRouter.post('/cleanup/channels', (_req, res) => {
+apiRouter.post('/cleanup/channels', requireAdmin(), (_req, res) => {
   try {
     const deletedCount = databaseService.cleanupInvalidChannels();
     res.json({ deletedCount });
@@ -574,7 +635,7 @@ apiRouter.post('/cleanup/channels', (_req, res) => {
 
 
 // Send message endpoint
-apiRouter.post('/messages/send', async (req, res) => {
+apiRouter.post('/messages/send', requirePermission('messages', 'write'), async (req, res) => {
   try {
     const { text, channel, destination, replyId, emoji } = req.body;
     if (!text || typeof text !== 'string') {
@@ -623,7 +684,7 @@ apiRouter.post('/messages/send', async (req, res) => {
 });
 
 // Traceroute endpoint
-apiRouter.post('/traceroute', async (req, res) => {
+apiRouter.post('/traceroute', requirePermission('info', 'write'), async (req, res) => {
   try {
     const { destination } = req.body;
     if (!destination) {
@@ -672,7 +733,7 @@ apiRouter.get('/traceroutes/recent', (req, res) => {
 });
 
 // Get longest active route segment (within last 7 days)
-apiRouter.get('/route-segments/longest-active', (_req, res) => {
+apiRouter.get('/route-segments/longest-active', requirePermission('info', 'read'), (_req, res) => {
   try {
     const segment = databaseService.getLongestActiveRouteSegment();
     if (!segment) {
@@ -698,7 +759,7 @@ apiRouter.get('/route-segments/longest-active', (_req, res) => {
 });
 
 // Get record holder route segment
-apiRouter.get('/route-segments/record-holder', (_req, res) => {
+apiRouter.get('/route-segments/record-holder', requirePermission('info', 'read'), (_req, res) => {
   try {
     const segment = databaseService.getRecordHolderRouteSegment();
     if (!segment) {
@@ -724,7 +785,7 @@ apiRouter.get('/route-segments/record-holder', (_req, res) => {
 });
 
 // Clear record holder route segment
-apiRouter.delete('/route-segments/record-holder', (_req, res) => {
+apiRouter.delete('/route-segments/record-holder', requirePermission('info', 'write'), (_req, res) => {
   try {
     databaseService.clearRecordHolderSegment();
     res.json({ success: true, message: 'Record holder cleared' });
@@ -735,7 +796,7 @@ apiRouter.delete('/route-segments/record-holder', (_req, res) => {
 });
 
 // Get all neighbor info (latest per node pair)
-apiRouter.get('/neighbor-info', (_req, res) => {
+apiRouter.get('/neighbor-info', requirePermission('info', 'read'), (_req, res) => {
   try {
     const neighborInfo = databaseService.getLatestNeighborInfoPerNode();
 
@@ -765,7 +826,7 @@ apiRouter.get('/neighbor-info', (_req, res) => {
 });
 
 // Get neighbor info for a specific node
-apiRouter.get('/neighbor-info/:nodeNum', (req, res) => {
+apiRouter.get('/neighbor-info/:nodeNum', requirePermission('info', 'read'), (req, res) => {
   try {
     const nodeNum = parseInt(req.params.nodeNum);
     const neighborInfo = databaseService.getNeighborsForNode(nodeNum);
@@ -791,8 +852,15 @@ apiRouter.get('/neighbor-info/:nodeNum', (req, res) => {
 });
 
 // Get telemetry data for a node
-apiRouter.get('/telemetry/:nodeId', (req, res) => {
+apiRouter.get('/telemetry/:nodeId', optionalAuth(), (req, res) => {
   try {
+    // Allow users with info read OR dashboard read (dashboard needs telemetry data)
+    if (!req.user?.isAdmin &&
+        !hasPermission(req.user!, 'info', 'read') &&
+        !hasPermission(req.user!, 'dashboard', 'read')) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
     const { nodeId } = req.params;
     const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 24;
 
@@ -811,7 +879,7 @@ apiRouter.get('/telemetry/:nodeId', (req, res) => {
 });
 
 // Check which nodes have telemetry data
-apiRouter.get('/telemetry/available/nodes', (_req, res) => {
+apiRouter.get('/telemetry/available/nodes', requirePermission('info', 'read'), (_req, res) => {
   try {
     const nodes = databaseService.getAllNodes();
     const nodesWithTelemetry: string[] = [];
@@ -861,7 +929,7 @@ apiRouter.get('/telemetry/available/nodes', (_req, res) => {
 });
 
 // Connection status endpoint
-apiRouter.get('/connection', (_req, res) => {
+apiRouter.get('/connection', optionalAuth(), (_req, res) => {
   try {
     const status = meshtasticManager.getConnectionStatus();
     res.json(status);
@@ -872,7 +940,7 @@ apiRouter.get('/connection', (_req, res) => {
 });
 
 // Configuration endpoint for frontend
-apiRouter.get('/config', async (_req, res) => {
+apiRouter.get('/config', optionalAuth(), async (_req, res) => {
   try {
     // Get the local node number from settings to include rebootCount
     const localNodeNumStr = databaseService.getSetting('localNodeNum');
@@ -909,7 +977,7 @@ apiRouter.get('/config', async (_req, res) => {
 });
 
 // Device configuration endpoint
-apiRouter.get('/device-config', async (_req, res) => {
+apiRouter.get('/device-config', requirePermission('configuration', 'read'), async (_req, res) => {
   try {
     const config = await meshtasticManager.getDeviceConfig();
     if (config) {
@@ -924,7 +992,7 @@ apiRouter.get('/device-config', async (_req, res) => {
 });
 
 // Refresh nodes from device endpoint
-apiRouter.post('/nodes/refresh', async (_req, res) => {
+apiRouter.post('/nodes/refresh', requirePermission('nodes', 'write'), async (_req, res) => {
   try {
     logger.debug('🔄 Manual node database refresh requested...');
 
@@ -952,7 +1020,7 @@ apiRouter.post('/nodes/refresh', async (_req, res) => {
 });
 
 // Refresh channels from device endpoint
-apiRouter.post('/channels/refresh', async (_req, res) => {
+apiRouter.post('/channels/refresh', requirePermission('messages', 'write'), async (_req, res) => {
   try {
     logger.debug('🔄 Manual channel refresh requested...');
 
@@ -978,7 +1046,7 @@ apiRouter.post('/channels/refresh', async (_req, res) => {
 });
 
 // Settings endpoints
-apiRouter.post('/settings/traceroute-interval', (req, res) => {
+apiRouter.post('/settings/traceroute-interval', requirePermission('settings', 'write'), (req, res) => {
   try {
     const { intervalMinutes } = req.body;
     if (typeof intervalMinutes !== 'number' || intervalMinutes < 0 || intervalMinutes > 60) {
@@ -994,8 +1062,15 @@ apiRouter.post('/settings/traceroute-interval', (req, res) => {
 });
 
 // Get all settings
-apiRouter.get('/settings', (_req, res) => {
+apiRouter.get('/settings', optionalAuth(), (req, res) => {
   try {
+    // Allow users with settings read OR dashboard read (dashboard needs telemetryFavorites)
+    if (!req.user?.isAdmin &&
+        !hasPermission(req.user!, 'settings', 'read') &&
+        !hasPermission(req.user!, 'dashboard', 'read')) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
     const settings = databaseService.getAllSettings();
     res.json(settings);
   } catch (error) {
@@ -1005,7 +1080,7 @@ apiRouter.get('/settings', (_req, res) => {
 });
 
 // Save settings
-apiRouter.post('/settings', (req, res) => {
+apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) => {
   try {
     const settings = req.body;
 
@@ -1060,7 +1135,7 @@ apiRouter.post('/settings', (req, res) => {
 });
 
 // Reset settings to defaults
-apiRouter.delete('/settings', (_req, res) => {
+apiRouter.delete('/settings', requirePermission('settings', 'write'), (_req, res) => {
   try {
     databaseService.deleteAllSettings();
     // Reset traceroute interval to default
@@ -1073,7 +1148,7 @@ apiRouter.delete('/settings', (_req, res) => {
 });
 
 // Auto-announce endpoints
-apiRouter.post('/announce/send', async (_req, res) => {
+apiRouter.post('/announce/send', requirePermission('automation', 'write'), async (_req, res) => {
   try {
     await meshtasticManager.sendAutoAnnouncement();
     // Update last announcement time
@@ -1085,7 +1160,7 @@ apiRouter.post('/announce/send', async (_req, res) => {
   }
 });
 
-apiRouter.get('/announce/last', (_req, res) => {
+apiRouter.get('/announce/last', requirePermission('automation', 'read'), (_req, res) => {
   try {
     const lastAnnouncementTime = databaseService.getSetting('lastAnnouncementTime');
     res.json({ lastAnnouncementTime: lastAnnouncementTime ? parseInt(lastAnnouncementTime) : null });
@@ -1096,7 +1171,7 @@ apiRouter.get('/announce/last', (_req, res) => {
 });
 
 // Danger zone endpoints
-apiRouter.post('/purge/nodes', async (_req, res) => {
+apiRouter.post('/purge/nodes', requireAdmin(), async (_req, res) => {
   try {
     databaseService.purgeAllNodes();
     // Trigger a node refresh after purging
@@ -1108,7 +1183,7 @@ apiRouter.post('/purge/nodes', async (_req, res) => {
   }
 });
 
-apiRouter.post('/purge/telemetry', (_req, res) => {
+apiRouter.post('/purge/telemetry', requireAdmin(), (_req, res) => {
   try {
     databaseService.purgeAllTelemetry();
     res.json({ success: true, message: 'All telemetry data purged' });
@@ -1118,7 +1193,7 @@ apiRouter.post('/purge/telemetry', (_req, res) => {
   }
 });
 
-apiRouter.post('/purge/messages', (_req, res) => {
+apiRouter.post('/purge/messages', requireAdmin(), (_req, res) => {
   try {
     databaseService.purgeAllMessages();
     res.json({ success: true, message: 'All messages purged' });
@@ -1130,7 +1205,7 @@ apiRouter.post('/purge/messages', (_req, res) => {
 
 // Configuration endpoints
 // GET current configuration
-apiRouter.get('/config/current', (_req, res) => {
+apiRouter.get('/config/current', requirePermission('configuration', 'read'), (_req, res) => {
   try {
     const config = meshtasticManager.getCurrentConfig();
     res.json(config);
@@ -1140,7 +1215,7 @@ apiRouter.get('/config/current', (_req, res) => {
   }
 });
 
-apiRouter.post('/config/device', async (req, res) => {
+apiRouter.post('/config/device', requirePermission('configuration', 'write'), async (req, res) => {
   try {
     const config = req.body;
     await meshtasticManager.setDeviceConfig(config);
@@ -1151,7 +1226,7 @@ apiRouter.post('/config/device', async (req, res) => {
   }
 });
 
-apiRouter.post('/config/lora', async (req, res) => {
+apiRouter.post('/config/lora', requirePermission('configuration', 'write'), async (req, res) => {
   try {
     const config = req.body;
     await meshtasticManager.setLoRaConfig(config);
@@ -1162,7 +1237,7 @@ apiRouter.post('/config/lora', async (req, res) => {
   }
 });
 
-apiRouter.post('/config/position', async (req, res) => {
+apiRouter.post('/config/position', requirePermission('configuration', 'write'), async (req, res) => {
   try {
     const config = req.body;
     await meshtasticManager.setPositionConfig(config);
@@ -1173,7 +1248,7 @@ apiRouter.post('/config/position', async (req, res) => {
   }
 });
 
-apiRouter.post('/config/mqtt', async (req, res) => {
+apiRouter.post('/config/mqtt', requirePermission('configuration', 'write'), async (req, res) => {
   try {
     const config = req.body;
     await meshtasticManager.setMQTTConfig(config);
@@ -1184,7 +1259,7 @@ apiRouter.post('/config/mqtt', async (req, res) => {
   }
 });
 
-apiRouter.post('/config/neighborinfo', async (req, res) => {
+apiRouter.post('/config/neighborinfo', requirePermission('configuration', 'write'), async (req, res) => {
   logger.debug('🔍 DEBUG: /config/neighborinfo endpoint called with body:', JSON.stringify(req.body));
   try {
     const config = req.body;
@@ -1196,7 +1271,7 @@ apiRouter.post('/config/neighborinfo', async (req, res) => {
   }
 });
 
-apiRouter.post('/config/owner', async (req, res) => {
+apiRouter.post('/config/owner', requirePermission('configuration', 'write'), async (req, res) => {
   try {
     const { longName, shortName } = req.body;
     if (!longName || !shortName) {
@@ -1211,7 +1286,7 @@ apiRouter.post('/config/owner', async (req, res) => {
   }
 });
 
-apiRouter.post('/config/request', async (req, res) => {
+apiRouter.post('/config/request', requirePermission('configuration', 'write'), async (req, res) => {
   try {
     const { configType } = req.body;
     if (configType === undefined) {
@@ -1226,7 +1301,7 @@ apiRouter.post('/config/request', async (req, res) => {
   }
 });
 
-apiRouter.post('/config/module/request', async (req, res) => {
+apiRouter.post('/config/module/request', requirePermission('configuration', 'write'), async (req, res) => {
   try {
     const { configType } = req.body;
     if (configType === undefined) {
@@ -1241,7 +1316,7 @@ apiRouter.post('/config/module/request', async (req, res) => {
   }
 });
 
-apiRouter.post('/device/reboot', async (req, res) => {
+apiRouter.post('/device/reboot', requirePermission('configuration', 'write'), async (req, res) => {
   try {
     const seconds = req.body?.seconds || 5;
     await meshtasticManager.rebootDevice(seconds);
@@ -1253,7 +1328,7 @@ apiRouter.post('/device/reboot', async (req, res) => {
 });
 
 // System status endpoint
-apiRouter.get('/system/status', (_req, res) => {
+apiRouter.get('/system/status', requirePermission('dashboard', 'read'), (_req, res) => {
   const uptimeSeconds = Math.floor((Date.now() - serverStartTime) / 1000);
   const days = Math.floor(uptimeSeconds / 86400);
   const hours = Math.floor((uptimeSeconds % 86400) / 3600);
@@ -1283,7 +1358,7 @@ apiRouter.get('/system/status', (_req, res) => {
 });
 
 // Health check endpoint
-apiRouter.get('/health', (_req, res) => {
+apiRouter.get('/health', optionalAuth(), (_req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),

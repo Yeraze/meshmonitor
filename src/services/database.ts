@@ -1,8 +1,13 @@
 import Database from 'better-sqlite3';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { calculateDistance } from '../utils/distance.js';
 import { logger } from '../utils/logger.js';
+import { UserModel } from '../server/models/User.js';
+import { PermissionModel } from '../server/models/Permission.js';
+import { migration as authMigration } from '../server/migrations/001_add_auth_tables.js';
+import { migration as channelsMigration } from '../server/migrations/002_add_channels_permission.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -115,6 +120,8 @@ export interface DbNeighborInfo {
 class DatabaseService {
   public db: Database.Database;
   private isInitialized = false;
+  public userModel: UserModel;
+  public permissionModel: PermissionModel;
 
   constructor() {
     logger.debug('🔧🔧🔧 DatabaseService constructor called');
@@ -126,14 +133,29 @@ class DatabaseService {
     );
 
     logger.debug('Initializing database at:', dbPath);
+
+    // Ensure the directory exists
+    const dbDir = path.dirname(dbPath);
+    if (!fs.existsSync(dbDir)) {
+      logger.debug(`Creating database directory: ${dbDir}`);
+      fs.mkdirSync(dbDir, { recursive: true });
+    }
+
     this.db = new Database(dbPath);
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
+
+    // Initialize models
+    this.userModel = new UserModel(this.db);
+    this.permissionModel = new PermissionModel(this.db);
+
     this.initialize();
     // Always ensure Primary channel exists, even if database already initialized
     this.ensurePrimaryChannel();
     // Always ensure broadcast node exists for channel messages
     this.ensureBroadcastNode();
+    // Ensure admin user exists for authentication
+    this.ensureAdminUser();
   }
 
   private initialize(): void {
@@ -143,7 +165,53 @@ class DatabaseService {
     this.migrateSchema();
     this.createIndexes();
     this.runDataMigrations();
+    this.runAuthMigration();
+    this.runChannelsMigration();
     this.isInitialized = true;
+  }
+
+  private runAuthMigration(): void {
+    logger.debug('Running authentication migration...');
+    try {
+      // Check if migration has already been run
+      const tableCheck = this.db.prepare(`
+        SELECT name FROM sqlite_master WHERE type='table' AND name='users'
+      `).get();
+
+      if (!tableCheck) {
+        logger.debug('Authentication tables not found, running migration...');
+        authMigration.up(this.db);
+        logger.debug('✅ Authentication migration completed successfully');
+      } else {
+        logger.debug('✅ Authentication tables already exist, skipping migration');
+      }
+    } catch (error) {
+      logger.error('❌ Failed to run authentication migration:', error);
+      throw error;
+    }
+  }
+
+  private runChannelsMigration(): void {
+    logger.debug('Running channels permission migration...');
+    try {
+      // Check if migration has already been run by checking if 'channels' is in the CHECK constraint
+      // We'll use a setting to track this migration
+      const migrationKey = 'migration_002_channels_permission';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Channels permission migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 002: Add channels permission resource...');
+      channelsMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Channels permission migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run channels permission migration:', error);
+      throw error;
+    }
   }
 
   private ensurePrimaryChannel(): void {
@@ -1534,6 +1602,181 @@ class DatabaseService {
     `);
     stmt.run(isFavorite ? 1 : 0, now, nodeNum);
     logger.debug(`${isFavorite ? '⭐' : '☆'} Node ${nodeNum} favorite status set to: ${isFavorite}`);
+  }
+
+  // Authentication and Authorization
+  private ensureAdminUser(): void {
+    // Run asynchronously without blocking initialization
+    this.createAdminIfNeeded().catch(error => {
+      logger.error('❌ Failed to ensure admin user:', error);
+    });
+
+    // Ensure anonymous user exists (runs independently of admin creation)
+    this.ensureAnonymousUser().catch(error => {
+      logger.error('❌ Failed to ensure anonymous user:', error);
+    });
+  }
+
+  private async createAdminIfNeeded(): Promise<void> {
+    logger.debug('🔐 Checking for admin user...');
+    try {
+      // Check if any admin users exist
+      if (this.userModel.hasAdminUser()) {
+        logger.debug('✅ Admin user already exists');
+        return;
+      }
+
+      // No admin exists, create one
+      logger.debug('📝 No admin user found, creating default admin...');
+
+      // Use default password for fresh installs
+      const password = 'changeme';
+      const adminUsername = process.env.ADMIN_USERNAME || 'admin';
+
+      // Create admin user
+      const admin = await this.userModel.create({
+        username: adminUsername,
+        password: password,
+        authProvider: 'local',
+        isAdmin: true,
+        displayName: 'Administrator'
+      });
+
+      // Grant all permissions
+      this.permissionModel.grantDefaultPermissions(admin.id, true);
+
+      // Log the password (this is the only time it will be shown)
+      logger.warn('');
+      logger.warn('═══════════════════════════════════════════════════════════');
+      logger.warn('🔐 FIRST RUN: Admin user created');
+      logger.warn('═══════════════════════════════════════════════════════════');
+      logger.warn(`   Username: ${adminUsername}`);
+      logger.warn(`   Password: changeme`);
+      logger.warn('');
+      logger.warn('   ⚠️  IMPORTANT: Change this password after first login!');
+      logger.warn('═══════════════════════════════════════════════════════════');
+      logger.warn('');
+
+      // Log to audit log
+      this.auditLog(
+        admin.id,
+        'first_run_admin_created',
+        'users',
+        JSON.stringify({ username: adminUsername }),
+        null
+      );
+
+      // Save to settings so we know setup is complete
+      this.setSetting('setup_complete', 'true');
+    } catch (error) {
+      logger.error('❌ Failed to create admin user:', error);
+      throw error;
+    }
+  }
+
+  private async ensureAnonymousUser(): Promise<void> {
+    try {
+      // Check if anonymous user exists
+      const anonymousUser = this.userModel.findByUsername('anonymous');
+
+      if (anonymousUser) {
+        logger.debug('✅ Anonymous user already exists');
+        return;
+      }
+
+      // Create anonymous user
+      logger.debug('📝 Creating anonymous user for unauthenticated access...');
+
+      // Generate a random password that nobody will know (anonymous user should not be able to log in)
+      const crypto = await import('crypto');
+      const randomPassword = crypto.randomBytes(32).toString('hex');
+
+      const anonymous = await this.userModel.create({
+        username: 'anonymous',
+        password: randomPassword,  // Random password - effectively cannot login
+        authProvider: 'local',
+        isAdmin: false,
+        displayName: 'Anonymous User'
+      });
+
+      // Grant default read-only permissions for anonymous users
+      // Admin can modify these via the Users tab
+      const defaultAnonPermissions = [
+        { resource: 'dashboard' as const, canRead: true, canWrite: false },
+        { resource: 'nodes' as const, canRead: true, canWrite: false },
+        { resource: 'info' as const, canRead: true, canWrite: false }
+      ];
+
+      for (const perm of defaultAnonPermissions) {
+        this.permissionModel.grant({
+          userId: anonymous.id,
+          resource: perm.resource,
+          canRead: perm.canRead,
+          canWrite: perm.canWrite,
+          grantedBy: anonymous.id
+        });
+      }
+
+      logger.debug('✅ Anonymous user created with read-only permissions (dashboard, nodes, info)');
+      logger.debug('   💡 Admin can modify anonymous permissions in the Users tab');
+
+      // Log to audit log
+      this.auditLog(
+        anonymous.id,
+        'anonymous_user_created',
+        'users',
+        JSON.stringify({ username: 'anonymous', defaultPermissions: defaultAnonPermissions }),
+        null
+      );
+    } catch (error) {
+      logger.error('❌ Failed to create anonymous user:', error);
+      throw error;
+    }
+  }
+
+
+  auditLog(
+    userId: number | null,
+    action: string,
+    resource: string | null,
+    details: string | null,
+    ipAddress: string | null
+  ): void {
+    try {
+      const stmt = this.db.prepare(`
+        INSERT INTO audit_log (user_id, action, resource, details, ip_address, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+
+      stmt.run(userId, action, resource, details, ipAddress, Date.now());
+    } catch (error) {
+      logger.error('Failed to write audit log:', error);
+      // Don't throw - audit log failures shouldn't break the application
+    }
+  }
+
+  getAuditLogs(limit: number = 100, userId?: number): any[] {
+    let query = `
+      SELECT
+        al.id, al.user_id as userId, al.action, al.resource,
+        al.details, al.ip_address as ipAddress, al.timestamp,
+        u.username
+      FROM audit_log al
+      LEFT JOIN users u ON al.user_id = u.id
+    `;
+
+    const params: any[] = [];
+
+    if (userId !== undefined) {
+      query += ' WHERE al.user_id = ?';
+      params.push(userId);
+    }
+
+    query += ' ORDER BY al.timestamp DESC LIMIT ?';
+    params.push(limit);
+
+    const stmt = this.db.prepare(query);
+    return stmt.all(...params) as any[];
   }
 }
 

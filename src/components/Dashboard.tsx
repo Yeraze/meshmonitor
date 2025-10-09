@@ -3,6 +3,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import './Dashboard.css';
 import { type TemperatureUnit, formatTemperature, getTemperatureUnit } from '../utils/temperature';
 import { logger } from '../utils/logger';
+import api from '../services/api';
 
 interface TelemetryData {
   id?: number;
@@ -65,12 +66,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C',
         setLoading(true);
 
         // Fetch favorites from settings
-        const settingsResponse = await fetch(`${baseUrl}/api/settings`);
-        if (!settingsResponse.ok) {
-          throw new Error('Failed to fetch settings');
-        }
-
-        const settings = await settingsResponse.json();
+        const settings = await api.get<{ telemetryFavorites?: string }>('/api/settings');
         const favoritesArray: FavoriteChart[] = settings.telemetryFavorites
           ? JSON.parse(settings.telemetryFavorites)
           : [];
@@ -78,12 +74,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C',
         setFavorites(favoritesArray);
 
         // Fetch node information
-        const nodesResponse = await fetch(`${baseUrl}/api/nodes`);
-        if (!nodesResponse.ok) {
-          throw new Error('Failed to fetch nodes');
-        }
-
-        const nodesData = await nodesResponse.json();
+        const nodesData = await api.get<NodeInfo[]>('/api/nodes');
         const nodesMap = new Map<string, NodeInfo>();
         nodesData.forEach((node: NodeInfo) => {
           if (node.user?.id) {
@@ -98,14 +89,11 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C',
         await Promise.all(
           favoritesArray.map(async (favorite) => {
             try {
-              const response = await fetch(`${baseUrl}/api/telemetry/${favorite.nodeId}?hours=${telemetryHours}`);
-              if (response.ok) {
-                const data: TelemetryData[] = await response.json();
-                // Filter to only get the specific telemetry type
-                const filteredData = data.filter(d => d.telemetryType === favorite.telemetryType);
-                const key = `${favorite.nodeId}-${favorite.telemetryType}`;
-                telemetryMap.set(key, filteredData);
-              }
+              const data: TelemetryData[] = await api.get(`/api/telemetry/${favorite.nodeId}?hours=${telemetryHours}`);
+              // Filter to only get the specific telemetry type
+              const filteredData = data.filter(d => d.telemetryType === favorite.telemetryType);
+              const key = `${favorite.nodeId}-${favorite.telemetryType}`;
+              telemetryMap.set(key, filteredData);
             } catch (err) {
               logger.error(`Error fetching telemetry for ${favorite.nodeId}:`, err);
             }
