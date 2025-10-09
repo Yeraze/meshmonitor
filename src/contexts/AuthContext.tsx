@@ -127,16 +127,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Check if user has specific permission
   const hasPermission = useCallback((resource: keyof PermissionSet, action: 'read' | 'write'): boolean => {
-    if (!authStatus?.authenticated) {
-      return false;
-    }
-
-    // Admins have all permissions
-    if (authStatus.user?.isAdmin) {
+    // If authenticated and admin, grant all permissions
+    if (authStatus?.authenticated && authStatus.user?.isAdmin) {
       return true;
     }
 
-    // Check specific permission
+    // Check permissions (works for both authenticated and anonymous users)
+    // Anonymous user permissions are returned in authStatus.permissions when not authenticated
+    if (!authStatus) {
+      return false;
+    }
+
     const resourcePermissions = authStatus.permissions[resource];
     if (!resourcePermissions) {
       return false;
