@@ -764,7 +764,9 @@ function App() {
 
   const fetchTraceroutes = async () => {
     try {
-      const response = await authFetch(`${baseUrl}/api/traceroutes/recent`);
+      const response = await fetch(`${baseUrl}/api/traceroutes/recent`, {
+        credentials: 'include'
+      });
       if (response.ok) {
         const data = await response.json();
         setTraceroutes(data);
@@ -818,7 +820,7 @@ function App() {
     // Use the provided baseUrl or fall back to the state value
     const urlBase = providedBaseUrl !== undefined ? providedBaseUrl : baseUrl;
     try {
-      const channelsResponse = await authFetch(`${baseUrl}/api/channels`);
+      const channelsResponse = await authFetch(`${urlBase}/api/channels`);
       if (channelsResponse.ok) {
         const channelsData = await channelsResponse.json();
 

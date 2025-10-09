@@ -7,10 +7,12 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { logger } from '../utils/logger';
+import ChangePasswordModal from './ChangePasswordModal';
 
 const UserMenu: React.FC = () => {
   const { authStatus, logout } = useAuth();
   const [showMenu, setShowMenu] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   if (!authStatus?.authenticated || !authStatus.user) {
@@ -29,8 +31,14 @@ const UserMenu: React.FC = () => {
     }
   };
 
+  const handleChangePassword = () => {
+    setShowMenu(false);
+    setShowChangePassword(true);
+  };
+
   const displayName = authStatus.user.displayName || authStatus.user.username;
   const isAdmin = authStatus.user.isAdmin;
+  const isLocalAuth = authStatus.user.authProvider === 'local';
 
   return (
     <div className="user-menu">
@@ -64,6 +72,16 @@ const UserMenu: React.FC = () => {
 
             <div className="user-menu-divider" />
 
+            {isLocalAuth && (
+              <button
+                className="user-menu-item"
+                onClick={handleChangePassword}
+                disabled={loading}
+              >
+                Change Password
+              </button>
+            )}
+
             <button
               className="user-menu-item"
               onClick={handleLogout}
@@ -74,6 +92,11 @@ const UserMenu: React.FC = () => {
           </div>
         </>
       )}
+
+      <ChangePasswordModal
+        isOpen={showChangePassword}
+        onClose={() => setShowChangePassword(false)}
+      />
     </div>
   );
 };

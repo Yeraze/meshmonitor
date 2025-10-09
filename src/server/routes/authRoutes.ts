@@ -21,12 +21,15 @@ const router = Router();
 // Get authentication status
 router.get('/status', (req: Request, res: Response) => {
   try {
+    const localAuthDisabled = process.env.DISABLE_LOCAL_AUTH === 'true';
+
     if (!req.session.userId) {
       return res.json({
         authenticated: false,
         user: null,
         permissions: {},
-        oidcEnabled: isOIDCEnabled()
+        oidcEnabled: isOIDCEnabled(),
+        localAuthDisabled
       });
     }
 
@@ -43,7 +46,8 @@ router.get('/status', (req: Request, res: Response) => {
         authenticated: false,
         user: null,
         permissions: {},
-        oidcEnabled: isOIDCEnabled()
+        oidcEnabled: isOIDCEnabled(),
+        localAuthDisabled
       });
     }
 
@@ -57,7 +61,8 @@ router.get('/status', (req: Request, res: Response) => {
       authenticated: true,
       user: userWithoutPassword,
       permissions,
-      oidcEnabled: isOIDCEnabled()
+      oidcEnabled: isOIDCEnabled(),
+      localAuthDisabled
     });
   } catch (error) {
     logger.error('Error getting auth status:', error);
@@ -68,6 +73,14 @@ router.get('/status', (req: Request, res: Response) => {
 // Local authentication login
 router.post('/login', async (req: Request, res: Response) => {
   try {
+    // Check if local auth is disabled
+    const localAuthDisabled = process.env.DISABLE_LOCAL_AUTH === 'true';
+    if (localAuthDisabled) {
+      return res.status(403).json({
+        error: 'Local authentication is disabled. Please use OIDC to login.'
+      });
+    }
+
     const { username, password } = req.body;
 
     if (!username || !password) {

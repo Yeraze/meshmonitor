@@ -1590,8 +1590,8 @@ class DatabaseService {
       // No admin exists, create one
       logger.debug('📝 No admin user found, creating default admin...');
 
-      // Generate a random password
-      const password = this.generateRandomPassword();
+      // Use default password for fresh installs
+      const password = 'changeme';
       const adminUsername = process.env.ADMIN_USERNAME || 'admin';
 
       // Create admin user
@@ -1612,10 +1612,9 @@ class DatabaseService {
       logger.warn('🔐 FIRST RUN: Admin user created');
       logger.warn('═══════════════════════════════════════════════════════════');
       logger.warn(`   Username: ${adminUsername}`);
-      logger.warn(`   Password: ${password}`);
+      logger.warn(`   Password: changeme`);
       logger.warn('');
-      logger.warn('   ⚠️  IMPORTANT: Change this password immediately!');
-      logger.warn('   This is the only time the password will be displayed.');
+      logger.warn('   ⚠️  IMPORTANT: Change this password after first login!');
       logger.warn('═══════════════════════════════════════════════════════════');
       logger.warn('');
 
@@ -1636,25 +1635,6 @@ class DatabaseService {
     }
   }
 
-  private generateRandomPassword(): string {
-    const length = 20;
-    const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
-    let password = '';
-
-    // Ensure at least one of each type
-    password += 'abcdefghijklmnopqrstuvwxyz'[Math.floor(Math.random() * 26)];
-    password += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[Math.floor(Math.random() * 26)];
-    password += '0123456789'[Math.floor(Math.random() * 10)];
-    password += '!@#$%^&*'[Math.floor(Math.random() * 8)];
-
-    // Fill the rest
-    for (let i = password.length; i < length; i++) {
-      password += charset[Math.floor(Math.random() * charset.length)];
-    }
-
-    // Shuffle the password
-    return password.split('').sort(() => Math.random() - 0.5).join('');
-  }
 
   auditLog(
     userId: number | null,

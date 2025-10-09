@@ -58,7 +58,7 @@ const UsersTab: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await api.get<{ users: User[] }>('/users');
+      const response = await api.get<{ users: User[] }>('/api/users');
       setUsers(response.users);
     } catch (err) {
       logger.error('Failed to fetch users:', err);
@@ -71,7 +71,7 @@ const UsersTab: React.FC = () => {
   const handleSelectUser = async (user: User) => {
     try {
       setSelectedUser(user);
-      const response = await api.get<{ permissions: PermissionSet }>(`/users/${user.id}/permissions`);
+      const response = await api.get<{ permissions: PermissionSet }>(`/api/users/${user.id}/permissions`);
       setPermissions(response.permissions);
     } catch (err) {
       logger.error('Failed to fetch user permissions:', err);
@@ -83,7 +83,7 @@ const UsersTab: React.FC = () => {
     if (!selectedUser) return;
 
     try {
-      await api.put(`/users/${selectedUser.id}/permissions`, { permissions });
+      await api.put(`/api/users/${selectedUser.id}/permissions`, { permissions });
       setError(null);
       // Show success feedback
       alert('Permissions updated successfully');
@@ -95,7 +95,7 @@ const UsersTab: React.FC = () => {
 
   const handleToggleAdmin = async (user: User) => {
     try {
-      await api.put(`/users/${user.id}/admin`, { isAdmin: !user.isAdmin });
+      await api.put(`/api/users/${user.id}/admin`, { isAdmin: !user.isAdmin });
       await fetchUsers();
     } catch (err) {
       logger.error('Failed to update admin status:', err);
@@ -107,7 +107,7 @@ const UsersTab: React.FC = () => {
     if (!confirm(`Reset password for ${user.username}?`)) return;
 
     try {
-      const response = await api.post<{ password: string; message: string }>(`/users/${user.id}/reset-password`, {});
+      const response = await api.post<{ password: string; message: string }>(`/api/users/${user.id}/reset-password`, {});
       alert(`${response.message}\n\nNew password: ${response.password}`);
     } catch (err) {
       logger.error('Failed to reset password:', err);
@@ -119,7 +119,7 @@ const UsersTab: React.FC = () => {
     if (!confirm(`Deactivate user ${user.username}?`)) return;
 
     try {
-      await api.delete(`/users/${user.id}`);
+      await api.delete(`/api/users/${user.id}`);
       await fetchUsers();
       if (selectedUser?.id === user.id) {
         setSelectedUser(null);

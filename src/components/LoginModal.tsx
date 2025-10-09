@@ -22,6 +22,9 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
 
   if (!isOpen) return null;
 
+  const localAuthDisabled = authStatus?.localAuthDisabled ?? false;
+  const oidcEnabled = authStatus?.oidcEnabled ?? false;
+
   const handleLocalLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -64,54 +67,65 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
 
         <div className="modal-body">
           {/* Local Authentication */}
-          <form onSubmit={handleLocalLogin}>
-            <div className="form-group">
-              <label htmlFor="username">Username</label>
-              <input
-                id="username"
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                disabled={loading}
-                required
-                autoComplete="username"
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="password">Password</label>
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                disabled={loading}
-                required
-                autoComplete="current-password"
-              />
-            </div>
-
-            {error && (
-              <div className="error-message">
-                {error}
+          {!localAuthDisabled && (
+            <form onSubmit={handleLocalLogin}>
+              <div className="form-group">
+                <label htmlFor="username">Username</label>
+                <input
+                  id="username"
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  disabled={loading}
+                  required
+                  autoComplete="username"
+                />
               </div>
-            )}
 
-            <button
-              type="submit"
-              className="button button-primary"
-              disabled={loading || !username || !password}
-            >
-              {loading ? 'Logging in...' : 'Login'}
-            </button>
-          </form>
+              <div className="form-group">
+                <label htmlFor="password">Password</label>
+                <input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={loading}
+                  required
+                  autoComplete="current-password"
+                />
+              </div>
+
+              {error && (
+                <div className="error-message">
+                  {error}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                className="button button-primary"
+                disabled={loading || !username || !password}
+              >
+                {loading ? 'Logging in...' : 'Login'}
+              </button>
+            </form>
+          )}
+
+          {/* Divider between auth methods */}
+          {!localAuthDisabled && oidcEnabled && (
+            <div className="login-divider">
+              <span>OR</span>
+            </div>
+          )}
 
           {/* OIDC Authentication */}
-          {authStatus?.oidcEnabled && (
+          {oidcEnabled && (
             <>
-              <div className="login-divider">
-                <span>OR</span>
-              </div>
+              {error && localAuthDisabled && (
+                <div className="error-message">
+                  {error}
+                </div>
+              )}
 
               <button
                 type="button"
@@ -122,6 +136,14 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                 Login with OIDC
               </button>
             </>
+          )}
+
+          {/* Show message if only OIDC is available */}
+          {localAuthDisabled && !oidcEnabled && (
+            <div className="error-message">
+              Local authentication is disabled and OIDC is not configured.
+              Please contact your administrator.
+            </div>
           )}
         </div>
       </div>

@@ -35,6 +35,7 @@ export interface AuthStatus {
   user: User | null;
   permissions: PermissionSet;
   oidcEnabled: boolean;
+  localAuthDisabled: boolean;
 }
 
 interface AuthContextType {
@@ -66,7 +67,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         authenticated: false,
         user: null,
         permissions: {},
-        oidcEnabled: false
+        oidcEnabled: false,
+        localAuthDisabled: false
       });
     } finally {
       setLoading(false);
@@ -121,7 +123,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         authenticated: false,
         user: null,
         permissions: {},
-        oidcEnabled: authStatus?.oidcEnabled || false
+        oidcEnabled: authStatus?.oidcEnabled || false,
+        localAuthDisabled: authStatus?.localAuthDisabled || false
       });
 
       logger.debug('Logout successful');

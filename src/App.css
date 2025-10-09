@@ -2915,6 +2915,33 @@ body {
   font-size: 0.95em;
 }
 
+.success-message {
+  padding: 12px;
+  background: rgba(166, 227, 161, 0.1);
+  border: 1px solid var(--ctp-green);
+  border-radius: 8px;
+  color: var(--ctp-green);
+  margin-bottom: 16px;
+  font-size: 0.95em;
+}
+
+.form-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.85em;
+  color: var(--ctp-subtext0);
+}
+
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.modal-actions .button {
+  flex: 1;
+}
+
 .button {
   width: 100%;
   padding: 12px 24px;

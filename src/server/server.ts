@@ -676,7 +676,7 @@ apiRouter.post('/traceroute', requirePermission('info', 'write'), async (req, re
 });
 
 // Get recent traceroutes (last 24 hours)
-apiRouter.get('/traceroutes/recent', requirePermission('info', 'read'), (req, res) => {
+apiRouter.get('/traceroutes/recent', (req, res) => {
   try {
     const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 24;
     const limit = req.query.limit ? parseInt(req.query.limit as string) : 100;

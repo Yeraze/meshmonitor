@@ -59,7 +59,7 @@ export function getSessionConfig(): session.SessionOptions {
     cookie: {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
       maxAge: sessionMaxAge
     },
     name: 'meshmonitor.sid' // Custom session cookie name
