@@ -109,21 +109,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await api.post('/api/auth/logout', {});
 
-      // Clear auth state - use functional update to preserve oidc/localAuth settings
-      setAuthStatus(prev => ({
-        authenticated: false,
-        user: null,
-        permissions: {},
-        oidcEnabled: prev?.oidcEnabled || false,
-        localAuthDisabled: prev?.localAuthDisabled || false
-      }));
+      // Refresh auth status to get anonymous user permissions
+      await refreshAuth();
 
       logger.debug('Logout successful');
     } catch (error) {
       logger.error('Logout failed:', error);
       throw error;
     }
-  }, []);
+  }, [refreshAuth]);
 
   // Check if user has specific permission
   const hasPermission = useCallback((resource: keyof PermissionSet, action: 'read' | 'write'): boolean => {
