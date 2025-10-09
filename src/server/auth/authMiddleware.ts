@@ -12,6 +12,7 @@ import { logger } from '../../utils/logger.js';
 
 /**
  * Attach user to request if authenticated (optional auth)
+ * If not authenticated, attaches anonymous user for permission checks
  */
 export function optionalAuth() {
   return async (req: Request, _res: Response, next: NextFunction) => {
@@ -28,6 +29,15 @@ export function optionalAuth() {
           req.session.isAdmin = undefined;
         }
       }
+
+      // If no authenticated user, attach anonymous user for permission checks
+      if (!req.user) {
+        const anonymousUser = databaseService.userModel.findByUsername('anonymous');
+        if (anonymousUser && anonymousUser.isActive) {
+          req.user = anonymousUser;
+        }
+      }
+
       next();
     } catch (error) {
       logger.error('Error in optionalAuth middleware:', error);

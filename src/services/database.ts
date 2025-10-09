@@ -1654,8 +1654,71 @@ class DatabaseService {
 
       // Save to settings so we know setup is complete
       this.setSetting('setup_complete', 'true');
+
+      // Create anonymous user for unauthenticated access
+      await this.ensureAnonymousUser();
     } catch (error) {
       logger.error('❌ Failed to create admin user:', error);
+      throw error;
+    }
+  }
+
+  private async ensureAnonymousUser(): Promise<void> {
+    try {
+      // Check if anonymous user exists
+      const anonymousUser = this.userModel.findByUsername('anonymous');
+
+      if (anonymousUser) {
+        logger.debug('✅ Anonymous user already exists');
+        return;
+      }
+
+      // Create anonymous user
+      logger.debug('📝 Creating anonymous user for unauthenticated access...');
+
+      // Generate a random password that nobody will know (anonymous user should not be able to log in)
+      const crypto = await import('crypto');
+      const randomPassword = crypto.randomBytes(32).toString('hex');
+
+      const anonymous = await this.userModel.create({
+        username: 'anonymous',
+        password: randomPassword,  // Random password - effectively cannot login
+        authProvider: 'local',
+        isAdmin: false,
+        displayName: 'Anonymous User'
+      });
+
+      // Grant default read-only permissions for anonymous users
+      // Admin can modify these via the Users tab
+      const defaultAnonPermissions = [
+        { resource: 'dashboard' as const, canRead: true, canWrite: false },
+        { resource: 'nodes' as const, canRead: true, canWrite: false },
+        { resource: 'info' as const, canRead: true, canWrite: false }
+      ];
+
+      for (const perm of defaultAnonPermissions) {
+        this.permissionModel.grant({
+          userId: anonymous.id,
+          resource: perm.resource,
+          canRead: perm.canRead,
+          canWrite: perm.canWrite,
+          grantedBy: anonymous.id
+        });
+      }
+
+      logger.debug('✅ Anonymous user created with read-only permissions (dashboard, nodes, info)');
+      logger.debug('   💡 Admin can modify anonymous permissions in the Users tab');
+
+      // Log to audit log
+      this.auditLog(
+        anonymous.id,
+        'anonymous_user_created',
+        'users',
+        JSON.stringify({ username: 'anonymous', defaultPermissions: defaultAnonPermissions }),
+        null
+      );
+    } catch (error) {
+      logger.error('❌ Failed to create anonymous user:', error);
       throw error;
     }
   }

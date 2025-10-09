@@ -24,10 +24,16 @@ router.get('/status', (req: Request, res: Response) => {
     const localAuthDisabled = process.env.DISABLE_LOCAL_AUTH === 'true';
 
     if (!req.session.userId) {
+      // Return anonymous user permissions for unauthenticated users
+      const anonymousUser = databaseService.userModel.findByUsername('anonymous');
+      const anonymousPermissions = anonymousUser && anonymousUser.isActive
+        ? databaseService.permissionModel.getUserPermissionSet(anonymousUser.id)
+        : {};
+
       return res.json({
         authenticated: false,
         user: null,
-        permissions: {},
+        permissions: anonymousPermissions,
         oidcEnabled: isOIDCEnabled(),
         localAuthDisabled
       });
@@ -42,10 +48,16 @@ router.get('/status', (req: Request, res: Response) => {
       req.session.authProvider = undefined;
       req.session.isAdmin = undefined;
 
+      // Return anonymous user permissions
+      const anonymousUser = databaseService.userModel.findByUsername('anonymous');
+      const anonymousPermissions = anonymousUser && anonymousUser.isActive
+        ? databaseService.permissionModel.getUserPermissionSet(anonymousUser.id)
+        : {};
+
       return res.json({
         authenticated: false,
         user: null,
-        permissions: {},
+        permissions: anonymousPermissions,
         oidcEnabled: isOIDCEnabled(),
         localAuthDisabled
       });

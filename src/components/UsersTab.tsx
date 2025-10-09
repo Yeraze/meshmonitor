@@ -274,11 +274,25 @@ const UsersTab: React.FC = () => {
             <div className="user-info-grid">
               <div className="info-item">
                 <label>Username</label>
-                <div>@{selectedUser.username}</div>
+                <div>
+                  @{selectedUser.username}
+                  {selectedUser.username === 'anonymous' && (
+                    <span style={{ marginLeft: '8px', padding: '2px 6px', background: 'var(--ctp-surface2)', borderRadius: '4px', fontSize: '0.8em', color: 'var(--ctp-subtext0)' }}>
+                      Special User
+                    </span>
+                  )}
+                </div>
               </div>
               <div className="info-item">
                 <label>Display Name</label>
-                <div>{selectedUser.displayName || '-'}</div>
+                <div>
+                  {selectedUser.displayName || '-'}
+                  {selectedUser.username === 'anonymous' && (
+                    <div style={{ marginTop: '4px', fontSize: '0.9em', color: 'var(--ctp-subtext0)' }}>
+                      💡 Defines permissions for unauthenticated users
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="info-item">
                 <label>Email</label>
@@ -317,8 +331,9 @@ const UsersTab: React.FC = () => {
               <button
                 className="button button-secondary"
                 onClick={() => handleDeactivateUser(selectedUser)}
-                disabled={selectedUser.id === authStatus.user?.id}
+                disabled={selectedUser.id === authStatus.user?.id || selectedUser.username === 'anonymous'}
                 style={{ color: 'var(--ctp-red)' }}
+                title={selectedUser.username === 'anonymous' ? 'Cannot deactivate anonymous user' : ''}
               >
                 Deactivate User
               </button>
