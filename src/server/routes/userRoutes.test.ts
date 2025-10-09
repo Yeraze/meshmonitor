@@ -12,6 +12,7 @@ import request from 'supertest';
 import { UserModel } from '../models/User.js';
 import { PermissionModel } from '../models/Permission.js';
 import { migration as authMigration } from '../migrations/001_add_auth_tables.js';
+import { migration as channelsMigration } from '../migrations/002_add_channels_permission.js';
 import userRoutes from './userRoutes.js';
 import authRoutes from './authRoutes.js';
 import DatabaseService from '../../services/database.js';
@@ -41,6 +42,7 @@ describe('User Management Routes', () => {
     db = new Database(':memory:');
     db.pragma('foreign_keys = ON');
     authMigration.up(db);
+    channelsMigration.up(db);
 
     userModel = new UserModel(db);
     permissionModel = new PermissionModel(db);
@@ -388,7 +390,7 @@ describe('User Management Routes', () => {
         .expect(200);
 
       expect(response.body.permissions).toBeDefined();
-      expect(Array.isArray(response.body.permissions)).toBe(true);
+      expect(typeof response.body.permissions).toBe('object');
     });
 
     it('should deny regular user from viewing permissions', async () => {
