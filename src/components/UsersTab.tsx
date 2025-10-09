@@ -8,6 +8,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../services/api';
 import { logger } from '../utils/logger';
+import type { PermissionSet } from '../types/permission';
 
 interface User {
   id: number;
@@ -19,16 +20,6 @@ interface User {
   isActive: boolean;
   createdAt: number;
   lastLoginAt: number | null;
-}
-
-interface PermissionSet {
-  dashboard?: { read: boolean; write: boolean };
-  nodes?: { read: boolean; write: boolean };
-  messages?: { read: boolean; write: boolean };
-  settings?: { read: boolean; write: boolean };
-  configuration?: { read: boolean; write: boolean };
-  info?: { read: boolean; write: boolean };
-  automation?: { read: boolean; write: boolean };
 }
 
 const UsersTab: React.FC = () => {
@@ -80,6 +71,7 @@ const UsersTab: React.FC = () => {
         const allPermissions: PermissionSet = {
           dashboard: { read: true, write: true },
           nodes: { read: true, write: true },
+          channels: { read: true, write: true },
           messages: { read: true, write: true },
           settings: { read: true, write: true },
           configuration: { read: true, write: true },
@@ -102,7 +94,7 @@ const UsersTab: React.FC = () => {
     try {
       // Filter out empty/undefined permissions and ensure valid structure
       const validPermissions: PermissionSet = {};
-      (['dashboard', 'nodes', 'messages', 'settings', 'configuration', 'info', 'automation'] as const).forEach(resource => {
+      (['dashboard', 'nodes', 'channels', 'messages', 'settings', 'configuration', 'info', 'automation'] as const).forEach(resource => {
         if (permissions[resource]) {
           validPermissions[resource] = {
             read: permissions[resource]?.read || false,
@@ -334,7 +326,7 @@ const UsersTab: React.FC = () => {
 
             <h3>Permissions</h3>
             <div className="permissions-grid">
-              {(['dashboard', 'nodes', 'messages', 'settings', 'configuration', 'info', 'automation'] as const).map(resource => (
+              {(['dashboard', 'nodes', 'channels', 'messages', 'settings', 'configuration', 'info', 'automation'] as const).map(resource => (
                 <div key={resource} className="permission-item">
                   <div className="permission-label">{resource.charAt(0).toUpperCase() + resource.slice(1)}</div>
                   <div className="permission-actions">

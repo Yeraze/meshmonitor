@@ -1727,17 +1727,19 @@ function App() {
                         )}
                       </div>
                       <div className="node-actions">
-                        <button
-                          className="dm-icon"
-                          title="Send Direct Message"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedDMNode(node.user?.id || '');
-                            setActiveTab('messages');
-                          }}
-                        >
-                          💬
-                        </button>
+                        {authStatus?.authenticated && hasPermission('messages', 'read') && (
+                          <button
+                            className="dm-icon"
+                            title="Send Direct Message"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedDMNode(node.user?.id || '');
+                              setActiveTab('messages');
+                            }}
+                          >
+                            💬
+                          </button>
+                        )}
                         <div className="node-short">
                           {node.user?.shortName || '-'}
                         </div>
@@ -1978,7 +1980,7 @@ function App() {
                         </div>
                       )}
 
-                      {node.user?.id && (
+                      {node.user?.id && authStatus?.authenticated && hasPermission('messages', 'read') && (
                         <button
                           className="node-popup-btn"
                           onClick={() => {
@@ -2412,7 +2414,7 @@ function App() {
                                 </div>
                               )}
                               <div className={`message-bubble ${isMine ? 'mine' : 'theirs'}`}>
-                                {hasPermission('messages', 'write') && (
+                                {hasPermission('channels', 'write') && (
                                   <div className="message-actions">
                                     <button
                                       className="reply-button"
@@ -2501,7 +2503,7 @@ function App() {
                           </button>
                         </div>
                       )}
-                      {hasPermission('messages', 'write') && (
+                      {hasPermission('channels', 'write') && (
                         <div className="message-input-container">
                           <input
                             type="text"
@@ -3267,31 +3269,35 @@ function App() {
         </button>
         {authStatus?.authenticated && (
           <>
-            <button
-              className={`tab-btn ${activeTab === 'channels' ? 'active' : ''}`}
-              onClick={() => setActiveTab('channels')}
-            >
-              Channels
-              {Object.entries(unreadCounts).some(([channel, count]) => parseInt(channel) !== -1 && count > 0) && (
-                <span className="tab-notification-dot"></span>
-              )}
-            </button>
-            <button
-              className={`tab-btn ${activeTab === 'messages' ? 'active' : ''}`}
-              onClick={() => {
-                setActiveTab('messages');
-                // Clear unread count for direct messages (channel -1)
-                setUnreadCounts(prev => ({ ...prev, [-1]: 0 }));
-                // Set selected channel to -1 so new DMs don't create unread notifications
-                setSelectedChannel(-1);
-                selectedChannelRef.current = -1;
-              }}
-            >
-              Messages
-              {unreadCounts[-1] > 0 && (
-                <span className="tab-notification-dot"></span>
-              )}
-            </button>
+            {hasPermission('channels', 'read') && (
+              <button
+                className={`tab-btn ${activeTab === 'channels' ? 'active' : ''}`}
+                onClick={() => setActiveTab('channels')}
+              >
+                Channels
+                {Object.entries(unreadCounts).some(([channel, count]) => parseInt(channel) !== -1 && count > 0) && (
+                  <span className="tab-notification-dot"></span>
+                )}
+              </button>
+            )}
+            {hasPermission('messages', 'read') && (
+              <button
+                className={`tab-btn ${activeTab === 'messages' ? 'active' : ''}`}
+                onClick={() => {
+                  setActiveTab('messages');
+                  // Clear unread count for direct messages (channel -1)
+                  setUnreadCounts(prev => ({ ...prev, [-1]: 0 }));
+                  // Set selected channel to -1 so new DMs don't create unread notifications
+                  setSelectedChannel(-1);
+                  selectedChannelRef.current = -1;
+                }}
+              >
+                Messages
+                {unreadCounts[-1] > 0 && (
+                  <span className="tab-notification-dot"></span>
+                )}
+              </button>
+            )}
             {hasPermission('dashboard', 'read') && (
               <button
                 className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
@@ -3507,7 +3513,7 @@ function App() {
               <div className="route-usage">Last Seen: {formatDateTime(new Date(node.lastHeard * 1000), timeFormat, dateFormat)}</div>
             )}
 
-            {node.user?.id && (
+            {node.user?.id && authStatus?.authenticated && hasPermission('messages', 'read') && (
               <button
                 className="popup-dm-btn"
                 onClick={() => {

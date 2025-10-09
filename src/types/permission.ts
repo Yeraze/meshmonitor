@@ -5,6 +5,7 @@
 export type ResourceType =
   | 'dashboard'
   | 'nodes'
+  | 'channels'
   | 'messages'
   | 'settings'
   | 'configuration'
@@ -31,12 +32,12 @@ export interface PermissionInput {
   grantedBy?: number;
 }
 
-export interface PermissionSet {
-  [key: string]: {
+export type PermissionSet = Partial<{
+  [K in ResourceType]: {
     read: boolean;
     write: boolean;
   };
-}
+}>;
 
 export interface ResourceDefinition {
   id: ResourceType;
@@ -47,7 +48,8 @@ export interface ResourceDefinition {
 export const RESOURCES: readonly ResourceDefinition[] = [
   { id: 'dashboard', name: 'Dashboard', description: 'View statistics and system info' },
   { id: 'nodes', name: 'Node List', description: 'View and manage mesh nodes' },
-  { id: 'messages', name: 'Messages', description: 'Send and receive mesh messages' },
+  { id: 'channels', name: 'Channels', description: 'View and send messages to channels' },
+  { id: 'messages', name: 'Direct Messages', description: 'Send and receive direct messages' },
   { id: 'settings', name: 'Settings', description: 'Application settings' },
   { id: 'configuration', name: 'Configuration', description: 'Device configuration' },
   { id: 'info', name: 'Info', description: 'Telemetry and network information' },
@@ -58,6 +60,7 @@ export const RESOURCES: readonly ResourceDefinition[] = [
 export const ADMIN_PERMISSIONS: PermissionSet = {
   dashboard: { read: true, write: true },
   nodes: { read: true, write: true },
+  channels: { read: true, write: true },
   messages: { read: true, write: true },
   settings: { read: true, write: true },
   configuration: { read: true, write: true },
@@ -68,6 +71,7 @@ export const ADMIN_PERMISSIONS: PermissionSet = {
 export const DEFAULT_USER_PERMISSIONS: PermissionSet = {
   dashboard: { read: true, write: false },
   nodes: { read: true, write: false },
+  channels: { read: true, write: false },
   messages: { read: true, write: false },
   settings: { read: false, write: false },
   configuration: { read: false, write: false },

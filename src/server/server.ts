@@ -12,8 +12,10 @@ import { getSessionConfig } from './auth/sessionConfig.js';
 import { initializeOIDC } from './auth/oidcAuth.js';
 import {
   optionalAuth,
+  requireAuth,
   requirePermission,
-  requireAdmin
+  requireAdmin,
+  hasPermission
 } from './auth/authMiddleware.js';
 
 const require = createRequire(import.meta.url);
@@ -826,8 +828,15 @@ apiRouter.get('/neighbor-info/:nodeNum', requirePermission('info', 'read'), (req
 });
 
 // Get telemetry data for a node
-apiRouter.get('/telemetry/:nodeId', requirePermission('info', 'read'), (req, res) => {
+apiRouter.get('/telemetry/:nodeId', requireAuth(), (req, res) => {
   try {
+    // Allow users with info read OR dashboard read (dashboard needs telemetry data)
+    if (!req.user?.isAdmin &&
+        !hasPermission(req.user!, 'info', 'read') &&
+        !hasPermission(req.user!, 'dashboard', 'read')) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
     const { nodeId } = req.params;
     const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 24;
 
@@ -1029,8 +1038,15 @@ apiRouter.post('/settings/traceroute-interval', requirePermission('settings', 'w
 });
 
 // Get all settings
-apiRouter.get('/settings', requirePermission('settings', 'read'), (_req, res) => {
+apiRouter.get('/settings', requireAuth(), (req, res) => {
   try {
+    // Allow users with settings read OR dashboard read (dashboard needs telemetryFavorites)
+    if (!req.user?.isAdmin &&
+        !hasPermission(req.user!, 'settings', 'read') &&
+        !hasPermission(req.user!, 'dashboard', 'read')) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
     const settings = databaseService.getAllSettings();
     res.json(settings);
   } catch (error) {

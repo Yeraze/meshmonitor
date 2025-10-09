@@ -7,6 +7,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
 import { logger } from '../utils/logger';
+import type { PermissionSet } from '../types/permission';
 
 export interface User {
   id: number;
@@ -18,16 +19,6 @@ export interface User {
   isActive: boolean;
   createdAt: number;
   lastLoginAt: number | null;
-}
-
-export interface PermissionSet {
-  dashboard?: { read: boolean; write: boolean };
-  nodes?: { read: boolean; write: boolean };
-  messages?: { read: boolean; write: boolean };
-  settings?: { read: boolean; write: boolean };
-  configuration?: { read: boolean; write: boolean };
-  info?: { read: boolean; write: boolean };
-  automation?: { read: boolean; write: boolean };
 }
 
 export interface AuthStatus {

@@ -6,6 +6,7 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { ResourceType, PermissionAction } from '../../types/permission.js';
+import { User } from '../../types/auth.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 
@@ -185,4 +186,17 @@ export function requireAdmin() {
       });
     }
   };
+}
+
+/**
+ * Check if user has a specific permission
+ */
+export function hasPermission(user: User, resource: ResourceType, action: PermissionAction): boolean {
+  // Admins have all permissions
+  if (user.isAdmin) {
+    return true;
+  }
+
+  // Check permission via database
+  return databaseService.permissionModel.check(user.id, resource, action);
 }
