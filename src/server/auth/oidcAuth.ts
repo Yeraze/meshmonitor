@@ -1,0 +1,215 @@
+/**
+ * OIDC Authentication Module
+ *
+ * Handles OpenID Connect authentication flow
+ */
+
+import * as client from 'openid-client';
+import { User } from '../../types/auth.js';
+import databaseService from '../../services/database.js';
+import { logger } from '../../utils/logger.js';
+
+let oidcConfig: client.Configuration | null = null;
+let isInitialized = false;
+
+/**
+ * Initialize OIDC client
+ */
+export async function initializeOIDC(): Promise<boolean> {
+  if (isInitialized) {
+    return oidcConfig !== null;
+  }
+
+  const issuer = process.env.OIDC_ISSUER;
+  const clientId = process.env.OIDC_CLIENT_ID;
+  const clientSecret = process.env.OIDC_CLIENT_SECRET;
+
+  if (!issuer || !clientId || !clientSecret) {
+    logger.info('ℹ️  OIDC not configured (missing OIDC_ISSUER, OIDC_CLIENT_ID, or OIDC_CLIENT_SECRET)');
+    isInitialized = true;
+    return false;
+  }
+
+  try {
+    logger.debug('🔐 Initializing OIDC client...');
+
+    const issuerUrl = new URL(issuer);
+
+    // Discover OIDC configuration
+    oidcConfig = await client.discovery(
+      issuerUrl,
+      clientId,
+      undefined,
+      client.ClientSecretPost(clientSecret)
+    );
+
+    logger.debug('✅ OIDC client initialized successfully');
+    isInitialized = true;
+    return true;
+  } catch (error) {
+    logger.error('❌ Failed to initialize OIDC client:', error);
+    isInitialized = true;
+    return false;
+  }
+}
+
+/**
+ * Check if OIDC is enabled and initialized
+ */
+export function isOIDCEnabled(): boolean {
+  return oidcConfig !== null;
+}
+
+/**
+ * Get OIDC configuration
+ */
+export function getOIDCConfig(): client.Configuration | null {
+  return oidcConfig;
+}
+
+/**
+ * Generate authorization URL for OIDC login
+ */
+export async function generateAuthorizationUrl(
+  redirectUri: string,
+  state: string,
+  codeVerifier: string,
+  nonce: string
+): Promise<string> {
+  if (!oidcConfig) {
+    throw new Error('OIDC not initialized');
+  }
+
+  const scopes = process.env.OIDC_SCOPES || 'openid profile email';
+  const scopeArray = scopes.split(' ');
+
+  const codeChallenge = client.calculatePKCECodeChallenge(codeVerifier);
+
+  const authUrl = client.buildAuthorizationUrl(oidcConfig, {
+    redirect_uri: redirectUri,
+    scope: scopeArray.join(' '),
+    state,
+    nonce,
+    code_challenge: await codeChallenge,
+    code_challenge_method: 'S256'
+  });
+
+  return authUrl.href;
+}
+
+/**
+ * Handle OIDC callback and create/update user
+ */
+export async function handleOIDCCallback(
+  code: string,
+  state: string,
+  expectedState: string,
+  codeVerifier: string,
+  expectedNonce: string,
+  redirectUri: string
+): Promise<User> {
+  if (!oidcConfig) {
+    throw new Error('OIDC not initialized');
+  }
+
+  try {
+    // Validate state
+    if (state !== expectedState) {
+      throw new Error('Invalid state parameter');
+    }
+
+    // Exchange code for tokens
+    const tokenResponse = await client.authorizationCodeGrant(
+      oidcConfig,
+      new URL(redirectUri + `?code=${code}&state=${state}`),
+      {
+        pkceCodeVerifier: codeVerifier,
+        expectedState,
+        expectedNonce
+      }
+    );
+
+    // Validate and decode ID token
+    const idTokenClaims = tokenResponse.claims();
+
+    if (!idTokenClaims) {
+      throw new Error('No ID token claims received');
+    }
+
+    const sub = idTokenClaims.sub;
+    const email = idTokenClaims.email as string | undefined;
+    const name = idTokenClaims.name as string | undefined;
+    const preferredUsername = idTokenClaims.preferred_username as string | undefined;
+
+    // Create username from claims
+    const username = preferredUsername || email?.split('@')[0] || sub.substring(0, 20);
+
+    // Check if user exists
+    let user = databaseService.userModel.findByOIDCSubject(sub);
+
+    if (user) {
+      // Update existing user
+      user = databaseService.userModel.update(user.id, {
+        email: email || user.email || undefined,
+        displayName: name || user.displayName || undefined
+      })!;
+
+      // Update last login
+      databaseService.userModel.updateLastLogin(user.id);
+
+      logger.debug(`✅ OIDC user logged in: ${user.username}`);
+    } else {
+      // Auto-create new user if enabled
+      const autoCreate = process.env.OIDC_AUTO_CREATE_USERS !== 'false';
+
+      if (!autoCreate) {
+        throw new Error('OIDC user not found and auto-creation is disabled');
+      }
+
+      // Create new user
+      user = await databaseService.userModel.create({
+        username,
+        email,
+        displayName: name,
+        authProvider: 'oidc',
+        oidcSubject: sub,
+        isAdmin: false
+      });
+
+      // Grant default permissions
+      databaseService.permissionModel.grantDefaultPermissions(user.id, false);
+
+      logger.debug(`✅ OIDC user auto-created: ${user.username}`);
+
+      // Audit log
+      databaseService.auditLog(
+        user.id,
+        'oidc_user_created',
+        'users',
+        JSON.stringify({ userId: user.id, username, oidcSubject: sub }),
+        null
+      );
+    }
+
+    return user;
+  } catch (error) {
+    logger.error('OIDC callback error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Generate random string for state/nonce/code verifier
+ */
+export function generateRandomString(length: number = 32): string {
+  const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
+  let result = '';
+  const randomValues = new Uint8Array(length);
+  crypto.getRandomValues(randomValues);
+
+  for (let i = 0; i < length; i++) {
+    result += charset[randomValues[i] % charset.length];
+  }
+
+  return result;
+}

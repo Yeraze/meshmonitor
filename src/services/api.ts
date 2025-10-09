@@ -14,6 +14,54 @@ class ApiService {
   private configFetched = false;
   private configPromise: Promise<void> | null = null;
 
+  // Generic request method with credentials for session cookies
+  async request<T>(
+    method: string,
+    endpoint: string,
+    body?: any
+  ): Promise<T> {
+    await this.ensureBaseUrl();
+
+    const options: RequestInit = {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include', // Include cookies for session management
+    };
+
+    if (body) {
+      options.body = JSON.stringify(body);
+    }
+
+    const response = await fetch(`${this.baseUrl}${endpoint}`, options);
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Request failed' }));
+      throw new Error(error.error || `Request failed with status ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  // Generic GET method
+  async get<T>(endpoint: string): Promise<T> {
+    return this.request<T>('GET', endpoint);
+  }
+
+  // Generic POST method
+  async post<T>(endpoint: string, body?: any): Promise<T> {
+    return this.request<T>('POST', endpoint, body);
+  }
+
+  // Generic PUT method
+  async put<T>(endpoint: string, body?: any): Promise<T> {
+    return this.request<T>('PUT', endpoint, body);
+  }
+
+  // Generic DELETE method
+  async delete<T>(endpoint: string): Promise<T> {
+    return this.request<T>('DELETE', endpoint);
+  }
+
   /**
    * Set the base URL directly, skipping auto-detection
    * Useful when the app already knows the base path from pathname

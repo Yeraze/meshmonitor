@@ -3,6 +3,9 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { calculateDistance } from '../utils/distance.js';
 import { logger } from '../utils/logger.js';
+import { UserModel } from '../server/models/User.js';
+import { PermissionModel } from '../server/models/Permission.js';
+import { migration as authMigration } from '../server/migrations/001_add_auth_tables.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -115,6 +118,8 @@ export interface DbNeighborInfo {
 class DatabaseService {
   public db: Database.Database;
   private isInitialized = false;
+  public userModel: UserModel;
+  public permissionModel: PermissionModel;
 
   constructor() {
     logger.debug('🔧🔧🔧 DatabaseService constructor called');
@@ -129,11 +134,18 @@ class DatabaseService {
     this.db = new Database(dbPath);
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
+
+    // Initialize models
+    this.userModel = new UserModel(this.db);
+    this.permissionModel = new PermissionModel(this.db);
+
     this.initialize();
     // Always ensure Primary channel exists, even if database already initialized
     this.ensurePrimaryChannel();
     // Always ensure broadcast node exists for channel messages
     this.ensureBroadcastNode();
+    // Ensure admin user exists for authentication
+    this.ensureAdminUser();
   }
 
   private initialize(): void {
@@ -143,7 +155,29 @@ class DatabaseService {
     this.migrateSchema();
     this.createIndexes();
     this.runDataMigrations();
+    this.runAuthMigration();
     this.isInitialized = true;
+  }
+
+  private runAuthMigration(): void {
+    logger.debug('Running authentication migration...');
+    try {
+      // Check if migration has already been run
+      const tableCheck = this.db.prepare(`
+        SELECT name FROM sqlite_master WHERE type='table' AND name='users'
+      `).get();
+
+      if (!tableCheck) {
+        logger.debug('Authentication tables not found, running migration...');
+        authMigration.up(this.db);
+        logger.debug('✅ Authentication migration completed successfully');
+      } else {
+        logger.debug('✅ Authentication tables already exist, skipping migration');
+      }
+    } catch (error) {
+      logger.error('❌ Failed to run authentication migration:', error);
+      throw error;
+    }
   }
 
   private ensurePrimaryChannel(): void {
@@ -1534,6 +1568,136 @@ class DatabaseService {
     `);
     stmt.run(isFavorite ? 1 : 0, now, nodeNum);
     logger.debug(`${isFavorite ? '⭐' : '☆'} Node ${nodeNum} favorite status set to: ${isFavorite}`);
+  }
+
+  // Authentication and Authorization
+  private ensureAdminUser(): void {
+    // Run asynchronously without blocking initialization
+    this.createAdminIfNeeded().catch(error => {
+      logger.error('❌ Failed to ensure admin user:', error);
+    });
+  }
+
+  private async createAdminIfNeeded(): Promise<void> {
+    logger.debug('🔐 Checking for admin user...');
+    try {
+      // Check if any admin users exist
+      if (this.userModel.hasAdminUser()) {
+        logger.debug('✅ Admin user already exists');
+        return;
+      }
+
+      // No admin exists, create one
+      logger.debug('📝 No admin user found, creating default admin...');
+
+      // Generate a random password
+      const password = this.generateRandomPassword();
+      const adminUsername = process.env.ADMIN_USERNAME || 'admin';
+
+      // Create admin user
+      const admin = await this.userModel.create({
+        username: adminUsername,
+        password: password,
+        authProvider: 'local',
+        isAdmin: true,
+        displayName: 'Administrator'
+      });
+
+      // Grant all permissions
+      this.permissionModel.grantDefaultPermissions(admin.id, true);
+
+      // Log the password (this is the only time it will be shown)
+      logger.warn('');
+      logger.warn('═══════════════════════════════════════════════════════════');
+      logger.warn('🔐 FIRST RUN: Admin user created');
+      logger.warn('═══════════════════════════════════════════════════════════');
+      logger.warn(`   Username: ${adminUsername}`);
+      logger.warn(`   Password: ${password}`);
+      logger.warn('');
+      logger.warn('   ⚠️  IMPORTANT: Change this password immediately!');
+      logger.warn('   This is the only time the password will be displayed.');
+      logger.warn('═══════════════════════════════════════════════════════════');
+      logger.warn('');
+
+      // Log to audit log
+      this.auditLog(
+        admin.id,
+        'first_run_admin_created',
+        'users',
+        JSON.stringify({ username: adminUsername }),
+        null
+      );
+
+      // Save to settings so we know setup is complete
+      this.setSetting('setup_complete', 'true');
+    } catch (error) {
+      logger.error('❌ Failed to create admin user:', error);
+      throw error;
+    }
+  }
+
+  private generateRandomPassword(): string {
+    const length = 20;
+    const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
+    let password = '';
+
+    // Ensure at least one of each type
+    password += 'abcdefghijklmnopqrstuvwxyz'[Math.floor(Math.random() * 26)];
+    password += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[Math.floor(Math.random() * 26)];
+    password += '0123456789'[Math.floor(Math.random() * 10)];
+    password += '!@#$%^&*'[Math.floor(Math.random() * 8)];
+
+    // Fill the rest
+    for (let i = password.length; i < length; i++) {
+      password += charset[Math.floor(Math.random() * charset.length)];
+    }
+
+    // Shuffle the password
+    return password.split('').sort(() => Math.random() - 0.5).join('');
+  }
+
+  auditLog(
+    userId: number | null,
+    action: string,
+    resource: string | null,
+    details: string | null,
+    ipAddress: string | null
+  ): void {
+    try {
+      const stmt = this.db.prepare(`
+        INSERT INTO audit_log (user_id, action, resource, details, ip_address, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+
+      stmt.run(userId, action, resource, details, ipAddress, Date.now());
+    } catch (error) {
+      logger.error('Failed to write audit log:', error);
+      // Don't throw - audit log failures shouldn't break the application
+    }
+  }
+
+  getAuditLogs(limit: number = 100, userId?: number): any[] {
+    let query = `
+      SELECT
+        al.id, al.user_id as userId, al.action, al.resource,
+        al.details, al.ip_address as ipAddress, al.timestamp,
+        u.username
+      FROM audit_log al
+      LEFT JOIN users u ON al.user_id = u.id
+    `;
+
+    const params: any[] = [];
+
+    if (userId !== undefined) {
+      query += ' WHERE al.user_id = ?';
+      params.push(userId);
+    }
+
+    query += ' ORDER BY al.timestamp DESC LIMIT ?';
+    params.push(limit);
+
+    const stmt = this.db.prepare(query);
+    return stmt.all(...params) as any[];
   }
 }
 

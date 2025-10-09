@@ -8,6 +8,7 @@ import TelemetryGraphs from './components/TelemetryGraphs'
 import InfoTab from './components/InfoTab'
 import SettingsTab from './components/SettingsTab'
 import ConfigurationTab from './components/ConfigurationTab'
+import UsersTab from './components/UsersTab'
 import Dashboard from './components/Dashboard'
 import HopCountDisplay from './components/HopCountDisplay'
 import AutoAcknowledgeSection from './components/AutoAcknowledgeSection'
@@ -33,6 +34,9 @@ import { MapProvider, useMapContext } from './contexts/MapContext'
 import { DataProvider, useData } from './contexts/DataContext'
 import { MessagingProvider, useMessaging } from './contexts/MessagingContext'
 import { UIProvider, useUI } from './contexts/UIContext'
+import { useAuth } from './contexts/AuthContext'
+import LoginModal from './components/LoginModal'
+import UserMenu from './components/UserMenu'
 
 // Fix for default markers in React-Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -61,6 +65,9 @@ const MapCenterController: React.FC<MapCenterControllerProps> = ({ centerTarget,
 };
 
 function App() {
+  const { authStatus } = useAuth();
+  const [showLoginModal, setShowLoginModal] = useState(false);
+
   const hasSelectedInitialChannelRef = useRef<boolean>(false)
   const selectedChannelRef = useRef<number>(-1)
 
@@ -3208,11 +3215,23 @@ function App() {
             <span className="node-address">{nodeAddress}</span>
           </div>
         </div>
-        <div className="connection-status" onClick={fetchSystemStatus} style={{ cursor: 'pointer' }} title="Click for system status">
-          <span className={`status-indicator ${connectionStatus}`}></span>
-          <span>{connectionStatus === 'configuring' ? 'initializing' : connectionStatus}</span>
+        <div className="header-right" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div className="connection-status" onClick={fetchSystemStatus} style={{ cursor: 'pointer' }} title="Click for system status">
+            <span className={`status-indicator ${connectionStatus}`}></span>
+            <span>{connectionStatus === 'configuring' ? 'initializing' : connectionStatus}</span>
+          </div>
+          {authStatus?.authenticated ? (
+            <UserMenu />
+          ) : (
+            <button className="login-button" onClick={() => setShowLoginModal(true)}>
+              <span>🔒</span>
+              <span>Login</span>
+            </button>
+          )}
         </div>
       </header>
+
+      <LoginModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />
 
       <nav className="tab-nav">
         <button
@@ -3221,61 +3240,73 @@ function App() {
         >
           Nodes
         </button>
-        <button
-          className={`tab-btn ${activeTab === 'channels' ? 'active' : ''}`}
-          onClick={() => setActiveTab('channels')}
-        >
-          Channels
-          {Object.entries(unreadCounts).some(([channel, count]) => parseInt(channel) !== -1 && count > 0) && (
-            <span className="tab-notification-dot"></span>
-          )}
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'messages' ? 'active' : ''}`}
-          onClick={() => {
-            setActiveTab('messages');
-            // Clear unread count for direct messages (channel -1)
-            setUnreadCounts(prev => ({ ...prev, [-1]: 0 }));
-            // Set selected channel to -1 so new DMs don't create unread notifications
-            setSelectedChannel(-1);
-            selectedChannelRef.current = -1;
-          }}
-        >
-          Messages
-          {unreadCounts[-1] > 0 && (
-            <span className="tab-notification-dot"></span>
-          )}
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
-          onClick={() => setActiveTab('dashboard')}
-        >
-          Dashboard
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'info' ? 'active' : ''}`}
-          onClick={() => setActiveTab('info')}
-        >
-          Info
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
-          onClick={() => setActiveTab('settings')}
-        >
-          Settings
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'automation' ? 'active' : ''}`}
-          onClick={() => setActiveTab('automation')}
-        >
-          Automation
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'configuration' ? 'active' : ''}`}
-          onClick={() => setActiveTab('configuration')}
-        >
-          Configuration
-        </button>
+        {authStatus?.authenticated && (
+          <>
+            <button
+              className={`tab-btn ${activeTab === 'channels' ? 'active' : ''}`}
+              onClick={() => setActiveTab('channels')}
+            >
+              Channels
+              {Object.entries(unreadCounts).some(([channel, count]) => parseInt(channel) !== -1 && count > 0) && (
+                <span className="tab-notification-dot"></span>
+              )}
+            </button>
+            <button
+              className={`tab-btn ${activeTab === 'messages' ? 'active' : ''}`}
+              onClick={() => {
+                setActiveTab('messages');
+                // Clear unread count for direct messages (channel -1)
+                setUnreadCounts(prev => ({ ...prev, [-1]: 0 }));
+                // Set selected channel to -1 so new DMs don't create unread notifications
+                setSelectedChannel(-1);
+                selectedChannelRef.current = -1;
+              }}
+            >
+              Messages
+              {unreadCounts[-1] > 0 && (
+                <span className="tab-notification-dot"></span>
+              )}
+            </button>
+            <button
+              className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
+              onClick={() => setActiveTab('dashboard')}
+            >
+              Dashboard
+            </button>
+            <button
+              className={`tab-btn ${activeTab === 'info' ? 'active' : ''}`}
+              onClick={() => setActiveTab('info')}
+            >
+              Info
+            </button>
+            <button
+              className={`tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
+              onClick={() => setActiveTab('settings')}
+            >
+              Settings
+            </button>
+            <button
+              className={`tab-btn ${activeTab === 'automation' ? 'active' : ''}`}
+              onClick={() => setActiveTab('automation')}
+            >
+              Automation
+            </button>
+            <button
+              className={`tab-btn ${activeTab === 'configuration' ? 'active' : ''}`}
+              onClick={() => setActiveTab('configuration')}
+            >
+              Configuration
+            </button>
+            {authStatus?.user?.isAdmin && (
+              <button
+                className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`}
+                onClick={() => setActiveTab('users')}
+              >
+                Users
+              </button>
+            )}
+          </>
+        )}
       </nav>
 
       <main className="app-main">
@@ -3384,6 +3415,7 @@ function App() {
             onConfigChangeTriggeringReboot={handleConfigChangeTriggeringReboot}
           />
         )}
+        {activeTab === 'users' && <UsersTab />}
       </main>
 
       {/* Node Popup */}
