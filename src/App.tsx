@@ -8,6 +8,7 @@ import TelemetryGraphs from './components/TelemetryGraphs'
 import InfoTab from './components/InfoTab'
 import SettingsTab from './components/SettingsTab'
 import ConfigurationTab from './components/ConfigurationTab'
+import UsersTab from './components/UsersTab'
 import Dashboard from './components/Dashboard'
 import HopCountDisplay from './components/HopCountDisplay'
 import AutoAcknowledgeSection from './components/AutoAcknowledgeSection'
@@ -33,6 +34,9 @@ import { MapProvider, useMapContext } from './contexts/MapContext'
 import { DataProvider, useData } from './contexts/DataContext'
 import { MessagingProvider, useMessaging } from './contexts/MessagingContext'
 import { UIProvider, useUI } from './contexts/UIContext'
+import { useAuth } from './contexts/AuthContext'
+import LoginModal from './components/LoginModal'
+import UserMenu from './components/UserMenu'
 
 // Fix for default markers in React-Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -61,6 +65,9 @@ const MapCenterController: React.FC<MapCenterControllerProps> = ({ centerTarget,
 };
 
 function App() {
+  const { authStatus, hasPermission } = useAuth();
+  const [showLoginModal, setShowLoginModal] = useState(false);
+
   const hasSelectedInitialChannelRef = useRef<boolean>(false)
   const selectedChannelRef = useRef<number>(-1)
 
@@ -244,6 +251,21 @@ function App() {
     setAutoAnnounceOnStart
   } = useUI();
 
+  // Helper to fetch with credentials and silently ignore auth errors
+  const authFetch = async (url: string, options?: RequestInit): Promise<Response> => {
+    const response = await fetch(url, {
+      ...options,
+      credentials: 'include',
+    });
+
+    // Silently handle auth errors to prevent console spam
+    if (response.status === 401 || response.status === 403) {
+      return response;
+    }
+
+    return response;
+  };
+
   // Function to detect MQTT/bridge messages that should be filtered
   const isMqttBridgeMessage = (msg: MeshMessage): boolean => {
     // Filter messages from unknown senders
@@ -312,7 +334,7 @@ function App() {
         }
 
         // Load settings from server
-        const settingsResponse = await fetch(`${configBaseUrl}/api/settings`);
+        const settingsResponse = await authFetch(`${baseUrl}/api/settings`);
         if (settingsResponse.ok) {
           const settings = await settingsResponse.json();
 
@@ -433,7 +455,7 @@ function App() {
 
     const fetchPositionHistory = async () => {
       try {
-        const response = await fetch(`${baseUrl}/api/nodes/${selectedNodeId}/position-history?hours=168`);
+        const response = await authFetch(`${baseUrl}/api/nodes/${selectedNodeId}/position-history?hours=168`);
         if (response.ok) {
           const history = await response.json();
           setPositionHistory(history);
@@ -597,7 +619,7 @@ function App() {
   const requestFullNodeDatabase = async () => {
     try {
       logger.debug('📡 Requesting full node database refresh...');
-      const response = await fetch(`${baseUrl}/api/nodes/refresh`, {
+      const response = await authFetch(`${baseUrl}/api/nodes/refresh`, {
         method: 'POST'
       });
 
@@ -627,7 +649,7 @@ function App() {
 
       while (attempts < maxAttempts) {
         try {
-          const response = await fetch(`${baseUrl}/api/connection`);
+          const response = await authFetch(`${baseUrl}/api/connection`);
           if (response.ok) {
             const status = await response.json();
             if (status.connected) {
@@ -690,7 +712,7 @@ function App() {
     const urlBase = providedBaseUrl !== undefined ? providedBaseUrl : baseUrl;
 
     try {
-      const response = await fetch(`${urlBase}/api/connection`);
+      const response = await authFetch(`${baseUrl}/api/connection`);
       if (response.ok) {
         const status = await response.json();
         logger.debug(`📡 Connection API response: connected=${status.connected}`);
@@ -742,7 +764,9 @@ function App() {
 
   const fetchTraceroutes = async () => {
     try {
-      const response = await fetch(`${baseUrl}/api/traceroutes/recent`);
+      const response = await fetch(`${baseUrl}/api/traceroutes/recent`, {
+        credentials: 'include'
+      });
       if (response.ok) {
         const data = await response.json();
         setTraceroutes(data);
@@ -754,7 +778,7 @@ function App() {
 
   const fetchNeighborInfo = async () => {
     try {
-      const response = await fetch(`${baseUrl}/api/neighbor-info`);
+      const response = await authFetch(`${baseUrl}/api/neighbor-info`);
       if (response.ok) {
         const data = await response.json();
         setNeighborInfo(data);
@@ -766,7 +790,7 @@ function App() {
 
   const fetchNodesWithTelemetry = async () => {
     try {
-      const response = await fetch(`${baseUrl}/api/telemetry/available/nodes`);
+      const response = await authFetch(`${baseUrl}/api/telemetry/available/nodes`);
       if (response.ok) {
         const data = await response.json();
         setNodesWithTelemetry(new Set(data.nodes));
@@ -781,7 +805,7 @@ function App() {
 
   const fetchSystemStatus = async () => {
     try {
-      const response = await fetch(`${baseUrl}/api/system/status`);
+      const response = await authFetch(`${baseUrl}/api/system/status`);
       if (response.ok) {
         const data = await response.json();
         setSystemStatus(data);
@@ -796,7 +820,7 @@ function App() {
     // Use the provided baseUrl or fall back to the state value
     const urlBase = providedBaseUrl !== undefined ? providedBaseUrl : baseUrl;
     try {
-      const channelsResponse = await fetch(`${urlBase}/api/channels`);
+      const channelsResponse = await authFetch(`${urlBase}/api/channels`);
       if (channelsResponse.ok) {
         const channelsData = await channelsResponse.json();
 
@@ -845,14 +869,14 @@ function App() {
   const updateDataFromBackend = async () => {
     try {
       // Fetch nodes
-      const nodesResponse = await fetch(`${baseUrl}/api/nodes`);
+      const nodesResponse = await authFetch(`${baseUrl}/api/nodes`);
       if (nodesResponse.ok) {
         const nodesData = await nodesResponse.json();
         setNodes(nodesData);
       }
 
       // Fetch messages
-      const messagesResponse = await fetch(`${baseUrl}/api/messages?limit=100`);
+      const messagesResponse = await authFetch(`${baseUrl}/api/messages?limit=100`);
       if (messagesResponse.ok) {
         const messagesData = await messagesResponse.json();
         // Convert timestamp strings back to Date objects
@@ -966,14 +990,14 @@ function App() {
       }
 
       // Fetch device info
-      const configResponse = await fetch(`${baseUrl}/api/config`);
+      const configResponse = await authFetch(`${baseUrl}/api/config`);
       if (configResponse.ok) {
         const configData = await configResponse.json();
         setDeviceInfo(configData);
       }
 
       // Fetch device configuration
-      const deviceConfigResponse = await fetch(`${baseUrl}/api/device-config`);
+      const deviceConfigResponse = await authFetch(`${baseUrl}/api/device-config`);
       if (deviceConfigResponse.ok) {
         const deviceConfigData = await deviceConfigResponse.json();
         setDeviceConfig(deviceConfigData);
@@ -1082,7 +1106,7 @@ function App() {
       const nodeNumStr = nodeId.replace('!', '');
       const nodeNum = parseInt(nodeNumStr, 16);
 
-      await fetch(`${baseUrl}/api/traceroute`, {
+      await authFetch(`${baseUrl}/api/traceroute`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -1153,7 +1177,7 @@ function App() {
     setReplyingTo(null);
 
     try {
-      const response = await fetch(`${baseUrl}/api/messages/send`, {
+      const response = await authFetch(`${baseUrl}/api/messages/send`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -1233,7 +1257,7 @@ function App() {
         };
       }
 
-      const response = await fetch(`${baseUrl}/api/messages/send`, {
+      const response = await authFetch(`${baseUrl}/api/messages/send`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -1310,7 +1334,7 @@ function App() {
     setReplyingTo(null);
 
     try {
-      const response = await fetch(`${baseUrl}/api/messages/send`, {
+      const response = await authFetch(`${baseUrl}/api/messages/send`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -1536,7 +1560,7 @@ function App() {
       );
 
       // Send update to backend (with device sync enabled by default)
-      const response = await fetch(`${baseUrl}/api/nodes/${node.user.id}/favorite`, {
+      const response = await authFetch(`${baseUrl}/api/nodes/${node.user.id}/favorite`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -1703,17 +1727,19 @@ function App() {
                         )}
                       </div>
                       <div className="node-actions">
-                        <button
-                          className="dm-icon"
-                          title="Send Direct Message"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedDMNode(node.user?.id || '');
-                            setActiveTab('messages');
-                          }}
-                        >
-                          💬
-                        </button>
+                        {hasPermission('messages', 'read') && (
+                          <button
+                            className="dm-icon"
+                            title="Send Direct Message"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedDMNode(node.user?.id || '');
+                              setActiveTab('messages');
+                            }}
+                          >
+                            💬
+                          </button>
+                        )}
                         <div className="node-short">
                           {node.user?.shortName || '-'}
                         </div>
@@ -1954,7 +1980,7 @@ function App() {
                         </div>
                       )}
 
-                      {node.user?.id && (
+                      {node.user?.id && hasPermission('messages', 'read') && (
                         <button
                           className="node-popup-btn"
                           onClick={() => {
@@ -2388,25 +2414,27 @@ function App() {
                                 </div>
                               )}
                               <div className={`message-bubble ${isMine ? 'mine' : 'theirs'}`}>
-                                <div className="message-actions">
-                                  <button
-                                    className="reply-button"
-                                    onClick={() => setReplyingTo(msg)}
-                                    title="Reply to this message"
-                                  >
-                                    ↩
-                                  </button>
-                                  {TAPBACK_EMOJIS.map(({ emoji, title }) => (
+                                {hasPermission('channels', 'write') && (
+                                  <div className="message-actions">
                                     <button
-                                      key={emoji}
-                                      className="emoji-button"
-                                      onClick={() => handleSendTapback(emoji, msg)}
-                                      title={title}
+                                      className="reply-button"
+                                      onClick={() => setReplyingTo(msg)}
+                                      title="Reply to this message"
                                     >
-                                      {emoji}
+                                      ↩
                                     </button>
-                                  ))}
-                                </div>
+                                    {TAPBACK_EMOJIS.map(({ emoji, title }) => (
+                                      <button
+                                        key={emoji}
+                                        className="emoji-button"
+                                        onClick={() => handleSendTapback(emoji, msg)}
+                                        title={title}
+                                      >
+                                        {emoji}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
                                 <div className="message-text" style={{whiteSpace: 'pre-line'}}>
                                   {msg.text}
                                 </div>
@@ -2475,27 +2503,29 @@ function App() {
                           </button>
                         </div>
                       )}
-                      <div className="message-input-container">
-                        <input
-                          type="text"
-                          value={newMessage}
-                          onChange={(e) => setNewMessage(e.target.value)}
-                          placeholder={`Send message to ${getChannelName(selectedChannel)}...`}
-                          className="message-input"
-                          onKeyPress={(e) => {
-                            if (e.key === 'Enter') {
-                              handleSendMessage(selectedChannel);
-                            }
-                          }}
-                        />
-                        <button
-                          onClick={() => handleSendMessage(selectedChannel)}
-                          disabled={!newMessage.trim()}
-                          className="send-btn"
-                        >
-                          Send
-                        </button>
-                      </div>
+                      {hasPermission('channels', 'write') && (
+                        <div className="message-input-container">
+                          <input
+                            type="text"
+                            value={newMessage}
+                            onChange={(e) => setNewMessage(e.target.value)}
+                            placeholder={`Send message to ${getChannelName(selectedChannel)}...`}
+                            className="message-input"
+                            onKeyPress={(e) => {
+                              if (e.key === 'Enter') {
+                                handleSendMessage(selectedChannel);
+                              }
+                            }}
+                          />
+                          <button
+                            onClick={() => handleSendMessage(selectedChannel)}
+                            disabled={!newMessage.trim()}
+                            className="send-btn"
+                          >
+                            Send
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -2780,25 +2810,27 @@ function App() {
                               </div>
                             )}
                             <div className={`message-bubble ${isMine ? 'mine' : 'theirs'}`}>
-                              <div className="message-actions">
-                                <button
-                                  className="reply-button"
-                                  onClick={() => setReplyingTo(msg)}
-                                  title="Reply to this message"
-                                >
-                                  ↩
-                                </button>
-                                {TAPBACK_EMOJIS.map(({ emoji, title }) => (
+                              {hasPermission('messages', 'write') && (
+                                <div className="message-actions">
                                   <button
-                                    key={emoji}
-                                    className="emoji-button"
-                                    onClick={() => handleSendTapback(emoji, msg)}
-                                    title={title}
+                                    className="reply-button"
+                                    onClick={() => setReplyingTo(msg)}
+                                    title="Reply to this message"
                                   >
-                                    {emoji}
+                                    ↩
                                   </button>
-                                ))}
-                              </div>
+                                  {TAPBACK_EMOJIS.map(({ emoji, title }) => (
+                                    <button
+                                      key={emoji}
+                                      className="emoji-button"
+                                      onClick={() => handleSendTapback(emoji, msg)}
+                                      title={title}
+                                    >
+                                      {emoji}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
                               <div className="message-text" style={{whiteSpace: 'pre-line'}}>
                                 {msg.text}
                               </div>
@@ -2867,27 +2899,29 @@ function App() {
                       </button>
                     </div>
                   )}
-                  <div className="message-input-container">
-                    <input
-                      type="text"
-                      value={newMessage}
-                      onChange={(e) => setNewMessage(e.target.value)}
-                      placeholder={`Send direct message to ${getNodeName(selectedDMNode)}...`}
-                      className="message-input"
-                      onKeyPress={(e) => {
-                        if (e.key === 'Enter') {
-                          handleSendDirectMessage(selectedDMNode);
-                        }
-                      }}
-                    />
-                    <button
-                      onClick={() => handleSendDirectMessage(selectedDMNode)}
-                      disabled={!newMessage.trim()}
-                      className="send-btn"
-                    >
-                      Send
-                    </button>
-                  </div>
+                  {hasPermission('messages', 'write') && (
+                    <div className="message-input-container">
+                      <input
+                        type="text"
+                        value={newMessage}
+                        onChange={(e) => setNewMessage(e.target.value)}
+                        placeholder={`Send direct message to ${getNodeName(selectedDMNode)}...`}
+                        className="message-input"
+                        onKeyPress={(e) => {
+                          if (e.key === 'Enter') {
+                            handleSendDirectMessage(selectedDMNode);
+                          }
+                        }}
+                      />
+                      <button
+                        onClick={() => handleSendDirectMessage(selectedDMNode)}
+                        disabled={!newMessage.trim()}
+                        className="send-btn"
+                      >
+                        Send
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -3208,11 +3242,23 @@ function App() {
             <span className="node-address">{nodeAddress}</span>
           </div>
         </div>
-        <div className="connection-status" onClick={fetchSystemStatus} style={{ cursor: 'pointer' }} title="Click for system status">
-          <span className={`status-indicator ${connectionStatus}`}></span>
-          <span>{connectionStatus === 'configuring' ? 'initializing' : connectionStatus}</span>
+        <div className="header-right" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div className="connection-status" onClick={fetchSystemStatus} style={{ cursor: 'pointer' }} title="Click for system status">
+            <span className={`status-indicator ${connectionStatus}`}></span>
+            <span>{connectionStatus === 'configuring' ? 'initializing' : connectionStatus}</span>
+          </div>
+          {authStatus?.authenticated ? (
+            <UserMenu onLogout={() => setActiveTab('nodes')} />
+          ) : (
+            <button className="login-button" onClick={() => setShowLoginModal(true)}>
+              <span>🔒</span>
+              <span>Login</span>
+            </button>
+          )}
         </div>
       </header>
+
+      <LoginModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />
 
       <nav className="tab-nav">
         <button
@@ -3221,61 +3267,83 @@ function App() {
         >
           Nodes
         </button>
-        <button
-          className={`tab-btn ${activeTab === 'channels' ? 'active' : ''}`}
-          onClick={() => setActiveTab('channels')}
-        >
-          Channels
-          {Object.entries(unreadCounts).some(([channel, count]) => parseInt(channel) !== -1 && count > 0) && (
-            <span className="tab-notification-dot"></span>
-          )}
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'messages' ? 'active' : ''}`}
-          onClick={() => {
-            setActiveTab('messages');
-            // Clear unread count for direct messages (channel -1)
-            setUnreadCounts(prev => ({ ...prev, [-1]: 0 }));
-            // Set selected channel to -1 so new DMs don't create unread notifications
-            setSelectedChannel(-1);
-            selectedChannelRef.current = -1;
-          }}
-        >
-          Messages
-          {unreadCounts[-1] > 0 && (
-            <span className="tab-notification-dot"></span>
-          )}
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
-          onClick={() => setActiveTab('dashboard')}
-        >
-          Dashboard
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'info' ? 'active' : ''}`}
-          onClick={() => setActiveTab('info')}
-        >
-          Info
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
-          onClick={() => setActiveTab('settings')}
-        >
-          Settings
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'automation' ? 'active' : ''}`}
-          onClick={() => setActiveTab('automation')}
-        >
-          Automation
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'configuration' ? 'active' : ''}`}
-          onClick={() => setActiveTab('configuration')}
-        >
-          Configuration
-        </button>
+        {hasPermission('channels', 'read') && (
+          <button
+            className={`tab-btn ${activeTab === 'channels' ? 'active' : ''}`}
+            onClick={() => setActiveTab('channels')}
+          >
+            Channels
+            {Object.entries(unreadCounts).some(([channel, count]) => parseInt(channel) !== -1 && count > 0) && (
+              <span className="tab-notification-dot"></span>
+            )}
+          </button>
+        )}
+        {hasPermission('messages', 'read') && (
+          <button
+            className={`tab-btn ${activeTab === 'messages' ? 'active' : ''}`}
+            onClick={() => {
+              setActiveTab('messages');
+              // Clear unread count for direct messages (channel -1)
+              setUnreadCounts(prev => ({ ...prev, [-1]: 0 }));
+              // Set selected channel to -1 so new DMs don't create unread notifications
+              setSelectedChannel(-1);
+              selectedChannelRef.current = -1;
+            }}
+          >
+            Messages
+            {unreadCounts[-1] > 0 && (
+              <span className="tab-notification-dot"></span>
+            )}
+          </button>
+        )}
+        {hasPermission('dashboard', 'read') && (
+          <button
+            className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
+            onClick={() => setActiveTab('dashboard')}
+          >
+            Dashboard
+          </button>
+        )}
+        {hasPermission('info', 'read') && (
+          <button
+            className={`tab-btn ${activeTab === 'info' ? 'active' : ''}`}
+            onClick={() => setActiveTab('info')}
+          >
+            Info
+          </button>
+        )}
+        {hasPermission('settings', 'read') && (
+          <button
+            className={`tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
+            onClick={() => setActiveTab('settings')}
+          >
+            Settings
+          </button>
+        )}
+        {hasPermission('automation', 'read') && (
+          <button
+            className={`tab-btn ${activeTab === 'automation' ? 'active' : ''}`}
+            onClick={() => setActiveTab('automation')}
+          >
+            Automation
+          </button>
+        )}
+        {hasPermission('configuration', 'read') && (
+          <button
+            className={`tab-btn ${activeTab === 'configuration' ? 'active' : ''}`}
+            onClick={() => setActiveTab('configuration')}
+          >
+            Configuration
+          </button>
+        )}
+        {authStatus?.user?.isAdmin && (
+          <button
+            className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`}
+            onClick={() => setActiveTab('users')}
+          >
+            Users
+          </button>
+        )}
       </nav>
 
       <main className="app-main">
@@ -3384,6 +3452,7 @@ function App() {
             onConfigChangeTriggeringReboot={handleConfigChangeTriggeringReboot}
           />
         )}
+        {activeTab === 'users' && <UsersTab />}
       </main>
 
       {/* Node Popup */}
@@ -3440,7 +3509,7 @@ function App() {
               <div className="route-usage">Last Seen: {formatDateTime(new Date(node.lastHeard * 1000), timeFormat, dateFormat)}</div>
             )}
 
-            {node.user?.id && (
+            {node.user?.id && hasPermission('messages', 'read') && (
               <button
                 className="popup-dm-btn"
                 onClick={() => {

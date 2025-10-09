@@ -293,32 +293,48 @@ Your Meshtastic device must have:
 - TCP port 4403 accessible (standard Meshtastic port)
 - Network accessibility from MeshMonitor
 
-## Authentication
+## Authentication & Authorization
 
-**MeshMonitor does not include internal authentication.** The application assumes it is running in a trusted environment or behind an authentication layer.
+**MeshMonitor v2.0+** includes a comprehensive authentication and authorization system with:
 
-If you need to secure access to MeshMonitor, you should proxy it behind an authentication provider such as:
+- **Local Authentication**: Username/password with secure bcrypt hashing
+- **OpenID Connect (OIDC)**: Integration with enterprise identity providers
+- **Granular Permissions**: Resource-based access control (dashboard, nodes, channels, messages, settings, etc.)
+- **User Management**: Admin interface for creating and managing users
+- **Session Security**: Secure session storage with SQLite backend
 
-- **[Authentik](https://goauthentik.io/)** - Open-source Identity Provider
-- **[Pocketbase](https://pocketbase.io/)** - Lightweight auth backend
-- **[Authelia](https://www.authelia.com/)** - Authentication and authorization server
-- **nginx with basic auth** - Simple username/password protection
+### Quick Start
 
-### Example: nginx with Basic Auth
+On first startup, MeshMonitor creates a default admin account:
+- **Username**: `admin`
+- **Password**: `changeme`
 
-```nginx
-location / {
-    auth_basic "MeshMonitor";
-    auth_basic_user_file /etc/nginx/.htpasswd;
-    proxy_pass http://localhost:8080;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-}
+**⚠️ Change the default password immediately after first login!**
+
+### OIDC Integration
+
+MeshMonitor supports Single Sign-On (SSO) with any OpenID Connect provider:
+
+- **Authentik** - Open-source Identity Provider
+- **Keycloak** - Red Hat's open-source IAM
+- **Auth0**, **Okta**, **Azure AD**, **Google Workspace**
+- Any OIDC-compliant provider
+
+**Enable OIDC:**
+```yaml
+environment:
+  - OIDC_ENABLED=true
+  - OIDC_ISSUER=https://auth.example.com/application/o/meshmonitor/
+  - OIDC_CLIENT_ID=your-client-id
+  - OIDC_CLIENT_SECRET=your-client-secret
+  - OIDC_REDIRECT_URI=https://meshmonitor.example.com/api/auth/oidc/callback
 ```
 
-### Example: Docker Compose with Authentik
+### Full Documentation
 
-Refer to [Authentik's documentation](https://docs.goauthentik.io/) for setting up a reverse proxy with authentication.
+For complete authentication setup, OIDC configuration with step-by-step provider examples, permission management, and security best practices, see:
+
+**📖 [Authentication & Authorization Guide](docs/AUTHENTICATION.md)**
 
 ## Reverse Proxy Configuration
 
