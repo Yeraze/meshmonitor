@@ -12,7 +12,6 @@ import { getSessionConfig } from './auth/sessionConfig.js';
 import { initializeOIDC } from './auth/oidcAuth.js';
 import {
   optionalAuth,
-  requireAuth,
   requirePermission,
   requireAdmin,
   hasPermission
@@ -828,7 +827,7 @@ apiRouter.get('/neighbor-info/:nodeNum', requirePermission('info', 'read'), (req
 });
 
 // Get telemetry data for a node
-apiRouter.get('/telemetry/:nodeId', requireAuth(), (req, res) => {
+apiRouter.get('/telemetry/:nodeId', optionalAuth(), (req, res) => {
   try {
     // Allow users with info read OR dashboard read (dashboard needs telemetry data)
     if (!req.user?.isAdmin &&
@@ -1038,7 +1037,7 @@ apiRouter.post('/settings/traceroute-interval', requirePermission('settings', 'w
 });
 
 // Get all settings
-apiRouter.get('/settings', requireAuth(), (req, res) => {
+apiRouter.get('/settings', optionalAuth(), (req, res) => {
   try {
     // Allow users with settings read OR dashboard read (dashboard needs telemetryFavorites)
     if (!req.user?.isAdmin &&

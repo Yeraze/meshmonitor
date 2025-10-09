@@ -88,26 +88,37 @@ export function requireAuth() {
 
 /**
  * Require specific permission
+ * Works with both authenticated and anonymous users
  */
 export function requirePermission(resource: ResourceType, action: PermissionAction) {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
-      if (!req.session.userId) {
-        return res.status(401).json({
-          error: 'Authentication required',
-          code: 'UNAUTHORIZED'
-        });
+      let user;
+
+      // Get authenticated user or anonymous user
+      if (req.session.userId) {
+        user = databaseService.userModel.findById(req.session.userId);
+
+        if (!user || !user.isActive) {
+          // Clear invalid session
+          req.session.userId = undefined;
+          req.session.username = undefined;
+          req.session.authProvider = undefined;
+          req.session.isAdmin = undefined;
+          user = null;
+        }
       }
 
-      const user = databaseService.userModel.findById(req.session.userId);
+      // If no authenticated user, try anonymous
+      if (!user) {
+        const anonymousUser = databaseService.userModel.findByUsername('anonymous');
+        if (anonymousUser && anonymousUser.isActive) {
+          user = anonymousUser;
+        }
+      }
 
-      if (!user || !user.isActive) {
-        // Clear invalid session
-        req.session.userId = undefined;
-        req.session.username = undefined;
-        req.session.authProvider = undefined;
-        req.session.isAdmin = undefined;
-
+      // If still no user, deny access
+      if (!user) {
         return res.status(401).json({
           error: 'Authentication required',
           code: 'UNAUTHORIZED'
