@@ -9,7 +9,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { logger } from '../utils/logger';
 import ChangePasswordModal from './ChangePasswordModal';
 
-const UserMenu: React.FC = () => {
+interface UserMenuProps {
+  onLogout?: () => void;
+}
+
+const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
   const { authStatus, logout } = useAuth();
   const [showMenu, setShowMenu] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -24,6 +28,10 @@ const UserMenu: React.FC = () => {
     try {
       await logout();
       setShowMenu(false);
+      // Call the onLogout callback if provided
+      if (onLogout) {
+        onLogout();
+      }
     } catch (error) {
       logger.error('Logout error:', error);
     } finally {

@@ -3185,6 +3185,8 @@ body {
 
 .users-tab {
   padding: 20px;
+  max-width: 1600px;
+  margin: 0 auto;
   height: 100%;
   overflow: auto;
 }
@@ -3193,7 +3195,8 @@ body {
   display: grid;
   grid-template-columns: 350px 1fr;
   gap: 24px;
-  height: 100%;
+  height: calc(100vh - 200px);
+  min-height: 600px;
 }
 
 .users-list {
@@ -3207,6 +3210,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 16px;
   margin-bottom: 16px;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--ctp-surface2);
@@ -3216,6 +3220,14 @@ body {
   margin: 0;
   color: var(--ctp-text);
   font-size: 1.2em;
+  flex-shrink: 0;
+}
+
+.users-list-header .button {
+  white-space: nowrap;
+  flex-shrink: 0;
+  width: auto;
+  min-width: auto;
 }
 
 .user-item {

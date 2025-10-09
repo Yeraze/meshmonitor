@@ -65,7 +65,7 @@ const MapCenterController: React.FC<MapCenterControllerProps> = ({ centerTarget,
 };
 
 function App() {
-  const { authStatus } = useAuth();
+  const { authStatus, hasPermission } = useAuth();
   const [showLoginModal, setShowLoginModal] = useState(false);
 
   const hasSelectedInitialChannelRef = useRef<boolean>(false)
@@ -3238,7 +3238,7 @@ function App() {
             <span>{connectionStatus === 'configuring' ? 'initializing' : connectionStatus}</span>
           </div>
           {authStatus?.authenticated ? (
-            <UserMenu />
+            <UserMenu onLogout={() => setActiveTab('nodes')} />
           ) : (
             <button className="login-button" onClick={() => setShowLoginModal(true)}>
               <span>🔒</span>
@@ -3284,36 +3284,46 @@ function App() {
                 <span className="tab-notification-dot"></span>
               )}
             </button>
-            <button
-              className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
-              onClick={() => setActiveTab('dashboard')}
-            >
-              Dashboard
-            </button>
-            <button
-              className={`tab-btn ${activeTab === 'info' ? 'active' : ''}`}
-              onClick={() => setActiveTab('info')}
-            >
-              Info
-            </button>
-            <button
-              className={`tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
-              onClick={() => setActiveTab('settings')}
-            >
-              Settings
-            </button>
-            <button
-              className={`tab-btn ${activeTab === 'automation' ? 'active' : ''}`}
-              onClick={() => setActiveTab('automation')}
-            >
-              Automation
-            </button>
-            <button
-              className={`tab-btn ${activeTab === 'configuration' ? 'active' : ''}`}
-              onClick={() => setActiveTab('configuration')}
-            >
-              Configuration
-            </button>
+            {hasPermission('dashboard', 'read') && (
+              <button
+                className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
+                onClick={() => setActiveTab('dashboard')}
+              >
+                Dashboard
+              </button>
+            )}
+            {hasPermission('info', 'read') && (
+              <button
+                className={`tab-btn ${activeTab === 'info' ? 'active' : ''}`}
+                onClick={() => setActiveTab('info')}
+              >
+                Info
+              </button>
+            )}
+            {hasPermission('settings', 'read') && (
+              <button
+                className={`tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
+                onClick={() => setActiveTab('settings')}
+              >
+                Settings
+              </button>
+            )}
+            {hasPermission('automation', 'read') && (
+              <button
+                className={`tab-btn ${activeTab === 'automation' ? 'active' : ''}`}
+                onClick={() => setActiveTab('automation')}
+              >
+                Automation
+              </button>
+            )}
+            {hasPermission('configuration', 'read') && (
+              <button
+                className={`tab-btn ${activeTab === 'configuration' ? 'active' : ''}`}
+                onClick={() => setActiveTab('configuration')}
+              >
+                Configuration
+              </button>
+            )}
             {authStatus?.user?.isAdmin && (
               <button
                 className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`}

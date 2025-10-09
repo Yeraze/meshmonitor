@@ -38,17 +38,14 @@ const UsersTab: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [permissions, setPermissions] = useState<PermissionSet>({});
-
-  // Only allow access for admins
-  if (!authStatus?.user?.isAdmin) {
-    return (
-      <div className="users-tab">
-        <div className="error-message">
-          Access denied. Admin privileges required.
-        </div>
-      </div>
-    );
-  }
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    username: '',
+    password: '',
+    email: '',
+    displayName: '',
+    isAdmin: false
+  });
 
   useEffect(() => {
     fetchUsers();
@@ -72,7 +69,22 @@ const UsersTab: React.FC = () => {
     try {
       setSelectedUser(user);
       const response = await api.get<{ permissions: PermissionSet }>(`/api/users/${user.id}/permissions`);
-      setPermissions(response.permissions);
+
+      // If user is admin and no permissions returned, set all permissions
+      if (user.isAdmin && Object.keys(response.permissions).length === 0) {
+        const allPermissions: PermissionSet = {
+          dashboard: { read: true, write: true },
+          nodes: { read: true, write: true },
+          messages: { read: true, write: true },
+          settings: { read: true, write: true },
+          configuration: { read: true, write: true },
+          info: { read: true, write: true },
+          automation: { read: true, write: true }
+        };
+        setPermissions(allPermissions);
+      } else {
+        setPermissions(response.permissions);
+      }
     } catch (err) {
       logger.error('Failed to fetch user permissions:', err);
       setError('Failed to load permissions');
@@ -83,7 +95,18 @@ const UsersTab: React.FC = () => {
     if (!selectedUser) return;
 
     try {
-      await api.put(`/api/users/${selectedUser.id}/permissions`, { permissions });
+      // Filter out empty/undefined permissions and ensure valid structure
+      const validPermissions: PermissionSet = {};
+      (['dashboard', 'nodes', 'messages', 'settings', 'configuration', 'info', 'automation'] as const).forEach(resource => {
+        if (permissions[resource]) {
+          validPermissions[resource] = {
+            read: permissions[resource]?.read || false,
+            write: permissions[resource]?.write || false
+          };
+        }
+      });
+
+      await api.put(`/api/users/${selectedUser.id}/permissions`, { permissions: validPermissions });
       setError(null);
       // Show success feedback
       alert('Permissions updated successfully');
@@ -140,6 +163,50 @@ const UsersTab: React.FC = () => {
     }));
   };
 
+  const handleCreateUser = async () => {
+    try {
+      if (!createForm.username || !createForm.password) {
+        setError('Username and password are required');
+        return;
+      }
+
+      if (createForm.password.length < 8) {
+        setError('Password must be at least 8 characters');
+        return;
+      }
+
+      await api.post('/api/users', createForm);
+
+      // Reset form and close modal
+      setCreateForm({
+        username: '',
+        password: '',
+        email: '',
+        displayName: '',
+        isAdmin: false
+      });
+      setShowCreateModal(false);
+      setError(null);
+
+      // Refresh user list
+      await fetchUsers();
+    } catch (err) {
+      logger.error('Failed to create user:', err);
+      setError(err instanceof Error ? err.message : 'Failed to create user');
+    }
+  };
+
+  // Only allow access for admins
+  if (!authStatus?.user?.isAdmin) {
+    return (
+      <div className="users-tab">
+        <div className="error-message">
+          Access denied. Admin privileges required.
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return <div className="users-tab">Loading users...</div>;
   }
@@ -152,6 +219,12 @@ const UsersTab: React.FC = () => {
         <div className="users-list">
           <div className="users-list-header">
             <h2>Users</h2>
+            <button
+              className="button button-primary"
+              onClick={() => setShowCreateModal(true)}
+            >
+              Add User
+            </button>
           </div>
 
           {users.map(user => (
@@ -264,6 +337,86 @@ const UsersTab: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Create User Modal */}
+      {showCreateModal && (
+        <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Create New User</h2>
+              <button className="close-button" onClick={() => setShowCreateModal(false)}>×</button>
+            </div>
+
+            <div className="modal-body">
+              <div className="form-group">
+                <label>Username *</label>
+                <input
+                  type="text"
+                  value={createForm.username}
+                  onChange={(e) => setCreateForm({ ...createForm, username: e.target.value })}
+                  placeholder="username"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Password *</label>
+                <input
+                  type="password"
+                  value={createForm.password}
+                  onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
+                  placeholder="At least 8 characters"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Display Name</label>
+                <input
+                  type="text"
+                  value={createForm.displayName}
+                  onChange={(e) => setCreateForm({ ...createForm, displayName: e.target.value })}
+                  placeholder="Full name"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Email</label>
+                <input
+                  type="email"
+                  value={createForm.email}
+                  onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
+                  placeholder="user@example.com"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={createForm.isAdmin}
+                    onChange={(e) => setCreateForm({ ...createForm, isAdmin: e.target.checked })}
+                  />
+                  {' '}Administrator
+                </label>
+              </div>
+
+              <div className="modal-actions">
+                <button
+                  className="button button-secondary"
+                  onClick={() => setShowCreateModal(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="button button-primary"
+                  onClick={handleCreateUser}
+                >
+                  Create User
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

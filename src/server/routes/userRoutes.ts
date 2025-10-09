@@ -260,7 +260,7 @@ router.get('/:id/permissions', (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Invalid user ID' });
     }
 
-    const permissions = databaseService.permissionModel.getUserPermissions(userId);
+    const permissions = databaseService.permissionModel.getUserPermissionSet(userId);
 
     return res.json({ permissions });
   } catch (error) {
