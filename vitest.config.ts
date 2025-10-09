@@ -11,6 +11,9 @@ export default defineConfig({
     isolate: true,
     testTimeout: 10000,
     hookTimeout: 10000,
+    env: {
+      DATABASE_PATH: ':memory:',
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
