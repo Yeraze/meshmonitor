@@ -251,6 +251,21 @@ function App() {
     setAutoAnnounceOnStart
   } = useUI();
 
+  // Helper to fetch with credentials and silently ignore auth errors
+  const authFetch = async (url: string, options?: RequestInit): Promise<Response> => {
+    const response = await fetch(url, {
+      ...options,
+      credentials: 'include',
+    });
+
+    // Silently handle auth errors to prevent console spam
+    if (response.status === 401 || response.status === 403) {
+      return response;
+    }
+
+    return response;
+  };
+
   // Function to detect MQTT/bridge messages that should be filtered
   const isMqttBridgeMessage = (msg: MeshMessage): boolean => {
     // Filter messages from unknown senders
@@ -319,7 +334,7 @@ function App() {
         }
 
         // Load settings from server
-        const settingsResponse = await fetch(`${configBaseUrl}/api/settings`);
+        const settingsResponse = await authFetch(`${baseUrl}/api/settings`);
         if (settingsResponse.ok) {
           const settings = await settingsResponse.json();
 
@@ -440,7 +455,7 @@ function App() {
 
     const fetchPositionHistory = async () => {
       try {
-        const response = await fetch(`${baseUrl}/api/nodes/${selectedNodeId}/position-history?hours=168`);
+        const response = await authFetch(`${baseUrl}/api/nodes/${selectedNodeId}/position-history?hours=168`);
         if (response.ok) {
           const history = await response.json();
           setPositionHistory(history);
@@ -604,7 +619,7 @@ function App() {
   const requestFullNodeDatabase = async () => {
     try {
       logger.debug('📡 Requesting full node database refresh...');
-      const response = await fetch(`${baseUrl}/api/nodes/refresh`, {
+      const response = await authFetch(`${baseUrl}/api/nodes/refresh`, {
         method: 'POST'
       });
 
@@ -634,7 +649,7 @@ function App() {
 
       while (attempts < maxAttempts) {
         try {
-          const response = await fetch(`${baseUrl}/api/connection`);
+          const response = await authFetch(`${baseUrl}/api/connection`);
           if (response.ok) {
             const status = await response.json();
             if (status.connected) {
@@ -697,7 +712,7 @@ function App() {
     const urlBase = providedBaseUrl !== undefined ? providedBaseUrl : baseUrl;
 
     try {
-      const response = await fetch(`${urlBase}/api/connection`);
+      const response = await authFetch(`${baseUrl}/api/connection`);
       if (response.ok) {
         const status = await response.json();
         logger.debug(`📡 Connection API response: connected=${status.connected}`);
@@ -749,7 +764,7 @@ function App() {
 
   const fetchTraceroutes = async () => {
     try {
-      const response = await fetch(`${baseUrl}/api/traceroutes/recent`);
+      const response = await authFetch(`${baseUrl}/api/traceroutes/recent`);
       if (response.ok) {
         const data = await response.json();
         setTraceroutes(data);
@@ -761,7 +776,7 @@ function App() {
 
   const fetchNeighborInfo = async () => {
     try {
-      const response = await fetch(`${baseUrl}/api/neighbor-info`);
+      const response = await authFetch(`${baseUrl}/api/neighbor-info`);
       if (response.ok) {
         const data = await response.json();
         setNeighborInfo(data);
@@ -773,7 +788,7 @@ function App() {
 
   const fetchNodesWithTelemetry = async () => {
     try {
-      const response = await fetch(`${baseUrl}/api/telemetry/available/nodes`);
+      const response = await authFetch(`${baseUrl}/api/telemetry/available/nodes`);
       if (response.ok) {
         const data = await response.json();
         setNodesWithTelemetry(new Set(data.nodes));
@@ -788,7 +803,7 @@ function App() {
 
   const fetchSystemStatus = async () => {
     try {
-      const response = await fetch(`${baseUrl}/api/system/status`);
+      const response = await authFetch(`${baseUrl}/api/system/status`);
       if (response.ok) {
         const data = await response.json();
         setSystemStatus(data);
@@ -803,7 +818,7 @@ function App() {
     // Use the provided baseUrl or fall back to the state value
     const urlBase = providedBaseUrl !== undefined ? providedBaseUrl : baseUrl;
     try {
-      const channelsResponse = await fetch(`${urlBase}/api/channels`);
+      const channelsResponse = await authFetch(`${baseUrl}/api/channels`);
       if (channelsResponse.ok) {
         const channelsData = await channelsResponse.json();
 
@@ -852,14 +867,14 @@ function App() {
   const updateDataFromBackend = async () => {
     try {
       // Fetch nodes
-      const nodesResponse = await fetch(`${baseUrl}/api/nodes`);
+      const nodesResponse = await authFetch(`${baseUrl}/api/nodes`);
       if (nodesResponse.ok) {
         const nodesData = await nodesResponse.json();
         setNodes(nodesData);
       }
 
       // Fetch messages
-      const messagesResponse = await fetch(`${baseUrl}/api/messages?limit=100`);
+      const messagesResponse = await authFetch(`${baseUrl}/api/messages?limit=100`);
       if (messagesResponse.ok) {
         const messagesData = await messagesResponse.json();
         // Convert timestamp strings back to Date objects
@@ -973,14 +988,14 @@ function App() {
       }
 
       // Fetch device info
-      const configResponse = await fetch(`${baseUrl}/api/config`);
+      const configResponse = await authFetch(`${baseUrl}/api/config`);
       if (configResponse.ok) {
         const configData = await configResponse.json();
         setDeviceInfo(configData);
       }
 
       // Fetch device configuration
-      const deviceConfigResponse = await fetch(`${baseUrl}/api/device-config`);
+      const deviceConfigResponse = await authFetch(`${baseUrl}/api/device-config`);
       if (deviceConfigResponse.ok) {
         const deviceConfigData = await deviceConfigResponse.json();
         setDeviceConfig(deviceConfigData);
@@ -1089,7 +1104,7 @@ function App() {
       const nodeNumStr = nodeId.replace('!', '');
       const nodeNum = parseInt(nodeNumStr, 16);
 
-      await fetch(`${baseUrl}/api/traceroute`, {
+      await authFetch(`${baseUrl}/api/traceroute`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -1160,7 +1175,7 @@ function App() {
     setReplyingTo(null);
 
     try {
-      const response = await fetch(`${baseUrl}/api/messages/send`, {
+      const response = await authFetch(`${baseUrl}/api/messages/send`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -1240,7 +1255,7 @@ function App() {
         };
       }
 
-      const response = await fetch(`${baseUrl}/api/messages/send`, {
+      const response = await authFetch(`${baseUrl}/api/messages/send`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -1317,7 +1332,7 @@ function App() {
     setReplyingTo(null);
 
     try {
-      const response = await fetch(`${baseUrl}/api/messages/send`, {
+      const response = await authFetch(`${baseUrl}/api/messages/send`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -1543,7 +1558,7 @@ function App() {
       );
 
       // Send update to backend (with device sync enabled by default)
-      const response = await fetch(`${baseUrl}/api/nodes/${node.user.id}/favorite`, {
+      const response = await authFetch(`${baseUrl}/api/nodes/${node.user.id}/favorite`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
