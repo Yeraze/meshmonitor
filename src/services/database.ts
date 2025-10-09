@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { calculateDistance } from '../utils/distance.js';
 import { logger } from '../utils/logger.js';
