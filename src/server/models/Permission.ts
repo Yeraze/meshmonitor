@@ -190,6 +190,11 @@ export class PermissionModel {
    * Get all users with a specific permission
    */
   getUsersWithPermission(resource: ResourceType, action: PermissionAction): number[] {
+    // Validate action to prevent SQL injection
+    if (action !== 'read' && action !== 'write') {
+      throw new Error(`Invalid action: ${action}`);
+    }
+
     const column = action === 'read' ? 'can_read' : 'can_write';
 
     const stmt = this.db.prepare(`

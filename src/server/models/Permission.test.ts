@@ -7,6 +7,7 @@ import Database from 'better-sqlite3';
 import { UserModel } from './User.js';
 import { PermissionModel } from './Permission.js';
 import { migration as authMigration } from '../migrations/001_add_auth_tables.js';
+import { migration as channelsMigration } from '../migrations/002_add_channels_permission.js';
 
 describe('PermissionModel', () => {
   let db: Database.Database;
@@ -19,8 +20,9 @@ describe('PermissionModel', () => {
     db = new Database(':memory:');
     db.pragma('foreign_keys = ON');
 
-    // Run migration
+    // Run migrations
     authMigration.up(db);
+    channelsMigration.up(db);
 
     // Create model instances
     userModel = new UserModel(db);
