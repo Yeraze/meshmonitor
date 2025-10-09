@@ -277,21 +277,66 @@ if (authStatus?.permissions?.messages?.write) {
 
 ## OIDC Configuration
 
+### Quick Start
+
+To enable OIDC authentication with MeshMonitor:
+
+1. **Register MeshMonitor in your identity provider**
+2. **Configure environment variables**
+3. **Restart MeshMonitor**
+4. **Login and configure user permissions**
+
 ### Environment Variables
 
 Required environment variables for OIDC:
 
 ```bash
 # OIDC Configuration
+OIDC_ENABLED=true                            # Required to enable OIDC
 OIDC_ISSUER=https://your-identity-provider.com
 OIDC_CLIENT_ID=your-client-id
 OIDC_CLIENT_SECRET=your-client-secret
 OIDC_REDIRECT_URI=https://your-app.com/api/auth/oidc/callback
-OIDC_SCOPES="openid profile email"  # Optional, defaults to this
-OIDC_AUTO_CREATE_USERS=true         # Optional, defaults to true
+OIDC_SCOPES="openid profile email"           # Optional, defaults to this
+OIDC_AUTO_CREATE_USERS=true                  # Optional, defaults to true
 
 # Local Authentication Control
-DISABLE_LOCAL_AUTH=false             # Optional, set to true to disable local auth (OIDC only)
+DISABLE_LOCAL_AUTH=false                     # Optional, set to true to disable local auth (OIDC only)
+```
+
+### Docker Compose Example
+
+```yaml
+version: '3.8'
+services:
+  meshmonitor:
+    image: ghcr.io/yeraze/meshmonitor:latest
+    container_name: meshmonitor
+    ports:
+      - "8080:3001"
+    volumes:
+      - meshmonitor-data:/data
+    environment:
+      # Meshtastic connection
+      - MESHTASTIC_NODE_IP=192.168.1.100
+      - MESHTASTIC_TCP_PORT=4403
+
+      # OIDC Configuration
+      - OIDC_ENABLED=true
+      - OIDC_ISSUER=https://auth.example.com/application/o/meshmonitor/
+      - OIDC_CLIENT_ID=your-client-id-here
+      - OIDC_CLIENT_SECRET=your-client-secret-here
+      - OIDC_REDIRECT_URI=https://meshmonitor.example.com/api/auth/oidc/callback
+
+      # Optional: Disable local auth for OIDC-only mode
+      # - DISABLE_LOCAL_AUTH=true
+
+      # Session security
+      - SESSION_SECRET=your-random-secret-here
+    restart: unless-stopped
+
+volumes:
+  meshmonitor-data:
 ```
 
 ### Dual Authentication Mode
@@ -309,13 +354,157 @@ MeshMonitor supports both local and OIDC authentication simultaneously:
 
 The OIDC implementation uses OpenID Connect Discovery and supports any compliant provider:
 
-- Auth0
-- Okta
-- Azure AD
-- Keycloak
-- Google
-- GitHub (via OIDC endpoint)
+- **Authentik** - Open-source Identity Provider
+- **Keycloak** - Red Hat's open-source IAM
+- **Auth0** - Cloud identity platform
+- **Okta** - Enterprise identity service
+- **Azure AD** - Microsoft identity platform
+- **Google** - Google Workspace
+- **GitHub** (via OIDC endpoint)
 - Any OpenID Connect 1.0 compliant provider
+
+### Provider Setup Examples
+
+#### Authentik
+
+**1. Create a new Provider:**
+- Navigate to **Applications** → **Providers**
+- Click **Create**
+- **Provider Type**: OAuth2/OpenID Provider
+- **Name**: MeshMonitor
+- **Client Type**: Confidential
+- **Redirect URIs**: `https://meshmonitor.example.com/api/auth/oidc/callback`
+- **Signing Key**: Select your certificate
+- **Scopes**: Ensure `openid`, `email`, `profile` are selected
+- Click **Finish**
+
+**2. Create an Application:**
+- Navigate to **Applications** → **Applications**
+- Click **Create**
+- **Name**: MeshMonitor
+- **Slug**: meshmonitor
+- **Provider**: Select the provider created above
+- **Launch URL**: `https://meshmonitor.example.com`
+- Click **Create**
+
+**3. Copy Client Credentials:**
+- Go back to your Provider settings
+- Copy the **Client ID** and **Client Secret**
+
+**4. Configure MeshMonitor:**
+```yaml
+environment:
+  - OIDC_ENABLED=true
+  - OIDC_ISSUER=https://auth.example.com/application/o/meshmonitor/
+  - OIDC_CLIENT_ID=<client-id-from-authentik>
+  - OIDC_CLIENT_SECRET=<client-secret-from-authentik>
+  - OIDC_REDIRECT_URI=https://meshmonitor.example.com/api/auth/oidc/callback
+```
+
+**Note**: The OIDC_ISSUER URL can be found in your Authentik provider settings under "OpenID Configuration Issuer".
+
+#### Keycloak
+
+**1. Create a new Client:**
+- Navigate to your Realm → **Clients**
+- Click **Create**
+- **Client Type**: OpenID Connect
+- **Client ID**: `meshmonitor`
+- Click **Next**
+
+**2. Configure Client Settings:**
+- **Client Authentication**: ON (for confidential client)
+- **Authorization**: OFF (not needed)
+- **Standard Flow**: ON
+- **Direct Access Grants**: OFF
+- Click **Next**
+
+**3. Configure Redirect URIs:**
+- **Valid Redirect URIs**: `https://meshmonitor.example.com/api/auth/oidc/callback`
+- **Web Origins**: `https://meshmonitor.example.com`
+- Click **Save**
+
+**4. Get Client Secret:**
+- Go to the **Credentials** tab
+- Copy the **Client Secret**
+
+**5. Configure MeshMonitor:**
+```yaml
+environment:
+  - OIDC_ENABLED=true
+  - OIDC_ISSUER=https://keycloak.example.com/realms/myrealm
+  - OIDC_CLIENT_ID=meshmonitor
+  - OIDC_CLIENT_SECRET=<client-secret-from-keycloak>
+  - OIDC_REDIRECT_URI=https://meshmonitor.example.com/api/auth/oidc/callback
+```
+
+**Note**: Replace `myrealm` with your actual Keycloak realm name.
+
+#### Google Workspace
+
+**1. Create OAuth 2.0 Credentials:**
+- Go to [Google Cloud Console](https://console.cloud.google.com/)
+- Create a new project or select existing
+- Navigate to **APIs & Services** → **Credentials**
+- Click **Create Credentials** → **OAuth Client ID**
+- **Application Type**: Web application
+- **Name**: MeshMonitor
+
+**2. Configure Authorized Redirect URIs:**
+- **Authorized Redirect URIs**: `https://meshmonitor.example.com/api/auth/oidc/callback`
+- Click **Create**
+
+**3. Copy Credentials:**
+- Copy the **Client ID** and **Client Secret**
+
+**4. Configure MeshMonitor:**
+```yaml
+environment:
+  - OIDC_ENABLED=true
+  - OIDC_ISSUER=https://accounts.google.com
+  - OIDC_CLIENT_ID=<client-id>.apps.googleusercontent.com
+  - OIDC_CLIENT_SECRET=<client-secret-from-google>
+  - OIDC_REDIRECT_URI=https://meshmonitor.example.com/api/auth/oidc/callback
+```
+
+#### Azure AD (Microsoft Entra ID)
+
+**1. Register Application:**
+- Go to [Azure Portal](https://portal.azure.com/)
+- Navigate to **Azure Active Directory** → **App Registrations**
+- Click **New registration**
+- **Name**: MeshMonitor
+- **Supported Account Types**: Choose appropriate option
+- **Redirect URI**: Web - `https://meshmonitor.example.com/api/auth/oidc/callback`
+- Click **Register**
+
+**2. Create Client Secret:**
+- Navigate to **Certificates & secrets**
+- Click **New client secret**
+- **Description**: MeshMonitor
+- **Expires**: Choose appropriate duration
+- Click **Add**
+- Copy the **Value** (client secret) immediately
+
+**3. Configure API Permissions:**
+- Navigate to **API permissions**
+- Ensure these are granted:
+  - `openid`
+  - `profile`
+  - `email`
+  - `User.Read`
+
+**4. Configure MeshMonitor:**
+```yaml
+environment:
+  - OIDC_ENABLED=true
+  - OIDC_ISSUER=https://login.microsoftonline.com/<tenant-id>/v2.0
+  - OIDC_CLIENT_ID=<application-id>
+  - OIDC_CLIENT_SECRET=<client-secret-from-azure>
+  - OIDC_REDIRECT_URI=https://meshmonitor.example.com/api/auth/oidc/callback
+```
+
+**Note**: Replace `<tenant-id>` with your Azure AD tenant ID (found in Azure AD overview).
 
 ### First-Time Setup
 
