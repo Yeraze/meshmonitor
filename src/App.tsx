@@ -2412,25 +2412,27 @@ function App() {
                                 </div>
                               )}
                               <div className={`message-bubble ${isMine ? 'mine' : 'theirs'}`}>
-                                <div className="message-actions">
-                                  <button
-                                    className="reply-button"
-                                    onClick={() => setReplyingTo(msg)}
-                                    title="Reply to this message"
-                                  >
-                                    ↩
-                                  </button>
-                                  {TAPBACK_EMOJIS.map(({ emoji, title }) => (
+                                {hasPermission('messages', 'write') && (
+                                  <div className="message-actions">
                                     <button
-                                      key={emoji}
-                                      className="emoji-button"
-                                      onClick={() => handleSendTapback(emoji, msg)}
-                                      title={title}
+                                      className="reply-button"
+                                      onClick={() => setReplyingTo(msg)}
+                                      title="Reply to this message"
                                     >
-                                      {emoji}
+                                      ↩
                                     </button>
-                                  ))}
-                                </div>
+                                    {TAPBACK_EMOJIS.map(({ emoji, title }) => (
+                                      <button
+                                        key={emoji}
+                                        className="emoji-button"
+                                        onClick={() => handleSendTapback(emoji, msg)}
+                                        title={title}
+                                      >
+                                        {emoji}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
                                 <div className="message-text" style={{whiteSpace: 'pre-line'}}>
                                   {msg.text}
                                 </div>
@@ -2499,27 +2501,29 @@ function App() {
                           </button>
                         </div>
                       )}
-                      <div className="message-input-container">
-                        <input
-                          type="text"
-                          value={newMessage}
-                          onChange={(e) => setNewMessage(e.target.value)}
-                          placeholder={`Send message to ${getChannelName(selectedChannel)}...`}
-                          className="message-input"
-                          onKeyPress={(e) => {
-                            if (e.key === 'Enter') {
-                              handleSendMessage(selectedChannel);
-                            }
-                          }}
-                        />
-                        <button
-                          onClick={() => handleSendMessage(selectedChannel)}
-                          disabled={!newMessage.trim()}
-                          className="send-btn"
-                        >
-                          Send
-                        </button>
-                      </div>
+                      {hasPermission('messages', 'write') && (
+                        <div className="message-input-container">
+                          <input
+                            type="text"
+                            value={newMessage}
+                            onChange={(e) => setNewMessage(e.target.value)}
+                            placeholder={`Send message to ${getChannelName(selectedChannel)}...`}
+                            className="message-input"
+                            onKeyPress={(e) => {
+                              if (e.key === 'Enter') {
+                                handleSendMessage(selectedChannel);
+                              }
+                            }}
+                          />
+                          <button
+                            onClick={() => handleSendMessage(selectedChannel)}
+                            disabled={!newMessage.trim()}
+                            className="send-btn"
+                          >
+                            Send
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -2804,25 +2808,27 @@ function App() {
                               </div>
                             )}
                             <div className={`message-bubble ${isMine ? 'mine' : 'theirs'}`}>
-                              <div className="message-actions">
-                                <button
-                                  className="reply-button"
-                                  onClick={() => setReplyingTo(msg)}
-                                  title="Reply to this message"
-                                >
-                                  ↩
-                                </button>
-                                {TAPBACK_EMOJIS.map(({ emoji, title }) => (
+                              {hasPermission('messages', 'write') && (
+                                <div className="message-actions">
                                   <button
-                                    key={emoji}
-                                    className="emoji-button"
-                                    onClick={() => handleSendTapback(emoji, msg)}
-                                    title={title}
+                                    className="reply-button"
+                                    onClick={() => setReplyingTo(msg)}
+                                    title="Reply to this message"
                                   >
-                                    {emoji}
+                                    ↩
                                   </button>
-                                ))}
-                              </div>
+                                  {TAPBACK_EMOJIS.map(({ emoji, title }) => (
+                                    <button
+                                      key={emoji}
+                                      className="emoji-button"
+                                      onClick={() => handleSendTapback(emoji, msg)}
+                                      title={title}
+                                    >
+                                      {emoji}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
                               <div className="message-text" style={{whiteSpace: 'pre-line'}}>
                                 {msg.text}
                               </div>
@@ -2891,27 +2897,29 @@ function App() {
                       </button>
                     </div>
                   )}
-                  <div className="message-input-container">
-                    <input
-                      type="text"
-                      value={newMessage}
-                      onChange={(e) => setNewMessage(e.target.value)}
-                      placeholder={`Send direct message to ${getNodeName(selectedDMNode)}...`}
-                      className="message-input"
-                      onKeyPress={(e) => {
-                        if (e.key === 'Enter') {
-                          handleSendDirectMessage(selectedDMNode);
-                        }
-                      }}
-                    />
-                    <button
-                      onClick={() => handleSendDirectMessage(selectedDMNode)}
-                      disabled={!newMessage.trim()}
-                      className="send-btn"
-                    >
-                      Send
-                    </button>
-                  </div>
+                  {hasPermission('messages', 'write') && (
+                    <div className="message-input-container">
+                      <input
+                        type="text"
+                        value={newMessage}
+                        onChange={(e) => setNewMessage(e.target.value)}
+                        placeholder={`Send direct message to ${getNodeName(selectedDMNode)}...`}
+                        className="message-input"
+                        onKeyPress={(e) => {
+                          if (e.key === 'Enter') {
+                            handleSendDirectMessage(selectedDMNode);
+                          }
+                        }}
+                      />
+                      <button
+                        onClick={() => handleSendDirectMessage(selectedDMNode)}
+                        disabled={!newMessage.trim()}
+                        className="send-btn"
+                      >
+                        Send
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 

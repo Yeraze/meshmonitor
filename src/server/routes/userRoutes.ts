@@ -6,7 +6,7 @@
 
 import { Router, Request, Response } from 'express';
 import { requireAdmin } from '../auth/authMiddleware.js';
-import { createLocalUser, resetUserPassword } from '../auth/localAuth.js';
+import { createLocalUser, resetUserPassword, setUserPassword } from '../auth/localAuth.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { PermissionSet } from '../../types/permission.js';
@@ -247,6 +247,34 @@ router.post('/:id/reset-password', async (req: Request, res: Response) => {
     logger.error('Error resetting password:', error);
     return res.status(400).json({
       error: error instanceof Error ? error.message : 'Failed to reset password'
+    });
+  }
+});
+
+// Set user password (admin only)
+router.post('/:id/set-password', async (req: Request, res: Response) => {
+  try {
+    const userId = parseInt(req.params.id);
+    const { newPassword } = req.body;
+
+    if (isNaN(userId)) {
+      return res.status(400).json({ error: 'Invalid user ID' });
+    }
+
+    if (!newPassword) {
+      return res.status(400).json({ error: 'New password is required' });
+    }
+
+    await setUserPassword(userId, newPassword, req.user!.id);
+
+    return res.json({
+      success: true,
+      message: 'Password updated successfully'
+    });
+  } catch (error) {
+    logger.error('Error setting password:', error);
+    return res.status(400).json({
+      error: error instanceof Error ? error.message : 'Failed to set password'
     });
   }
 });

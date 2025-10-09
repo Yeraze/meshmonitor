@@ -39,6 +39,11 @@ const UsersTab: React.FC = () => {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [permissions, setPermissions] = useState<PermissionSet>({});
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showSetPasswordModal, setShowSetPasswordModal] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({
+    newPassword: '',
+    confirmPassword: ''
+  });
   const [createForm, setCreateForm] = useState({
     username: '',
     password: '',
@@ -126,15 +131,38 @@ const UsersTab: React.FC = () => {
     }
   };
 
-  const handleResetPassword = async (user: User) => {
-    if (!confirm(`Reset password for ${user.username}?`)) return;
+  const handleSetPassword = async () => {
+    if (!selectedUser) return;
+
+    // Validation
+    if (!passwordForm.newPassword || !passwordForm.confirmPassword) {
+      setError('Both password fields are required');
+      return;
+    }
+
+    if (passwordForm.newPassword.length < 8) {
+      setError('Password must be at least 8 characters');
+      return;
+    }
+
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
 
     try {
-      const response = await api.post<{ password: string; message: string }>(`/api/users/${user.id}/reset-password`, {});
-      alert(`${response.message}\n\nNew password: ${response.password}`);
+      await api.post(`/api/users/${selectedUser.id}/set-password`, {
+        newPassword: passwordForm.newPassword
+      });
+
+      // Reset form and close modal
+      setPasswordForm({ newPassword: '', confirmPassword: '' });
+      setShowSetPasswordModal(false);
+      setError(null);
+      alert('Password updated successfully');
     } catch (err) {
-      logger.error('Failed to reset password:', err);
-      setError('Failed to reset password');
+      logger.error('Failed to set password:', err);
+      setError(err instanceof Error ? err.message : 'Failed to set password');
     }
   };
 
@@ -289,9 +317,9 @@ const UsersTab: React.FC = () => {
               {selectedUser.authProvider === 'local' && (
                 <button
                   className="button button-secondary"
-                  onClick={() => handleResetPassword(selectedUser)}
+                  onClick={() => setShowSetPasswordModal(true)}
                 >
-                  Reset Password
+                  Set Password
                 </button>
               )}
               <button
@@ -411,6 +439,65 @@ const UsersTab: React.FC = () => {
                   onClick={handleCreateUser}
                 >
                   Create User
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Set Password Modal */}
+      {showSetPasswordModal && selectedUser && (
+        <div className="modal-overlay" onClick={() => setShowSetPasswordModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Set Password for {selectedUser.username}</h2>
+              <button className="close-button" onClick={() => setShowSetPasswordModal(false)}>×</button>
+            </div>
+
+            <div className="modal-body">
+              <div className="form-group">
+                <label htmlFor="new-password">New Password *</label>
+                <input
+                  id="new-password"
+                  type="password"
+                  value={passwordForm.newPassword}
+                  onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+                  placeholder="At least 8 characters"
+                  autoComplete="new-password"
+                  minLength={8}
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="confirm-password">Confirm Password *</label>
+                <input
+                  id="confirm-password"
+                  type="password"
+                  value={passwordForm.confirmPassword}
+                  onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
+                  placeholder="Re-enter password"
+                  autoComplete="new-password"
+                  minLength={8}
+                />
+              </div>
+
+              <div className="modal-actions">
+                <button
+                  className="button button-secondary"
+                  onClick={() => {
+                    setPasswordForm({ newPassword: '', confirmPassword: '' });
+                    setShowSetPasswordModal(false);
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="button button-primary"
+                  onClick={handleSetPassword}
+                  disabled={!passwordForm.newPassword || !passwordForm.confirmPassword}
+                >
+                  Set Password
                 </button>
               </div>
             </div>

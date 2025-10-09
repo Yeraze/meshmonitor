@@ -192,6 +192,48 @@ export async function resetUserPassword(
 }
 
 /**
+ * Set user password to a specific value (admin only)
+ */
+export async function setUserPassword(
+  userId: number,
+  newPassword: string,
+  adminUserId: number
+): Promise<void> {
+  try {
+    const user = databaseService.userModel.findById(userId);
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    if (user.authProvider !== 'local') {
+      throw new Error('Cannot set password for non-local user');
+    }
+
+    // Validate password
+    if (!newPassword || newPassword.length < 8) {
+      throw new Error('Password must be at least 8 characters');
+    }
+
+    // Update password
+    await databaseService.userModel.updatePassword(userId, newPassword);
+
+    logger.debug(`✅ Password set for user: ${user.username}`);
+
+    // Audit log
+    databaseService.auditLog(
+      adminUserId,
+      'password_set',
+      'users',
+      JSON.stringify({ userId, setBy: adminUserId }),
+      null
+    );
+  } catch (error) {
+    logger.error('Failed to set user password:', error);
+    throw error;
+  }
+}
+
+/**
  * Generate a random password
  */
 function generateRandomPassword(): string {
