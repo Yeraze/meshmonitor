@@ -374,10 +374,35 @@ apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write'), a
   }
 });
 
-apiRouter.get('/messages', requirePermission('messages', 'read'), (req, res) => {
+apiRouter.get('/messages', optionalAuth(), (req, res) => {
   try {
+    // Check if user has either channels or messages permission
+    const hasChannelsRead = req.user?.isAdmin || hasPermission(req.user!, 'channels', 'read');
+    const hasMessagesRead = req.user?.isAdmin || hasPermission(req.user!, 'messages', 'read');
+
+    if (!hasChannelsRead && !hasMessagesRead) {
+      return res.status(403).json({
+        error: 'Insufficient permissions',
+        code: 'FORBIDDEN',
+        required: { resource: 'channels or messages', action: 'read' }
+      });
+    }
+
     const limit = parseInt(req.query.limit as string) || 100;
-    const messages = meshtasticManager.getRecentMessages(limit);
+    let messages = meshtasticManager.getRecentMessages(limit);
+
+    // Filter messages based on permissions
+    // If user only has channels permission, exclude direct messages (channel -1)
+    // If user only has messages permission, only include direct messages (channel -1)
+    if (hasChannelsRead && !hasMessagesRead) {
+      // Only channel messages
+      messages = messages.filter(msg => msg.channel !== -1);
+    } else if (hasMessagesRead && !hasChannelsRead) {
+      // Only direct messages
+      messages = messages.filter(msg => msg.channel === -1);
+    }
+    // If both permissions, return all messages
+
     res.json(messages);
   } catch (error) {
     logger.error('Error fetching messages:', error);
@@ -385,7 +410,7 @@ apiRouter.get('/messages', requirePermission('messages', 'read'), (req, res) => 
   }
 });
 
-apiRouter.get('/messages/channel/:channel', requirePermission('messages', 'read'), (req, res) => {
+apiRouter.get('/messages/channel/:channel', requirePermission('channels', 'read'), (req, res) => {
   try {
     const requestedChannel = parseInt(req.params.channel);
     const limit = parseInt(req.query.limit as string) || 100;
@@ -435,7 +460,7 @@ apiRouter.get('/channels/debug', requirePermission('messages', 'read'), (_req, r
   }
 });
 
-apiRouter.get('/channels', requirePermission('messages', 'read'), (_req, res) => {
+apiRouter.get('/channels', requirePermission('channels', 'read'), (_req, res) => {
   try {
     const allChannels = databaseService.getAllChannels();
 

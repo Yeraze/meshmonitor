@@ -1727,7 +1727,7 @@ function App() {
                         )}
                       </div>
                       <div className="node-actions">
-                        {authStatus?.authenticated && hasPermission('messages', 'read') && (
+                        {hasPermission('messages', 'read') && (
                           <button
                             className="dm-icon"
                             title="Send Direct Message"
@@ -1980,7 +1980,7 @@ function App() {
                         </div>
                       )}
 
-                      {node.user?.id && authStatus?.authenticated && hasPermission('messages', 'read') && (
+                      {node.user?.id && hasPermission('messages', 'read') && (
                         <button
                           className="node-popup-btn"
                           onClick={() => {
@@ -3267,86 +3267,82 @@ function App() {
         >
           Nodes
         </button>
-        {authStatus?.authenticated && (
-          <>
-            {hasPermission('channels', 'read') && (
-              <button
-                className={`tab-btn ${activeTab === 'channels' ? 'active' : ''}`}
-                onClick={() => setActiveTab('channels')}
-              >
-                Channels
-                {Object.entries(unreadCounts).some(([channel, count]) => parseInt(channel) !== -1 && count > 0) && (
-                  <span className="tab-notification-dot"></span>
-                )}
-              </button>
+        {hasPermission('channels', 'read') && (
+          <button
+            className={`tab-btn ${activeTab === 'channels' ? 'active' : ''}`}
+            onClick={() => setActiveTab('channels')}
+          >
+            Channels
+            {Object.entries(unreadCounts).some(([channel, count]) => parseInt(channel) !== -1 && count > 0) && (
+              <span className="tab-notification-dot"></span>
             )}
-            {hasPermission('messages', 'read') && (
-              <button
-                className={`tab-btn ${activeTab === 'messages' ? 'active' : ''}`}
-                onClick={() => {
-                  setActiveTab('messages');
-                  // Clear unread count for direct messages (channel -1)
-                  setUnreadCounts(prev => ({ ...prev, [-1]: 0 }));
-                  // Set selected channel to -1 so new DMs don't create unread notifications
-                  setSelectedChannel(-1);
-                  selectedChannelRef.current = -1;
-                }}
-              >
-                Messages
-                {unreadCounts[-1] > 0 && (
-                  <span className="tab-notification-dot"></span>
-                )}
-              </button>
+          </button>
+        )}
+        {hasPermission('messages', 'read') && (
+          <button
+            className={`tab-btn ${activeTab === 'messages' ? 'active' : ''}`}
+            onClick={() => {
+              setActiveTab('messages');
+              // Clear unread count for direct messages (channel -1)
+              setUnreadCounts(prev => ({ ...prev, [-1]: 0 }));
+              // Set selected channel to -1 so new DMs don't create unread notifications
+              setSelectedChannel(-1);
+              selectedChannelRef.current = -1;
+            }}
+          >
+            Messages
+            {unreadCounts[-1] > 0 && (
+              <span className="tab-notification-dot"></span>
             )}
-            {hasPermission('dashboard', 'read') && (
-              <button
-                className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
-                onClick={() => setActiveTab('dashboard')}
-              >
-                Dashboard
-              </button>
-            )}
-            {hasPermission('info', 'read') && (
-              <button
-                className={`tab-btn ${activeTab === 'info' ? 'active' : ''}`}
-                onClick={() => setActiveTab('info')}
-              >
-                Info
-              </button>
-            )}
-            {hasPermission('settings', 'read') && (
-              <button
-                className={`tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
-                onClick={() => setActiveTab('settings')}
-              >
-                Settings
-              </button>
-            )}
-            {hasPermission('automation', 'read') && (
-              <button
-                className={`tab-btn ${activeTab === 'automation' ? 'active' : ''}`}
-                onClick={() => setActiveTab('automation')}
-              >
-                Automation
-              </button>
-            )}
-            {hasPermission('configuration', 'read') && (
-              <button
-                className={`tab-btn ${activeTab === 'configuration' ? 'active' : ''}`}
-                onClick={() => setActiveTab('configuration')}
-              >
-                Configuration
-              </button>
-            )}
-            {authStatus?.user?.isAdmin && (
-              <button
-                className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`}
-                onClick={() => setActiveTab('users')}
-              >
-                Users
-              </button>
-            )}
-          </>
+          </button>
+        )}
+        {hasPermission('dashboard', 'read') && (
+          <button
+            className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
+            onClick={() => setActiveTab('dashboard')}
+          >
+            Dashboard
+          </button>
+        )}
+        {hasPermission('info', 'read') && (
+          <button
+            className={`tab-btn ${activeTab === 'info' ? 'active' : ''}`}
+            onClick={() => setActiveTab('info')}
+          >
+            Info
+          </button>
+        )}
+        {hasPermission('settings', 'read') && (
+          <button
+            className={`tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
+            onClick={() => setActiveTab('settings')}
+          >
+            Settings
+          </button>
+        )}
+        {hasPermission('automation', 'read') && (
+          <button
+            className={`tab-btn ${activeTab === 'automation' ? 'active' : ''}`}
+            onClick={() => setActiveTab('automation')}
+          >
+            Automation
+          </button>
+        )}
+        {hasPermission('configuration', 'read') && (
+          <button
+            className={`tab-btn ${activeTab === 'configuration' ? 'active' : ''}`}
+            onClick={() => setActiveTab('configuration')}
+          >
+            Configuration
+          </button>
+        )}
+        {authStatus?.user?.isAdmin && (
+          <button
+            className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`}
+            onClick={() => setActiveTab('users')}
+          >
+            Users
+          </button>
         )}
       </nav>
 
@@ -3513,7 +3509,7 @@ function App() {
               <div className="route-usage">Last Seen: {formatDateTime(new Date(node.lastHeard * 1000), timeFormat, dateFormat)}</div>
             )}
 
-            {node.user?.id && authStatus?.authenticated && hasPermission('messages', 'read') && (
+            {node.user?.id && hasPermission('messages', 'read') && (
               <button
                 className="popup-dm-btn"
                 onClick={() => {

@@ -1601,6 +1601,11 @@ class DatabaseService {
     this.createAdminIfNeeded().catch(error => {
       logger.error('❌ Failed to ensure admin user:', error);
     });
+
+    // Ensure anonymous user exists (runs independently of admin creation)
+    this.ensureAnonymousUser().catch(error => {
+      logger.error('❌ Failed to ensure anonymous user:', error);
+    });
   }
 
   private async createAdminIfNeeded(): Promise<void> {
@@ -1654,9 +1659,6 @@ class DatabaseService {
 
       // Save to settings so we know setup is complete
       this.setSetting('setup_complete', 'true');
-
-      // Create anonymous user for unauthenticated access
-      await this.ensureAnonymousUser();
     } catch (error) {
       logger.error('❌ Failed to create admin user:', error);
       throw error;
