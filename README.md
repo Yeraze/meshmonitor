@@ -159,6 +159,23 @@ This allows MeshMonitor to connect to **any** Meshtastic device (BLE, Serial, or
 - Real-time device synchronization with automatic reboot handling
 - Input validation and helpful error messages
 
+### 🔐 **Authentication & Security**
+- **Session-based authentication** with secure cookie management
+- **Local authentication** (username/password) with bcrypt password hashing
+- **OpenID Connect (OIDC)** support for enterprise identity providers
+- **Role-based access control (RBAC)** with granular permissions
+- **Anonymous user support** for read-only public access
+- **Default password warning** banner for security best practices
+- **Audit logging** for all authentication and administrative actions
+- **User management** interface for admins (create, deactivate, reset passwords)
+
+### 🔄 **System Management**
+- **Automatic update notifications** - banner alerts when new versions are available
+- **Container restart** functionality from the UI (Docker deployments)
+- **Version check API** - integrates with GitHub releases
+- **Database-backed settings** for automation and configuration persistence
+- **System status** endpoint with uptime, memory usage, and version info
+
 ### 🐳 **Docker Support**
 - Pre-built images on GitHub Container Registry
 - Full containerization with Docker and Docker Compose
