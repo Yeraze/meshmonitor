@@ -302,6 +302,7 @@ For complete Kubernetes documentation, configuration options, and examples, see 
 | `NODE_ENV` | `development` | Environment mode |
 | `PORT` | `3001` | Server port (production) |
 | `BASE_URL` | (empty) | Runtime base URL path for subfolder deployment (e.g., `/meshmonitor`) |
+| `TZ` | `America/New_York` | Timezone for auto-acknowledge message timestamps (see [TZ database](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)) |
 
 ### Meshtastic Node Requirements
 
