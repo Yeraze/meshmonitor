@@ -585,6 +585,22 @@ class ApiService {
 
     return response.json();
   }
+
+  async restartContainer() {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/system/restart`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include'
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to restart/shutdown');
+    }
+
+    return response.json();
+  }
 }
 
 export default new ApiService();

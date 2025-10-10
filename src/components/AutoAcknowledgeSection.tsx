@@ -93,11 +93,9 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
         throw new Error(`Server returned ${response.status}`);
       }
 
-      // Only update parent state and localStorage after successful API call
+      // Only update parent state after successful API call (no localStorage)
       onEnabledChange(localEnabled);
       onRegexChange(localRegex);
-      localStorage.setItem('autoAckEnabled', String(localEnabled));
-      localStorage.setItem('autoAckRegex', localRegex);
 
       setHasChanges(false);
     } catch (error) {

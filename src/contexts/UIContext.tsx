@@ -61,39 +61,14 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   const [showStatusModal, setShowStatusModal] = useState<boolean>(false);
   const [systemStatus, setSystemStatus] = useState<any>(null);
   const [nodePopup, setNodePopup] = useState<{nodeId: string, position: {x: number, y: number}} | null>(null);
-  const [autoAckEnabled, setAutoAckEnabled] = useState<boolean>(() => {
-    const saved = localStorage.getItem('autoAckEnabled');
-    return saved === 'true';
-  });
-  const [autoAckRegex, setAutoAckRegex] = useState<string>(() => {
-    const saved = localStorage.getItem('autoAckRegex');
-    // Migrate old patterns to new format
-    if (saved === '(?i)test' || saved === 'test') {
-      localStorage.setItem('autoAckRegex', '^(test|ping)');
-      return '^(test|ping)';
-    }
-    return saved || '^(test|ping)';
-  });
-  const [autoAnnounceEnabled, setAutoAnnounceEnabled] = useState<boolean>(() => {
-    const saved = localStorage.getItem('autoAnnounceEnabled');
-    return saved === 'true';
-  });
-  const [autoAnnounceIntervalHours, setAutoAnnounceIntervalHours] = useState<number>(() => {
-    const saved = localStorage.getItem('autoAnnounceIntervalHours');
-    return saved ? parseInt(saved) : 6;
-  });
-  const [autoAnnounceMessage, setAutoAnnounceMessage] = useState<string>(() => {
-    const saved = localStorage.getItem('autoAnnounceMessage');
-    return saved || 'MeshMonitor {VERSION} online for {DURATION} {FEATURES}';
-  });
-  const [autoAnnounceChannelIndex, setAutoAnnounceChannelIndex] = useState<number>(() => {
-    const saved = localStorage.getItem('autoAnnounceChannelIndex');
-    return saved ? parseInt(saved) : 0;
-  });
-  const [autoAnnounceOnStart, setAutoAnnounceOnStart] = useState<boolean>(() => {
-    const saved = localStorage.getItem('autoAnnounceOnStart');
-    return saved === 'true';
-  });
+  // Automation settings - loaded from backend API, not localStorage
+  const [autoAckEnabled, setAutoAckEnabled] = useState<boolean>(false);
+  const [autoAckRegex, setAutoAckRegex] = useState<string>('^(test|ping)');
+  const [autoAnnounceEnabled, setAutoAnnounceEnabled] = useState<boolean>(false);
+  const [autoAnnounceIntervalHours, setAutoAnnounceIntervalHours] = useState<number>(6);
+  const [autoAnnounceMessage, setAutoAnnounceMessage] = useState<string>('MeshMonitor {VERSION} online for {DURATION} {FEATURES}');
+  const [autoAnnounceChannelIndex, setAutoAnnounceChannelIndex] = useState<number>(0);
+  const [autoAnnounceOnStart, setAutoAnnounceOnStart] = useState<boolean>(false);
 
   return (
     <UIContext.Provider
