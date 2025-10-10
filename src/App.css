@@ -2230,7 +2230,29 @@ body {
 .node-popup {
   min-width: 240px;
   max-width: 280px;
+  max-height: 400px;
+  overflow-y: auto;
+  overflow-x: hidden;
   font-family: system-ui, -apple-system, sans-serif;
+}
+
+/* Custom scrollbar for node popup */
+.node-popup::-webkit-scrollbar {
+  width: 6px;
+}
+
+.node-popup::-webkit-scrollbar-track {
+  background: var(--ctp-surface0);
+  border-radius: 3px;
+}
+
+.node-popup::-webkit-scrollbar-thumb {
+  background: var(--ctp-surface2);
+  border-radius: 3px;
+}
+
+.node-popup::-webkit-scrollbar-thumb:hover {
+  background: var(--ctp-overlay0);
 }
 
 .node-popup-header {
@@ -2245,6 +2267,8 @@ body {
   color: var(--ctp-text);
   margin-bottom: 0.25rem;
   line-height: 1.3;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .node-popup-subtitle {
@@ -2289,10 +2313,10 @@ body {
 .node-popup-value {
   color: var(--ctp-text);
   font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: break-word;
+  word-break: break-word;
   line-height: 1.2;
+  max-width: 100%;
 }
 
 .node-popup-footer {
