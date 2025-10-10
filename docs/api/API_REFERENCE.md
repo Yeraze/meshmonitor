@@ -19,6 +19,7 @@ This document provides comprehensive documentation for all MeshMonitor API endpo
 - [System Configuration](#system-configuration)
 - [Data Management](#data-management)
 - [Statistics](#statistics)
+- [Authentication](#authentication)
 
 ---
 
@@ -35,28 +36,73 @@ Health check endpoint.
 ```
 
 ### GET /api/system/status
-Comprehensive system status including database and connection info.
+Comprehensive system status including database, memory, and version information.
+
+**Authentication:** Optional (public endpoint)
 
 **Response:**
 ```json
 {
-  "status": "running",
-  "uptime": 3600,
-  "database": {
-    "connected": true,
-    "messageCount": 1234,
-    "nodeCount": 42,
-    "oldestMessage": 1640995200000,
-    "newestMessage": 1641995200000
-  },
-  "connection": {
-    "connected": true,
-    "nodeId": "!075bcd15",
-    "lastActivity": 1641995200000
-  },
-  "version": "1.1.0"
+  "version": "2.0.0",
+  "nodeVersion": "v22.0.0",
+  "platform": "linux",
+  "architecture": "x64",
+  "uptime": "1d 5h 23m 45s",
+  "uptimeSeconds": 105825,
+  "environment": "production",
+  "isDocker": true,
+  "memoryUsage": {
+    "heapUsed": "245 MB",
+    "heapTotal": "512 MB",
+    "rss": "678 MB"
+  }
 }
 ```
+
+### GET /api/version/check
+Check for available software updates from GitHub releases.
+
+**Authentication:** Optional (public endpoint)
+
+**Caching:** Results cached for 1 hour
+
+**Response:**
+```json
+{
+  "updateAvailable": true,
+  "currentVersion": "2.0.0",
+  "latestVersion": "2.1.0",
+  "releaseUrl": "https://github.com/Yeraze/meshmonitor/releases/tag/v2.1.0",
+  "releaseName": "v2.1.0"
+}
+```
+
+**Notes:**
+- Only considers official releases (ignores pre-releases and drafts)
+- Compares semantic versions (2.1.0 > 2.0.0)
+- Returns `updateAvailable: false` if current version is up-to-date or newer
+- If GitHub API is unavailable, returns `{ updateAvailable: false, error: "Unable to check for updates" }`
+
+### POST /api/system/restart
+Restart the container or shutdown the application.
+
+**Authentication:** Required (admin permissions on `settings` resource)
+
+**Request:** None (no body required)
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Container will restart now",
+  "action": "restart"
+}
+```
+
+**Notes:**
+- Only works when running in Docker (checks for `/.dockerenv`)
+- Docker must be configured to automatically restart containers
+- Non-Docker deployments will shutdown the application instead of restarting
 
 ---
 
@@ -844,10 +890,197 @@ WebSocket support is planned for future versions to provide real-time updates wi
 
 ## Authentication
 
-Currently, the API does not require authentication. All endpoints are accessible when the application is running. Future versions may include:
-- API key authentication
-- JWT token support
-- Role-based access control
+MeshMonitor v2.0.0+ implements session-based authentication with role-based access control (RBAC). The system supports both local authentication (username/password) and OpenID Connect (OIDC) providers.
+
+### GET /api/auth/status
+Get current authentication status and user permissions.
+
+**Authentication:** Optional (returns anonymous permissions if not authenticated)
+
+**Response (Unauthenticated):**
+```json
+{
+  "authenticated": false,
+  "user": null,
+  "permissions": {
+    "dashboard": { "read": true, "write": false },
+    "nodes": { "read": true, "write": false }
+  },
+  "oidcEnabled": false,
+  "localAuthDisabled": false
+}
+```
+
+**Response (Authenticated):**
+```json
+{
+  "authenticated": true,
+  "user": {
+    "id": 1,
+    "username": "admin",
+    "email": null,
+    "displayName": "Administrator",
+    "authProvider": "local",
+    "isAdmin": true,
+    "isActive": true,
+    "createdAt": 1640995200000,
+    "lastLoginAt": 1641995200000
+  },
+  "permissions": {
+    "dashboard": { "read": true, "write": true },
+    "nodes": { "read": true, "write": true },
+    "messages": { "read": true, "write": true },
+    "settings": { "read": true, "write": true },
+    "configuration": { "read": true, "write": true },
+    "info": { "read": true, "write": true },
+    "automation": { "read": true, "write": true }
+  },
+  "oidcEnabled": false,
+  "localAuthDisabled": false
+}
+```
+
+### GET /api/auth/check-default-password
+Check if the admin account is using the default password ('changeme').
+
+**Authentication:** Optional (public endpoint for security warning)
+
+**Response:**
+```json
+{
+  "isDefaultPassword": true
+}
+```
+
+**Notes:**
+- Returns `false` if admin user doesn't exist or uses a custom password
+- Used by frontend to display security warning banner
+- Public endpoint to encourage security best practices
+
+### POST /api/auth/login
+Authenticate using local credentials (username/password).
+
+**Authentication:** Not required (login endpoint)
+
+**Request:**
+```json
+{
+  "username": "admin",
+  "password": "your-password"
+}
+```
+
+**Response (Success):**
+```json
+{
+  "success": true,
+  "user": {
+    "id": 1,
+    "username": "admin",
+    "email": null,
+    "displayName": "Administrator",
+    "authProvider": "local",
+    "isAdmin": true,
+    "isActive": true,
+    "createdAt": 1640995200000,
+    "lastLoginAt": 1641995200000
+  }
+}
+```
+
+**Response (Failure):**
+```json
+{
+  "error": "Invalid username or password"
+}
+```
+
+**Notes:**
+- Returns 403 if `DISABLE_LOCAL_AUTH=true` environment variable is set
+- Creates audit log entry for login attempts (success and failure)
+- Session cookie is set on successful authentication
+
+### POST /api/auth/logout
+End the current session.
+
+**Authentication:** Optional (works for both authenticated and anonymous users)
+
+**Response:**
+```json
+{
+  "success": true
+}
+```
+
+### POST /api/auth/change-password
+Change password for the currently authenticated user.
+
+**Authentication:** Required (local auth users only)
+
+**Request:**
+```json
+{
+  "currentPassword": "old-password",
+  "newPassword": "new-password"
+}
+```
+
+**Response (Success):**
+```json
+{
+  "success": true,
+  "message": "Password changed successfully"
+}
+```
+
+**Response (Failure):**
+```json
+{
+  "error": "Current password is incorrect"
+}
+```
+
+**Notes:**
+- Only available for local authentication users
+- Returns 400 error if user authenticated via OIDC
+- Validates current password before allowing change
+
+### GET /api/auth/oidc/login
+Initiate OIDC authentication flow.
+
+**Authentication:** Not required (login initiation)
+
+**Response:**
+```json
+{
+  "authUrl": "https://idp.example.com/authorize?client_id=...&redirect_uri=..."
+}
+```
+
+**Notes:**
+- Returns 400 if OIDC is not configured
+- Generates PKCE parameters and stores in session
+- Frontend should redirect user to the returned `authUrl`
+
+### GET /api/auth/oidc/callback
+Handle OIDC provider callback (redirect endpoint).
+
+**Authentication:** Not required (handled by OIDC flow)
+
+**Query Parameters:**
+- `code`: Authorization code from OIDC provider
+- `state`: State parameter for CSRF protection
+
+**Response:**
+- Redirects to application root (`/`) on success
+- Returns error HTML on failure
+
+**Notes:**
+- Validates state and nonce parameters
+- Exchanges authorization code for ID token
+- Creates or updates user based on OIDC subject
+- Creates session and audit log entry
+- Automatically redirects browser (not JSON response)
 
 ---
 
