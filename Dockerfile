@@ -7,8 +7,9 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
+# Use npm install instead of npm ci to avoid optional dependency bug
 # better-sqlite3 will download pre-built binaries for the target platform
-RUN npm ci
+RUN npm install
 
 # Copy source files
 COPY . .
