@@ -92,6 +92,30 @@ JSON.stringify = function(value, replacer?: any, space?: any) {
   return originalStringify(value, jsonReplacer, space);
 };
 
+// Trust proxy configuration for reverse proxy deployments
+// When behind a reverse proxy (nginx, Traefik, etc.), this allows Express to:
+// - Read X-Forwarded-* headers to determine the actual client protocol/IP
+// - Set secure cookies correctly when the proxy terminates HTTPS
+const trustProxy = process.env.TRUST_PROXY;
+if (trustProxy !== undefined) {
+  // Explicit configuration via TRUST_PROXY env var
+  if (trustProxy === 'true' || trustProxy === '1') {
+    app.set('trust proxy', true);
+    logger.debug('✅ Trust proxy enabled (all proxies trusted)');
+  } else if (trustProxy === 'false' || trustProxy === '0') {
+    app.set('trust proxy', false);
+    logger.debug('ℹ️  Trust proxy disabled');
+  } else {
+    // Custom trust proxy value (IP, CIDR, number of hops, etc.)
+    app.set('trust proxy', trustProxy);
+    logger.debug(`✅ Trust proxy configured: ${trustProxy}`);
+  }
+} else if (process.env.NODE_ENV === 'production') {
+  // Default: trust first proxy in production (common reverse proxy setup)
+  app.set('trust proxy', 1);
+  logger.debug('ℹ️  Trust proxy defaulted to 1 hop (production mode)');
+}
+
 // Middleware
 app.use(cors({
   origin: true,  // Allow same-origin requests
