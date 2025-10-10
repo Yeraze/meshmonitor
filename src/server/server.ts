@@ -1436,8 +1436,12 @@ if (BASE_URL) {
   // Normal static file serving for root deployment
   app.use(express.static(buildPath));
 
-  // Catch all handler for SPA routing
-  app.use((_req: express.Request, res: express.Response) => {
+  // Catch all handler for SPA routing - skip API routes
+  app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+    // Skip if this is an API route
+    if (req.path.startsWith('/api')) {
+      return next();
+    }
     res.sendFile(path.join(buildPath, 'index.html'));
   });
 }
