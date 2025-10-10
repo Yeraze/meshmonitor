@@ -60,7 +60,27 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [localDateFormat, setLocalDateFormat] = useState(dateFormat);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDocker, setIsDocker] = useState<boolean | null>(null);
+  const [isRestarting, setIsRestarting] = useState(false);
   const { showToast } = useToast();
+
+  // Fetch system status to determine if running in Docker
+  useEffect(() => {
+    const fetchSystemStatus = async () => {
+      try {
+        const response = await fetch(`${baseUrl}/api/system/status`, {
+          credentials: 'include'
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setIsDocker(data.isDocker);
+        }
+      } catch (error) {
+        logger.error('Failed to fetch system status:', error);
+      }
+    };
+    fetchSystemStatus();
+  }, [baseUrl]);
 
   // Update local state when props change
   useEffect(() => {
@@ -245,6 +265,35 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     } catch (error) {
       logger.error('Error purging messages:', error);
       showToast('Error purging messages. Please try again.', 'error');
+    }
+  };
+
+  const handleRestartContainer = async () => {
+    const action = isDocker ? 'restart' : 'shut down';
+    const confirmed = window.confirm(
+      `Are you sure you want to ${action} MeshMonitor?\n\n` +
+      (isDocker
+        ? 'The container will restart automatically and be unavailable for approximately 10-30 seconds.'
+        : 'MeshMonitor will shut down and will need to be manually restarted.')
+    );
+
+    if (!confirmed) return;
+
+    setIsRestarting(true);
+    try {
+      const result = await apiService.restartContainer();
+      showToast(result.message, 'success');
+
+      if (isDocker) {
+        // Wait a few seconds, then reload the page
+        setTimeout(() => {
+          window.location.reload();
+        }, 5000);
+      }
+    } catch (error) {
+      logger.error(`Error ${action}ing:`, error);
+      showToast(`Failed to ${action}. Please try again.`, 'error');
+      setIsRestarting(false);
     }
   };
 
@@ -455,6 +504,26 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               Purge Messages
             </button>
           </div>
+
+          {isDocker !== null && (
+            <div className="danger-action">
+              <div className="danger-action-info">
+                <h4>{isDocker ? 'Restart Container' : 'Shutdown MeshMonitor'}</h4>
+                <p>
+                  {isDocker
+                    ? 'Restarts the Docker container. The system will be unavailable for approximately 10-30 seconds.'
+                    : 'Shuts down MeshMonitor. You will need to manually restart it.'}
+                </p>
+              </div>
+              <button
+                className="danger-button"
+                onClick={handleRestartContainer}
+                disabled={isRestarting}
+              >
+                {isRestarting ? (isDocker ? 'Restarting...' : 'Shutting down...') : (isDocker ? '🔄 Restart Container' : '🛑 Shutdown')}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

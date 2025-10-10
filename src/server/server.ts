@@ -1327,6 +1327,15 @@ apiRouter.post('/device/reboot', requirePermission('configuration', 'write'), as
   }
 });
 
+// Helper to detect if running in Docker
+function isRunningInDocker(): boolean {
+  try {
+    return fs.existsSync('/.dockerenv');
+  } catch {
+    return false;
+  }
+}
+
 // System status endpoint
 apiRouter.get('/system/status', requirePermission('dashboard', 'read'), (_req, res) => {
   const uptimeSeconds = Math.floor((Date.now() - serverStartTime) / 1000);
@@ -1349,6 +1358,7 @@ apiRouter.get('/system/status', requirePermission('dashboard', 'read'), (_req, r
     uptime: uptimeString,
     uptimeSeconds,
     environment: process.env.NODE_ENV || 'development',
+    isDocker: isRunningInDocker(),
     memoryUsage: {
       heapUsed: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + ' MB',
       heapTotal: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + ' MB',
@@ -1364,6 +1374,37 @@ apiRouter.get('/health', optionalAuth(), (_req, res) => {
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV || 'development'
   });
+});
+
+// Restart/shutdown container endpoint
+apiRouter.post('/system/restart', requirePermission('settings', 'write'), (_req, res) => {
+  const isDocker = isRunningInDocker();
+
+  if (isDocker) {
+    logger.info('🔄 Container restart requested by admin');
+    res.json({
+      success: true,
+      message: 'Container will restart now',
+      action: 'restart'
+    });
+
+    // Gracefully shutdown - Docker will restart the container automatically
+    setTimeout(() => {
+      gracefulShutdown('Admin-requested container restart');
+    }, 500);
+  } else {
+    logger.info('🛑 Shutdown requested by admin');
+    res.json({
+      success: true,
+      message: 'MeshMonitor will shut down now',
+      action: 'shutdown'
+    });
+
+    // Gracefully shutdown - will need to be manually restarted
+    setTimeout(() => {
+      gracefulShutdown('Admin-requested shutdown');
+    }, 500);
+  }
 });
 
 // Serve static files from the React app build
@@ -1457,20 +1498,49 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 
 // Graceful shutdown
 process.on('SIGINT', () => {
-  logger.debug('Received SIGINT, shutting down gracefully...');
-  meshtasticManager.disconnect();
-  databaseService.close();
-  process.exit(0);
+  gracefulShutdown('SIGINT received');
 });
+
+// Graceful shutdown function
+function gracefulShutdown(reason: string): void {
+  logger.info(`🛑 Initiating graceful shutdown: ${reason}`);
+
+  // Stop accepting new connections
+  server.close(() => {
+    logger.debug('✅ HTTP server closed');
+
+    // Disconnect from Meshtastic
+    try {
+      meshtasticManager.disconnect();
+      logger.debug('✅ Meshtastic connection closed');
+    } catch (error) {
+      logger.error('Error disconnecting from Meshtastic:', error);
+    }
+
+    // Close database connections
+    try {
+      databaseService.close();
+      logger.debug('✅ Database connections closed');
+    } catch (error) {
+      logger.error('Error closing database:', error);
+    }
+
+    logger.info('✅ Graceful shutdown complete');
+    process.exit(0);
+  });
+
+  // Force shutdown after 10 seconds if graceful shutdown hangs
+  setTimeout(() => {
+    logger.warn('⚠️ Graceful shutdown timeout - forcing exit');
+    process.exit(1);
+  }, 10000);
+}
 
 process.on('SIGTERM', () => {
-  logger.debug('Received SIGTERM, shutting down gracefully...');
-  meshtasticManager.disconnect();
-  databaseService.close();
-  process.exit(0);
+  gracefulShutdown('SIGTERM received');
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   logger.debug(`MeshMonitor server running on port ${PORT}`);
   logger.debug(`Environment: ${process.env.NODE_ENV || 'development'}`);
 });
