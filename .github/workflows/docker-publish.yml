@@ -38,6 +38,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Check if release is a pre-release
+        id: check_prerelease
+        if: github.event_name == 'release'
+        run: |
+          if [[ "${{ github.event.release.prerelease }}" == "true" ]]; then
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@v5
@@ -48,7 +58,9 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
-            type=raw,value=latest,enable=${{ github.event_name == 'release' }}
+            type=raw,value=latest,enable=${{ github.event_name == 'release' && steps.check_prerelease.outputs.is_prerelease == 'false' }}
+          labels: |
+            org.opencontainers.image.description=Web tool for monitoring a Meshtastic Node Deployment over TCP/HTTP
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
