@@ -5,6 +5,7 @@
  */
 
 import { Router, Request, Response } from 'express';
+import bcrypt from 'bcrypt';
 import { authenticateLocal, changePassword } from '../auth/localAuth.js';
 import {
   isOIDCEnabled,
@@ -78,6 +79,26 @@ router.get('/status', (req: Request, res: Response) => {
     });
   } catch (error) {
     logger.error('Error getting auth status:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Check if admin is using default password
+router.get('/check-default-password', (_req: Request, res: Response) => {
+  try {
+    const admin = databaseService.userModel.findByUsername('admin');
+
+    if (!admin || !admin.passwordHash) {
+      // No admin user or no password hash - not using default
+      return res.json({ isDefaultPassword: false });
+    }
+
+    // Check if password is 'changeme'
+    const isDefault = bcrypt.compareSync('changeme', admin.passwordHash);
+
+    return res.json({ isDefaultPassword: isDefault });
+  } catch (error) {
+    logger.error('Error checking default password:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

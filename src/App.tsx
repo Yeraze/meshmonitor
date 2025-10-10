@@ -68,6 +68,7 @@ function App() {
   const { authStatus, hasPermission } = useAuth();
   const { showToast } = useToast();
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [isDefaultPassword, setIsDefaultPassword] = useState(false);
 
   const hasSelectedInitialChannelRef = useRef<boolean>(false)
   const selectedChannelRef = useRef<number>(-1)
@@ -410,6 +411,23 @@ function App() {
 
     initializeApp();
   }, []);
+
+  // Check for default admin password
+  useEffect(() => {
+    const checkDefaultPassword = async () => {
+      try {
+        const response = await authFetch(`${baseUrl}/api/auth/check-default-password`);
+        if (response.ok) {
+          const data = await response.json();
+          setIsDefaultPassword(data.isDefaultPassword);
+        }
+      } catch (error) {
+        logger.error('Error checking default password:', error);
+      }
+    };
+
+    checkDefaultPassword();
+  }, [baseUrl]);
 
   // Debug effect to track selectedChannel changes and keep ref in sync
   useEffect(() => {
@@ -3264,6 +3282,21 @@ function App() {
           )}
         </div>
       </header>
+
+      {/* Default Password Warning Banner */}
+      {isDefaultPassword && (
+        <div style={{
+          backgroundColor: '#dc2626',
+          color: 'white',
+          padding: '8px 16px',
+          textAlign: 'center',
+          fontSize: '14px',
+          fontWeight: '500',
+          borderBottom: '2px solid #991b1b'
+        }}>
+          ⚠️ Security Warning: The admin account is using the default password. Please change it immediately in the Users tab.
+        </div>
+      )}
 
       <LoginModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />
 
