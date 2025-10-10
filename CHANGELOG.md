@@ -6,6 +6,63 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [2.1.0] - 2025-10-10
+
+### Added
+- **Connection Control**: Manual disconnect/reconnect from Meshtastic node with permission control
+  - Disconnect button in header to manually stop connection to node
+  - Reconnect button appears when user has manually disconnected
+  - New `connection` permission resource to control access to disconnect/reconnect functionality
+  - Cached data remains accessible while disconnected (read-only mode)
+  - Prevents automatic reconnection when user has manually disconnected
+  - Connection state preserved through page refreshes
+
+- **Traceroute Permission**: Fine-grained control over traceroute initiation
+  - New `traceroute` permission resource to control who can initiate traceroute requests
+  - Separate permission from viewing traceroute results (which uses `info:read`)
+  - Traceroute button in Messages tab now requires `traceroute:write` permission
+  - Default permissions: admins can initiate, regular users can view only
+
+- **Permission UI Enhancements**:
+  - Single-checkbox UI for binary permissions (connection, traceroute)
+  - Intuitive "Can Control Connection" and "Can Initiate Traceroutes" labels
+  - Simplified permission management for action-based resources
+
+- **Header Improvements**:
+  - Display connected node name in header: "LongName (ShortName) - !ID"
+  - IP address shown in tooltip on hover
+  - Better visibility of which node you're connected to
+
+### Changed
+- Traceroute endpoint now requires `traceroute:write` permission instead of `info:write`
+- Connection status now includes `user-disconnected` state
+- Frontend polling respects user-disconnected state
+- Route segments and neighbor info remain accessible when disconnected
+
+### Technical Improvements
+- Database migrations 003 and 004 for new permission resources
+- User disconnected state management in MeshtasticManager
+- Comprehensive test coverage for new connection control endpoints
+- Permission model tests updated for connection and traceroute resources
+- All test suites (515 tests) passing successfully
+
+### Fixed
+- Data display when manually disconnected from node
+- Route segments functionality while disconnected
+- Page refresh behavior when in disconnected state
+
+## [2.0.1] - 2025-10-09
+
+### Fixed
+- Cookie security configuration with `COOKIE_SECURE` and `COOKIE_SAMESITE` environment variables
+
+## [2.0.0] - 2025-10-08
+
+### Added
+- Authentication and user management system
+- Role-based access control with granular permissions
+- Update notification system with GitHub release checking
+
 ## [1.15.0] - 2025-10-06
 
 ### Added
