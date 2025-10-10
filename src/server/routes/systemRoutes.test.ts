@@ -38,7 +38,7 @@ describe('System Management', () => {
     });
 
     it('should not detect Docker when /.dockerenv does not exist', () => {
-      mockExistsSync.mockImplementation((path: string) => {
+      mockExistsSync.mockImplementation(() => {
         return false;
       });
 
