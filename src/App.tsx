@@ -56,6 +56,13 @@ const MapCenterController: React.FC<MapCenterControllerProps> = ({ centerTarget,
 
   useEffect(() => {
     if (centerTarget) {
+      // Listen for moveend event after setView completes, then pan to show popup
+      map.once('moveend', () => {
+        // Pan the map down by 150 pixels to account for popup height
+        // This ensures both the marker and the popup above it are fully visible
+        map.panBy([0, -150], { animate: true, duration: 0.3 });
+      });
+
       map.setView(centerTarget, 15); // Zoom level 15 for close view
       onCenterComplete(); // Reset target after centering
     }
