@@ -347,14 +347,19 @@ class MeshtasticManager {
     }
 
     this.announceInterval = setInterval(async () => {
+      logger.debug(`📢 Announce interval triggered (connected: ${this.isConnected})`);
       if (this.isConnected) {
         try {
           await this.sendAutoAnnouncement();
         } catch (error) {
           logger.error('❌ Error in auto-announce:', error);
         }
+      } else {
+        logger.debug('📢 Skipping announcement - not connected to node');
       }
     }, intervalMs);
+
+    logger.info(`📢 Announce scheduler started - next announcement in ${intervalHours} hours`);
   }
 
   setAnnounceInterval(hours: number): void {
