@@ -8,6 +8,8 @@ import { UserModel } from './User.js';
 import { PermissionModel } from './Permission.js';
 import { migration as authMigration } from '../migrations/001_add_auth_tables.js';
 import { migration as channelsMigration } from '../migrations/002_add_channels_permission.js';
+import { migration as connectionMigration } from '../migrations/003_add_connection_permission.js';
+import { migration as tracerouteMigration } from '../migrations/004_add_traceroute_permission.js';
 
 describe('PermissionModel', () => {
   let db: Database.Database;
@@ -23,6 +25,8 @@ describe('PermissionModel', () => {
     // Run migrations
     authMigration.up(db);
     channelsMigration.up(db);
+    connectionMigration.up(db);
+    tracerouteMigration.up(db);
 
     // Create model instances
     userModel = new UserModel(db);
@@ -211,11 +215,15 @@ describe('PermissionModel', () => {
       expect(permissionSet.nodes?.read).toBe(true);
       expect(permissionSet.messages?.read).toBe(true);
       expect(permissionSet.info?.read).toBe(true);
+      expect(permissionSet.connection?.read).toBe(true);
+      expect(permissionSet.traceroute?.read).toBe(true);
 
       // Check default write permissions (should be false)
       expect(permissionSet.dashboard?.write).toBe(false);
       expect(permissionSet.configuration?.read).toBe(false);
       expect(permissionSet.automation?.read).toBe(false);
+      expect(permissionSet.connection?.write).toBe(false);
+      expect(permissionSet.traceroute?.write).toBe(false);
     });
 
     it('should grant admin permissions', () => {
@@ -231,6 +239,8 @@ describe('PermissionModel', () => {
       expect(permissionSet.configuration).toEqual({ read: true, write: true });
       expect(permissionSet.info).toEqual({ read: true, write: true });
       expect(permissionSet.automation).toEqual({ read: true, write: true });
+      expect(permissionSet.connection).toEqual({ read: true, write: true });
+      expect(permissionSet.traceroute).toEqual({ read: true, write: true });
     });
   });
 

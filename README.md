@@ -164,12 +164,18 @@ This allows MeshMonitor to connect to **any** Meshtastic device (BLE, Serial, or
 - **Local authentication** (username/password) with bcrypt password hashing
 - **OpenID Connect (OIDC)** support for enterprise identity providers
 - **Role-based access control (RBAC)** with granular permissions
+- **Connection control permission** - manage who can disconnect/reconnect from nodes
+- **Traceroute permission** - control who can initiate traceroute requests
 - **Anonymous user support** for read-only public access
 - **Default password warning** banner for security best practices
 - **Audit logging** for all authentication and administrative actions
 - **User management** interface for admins (create, deactivate, reset passwords)
 
 ### 🔄 **System Management**
+- **Manual connection control** - disconnect/reconnect from nodes with permission control
+  - Cached data remains accessible while disconnected (read-only mode)
+  - Connection state preserved through page refreshes
+  - Header displays connected node info with IP tooltip
 - **Automatic update notifications** - banner alerts when new versions are available
 - **Container restart** functionality from the UI (Docker deployments)
 - **Version check API** - integrates with GitHub releases
@@ -322,7 +328,7 @@ Your Meshtastic device must have:
 
 - **Local Authentication**: Username/password with secure bcrypt hashing
 - **OpenID Connect (OIDC)**: Integration with enterprise identity providers
-- **Granular Permissions**: Resource-based access control (dashboard, nodes, channels, messages, settings, etc.)
+- **Granular Permissions**: Resource-based access control (dashboard, nodes, channels, messages, settings, connection control, traceroute initiation, etc.)
 - **User Management**: Admin interface for creating and managing users
 - **Session Security**: Secure session storage with SQLite backend
 

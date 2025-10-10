@@ -708,7 +708,7 @@ apiRouter.post('/messages/send', requirePermission('messages', 'write'), async (
 });
 
 // Traceroute endpoint
-apiRouter.post('/traceroute', requirePermission('info', 'write'), async (req, res) => {
+apiRouter.post('/traceroute', requirePermission('traceroute', 'write'), async (req, res) => {
   try {
     const { destination } = req.body;
     if (!destination) {
@@ -960,6 +960,31 @@ apiRouter.get('/connection', optionalAuth(), (_req, res) => {
   } catch (error) {
     logger.error('Error getting connection status:', error);
     res.status(500).json({ error: 'Failed to get connection status' });
+  }
+});
+
+// User-initiated disconnect endpoint
+apiRouter.post('/connection/disconnect', requirePermission('connection', 'write'), async (_req, res) => {
+  try {
+    await meshtasticManager.userDisconnect();
+    res.json({ success: true, status: 'user-disconnected' });
+  } catch (error) {
+    logger.error('Error disconnecting:', error);
+    res.status(500).json({ error: 'Failed to disconnect' });
+  }
+});
+
+// User-initiated reconnect endpoint
+apiRouter.post('/connection/reconnect', requirePermission('connection', 'write'), async (_req, res) => {
+  try {
+    const success = await meshtasticManager.userReconnect();
+    res.json({
+      success,
+      status: success ? 'connecting' : 'disconnected'
+    });
+  } catch (error) {
+    logger.error('Error reconnecting:', error);
+    res.status(500).json({ error: 'Failed to reconnect' });
   }
 });
 
