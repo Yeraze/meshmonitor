@@ -6,11 +6,10 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies with platform-specific handling
-# Delete package-lock to force npm to resolve platform-specific deps
-RUN rm -f package-lock.json && \
-    npm install && \
-    npm rebuild
+# Install dependencies
+# Use npm install instead of npm ci to avoid optional dependency bug
+# better-sqlite3 will download pre-built binaries for the target platform
+RUN npm install
 
 # Copy source files
 COPY . .
