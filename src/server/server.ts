@@ -1327,6 +1327,15 @@ apiRouter.post('/device/reboot', requirePermission('configuration', 'write'), as
   }
 });
 
+// Helper to detect if running in Docker
+function isRunningInDocker(): boolean {
+  try {
+    return fs.existsSync('/.dockerenv');
+  } catch {
+    return false;
+  }
+}
+
 // System status endpoint
 apiRouter.get('/system/status', requirePermission('dashboard', 'read'), (_req, res) => {
   const uptimeSeconds = Math.floor((Date.now() - serverStartTime) / 1000);
@@ -1349,6 +1358,7 @@ apiRouter.get('/system/status', requirePermission('dashboard', 'read'), (_req, r
     uptime: uptimeString,
     uptimeSeconds,
     environment: process.env.NODE_ENV || 'development',
+    isDocker: isRunningInDocker(),
     memoryUsage: {
       heapUsed: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + ' MB',
       heapTotal: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + ' MB',
@@ -1364,6 +1374,39 @@ apiRouter.get('/health', optionalAuth(), (_req, res) => {
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV || 'development'
   });
+});
+
+// Restart/shutdown container endpoint
+apiRouter.post('/system/restart', requirePermission('settings', 'write'), (_req, res) => {
+  const isDocker = isRunningInDocker();
+
+  if (isDocker) {
+    logger.info('🔄 Container restart requested by admin');
+    res.json({
+      success: true,
+      message: 'Container will restart now',
+      action: 'restart'
+    });
+
+    // Exit process - Docker will restart the container automatically
+    setTimeout(() => {
+      logger.info('🔄 Exiting process for container restart...');
+      process.exit(0);
+    }, 500);
+  } else {
+    logger.info('🛑 Shutdown requested by admin');
+    res.json({
+      success: true,
+      message: 'MeshMonitor will shut down now',
+      action: 'shutdown'
+    });
+
+    // Exit process - will need to be manually restarted
+    setTimeout(() => {
+      logger.info('🛑 Shutting down MeshMonitor...');
+      process.exit(0);
+    }, 500);
+  }
 });
 
 // Serve static files from the React app build
