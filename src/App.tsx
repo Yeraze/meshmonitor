@@ -14,7 +14,7 @@ import HopCountDisplay from './components/HopCountDisplay'
 import AutoAcknowledgeSection from './components/AutoAcknowledgeSection'
 import AutoTracerouteSection from './components/AutoTracerouteSection'
 import AutoAnnounceSection from './components/AutoAnnounceSection'
-import { ToastProvider } from './components/ToastContainer'
+import { ToastProvider, useToast } from './components/ToastContainer'
 import { version } from '../package.json'
 import { type TemperatureUnit } from './utils/temperature'
 import { calculateDistance, formatDistance } from './utils/distance'
@@ -66,6 +66,7 @@ const MapCenterController: React.FC<MapCenterControllerProps> = ({ centerTarget,
 
 function App() {
   const { authStatus, hasPermission } = useAuth();
+  const { showToast } = useToast();
   const [showLoginModal, setShowLoginModal] = useState(false);
 
   const hasSelectedInitialChannelRef = useRef<boolean>(false)
@@ -1566,6 +1567,18 @@ function App() {
       });
 
       if (!response.ok) {
+        if (response.status === 403) {
+          showToast('Insufficient permissions to update favorites', 'error');
+          // Revert optimistic update
+          setNodes(prevNodes =>
+            prevNodes.map(n =>
+              n.nodeNum === node.nodeNum
+                ? { ...n, isFavorite: !node.isFavorite }
+                : n
+            )
+          );
+          return;
+        }
         throw new Error('Failed to update favorite status');
       }
 
@@ -1593,7 +1606,7 @@ function App() {
             : n
         )
       );
-      setError('Failed to update favorite status');
+      showToast('Failed to update favorite status. Please try again.', 'error');
     }
   };
 

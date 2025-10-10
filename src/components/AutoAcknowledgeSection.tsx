@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useToast } from './ToastContainer';
 
 interface AutoAcknowledgeSectionProps {
   enabled: boolean;
@@ -15,6 +16,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   onEnabledChange,
   onRegexChange,
 }) => {
+  const { showToast } = useToast();
   const [localEnabled, setLocalEnabled] = useState(enabled);
   const [localRegex, setLocalRegex] = useState(regex || '^(test|ping)');
   const [hasChanges, setHasChanges] = useState(false);
@@ -73,7 +75,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     // Validate regex before saving
     const validation = validateRegex(localRegex);
     if (!validation.valid) {
-      alert(`Invalid regex pattern: ${validation.error}`);
+      showToast(`Invalid regex pattern: ${validation.error}`, 'error');
       return;
     }
 
@@ -86,10 +88,15 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
         body: JSON.stringify({
           autoAckEnabled: String(localEnabled),
           autoAckRegex: localRegex
-        })
+        }),
+        credentials: 'include'
       });
 
       if (!response.ok) {
+        if (response.status === 403) {
+          showToast('Insufficient permissions to save settings', 'error');
+          return;
+        }
         throw new Error(`Server returned ${response.status}`);
       }
 
@@ -98,9 +105,10 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
       onRegexChange(localRegex);
 
       setHasChanges(false);
+      showToast('Settings saved successfully!', 'success');
     } catch (error) {
       console.error('Failed to save auto-acknowledge settings:', error);
-      alert('Failed to save settings. Please try again.');
+      showToast('Failed to save settings. Please try again.', 'error');
     } finally {
       setIsSaving(false);
     }
