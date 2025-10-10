@@ -43,7 +43,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
 
   const [tracerouteIntervalMinutes, setTracerouteIntervalMinutesState] = useState<number>(() => {
     const saved = localStorage.getItem('tracerouteIntervalMinutes');
-    return saved ? parseInt(saved) : 3;
+    return saved ? parseInt(saved) : 0;
   });
 
   const [temperatureUnit, setTemperatureUnitState] = useState<TemperatureUnit>(() => {

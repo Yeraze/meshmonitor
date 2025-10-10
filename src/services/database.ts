@@ -174,7 +174,8 @@ class DatabaseService {
         autoAnnounceIntervalHours: '6',
         autoAnnounceMessage: 'MeshMonitor {VERSION} online for {DURATION} {FEATURES}',
         autoAnnounceChannelIndex: '0',
-        autoAnnounceOnStart: 'false'
+        autoAnnounceOnStart: 'false',
+        tracerouteIntervalMinutes: '0'
       };
 
       Object.entries(automationSettings).forEach(([key, defaultValue]) => {
