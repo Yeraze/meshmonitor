@@ -69,6 +69,9 @@ function App() {
   const { showToast } = useToast();
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [isDefaultPassword, setIsDefaultPassword] = useState(false);
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [latestVersion, setLatestVersion] = useState('');
+  const [releaseUrl, setReleaseUrl] = useState('');
 
   const hasSelectedInitialChannelRef = useRef<boolean>(false)
   const selectedChannelRef = useRef<number>(-1)
@@ -427,6 +430,32 @@ function App() {
     };
 
     checkDefaultPassword();
+  }, [baseUrl]);
+
+  // Check for version updates
+  useEffect(() => {
+    const checkForUpdates = async () => {
+      try {
+        const response = await fetch(`${baseUrl}/api/version/check`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.updateAvailable) {
+            setUpdateAvailable(true);
+            setLatestVersion(data.latestVersion);
+            setReleaseUrl(data.releaseUrl);
+          }
+        }
+      } catch (error) {
+        logger.error('Error checking for updates:', error);
+      }
+    };
+
+    checkForUpdates();
+
+    // Check for updates every 4 hours
+    const interval = setInterval(checkForUpdates, 4 * 60 * 60 * 1000);
+
+    return () => clearInterval(interval);
   }, [baseUrl]);
 
   // Debug effect to track selectedChannel changes and keep ref in sync
@@ -3295,6 +3324,32 @@ function App() {
           borderBottom: '2px solid #991b1b'
         }}>
           ⚠️ Security Warning: The admin account is using the default password. Please change it immediately in the Users tab.
+        </div>
+      )}
+
+      {updateAvailable && (
+        <div style={{
+          backgroundColor: '#3b82f6',
+          color: 'white',
+          padding: '8px 16px',
+          textAlign: 'center',
+          fontSize: '14px',
+          fontWeight: '500',
+          borderBottom: '2px solid #1d4ed8'
+        }}>
+          🔔 Update Available: Version {latestVersion} is now available.{' '}
+          <a
+            href={releaseUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              color: 'white',
+              textDecoration: 'underline',
+              fontWeight: '600'
+            }}
+          >
+            View Release Notes →
+          </a>
         </div>
       )}
 
