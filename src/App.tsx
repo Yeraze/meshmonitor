@@ -14,7 +14,7 @@ import HopCountDisplay from './components/HopCountDisplay'
 import AutoAcknowledgeSection from './components/AutoAcknowledgeSection'
 import AutoTracerouteSection from './components/AutoTracerouteSection'
 import AutoAnnounceSection from './components/AutoAnnounceSection'
-import { ToastProvider } from './components/ToastContainer'
+import { ToastProvider, useToast } from './components/ToastContainer'
 import { version } from '../package.json'
 import { type TemperatureUnit } from './utils/temperature'
 import { calculateDistance, formatDistance } from './utils/distance'
@@ -66,7 +66,12 @@ const MapCenterController: React.FC<MapCenterControllerProps> = ({ centerTarget,
 
 function App() {
   const { authStatus, hasPermission } = useAuth();
+  const { showToast } = useToast();
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [isDefaultPassword, setIsDefaultPassword] = useState(false);
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [latestVersion, setLatestVersion] = useState('');
+  const [releaseUrl, setReleaseUrl] = useState('');
 
   const hasSelectedInitialChannelRef = useRef<boolean>(false)
   const selectedChannelRef = useRef<number>(-1)
@@ -409,6 +414,49 @@ function App() {
 
     initializeApp();
   }, []);
+
+  // Check for default admin password
+  useEffect(() => {
+    const checkDefaultPassword = async () => {
+      try {
+        const response = await authFetch(`${baseUrl}/api/auth/check-default-password`);
+        if (response.ok) {
+          const data = await response.json();
+          setIsDefaultPassword(data.isDefaultPassword);
+        }
+      } catch (error) {
+        logger.error('Error checking default password:', error);
+      }
+    };
+
+    checkDefaultPassword();
+  }, [baseUrl]);
+
+  // Check for version updates
+  useEffect(() => {
+    const checkForUpdates = async () => {
+      try {
+        const response = await fetch(`${baseUrl}/api/version/check`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.updateAvailable) {
+            setUpdateAvailable(true);
+            setLatestVersion(data.latestVersion);
+            setReleaseUrl(data.releaseUrl);
+          }
+        }
+      } catch (error) {
+        logger.error('Error checking for updates:', error);
+      }
+    };
+
+    checkForUpdates();
+
+    // Check for updates every 4 hours
+    const interval = setInterval(checkForUpdates, 4 * 60 * 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, [baseUrl]);
 
   // Debug effect to track selectedChannel changes and keep ref in sync
   useEffect(() => {
@@ -1566,6 +1614,18 @@ function App() {
       });
 
       if (!response.ok) {
+        if (response.status === 403) {
+          showToast('Insufficient permissions to update favorites', 'error');
+          // Revert optimistic update
+          setNodes(prevNodes =>
+            prevNodes.map(n =>
+              n.nodeNum === node.nodeNum
+                ? { ...n, isFavorite: !node.isFavorite }
+                : n
+            )
+          );
+          return;
+        }
         throw new Error('Failed to update favorite status');
       }
 
@@ -1593,7 +1653,7 @@ function App() {
             : n
         )
       );
-      setError('Failed to update favorite status');
+      showToast('Failed to update favorite status. Please try again.', 'error');
     }
   };
 
@@ -3251,6 +3311,47 @@ function App() {
           )}
         </div>
       </header>
+
+      {/* Default Password Warning Banner */}
+      {isDefaultPassword && (
+        <div style={{
+          backgroundColor: '#dc2626',
+          color: 'white',
+          padding: '8px 16px',
+          textAlign: 'center',
+          fontSize: '14px',
+          fontWeight: '500',
+          borderBottom: '2px solid #991b1b'
+        }}>
+          ⚠️ Security Warning: The admin account is using the default password. Please change it immediately in the Users tab.
+        </div>
+      )}
+
+      {updateAvailable && (
+        <div style={{
+          backgroundColor: '#3b82f6',
+          color: 'white',
+          padding: '8px 16px',
+          textAlign: 'center',
+          fontSize: '14px',
+          fontWeight: '500',
+          borderBottom: '2px solid #1d4ed8'
+        }}>
+          🔔 Update Available: Version {latestVersion} is now available.{' '}
+          <a
+            href={releaseUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              color: 'white',
+              textDecoration: 'underline',
+              fontWeight: '600'
+            }}
+          >
+            View Release Notes →
+          </a>
+        </div>
+      )}
 
       <LoginModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />
 

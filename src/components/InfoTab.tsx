@@ -10,6 +10,7 @@ import { version } from '../../package.json';
 import apiService from '../services/api';
 import { formatDistance } from '../utils/distance';
 import { logger } from '../utils/logger';
+import { useToast } from './ToastContainer';
 
 interface RouteSegment {
   id: number;
@@ -58,9 +59,11 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
   timeFormat = '24',
   dateFormat = 'MM/DD/YYYY'
 }) => {
+  const { showToast } = useToast();
   const [longestActiveSegment, setLongestActiveSegment] = useState<RouteSegment | null>(null);
   const [recordHolderSegment, setRecordHolderSegment] = useState<RouteSegment | null>(null);
   const [loadingSegments, setLoadingSegments] = useState(false);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 
   const fetchRouteSegments = async () => {
     if (connectionStatus !== 'connected') return;
@@ -81,16 +84,22 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
   };
 
   const handleClearRecordHolder = async () => {
-    if (!confirm('Are you sure you want to clear the record holder?')) {
-      return;
-    }
+    setShowConfirmDialog(true);
+  };
 
+  const confirmClearRecordHolder = async () => {
+    setShowConfirmDialog(false);
     try {
       await apiService.clearRecordHolderSegment();
       setRecordHolderSegment(null);
+      showToast('Record holder cleared successfully', 'success');
     } catch (error) {
       logger.error('Error clearing record holder:', error);
-      alert('Failed to clear record holder');
+      if (error instanceof Error && error.message.includes('403')) {
+        showToast('Insufficient permissions to clear record holder', 'error');
+      } else {
+        showToast('Failed to clear record holder. Please try again.', 'error');
+      }
     }
   };
 
@@ -246,6 +255,46 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
         <div className="info-section-full-width">
           <h3>Local Node Telemetry</h3>
           <TelemetryGraphs nodeId={currentNodeId} temperatureUnit={temperatureUnit} telemetryHours={telemetryHours} baseUrl={baseUrl} />
+        </div>
+      )}
+
+      {showConfirmDialog && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: 'var(--ctp-base)',
+            padding: '2rem',
+            borderRadius: '8px',
+            maxWidth: '400px',
+            border: '1px solid var(--ctp-surface2)'
+          }}>
+            <h3 style={{ marginTop: 0 }}>Clear Record Holder?</h3>
+            <p>Are you sure you want to clear the record holder? This action cannot be undone.</p>
+            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
+              <button
+                onClick={() => setShowConfirmDialog(false)}
+                className="btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmClearRecordHolder}
+                className="danger-button"
+              >
+                Clear Record
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -8,11 +8,7 @@ import session from 'express-session';
 import BetterSqlite3Store from 'better-sqlite3-session-store';
 import Database from 'better-sqlite3';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { logger } from '../../utils/logger.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const SqliteStore = BetterSqlite3Store(session);
 
@@ -34,12 +30,8 @@ declare module 'express-session' {
  * Get session configuration
  */
 export function getSessionConfig(): session.SessionOptions {
-  // Use DATABASE_PATH env var if set, otherwise fall back to NODE_ENV logic
-  const dbPath = process.env.DATABASE_PATH || (
-    process.env.NODE_ENV === 'production'
-      ? '/data/meshmonitor.db'
-      : path.join(__dirname, '../../../data/meshmonitor.db')
-  );
+  // Use DATABASE_PATH env var if set, otherwise default to /data/meshmonitor.db
+  const dbPath = process.env.DATABASE_PATH || '/data/meshmonitor.db';
 
   const sessionSecret = process.env.SESSION_SECRET;
   if (!sessionSecret) {

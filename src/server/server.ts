@@ -1376,6 +1376,70 @@ apiRouter.get('/health', optionalAuth(), (_req, res) => {
   });
 });
 
+// Version check endpoint - compares current version with latest GitHub release
+let versionCheckCache: { data: any; timestamp: number } | null = null;
+const VERSION_CHECK_CACHE_MS = 60 * 60 * 1000; // 1 hour cache
+
+apiRouter.get('/version/check', optionalAuth(), async (_req, res) => {
+  try {
+    // Check cache first
+    if (versionCheckCache && (Date.now() - versionCheckCache.timestamp) < VERSION_CHECK_CACHE_MS) {
+      return res.json(versionCheckCache.data);
+    }
+
+    // Fetch latest release from GitHub
+    const response = await fetch('https://api.github.com/repos/Yeraze/meshmonitor/releases/latest');
+
+    if (!response.ok) {
+      logger.warn(`GitHub API returned ${response.status} for version check`);
+      return res.json({ updateAvailable: false, error: 'Unable to check for updates' });
+    }
+
+    const release = await response.json();
+    const currentVersion = packageJson.version;
+    const latestVersionRaw = release.tag_name;
+
+    // Strip 'v' prefix from version strings for comparison
+    const latestVersion = latestVersionRaw.replace(/^v/, '');
+    const current = currentVersion.replace(/^v/, '');
+
+    // Simple semantic version comparison
+    const updateAvailable = compareVersions(latestVersion, current) > 0;
+
+    const result = {
+      updateAvailable,
+      currentVersion,
+      latestVersion,
+      releaseUrl: release.html_url,
+      releaseName: release.name
+    };
+
+    // Cache the result
+    versionCheckCache = { data: result, timestamp: Date.now() };
+
+    return res.json(result);
+  } catch (error) {
+    logger.error('Error checking for version updates:', error);
+    return res.json({ updateAvailable: false, error: 'Unable to check for updates' });
+  }
+});
+
+// Helper function to compare semantic versions
+function compareVersions(a: string, b: string): number {
+  const aParts = a.split(/[-.]/).map(p => parseInt(p) || 0);
+  const bParts = b.split(/[-.]/).map(p => parseInt(p) || 0);
+
+  for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+    const aPart = aParts[i] || 0;
+    const bPart = bParts[i] || 0;
+
+    if (aPart > bPart) return 1;
+    if (aPart < bPart) return -1;
+  }
+
+  return 0;
+}
+
 // Restart/shutdown container endpoint
 apiRouter.post('/system/restart', requirePermission('settings', 'write'), (_req, res) => {
   const isDocker = isRunningInDocker();
