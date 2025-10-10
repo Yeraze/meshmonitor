@@ -56,7 +56,7 @@ class MeshtasticManager {
   private transport: TcpTransport | null = null;
   private isConnected = false;
   private tracerouteInterval: NodeJS.Timeout | null = null;
-  private tracerouteIntervalMinutes: number = 3;
+  private tracerouteIntervalMinutes: number = 0;
   private announceInterval: NodeJS.Timeout | null = null;
   private serverStartTime: number = Date.now();
   private localNodeInfo: {

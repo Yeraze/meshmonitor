@@ -1138,8 +1138,8 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
 apiRouter.delete('/settings', requirePermission('settings', 'write'), (_req, res) => {
   try {
     databaseService.deleteAllSettings();
-    // Reset traceroute interval to default
-    meshtasticManager.setTracerouteInterval(3);
+    // Reset traceroute interval to default (disabled)
+    meshtasticManager.setTracerouteInterval(0);
     res.json({ success: true, message: 'Settings reset to defaults' });
   } catch (error) {
     logger.error('Error resetting settings:', error);
