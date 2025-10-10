@@ -466,19 +466,25 @@ function App() {
 
   // Fetch traceroutes when showPaths is enabled or Messages/Nodes tab is active
   useEffect(() => {
-    if ((showPaths || activeTab === 'messages' || activeTab === 'nodes') && connectionStatus === 'connected') {
+    if ((showPaths || activeTab === 'messages' || activeTab === 'nodes') && shouldShowData()) {
       fetchTraceroutes();
-      const interval = setInterval(fetchTraceroutes, 10000); // Refresh every 10 seconds
-      return () => clearInterval(interval);
+      // Only auto-refresh when connected (not when viewing cached data)
+      if (connectionStatus === 'connected') {
+        const interval = setInterval(fetchTraceroutes, 10000); // Refresh every 10 seconds
+        return () => clearInterval(interval);
+      }
     }
   }, [showPaths, activeTab, connectionStatus]);
 
   // Fetch neighbor info when showNeighborInfo is enabled
   useEffect(() => {
-    if (showNeighborInfo && connectionStatus === 'connected') {
+    if (showNeighborInfo && shouldShowData()) {
       fetchNeighborInfo();
-      const interval = setInterval(fetchNeighborInfo, 10000); // Refresh every 10 seconds
-      return () => clearInterval(interval);
+      // Only auto-refresh when connected (not when viewing cached data)
+      if (connectionStatus === 'connected') {
+        const interval = setInterval(fetchNeighborInfo, 10000); // Refresh every 10 seconds
+        return () => clearInterval(interval);
+      }
     }
   }, [showNeighborInfo, connectionStatus]);
 
@@ -607,8 +613,8 @@ function App() {
   // Regular data updates (every 5 seconds)
   useEffect(() => {
     const updateInterval = setInterval(() => {
-      // Skip polling while device is rebooting - the reboot handler manages reconnection
-      if (connectionStatus === 'rebooting') {
+      // Skip polling when user has manually disconnected or device is rebooting
+      if (connectionStatus === 'user-disconnected' || connectionStatus === 'rebooting') {
         return;
       }
 
@@ -757,7 +763,24 @@ function App() {
       const response = await authFetch(`${baseUrl}/api/connection`);
       if (response.ok) {
         const status = await response.json();
-        logger.debug(`📡 Connection API response: connected=${status.connected}`);
+        logger.debug(`📡 Connection API response: connected=${status.connected}, userDisconnected=${status.userDisconnected}`);
+
+        // Check if user has manually disconnected
+        if (status.userDisconnected) {
+          logger.debug('⏸️  User-initiated disconnect detected');
+          setConnectionStatus('user-disconnected');
+
+          // Still fetch cached data from backend on page load
+          // This ensures we show cached data even after refresh
+          try {
+            await fetchChannels(urlBase);
+            await updateDataFromBackend();
+          } catch (error) {
+            logger.error('Failed to fetch cached data while disconnected:', error);
+          }
+          return;
+        }
+
         if (status.connected) {
           // Use updater function to get current state and decide whether to initialize
           setConnectionStatus(currentStatus => {
@@ -1132,6 +1155,35 @@ function App() {
       return pathNodes.join(' → ') + totalInfo;
     } catch (error) {
       return 'Error parsing route';
+    }
+  };
+
+  // Helper to check if we should show cached data
+  const shouldShowData = () => {
+    return connectionStatus === 'connected' || connectionStatus === 'user-disconnected';
+  };
+
+  const handleDisconnect = async () => {
+    try {
+      await api.disconnectFromNode();
+      setConnectionStatus('user-disconnected');
+      showToast('Disconnected from node', 'info');
+    } catch (error) {
+      logger.error('Failed to disconnect:', error);
+      showToast('Failed to disconnect', 'error');
+    }
+  };
+
+  const handleReconnect = async () => {
+    try {
+      setConnectionStatus('connecting');
+      await api.reconnectToNode();
+      showToast('Reconnecting to node...', 'info');
+      // Status will update via polling
+    } catch (error) {
+      logger.error('Failed to reconnect:', error);
+      setConnectionStatus('user-disconnected');
+      showToast('Failed to reconnect', 'error');
     }
   };
 
@@ -1754,7 +1806,7 @@ function App() {
           </div>
 
           <div className="nodes-list">
-            {connectionStatus === 'connected' ? (
+            {shouldShowData() ? (
               processedNodes.length > 0 ? (
                 <>
                 {processedNodes.map(node => (
@@ -1868,7 +1920,7 @@ function App() {
 
         {/* Right Side - Map */}
         <div className="map-container">
-          {connectionStatus === 'connected' ? (
+          {shouldShowData() ? (
             <>
               <div className="map-controls">
                 <label className="map-control-item">
@@ -2346,7 +2398,7 @@ function App() {
           </label>
         </div>
       </div>
-      {connectionStatus === 'connected' ? (
+      {shouldShowData() ? (
         availableChannels.length > 0 ? (
           <>
             {/* Channel Buttons */}
@@ -2661,7 +2713,7 @@ function App() {
           </div>
 
           <div className="nodes-list">
-            {connectionStatus === 'connected' ? (
+            {shouldShowData() ? (
               processedNodes.length > 0 ? (
                 <>
                   {sortedNodesWithMessages
@@ -2752,17 +2804,19 @@ function App() {
                       return null;
                     })()}
                   </h3>
-                  <button
-                    onClick={() => handleTraceroute(selectedDMNode)}
-                    disabled={connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode}
-                    className="traceroute-btn"
-                    title="Run traceroute to this node"
-                  >
-                    🗺️ Traceroute
-                    {tracerouteLoading === selectedDMNode && (
-                      <span className="spinner"></span>
-                    )}
-                  </button>
+                  {hasPermission('traceroute', 'write') && (
+                    <button
+                      onClick={() => handleTraceroute(selectedDMNode)}
+                      disabled={connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode}
+                      className="traceroute-btn"
+                      title="Run traceroute to this node"
+                    >
+                      🗺️ Traceroute
+                      {tracerouteLoading === selectedDMNode && (
+                        <span className="spinner"></span>
+                      )}
+                    </button>
+                  )}
                 </div>
                 {(() => {
                   const recentTrace = getRecentTraceroute(selectedDMNode);
@@ -3293,13 +3347,53 @@ function App() {
             <h1>MeshMonitor</h1>
           </div>
           <div className="node-info">
-            <span className="node-address">{nodeAddress}</span>
+            {(() => {
+              // Find the local node from the nodes array
+              const localNode = currentNodeId ? nodes.find(n => n.user?.id === currentNodeId) : null;
+
+              if (localNode && localNode.user) {
+                return (
+                  <span
+                    className="node-address"
+                    title={`Connected to: ${nodeAddress}`}
+                    style={{ cursor: 'help' }}
+                  >
+                    {localNode.user.longName} ({localNode.user.shortName}) - {localNode.user.id}
+                  </span>
+                );
+              }
+
+              return <span className="node-address">{nodeAddress}</span>;
+            })()}
           </div>
         </div>
         <div className="header-right" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div className="connection-status" onClick={fetchSystemStatus} style={{ cursor: 'pointer' }} title="Click for system status">
-            <span className={`status-indicator ${connectionStatus}`}></span>
-            <span>{connectionStatus === 'configuring' ? 'initializing' : connectionStatus}</span>
+          <div className="connection-status-container" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div className="connection-status" onClick={fetchSystemStatus} style={{ cursor: 'pointer' }} title="Click for system status">
+              <span className={`status-indicator ${connectionStatus === 'user-disconnected' ? 'disconnected' : connectionStatus}`}></span>
+              <span>{connectionStatus === 'user-disconnected' ? 'Disconnected' : connectionStatus === 'configuring' ? 'initializing' : connectionStatus}</span>
+            </div>
+
+            {/* Show disconnect/reconnect buttons based on connection status and permissions */}
+            {hasPermission('connection', 'write') && connectionStatus === 'connected' && (
+              <button
+                onClick={handleDisconnect}
+                className="connection-control-btn"
+                title="Disconnect from node"
+              >
+                Disconnect
+              </button>
+            )}
+
+            {hasPermission('connection', 'write') && connectionStatus === 'user-disconnected' && (
+              <button
+                onClick={handleReconnect}
+                className="connection-control-btn reconnect"
+                title="Reconnect to node"
+              >
+                Connect
+              </button>
+            )}
           </div>
           {authStatus?.authenticated ? (
             <UserMenu onLogout={() => setActiveTab('nodes')} />

@@ -13,6 +13,8 @@ import { UserModel } from '../models/User.js';
 import { PermissionModel } from '../models/Permission.js';
 import { migration as authMigration } from '../migrations/001_add_auth_tables.js';
 import { migration as channelsMigration } from '../migrations/002_add_channels_permission.js';
+import { migration as connectionMigration } from '../migrations/003_add_connection_permission.js';
+import { migration as tracerouteMigration } from '../migrations/004_add_traceroute_permission.js';
 import authRoutes from './authRoutes.js';
 import DatabaseService from '../../services/database.js';
 
@@ -43,6 +45,8 @@ describe('Authentication Routes', () => {
     db.pragma('foreign_keys = ON');
     authMigration.up(db);
     channelsMigration.up(db);
+    connectionMigration.up(db);
+    tracerouteMigration.up(db);
 
     userModel = new UserModel(db);
     permissionModel = new PermissionModel(db);
