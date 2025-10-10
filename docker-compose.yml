@@ -18,6 +18,10 @@ services:
     environment:
       - NODE_ENV=production
       - TZ=America/New_York
+      # For HTTPS reverse proxy deployments (nginx, Traefik, Caddy, etc.)
+      # - TRUST_PROXY=true
+      # For direct HTTP access (not recommended for production)
+      # - COOKIE_SECURE=false
 
 volumes:
   meshmonitor-data:
