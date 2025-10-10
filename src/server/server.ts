@@ -1388,10 +1388,9 @@ apiRouter.post('/system/restart', requirePermission('settings', 'write'), (_req,
       action: 'restart'
     });
 
-    // Exit process - Docker will restart the container automatically
+    // Gracefully shutdown - Docker will restart the container automatically
     setTimeout(() => {
-      logger.info('🔄 Exiting process for container restart...');
-      process.exit(0);
+      gracefulShutdown('Admin-requested container restart');
     }, 500);
   } else {
     logger.info('🛑 Shutdown requested by admin');
@@ -1401,10 +1400,9 @@ apiRouter.post('/system/restart', requirePermission('settings', 'write'), (_req,
       action: 'shutdown'
     });
 
-    // Exit process - will need to be manually restarted
+    // Gracefully shutdown - will need to be manually restarted
     setTimeout(() => {
-      logger.info('🛑 Shutting down MeshMonitor...');
-      process.exit(0);
+      gracefulShutdown('Admin-requested shutdown');
     }, 500);
   }
 });
@@ -1500,20 +1498,49 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 
 // Graceful shutdown
 process.on('SIGINT', () => {
-  logger.debug('Received SIGINT, shutting down gracefully...');
-  meshtasticManager.disconnect();
-  databaseService.close();
-  process.exit(0);
+  gracefulShutdown('SIGINT received');
 });
+
+// Graceful shutdown function
+function gracefulShutdown(reason: string): void {
+  logger.info(`🛑 Initiating graceful shutdown: ${reason}`);
+
+  // Stop accepting new connections
+  server.close(() => {
+    logger.debug('✅ HTTP server closed');
+
+    // Disconnect from Meshtastic
+    try {
+      meshtasticManager.disconnect();
+      logger.debug('✅ Meshtastic connection closed');
+    } catch (error) {
+      logger.error('Error disconnecting from Meshtastic:', error);
+    }
+
+    // Close database connections
+    try {
+      databaseService.close();
+      logger.debug('✅ Database connections closed');
+    } catch (error) {
+      logger.error('Error closing database:', error);
+    }
+
+    logger.info('✅ Graceful shutdown complete');
+    process.exit(0);
+  });
+
+  // Force shutdown after 10 seconds if graceful shutdown hangs
+  setTimeout(() => {
+    logger.warn('⚠️ Graceful shutdown timeout - forcing exit');
+    process.exit(1);
+  }, 10000);
+}
 
 process.on('SIGTERM', () => {
-  logger.debug('Received SIGTERM, shutting down gracefully...');
-  meshtasticManager.disconnect();
-  databaseService.close();
-  process.exit(0);
+  gracefulShutdown('SIGTERM received');
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   logger.debug(`MeshMonitor server running on port ${PORT}`);
   logger.debug(`Environment: ${process.env.NODE_ENV || 'development'}`);
 });
