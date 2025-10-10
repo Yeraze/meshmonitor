@@ -5,7 +5,8 @@
  */
 
 import session from 'express-session';
-import connectSqlite3 from 'connect-sqlite3';
+import BetterSqlite3Store from 'better-sqlite3-session-store';
+import Database from 'better-sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { logger } from '../../utils/logger.js';
@@ -13,7 +14,7 @@ import { logger } from '../../utils/logger.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const SqliteStore = connectSqlite3(session);
+const SqliteStore = BetterSqlite3Store(session);
 
 // Extend session data type
 declare module 'express-session' {
@@ -47,11 +48,17 @@ export function getSessionConfig(): session.SessionOptions {
 
   const sessionMaxAge = parseInt(process.env.SESSION_MAX_AGE || '86400000'); // Default 24 hours
 
+  // Create session database path
+  const sessionDbPath = path.join(path.dirname(dbPath), 'sessions.db');
+  const sessionDb = new Database(sessionDbPath);
+
   return {
     store: new SqliteStore({
-      db: 'sessions.db',
-      dir: path.dirname(dbPath),
-      table: 'sessions'
+      client: sessionDb,
+      expired: {
+        clear: true,
+        intervalMs: 900000 // Clear expired sessions every 15 minutes
+      }
     }),
     secret: sessionSecret || 'insecure-dev-secret-change-in-production',
     resave: false,
