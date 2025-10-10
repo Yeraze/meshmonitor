@@ -387,7 +387,37 @@ environment:
 - `TRUST_PROXY=false` - Don't trust any proxies
 - `TRUST_PROXY=192.168.1.0/24` - Trust specific subnet
 
-### nginx Subfolder Example
+### Reverse Proxy Examples
+
+#### nginx (Root Path)
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name meshmonitor.example.com;
+
+    ssl_certificate /path/to/cert.pem;
+    ssl_certificate_key /path/to/key.pem;
+
+    location / {
+        proxy_pass http://localhost:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;  # Required for TRUST_PROXY
+    }
+}
+```
+
+**MeshMonitor Configuration:**
+```yaml
+environment:
+  - NODE_ENV=production
+  - TRUST_PROXY=true
+  - SESSION_SECRET=your-secret-here
+```
+
+#### nginx (Subfolder)
 
 ```nginx
 location ^~ /meshmonitor {
@@ -398,8 +428,52 @@ location ^~ /meshmonitor {
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;  # Critical for HTTPS
+    proxy_set_header X-Forwarded-Proto $scheme;  # Required for TRUST_PROXY
 }
+```
+
+**MeshMonitor Configuration:**
+```yaml
+environment:
+  - NODE_ENV=production
+  - BASE_URL=/meshmonitor
+  - TRUST_PROXY=true
+  - SESSION_SECRET=your-secret-here
+```
+
+#### Traefik (Docker Labels)
+
+```yaml
+services:
+  meshmonitor:
+    image: ghcr.io/yeraze/meshmonitor:latest
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.meshmonitor.rule=Host(`meshmonitor.example.com`)"
+      - "traefik.http.routers.meshmonitor.entrypoints=websecure"
+      - "traefik.http.routers.meshmonitor.tls.certresolver=letsencrypt"
+      - "traefik.http.services.meshmonitor.loadbalancer.server.port=3001"
+    environment:
+      - NODE_ENV=production
+      - TRUST_PROXY=true  # Traefik automatically sets X-Forwarded-* headers
+      - SESSION_SECRET=your-secret-here
+      - MESHTASTIC_NODE_IP=192.168.1.100
+```
+
+#### Caddy
+
+```
+meshmonitor.example.com {
+    reverse_proxy localhost:8080
+}
+```
+
+**MeshMonitor Configuration:**
+```yaml
+environment:
+  - NODE_ENV=production
+  - TRUST_PROXY=true  # Caddy automatically sets X-Forwarded-* headers
+  - SESSION_SECRET=your-secret-here
 ```
 
 ### Docker Configuration
@@ -699,13 +773,54 @@ meshmonitor/
 
 ### Common Issues
 
-1. **Cannot connect to Meshtastic node**
+1. **Login succeeds but immediately logs out / Session not maintained**
+
+   This is a cookie security issue. The solution depends on your deployment:
+
+   **Scenario A: HTTPS Reverse Proxy (Recommended)**
+   ```
+   Browser ←HTTPS→ Reverse Proxy ←HTTP→ MeshMonitor
+   ```
+   ✅ **Solution:** Set `TRUST_PROXY=true` to trust the proxy's headers
+   ```yaml
+   environment:
+     - NODE_ENV=production
+     - TRUST_PROXY=true
+     - SESSION_SECRET=your-secret-here
+   ```
+   This allows MeshMonitor to detect the HTTPS connection via `X-Forwarded-Proto` header.
+
+   **Scenario B: Direct HTTP Access (Not Recommended for Production)**
+   ```
+   Browser ←HTTP→ MeshMonitor
+   ```
+   ⚠️ **Solution:** Set `COOKIE_SECURE=false` to allow cookies over HTTP
+   ```yaml
+   environment:
+     - NODE_ENV=production
+     - COOKIE_SECURE=false
+     - SESSION_SECRET=your-secret-here
+   ```
+   **Warning:** This reduces security. Use HTTPS if possible.
+
+   **Scenario C: Direct HTTPS Access**
+   ```
+   Browser ←HTTPS→ MeshMonitor (with TLS cert)
+   ```
+   ✅ No configuration needed - secure cookies work automatically.
+
+   **How to diagnose:**
+   - Check browser DevTools → Application → Cookies
+   - If `meshmonitor.sid` cookie is missing, it's a cookie security issue
+   - Check container logs for warnings about SESSION_SECRET or COOKIE_SECURE
+
+2. **Cannot connect to Meshtastic node**
    - Check IP address in `.env` file
    - Ensure TCP port 4403 is accessible
    - Verify network connectivity
    - Check firewall settings (allow TCP port 4403)
 
-2. **Database errors**
+3. **Database errors**
    - Ensure `/data` directory is writable
    - Check disk space
    - Verify SQLite permissions
