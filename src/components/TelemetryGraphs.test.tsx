@@ -423,7 +423,7 @@ describe('TelemetryGraphs Component', () => {
         });
       });
 
-      render(<TelemetryGraphs nodeId={mockNodeId} temperatureUnit="F" />);
+      renderWithToast(<TelemetryGraphs nodeId={mockNodeId} temperatureUnit="F" />);
 
       await waitFor(() => {
         expect(screen.getByText('Temperature (°F)')).toBeInTheDocument();
@@ -474,7 +474,7 @@ describe('TelemetryGraphs Component', () => {
         });
       });
 
-      render(<TelemetryGraphs nodeId={mockNodeId} temperatureUnit="F" />);
+      renderWithToast(<TelemetryGraphs nodeId={mockNodeId} temperatureUnit="F" />);
 
       await waitFor(() => {
         // Temperature should show Fahrenheit
