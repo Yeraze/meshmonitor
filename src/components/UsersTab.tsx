@@ -81,7 +81,8 @@ const UsersTab: React.FC = () => {
           configuration: { read: true, write: true },
           info: { read: true, write: true },
           automation: { read: true, write: true },
-          connection: { read: true, write: true }
+          connection: { read: true, write: true },
+          traceroute: { read: true, write: true }
         };
         setPermissions(allPermissions);
       } else {
@@ -370,18 +371,18 @@ const UsersTab: React.FC = () => {
 
             <h3>Permissions</h3>
             <div className="permissions-grid">
-              {(['dashboard', 'nodes', 'channels', 'messages', 'settings', 'configuration', 'info', 'automation', 'connection'] as const).map(resource => (
+              {(['dashboard', 'nodes', 'channels', 'messages', 'settings', 'configuration', 'info', 'automation', 'connection', 'traceroute'] as const).map(resource => (
                 <div key={resource} className="permission-item">
                   <div className="permission-label">{resource.charAt(0).toUpperCase() + resource.slice(1)}</div>
                   <div className="permission-actions">
-                    {resource === 'connection' ? (
-                      // Connection permission uses a single checkbox
+                    {(resource === 'connection' || resource === 'traceroute') ? (
+                      // Connection and traceroute permissions use a single checkbox
                       <label>
                         <input
                           type="checkbox"
                           checked={permissions[resource]?.write || false}
                           onChange={() => {
-                            // For connection, both read and write are set together
+                            // For these permissions, both read and write are set together
                             const newValue = !permissions[resource]?.write;
                             setPermissions({
                               ...permissions,
@@ -389,7 +390,7 @@ const UsersTab: React.FC = () => {
                             });
                           }}
                         />
-                        Can Control Connection
+                        {resource === 'connection' ? 'Can Control Connection' : 'Can Initiate Traceroutes'}
                       </label>
                     ) : (
                       // Other permissions use read/write checkboxes

@@ -708,7 +708,7 @@ apiRouter.post('/messages/send', requirePermission('messages', 'write'), async (
 });
 
 // Traceroute endpoint
-apiRouter.post('/traceroute', requirePermission('info', 'write'), async (req, res) => {
+apiRouter.post('/traceroute', requirePermission('traceroute', 'write'), async (req, res) => {
   try {
     const { destination } = req.body;
     if (!destination) {

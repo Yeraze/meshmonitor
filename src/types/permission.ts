@@ -11,7 +11,8 @@ export type ResourceType =
   | 'configuration'
   | 'info'
   | 'automation'
-  | 'connection';
+  | 'connection'
+  | 'traceroute';
 
 export type PermissionAction = 'read' | 'write';
 
@@ -55,7 +56,8 @@ export const RESOURCES: readonly ResourceDefinition[] = [
   { id: 'configuration', name: 'Configuration', description: 'Device configuration' },
   { id: 'info', name: 'Info', description: 'Telemetry and network information' },
   { id: 'automation', name: 'Automation', description: 'Automated tasks and announcements' },
-  { id: 'connection', name: 'Connection', description: 'Control node connection (disconnect/reconnect)' }
+  { id: 'connection', name: 'Connection', description: 'Control node connection (disconnect/reconnect)' },
+  { id: 'traceroute', name: 'Traceroute', description: 'Initiate traceroute requests to nodes' }
 ] as const;
 
 // Default permissions for different user types
@@ -68,7 +70,8 @@ export const ADMIN_PERMISSIONS: PermissionSet = {
   configuration: { read: true, write: true },
   info: { read: true, write: true },
   automation: { read: true, write: true },
-  connection: { read: true, write: true }
+  connection: { read: true, write: true },
+  traceroute: { read: true, write: true }
 };
 
 export const DEFAULT_USER_PERMISSIONS: PermissionSet = {
@@ -80,5 +83,6 @@ export const DEFAULT_USER_PERMISSIONS: PermissionSet = {
   configuration: { read: false, write: false },
   info: { read: true, write: false },
   automation: { read: false, write: false },
-  connection: { read: true, write: false }
+  connection: { read: true, write: false },
+  traceroute: { read: true, write: false }
 };

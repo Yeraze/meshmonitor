@@ -8,6 +8,7 @@ import { PermissionModel } from '../server/models/Permission.js';
 import { migration as authMigration } from '../server/migrations/001_add_auth_tables.js';
 import { migration as channelsMigration } from '../server/migrations/002_add_channels_permission.js';
 import { migration as connectionMigration } from '../server/migrations/003_add_connection_permission.js';
+import { migration as tracerouteMigration } from '../server/migrations/004_add_traceroute_permission.js';
 
 export interface DbNode {
   nodeNum: number;
@@ -161,6 +162,7 @@ class DatabaseService {
     this.runAuthMigration();
     this.runChannelsMigration();
     this.runConnectionMigration();
+    this.runTracerouteMigration();
     this.ensureAutomationDefaults();
     this.isInitialized = true;
   }
@@ -256,6 +258,27 @@ class DatabaseService {
       logger.debug('✅ Connection permission migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run connection permission migration:', error);
+      throw error;
+    }
+  }
+
+  private runTracerouteMigration(): void {
+    logger.debug('Running traceroute permission migration...');
+    try {
+      const migrationKey = 'migration_004_traceroute_permission';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Traceroute permission migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 004: Add traceroute permission resource...');
+      tracerouteMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Traceroute permission migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run traceroute permission migration:', error);
       throw error;
     }
   }

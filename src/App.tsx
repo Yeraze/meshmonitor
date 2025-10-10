@@ -2804,17 +2804,19 @@ function App() {
                       return null;
                     })()}
                   </h3>
-                  <button
-                    onClick={() => handleTraceroute(selectedDMNode)}
-                    disabled={connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode}
-                    className="traceroute-btn"
-                    title="Run traceroute to this node"
-                  >
-                    🗺️ Traceroute
-                    {tracerouteLoading === selectedDMNode && (
-                      <span className="spinner"></span>
-                    )}
-                  </button>
+                  {hasPermission('traceroute', 'write') && (
+                    <button
+                      onClick={() => handleTraceroute(selectedDMNode)}
+                      disabled={connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode}
+                      className="traceroute-btn"
+                      title="Run traceroute to this node"
+                    >
+                      🗺️ Traceroute
+                      {tracerouteLoading === selectedDMNode && (
+                        <span className="spinner"></span>
+                      )}
+                    </button>
+                  )}
                 </div>
                 {(() => {
                   const recentTrace = getRecentTraceroute(selectedDMNode);
