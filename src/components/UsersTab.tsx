@@ -9,6 +9,7 @@ import { useAuth } from '../contexts/AuthContext';
 import api from '../services/api';
 import { logger } from '../utils/logger';
 import type { PermissionSet } from '../types/permission';
+import { useToast } from './ToastContainer';
 
 interface User {
   id: number;
@@ -24,6 +25,7 @@ interface User {
 
 const UsersTab: React.FC = () => {
   const { authStatus } = useAuth();
+  const { showToast } = useToast();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +33,8 @@ const UsersTab: React.FC = () => {
   const [permissions, setPermissions] = useState<PermissionSet>({});
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showSetPasswordModal, setShowSetPasswordModal] = useState(false);
+  const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
+  const [userToDeactivate, setUserToDeactivate] = useState<User | null>(null);
   const [passwordForm, setPasswordForm] = useState({
     newPassword: '',
     confirmPassword: ''
@@ -105,10 +109,14 @@ const UsersTab: React.FC = () => {
 
       await api.put(`/api/users/${selectedUser.id}/permissions`, { permissions: validPermissions });
       setError(null);
-      // Show success feedback
-      alert('Permissions updated successfully');
+      showToast('Permissions updated successfully', 'success');
     } catch (err) {
       logger.error('Failed to update permissions:', err);
+      if (err && typeof err === 'object' && 'status' in err && err.status === 403) {
+        showToast('Insufficient permissions to update user permissions', 'error');
+      } else {
+        showToast('Failed to update permissions. Please try again.', 'error');
+      }
       setError('Failed to update permissions');
     }
   };
@@ -151,25 +159,45 @@ const UsersTab: React.FC = () => {
       setPasswordForm({ newPassword: '', confirmPassword: '' });
       setShowSetPasswordModal(false);
       setError(null);
-      alert('Password updated successfully');
+      showToast('Password updated successfully', 'success');
     } catch (err) {
       logger.error('Failed to set password:', err);
+      if (err && typeof err === 'object' && 'status' in err && err.status === 403) {
+        showToast('Insufficient permissions to set password', 'error');
+      } else {
+        showToast(err instanceof Error ? err.message : 'Failed to set password. Please try again.', 'error');
+      }
       setError(err instanceof Error ? err.message : 'Failed to set password');
     }
   };
 
   const handleDeactivateUser = async (user: User) => {
-    if (!confirm(`Deactivate user ${user.username}?`)) return;
+    setUserToDeactivate(user);
+    setShowDeactivateConfirm(true);
+  };
+
+  const confirmDeactivateUser = async () => {
+    if (!userToDeactivate) return;
 
     try {
-      await api.delete(`/api/users/${user.id}`);
+      await api.delete(`/api/users/${userToDeactivate.id}`);
       await fetchUsers();
-      if (selectedUser?.id === user.id) {
+      if (selectedUser?.id === userToDeactivate.id) {
         setSelectedUser(null);
       }
+      showToast(`User ${userToDeactivate.username} deactivated successfully`, 'success');
+      setShowDeactivateConfirm(false);
+      setUserToDeactivate(null);
     } catch (err) {
       logger.error('Failed to deactivate user:', err);
+      if (err && typeof err === 'object' && 'status' in err && err.status === 403) {
+        showToast('Insufficient permissions to deactivate user', 'error');
+      } else {
+        showToast('Failed to deactivate user. Please try again.', 'error');
+      }
       setError('Failed to deactivate user');
+      setShowDeactivateConfirm(false);
+      setUserToDeactivate(null);
     }
   };
 
@@ -505,6 +533,44 @@ const UsersTab: React.FC = () => {
                   disabled={!passwordForm.newPassword || !passwordForm.confirmPassword}
                 >
                   Set Password
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Deactivate User Confirmation Modal */}
+      {showDeactivateConfirm && userToDeactivate && (
+        <div className="modal-overlay" onClick={() => setShowDeactivateConfirm(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Deactivate User?</h2>
+              <button className="close-button" onClick={() => setShowDeactivateConfirm(false)}>×</button>
+            </div>
+
+            <div className="modal-body">
+              <p>Are you sure you want to deactivate user <strong>{userToDeactivate.username}</strong>?</p>
+              <p style={{ color: 'var(--ctp-red)', marginTop: '1rem' }}>
+                This will revoke their access to MeshMonitor.
+              </p>
+
+              <div className="modal-actions">
+                <button
+                  className="button button-secondary"
+                  onClick={() => {
+                    setShowDeactivateConfirm(false);
+                    setUserToDeactivate(null);
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="button button-primary"
+                  onClick={confirmDeactivateUser}
+                  style={{ backgroundColor: 'var(--ctp-red)', borderColor: 'var(--ctp-red)' }}
+                >
+                  Deactivate User
                 </button>
               </div>
             </div>
