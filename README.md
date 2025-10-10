@@ -303,6 +303,10 @@ For complete Kubernetes documentation, configuration options, and examples, see 
 | `PORT` | `3001` | Server port (production) |
 | `BASE_URL` | (empty) | Runtime base URL path for subfolder deployment (e.g., `/meshmonitor`) |
 | `TZ` | `America/New_York` | Timezone for auto-acknowledge message timestamps (see [TZ database](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)) |
+| `SESSION_SECRET` | (auto-generated) | Secret key for session encryption. **Required for production deployments** |
+| `SESSION_MAX_AGE` | `86400000` | Session cookie lifetime in milliseconds (default: 24 hours) |
+| `COOKIE_SECURE` | `true` (production)<br>`false` (development) | Require HTTPS for session cookies. Set to `false` if accessing over HTTP in production (not recommended) |
+| `COOKIE_SAMESITE` | `strict` (production)<br>`lax` (development) | SameSite cookie policy (`strict`, `lax`, or `none`) |
 
 ### Meshtastic Node Requirements
 

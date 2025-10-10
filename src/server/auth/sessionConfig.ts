@@ -40,6 +40,35 @@ export function getSessionConfig(): session.SessionOptions {
 
   const sessionMaxAge = parseInt(process.env.SESSION_MAX_AGE || '86400000'); // Default 24 hours
 
+  // Determine cookie security settings
+  // COOKIE_SECURE can override the NODE_ENV default
+  let cookieSecure: boolean;
+  if (process.env.COOKIE_SECURE !== undefined) {
+    cookieSecure = process.env.COOKIE_SECURE === 'true';
+    if (!cookieSecure && process.env.NODE_ENV === 'production') {
+      logger.warn('⚠️  COOKIE_SECURE=false in production! Sessions will work over HTTP but are less secure. Use HTTPS if possible.');
+    }
+  } else {
+    // Default behavior: secure in production, insecure in development
+    cookieSecure = process.env.NODE_ENV === 'production';
+  }
+
+  // Determine sameSite setting
+  // COOKIE_SAMESITE can override the NODE_ENV default
+  let cookieSameSite: 'strict' | 'lax' | 'none';
+  if (process.env.COOKIE_SAMESITE) {
+    const sameSite = process.env.COOKIE_SAMESITE.toLowerCase();
+    if (sameSite === 'strict' || sameSite === 'lax' || sameSite === 'none') {
+      cookieSameSite = sameSite;
+    } else {
+      logger.warn(`⚠️  Invalid COOKIE_SAMESITE value: ${process.env.COOKIE_SAMESITE}. Using default.`);
+      cookieSameSite = process.env.NODE_ENV === 'production' ? 'strict' : 'lax';
+    }
+  } else {
+    // Default behavior: strict in production, lax in development
+    cookieSameSite = process.env.NODE_ENV === 'production' ? 'strict' : 'lax';
+  }
+
   // Create session database path
   const sessionDbPath = path.join(path.dirname(dbPath), 'sessions.db');
   const sessionDb = new Database(sessionDbPath);
@@ -57,8 +86,8 @@ export function getSessionConfig(): session.SessionOptions {
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+      secure: cookieSecure,
+      sameSite: cookieSameSite,
       maxAge: sessionMaxAge
     },
     name: 'meshmonitor.sid' // Custom session cookie name
