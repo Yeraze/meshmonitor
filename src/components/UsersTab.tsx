@@ -80,7 +80,8 @@ const UsersTab: React.FC = () => {
           settings: { read: true, write: true },
           configuration: { read: true, write: true },
           info: { read: true, write: true },
-          automation: { read: true, write: true }
+          automation: { read: true, write: true },
+          connection: { read: true, write: true }
         };
         setPermissions(allPermissions);
       } else {
@@ -369,26 +370,48 @@ const UsersTab: React.FC = () => {
 
             <h3>Permissions</h3>
             <div className="permissions-grid">
-              {(['dashboard', 'nodes', 'channels', 'messages', 'settings', 'configuration', 'info', 'automation'] as const).map(resource => (
+              {(['dashboard', 'nodes', 'channels', 'messages', 'settings', 'configuration', 'info', 'automation', 'connection'] as const).map(resource => (
                 <div key={resource} className="permission-item">
                   <div className="permission-label">{resource.charAt(0).toUpperCase() + resource.slice(1)}</div>
                   <div className="permission-actions">
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={permissions[resource]?.read || false}
-                        onChange={() => togglePermission(resource, 'read')}
-                      />
-                      Read
-                    </label>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={permissions[resource]?.write || false}
-                        onChange={() => togglePermission(resource, 'write')}
-                      />
-                      Write
-                    </label>
+                    {resource === 'connection' ? (
+                      // Connection permission uses a single checkbox
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={permissions[resource]?.write || false}
+                          onChange={() => {
+                            // For connection, both read and write are set together
+                            const newValue = !permissions[resource]?.write;
+                            setPermissions({
+                              ...permissions,
+                              [resource]: { read: newValue, write: newValue }
+                            });
+                          }}
+                        />
+                        Can Control Connection
+                      </label>
+                    ) : (
+                      // Other permissions use read/write checkboxes
+                      <>
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={permissions[resource]?.read || false}
+                            onChange={() => togglePermission(resource, 'read')}
+                          />
+                          Read
+                        </label>
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={permissions[resource]?.write || false}
+                            onChange={() => togglePermission(resource, 'write')}
+                          />
+                          Write
+                        </label>
+                      </>
+                    )}
                   </div>
                 </div>
               ))}

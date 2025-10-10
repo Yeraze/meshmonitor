@@ -466,19 +466,25 @@ function App() {
 
   // Fetch traceroutes when showPaths is enabled or Messages/Nodes tab is active
   useEffect(() => {
-    if ((showPaths || activeTab === 'messages' || activeTab === 'nodes') && connectionStatus === 'connected') {
+    if ((showPaths || activeTab === 'messages' || activeTab === 'nodes') && shouldShowData()) {
       fetchTraceroutes();
-      const interval = setInterval(fetchTraceroutes, 10000); // Refresh every 10 seconds
-      return () => clearInterval(interval);
+      // Only auto-refresh when connected (not when viewing cached data)
+      if (connectionStatus === 'connected') {
+        const interval = setInterval(fetchTraceroutes, 10000); // Refresh every 10 seconds
+        return () => clearInterval(interval);
+      }
     }
   }, [showPaths, activeTab, connectionStatus]);
 
   // Fetch neighbor info when showNeighborInfo is enabled
   useEffect(() => {
-    if (showNeighborInfo && connectionStatus === 'connected') {
+    if (showNeighborInfo && shouldShowData()) {
       fetchNeighborInfo();
-      const interval = setInterval(fetchNeighborInfo, 10000); // Refresh every 10 seconds
-      return () => clearInterval(interval);
+      // Only auto-refresh when connected (not when viewing cached data)
+      if (connectionStatus === 'connected') {
+        const interval = setInterval(fetchNeighborInfo, 10000); // Refresh every 10 seconds
+        return () => clearInterval(interval);
+      }
     }
   }, [showNeighborInfo, connectionStatus]);
 
