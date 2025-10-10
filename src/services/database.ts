@@ -167,7 +167,37 @@ class DatabaseService {
     this.runDataMigrations();
     this.runAuthMigration();
     this.runChannelsMigration();
+    this.ensureAutomationDefaults();
     this.isInitialized = true;
+  }
+
+  private ensureAutomationDefaults(): void {
+    logger.debug('Ensuring automation default settings...');
+    try {
+      // Only set defaults if they don't exist
+      const automationSettings = {
+        autoAckEnabled: 'false',
+        autoAckRegex: '^(test|ping)',
+        autoAnnounceEnabled: 'false',
+        autoAnnounceIntervalHours: '6',
+        autoAnnounceMessage: 'MeshMonitor {VERSION} online for {DURATION} {FEATURES}',
+        autoAnnounceChannelIndex: '0',
+        autoAnnounceOnStart: 'false'
+      };
+
+      Object.entries(automationSettings).forEach(([key, defaultValue]) => {
+        const existing = this.getSetting(key);
+        if (existing === null) {
+          this.setSetting(key, defaultValue);
+          logger.debug(`✅ Set default for ${key}: ${defaultValue}`);
+        }
+      });
+
+      logger.debug('✅ Automation defaults ensured');
+    } catch (error) {
+      logger.error('❌ Failed to ensure automation defaults:', error);
+      throw error;
+    }
   }
 
   private runAuthMigration(): void {

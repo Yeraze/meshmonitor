@@ -367,41 +367,35 @@ function App() {
             localStorage.setItem('telemetryVisualizationHours', value.toString());
           }
 
+          // Automation settings - loaded from database, not localStorage
           if (settings.autoAckEnabled !== undefined) {
             setAutoAckEnabled(settings.autoAckEnabled === 'true');
-            localStorage.setItem('autoAckEnabled', settings.autoAckEnabled);
           }
 
           if (settings.autoAckRegex) {
             setAutoAckRegex(settings.autoAckRegex);
-            localStorage.setItem('autoAckRegex', settings.autoAckRegex);
           }
 
           if (settings.autoAnnounceEnabled !== undefined) {
             setAutoAnnounceEnabled(settings.autoAnnounceEnabled === 'true');
-            localStorage.setItem('autoAnnounceEnabled', settings.autoAnnounceEnabled);
           }
 
           if (settings.autoAnnounceIntervalHours) {
             const value = parseInt(settings.autoAnnounceIntervalHours);
             setAutoAnnounceIntervalHours(value);
-            localStorage.setItem('autoAnnounceIntervalHours', value.toString());
           }
 
           if (settings.autoAnnounceMessage) {
             setAutoAnnounceMessage(settings.autoAnnounceMessage);
-            localStorage.setItem('autoAnnounceMessage', settings.autoAnnounceMessage);
           }
 
           if (settings.autoAnnounceChannelIndex !== undefined) {
             const value = parseInt(settings.autoAnnounceChannelIndex);
             setAutoAnnounceChannelIndex(value);
-            localStorage.setItem('autoAnnounceChannelIndex', value.toString());
           }
 
           if (settings.autoAnnounceOnStart !== undefined) {
             setAutoAnnounceOnStart(settings.autoAnnounceOnStart === 'true');
-            localStorage.setItem('autoAnnounceOnStart', settings.autoAnnounceOnStart);
           }
         }
 
