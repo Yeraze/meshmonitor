@@ -3,6 +3,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import './TelemetryGraphs.css';
 import { type TemperatureUnit, formatTemperature, getTemperatureUnit } from '../utils/temperature';
 import { logger } from '../utils/logger';
+import { useToast } from './ToastContainer';
 
 interface TelemetryData {
   id?: number;
@@ -34,6 +35,7 @@ interface FavoriteChart {
 }
 
 const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, temperatureUnit = 'C', telemetryHours = 24, baseUrl = '' }) => {
+  const { showToast } = useToast();
   const [telemetryData, setTelemetryData] = useState<TelemetryData[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -132,13 +134,24 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
       });
 
       // Save updated favorites
-      await fetch(`${baseUrl}/api/settings`, {
+      const response = await fetch(`${baseUrl}/api/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ telemetryFavorites: JSON.stringify(allFavorites) })
+        body: JSON.stringify({ telemetryFavorites: JSON.stringify(allFavorites) }),
+        credentials: 'include'
       });
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          showToast('Insufficient permissions to save favorites', 'error');
+          setFavorites(favorites);
+          return;
+        }
+        throw new Error(`Server returned ${response.status}`);
+      }
     } catch (error) {
       logger.error('Error saving favorite:', error);
+      showToast('Failed to save favorite. Please try again.', 'error');
       // Revert on error
       setFavorites(favorites);
     }

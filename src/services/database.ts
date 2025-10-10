@@ -1,16 +1,12 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
-import { fileURLToPath } from 'url';
 import { calculateDistance } from '../utils/distance.js';
 import { logger } from '../utils/logger.js';
 import { UserModel } from '../server/models/User.js';
 import { PermissionModel } from '../server/models/Permission.js';
 import { migration as authMigration } from '../server/migrations/001_add_auth_tables.js';
 import { migration as channelsMigration } from '../server/migrations/002_add_channels_permission.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 export interface DbNode {
   nodeNum: number;
@@ -125,12 +121,8 @@ class DatabaseService {
 
   constructor() {
     logger.debug('🔧🔧🔧 DatabaseService constructor called');
-    // Use DATABASE_PATH env var if set, otherwise fall back to NODE_ENV logic
-    const dbPath = process.env.DATABASE_PATH || (
-      process.env.NODE_ENV === 'production'
-        ? '/data/meshmonitor.db'
-        : path.join(__dirname, '../../data/meshmonitor.db')
-    );
+    // Use DATABASE_PATH env var if set, otherwise default to /data/meshmonitor.db
+    const dbPath = process.env.DATABASE_PATH || '/data/meshmonitor.db';
 
     logger.debug('Initializing database at:', dbPath);
 

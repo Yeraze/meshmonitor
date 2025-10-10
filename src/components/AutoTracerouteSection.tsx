@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useToast } from './ToastContainer';
 
 interface AutoTracerouteSectionProps {
   intervalMinutes: number;
@@ -11,6 +12,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
   baseUrl,
   onIntervalChange,
 }) => {
+  const { showToast } = useToast();
   const [localEnabled, setLocalEnabled] = useState(intervalMinutes > 0);
   const [localInterval, setLocalInterval] = useState(intervalMinutes > 0 ? intervalMinutes : 3);
   const [hasChanges, setHasChanges] = useState(false);
@@ -40,10 +42,15 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           tracerouteIntervalMinutes: intervalToSave
-        })
+        }),
+        credentials: 'include'
       });
 
       if (!response.ok) {
+        if (response.status === 403) {
+          showToast('Insufficient permissions to save settings', 'error');
+          return;
+        }
         throw new Error(`Server returned ${response.status}`);
       }
 
@@ -51,10 +58,10 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
       onIntervalChange(intervalToSave);
 
       setHasChanges(false);
-      alert('Settings saved! Container restart required for changes to take effect.');
+      showToast('Settings saved! Container restart required for changes to take effect.', 'success');
     } catch (error) {
       console.error('Failed to save auto-traceroute settings:', error);
-      alert('Failed to save settings. Please try again.');
+      showToast('Failed to save settings. Please try again.', 'error');
     } finally {
       setIsSaving(false);
     }
