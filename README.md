@@ -307,6 +307,7 @@ For complete Kubernetes documentation, configuration options, and examples, see 
 | `SESSION_MAX_AGE` | `86400000` | Session cookie lifetime in milliseconds (default: 24 hours) |
 | `COOKIE_SECURE` | `true` (production)<br>`false` (development) | Require HTTPS for session cookies. Set to `false` if accessing over HTTP in production (not recommended) |
 | `COOKIE_SAMESITE` | `strict` (production)<br>`lax` (development) | SameSite cookie policy (`strict`, `lax`, or `none`) |
+| `TRUST_PROXY` | `1` (production)<br>unset (development) | Trust reverse proxy headers (`true`, `false`, number of hops, or IP/CIDR). Required for HTTPS reverse proxy setups |
 
 ### Meshtastic Node Requirements
 
@@ -364,6 +365,28 @@ MeshMonitor supports being served from a subfolder using the `BASE_URL` environm
 
 **Important:** BASE_URL is now a **runtime-only** configuration. You can use the same Docker image for any base path - just set the BASE_URL environment variable when running the container.
 
+### HTTPS Reverse Proxy Setup
+
+When deploying MeshMonitor behind a reverse proxy with HTTPS (recommended), you need to configure MeshMonitor to trust the proxy headers. This is **critical for proper session cookie handling**.
+
+**Why this matters:** When a reverse proxy terminates HTTPS, MeshMonitor sees the connection as HTTP. Without trusting proxy headers, secure cookies won't work correctly, causing login failures.
+
+**Solution:** Set `TRUST_PROXY=true` (or `TRUST_PROXY=1` for single proxy):
+
+```yaml
+environment:
+  - NODE_ENV=production
+  - TRUST_PROXY=true  # Required for HTTPS reverse proxy
+  - SESSION_SECRET=your-secret-here
+```
+
+**Advanced trust proxy configurations:**
+- `TRUST_PROXY=true` - Trust all proxies (use with caution)
+- `TRUST_PROXY=1` - Trust first proxy only (recommended, default in production)
+- `TRUST_PROXY=2` - Trust first 2 proxies (for CDN + reverse proxy)
+- `TRUST_PROXY=false` - Don't trust any proxies
+- `TRUST_PROXY=192.168.1.0/24` - Trust specific subnet
+
 ### nginx Subfolder Example
 
 ```nginx
@@ -375,7 +398,7 @@ location ^~ /meshmonitor {
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Proto $scheme;  # Critical for HTTPS
 }
 ```
 
