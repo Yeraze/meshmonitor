@@ -55,6 +55,7 @@ class MeshtasticManager {
   private config: MeshtasticConfig;
   private transport: TcpTransport | null = null;
   private isConnected = false;
+  private userDisconnectedState = false;  // Track user-initiated disconnect
   private tracerouteInterval: NodeJS.Timeout | null = null;
   private tracerouteIntervalMinutes: number = 0;
   private announceInterval: NodeJS.Timeout | null = null;
@@ -165,7 +166,14 @@ class MeshtasticManager {
     this.isConnected = false;
     // Clear favorites support cache on disconnect
     this.favoritesSupportCache = null;
-    // Transport will handle automatic reconnection
+
+    // Only auto-reconnect if not in user-disconnected state
+    if (this.userDisconnectedState) {
+      logger.debug('⏸️  User-initiated disconnect active, skipping auto-reconnect');
+    } else {
+      // Transport will handle automatic reconnection
+      logger.debug('🔄 Auto-reconnection will be attempted by transport');
+    }
   }
 
   private createDefaultChannels(): void {
@@ -3656,11 +3664,12 @@ class MeshtasticManager {
     }
   }
 
-  getConnectionStatus(): { connected: boolean; nodeIp: string } {
-    logger.debug(`🔍 getConnectionStatus called: isConnected=${this.isConnected}`);
+  getConnectionStatus(): { connected: boolean; nodeIp: string; userDisconnected?: boolean } {
+    logger.debug(`🔍 getConnectionStatus called: isConnected=${this.isConnected}, userDisconnected=${this.userDisconnectedState}`);
     return {
       connected: this.isConnected,
-      nodeIp: this.config.nodeIp
+      nodeIp: this.config.nodeIp,
+      userDisconnected: this.userDisconnectedState
     };
   }
 
@@ -3753,6 +3762,67 @@ class MeshtasticManager {
 
     // Send want_config_id to trigger node to send updated info
     await this.sendWantConfigId();
+  }
+
+  /**
+   * User-initiated disconnect from the node
+   * Prevents auto-reconnection until userReconnect() is called
+   */
+  async userDisconnect(): Promise<void> {
+    logger.debug('🔌 User-initiated disconnect requested');
+    this.userDisconnectedState = true;
+
+    if (this.transport) {
+      try {
+        await this.transport.disconnect();
+      } catch (error) {
+        logger.error('Error disconnecting transport:', error);
+      }
+    }
+
+    this.isConnected = false;
+
+    // Clear any active intervals
+    if (this.tracerouteInterval) {
+      clearInterval(this.tracerouteInterval);
+      this.tracerouteInterval = null;
+    }
+
+    if (this.announceInterval) {
+      clearInterval(this.announceInterval);
+      this.announceInterval = null;
+    }
+
+    logger.debug('✅ User disconnect completed');
+  }
+
+  /**
+   * User-initiated reconnect to the node
+   * Clears the user disconnect state and attempts to reconnect
+   */
+  async userReconnect(): Promise<boolean> {
+    logger.debug('🔌 User-initiated reconnect requested');
+    this.userDisconnectedState = false;
+
+    try {
+      const success = await this.connect();
+      if (success) {
+        logger.debug('✅ User reconnect successful');
+      } else {
+        logger.debug('⚠️ User reconnect failed');
+      }
+      return success;
+    } catch (error) {
+      logger.error('❌ User reconnect error:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Check if currently in user-disconnected state
+   */
+  isUserDisconnected(): boolean {
+    return this.userDisconnectedState;
   }
 }
 

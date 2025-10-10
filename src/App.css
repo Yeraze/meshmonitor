@@ -156,6 +156,36 @@ body {
   }
 }
 
+/* Connection control buttons */
+.connection-control-btn {
+  margin-left: 8px;
+  padding: 4px 12px;
+  font-size: 12px;
+  border: 1px solid var(--ctp-overlay0);
+  background: var(--ctp-surface0);
+  color: var(--ctp-text);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-weight: 500;
+}
+
+.connection-control-btn:hover {
+  background: var(--ctp-surface1);
+  border-color: var(--ctp-overlay1);
+}
+
+.connection-control-btn.reconnect {
+  background: var(--ctp-blue);
+  border-color: var(--ctp-blue);
+  color: var(--ctp-base);
+}
+
+.connection-control-btn.reconnect:hover {
+  background: var(--ctp-sapphire);
+  border-color: var(--ctp-sapphire);
+}
+
 /* Tab Navigation */
 .tab-nav {
   background: var(--ctp-surface0);

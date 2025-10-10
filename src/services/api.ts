@@ -601,6 +601,39 @@ class ApiService {
 
     return response.json();
   }
+
+  // Connection control methods
+  async disconnectFromNode() {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/connection/disconnect`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include'
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to disconnect');
+    }
+
+    return response.json();
+  }
+
+  async reconnectToNode() {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/connection/reconnect`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include'
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to reconnect');
+    }
+
+    return response.json();
+  }
 }
 
 export default new ApiService();
