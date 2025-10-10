@@ -1641,6 +1641,10 @@ class MeshtasticManager {
       logger.debug(`🏠 Processing NodeInfo for node ${nodeInfo.num}`);
 
       const nodeId = `!${Number(nodeInfo.num).toString(16).padStart(8, '0')}`;
+
+      // Check if node already exists to determine if we should set isFavorite
+      const existingNode = databaseService.getNode(Number(nodeInfo.num));
+
       const nodeData: any = {
         nodeNum: Number(nodeInfo.num),
         nodeId: nodeId,
@@ -1648,8 +1652,13 @@ class MeshtasticManager {
         snr: nodeInfo.snr,
         rssi: 0, // Will be updated from mesh packet if available
         hopsAway: nodeInfo.hopsAway !== undefined ? nodeInfo.hopsAway : undefined
-        // Note: isFavorite is NOT included here - it's a local-only setting that should not be overwritten by device NodeInfo
       };
+
+      // Only set isFavorite from device for NEW nodes (not updates)
+      // This preserves user's local favorite settings while honoring device favorites on fresh install
+      if (!existingNode && nodeInfo.isFavorite !== undefined) {
+        nodeData.isFavorite = nodeInfo.isFavorite;
+      }
 
       // Add user information if available
       if (nodeInfo.user) {
