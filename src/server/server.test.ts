@@ -128,7 +128,11 @@ const meshtasticManagerMock = {
     bluetooth: { enabled: true }
   })),
   tracerouteInterval: 300000,
-  refreshChannels: vi.fn(async () => ({ success: true, channels: 2 }))
+  refreshChannels: vi.fn(async () => ({ success: true, channels: 2 })),
+  userDisconnect: vi.fn(async () => undefined),
+  userReconnect: vi.fn(async () => true),
+  isUserDisconnected: vi.fn(() => false),
+  getConnectionStatus: vi.fn(() => ({ connected: true, nodeIp: '192.168.1.100' }))
 };
 
 // Mock the meshtasticManager
@@ -270,6 +274,25 @@ describe('Server API Endpoints', () => {
         });
       } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
+      }
+    });
+
+    // Connection control
+    app.post('/api/connection/disconnect', async (_req, res) => {
+      try {
+        await meshtasticManagerMock.userDisconnect();
+        res.json({ success: true, status: 'user-disconnected' });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to disconnect' });
+      }
+    });
+
+    app.post('/api/connection/reconnect', async (_req, res) => {
+      try {
+        const result = await meshtasticManagerMock.userReconnect();
+        res.json({ success: result });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to reconnect' });
       }
     });
 
@@ -546,6 +569,27 @@ describe('Server API Endpoints', () => {
 
       expect(response.body.connected).toBe(true);
       expect(response.body.nodeId).toBe('!localNode');
+    });
+  });
+
+  describe('Connection Control Endpoints', () => {
+    it('POST /api/connection/disconnect should disconnect from node', async () => {
+      const response = await request(app)
+        .post('/api/connection/disconnect')
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.status).toBe('user-disconnected');
+      expect(meshtasticManagerMock.userDisconnect).toHaveBeenCalled();
+    });
+
+    it('POST /api/connection/reconnect should reconnect to node', async () => {
+      const response = await request(app)
+        .post('/api/connection/reconnect')
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(meshtasticManagerMock.userReconnect).toHaveBeenCalled();
     });
   });
 
