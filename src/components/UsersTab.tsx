@@ -83,7 +83,8 @@ const UsersTab: React.FC = () => {
           info: { read: true, write: true },
           automation: { read: true, write: true },
           connection: { read: true, write: true },
-          traceroute: { read: true, write: true }
+          traceroute: { read: true, write: true },
+          audit: { read: true, write: true }
         };
         setPermissions(allPermissions);
       } else {
