@@ -55,6 +55,16 @@ export const migration = {
         CREATE INDEX IF NOT EXISTS idx_permissions_resource ON permissions(resource);
       `);
 
+      // 6. Grant audit permissions to all existing admin users
+      const now = Date.now();
+      db.exec(`
+        INSERT OR IGNORE INTO permissions (user_id, resource, can_read, can_write, granted_at, granted_by)
+        SELECT id, 'audit', 1, 1, ${now}, id
+        FROM users
+        WHERE is_admin = 1
+      `);
+      logger.debug('✅ Granted audit permissions to all admin users');
+
       logger.debug('✅ Migration 006 completed: audit resource added');
     } catch (error) {
       logger.error('❌ Migration 006 failed:', error);
