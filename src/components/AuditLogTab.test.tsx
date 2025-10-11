@@ -95,9 +95,27 @@ const mockUsers = [
 describe('AuditLogTab', () => {
   const mockShowToast = vi.fn();
 
+  // Helper to create complete authStatus objects
+  const createAuthStatus = (overrides: any = {}) => ({
+    authenticated: true,
+    user: { id: 1, username: 'admin', email: null, displayName: null, authProvider: 'local' as const, isAdmin: true, isActive: true, createdAt: Date.now(), lastLoginAt: Date.now() },
+    permissions: { audit: { read: true, write: true } },
+    oidcEnabled: false,
+    localAuthDisabled: false,
+    ...overrides
+  });
+
   const renderWithProviders = (authStatus: any) => {
     return render(
-      <AuthContext.Provider value={{ authStatus, hasPermission: () => true, login: vi.fn(), logout: vi.fn() }}>
+      <AuthContext.Provider value={{
+        authStatus,
+        loading: false,
+        hasPermission: () => true,
+        login: vi.fn(),
+        loginWithOIDC: vi.fn(),
+        logout: vi.fn(),
+        refreshAuth: vi.fn()
+      }}>
         <ToastContext.Provider value={{ showToast: mockShowToast, toasts: [] }}>
           <AuditLogTab />
         </ToastContext.Provider>
@@ -115,17 +133,20 @@ describe('AuditLogTab', () => {
 
   describe('Permission Checks', () => {
     it('should show error message when user lacks audit read permission', () => {
-      const authStatus = {
-        user: { id: 1, username: 'user', isAdmin: false },
+      const authStatus = createAuthStatus({
+        user: { id: 1, username: 'user', email: null, displayName: null, authProvider: 'local' as const, isAdmin: false, isActive: true, createdAt: Date.now(), lastLoginAt: Date.now() },
         permissions: { audit: { read: false, write: false } }
-      };
+      });
 
       render(
         <AuthContext.Provider value={{
           authStatus,
+          loading: false,
           hasPermission: () => false,
           login: vi.fn(),
-          logout: vi.fn()
+          loginWithOIDC: vi.fn(),
+          logout: vi.fn(),
+          refreshAuth: vi.fn()
         }}>
           <ToastContext.Provider value={{ showToast: mockShowToast, toasts: [] }}>
             <AuditLogTab />
@@ -137,10 +158,7 @@ describe('AuditLogTab', () => {
     });
 
     it('should render audit log when user has permission', async () => {
-      const authStatus = {
-        user: { id: 1, username: 'admin', isAdmin: true },
-        permissions: { audit: { read: true, write: true } }
-      };
+      const authStatus = createAuthStatus();
 
       renderWithProviders(authStatus);
 
@@ -151,10 +169,7 @@ describe('AuditLogTab', () => {
   });
 
   describe('Data Loading', () => {
-    const authStatus = {
-      user: { id: 1, username: 'admin', isAdmin: true },
-      permissions: { audit: { read: true, write: true } }
-    };
+    const authStatus = createAuthStatus();
 
     it('should show loading state initially', () => {
       (api.get as any).mockImplementation(() => new Promise(() => {})); // Never resolves
@@ -222,10 +237,7 @@ describe('AuditLogTab', () => {
   });
 
   describe('Statistics Display', () => {
-    const authStatus = {
-      user: { id: 1, username: 'admin', isAdmin: true },
-      permissions: { audit: { read: true, write: true } }
-    };
+    const authStatus = createAuthStatus();
 
     it('should display statistics cards', async () => {
       (api.get as any).mockResolvedValueOnce({ logs: mockAuditLogs, total: mockAuditLogs.length });
@@ -244,10 +256,7 @@ describe('AuditLogTab', () => {
   });
 
   describe('Filtering', () => {
-    const authStatus = {
-      user: { id: 1, username: 'admin', isAdmin: true },
-      permissions: { audit: { read: true, write: true } }
-    };
+    const authStatus = createAuthStatus();
 
     it('should have filter inputs', async () => {
       (api.get as any).mockResolvedValue({ logs: mockAuditLogs, total: mockAuditLogs.length });
@@ -283,10 +292,7 @@ describe('AuditLogTab', () => {
   });
 
   describe('Pagination', () => {
-    const authStatus = {
-      user: { id: 1, username: 'admin', isAdmin: true },
-      permissions: { audit: { read: true, write: true } }
-    };
+    const authStatus = createAuthStatus();
 
     it('should display pagination controls when total exceeds page size', async () => {
       (api.get as any).mockResolvedValueOnce({ logs: mockAuditLogs, total: 150 });
@@ -317,10 +323,7 @@ describe('AuditLogTab', () => {
   });
 
   describe('Row Expansion', () => {
-    const authStatus = {
-      user: { id: 1, username: 'admin', isAdmin: true },
-      permissions: { audit: { read: true, write: true } }
-    };
+    const authStatus = createAuthStatus();
 
     it('should show before/after values when row is expanded', async () => {
       (api.get as any).mockResolvedValueOnce({ logs: mockAuditLogs, total: mockAuditLogs.length });
@@ -403,10 +406,7 @@ describe('AuditLogTab', () => {
   });
 
   describe('CSV Export', () => {
-    const authStatus = {
-      user: { id: 1, username: 'admin', isAdmin: true },
-      permissions: { audit: { read: true, write: true } }
-    };
+    const authStatus = createAuthStatus();
 
     it('should have Export CSV button', async () => {
       (api.get as any).mockResolvedValueOnce({ logs: mockAuditLogs, total: mockAuditLogs.length });
@@ -435,10 +435,7 @@ describe('AuditLogTab', () => {
   });
 
   describe('System Actions', () => {
-    const authStatus = {
-      user: { id: 1, username: 'admin', isAdmin: true },
-      permissions: { audit: { read: true, write: true } }
-    };
+    const authStatus = createAuthStatus();
 
     it('should display "System" for actions without user', async () => {
       (api.get as any).mockResolvedValueOnce({ logs: mockAuditLogs, total: mockAuditLogs.length });
