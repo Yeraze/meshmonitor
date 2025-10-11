@@ -13,9 +13,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import AuditLogTab from './AuditLogTab';
-// @ts-ignore - Test file imports
 import { AuthContext } from '../contexts/AuthContext';
-// @ts-ignore - Test file imports
 import { ToastContext } from './ToastContainer';
 import api from '../services/api';
 

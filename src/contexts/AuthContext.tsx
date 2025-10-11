@@ -39,7 +39,7 @@ interface AuthContextType {
   hasPermission: (resource: keyof PermissionSet, action: 'read' | 'write') => boolean;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
