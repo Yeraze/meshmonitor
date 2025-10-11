@@ -4,7 +4,7 @@
  * Tests admin-only user management endpoints and permission boundaries
  */
 
-import { describe, it, expect, beforeEach, beforeAll } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import express, { Express } from 'express';
 import session from 'express-session';
@@ -15,8 +15,15 @@ import { migration as authMigration } from '../migrations/001_add_auth_tables.js
 import { migration as channelsMigration } from '../migrations/002_add_channels_permission.js';
 import { migration as connectionMigration } from '../migrations/003_add_connection_permission.js';
 import { migration as tracerouteMigration } from '../migrations/004_add_traceroute_permission.js';
+import { migration as auditPermissionMigration } from '../migrations/006_add_audit_permission.js';
 import userRoutes from './userRoutes.js';
 import authRoutes from './authRoutes.js';
+
+// Mock the DatabaseService to prevent auto-initialization
+vi.mock('../../services/database.js', () => ({
+  default: {}
+}));
+
 import DatabaseService from '../../services/database.js';
 
 describe('User Management Routes', () => {
@@ -47,6 +54,7 @@ describe('User Management Routes', () => {
     channelsMigration.up(db);
     connectionMigration.up(db);
     tracerouteMigration.up(db);
+    auditPermissionMigration.up(db);
 
     userModel = new UserModel(db);
     permissionModel = new PermissionModel(db);
