@@ -209,9 +209,10 @@ describe('AuditLogTab', () => {
       renderWithProviders(authStatus);
 
       await waitFor(() => {
-        expect(screen.getByText('login_success')).toBeInTheDocument();
-        expect(screen.getByText('settings_updated')).toBeInTheDocument();
-        expect(screen.getByText('system_startup')).toBeInTheDocument();
+        // These actions appear in both dropdown options and table cells, so use getAllByText
+        expect(screen.getAllByText('login_success').length).toBeGreaterThan(0);
+        expect(screen.getAllByText('settings_updated').length).toBeGreaterThan(0);
+        expect(screen.getAllByText('system_startup').length).toBeGreaterThan(0);
       });
     });
 
@@ -261,9 +262,9 @@ describe('AuditLogTab', () => {
     const authStatus = createAuthStatus();
 
     it('should have filter inputs', async () => {
-      (api.get as any).mockResolvedValue({ logs: mockAuditLogs, total: mockAuditLogs.length });
-      (api.get as any).mockResolvedValue({ stats: mockStats });
-      (api.get as any).mockResolvedValue({ users: mockUsers });
+      (api.get as any).mockResolvedValueOnce({ logs: mockAuditLogs, total: mockAuditLogs.length });
+      (api.get as any).mockResolvedValueOnce({ stats: mockStats });
+      (api.get as any).mockResolvedValueOnce({ users: mockUsers });
 
       renderWithProviders(authStatus);
 
@@ -335,11 +336,13 @@ describe('AuditLogTab', () => {
       renderWithProviders(authStatus);
 
       await waitFor(() => {
-        expect(screen.getByText('settings_updated')).toBeInTheDocument();
+        expect(screen.getAllByText('settings_updated').length).toBeGreaterThan(0);
       });
 
-      // Click on the row with settings_updated
-      const row = screen.getByText('settings_updated').closest('tr');
+      // Click on the row with settings_updated (find the one in a table cell, not dropdown)
+      const settingsElements = screen.getAllByText('settings_updated');
+      const tableCellElement = settingsElements.find(el => el.closest('td'));
+      const row = tableCellElement?.closest('tr');
       fireEvent.click(row!);
 
       await waitFor(() => {

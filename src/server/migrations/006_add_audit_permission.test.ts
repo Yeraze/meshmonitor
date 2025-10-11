@@ -344,7 +344,19 @@ describe('Migration 006: Add Audit Permission', () => {
 
   describe('Edge Cases', () => {
     it('should handle database with no admin users', () => {
-      // Delete all admin users
+      // Check if audit_log table exists and delete entries if it does (to avoid FK constraint)
+      const tableExists = db.prepare(`
+        SELECT name FROM sqlite_master WHERE type='table' AND name='audit_log'
+      `).get();
+      if (tableExists) {
+        db.prepare('DELETE FROM audit_log WHERE user_id IN (SELECT id FROM users WHERE is_admin = 1)').run();
+      }
+
+      // Update granted_by references to NULL (to avoid FK constraint)
+      db.prepare('UPDATE permissions SET granted_by = NULL WHERE granted_by IN (SELECT id FROM users WHERE is_admin = 1)').run();
+      // Delete all permissions for admin users
+      db.prepare('DELETE FROM permissions WHERE user_id IN (SELECT id FROM users WHERE is_admin = 1)').run();
+      // Finally, delete all admin users
       db.prepare('DELETE FROM users WHERE is_admin = 1').run();
 
       expect(() => migration.up(db)).not.toThrow();

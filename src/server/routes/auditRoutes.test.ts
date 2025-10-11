@@ -420,11 +420,26 @@ describe('Audit Log Routes', () => {
 
       const res = await asAdmin().post('/api/audit/cleanup').send({ days: 90 });
       expect(res.status).toBe(200);
-      expect(res.body.deleted).toBe(1);
+      expect(res.body.deletedCount).toBe(1);
 
+      // After cleanup: 4 initial - 1 deleted + 1 cleanup audit log = 4
       const afterResult = db.prepare('SELECT COUNT(*) as count FROM audit_log').get() as any;
       const afterCount = afterResult.count;
-      expect(afterCount).toBe(3);
+      expect(afterCount).toBe(4);
+
+      // Verify the old entry was deleted
+      const oldEntries = db.prepare(`
+        SELECT COUNT(*) as count FROM audit_log
+        WHERE action = 'old_action'
+      `).get() as any;
+      expect(oldEntries.count).toBe(0);
+
+      // Verify cleanup was logged
+      const cleanupLogs = db.prepare(`
+        SELECT COUNT(*) as count FROM audit_log
+        WHERE action = 'audit_cleanup'
+      `).get() as any;
+      expect(cleanupLogs.count).toBe(1);
     });
 
     it('should require days parameter', async () => {

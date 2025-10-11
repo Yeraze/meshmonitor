@@ -230,7 +230,7 @@ const AuditLogTab: React.FC = () => {
         <button
           onClick={handleExportCSV}
           className="button button-primary"
-          disabled={logs.length === 0}
+          disabled={!logs || logs.length === 0}
         >
           Export CSV
         </button>
