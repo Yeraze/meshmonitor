@@ -560,7 +560,11 @@ const UsersTab: React.FC = () => {
               <div className="modal-actions">
                 <button
                   className="button button-secondary"
-                  onClick={handleCloseSetPasswordModal}
+                  onClick={() => {
+                    setPasswordForm({ newPassword: '', confirmPassword: '' });
+                    setShowSetPasswordModal(false);
+                    setPasswordError(null);
+                  }}
                 >
                   Cancel
                 </button>

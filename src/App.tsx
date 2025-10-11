@@ -2006,6 +2006,7 @@ function App() {
                   eventHandlers={{
                     click: () => {
                       setSelectedNodeId(node.user?.id || null);
+                      centerMapOnNode(node);
                     }
                   }}
                   icon={markerIcon}
