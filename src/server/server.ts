@@ -995,6 +995,7 @@ apiRouter.get('/config', optionalAuth(), async (_req, res) => {
     const localNodeNumStr = databaseService.getSetting('localNodeNum');
 
     let deviceMetadata = undefined;
+    let localNodeInfo = undefined;
     if (localNodeNumStr) {
       const localNodeNum = parseInt(localNodeNumStr, 10);
       const currentNode = databaseService.getNode(localNodeNum);
@@ -1004,6 +1005,13 @@ apiRouter.get('/config', optionalAuth(), async (_req, res) => {
           firmwareVersion: currentNode.firmwareVersion,
           rebootCount: currentNode.rebootCount
         };
+
+        // Include local node identity information for anonymous users
+        localNodeInfo = {
+          nodeId: currentNode.nodeId,
+          longName: currentNode.longName,
+          shortName: currentNode.shortName
+        };
       }
     }
 
@@ -1012,7 +1020,8 @@ apiRouter.get('/config', optionalAuth(), async (_req, res) => {
       meshtasticTcpPort: parseInt(process.env.MESHTASTIC_TCP_PORT || '4403', 10),
       meshtasticUseTls: false,  // We're using TCP, not TLS
       baseUrl: BASE_URL,
-      deviceMetadata: deviceMetadata
+      deviceMetadata: deviceMetadata,
+      localNodeInfo: localNodeInfo
     });
   } catch (error) {
     logger.error('Error in /api/config:', error);
