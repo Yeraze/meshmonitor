@@ -9,6 +9,8 @@ import { migration as authMigration } from '../server/migrations/001_add_auth_ta
 import { migration as channelsMigration } from '../server/migrations/002_add_channels_permission.js';
 import { migration as connectionMigration } from '../server/migrations/003_add_connection_permission.js';
 import { migration as tracerouteMigration } from '../server/migrations/004_add_traceroute_permission.js';
+import { migration as auditLogMigration } from '../server/migrations/005_enhance_audit_log.js';
+import { migration as auditPermissionMigration } from '../server/migrations/006_add_audit_permission.js';
 
 export interface DbNode {
   nodeNum: number;
@@ -163,6 +165,8 @@ class DatabaseService {
     this.runChannelsMigration();
     this.runConnectionMigration();
     this.runTracerouteMigration();
+    this.runAuditLogMigration();
+    this.runAuditPermissionMigration();
     this.ensureAutomationDefaults();
     this.isInitialized = true;
   }
@@ -279,6 +283,48 @@ class DatabaseService {
       logger.debug('✅ Traceroute permission migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run traceroute permission migration:', error);
+      throw error;
+    }
+  }
+
+  private runAuditLogMigration(): void {
+    logger.debug('Running audit log enhancement migration...');
+    try {
+      const migrationKey = 'migration_005_enhance_audit_log';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Audit log enhancement migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 005: Enhance audit log table...');
+      auditLogMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Audit log enhancement migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run audit log enhancement migration:', error);
+      throw error;
+    }
+  }
+
+  private runAuditPermissionMigration(): void {
+    logger.debug('Running audit permission migration...');
+    try {
+      const migrationKey = 'migration_006_audit_permission';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Audit permission migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 006: Add audit permission resource...');
+      auditPermissionMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Audit permission migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run audit permission migration:', error);
       throw error;
     }
   }
@@ -1809,43 +1855,161 @@ class DatabaseService {
     action: string,
     resource: string | null,
     details: string | null,
-    ipAddress: string | null
+    ipAddress: string | null,
+    valueBefore?: string | null,
+    valueAfter?: string | null
   ): void {
     try {
       const stmt = this.db.prepare(`
-        INSERT INTO audit_log (user_id, action, resource, details, ip_address, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO audit_log (user_id, action, resource, details, ip_address, value_before, value_after, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
-      stmt.run(userId, action, resource, details, ipAddress, Date.now());
+      stmt.run(userId, action, resource, details, ipAddress, valueBefore || null, valueAfter || null, Date.now());
     } catch (error) {
       logger.error('Failed to write audit log:', error);
       // Don't throw - audit log failures shouldn't break the application
     }
   }
 
-  getAuditLogs(limit: number = 100, userId?: number): any[] {
-    let query = `
-      SELECT
-        al.id, al.user_id as userId, al.action, al.resource,
-        al.details, al.ip_address as ipAddress, al.timestamp,
-        u.username
-      FROM audit_log al
-      LEFT JOIN users u ON al.user_id = u.id
-    `;
+  getAuditLogs(options: {
+    limit?: number;
+    offset?: number;
+    userId?: number;
+    action?: string;
+    resource?: string;
+    startDate?: number;
+    endDate?: number;
+    search?: string;
+  } = {}): { logs: any[]; total: number } {
+    const {
+      limit = 100,
+      offset = 0,
+      userId,
+      action,
+      resource,
+      startDate,
+      endDate,
+      search
+    } = options;
 
+    // Build WHERE clause dynamically
+    const conditions: string[] = [];
     const params: any[] = [];
 
     if (userId !== undefined) {
-      query += ' WHERE al.user_id = ?';
+      conditions.push('al.user_id = ?');
       params.push(userId);
     }
 
-    query += ' ORDER BY al.timestamp DESC LIMIT ?';
-    params.push(limit);
+    if (action) {
+      conditions.push('al.action = ?');
+      params.push(action);
+    }
+
+    if (resource) {
+      conditions.push('al.resource = ?');
+      params.push(resource);
+    }
+
+    if (startDate !== undefined) {
+      conditions.push('al.timestamp >= ?');
+      params.push(startDate);
+    }
+
+    if (endDate !== undefined) {
+      conditions.push('al.timestamp <= ?');
+      params.push(endDate);
+    }
+
+    if (search) {
+      conditions.push('(al.details LIKE ? OR u.username LIKE ?)');
+      params.push(`%${search}%`, `%${search}%`);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    // Get total count
+    const countQuery = `
+      SELECT COUNT(*) as count
+      FROM audit_log al
+      LEFT JOIN users u ON al.user_id = u.id
+      ${whereClause}
+    `;
+    const countStmt = this.db.prepare(countQuery);
+    const countResult = countStmt.get(...params) as { count: number };
+    const total = Number(countResult.count);
+
+    // Get paginated results
+    const query = `
+      SELECT
+        al.id, al.user_id as userId, al.action, al.resource,
+        al.details, al.ip_address as ipAddress, al.value_before as valueBefore,
+        al.value_after as valueAfter, al.timestamp,
+        u.username
+      FROM audit_log al
+      LEFT JOIN users u ON al.user_id = u.id
+      ${whereClause}
+      ORDER BY al.timestamp DESC
+      LIMIT ? OFFSET ?
+    `;
 
     const stmt = this.db.prepare(query);
-    return stmt.all(...params) as any[];
+    const logs = stmt.all(...params, limit, offset) as any[];
+
+    return { logs, total };
+  }
+
+  // Get audit log statistics
+  getAuditStats(days: number = 30): any {
+    const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+
+    // Count by action type
+    const actionStats = this.db.prepare(`
+      SELECT action, COUNT(*) as count
+      FROM audit_log
+      WHERE timestamp >= ?
+      GROUP BY action
+      ORDER BY count DESC
+    `).all(cutoff);
+
+    // Count by user
+    const userStats = this.db.prepare(`
+      SELECT u.username, COUNT(*) as count
+      FROM audit_log al
+      LEFT JOIN users u ON al.user_id = u.id
+      WHERE al.timestamp >= ?
+      GROUP BY al.user_id
+      ORDER BY count DESC
+      LIMIT 10
+    `).all(cutoff);
+
+    // Count by day
+    const dailyStats = this.db.prepare(`
+      SELECT
+        date(timestamp/1000, 'unixepoch') as date,
+        COUNT(*) as count
+      FROM audit_log
+      WHERE timestamp >= ?
+      GROUP BY date(timestamp/1000, 'unixepoch')
+      ORDER BY date DESC
+    `).all(cutoff);
+
+    return {
+      actionStats,
+      userStats,
+      dailyStats,
+      totalEvents: actionStats.reduce((sum: number, stat: any) => sum + Number(stat.count), 0)
+    };
+  }
+
+  // Cleanup old audit logs
+  cleanupAuditLogs(days: number): number {
+    const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+    const stmt = this.db.prepare('DELETE FROM audit_log WHERE timestamp < ?');
+    const result = stmt.run(cutoff);
+    logger.debug(`🧹 Cleaned up ${result.changes} audit log entries older than ${days} days`);
+    return Number(result.changes);
   }
 }
 
