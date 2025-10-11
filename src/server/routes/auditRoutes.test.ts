@@ -208,7 +208,7 @@ describe('Audit Log Routes', () => {
 
     // Add test middleware to inject sessions for testing
     // This must come AFTER session middleware but BEFORE routes
-    app.use((req, res, next) => {
+    app.use((req, _res, next) => {
       // Check for test headers to simulate logged-in users
       const testUserId = req.headers['x-test-user-id'];
       if (testUserId) {
