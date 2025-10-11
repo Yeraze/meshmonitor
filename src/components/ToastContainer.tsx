@@ -3,9 +3,10 @@ import Toast, { ToastProps } from './Toast';
 
 interface ToastContextType {
   showToast: (message: string, type: ToastProps['type'], duration?: number) => void;
+  toasts: Array<Omit<ToastProps, 'onClose'>>;
 }
 
-const ToastContext = createContext<ToastContextType | undefined>(undefined);
+export const ToastContext = createContext<ToastContextType | undefined>(undefined);
 
 export const useToast = () => {
   const context = useContext(ToastContext);
@@ -28,7 +29,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   return (
-    <ToastContext.Provider value={{ showToast }}>
+    <ToastContext.Provider value={{ showToast, toasts }}>
       {children}
       <div
         style={{
