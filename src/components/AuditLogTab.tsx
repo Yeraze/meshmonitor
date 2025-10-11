@@ -192,15 +192,15 @@ const AuditLogTab: React.FC = () => {
 
   const getActionColor = (action: string): string => {
     if (action.includes('fail') || action.includes('delete') || action.includes('purge')) {
-      return 'text-red-600';
+      return 'action-error';
     }
     if (action.includes('update') || action.includes('change') || action.includes('reset')) {
-      return 'text-yellow-600';
+      return 'action-warning';
     }
     if (action.includes('success') || action.includes('create')) {
-      return 'text-green-600';
+      return 'action-success';
     }
-    return 'text-gray-600';
+    return '';
   };
 
   const toggleExpand = (logId: number) => {
@@ -215,19 +215,21 @@ const AuditLogTab: React.FC = () => {
 
   if (!authStatus?.permissions?.audit?.read) {
     return (
-      <div className="text-center py-8">
-        <p className="text-red-600">You do not have permission to view audit logs.</p>
+      <div className="audit-log-tab">
+        <div className="error-message">
+          You do not have permission to view audit logs.
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Audit Log</h2>
+    <div className="audit-log-tab">
+      <div className="audit-log-header">
+        <h2>Audit Log</h2>
         <button
           onClick={handleExportCSV}
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          className="button button-primary"
           disabled={logs.length === 0}
         >
           Export CSV
@@ -236,20 +238,20 @@ const AuditLogTab: React.FC = () => {
 
       {/* Statistics Summary */}
       {stats && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div className="bg-white p-4 rounded-lg shadow">
-            <h3 className="text-sm font-medium text-gray-500">Total Events (30 days)</h3>
-            <p className="text-2xl font-bold">{stats.totalEvents}</p>
+        <div className="audit-stats">
+          <div className="stat-card">
+            <h3>Total Events (30 days)</h3>
+            <p className="stat-value">{stats.totalEvents}</p>
           </div>
-          <div className="bg-white p-4 rounded-lg shadow">
-            <h3 className="text-sm font-medium text-gray-500">Top Action</h3>
-            <p className="text-lg font-semibold">
+          <div className="stat-card">
+            <h3>Top Action</h3>
+            <p className="stat-label">
               {stats.actionStats[0]?.action || 'N/A'} ({stats.actionStats[0]?.count || 0})
             </p>
           </div>
-          <div className="bg-white p-4 rounded-lg shadow">
-            <h3 className="text-sm font-medium text-gray-500">Most Active User</h3>
-            <p className="text-lg font-semibold">
+          <div className="stat-card">
+            <h3>Most Active User</h3>
+            <p className="stat-label">
               {stats.userStats[0]?.username || 'N/A'} ({stats.userStats[0]?.count || 0})
             </p>
           </div>
@@ -257,13 +259,12 @@ const AuditLogTab: React.FC = () => {
       )}
 
       {/* Filters */}
-      <div className="bg-white p-4 rounded-lg shadow space-y-4">
-        <h3 className="font-semibold">Filters</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">User</label>
+      <div className="audit-filters">
+        <h3>Filters</h3>
+        <div className="filter-grid">
+          <div className="form-group">
+            <label>User</label>
             <select
-              className="w-full px-3 py-2 border border-gray-300 rounded-md"
               value={filters.userId}
               onChange={(e) => handleFilterChange('userId', e.target.value)}
             >
@@ -274,10 +275,9 @@ const AuditLogTab: React.FC = () => {
             </select>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Action</label>
+          <div className="form-group">
+            <label>Action</label>
             <select
-              className="w-full px-3 py-2 border border-gray-300 rounded-md"
               value={filters.action}
               onChange={(e) => handleFilterChange('action', e.target.value)}
             >
@@ -288,10 +288,9 @@ const AuditLogTab: React.FC = () => {
             </select>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Resource</label>
+          <div className="form-group">
+            <label>Resource</label>
             <select
-              className="w-full px-3 py-2 border border-gray-300 rounded-md"
               value={filters.resource}
               onChange={(e) => handleFilterChange('resource', e.target.value)}
             >
@@ -302,31 +301,28 @@ const AuditLogTab: React.FC = () => {
             </select>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+          <div className="form-group">
+            <label>Start Date</label>
             <input
               type="date"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md"
               value={filters.startDate}
               onChange={(e) => handleFilterChange('startDate', e.target.value)}
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+          <div className="form-group">
+            <label>End Date</label>
             <input
               type="date"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md"
               value={filters.endDate}
               onChange={(e) => handleFilterChange('endDate', e.target.value)}
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Search</label>
+          <div className="form-group">
+            <label>Search</label>
             <input
               type="text"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md"
               placeholder="Search in details..."
               value={filters.search}
               onChange={(e) => handleFilterChange('search', e.target.value)}
@@ -334,17 +330,16 @@ const AuditLogTab: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex justify-between items-center">
+        <div className="filter-actions">
           <button
             onClick={handleClearFilters}
-            className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+            className="button button-secondary"
           >
             Clear Filters
           </button>
-          <div>
-            <label className="text-sm font-medium text-gray-700 mr-2">Per Page:</label>
+          <div className="form-group inline-group">
+            <label>Per Page:</label>
             <select
-              className="px-3 py-2 border border-gray-300 rounded-md"
               value={filters.limit}
               onChange={(e) => handleFilterChange('limit', parseInt(e.target.value))}
             >
@@ -359,125 +354,111 @@ const AuditLogTab: React.FC = () => {
 
       {/* Audit Log Table */}
       {loading ? (
-        <div className="text-center py-8">Loading audit logs...</div>
+        <div className="audit-loading">Loading audit logs...</div>
       ) : error ? (
-        <div className="text-center py-8 text-red-600">{error}</div>
+        <div className="error-message">{error}</div>
       ) : logs.length === 0 ? (
-        <div className="text-center py-8 text-gray-500">No audit log entries found</div>
+        <div className="audit-empty">No audit log entries found</div>
       ) : (
         <>
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Timestamp
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      User
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Action
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Resource
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      IP Address
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Details
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {logs.map(log => (
-                    <React.Fragment key={log.id}>
-                      <tr className="hover:bg-gray-50 cursor-pointer" onClick={() => toggleExpand(log.id)}>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {formatTimestamp(log.timestamp)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {log.username || <span className="text-gray-400">System</span>}
-                        </td>
-                        <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${getActionColor(log.action)}`}>
-                          {log.action}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {log.resource || '-'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {log.ipAddress || '-'}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-500">
-                          <div className="max-w-md truncate">
-                            {log.details || '-'}
+          <div className="audit-table-container">
+            <table className="audit-table">
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>User</th>
+                  <th>Action</th>
+                  <th>Resource</th>
+                  <th>IP Address</th>
+                  <th>Details</th>
+                </tr>
+              </thead>
+              <tbody>
+                {logs.map(log => (
+                  <React.Fragment key={log.id}>
+                    <tr className="audit-row" onClick={() => toggleExpand(log.id)}>
+                      <td className="timestamp-cell">
+                        {formatTimestamp(log.timestamp)}
+                      </td>
+                      <td>
+                        {log.username || <span className="system-label">System</span>}
+                      </td>
+                      <td className={`action-cell ${getActionColor(log.action)}`}>
+                        {log.action}
+                      </td>
+                      <td>
+                        {log.resource || '-'}
+                      </td>
+                      <td>
+                        {log.ipAddress || '-'}
+                      </td>
+                      <td>
+                        <div className="details-cell">
+                          {log.details || '-'}
+                        </div>
+                      </td>
+                    </tr>
+                    {expandedLog === log.id && (
+                      <tr className="audit-detail-row">
+                        <td colSpan={6}>
+                          <div className="audit-details">
+                            <div className="detail-section">
+                              <strong>Details:</strong>
+                              <pre className="detail-pre">
+                                {log.details ? JSON.stringify(JSON.parse(log.details), null, 2) : 'N/A'}
+                              </pre>
+                            </div>
+                            {(log.valueBefore || log.valueAfter) && (
+                              <div className="detail-comparison">
+                                {log.valueBefore && (
+                                  <div className="detail-section before">
+                                    <strong>Before:</strong>
+                                    <pre className="detail-pre">
+                                      {JSON.stringify(JSON.parse(log.valueBefore), null, 2)}
+                                    </pre>
+                                  </div>
+                                )}
+                                {log.valueAfter && (
+                                  <div className="detail-section after">
+                                    <strong>After:</strong>
+                                    <pre className="detail-pre">
+                                      {JSON.stringify(JSON.parse(log.valueAfter), null, 2)}
+                                    </pre>
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </td>
                       </tr>
-                      {expandedLog === log.id && (
-                        <tr>
-                          <td colSpan={6} className="px-6 py-4 bg-gray-50">
-                            <div className="space-y-2">
-                              <div>
-                                <strong className="text-sm">Details:</strong>
-                                <pre className="mt-1 p-2 bg-white rounded border text-xs overflow-x-auto">
-                                  {log.details ? JSON.stringify(JSON.parse(log.details), null, 2) : 'N/A'}
-                                </pre>
-                              </div>
-                              {(log.valueBefore || log.valueAfter) && (
-                                <div className="grid grid-cols-2 gap-4">
-                                  {log.valueBefore && (
-                                    <div>
-                                      <strong className="text-sm">Before:</strong>
-                                      <pre className="mt-1 p-2 bg-red-50 rounded border border-red-200 text-xs overflow-x-auto">
-                                        {JSON.stringify(JSON.parse(log.valueBefore), null, 2)}
-                                      </pre>
-                                    </div>
-                                  )}
-                                  {log.valueAfter && (
-                                    <div>
-                                      <strong className="text-sm">After:</strong>
-                                      <pre className="mt-1 p-2 bg-green-50 rounded border border-green-200 text-xs overflow-x-auto">
-                                        {JSON.stringify(JSON.parse(log.valueAfter), null, 2)}
-                                      </pre>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                    )}
+                  </React.Fragment>
+                ))}
+              </tbody>
+            </table>
           </div>
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex justify-between items-center">
-              <div className="text-sm text-gray-700">
+            <div className="audit-pagination">
+              <div className="pagination-info">
                 Showing {filters.offset + 1} to {Math.min(filters.offset + itemsPerPage, total)} of {total} entries
               </div>
-              <div className="flex space-x-2">
+              <div className="pagination-controls">
                 <button
                   onClick={() => handlePageChange(currentPage - 1)}
                   disabled={currentPage === 1}
-                  className="px-4 py-2 border rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                  className="button"
                 >
                   Previous
                 </button>
-                <span className="px-4 py-2">
+                <span className="page-indicator">
                   Page {currentPage} of {totalPages}
                 </span>
                 <button
                   onClick={() => handlePageChange(currentPage + 1)}
                   disabled={currentPage === totalPages}
-                  className="px-4 py-2 border rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                  className="button"
                 >
                   Next
                 </button>
