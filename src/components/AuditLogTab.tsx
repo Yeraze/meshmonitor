@@ -270,7 +270,7 @@ const AuditLogTab: React.FC = () => {
               onChange={(e) => handleFilterChange('userId', e.target.value)}
             >
               <option value="">All Users</option>
-              {users.map(user => (
+              {users && users.map(user => (
                 <option key={user.id} value={user.id}>{user.username}</option>
               ))}
             </select>
@@ -363,7 +363,7 @@ const AuditLogTab: React.FC = () => {
         <div className="audit-loading">Loading audit logs...</div>
       ) : error ? (
         <div className="error-message">{error}</div>
-      ) : logs.length === 0 ? (
+      ) : !logs || logs.length === 0 ? (
         <div className="audit-empty">No audit log entries found</div>
       ) : (
         <>
