@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import './Sidebar.css';
 import { TabType } from '../types/ui';
 import { ResourceType, PermissionAction } from '../types/permission';
+import packageJson from '../../package.json';
 
 interface SidebarProps {
   activeTab: TabType;
@@ -108,7 +109,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       <div className="sidebar-footer">
         {!isCollapsed && (
           <>
-            <span className="version-text">v2.2.0</span>
+            <span className="version-text">v{packageJson.version}</span>
             <a
               href="https://github.com/Yeraze/meshmonitor"
               target="_blank"
