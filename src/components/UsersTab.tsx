@@ -134,6 +134,12 @@ const UsersTab: React.FC = () => {
     }
   };
 
+  const handleCloseSetPasswordModal = () => {
+    setPasswordForm({ newPassword: '', confirmPassword: '' });
+    setShowSetPasswordModal(false);
+    setPasswordError(null);
+  };
+
   const handleSetPassword = async () => {
     if (!selectedUser) return;
 
@@ -511,11 +517,11 @@ const UsersTab: React.FC = () => {
 
       {/* Set Password Modal */}
       {showSetPasswordModal && selectedUser && (
-        <div className="modal-overlay" onClick={() => setShowSetPasswordModal(false)}>
+        <div className="modal-overlay" onClick={handleCloseSetPasswordModal}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Set Password for {selectedUser.username}</h2>
-              <button className="close-button" onClick={() => setShowSetPasswordModal(false)}>×</button>
+              <button className="close-button" onClick={handleCloseSetPasswordModal}>×</button>
             </div>
 
             <div className="modal-body">
