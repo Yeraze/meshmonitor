@@ -9,6 +9,7 @@ import InfoTab from './components/InfoTab'
 import SettingsTab from './components/SettingsTab'
 import ConfigurationTab from './components/ConfigurationTab'
 import UsersTab from './components/UsersTab'
+import AuditLogTab from './components/AuditLogTab'
 import Dashboard from './components/Dashboard'
 import HopCountDisplay from './components/HopCountDisplay'
 import AutoAcknowledgeSection from './components/AutoAcknowledgeSection'
@@ -3557,6 +3558,14 @@ function App() {
             Users
           </button>
         )}
+        {hasPermission('audit', 'read') && (
+          <button
+            className={`tab-btn ${activeTab === 'audit' ? 'active' : ''}`}
+            onClick={() => setActiveTab('audit')}
+          >
+            Audit Log
+          </button>
+        )}
       </nav>
 
       <main className="app-main">
@@ -3666,6 +3675,7 @@ function App() {
           />
         )}
         {activeTab === 'users' && <UsersTab />}
+        {activeTab === 'audit' && <AuditLogTab />}
       </main>
 
       {/* Node Popup */}
