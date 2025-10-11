@@ -1,0 +1,226 @@
+.sidebar {
+  position: fixed;
+  left: 0;
+  top: 120px; /* Below the header with extra clearance */
+  height: calc(100vh - 120px);
+  width: 240px;
+  background: var(--color-bg-primary, #1a1a1a);
+  border-right: 1px solid var(--color-border, #333);
+  transition: width 0.3s ease;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar.collapsed {
+  width: 60px;
+}
+
+.sidebar-footer {
+  padding: 12px 16px;
+  border-top: 1px solid var(--color-border, #333);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--color-bg-secondary, #1a1a1a);
+  margin-top: auto;
+}
+
+.sidebar.collapsed .sidebar-footer {
+  justify-content: center;
+  padding: 12px 8px;
+}
+
+.version-text {
+  font-size: 12px;
+  color: var(--color-text-secondary, #999);
+  font-weight: 500;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+}
+
+.github-link {
+  color: var(--color-text-secondary, #999);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s;
+  text-decoration: none;
+}
+
+.github-link:hover {
+  color: var(--color-text-primary, #e0e0e0);
+}
+
+.sidebar-toggle {
+  position: absolute;
+  right: 8px;
+  bottom: 70px; /* Above the footer */
+  background: var(--ctp-blue, #2a2a2a);
+  border: 1px solid var(--ctp-sapphire, #333);
+  color: var(--ctp-base, #e0e0e0);
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: bold;
+  transition: all 0.2s;
+  z-index: 1; /* Within sidebar stacking context */
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.sidebar-toggle:hover {
+  background: var(--ctp-sapphire, #74c7ec);
+  transform: scale(1.05);
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 8px 120px 8px; /* Bottom padding for toggle button and footer */
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1;
+}
+
+.sidebar-section-header {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-secondary, #999);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 12px 12px 4px 12px;
+  margin-top: 8px;
+}
+
+.sidebar-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--color-text-primary, #e0e0e0);
+  cursor: pointer;
+  transition: background-color 0.2s;
+  text-align: left;
+  font-size: 14px;
+  position: relative;
+  white-space: nowrap;
+}
+
+.sidebar-nav-item:hover {
+  background: var(--color-bg-secondary, #2a2a2a);
+}
+
+.sidebar-nav-item.active {
+  background: var(--color-primary, #2196F3);
+  color: white;
+}
+
+.sidebar-nav-item .nav-icon {
+  font-size: 18px;
+  width: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sidebar-nav-item .nav-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar.collapsed .sidebar-nav-item {
+  justify-content: center;
+  padding: 10px;
+}
+
+.sidebar.collapsed .nav-label {
+  display: none;
+}
+
+.nav-notification-dot {
+  width: 8px;
+  height: 8px;
+  background: #ff4444;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.sidebar.collapsed .nav-notification-dot {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
+/* Adjust main content when sidebar is present */
+.sidebar.collapsed ~ .app-main {
+  margin-left: 60px;
+  width: calc(100% - 60px);
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .sidebar {
+    transform: translateX(-100%);
+    width: 240px;
+  }
+
+  .sidebar:not(.collapsed) {
+    transform: translateX(0);
+  }
+
+  .sidebar.collapsed {
+    transform: translateX(0);
+    width: 60px;
+  }
+
+  .app-main {
+    margin-left: 0 !important;
+    width: 100% !important;
+  }
+
+  .sidebar.collapsed ~ .app-main {
+    margin-left: 60px !important;
+    width: calc(100% - 60px) !important;
+  }
+
+  /* Show toggle button on mobile even when collapsed */
+  .sidebar-toggle {
+    background: var(--color-primary, #2196F3);
+    color: white;
+  }
+}
+
+/* Scrollbar styling for sidebar */
+.sidebar-nav::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar-nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb {
+  background: var(--color-bg-tertiary, #3a3a3a);
+  border-radius: 3px;
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border, #555);
+}
