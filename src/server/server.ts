@@ -186,12 +186,16 @@ const apiRouter = express.Router();
 // Import route handlers
 import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/userRoutes.js';
+import auditRoutes from './routes/auditRoutes.js';
 
 // Authentication routes
 apiRouter.use('/auth', authRoutes);
 
 // User management routes (admin only)
 apiRouter.use('/users', userRoutes);
+
+// Audit log routes (admin only)
+apiRouter.use('/audit', auditRoutes);
 
 // API Routes
 apiRouter.get('/nodes', optionalAuth(), (_req, res) => {
@@ -964,9 +968,19 @@ apiRouter.get('/connection', optionalAuth(), (_req, res) => {
 });
 
 // User-initiated disconnect endpoint
-apiRouter.post('/connection/disconnect', requirePermission('connection', 'write'), async (_req, res) => {
+apiRouter.post('/connection/disconnect', requirePermission('connection', 'write'), async (req, res) => {
   try {
     await meshtasticManager.userDisconnect();
+
+    // Audit log
+    databaseService.auditLog(
+      req.user!.id,
+      'connection_disconnected',
+      'connection',
+      'User initiated disconnect',
+      req.ip || null
+    );
+
     res.json({ success: true, status: 'user-disconnected' });
   } catch (error) {
     logger.error('Error disconnecting:', error);
@@ -975,9 +989,19 @@ apiRouter.post('/connection/disconnect', requirePermission('connection', 'write'
 });
 
 // User-initiated reconnect endpoint
-apiRouter.post('/connection/reconnect', requirePermission('connection', 'write'), async (_req, res) => {
+apiRouter.post('/connection/reconnect', requirePermission('connection', 'write'), async (req, res) => {
   try {
     const success = await meshtasticManager.userReconnect();
+
+    // Audit log
+    databaseService.auditLog(
+      req.user!.id,
+      'connection_reconnected',
+      'connection',
+      JSON.stringify({ success }),
+      req.ip || null
+    );
+
     res.json({
       success,
       status: success ? 'connecting' : 'disconnected'
@@ -1142,6 +1166,9 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
   try {
     const settings = req.body;
 
+    // Get current settings for before/after comparison
+    const currentSettings = databaseService.getAllSettings();
+
     // Validate settings
     const validKeys = ['maxNodeAgeHours', 'tracerouteIntervalMinutes', 'temperatureUnit', 'distanceUnit', 'telemetryVisualizationHours', 'telemetryFavorites', 'autoAckEnabled', 'autoAckRegex', 'autoAnnounceEnabled', 'autoAnnounceIntervalHours', 'autoAnnounceMessage', 'autoAnnounceChannelIndex', 'autoAnnounceOnStart'];
     const filteredSettings: Record<string, string> = {};
@@ -1185,6 +1212,29 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
       }
     }
 
+    // Audit log with before/after values
+    const changedSettings: Record<string, { before: string | undefined; after: string }> = {};
+    Object.keys(filteredSettings).forEach(key => {
+      if (currentSettings[key] !== filteredSettings[key]) {
+        changedSettings[key] = {
+          before: currentSettings[key],
+          after: filteredSettings[key]
+        };
+      }
+    });
+
+    if (Object.keys(changedSettings).length > 0) {
+      databaseService.auditLog(
+        req.user!.id,
+        'settings_updated',
+        'settings',
+        JSON.stringify({ keys: Object.keys(changedSettings) }),
+        req.ip || null,
+        JSON.stringify(Object.fromEntries(Object.entries(changedSettings).map(([k, v]) => [k, v.before]))),
+        JSON.stringify(Object.fromEntries(Object.entries(changedSettings).map(([k, v]) => [k, v.after])))
+      );
+    }
+
     res.json({ success: true, settings: filteredSettings });
   } catch (error) {
     logger.error('Error saving settings:', error);
@@ -1193,11 +1243,26 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
 });
 
 // Reset settings to defaults
-apiRouter.delete('/settings', requirePermission('settings', 'write'), (_req, res) => {
+apiRouter.delete('/settings', requirePermission('settings', 'write'), (req, res) => {
   try {
+    // Get current settings before deletion for audit log
+    const currentSettings = databaseService.getAllSettings();
+
     databaseService.deleteAllSettings();
     // Reset traceroute interval to default (disabled)
     meshtasticManager.setTracerouteInterval(0);
+
+    // Audit log
+    databaseService.auditLog(
+      req.user!.id,
+      'settings_reset',
+      'settings',
+      'All settings reset to defaults',
+      req.ip || null,
+      JSON.stringify(currentSettings),
+      null
+    );
+
     res.json({ success: true, message: 'Settings reset to defaults' });
   } catch (error) {
     logger.error('Error resetting settings:', error);
@@ -1229,11 +1294,22 @@ apiRouter.get('/announce/last', requirePermission('automation', 'read'), (_req, 
 });
 
 // Danger zone endpoints
-apiRouter.post('/purge/nodes', requireAdmin(), async (_req, res) => {
+apiRouter.post('/purge/nodes', requireAdmin(), async (req, res) => {
   try {
+    const nodeCount = databaseService.getNodeCount();
     databaseService.purgeAllNodes();
     // Trigger a node refresh after purging
     await meshtasticManager.refreshNodeDatabase();
+
+    // Audit log
+    databaseService.auditLog(
+      req.user!.id,
+      'nodes_purged',
+      'nodes',
+      JSON.stringify({ count: nodeCount }),
+      req.ip || null
+    );
+
     res.json({ success: true, message: 'All nodes and traceroutes purged, refresh triggered' });
   } catch (error) {
     logger.error('Error purging nodes:', error);
@@ -1241,9 +1317,19 @@ apiRouter.post('/purge/nodes', requireAdmin(), async (_req, res) => {
   }
 });
 
-apiRouter.post('/purge/telemetry', requireAdmin(), (_req, res) => {
+apiRouter.post('/purge/telemetry', requireAdmin(), (req, res) => {
   try {
     databaseService.purgeAllTelemetry();
+
+    // Audit log
+    databaseService.auditLog(
+      req.user!.id,
+      'telemetry_purged',
+      'telemetry',
+      'All telemetry data purged',
+      req.ip || null
+    );
+
     res.json({ success: true, message: 'All telemetry data purged' });
   } catch (error) {
     logger.error('Error purging telemetry:', error);
@@ -1251,9 +1337,20 @@ apiRouter.post('/purge/telemetry', requireAdmin(), (_req, res) => {
   }
 });
 
-apiRouter.post('/purge/messages', requireAdmin(), (_req, res) => {
+apiRouter.post('/purge/messages', requireAdmin(), (req, res) => {
   try {
+    const messageCount = databaseService.getMessageCount();
     databaseService.purgeAllMessages();
+
+    // Audit log
+    databaseService.auditLog(
+      req.user!.id,
+      'messages_purged',
+      'messages',
+      JSON.stringify({ count: messageCount }),
+      req.ip || null
+    );
+
     res.json({ success: true, message: 'All messages purged' });
   } catch (error) {
     logger.error('Error purging messages:', error);

@@ -1,4 +1,4 @@
-export type TabType = 'nodes' | 'channels' | 'messages' | 'info' | 'settings' | 'automation' | 'dashboard' | 'configuration' | 'users';
+export type TabType = 'nodes' | 'channels' | 'messages' | 'info' | 'settings' | 'automation' | 'dashboard' | 'configuration' | 'users' | 'audit';
 
 export type SortField = 'longName' | 'shortName' | 'id' | 'lastHeard' | 'snr' | 'battery' | 'hwModel' | 'hops';
 
