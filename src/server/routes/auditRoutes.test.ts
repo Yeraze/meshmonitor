@@ -4,7 +4,7 @@
  * Tests audit log API endpoints and permission boundaries
  */
 
-import { describe, it, expect, beforeEach, beforeAll } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import express, { Express } from 'express';
 import session from 'express-session';
@@ -16,6 +16,12 @@ import { migration as auditEnhancementMigration } from '../migrations/005_enhanc
 import { migration as auditPermissionMigration } from '../migrations/006_add_audit_permission.js';
 import auditRoutes from './auditRoutes.js';
 import authRoutes from './authRoutes.js';
+
+// Mock the DatabaseService to prevent auto-initialization
+vi.mock('../../services/database.js', () => ({
+  default: {}
+}));
+
 import DatabaseService from '../../services/database.js';
 
 describe('Audit Log Routes', () => {
@@ -23,10 +29,31 @@ describe('Audit Log Routes', () => {
   let db: Database.Database;
   let userModel: UserModel;
   let permissionModel: PermissionModel;
-  let adminAgent: any;
-  let userAgent: any;
   let adminUserId: number;
   let regularUserId: number;
+
+  // Helper functions to make authenticated requests
+  const asAdmin = () => ({
+    get: (url: string) => request(app).get(url)
+      .set('x-test-user-id', adminUserId.toString())
+      .set('x-test-username', 'admin')
+      .set('x-test-is-admin', 'true'),
+    post: (url: string) => request(app).post(url)
+      .set('x-test-user-id', adminUserId.toString())
+      .set('x-test-username', 'admin')
+      .set('x-test-is-admin', 'true'),
+  });
+
+  const asUser = () => ({
+    get: (url: string) => request(app).get(url)
+      .set('x-test-user-id', regularUserId.toString())
+      .set('x-test-username', 'user')
+      .set('x-test-is-admin', 'false'),
+    post: (url: string) => request(app).post(url)
+      .set('x-test-user-id', regularUserId.toString())
+      .set('x-test-username', 'user')
+      .set('x-test-is-admin', 'false'),
+  });
 
   beforeAll(() => {
     // Setup express app for testing
@@ -179,6 +206,20 @@ describe('Audit Log Routes', () => {
       return result.changes;
     };
 
+    // Add test middleware to inject sessions for testing
+    // This must come AFTER session middleware but BEFORE routes
+    app.use((req, res, next) => {
+      // Check for test headers to simulate logged-in users
+      const testUserId = req.headers['x-test-user-id'];
+      if (testUserId) {
+        req.session.userId = parseInt(testUserId as string);
+        req.session.username = req.headers['x-test-username'] as string || 'testuser';
+        req.session.isAdmin = req.headers['x-test-is-admin'] === 'true';
+        req.session.authProvider = 'local';
+      }
+      next();
+    });
+
     app.use('/api/auth', authRoutes);
     app.use('/api/audit', auditRoutes);
   });
@@ -215,17 +256,6 @@ describe('Audit Log Routes', () => {
     DatabaseService.auditLog(adminUserId, 'login_success', 'auth', 'Admin logged in', '192.168.1.1');
     DatabaseService.auditLog(adminUserId, 'settings_updated', 'settings', 'Changed theme', '192.168.1.1');
     DatabaseService.auditLog(regularUserId, 'login_success', 'auth', 'User logged in', '192.168.1.2');
-
-    // Create authenticated agents
-    adminAgent = request.agent(app);
-    await adminAgent
-      .post('/api/auth/login')
-      .send({ username: 'admin', password: 'admin123' });
-
-    userAgent = request.agent(app);
-    await userAgent
-      .post('/api/auth/login')
-      .send({ username: 'user', password: 'user123' });
   });
 
   describe('GET /api/audit', () => {
@@ -235,12 +265,12 @@ describe('Audit Log Routes', () => {
     });
 
     it('should require audit read permission', async () => {
-      const res = await userAgent.get('/api/audit');
+      const res = await asUser().get('/api/audit');
       expect(res.status).toBe(403);
     });
 
     it('should return audit logs for authorized users', async () => {
-      const res = await adminAgent.get('/api/audit');
+      const res = await asAdmin().get('/api/audit');
       expect(res.status).toBe(200);
       expect(res.body.logs).toBeDefined();
       expect(res.body.total).toBeDefined();
@@ -248,14 +278,14 @@ describe('Audit Log Routes', () => {
     });
 
     it('should filter by userId', async () => {
-      const res = await adminAgent.get(`/api/audit?userId=${regularUserId}`);
+      const res = await asAdmin().get(`/api/audit?userId=${regularUserId}`);
       expect(res.status).toBe(200);
       expect(res.body.logs).toHaveLength(1);
       expect(res.body.logs[0].user_id).toBe(regularUserId);
     });
 
     it('should filter by action', async () => {
-      const res = await adminAgent.get('/api/audit?action=login_success');
+      const res = await asAdmin().get('/api/audit?action=login_success');
       expect(res.status).toBe(200);
       expect(res.body.logs).toHaveLength(2);
       res.body.logs.forEach((log: any) => {
@@ -264,20 +294,20 @@ describe('Audit Log Routes', () => {
     });
 
     it('should filter by resource', async () => {
-      const res = await adminAgent.get('/api/audit?resource=auth');
+      const res = await asAdmin().get('/api/audit?resource=auth');
       expect(res.status).toBe(200);
       expect(res.body.logs).toHaveLength(2);
     });
 
     it('should search in details', async () => {
-      const res = await adminAgent.get('/api/audit?search=theme');
+      const res = await asAdmin().get('/api/audit?search=theme');
       expect(res.status).toBe(200);
       expect(res.body.logs).toHaveLength(1);
       expect(res.body.logs[0].details).toContain('theme');
     });
 
     it('should paginate results', async () => {
-      const res = await adminAgent.get('/api/audit?limit=2&offset=0');
+      const res = await asAdmin().get('/api/audit?limit=2&offset=0');
       expect(res.status).toBe(200);
       expect(res.body.logs).toHaveLength(2);
       expect(res.body.total).toBe(3);
@@ -287,7 +317,7 @@ describe('Audit Log Routes', () => {
       const now = Date.now();
       const oneHourAgo = now - (60 * 60 * 1000);
 
-      const res = await adminAgent.get(`/api/audit?startDate=${oneHourAgo}`);
+      const res = await asAdmin().get(`/api/audit?startDate=${oneHourAgo}`);
       expect(res.status).toBe(200);
       expect(res.body.total).toBe(3);
     });
@@ -307,24 +337,24 @@ describe('Audit Log Routes', () => {
     });
 
     it('should require audit read permission', async () => {
-      const res = await userAgent.get(`/api/audit/${logId}`);
+      const res = await asUser().get(`/api/audit/${logId}`);
       expect(res.status).toBe(403);
     });
 
     it('should return specific audit log entry', async () => {
-      const res = await adminAgent.get(`/api/audit/${logId}`);
+      const res = await asAdmin().get(`/api/audit/${logId}`);
       expect(res.status).toBe(200);
       expect(res.body.log).toBeDefined();
       expect(res.body.log.id).toBe(logId);
     });
 
     it('should return 404 for non-existent log', async () => {
-      const res = await adminAgent.get('/api/audit/99999');
+      const res = await asAdmin().get('/api/audit/99999');
       expect(res.status).toBe(404);
     });
 
     it('should include username in response', async () => {
-      const res = await adminAgent.get(`/api/audit/${logId}`);
+      const res = await asAdmin().get(`/api/audit/${logId}`);
       expect(res.status).toBe(200);
       expect(res.body.log.username).toBeDefined();
     });
@@ -337,12 +367,12 @@ describe('Audit Log Routes', () => {
     });
 
     it('should require audit read permission', async () => {
-      const res = await userAgent.get('/api/audit/stats/summary');
+      const res = await asUser().get('/api/audit/stats/summary');
       expect(res.status).toBe(403);
     });
 
     it('should return audit statistics', async () => {
-      const res = await adminAgent.get('/api/audit/stats/summary');
+      const res = await asAdmin().get('/api/audit/stats/summary');
       expect(res.status).toBe(200);
       expect(res.body.stats).toBeDefined();
       expect(res.body.stats.actionStats).toBeDefined();
@@ -352,13 +382,13 @@ describe('Audit Log Routes', () => {
     });
 
     it('should accept days parameter', async () => {
-      const res = await adminAgent.get('/api/audit/stats/summary?days=7');
+      const res = await asAdmin().get('/api/audit/stats/summary?days=7');
       expect(res.status).toBe(200);
       expect(res.body.stats).toBeDefined();
     });
 
     it('should validate days parameter', async () => {
-      const res = await adminAgent.get('/api/audit/stats/summary?days=invalid');
+      const res = await asAdmin().get('/api/audit/stats/summary?days=invalid');
       expect(res.status).toBe(400);
     });
   });
@@ -379,7 +409,7 @@ describe('Audit Log Routes', () => {
     });
 
     it('should require admin privileges', async () => {
-      const res = await userAgent.post('/api/audit/cleanup').send({ days: 90 });
+      const res = await asUser().post('/api/audit/cleanup').send({ days: 90 });
       expect(res.status).toBe(403);
     });
 
@@ -388,7 +418,7 @@ describe('Audit Log Routes', () => {
       const beforeCount = beforeResult.count;
       expect(beforeCount).toBe(4);
 
-      const res = await adminAgent.post('/api/audit/cleanup').send({ days: 90 });
+      const res = await asAdmin().post('/api/audit/cleanup').send({ days: 90 });
       expect(res.status).toBe(200);
       expect(res.body.deleted).toBe(1);
 
@@ -398,22 +428,22 @@ describe('Audit Log Routes', () => {
     });
 
     it('should require days parameter', async () => {
-      const res = await adminAgent.post('/api/audit/cleanup').send({});
+      const res = await asAdmin().post('/api/audit/cleanup').send({});
       expect(res.status).toBe(400);
     });
 
     it('should validate days parameter', async () => {
-      const res = await adminAgent.post('/api/audit/cleanup').send({ days: 'invalid' });
+      const res = await asAdmin().post('/api/audit/cleanup').send({ days: 'invalid' });
       expect(res.status).toBe(400);
     });
 
     it('should require minimum days value', async () => {
-      const res = await adminAgent.post('/api/audit/cleanup').send({ days: 0 });
+      const res = await asAdmin().post('/api/audit/cleanup').send({ days: 0 });
       expect(res.status).toBe(400);
     });
 
     it('should log the cleanup action', async () => {
-      await adminAgent.post('/api/audit/cleanup').send({ days: 90 });
+      await asAdmin().post('/api/audit/cleanup').send({ days: 90 });
 
       const cleanupLog = db.prepare(`
         SELECT * FROM audit_log
@@ -431,7 +461,7 @@ describe('Audit Log Routes', () => {
       // Grant audit read permission to regular user
       permissionModel.grant({ userId: regularUserId, resource: 'audit', canRead: true, canWrite: false, grantedBy: adminUserId });
 
-      const res = await userAgent.get('/api/audit');
+      const res = await asUser().get('/api/audit');
       expect(res.status).toBe(200);
     });
 
@@ -439,12 +469,12 @@ describe('Audit Log Routes', () => {
       // Ensure regular user doesn't have audit permission
       db.prepare('DELETE FROM permissions WHERE user_id = ? AND resource = ?').run(regularUserId, 'audit');
 
-      const res = await userAgent.get('/api/audit');
+      const res = await asUser().get('/api/audit');
       expect(res.status).toBe(403);
     });
 
     it('should allow admins to cleanup logs', async () => {
-      const res = await adminAgent.post('/api/audit/cleanup').send({ days: 90 });
+      const res = await asAdmin().post('/api/audit/cleanup').send({ days: 90 });
       expect(res.status).toBe(200);
     });
 
@@ -452,14 +482,14 @@ describe('Audit Log Routes', () => {
       // Grant audit write permission to regular user
       permissionModel.grant({ userId: regularUserId, resource: 'audit', canRead: true, canWrite: true, grantedBy: adminUserId });
 
-      const res = await userAgent.post('/api/audit/cleanup').send({ days: 90 });
+      const res = await asUser().post('/api/audit/cleanup').send({ days: 90 });
       expect(res.status).toBe(403);
     });
   });
 
   describe('Audit Trail Integrity', () => {
     it('should include IP addresses in audit logs', async () => {
-      const res = await adminAgent.get('/api/audit');
+      const res = await asAdmin().get('/api/audit');
       expect(res.status).toBe(200);
 
       const logsWithIP = res.body.logs.filter((log: any) => log.ip_address);
@@ -467,7 +497,7 @@ describe('Audit Log Routes', () => {
     });
 
     it('should record user actions with timestamps', async () => {
-      const res = await adminAgent.get('/api/audit');
+      const res = await asAdmin().get('/api/audit');
       expect(res.status).toBe(200);
 
       res.body.logs.forEach((log: any) => {
@@ -486,7 +516,7 @@ describe('Audit Log Routes', () => {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `).run(adminUserId, 'test_change', 'test', 'Test change', '192.168.1.1', before, after, Date.now());
 
-      const res = await adminAgent.get('/api/audit?action=test_change');
+      const res = await asAdmin().get('/api/audit?action=test_change');
       expect(res.status).toBe(200);
       expect(res.body.logs[0].value_before).toBe(before);
       expect(res.body.logs[0].value_after).toBe(after);
