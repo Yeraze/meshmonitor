@@ -3357,7 +3357,23 @@ function App() {
           <div className="node-info">
             {(() => {
               // Find the local node from the nodes array
-              const localNode = currentNodeId ? nodes.find(n => n.user?.id === currentNodeId) : null;
+              // Try by currentNodeId first (available when user has config read permission)
+              let localNode = currentNodeId ? nodes.find(n => n.user?.id === currentNodeId) : null;
+
+              // If currentNodeId isn't available, use localNodeInfo from /api/config
+              // which is accessible to all users including anonymous
+              if (!localNode && deviceInfo?.localNodeInfo) {
+                const { nodeId, longName, shortName } = deviceInfo.localNodeInfo;
+                return (
+                  <span
+                    className="node-address"
+                    title={`Connected to: ${nodeAddress}`}
+                    style={{ cursor: 'help' }}
+                  >
+                    {longName} ({shortName}) - {nodeId}
+                  </span>
+                );
+              }
 
               if (localNode && localNode.user) {
                 return (
