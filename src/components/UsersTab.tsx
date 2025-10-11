@@ -39,6 +39,7 @@ const UsersTab: React.FC = () => {
     newPassword: '',
     confirmPassword: ''
   });
+  const [passwordError, setPasswordError] = useState<string | null>(null);
   const [createForm, setCreateForm] = useState({
     username: '',
     password: '',
@@ -136,19 +137,22 @@ const UsersTab: React.FC = () => {
   const handleSetPassword = async () => {
     if (!selectedUser) return;
 
+    // Clear any previous errors
+    setPasswordError(null);
+
     // Validation
     if (!passwordForm.newPassword || !passwordForm.confirmPassword) {
-      setError('Both password fields are required');
+      setPasswordError('Both password fields are required');
       return;
     }
 
     if (passwordForm.newPassword.length < 8) {
-      setError('Password must be at least 8 characters');
+      setPasswordError('Password must be at least 8 characters');
       return;
     }
 
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      setError('Passwords do not match');
+      setPasswordError('Passwords do not match');
       return;
     }
 
@@ -160,7 +164,7 @@ const UsersTab: React.FC = () => {
       // Reset form and close modal
       setPasswordForm({ newPassword: '', confirmPassword: '' });
       setShowSetPasswordModal(false);
-      setError(null);
+      setPasswordError(null);
       showToast('Password updated successfully', 'success');
     } catch (err) {
       logger.error('Failed to set password:', err);
@@ -169,7 +173,7 @@ const UsersTab: React.FC = () => {
       } else {
         showToast(err instanceof Error ? err.message : 'Failed to set password. Please try again.', 'error');
       }
-      setError(err instanceof Error ? err.message : 'Failed to set password');
+      setPasswordError(err instanceof Error ? err.message : 'Failed to set password');
     }
   };
 
@@ -541,12 +545,19 @@ const UsersTab: React.FC = () => {
                 />
               </div>
 
+              {passwordError && (
+                <div className="error-message">
+                  {passwordError}
+                </div>
+              )}
+
               <div className="modal-actions">
                 <button
                   className="button button-secondary"
                   onClick={() => {
                     setPasswordForm({ newPassword: '', confirmPassword: '' });
                     setShowSetPasswordModal(false);
+                    setPasswordError(null);
                   }}
                 >
                   Cancel
