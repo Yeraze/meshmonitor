@@ -30,6 +30,7 @@ import { getRoleName, generateArrowMarkers } from './utils/mapHelpers.tsx'
 import { getHardwareModelName } from './utils/nodeHelpers'
 import MapLegend from './components/MapLegend'
 import ZoomHandler from './components/ZoomHandler'
+import Sidebar from './components/Sidebar'
 import { SettingsProvider, useSettings } from './contexts/SettingsContext'
 import { MapProvider, useMapContext } from './contexts/MapContext'
 import { DataProvider, useData } from './contexts/DataContext'
@@ -3474,99 +3475,21 @@ function App() {
 
       <LoginModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />
 
-      <nav className="tab-nav">
-        <button
-          className={`tab-btn ${activeTab === 'nodes' ? 'active' : ''}`}
-          onClick={() => setActiveTab('nodes')}
-        >
-          Nodes
-        </button>
-        {hasPermission('channels', 'read') && (
-          <button
-            className={`tab-btn ${activeTab === 'channels' ? 'active' : ''}`}
-            onClick={() => setActiveTab('channels')}
-          >
-            Channels
-            {Object.entries(unreadCounts).some(([channel, count]) => parseInt(channel) !== -1 && count > 0) && (
-              <span className="tab-notification-dot"></span>
-            )}
-          </button>
-        )}
-        {hasPermission('messages', 'read') && (
-          <button
-            className={`tab-btn ${activeTab === 'messages' ? 'active' : ''}`}
-            onClick={() => {
-              setActiveTab('messages');
-              // Clear unread count for direct messages (channel -1)
-              setUnreadCounts(prev => ({ ...prev, [-1]: 0 }));
-              // Set selected channel to -1 so new DMs don't create unread notifications
-              setSelectedChannel(-1);
-              selectedChannelRef.current = -1;
-            }}
-          >
-            Messages
-            {unreadCounts[-1] > 0 && (
-              <span className="tab-notification-dot"></span>
-            )}
-          </button>
-        )}
-        {hasPermission('dashboard', 'read') && (
-          <button
-            className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
-            onClick={() => setActiveTab('dashboard')}
-          >
-            Dashboard
-          </button>
-        )}
-        {hasPermission('info', 'read') && (
-          <button
-            className={`tab-btn ${activeTab === 'info' ? 'active' : ''}`}
-            onClick={() => setActiveTab('info')}
-          >
-            Info
-          </button>
-        )}
-        {hasPermission('settings', 'read') && (
-          <button
-            className={`tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
-            onClick={() => setActiveTab('settings')}
-          >
-            Settings
-          </button>
-        )}
-        {hasPermission('automation', 'read') && (
-          <button
-            className={`tab-btn ${activeTab === 'automation' ? 'active' : ''}`}
-            onClick={() => setActiveTab('automation')}
-          >
-            Automation
-          </button>
-        )}
-        {hasPermission('configuration', 'read') && (
-          <button
-            className={`tab-btn ${activeTab === 'configuration' ? 'active' : ''}`}
-            onClick={() => setActiveTab('configuration')}
-          >
-            Configuration
-          </button>
-        )}
-        {authStatus?.user?.isAdmin && (
-          <button
-            className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`}
-            onClick={() => setActiveTab('users')}
-          >
-            Users
-          </button>
-        )}
-        {hasPermission('audit', 'read') && (
-          <button
-            className={`tab-btn ${activeTab === 'audit' ? 'active' : ''}`}
-            onClick={() => setActiveTab('audit')}
-          >
-            Audit Log
-          </button>
-        )}
-      </nav>
+      <Sidebar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        hasPermission={hasPermission}
+        isAdmin={authStatus?.user?.isAdmin || false}
+        unreadCounts={unreadCounts}
+        onMessagesClick={() => {
+          setActiveTab('messages');
+          // Clear unread count for direct messages (channel -1)
+          setUnreadCounts(prev => ({ ...prev, [-1]: 0 }));
+          // Set selected channel to -1 so new DMs don't create unread notifications
+          setSelectedChannel(-1);
+          selectedChannelRef.current = -1;
+        }}
+      />
 
       <main className="app-main">
         {error && (
