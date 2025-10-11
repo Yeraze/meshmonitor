@@ -268,17 +268,16 @@ describe('AuditLogTab', () => {
 
       renderWithProviders(authStatus);
 
+      // Wait for all filter controls to be rendered
       await waitFor(() => {
         expect(screen.getByText('Filters')).toBeInTheDocument();
+        expect(screen.getByLabelText(/User/i)).toBeInTheDocument();
+        expect(screen.getByLabelText(/Action/i)).toBeInTheDocument();
+        expect(screen.getByLabelText(/Resource/i)).toBeInTheDocument();
+        expect(screen.getByLabelText(/Start Date/i)).toBeInTheDocument();
+        expect(screen.getByLabelText(/End Date/i)).toBeInTheDocument();
+        expect(screen.getByLabelText(/Search/i)).toBeInTheDocument();
       });
-
-      // Check for filter controls
-      expect(screen.getByLabelText(/User/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/Action/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/Resource/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/Start Date/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/End Date/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/Search/i)).toBeInTheDocument();
     });
 
     it('should have Clear Filters button', async () => {
