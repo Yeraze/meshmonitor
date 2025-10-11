@@ -105,12 +105,13 @@ describe('Migration 006: Add Audit Permission', () => {
     it('should add audit to CHECK constraint', () => {
       migration.up(db);
 
-      // Try to insert an audit permission - should succeed
+      // Try to insert an audit permission for a user without it - should succeed
+      // The migration grants to admins, so insert for user1 (non-admin, user_id=3)
       const now = Date.now();
       expect(() => {
         db.prepare(`
           INSERT INTO permissions (user_id, resource, can_read, can_write, granted_at, granted_by)
-          VALUES (1, 'audit', 1, 1, ?, 1)
+          VALUES (3, 'audit', 1, 0, ?, 1)
         `).run(now);
       }).not.toThrow();
     });
