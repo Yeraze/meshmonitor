@@ -263,8 +263,9 @@ const AuditLogTab: React.FC = () => {
         <h3>Filters</h3>
         <div className="filter-grid">
           <div className="form-group">
-            <label>User</label>
+            <label htmlFor="filter-user">User</label>
             <select
+              id="filter-user"
               value={filters.userId}
               onChange={(e) => handleFilterChange('userId', e.target.value)}
             >
@@ -276,8 +277,9 @@ const AuditLogTab: React.FC = () => {
           </div>
 
           <div className="form-group">
-            <label>Action</label>
+            <label htmlFor="filter-action">Action</label>
             <select
+              id="filter-action"
               value={filters.action}
               onChange={(e) => handleFilterChange('action', e.target.value)}
             >
@@ -289,8 +291,9 @@ const AuditLogTab: React.FC = () => {
           </div>
 
           <div className="form-group">
-            <label>Resource</label>
+            <label htmlFor="filter-resource">Resource</label>
             <select
+              id="filter-resource"
               value={filters.resource}
               onChange={(e) => handleFilterChange('resource', e.target.value)}
             >
@@ -302,8 +305,9 @@ const AuditLogTab: React.FC = () => {
           </div>
 
           <div className="form-group">
-            <label>Start Date</label>
+            <label htmlFor="filter-start-date">Start Date</label>
             <input
+              id="filter-start-date"
               type="date"
               value={filters.startDate}
               onChange={(e) => handleFilterChange('startDate', e.target.value)}
@@ -311,8 +315,9 @@ const AuditLogTab: React.FC = () => {
           </div>
 
           <div className="form-group">
-            <label>End Date</label>
+            <label htmlFor="filter-end-date">End Date</label>
             <input
+              id="filter-end-date"
               type="date"
               value={filters.endDate}
               onChange={(e) => handleFilterChange('endDate', e.target.value)}
@@ -320,8 +325,9 @@ const AuditLogTab: React.FC = () => {
           </div>
 
           <div className="form-group">
-            <label>Search</label>
+            <label htmlFor="filter-search">Search</label>
             <input
+              id="filter-search"
               type="text"
               placeholder="Search in details..."
               value={filters.search}
