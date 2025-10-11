@@ -202,7 +202,7 @@ apiRouter.get('/nodes', optionalAuth(), (_req, res) => {
   try {
     const nodes = meshtasticManager.getAllNodes();
 
-    // Enhance nodes with mobility detection
+    // Enhance nodes with mobility detection and estimated positions
     const enhancedNodes = nodes.map(node => {
       if (!node.user?.id) return { ...node, isMobile: false };
 
@@ -210,6 +210,8 @@ apiRouter.get('/nodes', optionalAuth(), (_req, res) => {
       const positionTelemetry = databaseService.getTelemetryByNode(node.user.id, 100);
       const latitudes = positionTelemetry.filter(t => t.telemetryType === 'latitude');
       const longitudes = positionTelemetry.filter(t => t.telemetryType === 'longitude');
+      const estimatedLatitudes = positionTelemetry.filter(t => t.telemetryType === 'estimated_latitude');
+      const estimatedLongitudes = positionTelemetry.filter(t => t.telemetryType === 'estimated_longitude');
 
       let isMobile = false;
 
@@ -237,7 +239,22 @@ apiRouter.get('/nodes', optionalAuth(), (_req, res) => {
         isMobile = distance > 1.0;
       }
 
-      return { ...node, isMobile };
+      // If node doesn't have a regular position, check for estimated position
+      let enhancedNode = { ...node, isMobile };
+      if (!node.position?.latitude && !node.position?.longitude &&
+          estimatedLatitudes.length > 0 && estimatedLongitudes.length > 0) {
+        // Use the most recent estimated position
+        const latestEstimatedLat = estimatedLatitudes[0]; // getTelemetryByNode returns most recent first
+        const latestEstimatedLon = estimatedLongitudes[0];
+
+        enhancedNode.position = {
+          latitude: latestEstimatedLat.value,
+          longitude: latestEstimatedLon.value,
+          altitude: node.position?.altitude
+        };
+      }
+
+      return enhancedNode;
     });
 
     logger.debug('🔍 Sending nodes to frontend, sample node:', enhancedNodes[0] ? {
