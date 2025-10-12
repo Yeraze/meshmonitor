@@ -14,17 +14,52 @@ class ApiService {
   private configFetched = false;
   private configPromise: Promise<void> | null = null;
 
-  // Generic request method with credentials for session cookies
+  // Get CSRF token from sessionStorage
+  private getCsrfToken(): string | null {
+    return sessionStorage.getItem('csrfToken');
+  }
+
+  // Refresh CSRF token
+  private async refreshCsrfToken(): Promise<string> {
+    logger.debug('Refreshing CSRF token...');
+    const response = await fetch('/api/csrf-token', {
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to refresh CSRF token');
+    }
+
+    const data = await response.json();
+    const token = data.csrfToken;
+    sessionStorage.setItem('csrfToken', token);
+    return token;
+  }
+
+  // Generic request method with credentials and CSRF token
   async request<T>(
     method: string,
     endpoint: string,
-    body?: any
+    body?: any,
+    retryCount = 0
   ): Promise<T> {
     await this.ensureBaseUrl();
 
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    // Add CSRF token for mutation requests
+    if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method.toUpperCase())) {
+      const csrfToken = this.getCsrfToken();
+      if (csrfToken) {
+        headers['X-CSRF-Token'] = csrfToken;
+      }
+    }
+
     const options: RequestInit = {
       method,
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       credentials: 'include', // Include cookies for session management
     };
 
@@ -33,6 +68,16 @@ class ApiService {
     }
 
     const response = await fetch(`${this.baseUrl}${endpoint}`, options);
+
+    // Handle CSRF token errors with retry
+    if (response.status === 403 && retryCount < 1) {
+      const error = await response.json().catch(() => ({ error: '' }));
+      if (error.error && error.error.toLowerCase().includes('csrf')) {
+        logger.warn('CSRF token invalid, refreshing and retrying...');
+        await this.refreshCsrfToken();
+        return this.request<T>(method, endpoint, body, retryCount + 1);
+      }
+    }
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Request failed' }));
