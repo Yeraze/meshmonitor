@@ -2965,6 +2965,8 @@ body {
   color: var(--ctp-red);
   margin-bottom: 16px;
   font-size: 0.95em;
+  white-space: pre-line; /* Preserve line breaks in error messages */
+  text-align: left;
 }
 
 .success-message {

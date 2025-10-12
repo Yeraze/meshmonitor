@@ -82,6 +82,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (response.success) {
         // Refresh auth status to get permissions
         await refreshAuth();
+
+        // Check if the refresh actually authenticated us
+        // If login succeeded but status shows unauthenticated, we have a cookie issue
+        const statusCheck = await api.get<AuthStatus>('/api/auth/status');
+        if (!statusCheck.authenticated) {
+          logger.error('Cookie configuration issue detected!');
+          logger.error('Login succeeded but session cookie is not being sent by browser');
+          throw new Error('Session cookie not working. This may be due to:\n' +
+            '1. Accessing via HTTP when secure cookies are enabled\n' +
+            '2. Browser blocking cookies\n' +
+            '3. Reverse proxy misconfiguration\n\n' +
+            'Check browser console and server logs for details.');
+        }
+
         logger.debug('Login successful');
       }
     } catch (error) {

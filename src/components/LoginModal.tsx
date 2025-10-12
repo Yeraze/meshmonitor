@@ -37,7 +37,12 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
       setPassword('');
     } catch (err) {
       logger.error('Login error:', err);
-      setError('Invalid username or password');
+      // Check if this is a cookie configuration error
+      if (err instanceof Error && err.message.includes('Session cookie')) {
+        setError(err.message);
+      } else {
+        setError('Invalid username or password');
+      }
     } finally {
       setLoading(false);
     }

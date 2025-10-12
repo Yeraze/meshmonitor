@@ -25,6 +25,22 @@ router.get('/status', (req: Request, res: Response) => {
     const localAuthDisabled = process.env.DISABLE_LOCAL_AUTH === 'true';
 
     if (!req.session.userId) {
+      // Check if the session cookie exists at all
+      const hasCookie = req.headers.cookie?.includes('meshmonitor.sid');
+      if (!hasCookie) {
+        // Only log once every 5 minutes to avoid spam
+        const lastWarning = (global as any).__lastCookieWarning || 0;
+        const now = Date.now();
+        if (now - lastWarning > 5 * 60 * 1000) {
+          logger.warn('⚠️  /auth/status called without session cookie. Possible causes:');
+          logger.warn('   1. Secure cookies enabled but accessing via HTTP');
+          logger.warn('   2. Browser blocking cookies (check SameSite, third-party cookie settings)');
+          logger.warn('   3. Reverse proxy configuration stripping cookies');
+          logger.warn('   4. COOKIE_SECURE or NODE_ENV misconfiguration');
+          (global as any).__lastCookieWarning = now;
+        }
+      }
+
       // Return anonymous user permissions for unauthenticated users
       const anonymousUser = databaseService.userModel.findByUsername('anonymous');
       const anonymousPermissions = anonymousUser && anonymousUser.isActive
