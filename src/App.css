@@ -59,7 +59,7 @@ body {
   justify-content: space-between;
   align-items: center;
   position: relative;
-  z-index: 10000; /* Above all content including map */
+  z-index: 10000; /* Above all content including map and sidebar */
 }
 
 .header-left {
