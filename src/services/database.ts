@@ -1497,6 +1497,31 @@ class DatabaseService {
     return telemetry ? this.normalizeBigInts(telemetry) : null;
   }
 
+  // Get distinct telemetry types per node (efficient for checking capabilities)
+  getNodeTelemetryTypes(nodeId: string): string[] {
+    const stmt = this.db.prepare(`
+      SELECT DISTINCT telemetryType FROM telemetry
+      WHERE nodeId = ?
+    `);
+    const results = stmt.all(nodeId) as Array<{ telemetryType: string }>;
+    return results.map(r => r.telemetryType);
+  }
+
+  // Get all nodes with their telemetry types (efficient bulk query)
+  getAllNodesTelemetryTypes(): Map<string, string[]> {
+    const stmt = this.db.prepare(`
+      SELECT nodeId, GROUP_CONCAT(DISTINCT telemetryType) as types
+      FROM telemetry
+      GROUP BY nodeId
+    `);
+    const results = stmt.all() as Array<{ nodeId: string; types: string }>;
+    const map = new Map<string, string[]>();
+    results.forEach(r => {
+      map.set(r.nodeId, r.types ? r.types.split(',') : []);
+    });
+    return map;
+  }
+
   // Danger zone operations
   purgeAllNodes(): void {
     logger.debug('⚠️ PURGING all nodes and related data from database');

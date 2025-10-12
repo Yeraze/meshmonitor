@@ -3489,6 +3489,22 @@ function App() {
           setSelectedChannel(-1);
           selectedChannelRef.current = -1;
         }}
+        baseUrl={baseUrl}
+        connectedNodeName={(() => {
+          // Find the local node from the nodes array
+          let localNode = currentNodeId ? nodes.find(n => n.user?.id === currentNodeId) : null;
+
+          // If currentNodeId isn't available, use localNodeInfo from /api/config
+          if (!localNode && deviceInfo?.localNodeInfo) {
+            return deviceInfo.localNodeInfo.longName;
+          }
+
+          if (localNode && localNode.user) {
+            return localNode.user.longName;
+          }
+
+          return undefined;
+        })()}
       />
 
       <main className="app-main">

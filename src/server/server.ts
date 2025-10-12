@@ -931,22 +931,25 @@ apiRouter.get('/telemetry/available/nodes', requirePermission('info', 'read'), (
     const nodesWithWeather: string[] = [];
     const nodesWithEstimatedPosition: string[] = [];
 
-    const weatherTypes = ['temperature', 'humidity', 'pressure'];
-    const estimatedPositionTypes = ['estimated_latitude', 'estimated_longitude'];
+    const weatherTypes = new Set(['temperature', 'humidity', 'pressure']);
+    const estimatedPositionTypes = new Set(['estimated_latitude', 'estimated_longitude']);
+
+    // Efficient bulk query: get all telemetry types for all nodes at once
+    const nodeTelemetryTypes = databaseService.getAllNodesTelemetryTypes();
 
     nodes.forEach(node => {
-      const telemetry = databaseService.getTelemetryByNode(node.nodeId, 10);
-      if (telemetry.length > 0) {
+      const telemetryTypes = nodeTelemetryTypes.get(node.nodeId);
+      if (telemetryTypes && telemetryTypes.length > 0) {
         nodesWithTelemetry.push(node.nodeId);
 
-        // Check if any telemetry is weather-related
-        const hasWeather = telemetry.some(t => weatherTypes.includes(t.telemetryType));
+        // Check if any telemetry type is weather-related
+        const hasWeather = telemetryTypes.some(t => weatherTypes.has(t));
         if (hasWeather) {
           nodesWithWeather.push(node.nodeId);
         }
 
         // Check if node has estimated position telemetry
-        const hasEstimatedPosition = telemetry.some(t => estimatedPositionTypes.includes(t.telemetryType));
+        const hasEstimatedPosition = telemetryTypes.some(t => estimatedPositionTypes.has(t));
         if (hasEstimatedPosition) {
           nodesWithEstimatedPosition.push(node.nodeId);
         }
