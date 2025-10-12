@@ -19,7 +19,22 @@ const NodeIdentitySection: React.FC<NodeIdentitySectionProps> = ({
 }) => {
   return (
     <div className="settings-section">
-      <h3>Node Identity</h3>
+      <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        Node Identity
+        <a
+          href="https://meshmonitor.org/features/device#node-identity"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            fontSize: '1.2rem',
+            color: '#89b4fa',
+            textDecoration: 'none'
+          }}
+          title="View Node Identity Documentation"
+        >
+          ❓
+        </a>
+      </h3>
       <div className="setting-item">
         <label htmlFor="longName">
           Long Name

@@ -39,7 +39,22 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
 }) => {
   return (
     <div className="settings-section">
-      <h3>MQTT Module</h3>
+      <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        MQTT Module
+        <a
+          href="https://meshmonitor.org/features/device#mqtt-configuration"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            fontSize: '1.2rem',
+            color: '#89b4fa',
+            textDecoration: 'none'
+          }}
+          title="View MQTT Configuration Documentation"
+        >
+          ❓
+        </a>
+      </h3>
       <div className="setting-item">
         <label htmlFor="mqttEnabled" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
           <input

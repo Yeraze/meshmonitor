@@ -172,6 +172,20 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
             style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
           />
           Auto Announce
+          <a
+            href="https://meshmonitor.org/features/automation#auto-announce"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              fontSize: '1.2rem',
+              color: '#89b4fa',
+              textDecoration: 'none',
+              marginLeft: '0.5rem'
+            }}
+            title="View Auto Announce Documentation"
+          >
+            ❓
+          </a>
         </h2>
         <div style={{ display: 'flex', gap: '0.75rem' }}>
           <button

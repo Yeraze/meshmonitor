@@ -133,6 +133,20 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
             style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
           />
           Auto Acknowledge
+          <a
+            href="https://meshmonitor.org/features/automation#auto-acknowledge"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              fontSize: '1.2rem',
+              color: '#89b4fa',
+              textDecoration: 'none',
+              marginLeft: '0.5rem'
+            }}
+            title="View Auto Acknowledge Documentation"
+          >
+            ❓
+          </a>
         </h2>
         <button
           onClick={handleSave}

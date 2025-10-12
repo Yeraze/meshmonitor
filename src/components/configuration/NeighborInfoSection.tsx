@@ -19,7 +19,22 @@ const NeighborInfoSection: React.FC<NeighborInfoSectionProps> = ({
 }) => {
   return (
     <div className="settings-section">
-      <h3>Neighbor Info Module</h3>
+      <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        Neighbor Info Module
+        <a
+          href="https://meshmonitor.org/features/device#neighbor-info"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            fontSize: '1.2rem',
+            color: '#89b4fa',
+            textDecoration: 'none'
+          }}
+          title="View Neighbor Info Documentation"
+        >
+          ❓
+        </a>
+      </h3>
       <div className="setting-item">
         <label htmlFor="neighborInfoEnabled" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
           <input
