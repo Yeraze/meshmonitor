@@ -55,13 +55,32 @@ features:
 
 ## Quick Start
 
-Get MeshMonitor running in minutes with Docker:
+Get MeshMonitor running in under 60 seconds with Docker Compose:
 
 ```bash
-docker run -d -p 8080:8080 -e MESHTASTIC_NODE_IP=192.168.1.100 -e SESSION_SECRET=$(openssl rand -base64 32) -e COOKIE_SECURE=false meshmonitor:latest
+cat > docker-compose.yml << 'EOF'
+services:
+  meshmonitor:
+    image: ghcr.io/yeraze/meshmonitor:latest
+    container_name: meshmonitor
+    ports:
+      - "8080:3001"
+    volumes:
+      - meshmonitor-data:/data
+    environment:
+      - MESHTASTIC_NODE_IP=192.168.1.100  # Change to your node's IP
+    restart: unless-stopped
+
+volumes:
+  meshmonitor-data:
+EOF
+
+docker compose up -d
 ```
 
 Access at `http://localhost:8080` and login with username `admin` and password `changeme`.
+
+**That's it!** No SESSION_SECRET or complex configuration needed for basic usage. MeshMonitor works over HTTP out of the box.
 
 For production deployments, Kubernetes, reverse proxies, and advanced configurations, see the [Production Deployment Guide](/configuration/production).
 
