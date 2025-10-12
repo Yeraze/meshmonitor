@@ -22,7 +22,8 @@ class ApiService {
   // Refresh CSRF token
   private async refreshCsrfToken(): Promise<string> {
     logger.debug('Refreshing CSRF token...');
-    const response = await fetch('/api/csrf-token', {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/csrf-token`, {
       credentials: 'include',
     });
 

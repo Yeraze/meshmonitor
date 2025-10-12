@@ -18,12 +18,12 @@ Get MeshMonitor running in minutes with these simple copy-paste commands:
 
 ### Quick Start with Docker (Recommended)
 
-The fastest way to run MeshMonitor is using our pre-built Docker images:
+Get MeshMonitor running in **60 seconds** with just 3 steps:
+
+**1. Create docker-compose.yml**
 
 ```bash
-# Create a docker-compose.yml file
 cat > docker-compose.yml << 'EOF'
-version: '3.8'
 services:
   meshmonitor:
     image: ghcr.io/yeraze/meshmonitor:latest
@@ -34,22 +34,32 @@ services:
       - meshmonitor-data:/data
     environment:
       - MESHTASTIC_NODE_IP=192.168.1.100  # Change to your node's IP
-      - MESHTASTIC_TCP_PORT=4403
-      - NODE_ENV=production
     restart: unless-stopped
 
 volumes:
   meshmonitor-data:
 EOF
-
-# Start the application
-docker compose up -d
-
-# View logs
-docker compose logs -f meshmonitor
 ```
 
-**Access the app:** Open http://localhost:8080 in your browser
+**2. Start MeshMonitor**
+
+```bash
+docker compose up -d
+```
+
+**3. Open your browser**
+
+```
+http://localhost:8080
+```
+
+**Default login:** Username `admin` / Password `changeme` (change this after first login!)
+
+---
+
+**That's it!** MeshMonitor is now running with sensible defaults optimized for local HTTP access.
+
+For production deployments with HTTPS, reverse proxies, or advanced security, see [Production Deployment Guide](docs/configuration/production.md)
 
 ### Requirements
 

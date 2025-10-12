@@ -24,7 +24,8 @@ export const CsrfProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const fetchToken = useCallback(async () => {
     try {
       setIsLoading(true);
-      const response = await fetch('/api/csrf-token', {
+      // Use relative path to work with BASE_URL
+      const response = await fetch('api/csrf-token', {
         credentials: 'include',
       });
 
