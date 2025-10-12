@@ -2444,15 +2444,18 @@ body {
   font-size: 1rem;
 }
 
-.snr-stat-row .stat-label {
+.route-popup .snr-stat-row .stat-label {
   color: var(--ctp-subtext1);
   font-weight: 500;
+  font-size: 0.875rem;
+  font-family: inherit;
 }
 
-.snr-stat-row .stat-value {
+.route-popup .snr-stat-row .stat-value {
   color: var(--ctp-text);
   font-weight: 600;
-  font-family: 'Courier New', monospace;
+  font-size: 0.875rem;
+  font-family: inherit;
 }
 
 .snr-timeline-chart {
