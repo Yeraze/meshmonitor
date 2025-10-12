@@ -119,33 +119,63 @@ if (trustProxy !== undefined) {
 }
 
 // Security: Helmet.js for HTTP security headers
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"], // 'unsafe-inline' needed for Vite dev
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'"],
-      fontSrc: ["'self'"],
-      objectSrc: ["'none'"],
-      mediaSrc: ["'self'"],
-      frameSrc: ["'none'"],
-      baseUri: ["'self'"],
-      formAction: ["'self'"]
-    },
-  },
-  hsts: {
-    maxAge: 31536000, // 1 year
-    includeSubDomains: true,
-    preload: true
-  },
-  frameguard: {
-    action: 'deny'
-  },
-  noSniff: true,
-  xssFilter: true
-}));
+// Use relaxed settings in development to avoid HTTPS enforcement
+const helmetConfig = process.env.NODE_ENV === 'production'
+  ? {
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'"],
+          styleSrc: ["'self'"],
+          imgSrc: ["'self'", "data:", "https:"],
+          connectSrc: ["'self'"],
+          fontSrc: ["'self'"],
+          objectSrc: ["'none'"],
+          mediaSrc: ["'self'"],
+          frameSrc: ["'none'"],
+          baseUri: ["'self'"],
+          formAction: ["'self'"]
+        },
+      },
+      hsts: {
+        maxAge: 31536000, // 1 year
+        includeSubDomains: true,
+        preload: true
+      },
+      frameguard: {
+        action: 'deny' as const
+      },
+      noSniff: true,
+      xssFilter: true
+    }
+  : {
+      // Development: Relaxed CSP, no HSTS, no upgrade-insecure-requests
+      contentSecurityPolicy: {
+        useDefaults: false,  // Don't use default directives that include upgrade-insecure-requests
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", "data:", "http:", "https:"],
+          connectSrc: ["'self'"],
+          fontSrc: ["'self'"],
+          objectSrc: ["'none'"],
+          mediaSrc: ["'self'"],
+          frameSrc: ["'none'"],
+          baseUri: ["'self'"],
+          formAction: ["'self'"]
+          // upgradeInsecureRequests intentionally omitted for HTTP in development
+        },
+      },
+      hsts: false, // Disable HSTS in development
+      frameguard: {
+        action: 'deny' as const
+      },
+      noSniff: true,
+      xssFilter: true
+    };
+
+app.use(helmet(helmetConfig));
 
 // Security: CORS configuration with allowed origins
 const getAllowedOrigins = () => {

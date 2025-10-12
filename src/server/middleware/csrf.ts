@@ -22,7 +22,7 @@ export function generateCsrfToken(): string {
 /**
  * Middleware to attach CSRF token to session/response
  */
-export function csrfTokenMiddleware(req: Request, res: Response, next: NextFunction) {
+export function csrfTokenMiddleware(req: Request, _res: Response, next: NextFunction) {
   // Generate token if not present in session
   if (!req.session.csrfToken) {
     req.session.csrfToken = generateCsrfToken();
