@@ -23,6 +23,14 @@ const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
+  // Update CSS custom property when sidebar collapse state changes
+  React.useEffect(() => {
+    document.documentElement.style.setProperty(
+      '--sidebar-width',
+      isCollapsed ? '60px' : '240px'
+    );
+  }, [isCollapsed]);
+
   const NavItem: React.FC<{
     id: TabType;
     label: string;
