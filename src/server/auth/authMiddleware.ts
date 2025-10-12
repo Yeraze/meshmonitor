@@ -53,6 +53,15 @@ export function requireAuth() {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.session.userId) {
+        // Check if the session cookie exists at all
+        const hasCookie = req.headers.cookie?.includes('meshmonitor.sid');
+        if (!hasCookie) {
+          logger.warn('⚠️  Authentication failed: No session cookie present. This may indicate:');
+          logger.warn('   1. Secure cookies enabled but accessing via HTTP');
+          logger.warn('   2. Browser blocking cookies due to SameSite policy');
+          logger.warn('   3. Reverse proxy stripping cookies');
+        }
+
         return res.status(401).json({
           error: 'Authentication required',
           code: 'UNAUTHORIZED'
