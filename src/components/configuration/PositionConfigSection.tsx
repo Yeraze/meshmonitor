@@ -35,7 +35,22 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
 }) => {
   return (
     <div className="settings-section">
-      <h3>Position Broadcast</h3>
+      <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        Position Broadcast
+        <a
+          href="https://meshmonitor.org/features/device#position-configuration"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            fontSize: '1.2rem',
+            color: '#89b4fa',
+            textDecoration: 'none'
+          }}
+          title="View Position Configuration Documentation"
+        >
+          ❓
+        </a>
+      </h3>
       <div className="setting-item">
         <label htmlFor="positionBroadcastSecs">
           Position Broadcast Interval (seconds)

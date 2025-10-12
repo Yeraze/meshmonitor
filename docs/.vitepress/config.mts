@@ -19,12 +19,23 @@ export default defineConfig({
     nav: [
       { text: 'Home', link: '/' },
       { text: 'Getting Started', link: '/getting-started' },
+      { text: 'Features', link: '/features/settings' },
       { text: 'Configuration', link: '/configuration/' },
       { text: 'Development', link: '/development/' },
       { text: '📦 Releases', link: 'https://github.com/yeraze/meshmonitor/releases' }
     ],
 
     sidebar: {
+      '/features/': [
+        {
+          text: 'Features',
+          items: [
+            { text: 'Settings', link: '/features/settings' },
+            { text: 'Automation', link: '/features/automation' },
+            { text: 'Device Configuration', link: '/features/device' }
+          ]
+        }
+      ],
       '/configuration/': [
         {
           text: 'Configuration',

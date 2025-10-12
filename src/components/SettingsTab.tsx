@@ -305,6 +305,24 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           <h1 className="settings-app-name">MeshMonitor</h1>
           <p className="settings-version">Version {version}</p>
         </div>
+        <a
+          href="https://meshmonitor.org/features/settings"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            marginLeft: 'auto',
+            padding: '0.5rem',
+            fontSize: '1.5rem',
+            color: '#89b4fa',
+            textDecoration: 'none',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem'
+          }}
+          title="View Settings Documentation"
+        >
+          ❓
+        </a>
       </div>
       <div className="settings-content">
         <div className="settings-section">

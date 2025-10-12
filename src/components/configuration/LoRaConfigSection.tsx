@@ -30,7 +30,22 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
 
   return (
     <div className="settings-section">
-      <h3>LoRa Radio Configuration</h3>
+      <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        LoRa Radio Configuration
+        <a
+          href="https://meshmonitor.org/features/device#lora-radio-configuration"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            fontSize: '1.2rem',
+            color: '#89b4fa',
+            textDecoration: 'none'
+          }}
+          title="View LoRa Configuration Documentation"
+        >
+          ❓
+        </a>
+      </h3>
       <div className="setting-item">
         <label htmlFor="usePreset" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
           <input
