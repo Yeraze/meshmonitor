@@ -1,6 +1,6 @@
 services:
   meshmonitor:
-    # Option 1: Use pre-built image from GitHub Container Registry (recommended for production)
+    # Option 1: Use pre-built image from GitHub Container Registry (recommended)
     image: ghcr.io/yeraze/meshmonitor:latest
 
     # Option 2: Build locally (comment out 'image' above and uncomment below for development)
@@ -16,11 +16,22 @@ services:
       - meshmonitor-data:/data
     env_file: .env
     environment:
-      - NODE_ENV=production
+      # Minimal configuration for http://localhost:8080
+      - NODE_ENV=development  # Use development mode for simple HTTP deployments
       - TZ=America/New_York
-      # For HTTPS reverse proxy deployments (nginx, Traefik, Caddy, etc.)
+
+      # OPTIONAL: Uncomment and configure for production deployments
+      # See docs/configuration/production.md for full production setup guide
+
+      # For production with HTTPS reverse proxy (nginx, Caddy, Traefik):
+      # - NODE_ENV=production
+      # - SESSION_SECRET=your-generated-secret-here  # Required in production
       # - TRUST_PROXY=true
-      # For direct HTTP access (not recommended for production)
+      # - ALLOWED_ORIGINS=https://yourdomain.com
+
+      # For production with direct HTTP (not recommended):
+      # - NODE_ENV=production
+      # - SESSION_SECRET=your-generated-secret-here  # Required in production
       # - COOKIE_SECURE=false
 
 volumes:

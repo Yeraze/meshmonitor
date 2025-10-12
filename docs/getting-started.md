@@ -9,11 +9,11 @@ Before you begin, ensure you have:
 - A Meshtastic device connected to your network via IP (WiFi or Ethernet)
 - **OR** `meshtasticd` running as a virtual node
 - Docker and Docker Compose installed (for Docker deployment)
-- **OR** Node.js 18+ and npm (for bare metal deployment)
+- **OR** Node.js 20+ and npm (for bare metal deployment)
 
 ## Quick Start with Docker Compose
 
-The fastest way to get started is using Docker Compose:
+The fastest way to get started is using Docker Compose. This takes **less than 60 seconds**!
 
 ### 1. Create docker-compose.yml
 
@@ -30,22 +30,14 @@ services:
     volumes:
       - meshmonitor-data:/data
     environment:
-      - NODE_ENV=production
-      - TZ=America/New_York
       - MESHTASTIC_NODE_IP=192.168.1.100  # Change to your node's IP
-      - SESSION_SECRET=change-this-to-a-random-string
-      - COOKIE_SECURE=false  # Required for HTTP (non-HTTPS) deployments
 
 volumes:
   meshmonitor-data:
     driver: local
 ```
 
-**Important**: Generate a secure `SESSION_SECRET`:
-
-```bash
-openssl rand -base64 32
-```
+**That's it!** No need for SESSION_SECRET, COOKIE_SECURE, or other complex settings for basic usage.
 
 ### 2. Start MeshMonitor
 
@@ -74,6 +66,56 @@ On first launch, MeshMonitor creates a default admin account:
 2. Select "Change Password"
 3. Set a strong, unique password
 
+## What Just Happened?
+
+MeshMonitor starts in **development mode** by default, which:
+- ✅ Works over HTTP (no HTTPS required)
+- ✅ No SESSION_SECRET needed (auto-generated)
+- ✅ Secure cookies disabled for HTTP compatibility
+- ✅ CSRF protection active but development-friendly
+- ✅ Rate limiting relaxed (10,000 requests/15min)
+- ✅ Perfect for local/home use
+
+This configuration is ideal for:
+- Personal/home network deployments
+- Testing and development
+- Behind a firewall on trusted networks
+- Local-only access (not exposed to the internet)
+
+## Optional Configuration
+
+### Different Node IP
+
+If your Meshtastic node is at a different IP:
+
+```bash
+export MESHTASTIC_NODE_IP=192.168.5.25
+docker compose up -d
+```
+
+### Custom Timezone
+
+```yaml
+environment:
+  - MESHTASTIC_NODE_IP=192.168.1.100
+  - TZ=Europe/London  # See: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+```
+
+## Production Deployment
+
+For production deployments with HTTPS, reverse proxies, or public internet access, see:
+
+- **[Production Deployment Guide](/configuration/production)** - Full production setup with HTTPS
+- **[Reverse Proxy Configuration](/configuration/reverse-proxy)** - nginx, Caddy, Traefik examples
+- **[SSO Setup](/configuration/sso)** - Enterprise authentication with OIDC
+
+Key differences in production:
+- Requires `SESSION_SECRET` environment variable
+- HTTPS recommended (or `COOKIE_SECURE=false` if using HTTP)
+- `TRUST_PROXY=true` for reverse proxy setups
+- `ALLOWED_ORIGINS` for CORS security
+- Stricter rate limiting (1000 requests/15min)
+
 ## Development Setup
 
 For development or if you prefer running MeshMonitor without Docker:
@@ -81,6 +123,8 @@ For development or if you prefer running MeshMonitor without Docker:
 ### 1. Install Dependencies
 
 ```bash
+git clone --recurse-submodules https://github.com/yeraze/meshmonitor.git
+cd meshmonitor
 npm install
 ```
 
@@ -95,17 +139,12 @@ export MESHTASTIC_NODE_IP=192.168.1.100
 MeshMonitor has two components that need to run:
 
 ```bash
-# Terminal 1: Start the frontend
-npm run dev
-
-# Terminal 2: Start the backend
-npm run dev:server
-```
-
-Or run both together:
-
-```bash
+# Option 1: Run both together (recommended)
 npm run dev:full
+
+# Option 2: Run separately in two terminals
+npm run dev        # Terminal 1: Frontend
+npm run dev:server # Terminal 2: Backend
 ```
 
 ### 4. Access the Development Server
@@ -113,13 +152,13 @@ npm run dev:full
 Open your browser to:
 
 ```
-http://localhost:5173
+http://localhost:5173  # Frontend (Vite dev server)
 ```
 
-The backend API will be available on:
+The backend API runs on:
 
 ```
-http://localhost:3000
+http://localhost:3001  # Backend (Express)
 ```
 
 ## Using with meshtasticd
@@ -132,6 +171,7 @@ meshtasticd --hwmodel BETAFPV_2400_TX
 
 # Then set the IP to localhost
 export MESHTASTIC_NODE_IP=localhost
+docker compose up -d
 ```
 
 See the [meshtasticd configuration guide](/configuration/meshtasticd) for more details.
@@ -140,11 +180,10 @@ See the [meshtasticd configuration guide](/configuration/meshtasticd) for more d
 
 Now that you have MeshMonitor running:
 
-- **[Configuration Guide](/configuration/)** - Learn about configuring MeshMonitor for production
-- **[Using meshtasticd](/configuration/meshtasticd)** - Set up virtual Meshtastic nodes
-- **[SSO Setup](/configuration/sso)** - Configure Single Sign-On for enterprise use
-- **[Reverse Proxy](/configuration/reverse-proxy)** - Set up NGINX or other reverse proxies
-- **[Production Deployment](/configuration/production)** - Deploy MeshMonitor in production
+- **[Features Guide](/features/settings)** - Explore all available features
+- **[Automation](/features/automation)** - Set up auto-acknowledge and auto-announce
+- **[Device Configuration](/features/device)** - Configure your Meshtastic node from the UI
+- **[Production Deployment](/configuration/production)** - Deploy securely for public access
 
 ## Troubleshooting
 
@@ -158,14 +197,23 @@ If MeshMonitor cannot connect to your Meshtastic node:
    ping 192.168.1.100
    ```
 3. Check that the node has IP connectivity enabled (via Meshtastic app or CLI)
-4. Verify firewall rules allow connections on the required ports
+4. Verify firewall rules allow connections on port 4403
+
+### Login Issues
+
+If you can login but get immediately logged out:
+
+**This shouldn't happen in development mode**, but if it does:
+- Check browser console for errors
+- Verify `NODE_ENV=development` is set (default in docker-compose.yml)
+- Try clearing browser cookies for localhost:8080
 
 ### Database Issues
 
 If you encounter database errors:
 
 1. Stop MeshMonitor: `docker compose down`
-2. Remove the database volume: `docker volume rm meshmonitor_data`
+2. Remove the database volume: `docker volume rm meshmonitor-meshmonitor-data`
 3. Restart: `docker compose up -d`
 
 **Note**: This will delete all stored data. Export any important data first.
