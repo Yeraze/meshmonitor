@@ -213,8 +213,9 @@ app.use(express.urlencoded({ limit: '10mb', extended: true, parameterLimit: 1000
 app.use(session(getSessionConfig()));
 
 // Security: CSRF protection middleware
-import { csrfTokenMiddleware, csrfTokenEndpoint } from './middleware/csrf.js';
-app.use(csrfTokenMiddleware);
+import { csrfTokenMiddleware, csrfProtection, csrfTokenEndpoint } from './middleware/csrf.js';
+app.use(csrfTokenMiddleware);  // Generate and attach tokens to all requests
+// csrfProtection applied to API routes below (after CSRF token endpoint)
 
 // Initialize OIDC if configured
 initializeOIDC().then(enabled => {
@@ -1743,11 +1744,11 @@ apiRouter.post('/system/restart', requirePermission('settings', 'write'), (_req,
 const buildPath = path.join(__dirname, '../../dist');
 
 // Mount API router first - this must come before static file serving
-// Apply rate limiting to all API routes
+// Apply rate limiting and CSRF protection to all API routes (except csrf-token endpoint)
 if (BASE_URL) {
-  app.use(`${BASE_URL}/api`, apiLimiter, apiRouter);
+  app.use(`${BASE_URL}/api`, apiLimiter, csrfProtection, apiRouter);
 } else {
-  app.use('/api', apiLimiter, apiRouter);
+  app.use('/api', apiLimiter, csrfProtection, apiRouter);
 }
 
 // Function to rewrite HTML with BASE_URL at runtime
