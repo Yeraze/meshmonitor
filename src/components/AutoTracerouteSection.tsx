@@ -87,6 +87,20 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
             style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
           />
           Auto Traceroute
+          <a
+            href="https://meshmonitor.org/features/automation#auto-traceroute"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              fontSize: '1.2rem',
+              color: '#89b4fa',
+              textDecoration: 'none',
+              marginLeft: '0.5rem'
+            }}
+            title="View Auto Traceroute Documentation"
+          >
+            ❓
+          </a>
         </h2>
         <button
           onClick={handleSave}
