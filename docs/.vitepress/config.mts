@@ -5,12 +5,12 @@ export default defineConfig({
   vite: {
     server: {
       host: '0.0.0.0',
-      allowedHosts: ['sentry.yeraze.online', 'localhost']
+      allowedHosts: ['sentry.yeraze.online', 'localhost', 'meshmonitor.org', 'www.meshmonitor.org']
     }
   },
   title: "MeshMonitor",
   description: "Web application for monitoring Meshtastic nodes over IP",
-  base: '/meshmonitor/',
+  base: '/',  // Custom domain: meshmonitor.org
 
   themeConfig: {
     // https://vitepress.dev/reference/default-theme-config
