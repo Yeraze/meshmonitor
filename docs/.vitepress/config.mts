@@ -5,7 +5,7 @@ export default defineConfig({
   vite: {
     server: {
       host: '0.0.0.0',
-      allowedHosts: ['sentry.yeraze.online', 'localhost', 'meshmonitor.org', 'www.meshmonitor.org']
+      allowedHosts: ['localhost', 'meshmonitor.org', 'www.meshmonitor.org']
     }
   },
   title: "MeshMonitor",
