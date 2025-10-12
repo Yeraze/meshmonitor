@@ -55,11 +55,14 @@ body {
   background: var(--ctp-mantle);
   border-bottom: 1px solid var(--ctp-surface0);
   padding: 1.5rem 2rem;
+  margin-left: var(--sidebar-width, 240px); /* Beside the sidebar */
+  width: calc(100% - var(--sidebar-width, 240px));
   display: flex;
   justify-content: space-between;
   align-items: center;
   position: relative;
-  z-index: 10000; /* Above all content including map and sidebar */
+  z-index: 10000; /* Above all content including map */
+  transition: margin-left 0.3s ease, width 0.3s ease; /* Match sidebar transition */
 }
 
 .header-left {
@@ -925,6 +928,8 @@ body {
     padding: 1rem;
     flex-direction: column;
     gap: 1rem;
+    margin-left: 0 !important; /* Full width on mobile */
+    width: 100% !important;
   }
 
   .app-header h1 {
