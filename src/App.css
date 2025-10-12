@@ -55,11 +55,14 @@ body {
   background: var(--ctp-mantle);
   border-bottom: 1px solid var(--ctp-surface0);
   padding: 1.5rem 2rem;
+  margin-left: var(--sidebar-width, 240px); /* Beside the sidebar */
+  width: calc(100% - var(--sidebar-width, 240px));
   display: flex;
   justify-content: space-between;
   align-items: center;
   position: relative;
   z-index: 10000; /* Above all content including map */
+  transition: margin-left 0.3s ease, width 0.3s ease; /* Match sidebar transition */
 }
 
 .header-left {
@@ -925,6 +928,8 @@ body {
     padding: 1rem;
     flex-direction: column;
     gap: 1rem;
+    margin-left: 0 !important; /* Full width on mobile */
+    width: 100% !important;
   }
 
   .app-header h1 {
@@ -3095,7 +3100,7 @@ body {
 .menu-overlay {
   position: fixed;
   top: 0;
-  left: 0;
+  left: var(--sidebar-width, 240px); /* Start after the sidebar */
   right: 0;
   bottom: 0;
   z-index: 9998;
@@ -3190,6 +3195,13 @@ body {
 .user-menu-item:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Mobile responsive - overlay covers full width on mobile */
+@media (max-width: 768px) {
+  .menu-overlay {
+    left: 0 !important; /* Full width on mobile */
+  }
 }
 
 /* Login Button in Header */
