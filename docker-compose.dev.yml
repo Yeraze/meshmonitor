@@ -15,6 +15,9 @@ services:
       - DATABASE_PATH=/data/meshmonitor.db
       - BASE_URL=${BASE_URL:-}
       - TZ=America/New_York
+      - ALLOWED_ORIGINS=http://localhost:8080,http://sentry.yeraze.online:8080,https://sentry.yeraze.online,https://meshdev.yeraze.online
+      - TRUST_PROXY=1
+      - COOKIE_SECURE=false
 
 volumes:
   meshmonitor-data:

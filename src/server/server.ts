@@ -1,6 +1,7 @@
 import express from 'express';
 import session from 'express-session';
 import cors from 'cors';
+import helmet from 'helmet';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -16,6 +17,7 @@ import {
   requireAdmin,
   hasPermission
 } from './auth/authMiddleware.js';
+import { apiLimiter } from './middleware/rateLimiters.js';
 
 const require = createRequire(import.meta.url);
 const packageJson = require('../../package.json');
@@ -116,15 +118,104 @@ if (trustProxy !== undefined) {
   logger.debug('ℹ️  Trust proxy defaulted to 1 hop (production mode)');
 }
 
-// Middleware
+// Security: Helmet.js for HTTP security headers
+// Use relaxed settings in development to avoid HTTPS enforcement
+const helmetConfig = process.env.NODE_ENV === 'production'
+  ? {
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'"],
+          styleSrc: ["'self'"],
+          imgSrc: ["'self'", "data:", "https:"],
+          connectSrc: ["'self'"],
+          fontSrc: ["'self'"],
+          objectSrc: ["'none'"],
+          mediaSrc: ["'self'"],
+          frameSrc: ["'none'"],
+          baseUri: ["'self'"],
+          formAction: ["'self'"]
+        },
+      },
+      hsts: {
+        maxAge: 31536000, // 1 year
+        includeSubDomains: true,
+        preload: true
+      },
+      frameguard: {
+        action: 'deny' as const
+      },
+      noSniff: true,
+      xssFilter: true
+    }
+  : {
+      // Development: Relaxed CSP, no HSTS, no upgrade-insecure-requests
+      contentSecurityPolicy: {
+        useDefaults: false,  // Don't use default directives that include upgrade-insecure-requests
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", "data:", "http:", "https:"],
+          connectSrc: ["'self'"],
+          fontSrc: ["'self'"],
+          objectSrc: ["'none'"],
+          mediaSrc: ["'self'"],
+          frameSrc: ["'none'"],
+          baseUri: ["'self'"],
+          formAction: ["'self'"]
+          // upgradeInsecureRequests intentionally omitted for HTTP in development
+        },
+      },
+      hsts: false, // Disable HSTS in development
+      frameguard: {
+        action: 'deny' as const
+      },
+      noSniff: true,
+      xssFilter: true
+    };
+
+app.use(helmet(helmetConfig));
+
+// Security: CORS configuration with allowed origins
+const getAllowedOrigins = () => {
+  const origins = process.env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()) || [];
+  // Always allow localhost in development
+  if (process.env.NODE_ENV !== 'production') {
+    origins.push('http://localhost:3000', 'http://localhost:5173', 'http://localhost:8080');
+  }
+  return origins.length > 0 ? origins : ['http://localhost:3000'];
+};
+
 app.use(cors({
-  origin: true,  // Allow same-origin requests
-  credentials: true  // Allow cookies
+  origin: (origin, callback) => {
+    const allowedOrigins = getAllowedOrigins();
+
+    // Allow requests with no origin (mobile apps, Postman, same-origin)
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+      callback(null, true);
+    } else {
+      logger.warn(`CORS request blocked from origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  optionsSuccessStatus: 200
 }));
-app.use(express.json());
+
+// Security: Request body size limits
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true, parameterLimit: 1000 }));
 
 // Session middleware
 app.use(session(getSessionConfig()));
+
+// Security: CSRF protection middleware
+import { csrfTokenMiddleware, csrfProtection, csrfTokenEndpoint } from './middleware/csrf.js';
+app.use(csrfTokenMiddleware);  // Generate and attach tokens to all requests
+// csrfProtection applied to API routes below (after CSRF token endpoint)
 
 // Initialize OIDC if configured
 initializeOIDC().then(enabled => {
@@ -187,6 +278,9 @@ const apiRouter = express.Router();
 import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import auditRoutes from './routes/auditRoutes.js';
+
+// CSRF token endpoint (must be before CSRF protection middleware)
+apiRouter.get('/csrf-token', csrfTokenEndpoint);
 
 // Authentication routes
 apiRouter.use('/auth', authRoutes);
@@ -1650,10 +1744,11 @@ apiRouter.post('/system/restart', requirePermission('settings', 'write'), (_req,
 const buildPath = path.join(__dirname, '../../dist');
 
 // Mount API router first - this must come before static file serving
+// Apply rate limiting and CSRF protection to all API routes (except csrf-token endpoint)
 if (BASE_URL) {
-  app.use(`${BASE_URL}/api`, apiRouter);
+  app.use(`${BASE_URL}/api`, apiLimiter, csrfProtection, apiRouter);
 } else {
-  app.use('/api', apiRouter);
+  app.use('/api', apiLimiter, csrfProtection, apiRouter);
 }
 
 // Function to rewrite HTML with BASE_URL at runtime
