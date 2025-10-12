@@ -3098,7 +3098,7 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 1100;
+  z-index: 9998;
 }
 
 .user-menu-dropdown {
@@ -3110,7 +3110,7 @@ body {
   border: 1px solid var(--ctp-surface2);
   border-radius: 8px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-  z-index: 1101;
+  z-index: 9999;
   overflow: hidden;
 }
 
