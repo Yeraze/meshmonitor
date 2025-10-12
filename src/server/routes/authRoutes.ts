@@ -14,6 +14,7 @@ import {
   generateRandomString
 } from '../auth/oidcAuth.js';
 import { requireAuth } from '../auth/authMiddleware.js';
+import { authLimiter } from '../middleware/rateLimiters.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 
@@ -120,7 +121,8 @@ router.get('/check-default-password', (_req: Request, res: Response) => {
 });
 
 // Local authentication login
-router.post('/login', async (req: Request, res: Response) => {
+// Apply strict rate limiting to prevent brute force attacks
+router.post('/login', authLimiter, async (req: Request, res: Response) => {
   try {
     // Check if local auth is disabled
     const localAuthDisabled = process.env.DISABLE_LOCAL_AUTH === 'true';

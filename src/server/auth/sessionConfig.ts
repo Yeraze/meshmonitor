@@ -23,6 +23,8 @@ declare module 'express-session' {
     oidcState?: string;
     oidcCodeVerifier?: string;
     oidcNonce?: string;
+    // CSRF protection
+    csrfToken?: string;
   }
 }
 
@@ -33,12 +35,18 @@ export function getSessionConfig(): session.SessionOptions {
   // Use DATABASE_PATH env var if set, otherwise default to /data/meshmonitor.db
   const dbPath = process.env.DATABASE_PATH || '/data/meshmonitor.db';
 
+  const nodeEnv = process.env.NODE_ENV || 'development';
+
   const sessionSecret = process.env.SESSION_SECRET;
   if (!sessionSecret) {
+    if (nodeEnv === 'production') {
+      logger.error('❌ SESSION_SECRET must be set in production!');
+      logger.error('   Set SESSION_SECRET environment variable to a long random string');
+      logger.error('   Example: SESSION_SECRET=$(openssl rand -hex 32)');
+      throw new Error('SESSION_SECRET is required in production environment');
+    }
     logger.warn('⚠️  SESSION_SECRET not set! Using insecure default. Set SESSION_SECRET in production!');
   }
-
-  const nodeEnv = process.env.NODE_ENV || 'development';
 
   const sessionMaxAge = parseInt(process.env.SESSION_MAX_AGE || '86400000'); // Default 24 hours
 
