@@ -11,6 +11,8 @@ interface SidebarProps {
   isAdmin: boolean;
   unreadCounts: { [key: number]: number };
   onMessagesClick: () => void;
+  baseUrl: string;
+  connectedNodeName?: string;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -19,7 +21,9 @@ const Sidebar: React.FC<SidebarProps> = ({
   hasPermission,
   isAdmin,
   unreadCounts,
-  onMessagesClick
+  onMessagesClick,
+  baseUrl,
+  connectedNodeName
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -55,6 +59,18 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
+      <div className="sidebar-header">
+        <img src={`${baseUrl}/logo.png`} alt="MeshMonitor Logo" className="sidebar-logo" />
+        {!isCollapsed && (
+          <div className="sidebar-header-text">
+            <div className="sidebar-app-name">MeshMonitor</div>
+            {connectedNodeName && (
+              <div className="sidebar-node-name">{connectedNodeName}</div>
+            )}
+          </div>
+        )}
+      </div>
+
       <nav className="sidebar-nav">
         <SectionHeader title="Main" />
         <div className="sidebar-section">
