@@ -29,16 +29,12 @@ version: '3.8'
 
 services:
   meshmonitor:
-    image: meshmonitor:latest
+    image: ghcr.io/yeraze/meshmonitor:latest
     restart: unless-stopped
     environment:
       - MESHTASTIC_NODE_IP=192.168.1.100
       - SESSION_SECRET=${SESSION_SECRET}
       - NODE_ENV=production
-      - OIDC_ISSUER=${OIDC_ISSUER}
-      - OIDC_CLIENT_ID=${OIDC_CLIENT_ID}
-      - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
-      - OIDC_REDIRECT_URI=https://meshmonitor.example.com/api/auth/oidc/callback
     volumes:
       - meshmonitor_data:/app/data
     ports:
@@ -59,6 +55,8 @@ volumes:
     driver: local
 ```
 
+For SSO/OIDC configuration, see the [SSO Setup guide](/configuration/sso).
+
 ### Kubernetes with Helm (Enterprise Scale)
 
 MeshMonitor includes Helm charts for Kubernetes deployment.
@@ -76,12 +74,10 @@ helm install meshmonitor meshmonitor/meshmonitor \
   --create-namespace \
   --set meshmonitor.nodeIp=192.168.1.100 \
   --set ingress.enabled=true \
-  --set ingress.host=meshmonitor.example.com \
-  --set oidc.enabled=true \
-  --set oidc.issuer=https://your-idp.com \
-  --set oidc.clientId=your-client-id \
-  --set oidc.clientSecret=your-client-secret
+  --set ingress.host=meshmonitor.example.com
 ```
+
+For SSO/OIDC configuration, see the [SSO Setup guide](/configuration/sso).
 
 #### Custom values.yaml
 
@@ -99,19 +95,10 @@ meshmonitor:
       memory: "512Mi"
       cpu: "500m"
 
-  replicas: 2  # For high availability
-
 persistence:
   enabled: true
   size: 10Gi
   storageClass: "standard"
-
-oidc:
-  enabled: true
-  issuer: "https://your-idp.com"
-  clientId: "your-client-id"
-  clientSecret: "your-client-secret"
-  redirectUri: "https://meshmonitor.example.com/api/auth/oidc/callback"
 
 ingress:
   enabled: true
@@ -124,113 +111,15 @@ ingress:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-
-monitoring:
-  enabled: true
-  serviceMonitor: true
-  grafana:
-    enabled: true
-  prometheus:
-    enabled: true
 ```
+
+For OIDC/SSO configuration, see the [SSO Setup guide](/configuration/sso).
 
 Deploy:
 
 ```bash
 helm install meshmonitor ./helm/meshmonitor -f values.yaml
 ```
-
-## High Availability
-
-### Load Balancing
-
-Run multiple instances behind a load balancer:
-
-**Docker Compose:**
-
-```yaml
-version: '3.8'
-
-services:
-  meshmonitor-1:
-    image: meshmonitor:latest
-    environment:
-      - MESHTASTIC_NODE_IP=192.168.1.100
-    volumes:
-      - meshmonitor_data:/app/data
-    expose:
-      - "8080"
-    networks:
-      - app-network
-
-  meshmonitor-2:
-    image: meshmonitor:latest
-    environment:
-      - MESHTASTIC_NODE_IP=192.168.1.100
-    volumes:
-      - meshmonitor_data:/app/data
-    expose:
-      - "8080"
-    networks:
-      - app-network
-
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx-lb.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      - meshmonitor-1
-      - meshmonitor-2
-    networks:
-      - app-network
-
-volumes:
-  meshmonitor_data:
-
-networks:
-  app-network:
-```
-
-**NGINX Load Balancer Config:**
-
-```nginx
-upstream meshmonitor_backend {
-    least_conn;  # Load balancing method
-    server meshmonitor-1:8080 max_fails=3 fail_timeout=30s;
-    server meshmonitor-2:8080 max_fails=3 fail_timeout=30s;
-}
-
-server {
-    listen 443 ssl http2;
-    server_name meshmonitor.example.com;
-
-    # SSL config...
-
-    location / {
-        proxy_pass http://meshmonitor_backend;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-
-        # Session stickiness
-        proxy_set_header Connection "";
-        proxy_http_version 1.1;
-    }
-}
-```
-
-### Session Management
-
-For multiple instances, sessions must be shared:
-
-**Options:**
-1. **Sticky sessions** (session affinity) - Route users to same instance
-2. **Shared session store** - Redis, Memcached, or database
-3. **JWT tokens** - Stateless authentication
-
-MeshMonitor uses SQLite for sessions by default, which works with sticky sessions.
 
 ## Security Hardening
 
@@ -425,94 +314,23 @@ docker compose up -d
 
 ## Monitoring
 
-### Health Checks
+### Logging
 
-MeshMonitor provides health check endpoints:
+MeshMonitor logs to stdout/stderr by default. Configure log aggregation in your deployment platform:
 
-```bash
-# Basic health check
-curl http://localhost:8080/api/health
+- **Docker**: Use `docker logs meshmonitor` or configure a logging driver
+- **Kubernetes**: Logs are available via `kubectl logs`
 
-# Detailed status
-curl http://localhost:8080/api/status
-```
-
-### Prometheus Metrics
-
-If monitoring is enabled, metrics are available at:
-
-```
-http://localhost:8080/metrics
-```
-
-**Prometheus scrape config:**
-
-```yaml
-scrape_configs:
-  - job_name: 'meshmonitor'
-    static_configs:
-      - targets: ['meshmonitor.example.com:8080']
-    metrics_path: '/metrics'
-```
-
-### Grafana Dashboard
-
-Import the included Grafana dashboard:
-
-1. Navigate to Grafana → Dashboards → Import
-2. Upload `monitoring/grafana-dashboard.json`
-3. Select Prometheus data source
-
-### Log Aggregation
-
-**ELK Stack:**
+**Docker Compose logging:**
 
 ```yaml
 services:
   meshmonitor:
     logging:
-      driver: "fluentd"
+      driver: "json-file"
       options:
-        fluentd-address: "localhost:24224"
-        tag: "meshmonitor"
-```
-
-**Loki:**
-
-```yaml
-services:
-  meshmonitor:
-    logging:
-      driver: "loki"
-      options:
-        loki-url: "http://loki:3100/loki/api/v1/push"
-```
-
-### Alerting
-
-**Prometheus AlertManager rules:**
-
-```yaml
-groups:
-- name: meshmonitor
-  rules:
-  - alert: MeshMonitorDown
-    expr: up{job="meshmonitor"} == 0
-    for: 5m
-    labels:
-      severity: critical
-    annotations:
-      summary: "MeshMonitor is down"
-      description: "MeshMonitor has been down for more than 5 minutes."
-
-  - alert: HighMemoryUsage
-    expr: container_memory_usage_bytes{name="meshmonitor"} > 512000000
-    for: 10m
-    labels:
-      severity: warning
-    annotations:
-      summary: "High memory usage"
-      description: "MeshMonitor is using more than 512MB of memory."
+        max-size: "10m"
+        max-file: "3"
 ```
 
 ## Performance Optimization
