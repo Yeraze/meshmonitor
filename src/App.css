@@ -3095,7 +3095,7 @@ body {
 .menu-overlay {
   position: fixed;
   top: 0;
-  left: 0;
+  left: var(--sidebar-width, 240px); /* Start after the sidebar */
   right: 0;
   bottom: 0;
   z-index: 9998;
@@ -3190,6 +3190,13 @@ body {
 .user-menu-item:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Mobile responsive - overlay covers full width on mobile */
+@media (max-width: 768px) {
+  .menu-overlay {
+    left: 0 !important; /* Full width on mobile */
+  }
 }
 
 /* Login Button in Header */
