@@ -140,6 +140,8 @@ export interface EnvironmentConfig {
   oidcScopesProvided: boolean;
   oidcAutoCreateUsers: boolean;
   oidcAutoCreateUsersProvided: boolean;
+  oidcAllowHttp: boolean;
+  oidcAllowHttpProvided: boolean;
   oidcEnabled: boolean;
 
   // Authentication
@@ -312,6 +314,7 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     wasProvided: process.env.OIDC_SCOPES !== undefined
   };
   const oidcAutoCreateUsers = parseBoolean('OIDC_AUTO_CREATE_USERS', process.env.OIDC_AUTO_CREATE_USERS, true);
+  const oidcAllowHttp = parseBoolean('OIDC_ALLOW_HTTP', process.env.OIDC_ALLOW_HTTP, false);
 
   const oidcEnabled = !!(oidcIssuer.value && oidcClientId.value && oidcClientSecret.value);
 
@@ -319,6 +322,18 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     if (!oidcEnabled) {
       logger.warn('⚠️  Partial OIDC configuration detected. All three are required: OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET');
     }
+  }
+
+  if (oidcAllowHttp.value && oidcIssuer.value) {
+    logger.warn('');
+    logger.warn('═══════════════════════════════════════════════════════════');
+    logger.warn('⚠️  SECURITY WARNING: OIDC_ALLOW_HTTP is enabled');
+    logger.warn('═══════════════════════════════════════════════════════════');
+    logger.warn('   HTTP OIDC issuers are allowed. This is INSECURE!');
+    logger.warn('   Only use this for testing with mock OIDC providers.');
+    logger.warn('   NEVER use this in production.');
+    logger.warn('═══════════════════════════════════════════════════════════');
+    logger.warn('');
   }
 
   // Authentication
@@ -380,6 +395,8 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     oidcScopesProvided: oidcScopes.wasProvided,
     oidcAutoCreateUsers: oidcAutoCreateUsers.value,
     oidcAutoCreateUsersProvided: oidcAutoCreateUsers.wasProvided,
+    oidcAllowHttp: oidcAllowHttp.value,
+    oidcAllowHttpProvided: oidcAllowHttp.wasProvided,
     oidcEnabled,
 
     // Authentication
