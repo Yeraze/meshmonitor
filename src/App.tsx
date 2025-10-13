@@ -291,12 +291,16 @@ function App() {
 
     // Handle 403 CSRF errors with automatic token refresh and retry
     if (response.status === 403 && retryCount < 1) {
-      const method = options?.method?.toUpperCase() || 'GET';
       if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
-        console.warn('[App] 403 Forbidden - Refreshing CSRF token and retrying...');
-        sessionStorage.removeItem('csrfToken');
-        await refreshCsrfToken();
-        return authFetch(url, options, retryCount + 1);
+        // Clone response to check if it's a CSRF error without consuming the body
+        const clonedResponse = response.clone();
+        const error = await clonedResponse.json().catch(() => ({ error: '' }));
+        if (error.error && error.error.toLowerCase().includes('csrf')) {
+          console.warn('[App] 403 CSRF error - Refreshing token and retrying...');
+          sessionStorage.removeItem('csrfToken');
+          await refreshCsrfToken();
+          return authFetch(url, options, retryCount + 1);
+        }
       }
     }
 
