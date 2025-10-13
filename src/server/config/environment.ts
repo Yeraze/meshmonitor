@@ -145,6 +145,8 @@ export interface EnvironmentConfig {
   // Authentication
   disableLocalAuth: boolean;
   disableLocalAuthProvided: boolean;
+  adminUsername: string;
+  adminUsernameProvided: boolean;
 }
 
 /**
@@ -321,6 +323,10 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
 
   // Authentication
   const disableLocalAuth = parseBoolean('DISABLE_LOCAL_AUTH', process.env.DISABLE_LOCAL_AUTH, false);
+  const adminUsername = {
+    value: process.env.ADMIN_USERNAME || 'admin',
+    wasProvided: process.env.ADMIN_USERNAME !== undefined
+  };
 
   return {
     // Node environment
@@ -378,7 +384,9 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
 
     // Authentication
     disableLocalAuth: disableLocalAuth.value,
-    disableLocalAuthProvided: disableLocalAuth.wasProvided
+    disableLocalAuthProvided: disableLocalAuth.wasProvided,
+    adminUsername: adminUsername.value,
+    adminUsernameProvided: adminUsername.wasProvided
   };
 }
 
