@@ -76,7 +76,7 @@ const MapCenterController: React.FC<MapCenterControllerProps> = ({ centerTarget,
 
 function App() {
   const { authStatus, hasPermission } = useAuth();
-  const { getToken: getCsrfToken } = useCsrf();
+  const { getToken: getCsrfToken, refreshToken: refreshCsrfToken } = useCsrf();
   const { showToast } = useToast();
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [isDefaultPassword, setIsDefaultPassword] = useState(false);
@@ -267,8 +267,8 @@ function App() {
     setAutoAnnounceOnStart
   } = useUI();
 
-  // Helper to fetch with credentials and silently ignore auth errors
-  const authFetch = async (url: string, options?: RequestInit): Promise<Response> => {
+  // Helper to fetch with credentials and automatic CSRF token retry
+  const authFetch = async (url: string, options?: RequestInit, retryCount = 0): Promise<Response> => {
     const headers = new Headers(options?.headers);
 
     // Add CSRF token for mutation requests
@@ -288,6 +288,17 @@ function App() {
       headers,
       credentials: 'include',
     });
+
+    // Handle 403 CSRF errors with automatic token refresh and retry
+    if (response.status === 403 && retryCount < 1) {
+      const method = options?.method?.toUpperCase() || 'GET';
+      if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+        console.warn('[App] 403 Forbidden - Refreshing CSRF token and retrying...');
+        sessionStorage.removeItem('csrfToken');
+        await refreshCsrfToken();
+        return authFetch(url, options, retryCount + 1);
+      }
+    }
 
     // Silently handle auth errors to prevent console spam
     if (response.status === 401 || response.status === 403) {
