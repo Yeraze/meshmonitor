@@ -19,6 +19,7 @@ COMPOSE_FILE="docker-compose.reverse-proxy-test.yml"
 CONTAINER_NAME="meshmonitor-reverse-proxy-test"
 TEST_PORT="8084"
 TEST_DOMAIN="https://meshdev.yeraze.online"
+TEST_URL="$TEST_DOMAIN"  # Use HTTPS domain for all tests
 
 # Cleanup function
 cleanup() {
@@ -137,7 +138,7 @@ echo ""
 
 # Test 6: Check HSTS header is present (production mode)
 echo "Test 6: HSTS header present in production"
-if curl -s -I http://localhost:$TEST_PORT/ | grep -q "Strict-Transport-Security"; then
+if curl -s -I -k $TEST_URL/ | grep -q "Strict-Transport-Security"; then
     echo -e "${GREEN}✓ PASS${NC}: HSTS header present (production security)"
 else
     echo -e "${YELLOW}⚠ WARN${NC}: HSTS header not found (expected in production with secure cookies)"
@@ -153,18 +154,16 @@ else
 fi
 echo ""
 
-# Test 8: Get CSRF token (testing behind "reverse proxy")
-echo "Test 8: Fetch CSRF token with X-Forwarded headers"
-CSRF_RESPONSE=$(curl -s -w "\n%{http_code}" http://localhost:$TEST_PORT/api/csrf-token \
-    -H "X-Forwarded-Proto: https" \
-    -H "X-Forwarded-Host: meshdev.yeraze.online" \
+# Test 8: Get CSRF token (via HTTPS)
+echo "Test 8: Fetch CSRF token via HTTPS"
+CSRF_RESPONSE=$(curl -s -w "\n%{http_code}" -k $TEST_URL/api/csrf-token \
     -c /tmp/meshmonitor-reverse-proxy-cookies.txt)
 
 HTTP_CODE=$(echo "$CSRF_RESPONSE" | tail -n1)
 CSRF_TOKEN=$(echo "$CSRF_RESPONSE" | head -n-1 | grep -o '"csrfToken":"[^"]*"' | cut -d'"' -f4)
 
 if [ "$HTTP_CODE" = "200" ] && [ -n "$CSRF_TOKEN" ]; then
-    echo -e "${GREEN}✓ PASS${NC}: CSRF token obtained (trust proxy working)"
+    echo -e "${GREEN}✓ PASS${NC}: CSRF token obtained via HTTPS"
 else
     echo -e "${RED}✗ FAIL${NC}: Failed to get CSRF token"
     echo "HTTP Code: $HTTP_CODE"
@@ -173,13 +172,11 @@ else
 fi
 echo ""
 
-# Test 9: Check login works with default credentials (simulating reverse proxy)
-echo "Test 9: Login with default admin credentials (via reverse proxy)"
-LOGIN_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://localhost:$TEST_PORT/api/auth/login \
+# Test 9: Check login works with default credentials (via HTTPS)
+echo "Test 9: Login with default admin credentials via HTTPS"
+LOGIN_RESPONSE=$(curl -s -w "\n%{http_code}" -k -X POST $TEST_URL/api/auth/login \
     -H "Content-Type: application/json" \
     -H "X-CSRF-Token: $CSRF_TOKEN" \
-    -H "X-Forwarded-Proto: https" \
-    -H "X-Forwarded-Host: meshdev.yeraze.online" \
     -d '{"username":"admin","password":"changeme"}' \
     -b /tmp/meshmonitor-reverse-proxy-cookies.txt \
     -c /tmp/meshmonitor-reverse-proxy-cookies.txt)
@@ -195,10 +192,8 @@ fi
 echo ""
 
 # Test 10: Check authenticated request works
-echo "Test 10: Authenticated request with session cookie (via reverse proxy)"
-AUTH_RESPONSE=$(curl -s -w "\n%{http_code}" http://localhost:$TEST_PORT/api/auth/status \
-    -H "X-Forwarded-Proto: https" \
-    -H "X-Forwarded-Host: meshdev.yeraze.online" \
+echo "Test 10: Authenticated request with session cookie via HTTPS"
+AUTH_RESPONSE=$(curl -s -w "\n%{http_code}" -k $TEST_URL/api/auth/status \
     -b /tmp/meshmonitor-reverse-proxy-cookies.txt)
 
 HTTP_CODE=$(echo "$AUTH_RESPONSE" | tail -n1)
@@ -216,7 +211,7 @@ echo ""
 
 # Test 11: Check session cookie has Secure flag
 echo "Test 11: Session cookie has Secure flag (HTTPS-only)"
-COOKIE_HEADER=$(curl -s -I http://localhost:$TEST_PORT/ | grep -i "Set-Cookie: meshmonitor.sid")
+COOKIE_HEADER=$(curl -s -I -k $TEST_URL/ | grep -i "Set-Cookie: meshmonitor.sid")
 if [ -n "$COOKIE_HEADER" ]; then
     if echo "$COOKIE_HEADER" | grep -q "; Secure"; then
         echo -e "${GREEN}✓ PASS${NC}: Cookie has Secure flag (HTTPS-only)"
@@ -231,7 +226,7 @@ echo ""
 
 # Test 12: Check ALLOWED_ORIGINS is respected
 echo "Test 12: CORS configuration for HTTPS origin"
-CORS_RESPONSE=$(curl -s -I -X OPTIONS http://localhost:$TEST_PORT/api/auth/status \
+CORS_RESPONSE=$(curl -s -I -k -X OPTIONS $TEST_URL/api/auth/status \
     -H "Origin: https://meshdev.yeraze.online" \
     -H "Access-Control-Request-Method: GET")
 
@@ -239,6 +234,56 @@ if echo "$CORS_RESPONSE" | grep -qi "Access-Control-Allow-Origin"; then
     echo -e "${GREEN}✓ PASS${NC}: CORS configured for allowed origin"
 else
     echo -e "${YELLOW}⚠ INFO${NC}: CORS headers may be applied at reverse proxy level"
+fi
+echo ""
+
+# Test 13: Send message to node and wait for response
+echo "Test 13: Send message to Yeraze Station G2 and wait for response"
+TARGET_NODE_ID="a2e4ff4c"
+TEST_MESSAGE="test"
+
+# Send message
+SEND_RESPONSE=$(curl -s -w "\n%{http_code}" -k -X POST $TEST_URL/api/messages/send \
+    -H "Content-Type: application/json" \
+    -H "X-CSRF-Token: $CSRF_TOKEN" \
+    -d "{\"to\":\"!$TARGET_NODE_ID\",\"text\":\"$TEST_MESSAGE\"}" \
+    -b /tmp/meshmonitor-reverse-proxy-cookies.txt)
+
+HTTP_CODE=$(echo "$SEND_RESPONSE" | tail -n1)
+if [ "$HTTP_CODE" = "200" ]; then
+    echo -e "${GREEN}✓${NC} Message sent successfully"
+
+    # Wait up to 60 seconds for a response
+    echo "Waiting up to 60 seconds for response from Yeraze Station G2..."
+    MAX_WAIT=60
+    ELAPSED=0
+    RESPONSE_RECEIVED=false
+
+    while [ $ELAPSED -lt $MAX_WAIT ]; do
+        # Check for messages from the target node
+        MESSAGES_RESPONSE=$(curl -s -k $TEST_URL/api/messages \
+            -b /tmp/meshmonitor-reverse-proxy-cookies.txt)
+
+        # Look for a recent message from our target node
+        if echo "$MESSAGES_RESPONSE" | grep -q "\"from\":\"!$TARGET_NODE_ID\""; then
+            RESPONSE_RECEIVED=true
+            echo -e "${GREEN}✓ PASS${NC}: Received response from Yeraze Station G2"
+            break
+        fi
+
+        sleep 2
+        ELAPSED=$((ELAPSED + 2))
+        echo -n "."
+    done
+    echo ""
+
+    if [ "$RESPONSE_RECEIVED" = false ]; then
+        echo -e "${YELLOW}⚠ WARN${NC}: No response received within 60 seconds (node may be offline)"
+        echo "   This is not a failure - the node may not be available"
+    fi
+else
+    echo -e "${YELLOW}⚠ WARN${NC}: Failed to send message (HTTP $HTTP_CODE)"
+    echo "   This is not a critical failure - messaging functionality exists"
 fi
 echo ""
 

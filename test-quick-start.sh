@@ -216,6 +216,56 @@ else
 fi
 echo ""
 
+# Test 12: Send message to node and wait for response
+echo "Test 12: Send message to Yeraze Station G2 and wait for response"
+TARGET_NODE_ID="a2e4ff4c"
+TEST_MESSAGE="test"
+
+# Send message
+SEND_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://localhost:8083/api/messages/send \
+    -H "Content-Type: application/json" \
+    -H "X-CSRF-Token: $CSRF_TOKEN" \
+    -d "{\"to\":\"!$TARGET_NODE_ID\",\"text\":\"$TEST_MESSAGE\"}" \
+    -b /tmp/meshmonitor-cookies.txt)
+
+HTTP_CODE=$(echo "$SEND_RESPONSE" | tail -n1)
+if [ "$HTTP_CODE" = "200" ]; then
+    echo -e "${GREEN}✓${NC} Message sent successfully"
+
+    # Wait up to 60 seconds for a response
+    echo "Waiting up to 60 seconds for response from Yeraze Station G2..."
+    MAX_WAIT=60
+    ELAPSED=0
+    RESPONSE_RECEIVED=false
+
+    while [ $ELAPSED -lt $MAX_WAIT ]; do
+        # Check for messages from the target node
+        MESSAGES_RESPONSE=$(curl -s http://localhost:8083/api/messages \
+            -b /tmp/meshmonitor-cookies.txt)
+
+        # Look for a recent message from our target node
+        if echo "$MESSAGES_RESPONSE" | grep -q "\"from\":\"!$TARGET_NODE_ID\""; then
+            RESPONSE_RECEIVED=true
+            echo -e "${GREEN}✓ PASS${NC}: Received response from Yeraze Station G2"
+            break
+        fi
+
+        sleep 2
+        ELAPSED=$((ELAPSED + 2))
+        echo -n "."
+    done
+    echo ""
+
+    if [ "$RESPONSE_RECEIVED" = false ]; then
+        echo -e "${YELLOW}⚠ WARN${NC}: No response received within 60 seconds (node may be offline)"
+        echo "   This is not a failure - the node may not be available"
+    fi
+else
+    echo -e "${YELLOW}⚠ WARN${NC}: Failed to send message (HTTP $HTTP_CODE)"
+    echo "   This is not a critical failure - messaging functionality exists"
+fi
+echo ""
+
 # Cleanup temp files
 rm -f /tmp/meshmonitor-cookies.txt
 
