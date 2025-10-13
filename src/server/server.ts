@@ -120,7 +120,11 @@ if (trustProxy !== undefined) {
 
 // Security: Helmet.js for HTTP security headers
 // Use relaxed settings in development to avoid HTTPS enforcement
-const helmetConfig = process.env.NODE_ENV === 'production'
+// Disable HSTS when COOKIE_SECURE=false to avoid forcing HTTPS
+const isSecureCookies = process.env.COOKIE_SECURE !== 'false';
+const isProduction = process.env.NODE_ENV === 'production';
+
+const helmetConfig = isProduction && isSecureCookies
   ? {
       contentSecurityPolicy: {
         directives: {
@@ -149,7 +153,7 @@ const helmetConfig = process.env.NODE_ENV === 'production'
       xssFilter: true
     }
   : {
-      // Development: Relaxed CSP, no HSTS, no upgrade-insecure-requests
+      // Development or HTTP-only: Relaxed CSP, no HSTS, no upgrade-insecure-requests
       contentSecurityPolicy: {
         useDefaults: false,  // Don't use default directives that include upgrade-insecure-requests
         directives: {
@@ -164,10 +168,10 @@ const helmetConfig = process.env.NODE_ENV === 'production'
           frameSrc: ["'none'"],
           baseUri: ["'self'"],
           formAction: ["'self'"]
-          // upgradeInsecureRequests intentionally omitted for HTTP in development
+          // upgradeInsecureRequests intentionally omitted for HTTP
         },
       },
-      hsts: false, // Disable HSTS in development
+      hsts: false, // Disable HSTS when not using secure cookies or in development
       frameguard: {
         action: 'deny' as const
       },
