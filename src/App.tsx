@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, useMap } from 'react-leaflet'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -25,7 +25,7 @@ import { MeshMessage } from './types/message'
 import { MapCenterControllerProps, SortField, SortDirection } from './types/ui'
 import api from './services/api'
 import { logger } from './utils/logger'
-import { createNodeIcon } from './utils/mapIcons'
+import { createNodeIcon, getHopColor } from './utils/mapIcons'
 import { getRoleName, generateArrowMarkers } from './utils/mapHelpers.tsx'
 import { getHardwareModelName } from './utils/nodeHelpers'
 import MapLegend from './components/MapLegend'
@@ -204,6 +204,7 @@ function App() {
     setNodesWithTelemetry,
     nodesWithWeatherTelemetry,
     setNodesWithWeatherTelemetry,
+    nodesWithEstimatedPosition,
     setNodesWithEstimatedPosition,
     nodesWithPKC,
     setNodesWithPKC
@@ -2145,6 +2146,39 @@ function App() {
                   );
                 })}
 
+                {/* Draw uncertainty circles for estimated positions */}
+                {nodesWithPosition
+                  .filter(node => node.user?.id && nodesWithEstimatedPosition.has(node.user.id))
+                  .map(node => {
+                    // Calculate radius based on precision bits (higher precision = smaller circle)
+                    // Meshtastic uses precision_bits to reduce coordinate precision
+                    // Each precision bit reduces precision by ~1 bit, roughly doubling the uncertainty
+                    // We'll use a base radius and scale it
+                    const baseRadiusMeters = 500; // Base uncertainty radius
+                    const radiusMeters = baseRadiusMeters; // Can be adjusted based on precision_bits if available
+
+                    // Get hop color for the circle (same as marker)
+                    const isLocalNode = node.user?.id === currentNodeId;
+                    const hops = isLocalNode ? 0 : (node.hopsAway ?? 999);
+                    const color = getHopColor(hops);
+
+                    return (
+                      <Circle
+                        key={`estimated-${node.nodeNum}`}
+                        center={[node.position!.latitude, node.position!.longitude]}
+                        radius={radiusMeters}
+                        pathOptions={{
+                          color: color,
+                          fillColor: color,
+                          fillOpacity: 0.1,
+                          opacity: 0.4,
+                          weight: 2,
+                          dashArray: '5, 5'
+                        }}
+                      />
+                    );
+                  })}
+
                 {/* Draw traceroute paths */}
                 {traceroutePathsElements}
 
@@ -2799,9 +2833,14 @@ function App() {
                                 📶 {node.snr.toFixed(1)}dB
                               </span>
                             )}
-                            {node.user?.id && nodesWithPKC.has(node.user.id) && (
-                              <span className="stat" title="Has Public Key Cryptography">
-                                🔐
+                            {node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null && (
+                              <span className="stat" title={node.deviceMetrics.batteryLevel === 101 ? "Plugged In" : "Battery Level"}>
+                                {node.deviceMetrics.batteryLevel === 101 ? '🔌' : `🔋 ${node.deviceMetrics.batteryLevel}%`}
+                              </span>
+                            )}
+                            {node.hopsAway != null && (
+                              <span className="stat" title="Hops Away">
+                                🔗 {node.hopsAway} hop{node.hopsAway !== 1 ? 's' : ''}
                               </span>
                             )}
                           </div>
@@ -2812,6 +2851,30 @@ function App() {
                               : 'Never'
                             }
                           </div>
+                        </div>
+
+                        <div className="node-indicators">
+                          {node.position && node.position.latitude != null && node.position.longitude != null && (
+                            <div className="node-location" title="Location">
+                              📍 {node.position.latitude.toFixed(3)}, {node.position.longitude.toFixed(3)}
+                              {node.isMobile && <span title="Mobile Node (position varies > 1km)" style={{ marginLeft: '4px' }}>🚶</span>}
+                            </div>
+                          )}
+                          {node.user?.id && nodesWithTelemetry.has(node.user.id) && (
+                            <div className="node-telemetry" title="Has Telemetry Data">
+                              📊
+                            </div>
+                          )}
+                          {node.user?.id && nodesWithWeatherTelemetry.has(node.user.id) && (
+                            <div className="node-weather" title="Has Weather Data">
+                              ☀️
+                            </div>
+                          )}
+                          {node.user?.id && nodesWithPKC.has(node.user.id) && (
+                            <div className="node-pkc" title="Has Public Key Cryptography">
+                              🔐
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))
