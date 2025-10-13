@@ -9,6 +9,7 @@ import express, { Express } from 'express';
 import session from 'express-session';
 import request from 'supertest';
 import DatabaseService from '../../services/database.js';
+import { getEnvironmentConfig } from '../config/environment.js';
 
 describe('/api/config endpoint', () => {
   let app: Express;
@@ -54,20 +55,22 @@ describe('/api/config endpoint', () => {
           }
         }
 
+        const env = getEnvironmentConfig();
         res.json({
-          meshtasticNodeIp: process.env.MESHTASTIC_NODE_IP || '192.168.1.100',
-          meshtasticTcpPort: parseInt(process.env.MESHTASTIC_TCP_PORT || '4403', 10),
+          meshtasticNodeIp: env.meshtasticNodeIp,
+          meshtasticTcpPort: env.meshtasticTcpPort,
           meshtasticUseTls: false,
-          baseUrl: '',
+          baseUrl: env.baseUrl,
           deviceMetadata: deviceMetadata,
           localNodeInfo: localNodeInfo
         });
       } catch (error) {
+        const env = getEnvironmentConfig();
         res.json({
-          meshtasticNodeIp: process.env.MESHTASTIC_NODE_IP || '192.168.1.100',
-          meshtasticTcpPort: parseInt(process.env.MESHTASTIC_TCP_PORT || '4403', 10),
+          meshtasticNodeIp: env.meshtasticNodeIp,
+          meshtasticTcpPort: env.meshtasticTcpPort,
           meshtasticUseTls: false,
-          baseUrl: ''
+          baseUrl: env.baseUrl
         });
       }
     });

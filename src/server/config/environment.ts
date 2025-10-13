@@ -1,0 +1,411 @@
+/**
+ * Centralized Environment Configuration
+ *
+ * Single source of truth for all environment variables and their defaults.
+ * Parses environment variables once at startup, validates them, and provides
+ * type-safe access with provenance tracking (whether explicitly set or defaulted).
+ *
+ * Benefits:
+ * - Prevents inconsistent default handling across files
+ * - Makes it obvious what can be configured
+ * - Tracks whether values were explicitly provided or defaulted
+ * - Centralizes validation and warnings
+ */
+
+import crypto from 'crypto';
+import { logger } from '../../utils/logger.js';
+
+/**
+ * Parse boolean environment variable
+ * - undefined → defaultValue
+ * - 'true' → true
+ * - 'false' → false
+ * - anything else → defaultValue with warning
+ */
+function parseBoolean(
+  name: string,
+  envValue: string | undefined,
+  defaultValue: boolean
+): { value: boolean; wasProvided: boolean } {
+  if (envValue === undefined) {
+    return { value: defaultValue, wasProvided: false };
+  }
+
+  if (envValue === 'true') {
+    return { value: true, wasProvided: true };
+  }
+
+  if (envValue === 'false') {
+    return { value: false, wasProvided: true };
+  }
+
+  logger.warn(`⚠️  Invalid ${name} value: "${envValue}". Expected 'true' or 'false'. Using default: ${defaultValue}`);
+  return { value: defaultValue, wasProvided: false };
+}
+
+/**
+ * Parse integer environment variable
+ */
+function parseInt32(
+  name: string,
+  envValue: string | undefined,
+  defaultValue: number
+): { value: number; wasProvided: boolean } {
+  if (envValue === undefined) {
+    return { value: defaultValue, wasProvided: false };
+  }
+
+  const parsed = parseInt(envValue, 10);
+  if (isNaN(parsed)) {
+    logger.warn(`⚠️  Invalid ${name} value: "${envValue}". Expected integer. Using default: ${defaultValue}`);
+    return { value: defaultValue, wasProvided: false };
+  }
+
+  return { value: parsed, wasProvided: true };
+}
+
+/**
+ * Parse string with allowed values
+ */
+function parseEnum<T extends string>(
+  name: string,
+  envValue: string | undefined,
+  allowedValues: readonly T[],
+  defaultValue: T
+): { value: T; wasProvided: boolean } {
+  if (envValue === undefined) {
+    return { value: defaultValue, wasProvided: false };
+  }
+
+  if (allowedValues.includes(envValue as T)) {
+    return { value: envValue as T, wasProvided: true };
+  }
+
+  logger.warn(`⚠️  Invalid ${name} value: "${envValue}". Allowed values: ${allowedValues.join(', ')}. Using default: ${defaultValue}`);
+  return { value: defaultValue, wasProvided: false };
+}
+
+/**
+ * Environment configuration interface
+ */
+export interface EnvironmentConfig {
+  // Node environment
+  nodeEnv: 'production' | 'development';
+  nodeEnvProvided: boolean;
+  isDevelopment: boolean;
+  isProduction: boolean;
+
+  // Server
+  port: number;
+  portProvided: boolean;
+  baseUrl: string;
+  baseUrlProvided: boolean;
+  allowedOrigins: string[];
+  allowedOriginsProvided: boolean;
+  trustProxy: boolean;
+  trustProxyProvided: boolean;
+
+  // Session/Security
+  sessionSecret: string;
+  sessionSecretProvided: boolean;
+  sessionMaxAge: number;
+  sessionMaxAgeProvided: boolean;
+  cookieSecure: boolean;
+  cookieSecureProvided: boolean;
+  cookieSameSite: 'strict' | 'lax' | 'none';
+  cookieSameSiteProvided: boolean;
+
+  // Database
+  databasePath: string;
+  databasePathProvided: boolean;
+
+  // Meshtastic
+  meshtasticNodeIp: string;
+  meshtasticNodeIpProvided: boolean;
+  meshtasticTcpPort: number;
+  meshtasticTcpPortProvided: boolean;
+  timezone: string;
+  timezoneProvided: boolean;
+
+  // OIDC
+  oidcIssuer: string | undefined;
+  oidcIssuerProvided: boolean;
+  oidcClientId: string | undefined;
+  oidcClientIdProvided: boolean;
+  oidcClientSecret: string | undefined;
+  oidcClientSecretProvided: boolean;
+  oidcRedirectUri: string | undefined;
+  oidcRedirectUriProvided: boolean;
+  oidcScopes: string;
+  oidcScopesProvided: boolean;
+  oidcAutoCreateUsers: boolean;
+  oidcAutoCreateUsersProvided: boolean;
+  oidcEnabled: boolean;
+
+  // Authentication
+  disableLocalAuth: boolean;
+  disableLocalAuthProvided: boolean;
+  adminUsername: string;
+  adminUsernameProvided: boolean;
+}
+
+/**
+ * Parse and validate all environment variables
+ */
+export function loadEnvironmentConfig(): EnvironmentConfig {
+  // Node environment
+  const nodeEnv = parseEnum('NODE_ENV', process.env.NODE_ENV, ['production', 'development'] as const, 'development');
+
+  // Server
+  const port = parseInt32('PORT', process.env.PORT, 3001);
+
+  // BASE_URL validation and normalization
+  const baseUrlRaw = process.env.BASE_URL;
+  let baseUrl = baseUrlRaw || '';
+  let baseUrlProvided = baseUrlRaw !== undefined;
+
+  // Ensure BASE_URL starts with /
+  if (baseUrl && !baseUrl.startsWith('/')) {
+    logger.warn(`BASE_URL should start with '/'. Fixing: ${baseUrl} -> /${baseUrl}`);
+    baseUrl = `/${baseUrl}`;
+  }
+
+  // Validate against path traversal attempts
+  if (baseUrl.includes('../') || baseUrl.includes('..\\') || baseUrl.includes('/..')) {
+    logger.error(`Invalid BASE_URL: path traversal detected in '${baseUrl}'. Using default.`);
+    baseUrl = '';
+    baseUrlProvided = false;
+  }
+
+  // Remove trailing slashes
+  if (baseUrl.endsWith('/')) {
+    baseUrl = baseUrl.slice(0, -1);
+  }
+
+  // Validate URL path segments
+  if (baseUrl) {
+    const segments = baseUrl.split('/').filter(Boolean);
+    const validSegment = /^[a-zA-Z0-9-_]+$/;
+
+    // Check each segment for path traversal or invalid characters
+    for (const segment of segments) {
+      // Reject segments that are exactly '..'
+      if (segment === '..') {
+        logger.error(`Invalid BASE_URL: path traversal segment detected. Using default.`);
+        baseUrl = '';
+        baseUrlProvided = false;
+        break;
+      }
+
+      if (!validSegment.test(segment)) {
+        logger.warn(`BASE_URL contains invalid characters in segment: ${segment}. Only alphanumeric, hyphens, and underscores are allowed.`);
+      }
+    }
+
+    // Log multi-segment paths for visibility
+    if (baseUrl && segments.length > 1) {
+      logger.debug(`Using multi-segment BASE_URL: ${baseUrl} (${segments.length} segments)`);
+    }
+  }
+
+  const allowedOriginsRaw = process.env.ALLOWED_ORIGINS;
+  const allowedOrigins = {
+    value: allowedOriginsRaw ? allowedOriginsRaw.split(',').map(o => o.trim()).filter(o => o.length > 0) : [],
+    wasProvided: allowedOriginsRaw !== undefined
+  };
+  const trustProxy = parseBoolean('TRUST_PROXY', process.env.TRUST_PROXY, false);
+
+  // Session/Security
+  const sessionSecretRaw = process.env.SESSION_SECRET;
+  let sessionSecret: string;
+  let sessionSecretProvided: boolean;
+
+  if (sessionSecretRaw) {
+    sessionSecret = sessionSecretRaw;
+    sessionSecretProvided = true;
+  } else {
+    // Auto-generate SESSION_SECRET with warning in production
+    sessionSecret = crypto.randomBytes(32).toString('hex');
+    sessionSecretProvided = false;
+
+    if (nodeEnv.value === 'production') {
+      logger.warn('');
+      logger.warn('═══════════════════════════════════════════════════════════');
+      logger.warn('⚠️  SESSION_SECRET NOT SET - USING AUTO-GENERATED SECRET');
+      logger.warn('═══════════════════════════════════════════════════════════');
+      logger.warn('   For basic/home use, this is OK. Sessions will work.');
+      logger.warn('   ');
+      logger.warn('   For production deployments with HTTPS, set SESSION_SECRET:');
+      logger.warn('   SESSION_SECRET=$(openssl rand -hex 32)');
+      logger.warn('   ');
+      logger.warn('   ⚠️  Sessions will be reset on each container restart!');
+      logger.warn('═══════════════════════════════════════════════════════════');
+      logger.warn('');
+    }
+  }
+
+  const sessionMaxAge = parseInt32('SESSION_MAX_AGE', process.env.SESSION_MAX_AGE, 86400000); // 24 hours
+  const cookieSecure = parseBoolean('COOKIE_SECURE', process.env.COOKIE_SECURE, false);
+  const cookieSameSite = parseEnum('COOKIE_SAMESITE', process.env.COOKIE_SAMESITE, ['strict', 'lax', 'none'] as const, 'lax');
+
+  // Warn about COOKIE_SECURE defaults
+  if (!cookieSecure.wasProvided && nodeEnv.value === 'production') {
+    logger.warn('⚠️  COOKIE_SECURE not set - defaulting to false for HTTP compatibility');
+    logger.warn('   If using HTTPS, set COOKIE_SECURE=true for better security');
+  }
+
+  // Warn about potential secure cookie issues
+  if (cookieSecure.value && nodeEnv.value !== 'production') {
+    logger.warn('');
+    logger.warn('═══════════════════════════════════════════════════════════');
+    logger.warn('⚠️  COOKIE CONFIGURATION WARNING');
+    logger.warn('═══════════════════════════════════════════════════════════');
+    logger.warn('   Secure cookies are enabled but NODE_ENV is not "production".');
+    logger.warn('   ');
+    logger.warn('   If you\'re accessing via HTTP (not HTTPS), session cookies');
+    logger.warn('   will NOT be sent by the browser, causing authentication to fail.');
+    logger.warn('   ');
+    logger.warn('   Solutions:');
+    logger.warn('   1. Access the application via HTTPS');
+    logger.warn('   2. Set COOKIE_SECURE=false for HTTP access (less secure)');
+    logger.warn('   3. Set NODE_ENV=production only if using HTTPS');
+    logger.warn('═══════════════════════════════════════════════════════════');
+    logger.warn('');
+  }
+
+  // Database
+  const databasePath = {
+    value: process.env.DATABASE_PATH || '/data/meshmonitor.db',
+    wasProvided: process.env.DATABASE_PATH !== undefined
+  };
+
+  // Meshtastic
+  const meshtasticNodeIp = {
+    value: process.env.MESHTASTIC_NODE_IP || '192.168.1.100',
+    wasProvided: process.env.MESHTASTIC_NODE_IP !== undefined
+  };
+  const meshtasticTcpPort = parseInt32('MESHTASTIC_TCP_PORT', process.env.MESHTASTIC_TCP_PORT, 4403);
+  const timezone = {
+    value: process.env.TZ || 'America/New_York',
+    wasProvided: process.env.TZ !== undefined
+  };
+
+  // OIDC
+  const oidcIssuer = {
+    value: process.env.OIDC_ISSUER,
+    wasProvided: process.env.OIDC_ISSUER !== undefined
+  };
+  const oidcClientId = {
+    value: process.env.OIDC_CLIENT_ID,
+    wasProvided: process.env.OIDC_CLIENT_ID !== undefined
+  };
+  const oidcClientSecret = {
+    value: process.env.OIDC_CLIENT_SECRET,
+    wasProvided: process.env.OIDC_CLIENT_SECRET !== undefined
+  };
+  const oidcRedirectUri = {
+    value: process.env.OIDC_REDIRECT_URI,
+    wasProvided: process.env.OIDC_REDIRECT_URI !== undefined
+  };
+  const oidcScopes = {
+    value: process.env.OIDC_SCOPES || 'openid profile email',
+    wasProvided: process.env.OIDC_SCOPES !== undefined
+  };
+  const oidcAutoCreateUsers = parseBoolean('OIDC_AUTO_CREATE_USERS', process.env.OIDC_AUTO_CREATE_USERS, true);
+
+  const oidcEnabled = !!(oidcIssuer.value && oidcClientId.value && oidcClientSecret.value);
+
+  if (oidcIssuer.wasProvided || oidcClientId.wasProvided || oidcClientSecret.wasProvided) {
+    if (!oidcEnabled) {
+      logger.warn('⚠️  Partial OIDC configuration detected. All three are required: OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET');
+    }
+  }
+
+  // Authentication
+  const disableLocalAuth = parseBoolean('DISABLE_LOCAL_AUTH', process.env.DISABLE_LOCAL_AUTH, false);
+  const adminUsername = {
+    value: process.env.ADMIN_USERNAME || 'admin',
+    wasProvided: process.env.ADMIN_USERNAME !== undefined
+  };
+
+  return {
+    // Node environment
+    nodeEnv: nodeEnv.value,
+    nodeEnvProvided: nodeEnv.wasProvided,
+    isDevelopment: nodeEnv.value !== 'production',
+    isProduction: nodeEnv.value === 'production',
+
+    // Server
+    port: port.value,
+    portProvided: port.wasProvided,
+    baseUrl,
+    baseUrlProvided,
+    allowedOrigins: allowedOrigins.value,
+    allowedOriginsProvided: allowedOrigins.wasProvided,
+    trustProxy: trustProxy.value,
+    trustProxyProvided: trustProxy.wasProvided,
+
+    // Session/Security
+    sessionSecret,
+    sessionSecretProvided,
+    sessionMaxAge: sessionMaxAge.value,
+    sessionMaxAgeProvided: sessionMaxAge.wasProvided,
+    cookieSecure: cookieSecure.value,
+    cookieSecureProvided: cookieSecure.wasProvided,
+    cookieSameSite: cookieSameSite.value,
+    cookieSameSiteProvided: cookieSameSite.wasProvided,
+
+    // Database
+    databasePath: databasePath.value,
+    databasePathProvided: databasePath.wasProvided,
+
+    // Meshtastic
+    meshtasticNodeIp: meshtasticNodeIp.value,
+    meshtasticNodeIpProvided: meshtasticNodeIp.wasProvided,
+    meshtasticTcpPort: meshtasticTcpPort.value,
+    meshtasticTcpPortProvided: meshtasticTcpPort.wasProvided,
+    timezone: timezone.value,
+    timezoneProvided: timezone.wasProvided,
+
+    // OIDC
+    oidcIssuer: oidcIssuer.value,
+    oidcIssuerProvided: oidcIssuer.wasProvided,
+    oidcClientId: oidcClientId.value,
+    oidcClientIdProvided: oidcClientId.wasProvided,
+    oidcClientSecret: oidcClientSecret.value,
+    oidcClientSecretProvided: oidcClientSecret.wasProvided,
+    oidcRedirectUri: oidcRedirectUri.value,
+    oidcRedirectUriProvided: oidcRedirectUri.wasProvided,
+    oidcScopes: oidcScopes.value,
+    oidcScopesProvided: oidcScopes.wasProvided,
+    oidcAutoCreateUsers: oidcAutoCreateUsers.value,
+    oidcAutoCreateUsersProvided: oidcAutoCreateUsers.wasProvided,
+    oidcEnabled,
+
+    // Authentication
+    disableLocalAuth: disableLocalAuth.value,
+    disableLocalAuthProvided: disableLocalAuth.wasProvided,
+    adminUsername: adminUsername.value,
+    adminUsernameProvided: adminUsername.wasProvided
+  };
+}
+
+// Singleton instance - loaded once at startup
+let environmentConfig: EnvironmentConfig | null = null;
+
+/**
+ * Get environment configuration (loads once, then caches)
+ */
+export function getEnvironmentConfig(): EnvironmentConfig {
+  if (!environmentConfig) {
+    environmentConfig = loadEnvironmentConfig();
+  }
+  return environmentConfig;
+}
+
+/**
+ * Reset environment configuration (for testing only)
+ */
+export function resetEnvironmentConfig(): void {
+  environmentConfig = null;
+}

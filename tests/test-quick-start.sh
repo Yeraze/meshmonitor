@@ -43,7 +43,7 @@ services:
     volumes:
       - meshmonitor-quick-start-test-data:/data
     environment:
-      - MESHTASTIC_NODE_IP=192.168.1.100
+      - MESHTASTIC_NODE_IP=192.168.5.106
     restart: unless-stopped
 
 volumes:
@@ -213,6 +213,108 @@ if docker logs "$CONTAINER_NAME" 2>&1 | grep -q "Environment: production"; then
     echo -e "${GREEN}✓ PASS${NC}: Running in production mode (better security defaults)"
 else
     echo -e "${YELLOW}⚠ WARN${NC}: Not running in production mode"
+fi
+echo ""
+
+# Test 12: Wait for node connection and data sync
+echo "Test 12: Wait for Meshtastic node connection and data sync"
+echo "Waiting up to 30 seconds for channels (>3) and nodes (>100)..."
+MAX_WAIT=30
+ELAPSED=0
+NODE_CONNECTED=false
+
+while [ $ELAPSED -lt $MAX_WAIT ]; do
+    # Check channels
+    CHANNELS_RESPONSE=$(curl -s http://localhost:8083/api/channels \
+        -b /tmp/meshmonitor-cookies.txt)
+    CHANNEL_COUNT=$(echo "$CHANNELS_RESPONSE" | grep -o '"id"' | wc -l)
+
+    # Check nodes
+    NODES_RESPONSE=$(curl -s http://localhost:8083/api/nodes \
+        -b /tmp/meshmonitor-cookies.txt)
+    NODE_COUNT=$(echo "$NODES_RESPONSE" | grep -o '"id"' | wc -l)
+
+    if [ "$CHANNEL_COUNT" -gt 3 ] && [ "$NODE_COUNT" -gt 100 ]; then
+        NODE_CONNECTED=true
+        echo -e "${GREEN}✓ PASS${NC}: Node connected (channels: $CHANNEL_COUNT, nodes: $NODE_COUNT)"
+        break
+    fi
+
+    sleep 2
+    ELAPSED=$((ELAPSED + 2))
+    echo -n "."
+done
+echo ""
+
+if [ "$NODE_CONNECTED" = false ]; then
+    echo -e "${RED}✗ FAIL${NC}: Node connection timeout (channels: $CHANNEL_COUNT, nodes: $NODE_COUNT)"
+    exit 1
+fi
+echo ""
+
+# Test 13: Send message to node and wait for response (with retry)
+echo "Test 13: Send message to Yeraze Station G2 and wait for response"
+TARGET_NODE_ID="a2e4ff4c"
+TEST_MESSAGE="Test in Quick Start"
+MAX_ATTEMPTS=3
+RESPONSE_RECEIVED=false
+
+for ATTEMPT in $(seq 1 $MAX_ATTEMPTS); do
+    echo "Attempt $ATTEMPT of $MAX_ATTEMPTS..."
+
+    # Send message
+    SEND_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://localhost:8083/api/messages/send \
+        -H "Content-Type: application/json" \
+        -H "X-CSRF-Token: $CSRF_TOKEN" \
+        -d "{\"destination\":\"!$TARGET_NODE_ID\",\"text\":\"$TEST_MESSAGE (attempt $ATTEMPT)\"}" \
+        -b /tmp/meshmonitor-cookies.txt)
+
+    HTTP_CODE=$(echo "$SEND_RESPONSE" | tail -n1)
+    if [ "$HTTP_CODE" = "200" ]; then
+        echo -e "${GREEN}✓${NC} Message sent successfully"
+
+        # Wait up to 60 seconds for a response
+        echo "Waiting up to 60 seconds for response from Yeraze Station G2..."
+        MAX_WAIT=60
+        ELAPSED=0
+
+        while [ $ELAPSED -lt $MAX_WAIT ]; do
+            # Check for messages from the target node
+            MESSAGES_RESPONSE=$(curl -s http://localhost:8083/api/messages \
+                -b /tmp/meshmonitor-cookies.txt)
+
+            # Look for a recent message from our target node
+            if echo "$MESSAGES_RESPONSE" | grep -q "\"from\":\"!$TARGET_NODE_ID\""; then
+                RESPONSE_RECEIVED=true
+                echo -e "${GREEN}✓ PASS${NC}: Received response from Yeraze Station G2"
+                break 2  # Break out of both loops
+            fi
+
+            sleep 2
+            ELAPSED=$((ELAPSED + 2))
+            echo -n "."
+        done
+        echo ""
+
+        if [ "$RESPONSE_RECEIVED" = false ]; then
+            if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
+                echo -e "${YELLOW}⚠${NC} No response received, retrying..."
+                sleep 5  # Wait a bit before retry
+            fi
+        fi
+    else
+        echo -e "${RED}✗${NC} Failed to send message (HTTP $HTTP_CODE)"
+        if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
+            echo "   Retrying..."
+            sleep 5
+        fi
+    fi
+done
+
+if [ "$RESPONSE_RECEIVED" = false ]; then
+    echo -e "${RED}✗ FAIL${NC}: No response received after $MAX_ATTEMPTS attempts"
+    echo "   Node may be offline or not responding to direct messages"
+    exit 1
 fi
 echo ""
 

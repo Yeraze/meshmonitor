@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { calculateDistance } from '../utils/distance.js';
 import { logger } from '../utils/logger.js';
+import { getEnvironmentConfig } from '../server/config/environment.js';
 import { UserModel } from '../server/models/User.js';
 import { PermissionModel } from '../server/models/Permission.js';
 import { migration as authMigration } from '../server/migrations/001_add_auth_tables.js';
@@ -126,7 +127,7 @@ class DatabaseService {
   constructor() {
     logger.debug('🔧🔧🔧 DatabaseService constructor called');
     // Use DATABASE_PATH env var if set, otherwise default to /data/meshmonitor.db
-    const dbPath = process.env.DATABASE_PATH || '/data/meshmonitor.db';
+    const dbPath = getEnvironmentConfig().databasePath;
 
     logger.debug('Initializing database at:', dbPath);
 
@@ -1771,7 +1772,7 @@ class DatabaseService {
 
       // Use default password for fresh installs
       const password = 'changeme';
-      const adminUsername = process.env.ADMIN_USERNAME || 'admin';
+      const adminUsername = getEnvironmentConfig().adminUsername;
 
       // Create admin user
       const admin = await this.userModel.create({

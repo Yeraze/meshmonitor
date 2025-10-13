@@ -8,6 +8,7 @@ import * as client from 'openid-client';
 import { User } from '../../types/auth.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
+import { getEnvironmentConfig } from '../config/environment.js';
 
 let oidcConfig: client.Configuration | null = null;
 let isInitialized = false;
@@ -20,15 +21,17 @@ export async function initializeOIDC(): Promise<boolean> {
     return oidcConfig !== null;
   }
 
-  const issuer = process.env.OIDC_ISSUER;
-  const clientId = process.env.OIDC_CLIENT_ID;
-  const clientSecret = process.env.OIDC_CLIENT_SECRET;
+  const env = getEnvironmentConfig();
 
-  if (!issuer || !clientId || !clientSecret) {
+  if (!env.oidcEnabled) {
     logger.info('ℹ️  OIDC not configured (missing OIDC_ISSUER, OIDC_CLIENT_ID, or OIDC_CLIENT_SECRET)');
     isInitialized = true;
     return false;
   }
+
+  const issuer = env.oidcIssuer!;
+  const clientId = env.oidcClientId!;
+  const clientSecret = env.oidcClientSecret!;
 
   try {
     logger.debug('🔐 Initializing OIDC client...');
@@ -80,8 +83,8 @@ export async function generateAuthorizationUrl(
     throw new Error('OIDC not initialized');
   }
 
-  const scopes = process.env.OIDC_SCOPES || 'openid profile email';
-  const scopeArray = scopes.split(' ');
+  const env = getEnvironmentConfig();
+  const scopeArray = env.oidcScopes.split(' ');
 
   const codeChallenge = client.calculatePKCECodeChallenge(codeVerifier);
 
@@ -160,9 +163,9 @@ export async function handleOIDCCallback(
       logger.debug(`✅ OIDC user logged in: ${user.username}`);
     } else {
       // Auto-create new user if enabled
-      const autoCreate = process.env.OIDC_AUTO_CREATE_USERS !== 'false';
+      const env = getEnvironmentConfig();
 
-      if (!autoCreate) {
+      if (!env.oidcAutoCreateUsers) {
         throw new Error('OIDC user not found and auto-creation is disabled');
       }
 
