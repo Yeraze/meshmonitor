@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useToast } from './ToastContainer';
+import { useCsrfFetch } from '../hooks/useCsrfFetch';
 
 interface AutoTracerouteSectionProps {
   intervalMinutes: number;
@@ -12,6 +13,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
   baseUrl,
   onIntervalChange,
 }) => {
+  const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();
   const [localEnabled, setLocalEnabled] = useState(intervalMinutes > 0);
   const [localInterval, setLocalInterval] = useState(intervalMinutes > 0 ? intervalMinutes : 3);
@@ -37,13 +39,12 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
       const intervalToSave = localEnabled ? localInterval : 0;
 
       // Sync to backend first
-      const response = await fetch(`${baseUrl}/api/settings`, {
+      const response = await csrfFetch(`${baseUrl}/api/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           tracerouteIntervalMinutes: intervalToSave
-        }),
-        credentials: 'include'
+        })
       });
 
       if (!response.ok) {

@@ -4,6 +4,7 @@ import './Dashboard.css';
 import { type TemperatureUnit, formatTemperature, getTemperatureUnit } from '../utils/temperature';
 import { logger } from '../utils/logger';
 import api from '../services/api';
+import { useCsrfFetch } from '../hooks/useCsrfFetch';
 
 interface TelemetryData {
   id?: number;
@@ -53,6 +54,7 @@ interface DashboardProps {
 }
 
 const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C', telemetryHours = 24, baseUrl }) => {
+  const csrfFetch = useCsrfFetch();
   const [favorites, setFavorites] = useState<FavoriteChart[]>([]);
   const [telemetryData, setTelemetryData] = useState<Map<string, TelemetryData[]>>(new Map());
   const [nodes, setNodes] = useState<Map<string, NodeInfo>>(new Map());
@@ -194,7 +196,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C',
       setTelemetryData(newTelemetryData);
 
       // Save to server
-      await fetch(`${baseUrl}/api/settings`, {
+      await csrfFetch(`${baseUrl}/api/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ telemetryFavorites: JSON.stringify(newFavorites) })

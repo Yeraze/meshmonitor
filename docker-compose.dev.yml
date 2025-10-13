@@ -11,13 +11,14 @@ services:
       - meshmonitor-data:/data
     env_file: .env
     environment:
-      - NODE_ENV=development
+      - NODE_ENV=production
       - DATABASE_PATH=/data/meshmonitor.db
+      - SESSION_SECRET=qlskjerhqlwkjehrlqkwejh
       - BASE_URL=${BASE_URL:-}
       - TZ=America/New_York
       - ALLOWED_ORIGINS=http://localhost:8080,http://sentry.yeraze.online:8080,https://sentry.yeraze.online,https://meshdev.yeraze.online
       - TRUST_PROXY=1
-      - COOKIE_SECURE=false
+      - COOKIE_SECURE=true
 
 volumes:
   meshmonitor-data:

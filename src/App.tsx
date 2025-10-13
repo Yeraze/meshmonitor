@@ -37,6 +37,7 @@ import { DataProvider, useData } from './contexts/DataContext'
 import { MessagingProvider, useMessaging } from './contexts/MessagingContext'
 import { UIProvider, useUI } from './contexts/UIContext'
 import { useAuth } from './contexts/AuthContext'
+import { useCsrf } from './contexts/CsrfContext'
 import LoginModal from './components/LoginModal'
 import UserMenu from './components/UserMenu'
 
@@ -75,6 +76,7 @@ const MapCenterController: React.FC<MapCenterControllerProps> = ({ centerTarget,
 
 function App() {
   const { authStatus, hasPermission } = useAuth();
+  const { getToken: getCsrfToken } = useCsrf();
   const { showToast } = useToast();
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [isDefaultPassword, setIsDefaultPassword] = useState(false);
@@ -267,8 +269,23 @@ function App() {
 
   // Helper to fetch with credentials and silently ignore auth errors
   const authFetch = async (url: string, options?: RequestInit): Promise<Response> => {
+    const headers = new Headers(options?.headers);
+
+    // Add CSRF token for mutation requests
+    const method = options?.method?.toUpperCase() || 'GET';
+    if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+      const csrfToken = getCsrfToken();
+      if (csrfToken) {
+        headers.set('X-CSRF-Token', csrfToken);
+        console.log('[App] ✓ CSRF token added to request');
+      } else {
+        console.error('[App] ✗ NO CSRF TOKEN - Request may fail!');
+      }
+    }
+
     const response = await fetch(url, {
       ...options,
+      headers,
       credentials: 'include',
     });
 
