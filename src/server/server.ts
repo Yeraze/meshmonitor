@@ -120,8 +120,9 @@ if (trustProxy !== undefined) {
 
 // Security: Helmet.js for HTTP security headers
 // Use relaxed settings in development to avoid HTTPS enforcement
-// Disable HSTS when COOKIE_SECURE=false to avoid forcing HTTPS
-const isSecureCookies = process.env.COOKIE_SECURE !== 'false';
+// For Quick Start: default to HTTP-friendly (no HSTS) even in production
+// Only enable HSTS when COOKIE_SECURE explicitly set to 'true'
+const isSecureCookies = process.env.COOKIE_SECURE === 'true';
 const isProduction = process.env.NODE_ENV === 'production';
 
 const helmetConfig = isProduction && isSecureCookies

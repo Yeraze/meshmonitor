@@ -1,6 +1,6 @@
 {
   "name": "meshmonitor",
-  "version": "2.4.4",
+  "version": "2.4.5",
   "description": "Web application for monitoring Meshtastic nodes over IP",
   "license": "BSD-3-Clause",
   "private": true,
@@ -19,6 +19,7 @@
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:quick-start": "./test-quick-start.sh",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs"

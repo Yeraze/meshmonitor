@@ -68,19 +68,21 @@ On first launch, MeshMonitor creates a default admin account:
 
 ## What Just Happened?
 
-MeshMonitor starts in **development mode** by default, which:
+MeshMonitor's **Quick Start** is optimized for **simple local/home use**:
 - ✅ Works over HTTP (no HTTPS required)
-- ✅ No SESSION_SECRET needed (auto-generated)
-- ✅ Secure cookies disabled for HTTP compatibility
-- ✅ CSRF protection active but development-friendly
-- ✅ Rate limiting relaxed (10,000 requests/15min)
-- ✅ Perfect for local/home use
+- ✅ No SESSION_SECRET needed (auto-generated with warning)
+- ✅ Secure cookies automatically disabled for HTTP
+- ✅ CSRF protection active
+- ✅ Rate limiting active (1000 requests/15min)
+- ✅ Perfect for personal/home deployments
 
 This configuration is ideal for:
 - Personal/home network deployments
-- Testing and development
 - Behind a firewall on trusted networks
 - Local-only access (not exposed to the internet)
+- Quick testing and evaluation
+
+**Note**: The Docker container runs in production mode but with sensible defaults for local use. For internet-facing deployments, see the [Production Deployment Guide](/configuration/production).
 
 ## Optional Configuration
 
