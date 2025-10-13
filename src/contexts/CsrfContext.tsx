@@ -24,13 +24,45 @@ export const CsrfProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const fetchToken = useCallback(async () => {
     try {
       setIsLoading(true);
-      // Use absolute path to work with BASE_URL
-      const response = await fetch('/api/csrf-token', {
-        credentials: 'include',
-      });
 
-      if (!response.ok) {
-        throw new Error(`Failed to fetch CSRF token: ${response.status}`);
+      // Try to detect BASE_URL from current pathname
+      // For /meshmonitor/..., we want /meshmonitor/api/csrf-token
+      // For /..., we want /api/csrf-token
+      const pathname = window.location.pathname;
+      const pathParts = pathname.split('/').filter(Boolean);
+
+      // Build potential CSRF token paths
+      const potentialPaths: string[] = ['/api/csrf-token'];
+
+      // Add paths from most specific to least specific
+      // Stop at known app routes (dashboard, nodes, messages, etc.)
+      const appRoutes = ['dashboard', 'nodes', 'messages', 'map', 'traceroute', 'telemetry', 'settings'];
+      for (let i = pathParts.length; i > 0; i--) {
+        if (appRoutes.includes(pathParts[i - 1])) break;
+        const basePath = '/' + pathParts.slice(0, i).join('/');
+        potentialPaths.push(`${basePath}/api/csrf-token`);
+      }
+
+      // Try each potential path until one works
+      let response: Response | null = null;
+      let lastError: Error | null = null;
+
+      for (const csrfPath of potentialPaths) {
+        try {
+          response = await fetch(csrfPath, {
+            credentials: 'include',
+          });
+
+          if (response.ok) {
+            break; // Found working path
+          }
+        } catch (error) {
+          lastError = error as Error;
+        }
+      }
+
+      if (!response || !response.ok) {
+        throw lastError || new Error(`Failed to fetch CSRF token: ${response?.status}`);
       }
 
       const data = await response.json();
