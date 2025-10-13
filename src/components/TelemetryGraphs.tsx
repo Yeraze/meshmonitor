@@ -4,6 +4,7 @@ import './TelemetryGraphs.css';
 import { type TemperatureUnit, formatTemperature, getTemperatureUnit } from '../utils/temperature';
 import { logger } from '../utils/logger';
 import { useToast } from './ToastContainer';
+import { useCsrfFetch } from '../hooks/useCsrfFetch';
 
 interface TelemetryData {
   id?: number;
@@ -35,6 +36,7 @@ interface FavoriteChart {
 }
 
 const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, temperatureUnit = 'C', telemetryHours = 24, baseUrl = '' }) => {
+  const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();
   const [telemetryData, setTelemetryData] = useState<TelemetryData[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -134,11 +136,10 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
       });
 
       // Save updated favorites
-      const response = await fetch(`${baseUrl}/api/settings`, {
+      const response = await csrfFetch(`${baseUrl}/api/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ telemetryFavorites: JSON.stringify(allFavorites) }),
-        credentials: 'include'
+        body: JSON.stringify({ telemetryFavorites: JSON.stringify(allFavorites) })
       });
 
       if (!response.ok) {

@@ -7,6 +7,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { logger } from '../utils/logger';
+import api from '../services/api';
 
 interface CsrfContextType {
   csrfToken: string | null;
@@ -24,12 +25,19 @@ export const CsrfProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const fetchToken = useCallback(async () => {
     try {
       setIsLoading(true);
-      // Use absolute path to work with BASE_URL
-      const response = await fetch('/api/csrf-token', {
+
+      // Use the API service's BASE_URL detection to ensure consistency
+      const baseUrl = await api.getBaseUrl();
+      const csrfUrl = `${baseUrl}/api/csrf-token`;
+
+      console.log('[CSRF] Fetching token from:', csrfUrl);
+
+      const response = await fetch(csrfUrl, {
         credentials: 'include',
       });
 
       if (!response.ok) {
+        console.error('[CSRF] Token fetch failed:', response.status);
         throw new Error(`Failed to fetch CSRF token: ${response.status}`);
       }
 
@@ -43,14 +51,16 @@ export const CsrfProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setCsrfToken(token);
       // Also store in sessionStorage as backup
       sessionStorage.setItem('csrfToken', token);
-      logger.debug('CSRF token fetched successfully');
+      console.log('[CSRF] Token fetched and stored successfully');
     } catch (error) {
-      logger.error('Failed to fetch CSRF token:', error);
+      console.error('[CSRF] Failed to fetch token:', error);
       // Try to use cached token from sessionStorage
       const cachedToken = sessionStorage.getItem('csrfToken');
       if (cachedToken) {
-        logger.debug('Using cached CSRF token');
+        console.log('[CSRF] Using cached token from sessionStorage');
         setCsrfToken(cachedToken);
+      } else {
+        console.error('[CSRF] No cached token available');
       }
     } finally {
       setIsLoading(false);

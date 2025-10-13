@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { type TemperatureUnit } from '../utils/temperature';
 import { type SortField, type SortDirection } from '../types/ui';
 import { logger } from '../utils/logger';
+import { useCsrf } from './CsrfContext';
 
 export type DistanceUnit = 'km' | 'mi';
 export type TimeFormat = '12' | '24';
@@ -36,6 +37,8 @@ interface SettingsProviderProps {
 }
 
 export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, baseUrl = '' }) => {
+  const { getToken: getCsrfToken } = useCsrf();
+
   const [maxNodeAgeHours, setMaxNodeAgeHoursState] = useState<number>(() => {
     const saved = localStorage.getItem('maxNodeAgeHours');
     return saved ? parseInt(saved) : 24;
@@ -91,9 +94,19 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     localStorage.setItem('tracerouteIntervalMinutes', value.toString());
 
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      const csrfToken = getCsrfToken();
+      if (csrfToken) {
+        headers['X-CSRF-Token'] = csrfToken;
+        console.log('[Settings] ✓ CSRF token added to traceroute interval request');
+      } else {
+        console.error('[Settings] ✗ NO CSRF TOKEN - Request may fail!');
+      }
+
       await fetch(`${baseUrl}/api/settings/traceroute-interval`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
+        credentials: 'include',
         body: JSON.stringify({ intervalMinutes: value })
       });
     } catch (error) {

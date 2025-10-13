@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useToast } from './ToastContainer';
+import { useCsrfFetch } from '../hooks/useCsrfFetch';
 
 interface AutoAcknowledgeSectionProps {
   enabled: boolean;
@@ -16,6 +17,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   onEnabledChange,
   onRegexChange,
 }) => {
+  const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();
   const [localEnabled, setLocalEnabled] = useState(enabled);
   const [localRegex, setLocalRegex] = useState(regex || '^(test|ping)');
@@ -82,14 +84,13 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     setIsSaving(true);
     try {
       // Sync to backend first
-      const response = await fetch(`${baseUrl}/api/settings`, {
+      const response = await csrfFetch(`${baseUrl}/api/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           autoAckEnabled: String(localEnabled),
           autoAckRegex: localRegex
-        }),
-        credentials: 'include'
+        })
       });
 
       if (!response.ok) {
