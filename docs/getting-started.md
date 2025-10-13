@@ -220,7 +220,7 @@ If you can login but get immediately logged out:
 
 **This shouldn't happen in development mode**, but if it does:
 - Check browser console for errors
-- Verify `NODE_ENV=development` is set (default in docker-compose.yml)
+- Verify you haven't set `NODE_ENV=production` (development is the default)
 - Try clearing browser cookies for localhost:8080
 
 ### Database Issues
