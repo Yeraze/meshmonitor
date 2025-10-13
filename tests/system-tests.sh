@@ -105,6 +105,23 @@ else
 fi
 echo ""
 
+echo "=========================================="
+echo -e "${BLUE}Running Reverse Proxy + OIDC Test${NC}"
+echo "=========================================="
+echo ""
+
+# Run Reverse Proxy + OIDC test
+if bash "$SCRIPT_DIR/test-reverse-proxy-oidc.sh"; then
+    OIDC_RESULT="PASSED"
+    echo ""
+    echo -e "${GREEN}✓ Reverse Proxy + OIDC test PASSED${NC}"
+else
+    OIDC_RESULT="FAILED"
+    echo ""
+    echo -e "${RED}✗ Reverse Proxy + OIDC test FAILED${NC}"
+fi
+echo ""
+
 # Summary
 echo "=========================================="
 echo "System Test Results"
@@ -112,21 +129,27 @@ echo "=========================================="
 echo ""
 
 if [ "$QUICKSTART_RESULT" = "PASSED" ]; then
-    echo -e "Quick Start Test:     ${GREEN}✓ PASSED${NC}"
+    echo -e "Quick Start Test:         ${GREEN}✓ PASSED${NC}"
 else
-    echo -e "Quick Start Test:     ${RED}✗ FAILED${NC}"
+    echo -e "Quick Start Test:         ${RED}✗ FAILED${NC}"
 fi
 
 if [ "$REVERSE_PROXY_RESULT" = "PASSED" ]; then
-    echo -e "Reverse Proxy Test:   ${GREEN}✓ PASSED${NC}"
+    echo -e "Reverse Proxy Test:       ${GREEN}✓ PASSED${NC}"
 else
-    echo -e "Reverse Proxy Test:   ${RED}✗ FAILED${NC}"
+    echo -e "Reverse Proxy Test:       ${RED}✗ FAILED${NC}"
+fi
+
+if [ "$OIDC_RESULT" = "PASSED" ]; then
+    echo -e "Reverse Proxy + OIDC:     ${GREEN}✓ PASSED${NC}"
+else
+    echo -e "Reverse Proxy + OIDC:     ${RED}✗ FAILED${NC}"
 fi
 
 echo ""
 
 # Overall result
-if [ "$QUICKSTART_RESULT" = "PASSED" ] && [ "$REVERSE_PROXY_RESULT" = "PASSED" ]; then
+if [ "$QUICKSTART_RESULT" = "PASSED" ] && [ "$REVERSE_PROXY_RESULT" = "PASSED" ] && [ "$OIDC_RESULT" = "PASSED" ]; then
     echo -e "${GREEN}=========================================="
     echo "✓ ALL SYSTEM TESTS PASSED"
     echo "==========================================${NC}"
