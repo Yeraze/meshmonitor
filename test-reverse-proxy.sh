@@ -246,7 +246,7 @@ TEST_MESSAGE="test"
 SEND_RESPONSE=$(curl -s -w "\n%{http_code}" -k -X POST $TEST_URL/api/messages/send \
     -H "Content-Type: application/json" \
     -H "X-CSRF-Token: $CSRF_TOKEN" \
-    -d "{\"to\":\"!$TARGET_NODE_ID\",\"text\":\"$TEST_MESSAGE\"}" \
+    -d "{\"destination\":\"!$TARGET_NODE_ID\",\"text\":\"$TEST_MESSAGE\"}" \
     -b /tmp/meshmonitor-reverse-proxy-cookies.txt)
 
 HTTP_CODE=$(echo "$SEND_RESPONSE" | tail -n1)

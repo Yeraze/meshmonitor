@@ -43,7 +43,7 @@ services:
     volumes:
       - meshmonitor-quick-start-test-data:/data
     environment:
-      - MESHTASTIC_NODE_IP=192.168.1.100
+      - MESHTASTIC_NODE_IP=192.168.5.106
     restart: unless-stopped
 
 volumes:
@@ -225,7 +225,7 @@ TEST_MESSAGE="test"
 SEND_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://localhost:8083/api/messages/send \
     -H "Content-Type: application/json" \
     -H "X-CSRF-Token: $CSRF_TOKEN" \
-    -d "{\"to\":\"!$TARGET_NODE_ID\",\"text\":\"$TEST_MESSAGE\"}" \
+    -d "{\"destination\":\"!$TARGET_NODE_ID\",\"text\":\"$TEST_MESSAGE\"}" \
     -b /tmp/meshmonitor-cookies.txt)
 
 HTTP_CODE=$(echo "$SEND_RESPONSE" | tail -n1)
