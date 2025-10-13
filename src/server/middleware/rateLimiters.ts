@@ -6,8 +6,10 @@
  */
 
 import rateLimit from 'express-rate-limit';
+import { getEnvironmentConfig } from '../config/environment.js';
 
-const isDevelopment = process.env.NODE_ENV !== 'production';
+const env = getEnvironmentConfig();
+const isDevelopment = env.isDevelopment;
 
 // When TRUST_PROXY is set, we need to skip express-rate-limit's validation
 // We're relying on Express's trust proxy configuration which is set at the app level

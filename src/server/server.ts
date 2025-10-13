@@ -18,6 +18,7 @@ import {
   hasPermission
 } from './auth/authMiddleware.js';
 import { apiLimiter } from './middleware/rateLimiters.js';
+import { getEnvironmentConfig } from './config/environment.js';
 
 const require = createRequire(import.meta.url);
 const packageJson = require('../../package.json');
@@ -25,56 +26,12 @@ const packageJson = require('../../package.json');
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Load environment configuration
+const env = getEnvironmentConfig();
+
 const app = express();
-const PORT = process.env.PORT || 3001;
-// Validate and normalize BASE_URL
-const BASE_URL = (() => {
-  let baseUrl = process.env.BASE_URL || '';
-
-  // Ensure BASE_URL starts with /
-  if (baseUrl && !baseUrl.startsWith('/')) {
-    logger.warn(`BASE_URL should start with '/'. Fixing: ${baseUrl} -> /${baseUrl}`);
-    baseUrl = `/${baseUrl}`;
-  }
-
-  // Validate against path traversal attempts BEFORE normalization
-  // Check for any form of path traversal: ../, ..\, or .. as a segment
-  if (baseUrl.includes('../') || baseUrl.includes('..\\') || baseUrl.includes('/..')) {
-    logger.error(`Invalid BASE_URL: path traversal detected in '${baseUrl}'. Using default.`);
-    return '';
-  }
-
-  // Remove trailing slashes
-  if (baseUrl.endsWith('/')) {
-    baseUrl = baseUrl.slice(0, -1);
-  }
-
-  // Validate URL path segments
-  if (baseUrl) {
-    const segments = baseUrl.split('/').filter(Boolean);
-    const validSegment = /^[a-zA-Z0-9-_]+$/;
-
-    // Check each segment for path traversal or invalid characters
-    for (const segment of segments) {
-      // Reject segments that are exactly '..'
-      if (segment === '..') {
-        logger.error(`Invalid BASE_URL: path traversal segment detected. Using default.`);
-        return '';
-      }
-
-      if (!validSegment.test(segment)) {
-        logger.warn(`BASE_URL contains invalid characters in segment: ${segment}. Only alphanumeric, hyphens, and underscores are allowed.`);
-      }
-    }
-
-    // Log multi-segment paths for visibility
-    if (segments.length > 1) {
-      logger.debug(`Using multi-segment BASE_URL: ${baseUrl} (${segments.length} segments)`);
-    }
-  }
-
-  return baseUrl;
-})();
+const PORT = env.port;
+const BASE_URL = env.baseUrl;
 const serverStartTime = Date.now();
 
 // Custom JSON replacer to handle BigInt values
@@ -98,21 +55,10 @@ JSON.stringify = function(value, replacer?: any, space?: any) {
 // When behind a reverse proxy (nginx, Traefik, etc.), this allows Express to:
 // - Read X-Forwarded-* headers to determine the actual client protocol/IP
 // - Set secure cookies correctly when the proxy terminates HTTPS
-const trustProxy = process.env.TRUST_PROXY;
-if (trustProxy !== undefined) {
-  // Explicit configuration via TRUST_PROXY env var
-  if (trustProxy === 'true' || trustProxy === '1') {
-    app.set('trust proxy', true);
-    logger.debug('✅ Trust proxy enabled (all proxies trusted)');
-  } else if (trustProxy === 'false' || trustProxy === '0') {
-    app.set('trust proxy', false);
-    logger.debug('ℹ️  Trust proxy disabled');
-  } else {
-    // Custom trust proxy value (IP, CIDR, number of hops, etc.)
-    app.set('trust proxy', trustProxy);
-    logger.debug(`✅ Trust proxy configured: ${trustProxy}`);
-  }
-} else if (process.env.NODE_ENV === 'production') {
+if (env.trustProxyProvided) {
+  app.set('trust proxy', env.trustProxy);
+  logger.debug(`✅ Trust proxy configured: ${env.trustProxy}`);
+} else if (env.isProduction) {
   // Default: trust first proxy in production (common reverse proxy setup)
   app.set('trust proxy', 1);
   logger.debug('ℹ️  Trust proxy defaulted to 1 hop (production mode)');
@@ -122,10 +68,7 @@ if (trustProxy !== undefined) {
 // Use relaxed settings in development to avoid HTTPS enforcement
 // For Quick Start: default to HTTP-friendly (no HSTS) even in production
 // Only enable HSTS when COOKIE_SECURE explicitly set to 'true'
-const isSecureCookies = process.env.COOKIE_SECURE === 'true';
-const isProduction = process.env.NODE_ENV === 'production';
-
-const helmetConfig = isProduction && isSecureCookies
+const helmetConfig = env.isProduction && env.cookieSecure
   ? {
       contentSecurityPolicy: {
         directives: {
@@ -184,9 +127,9 @@ app.use(helmet(helmetConfig));
 
 // Security: CORS configuration with allowed origins
 const getAllowedOrigins = () => {
-  const origins = process.env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()) || [];
+  const origins = [...env.allowedOrigins];
   // Always allow localhost in development
-  if (process.env.NODE_ENV !== 'production') {
+  if (env.isDevelopment) {
     origins.push('http://localhost:3000', 'http://localhost:5173', 'http://localhost:8080');
   }
   return origins.length > 0 ? origins : ['http://localhost:3000'];
@@ -1159,8 +1102,8 @@ apiRouter.get('/config', optionalAuth(), async (_req, res) => {
     }
 
     res.json({
-      meshtasticNodeIp: process.env.MESHTASTIC_NODE_IP || '192.168.1.100',
-      meshtasticTcpPort: parseInt(process.env.MESHTASTIC_TCP_PORT || '4403', 10),
+      meshtasticNodeIp: env.meshtasticNodeIp,
+      meshtasticTcpPort: env.meshtasticTcpPort,
       meshtasticUseTls: false,  // We're using TCP, not TLS
       baseUrl: BASE_URL,
       deviceMetadata: deviceMetadata,
@@ -1169,8 +1112,8 @@ apiRouter.get('/config', optionalAuth(), async (_req, res) => {
   } catch (error) {
     logger.error('Error in /api/config:', error);
     res.json({
-      meshtasticNodeIp: process.env.MESHTASTIC_NODE_IP || '192.168.1.100',
-      meshtasticTcpPort: parseInt(process.env.MESHTASTIC_TCP_PORT || '4403', 10),
+      meshtasticNodeIp: env.meshtasticNodeIp,
+      meshtasticTcpPort: env.meshtasticTcpPort,
       meshtasticUseTls: false,
       baseUrl: BASE_URL
     });
@@ -1631,7 +1574,7 @@ apiRouter.get('/system/status', requirePermission('dashboard', 'read'), (_req, r
     architecture: process.arch,
     uptime: uptimeString,
     uptimeSeconds,
-    environment: process.env.NODE_ENV || 'development',
+    environment: env.nodeEnv,
     isDocker: isRunningInDocker(),
     memoryUsage: {
       heapUsed: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + ' MB',
@@ -1646,7 +1589,7 @@ apiRouter.get('/health', optionalAuth(), (_req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
-    nodeEnv: process.env.NODE_ENV || 'development'
+    nodeEnv: env.nodeEnv
   });
 });
 
@@ -1831,7 +1774,7 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
   logger.error('Unhandled error:', err);
   res.status(500).json({
     error: 'Internal server error',
-    message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
+    message: env.isDevelopment ? err.message : 'Something went wrong'
   });
 });
 
@@ -1881,5 +1824,5 @@ process.on('SIGTERM', () => {
 
 const server = app.listen(PORT, () => {
   logger.debug(`MeshMonitor server running on port ${PORT}`);
-  logger.debug(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  logger.debug(`Environment: ${env.nodeEnv}`);
 });
