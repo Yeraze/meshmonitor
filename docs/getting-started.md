@@ -109,12 +109,27 @@ For production deployments with HTTPS, reverse proxies, or public internet acces
 - **[Reverse Proxy Configuration](/configuration/reverse-proxy)** - nginx, Caddy, Traefik examples
 - **[SSO Setup](/configuration/sso)** - Enterprise authentication with OIDC
 
-Key differences in production:
-- Requires `SESSION_SECRET` environment variable
-- HTTPS recommended (or `COOKIE_SECURE=false` if using HTTP)
-- `TRUST_PROXY=true` for reverse proxy setups
-- `ALLOWED_ORIGINS` for CORS security
-- Stricter rate limiting (1000 requests/15min)
+### ⚠️ Critical: Required Environment Variables for HTTPS
+
+When deploying with HTTPS and a reverse proxy, you **MUST** set:
+
+```bash
+SESSION_SECRET=your-secure-random-string       # REQUIRED
+TRUST_PROXY=true                                # REQUIRED
+COOKIE_SECURE=true                              # REQUIRED
+ALLOWED_ORIGINS=https://meshmonitor.example.com # REQUIRED!
+```
+
+**Without `ALLOWED_ORIGINS`, you will get blank pages and CORS errors!**
+
+### Key Differences in Production
+
+- **`SESSION_SECRET`**: Required, must be set to a secure random string
+- **HTTPS**: Strongly recommended for production
+- **`TRUST_PROXY=true`**: Required when behind reverse proxy (nginx, Traefik, Caddy)
+- **`COOKIE_SECURE=true`**: Required for HTTPS
+- **`ALLOWED_ORIGINS`**: **CRITICAL** - Must match your HTTPS domain, or frontend won't load
+- **Rate limiting**: Stricter (1000 requests/15min vs 10,000)
 
 ## Development Setup
 
