@@ -134,11 +134,17 @@ export interface EnvironmentConfig {
   oidcClientIdProvided: boolean;
   oidcClientSecret: string | undefined;
   oidcClientSecretProvided: boolean;
+  oidcRedirectUri: string | undefined;
+  oidcRedirectUriProvided: boolean;
   oidcScopes: string;
   oidcScopesProvided: boolean;
   oidcAutoCreateUsers: boolean;
   oidcAutoCreateUsersProvided: boolean;
   oidcEnabled: boolean;
+
+  // Authentication
+  disableLocalAuth: boolean;
+  disableLocalAuthProvided: boolean;
 }
 
 /**
@@ -295,6 +301,10 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     value: process.env.OIDC_CLIENT_SECRET,
     wasProvided: process.env.OIDC_CLIENT_SECRET !== undefined
   };
+  const oidcRedirectUri = {
+    value: process.env.OIDC_REDIRECT_URI,
+    wasProvided: process.env.OIDC_REDIRECT_URI !== undefined
+  };
   const oidcScopes = {
     value: process.env.OIDC_SCOPES || 'openid profile email',
     wasProvided: process.env.OIDC_SCOPES !== undefined
@@ -308,6 +318,9 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
       logger.warn('⚠️  Partial OIDC configuration detected. All three are required: OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET');
     }
   }
+
+  // Authentication
+  const disableLocalAuth = parseBoolean('DISABLE_LOCAL_AUTH', process.env.DISABLE_LOCAL_AUTH, false);
 
   return {
     // Node environment
@@ -355,11 +368,17 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     oidcClientIdProvided: oidcClientId.wasProvided,
     oidcClientSecret: oidcClientSecret.value,
     oidcClientSecretProvided: oidcClientSecret.wasProvided,
+    oidcRedirectUri: oidcRedirectUri.value,
+    oidcRedirectUriProvided: oidcRedirectUri.wasProvided,
     oidcScopes: oidcScopes.value,
     oidcScopesProvided: oidcScopes.wasProvided,
     oidcAutoCreateUsers: oidcAutoCreateUsers.value,
     oidcAutoCreateUsersProvided: oidcAutoCreateUsers.wasProvided,
-    oidcEnabled
+    oidcEnabled,
+
+    // Authentication
+    disableLocalAuth: disableLocalAuth.value,
+    disableLocalAuthProvided: disableLocalAuth.wasProvided
   };
 }
 

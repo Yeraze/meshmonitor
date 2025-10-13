@@ -17,13 +17,14 @@ import { requireAuth } from '../auth/authMiddleware.js';
 import { authLimiter } from '../middleware/rateLimiters.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
+import { getEnvironmentConfig } from '../config/environment.js';
 
 const router = Router();
 
 // Get authentication status
 router.get('/status', (req: Request, res: Response) => {
   try {
-    const localAuthDisabled = process.env.DISABLE_LOCAL_AUTH === 'true';
+    const localAuthDisabled = getEnvironmentConfig().disableLocalAuth;
 
     if (!req.session.userId) {
       // Check if the session cookie exists at all
@@ -125,7 +126,7 @@ router.get('/check-default-password', (_req: Request, res: Response) => {
 router.post('/login', authLimiter, async (req: Request, res: Response) => {
   try {
     // Check if local auth is disabled
-    const localAuthDisabled = process.env.DISABLE_LOCAL_AUTH === 'true';
+    const localAuthDisabled = getEnvironmentConfig().disableLocalAuth;
     if (localAuthDisabled) {
       return res.status(403).json({
         error: 'Local authentication is disabled. Please use OIDC to login.'
@@ -255,7 +256,7 @@ router.get('/oidc/login', async (req: Request, res: Response) => {
       });
     }
 
-    const redirectUri = process.env.OIDC_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/auth/oidc/callback`;
+    const redirectUri = getEnvironmentConfig().oidcRedirectUri || `${req.protocol}://${req.get('host')}/api/auth/oidc/callback`;
 
     // Generate PKCE parameters
     const state = generateRandomString(32);
@@ -303,7 +304,7 @@ router.get('/oidc/callback', async (req: Request, res: Response) => {
       return res.status(400).send('Invalid session state');
     }
 
-    const redirectUri = process.env.OIDC_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/auth/oidc/callback`;
+    const redirectUri = getEnvironmentConfig().oidcRedirectUri || `${req.protocol}://${req.get('host')}/api/auth/oidc/callback`;
 
     // Handle callback and create/update user
     const user = await handleOIDCCallback(
@@ -336,7 +337,7 @@ router.get('/oidc/callback', async (req: Request, res: Response) => {
     );
 
     // Redirect to app
-    const baseUrl = process.env.BASE_URL || '';
+    const baseUrl = getEnvironmentConfig().baseUrl;
     return res.redirect(`${baseUrl}/`);
   } catch (error) {
     logger.error('OIDC callback error:', error);

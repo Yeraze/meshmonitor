@@ -377,17 +377,22 @@ describe('Authentication Routes', () => {
       originalEnv = process.env.DISABLE_LOCAL_AUTH;
     });
 
-    afterEach(() => {
+    afterEach(async () => {
       // Restore original environment variable
       if (originalEnv !== undefined) {
         process.env.DISABLE_LOCAL_AUTH = originalEnv;
       } else {
         delete process.env.DISABLE_LOCAL_AUTH;
       }
+      // Reset environment config to pick up changes
+      const { resetEnvironmentConfig } = await import('../config/environment.js');
+      resetEnvironmentConfig();
     });
 
     it('should allow local login when local auth is not disabled', async () => {
       process.env.DISABLE_LOCAL_AUTH = 'false';
+      const { resetEnvironmentConfig } = await import('../config/environment.js');
+      resetEnvironmentConfig();
 
       const response = await agent
         .post('/api/auth/login')
@@ -402,6 +407,8 @@ describe('Authentication Routes', () => {
 
     it('should block local login when local auth is disabled', async () => {
       process.env.DISABLE_LOCAL_AUTH = 'true';
+      const { resetEnvironmentConfig } = await import('../config/environment.js');
+      resetEnvironmentConfig();
 
       const response = await agent
         .post('/api/auth/login')
@@ -416,6 +423,8 @@ describe('Authentication Routes', () => {
 
     it('should include localAuthDisabled in status response when disabled', async () => {
       process.env.DISABLE_LOCAL_AUTH = 'true';
+      const { resetEnvironmentConfig } = await import('../config/environment.js');
+      resetEnvironmentConfig();
 
       const response = await agent
         .get('/api/auth/status')
@@ -446,6 +455,8 @@ describe('Authentication Routes', () => {
 
     it('should return localAuthDisabled status for authenticated users', async () => {
       process.env.DISABLE_LOCAL_AUTH = 'false';
+      const { resetEnvironmentConfig } = await import('../config/environment.js');
+      resetEnvironmentConfig();
 
       // Login first
       await agent
@@ -457,6 +468,7 @@ describe('Authentication Routes', () => {
 
       // Change env and check status
       process.env.DISABLE_LOCAL_AUTH = 'true';
+      resetEnvironmentConfig();
 
       const response = await agent
         .get('/api/auth/status')
@@ -468,6 +480,8 @@ describe('Authentication Routes', () => {
 
     it('should still allow OIDC login when local auth is disabled', async () => {
       process.env.DISABLE_LOCAL_AUTH = 'true';
+      const { resetEnvironmentConfig } = await import('../config/environment.js');
+      resetEnvironmentConfig();
 
       // This test verifies the OIDC login endpoint is still accessible
       // Note: Full OIDC flow testing would require mocking the OIDC provider
