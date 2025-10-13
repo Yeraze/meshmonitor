@@ -276,7 +276,7 @@ echo ""
 # Test 14: Send message to node and wait for response
 echo "Test 14: Send message to Yeraze Station G2 and wait for response"
 TARGET_NODE_ID="a2e4ff4c"
-TEST_MESSAGE="test"
+TEST_MESSAGE="Test in Reverse Proxy"
 
 # Send message
 SEND_RESPONSE=$(curl -s -w "\n%{http_code}" -k -X POST $TEST_URL/api/messages/send \

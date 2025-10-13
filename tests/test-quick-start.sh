@@ -255,7 +255,7 @@ echo ""
 # Test 13: Send message to node and wait for response
 echo "Test 13: Send message to Yeraze Station G2 and wait for response"
 TARGET_NODE_ID="a2e4ff4c"
-TEST_MESSAGE="test"
+TEST_MESSAGE="Test in Quick Start"
 
 # Send message
 SEND_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://localhost:8083/api/messages/send \
