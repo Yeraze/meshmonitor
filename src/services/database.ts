@@ -952,8 +952,10 @@ class DatabaseService {
 
   // Message operations
   insertMessage(messageData: DbMessage): void {
+    // Use INSERT OR IGNORE to silently skip duplicate messages
+    // (mesh networks can retransmit packets or send duplicates during reconnections)
     const stmt = this.db.prepare(`
-      INSERT INTO messages (
+      INSERT OR IGNORE INTO messages (
         id, fromNodeNum, toNodeNum, fromNodeId, toNodeId,
         text, channel, portnum, timestamp, rxTime, hopStart, hopLimit, replyId, emoji, createdAt
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
