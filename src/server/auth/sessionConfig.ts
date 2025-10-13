@@ -71,12 +71,14 @@ export function getSessionConfig(): session.SessionOptions {
     if (sameSite === 'strict' || sameSite === 'lax' || sameSite === 'none') {
       cookieSameSite = sameSite;
     } else {
-      logger.warn(`⚠️  Invalid COOKIE_SAMESITE value: ${process.env.COOKIE_SAMESITE}. Using default.`);
-      cookieSameSite = process.env.NODE_ENV === 'production' ? 'strict' : 'lax';
+      logger.warn(`⚠️  Invalid COOKIE_SAMESITE value: ${process.env.COOKIE_SAMESITE}. Using default 'lax'.`);
+      cookieSameSite = 'lax';
     }
   } else {
-    // Default behavior: strict in production, lax in development
-    cookieSameSite = process.env.NODE_ENV === 'production' ? 'strict' : 'lax';
+    // Default behavior: lax in both production and development
+    // 'lax' is more compatible with reverse proxies and still secure
+    // 'strict' can cause issues with session cookies not being sent
+    cookieSameSite = 'lax';
   }
 
   // Create session database path
