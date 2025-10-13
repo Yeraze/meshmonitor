@@ -4,6 +4,7 @@ import protobufService from './protobufService.js';
 import { TcpTransport } from './tcpTransport.js';
 import { calculateDistance } from '../utils/distance.js';
 import { logger } from '../utils/logger.js';
+import { getEnvironmentConfig } from './config/environment.js';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const packageJson = require('../../package.json');
@@ -77,9 +78,10 @@ class MeshtasticManager {
   private cachedAutoAckRegex: { pattern: string; regex: RegExp } | null = null;  // Cached compiled regex
 
   constructor() {
+    const env = getEnvironmentConfig();
     this.config = {
-      nodeIp: process.env.MESHTASTIC_NODE_IP || '192.168.1.100',
-      tcpPort: parseInt(process.env.MESHTASTIC_TCP_PORT || '4403', 10)
+      nodeIp: env.meshtasticNodeIp,
+      tcpPort: env.meshtasticTcpPort
     };
   }
 
@@ -3040,6 +3042,9 @@ class MeshtasticManager {
 
       await this.transport.send(textMessageData);
 
+      // Log message sending at INFO level for production visibility
+      const destinationInfo = destination ? `node !${destination.toString(16).padStart(8, '0')}` : `channel ${channel}`;
+      logger.info(`📤 Sent message to ${destinationInfo}: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}" (ID: ${messageId})`);
       logger.debug('Message sent successfully:', text, 'with ID:', messageId);
 
       // Save sent message to database for UI display
@@ -3148,8 +3153,8 @@ class MeshtasticManager {
         : 0;
 
       // Format timestamp in local timezone (from TZ environment variable)
-      const timezone = process.env.TZ || 'America/New_York';
-      const receivedTime = new Date(message.timestamp).toLocaleString('en-US', { timeZone: timezone });
+      const env = getEnvironmentConfig();
+      const receivedTime = new Date(message.timestamp).toLocaleString('en-US', { timeZone: env.timezone });
 
       // Create auto-acknowledge message with robot emoji
       const ackText = `🤖 Copy, ${hopsTraveled} hops at ${receivedTime}`;

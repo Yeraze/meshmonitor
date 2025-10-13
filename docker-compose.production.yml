@@ -1,0 +1,37 @@
+services:
+  meshmonitor:
+    # Use pre-built image from GitHub Container Registry
+    image: ghcr.io/yeraze/meshmonitor:latest
+
+    # Or build locally for testing
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+
+    container_name: meshmonitor-production
+    ports:
+      - "8084:3001"  # Expose on port 8084 for reverse proxy
+    restart: unless-stopped
+    volumes:
+      - meshmonitor-production-data:/data
+    env_file: .env.production
+    environment:
+      # Production configuration for HTTPS reverse proxy (nginx, Caddy, Traefik)
+      - NODE_ENV=production
+      - TZ=America/New_York
+
+      # Reverse Proxy Settings
+      - TRUST_PROXY=true
+      - ALLOWED_ORIGINS=https://meshdev.yeraze.online
+
+      # Security Settings for HTTPS
+      - COOKIE_SECURE=true
+      - COOKIE_SAMESITE=lax
+
+      # IMPORTANT: Set SESSION_SECRET in .env.production for persistent sessions
+      # Generate with: openssl rand -hex 32
+      # SESSION_SECRET is read from .env.production file
+
+volumes:
+  meshmonitor-production-data:
+    driver: local
