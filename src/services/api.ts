@@ -19,6 +19,23 @@ class ApiService {
     return sessionStorage.getItem('csrfToken');
   }
 
+  // Get headers with CSRF token for mutation requests
+  private getHeadersWithCsrf(): Record<string, string> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    const csrfToken = this.getCsrfToken();
+    if (csrfToken) {
+      headers['X-CSRF-Token'] = csrfToken;
+      console.log('[API] ✓ CSRF token added to headers');
+    } else {
+      console.error('[API] ✗ NO CSRF TOKEN - Request may fail!');
+    }
+
+    return headers;
+  }
+
   // Refresh CSRF token
   private async refreshCsrfToken(): Promise<string> {
     logger.debug('Refreshing CSRF token...');
@@ -53,12 +70,18 @@ class ApiService {
     // Add CSRF token for mutation requests
     if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method.toUpperCase())) {
       const csrfToken = this.getCsrfToken();
-      console.log('[API] CSRF token from sessionStorage:', csrfToken ? 'Found' : 'NOT FOUND');
+      const tokenStatus = csrfToken ? `Found (${csrfToken.substring(0,8)}...)` : 'NOT FOUND';
+      console.log(`[API] ${method} ${endpoint} - CSRF token:`, tokenStatus);
+
+      // Also check sessionStorage directly
+      const directCheck = sessionStorage.getItem('csrfToken');
+      console.log('[API] Direct sessionStorage check:', directCheck ? 'EXISTS' : 'MISSING');
+
       if (csrfToken) {
         headers['X-CSRF-Token'] = csrfToken;
-        console.log('[API] Added X-CSRF-Token header');
+        console.log('[API] ✓ X-CSRF-Token header added');
       } else {
-        console.error('[API] No CSRF token available for', method, endpoint);
+        console.error('[API] ✗ NO CSRF TOKEN - Request will fail!');
       }
     }
 
@@ -278,7 +301,8 @@ class ApiService {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/nodes/refresh`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.getHeadersWithCsrf(),
+      credentials: 'include',
     });
     if (!response.ok) throw new Error('Failed to refresh nodes');
     return response.json();
@@ -319,7 +343,8 @@ class ApiService {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/messages/send`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.getHeadersWithCsrf(),
+      credentials: 'include',
       body: JSON.stringify(sanitizedPayload),
     });
 
@@ -341,7 +366,8 @@ class ApiService {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/traceroute`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.getHeadersWithCsrf(),
+      credentials: 'include',
       body: JSON.stringify({ destination: validatedNodeId }),
     });
 
@@ -380,7 +406,8 @@ class ApiService {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/settings/traceroute-interval`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.getHeadersWithCsrf(),
+      credentials: 'include',
       body: JSON.stringify({ intervalMinutes: validatedMinutes }),
     });
 
@@ -398,7 +425,8 @@ class ApiService {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/purge/nodes`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.getHeadersWithCsrf(),
+      credentials: 'include',
       body: JSON.stringify({ olderThanHours: validatedHours }),
     });
 
@@ -417,7 +445,8 @@ class ApiService {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/purge/telemetry`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.getHeadersWithCsrf(),
+      credentials: 'include',
       body: JSON.stringify({ olderThanHours: validatedHours }),
     });
 
@@ -436,7 +465,8 @@ class ApiService {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/purge/messages`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.getHeadersWithCsrf(),
+      credentials: 'include',
       body: JSON.stringify({ olderThanHours: validatedHours }),
     });
 
@@ -474,6 +504,8 @@ class ApiService {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/route-segments/record-holder`, {
       method: 'DELETE',
+      headers: this.getHeadersWithCsrf(),
+      credentials: 'include',
     });
 
     if (!response.ok) {
@@ -496,7 +528,8 @@ class ApiService {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/device`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.getHeadersWithCsrf(),
+      credentials: 'include',
       body: JSON.stringify(config),
     });
 
@@ -512,7 +545,8 @@ class ApiService {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/lora`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.getHeadersWithCsrf(),
+      credentials: 'include',
       body: JSON.stringify(config),
     });
 
@@ -528,7 +562,8 @@ class ApiService {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/position`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.getHeadersWithCsrf(),
+      credentials: 'include',
       body: JSON.stringify(config),
     });
 
@@ -544,7 +579,8 @@ class ApiService {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/mqtt`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.getHeadersWithCsrf(),
+      credentials: 'include',
       body: JSON.stringify(config),
     });
 
@@ -560,7 +596,8 @@ class ApiService {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/neighborinfo`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.getHeadersWithCsrf(),
+      credentials: 'include',
       body: JSON.stringify(config),
     });
 
@@ -576,7 +613,8 @@ class ApiService {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/owner`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.getHeadersWithCsrf(),
+      credentials: 'include',
       body: JSON.stringify({ longName, shortName }),
     });
 
@@ -592,7 +630,8 @@ class ApiService {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/request`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.getHeadersWithCsrf(),
+      credentials: 'include',
       body: JSON.stringify({ configType }),
     });
 
@@ -608,7 +647,8 @@ class ApiService {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/module/request`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.getHeadersWithCsrf(),
+      credentials: 'include',
       body: JSON.stringify({ configType }),
     });
 
@@ -624,7 +664,8 @@ class ApiService {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/device/reboot`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.getHeadersWithCsrf(),
+      credentials: 'include',
       body: JSON.stringify({ seconds }),
     });
 
@@ -640,7 +681,7 @@ class ApiService {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/system/restart`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.getHeadersWithCsrf(),
       credentials: 'include'
     });
 
@@ -657,7 +698,7 @@ class ApiService {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/connection/disconnect`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.getHeadersWithCsrf(),
       credentials: 'include'
     });
 
@@ -673,7 +714,7 @@ class ApiService {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/connection/reconnect`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.getHeadersWithCsrf(),
       credentials: 'include'
     });
 

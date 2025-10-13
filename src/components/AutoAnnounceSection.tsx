@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 
 import { Channel } from '../types/device';
 import { useToast } from './ToastContainer';
+import { useCsrfFetch } from '../hooks/useCsrfFetch';
 
 interface AutoAnnounceSectionProps {
   enabled: boolean;
@@ -34,6 +35,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
   onChannelChange,
   onAnnounceOnStartChange,
 }) => {
+  const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();
   const [localEnabled, setLocalEnabled] = useState(enabled);
   const [localInterval, setLocalInterval] = useState(intervalHours || 6);
@@ -89,7 +91,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
     setIsSaving(true);
     try {
       // Sync to backend first
-      const response = await fetch(`${baseUrl}/api/settings`, {
+      const response = await csrfFetch(`${baseUrl}/api/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

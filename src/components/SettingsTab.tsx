@@ -5,6 +5,7 @@ import { version } from '../../package.json';
 import apiService from '../services/api';
 import { logger } from '../utils/logger';
 import { useToast } from './ToastContainer';
+import { useCsrfFetch } from '../hooks/useCsrfFetch';
 
 type DistanceUnit = 'km' | 'mi';
 type TimeFormat = '12' | '24';
@@ -49,6 +50,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   onTimeFormatChange,
   onDateFormatChange
 }) => {
+  const csrfFetch = useCsrfFetch();
+
   // Local state for editing
   const [localMaxNodeAge, setLocalMaxNodeAge] = useState(maxNodeAgeHours);
   const [localTemperatureUnit, setLocalTemperatureUnit] = useState(temperatureUnit);
@@ -124,7 +127,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       };
 
       // Save to server
-      await fetch(`${baseUrl}/api/settings`, {
+      await csrfFetch(`${baseUrl}/api/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(settings)
@@ -168,7 +171,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
 
     setIsSaving(true);
     try {
-      await fetch(`${baseUrl}/api/settings`, {
+      await csrfFetch(`${baseUrl}/api/settings`, {
         method: 'DELETE'
       });
 
