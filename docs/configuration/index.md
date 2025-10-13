@@ -33,17 +33,28 @@ MeshMonitor can be configured using environment variables. Here are the most imp
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `PORT` | Backend server port | `3000` |
-| `SESSION_SECRET` | Secret key for session encryption | Auto-generated |
-| `NODE_ENV` | Environment mode | `development` |
-| `DATABASE_PATH` | SQLite database file path | `./data/meshmonitor.db` |
+| `PORT` | Backend server port | `3001` |
+| `SESSION_SECRET` | Secret key for session encryption (REQUIRED in production) | Auto-generated |
+| `NODE_ENV` | Environment mode (`development` or `production`) | `development` |
+| `DATABASE_PATH` | SQLite database file path | `/data/meshmonitor.db` |
+| `BASE_URL` | Base path if serving from subfolder (e.g., `/meshmonitor`) | `/` (root) |
+
+### Security & Reverse Proxy Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `TRUST_PROXY` | Trust reverse proxy headers (required for HTTPS behind proxy) | `1` in production |
+| `COOKIE_SECURE` | Require HTTPS for cookies | `true` in production |
+| `COOKIE_SAMESITE` | Cookie SameSite policy (`strict`, `lax`, or `none`) | `strict` in production |
+| `SESSION_MAX_AGE` | Session cookie lifetime in milliseconds | `86400000` (24 hours) |
+| `ALLOWED_ORIGINS` | **REQUIRED for HTTPS/reverse proxy**: Comma-separated list of allowed CORS origins | localhost URLs in development |
 
 ### Authentication Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `DISABLE_REGISTRATION` | Disable new user registration | `false` |
-| `REQUIRE_APPROVAL` | Require admin approval for new users | `false` |
+| `DISABLE_LOCAL_AUTH` | Disable local username/password authentication (OIDC only) | `false` |
+| `ADMIN_USERNAME` | Override default admin username on first run | `admin` |
 
 ### SSO Variables (OIDC)
 

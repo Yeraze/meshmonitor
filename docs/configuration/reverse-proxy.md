@@ -13,6 +13,23 @@ Benefits of using a reverse proxy:
 - **Centralized Logging**: Single point for access logs
 - **Multiple Services**: Host multiple applications on one server/domain
 
+## ⚠️ Critical: Required Environment Variables
+
+When deploying MeshMonitor behind a reverse proxy with HTTPS, you **MUST** set these environment variables:
+
+```bash
+TRUST_PROXY=true                                    # Trust proxy headers
+COOKIE_SECURE=true                                  # Enable secure cookies for HTTPS
+ALLOWED_ORIGINS=https://meshmonitor.example.com    # Allow CORS from your domain
+```
+
+**Without `ALLOWED_ORIGINS`, you will get:**
+- Blank white pages
+- 500 errors on JavaScript files
+- CORS errors in browser console: "Access to fetch at '...' has been blocked by CORS policy"
+
+This happens because when using HTTPS, the browser considers the frontend and backend as different origins and blocks API requests for security. Setting `ALLOWED_ORIGINS` tells MeshMonitor to allow requests from your HTTPS domain.
+
 ## NGINX
 
 NGINX is a popular, high-performance reverse proxy and web server.
@@ -108,6 +125,7 @@ services:
       - SESSION_SECRET=your-secure-random-string
       - TRUST_PROXY=true  # Required when behind a reverse proxy
       - COOKIE_SECURE=true  # Enable secure cookies for HTTPS
+      - ALLOWED_ORIGINS=https://meshmonitor.example.com  # REQUIRED for HTTPS!
     volumes:
       - meshmonitor-data:/data
     expose:
@@ -228,6 +246,7 @@ services:
       - SESSION_SECRET=your-secure-random-string
       - TRUST_PROXY=true  # Required when behind a reverse proxy
       - COOKIE_SECURE=true  # Enable secure cookies for HTTPS
+      - ALLOWED_ORIGINS=https://meshmonitor.example.com  # REQUIRED for HTTPS!
     volumes:
       - meshmonitor-data:/data
     labels:
@@ -310,6 +329,7 @@ services:
       - SESSION_SECRET=your-secure-random-string
       - TRUST_PROXY=true  # Required when behind a reverse proxy
       - COOKIE_SECURE=true  # Enable secure cookies for HTTPS
+      - ALLOWED_ORIGINS=https://meshmonitor.example.com  # REQUIRED for HTTPS!
     volumes:
       - meshmonitor-data:/data
     expose:
@@ -407,6 +427,52 @@ location / {
 
 ## Troubleshooting
 
+### Blank White Page / 500 Errors on JavaScript Files
+
+**Symptoms**:
+- White blank page when accessing MeshMonitor
+- 500 Internal Server Error on `/assets/index-*.js`
+- Browser console shows CORS errors:
+  ```
+  Access to fetch at 'https://meshmonitor.example.com/api/...' has been blocked by CORS policy
+  ```
+
+**Cause**: Missing `ALLOWED_ORIGINS` environment variable
+
+**Solution**: Add `ALLOWED_ORIGINS` to your docker-compose.yml or environment:
+
+```bash
+ALLOWED_ORIGINS=https://meshmonitor.example.com
+```
+
+**Multiple domains**: Separate with commas:
+```bash
+ALLOWED_ORIGINS=https://meshmonitor.example.com,https://mesh.example.org
+```
+
+**After adding**, restart MeshMonitor:
+```bash
+docker compose down
+docker compose up -d
+```
+
+### Understanding CORS Errors
+
+**What is CORS?**
+Cross-Origin Resource Sharing (CORS) is a browser security feature that blocks JavaScript from making requests to a different origin (domain, protocol, or port) than where the page was loaded from.
+
+**Why does it happen with HTTPS?**
+When you access MeshMonitor via `https://meshmonitor.example.com`, but the API calls go to the backend, the browser considers them different origins and blocks the requests for security.
+
+**How ALLOWED_ORIGINS fixes it:**
+Setting `ALLOWED_ORIGINS=https://meshmonitor.example.com` tells the MeshMonitor backend to send proper CORS headers that allow the browser to make API requests from that domain.
+
+**Checking CORS in browser console:**
+1. Open browser DevTools (F12)
+2. Go to Console tab
+3. Look for errors containing "CORS policy" or "Access-Control-Allow-Origin"
+4. If you see these, `ALLOWED_ORIGINS` is missing or incorrect
+
 ### 502 Bad Gateway
 
 **Cause**: Backend not reachable
@@ -434,6 +500,21 @@ location / {
 ```nginx
 proxy_set_header Upgrade $http_upgrade;
 proxy_set_header Connection 'upgrade';
+```
+
+### Login Works But Immediately Logs Out
+
+**Cause**: Cookie security mismatch
+
+**Solution**: Ensure both are set when using HTTPS:
+```bash
+TRUST_PROXY=true
+COOKIE_SECURE=true
+```
+
+If using HTTP (not recommended), you must explicitly set:
+```bash
+COOKIE_SECURE=false
 ```
 
 ## Next Steps
