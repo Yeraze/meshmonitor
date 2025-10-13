@@ -1094,25 +1094,25 @@ class MeshtasticManager {
         nodeData.airUtilTx = deviceMetrics.airUtilTx;
 
         // Save all telemetry values from actual TELEMETRY_APP packets (no deduplication)
-        if (deviceMetrics.batteryLevel !== undefined) {
+        if (deviceMetrics.batteryLevel !== undefined && deviceMetrics.batteryLevel !== null && !isNaN(deviceMetrics.batteryLevel)) {
           databaseService.insertTelemetry({
             nodeId, nodeNum: fromNum, telemetryType: 'batteryLevel',
             timestamp, value: deviceMetrics.batteryLevel, unit: '%', createdAt: now
           });
         }
-        if (deviceMetrics.voltage !== undefined) {
+        if (deviceMetrics.voltage !== undefined && deviceMetrics.voltage !== null && !isNaN(deviceMetrics.voltage)) {
           databaseService.insertTelemetry({
             nodeId, nodeNum: fromNum, telemetryType: 'voltage',
             timestamp, value: deviceMetrics.voltage, unit: 'V', createdAt: now
           });
         }
-        if (deviceMetrics.channelUtilization !== undefined) {
+        if (deviceMetrics.channelUtilization !== undefined && deviceMetrics.channelUtilization !== null && !isNaN(deviceMetrics.channelUtilization)) {
           databaseService.insertTelemetry({
             nodeId, nodeNum: fromNum, telemetryType: 'channelUtilization',
             timestamp, value: deviceMetrics.channelUtilization, unit: '%', createdAt: now
           });
         }
-        if (deviceMetrics.airUtilTx !== undefined) {
+        if (deviceMetrics.airUtilTx !== undefined && deviceMetrics.airUtilTx !== null && !isNaN(deviceMetrics.airUtilTx)) {
           databaseService.insertTelemetry({
             nodeId, nodeNum: fromNum, telemetryType: 'airUtilTx',
             timestamp, value: deviceMetrics.airUtilTx, unit: '%', createdAt: now
@@ -1122,19 +1122,19 @@ class MeshtasticManager {
         const envMetrics = telemetry.environmentMetrics;
         logger.debug(`🌡️ Environment telemetry: temp=${envMetrics.temperature}°C, humidity=${envMetrics.relativeHumidity}%`);
 
-        if (envMetrics.temperature !== undefined && envMetrics.temperature !== null) {
+        if (envMetrics.temperature !== undefined && envMetrics.temperature !== null && !isNaN(envMetrics.temperature)) {
           databaseService.insertTelemetry({
             nodeId, nodeNum: fromNum, telemetryType: 'temperature',
             timestamp, value: envMetrics.temperature, unit: '°C', createdAt: now
           });
         }
-        if (envMetrics.relativeHumidity !== undefined && envMetrics.relativeHumidity !== null) {
+        if (envMetrics.relativeHumidity !== undefined && envMetrics.relativeHumidity !== null && !isNaN(envMetrics.relativeHumidity)) {
           databaseService.insertTelemetry({
             nodeId, nodeNum: fromNum, telemetryType: 'humidity',
             timestamp, value: envMetrics.relativeHumidity, unit: '%', createdAt: now
           });
         }
-        if (envMetrics.barometricPressure !== undefined && envMetrics.barometricPressure !== null) {
+        if (envMetrics.barometricPressure !== undefined && envMetrics.barometricPressure !== null && !isNaN(envMetrics.barometricPressure)) {
           databaseService.insertTelemetry({
             nodeId, nodeNum: fromNum, telemetryType: 'pressure',
             timestamp, value: envMetrics.barometricPressure, unit: 'hPa', createdAt: now
@@ -1144,13 +1144,13 @@ class MeshtasticManager {
         const powerMetrics = telemetry.powerMetrics;
         logger.debug(`⚡ Power telemetry: ch1_voltage=${powerMetrics.ch1Voltage}V`);
 
-        if (powerMetrics.ch1Voltage !== undefined) {
+        if (powerMetrics.ch1Voltage !== undefined && powerMetrics.ch1Voltage !== null && !isNaN(powerMetrics.ch1Voltage)) {
           databaseService.insertTelemetry({
             nodeId, nodeNum: fromNum, telemetryType: 'ch1Voltage',
             timestamp, value: powerMetrics.ch1Voltage, unit: 'V', createdAt: now
           });
         }
-        if (powerMetrics.ch1Current !== undefined) {
+        if (powerMetrics.ch1Current !== undefined && powerMetrics.ch1Current !== null && !isNaN(powerMetrics.ch1Current)) {
           databaseService.insertTelemetry({
             nodeId, nodeNum: fromNum, telemetryType: 'ch1Current',
             timestamp, value: powerMetrics.ch1Current, unit: 'mA', createdAt: now

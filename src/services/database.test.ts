@@ -184,8 +184,9 @@ const createTestDatabase = () => {
     }
 
     insertMessage(messageData: DbMessage): void {
+      // Use INSERT OR IGNORE to silently skip duplicate messages
       const stmt = this.db.prepare(`
-        INSERT INTO messages (
+        INSERT OR IGNORE INTO messages (
           id, fromNodeNum, toNodeNum, fromNodeId, toNodeId,
           text, channel, portnum, timestamp, rxTime, createdAt
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -509,6 +510,38 @@ describe('DatabaseService', () => {
 
       const secondPage = db.getMessages(5, 5);
       expect(secondPage).toHaveLength(5);
+    });
+
+    it('should handle duplicate message IDs gracefully', () => {
+      const message = {
+        id: 'msg-duplicate',
+        fromNodeNum: 1,
+        toNodeNum: 2,
+        fromNodeId: '!sender',
+        toNodeId: '!receiver',
+        text: 'Original message',
+        channel: 0,
+        timestamp: Date.now(),
+        createdAt: Date.now()
+      };
+
+      // Insert the message
+      db.insertMessage(message);
+
+      // Try to insert the same message again (should not throw error)
+      expect(() => {
+        db.insertMessage(message);
+      }).not.toThrow();
+
+      // Verify only one message exists
+      const retrieved = db.getMessage('msg-duplicate');
+      expect(retrieved).toBeTruthy();
+      expect(retrieved.text).toBe('Original message');
+
+      // Verify message count is still 1
+      const messages = db.db.prepare('SELECT COUNT(*) as count FROM messages WHERE id = ?')
+        .get('msg-duplicate') as { count: number };
+      expect(messages.count).toBe(1);
     });
   });
 
