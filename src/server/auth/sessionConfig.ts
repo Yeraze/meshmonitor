@@ -38,29 +38,38 @@ export function getSessionConfig(): session.SessionOptions {
   const nodeEnv = process.env.NODE_ENV || 'development';
 
   const sessionSecret = process.env.SESSION_SECRET;
-  if (!sessionSecret) {
-    if (nodeEnv === 'production') {
-      logger.error('❌ SESSION_SECRET must be set in production!');
-      logger.error('   Set SESSION_SECRET environment variable to a long random string');
-      logger.error('   Example: SESSION_SECRET=$(openssl rand -hex 32)');
-      throw new Error('SESSION_SECRET is required in production environment');
-    }
-    logger.warn('⚠️  SESSION_SECRET not set! Using insecure default. Set SESSION_SECRET in production!');
+  if (!sessionSecret && nodeEnv === 'production') {
+    logger.warn('');
+    logger.warn('═══════════════════════════════════════════════════════════');
+    logger.warn('⚠️  SESSION_SECRET NOT SET - USING AUTO-GENERATED SECRET');
+    logger.warn('═══════════════════════════════════════════════════════════');
+    logger.warn('   For basic/home use, this is OK. Sessions will work.');
+    logger.warn('   ');
+    logger.warn('   For production deployments with HTTPS, set SESSION_SECRET:');
+    logger.warn('   SESSION_SECRET=$(openssl rand -hex 32)');
+    logger.warn('   ');
+    logger.warn('   ⚠️  Sessions will be reset on each container restart!');
+    logger.warn('═══════════════════════════════════════════════════════════');
+    logger.warn('');
   }
 
   const sessionMaxAge = parseInt(process.env.SESSION_MAX_AGE || '86400000'); // Default 24 hours
 
   // Determine cookie security settings
-  // COOKIE_SECURE can override the NODE_ENV default
+  // For Quick Start simplicity: default to false (HTTP-friendly) even in production
+  // Users deploying with HTTPS should explicitly set COOKIE_SECURE=true
   let cookieSecure: boolean;
   if (process.env.COOKIE_SECURE !== undefined) {
     cookieSecure = process.env.COOKIE_SECURE === 'true';
-    if (!cookieSecure && process.env.NODE_ENV === 'production') {
-      logger.warn('⚠️  COOKIE_SECURE=false in production! Sessions will work over HTTP but are less secure. Use HTTPS if possible.');
-    }
   } else {
-    // Default behavior: secure in production, insecure in development
-    cookieSecure = process.env.NODE_ENV === 'production';
+    // Default to false for HTTP compatibility (Quick Start friendly)
+    // Users with HTTPS should set COOKIE_SECURE=true
+    cookieSecure = false;
+
+    if (nodeEnv === 'production') {
+      logger.warn('⚠️  COOKIE_SECURE not set - defaulting to false for HTTP compatibility');
+      logger.warn('   If using HTTPS, set COOKIE_SECURE=true for better security');
+    }
   }
 
   // Determine sameSite setting
