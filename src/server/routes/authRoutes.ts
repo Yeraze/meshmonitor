@@ -304,16 +304,20 @@ router.get('/oidc/callback', async (req: Request, res: Response) => {
       return res.status(400).send('Invalid session state');
     }
 
-    const redirectUri = getEnvironmentConfig().oidcRedirectUri || `${req.protocol}://${req.get('host')}/api/auth/oidc/callback`;
+    // Construct the full callback URL with all query parameters
+    // This preserves additional parameters like 'iss' (issuer) that some OIDC providers send
+    const protocol = req.protocol;
+    const host = req.get('host');
+    const path = req.path;
+    const queryString = req.url.split('?')[1] || '';
+    const fullCallbackUrl = new URL(`${protocol}://${host}${path}?${queryString}`);
 
     // Handle callback and create/update user
     const user = await handleOIDCCallback(
-      code as string,
-      state as string,
+      fullCallbackUrl,
       expectedState,
       codeVerifier,
-      expectedNonce,
-      redirectUri
+      expectedNonce
     );
 
     // Clear OIDC session data
