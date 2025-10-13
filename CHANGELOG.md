@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [2.4.6] - 2025-01-13
+
+### Fixed
+- **OIDC Callback Parameter Preservation**: Fixed OIDC authentication failure with RFC 9207-compliant providers (PocketID, etc.) that include the `iss` (issuer) parameter in authorization callbacks
+  - Modified callback handler to preserve all query parameters from authorization callback instead of reconstructing URL with only code/state
+  - Now passes complete callback URL to openid-client's authorizationCodeGrant function
+  - Maintains full backward compatibility with existing OIDC providers (Authentik, Keycloak, Auth0, Okta, Azure AD)
+  - Resolves "response parameter iss (issuer) missing" error
+  - Fixes #197
+
 ## [2.1.0] - 2025-10-10
 
 ### Added
