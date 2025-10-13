@@ -1,0 +1,14 @@
+{
+  "name": "mock-oidc-provider",
+  "version": "1.0.0",
+  "description": "Mock OIDC provider for testing",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "oidc-provider": "^8.4.6"
+  }
+}

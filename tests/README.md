@@ -8,6 +8,7 @@ This directory contains automated tests that verify MeshMonitor works correctly 
 
 - **Quick Start**: Zero-config HTTP deployment (for local/development use)
 - **Reverse Proxy**: Production HTTPS deployment behind nginx/Caddy/Traefik
+- **Reverse Proxy + OIDC**: Production HTTPS deployment with OpenID Connect authentication
 
 ## Quick Start
 
@@ -22,7 +23,8 @@ This will:
 2. Clean up any existing test volumes
 3. Run the Quick Start deployment test
 4. Run the Reverse Proxy deployment test
-5. Report overall results
+5. Run the Reverse Proxy + OIDC deployment test
+6. Report overall results
 
 ## Individual Test Scripts
 
@@ -75,6 +77,42 @@ Tests production deployment behind HTTPS reverse proxy:
 - Protocol: HTTPS
 - Domain: https://meshdev.yeraze.online
 
+### Reverse Proxy + OIDC Test
+
+Tests production deployment with HTTPS reverse proxy and OpenID Connect authentication:
+
+```bash
+./tests/test-reverse-proxy-oidc.sh
+```
+
+**What it tests:**
+- Mock OIDC provider startup and health
+- OIDC discovery endpoint (.well-known/openid-configuration)
+- MeshMonitor OIDC client initialization
+- OIDC authorization URL generation
+- OIDC authentication flow (authorization code + PKCE)
+- OIDC user auto-creation (when enabled)
+- Hybrid auth mode (local + OIDC)
+- Session management with OIDC authentication
+- Meshtastic node connection
+- Direct message sending
+
+**Configuration:**
+- Node IP: 192.168.5.106
+- Port: 8084 (same as reverse proxy test - tests run sequentially)
+- Protocol: HTTPS
+- Domain: https://meshdev.yeraze.online
+- OIDC Issuer: https://oidc-mock.yeraze.online (mock provider via HTTPS reverse proxy)
+- OIDC Client: meshmonitor-test
+- Test User: alice@example.com (Alice Test)
+
+**Mock OIDC Provider:**
+- Built with node-oidc-provider
+- Pre-configured test users
+- Automatic authorization grant (for testing)
+- Standards-compliant OIDC endpoints
+- PKCE required (S256 challenge)
+
 ## Test Results
 
 Each test script reports:
@@ -115,6 +153,9 @@ If you're working on a specific deployment scenario:
 
 # Test only Reverse Proxy changes
 ./tests/test-reverse-proxy.sh
+
+# Test only OIDC integration
+./tests/test-reverse-proxy-oidc.sh
 ```
 
 ## Test Details
@@ -142,6 +183,7 @@ All tests automatically clean up after themselves:
 - Stop and remove test containers
 - Remove test volumes
 - Remove temporary files and cookies
+- Remove docker-compose test files
 
 The `system-tests.sh` script also performs cleanup before running tests to ensure a fresh environment.
 
@@ -164,6 +206,9 @@ If system tests fail, run individual tests to isolate the issue:
 
 # Test Reverse Proxy only
 ./tests/test-reverse-proxy.sh
+
+# Test OIDC integration only
+./tests/test-reverse-proxy-oidc.sh
 ```
 
 ### Manual Cleanup
@@ -174,14 +219,17 @@ If tests are interrupted and don't clean up properly:
 # Stop all test containers
 docker compose -f docker-compose.quick-start-test.yml down -v
 docker compose -f docker-compose.reverse-proxy-test.yml down -v
+docker compose -f docker-compose.oidc-test.yml down -v
 
 # Remove test volumes
 docker volume rm meshmonitor_meshmonitor-quick-start-test-data
 docker volume rm meshmonitor_meshmonitor-reverse-proxy-test-data
+docker volume rm meshmonitor_meshmonitor-oidc-test-data
 
 # Remove temporary files
 rm -f /tmp/meshmonitor-cookies.txt
 rm -f /tmp/meshmonitor-reverse-proxy-cookies.txt
+rm -f /tmp/meshmonitor-oidc-cookies.txt
 ```
 
 ## CI/CD Integration
