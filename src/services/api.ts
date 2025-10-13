@@ -53,8 +53,12 @@ class ApiService {
     // Add CSRF token for mutation requests
     if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method.toUpperCase())) {
       const csrfToken = this.getCsrfToken();
+      console.log('[API] CSRF token from sessionStorage:', csrfToken ? 'Found' : 'NOT FOUND');
       if (csrfToken) {
         headers['X-CSRF-Token'] = csrfToken;
+        console.log('[API] Added X-CSRF-Token header');
+      } else {
+        console.error('[API] No CSRF token available for', method, endpoint);
       }
     }
 
