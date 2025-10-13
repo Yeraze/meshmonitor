@@ -9,6 +9,9 @@ Before deploying to production, ensure:
 - [ ] HTTPS is configured and working
 - [ ] SSL/TLS certificates are valid and auto-renewing
 - [ ] Strong `SESSION_SECRET` is set
+- [ ] **`ALLOWED_ORIGINS` is set to your HTTPS domain** (REQUIRED!)
+- [ ] `TRUST_PROXY=true` is set (for reverse proxy)
+- [ ] `COOKIE_SECURE=true` is set (for HTTPS)
 - [ ] Database backups are configured
 - [ ] Monitoring and alerting are set up
 - [ ] Log aggregation is configured
@@ -35,6 +38,9 @@ services:
       - MESHTASTIC_NODE_IP=192.168.1.100
       - SESSION_SECRET=${SESSION_SECRET}
       - NODE_ENV=production
+      - TRUST_PROXY=true
+      - COOKIE_SECURE=true
+      - ALLOWED_ORIGINS=https://meshmonitor.example.com
       - OIDC_ISSUER=${OIDC_ISSUER}
       - OIDC_CLIENT_ID=${OIDC_CLIENT_ID}
       - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
@@ -42,14 +48,14 @@ services:
     volumes:
       - meshmonitor_data:/app/data
     ports:
-      - "127.0.0.1:8080:8080"  # Only bind to localhost
+      - "127.0.0.1:8080:3001"  # Only bind to localhost
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
