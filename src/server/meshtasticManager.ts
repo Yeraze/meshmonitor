@@ -3042,6 +3042,9 @@ class MeshtasticManager {
 
       await this.transport.send(textMessageData);
 
+      // Log message sending at INFO level for production visibility
+      const destinationInfo = destination ? `node !${destination.toString(16).padStart(8, '0')}` : `channel ${channel}`;
+      logger.info(`📤 Sent message to ${destinationInfo}: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}" (ID: ${messageId})`);
       logger.debug('Message sent successfully:', text, 'with ID:', messageId);
 
       // Save sent message to database for UI display

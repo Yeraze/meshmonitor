@@ -252,53 +252,69 @@ if [ "$NODE_CONNECTED" = false ]; then
 fi
 echo ""
 
-# Test 13: Send message to node and wait for response
+# Test 13: Send message to node and wait for response (with retry)
 echo "Test 13: Send message to Yeraze Station G2 and wait for response"
 TARGET_NODE_ID="a2e4ff4c"
 TEST_MESSAGE="Test in Quick Start"
+MAX_ATTEMPTS=3
+RESPONSE_RECEIVED=false
 
-# Send message
-SEND_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://localhost:8083/api/messages/send \
-    -H "Content-Type: application/json" \
-    -H "X-CSRF-Token: $CSRF_TOKEN" \
-    -d "{\"destination\":\"!$TARGET_NODE_ID\",\"text\":\"$TEST_MESSAGE\"}" \
-    -b /tmp/meshmonitor-cookies.txt)
+for ATTEMPT in $(seq 1 $MAX_ATTEMPTS); do
+    echo "Attempt $ATTEMPT of $MAX_ATTEMPTS..."
 
-HTTP_CODE=$(echo "$SEND_RESPONSE" | tail -n1)
-if [ "$HTTP_CODE" = "200" ]; then
-    echo -e "${GREEN}✓${NC} Message sent successfully"
+    # Send message
+    SEND_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://localhost:8083/api/messages/send \
+        -H "Content-Type: application/json" \
+        -H "X-CSRF-Token: $CSRF_TOKEN" \
+        -d "{\"destination\":\"!$TARGET_NODE_ID\",\"text\":\"$TEST_MESSAGE (attempt $ATTEMPT)\"}" \
+        -b /tmp/meshmonitor-cookies.txt)
 
-    # Wait up to 60 seconds for a response
-    echo "Waiting up to 60 seconds for response from Yeraze Station G2..."
-    MAX_WAIT=60
-    ELAPSED=0
-    RESPONSE_RECEIVED=false
+    HTTP_CODE=$(echo "$SEND_RESPONSE" | tail -n1)
+    if [ "$HTTP_CODE" = "200" ]; then
+        echo -e "${GREEN}✓${NC} Message sent successfully"
 
-    while [ $ELAPSED -lt $MAX_WAIT ]; do
-        # Check for messages from the target node
-        MESSAGES_RESPONSE=$(curl -s http://localhost:8083/api/messages \
-            -b /tmp/meshmonitor-cookies.txt)
+        # Wait up to 60 seconds for a response
+        echo "Waiting up to 60 seconds for response from Yeraze Station G2..."
+        MAX_WAIT=60
+        ELAPSED=0
 
-        # Look for a recent message from our target node
-        if echo "$MESSAGES_RESPONSE" | grep -q "\"from\":\"!$TARGET_NODE_ID\""; then
-            RESPONSE_RECEIVED=true
-            echo -e "${GREEN}✓ PASS${NC}: Received response from Yeraze Station G2"
-            break
+        while [ $ELAPSED -lt $MAX_WAIT ]; do
+            # Check for messages from the target node
+            MESSAGES_RESPONSE=$(curl -s http://localhost:8083/api/messages \
+                -b /tmp/meshmonitor-cookies.txt)
+
+            # Look for a recent message from our target node
+            if echo "$MESSAGES_RESPONSE" | grep -q "\"from\":\"!$TARGET_NODE_ID\""; then
+                RESPONSE_RECEIVED=true
+                echo -e "${GREEN}✓ PASS${NC}: Received response from Yeraze Station G2"
+                break 2  # Break out of both loops
+            fi
+
+            sleep 2
+            ELAPSED=$((ELAPSED + 2))
+            echo -n "."
+        done
+        echo ""
+
+        if [ "$RESPONSE_RECEIVED" = false ]; then
+            if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
+                echo -e "${YELLOW}⚠${NC} No response received, retrying..."
+                sleep 5  # Wait a bit before retry
+            fi
         fi
-
-        sleep 2
-        ELAPSED=$((ELAPSED + 2))
-        echo -n "."
-    done
-    echo ""
-
-    if [ "$RESPONSE_RECEIVED" = false ]; then
-        echo -e "${YELLOW}⚠ WARN${NC}: No response received within 60 seconds (node may be offline)"
-        echo "   This is not a failure - the node may not be available"
+    else
+        echo -e "${RED}✗${NC} Failed to send message (HTTP $HTTP_CODE)"
+        if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
+            echo "   Retrying..."
+            sleep 5
+        fi
     fi
-else
-    echo -e "${YELLOW}⚠ WARN${NC}: Failed to send message (HTTP $HTTP_CODE)"
-    echo "   This is not a critical failure - messaging functionality exists"
+done
+
+if [ "$RESPONSE_RECEIVED" = false ]; then
+    echo -e "${RED}✗ FAIL${NC}: No response received after $MAX_ATTEMPTS attempts"
+    echo "   Node may be offline or not responding to direct messages"
+    exit 1
 fi
 echo ""
 
