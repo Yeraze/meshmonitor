@@ -8,10 +8,15 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { act } from '@testing-library/react';
 import TelemetryGraphs from './TelemetryGraphs';
 import { ToastProvider } from './ToastContainer';
+import { CsrfProvider } from '../contexts/CsrfContext';
 
-// Helper to render with ToastProvider
-const renderWithToast = (component: React.ReactElement) => {
-  return render(<ToastProvider>{component}</ToastProvider>);
+// Helper to render with ToastProvider and CsrfProvider
+const renderWithProviders = (component: React.ReactElement) => {
+  return render(
+    <CsrfProvider baseUrl="">
+      <ToastProvider>{component}</ToastProvider>
+    </CsrfProvider>
+  );
 };
 
 // Mock Recharts components to avoid rendering issues in tests
@@ -107,14 +112,14 @@ describe('TelemetryGraphs Component', () => {
     );
 
     await act(async () => {
-      renderWithToast(<TelemetryGraphs nodeId={mockNodeId} />);
+      renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} />);
     });
 
     expect(screen.getByText('Loading telemetry data...')).toBeInTheDocument();
   });
 
   it('should fetch telemetry data on mount', async () => {
-    renderWithToast(<TelemetryGraphs nodeId={mockNodeId} />);
+    renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} />);
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(`/api/telemetry/${mockNodeId}?hours=24`);
@@ -122,7 +127,7 @@ describe('TelemetryGraphs Component', () => {
   });
 
   it('should display telemetry title when data is available', async () => {
-    renderWithToast(<TelemetryGraphs nodeId={mockNodeId} />);
+    renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} />);
 
     await waitFor(() => {
       expect(screen.getByText('Last 24 Hours Telemetry')).toBeInTheDocument();
@@ -141,7 +146,7 @@ describe('TelemetryGraphs Component', () => {
       return Promise.reject(new Error('Network error'));
     });
 
-    renderWithToast(<TelemetryGraphs nodeId={mockNodeId} />);
+    renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} />);
 
     await waitFor(() => {
       expect(screen.getByText(/Network error/)).toBeInTheDocument();
@@ -163,7 +168,7 @@ describe('TelemetryGraphs Component', () => {
       });
     });
 
-    renderWithToast(<TelemetryGraphs nodeId={mockNodeId} />);
+    renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} />);
 
     await waitFor(() => {
       expect(screen.getByText('No telemetry data available for this node')).toBeInTheDocument();
@@ -171,7 +176,7 @@ describe('TelemetryGraphs Component', () => {
   });
 
   it('should render chart containers for each telemetry type', async () => {
-    renderWithToast(<TelemetryGraphs nodeId={mockNodeId} />);
+    renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} />);
 
     await waitFor(() => {
       // Should have graph containers for telemetry types
@@ -181,7 +186,7 @@ describe('TelemetryGraphs Component', () => {
   });
 
   it('should render chart component when data is available', async () => {
-    renderWithToast(<TelemetryGraphs nodeId={mockNodeId} />);
+    renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} />);
 
     await waitFor(() => {
       const charts = screen.getAllByTestId('line-chart');
@@ -190,7 +195,7 @@ describe('TelemetryGraphs Component', () => {
   });
 
   it('should handle multiple telemetry types in the data', async () => {
-    renderWithToast(<TelemetryGraphs nodeId={mockNodeId} />);
+    renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} />);
 
     await waitFor(() => {
       // Should render multiple graph containers
@@ -200,7 +205,7 @@ describe('TelemetryGraphs Component', () => {
   });
 
   it('should refresh data when node changes', async () => {
-    const { rerender } = renderWithToast(
+    const { rerender } = renderWithProviders(
       <TelemetryGraphs nodeId={mockNodeId} />
     );
 
@@ -211,9 +216,11 @@ describe('TelemetryGraphs Component', () => {
     const newNodeId = '!newNode';
 
     rerender(
-      <ToastProvider>
-        <TelemetryGraphs nodeId={newNodeId} />
-      </ToastProvider>
+      <CsrfProvider baseUrl="">
+        <ToastProvider>
+          <TelemetryGraphs nodeId={newNodeId} />
+        </ToastProvider>
+      </CsrfProvider>
     );
 
     await waitFor(() => {
@@ -237,7 +244,7 @@ describe('TelemetryGraphs Component', () => {
       });
     });
 
-    renderWithToast(<TelemetryGraphs nodeId={mockNodeId} />);
+    renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} />);
 
     await waitFor(() => {
       expect(screen.getByText(/Failed to fetch telemetry: 404 Not Found/)).toBeInTheDocument();
@@ -265,7 +272,7 @@ describe('TelemetryGraphs Component', () => {
       });
     });
 
-    renderWithToast(<TelemetryGraphs nodeId={mockNodeId} />);
+    renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} />);
 
     await waitFor(() => {
       // Should have one graph container for battery level
@@ -291,7 +298,7 @@ describe('TelemetryGraphs Component', () => {
       json: async () => incompleteData
     });
 
-    renderWithToast(<TelemetryGraphs nodeId={mockNodeId} />);
+    renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} />);
 
     await waitFor(() => {
       // Should handle gracefully without crashing
@@ -312,7 +319,7 @@ describe('TelemetryGraphs Component', () => {
       json: async () => mockData
     });
 
-    renderWithToast(<TelemetryGraphs nodeId={mockNodeId} />);
+    renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} />);
 
     await waitFor(() => {
       expect(screen.getByText('Battery Level')).toBeInTheDocument();
@@ -342,7 +349,7 @@ describe('TelemetryGraphs Component', () => {
       });
     });
 
-    renderWithToast(<TelemetryGraphs nodeId={mockNodeId} />);
+    renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} />);
 
     await waitFor(() => {
       expect(screen.getByText('Battery Level (%)')).toBeInTheDocument();
@@ -351,7 +358,7 @@ describe('TelemetryGraphs Component', () => {
   });
 
   it('should format timestamps correctly', async () => {
-    renderWithToast(<TelemetryGraphs nodeId={mockNodeId} />);
+    renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} />);
 
     await waitFor(() => {
       const charts = screen.getAllByTestId('line-chart');
@@ -390,7 +397,7 @@ describe('TelemetryGraphs Component', () => {
         });
       });
 
-      renderWithToast(<TelemetryGraphs nodeId={mockNodeId} />);
+      renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} />);
 
       await waitFor(() => {
         expect(screen.getByText('Temperature (°C)')).toBeInTheDocument();
@@ -423,7 +430,7 @@ describe('TelemetryGraphs Component', () => {
         });
       });
 
-      renderWithToast(<TelemetryGraphs nodeId={mockNodeId} temperatureUnit="F" />);
+      renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} temperatureUnit="F" />);
 
       await waitFor(() => {
         expect(screen.getByText('Temperature (°F)')).toBeInTheDocument();
@@ -474,7 +481,7 @@ describe('TelemetryGraphs Component', () => {
         });
       });
 
-      renderWithToast(<TelemetryGraphs nodeId={mockNodeId} temperatureUnit="F" />);
+      renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} temperatureUnit="F" />);
 
       await waitFor(() => {
         // Temperature should show Fahrenheit
@@ -520,14 +527,20 @@ describe('TelemetryGraphs Component', () => {
           json: async () => refreshedData
         });
 
-      const { rerender } = renderWithToast(<TelemetryGraphs nodeId={mockNodeId} temperatureUnit="F" />);
+      const { rerender } = renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} temperatureUnit="F" />);
 
       await waitFor(() => {
         expect(screen.getByText('Temperature (°F)')).toBeInTheDocument();
       });
 
       // Trigger a re-render (simulating a refresh)
-      rerender(<ToastProvider><TelemetryGraphs nodeId={mockNodeId} temperatureUnit="F" /></ToastProvider>);
+      rerender(
+        <CsrfProvider baseUrl="">
+          <ToastProvider>
+            <TelemetryGraphs nodeId={mockNodeId} temperatureUnit="F" />
+          </ToastProvider>
+        </CsrfProvider>
+      );
 
       await waitFor(() => {
         // Should still be in Fahrenheit after refresh
