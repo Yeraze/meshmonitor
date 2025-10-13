@@ -8,9 +8,9 @@
 
 A comprehensive web application for monitoring Meshtastic mesh networks over IP. Built with React, TypeScript, and Node.js, featuring a beautiful Catppuccin Mocha dark theme and persistent SQLite database storage.
 
-![MeshMonitor Interface](docs/images/meshmonitor-screenshot.png)
+![MeshMonitor Interface](docs/images/main.png)
 
-![MeshMonitor Interface](docs/images/screenshot-2.png)
+![MeshMonitor Interface](docs/images/channels.png)
 
 ## 🚀 Getting Started
 
