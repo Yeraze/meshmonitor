@@ -104,27 +104,29 @@ export async function generateAuthorizationUrl(
  * Handle OIDC callback and create/update user
  */
 export async function handleOIDCCallback(
-  code: string,
-  state: string,
+  callbackUrl: URL,
   expectedState: string,
   codeVerifier: string,
-  expectedNonce: string,
-  redirectUri: string
+  expectedNonce: string
 ): Promise<User> {
   if (!oidcConfig) {
     throw new Error('OIDC not initialized');
   }
 
   try {
+    // Extract state from callback URL for validation
+    const state = callbackUrl.searchParams.get('state');
+
     // Validate state
     if (state !== expectedState) {
       throw new Error('Invalid state parameter');
     }
 
     // Exchange code for tokens
+    // Pass the full callback URL with all parameters (including iss if present)
     const tokenResponse = await client.authorizationCodeGrant(
       oidcConfig,
-      new URL(redirectUri + `?code=${code}&state=${state}`),
+      callbackUrl,
       {
         pkceCodeVerifier: codeVerifier,
         expectedState,
