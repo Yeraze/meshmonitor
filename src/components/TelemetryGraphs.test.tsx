@@ -13,7 +13,7 @@ import { CsrfProvider } from '../contexts/CsrfContext';
 // Helper to render with ToastProvider and CsrfProvider
 const renderWithProviders = (component: React.ReactElement) => {
   return render(
-    <CsrfProvider baseUrl="">
+    <CsrfProvider>
       <ToastProvider>{component}</ToastProvider>
     </CsrfProvider>
   );
@@ -216,7 +216,7 @@ describe('TelemetryGraphs Component', () => {
     const newNodeId = '!newNode';
 
     rerender(
-      <CsrfProvider baseUrl="">
+      <CsrfProvider>
         <ToastProvider>
           <TelemetryGraphs nodeId={newNodeId} />
         </ToastProvider>
@@ -535,7 +535,7 @@ describe('TelemetryGraphs Component', () => {
 
       // Trigger a re-render (simulating a refresh)
       rerender(
-        <CsrfProvider baseUrl="">
+        <CsrfProvider>
           <ToastProvider>
             <TelemetryGraphs nodeId={mockNodeId} temperatureUnit="F" />
           </ToastProvider>
