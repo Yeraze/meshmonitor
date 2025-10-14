@@ -925,20 +925,56 @@ body {
 
 @media (max-width: 768px) {
   .app-header {
-    padding: 0.75rem 1rem;
+    padding: 0.5rem 0.75rem;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 0.5rem;
     margin-left: 0 !important; /* Full width on mobile */
     width: 100% !important;
+    min-height: unset;
+  }
+
+  .header-left {
+    gap: 0.125rem;
   }
 
   .app-header h1 {
-    font-size: 1.25rem;
+    font-size: 1.1rem;
+    line-height: 1.2;
+  }
+
+  .header-logo {
+    height: 1.5rem;
   }
 
   .node-info {
-    font-size: 0.8rem;
-    flex-wrap: wrap;
+    font-size: 0.75rem;
+    gap: 0.35rem;
+    line-height: 1.2;
+  }
+
+  .node-address {
+    padding: 0.15rem 0.35rem;
+    font-size: 0.7rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 150px;
+  }
+
+  .device-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 120px;
+  }
+
+  .connection-status {
+    font-size: 0.75rem;
+  }
+
+  .status-indicator {
+    width: 8px;
+    height: 8px;
   }
 
   .app-main {
@@ -2149,19 +2185,85 @@ body {
   .nodes-split-view {
     flex-direction: column;
     height: auto;
+    min-height: unset;
+    gap: 0;
   }
 
   .nodes-sidebar {
     width: 100%;
     min-width: unset;
     max-width: unset;
-    height: 300px;
+    height: 350px;
+    min-height: 350px;
+    max-height: 350px;
     border-right: none;
-    border-bottom: 2px solid var(--ctp-surface2);
+    border-bottom: 3px solid var(--ctp-blue);
+    position: relative;
+  }
+
+  .sidebar-header {
+    padding: 0.75rem;
+    flex-shrink: 0;
+  }
+
+  .sidebar-header h3 {
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .filter-input-small {
+    font-size: 0.85rem;
+    padding: 0.4rem 0.6rem;
+  }
+
+  .sort-controls {
+    margin-top: 0.4rem;
+  }
+
+  .sort-dropdown {
+    font-size: 0.8rem;
+    padding: 0.35rem 0.5rem;
+  }
+
+  .sort-direction-btn {
+    padding: 0.35rem 0.6rem;
+    font-size: 1rem;
+    min-width: 36px;
+  }
+
+  .nodes-list {
+    height: calc(350px - 120px); /* Account for header */
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .node-item {
+    padding: 0.6rem 0.75rem;
+  }
+
+  .node-name {
+    font-size: 0.9rem;
+  }
+
+  .node-short {
+    font-size: 0.75rem;
+    padding: 0.15rem 0.4rem;
+  }
+
+  .stat {
+    font-size: 0.75rem;
   }
 
   .map-container {
-    height: 400px;
+    height: 450px;
+    min-height: 450px;
+    width: 100%;
+    position: relative;
+  }
+
+  .nodes-main-content {
+    padding-left: 0;
+    margin-top: 0;
   }
 }
 
