@@ -1550,6 +1550,15 @@ body {
   z-index: 1;
 }
 
+/* Move Leaflet zoom controls to bottom-right */
+.nodes-split-view .leaflet-control-zoom {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  top: auto;
+  left: auto;
+}
+
 /* Floating Node List Overlay */
 .nodes-sidebar {
   position: absolute;
@@ -2073,10 +2082,10 @@ body {
     border-radius: 12px;
   }
 
-  /* When collapsed, show as small button in top-left */
+  /* When collapsed, show as small button tight in upper-left corner */
   .nodes-sidebar.collapsed {
-    top: 56px; /* 48px header + 8px gap */
-    left: 56px;
+    top: 48px; /* Tight against header */
+    left: 48px; /* Tight against sidebar */
     width: auto;
     max-width: 40px;
     max-height: 40px;
@@ -2097,6 +2106,12 @@ body {
   .map-controls {
     top: 16px;
     right: 8px;
+  }
+
+  /* Ensure zoom controls stay in bottom-right on mobile */
+  .nodes-split-view .leaflet-control-zoom {
+    bottom: 10px;
+    right: 10px;
   }
 }
 
