@@ -69,8 +69,8 @@ body {
 
 .header-left {
   display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
+  align-items: center;
+  gap: 1rem;
 }
 
 .header-title {
@@ -1551,12 +1551,11 @@ body {
 }
 
 /* Move Leaflet zoom controls to bottom-right */
-.nodes-split-view .leaflet-control-zoom {
-  position: absolute;
-  bottom: 20px;
-  right: 20px;
-  top: auto;
-  left: auto;
+.nodes-split-view .leaflet-top.leaflet-left {
+  top: auto !important;
+  bottom: 20px !important;
+  left: auto !important;
+  right: 20px !important;
 }
 
 /* Floating Node List Overlay */
@@ -1582,6 +1581,8 @@ body {
 .nodes-sidebar.collapsed {
   width: auto;
   max-width: 60px;
+  top: 0;
+  left: 0;
 }
 
 .nodes-sidebar.collapsed .nodes-list {
@@ -2084,8 +2085,8 @@ body {
 
   /* When collapsed, show as small button tight in upper-left corner */
   .nodes-sidebar.collapsed {
-    top: 48px; /* Tight against header */
-    left: 48px; /* Tight against sidebar */
+    top: 0; /* Tight against map top edge */
+    left: 0; /* Tight against map left edge */
     width: auto;
     max-width: 40px;
     max-height: 40px;
@@ -2109,9 +2110,9 @@ body {
   }
 
   /* Ensure zoom controls stay in bottom-right on mobile */
-  .nodes-split-view .leaflet-control-zoom {
-    bottom: 10px;
-    right: 10px;
+  .nodes-split-view .leaflet-top.leaflet-left {
+    bottom: 10px !important;
+    right: 10px !important;
   }
 }
 
