@@ -227,15 +227,18 @@
   .sidebar {
     transform: translateX(-100%);
     width: 240px;
+    z-index: 10001; /* Above header on mobile */
   }
 
   .sidebar:not(.collapsed) {
     transform: translateX(0);
+    box-shadow: 4px 0 20px rgba(0, 0, 0, 0.5);
   }
 
   .sidebar.collapsed {
     transform: translateX(0);
     width: 60px;
+    z-index: 9999; /* Below header when collapsed */
   }
 
   .app-main {
@@ -252,6 +255,23 @@
   .sidebar-toggle {
     background: var(--color-primary, #2196F3);
     color: white;
+    z-index: 2;
+  }
+
+  /* Reduce section header padding on mobile */
+  .sidebar-section-header {
+    padding: 8px 12px 4px 12px;
+    font-size: 10px;
+  }
+
+  /* Reduce nav item padding */
+  .sidebar-nav-item {
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+
+  .sidebar-nav-item .nav-icon {
+    font-size: 16px;
   }
 }
 
