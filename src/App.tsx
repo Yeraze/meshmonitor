@@ -274,6 +274,32 @@ function App() {
     setAutoAnnounceOnStart
   } = useUI();
 
+  // Compute connected node name for sidebar and page title
+  const connectedNodeName = useMemo(() => {
+    // Find the local node from the nodes array
+    let localNode = currentNodeId ? nodes.find(n => n.user?.id === currentNodeId) : null;
+
+    // If currentNodeId isn't available, use localNodeInfo from /api/config
+    if (!localNode && deviceInfo?.localNodeInfo) {
+      return deviceInfo.localNodeInfo.longName;
+    }
+
+    if (localNode && localNode.user) {
+      return localNode.user.longName;
+    }
+
+    return undefined;
+  }, [currentNodeId, nodes, deviceInfo]);
+
+  // Update page title when connected node name changes
+  useEffect(() => {
+    if (connectedNodeName) {
+      document.title = `MeshMonitor – ${connectedNodeName}`;
+    } else {
+      document.title = 'MeshMonitor - Meshtastic Node Monitoring';
+    }
+  }, [connectedNodeName]);
+
   // Helper to fetch with credentials and automatic CSRF token retry
   const authFetch = async (url: string, options?: RequestInit, retryCount = 0): Promise<Response> => {
     const headers = new Headers(options?.headers);
@@ -3733,21 +3759,7 @@ function App() {
           selectedChannelRef.current = -1;
         }}
         baseUrl={baseUrl}
-        connectedNodeName={(() => {
-          // Find the local node from the nodes array
-          let localNode = currentNodeId ? nodes.find(n => n.user?.id === currentNodeId) : null;
-
-          // If currentNodeId isn't available, use localNodeInfo from /api/config
-          if (!localNode && deviceInfo?.localNodeInfo) {
-            return deviceInfo.localNodeInfo.longName;
-          }
-
-          if (localNode && localNode.user) {
-            return localNode.user.longName;
-          }
-
-          return undefined;
-        })()}
+        connectedNodeName={connectedNodeName}
       />
 
       <main className="app-main">

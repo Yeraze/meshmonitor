@@ -1707,7 +1707,11 @@ const rewriteHtml = (htmlContent: string, baseUrl: string): string => {
   return htmlContent
     .replace(/href="\/assets\//g, `href="${baseUrl}/assets/`)
     .replace(/src="\/assets\//g, `src="${baseUrl}/assets/`)
-    .replace(/href="\/vite\.svg"/g, `href="${baseUrl}/vite.svg"`);
+    .replace(/href="\/vite\.svg"/g, `href="${baseUrl}/vite.svg"`)
+    .replace(/href="\/favicon\.ico"/g, `href="${baseUrl}/favicon.ico"`)
+    .replace(/href="\/favicon-16x16\.png"/g, `href="${baseUrl}/favicon-16x16.png"`)
+    .replace(/href="\/favicon-32x32\.png"/g, `href="${baseUrl}/favicon-32x32.png"`)
+    .replace(/href="\/logo\.png"/g, `href="${baseUrl}/logo.png"`);
 };
 
 // Cache for rewritten HTML to avoid repeated file reads
@@ -1718,13 +1722,17 @@ let cachedRewrittenHtml: string | null = null;
 if (BASE_URL) {
   // Serve assets folder specifically
   app.use(`${BASE_URL}/assets`, express.static(path.join(buildPath, 'assets')));
-  // Serve other static files (like vite.svg) - but exclude /api
+
+  // Create static middleware once and reuse it
+  const staticMiddleware = express.static(buildPath, { index: false });
+
+  // Serve other static files (like favicon, logo, etc.) - but exclude /api
   app.use(BASE_URL, (req, res, next) => {
     // Skip if this is an API route
     if (req.path.startsWith('/api')) {
       return next();
     }
-    express.static(buildPath, { index: false })(req, res, next);
+    staticMiddleware(req, res, next);
   });
 
   // Catch all handler for SPA routing - but exclude /api
@@ -1745,6 +1753,10 @@ if (BASE_URL) {
     }
     // Skip if this is an API route
     if (req.path.startsWith(`${BASE_URL}/api`)) {
+      return next();
+    }
+    // Skip if this is a static file (has an extension like .ico, .png, .svg, etc.)
+    if (/\.[a-zA-Z0-9]+$/.test(req.path)) {
       return next();
     }
     // Serve cached rewritten HTML for all other routes under BASE_URL
