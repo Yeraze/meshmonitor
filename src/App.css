@@ -55,14 +55,13 @@ body {
   background: var(--ctp-mantle);
   border-bottom: 1px solid var(--ctp-surface0);
   padding: 1.5rem 2rem;
-  margin-left: var(--sidebar-width, 240px); /* Beside the sidebar */
-  width: calc(100% - var(--sidebar-width, 240px));
+  margin-left: 60px; /* Fixed space for narrow sidebar */
+  width: calc(100% - 60px);
   display: flex;
   justify-content: space-between;
   align-items: center;
   position: relative;
   z-index: 10000; /* Above all content including map */
-  transition: margin-left 0.3s ease, width 0.3s ease; /* Match sidebar transition */
 }
 
 .header-left {
