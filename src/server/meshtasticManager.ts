@@ -654,12 +654,20 @@ class MeshtasticManager {
 
       if (hasValidConfig) {
         try {
+          // Convert PSK buffer to base64 string if it exists
+          let pskString: string | undefined;
+          if (channel.settings.psk) {
+            pskString = Buffer.from(channel.settings.psk).toString('base64');
+          }
+
           databaseService.upsertChannel({
             id: channel.index,
             name: channelName,
-            psk: channel.settings.psk ? 'Set' : undefined
+            psk: pskString,
+            uplinkEnabled: channel.settings.uplinkEnabled ?? true,
+            downlinkEnabled: channel.settings.downlinkEnabled ?? true
           });
-          logger.debug(`📡 Saved channel: ${channelName} (role: ${channel.role}, index: ${channel.index})`);
+          logger.debug(`📡 Saved channel: ${channelName} (role: ${channel.role}, index: ${channel.index}, psk: ${pskString}, uplink: ${channel.settings.uplinkEnabled}, downlink: ${channel.settings.downlinkEnabled})`);
         } catch (error) {
           logger.error('❌ Failed to save channel:', error);
         }

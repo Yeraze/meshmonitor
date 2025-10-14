@@ -83,6 +83,7 @@ function App() {
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [latestVersion, setLatestVersion] = useState('');
   const [releaseUrl, setReleaseUrl] = useState('');
+  const [channelInfoModal, setChannelInfoModal] = useState<number | null>(null);
 
   const hasSelectedInitialChannelRef = useRef<boolean>(false)
   const selectedChannelRef = useRef<number>(-1)
@@ -2497,20 +2498,45 @@ function App() {
                     });
                   }}
                 >
-                  <div className="channel-button-header">
-                    <span className="channel-name">{displayName}</span>
-                    <span className="channel-id">#{channelId}</span>
-                    {unreadCounts[channelId] > 0 && (
-                      <span className="unread-badge">{unreadCounts[channelId]}</span>
-                    )}
-                  </div>
-                  <div className="channel-button-status">
-                    <span className={`arrow-icon uplink ${channelConfig?.uplinkEnabled ? 'enabled' : 'disabled'}`} title="Uplink">
-                      ↑
-                    </span>
-                    <span className={`arrow-icon downlink ${channelConfig?.downlinkEnabled ? 'enabled' : 'disabled'}`} title="Downlink">
-                      ↓
-                    </span>
+                  <div className="channel-button-content">
+                    <div className="channel-button-left">
+                      <div className="channel-button-header">
+                        <span className="channel-name">{displayName}</span>
+                        <span className="channel-id">#{channelId}</span>
+                      </div>
+                      <div className="channel-button-indicators">
+                        {channelConfig?.psk && channelConfig.psk !== 'AQ==' ? (
+                          <span className="encryption-icon encrypted" title="Encrypted">🔒</span>
+                        ) : (
+                          <span className="encryption-icon unencrypted" title="Unencrypted">🔓</span>
+                        )}
+                        <a
+                          href="#"
+                          className="channel-info-link"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setChannelInfoModal(channelId);
+                          }}
+                          title="Show channel info"
+                        >
+                          info
+                        </a>
+                      </div>
+                    </div>
+                    <div className="channel-button-right">
+                      {unreadCounts[channelId] > 0 && (
+                        <span className="unread-badge">{unreadCounts[channelId]}</span>
+                      )}
+                      <div className="channel-button-status">
+                        <span className={`arrow-icon uplink ${channelConfig?.uplinkEnabled ? 'enabled' : 'disabled'}`} title="MQTT Uplink">
+                          ↑
+                        </span>
+                        <span className={`arrow-icon downlink ${channelConfig?.downlinkEnabled ? 'enabled' : 'disabled'}`} title="MQTT Downlink">
+                          ↓
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </button>
                 );
@@ -2724,6 +2750,83 @@ function App() {
       ) : (
         <p className="no-data">Connect to a Meshtastic node to view channel configurations</p>
       )}
+
+      {/* Channel Info Modal */}
+      {channelInfoModal !== null && (() => {
+        const channelConfig = channels.find(ch => ch.id === channelInfoModal);
+        const displayName = channelConfig?.name || getChannelName(channelInfoModal);
+
+        return (
+          <div className="modal-overlay" onClick={() => setChannelInfoModal(null)}>
+            <div className="modal-content channel-info-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>Channel Information</h2>
+                <button className="modal-close" onClick={() => setChannelInfoModal(null)}>×</button>
+              </div>
+              <div className="modal-body">
+                <div className="channel-info-grid">
+                  <div className="info-row">
+                    <span className="info-label">Channel Name:</span>
+                    <span className="info-value">{displayName}</span>
+                  </div>
+                  <div className="info-row">
+                    <span className="info-label">Channel Number:</span>
+                    <span className="info-value">#{channelInfoModal}</span>
+                  </div>
+                  <div className="info-row">
+                    <span className="info-label">Encryption:</span>
+                    <span className="info-value">
+                      {channelConfig?.psk && channelConfig.psk !== 'AQ==' ? (
+                        <span className="status-encrypted">🔒 Encrypted</span>
+                      ) : (
+                        <span className="status-unencrypted">🔓 Unencrypted</span>
+                      )}
+                    </span>
+                  </div>
+                  {channelConfig?.psk && (
+                    <div className="info-row">
+                      <span className="info-label">PSK (Base64):</span>
+                      <span className="info-value info-value-code">{channelConfig.psk}</span>
+                    </div>
+                  )}
+                  <div className="info-row">
+                    <span className="info-label">MQTT Uplink:</span>
+                    <span className="info-value">
+                      {channelConfig?.uplinkEnabled ? (
+                        <span className="status-enabled">✓ Enabled</span>
+                      ) : (
+                        <span className="status-disabled">✗ Disabled</span>
+                      )}
+                    </span>
+                  </div>
+                  <div className="info-row">
+                    <span className="info-label">MQTT Downlink:</span>
+                    <span className="info-value">
+                      {channelConfig?.downlinkEnabled ? (
+                        <span className="status-enabled">✓ Enabled</span>
+                      ) : (
+                        <span className="status-disabled">✗ Disabled</span>
+                      )}
+                    </span>
+                  </div>
+                  {channelConfig?.createdAt && (
+                    <div className="info-row">
+                      <span className="info-label">Discovered:</span>
+                      <span className="info-value">{new Date(channelConfig.createdAt).toLocaleString()}</span>
+                    </div>
+                  )}
+                  {channelConfig?.updatedAt && (
+                    <div className="info-row">
+                      <span className="info-label">Last Updated:</span>
+                      <span className="info-value">{new Date(channelConfig.updatedAt).toLocaleString()}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
     );
   };
