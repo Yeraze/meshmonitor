@@ -1526,8 +1526,7 @@ body {
 .nodes-split-view {
   position: relative;
   height: calc(100vh - 60px); /* Account for header only */
-  width: calc(100% - 60px); /* Account for sidebar width */
-  margin-left: 60px; /* Offset for sidebar */
+  width: 100%;
   overflow: hidden;
 }
 
