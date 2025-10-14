@@ -35,6 +35,12 @@ export async function initializeOIDC(): Promise<boolean> {
 
   try {
     logger.debug('🔐 Initializing OIDC client...');
+    logger.info('🔍 OIDC Initialization Debug:');
+    logger.info(`  - Issuer: ${issuer}`);
+    logger.info(`  - Client ID: ${clientId}`);
+    logger.info(`  - Client Secret length: ${clientSecret.length} chars`);
+    logger.info(`  - Client Secret first 10 chars: ${clientSecret.substring(0, 10)}...`);
+    logger.info(`  - Authentication method: client_secret_post`);
 
     const issuerUrl = new URL(issuer);
 
@@ -46,6 +52,7 @@ export async function initializeOIDC(): Promise<boolean> {
       client.ClientSecretPost(clientSecret)
     );
 
+    logger.info(`  - Discovery successful, token endpoint: ${oidcConfig.serverMetadata().token_endpoint}`);
     logger.debug('✅ OIDC client initialized successfully');
     isInitialized = true;
     return true;
@@ -127,11 +134,22 @@ export async function handleOIDCCallback(
   try {
     // Extract state from callback URL for validation
     const state = callbackUrl.searchParams.get('state');
+    const code = callbackUrl.searchParams.get('code');
+
+    logger.info('🔍 OIDC Callback - Token Exchange Debug:');
+    logger.info(`  - Callback URL: ${callbackUrl.href}`);
+    logger.info(`  - State received: ${state}`);
+    logger.info(`  - Expected state: ${expectedState}`);
+    logger.info(`  - Code received: ${code ? code.substring(0, 20) + '...' : '(none)'}`);
+    logger.info(`  - OIDC config issuer: ${oidcConfig.serverMetadata().issuer}`);
+    logger.info(`  - Token endpoint: ${oidcConfig.serverMetadata().token_endpoint}`);
 
     // Validate state
     if (state !== expectedState) {
       throw new Error('Invalid state parameter');
     }
+
+    logger.info('  - Attempting token exchange with client authentication...');
 
     // Exchange code for tokens
     // Pass the full callback URL with all parameters (including iss if present)
@@ -144,6 +162,8 @@ export async function handleOIDCCallback(
         expectedNonce
       }
     );
+
+    logger.info('  - Token exchange successful!');
 
     // Validate and decode ID token
     const idTokenClaims = tokenResponse.claims();

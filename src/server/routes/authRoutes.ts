@@ -323,9 +323,11 @@ router.get('/oidc/callback', async (req: Request, res: Response) => {
     // This preserves additional parameters like 'iss' (issuer) that some OIDC providers send
     const protocol = req.protocol;
     const host = req.get('host');
-    const path = req.path;
+    // Use baseUrl + path to get the full mounted path (e.g., /api/auth/oidc/callback)
+    // req.path alone would only give /oidc/callback since the router is mounted at /api/auth
+    const fullPath = req.baseUrl + req.path;
     const queryString = req.url.split('?')[1] || '';
-    const fullCallbackUrl = new URL(`${protocol}://${host}${path}?${queryString}`);
+    const fullCallbackUrl = new URL(`${protocol}://${host}${fullPath}?${queryString}`);
 
     // Handle callback and create/update user
     const user = await handleOIDCCallback(
