@@ -25,7 +25,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   baseUrl,
   connectedNodeName
 }) => {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  // Start collapsed (narrow/icon-only) by default for cleaner desktop UI
+  const [isCollapsed, setIsCollapsed] = useState(true);
 
   // Update CSS custom property when sidebar collapse state changes
   React.useEffect(() => {

@@ -3,10 +3,10 @@
   left: 0;
   top: 0; /* Full page height from top of viewport */
   height: 100vh;
-  width: 240px;
+  width: 60px; /* Default to narrow/icon-only on desktop */
   background: var(--color-bg-primary, #1a1a1a);
   border-right: 1px solid var(--color-border, #333);
-  transition: width 0.3s ease;
+  transition: width 0.3s ease, transform 0.3s ease;
   z-index: 9999; /* Below header (10000) but above other content */
   display: flex;
   flex-direction: column;
@@ -14,6 +14,11 @@
 
 .sidebar.collapsed {
   width: 60px;
+}
+
+/* When expanded on desktop, show full width */
+.sidebar:not(.collapsed) {
+  width: 240px;
 }
 
 .sidebar-footer {
@@ -216,26 +221,24 @@
   right: 8px;
 }
 
-/* Adjust main content when sidebar is present */
-.sidebar.collapsed ~ .app-main {
-  margin-left: 60px;
-  width: calc(100% - 60px);
-}
+/* Main content always accounts for narrow sidebar */
+/* Removed old layout-affecting rules - sidebar now floats over content */
 
 /* Mobile responsive */
 @media (max-width: 768px) {
   .sidebar {
-    transform: translateX(-100%);
-    width: 240px;
+    /* Collapsed by default - show as hamburger icon only */
+    width: 48px;
   }
 
   .sidebar:not(.collapsed) {
-    transform: translateX(0);
+    /* When expanded, slide in from left */
+    width: 240px;
+    box-shadow: 2px 0 16px rgba(0, 0, 0, 0.3);
   }
 
   .sidebar.collapsed {
-    transform: translateX(0);
-    width: 60px;
+    width: 48px;
   }
 
   .app-main {
@@ -243,13 +246,15 @@
     width: 100% !important;
   }
 
-  .sidebar.collapsed ~ .app-main {
-    margin-left: 60px !important;
-    width: calc(100% - 60px) !important;
+  /* Show toggle button prominently on mobile */
+  .sidebar-toggle {
+    background: var(--color-primary, #2196F3);
+    color: white;
+    right: 6px;
   }
 
-  /* Show toggle button on mobile even when collapsed */
-  .sidebar-toggle {
+  .sidebar.collapsed .sidebar-toggle {
+    /* Make hamburger menu more visible when collapsed on mobile */
     background: var(--color-primary, #2196F3);
     color: white;
   }

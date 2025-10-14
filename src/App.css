@@ -210,11 +210,11 @@ body {
 
 .app-main {
   padding: 2rem;
-  width: calc(100% - 240px); /* Subtract sidebar width */
+  width: 100%; /* Full width - sidebar floats over */
   margin: 0;
-  margin-left: 240px; /* Space for sidebar */
+  margin-left: 60px; /* Space for narrow sidebar */
   flex: 1;
-  transition: all 0.3s ease;
+  transition: margin-left 0.3s ease;
   box-sizing: border-box;
 }
 
@@ -1523,23 +1523,30 @@ body {
 .messages-container::-webkit-scrollbar-thumb:hover {
   background: var(--ctp-overlay1);
 }
-/* Split View Layout for Nodes */
+/* Fullscreen Map Layout for Nodes */
 .nodes-split-view {
-  display: flex;
-  height: calc(100vh - 240px); /* Account for header, tabs, and footer */
-  min-height: 600px;
-  gap: 0;
+  position: relative;
+  height: calc(100vh - 60px); /* Account for header only */
+  width: 100%;
+  overflow: hidden;
 }
 
+/* Floating Node List Overlay */
 .nodes-sidebar {
+  position: absolute;
+  top: 16px;
+  left: 16px;
   width: 350px;
-  min-width: 300px;
-  max-width: 400px;
+  max-height: calc(100% - 32px);
   background: var(--ctp-surface0);
-  border-right: 2px solid var(--ctp-surface2);
+  border: 2px solid var(--ctp-surface2);
+  border-radius: 12px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  z-index: 1000;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(10px);
 }
 
 .nodes-main-content {
@@ -1831,11 +1838,13 @@ body {
 }
 
 .map-container {
-  flex: 1 1 auto;
-  min-width: 500px;
-  position: relative;
-  background: var(--ctp-surface0);
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
   height: 100%;
+  background: var(--ctp-surface0);
+  z-index: 1;
 }
 
 .map-placeholder {
@@ -1959,21 +1968,28 @@ body {
 /* Responsive design */
 @media (max-width: 768px) {
   .nodes-split-view {
-    flex-direction: column;
-    height: auto;
+    height: calc(100vh - 60px);
   }
 
   .nodes-sidebar {
-    width: 100%;
-    min-width: unset;
-    max-width: unset;
-    height: 300px;
-    border-right: none;
-    border-bottom: 2px solid var(--ctp-surface2);
+    top: auto;
+    bottom: 16px;
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-height: 50vh;
+    border-radius: 12px 12px 0 0;
   }
 
   .map-container {
-    height: 400px;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Adjust map controls on mobile to not overlap with floating sidebar */
+  .map-controls {
+    top: 16px;
+    right: 8px;
   }
 }
 
