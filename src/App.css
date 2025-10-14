@@ -1526,11 +1526,13 @@ body {
 }
 /* Fullscreen Map Layout for Nodes */
 .nodes-split-view {
-  position: relative;
-  height: calc(100vh - 60px); /* Account for header only */
-  width: calc(100% + 4rem); /* Expand to counteract app-main padding */
-  margin: -2rem; /* Negative margin to fill padding */
+  position: fixed;
+  top: 60px; /* Below header */
+  left: 60px; /* After sidebar */
+  right: 0;
+  bottom: 0;
   overflow: hidden;
+  z-index: 1;
 }
 
 /* Floating Node List Overlay */
@@ -2042,10 +2044,7 @@ body {
 /* Responsive design */
 @media (max-width: 768px) {
   .nodes-split-view {
-    height: calc(100vh - 60px);
-    width: 100%;
-    margin-left: 0;
-    margin: 0;
+    left: 48px; /* Mobile collapsed sidebar is 48px */
   }
 
   .nodes-sidebar {
