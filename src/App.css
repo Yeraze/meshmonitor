@@ -55,13 +55,16 @@ body {
   background: var(--ctp-mantle);
   border-bottom: 1px solid var(--ctp-surface0);
   padding: 1.5rem 2rem;
-  margin-left: 60px; /* Fixed space for narrow sidebar */
-  width: calc(100% - 60px);
+  position: fixed;
+  top: 0;
+  left: 60px;
+  right: 0;
+  height: 60px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  position: relative;
   z-index: 10000; /* Above all content including map */
+  box-sizing: border-box;
 }
 
 .header-left {
@@ -924,15 +927,27 @@ body {
 
 @media (max-width: 768px) {
   .app-header {
-    padding: 0.75rem;
-    flex-direction: row;
-    gap: 0.5rem;
-    margin-left: 48px !important; /* Account for collapsed sidebar */
-    width: calc(100% - 48px) !important;
+    padding: 0.5rem;
+    height: 48px; /* Smaller header on mobile */
+    left: 48px; /* Account for collapsed sidebar */
   }
 
+  /* Hide logo, node name, and connection text on mobile */
+  .app-header .header-logo,
+  .app-header .node-info,
   .app-header h1 {
-    font-size: 1.25rem;
+    display: none;
+  }
+
+  /* Keep only the connection status indicator visible */
+  .connection-status {
+    margin: 0;
+    padding: 0;
+  }
+
+  .connection-status .status-indicator {
+    width: 16px;
+    height: 16px;
   }
 
   .app-main {
@@ -2044,11 +2059,12 @@ body {
 /* Responsive design */
 @media (max-width: 768px) {
   .nodes-split-view {
+    top: 48px; /* Mobile header is 48px */
     left: 48px; /* Mobile collapsed sidebar is 48px */
   }
 
   .nodes-sidebar {
-    top: 60px;
+    top: 56px; /* 48px header + 8px gap */
     left: 56px; /* Account for collapsed sidebar */
     right: 8px;
     bottom: auto;
@@ -2059,7 +2075,7 @@ body {
 
   /* When collapsed, show as small button in top-left */
   .nodes-sidebar.collapsed {
-    top: 60px;
+    top: 56px; /* 48px header + 8px gap */
     left: 56px;
     width: auto;
     max-width: 40px;
