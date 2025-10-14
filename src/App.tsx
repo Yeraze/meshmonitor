@@ -86,6 +86,7 @@ function App() {
   const [channelInfoModal, setChannelInfoModal] = useState<number | null>(null);
   const [showPsk, setShowPsk] = useState(false);
   const [isNodeListCollapsed, setIsNodeListCollapsed] = useState(false);
+  const [isMessagesNodeListCollapsed, setIsMessagesNodeListCollapsed] = useState(false);
 
   const hasSelectedInitialChannelRef = useRef<boolean>(false)
   const selectedChannelRef = useRef<number>(-1)
@@ -2962,9 +2963,19 @@ function App() {
     return (
       <div className="nodes-split-view">
         {/* Left Sidebar - Node List with Messages */}
-        <div className="nodes-sidebar">
+        <div className={`nodes-sidebar ${isMessagesNodeListCollapsed ? 'collapsed' : ''}`}>
           <div className="sidebar-header">
-            <h3>Messages ({processedNodes.length})</h3>
+            <div className="sidebar-header-content">
+              <h3>Messages ({processedNodes.length})</h3>
+              <button
+                className="collapse-nodes-btn"
+                onClick={() => setIsMessagesNodeListCollapsed(!isMessagesNodeListCollapsed)}
+                title={isMessagesNodeListCollapsed ? 'Expand node list' : 'Collapse node list'}
+              >
+                {isMessagesNodeListCollapsed ? '▶' : '◀'}
+              </button>
+            </div>
+            {!isMessagesNodeListCollapsed && (
             <div className="node-controls">
               <input
                 type="text"
@@ -2974,8 +2985,10 @@ function App() {
                 className="filter-input-small"
               />
             </div>
+            )}
           </div>
 
+          {!isMessagesNodeListCollapsed && (
           <div className="nodes-list">
             {shouldShowData() ? (
               processedNodes.length > 0 ? (
@@ -3075,6 +3088,7 @@ function App() {
               <div className="no-data">Connect to a Meshtastic node to view messages</div>
             )}
           </div>
+          )}
         </div>
 
         {/* Right Panel - Conversation View */}
