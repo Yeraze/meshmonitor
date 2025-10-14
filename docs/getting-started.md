@@ -103,6 +103,32 @@ environment:
   - TZ=Europe/London  # See: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
 ```
 
+### Remote Access Over Local Network
+
+**Important:** If you want to access MeshMonitor from other devices on your local network (e.g., `http://192.168.1.50:8080`), you **must** set `ALLOWED_ORIGINS`:
+
+```yaml
+environment:
+  - MESHTASTIC_NODE_IP=192.168.1.100
+  - ALLOWED_ORIGINS=http://192.168.1.50:8080  # Replace with your server's IP
+```
+
+**Why?** MeshMonitor uses CORS protection to prevent unauthorized access. By default, only `http://localhost:8080` is allowed. When accessing from another device, you need to explicitly allow your server's IP address.
+
+**Examples:**
+```yaml
+# Single origin
+- ALLOWED_ORIGINS=http://192.168.1.50:8080
+
+# Multiple origins (comma-separated)
+- ALLOWED_ORIGINS=http://192.168.1.50:8080,http://meshmonitor.local:8080
+
+# Allow all origins (not recommended, use for testing only)
+- ALLOWED_ORIGINS=*
+```
+
+**Note:** `ALLOWED_ORIGINS` is not required for `http://localhost` access - that works by default.
+
 ## Production Deployment
 
 For production deployments with HTTPS, reverse proxies, or public internet access, see:
