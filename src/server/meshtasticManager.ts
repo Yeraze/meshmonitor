@@ -657,7 +657,12 @@ class MeshtasticManager {
           // Convert PSK buffer to base64 string if it exists
           let pskString: string | undefined;
           if (channel.settings.psk) {
-            pskString = Buffer.from(channel.settings.psk).toString('base64');
+            try {
+              pskString = Buffer.from(channel.settings.psk).toString('base64');
+            } catch (pskError) {
+              logger.warn(`⚠️  Failed to convert PSK to base64 for channel ${channel.index} (${channelName}):`, pskError);
+              pskString = undefined;
+            }
           }
 
           databaseService.upsertChannel({

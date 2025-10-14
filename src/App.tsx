@@ -84,6 +84,7 @@ function App() {
   const [latestVersion, setLatestVersion] = useState('');
   const [releaseUrl, setReleaseUrl] = useState('');
   const [channelInfoModal, setChannelInfoModal] = useState<number | null>(null);
+  const [showPsk, setShowPsk] = useState(false);
 
   const hasSelectedInitialChannelRef = useRef<boolean>(false)
   const selectedChannelRef = useRef<number>(-1)
@@ -99,6 +100,10 @@ function App() {
     { emoji: '😢', title: 'Cry' },
     { emoji: '💩', title: 'Poop' }
   ] as const;
+
+  // Meshtastic default PSK (base64 encoded single null byte = unencrypted)
+  const DEFAULT_UNENCRYPTED_PSK = 'AQ==';
+
   const channelMessagesContainerRef = useRef<HTMLDivElement>(null)
   const dmMessagesContainerRef = useRef<HTMLDivElement>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -1668,6 +1673,24 @@ function App() {
     return [...sortedFavorites, ...sortedNonFavorites];
   }, [nodes, maxNodeAgeHours, nodeFilter, sortField, sortDirection]);
 
+  // Memoize selected channel config for modal
+  const selectedChannelConfig = useMemo(() => {
+    if (channelInfoModal === null) return null;
+    return channels.find(ch => ch.id === channelInfoModal) || null;
+  }, [channelInfoModal, channels]);
+
+  // Handle Escape key for modal
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && channelInfoModal !== null) {
+        setChannelInfoModal(null);
+        setShowPsk(false); // Reset PSK visibility when closing modal
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [channelInfoModal]);
+
   // Function to center map on a specific node
   const centerMapOnNode = useCallback((node: DeviceInfo) => {
     if (node.position && node.position.latitude != null && node.position.longitude != null) {
@@ -2505,7 +2528,7 @@ function App() {
                         <span className="channel-id">#{channelId}</span>
                       </div>
                       <div className="channel-button-indicators">
-                        {channelConfig?.psk && channelConfig.psk !== 'AQ==' ? (
+                        {channelConfig?.psk && channelConfig.psk !== DEFAULT_UNENCRYPTED_PSK ? (
                           <span className="encryption-icon encrypted" title="Encrypted">🔒</span>
                         ) : (
                           <span className="encryption-icon unencrypted" title="Unencrypted">🔓</span>
@@ -2752,16 +2775,19 @@ function App() {
       )}
 
       {/* Channel Info Modal */}
-      {channelInfoModal !== null && (() => {
-        const channelConfig = channels.find(ch => ch.id === channelInfoModal);
-        const displayName = channelConfig?.name || getChannelName(channelInfoModal);
+      {channelInfoModal !== null && selectedChannelConfig && (() => {
+        const displayName = selectedChannelConfig.name || getChannelName(channelInfoModal);
+        const handleCloseModal = () => {
+          setChannelInfoModal(null);
+          setShowPsk(false);
+        };
 
         return (
-          <div className="modal-overlay" onClick={() => setChannelInfoModal(null)}>
+          <div className="modal-overlay" onClick={handleCloseModal}>
             <div className="modal-content channel-info-modal" onClick={(e) => e.stopPropagation()}>
               <div className="modal-header">
                 <h2>Channel Information</h2>
-                <button className="modal-close" onClick={() => setChannelInfoModal(null)}>×</button>
+                <button className="modal-close" onClick={handleCloseModal}>×</button>
               </div>
               <div className="modal-body">
                 <div className="channel-info-grid">
@@ -2776,23 +2802,42 @@ function App() {
                   <div className="info-row">
                     <span className="info-label">Encryption:</span>
                     <span className="info-value">
-                      {channelConfig?.psk && channelConfig.psk !== 'AQ==' ? (
+                      {selectedChannelConfig.psk && selectedChannelConfig.psk !== DEFAULT_UNENCRYPTED_PSK ? (
                         <span className="status-encrypted">🔒 Encrypted</span>
                       ) : (
                         <span className="status-unencrypted">🔓 Unencrypted</span>
                       )}
                     </span>
                   </div>
-                  {channelConfig?.psk && (
+                  {selectedChannelConfig.psk && (
                     <div className="info-row">
                       <span className="info-label">PSK (Base64):</span>
-                      <span className="info-value info-value-code">{channelConfig.psk}</span>
+                      <span className="info-value info-value-code" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        {showPsk ? selectedChannelConfig.psk : '••••••••'}
+                        <button
+                          onClick={() => setShowPsk(!showPsk)}
+                          style={{
+                            padding: '0.25rem 0.5rem',
+                            fontSize: '0.75rem',
+                            background: 'var(--ctp-surface1)',
+                            border: '1px solid var(--ctp-surface2)',
+                            borderRadius: '4px',
+                            color: 'var(--ctp-text)',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s'
+                          }}
+                          onMouseOver={(e) => e.currentTarget.style.background = 'var(--ctp-surface2)'}
+                          onMouseOut={(e) => e.currentTarget.style.background = 'var(--ctp-surface1)'}
+                        >
+                          {showPsk ? 'Hide' : 'Show'}
+                        </button>
+                      </span>
                     </div>
                   )}
                   <div className="info-row">
                     <span className="info-label">MQTT Uplink:</span>
                     <span className="info-value">
-                      {channelConfig?.uplinkEnabled ? (
+                      {selectedChannelConfig.uplinkEnabled ? (
                         <span className="status-enabled">✓ Enabled</span>
                       ) : (
                         <span className="status-disabled">✗ Disabled</span>
@@ -2802,23 +2847,23 @@ function App() {
                   <div className="info-row">
                     <span className="info-label">MQTT Downlink:</span>
                     <span className="info-value">
-                      {channelConfig?.downlinkEnabled ? (
+                      {selectedChannelConfig.downlinkEnabled ? (
                         <span className="status-enabled">✓ Enabled</span>
                       ) : (
                         <span className="status-disabled">✗ Disabled</span>
                       )}
                     </span>
                   </div>
-                  {channelConfig?.createdAt && (
+                  {selectedChannelConfig.createdAt && (
                     <div className="info-row">
                       <span className="info-label">Discovered:</span>
-                      <span className="info-value">{new Date(channelConfig.createdAt).toLocaleString()}</span>
+                      <span className="info-value">{new Date(selectedChannelConfig.createdAt).toLocaleString()}</span>
                     </div>
                   )}
-                  {channelConfig?.updatedAt && (
+                  {selectedChannelConfig.updatedAt && (
                     <div className="info-row">
                       <span className="info-label">Last Updated:</span>
-                      <span className="info-value">{new Date(channelConfig.updatedAt).toLocaleString()}</span>
+                      <span className="info-value">{new Date(selectedChannelConfig.updatedAt).toLocaleString()}</span>
                     </div>
                   )}
                 </div>
