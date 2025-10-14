@@ -209,7 +209,7 @@ body {
 
 .app-main {
   padding: 2rem;
-  width: 100%; /* Full width - sidebar floats over */
+  width: calc(100% - 60px); /* Full width minus sidebar */
   margin: 0;
   margin-left: 60px; /* Space for narrow sidebar */
   flex: 1;
@@ -1526,7 +1526,8 @@ body {
 .nodes-split-view {
   position: relative;
   height: calc(100vh - 60px); /* Account for header only */
-  width: 100%;
+  width: calc(100% + 4rem); /* Expand to counteract app-main padding */
+  margin: -2rem; /* Negative margin to fill padding */
   overflow: hidden;
 }
 
