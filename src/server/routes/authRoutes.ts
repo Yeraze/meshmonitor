@@ -256,7 +256,20 @@ router.get('/oidc/login', async (req: Request, res: Response) => {
       });
     }
 
-    const redirectUri = getEnvironmentConfig().oidcRedirectUri || `${req.protocol}://${req.get('host')}/api/auth/oidc/callback`;
+    const env = getEnvironmentConfig();
+    const configuredRedirectUri = env.oidcRedirectUri;
+    const fallbackRedirectUri = `${req.protocol}://${req.get('host')}/api/auth/oidc/callback`;
+    const redirectUri = configuredRedirectUri || fallbackRedirectUri;
+
+    // Debug logging to trace redirect URI
+    logger.info('🔍 OIDC Login - Redirect URI Debug:');
+    logger.info(`  - OIDC_REDIRECT_URI env var: ${configuredRedirectUri || '(not set)'}`);
+    logger.info(`  - Fallback constructed URI: ${fallbackRedirectUri}`);
+    logger.info(`  - Final redirectUri used: ${redirectUri}`);
+    logger.info(`  - Request protocol: ${req.protocol}`);
+    logger.info(`  - Request host: ${req.get('host')}`);
+    logger.info(`  - Request path: ${req.path}`);
+    logger.info(`  - Request originalUrl: ${req.originalUrl}`);
 
     // Generate PKCE parameters
     const state = generateRandomString(32);
@@ -275,6 +288,8 @@ router.get('/oidc/login', async (req: Request, res: Response) => {
       codeVerifier,
       nonce
     );
+
+    logger.info(`  - Generated authUrl: ${authUrl}`);
 
     return res.json({ authUrl });
   } catch (error) {

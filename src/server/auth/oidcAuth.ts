@@ -88,6 +88,10 @@ export async function generateAuthorizationUrl(
 
   const codeChallenge = client.calculatePKCECodeChallenge(codeVerifier);
 
+  logger.info('🔍 generateAuthorizationUrl called with:');
+  logger.info(`  - redirectUri parameter: ${redirectUri}`);
+  logger.info(`  - scopes: ${scopeArray.join(' ')}`);
+
   const authUrl = client.buildAuthorizationUrl(oidcConfig, {
     redirect_uri: redirectUri,
     scope: scopeArray.join(' '),
@@ -96,6 +100,13 @@ export async function generateAuthorizationUrl(
     code_challenge: await codeChallenge,
     code_challenge_method: 'S256'
   });
+
+  logger.info(`  - Built authorization URL: ${authUrl.href}`);
+
+  // Parse and log the redirect_uri from the built URL to verify it matches
+  const urlParams = new URLSearchParams(authUrl.search);
+  const redirectUriInUrl = urlParams.get('redirect_uri');
+  logger.info(`  - redirect_uri in authorization URL: ${redirectUriInUrl}`);
 
   return authUrl.href;
 }
