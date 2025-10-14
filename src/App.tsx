@@ -1863,16 +1863,18 @@ function App() {
         {/* Floating Node List Panel */}
         <div className={`nodes-sidebar ${isNodeListCollapsed ? 'collapsed' : ''}`}>
           <div className="sidebar-header">
+            <button
+              className="collapse-nodes-btn"
+              onClick={() => setIsNodeListCollapsed(!isNodeListCollapsed)}
+              title={isNodeListCollapsed ? 'Expand node list' : 'Collapse node list'}
+            >
+              {isNodeListCollapsed ? '▶' : '◀'}
+            </button>
+            {!isNodeListCollapsed && (
             <div className="sidebar-header-content">
               <h3>Nodes ({processedNodes.length})</h3>
-              <button
-                className="collapse-nodes-btn"
-                onClick={() => setIsNodeListCollapsed(!isNodeListCollapsed)}
-                title={isNodeListCollapsed ? 'Expand node list' : 'Collapse node list'}
-              >
-                {isNodeListCollapsed ? '▶' : '◀'}
-              </button>
             </div>
+            )}
             {!isNodeListCollapsed && (
             <div className="node-controls">
               <input
@@ -2965,16 +2967,18 @@ function App() {
         {/* Left Sidebar - Node List with Messages */}
         <div className={`nodes-sidebar ${isMessagesNodeListCollapsed ? 'collapsed' : ''}`}>
           <div className="sidebar-header">
+            <button
+              className="collapse-nodes-btn"
+              onClick={() => setIsMessagesNodeListCollapsed(!isMessagesNodeListCollapsed)}
+              title={isMessagesNodeListCollapsed ? 'Expand node list' : 'Collapse node list'}
+            >
+              {isMessagesNodeListCollapsed ? '▶' : '◀'}
+            </button>
+            {!isMessagesNodeListCollapsed && (
             <div className="sidebar-header-content">
               <h3>Messages ({processedNodes.length})</h3>
-              <button
-                className="collapse-nodes-btn"
-                onClick={() => setIsMessagesNodeListCollapsed(!isMessagesNodeListCollapsed)}
-                title={isMessagesNodeListCollapsed ? 'Expand node list' : 'Collapse node list'}
-              >
-                {isMessagesNodeListCollapsed ? '▶' : '◀'}
-              </button>
             </div>
+            )}
             {!isMessagesNodeListCollapsed && (
             <div className="node-controls">
               <input
