@@ -1164,7 +1164,7 @@ class DatabaseService {
   }
 
   // Channel operations
-  upsertChannel(channelData: { id?: number; name: string; psk?: string }): void {
+  upsertChannel(channelData: { id?: number; name: string; psk?: string; uplinkEnabled?: boolean; downlinkEnabled?: boolean }): void {
     const now = Date.now();
 
     logger.debug(`📝 upsertChannel called with:`, JSON.stringify(channelData));
@@ -1189,22 +1189,33 @@ class DatabaseService {
         UPDATE channels SET
           name = ?,
           psk = COALESCE(?, psk),
+          uplinkEnabled = COALESCE(?, uplinkEnabled),
+          downlinkEnabled = COALESCE(?, downlinkEnabled),
           updatedAt = ?
         WHERE id = ?
       `);
-      stmt.run(channelData.name, channelData.psk, now, existingChannel.id);
+      stmt.run(
+        channelData.name,
+        channelData.psk,
+        channelData.uplinkEnabled !== undefined ? (channelData.uplinkEnabled ? 1 : 0) : null,
+        channelData.downlinkEnabled !== undefined ? (channelData.downlinkEnabled ? 1 : 0) : null,
+        now,
+        existingChannel.id
+      );
       logger.debug(`Updated channel: ${channelData.name} (ID: ${existingChannel.id})`);
     } else {
       // Create new channel
       logger.debug(`📝 Creating new channel with ID: ${channelData.id !== undefined ? channelData.id : null}`);
       const stmt = this.db.prepare(`
         INSERT INTO channels (id, name, psk, uplinkEnabled, downlinkEnabled, createdAt, updatedAt)
-        VALUES (?, ?, ?, 1, 1, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
       `);
       const result = stmt.run(
         channelData.id !== undefined ? channelData.id : null,
         channelData.name,
         channelData.psk || null,
+        channelData.uplinkEnabled !== undefined ? (channelData.uplinkEnabled ? 1 : 0) : 1,
+        channelData.downlinkEnabled !== undefined ? (channelData.downlinkEnabled ? 1 : 0) : 1,
         now,
         now
       );

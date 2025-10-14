@@ -83,6 +83,8 @@ function App() {
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [latestVersion, setLatestVersion] = useState('');
   const [releaseUrl, setReleaseUrl] = useState('');
+  const [channelInfoModal, setChannelInfoModal] = useState<number | null>(null);
+  const [showPsk, setShowPsk] = useState(false);
 
   const hasSelectedInitialChannelRef = useRef<boolean>(false)
   const selectedChannelRef = useRef<number>(-1)
@@ -98,6 +100,10 @@ function App() {
     { emoji: '😢', title: 'Cry' },
     { emoji: '💩', title: 'Poop' }
   ] as const;
+
+  // Meshtastic default PSK (base64 encoded single null byte = unencrypted)
+  const DEFAULT_UNENCRYPTED_PSK = 'AQ==';
+
   const channelMessagesContainerRef = useRef<HTMLDivElement>(null)
   const dmMessagesContainerRef = useRef<HTMLDivElement>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -1667,6 +1673,24 @@ function App() {
     return [...sortedFavorites, ...sortedNonFavorites];
   }, [nodes, maxNodeAgeHours, nodeFilter, sortField, sortDirection]);
 
+  // Memoize selected channel config for modal
+  const selectedChannelConfig = useMemo(() => {
+    if (channelInfoModal === null) return null;
+    return channels.find(ch => ch.id === channelInfoModal) || null;
+  }, [channelInfoModal, channels]);
+
+  // Handle Escape key for modal
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && channelInfoModal !== null) {
+        setChannelInfoModal(null);
+        setShowPsk(false); // Reset PSK visibility when closing modal
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [channelInfoModal]);
+
   // Function to center map on a specific node
   const centerMapOnNode = useCallback((node: DeviceInfo) => {
     if (node.position && node.position.latitude != null && node.position.longitude != null) {
@@ -2497,20 +2521,45 @@ function App() {
                     });
                   }}
                 >
-                  <div className="channel-button-header">
-                    <span className="channel-name">{displayName}</span>
-                    <span className="channel-id">#{channelId}</span>
-                    {unreadCounts[channelId] > 0 && (
-                      <span className="unread-badge">{unreadCounts[channelId]}</span>
-                    )}
-                  </div>
-                  <div className="channel-button-status">
-                    <span className={`arrow-icon uplink ${channelConfig?.uplinkEnabled ? 'enabled' : 'disabled'}`} title="Uplink">
-                      ↑
-                    </span>
-                    <span className={`arrow-icon downlink ${channelConfig?.downlinkEnabled ? 'enabled' : 'disabled'}`} title="Downlink">
-                      ↓
-                    </span>
+                  <div className="channel-button-content">
+                    <div className="channel-button-left">
+                      <div className="channel-button-header">
+                        <span className="channel-name">{displayName}</span>
+                        <span className="channel-id">#{channelId}</span>
+                      </div>
+                      <div className="channel-button-indicators">
+                        {channelConfig?.psk && channelConfig.psk !== DEFAULT_UNENCRYPTED_PSK ? (
+                          <span className="encryption-icon encrypted" title="Encrypted">🔒</span>
+                        ) : (
+                          <span className="encryption-icon unencrypted" title="Unencrypted">🔓</span>
+                        )}
+                        <a
+                          href="#"
+                          className="channel-info-link"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setChannelInfoModal(channelId);
+                          }}
+                          title="Show channel info"
+                        >
+                          info
+                        </a>
+                      </div>
+                    </div>
+                    <div className="channel-button-right">
+                      {unreadCounts[channelId] > 0 && (
+                        <span className="unread-badge">{unreadCounts[channelId]}</span>
+                      )}
+                      <div className="channel-button-status">
+                        <span className={`arrow-icon uplink ${channelConfig?.uplinkEnabled ? 'enabled' : 'disabled'}`} title="MQTT Uplink">
+                          ↑
+                        </span>
+                        <span className={`arrow-icon downlink ${channelConfig?.downlinkEnabled ? 'enabled' : 'disabled'}`} title="MQTT Downlink">
+                          ↓
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </button>
                 );
@@ -2724,6 +2773,105 @@ function App() {
       ) : (
         <p className="no-data">Connect to a Meshtastic node to view channel configurations</p>
       )}
+
+      {/* Channel Info Modal */}
+      {channelInfoModal !== null && selectedChannelConfig && (() => {
+        const displayName = selectedChannelConfig.name || getChannelName(channelInfoModal);
+        const handleCloseModal = () => {
+          setChannelInfoModal(null);
+          setShowPsk(false);
+        };
+
+        return (
+          <div className="modal-overlay" onClick={handleCloseModal}>
+            <div className="modal-content channel-info-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>Channel Information</h2>
+                <button className="modal-close" onClick={handleCloseModal}>×</button>
+              </div>
+              <div className="modal-body">
+                <div className="channel-info-grid">
+                  <div className="info-row">
+                    <span className="info-label">Channel Name:</span>
+                    <span className="info-value">{displayName}</span>
+                  </div>
+                  <div className="info-row">
+                    <span className="info-label">Channel Number:</span>
+                    <span className="info-value">#{channelInfoModal}</span>
+                  </div>
+                  <div className="info-row">
+                    <span className="info-label">Encryption:</span>
+                    <span className="info-value">
+                      {selectedChannelConfig.psk && selectedChannelConfig.psk !== DEFAULT_UNENCRYPTED_PSK ? (
+                        <span className="status-encrypted">🔒 Encrypted</span>
+                      ) : (
+                        <span className="status-unencrypted">🔓 Unencrypted</span>
+                      )}
+                    </span>
+                  </div>
+                  {selectedChannelConfig.psk && (
+                    <div className="info-row">
+                      <span className="info-label">PSK (Base64):</span>
+                      <span className="info-value info-value-code" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        {showPsk ? selectedChannelConfig.psk : '••••••••'}
+                        <button
+                          onClick={() => setShowPsk(!showPsk)}
+                          style={{
+                            padding: '0.25rem 0.5rem',
+                            fontSize: '0.75rem',
+                            background: 'var(--ctp-surface1)',
+                            border: '1px solid var(--ctp-surface2)',
+                            borderRadius: '4px',
+                            color: 'var(--ctp-text)',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s'
+                          }}
+                          onMouseOver={(e) => e.currentTarget.style.background = 'var(--ctp-surface2)'}
+                          onMouseOut={(e) => e.currentTarget.style.background = 'var(--ctp-surface1)'}
+                        >
+                          {showPsk ? 'Hide' : 'Show'}
+                        </button>
+                      </span>
+                    </div>
+                  )}
+                  <div className="info-row">
+                    <span className="info-label">MQTT Uplink:</span>
+                    <span className="info-value">
+                      {selectedChannelConfig.uplinkEnabled ? (
+                        <span className="status-enabled">✓ Enabled</span>
+                      ) : (
+                        <span className="status-disabled">✗ Disabled</span>
+                      )}
+                    </span>
+                  </div>
+                  <div className="info-row">
+                    <span className="info-label">MQTT Downlink:</span>
+                    <span className="info-value">
+                      {selectedChannelConfig.downlinkEnabled ? (
+                        <span className="status-enabled">✓ Enabled</span>
+                      ) : (
+                        <span className="status-disabled">✗ Disabled</span>
+                      )}
+                    </span>
+                  </div>
+                  {selectedChannelConfig.createdAt && (
+                    <div className="info-row">
+                      <span className="info-label">Discovered:</span>
+                      <span className="info-value">{new Date(selectedChannelConfig.createdAt).toLocaleString()}</span>
+                    </div>
+                  )}
+                  {selectedChannelConfig.updatedAt && (
+                    <div className="info-row">
+                      <span className="info-label">Last Updated:</span>
+                      <span className="info-value">{new Date(selectedChannelConfig.updatedAt).toLocaleString()}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
     );
   };
