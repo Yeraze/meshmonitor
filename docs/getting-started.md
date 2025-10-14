@@ -159,51 +159,6 @@ ALLOWED_ORIGINS=https://meshmonitor.example.com # REQUIRED!
 - **`ALLOWED_ORIGINS`**: **CRITICAL** - Must match your HTTPS domain, or frontend won't load
 - **Rate limiting**: Stricter (1000 requests/15min vs 10,000)
 
-## Development Setup
-
-For development or if you prefer running MeshMonitor without Docker:
-
-### 1. Install Dependencies
-
-```bash
-git clone --recurse-submodules https://github.com/yeraze/meshmonitor.git
-cd meshmonitor
-npm install
-```
-
-### 2. Set Environment Variables
-
-```bash
-export MESHTASTIC_NODE_IP=192.168.1.100
-```
-
-### 3. Start the Development Server
-
-MeshMonitor has two components that need to run:
-
-```bash
-# Option 1: Run both together (recommended)
-npm run dev:full
-
-# Option 2: Run separately in two terminals
-npm run dev        # Terminal 1: Frontend
-npm run dev:server # Terminal 2: Backend
-```
-
-### 4. Access the Development Server
-
-Open your browser to:
-
-```
-http://localhost:5173  # Frontend (Vite dev server)
-```
-
-The backend API runs on:
-
-```
-http://localhost:3001  # Backend (Express)
-```
-
 ## Using with meshtasticd
 
 If you're using `meshtasticd` (the virtual Meshtastic node daemon), make sure it's running and accessible before starting MeshMonitor:
@@ -223,60 +178,53 @@ See the [meshtasticd configuration guide](/configuration/meshtasticd) for more d
 
 Now that you have MeshMonitor running:
 
+- **[FAQ](/faq)** - Common issues and solutions
 - **[Features Guide](/features/settings)** - Explore all available features
 - **[Automation](/features/automation)** - Set up auto-acknowledge and auto-announce
 - **[Device Configuration](/features/device)** - Configure your Meshtastic node from the UI
 - **[Production Deployment](/configuration/production)** - Deploy securely for public access
+- **[Development Setup](/development/setup)** - Set up a local development environment
 
 ## Troubleshooting
 
-### Cannot Connect to Node
+For common issues and solutions, see the **[FAQ](/faq)** which covers:
 
-If MeshMonitor cannot connect to your Meshtastic node:
+- 🚨 **Blank white screen** - CORS and ALLOWED_ORIGINS issues
+- 🔐 **Can't login / Session logs out** - Cookie security and TRUST_PROXY configuration
+- 📡 **Cannot connect to node** - Network connectivity troubleshooting
+- 🔄 **Multiple nodes** - How to run multiple MeshMonitor instances
+- 💾 **Database issues** - How to reset and back up your data
+- 👤 **Password reset** - Admin and user password management
 
-1. Verify the node IP address is correct
-2. Ensure the node is reachable from your network:
-   ```bash
-   ping 192.168.1.100
-   ```
-3. Check that the node has IP connectivity enabled (via Meshtastic app or CLI)
-4. Verify firewall rules allow connections on port 4403
+### Quick Fixes
 
-### Login Issues
-
-If you can login but get immediately logged out:
-
-**This shouldn't happen in development mode**, but if it does:
-- Check browser console for errors
-- Verify you haven't set `NODE_ENV=production` (development is the default)
-- Try clearing browser cookies for localhost:8080
-
-### Database Issues
-
-If you encounter database errors:
-
-1. Stop MeshMonitor: `docker compose down`
-2. Remove the database volume: `docker volume rm meshmonitor-meshmonitor-data`
-3. Restart: `docker compose up -d`
-
-**Note**: This will delete all stored data. Export any important data first.
-
-### Docker Permission Issues
-
-If you see permission errors with Docker:
-
+**Cannot connect to node:**
 ```bash
-# Add your user to the docker group
-sudo usermod -aG docker $USER
+# Verify node is reachable
+ping 192.168.1.100
 
-# Log out and back in for changes to take effect
+# Check port 4403 is accessible
+telnet 192.168.1.100 4403
+```
+
+**Database errors:**
+```bash
+docker compose down
+docker volume rm meshmonitor-meshmonitor-data
+docker compose up -d
+```
+
+**Docker permission errors:**
+```bash
+sudo usermod -aG docker $USER
+# Log out and back in
 ```
 
 ## Getting Help
 
 If you run into issues:
 
-- Check the [Configuration Documentation](/configuration/)
-- Review the [Development Documentation](/development/)
-- Search existing [GitHub Issues](https://github.com/yeraze/meshmonitor/issues)
-- Open a new issue with details about your setup and the problem
+- **[FAQ](/faq)** - Common issues and solutions
+- **[Configuration Documentation](/configuration/)** - Advanced configuration
+- **[Development Documentation](/development/)** - Developer resources
+- **[GitHub Issues](https://github.com/yeraze/meshmonitor/issues)** - Search existing issues or open a new one
