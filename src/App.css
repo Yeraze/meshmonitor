@@ -1526,7 +1526,8 @@ body {
 .nodes-split-view {
   position: relative;
   height: calc(100vh - 60px); /* Account for header only */
-  width: 100%;
+  width: calc(100% - 60px); /* Account for sidebar width */
+  margin-left: 60px; /* Offset for sidebar */
   overflow: hidden;
 }
 
@@ -1546,6 +1547,17 @@ body {
   z-index: 1000;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   backdrop-filter: blur(10px);
+  transition: width 0.3s ease, transform 0.3s ease;
+}
+
+/* Collapsed state for node list */
+.nodes-sidebar.collapsed {
+  width: auto;
+  max-width: 60px;
+}
+
+.nodes-sidebar.collapsed .nodes-list {
+  display: none;
 }
 
 .nodes-main-content {
@@ -1561,12 +1573,51 @@ body {
   padding: 1rem;
   border-bottom: 1px solid var(--ctp-surface2);
   background: var(--ctp-mantle);
+  flex-shrink: 0;
+}
+
+.sidebar-header-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
 }
 
 .sidebar-header h3 {
-  margin: 0 0 0.75rem 0;
+  margin: 0;
   color: var(--ctp-text);
   font-size: 1.1rem;
+}
+
+.collapse-nodes-btn {
+  background: var(--ctp-surface1);
+  border: 2px solid var(--ctp-surface2);
+  color: var(--ctp-text);
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 36px;
+}
+
+.collapse-nodes-btn:hover {
+  background: var(--ctp-blue);
+  border-color: var(--ctp-blue);
+  color: var(--ctp-base);
+  transform: scale(1.05);
+}
+
+.nodes-sidebar.collapsed .sidebar-header h3 {
+  display: none;
+}
+
+.nodes-sidebar.collapsed .node-controls {
+  display: none;
 }
 
 .filter-input-small {
@@ -1968,6 +2019,8 @@ body {
 @media (max-width: 768px) {
   .nodes-split-view {
     height: calc(100vh - 60px);
+    width: 100%;
+    margin-left: 0;
   }
 
   .nodes-sidebar {
@@ -1978,6 +2031,11 @@ body {
     width: auto;
     max-height: 50vh;
     border-radius: 12px 12px 0 0;
+  }
+
+  .nodes-sidebar.collapsed {
+    max-width: none;
+    width: auto;
   }
 
   .map-container {

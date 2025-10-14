@@ -85,6 +85,7 @@ function App() {
   const [releaseUrl, setReleaseUrl] = useState('');
   const [channelInfoModal, setChannelInfoModal] = useState<number | null>(null);
   const [showPsk, setShowPsk] = useState(false);
+  const [isNodeListCollapsed, setIsNodeListCollapsed] = useState(false);
 
   const hasSelectedInitialChannelRef = useRef<boolean>(false)
   const selectedChannelRef = useRef<number>(-1)
@@ -1858,10 +1859,20 @@ function App() {
 
     return (
       <div className="nodes-split-view">
-        {/* Left Sidebar - Node List */}
-        <div className="nodes-sidebar">
+        {/* Floating Node List Panel */}
+        <div className={`nodes-sidebar ${isNodeListCollapsed ? 'collapsed' : ''}`}>
           <div className="sidebar-header">
-            <h3>Nodes ({processedNodes.length})</h3>
+            <div className="sidebar-header-content">
+              <h3>Nodes ({processedNodes.length})</h3>
+              <button
+                className="collapse-nodes-btn"
+                onClick={() => setIsNodeListCollapsed(!isNodeListCollapsed)}
+                title={isNodeListCollapsed ? 'Expand node list' : 'Collapse node list'}
+              >
+                {isNodeListCollapsed ? '▶' : '◀'}
+              </button>
+            </div>
+            {!isNodeListCollapsed && (
             <div className="node-controls">
               <input
                 type="text"
@@ -1895,8 +1906,10 @@ function App() {
                 </button>
               </div>
             </div>
+            )}
           </div>
 
+          {!isNodeListCollapsed && (
           <div className="nodes-list">
             {shouldShowData() ? (
               processedNodes.length > 0 ? (
@@ -2008,6 +2021,7 @@ function App() {
               </div>
             )}
           </div>
+          )}
         </div>
 
         {/* Right Side - Map */}
