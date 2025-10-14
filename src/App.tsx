@@ -85,8 +85,11 @@ function App() {
   const [releaseUrl, setReleaseUrl] = useState('');
   const [channelInfoModal, setChannelInfoModal] = useState<number | null>(null);
   const [showPsk, setShowPsk] = useState(false);
-  const [isNodeListCollapsed, setIsNodeListCollapsed] = useState(false);
-  const [isMessagesNodeListCollapsed, setIsMessagesNodeListCollapsed] = useState(false);
+
+  // Check if mobile viewport and default to collapsed on mobile
+  const isMobileViewport = () => window.innerWidth <= 768;
+  const [isNodeListCollapsed, setIsNodeListCollapsed] = useState(isMobileViewport());
+  const [isMessagesNodeListCollapsed, setIsMessagesNodeListCollapsed] = useState(isMobileViewport());
 
   const hasSelectedInitialChannelRef = useRef<boolean>(false)
   const selectedChannelRef = useRef<number>(-1)

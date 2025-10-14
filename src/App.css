@@ -924,19 +924,21 @@ body {
 
 @media (max-width: 768px) {
   .app-header {
-    padding: 1rem;
-    flex-direction: column;
-    gap: 1rem;
-    margin-left: 0 !important; /* Full width on mobile */
-    width: 100% !important;
+    padding: 0.75rem;
+    flex-direction: row;
+    gap: 0.5rem;
+    margin-left: 48px !important; /* Account for collapsed sidebar */
+    width: calc(100% - 48px) !important;
   }
 
   .app-header h1 {
-    font-size: 1.5rem;
+    font-size: 1.25rem;
   }
 
   .app-main {
-    padding: 1rem;
+    padding: 0.5rem;
+    margin-left: 48px !important;
+    width: calc(100% - 48px) !important;
   }
 
   .connection-form {
@@ -2043,21 +2045,32 @@ body {
     height: calc(100vh - 60px);
     width: 100%;
     margin-left: 0;
+    margin: 0;
   }
 
   .nodes-sidebar {
-    top: auto;
-    bottom: 16px;
-    left: 8px;
+    top: 60px;
+    left: 56px; /* Account for collapsed sidebar */
     right: 8px;
+    bottom: auto;
     width: auto;
-    max-height: 50vh;
-    border-radius: 12px 12px 0 0;
+    max-height: 40vh;
+    border-radius: 12px;
   }
 
+  /* When collapsed, show as small button in top-left */
   .nodes-sidebar.collapsed {
-    max-width: none;
+    top: 60px;
+    left: 56px;
     width: auto;
+    max-width: 40px;
+    max-height: 40px;
+    padding: 0;
+  }
+
+  .nodes-sidebar.collapsed .sidebar-header {
+    padding: 0.5rem;
+    min-height: 40px;
   }
 
   .map-container {
