@@ -19,6 +19,7 @@ export default defineConfig({
     nav: [
       { text: 'Home', link: '/' },
       { text: 'Getting Started', link: '/getting-started' },
+      { text: 'FAQ', link: '/faq' },
       { text: 'Features', link: '/features/settings' },
       { text: 'Configuration', link: '/configuration/' },
       { text: 'Development', link: '/development/' },
