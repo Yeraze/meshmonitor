@@ -7,7 +7,7 @@
   background: var(--color-bg-primary, #1a1a1a);
   border-right: 1px solid var(--color-border, #333);
   transition: width 0.3s ease, transform 0.3s ease;
-  z-index: 9999; /* Below header (10000) but above other content */
+  z-index: 10001; /* Above header (10000) so it overlays cleanly */
   display: flex;
   flex-direction: column;
 }
