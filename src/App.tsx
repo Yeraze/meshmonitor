@@ -2530,7 +2530,7 @@ function App() {
   const renderChannelsTab = () => {
     const availableChannels = getAvailableChannels();
     return (
-    <div className="tab-content">
+    <div className="tab-content channels-tab-content">
       <div className="channels-header">
         <h2>Channels ({availableChannels.length})</h2>
         <div className="channels-controls">
@@ -2833,7 +2833,7 @@ function App() {
                             disabled={!newMessage.trim()}
                             className="send-btn"
                           >
-                            Send
+                            →
                           </button>
                         </div>
                       )}
@@ -3374,7 +3374,7 @@ function App() {
                         disabled={!newMessage.trim()}
                         className="send-btn"
                       >
-                        Send
+                        →
                       </button>
                     </div>
                   )}

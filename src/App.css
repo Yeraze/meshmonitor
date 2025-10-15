@@ -224,6 +224,12 @@ body {
   min-height: 60vh;
 }
 
+/* Reduce horizontal padding on channels tab by half */
+.channels-tab-content {
+  margin-left: -1rem;
+  margin-right: -1rem;
+}
+
 /* Nodes Tab - Table Style */
 .nodes-section {
   margin-bottom: 2rem;
@@ -779,6 +785,7 @@ body {
   margin-bottom: 0.5rem;
   line-height: 1.4;
   word-wrap: break-word;
+  font-size: 0.95rem; /* Slightly smaller than base font */
 }
 
 .message-details {
@@ -823,14 +830,19 @@ body {
 }
 
 .send-btn {
-  padding: 0.75rem 1.5rem;
+  padding: 0.75rem;
+  min-width: 48px;
   background: var(--ctp-green);
   color: var(--ctp-base);
   border: none;
   border-radius: 6px;
   font-weight: 600;
+  font-size: 1.5rem;
   cursor: pointer;
   transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .send-btn:hover:not(:disabled) {
@@ -960,6 +972,12 @@ body {
     padding-left: 56px; /* 48px sidebar + 8px gap */
     margin-left: 0 !important;
     width: 100% !important;
+  }
+
+  /* Reduce horizontal padding on channels tab by half on mobile */
+  .channels-tab-content {
+    margin-left: -0.25rem;
+    margin-right: -0.25rem;
   }
 
   /* Hide channel grid buttons on mobile, show dropdown instead */
