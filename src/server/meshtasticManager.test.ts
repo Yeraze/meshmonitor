@@ -372,9 +372,9 @@ describe('MeshtasticManager - Configuration Polling', () => {
       expect(adminPacket.length).toBeGreaterThan(0);
     });
 
-    it('should NOT include isFavorite in nodeData from NodeInfo updates', () => {
-      // This is the critical fix: NodeInfo processing should not include isFavorite
-      // because the device doesn't broadcast favorite status
+    it('should sync isFavorite from NodeInfo updates to fix reconnect issue (#213)', () => {
+      // Fix for issue #213: favorites should be synced from device on each connection
+      // to reflect changes made while offline (e.g., via mobile app)
       const mockNodeInfo = {
         num: 1129874776,
         user: {
@@ -386,6 +386,7 @@ describe('MeshtasticManager - Configuration Polling', () => {
         lastHeard: Date.now() / 1000,
         snr: 5.25,
         hopsAway: 0,
+        isFavorite: true,  // Device now sends favorite status
         position: {
           latitudeI: 285605888,
           longitudeI: -811991040,
@@ -401,11 +402,12 @@ describe('MeshtasticManager - Configuration Polling', () => {
         snr: mockNodeInfo.snr,
         rssi: 0,
         hopsAway: mockNodeInfo.hopsAway,
-        // Note: isFavorite is NOT included here - it's a local-only setting
+        isFavorite: mockNodeInfo.isFavorite,  // Now synced from device
       };
 
-      // Verify isFavorite is not in nodeData
-      expect(nodeData).not.toHaveProperty('isFavorite');
+      // Verify isFavorite IS included in nodeData when provided by device
+      expect(nodeData).toHaveProperty('isFavorite');
+      expect(nodeData.isFavorite).toBe(true);
       expect(nodeData.nodeNum).toBe(1129874776);
       expect(nodeData.hopsAway).toBe(0);
     });
