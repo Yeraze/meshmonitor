@@ -26,6 +26,11 @@
   --ctp-pink: #f5c2e7;
   --ctp-flamingo: #f2cdcd;
   --ctp-rosewater: #f5e0dc;
+
+  /* Layout dimensions */
+  --header-height: 60px;
+  --sidebar-width: 60px;
+  --banner-height: 36px;
 }
 
 * {
@@ -110,6 +115,33 @@ body {
 
 .device-name {
   color: var(--ctp-green);
+}
+
+/* Warning and Update Banners */
+.warning-banner,
+.update-banner {
+  position: fixed;
+  left: var(--sidebar-width);
+  right: 0;
+  padding: 8px 16px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 500;
+  z-index: 9999;
+  box-sizing: border-box;
+}
+
+.warning-banner {
+  top: var(--header-height);
+  background-color: #dc2626;
+  color: white;
+  border-bottom: 2px solid #991b1b;
+}
+
+.update-banner {
+  background-color: #3b82f6;
+  color: white;
+  border-bottom: 2px solid #1d4ed8;
 }
 
 .connection-status {
@@ -940,6 +972,12 @@ body {
 }
 
 @media (max-width: 768px) {
+  /* Update layout dimensions for mobile */
+  :root {
+    --header-height: 48px;
+    --sidebar-width: 48px;
+  }
+
   /* Reduce font size globally on mobile */
   body {
     font-size: 0.875rem; /* 14px - reduced from 16px */
@@ -949,6 +987,13 @@ body {
     padding: 0.5rem;
     height: 48px; /* Smaller header on mobile */
     left: 48px; /* Account for collapsed sidebar */
+  }
+
+  /* Adjust banners for mobile */
+  .warning-banner,
+  .update-banner {
+    font-size: 13px;
+    padding: 6px 12px;
   }
 
   /* Hide logo, node name, and connection text on mobile */

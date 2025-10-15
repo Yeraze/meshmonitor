@@ -1192,9 +1192,11 @@ function App() {
       }
 
       // Format each hop with SNR and distance
+      const BROADCAST_ADDR = 4294967295;
       nodeNums.forEach((nodeNum, idx) => {
         const node = nodes.find(n => n.nodeNum === nodeNum);
-        const nodeName = node?.user?.longName || node?.user?.shortName || `!${nodeNum.toString(16)}`;
+        const nodeName = nodeNum === BROADCAST_ADDR ? '(unknown)' :
+                        (node?.user?.longName || node?.user?.shortName || `!${nodeNum.toString(16)}`);
 
         // Get SNR for this hop
         const snrIdx = idx === 0 ? -1 : idx - 1; // First node has no SNR, subsequent nodes use previous indices
@@ -3555,10 +3557,13 @@ function App() {
       const weight = Math.min(2 + usage, 8);
 
       // Get node names for popup
+      const BROADCAST_ADDR = 4294967295;
       const node1 = nodes.find(n => n.nodeNum === segment.nodeNums[0]);
       const node2 = nodes.find(n => n.nodeNum === segment.nodeNums[1]);
-      const node1Name = node1?.user?.longName || node1?.user?.shortName || `!${segment.nodeNums[0].toString(16)}`;
-      const node2Name = node2?.user?.longName || node2?.user?.shortName || `!${segment.nodeNums[1].toString(16)}`;
+      const node1Name = segment.nodeNums[0] === BROADCAST_ADDR ? '(unknown)' :
+                        (node1?.user?.longName || node1?.user?.shortName || `!${segment.nodeNums[0].toString(16)}`);
+      const node2Name = segment.nodeNums[1] === BROADCAST_ADDR ? '(unknown)' :
+                        (node2?.user?.longName || node2?.user?.shortName || `!${segment.nodeNums[1].toString(16)}`);
 
       // Calculate distance if both nodes have position data
       let segmentDistanceKm = 0;
@@ -3814,28 +3819,14 @@ function App() {
 
       {/* Default Password Warning Banner */}
       {isDefaultPassword && (
-        <div style={{
-          backgroundColor: '#dc2626',
-          color: 'white',
-          padding: '8px 16px',
-          textAlign: 'center',
-          fontSize: '14px',
-          fontWeight: '500',
-          borderBottom: '2px solid #991b1b'
-        }}>
+        <div className="warning-banner">
           ⚠️ Security Warning: The admin account is using the default password. Please change it immediately in the Users tab.
         </div>
       )}
 
       {updateAvailable && (
-        <div style={{
-          backgroundColor: '#3b82f6',
-          color: 'white',
-          padding: '8px 16px',
-          textAlign: 'center',
-          fontSize: '14px',
-          fontWeight: '500',
-          borderBottom: '2px solid #1d4ed8'
+        <div className="update-banner" style={{
+          top: isDefaultPassword ? 'calc(var(--header-height) + var(--banner-height))' : 'var(--header-height)'
         }}>
           🔔 Update Available: Version {latestVersion} is now available.{' '}
           <a

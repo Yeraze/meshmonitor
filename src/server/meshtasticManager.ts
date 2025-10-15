@@ -1188,7 +1188,7 @@ class MeshtasticManager {
       const toNum = Number(meshPacket.to);
       const toNodeId = `!${toNum.toString(16).padStart(8, '0')}`;
 
-      logger.debug(`🗺️ Traceroute response from ${fromNodeId}:`, routeDiscovery);
+      logger.info(`🗺️ Traceroute response from ${fromNodeId}:`, JSON.stringify(routeDiscovery, null, 2));
 
       // Ensure from node exists in database (don't overwrite existing names)
       const existingFromNode = databaseService.getNode(fromNum);
@@ -1229,6 +1229,7 @@ class MeshtasticManager {
       }
 
       // Build the route string
+      const BROADCAST_ADDR = 4294967295;
       const route = routeDiscovery.route || [];
       const routeBack = routeDiscovery.routeBack || [];
       const snrTowards = routeDiscovery.snrTowards || [];
@@ -1287,7 +1288,7 @@ class MeshtasticManager {
         route.forEach((nodeNum: number, index: number) => {
           const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
           const node = databaseService.getNode(nodeNum);
-          const nodeName = node?.longName || nodeId;
+          const nodeName = nodeNum === BROADCAST_ADDR ? '(unknown)' : (node?.longName || nodeId);
           const snr = snrTowards[index] !== undefined ? `${(snrTowards[index] / 4).toFixed(1)}dB` : 'N/A';
           const dist = calcDistance(fullPath[index], nodeNum);
           if (dist) {
@@ -1361,7 +1362,7 @@ class MeshtasticManager {
         routeBack.forEach((nodeNum: number, index: number) => {
           const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
           const node = databaseService.getNode(nodeNum);
-          const nodeName = node?.longName || nodeId;
+          const nodeName = nodeNum === BROADCAST_ADDR ? '(unknown)' : (node?.longName || nodeId);
           const snr = snrBack[index] !== undefined ? `${(snrBack[index] / 4).toFixed(1)}dB` : 'N/A';
           const dist = calcDistanceReturn(fullReturnPath[index], nodeNum);
           if (dist) {
@@ -1435,7 +1436,7 @@ class MeshtasticManager {
       databaseService.insertMessage(message);
       logger.debug(`💾 Saved traceroute result from ${fromNodeId} (channel: ${channelIndex})`);
 
-      // Save to traceroutes table
+      // Save to traceroutes table (save raw data including broadcast addresses)
       const tracerouteRecord = {
         fromNodeNum: fromNum,
         toNodeNum: toNum,
