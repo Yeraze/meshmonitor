@@ -75,8 +75,16 @@ const helmetConfig = env.isProduction && env.cookieSecure
           defaultSrc: ["'self'"],
           scriptSrc: ["'self'"],
           styleSrc: ["'self'", "'unsafe-inline'"],  // React uses inline styles
-          imgSrc: ["'self'", "data:", "https:"],
-          connectSrc: ["'self'"],
+          imgSrc: [
+            "'self'",
+            "data:",
+            "https:",
+            "https://*.tile.openstreetmap.org"  // OpenStreetMap tiles
+          ],
+          connectSrc: [
+            "'self'",
+            "https://*.tile.openstreetmap.org"  // OpenStreetMap tiles
+          ],
           fontSrc: ["'self'"],
           objectSrc: ["'none'"],
           mediaSrc: ["'self'"],
