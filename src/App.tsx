@@ -3000,9 +3000,9 @@ function App() {
     const sortedNodesWithMessages = [...sortedFavorites, ...sortedNonFavorites];
 
     return (
-      <div className="nodes-split-view">
+      <div className="nodes-split-view messages-split-view">
         {/* Left Sidebar - Node List with Messages */}
-        <div className={`nodes-sidebar ${isMessagesNodeListCollapsed ? 'collapsed' : ''}`}>
+        <div className={`nodes-sidebar messages-sidebar ${isMessagesNodeListCollapsed ? 'collapsed' : ''}`}>
           <div className="sidebar-header">
             <button
               className="collapse-nodes-btn"
@@ -3134,6 +3134,46 @@ function App() {
 
         {/* Right Panel - Conversation View */}
         <div className="nodes-main-content">
+          {/* Mobile Node Dropdown - Always visible on mobile */}
+          <div className="node-dropdown-mobile">
+            <select
+              className="node-dropdown-select"
+              value={selectedDMNode || ''}
+              onChange={(e) => {
+                const nodeId = e.target.value;
+                logger.debug('👆 User selected node from dropdown:', nodeId);
+                setSelectedDMNode(nodeId);
+              }}
+            >
+              <option value="">Select a conversation...</option>
+              {sortedNodesWithMessages
+                .filter(node => {
+                  if (!nodeFilter) return true;
+                  const searchTerm = nodeFilter.toLowerCase();
+                  return (
+                    node.user?.longName?.toLowerCase().includes(searchTerm) ||
+                    node.user?.shortName?.toLowerCase().includes(searchTerm) ||
+                    node.user?.id?.toLowerCase().includes(searchTerm)
+                  );
+                })
+                .map(node => {
+                  const displayName = node.user?.longName || `Node ${node.nodeNum}`;
+                  const shortName = node.user?.shortName || '-';
+                  const snr = node.snr != null ? ` ${node.snr.toFixed(1)}dB` : '';
+                  const battery = node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null
+                    ? (node.deviceMetrics.batteryLevel === 101 ? ' 🔌' : ` ${node.deviceMetrics.batteryLevel}%`)
+                    : '';
+                  const unread = node.unreadCount > 0 ? ` (${node.unreadCount})` : '';
+
+                  return (
+                    <option key={node.user?.id || node.nodeNum} value={node.user?.id || ''}>
+                      {node.isFavorite ? '⭐ ' : ''}{displayName} ({shortName}){snr}{battery}{unread}
+                    </option>
+                  );
+                })}
+            </select>
+          </div>
+
           {selectedDMNode ? (
             <div className="dm-conversation-panel">
               <div className="dm-header">
@@ -3166,6 +3206,7 @@ function App() {
                     </button>
                   )}
                 </div>
+
                 {(() => {
                   const recentTrace = getRecentTraceroute(selectedDMNode);
                   if (recentTrace) {

@@ -1028,6 +1028,11 @@ body {
   .channels-grid {
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   }
+
+  /* Make message bubbles wider on mobile */
+  .message-bubble {
+    max-width: 85%;
+  }
 }
 
 /* Channel Messages Styling */
@@ -1165,6 +1170,11 @@ body {
 /* Mobile channel dropdown - hidden on desktop */
 .channel-dropdown-mobile {
   display: none;
+}
+
+/* Mobile node dropdown - show on mobile, hide on desktop for now */
+.node-dropdown-mobile {
+  display: block; /* Temporarily show on all viewports for testing */
 }
 
 .channels-grid {
@@ -2125,6 +2135,65 @@ body {
   .nodes-split-view {
     top: 48px; /* Mobile header is 48px */
     left: 48px; /* Mobile collapsed sidebar is 48px */
+  }
+
+  /* Show mobile node dropdown for Messages tab */
+  .messages-split-view .node-dropdown-mobile {
+    display: block !important;
+    position: relative;
+    margin-bottom: 0.75rem;
+    z-index: 10;
+  }
+
+  .node-dropdown-select {
+    width: 100%;
+    padding: 0.75rem;
+    background: var(--ctp-surface0);
+    border: 2px solid var(--ctp-surface2);
+    border-radius: 8px;
+    color: var(--ctp-text);
+    font-size: 0.875rem;
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23cdd6f4' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    padding-right: 2.5rem;
+  }
+
+  .node-dropdown-select:focus {
+    outline: none;
+    border-color: var(--ctp-blue);
+  }
+
+  /* Hide the left sidebar on Messages tab on mobile */
+  .messages-split-view .messages-sidebar {
+    display: none !important;
+  }
+
+  /* Adjust main content for Messages tab */
+  .messages-split-view .nodes-main-content {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+    padding-top: 0;
+  }
+
+  /* Move dm-header title and button above dropdown */
+  .messages-split-view .dm-header {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .messages-split-view .dm-header-top {
+    order: -2; /* Show first */
+    margin-bottom: 0.75rem;
+  }
+
+  /* Dropdown gets inserted here via JSX order */
+
+  .messages-split-view .traceroute-info {
+    order: -1; /* Show after dropdown */
+    margin-bottom: 0.75rem;
   }
 
   .nodes-sidebar {
