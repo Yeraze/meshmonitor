@@ -830,8 +830,9 @@ body {
 }
 
 .send-btn {
-  padding: 0.75rem;
-  min-width: 48px;
+  padding: 0.75rem 0.5rem;
+  min-width: 40px;
+  width: 40px;
   background: var(--ctp-green);
   color: var(--ctp-base);
   border: none;
@@ -843,6 +844,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
 .send-btn:hover:not(:disabled) {
@@ -909,7 +911,7 @@ body {
   border-radius: 8px;
   padding: 1.5rem;
   margin-top: 2rem;
-  border-left: 4px solid var(--ctp-blue);
+  border-left: 2px solid var(--ctp-blue);
 }
 
 .channel-info h3 {
@@ -1015,20 +1017,12 @@ body {
     flex-direction: column;
   }
 
-  .message-input-container {
-    flex-direction: column;
-  }
-
   .nodes-grid {
     grid-template-columns: 1fr;
   }
 
   .info-grid {
     grid-template-columns: 1fr;
-  }
-
-  .channel-messages-section .message-input-container {
-    flex-direction: column;
   }
 
   .channels-grid {
@@ -1338,8 +1332,8 @@ body {
 .channel-conversation-section {
   background: var(--ctp-surface0);
   border-radius: 12px;
-  padding: 1.5rem;
-  border: 1px solid var(--ctp-surface1);
+  padding: 0.75rem;
+  border: none;
 }
 
 .channel-conversation-section h3 {
