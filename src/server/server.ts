@@ -1731,8 +1731,16 @@ if (BASE_URL) {
 const rewriteHtml = (htmlContent: string, baseUrl: string): string => {
   if (!baseUrl) return htmlContent;
 
+  // Add <base> tag to set the base URL for all relative paths
+  // This ensures that all relative URLs (like /api/config) resolve from the base URL
+  // instead of the current page URL (like /api/auth/oidc/callback)
+  const baseTag = `<base href="${baseUrl}/">`;
+
+  // Insert the base tag right after <head>
+  let rewritten = htmlContent.replace(/<head>/, `<head>\n    ${baseTag}`);
+
   // Replace asset paths in the HTML
-  return htmlContent
+  rewritten = rewritten
     .replace(/href="\/assets\//g, `href="${baseUrl}/assets/`)
     .replace(/src="\/assets\//g, `src="${baseUrl}/assets/`)
     .replace(/href="\/vite\.svg"/g, `href="${baseUrl}/vite.svg"`)
@@ -1740,6 +1748,8 @@ const rewriteHtml = (htmlContent: string, baseUrl: string): string => {
     .replace(/href="\/favicon-16x16\.png"/g, `href="${baseUrl}/favicon-16x16.png"`)
     .replace(/href="\/favicon-32x32\.png"/g, `href="${baseUrl}/favicon-32x32.png"`)
     .replace(/href="\/logo\.png"/g, `href="${baseUrl}/logo.png"`);
+
+  return rewritten;
 };
 
 // Cache for rewritten HTML to avoid repeated file reads

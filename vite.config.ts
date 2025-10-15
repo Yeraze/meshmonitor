@@ -29,7 +29,19 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        // Exclude API routes from ALL caching - navigation fallback AND precaching
+        navigateFallbackDenylist: [/^\/api/],
+        navigateFallbackAllowlist: [/^(?!\/api).*/],
+        // Force immediate activation of new service worker
+        skipWaiting: true,
+        clientsClaim: true,
+        // Completely ignore API routes in runtime caching
         runtimeCaching: [
+          {
+            // Explicitly ignore all API routes
+            urlPattern: /^.*\/api\/.*/,
+            handler: 'NetworkOnly'
+          },
           {
             urlPattern: /^https:\/\/.*\.tile\.openstreetmap\.org\/.*/i,
             handler: 'CacheFirst',
