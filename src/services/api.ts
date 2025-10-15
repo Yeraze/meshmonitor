@@ -175,6 +175,38 @@ class ApiService {
         const pathname = window.location.pathname;
         const pathParts = pathname.split('/').filter(Boolean);
 
+        // Skip if we're on an API route (like /api/auth/oidc/callback)
+        // These should never be used as base paths
+        if (pathParts.length > 0 && pathParts[0] === 'api') {
+          // We're on an API route, just try root config
+          const potentialPaths: string[] = ['/api/config'];
+
+          for (const configPath of potentialPaths) {
+            try {
+              const response = await fetch(configPath);
+
+              if (response.ok) {
+                // Check content type to ensure we got JSON, not HTML
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                  const config = await response.json();
+                  this.baseUrl = config.baseUrl || '';
+                  this.configFetched = true;
+                  return; // Success, exit
+                }
+              }
+            } catch {
+              // Continue to next path
+              continue;
+            }
+          }
+
+          // Default to no base URL if we're on an API route
+          this.baseUrl = '';
+          this.configFetched = true;
+          return;
+        }
+
         // Build potential base paths from multiple segments
         // For /company/tools/meshmonitor, try:
         // 1. /api/config (root)

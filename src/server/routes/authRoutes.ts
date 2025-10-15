@@ -286,6 +286,13 @@ router.get('/oidc/login', async (req: Request, res: Response) => {
 // OIDC Callback
 router.get('/oidc/callback', async (req: Request, res: Response) => {
   try {
+    logger.debug('🔐 OIDC callback received', {
+      hasCode: !!req.query.code,
+      hasState: !!req.query.state,
+      protocol: req.protocol,
+      host: req.get('host')
+    });
+
     if (!isOIDCEnabled()) {
       return res.status(400).send('OIDC authentication is not configured');
     }
@@ -342,8 +349,22 @@ router.get('/oidc/callback', async (req: Request, res: Response) => {
       req.ip || null
     );
 
+    // Save session before redirecting to ensure session cookie is set
+    // This prevents issues where the redirect happens before session is saved
+    await new Promise<void>((resolve, reject) => {
+      req.session.save((err) => {
+        if (err) {
+          logger.error('Failed to save session:', err);
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
+
     // Redirect to app
     const baseUrl = getEnvironmentConfig().baseUrl;
+    logger.debug('🔐 OIDC login successful, redirecting to:', `${baseUrl}/`);
     return res.redirect(`${baseUrl}/`);
   } catch (error) {
     logger.error('OIDC callback error:', error);
