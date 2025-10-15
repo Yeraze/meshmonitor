@@ -926,6 +926,11 @@ body {
 }
 
 @media (max-width: 768px) {
+  /* Reduce font size globally on mobile */
+  body {
+    font-size: 0.875rem; /* 14px - reduced from 16px */
+  }
+
   .app-header {
     padding: 0.5rem;
     height: 48px; /* Smaller header on mobile */
@@ -955,6 +960,37 @@ body {
     padding-left: 56px; /* 48px sidebar + 8px gap */
     margin-left: 0 !important;
     width: 100% !important;
+  }
+
+  /* Hide channel grid buttons on mobile, show dropdown instead */
+  .channels-grid {
+    display: none;
+  }
+
+  .channel-dropdown-mobile {
+    display: block;
+    margin-bottom: 1rem;
+  }
+
+  .channel-dropdown-select {
+    width: 100%;
+    padding: 0.75rem;
+    background: var(--ctp-surface0);
+    border: 2px solid var(--ctp-surface2);
+    border-radius: 8px;
+    color: var(--ctp-text);
+    font-size: 0.875rem;
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23cdd6f4' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    padding-right: 2.5rem;
+  }
+
+  .channel-dropdown-select:focus {
+    outline: none;
+    border-color: var(--ctp-blue);
   }
 
   .connection-form {
@@ -1119,6 +1155,11 @@ body {
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 1rem;
   margin-bottom: 2rem;
+}
+
+/* Mobile channel dropdown - hidden on desktop */
+.channel-dropdown-mobile {
+  display: none;
 }
 
 .channel-button {

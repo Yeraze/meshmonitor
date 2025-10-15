@@ -2547,6 +2547,40 @@ function App() {
       {shouldShowData() ? (
         availableChannels.length > 0 ? (
           <>
+            {/* Mobile Channel Dropdown */}
+            <div className="channel-dropdown-mobile">
+              <select
+                className="channel-dropdown-select"
+                value={selectedChannel}
+                onChange={(e) => {
+                  const channelId = parseInt(e.target.value);
+                  logger.debug('👆 User selected channel from dropdown:', channelId);
+                  setSelectedChannel(channelId);
+                  selectedChannelRef.current = channelId;
+                  setUnreadCounts(prev => {
+                    const updated = { ...prev, [channelId]: 0 };
+                    logger.debug('📝 Setting unread counts:', updated);
+                    return updated;
+                  });
+                }}
+              >
+                {availableChannels.map(channelId => {
+                  const channelConfig = channels.find(ch => ch.id === channelId);
+                  const displayName = channelConfig?.name || getChannelName(channelId);
+                  const unread = unreadCounts[channelId] || 0;
+                  const encrypted = channelConfig?.psk && channelConfig.psk !== DEFAULT_UNENCRYPTED_PSK;
+                  const uplink = channelConfig?.uplinkEnabled ? '↑' : '';
+                  const downlink = channelConfig?.downlinkEnabled ? '↓' : '';
+
+                  return (
+                    <option key={channelId} value={channelId}>
+                      {encrypted ? '🔒' : '🔓'} {displayName} #{channelId} {uplink}{downlink} {unread > 0 ? `(${unread})` : ''}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+
             {/* Channel Buttons */}
             <div className="channels-grid">
               {availableChannels.map(channelId => {
