@@ -156,9 +156,8 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
 
   return (
     <>
-      <div style={{
+      <div className="automation-section-header" style={{
         display: 'flex',
-        justifyContent: 'space-between',
         alignItems: 'center',
         marginBottom: '1.5rem',
         padding: '1rem 1.25rem',
@@ -189,7 +188,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
             ❓
           </a>
         </h2>
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
+        <div className="automation-button-container" style={{ display: 'flex', gap: '0.75rem' }}>
           <button
             onClick={handleSendNow}
             disabled={isSendingNow || !localEnabled}

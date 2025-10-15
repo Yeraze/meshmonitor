@@ -70,7 +70,7 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
           <div style={{ position: 'relative' }}>
             <div
               onClick={() => setIsPresetDropdownOpen(!isPresetDropdownOpen)}
-              className="setting-input"
+              className="setting-input config-custom-dropdown"
               style={{
                 cursor: 'pointer',
                 display: 'flex',
@@ -96,6 +96,7 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
             </div>
             {isPresetDropdownOpen && (
               <div
+                className="config-custom-dropdown-menu"
                 style={{
                   position: 'absolute',
                   top: '100%',

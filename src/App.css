@@ -55,20 +55,22 @@ body {
   background: var(--ctp-mantle);
   border-bottom: 1px solid var(--ctp-surface0);
   padding: 1.5rem 2rem;
-  margin-left: var(--sidebar-width, 240px); /* Beside the sidebar */
-  width: calc(100% - var(--sidebar-width, 240px));
+  position: fixed;
+  top: 0;
+  left: 60px;
+  right: 0;
+  height: 60px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  position: relative;
   z-index: 10000; /* Above all content including map */
-  transition: margin-left 0.3s ease, width 0.3s ease; /* Match sidebar transition */
+  box-sizing: border-box;
 }
 
 .header-left {
   display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
+  align-items: center;
+  gap: 1rem;
 }
 
 .header-title {
@@ -210,16 +212,22 @@ body {
 
 .app-main {
   padding: 2rem;
-  width: calc(100% - 240px); /* Subtract sidebar width */
+  width: calc(100% - 60px); /* Full width minus sidebar */
   margin: 0;
-  margin-left: 240px; /* Space for sidebar */
+  margin-left: 60px; /* Space for narrow sidebar */
   flex: 1;
-  transition: all 0.3s ease;
+  transition: margin-left 0.3s ease;
   box-sizing: border-box;
 }
 
 .tab-content {
   min-height: 60vh;
+}
+
+/* Reduce horizontal padding on channels tab by half */
+.channels-tab-content {
+  margin-left: -1rem;
+  margin-right: -1rem;
 }
 
 /* Nodes Tab - Table Style */
@@ -777,6 +785,7 @@ body {
   margin-bottom: 0.5rem;
   line-height: 1.4;
   word-wrap: break-word;
+  font-size: 0.95rem; /* Slightly smaller than base font */
 }
 
 .message-details {
@@ -821,14 +830,21 @@ body {
 }
 
 .send-btn {
-  padding: 0.75rem 1.5rem;
+  padding: 0.75rem 0.5rem;
+  min-width: 40px;
+  width: 40px;
   background: var(--ctp-green);
   color: var(--ctp-base);
   border: none;
   border-radius: 6px;
   font-weight: 600;
+  font-size: 1.5rem;
   cursor: pointer;
   transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .send-btn:hover:not(:disabled) {
@@ -895,7 +911,7 @@ body {
   border-radius: 8px;
   padding: 1.5rem;
   margin-top: 2rem;
-  border-left: 4px solid var(--ctp-blue);
+  border-left: 2px solid var(--ctp-blue);
 }
 
 .channel-info h3 {
@@ -924,27 +940,80 @@ body {
 }
 
 @media (max-width: 768px) {
-  .app-header {
-    padding: 1rem;
-    flex-direction: column;
-    gap: 1rem;
-    margin-left: 0 !important; /* Full width on mobile */
-    width: 100% !important;
+  /* Reduce font size globally on mobile */
+  body {
+    font-size: 0.875rem; /* 14px - reduced from 16px */
   }
 
+  .app-header {
+    padding: 0.5rem;
+    height: 48px; /* Smaller header on mobile */
+    left: 48px; /* Account for collapsed sidebar */
+  }
+
+  /* Hide logo, node name, and connection text on mobile */
+  .app-header .header-logo,
+  .app-header .node-info,
   .app-header h1 {
-    font-size: 1.5rem;
+    display: none;
+  }
+
+  /* Keep only the connection status indicator visible */
+  .connection-status {
+    margin: 0;
+    padding: 0;
+  }
+
+  .connection-status .status-indicator {
+    width: 16px;
+    height: 16px;
   }
 
   .app-main {
-    padding: 1rem;
+    padding: 0.5rem;
+    padding-left: 56px; /* 48px sidebar + 8px gap */
+    margin-left: 0 !important;
+    width: 100% !important;
+  }
+
+  /* Reduce horizontal padding on channels tab by half on mobile */
+  .channels-tab-content {
+    margin-left: -0.25rem;
+    margin-right: -0.25rem;
+  }
+
+  /* Hide channel grid buttons on mobile, show dropdown instead */
+  .channels-grid {
+    display: none !important;
+  }
+
+  .channel-dropdown-mobile {
+    display: block !important;
+    margin-bottom: 1rem;
+  }
+
+  .channel-dropdown-select {
+    width: 100%;
+    padding: 0.75rem;
+    background: var(--ctp-surface0);
+    border: 2px solid var(--ctp-surface2);
+    border-radius: 8px;
+    color: var(--ctp-text);
+    font-size: 0.875rem;
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23cdd6f4' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    padding-right: 2.5rem;
+  }
+
+  .channel-dropdown-select:focus {
+    outline: none;
+    border-color: var(--ctp-blue);
   }
 
   .connection-form {
-    flex-direction: column;
-  }
-
-  .message-input-container {
     flex-direction: column;
   }
 
@@ -956,12 +1025,78 @@ body {
     grid-template-columns: 1fr;
   }
 
-  .channel-messages-section .message-input-container {
-    flex-direction: column;
-  }
-
   .channels-grid {
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+
+  /* Make message bubbles full width on mobile */
+  .message-bubble {
+    max-width: 100%;
+  }
+
+  /* Narrow custom dropdowns on Device Config page on mobile */
+  .config-custom-dropdown,
+  .config-custom-dropdown-menu {
+    width: 100% !important;
+    max-width: calc(100vw - 120px) !important;
+  }
+
+  /* Automation tab - wrap header buttons on mobile */
+  .automation-section-header {
+    flex-wrap: wrap !important;
+    gap: 0.75rem !important;
+  }
+
+  .automation-button-container {
+    flex-direction: column !important;
+    width: 100% !important;
+    margin-top: 0.5rem !important;
+  }
+
+  .automation-button-container button {
+    width: 100% !important;
+  }
+
+  /* Modal mobile responsiveness */
+  .modal-overlay {
+    left: 48px !important; /* Account for mobile sidebar */
+    padding: 0.5rem !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  .modal-content {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    max-height: calc(100vh - 1rem) !important;
+  }
+
+  .modal-header {
+    padding: 0.75rem !important;
+  }
+
+  .modal-body {
+    padding: 0.75rem !important;
+  }
+
+  .modal-header h2 {
+    font-size: 1.125rem !important;
+  }
+
+  /* Ensure form elements don't overflow */
+  .form-group {
+    margin-bottom: 0.75rem !important;
+  }
+
+  .form-group input,
+  .button {
+    font-size: 0.9rem !important;
+    padding: 0.75rem !important;
+  }
+
+  .login-divider {
+    margin: 1rem 0 !important;
   }
 }
 
@@ -1097,6 +1232,16 @@ body {
 }
 
 /* Channel Buttons Grid */
+/* Mobile channel dropdown - hidden on desktop */
+.channel-dropdown-mobile {
+  display: none;
+}
+
+/* Mobile node dropdown - hidden on desktop */
+.node-dropdown-mobile {
+  display: none;
+}
+
 .channels-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -1262,8 +1407,8 @@ body {
 .channel-conversation-section {
   background: var(--ctp-surface0);
   border-radius: 12px;
-  padding: 1.5rem;
-  border: 1px solid var(--ctp-surface1);
+  padding: 0.75rem;
+  border: none;
 }
 
 .channel-conversation-section h3 {
@@ -1327,7 +1472,7 @@ body {
 }
 
 .message-bubble {
-  max-width: 70%;
+  max-width: 100%;
   padding: 0.75rem 1rem;
   border-radius: 18px;
   position: relative;
@@ -1378,7 +1523,9 @@ body {
   top: 4px;
   right: 8px;
   display: flex;
+  flex-wrap: wrap;
   gap: 0.25rem;
+  max-width: 200px;
   opacity: 0;
   transition: opacity 0.2s ease;
   z-index: 10;
@@ -1404,6 +1551,11 @@ body {
   padding: 0.25rem 0.4rem;
   font-size: 0.9rem;
   line-height: 1;
+  width: 40px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .reply-button:hover, .emoji-button:hover {
@@ -1523,23 +1675,81 @@ body {
 .messages-container::-webkit-scrollbar-thumb:hover {
   background: var(--ctp-overlay1);
 }
-/* Split View Layout for Nodes */
+/* Fullscreen Map Layout for Nodes */
 .nodes-split-view {
-  display: flex;
-  height: calc(100vh - 240px); /* Account for header, tabs, and footer */
-  min-height: 600px;
-  gap: 0;
+  position: fixed;
+  top: 60px; /* Below header */
+  left: 60px; /* After sidebar */
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+  z-index: 1;
 }
 
+/* Move Leaflet zoom controls to bottom-right */
+.nodes-split-view .leaflet-top.leaflet-left {
+  top: auto !important;
+  bottom: 20px !important;
+  left: auto !important;
+  right: 20px !important;
+}
+
+/* Floating Node List Overlay */
 .nodes-sidebar {
+  position: absolute;
+  top: 16px;
+  left: 16px;
   width: 350px;
-  min-width: 300px;
-  max-width: 400px;
+  max-height: calc(100% - 32px);
   background: var(--ctp-surface0);
-  border-right: 2px solid var(--ctp-surface2);
+  border: 2px solid var(--ctp-surface2);
+  border-radius: 12px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  z-index: 1000;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(10px);
+  transition: width 0.3s ease, transform 0.3s ease;
+}
+
+/* Messages sidebar - blocking left panel on desktop */
+.messages-sidebar {
+  position: static;
+  top: auto;
+  left: auto;
+  width: 350px;
+  max-height: 100%;
+  border-radius: 0;
+  border-left: none;
+  border-top: none;
+  border-bottom: none;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.messages-split-view {
+  display: flex;
+  flex-direction: row;
+}
+
+.messages-split-view .nodes-main-content {
+  flex: 1;
+  min-width: 0;
+  padding: 1.5rem;
+  padding-right: 2rem; /* Extra padding for scrollbar */
+}
+
+/* Collapsed state for node list */
+.nodes-sidebar.collapsed {
+  width: auto;
+  max-width: 60px;
+  top: 0;
+  left: 0;
+}
+
+.nodes-sidebar.collapsed .nodes-list {
+  display: none;
 }
 
 .nodes-main-content {
@@ -1555,12 +1765,73 @@ body {
   padding: 1rem;
   border-bottom: 1px solid var(--ctp-surface2);
   background: var(--ctp-mantle);
+  flex-shrink: 0;
+  position: relative;
+}
+
+.sidebar-header-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
 }
 
 .sidebar-header h3 {
-  margin: 0 0 0.75rem 0;
+  margin: 0;
   color: var(--ctp-text);
   font-size: 1.1rem;
+}
+
+.collapse-nodes-btn {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: var(--ctp-surface1);
+  border: 2px solid var(--ctp-surface2);
+  color: var(--ctp-text);
+  padding: 0;
+  border-radius: 4px;
+  font-size: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  z-index: 10;
+}
+
+.collapse-nodes-btn:hover {
+  background: var(--ctp-blue);
+  border-color: var(--ctp-blue);
+  color: var(--ctp-base);
+  transform: scale(1.1);
+}
+
+.nodes-sidebar.collapsed .sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  border-bottom: none;
+}
+
+.nodes-sidebar.collapsed .collapse-nodes-btn {
+  position: static;
+  margin: auto;
+}
+
+.nodes-sidebar.collapsed .sidebar-header h3 {
+  display: none;
+}
+
+.nodes-sidebar.collapsed .sidebar-header-content {
+  display: none;
+}
+
+.nodes-sidebar.collapsed .node-controls {
+  display: none;
 }
 
 .filter-input-small {
@@ -1831,11 +2102,13 @@ body {
 }
 
 .map-container {
-  flex: 1 1 auto;
-  min-width: 500px;
-  position: relative;
-  background: var(--ctp-surface0);
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
   height: 100%;
+  background: var(--ctp-surface0);
+  z-index: 1;
 }
 
 .map-placeholder {
@@ -1959,21 +2232,117 @@ body {
 /* Responsive design */
 @media (max-width: 768px) {
   .nodes-split-view {
+    top: 48px; /* Mobile header is 48px */
+    left: 48px; /* Mobile collapsed sidebar is 48px */
+  }
+
+  /* Show mobile node dropdown for Messages tab */
+  .messages-split-view .node-dropdown-mobile {
+    display: block !important;
+    position: relative;
+    margin-bottom: 0.75rem;
+    z-index: 10;
+  }
+
+  .node-dropdown-select {
+    width: 100%;
+    padding: 0.75rem;
+    background: var(--ctp-surface0);
+    border: 2px solid var(--ctp-surface2);
+    border-radius: 8px;
+    color: var(--ctp-text);
+    font-size: 0.875rem;
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23cdd6f4' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    padding-right: 2.5rem;
+  }
+
+  .node-dropdown-select:focus {
+    outline: none;
+    border-color: var(--ctp-blue);
+  }
+
+  /* Hide the left sidebar on Messages tab on mobile */
+  .messages-split-view .messages-sidebar {
+    display: none !important;
+  }
+
+  /* Adjust main content for Messages tab */
+  .messages-split-view .nodes-main-content {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+    padding-top: 0;
+  }
+
+  /* Move dm-header title and button above dropdown */
+  .messages-split-view .dm-header {
+    display: flex;
     flex-direction: column;
-    height: auto;
+  }
+
+  .messages-split-view .dm-header-top {
+    order: -2; /* Show first */
+    margin-bottom: 0.75rem;
+  }
+
+  /* Dropdown gets inserted here via JSX order */
+
+  .messages-split-view .traceroute-info {
+    order: -1; /* Show after dropdown */
+    margin-bottom: 0.75rem;
   }
 
   .nodes-sidebar {
-    width: 100%;
-    min-width: unset;
-    max-width: unset;
-    height: 300px;
-    border-right: none;
-    border-bottom: 2px solid var(--ctp-surface2);
+    top: 8px; /* Small gap from top of map */
+    left: 8px; /* Small gap from left of map */
+    right: auto;
+    bottom: auto;
+    width: 280px;
+    max-width: calc(100vw - 64px);
+    max-height: calc(100vh - 120px);
+    border-radius: 12px;
+  }
+
+  /* When collapsed, show as small button tight in upper-left corner */
+  .nodes-sidebar.collapsed {
+    top: 0; /* Tight against map top edge */
+    left: 0; /* Tight against map left edge */
+    width: auto;
+    max-width: 40px;
+    max-height: 40px;
+    padding: 0;
+  }
+
+  .nodes-sidebar.collapsed .sidebar-header {
+    padding: 0.5rem;
+    min-height: 40px;
   }
 
   .map-container {
-    height: 400px;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Adjust map controls on mobile to not overlap with floating sidebar */
+  .map-controls {
+    top: 16px;
+    right: 8px;
+    left: 56px;
+    max-width: calc(100vw - 64px);
+    padding: 0.5rem;
+  }
+
+  .map-control-item span {
+    font-size: 0.8rem;
+  }
+
+  /* Ensure zoom controls stay in bottom-right on mobile */
+  .nodes-split-view .leaflet-top.leaflet-left {
+    bottom: 10px !important;
+    right: 10px !important;
   }
 }
 
@@ -2612,6 +2981,12 @@ body {
   align-items: center;
   gap: 1.5rem;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  flex-wrap: wrap; /* Allow wrapping on small screens */
+}
+
+/* Automation section header - desktop defaults */
+.automation-section-header {
+  justify-content: space-between;
 }
 
 .settings-logo {
@@ -2732,8 +3107,7 @@ body {
 
 .danger-action {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
   padding: 1rem;
   margin-bottom: 1rem;
   background: var(--ctp-surface0);
@@ -2743,6 +3117,10 @@ body {
 
 .danger-action:last-child {
   margin-bottom: 0;
+}
+
+.danger-action-info {
+  margin-bottom: 1rem;
 }
 
 .danger-action-info h4 {
@@ -2756,7 +3134,11 @@ body {
   color: var(--ctp-subtext0);
   font-size: 0.875rem;
   margin: 0;
-  line-height: 1.4;
+  line-height: 1.6;
+}
+
+.danger-action .danger-button {
+  align-self: flex-end;
 }
 
 .danger-button {
@@ -2801,6 +3183,9 @@ body {
   transition: background-color 0.2s, transform 0.1s, opacity 0.2s;
   white-space: nowrap;
   min-width: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .save-button:hover:not(:disabled) {
@@ -2829,6 +3214,9 @@ body {
   transition: background-color 0.2s, transform 0.1s, opacity 0.2s;
   white-space: nowrap;
   min-width: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .reset-button:hover:not(:disabled) {

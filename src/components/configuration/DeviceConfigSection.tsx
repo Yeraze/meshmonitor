@@ -76,7 +76,7 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
         <div style={{ position: 'relative' }}>
           <div
             onClick={() => setIsRoleDropdownOpen(!isRoleDropdownOpen)}
-            className="setting-input"
+            className="setting-input config-custom-dropdown"
             style={{
               cursor: 'pointer',
               display: 'flex',
@@ -102,6 +102,7 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
           </div>
           {isRoleDropdownOpen && (
             <div
+              className="config-custom-dropdown-menu"
               style={{
                 position: 'absolute',
                 top: '100%',

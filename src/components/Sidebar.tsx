@@ -11,6 +11,7 @@ interface SidebarProps {
   isAdmin: boolean;
   unreadCounts: { [key: number]: number };
   onMessagesClick: () => void;
+  onChannelsClick?: () => void;
   baseUrl: string;
   connectedNodeName?: string;
 }
@@ -22,10 +23,12 @@ const Sidebar: React.FC<SidebarProps> = ({
   isAdmin,
   unreadCounts,
   onMessagesClick,
+  onChannelsClick,
   baseUrl,
   connectedNodeName
 }) => {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  // Start collapsed (narrow/icon-only) by default for cleaner desktop UI
+  const [isCollapsed, setIsCollapsed] = useState(true);
 
   // Update CSS custom property when sidebar collapse state changes
   React.useEffect(() => {
@@ -80,6 +83,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               id="channels"
               label="Channels"
               icon="💬"
+              onClick={onChannelsClick}
               showNotification={Object.entries(unreadCounts).some(
                 ([channel, count]) => parseInt(channel) !== -1 && count > 0
               )}
