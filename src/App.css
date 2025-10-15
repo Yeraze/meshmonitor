@@ -952,8 +952,9 @@ body {
 
   .app-main {
     padding: 0.5rem;
-    margin-left: 48px !important;
-    width: calc(100% - 48px) !important;
+    padding-left: 56px; /* 48px sidebar + 8px gap */
+    margin-left: 0 !important;
+    width: 100% !important;
   }
 
   .connection-form {
