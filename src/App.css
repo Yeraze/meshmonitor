@@ -1029,9 +1029,9 @@ body {
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   }
 
-  /* Make message bubbles wider on mobile */
+  /* Make message bubbles full width on mobile */
   .message-bubble {
-    max-width: 85%;
+    max-width: 100%;
   }
 
   /* Narrow custom dropdowns on Device Config page on mobile */
@@ -1472,7 +1472,7 @@ body {
 }
 
 .message-bubble {
-  max-width: 70%;
+  max-width: 100%;
   padding: 0.75rem 1rem;
   border-radius: 18px;
   position: relative;
@@ -1523,7 +1523,9 @@ body {
   top: 4px;
   right: 8px;
   display: flex;
+  flex-wrap: wrap;
   gap: 0.25rem;
+  max-width: 200px;
   opacity: 0;
   transition: opacity 0.2s ease;
   z-index: 10;
@@ -1549,6 +1551,11 @@ body {
   padding: 0.25rem 0.4rem;
   font-size: 0.9rem;
   line-height: 1;
+  width: 40px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .reply-button:hover, .emoji-button:hover {
@@ -2289,12 +2296,13 @@ body {
   }
 
   .nodes-sidebar {
-    top: 56px; /* 48px header + 8px gap */
-    left: 56px; /* Account for collapsed sidebar */
-    right: 8px;
+    top: 8px; /* Small gap from top of map */
+    left: 8px; /* Small gap from left of map */
+    right: auto;
     bottom: auto;
-    width: auto;
-    max-height: 40vh;
+    width: 280px;
+    max-width: calc(100vw - 64px);
+    max-height: calc(100vh - 120px);
     border-radius: 12px;
   }
 
@@ -2322,6 +2330,13 @@ body {
   .map-controls {
     top: 16px;
     right: 8px;
+    left: 56px;
+    max-width: calc(100vw - 64px);
+    padding: 0.5rem;
+  }
+
+  .map-control-item span {
+    font-size: 0.8rem;
   }
 
   /* Ensure zoom controls stay in bottom-right on mobile */
