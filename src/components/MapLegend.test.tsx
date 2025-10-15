@@ -18,20 +18,20 @@ describe('MapLegend', () => {
   describe('rendering', () => {
     it('should render the legend title', () => {
       render(<MapLegend />);
-      expect(screen.getByText('Hop Distance')).toBeInTheDocument();
+      expect(screen.getByText('Hops:')).toBeInTheDocument();
     });
 
     it('should render all 7 hop levels', () => {
       render(<MapLegend />);
 
       // Check all legend labels are present
-      expect(screen.getByText('Local Node')).toBeInTheDocument();
-      expect(screen.getByText('1 Hop')).toBeInTheDocument();
-      expect(screen.getByText('2 Hops')).toBeInTheDocument();
-      expect(screen.getByText('3 Hops')).toBeInTheDocument();
-      expect(screen.getByText('4 Hops')).toBeInTheDocument();
-      expect(screen.getByText('5 Hops')).toBeInTheDocument();
-      expect(screen.getByText('6+ Hops')).toBeInTheDocument();
+      expect(screen.getByText('Local')).toBeInTheDocument();
+      expect(screen.getByText('1')).toBeInTheDocument();
+      expect(screen.getByText('2')).toBeInTheDocument();
+      expect(screen.getByText('3')).toBeInTheDocument();
+      expect(screen.getByText('4')).toBeInTheDocument();
+      expect(screen.getByText('5')).toBeInTheDocument();
+      expect(screen.getByText('6+')).toBeInTheDocument();
     });
 
     it('should render exactly 7 legend items', () => {
@@ -104,16 +104,17 @@ describe('MapLegend', () => {
       expect(style.position).toBe('absolute');
     });
 
-    it('should have white background for visibility on map', () => {
+    it('should have white/transparent background for visibility on map', () => {
       const { container } = render(<MapLegend />);
 
       const legendContainer = container.firstChild as HTMLElement;
       const style = window.getComputedStyle(legendContainer);
 
-      // Should have white or light background
-      expect(['white', 'rgb(255, 255, 255)', '#ffffff']).toContain(
-        style.backgroundColor.toLowerCase()
-      );
+      // Should have white or light background (including rgba for transparency)
+      const bgColor = style.backgroundColor.toLowerCase();
+      const isValidBackground = ['white', 'rgb(255, 255, 255)', '#ffffff'].some(c => bgColor.includes(c)) ||
+                               bgColor.includes('rgba(255, 255, 255');
+      expect(isValidBackground).toBe(true);
     });
 
     it('should have rounded corners', () => {
@@ -132,13 +133,13 @@ describe('MapLegend', () => {
       render(<MapLegend />);
 
       const labels = [
-        'Local Node',
-        '1 Hop',
-        '2 Hops',
-        '3 Hops',
-        '4 Hops',
-        '5 Hops',
-        '6+ Hops',
+        'Local',
+        '1',
+        '2',
+        '3',
+        '4',
+        '5',
+        '6+',
       ];
 
       labels.forEach((label) => {
@@ -163,17 +164,17 @@ describe('MapLegend', () => {
       render(<MapLegend />);
 
       const orderedLabels = [
-        'Local Node',
-        '1 Hop',
-        '2 Hops',
-        '3 Hops',
-        '4 Hops',
-        '5 Hops',
-        '6+ Hops',
+        'Local',
+        '1',
+        '2',
+        '3',
+        '4',
+        '5',
+        '6+',
       ];
 
       // Get all text content and verify order
-      const legendText = screen.getByText('Hop Distance').parentElement;
+      const legendText = screen.getByText('Hops:').parentElement;
       expect(legendText).toBeInTheDocument();
 
       // Verify each label appears in the correct order
@@ -183,19 +184,20 @@ describe('MapLegend', () => {
       });
     });
 
-    it('should pluralize hop labels correctly', () => {
+    it('should use concise numeric labels', () => {
       render(<MapLegend />);
 
-      // Singular
-      expect(screen.getByText('1 Hop')).toBeInTheDocument();
-      expect(screen.queryByText('1 Hops')).not.toBeInTheDocument();
+      // Check for concise labels (no "Hop" or "Hops" suffix)
+      expect(screen.getByText('1')).toBeInTheDocument();
+      expect(screen.getByText('2')).toBeInTheDocument();
+      expect(screen.getByText('3')).toBeInTheDocument();
+      expect(screen.getByText('4')).toBeInTheDocument();
+      expect(screen.getByText('5')).toBeInTheDocument();
+      expect(screen.getByText('6+')).toBeInTheDocument();
 
-      // Plural
-      expect(screen.getByText('2 Hops')).toBeInTheDocument();
-      expect(screen.getByText('3 Hops')).toBeInTheDocument();
-      expect(screen.getByText('4 Hops')).toBeInTheDocument();
-      expect(screen.getByText('5 Hops')).toBeInTheDocument();
-      expect(screen.getByText('6+ Hops')).toBeInTheDocument();
+      // Old verbose labels should not exist
+      expect(screen.queryByText('1 Hop')).not.toBeInTheDocument();
+      expect(screen.queryByText('2 Hops')).not.toBeInTheDocument();
     });
   });
 
