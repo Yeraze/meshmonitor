@@ -130,14 +130,6 @@ ingress:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-
-monitoring:
-  enabled: true
-  serviceMonitor: true
-  grafana:
-    enabled: true
-  prometheus:
-    enabled: true
 ```
 
 Deploy:
@@ -439,35 +431,43 @@ MeshMonitor provides health check endpoints:
 # Basic health check
 curl http://localhost:8080/api/health
 
-# Detailed status
+# Detailed status with statistics
 curl http://localhost:8080/api/status
 ```
 
-### Prometheus Metrics
-
-If monitoring is enabled, metrics are available at:
-
-```
-http://localhost:8080/metrics
-```
-
-**Prometheus scrape config:**
-
-```yaml
-scrape_configs:
-  - job_name: 'meshmonitor'
-    static_configs:
-      - targets: ['meshmonitor.example.com:8080']
-    metrics_path: '/metrics'
+**Health check response:**
+```json
+{
+  "status": "ok",
+  "timestamp": "2025-10-15T12:00:00.000Z",
+  "nodeEnv": "production"
+}
 ```
 
-### Grafana Dashboard
-
-Import the included Grafana dashboard:
-
-1. Navigate to Grafana → Dashboards → Import
-2. Upload `monitoring/grafana-dashboard.json`
-3. Select Prometheus data source
+**Status endpoint response:**
+```json
+{
+  "status": "ok",
+  "timestamp": "2025-10-15T12:00:00.000Z",
+  "version": "2.6.0",
+  "nodeEnv": "production",
+  "connection": {
+    "connected": true,
+    "localNode": {
+      "nodeNum": 123456789,
+      "nodeId": "!075bcd15",
+      "longName": "My Node",
+      "shortName": "NODE"
+    }
+  },
+  "statistics": {
+    "nodes": 42,
+    "messages": 1337,
+    "channels": 3
+  },
+  "uptime": 86400
+}
+```
 
 ### Log Aggregation
 
@@ -496,29 +496,35 @@ services:
 
 ### Alerting
 
-**Prometheus AlertManager rules:**
+Configure alerting based on the health check endpoints:
 
-```yaml
-groups:
-- name: meshmonitor
-  rules:
-  - alert: MeshMonitorDown
-    expr: up{job="meshmonitor"} == 0
-    for: 5m
-    labels:
-      severity: critical
-    annotations:
-      summary: "MeshMonitor is down"
-      description: "MeshMonitor has been down for more than 5 minutes."
+```bash
+# Example monitoring script
+#!/bin/bash
+HEALTH_URL="https://meshmonitor.example.com/api/health"
+STATUS_URL="https://meshmonitor.example.com/api/status"
 
-  - alert: HighMemoryUsage
-    expr: container_memory_usage_bytes{name="meshmonitor"} > 512000000
-    for: 10m
-    labels:
-      severity: warning
-    annotations:
-      summary: "High memory usage"
-      description: "MeshMonitor is using more than 512MB of memory."
+# Check health endpoint
+if ! curl -sf "$HEALTH_URL" > /dev/null; then
+  echo "ALERT: MeshMonitor health check failed"
+  # Send alert via your preferred method (email, Slack, PagerDuty, etc.)
+fi
+
+# Check detailed status
+STATUS=$(curl -sf "$STATUS_URL")
+if [ $? -eq 0 ]; then
+  # Parse JSON and check connection status
+  CONNECTED=$(echo "$STATUS" | jq -r '.connection.connected')
+  if [ "$CONNECTED" != "true" ]; then
+    echo "WARNING: MeshMonitor not connected to node"
+  fi
+fi
+```
+
+Add this to cron for periodic monitoring:
+```bash
+# Check every 5 minutes
+*/5 * * * * /usr/local/bin/check-meshmonitor.sh
 ```
 
 ## Performance Optimization

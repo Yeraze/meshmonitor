@@ -1593,6 +1593,34 @@ apiRouter.get('/health', optionalAuth(), (_req, res) => {
   });
 });
 
+// Detailed status endpoint - provides system statistics and connection status
+apiRouter.get('/status', optionalAuth(), (_req, res) => {
+  const connectionStatus = meshtasticManager.getConnectionStatus();
+  const localNode = meshtasticManager.getLocalNodeInfo();
+
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    version: packageJson.version,
+    nodeEnv: env.nodeEnv,
+    connection: {
+      connected: connectionStatus.connected,
+      localNode: localNode ? {
+        nodeNum: localNode.nodeNum,
+        nodeId: localNode.nodeId,
+        longName: localNode.longName,
+        shortName: localNode.shortName
+      } : null
+    },
+    statistics: {
+      nodes: databaseService.getNodeCount(),
+      messages: databaseService.getMessageCount(),
+      channels: databaseService.getChannelCount()
+    },
+    uptime: process.uptime()
+  });
+});
+
 // Version check endpoint - compares current version with latest GitHub release
 let versionCheckCache: { data: any; timestamp: number } | null = null;
 const VERSION_CHECK_CACHE_MS = 60 * 60 * 1000; // 1 hour cache
