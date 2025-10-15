@@ -1150,16 +1150,16 @@ body {
 }
 
 /* Channel Buttons Grid */
+/* Mobile channel dropdown - hidden on desktop */
+.channel-dropdown-mobile {
+  display: none;
+}
+
 .channels-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 1rem;
   margin-bottom: 2rem;
-}
-
-/* Mobile channel dropdown - hidden on desktop */
-.channel-dropdown-mobile {
-  display: none;
 }
 
 .channel-button {
