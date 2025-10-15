@@ -149,6 +149,14 @@ export interface EnvironmentConfig {
   disableLocalAuthProvided: boolean;
   adminUsername: string;
   adminUsernameProvided: boolean;
+
+  // Rate Limiting
+  rateLimitApi: number;
+  rateLimitApiProvided: boolean;
+  rateLimitAuth: number;
+  rateLimitAuthProvided: boolean;
+  rateLimitMessages: number;
+  rateLimitMessagesProvided: boolean;
 }
 
 /**
@@ -343,6 +351,12 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     wasProvided: process.env.ADMIN_USERNAME !== undefined
   };
 
+  // Rate Limiting
+  // Defaults: API=1000/15min (~1req/sec), Auth=5/15min, Messages=30/min
+  const rateLimitApi = parseInt32('RATE_LIMIT_API', process.env.RATE_LIMIT_API, nodeEnv.value === 'development' ? 10000 : 1000);
+  const rateLimitAuth = parseInt32('RATE_LIMIT_AUTH', process.env.RATE_LIMIT_AUTH, nodeEnv.value === 'development' ? 100 : 5);
+  const rateLimitMessages = parseInt32('RATE_LIMIT_MESSAGES', process.env.RATE_LIMIT_MESSAGES, nodeEnv.value === 'development' ? 100 : 30);
+
   return {
     // Node environment
     nodeEnv: nodeEnv.value,
@@ -403,7 +417,15 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     disableLocalAuth: disableLocalAuth.value,
     disableLocalAuthProvided: disableLocalAuth.wasProvided,
     adminUsername: adminUsername.value,
-    adminUsernameProvided: adminUsername.wasProvided
+    adminUsernameProvided: adminUsername.wasProvided,
+
+    // Rate Limiting
+    rateLimitApi: rateLimitApi.value,
+    rateLimitApiProvided: rateLimitApi.wasProvided,
+    rateLimitAuth: rateLimitAuth.value,
+    rateLimitAuthProvided: rateLimitAuth.wasProvided,
+    rateLimitMessages: rateLimitMessages.value,
+    rateLimitMessagesProvided: rateLimitMessages.wasProvided
   };
 }
 
