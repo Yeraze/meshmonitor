@@ -93,6 +93,7 @@ function App() {
 
   const hasSelectedInitialChannelRef = useRef<boolean>(false)
   const selectedChannelRef = useRef<number>(-1)
+  const lastChannelSelectionRef = useRef<number>(-1) // Track last selected channel before switching to Messages tab
 
   // Constants for emoji tapbacks
   const EMOJI_FLAG = 1; // Protobuf flag indicating this is a tapback/reaction
@@ -3861,12 +3862,34 @@ function App() {
         isAdmin={authStatus?.user?.isAdmin || false}
         unreadCounts={unreadCounts}
         onMessagesClick={() => {
+          // Save current channel selection before switching to Messages tab
+          if (selectedChannel !== -1) {
+            lastChannelSelectionRef.current = selectedChannel;
+            logger.debug('💾 Saved channel selection before Messages tab:', selectedChannel);
+          }
           setActiveTab('messages');
           // Clear unread count for direct messages (channel -1)
           setUnreadCounts(prev => ({ ...prev, [-1]: 0 }));
           // Set selected channel to -1 so new DMs don't create unread notifications
           setSelectedChannel(-1);
           selectedChannelRef.current = -1;
+        }}
+        onChannelsClick={() => {
+          setActiveTab('channels');
+          // Restore last channel selection if available
+          if (lastChannelSelectionRef.current !== -1) {
+            logger.debug('🔄 Restoring channel selection:', lastChannelSelectionRef.current);
+            setSelectedChannel(lastChannelSelectionRef.current);
+            selectedChannelRef.current = lastChannelSelectionRef.current;
+            // Clear unread count for restored channel
+            setUnreadCounts(prev => ({ ...prev, [lastChannelSelectionRef.current]: 0 }));
+          } else if (channels.length > 0 && selectedChannel === -1) {
+            // No saved selection, default to first channel
+            logger.debug('📌 No saved selection, using first channel:', channels[0].id);
+            setSelectedChannel(channels[0].id);
+            selectedChannelRef.current = channels[0].id;
+            setUnreadCounts(prev => ({ ...prev, [channels[0].id]: 0 }));
+          }
         }}
         baseUrl={baseUrl}
         connectedNodeName={connectedNodeName}

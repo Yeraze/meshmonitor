@@ -1056,6 +1056,25 @@ body {
   .automation-button-container button {
     width: 100% !important;
   }
+
+  /* Modal mobile responsiveness */
+  .modal-content {
+    width: calc(100% - 2rem) !important;
+    max-width: calc(100vw - 2rem) !important;
+    margin: 1rem;
+  }
+
+  .modal-header {
+    padding: 1rem !important;
+  }
+
+  .modal-body {
+    padding: 1rem !important;
+  }
+
+  .modal-header h2 {
+    font-size: 1.25rem !important;
+  }
 }
 
 /* Channel Messages Styling */
