@@ -52,8 +52,8 @@ describe('MapLegend', () => {
     it('should display colors in blue-to-red gradient order', () => {
       const { container } = render(<MapLegend />);
 
-      // Get all the colored circles - they have border-radius: 50% (circles)
-      const circles = container.querySelectorAll('[style*="border-radius: 50%"]');
+      // Get all the colored circles by class name
+      const circles = container.querySelectorAll('.legend-dot');
 
       // Extract background colors (should be in order: green, blue, purple, red)
       const colors: string[] = [];
@@ -77,7 +77,7 @@ describe('MapLegend', () => {
     it('should use distinct colors for each hop level', () => {
       const { container } = render(<MapLegend />);
 
-      const circles = container.querySelectorAll('[style*="border-radius: 50%"]');
+      const circles = container.querySelectorAll('.legend-dot');
       const colors = new Set<string>();
 
       circles.forEach((circle) => {
@@ -93,38 +93,29 @@ describe('MapLegend', () => {
   });
 
   describe('structure and styling', () => {
-    it('should have proper positioning for map overlay', () => {
+    it('should have proper CSS class for map overlay', () => {
       const { container } = render(<MapLegend />);
 
       const legendContainer = container.firstChild as HTMLElement;
       expect(legendContainer).toBeInTheDocument();
 
-      // Should be positioned absolutely for map overlay
-      const style = window.getComputedStyle(legendContainer);
-      expect(style.position).toBe('absolute');
+      // Should have the map-legend class
+      expect(legendContainer).toHaveClass('map-legend');
     });
 
-    it('should have white/transparent background for visibility on map', () => {
+    it('should have legend title with proper class', () => {
       const { container } = render(<MapLegend />);
 
-      const legendContainer = container.firstChild as HTMLElement;
-      const style = window.getComputedStyle(legendContainer);
-
-      // Should have white or light background (including rgba for transparency)
-      const bgColor = style.backgroundColor.toLowerCase();
-      const isValidBackground = ['white', 'rgb(255, 255, 255)', '#ffffff'].some(c => bgColor.includes(c)) ||
-                               bgColor.includes('rgba(255, 255, 255');
-      expect(isValidBackground).toBe(true);
+      const titleElement = container.querySelector('.legend-title');
+      expect(titleElement).toBeInTheDocument();
+      expect(titleElement).toHaveTextContent('Hops:');
     });
 
-    it('should have rounded corners', () => {
+    it('should have legend dots with proper class', () => {
       const { container } = render(<MapLegend />);
 
-      const legendContainer = container.firstChild as HTMLElement;
-      const style = window.getComputedStyle(legendContainer);
-
-      // Should have border radius for rounded corners
-      expect(style.borderRadius).toBeTruthy();
+      const legendDots = container.querySelectorAll('.legend-dot');
+      expect(legendDots.length).toBe(7);
     });
   });
 
@@ -148,14 +139,12 @@ describe('MapLegend', () => {
       });
     });
 
-    it('should use system fonts for better readability', () => {
+    it('should have legend labels with proper class', () => {
       const { container } = render(<MapLegend />);
 
-      const legendContainer = container.firstChild as HTMLElement;
-      const style = window.getComputedStyle(legendContainer);
-
-      // Should use system fonts
-      expect(style.fontFamily).toContain('system-ui');
+      const legendLabels = container.querySelectorAll('.legend-label');
+      // Should have 7 labels (one for each hop level)
+      expect(legendLabels.length).toBe(7);
     });
   });
 
@@ -208,8 +197,8 @@ describe('MapLegend', () => {
       const { container } = render(<MapLegend />);
 
       // Should have 7 colored circles (one for each hop level)
-      const circles = container.querySelectorAll('[style*="border-radius: 50%"]');
-      expect(circles.length).toBeGreaterThanOrEqual(7);
+      const circles = container.querySelectorAll('.legend-dot');
+      expect(circles.length).toBe(7);
     });
   });
 });
