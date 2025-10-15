@@ -1,0 +1,16 @@
+services:
+  meshmonitor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: meshmonitor-quick-start-test
+    ports:
+      - "8083:3001"
+    volumes:
+      - meshmonitor-quick-start-test-data:/data
+    environment:
+      - MESHTASTIC_NODE_IP=192.168.5.106
+    restart: unless-stopped
+
+volumes:
+  meshmonitor-quick-start-test-data:
