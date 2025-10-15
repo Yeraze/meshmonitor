@@ -1677,10 +1677,13 @@ class MeshtasticManager {
         hopsAway: nodeInfo.hopsAway !== undefined ? nodeInfo.hopsAway : undefined
       };
 
-      // Only set isFavorite from device for NEW nodes (not updates)
-      // This preserves user's local favorite settings while honoring device favorites on fresh install
-      if (!existingNode && nodeInfo.isFavorite !== undefined) {
+      // Always sync isFavorite from device to keep in sync with changes made while offline
+      // This ensures favorites are updated when reconnecting (fixes #213)
+      if (nodeInfo.isFavorite !== undefined) {
         nodeData.isFavorite = nodeInfo.isFavorite;
+        if (existingNode && existingNode.isFavorite !== nodeInfo.isFavorite) {
+          logger.debug(`⭐ Updating favorite status for node ${nodeId} from ${existingNode.isFavorite} to ${nodeInfo.isFavorite}`);
+        }
       }
 
       // Add user information if available
