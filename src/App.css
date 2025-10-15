@@ -1058,22 +1058,45 @@ body {
   }
 
   /* Modal mobile responsiveness */
+  .modal-overlay {
+    left: 48px !important; /* Account for mobile sidebar */
+    padding: 0.5rem !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
   .modal-content {
-    width: calc(100% - 2rem) !important;
-    max-width: calc(100vw - 2rem) !important;
-    margin: 1rem;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    max-height: calc(100vh - 1rem) !important;
   }
 
   .modal-header {
-    padding: 1rem !important;
+    padding: 0.75rem !important;
   }
 
   .modal-body {
-    padding: 1rem !important;
+    padding: 0.75rem !important;
   }
 
   .modal-header h2 {
-    font-size: 1.25rem !important;
+    font-size: 1.125rem !important;
+  }
+
+  /* Ensure form elements don't overflow */
+  .form-group {
+    margin-bottom: 0.75rem !important;
+  }
+
+  .form-group input,
+  .button {
+    font-size: 0.9rem !important;
+    padding: 0.75rem !important;
+  }
+
+  .login-divider {
+    margin: 1rem 0 !important;
   }
 }
 
