@@ -1033,6 +1033,29 @@ body {
   .message-bubble {
     max-width: 85%;
   }
+
+  /* Narrow custom dropdowns on Device Config page on mobile */
+  .config-custom-dropdown,
+  .config-custom-dropdown-menu {
+    width: 100% !important;
+    max-width: calc(100vw - 120px) !important;
+  }
+
+  /* Automation tab - wrap header buttons on mobile */
+  .automation-section-header {
+    flex-wrap: wrap !important;
+    gap: 0.75rem !important;
+  }
+
+  .automation-button-container {
+    flex-direction: column !important;
+    width: 100% !important;
+    margin-top: 0.5rem !important;
+  }
+
+  .automation-button-container button {
+    width: 100% !important;
+  }
 }
 
 /* Channel Messages Styling */
@@ -1172,9 +1195,9 @@ body {
   display: none;
 }
 
-/* Mobile node dropdown - show on mobile, hide on desktop for now */
+/* Mobile node dropdown - hidden on desktop */
 .node-dropdown-mobile {
-  display: block; /* Temporarily show on all viewports for testing */
+  display: none;
 }
 
 .channels-grid {
@@ -1639,6 +1662,33 @@ body {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   backdrop-filter: blur(10px);
   transition: width 0.3s ease, transform 0.3s ease;
+}
+
+/* Messages sidebar - blocking left panel on desktop */
+.messages-sidebar {
+  position: static;
+  top: auto;
+  left: auto;
+  width: 350px;
+  max-height: 100%;
+  border-radius: 0;
+  border-left: none;
+  border-top: none;
+  border-bottom: none;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.messages-split-view {
+  display: flex;
+  flex-direction: row;
+}
+
+.messages-split-view .nodes-main-content {
+  flex: 1;
+  min-width: 0;
+  padding: 1.5rem;
+  padding-right: 2rem; /* Extra padding for scrollbar */
 }
 
 /* Collapsed state for node list */
@@ -2874,6 +2924,12 @@ body {
   align-items: center;
   gap: 1.5rem;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  flex-wrap: wrap; /* Allow wrapping on small screens */
+}
+
+/* Automation section header - desktop defaults */
+.automation-section-header {
+  justify-content: space-between;
 }
 
 .settings-logo {
@@ -2994,8 +3050,7 @@ body {
 
 .danger-action {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
   padding: 1rem;
   margin-bottom: 1rem;
   background: var(--ctp-surface0);
@@ -3005,6 +3060,10 @@ body {
 
 .danger-action:last-child {
   margin-bottom: 0;
+}
+
+.danger-action-info {
+  margin-bottom: 1rem;
 }
 
 .danger-action-info h4 {
@@ -3018,7 +3077,11 @@ body {
   color: var(--ctp-subtext0);
   font-size: 0.875rem;
   margin: 0;
-  line-height: 1.4;
+  line-height: 1.6;
+}
+
+.danger-action .danger-button {
+  align-self: flex-end;
 }
 
 .danger-button {
@@ -3063,6 +3126,9 @@ body {
   transition: background-color 0.2s, transform 0.1s, opacity 0.2s;
   white-space: nowrap;
   min-width: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .save-button:hover:not(:disabled) {
@@ -3091,6 +3157,9 @@ body {
   transition: background-color 0.2s, transform 0.1s, opacity 0.2s;
   white-space: nowrap;
   min-width: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .reset-button:hover:not(:disabled) {
