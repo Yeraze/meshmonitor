@@ -116,9 +116,8 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   };
   return (
     <>
-      <div style={{
+      <div className="automation-section-header" style={{
         display: 'flex',
-        justifyContent: 'space-between',
         alignItems: 'center',
         marginBottom: '1.5rem',
         padding: '1rem 1.25rem',

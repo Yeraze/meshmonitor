@@ -887,7 +887,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [React](https://reactjs.org/) - Frontend framework
 - [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) - SQLite driver
 
----
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Yeraze/meshmonitor&type=date&legend=top-left)](https://www.star-history.com/#Yeraze/meshmonitor&type=date&legend=top-left)---
 
 **MeshMonitor** - Monitor your mesh, beautifully. 🌐✨
 

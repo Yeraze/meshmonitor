@@ -18,20 +18,20 @@ describe('MapLegend', () => {
   describe('rendering', () => {
     it('should render the legend title', () => {
       render(<MapLegend />);
-      expect(screen.getByText('Hop Distance')).toBeInTheDocument();
+      expect(screen.getByText('Hops:')).toBeInTheDocument();
     });
 
     it('should render all 7 hop levels', () => {
       render(<MapLegend />);
 
       // Check all legend labels are present
-      expect(screen.getByText('Local Node')).toBeInTheDocument();
-      expect(screen.getByText('1 Hop')).toBeInTheDocument();
-      expect(screen.getByText('2 Hops')).toBeInTheDocument();
-      expect(screen.getByText('3 Hops')).toBeInTheDocument();
-      expect(screen.getByText('4 Hops')).toBeInTheDocument();
-      expect(screen.getByText('5 Hops')).toBeInTheDocument();
-      expect(screen.getByText('6+ Hops')).toBeInTheDocument();
+      expect(screen.getByText('Local')).toBeInTheDocument();
+      expect(screen.getByText('1')).toBeInTheDocument();
+      expect(screen.getByText('2')).toBeInTheDocument();
+      expect(screen.getByText('3')).toBeInTheDocument();
+      expect(screen.getByText('4')).toBeInTheDocument();
+      expect(screen.getByText('5')).toBeInTheDocument();
+      expect(screen.getByText('6+')).toBeInTheDocument();
     });
 
     it('should render exactly 7 legend items', () => {
@@ -52,8 +52,8 @@ describe('MapLegend', () => {
     it('should display colors in blue-to-red gradient order', () => {
       const { container } = render(<MapLegend />);
 
-      // Get all the colored circles - they have border-radius: 50% (circles)
-      const circles = container.querySelectorAll('[style*="border-radius: 50%"]');
+      // Get all the colored circles by class name
+      const circles = container.querySelectorAll('.legend-dot');
 
       // Extract background colors (should be in order: green, blue, purple, red)
       const colors: string[] = [];
@@ -77,7 +77,7 @@ describe('MapLegend', () => {
     it('should use distinct colors for each hop level', () => {
       const { container } = render(<MapLegend />);
 
-      const circles = container.querySelectorAll('[style*="border-radius: 50%"]');
+      const circles = container.querySelectorAll('.legend-dot');
       const colors = new Set<string>();
 
       circles.forEach((circle) => {
@@ -93,37 +93,29 @@ describe('MapLegend', () => {
   });
 
   describe('structure and styling', () => {
-    it('should have proper positioning for map overlay', () => {
+    it('should have proper CSS class for map overlay', () => {
       const { container } = render(<MapLegend />);
 
       const legendContainer = container.firstChild as HTMLElement;
       expect(legendContainer).toBeInTheDocument();
 
-      // Should be positioned absolutely for map overlay
-      const style = window.getComputedStyle(legendContainer);
-      expect(style.position).toBe('absolute');
+      // Should have the map-legend class
+      expect(legendContainer).toHaveClass('map-legend');
     });
 
-    it('should have white background for visibility on map', () => {
+    it('should have legend title with proper class', () => {
       const { container } = render(<MapLegend />);
 
-      const legendContainer = container.firstChild as HTMLElement;
-      const style = window.getComputedStyle(legendContainer);
-
-      // Should have white or light background
-      expect(['white', 'rgb(255, 255, 255)', '#ffffff']).toContain(
-        style.backgroundColor.toLowerCase()
-      );
+      const titleElement = container.querySelector('.legend-title');
+      expect(titleElement).toBeInTheDocument();
+      expect(titleElement).toHaveTextContent('Hops:');
     });
 
-    it('should have rounded corners', () => {
+    it('should have legend dots with proper class', () => {
       const { container } = render(<MapLegend />);
 
-      const legendContainer = container.firstChild as HTMLElement;
-      const style = window.getComputedStyle(legendContainer);
-
-      // Should have border radius for rounded corners
-      expect(style.borderRadius).toBeTruthy();
+      const legendDots = container.querySelectorAll('.legend-dot');
+      expect(legendDots.length).toBe(7);
     });
   });
 
@@ -132,13 +124,13 @@ describe('MapLegend', () => {
       render(<MapLegend />);
 
       const labels = [
-        'Local Node',
-        '1 Hop',
-        '2 Hops',
-        '3 Hops',
-        '4 Hops',
-        '5 Hops',
-        '6+ Hops',
+        'Local',
+        '1',
+        '2',
+        '3',
+        '4',
+        '5',
+        '6+',
       ];
 
       labels.forEach((label) => {
@@ -147,14 +139,12 @@ describe('MapLegend', () => {
       });
     });
 
-    it('should use system fonts for better readability', () => {
+    it('should have legend labels with proper class', () => {
       const { container } = render(<MapLegend />);
 
-      const legendContainer = container.firstChild as HTMLElement;
-      const style = window.getComputedStyle(legendContainer);
-
-      // Should use system fonts
-      expect(style.fontFamily).toContain('system-ui');
+      const legendLabels = container.querySelectorAll('.legend-label');
+      // Should have 7 labels (one for each hop level)
+      expect(legendLabels.length).toBe(7);
     });
   });
 
@@ -163,17 +153,17 @@ describe('MapLegend', () => {
       render(<MapLegend />);
 
       const orderedLabels = [
-        'Local Node',
-        '1 Hop',
-        '2 Hops',
-        '3 Hops',
-        '4 Hops',
-        '5 Hops',
-        '6+ Hops',
+        'Local',
+        '1',
+        '2',
+        '3',
+        '4',
+        '5',
+        '6+',
       ];
 
       // Get all text content and verify order
-      const legendText = screen.getByText('Hop Distance').parentElement;
+      const legendText = screen.getByText('Hops:').parentElement;
       expect(legendText).toBeInTheDocument();
 
       // Verify each label appears in the correct order
@@ -183,19 +173,20 @@ describe('MapLegend', () => {
       });
     });
 
-    it('should pluralize hop labels correctly', () => {
+    it('should use concise numeric labels', () => {
       render(<MapLegend />);
 
-      // Singular
-      expect(screen.getByText('1 Hop')).toBeInTheDocument();
-      expect(screen.queryByText('1 Hops')).not.toBeInTheDocument();
+      // Check for concise labels (no "Hop" or "Hops" suffix)
+      expect(screen.getByText('1')).toBeInTheDocument();
+      expect(screen.getByText('2')).toBeInTheDocument();
+      expect(screen.getByText('3')).toBeInTheDocument();
+      expect(screen.getByText('4')).toBeInTheDocument();
+      expect(screen.getByText('5')).toBeInTheDocument();
+      expect(screen.getByText('6+')).toBeInTheDocument();
 
-      // Plural
-      expect(screen.getByText('2 Hops')).toBeInTheDocument();
-      expect(screen.getByText('3 Hops')).toBeInTheDocument();
-      expect(screen.getByText('4 Hops')).toBeInTheDocument();
-      expect(screen.getByText('5 Hops')).toBeInTheDocument();
-      expect(screen.getByText('6+ Hops')).toBeInTheDocument();
+      // Old verbose labels should not exist
+      expect(screen.queryByText('1 Hop')).not.toBeInTheDocument();
+      expect(screen.queryByText('2 Hops')).not.toBeInTheDocument();
     });
   });
 
@@ -206,8 +197,8 @@ describe('MapLegend', () => {
       const { container } = render(<MapLegend />);
 
       // Should have 7 colored circles (one for each hop level)
-      const circles = container.querySelectorAll('[style*="border-radius: 50%"]');
-      expect(circles.length).toBeGreaterThanOrEqual(7);
+      const circles = container.querySelectorAll('.legend-dot');
+      expect(circles.length).toBe(7);
     });
   });
 });

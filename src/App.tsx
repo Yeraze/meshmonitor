@@ -86,8 +86,14 @@ function App() {
   const [channelInfoModal, setChannelInfoModal] = useState<number | null>(null);
   const [showPsk, setShowPsk] = useState(false);
 
+  // Check if mobile viewport and default to collapsed on mobile
+  const isMobileViewport = () => window.innerWidth <= 768;
+  const [isNodeListCollapsed, setIsNodeListCollapsed] = useState(isMobileViewport());
+  const [isMessagesNodeListCollapsed, setIsMessagesNodeListCollapsed] = useState(isMobileViewport());
+
   const hasSelectedInitialChannelRef = useRef<boolean>(false)
   const selectedChannelRef = useRef<number>(-1)
+  const lastChannelSelectionRef = useRef<number>(-1) // Track last selected channel before switching to Messages tab
 
   // Constants for emoji tapbacks
   const EMOJI_FLAG = 1; // Protobuf flag indicating this is a tapback/reaction
@@ -1858,10 +1864,22 @@ function App() {
 
     return (
       <div className="nodes-split-view">
-        {/* Left Sidebar - Node List */}
-        <div className="nodes-sidebar">
+        {/* Floating Node List Panel */}
+        <div className={`nodes-sidebar ${isNodeListCollapsed ? 'collapsed' : ''}`}>
           <div className="sidebar-header">
-            <h3>Nodes ({processedNodes.length})</h3>
+            <button
+              className="collapse-nodes-btn"
+              onClick={() => setIsNodeListCollapsed(!isNodeListCollapsed)}
+              title={isNodeListCollapsed ? 'Expand node list' : 'Collapse node list'}
+            >
+              {isNodeListCollapsed ? '▶' : '◀'}
+            </button>
+            {!isNodeListCollapsed && (
+            <div className="sidebar-header-content">
+              <h3>Nodes ({processedNodes.length})</h3>
+            </div>
+            )}
+            {!isNodeListCollapsed && (
             <div className="node-controls">
               <input
                 type="text"
@@ -1895,8 +1913,10 @@ function App() {
                 </button>
               </div>
             </div>
+            )}
           </div>
 
+          {!isNodeListCollapsed && (
           <div className="nodes-list">
             {shouldShowData() ? (
               processedNodes.length > 0 ? (
@@ -2008,6 +2028,7 @@ function App() {
               </div>
             )}
           </div>
+          )}
         </div>
 
         {/* Right Side - Map */}
@@ -2510,7 +2531,7 @@ function App() {
   const renderChannelsTab = () => {
     const availableChannels = getAvailableChannels();
     return (
-    <div className="tab-content">
+    <div className="tab-content channels-tab-content">
       <div className="channels-header">
         <h2>Channels ({availableChannels.length})</h2>
         <div className="channels-controls">
@@ -2527,6 +2548,40 @@ function App() {
       {shouldShowData() ? (
         availableChannels.length > 0 ? (
           <>
+            {/* Mobile Channel Dropdown */}
+            <div className="channel-dropdown-mobile">
+              <select
+                className="channel-dropdown-select"
+                value={selectedChannel}
+                onChange={(e) => {
+                  const channelId = parseInt(e.target.value);
+                  logger.debug('👆 User selected channel from dropdown:', channelId);
+                  setSelectedChannel(channelId);
+                  selectedChannelRef.current = channelId;
+                  setUnreadCounts(prev => {
+                    const updated = { ...prev, [channelId]: 0 };
+                    logger.debug('📝 Setting unread counts:', updated);
+                    return updated;
+                  });
+                }}
+              >
+                {availableChannels.map(channelId => {
+                  const channelConfig = channels.find(ch => ch.id === channelId);
+                  const displayName = channelConfig?.name || getChannelName(channelId);
+                  const unread = unreadCounts[channelId] || 0;
+                  const encrypted = channelConfig?.psk && channelConfig.psk !== DEFAULT_UNENCRYPTED_PSK;
+                  const uplink = channelConfig?.uplinkEnabled ? '↑' : '';
+                  const downlink = channelConfig?.downlinkEnabled ? '↓' : '';
+
+                  return (
+                    <option key={channelId} value={channelId}>
+                      {encrypted ? '🔒' : '🔓'} {displayName} #{channelId} {uplink}{downlink} {unread > 0 ? `(${unread})` : ''}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+
             {/* Channel Buttons */}
             <div className="channels-grid">
               {availableChannels.map(channelId => {
@@ -2779,7 +2834,7 @@ function App() {
                             disabled={!newMessage.trim()}
                             className="send-btn"
                           >
-                            Send
+                            →
                           </button>
                         </div>
                       )}
@@ -2946,11 +3001,23 @@ function App() {
     const sortedNodesWithMessages = [...sortedFavorites, ...sortedNonFavorites];
 
     return (
-      <div className="nodes-split-view">
+      <div className="nodes-split-view messages-split-view">
         {/* Left Sidebar - Node List with Messages */}
-        <div className="nodes-sidebar">
+        <div className={`nodes-sidebar messages-sidebar ${isMessagesNodeListCollapsed ? 'collapsed' : ''}`}>
           <div className="sidebar-header">
-            <h3>Messages ({processedNodes.length})</h3>
+            <button
+              className="collapse-nodes-btn"
+              onClick={() => setIsMessagesNodeListCollapsed(!isMessagesNodeListCollapsed)}
+              title={isMessagesNodeListCollapsed ? 'Expand node list' : 'Collapse node list'}
+            >
+              {isMessagesNodeListCollapsed ? '▶' : '◀'}
+            </button>
+            {!isMessagesNodeListCollapsed && (
+            <div className="sidebar-header-content">
+              <h3>Messages ({processedNodes.length})</h3>
+            </div>
+            )}
+            {!isMessagesNodeListCollapsed && (
             <div className="node-controls">
               <input
                 type="text"
@@ -2960,8 +3027,10 @@ function App() {
                 className="filter-input-small"
               />
             </div>
+            )}
           </div>
 
+          {!isMessagesNodeListCollapsed && (
           <div className="nodes-list">
             {shouldShowData() ? (
               processedNodes.length > 0 ? (
@@ -3061,10 +3130,51 @@ function App() {
               <div className="no-data">Connect to a Meshtastic node to view messages</div>
             )}
           </div>
+          )}
         </div>
 
         {/* Right Panel - Conversation View */}
         <div className="nodes-main-content">
+          {/* Mobile Node Dropdown - Always visible on mobile */}
+          <div className="node-dropdown-mobile">
+            <select
+              className="node-dropdown-select"
+              value={selectedDMNode || ''}
+              onChange={(e) => {
+                const nodeId = e.target.value;
+                logger.debug('👆 User selected node from dropdown:', nodeId);
+                setSelectedDMNode(nodeId);
+              }}
+            >
+              <option value="">Select a conversation...</option>
+              {sortedNodesWithMessages
+                .filter(node => {
+                  if (!nodeFilter) return true;
+                  const searchTerm = nodeFilter.toLowerCase();
+                  return (
+                    node.user?.longName?.toLowerCase().includes(searchTerm) ||
+                    node.user?.shortName?.toLowerCase().includes(searchTerm) ||
+                    node.user?.id?.toLowerCase().includes(searchTerm)
+                  );
+                })
+                .map(node => {
+                  const displayName = node.user?.longName || `Node ${node.nodeNum}`;
+                  const shortName = node.user?.shortName || '-';
+                  const snr = node.snr != null ? ` ${node.snr.toFixed(1)}dB` : '';
+                  const battery = node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null
+                    ? (node.deviceMetrics.batteryLevel === 101 ? ' 🔌' : ` ${node.deviceMetrics.batteryLevel}%`)
+                    : '';
+                  const unread = node.unreadCount > 0 ? ` (${node.unreadCount})` : '';
+
+                  return (
+                    <option key={node.user?.id || node.nodeNum} value={node.user?.id || ''}>
+                      {node.isFavorite ? '⭐ ' : ''}{displayName} ({shortName}){snr}{battery}{unread}
+                    </option>
+                  );
+                })}
+            </select>
+          </div>
+
           {selectedDMNode ? (
             <div className="dm-conversation-panel">
               <div className="dm-header">
@@ -3097,6 +3207,7 @@ function App() {
                     </button>
                   )}
                 </div>
+
                 {(() => {
                   const recentTrace = getRecentTraceroute(selectedDMNode);
                   if (recentTrace) {
@@ -3305,7 +3416,7 @@ function App() {
                         disabled={!newMessage.trim()}
                         className="send-btn"
                       >
-                        Send
+                        →
                       </button>
                     </div>
                   )}
@@ -3751,12 +3862,34 @@ function App() {
         isAdmin={authStatus?.user?.isAdmin || false}
         unreadCounts={unreadCounts}
         onMessagesClick={() => {
+          // Save current channel selection before switching to Messages tab
+          if (selectedChannel !== -1) {
+            lastChannelSelectionRef.current = selectedChannel;
+            logger.debug('💾 Saved channel selection before Messages tab:', selectedChannel);
+          }
           setActiveTab('messages');
           // Clear unread count for direct messages (channel -1)
           setUnreadCounts(prev => ({ ...prev, [-1]: 0 }));
           // Set selected channel to -1 so new DMs don't create unread notifications
           setSelectedChannel(-1);
           selectedChannelRef.current = -1;
+        }}
+        onChannelsClick={() => {
+          setActiveTab('channels');
+          // Restore last channel selection if available
+          if (lastChannelSelectionRef.current !== -1) {
+            logger.debug('🔄 Restoring channel selection:', lastChannelSelectionRef.current);
+            setSelectedChannel(lastChannelSelectionRef.current);
+            selectedChannelRef.current = lastChannelSelectionRef.current;
+            // Clear unread count for restored channel
+            setUnreadCounts(prev => ({ ...prev, [lastChannelSelectionRef.current]: 0 }));
+          } else if (channels.length > 0 && selectedChannel === -1) {
+            // No saved selection, default to first channel
+            logger.debug('📌 No saved selection, using first channel:', channels[0].id);
+            setSelectedChannel(channels[0].id);
+            selectedChannelRef.current = channels[0].id;
+            setUnreadCounts(prev => ({ ...prev, [channels[0].id]: 0 }));
+          }
         }}
         baseUrl={baseUrl}
         connectedNodeName={connectedNodeName}
