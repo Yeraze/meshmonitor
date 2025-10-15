@@ -964,7 +964,7 @@ body {
 
   /* Hide channel grid buttons on mobile, show dropdown instead */
   .channels-grid {
-    display: none;
+    display: none !important;
   }
 
   .channel-dropdown-mobile {
