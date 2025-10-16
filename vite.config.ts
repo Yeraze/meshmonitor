@@ -7,6 +7,9 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       includeAssets: ['favicon.ico', 'logo.png', 'favicon-16x16.png', 'favicon-32x32.png'],
       manifest: {
         name: 'MeshMonitor',
@@ -27,36 +30,14 @@ export default defineConfig({
           }
         ]
       },
-      workbox: {
+      injectManifest: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-        // Exclude API routes from ALL caching - navigation fallback AND precaching
-        navigateFallbackDenylist: [/^\/api/],
-        navigateFallbackAllowlist: [/^(?!\/api).*/],
-        // Force immediate activation of new service worker
-        skipWaiting: true,
-        clientsClaim: true,
-        // Completely ignore API routes in runtime caching
-        runtimeCaching: [
-          {
-            // Explicitly ignore all API routes
-            urlPattern: /^.*\/api\/.*/,
-            handler: 'NetworkOnly'
-          },
-          {
-            urlPattern: /^https:\/\/.*\.tile\.openstreetmap\.org\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'openstreetmap-tiles',
-              expiration: {
-                maxEntries: 500,
-                maxAgeSeconds: 60 * 60 * 24 * 30 // 30 days
-              },
-              cacheableResponse: {
-                statuses: [0, 200]
-              }
-            }
-          }
-        ]
+        // Exclude API routes from precaching
+        globIgnores: ['**/api/**']
+      },
+      devOptions: {
+        enabled: true,
+        type: 'module'
       }
     })
   ],

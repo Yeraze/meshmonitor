@@ -19,6 +19,7 @@ import {
 } from './auth/authMiddleware.js';
 import { apiLimiter } from './middleware/rateLimiters.js';
 import { getEnvironmentConfig } from './config/environment.js';
+import { pushNotificationService } from './services/pushNotificationService.js';
 
 const require = createRequire(import.meta.url);
 const packageJson = require('../../package.json');
@@ -1835,6 +1836,107 @@ apiRouter.post('/system/restart', requirePermission('settings', 'write'), (_req,
     setTimeout(() => {
       gracefulShutdown('Admin-requested shutdown');
     }, 500);
+  }
+});
+
+// ==========================================
+// Push Notification Endpoints
+// ==========================================
+
+// Get VAPID public key and configuration status
+apiRouter.get('/push/vapid-key', optionalAuth(), (_req, res) => {
+  const publicKey = pushNotificationService.getPublicKey();
+  const status = pushNotificationService.getVapidStatus();
+
+  res.json({
+    publicKey,
+    status
+  });
+});
+
+// Get push notification status
+apiRouter.get('/push/status', optionalAuth(), (_req, res) => {
+  const status = pushNotificationService.getVapidStatus();
+  res.json(status);
+});
+
+// Update VAPID subject (admin only)
+apiRouter.put('/push/vapid-subject', requireAdmin(), (req, res) => {
+  try {
+    const { subject } = req.body;
+
+    if (!subject || typeof subject !== 'string') {
+      return res.status(400).json({ error: 'Subject is required and must be a string' });
+    }
+
+    pushNotificationService.updateVapidSubject(subject);
+    res.json({ success: true, subject });
+  } catch (error: any) {
+    logger.error('Error updating VAPID subject:', error);
+    res.status(400).json({ error: error.message || 'Failed to update VAPID subject' });
+  }
+});
+
+// Subscribe to push notifications
+apiRouter.post('/push/subscribe', optionalAuth(), async (req, res) => {
+  try {
+    const { subscription } = req.body;
+
+    if (!subscription || !subscription.endpoint || !subscription.keys) {
+      return res.status(400).json({ error: 'Invalid subscription data' });
+    }
+
+    const userId = req.session?.userId;
+    const userAgent = req.headers['user-agent'];
+
+    await pushNotificationService.saveSubscription(userId, subscription, userAgent);
+
+    res.json({ success: true });
+  } catch (error: any) {
+    logger.error('Error saving push subscription:', error);
+    res.status(500).json({ error: error.message || 'Failed to save subscription' });
+  }
+});
+
+// Unsubscribe from push notifications
+apiRouter.post('/push/unsubscribe', optionalAuth(), async (req, res) => {
+  try {
+    const { endpoint } = req.body;
+
+    if (!endpoint) {
+      return res.status(400).json({ error: 'Endpoint is required' });
+    }
+
+    await pushNotificationService.removeSubscription(endpoint);
+
+    res.json({ success: true });
+  } catch (error: any) {
+    logger.error('Error removing push subscription:', error);
+    res.status(500).json({ error: error.message || 'Failed to remove subscription' });
+  }
+});
+
+// Test push notification (admin only)
+apiRouter.post('/push/test', requireAdmin(), async (req, res) => {
+  try {
+    const userId = req.session?.userId;
+
+    const result = await pushNotificationService.sendToUser(userId, {
+      title: 'Test Notification',
+      body: 'This is a test push notification from MeshMonitor',
+      icon: '/logo.png',
+      badge: '/logo.png',
+      tag: 'test-notification'
+    });
+
+    res.json({
+      success: true,
+      sent: result.sent,
+      failed: result.failed
+    });
+  } catch (error: any) {
+    logger.error('Error sending test notification:', error);
+    res.status(500).json({ error: error.message || 'Failed to send test notification' });
   }
 });
 

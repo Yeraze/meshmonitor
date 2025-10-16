@@ -42,7 +42,8 @@
     "react": "^19.0.0",
     "react-dom": "^19.2.0",
     "react-leaflet": "^5.0.0",
-    "recharts": "^3.2.1"
+    "recharts": "^3.2.1",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@eslint/compat": "^1.4.0",
@@ -58,6 +59,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.2.1",
     "@types/supertest": "^6.0.3",
+    "@types/web-push": "^3.6.4",
     "@typescript-eslint/eslint-plugin": "^8.46.0",
     "@typescript-eslint/parser": "^8.46.0",
     "@vitejs/plugin-react": "^5.0.4",

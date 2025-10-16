@@ -129,6 +129,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           {hasPermission('configuration', 'read') && (
             <NavItem id="configuration" label="Device" icon="📡" />
           )}
+          <NavItem id="notifications" label="Notifications" icon="🔔" />
         </div>
 
         {(isAdmin || hasPermission('audit', 'read')) && (

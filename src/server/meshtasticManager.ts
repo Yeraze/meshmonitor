@@ -5,6 +5,7 @@ import { TcpTransport } from './tcpTransport.js';
 import { calculateDistance } from '../utils/distance.js';
 import { logger } from '../utils/logger.js';
 import { getEnvironmentConfig } from './config/environment.js';
+import { pushNotificationService } from './services/pushNotificationService.js';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const packageJson = require('../../package.json');
@@ -873,6 +874,9 @@ class MeshtasticManager {
         } else {
           logger.debug(`💾 Saved channel message from ${message.fromNodeId} on channel ${channelIndex}: "${messageText.substring(0, 30)}..." (replyId: ${message.replyId})`);
         }
+
+        // Send push notification for new message
+        await this.sendMessagePushNotification(message, messageText, isDirectMessage);
 
         // Auto-acknowledge matching messages
         await this.checkAutoAcknowledge(message, messageText, channelIndex, isDirectMessage, fromNum, meshPacket.id);
@@ -2908,6 +2912,9 @@ class MeshtasticManager {
         } else {
           logger.debug('Saved channel message to database:', message.text.substring(0, 50) + (message.text.length > 50 ? '...' : ''));
         }
+
+        // Send push notification for new message
+        await this.sendMessagePushNotification(message, message.text, isDirectMessage);
       } catch (error) {
         logger.error('Failed to save message:', error);
         logger.error('Message data:', message);
@@ -3130,6 +3137,70 @@ class MeshtasticManager {
   /**
    * Check if message matches auto-acknowledge pattern and send automated reply
    */
+  /**
+   * Send push notification for new message
+   */
+  private async sendMessagePushNotification(message: any, messageText: string, isDirectMessage: boolean): Promise<void> {
+    try {
+      // Skip if push notifications not configured
+      if (!pushNotificationService.isAvailable()) {
+        return;
+      }
+
+      // Skip non-text messages (telemetry, traceroutes, etc.)
+      if (message.portnum !== 1) { // 1 = TEXT_MESSAGE_APP
+        return;
+      }
+
+      // Skip messages from our own locally connected node
+      const localNodeNum = databaseService.getSetting('localNodeNum');
+      if (localNodeNum && parseInt(localNodeNum) === message.fromNodeNum) {
+        logger.debug('⏭️  Skipping push notification for message from local node');
+        return;
+      }
+
+      // Get sender info
+      const fromNode = databaseService.getNode(message.fromNodeNum);
+      const senderName = fromNode?.longName || fromNode?.shortName || `Node ${message.fromNodeNum}`;
+
+      // Determine notification title and body
+      let title: string;
+      let body: string;
+
+      if (isDirectMessage) {
+        title = `Direct Message from ${senderName}`;
+        body = messageText.length > 100 ? messageText.substring(0, 97) + '...' : messageText;
+      } else {
+        // Get channel name
+        const channel = databaseService.getChannelById(message.channel);
+        const channelName = channel?.name || `Channel ${message.channel}`;
+        title = `${senderName} in ${channelName}`;
+        body = messageText.length > 100 ? messageText.substring(0, 97) + '...' : messageText;
+      }
+
+      // Send push notification to all subscribed users
+      const result = await pushNotificationService.broadcast({
+        title,
+        body,
+        icon: '/logo.png',
+        badge: '/logo.png',
+        tag: `message-${message.id}`,
+        data: {
+          messageId: message.id,
+          fromNodeId: message.fromNodeId,
+          channelId: message.channel,
+          isDirectMessage,
+          url: '/' // Could be enhanced to deep-link to specific message/channel
+        }
+      });
+
+      logger.debug(`📤 Sent push notification: ${result.sent} delivered, ${result.failed} failed`);
+    } catch (error) {
+      logger.error('❌ Error sending message push notification:', error);
+      // Don't throw - push notification failures shouldn't break message processing
+    }
+  }
+
   private async checkAutoAcknowledge(message: any, messageText: string, channelIndex: number, isDirectMessage: boolean, fromNum: number, packetId?: number): Promise<void> {
     try {
       // Get auto-acknowledge settings from database

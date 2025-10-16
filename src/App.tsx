@@ -8,6 +8,7 @@ import TelemetryGraphs from './components/TelemetryGraphs'
 import InfoTab from './components/InfoTab'
 import SettingsTab from './components/SettingsTab'
 import ConfigurationTab from './components/ConfigurationTab'
+import NotificationsTab from './components/NotificationsTab'
 import UsersTab from './components/UsersTab'
 import AuditLogTab from './components/AuditLogTab'
 import Dashboard from './components/Dashboard'
@@ -4155,6 +4156,7 @@ function App() {
             onConfigChangeTriggeringReboot={handleConfigChangeTriggeringReboot}
           />
         )}
+        {activeTab === 'notifications' && <NotificationsTab isAdmin={authStatus?.user?.isAdmin || false} />}
         {activeTab === 'users' && <UsersTab />}
         {activeTab === 'audit' && <AuditLogTab />}
       </main>
