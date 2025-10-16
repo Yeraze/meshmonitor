@@ -3048,7 +3048,7 @@ class MeshtasticManager {
   }
 
 
-  async sendTextMessage(text: string, channel: number = 0, destination?: number, replyId?: number, emoji?: number): Promise<number> {
+  async sendTextMessage(text: string, channel: number = 0, destination?: number, replyId?: number, emoji?: number, userId?: number): Promise<number> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
     }
@@ -3071,8 +3071,9 @@ class MeshtasticManager {
       if (localNodeNum && localNodeId) {
         const toNodeId = destination ? `!${destination.toString(16).padStart(8, '0')}` : 'broadcast';
 
+        const messageId_str = `${localNodeNum}_${messageId}`;
         const message = {
-          id: `${localNodeNum}_${messageId}`,
+          id: messageId_str,
           fromNodeNum: parseInt(localNodeNum),
           toNodeNum: destination || 0xffffffff,
           fromNodeId: localNodeId,
@@ -3092,6 +3093,12 @@ class MeshtasticManager {
 
         databaseService.insertMessage(message);
         logger.debug(`💾 Saved sent message to database: "${text.substring(0, 30)}..."`);
+
+        // Automatically mark sent messages as read for the sending user
+        if (userId !== undefined) {
+          databaseService.markMessageAsRead(messageId_str, userId);
+          logger.debug(`✅ Automatically marked sent message as read for user ${userId}`);
+        }
       }
 
       return messageId;
