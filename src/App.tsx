@@ -2150,7 +2150,7 @@ function App() {
                       )}
                       {node.viaMqtt && (
                         <div className="node-mqtt" title="Connected via MQTT">
-                          🔌
+                          🌐
                         </div>
                       )}
                       {node.user?.id && nodesWithTelemetry.has(node.user.id) && (
