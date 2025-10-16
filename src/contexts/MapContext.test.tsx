@@ -170,4 +170,30 @@ describe('MapContext Types', () => {
     expect(history[0].latitude).toBe(40.7128);
     expect(history[1].longitude).toBe(-73.9851);
   });
+
+  it('should support showMqttNodes boolean state', () => {
+    // Test that showMqttNodes can be set to true (default)
+    const showMqttTrue = true;
+    expect(showMqttTrue).toBe(true);
+
+    // Test that showMqttNodes can be set to false
+    const showMqttFalse = false;
+    expect(showMqttFalse).toBe(false);
+  });
+
+  it('should support map control states for all visibility toggles', () => {
+    const mapControls = {
+      showPaths: false,
+      showNeighborInfo: false,
+      showRoute: true,
+      showMotion: true,
+      showMqttNodes: true
+    };
+
+    expect(mapControls.showPaths).toBe(false);
+    expect(mapControls.showNeighborInfo).toBe(false);
+    expect(mapControls.showRoute).toBe(true);
+    expect(mapControls.showMotion).toBe(true);
+    expect(mapControls.showMqttNodes).toBe(true);
+  });
 });

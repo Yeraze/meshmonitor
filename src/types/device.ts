@@ -19,6 +19,7 @@ export interface DeviceInfo {
     airUtilTx?: number
   }
   hopsAway?: number
+  viaMqtt?: boolean
   lastHeard?: number
   snr?: number
   rssi?: number

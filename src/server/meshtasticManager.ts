@@ -1693,6 +1693,7 @@ class MeshtasticManager {
         nodeData.shortName = nodeInfo.user.shortName;
         nodeData.hwModel = nodeInfo.user.hwModel;
         nodeData.role = nodeInfo.user.role;
+        nodeData.viaMqtt = nodeInfo.user.viaMqtt !== undefined ? nodeInfo.user.viaMqtt : undefined;
       }
 
       // Add position information if available
@@ -3741,6 +3742,11 @@ class MeshtasticManager {
       // Add hopsAway if it exists
       if (node.hopsAway !== null && node.hopsAway !== undefined) {
         deviceInfo.hopsAway = node.hopsAway;
+      }
+
+      // Add viaMqtt if it exists
+      if (node.viaMqtt !== null && node.viaMqtt !== undefined) {
+        deviceInfo.viaMqtt = Boolean(node.viaMqtt);
       }
 
       // Add isFavorite if it exists

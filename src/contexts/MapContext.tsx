@@ -27,6 +27,8 @@ interface MapContextType {
   setShowRoute: (show: boolean) => void;
   showMotion: boolean;
   setShowMotion: (show: boolean) => void;
+  showMqttNodes: boolean;
+  setShowMqttNodes: (show: boolean) => void;
   mapCenterTarget: [number, number] | null;
   setMapCenterTarget: (target: [number, number] | null) => void;
   mapZoom: number;
@@ -52,6 +54,7 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const [showNeighborInfo, setShowNeighborInfo] = useState<boolean>(false);
   const [showRoute, setShowRoute] = useState<boolean>(true);
   const [showMotion, setShowMotion] = useState<boolean>(true);
+  const [showMqttNodes, setShowMqttNodes] = useState<boolean>(true);
   const [mapCenterTarget, setMapCenterTarget] = useState<[number, number] | null>(null);
   const [mapZoom, setMapZoom] = useState<number>(10);
   const [traceroutes, setTraceroutes] = useState<DbTraceroute[]>([]);
@@ -70,6 +73,8 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
         setShowRoute,
         showMotion,
         setShowMotion,
+        showMqttNodes,
+        setShowMqttNodes,
         mapCenterTarget,
         setMapCenterTarget,
         mapZoom,

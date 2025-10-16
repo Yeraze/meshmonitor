@@ -384,6 +384,62 @@ See the [meshtasticd configuration guide](/configuration/meshtasticd) for detail
 
 ## 🎨 Interface & Features
 
+### What do the icons in the Node List mean?
+
+When viewing nodes in the **Nodes** tab, you'll see various icons next to each node that indicate different statuses and capabilities:
+
+#### Connection & Network Icons
+
+- **🌐 Globe (MQTT)** - Node is connected via MQTT instead of direct LoRa/RF
+  - Indicates the node was witnessed through an MQTT broker
+  - Can be filtered on the map using the "Show MQTT" checkbox
+
+#### Status Icons
+
+- **⭐ Star (Favorite)** - Node marked as favorite
+  - Click the star to toggle favorite status
+  - Favorites appear at the top of sorted lists
+
+#### Capability Icons
+
+- **📍 Location** - Node has GPS position data
+  - Shows latitude/longitude coordinates
+  - Node will appear on the map
+  - **🚶 Walking (Mobile)** - Position varies more than 1km (mobile node)
+
+- **📊 Telemetry** - Node has telemetry data available
+  - Click node to view detailed graphs
+  - Shows battery, voltage, temperature, etc.
+
+- **☀️ Weather** - Node has weather/environmental data
+  - Temperature, humidity, pressure, etc.
+  - Available from supported environmental sensors
+
+- **🔐 PKC** - Node supports Public Key Cryptography
+  - Enables encrypted communications
+  - Part of Meshtastic security features
+
+#### Other Indicators
+
+- **📶 Signal Strength** - Shows SNR (Signal-to-Noise Ratio) in dB
+- **🔋 Battery Level** - Current battery percentage
+- **🔌 Plugged In** - Node is powered (shows when battery = 101%)
+- **🔗 Hops** - Number of hops away from your node
+
+#### Node Roles
+
+Nodes may also display role badges:
+- **CLIENT** - Standard mesh client
+- **ROUTER** - Dedicated router node
+- **REPEATER** - Message repeater
+- **TRACKER** - GPS tracker device
+- **SENSOR** - Environmental sensor node
+- **TAK** - TAK (Team Awareness Kit) integration
+
+**Tip:** Hover over any icon to see a tooltip with more details!
+
+---
+
 ### The map doesn't show any nodes
 
 **Possible causes:**
