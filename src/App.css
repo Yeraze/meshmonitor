@@ -47,10 +47,14 @@ body {
   -moz-osx-font-smoothing: grayscale;
   background: var(--ctp-base);
   color: var(--ctp-text);
+  margin: 0;
+  padding: 0;
+  padding-bottom: env(safe-area-inset-bottom); /* Account for iPhone home indicator */
 }
 
 .app {
   min-height: 100vh;
+  min-height: 100dvh; /* Use dynamic viewport height for mobile browsers */
   background: var(--ctp-base);
   display: flex;
   flex-direction: column;
@@ -60,6 +64,7 @@ body {
   background: var(--ctp-mantle);
   border-bottom: 1px solid var(--ctp-surface0);
   padding: 1.5rem 2rem;
+  padding-top: max(1.5rem, env(safe-area-inset-top)); /* Account for iPhone notch/status bar */
   position: fixed;
   top: 0;
   left: 60px;
@@ -245,6 +250,7 @@ body {
 .app-main {
   padding: 2rem;
   padding-top: calc(var(--header-height) + 2rem); /* Account for fixed header + desired padding */
+  padding-bottom: max(2rem, env(safe-area-inset-bottom)); /* Account for iPhone home indicator */
   width: calc(100% - 60px); /* Full width minus sidebar */
   margin: 0;
   margin-left: 60px; /* Space for narrow sidebar */
@@ -1018,6 +1024,7 @@ body {
   .app-main {
     padding: 0.5rem;
     padding-top: calc(var(--header-height) + 0.5rem); /* Account for fixed header + desired padding */
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom)); /* Account for iPhone home indicator */
     padding-left: 56px; /* 48px sidebar + 8px gap */
     margin-left: 0 !important;
     width: 100% !important;
@@ -1145,6 +1152,20 @@ body {
 
   .login-divider {
     margin: 1rem 0 !important;
+  }
+
+  /* Add extra bottom spacing on mobile for safe scrolling */
+  .app-main::after {
+    content: '';
+    display: block;
+    height: 8rem; /* Extra space at bottom */
+    height: calc(8rem + env(safe-area-inset-bottom));
+  }
+
+  /* Ensure body/html allow scrolling on mobile */
+  body {
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
   }
 }
 
