@@ -113,7 +113,11 @@ const helmetConfig = env.isProduction && env.cookieSecure
           scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
           styleSrc: ["'self'", "'unsafe-inline'"],
           imgSrc: ["'self'", "data:", "http:", "https:"],
-          connectSrc: ["'self'"],
+          connectSrc: [
+            "'self'",
+            "https://*.tile.openstreetmap.org",  // OpenStreetMap tiles
+            "http://*.tile.openstreetmap.org"    // HTTP fallback for development
+          ],
           fontSrc: ["'self'"],
           objectSrc: ["'none'"],
           mediaSrc: ["'self'"],
