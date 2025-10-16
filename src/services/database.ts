@@ -22,6 +22,7 @@ export interface DbNode {
   hwModel: number;
   role?: number;
   hopsAway?: number;
+  viaMqtt?: boolean;
   macaddr?: string;
   latitude?: number;
   longitude?: number;
@@ -698,6 +699,17 @@ class DatabaseService {
       }
     }
 
+    try {
+      this.db.exec(`
+        ALTER TABLE nodes ADD COLUMN viaMqtt BOOLEAN DEFAULT 0;
+      `);
+      logger.debug('✅ Added viaMqtt column');
+    } catch (error: any) {
+      if (!error.message?.includes('duplicate column')) {
+        logger.debug('⚠️ viaMqtt column already exists or other error:', error.message);
+      }
+    }
+
     logger.debug('Database migrations completed');
   }
 
@@ -864,6 +876,7 @@ class DatabaseService {
           hwModel = COALESCE(?, hwModel),
           role = COALESCE(?, role),
           hopsAway = COALESCE(?, hopsAway),
+          viaMqtt = COALESCE(?, viaMqtt),
           macaddr = COALESCE(?, macaddr),
           latitude = COALESCE(?, latitude),
           longitude = COALESCE(?, longitude),
@@ -892,6 +905,7 @@ class DatabaseService {
         nodeData.hwModel,
         nodeData.role,
         nodeData.hopsAway,
+        nodeData.viaMqtt !== undefined ? (nodeData.viaMqtt ? 1 : 0) : null,
         nodeData.macaddr,
         nodeData.latitude,
         nodeData.longitude,
@@ -915,11 +929,11 @@ class DatabaseService {
     } else {
       const stmt = this.db.prepare(`
         INSERT INTO nodes (
-          nodeNum, nodeId, longName, shortName, hwModel, role, hopsAway, macaddr,
+          nodeNum, nodeId, longName, shortName, hwModel, role, hopsAway, viaMqtt, macaddr,
           latitude, longitude, altitude, batteryLevel, voltage,
           channelUtilization, airUtilTx, lastHeard, snr, rssi, firmwareVersion,
           isFavorite, rebootCount, publicKey, hasPKC, lastPKIPacket, createdAt, updatedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       stmt.run(
@@ -930,6 +944,7 @@ class DatabaseService {
         nodeData.hwModel || null,
         nodeData.role || null,
         nodeData.hopsAway !== undefined ? nodeData.hopsAway : null,
+        nodeData.viaMqtt !== undefined ? (nodeData.viaMqtt ? 1 : 0) : null,
         nodeData.macaddr || null,
         nodeData.latitude || null,
         nodeData.longitude || null,
