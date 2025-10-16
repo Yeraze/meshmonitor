@@ -4,12 +4,18 @@ import { TabType } from '../types/ui';
 import { ResourceType, PermissionAction } from '../types/permission';
 import packageJson from '../../package.json';
 
+interface UnreadCountsData {
+  channels?: {[channelId: number]: number};
+  directMessages?: {[nodeId: string]: number};
+}
+
 interface SidebarProps {
   activeTab: TabType;
   setActiveTab: (tab: TabType) => void;
   hasPermission: (resource: ResourceType, action: PermissionAction) => boolean;
   isAdmin: boolean;
   unreadCounts: { [key: number]: number };
+  unreadCountsData?: UnreadCountsData | null;
   onMessagesClick: () => void;
   onChannelsClick?: () => void;
   baseUrl: string;
@@ -21,7 +27,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   setActiveTab,
   hasPermission,
   isAdmin,
-  unreadCounts,
+  unreadCountsData,
   onMessagesClick,
   onChannelsClick,
   baseUrl,
@@ -84,9 +90,11 @@ const Sidebar: React.FC<SidebarProps> = ({
               label="Channels"
               icon="💬"
               onClick={onChannelsClick}
-              showNotification={Object.entries(unreadCounts).some(
-                ([channel, count]) => parseInt(channel) !== -1 && count > 0
-              )}
+              showNotification={
+                unreadCountsData?.channels
+                  ? Object.values(unreadCountsData.channels).some(count => count > 0)
+                  : false
+              }
             />
           )}
           {hasPermission('messages', 'read') && (
@@ -95,7 +103,11 @@ const Sidebar: React.FC<SidebarProps> = ({
               label="Messages"
               icon="✉️"
               onClick={onMessagesClick}
-              showNotification={unreadCounts[-1] > 0}
+              showNotification={
+                unreadCountsData?.directMessages
+                  ? Object.values(unreadCountsData.directMessages).some(count => count > 0)
+                  : false
+              }
             />
           )}
           {hasPermission('info', 'read') && (

@@ -113,7 +113,11 @@ const helmetConfig = env.isProduction && env.cookieSecure
           scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
           styleSrc: ["'self'", "'unsafe-inline'"],
           imgSrc: ["'self'", "data:", "http:", "https:"],
-          connectSrc: ["'self'"],
+          connectSrc: [
+            "'self'",
+            "https://*.tile.openstreetmap.org",  // OpenStreetMap tiles
+            "http://*.tile.openstreetmap.org"    // HTTP fallback for development
+          ],
           fontSrc: ["'self'"],
           objectSrc: ["'none'"],
           mediaSrc: ["'self'"],
@@ -543,6 +547,115 @@ apiRouter.get('/messages/direct/:nodeId1/:nodeId2', requirePermission('messages'
   }
 });
 
+// Mark messages as read
+apiRouter.post('/messages/mark-read', optionalAuth(), (req, res) => {
+  try {
+    // Check if user has either channels or messages permission
+    const hasChannelsRead = req.user?.isAdmin || hasPermission(req.user!, 'channels', 'read');
+    const hasMessagesRead = req.user?.isAdmin || hasPermission(req.user!, 'messages', 'read');
+
+    if (!hasChannelsRead && !hasMessagesRead) {
+      return res.status(403).json({
+        error: 'Insufficient permissions',
+        code: 'FORBIDDEN',
+        required: { resource: 'channels or messages', action: 'read' }
+      });
+    }
+
+    const userId = req.user?.id ?? null;
+    const { messageIds, channelId, nodeId, beforeTimestamp } = req.body;
+    let markedCount = 0;
+
+    if (messageIds && Array.isArray(messageIds)) {
+      // Mark specific messages as read
+      databaseService.markMessagesAsRead(messageIds, userId);
+      markedCount = messageIds.length;
+    } else if (channelId !== undefined) {
+      // Mark all messages in a channel as read
+      if (!hasChannelsRead) {
+        return res.status(403).json({
+          error: 'Insufficient permissions',
+          code: 'FORBIDDEN',
+          required: { resource: 'channels', action: 'read' }
+        });
+      }
+      markedCount = databaseService.markChannelMessagesAsRead(channelId, userId, beforeTimestamp);
+    } else if (nodeId) {
+      // Mark all DMs with a node as read
+      if (!hasMessagesRead) {
+        return res.status(403).json({
+          error: 'Insufficient permissions',
+          code: 'FORBIDDEN',
+          required: { resource: 'messages', action: 'read' }
+        });
+      }
+      const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+      if (!localNodeInfo) {
+        return res.status(500).json({ error: 'Local node not connected' });
+      }
+      markedCount = databaseService.markDMMessagesAsRead(localNodeInfo.nodeId, nodeId, userId, beforeTimestamp);
+    } else {
+      return res.status(400).json({ error: 'Must provide messageIds, channelId, or nodeId' });
+    }
+
+    res.json({ marked: markedCount });
+  } catch (error) {
+    logger.error('Error marking messages as read:', error);
+    res.status(500).json({ error: 'Failed to mark messages as read' });
+  }
+});
+
+// Get unread message counts
+apiRouter.get('/messages/unread-counts', optionalAuth(), (req, res) => {
+  try {
+    // Check if user has either channels or messages permission
+    const hasChannelsRead = req.user?.isAdmin || hasPermission(req.user!, 'channels', 'read');
+    const hasMessagesRead = req.user?.isAdmin || hasPermission(req.user!, 'messages', 'read');
+
+    if (!hasChannelsRead && !hasMessagesRead) {
+      return res.status(403).json({
+        error: 'Insufficient permissions',
+        code: 'FORBIDDEN',
+        required: { resource: 'channels or messages', action: 'read' }
+      });
+    }
+
+    const userId = req.user?.id ?? null;
+    const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+
+    const result: {
+      channels?: {[channelId: number]: number},
+      directMessages?: {[nodeId: string]: number}
+    } = {};
+
+    // Get channel unread counts if user has channels permission
+    if (hasChannelsRead) {
+      result.channels = databaseService.getUnreadCountsByChannel(userId);
+    }
+
+    // Get DM unread counts if user has messages permission
+    if (hasMessagesRead && localNodeInfo) {
+      const directMessages: {[nodeId: string]: number} = {};
+      // Get all nodes that have DMs
+      const allNodes = meshtasticManager.getAllNodes();
+      for (const node of allNodes) {
+        if (node.user?.id) {
+          const count = databaseService.getUnreadDMCount(localNodeInfo.nodeId, node.user.id, userId);
+          if (count > 0) {
+            directMessages[node.user.id] = count;
+          }
+        }
+      }
+      result.directMessages = directMessages;
+    }
+
+    res.json(result);
+  } catch (error) {
+    logger.error('Error fetching unread counts:', error);
+    res.status(500).json({ error: 'Failed to fetch unread counts' });
+  }
+});
+
 // Debug endpoint to see all channels
 apiRouter.get('/channels/debug', requirePermission('messages', 'read'), (_req, res) => {
   try {
@@ -769,7 +882,8 @@ apiRouter.post('/messages/send', requirePermission('messages', 'write'), async (
 
     // Send the message to the mesh network (with optional destination for DMs, replyId, and emoji flag)
     // Note: sendTextMessage() now handles saving the message to the database
-    await meshtasticManager.sendTextMessage(text, meshChannel, destinationNum, replyId, emoji);
+    // Pass userId so sent messages are automatically marked as read for the sender
+    await meshtasticManager.sendTextMessage(text, meshChannel, destinationNum, replyId, emoji, req.user?.id);
 
     res.json({ success: true });
   } catch (error) {

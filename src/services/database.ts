@@ -12,6 +12,7 @@ import { migration as connectionMigration } from '../server/migrations/003_add_c
 import { migration as tracerouteMigration } from '../server/migrations/004_add_traceroute_permission.js';
 import { migration as auditLogMigration } from '../server/migrations/005_enhance_audit_log.js';
 import { migration as auditPermissionMigration } from '../server/migrations/006_add_audit_permission.js';
+import { migration as readMessagesMigration } from '../server/migrations/007_add_read_messages.js';
 
 export interface DbNode {
   nodeNum: number;
@@ -168,6 +169,7 @@ class DatabaseService {
     this.runTracerouteMigration();
     this.runAuditLogMigration();
     this.runAuditPermissionMigration();
+    this.runReadMessagesMigration();
     this.ensureAutomationDefaults();
     this.isInitialized = true;
   }
@@ -326,6 +328,27 @@ class DatabaseService {
       logger.debug('✅ Audit permission migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run audit permission migration:', error);
+      throw error;
+    }
+  }
+
+  private runReadMessagesMigration(): void {
+    logger.debug('Running read messages migration...');
+    try {
+      const migrationKey = 'migration_007_read_messages';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Read messages migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 007: Add read_messages table...');
+      readMessagesMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Read messages migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run read messages migration:', error);
       throw error;
     }
   }
@@ -2048,6 +2071,126 @@ class DatabaseService {
     const stmt = this.db.prepare('DELETE FROM audit_log WHERE timestamp < ?');
     const result = stmt.run(cutoff);
     logger.debug(`🧹 Cleaned up ${result.changes} audit log entries older than ${days} days`);
+    return Number(result.changes);
+  }
+
+  // Read Messages tracking
+  markMessageAsRead(messageId: string, userId: number | null): void {
+    const stmt = this.db.prepare(`
+      INSERT OR IGNORE INTO read_messages (message_id, user_id, read_at)
+      VALUES (?, ?, ?)
+    `);
+    stmt.run(messageId, userId, Date.now());
+  }
+
+  markMessagesAsRead(messageIds: string[], userId: number | null): void {
+    if (messageIds.length === 0) return;
+
+    const stmt = this.db.prepare(`
+      INSERT OR IGNORE INTO read_messages (message_id, user_id, read_at)
+      VALUES (?, ?, ?)
+    `);
+
+    const transaction = this.db.transaction(() => {
+      const now = Date.now();
+      messageIds.forEach(messageId => {
+        stmt.run(messageId, userId, now);
+      });
+    });
+
+    transaction();
+  }
+
+  markChannelMessagesAsRead(channelId: number, userId: number | null, beforeTimestamp?: number): number {
+    let query = `
+      INSERT OR IGNORE INTO read_messages (message_id, user_id, read_at)
+      SELECT id, ?, ? FROM messages
+      WHERE channel = ?
+    `;
+    const params: any[] = [userId, Date.now(), channelId];
+
+    if (beforeTimestamp !== undefined) {
+      query += ` AND timestamp <= ?`;
+      params.push(beforeTimestamp);
+    }
+
+    const stmt = this.db.prepare(query);
+    const result = stmt.run(...params);
+    return Number(result.changes);
+  }
+
+  markDMMessagesAsRead(localNodeId: string, remoteNodeId: string, userId: number | null, beforeTimestamp?: number): number {
+    let query = `
+      INSERT OR IGNORE INTO read_messages (message_id, user_id, read_at)
+      SELECT id, ?, ? FROM messages
+      WHERE ((fromNodeId = ? AND toNodeId = ?) OR (fromNodeId = ? AND toNodeId = ?))
+    `;
+    const params: any[] = [userId, Date.now(), localNodeId, remoteNodeId, remoteNodeId, localNodeId];
+
+    if (beforeTimestamp !== undefined) {
+      query += ` AND timestamp <= ?`;
+      params.push(beforeTimestamp);
+    }
+
+    const stmt = this.db.prepare(query);
+    const result = stmt.run(...params);
+    return Number(result.changes);
+  }
+
+  getUnreadMessageIds(userId: number | null): string[] {
+    const stmt = this.db.prepare(`
+      SELECT m.id FROM messages m
+      LEFT JOIN read_messages rm ON m.id = rm.message_id AND rm.user_id ${userId === null ? 'IS NULL' : '= ?'}
+      WHERE rm.message_id IS NULL
+    `);
+
+    const rows = userId === null ? stmt.all() as Array<{ id: string }> : stmt.all(userId) as Array<{ id: string }>;
+    return rows.map(row => row.id);
+  }
+
+  getUnreadCountsByChannel(userId: number | null): {[channelId: number]: number} {
+    const stmt = this.db.prepare(`
+      SELECT m.channel, COUNT(*) as count
+      FROM messages m
+      LEFT JOIN read_messages rm ON m.id = rm.message_id AND rm.user_id ${userId === null ? 'IS NULL' : '= ?'}
+      WHERE rm.message_id IS NULL
+        AND m.channel != -1
+      GROUP BY m.channel
+    `);
+
+    const rows = userId === null
+      ? stmt.all() as Array<{ channel: number; count: number }>
+      : stmt.all(userId) as Array<{ channel: number; count: number }>;
+
+    const counts: {[channelId: number]: number} = {};
+    rows.forEach(row => {
+      counts[row.channel] = Number(row.count);
+    });
+    return counts;
+  }
+
+  getUnreadDMCount(localNodeId: string, remoteNodeId: string, userId: number | null): number {
+    const stmt = this.db.prepare(`
+      SELECT COUNT(*) as count
+      FROM messages m
+      LEFT JOIN read_messages rm ON m.id = rm.message_id AND rm.user_id ${userId === null ? 'IS NULL' : '= ?'}
+      WHERE rm.message_id IS NULL
+        AND ((m.fromNodeId = ? AND m.toNodeId = ?) OR (m.fromNodeId = ? AND m.toNodeId = ?))
+    `);
+
+    const params = userId === null
+      ? [localNodeId, remoteNodeId, remoteNodeId, localNodeId]
+      : [userId, localNodeId, remoteNodeId, remoteNodeId, localNodeId];
+
+    const result = stmt.get(...params) as { count: number };
+    return Number(result.count);
+  }
+
+  cleanupOldReadMessages(days: number): number {
+    const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+    const stmt = this.db.prepare('DELETE FROM read_messages WHERE read_at < ?');
+    const result = stmt.run(cutoff);
+    logger.debug(`🧹 Cleaned up ${result.changes} read_messages entries older than ${days} days`);
     return Number(result.changes);
   }
 }
