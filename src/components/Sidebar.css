@@ -2,6 +2,7 @@
   position: fixed;
   left: 0;
   top: 0; /* Full page height from top of viewport */
+  bottom: 0;
   height: 100vh;
   width: 60px; /* Default to narrow/icon-only on desktop */
   background: var(--color-bg-primary, #1a1a1a);
@@ -10,6 +11,10 @@
   z-index: 10001; /* Above header (10000) so it overlays cleanly */
   display: flex;
   flex-direction: column;
+  padding-top: env(safe-area-inset-top); /* Account for iPhone notch/status bar */
+  padding-bottom: max(1rem, env(safe-area-inset-bottom)); /* Account for iPhone home indicator */
+  padding-left: env(safe-area-inset-left); /* Account for iPhone landscape notch */
+  box-sizing: border-box; /* Include padding in height calculation */
 }
 
 .sidebar.collapsed {
@@ -229,6 +234,8 @@
   .sidebar {
     /* Collapsed by default - show as hamburger icon only */
     width: 48px;
+    padding-bottom: 6rem; /* Extra padding on mobile for home indicator */
+    padding-bottom: max(6rem, calc(env(safe-area-inset-bottom) + 4rem));
   }
 
   .sidebar:not(.collapsed) {
