@@ -177,6 +177,8 @@ function App() {
     setShowRoute,
     showMotion,
     setShowMotion,
+    showMqttNodes,
+    setShowMqttNodes,
     mapCenterTarget,
     setMapCenterTarget,
     mapZoom,
@@ -2146,6 +2148,11 @@ function App() {
                           {node.isMobile && <span title="Mobile Node (position varies > 1km)" style={{ marginLeft: '4px' }}>🚶</span>}
                         </div>
                       )}
+                      {node.viaMqtt && (
+                        <div className="node-mqtt" title="Connected via MQTT">
+                          🔌
+                        </div>
+                      )}
                       {node.user?.id && nodesWithTelemetry.has(node.user.id) && (
                         <div className="node-telemetry" title="Has Telemetry Data">
                           📊
@@ -2211,6 +2218,14 @@ function App() {
                 <label className="map-control-item">
                   <input
                     type="checkbox"
+                    checked={showMqttNodes}
+                    onChange={(e) => setShowMqttNodes(e.target.checked)}
+                  />
+                  <span>Show MQTT</span>
+                </label>
+                <label className="map-control-item">
+                  <input
+                    type="checkbox"
                     checked={showMotion}
                     onChange={(e) => setShowMotion(e.target.checked)}
                   />
@@ -2232,7 +2247,9 @@ function App() {
                 />
                 <ZoomHandler onZoomChange={setMapZoom} />
                 <MapLegend />
-                {nodesWithPosition.map(node => {
+                {nodesWithPosition
+                  .filter(node => showMqttNodes || !node.viaMqtt)
+                  .map(node => {
                   const roleNum = typeof node.user?.role === 'string'
                     ? parseInt(node.user.role, 10)
                     : (typeof node.user?.role === 'number' ? node.user.role : 0);

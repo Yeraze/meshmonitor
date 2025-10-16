@@ -6,8 +6,8 @@ import cors from 'cors';
 // Create database mock
 const databaseMock = {
   getAllNodes: vi.fn(() => [
-    { nodeNum: 1, nodeId: '!node1', longName: 'Test Node 1', shortName: 'TN1' },
-    { nodeNum: 2, nodeId: '!node2', longName: 'Test Node 2', shortName: 'TN2' }
+    { nodeNum: 1, nodeId: '!node1', longName: 'Test Node 1', shortName: 'TN1', viaMqtt: false },
+    { nodeNum: 2, nodeId: '!node2', longName: 'Test Node 2', shortName: 'TN2', viaMqtt: true }
   ]),
   getActiveNodes: vi.fn((_days?: number) => [
     { nodeNum: 1, nodeId: '!node1', longName: 'Test Node 1', shortName: 'TN1', lastHeard: Date.now() }

@@ -36,6 +36,7 @@ const createTestDatabase = () => {
           hwModel INTEGER,
           role INTEGER,
           hopsAway INTEGER,
+          viaMqtt BOOLEAN DEFAULT 0,
           macaddr TEXT,
           latitude REAL,
           longitude REAL,
@@ -167,6 +168,7 @@ const createTestDatabase = () => {
             longName = COALESCE(?, longName),
             shortName = COALESCE(?, shortName),
             hopsAway = COALESCE(?, hopsAway),
+            viaMqtt = COALESCE(?, viaMqtt),
             latitude = COALESCE(?, latitude),
             longitude = COALESCE(?, longitude),
             altitude = COALESCE(?, altitude),
@@ -178,6 +180,7 @@ const createTestDatabase = () => {
         stmt.run(
           nodeData.nodeId, nodeData.longName, nodeData.shortName,
           nodeData.hopsAway,
+          nodeData.viaMqtt !== undefined ? (nodeData.viaMqtt ? 1 : 0) : null,
           nodeData.latitude, nodeData.longitude, nodeData.altitude,
           nodeData.lastHeard, nodeData.lastTracerouteRequest,
           now, nodeData.nodeNum
@@ -185,14 +188,15 @@ const createTestDatabase = () => {
       } else {
         const stmt = this.db.prepare(`
           INSERT INTO nodes (
-            nodeNum, nodeId, longName, shortName, hopsAway, latitude, longitude, altitude,
+            nodeNum, nodeId, longName, shortName, hopsAway, viaMqtt, latitude, longitude, altitude,
             lastHeard, lastTracerouteRequest, createdAt, updatedAt
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
         stmt.run(
           nodeData.nodeNum, nodeData.nodeId, nodeData.longName, nodeData.shortName,
           nodeData.hopsAway !== undefined ? nodeData.hopsAway : null,
+          nodeData.viaMqtt !== undefined ? (nodeData.viaMqtt ? 1 : 0) : null,
           nodeData.latitude ?? null, nodeData.longitude ?? null, nodeData.altitude ?? null,
           nodeData.lastHeard ?? null, nodeData.lastTracerouteRequest ?? null,
           now, now
@@ -1540,6 +1544,80 @@ describe('DatabaseService - Extended Coverage', () => {
       retrieved = db.getNode(1);
       // COALESCE keeps old value when NULL is passed
       expect(retrieved?.hopsAway).toBe(3);
+    });
+  });
+
+  describe('Via MQTT Field Handling', () => {
+    it('should store and retrieve viaMqtt field', () => {
+      db.upsertNode({
+        nodeNum: 1,
+        nodeId: '!mqtt1',
+        longName: 'MQTT Node',
+        viaMqtt: true,
+      });
+
+      const retrieved = db.getNode(1);
+      // SQLite stores booleans as integers (1 for true, 0 for false)
+      expect(retrieved?.viaMqtt).toBe(1);
+    });
+
+    it('should handle viaMqtt false value', () => {
+      db.upsertNode({
+        nodeNum: 2,
+        nodeId: '!rf1',
+        longName: 'RF Node',
+        viaMqtt: false,
+      });
+
+      const retrieved = db.getNode(2);
+      // SQLite stores booleans as integers (1 for true, 0 for false)
+      expect(retrieved?.viaMqtt).toBe(0);
+    });
+
+    it('should preserve viaMqtt when updating other node fields', () => {
+      db.upsertNode({
+        nodeNum: 3,
+        nodeId: '!mqtt2',
+        longName: 'Old Name',
+        viaMqtt: true,
+      });
+
+      // Update only the name, not viaMqtt
+      db.upsertNode({
+        nodeNum: 3,
+        nodeId: '!mqtt2',
+        longName: 'New Name',
+      });
+
+      const retrieved = db.getNode(3);
+      expect(retrieved?.longName).toBe('New Name');
+      // SQLite stores booleans as integers (1 for true, 0 for false)
+      expect(retrieved?.viaMqtt).toBe(1);
+    });
+
+    it('should allow updating viaMqtt from true to false', () => {
+      db.upsertNode({
+        nodeNum: 4,
+        nodeId: '!node4',
+        longName: 'Test Node',
+        viaMqtt: true,
+      });
+
+      let retrieved = db.getNode(4);
+      // SQLite stores booleans as integers (1 for true, 0 for false)
+      expect(retrieved?.viaMqtt).toBe(1);
+
+      // Update viaMqtt to false
+      db.upsertNode({
+        nodeNum: 4,
+        nodeId: '!node4',
+        longName: 'Test Node',
+        viaMqtt: false,
+      });
+
+      retrieved = db.getNode(4);
+      // SQLite stores booleans as integers (1 for true, 0 for false)
+      expect(retrieved?.viaMqtt).toBe(0);
     });
   });
 });

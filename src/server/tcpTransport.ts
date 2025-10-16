@@ -11,7 +11,6 @@ export class TcpTransport extends EventEmitter {
   private socket: Socket | null = null;
   private buffer: Buffer = Buffer.alloc(0);
   private reconnectAttempts = 0;
-  private maxReconnectAttempts = 10;
   private reconnectTimeout: NodeJS.Timeout | null = null;
   private isConnected = false;
   private isConnecting = false;
@@ -96,12 +95,9 @@ export class TcpTransport extends EventEmitter {
           this.emit('disconnect');
         }
 
-        // Attempt reconnection if enabled
-        if (this.shouldReconnect && this.reconnectAttempts < this.maxReconnectAttempts) {
+        // Attempt reconnection if enabled (will retry forever with exponential backoff up to 60s)
+        if (this.shouldReconnect) {
           this.scheduleReconnect();
-        } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-          logger.error('❌ Max reconnection attempts reached');
-          this.emit('error', new Error('Max reconnection attempts reached'));
         }
       });
 
@@ -116,10 +112,10 @@ export class TcpTransport extends EventEmitter {
 
     this.reconnectAttempts++;
 
-    // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 30s (capped)
-    const delay = Math.min(Math.pow(2, this.reconnectAttempts - 1) * 1000, 30000);
+    // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 32s, 60s (capped at 60s)
+    const delay = Math.min(Math.pow(2, this.reconnectAttempts - 1) * 1000, 60000);
 
-    logger.debug(`🔄 Reconnecting in ${delay / 1000}s (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
+    logger.debug(`🔄 Reconnecting in ${delay / 1000}s (attempt ${this.reconnectAttempts})...`);
 
     this.reconnectTimeout = setTimeout(() => {
       this.doConnect().catch((error) => {
