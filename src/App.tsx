@@ -1174,15 +1174,18 @@ function App() {
 
           // Check if this is a new message (different ID than before)
           if (newestMessageId.current && currentNewestId !== newestMessageId.current) {
-            // New message detected! Check if it's from someone else
+            // New message detected! Check if it's from someone else and is a text message
             const isFromOther = currentNewestMessage.fromNodeId !== currentNodeId;
+            const isTextMessage = currentNewestMessage.portnum === 1; // Only TEXT_MESSAGE_APP
             console.log('🔍 New message detected! From:', currentNewestMessage.fromNodeId, 'Text:', currentNewestMessage.text.substring(0, 30));
-            console.log('🔍 Is from another user?', isFromOther);
+            console.log('🔍 Is from another user?', isFromOther, 'Is text message?', isTextMessage);
 
-            if (isFromOther) {
+            if (isFromOther && isTextMessage) {
               console.log('🔊 New message from another user, playing notification sound');
               logger.debug('🔊 New message arrived from other user:', currentNewestMessage.fromNodeId);
               playNotificationSound();
+            } else if (!isTextMessage) {
+              console.log('🔇 Message is telemetry/traceroute, skipping notification sound');
             } else {
               console.log('🔇 New message is your own, skipping notification sound');
             }

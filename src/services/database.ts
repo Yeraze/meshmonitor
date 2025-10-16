@@ -2155,6 +2155,7 @@ class DatabaseService {
       LEFT JOIN read_messages rm ON m.id = rm.message_id AND rm.user_id ${userId === null ? 'IS NULL' : '= ?'}
       WHERE rm.message_id IS NULL
         AND m.channel != -1
+        AND m.portnum = 1
       GROUP BY m.channel
     `);
 
@@ -2175,6 +2176,7 @@ class DatabaseService {
       FROM messages m
       LEFT JOIN read_messages rm ON m.id = rm.message_id AND rm.user_id ${userId === null ? 'IS NULL' : '= ?'}
       WHERE rm.message_id IS NULL
+        AND m.portnum = 1
         AND ((m.fromNodeId = ? AND m.toNodeId = ?) OR (m.fromNodeId = ? AND m.toNodeId = ?))
     `);
 
