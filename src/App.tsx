@@ -112,7 +112,6 @@ function App() {
 
   const channelMessagesContainerRef = useRef<HTMLDivElement>(null)
   const dmMessagesContainerRef = useRef<HTMLDivElement>(null)
-  const audioRef = useRef<HTMLAudioElement | null>(null)
   // const lastNotificationTime = useRef<number>(0) // Disabled for now
   // Detect base URL from pathname
   const detectBaseUrl = () => {
@@ -239,7 +238,10 @@ function App() {
     isChannelScrolledToBottom,
     setIsChannelScrolledToBottom,
     isDMScrolledToBottom,
-    setIsDMScrolledToBottom
+    setIsDMScrolledToBottom,
+    markMessagesAsRead,
+    fetchUnreadCounts,
+    unreadCountsData
   } = useMessaging();
 
   // UI context
@@ -279,6 +281,90 @@ function App() {
     autoAnnounceOnStart,
     setAutoAnnounceOnStart
   } = useUI();
+
+  // Track previous total unread count to detect when new messages arrive
+  const previousUnreadTotal = useRef<number>(0);
+
+  // Track the newest message ID to detect NEW messages (count-based tracking fails at the 100 message limit)
+  const newestMessageId = useRef<string>('');
+
+  // Play notification sound using Web Audio API
+  const playNotificationSound = useCallback(() => {
+    try {
+      console.log('🔊 playNotificationSound called');
+      logger.debug('🔊 playNotificationSound called');
+
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      console.log('🔊 AudioContext created, state:', audioContext.state);
+      logger.debug('🔊 AudioContext created, state:', audioContext.state);
+
+      // Resume context if suspended (browser autoplay policy)
+      if (audioContext.state === 'suspended') {
+        audioContext.resume().then(() => {
+          console.log('🔊 AudioContext resumed');
+        });
+      }
+
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      // Create a pleasant "ding" sound at 800Hz
+      oscillator.frequency.value = 800;
+      oscillator.type = 'sine';
+
+      // Envelope: quick attack, moderate decay
+      gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+      gainNode.gain.linearRampToValueAtTime(0.3, audioContext.currentTime + 0.01);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.3);
+
+      console.log('🔊 Sound started successfully');
+      logger.debug('🔊 Sound started successfully');
+    } catch (error) {
+      console.error('❌ Failed to play notification sound:', error);
+      logger.error('❌ Failed to play notification sound:', error);
+    }
+  }, []);
+
+  // Update favicon with red dot when there are unread messages
+  const updateFavicon = useCallback((hasUnread: boolean) => {
+    const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    if (!favicon) return;
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 32;
+      canvas.height = 32;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      // Draw the original favicon
+      ctx.drawImage(img, 0, 0, 32, 32);
+
+      // Draw red dot if there are unread messages
+      if (hasUnread) {
+        ctx.fillStyle = '#ff4444';
+        ctx.beginPath();
+        ctx.arc(24, 8, 6, 0, 2 * Math.PI);
+        ctx.fill();
+        // Add white border for visibility
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+
+      // Update favicon
+      favicon.href = canvas.toDataURL('image/png');
+    };
+    img.src = `${baseUrl}/favicon-32x32.png`;
+  }, [baseUrl]);
 
   // Compute connected node name for sidebar and page title
   const connectedNodeName = useMemo(() => {
@@ -376,30 +462,6 @@ function App() {
     });
   };
   const markerRefs = useRef<Map<string, L.Marker>>(new Map())
-
-  // Initialize notification sound with cleanup
-  useEffect(() => {
-    const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBiqG0PLSfzcGG2O56+OdTgwOUpzq66NRDwg+ltbyvW0qBSl+z/DV');
-    audioRef.current = audio;
-    audioRef.current.volume = 0.3;
-
-    // Cleanup function to prevent memory leak
-    return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.src = '';
-        audioRef.current = null;
-      }
-    };
-  }, []);
-
-  // Function to play notification sound - disabled for now
-  // const playNotificationSound = () => {
-  //   if (audioRef.current) {
-  //     audioRef.current.currentTime = 0;
-  //     audioRef.current.play().catch(err => logger.debug('Audio play failed:', err));
-  //   }
-  // };
 
   // Load configuration and check connection status on startup
   useEffect(() => {
@@ -689,6 +751,74 @@ function App() {
       }, 150);
     }
   }, [selectedDMNode, activeTab]);
+
+  // Fetch unread counts on initial load and periodically
+  useEffect(() => {
+    // Initial fetch
+    fetchUnreadCounts();
+
+    // Set up periodic refresh (every 10 seconds)
+    const unreadInterval = setInterval(() => {
+      fetchUnreadCounts();
+    }, 10000);
+
+    return () => clearInterval(unreadInterval);
+  }, [fetchUnreadCounts]);
+
+  // Mark messages as read when viewing a channel
+  useEffect(() => {
+    if (activeTab === 'channels' && selectedChannel >= 0) {
+      // Mark all messages in the selected channel as read
+      console.log('📖 Marking channel messages as read:', selectedChannel);
+      logger.debug('📖 Marking channel messages as read:', selectedChannel);
+      markMessagesAsRead(undefined, selectedChannel);
+    }
+  }, [selectedChannel, activeTab, markMessagesAsRead]);
+
+  // Mark messages as read when viewing a DM conversation
+  useEffect(() => {
+    if (activeTab === 'messages' && selectedDMNode) {
+      // Mark all DMs with the selected node as read
+      console.log('📖 Marking DM messages as read with node:', selectedDMNode);
+      logger.debug('📖 Marking DM messages as read with node:', selectedDMNode);
+      markMessagesAsRead(undefined, undefined, selectedDMNode);
+    }
+  }, [selectedDMNode, activeTab, markMessagesAsRead]);
+
+  // Update favicon when unread counts change
+  useEffect(() => {
+    const hasUnreadChannels = unreadCountsData?.channels
+      ? Object.values(unreadCountsData.channels).some(count => count > 0)
+      : false;
+    const hasUnreadDMs = unreadCountsData?.directMessages
+      ? Object.values(unreadCountsData.directMessages).some(count => count > 0)
+      : false;
+
+    console.log('🔴 Unread counts updated:', {
+      channels: unreadCountsData?.channels,
+      directMessages: unreadCountsData?.directMessages,
+      hasUnreadChannels,
+      hasUnreadDMs
+    });
+    logger.debug('🔴 Unread counts updated:', {
+      channels: unreadCountsData?.channels,
+      directMessages: unreadCountsData?.directMessages,
+      hasUnreadChannels,
+      hasUnreadDMs
+    });
+
+    updateFavicon(hasUnreadChannels || hasUnreadDMs);
+
+    // Track unread count for future features (notification sound now handled by message count)
+    const channelUnreadTotal = unreadCountsData?.channels
+      ? Object.values(unreadCountsData.channels).reduce((sum, count) => sum + count, 0)
+      : 0;
+    const dmUnreadTotal = unreadCountsData?.directMessages
+      ? Object.values(unreadCountsData.directMessages).reduce((sum, count) => sum + count, 0)
+      : 0;
+    const totalUnread = channelUnreadTotal + dmUnreadTotal;
+    previousUnreadTotal.current = totalUnread;
+  }, [unreadCountsData, updateFavicon]);
 
   // Regular data updates (every 5 seconds)
   useEffect(() => {
@@ -1030,23 +1160,41 @@ function App() {
           timestamp: new Date(msg.timestamp)
         }));
 
-        // Check for new messages by comparing message IDs
-        const previousMessageIds = new Set(messages.map(m => m.id));
-        const isInitialLoad = previousMessageIds.size === 0;
-        const newMessages = processedMessages.filter((m: MeshMessage) => !previousMessageIds.has(m.id));
+        // Play notification sound if new messages arrived from OTHER users (not your own messages)
+        // Track by newest message ID instead of count (count stays at 100 due to API limit)
+        if (processedMessages.length > 0) {
+          const currentNewestMessage = processedMessages[0]; // Messages are sorted newest first
+          const currentNewestId = currentNewestMessage.id;
 
-        // Notification sound disabled - too frequent
-        // TODO: Add user-configurable notification settings
-        // if (newMessages.length > 0 && !isInitialLoad) {
-        //   const currentSelected = selectedChannelRef.current;
-        //   const hasNewMessagesInOtherChannels = newMessages.some((m: MeshMessage) => m.channel !== currentSelected);
-        //   const now = Date.now();
-        //   const timeSinceLastNotification = now - lastNotificationTime.current;
-        //   if (hasNewMessagesInOtherChannels && timeSinceLastNotification > 3000) {
-        //     playNotificationSound();
-        //     lastNotificationTime.current = now;
-        //   }
-        // }
+          console.log('📊 Message ID check:', {
+            currentNewest: currentNewestId,
+            previousNewest: newestMessageId.current,
+            currentNodeId: currentNodeId
+          });
+
+          // Check if this is a new message (different ID than before)
+          if (newestMessageId.current && currentNewestId !== newestMessageId.current) {
+            // New message detected! Check if it's from someone else
+            const isFromOther = currentNewestMessage.fromNodeId !== currentNodeId;
+            console.log('🔍 New message detected! From:', currentNewestMessage.fromNodeId, 'Text:', currentNewestMessage.text.substring(0, 30));
+            console.log('🔍 Is from another user?', isFromOther);
+
+            if (isFromOther) {
+              console.log('🔊 New message from another user, playing notification sound');
+              logger.debug('🔊 New message arrived from other user:', currentNewestMessage.fromNodeId);
+              playNotificationSound();
+            } else {
+              console.log('🔇 New message is your own, skipping notification sound');
+            }
+          } else if (!newestMessageId.current) {
+            console.log('📊 First load, setting initial newest message ID');
+          } else {
+            console.log('📊 No new messages (same newest ID)');
+          }
+
+          // Update the tracked newest message ID
+          newestMessageId.current = currentNewestId;
+        }
 
         setMessages(processedMessages);
 
@@ -1059,40 +1207,28 @@ function App() {
           channelGroups[msg.channel].push(msg);
         });
 
-        // Update unread counts ONLY for truly NEW messages (not on initial load)
+        // Use database-backed unread counts instead of time-based client-side calculation
+        // The backend now tracks read status persistently in the database
         const currentSelected = selectedChannelRef.current;
 
-        // Calculate new unread counts
+        // Fetch the latest unread counts from the backend
+        // This is done periodically via useEffect, but we also use the current state
         let newUnreadCounts: {[key: number]: number};
 
-        if (isInitialLoad) {
-          // On initial load, set all channels to 0 unread
-          newUnreadCounts = {};
+        if (unreadCountsData?.channels) {
+          // Use database-backed counts
+          newUnreadCounts = { ...unreadCountsData.channels };
         } else {
-          // Start with current counts
+          // Fallback to empty counts if data not yet loaded
           newUnreadCounts = { ...unreadCounts };
-
-          // Add ONLY the new messages that arrived in this polling cycle
-          // for channels that are NOT currently selected
-          // ALSO: Only count messages less than 10 seconds old to avoid counting
-          // messages that were already in DB when viewing the channel
-          const now = Date.now();
-          newMessages.forEach((msg: MeshMessage) => {
-            const messageAge = now - msg.timestamp.getTime();
-            if (msg.channel !== currentSelected && messageAge < 10000) {
-              newUnreadCounts[msg.channel] = (newUnreadCounts[msg.channel] || 0) + 1;
-            }
-          });
         }
 
-        // ALWAYS set currently selected channel to 0
-        // This ensures viewing a channel clears its unread count permanently
+        // Currently selected channel should always show 0 unread
         newUnreadCounts[currentSelected] = 0;
 
         logger.debug('📊 Updating unread counts:', {
           currentSelected,
-          newUnreadCounts,
-          isInitialLoad
+          newUnreadCounts
         });
 
         setUnreadCounts(newUnreadCounts);
@@ -1120,10 +1256,17 @@ function App() {
               hasUpdates = true;
 
               // Update the messages list to replace the temporary message with the server one
-              setMessages(prev => prev.map(m => m.id === tempId ? matchingMessage : m));
+              // IMPORTANT: Preserve the original timestamp to maintain message order
+              const acknowledgedMessage = {
+                ...matchingMessage,
+                timestamp: pendingMsg.timestamp, // Keep original send time, not ACK receive time
+                acknowledged: true
+              };
+
+              setMessages(prev => prev.map(m => m.id === tempId ? acknowledgedMessage : m));
               setChannelMessages(prev => ({
                 ...prev,
-                [pendingMsg.channel]: prev[pendingMsg.channel]?.map(m => m.id === tempId ? matchingMessage : m) || []
+                [pendingMsg.channel]: prev[pendingMsg.channel]?.map(m => m.id === tempId ? acknowledgedMessage : m) || []
               }));
             }
           });
@@ -2972,9 +3115,8 @@ function App() {
         };
 
         const dmMessages = getDMMessages(nodeId);
-        const unreadCount = dmMessages.filter(msg => {
-          return msg.from === nodeId && selectedDMNode !== nodeId;
-        }).length;
+        // Get unread count from database-backed tracking instead of counting all messages
+        const unreadCount = unreadCountsData?.directMessages?.[nodeId] || 0;
 
         return {
           ...node,
@@ -3852,6 +3994,7 @@ function App() {
         hasPermission={hasPermission}
         isAdmin={authStatus?.user?.isAdmin || false}
         unreadCounts={unreadCounts}
+        unreadCountsData={unreadCountsData}
         onMessagesClick={() => {
           // Save current channel selection before switching to Messages tab
           if (selectedChannel !== -1) {
@@ -4164,7 +4307,7 @@ const AppWithToast = () => {
     <SettingsProvider baseUrl={initialBaseUrl}>
       <MapProvider>
         <DataProvider>
-          <MessagingProvider>
+          <MessagingProvider baseUrl={initialBaseUrl}>
             <UIProvider>
               <ToastProvider>
                 <App />
