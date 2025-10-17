@@ -562,12 +562,11 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
       )}
 
       {/* Notification Filtering Preferences */}
-      {isSubscribed && (
-        <div className="settings-section">
-          <h3>🔔 Notification Preferences</h3>
-          <p style={{ marginBottom: '24px', color: '#666' }}>
-            Configure notification services and filtering preferences. All filters apply to both Web Push and Apprise notifications.
-          </p>
+      <div className="settings-section">
+        <h3>🔔 Notification Preferences</h3>
+        <p style={{ marginBottom: '24px', color: '#666' }}>
+          Configure notification services and filtering preferences. All filters apply to both Web Push and Apprise notifications.
+        </p>
 
           {/* Notification Service Toggles */}
           <div style={{
@@ -845,8 +844,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
               {isSavingPreferences ? 'Saving...' : '💾 Save Preferences'}
             </button>
           </div>
-        </div>
-      )}
+      </div>
 
       {/* VAPID Configuration (Admin Only) */}
       {isAdmin && vapidStatus && (
