@@ -15,6 +15,7 @@ import { migration as auditPermissionMigration } from '../server/migrations/006_
 import { migration as readMessagesMigration } from '../server/migrations/007_add_read_messages.js';
 import { migration as pushSubscriptionsMigration } from '../server/migrations/008_add_push_subscriptions.js';
 import { migration as notificationPreferencesMigration } from '../server/migrations/009_add_notification_preferences.js';
+import { migration as notifyOnEmojiMigration } from '../server/migrations/010_add_notify_on_emoji.js';
 
 export interface DbNode {
   nodeNum: number;
@@ -187,6 +188,7 @@ class DatabaseService {
     this.runReadMessagesMigration();
     this.runPushSubscriptionsMigration();
     this.runNotificationPreferencesMigration();
+    this.runNotifyOnEmojiMigration();
     this.ensureAutomationDefaults();
     this.isInitialized = true;
   }
@@ -408,6 +410,27 @@ class DatabaseService {
       logger.debug('✅ Notification preferences migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run notification preferences migration:', error);
+      throw error;
+    }
+  }
+
+  private runNotifyOnEmojiMigration(): void {
+    logger.debug('Running notify on emoji migration...');
+    try {
+      const migrationKey = 'migration_010_notify_on_emoji';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Notify on emoji migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 010: Add notify_on_emoji column...');
+      notifyOnEmojiMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Notify on emoji migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run notify on emoji migration:', error);
       throw error;
     }
   }

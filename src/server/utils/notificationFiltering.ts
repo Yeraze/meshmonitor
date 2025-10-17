@@ -12,6 +12,7 @@ export interface NotificationPreferences {
   enableApprise: boolean;
   enabledChannels: number[];
   enableDirectMessages: boolean;
+  notifyOnEmoji: boolean;
   whitelist: string[];
   blacklist: string[];
 }
@@ -35,6 +36,7 @@ export function getUserNotificationPreferences(userId: number): NotificationPref
         enable_apprise,
         enabled_channels,
         enable_direct_messages,
+        notify_on_emoji,
         whitelist,
         blacklist
       FROM user_notification_preferences
@@ -50,6 +52,7 @@ export function getUserNotificationPreferences(userId: number): NotificationPref
         enableApprise: Boolean(row.enable_apprise),
         enabledChannels: row.enabled_channels ? JSON.parse(row.enabled_channels) : [],
         enableDirectMessages: Boolean(row.enable_direct_messages),
+        notifyOnEmoji: row.notify_on_emoji !== undefined ? Boolean(row.notify_on_emoji) : true,
         whitelist: row.whitelist ? JSON.parse(row.whitelist) : [],
         blacklist: row.blacklist ? JSON.parse(row.blacklist) : []
       };
@@ -66,6 +69,7 @@ export function getUserNotificationPreferences(userId: number): NotificationPref
         enableDirectMessages: oldPrefs.enableDirectMessages !== undefined
           ? oldPrefs.enableDirectMessages
           : true,
+        notifyOnEmoji: true, // Default to enabled for backward compatibility
         whitelist: oldPrefs.whitelist || [],
         blacklist: oldPrefs.blacklist || []
       };
@@ -97,15 +101,16 @@ export function saveUserNotificationPreferences(
     const stmt = databaseService.db.prepare(`
       INSERT INTO user_notification_preferences (
         user_id, enable_web_push, enable_apprise,
-        enabled_channels, enable_direct_messages,
+        enabled_channels, enable_direct_messages, notify_on_emoji,
         whitelist, blacklist,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(user_id) DO UPDATE SET
         enable_web_push = excluded.enable_web_push,
         enable_apprise = excluded.enable_apprise,
         enabled_channels = excluded.enabled_channels,
         enable_direct_messages = excluded.enable_direct_messages,
+        notify_on_emoji = excluded.notify_on_emoji,
         whitelist = excluded.whitelist,
         blacklist = excluded.blacklist,
         updated_at = excluded.updated_at
@@ -117,6 +122,7 @@ export function saveUserNotificationPreferences(
       preferences.enableApprise ? 1 : 0,
       JSON.stringify(preferences.enabledChannels),
       preferences.enableDirectMessages ? 1 : 0,
+      preferences.notifyOnEmoji ? 1 : 0,
       JSON.stringify(preferences.whitelist),
       JSON.stringify(preferences.blacklist),
       now,
@@ -162,13 +168,40 @@ export function getUsersWithServiceEnabled(service: 'web_push' | 'apprise'): num
 }
 
 /**
+ * Check if a message contains only emojis (including emoji reactions and tapbacks)
+ * Matches single emoji or emoji sequences with optional whitespace
+ */
+function isEmojiOnlyMessage(text: string): boolean {
+  // Trim whitespace from the message
+  const trimmed = text.trim();
+
+  // Empty message is not considered emoji-only
+  if (trimmed.length === 0) {
+    return false;
+  }
+
+  // Regex pattern to match emoji Unicode ranges and common emoji sequences
+  // This includes:
+  // - Standard emoji ranges (U+1F300-U+1F9FF)
+  // - Emoticons and symbols (U+2600-U+26FF)
+  // - Dingbats (U+2700-U+27BF)
+  // - Miscellaneous Symbols and Pictographs (U+1F900-U+1F9FF)
+  // - Supplemental Symbols and Pictographs (U+1F300-U+1FAD6)
+  // - Emoji modifiers (U+1F3FB-U+1F3FF)
+  const emojiRegex = /^[\u{1F300}-\u{1FAD6}\u{1F900}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F3FB}-\u{1F3FF}\uFE0F\u200D\s]+$/u;
+
+  return emojiRegex.test(trimmed);
+}
+
+/**
  * Check if a notification should be filtered for a specific user
  *
  * Filtering logic (priority order):
  * 1. WHITELIST - If message contains whitelisted word, ALLOW (highest priority)
  * 2. BLACKLIST - If message contains blacklisted word, FILTER
- * 3. CHANNEL/DM - If channel/DM is disabled, FILTER
- * 4. DEFAULT - ALLOW
+ * 3. EMOJI - If notifyOnEmoji is disabled and message is emoji-only, FILTER
+ * 4. CHANNEL/DM - If channel/DM is disabled, FILTER
+ * 5. DEFAULT - ALLOW
  */
 export function shouldFilterNotification(
   userId: number,
@@ -205,7 +238,13 @@ export function shouldFilterNotification(
     }
   }
 
-  // CHANNEL/DM CHECK (third priority)
+  // EMOJI CHECK (third priority)
+  if (!prefs.notifyOnEmoji && isEmojiOnlyMessage(filterContext.messageText)) {
+    logger.debug(`😀 Emoji-only message filtered for user ${userId}`);
+    return true; // Filter
+  }
+
+  // CHANNEL/DM CHECK (fourth priority)
   if (filterContext.isDirectMessage) {
     if (!prefs.enableDirectMessages) {
       logger.debug(`🔇 Direct messages disabled for user ${userId}`);

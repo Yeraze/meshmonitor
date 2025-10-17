@@ -530,13 +530,19 @@ Notification filtering applies to **both Web Push and Apprise** notifications:
 
 - **Whitelist**: Keywords that always trigger notifications (highest priority)
 - **Blacklist**: Keywords that never trigger notifications (second priority)
+- **Emoji Reactions**: Enable/disable notifications for emoji-only messages (third priority)
 - **Enabled Channels**: Specific channels to receive notifications from
 - **Direct Messages**: Enable/disable direct message notifications
 
 The filtering follows this priority order:
 1. **Whitelist** → Always send notification if keyword matches
 2. **Blacklist** → Never send notification if keyword matches
-3. **Channel/DM Settings** → Send only if channel is enabled or DM is enabled
+3. **Emoji Reactions** → Filter emoji-only messages if disabled
+4. **Channel/DM Settings** → Send only if channel is enabled or DM is enabled
+
+::: tip Emoji Reaction Filtering
+When "Emoji Reactions" is disabled, notifications will be suppressed for messages containing only emojis (e.g., "👍", "😀", "❤️"). Messages with emojis mixed with text will still trigger notifications normally. This is useful for reducing notification noise from emoji reactions and tapbacks.
+:::
 
 ### Client-Side Settings (Web Push Only)
 
