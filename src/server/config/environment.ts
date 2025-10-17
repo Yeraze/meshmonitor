@@ -147,6 +147,8 @@ export interface EnvironmentConfig {
   // Authentication
   disableLocalAuth: boolean;
   disableLocalAuthProvided: boolean;
+  disableAnonymous: boolean;
+  disableAnonymousProvided: boolean;
   adminUsername: string;
   adminUsernameProvided: boolean;
 
@@ -354,6 +356,7 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
 
   // Authentication
   const disableLocalAuth = parseBoolean('DISABLE_LOCAL_AUTH', process.env.DISABLE_LOCAL_AUTH, false);
+  const disableAnonymous = parseBoolean('DISABLE_ANONYMOUS', process.env.DISABLE_ANONYMOUS, false);
   const adminUsername = {
     value: process.env.ADMIN_USERNAME || 'admin',
     wasProvided: process.env.ADMIN_USERNAME !== undefined
@@ -438,6 +441,8 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     // Authentication
     disableLocalAuth: disableLocalAuth.value,
     disableLocalAuthProvided: disableLocalAuth.wasProvided,
+    disableAnonymous: disableAnonymous.value,
+    disableAnonymousProvided: disableAnonymous.wasProvided,
     adminUsername: adminUsername.value,
     adminUsernameProvided: adminUsername.wasProvided,
 

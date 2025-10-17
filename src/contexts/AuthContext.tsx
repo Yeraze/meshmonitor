@@ -27,6 +27,7 @@ export interface AuthStatus {
   permissions: PermissionSet;
   oidcEnabled: boolean;
   localAuthDisabled: boolean;
+  anonymousDisabled: boolean;
 }
 
 interface AuthContextType {
@@ -59,7 +60,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user: null,
         permissions: {},
         oidcEnabled: false,
-        localAuthDisabled: false
+        localAuthDisabled: false,
+        anonymousDisabled: false
       });
     } finally {
       setLoading(false);

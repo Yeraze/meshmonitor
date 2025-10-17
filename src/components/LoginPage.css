@@ -1,0 +1,201 @@
+/**
+ * Login Page Styles
+ *
+ * Centered login page with MeshMonitor branding
+ */
+
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 20px;
+}
+
+.login-container {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  padding: 40px;
+  max-width: 400px;
+  width: 100%;
+  text-align: center;
+}
+
+/* Logo */
+.login-logo {
+  margin-bottom: 30px;
+}
+
+.login-logo svg {
+  color: #667eea;
+  margin-bottom: 10px;
+}
+
+.login-logo h1 {
+  font-size: 32px;
+  font-weight: 700;
+  color: #2d3748;
+  margin: 0;
+}
+
+/* Form Container */
+.login-form-container {
+  margin-bottom: 30px;
+}
+
+/* Form Styles */
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.login-form .form-group {
+  text-align: left;
+}
+
+.login-form .form-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 500;
+  color: #4a5568;
+  font-size: 14px;
+}
+
+.login-form .form-group input {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #cbd5e0;
+  border-radius: 6px;
+  font-size: 14px;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+
+.login-form .form-group input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.login-form .form-group input:disabled {
+  background-color: #f7fafc;
+  cursor: not-allowed;
+}
+
+/* Error Message */
+.error-message {
+  background-color: #fed7d7;
+  color: #9b2c2c;
+  padding: 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  text-align: left;
+  white-space: pre-line;
+}
+
+/* Login Button */
+.login-button {
+  width: 100%;
+  padding: 12px;
+  font-size: 16px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+}
+
+.login-button.button-primary {
+  background-color: #667eea;
+  color: white;
+}
+
+.login-button.button-primary:hover:not(:disabled) {
+  background-color: #5568d3;
+}
+
+.login-button.button-secondary {
+  background-color: #edf2f7;
+  color: #2d3748;
+}
+
+.login-button.button-secondary:hover:not(:disabled) {
+  background-color: #e2e8f0;
+}
+
+.login-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Divider */
+.login-divider {
+  margin: 20px 0;
+  position: relative;
+  text-align: center;
+}
+
+.login-divider::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 100%;
+  height: 1px;
+  background-color: #e2e8f0;
+}
+
+.login-divider span {
+  position: relative;
+  background-color: white;
+  padding: 0 15px;
+  color: #a0aec0;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* Footer */
+.login-footer {
+  border-top: 1px solid #e2e8f0;
+  padding-top: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+}
+
+.login-footer .version {
+  color: #718096;
+}
+
+.login-footer .github-link {
+  color: #667eea;
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.login-footer .github-link:hover {
+  color: #5568d3;
+  text-decoration: underline;
+}
+
+/* Mobile Responsive */
+@media (max-width: 480px) {
+  .login-container {
+    padding: 30px 20px;
+  }
+
+  .login-logo h1 {
+    font-size: 28px;
+  }
+
+  .login-footer {
+    flex-direction: column;
+    gap: 10px;
+    text-align: center;
+  }
+}
