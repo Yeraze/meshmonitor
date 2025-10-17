@@ -25,6 +25,7 @@ const router = Router();
 router.get('/status', (req: Request, res: Response) => {
   try {
     const localAuthDisabled = getEnvironmentConfig().disableLocalAuth;
+    const anonymousDisabled = getEnvironmentConfig().disableAnonymous;
 
     if (!req.session.userId) {
       // Check if the session cookie exists at all
@@ -43,9 +44,9 @@ router.get('/status', (req: Request, res: Response) => {
         }
       }
 
-      // Return anonymous user permissions for unauthenticated users
+      // Return anonymous user permissions for unauthenticated users (if anonymous is enabled)
       const anonymousUser = databaseService.userModel.findByUsername('anonymous');
-      const anonymousPermissions = anonymousUser && anonymousUser.isActive
+      const anonymousPermissions = anonymousUser && anonymousUser.isActive && !anonymousDisabled
         ? databaseService.permissionModel.getUserPermissionSet(anonymousUser.id)
         : {};
 
@@ -54,7 +55,8 @@ router.get('/status', (req: Request, res: Response) => {
         user: null,
         permissions: anonymousPermissions,
         oidcEnabled: isOIDCEnabled(),
-        localAuthDisabled
+        localAuthDisabled,
+        anonymousDisabled
       });
     }
 
@@ -67,9 +69,9 @@ router.get('/status', (req: Request, res: Response) => {
       req.session.authProvider = undefined;
       req.session.isAdmin = undefined;
 
-      // Return anonymous user permissions
+      // Return anonymous user permissions (if anonymous is enabled)
       const anonymousUser = databaseService.userModel.findByUsername('anonymous');
-      const anonymousPermissions = anonymousUser && anonymousUser.isActive
+      const anonymousPermissions = anonymousUser && anonymousUser.isActive && !anonymousDisabled
         ? databaseService.permissionModel.getUserPermissionSet(anonymousUser.id)
         : {};
 
@@ -78,7 +80,8 @@ router.get('/status', (req: Request, res: Response) => {
         user: null,
         permissions: anonymousPermissions,
         oidcEnabled: isOIDCEnabled(),
-        localAuthDisabled
+        localAuthDisabled,
+        anonymousDisabled
       });
     }
 
@@ -93,7 +96,8 @@ router.get('/status', (req: Request, res: Response) => {
       user: userWithoutPassword,
       permissions,
       oidcEnabled: isOIDCEnabled(),
-      localAuthDisabled
+      localAuthDisabled,
+      anonymousDisabled
     });
   } catch (error) {
     logger.error('Error getting auth status:', error);

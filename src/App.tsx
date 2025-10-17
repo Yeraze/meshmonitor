@@ -40,6 +40,7 @@ import { UIProvider, useUI } from './contexts/UIContext'
 import { useAuth } from './contexts/AuthContext'
 import { useCsrf } from './contexts/CsrfContext'
 import LoginModal from './components/LoginModal'
+import LoginPage from './components/LoginPage'
 import UserMenu from './components/UserMenu'
 
 // Fix for default markers in React-Leaflet
@@ -3895,6 +3896,11 @@ function App() {
       );
     });
   }, [showPaths, traceroutes, nodes, distanceUnit]);
+
+  // If anonymous is disabled and user is not authenticated, show login page
+  if (authStatus?.anonymousDisabled && !authStatus?.authenticated) {
+    return <LoginPage />;
+  }
 
   return (
     <div className="app">
