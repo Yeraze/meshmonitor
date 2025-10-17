@@ -559,6 +559,155 @@ describe('Authentication Routes', () => {
     });
   });
 
+  describe('Disable Anonymous Feature', () => {
+    let originalEnv: string | undefined;
+
+    beforeEach(() => {
+      // Save original environment variable
+      originalEnv = process.env.DISABLE_ANONYMOUS;
+    });
+
+    afterEach(async () => {
+      // Restore original environment variable
+      if (originalEnv !== undefined) {
+        process.env.DISABLE_ANONYMOUS = originalEnv;
+      } else {
+        delete process.env.DISABLE_ANONYMOUS;
+      }
+      // Reset environment config to pick up changes
+      const { resetEnvironmentConfig } = await import('../config/environment.js');
+      resetEnvironmentConfig();
+    });
+
+    it('should return anonymousDisabled=false by default', async () => {
+      delete process.env.DISABLE_ANONYMOUS;
+      const { resetEnvironmentConfig } = await import('../config/environment.js');
+      resetEnvironmentConfig();
+
+      const response = await agent
+        .get('/api/auth/status')
+        .expect(200);
+
+      expect(response.body.anonymousDisabled).toBe(false);
+    });
+
+    it('should return anonymousDisabled=true when DISABLE_ANONYMOUS=true', async () => {
+      process.env.DISABLE_ANONYMOUS = 'true';
+      const { resetEnvironmentConfig } = await import('../config/environment.js');
+      resetEnvironmentConfig();
+
+      const response = await agent
+        .get('/api/auth/status')
+        .expect(200);
+
+      expect(response.body.anonymousDisabled).toBe(true);
+    });
+
+    it('should return empty permissions for unauthenticated users when anonymous disabled', async () => {
+      process.env.DISABLE_ANONYMOUS = 'true';
+      const { resetEnvironmentConfig } = await import('../config/environment.js');
+      resetEnvironmentConfig();
+
+      const response = await agent
+        .get('/api/auth/status')
+        .expect(200);
+
+      expect(response.body.authenticated).toBe(false);
+      expect(response.body.permissions).toEqual({});
+      expect(response.body.anonymousDisabled).toBe(true);
+    });
+
+    it('should still return anonymous permissions when DISABLE_ANONYMOUS=false', async () => {
+      process.env.DISABLE_ANONYMOUS = 'false';
+      const { resetEnvironmentConfig } = await import('../config/environment.js');
+      resetEnvironmentConfig();
+
+      // Ensure anonymous user exists and has permissions
+      let anonymousUser = userModel.findByUsername('anonymous');
+      if (!anonymousUser) {
+        // Create anonymous user if it doesn't exist
+        anonymousUser = await userModel.create({
+          username: 'anonymous',
+          authProvider: 'local',
+          isAdmin: false
+        });
+      }
+      // Grant permissions
+      permissionModel.grantDefaultPermissions(anonymousUser.id, false);
+
+      const response = await agent
+        .get('/api/auth/status')
+        .expect(200);
+
+      expect(response.body.authenticated).toBe(false);
+      expect(response.body.anonymousDisabled).toBe(false);
+      // Should have anonymous user permissions
+      expect(Object.keys(response.body.permissions).length).toBeGreaterThan(0);
+    });
+
+    it('should return anonymousDisabled status for authenticated users', async () => {
+      process.env.DISABLE_ANONYMOUS = 'true';
+      const { resetEnvironmentConfig } = await import('../config/environment.js');
+      resetEnvironmentConfig();
+
+      // Login first
+      await agent
+        .post('/api/auth/login')
+        .send({
+          username: 'testuser',
+          password: 'password123'
+        });
+
+      const response = await agent
+        .get('/api/auth/status')
+        .expect(200);
+
+      expect(response.body.authenticated).toBe(true);
+      expect(response.body.anonymousDisabled).toBe(true);
+      // Authenticated users should have their own permissions
+      expect(Object.keys(response.body.permissions).length).toBeGreaterThan(0);
+    });
+
+    it('should not affect authenticated user permissions when anonymous disabled', async () => {
+      process.env.DISABLE_ANONYMOUS = 'true';
+      const { resetEnvironmentConfig } = await import('../config/environment.js');
+      resetEnvironmentConfig();
+
+      // Login first
+      await agent
+        .post('/api/auth/login')
+        .send({
+          username: 'testuser',
+          password: 'password123'
+        });
+
+      const response = await agent
+        .get('/api/auth/status')
+        .expect(200);
+
+      expect(response.body.authenticated).toBe(true);
+      expect(response.body.user.username).toBe('testuser');
+      expect(response.body.permissions).toBeTruthy();
+      expect(response.body.permissions.dashboard).toBeDefined();
+    });
+
+    it('should work with both DISABLE_ANONYMOUS and DISABLE_LOCAL_AUTH', async () => {
+      process.env.DISABLE_ANONYMOUS = 'true';
+      process.env.DISABLE_LOCAL_AUTH = 'true';
+      const { resetEnvironmentConfig } = await import('../config/environment.js');
+      resetEnvironmentConfig();
+
+      const response = await agent
+        .get('/api/auth/status')
+        .expect(200);
+
+      expect(response.body.anonymousDisabled).toBe(true);
+      expect(response.body.localAuthDisabled).toBe(true);
+      expect(response.body.authenticated).toBe(false);
+      expect(response.body.permissions).toEqual({});
+    });
+  });
+
   describe('Auth Status Response Structure', () => {
     it('should include all required fields in unauthenticated status', async () => {
       const response = await agent
@@ -570,11 +719,13 @@ describe('Authentication Routes', () => {
       expect(response.body).toHaveProperty('permissions');
       expect(response.body).toHaveProperty('oidcEnabled');
       expect(response.body).toHaveProperty('localAuthDisabled');
+      expect(response.body).toHaveProperty('anonymousDisabled');
 
       expect(response.body.authenticated).toBe(false);
       expect(response.body.user).toBeNull();
       expect(typeof response.body.oidcEnabled).toBe('boolean');
       expect(typeof response.body.localAuthDisabled).toBe('boolean');
+      expect(typeof response.body.anonymousDisabled).toBe('boolean');
     });
 
     it('should include all required fields in authenticated status', async () => {
@@ -595,12 +746,14 @@ describe('Authentication Routes', () => {
       expect(response.body).toHaveProperty('permissions');
       expect(response.body).toHaveProperty('oidcEnabled');
       expect(response.body).toHaveProperty('localAuthDisabled');
+      expect(response.body).toHaveProperty('anonymousDisabled');
 
       expect(response.body.authenticated).toBe(true);
       expect(response.body.user).toBeTruthy();
       expect(response.body.user.username).toBe('testuser');
       expect(typeof response.body.oidcEnabled).toBe('boolean');
       expect(typeof response.body.localAuthDisabled).toBe('boolean');
+      expect(typeof response.body.anonymousDisabled).toBe('boolean');
     });
   });
 
