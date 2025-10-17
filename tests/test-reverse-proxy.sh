@@ -17,7 +17,7 @@ NC='\033[0m' # No Color
 
 COMPOSE_FILE="docker-compose.reverse-proxy-test.yml"
 CONTAINER_NAME="meshmonitor-reverse-proxy-test"
-TEST_PORT="8084"
+TEST_PORT="8081"
 TEST_DOMAIN="https://meshdev.yeraze.online"
 TEST_URL="$TEST_DOMAIN"  # Use HTTPS domain for all tests
 
@@ -43,7 +43,7 @@ services:
       dockerfile: Dockerfile
     container_name: meshmonitor-reverse-proxy-test
     ports:
-      - "8084:3001"
+      - "8081:3001"
     volumes:
       - meshmonitor-reverse-proxy-test-data:/data
     environment:
