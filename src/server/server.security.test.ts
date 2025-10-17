@@ -99,7 +99,7 @@ describe('Security: SQL Injection Prevention', () => {
     expect(COLUMN_MAP['apprise']).toBe('enable_apprise');
 
     // Invalid service would not exist in map (TypeScript prevents this, but runtime check is good)
-    const invalidService = 'malicious_sql' as any;
-    expect(COLUMN_MAP[invalidService]).toBeUndefined();
+    const invalidService = 'malicious_sql';
+    expect((COLUMN_MAP as any)[invalidService]).toBeUndefined();
   });
 });
