@@ -13,6 +13,7 @@ import { migration as tracerouteMigration } from '../server/migrations/004_add_t
 import { migration as auditLogMigration } from '../server/migrations/005_enhance_audit_log.js';
 import { migration as auditPermissionMigration } from '../server/migrations/006_add_audit_permission.js';
 import { migration as readMessagesMigration } from '../server/migrations/007_add_read_messages.js';
+import { migration as pushSubscriptionsMigration } from '../server/migrations/008_add_push_subscriptions.js';
 
 export interface DbNode {
   nodeNum: number;
@@ -120,6 +121,18 @@ export interface DbNeighborInfo {
   createdAt: number;
 }
 
+export interface DbPushSubscription {
+  id?: number;
+  userId?: number;
+  endpoint: string;
+  p256dhKey: string;
+  authKey: string;
+  userAgent?: string;
+  createdAt: number;
+  updatedAt: number;
+  lastUsedAt?: number;
+}
+
 class DatabaseService {
   public db: Database.Database;
   private isInitialized = false;
@@ -171,6 +184,7 @@ class DatabaseService {
     this.runAuditLogMigration();
     this.runAuditPermissionMigration();
     this.runReadMessagesMigration();
+    this.runPushSubscriptionsMigration();
     this.ensureAutomationDefaults();
     this.isInitialized = true;
   }
@@ -350,6 +364,27 @@ class DatabaseService {
       logger.debug('✅ Read messages migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run read messages migration:', error);
+      throw error;
+    }
+  }
+
+  private runPushSubscriptionsMigration(): void {
+    logger.debug('Running push subscriptions migration...');
+    try {
+      const migrationKey = 'migration_008_push_subscriptions';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Push subscriptions migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 008: Add push_subscriptions table...');
+      pushSubscriptionsMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Push subscriptions migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run push subscriptions migration:', error);
       throw error;
     }
   }

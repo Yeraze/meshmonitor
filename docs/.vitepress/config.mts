@@ -33,7 +33,8 @@ export default defineConfig({
           items: [
             { text: 'Settings', link: '/features/settings' },
             { text: 'Automation', link: '/features/automation' },
-            { text: 'Device Configuration', link: '/features/device' }
+            { text: 'Device Configuration', link: '/features/device' },
+            { text: 'Push Notifications', link: '/features/notifications' }
           ]
         }
       ],
@@ -46,7 +47,8 @@ export default defineConfig({
             { text: 'SSO Setup', link: '/configuration/sso' },
             { text: 'Reverse Proxy', link: '/configuration/reverse-proxy' },
             { text: 'HTTP vs HTTPS', link: '/configuration/http-vs-https' },
-            { text: 'Production Deployment', link: '/configuration/production' }
+            { text: 'Production Deployment', link: '/configuration/production' },
+            { text: 'Push Notifications', link: '/features/notifications' }
           ]
         }
       ],

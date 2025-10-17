@@ -157,6 +157,14 @@ export interface EnvironmentConfig {
   rateLimitAuthProvided: boolean;
   rateLimitMessages: number;
   rateLimitMessagesProvided: boolean;
+
+  // Push Notifications (VAPID)
+  vapidPublicKey: string | undefined;
+  vapidPublicKeyProvided: boolean;
+  vapidPrivateKey: string | undefined;
+  vapidPrivateKeyProvided: boolean;
+  vapidSubject: string | undefined;
+  vapidSubjectProvided: boolean;
 }
 
 /**
@@ -357,6 +365,20 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
   const rateLimitAuth = parseInt32('RATE_LIMIT_AUTH', process.env.RATE_LIMIT_AUTH, nodeEnv.value === 'development' ? 100 : 5);
   const rateLimitMessages = parseInt32('RATE_LIMIT_MESSAGES', process.env.RATE_LIMIT_MESSAGES, nodeEnv.value === 'development' ? 100 : 30);
 
+  // Push Notifications (VAPID) - optional, can be stored in database instead
+  const vapidPublicKey = {
+    value: process.env.VAPID_PUBLIC_KEY,
+    wasProvided: process.env.VAPID_PUBLIC_KEY !== undefined
+  };
+  const vapidPrivateKey = {
+    value: process.env.VAPID_PRIVATE_KEY,
+    wasProvided: process.env.VAPID_PRIVATE_KEY !== undefined
+  };
+  const vapidSubject = {
+    value: process.env.VAPID_SUBJECT,
+    wasProvided: process.env.VAPID_SUBJECT !== undefined
+  };
+
   return {
     // Node environment
     nodeEnv: nodeEnv.value,
@@ -425,7 +447,15 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     rateLimitAuth: rateLimitAuth.value,
     rateLimitAuthProvided: rateLimitAuth.wasProvided,
     rateLimitMessages: rateLimitMessages.value,
-    rateLimitMessagesProvided: rateLimitMessages.wasProvided
+    rateLimitMessagesProvided: rateLimitMessages.wasProvided,
+
+    // Push Notifications (VAPID)
+    vapidPublicKey: vapidPublicKey.value,
+    vapidPublicKeyProvided: vapidPublicKey.wasProvided,
+    vapidPrivateKey: vapidPrivateKey.value,
+    vapidPrivateKeyProvided: vapidPrivateKey.wasProvided,
+    vapidSubject: vapidSubject.value,
+    vapidSubjectProvided: vapidSubject.wasProvided
   };
 }
 

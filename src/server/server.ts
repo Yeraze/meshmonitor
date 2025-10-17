@@ -13,12 +13,14 @@ import { getSessionConfig } from './auth/sessionConfig.js';
 import { initializeOIDC } from './auth/oidcAuth.js';
 import {
   optionalAuth,
+  requireAuth,
   requirePermission,
   requireAdmin,
   hasPermission
 } from './auth/authMiddleware.js';
 import { apiLimiter } from './middleware/rateLimiters.js';
 import { getEnvironmentConfig } from './config/environment.js';
+import { pushNotificationService } from './services/pushNotificationService.js';
 
 const require = createRequire(import.meta.url);
 const packageJson = require('../../package.json');
@@ -1838,6 +1840,168 @@ apiRouter.post('/system/restart', requirePermission('settings', 'write'), (_req,
   }
 });
 
+// ==========================================
+// Push Notification Endpoints
+// ==========================================
+
+// Get VAPID public key and configuration status
+apiRouter.get('/push/vapid-key', optionalAuth(), (_req, res) => {
+  const publicKey = pushNotificationService.getPublicKey();
+  const status = pushNotificationService.getVapidStatus();
+
+  res.json({
+    publicKey,
+    status
+  });
+});
+
+// Get push notification status
+apiRouter.get('/push/status', optionalAuth(), (_req, res) => {
+  const status = pushNotificationService.getVapidStatus();
+  res.json(status);
+});
+
+// Update VAPID subject (admin only)
+apiRouter.put('/push/vapid-subject', requireAdmin(), (req, res) => {
+  try {
+    const { subject } = req.body;
+
+    if (!subject || typeof subject !== 'string') {
+      return res.status(400).json({ error: 'Subject is required and must be a string' });
+    }
+
+    pushNotificationService.updateVapidSubject(subject);
+    res.json({ success: true, subject });
+  } catch (error: any) {
+    logger.error('Error updating VAPID subject:', error);
+    res.status(400).json({ error: error.message || 'Failed to update VAPID subject' });
+  }
+});
+
+// Subscribe to push notifications
+apiRouter.post('/push/subscribe', optionalAuth(), async (req, res) => {
+  try {
+    const { subscription } = req.body;
+
+    if (!subscription || !subscription.endpoint || !subscription.keys) {
+      return res.status(400).json({ error: 'Invalid subscription data' });
+    }
+
+    const userId = req.session?.userId;
+    const userAgent = req.headers['user-agent'];
+
+    await pushNotificationService.saveSubscription(userId, subscription, userAgent);
+
+    res.json({ success: true });
+  } catch (error: any) {
+    logger.error('Error saving push subscription:', error);
+    res.status(500).json({ error: error.message || 'Failed to save subscription' });
+  }
+});
+
+// Unsubscribe from push notifications
+apiRouter.post('/push/unsubscribe', optionalAuth(), async (req, res) => {
+  try {
+    const { endpoint } = req.body;
+
+    if (!endpoint) {
+      return res.status(400).json({ error: 'Endpoint is required' });
+    }
+
+    await pushNotificationService.removeSubscription(endpoint);
+
+    res.json({ success: true });
+  } catch (error: any) {
+    logger.error('Error removing push subscription:', error);
+    res.status(500).json({ error: error.message || 'Failed to remove subscription' });
+  }
+});
+
+// Test push notification (admin only)
+apiRouter.post('/push/test', requireAdmin(), async (req, res) => {
+  try {
+    const userId = req.session?.userId;
+
+    const result = await pushNotificationService.sendToUser(userId, {
+      title: 'Test Notification',
+      body: 'This is a test push notification from MeshMonitor',
+      icon: '/logo.png',
+      badge: '/logo.png',
+      tag: 'test-notification'
+    });
+
+    res.json({
+      success: true,
+      sent: result.sent,
+      failed: result.failed
+    });
+  } catch (error: any) {
+    logger.error('Error sending test notification:', error);
+    res.status(500).json({ error: error.message || 'Failed to send test notification' });
+  }
+});
+
+// Get push notification preferences
+apiRouter.get('/push/preferences', requireAuth(), async (req, res) => {
+  try {
+    const userId = req.session?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const prefsJson = databaseService.getSetting(`push_prefs_${userId}`);
+
+    if (prefsJson) {
+      const prefs = JSON.parse(prefsJson);
+      res.json(prefs);
+    } else {
+      // Return defaults
+      res.json({
+        enabledChannels: [],
+        enableDirectMessages: true,
+        whitelist: ['Hi', 'Help'],
+        blacklist: ['Test', 'Copy']
+      });
+    }
+  } catch (error: any) {
+    logger.error('Error loading push preferences:', error);
+    res.status(500).json({ error: error.message || 'Failed to load preferences' });
+  }
+});
+
+// Save push notification preferences
+apiRouter.post('/push/preferences', requireAuth(), async (req, res) => {
+  try {
+    const userId = req.session?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const { enabledChannels, enableDirectMessages, whitelist, blacklist } = req.body;
+
+    // Validate input
+    if (!Array.isArray(enabledChannels) || typeof enableDirectMessages !== 'boolean' ||
+        !Array.isArray(whitelist) || !Array.isArray(blacklist)) {
+      return res.status(400).json({ error: 'Invalid preferences data' });
+    }
+
+    const prefs = {
+      enabledChannels,
+      enableDirectMessages,
+      whitelist,
+      blacklist
+    };
+
+    databaseService.setSetting(`push_prefs_${userId}`, JSON.stringify(prefs));
+
+    logger.info(`✅ Saved push notification preferences for user ${userId}`);
+    res.json({ success: true });
+  } catch (error: any) {
+    logger.error('Error saving push preferences:', error);
+    res.status(500).json({ error: error.message || 'Failed to save preferences' });
+  }
+});
+
 // Serve static files from the React app build
 const buildPath = path.join(__dirname, '../../dist');
 
@@ -1869,7 +2033,10 @@ const rewriteHtml = (htmlContent: string, baseUrl: string): string => {
     .replace(/href="\/favicon\.ico"/g, `href="${baseUrl}/favicon.ico"`)
     .replace(/href="\/favicon-16x16\.png"/g, `href="${baseUrl}/favicon-16x16.png"`)
     .replace(/href="\/favicon-32x32\.png"/g, `href="${baseUrl}/favicon-32x32.png"`)
-    .replace(/href="\/logo\.png"/g, `href="${baseUrl}/logo.png"`);
+    .replace(/href="\/logo\.png"/g, `href="${baseUrl}/logo.png"`)
+    // PWA-related paths
+    .replace(/href="\/manifest\.webmanifest"/g, `href="${baseUrl}/manifest.webmanifest"`)
+    .replace(/src="\/registerSW\.js"/g, `src="${baseUrl}/registerSW.js"`);
 
   return rewritten;
 };
@@ -1880,6 +2047,30 @@ let cachedRewrittenHtml: string | null = null;
 
 // Serve static assets (JS, CSS, images)
 if (BASE_URL) {
+  // Serve PWA files with BASE_URL rewriting (MUST be before static middleware)
+  app.get(`${BASE_URL}/registerSW.js`, (_req: express.Request, res: express.Response) => {
+    const swRegisterPath = path.join(buildPath, 'registerSW.js');
+    let content = fs.readFileSync(swRegisterPath, 'utf-8');
+    // Rewrite service worker registration to use BASE_URL
+    // The generated file has: navigator.serviceWorker.register('/sw.js', { scope: '/' })
+    content = content
+      .replace("'/sw.js'", `'${BASE_URL}/sw.js'`)
+      .replace('"/sw.js"', `"${BASE_URL}/sw.js"`)
+      .replace("scope: '/'", `scope: '${BASE_URL}/'`)
+      .replace('scope: "/"', `scope: "${BASE_URL}/"`);
+    res.type('application/javascript').send(content);
+  });
+
+  app.get(`${BASE_URL}/manifest.webmanifest`, (_req: express.Request, res: express.Response) => {
+    const manifestPath = path.join(buildPath, 'manifest.webmanifest');
+    let content = fs.readFileSync(manifestPath, 'utf-8');
+    const manifest = JSON.parse(content);
+    // Update manifest paths
+    manifest.scope = `${BASE_URL}/`;
+    manifest.start_url = `${BASE_URL}/`;
+    res.type('application/manifest+json').json(manifest);
+  });
+
   // Serve assets folder specifically
   app.use(`${BASE_URL}/assets`, express.static(path.join(buildPath, 'assets')));
 
