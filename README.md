@@ -159,6 +159,18 @@ This allows MeshMonitor to connect to **any** Meshtastic device (BLE, Serial, or
 - Network topology discovery
 - Traceroute history with SNR tracking
 
+### 🔔 **Flexible Notifications**
+- **Dual Notification System**: Choose Web Push (browser), Apprise (100+ services), or both
+- **Web Push Notifications**: Browser-based push notifications with PWA support
+- **Apprise Integration**: Send notifications to Discord, Slack, Telegram, Email, SMS, and 100+ other services
+- **No HTTPS Required**: Apprise works over HTTP, removing SSL certificate barrier
+- **Per-User Preferences**: Individual control over notification methods and filtering
+- **Smart Filtering**: Whitelist/blacklist keywords, channel selection, and DM toggles
+- **Shared Filter Logic**: Consistent filtering across both notification methods
+- **Service Worker**: Background push support with custom icons and notification tags
+- **Notification Sounds**: Audio alerts for new messages (configurable per-user)
+- **Unread Indicators**: Visual badges showing unread message counts
+
 ### ⚙️ **Device Configuration**
 - Comprehensive device configuration UI with toast notifications
 - **Node Settings**: Configure long name, short name, device role, and node info broadcast interval

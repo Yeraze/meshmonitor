@@ -59,7 +59,7 @@ self.addEventListener('push', (event) => {
     body: 'You have a new notification',
     icon: '/logo.png',
     badge: '/logo.png',
-    tag: 'meshmonitor-notification'
+    tag: undefined as string | undefined  // Will be set uniquely per notification
   };
 
   // Parse notification data from push payload
@@ -71,12 +71,16 @@ self.addEventListener('push', (event) => {
         body: data.body || notificationData.body,
         icon: data.icon || notificationData.icon,
         badge: data.badge || notificationData.badge,
-        tag: data.tag || notificationData.tag
+        tag: data.tag  // Use tag from payload, or undefined for unique notifications
       };
     } catch (error) {
       console.error('[Service Worker] Failed to parse push data:', error);
     }
   }
+
+  // If no tag provided, use timestamp to ensure each notification is unique
+  // This prevents macOS from replacing previous notifications
+  const finalTag = notificationData.tag || `meshmonitor-${Date.now()}`;
 
   // CRITICAL for iOS: Use event.waitUntil() to keep service worker alive
   // iOS Safari requires this or the subscription gets cancelled after 3 notifications
@@ -85,7 +89,8 @@ self.addEventListener('push', (event) => {
       body: notificationData.body,
       icon: notificationData.icon,
       badge: notificationData.badge,
-      tag: notificationData.tag
+      tag: finalTag,
+      requireInteraction: false  // Allow notifications to auto-dismiss
     } as NotificationOptions)
   );
 });

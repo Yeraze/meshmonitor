@@ -32,6 +32,15 @@ FROM node:22-alpine
 
 WORKDIR /app
 
+# Install Python and dependencies for Apprise
+RUN apk add --no-cache \
+    python3 \
+    py3-pip \
+    supervisor \
+    su-exec \
+    && python3 -m venv /opt/apprise-venv \
+    && /opt/apprise-venv/bin/pip install --no-cache-dir apprise
+
 # Copy package files
 COPY package*.json ./
 
@@ -44,18 +53,27 @@ COPY --from=builder /app/dist ./dist
 # Copy protobuf definitions needed by the server
 COPY --from=builder /app/protobufs ./protobufs
 
-# Create data directory for SQLite database
-RUN mkdir -p /data && chown -R node:node /data
+# Create data directory for SQLite database and Apprise configs
+RUN mkdir -p /data/apprise-config && chown -R node:node /data
 
-# Switch to non-root user
-USER node
+# Create supervisor configuration to run both Node.js and Apprise
+RUN mkdir -p /etc/supervisor/conf.d
+COPY docker/supervisord.conf /etc/supervisord.conf
 
-# Expose port 3001 (the Express server port)
-EXPOSE 3001
+# Create Apprise API wrapper script
+COPY docker/apprise-api.py /app/apprise-api.py
+RUN chmod +x /app/apprise-api.py
+
+# Expose ports
+# 3001: MeshMonitor Express server
+# 8000: Internal Apprise API (not exposed to host by default)
+EXPOSE 3001 8000
 
 # Set environment variables
 ENV NODE_ENV=production
 ENV PORT=3001
+ENV APPRISE_CONFIG_DIR=/data/apprise-config
+ENV APPRISE_STATEFUL_MODE=simple
 
-# Start the Express server which serves both API and static files
-CMD ["npm", "start"]
+# Run supervisor to manage both processes
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]

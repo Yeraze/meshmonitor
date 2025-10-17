@@ -21,6 +21,8 @@ import {
 import { apiLimiter } from './middleware/rateLimiters.js';
 import { getEnvironmentConfig } from './config/environment.js';
 import { pushNotificationService } from './services/pushNotificationService.js';
+import { appriseNotificationService } from './services/appriseNotificationService.js';
+import { getUserNotificationPreferences, saveUserNotificationPreferences } from './utils/notificationFiltering.js';
 
 const require = createRequire(import.meta.url);
 const packageJson = require('../../package.json');
@@ -1941,7 +1943,7 @@ apiRouter.post('/push/test', requireAdmin(), async (req, res) => {
   }
 });
 
-// Get push notification preferences
+// Get notification preferences (unified for Web Push and Apprise)
 apiRouter.get('/push/preferences', requireAuth(), async (req, res) => {
   try {
     const userId = req.session?.userId;
@@ -1949,14 +1951,15 @@ apiRouter.get('/push/preferences', requireAuth(), async (req, res) => {
       return res.status(401).json({ error: 'Authentication required' });
     }
 
-    const prefsJson = databaseService.getSetting(`push_prefs_${userId}`);
+    const prefs = getUserNotificationPreferences(userId);
 
-    if (prefsJson) {
-      const prefs = JSON.parse(prefsJson);
+    if (prefs) {
       res.json(prefs);
     } else {
       // Return defaults
       res.json({
+        enableWebPush: true,
+        enableApprise: false,
         enabledChannels: [],
         enableDirectMessages: true,
         whitelist: ['Hi', 'Help'],
@@ -1964,12 +1967,12 @@ apiRouter.get('/push/preferences', requireAuth(), async (req, res) => {
       });
     }
   } catch (error: any) {
-    logger.error('Error loading push preferences:', error);
+    logger.error('Error loading notification preferences:', error);
     res.status(500).json({ error: error.message || 'Failed to load preferences' });
   }
 });
 
-// Save push notification preferences
+// Save notification preferences (unified for Web Push and Apprise)
 apiRouter.post('/push/preferences', requireAuth(), async (req, res) => {
   try {
     const userId = req.session?.userId;
@@ -1977,28 +1980,183 @@ apiRouter.post('/push/preferences', requireAuth(), async (req, res) => {
       return res.status(401).json({ error: 'Authentication required' });
     }
 
-    const { enabledChannels, enableDirectMessages, whitelist, blacklist } = req.body;
+    const { enableWebPush, enableApprise, enabledChannels, enableDirectMessages, whitelist, blacklist } = req.body;
 
     // Validate input
-    if (!Array.isArray(enabledChannels) || typeof enableDirectMessages !== 'boolean' ||
+    if (typeof enableWebPush !== 'boolean' || typeof enableApprise !== 'boolean' ||
+        !Array.isArray(enabledChannels) || typeof enableDirectMessages !== 'boolean' ||
         !Array.isArray(whitelist) || !Array.isArray(blacklist)) {
       return res.status(400).json({ error: 'Invalid preferences data' });
     }
 
     const prefs = {
+      enableWebPush,
+      enableApprise,
       enabledChannels,
       enableDirectMessages,
       whitelist,
       blacklist
     };
 
-    databaseService.setSetting(`push_prefs_${userId}`, JSON.stringify(prefs));
+    const success = saveUserNotificationPreferences(userId, prefs);
 
-    logger.info(`✅ Saved push notification preferences for user ${userId}`);
-    res.json({ success: true });
+    if (success) {
+      logger.info(`✅ Saved notification preferences for user ${userId} (WebPush: ${enableWebPush}, Apprise: ${enableApprise})`);
+      res.json({ success: true });
+    } else {
+      res.status(500).json({ error: 'Failed to save preferences' });
+    }
   } catch (error: any) {
-    logger.error('Error saving push preferences:', error);
+    logger.error('Error saving notification preferences:', error);
     res.status(500).json({ error: error.message || 'Failed to save preferences' });
+  }
+});
+
+// ==========================================
+// Apprise Notification Endpoints
+// ==========================================
+
+// Get Apprise status (admin only)
+apiRouter.get('/apprise/status', requireAdmin(), async (_req, res) => {
+  try {
+    const isAvailable = appriseNotificationService.isAvailable();
+    res.json({
+      available: isAvailable,
+      enabled: databaseService.getSetting('apprise_enabled') === 'true',
+      url: databaseService.getSetting('apprise_url') || 'http://localhost:8000'
+    });
+  } catch (error: any) {
+    logger.error('Error getting Apprise status:', error);
+    res.status(500).json({ error: error.message || 'Failed to get Apprise status' });
+  }
+});
+
+// Send test Apprise notification (admin only)
+apiRouter.post('/apprise/test', requireAdmin(), async (_req, res) => {
+  try {
+    const success = await appriseNotificationService.sendNotification({
+      title: 'Test Notification',
+      body: 'This is a test notification from MeshMonitor via Apprise',
+      type: 'info'
+    });
+
+    if (success) {
+      res.json({ success: true, message: 'Test notification sent successfully' });
+    } else {
+      res.json({ success: false, message: 'Apprise not available or no URLs configured' });
+    }
+  } catch (error: any) {
+    logger.error('Error sending test Apprise notification:', error);
+    res.status(500).json({ error: error.message || 'Failed to send test notification' });
+  }
+});
+
+// Get configured Apprise URLs (admin only)
+apiRouter.get('/apprise/urls', requireAdmin(), async (_req, res) => {
+  try {
+    const configFile = process.env.APPRISE_CONFIG_DIR
+      ? `${process.env.APPRISE_CONFIG_DIR}/urls.txt`
+      : '/data/apprise-config/urls.txt';
+
+    // Check if file exists
+    const fs = await import('fs/promises');
+    try {
+      const content = await fs.readFile(configFile, 'utf-8');
+      const urls = content
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0 && !line.startsWith('#'));
+
+      res.json({ urls });
+    } catch (error: any) {
+      // File doesn't exist or can't be read - return empty array
+      if (error.code === 'ENOENT') {
+        res.json({ urls: [] });
+      } else {
+        throw error;
+      }
+    }
+  } catch (error: any) {
+    logger.error('Error reading Apprise URLs:', error);
+    res.status(500).json({ error: error.message || 'Failed to read Apprise URLs' });
+  }
+});
+
+// Configure Apprise URLs (admin only)
+apiRouter.post('/apprise/configure', requireAdmin(), async (req, res) => {
+  try {
+    const { urls } = req.body;
+
+    if (!Array.isArray(urls)) {
+      return res.status(400).json({ error: 'URLs must be an array' });
+    }
+
+    // Security: Validate URL schemes to prevent malicious URLs
+    const ALLOWED_SCHEMES = [
+      // Apprise service protocols
+      'discord', 'slack', 'tgram', 'telegram', 'msteams', 'teams',
+      'mailto', 'email', 'smtp', 'smtps',
+      'webhook', 'webhooks', 'json', 'xml',
+      'gotify', 'ntfy', 'pushover', 'pushbullet',
+      'apprise', 'apprises',
+      // Standard web protocols (for webhooks)
+      'http', 'https'
+    ];
+
+    const invalidUrls: string[] = [];
+    const validUrls = urls.filter((url: string) => {
+      if (typeof url !== 'string' || !url.trim()) {
+        invalidUrls.push(url);
+        return false;
+      }
+
+      try {
+        const parsed = new URL(url);
+        const scheme = parsed.protocol.slice(0, -1).toLowerCase(); // Remove trailing ':' and normalize
+
+        if (!ALLOWED_SCHEMES.includes(scheme)) {
+          invalidUrls.push(url);
+          return false;
+        }
+
+        return true;
+      } catch {
+        invalidUrls.push(url);
+        return false;
+      }
+    });
+
+    if (invalidUrls.length > 0) {
+      return res.status(400).json({
+        error: 'Invalid or disallowed URL schemes detected',
+        invalidUrls,
+        allowedSchemes: ALLOWED_SCHEMES
+      });
+    }
+
+    const result = await appriseNotificationService.configureUrls(validUrls);
+    res.json(result);
+  } catch (error: any) {
+    logger.error('Error configuring Apprise URLs:', error);
+    res.status(500).json({ error: error.message || 'Failed to configure Apprise URLs' });
+  }
+});
+
+// Enable/disable Apprise system-wide (admin only)
+apiRouter.put('/apprise/enabled', requireAdmin(), (req, res) => {
+  try {
+    const { enabled } = req.body;
+
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ error: 'Enabled must be a boolean' });
+    }
+
+    databaseService.setSetting('apprise_enabled', enabled ? 'true' : 'false');
+    logger.info(`✅ Apprise ${enabled ? 'enabled' : 'disabled'} system-wide`);
+    res.json({ success: true, enabled });
+  } catch (error: any) {
+    logger.error('Error updating Apprise enabled status:', error);
+    res.status(500).json({ error: error.message || 'Failed to update Apprise status' });
   }
 });
 

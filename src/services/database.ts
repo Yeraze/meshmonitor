@@ -14,6 +14,7 @@ import { migration as auditLogMigration } from '../server/migrations/005_enhance
 import { migration as auditPermissionMigration } from '../server/migrations/006_add_audit_permission.js';
 import { migration as readMessagesMigration } from '../server/migrations/007_add_read_messages.js';
 import { migration as pushSubscriptionsMigration } from '../server/migrations/008_add_push_subscriptions.js';
+import { migration as notificationPreferencesMigration } from '../server/migrations/009_add_notification_preferences.js';
 
 export interface DbNode {
   nodeNum: number;
@@ -185,6 +186,7 @@ class DatabaseService {
     this.runAuditPermissionMigration();
     this.runReadMessagesMigration();
     this.runPushSubscriptionsMigration();
+    this.runNotificationPreferencesMigration();
     this.ensureAutomationDefaults();
     this.isInitialized = true;
   }
@@ -385,6 +387,27 @@ class DatabaseService {
       logger.debug('✅ Push subscriptions migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run push subscriptions migration:', error);
+      throw error;
+    }
+  }
+
+  private runNotificationPreferencesMigration(): void {
+    logger.debug('Running notification preferences migration...');
+    try {
+      const migrationKey = 'migration_009_notification_preferences';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Notification preferences migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 009: Add user_notification_preferences table...');
+      notificationPreferencesMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Notification preferences migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run notification preferences migration:', error);
       throw error;
     }
   }

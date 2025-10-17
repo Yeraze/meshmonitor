@@ -1,19 +1,32 @@
-# Push Notifications
+# Notifications
 
-MeshMonitor supports PWA push notifications on both iOS and Android, allowing you to receive real-time alerts for new messages even when the app is in the background or closed.
+MeshMonitor supports two notification methods: **Web Push** notifications for browsers/PWAs and **Apprise** for external notification services. Choose the method that works best for your needs, or use both!
 
 ## Overview
 
-Push notifications use the Web Push API with VAPID authentication to deliver messages to your device. This works on iOS 16.4+ (Safari), Android (Chrome/Edge/Firefox), and desktop browsers - all without requiring any Apple certificates or platform-specific configuration.
+MeshMonitor provides flexible notification options to ensure you never miss important messages:
 
-### Key Features
+### Web Push Notifications
 
-- **Cross-Platform**: Works on iOS 16.4+, Android, and desktop browsers with a single implementation
-- **Zero Configuration**: VAPID keys auto-generate on first run - no manual setup required
-- **No Apple Certificates**: Uses standard Web Push API with VAPID authentication
+Browser-based notifications using the Web Push API with VAPID authentication. Works on iOS 16.4+ (Safari), Android (Chrome/Edge/Firefox), and desktop browsers - all without requiring any Apple certificates or platform-specific configuration.
+
+**Key Features:**
+- **Cross-Platform**: Works on iOS 16.4+, Android, and desktop browsers
+- **Zero Configuration**: VAPID keys auto-generate on first run
+- **No Apple Certificates**: Uses standard Web Push API
 - **Background Notifications**: Receive alerts even when app is closed
-- **Smart Filtering**: Only sends notifications for messages from other users (not your own messages)
 - **iOS-Compliant**: Proper implementation prevents subscription cancellation
+
+### Apprise Notifications
+
+External notification delivery via [Apprise](https://github.com/caronc/apprise), supporting 100+ notification services including Discord, Slack, Telegram, Email, Microsoft Teams, and many more.
+
+**Key Features:**
+- **100+ Services**: Discord, Slack, Telegram, Email, SMS, and more
+- **Bundled Integration**: Apprise API included in MeshMonitor container
+- **Flexible Delivery**: Use multiple notification services simultaneously
+- **Server-Side**: Works without browser requirements
+- **Persistent Configuration**: URLs stored in persistent volume
 
 ## Browser Support
 
@@ -342,11 +355,192 @@ Admins can send test notifications:
 The test notification is sent to ALL subscribed users, not just the admin. Use sparingly!
 :::
 
+## Apprise Notifications Setup
+
+Apprise allows you to send notifications to 100+ external services including Discord, Slack, Telegram, Email, and more.
+
+### What is Apprise?
+
+[Apprise](https://github.com/caronc/apprise) is a universal notification library that supports a vast array of notification services through a simple URL-based configuration. MeshMonitor bundles Apprise directly in the Docker container for easy setup.
+
+### Supported Services
+
+Apprise supports 100+ notification services including:
+
+- **Chat & Messaging**: Discord, Slack, Microsoft Teams, Telegram, Matrix, Rocket.Chat
+- **Email**: SMTP, Gmail, SendGrid, Mailgun, Amazon SES
+- **SMS**: Twilio, MessageBird, Nexmo, Clickatell
+- **Push Notifications**: Pushover, Pushbullet, Pushsafer, Notify
+- **Social Media**: Twitter/X
+- **Development Tools**: GitHub, GitLab, JIRA
+- **Home Automation**: Home Assistant, MQTT
+- **And many more...**
+
+See the [full list of supported services](https://github.com/caronc/apprise#supported-notifications) in the Apprise documentation.
+
+### Enabling Apprise
+
+1. Navigate to **Configuration → Notifications** in MeshMonitor
+2. In the **Notification Services** section at the top, toggle **"Apprise Notifications"** to enabled (green border)
+3. Click **"Save Notification Settings"**
+4. The **Apprise Configuration** section will appear below
+
+### Configuring Notification URLs
+
+Apprise uses URL-based configuration. Each service has a unique URL format:
+
+#### Discord Example
+
+```
+discord://webhook_id/webhook_token
+```
+
+To get your Discord webhook URL:
+1. In Discord, go to Server Settings → Integrations → Webhooks
+2. Create a new webhook or edit an existing one
+3. Copy the webhook URL (e.g., `https://discord.com/api/webhooks/123456789/abcdefg...`)
+4. Convert to Apprise format: `discord://123456789/abcdefg...`
+
+#### Slack Example
+
+```
+slack://token_a/token_b/token_c
+```
+
+#### Email Example
+
+```
+mailto://user:password@gmail.com
+```
+
+For Gmail, you'll need to use an [App Password](https://support.google.com/accounts/answer/185833):
+```
+mailto://your-email@gmail.com:app-password@gmail.com
+```
+
+#### Telegram Example
+
+```
+tgram://bot_token/chat_id
+```
+
+#### Microsoft Teams Example
+
+```
+msteams://token_a/token_b/token_c
+```
+
+### Adding Multiple Services
+
+You can configure multiple notification services simultaneously. Simply add one URL per line in the Apprise Configuration textarea:
+
+```
+discord://webhook_id/webhook_token
+slack://token_a/token_b/token_c
+mailto://user:password@gmail.com
+tgram://bot_token/chat_id
+```
+
+All configured services will receive notifications for new messages.
+
+### Testing Apprise Notifications
+
+After configuring your URLs:
+
+1. Click **"Save Configuration"** to save your Apprise URLs
+2. Click **"Test Connection"** to verify the configuration works
+3. You should receive test notifications on all configured services
+4. Send a test message in MeshMonitor to verify real notifications work
+
+### URL Format Reference
+
+Each service has a specific URL format. Here are some common examples:
+
+| Service | URL Format | Notes |
+|---------|-----------|-------|
+| Discord | `discord://webhook_id/webhook_token` | Get from Server Settings → Webhooks |
+| Slack | `slack://token_a/token_b/token_c` | From Slack app configuration |
+| Email (SMTP) | `mailto://user:pass@smtp.example.com` | Standard SMTP configuration |
+| Gmail | `mailto://user:app-password@gmail.com` | Requires App Password |
+| Telegram | `tgram://bot_token/chat_id` | Get from BotFather |
+| Pushover | `pover://user_key@token` | From Pushover account |
+| Microsoft Teams | `msteams://token_a/token_b/token_c` | From Teams webhook |
+
+For complete URL format documentation for all services, see the [Apprise Wiki](https://github.com/caronc/apprise/wiki).
+
+### Persistent Configuration
+
+Apprise URLs are stored in `/data/apprise-config/urls.txt` inside the Docker container, which is mapped to the persistent `/data` volume. This means your Apprise configuration will survive:
+
+- Container restarts
+- Container upgrades
+- System reboots
+
+### Security Considerations
+
+::: warning Protect Your Notification URLs
+Apprise URLs contain authentication tokens that allow sending notifications to your services. Keep these URLs secure:
+
+- Don't commit them to version control
+- Restrict access to the Notifications configuration page (admin only)
+- Rotate tokens if compromised
+- Use read-only or limited-permission tokens when possible
+:::
+
+### Troubleshooting Apprise
+
+#### URLs Not Saving
+
+- Check that you clicked **"Save Configuration"** after entering URLs
+- Verify the `/data` volume is writable
+- Check Docker logs for errors: `docker logs meshmonitor`
+
+#### Notifications Not Receiving
+
+1. Verify Apprise is enabled in Notification Services section
+2. Click **"Test Connection"** to verify URLs are correct
+3. Check Docker logs for error messages:
+   ```bash
+   docker logs meshmonitor | grep -i apprise
+   ```
+4. Verify the URL format matches the service requirements
+5. Check that tokens/credentials are still valid
+
+#### Connection Test Fails
+
+- Verify the URL format is correct for your service
+- Check that authentication tokens are valid and not expired
+- Ensure the container has network access to the notification service
+- For Discord/Slack, verify the webhook still exists
+
 ## Notification Settings
 
-### Client-Side Settings
+### Notification Services
 
-Users can manage their notifications:
+Users can enable or disable notification services independently:
+
+- **Web Push Notifications**: Browser/PWA-based notifications
+- **Apprise Notifications**: External notification services (Discord, Slack, etc.)
+
+Both services can be enabled simultaneously, and they share the same filtering preferences.
+
+### Filtering Preferences
+
+Notification filtering applies to **both Web Push and Apprise** notifications:
+
+- **Whitelist**: Keywords that always trigger notifications (highest priority)
+- **Blacklist**: Keywords that never trigger notifications (second priority)
+- **Enabled Channels**: Specific channels to receive notifications from
+- **Direct Messages**: Enable/disable direct message notifications
+
+The filtering follows this priority order:
+1. **Whitelist** → Always send notification if keyword matches
+2. **Blacklist** → Never send notification if keyword matches
+3. **Channel/DM Settings** → Send only if channel is enabled or DM is enabled
+
+### Client-Side Settings (Web Push Only)
+
+For Web Push notifications specifically:
 
 - **Enable/Disable**: Grant or revoke browser permission
 - **Subscribe/Unsubscribe**: Opt-in or opt-out of receiving notifications
@@ -361,11 +555,15 @@ Notification permissions are controlled by the browser. If denied, you must rese
 
 ### Server-Side Settings
 
-No server-side configuration is required for basic operation. VAPID keys auto-generate on first run.
+**Web Push:**
+- No configuration required - VAPID keys auto-generate on first run
+- Optional: Update VAPID Contact Email via admin UI
+- Optional: Set manual VAPID keys via environment variables
 
-Optional configuration:
-- **VAPID Contact Email**: Update via admin UI
-- **Manual VAPID Keys**: Set via environment variables (see Server Requirements)
+**Apprise:**
+- Bundled Apprise API runs automatically in Docker container
+- Configuration stored in persistent `/data/apprise-config/` directory
+- No environment variables required
 
 ## Troubleshooting
 
