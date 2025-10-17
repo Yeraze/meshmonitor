@@ -107,6 +107,33 @@ PRAGMA temp_store = memory;
 │ unit (TEXT)                                                 │
 │ createdAt (INTEGER, NOT NULL)                               │
 └─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│              USER_NOTIFICATION_PREFERENCES                  │
+├─────────────────────────────────────────────────────────────┤
+│ id (INTEGER, PK, AUTOINCREMENT)                             │
+│ user_id (INTEGER, FK → USERS.id, UNIQUE)                    │
+│ enable_web_push (BOOLEAN, DEFAULT 0)                        │
+│ enable_apprise (BOOLEAN, DEFAULT 0)                         │
+│ enabled_channels (TEXT)                                     │
+│ enable_direct_messages (BOOLEAN, DEFAULT 1)                 │
+│ whitelist (TEXT)                                            │
+│ blacklist (TEXT)                                            │
+│ created_at (INTEGER, NOT NULL)                              │
+│ updated_at (INTEGER, NOT NULL)                              │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│               PUSH_SUBSCRIPTIONS                            │
+├─────────────────────────────────────────────────────────────┤
+│ id (INTEGER, PK, AUTOINCREMENT)                             │
+│ user_id (INTEGER, FK → USERS.id)                            │
+│ endpoint (TEXT, NOT NULL, UNIQUE)                           │
+│ p256dh_key (TEXT, NOT NULL)                                 │
+│ auth_key (TEXT, NOT NULL)                                   │
+│ created_at (INTEGER, NOT NULL)                              │
+│ last_used (INTEGER)                                         │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ## Table Definitions
@@ -370,6 +397,87 @@ CREATE TABLE traceroutes (
 | `downlinkEnabled` | BOOLEAN | Can receive from internet | `1` |
 | `createdAt` | INTEGER | Record creation timestamp | `1640990000` |
 | `updatedAt` | INTEGER | Last update timestamp | `1640995200` |
+
+### USER_NOTIFICATION_PREFERENCES Table
+
+Stores per-user notification preferences for Web Push and Apprise notifications.
+
+```sql
+CREATE TABLE user_notification_preferences (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL UNIQUE,
+  enable_web_push BOOLEAN DEFAULT 0,
+  enable_apprise BOOLEAN DEFAULT 0,
+  enabled_channels TEXT,
+  enable_direct_messages BOOLEAN DEFAULT 1,
+  whitelist TEXT,
+  blacklist TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+```
+
+#### Field Descriptions
+
+| Field | Type | Description | Example |
+|-------|------|-------------|---------|
+| `id` | INTEGER | Auto-incrementing primary key | `1` |
+| `user_id` | INTEGER | User ID (Foreign Key, Unique) | `1` |
+| `enable_web_push` | BOOLEAN | Enable browser push notifications | `1` |
+| `enable_apprise` | BOOLEAN | Enable Apprise notifications | `0` |
+| `enabled_channels` | TEXT | JSON array of enabled channel IDs | `[0,1,2]` |
+| `enable_direct_messages` | BOOLEAN | Enable notifications for DMs | `1` |
+| `whitelist` | TEXT | JSON array of keyword triggers | `["Help","Emergency"]` |
+| `blacklist` | TEXT | JSON array of filtered keywords | `["Test","Copy"]` |
+| `created_at` | INTEGER | Record creation timestamp | `1640990000` |
+| `updated_at` | INTEGER | Last update timestamp | `1640995200` |
+
+#### Business Rules
+
+- `user_id` must be unique (one preference record per user)
+- Both Web Push and Apprise can be enabled simultaneously
+- Filtering preferences (whitelist/blacklist/channels) are shared across both notification methods
+- **Priority order**: Whitelist (highest) → Blacklist → Channel/DM settings
+- JSON fields must contain valid JSON arrays
+- Defaults to both notification methods disabled
+
+### PUSH_SUBSCRIPTIONS Table
+
+Stores Web Push notification subscriptions for browser clients.
+
+```sql
+CREATE TABLE push_subscriptions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  endpoint TEXT NOT NULL UNIQUE,
+  p256dh_key TEXT NOT NULL,
+  auth_key TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  last_used INTEGER,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+```
+
+#### Field Descriptions
+
+| Field | Type | Description | Example |
+|-------|------|-------------|---------|
+| `id` | INTEGER | Auto-incrementing primary key | `1` |
+| `user_id` | INTEGER | User ID (Foreign Key) | `1` |
+| `endpoint` | TEXT | Push service endpoint URL (Unique) | `https://fcm.googleapis.com/...` |
+| `p256dh_key` | TEXT | Public key for encryption (base64) | `BL7ELU...` |
+| `auth_key` | TEXT | Auth secret for encryption (base64) | `8eeIz4...` |
+| `created_at` | INTEGER | Subscription creation timestamp | `1640990000` |
+| `last_used` | INTEGER | Last successful notification timestamp | `1640995200` |
+
+#### Business Rules
+
+- `endpoint` must be unique (one subscription per browser/device)
+- Users can have multiple subscriptions (e.g., desktop + mobile)
+- Subscriptions are deleted when user is deleted (CASCADE)
+- `p256dh_key` and `auth_key` are required for Web Push encryption (VAPID)
+- `last_used` is updated on each successful notification delivery
 
 ## Indexes
 

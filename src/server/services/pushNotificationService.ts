@@ -2,6 +2,7 @@ import webpush from 'web-push';
 import { getEnvironmentConfig } from '../config/environment.js';
 import { logger } from '../../utils/logger.js';
 import databaseService, { DbPushSubscription } from '../../services/database.js';
+import { getUserNotificationPreferences, shouldFilterNotification as shouldFilterNotificationUtil } from '../utils/notificationFiltering.js';
 
 export interface PushNotificationPayload {
   title: string;
@@ -419,70 +420,15 @@ class PushNotificationService {
       return false;
     }
 
-    // Validate userId is a safe positive integer to prevent injection attacks
-    if (!Number.isInteger(userId) || userId <= 0) {
-      logger.error(`❌ Invalid userId: ${userId} - rejecting notification filter`);
-      return false; // Allow notification on validation error (fail-open for user experience)
+    // Check if user has web push enabled
+    const prefs = getUserNotificationPreferences(userId);
+    if (prefs && !prefs.enableWebPush) {
+      logger.debug(`🔇 Web Push disabled for user ${userId}`);
+      return true; // Filter - user has disabled web push
     }
 
-    // Load user preferences - userId is now validated as safe integer
-    const prefsJson = databaseService.getSetting(`push_prefs_${userId}`);
-    if (!prefsJson) {
-      // No preferences set - allow all notifications
-      logger.debug(`No preferences found for user ${userId} - allowing notification`);
-      return false;
-    }
-
-    let prefs: {
-      enabledChannels: number[];
-      enableDirectMessages: boolean;
-      whitelist: string[];
-      blacklist: string[];
-    };
-
-    try {
-      prefs = JSON.parse(prefsJson);
-      logger.debug(`Loaded preferences for user ${userId}:`, JSON.stringify(prefs));
-    } catch (error) {
-      logger.error(`Failed to parse preferences for user ${userId}:`, error);
-      return false; // On error, allow notification
-    }
-
-    const messageTextLower = filterContext.messageText.toLowerCase();
-    logger.debug(`Checking message: "${filterContext.messageText}" (lowercase: "${messageTextLower}")`);
-
-    // WHITELIST CHECK (highest priority - if message contains whitelisted word, always send)
-    for (const word of prefs.whitelist) {
-      if (word && messageTextLower.includes(word.toLowerCase())) {
-        logger.debug(`✅ Whitelist match for user ${userId}: "${word}"`);
-        return false; // Don't filter - send notification
-      }
-    }
-
-    // BLACKLIST CHECK (second priority - if message contains blacklisted word, never send)
-    for (const word of prefs.blacklist) {
-      if (word && messageTextLower.includes(word.toLowerCase())) {
-        logger.debug(`🚫 Blacklist match for user ${userId}: "${word}"`);
-        return true; // Filter - don't send notification
-      }
-    }
-
-    // CHANNEL/DM CHECK (third priority - check if channel/DM is enabled)
-    if (filterContext.isDirectMessage) {
-      if (!prefs.enableDirectMessages) {
-        logger.debug(`🔇 Direct messages disabled for user ${userId}`);
-        return true; // Filter - don't send
-      }
-    } else {
-      // Channel message - check if channel is enabled
-      if (!prefs.enabledChannels.includes(filterContext.channelId)) {
-        logger.debug(`🔇 Channel ${filterContext.channelId} disabled for user ${userId}`);
-        return true; // Filter - don't send
-      }
-    }
-
-    // All checks passed - send notification
-    return false;
+    // Use shared filtering utility
+    return shouldFilterNotificationUtil(userId, filterContext);
   }
 }
 

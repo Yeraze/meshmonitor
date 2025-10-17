@@ -475,6 +475,86 @@ Nodes may also display role badges:
 
 ---
 
+## 🔔 Notifications
+
+### Push notifications don't work in Brave browser
+
+**Problem:** When trying to subscribe to Web Push notifications in Brave browser, you get an error like `Registration failed - push service error`.
+
+**Cause:** Brave browser requires Google push services to be enabled for Web Push notifications to work.
+
+**Solution:**
+
+1. **Enable Google Services for Push Messaging:**
+   - Open Brave Settings: `brave://settings/privacy`
+   - Scroll down to the **"Web3"** or **"Privacy and Security"** section
+   - Find **"Use Google services for push messaging"**
+   - Toggle it **ON**
+
+2. **Restart Brave browser** completely (close all windows)
+
+3. **Try subscribing again:**
+   - Go to Configuration → Notifications
+   - Click "Enable Notifications"
+   - Click "Subscribe to Notifications"
+
+**Alternative:** If you don't want to enable Google services in Brave, you can:
+- Use **Apprise notifications** instead (supports Discord, Slack, Telegram, Email, etc.)
+- Use a different browser (Chrome, Edge, or Firefox have more reliable push support)
+- Install MeshMonitor as a PWA on mobile devices
+
+**Note:** Apprise notifications don't require browser push services and work independently of your browser choice.
+
+---
+
+### I'm not receiving notifications on my iPhone
+
+**Problem:** You've enabled Web Push notifications but aren't receiving them on your iPhone (Safari or Chrome).
+
+**Cause:** iOS is extremely strict about push notification validation. If the VAPID contact email is not set to a legitimate email address, iOS will reject push notifications as potential spam.
+
+**Solution:**
+
+1. **Set a valid VAPID contact email:**
+   - Go to **Configuration → Notifications**
+   - Scroll to the **Web Push Configuration** section
+   - Find the **VAPID Contact Email** field
+   - Enter a **legitimate email address** (e.g., `admin@yourdomain.com` or your real email)
+   - Click **Save**
+
+2. **Re-subscribe to notifications:**
+   - Scroll to the **Notification Subscription** section
+   - Click **Unsubscribe** (if already subscribed)
+   - Click **Subscribe to Notifications** again
+   - Grant permission when prompted
+
+**Why this matters:**
+- VAPID (Voluntary Application Server Identification) requires a contact email for accountability
+- iOS validates this email and rejects notifications if it appears invalid
+- Android is more lenient and may work even with invalid emails like `mailto:admin@meshmonitor.local`
+- For iOS, use a real email address like `admin@yourdomain.com` or your personal email
+
+**Valid email examples:**
+- ✅ `admin@yourdomain.com`
+- ✅ `your.name@gmail.com`
+- ✅ `notifications@example.org`
+- ❌ `mailto:admin@meshmonitor.local` (rejected by iOS)
+- ❌ `admin@localhost` (rejected by iOS)
+- ❌ `test@test.com` (may be rejected by iOS)
+
+**Additional iOS considerations:**
+- Ensure MeshMonitor is installed as a PWA (Progressive Web App) on your iPhone for best notification support
+- Make sure "Allow Notifications" is enabled in iOS Settings for Safari/Chrome
+- Test notifications by sending a test message - the notification should arrive within seconds
+
+**Alternative for iOS users:**
+If Web Push continues to be unreliable, use **Apprise notifications** instead:
+- Supports services like Discord, Slack, Telegram, Pushover, and Email
+- More reliable on iOS than browser-based push notifications
+- Doesn't depend on browser permission or VAPID validation
+
+---
+
 ## 📊 Performance & Troubleshooting
 
 ### MeshMonitor is running slowly
