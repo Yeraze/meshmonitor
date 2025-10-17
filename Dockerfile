@@ -54,7 +54,7 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/protobufs ./protobufs
 
 # Create data directory for SQLite database and Apprise configs
-RUN mkdir -p /data /apprise-config && chown -R node:node /data /apprise-config
+RUN mkdir -p /data/apprise-config && chown -R node:node /data
 
 # Create supervisor configuration to run both Node.js and Apprise
 RUN mkdir -p /etc/supervisor/conf.d
@@ -72,7 +72,7 @@ EXPOSE 3001 8000
 # Set environment variables
 ENV NODE_ENV=production
 ENV PORT=3001
-ENV APPRISE_CONFIG_DIR=/apprise-config
+ENV APPRISE_CONFIG_DIR=/data/apprise-config
 ENV APPRISE_STATEFUL_MODE=simple
 
 # Run supervisor to manage both processes

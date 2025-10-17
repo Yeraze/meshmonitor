@@ -2047,7 +2047,7 @@ apiRouter.get('/apprise/urls', requireAdmin(), async (_req, res) => {
   try {
     const configFile = process.env.APPRISE_CONFIG_DIR
       ? `${process.env.APPRISE_CONFIG_DIR}/urls.txt`
-      : '/apprise-config/urls.txt';
+      : '/data/apprise-config/urls.txt';
 
     // Check if file exists
     const fs = await import('fs/promises');
