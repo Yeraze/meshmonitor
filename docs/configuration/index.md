@@ -19,6 +19,9 @@ Understand the differences between HTTP and HTTPS deployments, security consider
 ### [Production Deployment](/configuration/production)
 Best practices and recommendations for deploying MeshMonitor in production environments, including high availability and monitoring.
 
+### [Push Notifications](/features/notifications)
+Configure push notifications for iOS, Android, and desktop browsers. Learn about HTTPS requirements, VAPID keys, and step-by-step setup guides for all platforms.
+
 ## Environment Variables
 
 MeshMonitor can be configured using environment variables. Here are the most important ones:
