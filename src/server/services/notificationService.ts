@@ -123,6 +123,55 @@ class NotificationService {
       anyAvailable: webPush || apprise
     };
   }
+
+  /**
+   * Send notification for newly discovered node (bypasses normal filtering)
+   * Only sends if user has notifyOnNewNode enabled
+   */
+  public async notifyNewNode(nodeId: string, longName: string, hopsAway: number | undefined): Promise<void> {
+    try {
+      const hopsText = hopsAway !== undefined ? ` (${hopsAway} ${hopsAway === 1 ? 'hop' : 'hops'} away)` : '';
+      const payload: NotificationPayload = {
+        title: '🆕 New Node Discovered',
+        body: `${longName || nodeId}${hopsText}`,
+        type: 'info'
+      };
+
+      // Send to users with notifyOnNewNode enabled
+      await Promise.allSettled([
+        pushNotificationService.broadcastToPreferenceUsers('notifyOnNewNode', payload),
+        appriseNotificationService.broadcastToPreferenceUsers('notifyOnNewNode', payload)
+      ]);
+
+      logger.info(`📤 Sent new node notification for ${nodeId}`);
+    } catch (error) {
+      logger.error('❌ Error sending new node notification:', error);
+    }
+  }
+
+  /**
+   * Send notification for successful traceroute (bypasses normal filtering)
+   * Only sends if user has notifyOnTraceroute enabled
+   */
+  public async notifyTraceroute(fromNodeId: string, toNodeId: string, routeText: string): Promise<void> {
+    try {
+      const payload: NotificationPayload = {
+        title: `🗺️ Traceroute: ${fromNodeId} → ${toNodeId}`,
+        body: routeText,
+        type: 'success'
+      };
+
+      // Send to users with notifyOnTraceroute enabled
+      await Promise.allSettled([
+        pushNotificationService.broadcastToPreferenceUsers('notifyOnTraceroute', payload),
+        appriseNotificationService.broadcastToPreferenceUsers('notifyOnTraceroute', payload)
+      ]);
+
+      logger.info(`📤 Sent traceroute notification for ${fromNodeId} → ${toNodeId}`);
+    } catch (error) {
+      logger.error('❌ Error sending traceroute notification:', error);
+    }
+  }
 }
 
 export const notificationService = new NotificationService();
