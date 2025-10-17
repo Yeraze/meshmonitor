@@ -149,7 +149,7 @@ export async function handleOIDCCallback(
     // Create username from claims
     const username = preferredUsername || email?.split('@')[0] || sub.substring(0, 20);
 
-    // Check if user exists
+    // Check if user exists by OIDC subject
     let user = databaseService.userModel.findByOIDCSubject(sub);
 
     if (user) {
@@ -171,29 +171,60 @@ export async function handleOIDCCallback(
         throw new Error('OIDC user not found and auto-creation is disabled');
       }
 
-      // Create new user
-      user = await databaseService.userModel.create({
-        username,
-        email,
-        displayName: name,
-        authProvider: 'oidc',
-        oidcSubject: sub,
-        isAdmin: false
-      });
+      // Check if a native-login user exists with the same username or email
+      let existingUser = databaseService.userModel.findByUsername(username);
 
-      // Grant default permissions
-      databaseService.permissionModel.grantDefaultPermissions(user.id, false);
+      // If no match by username, try matching by email (if provided)
+      if (!existingUser && email) {
+        existingUser = databaseService.userModel.findByEmail(email);
+      }
 
-      logger.debug(`✅ OIDC user auto-created: ${user.username}`);
+      if (existingUser && existingUser.authProvider === 'local') {
+        // Migrate existing native-login user to OIDC
+        logger.info(`🔄 Migrating existing native-login user '${existingUser.username}' to OIDC`);
 
-      // Audit log
-      databaseService.auditLog(
-        user.id,
-        'oidc_user_created',
-        'users',
-        JSON.stringify({ userId: user.id, username, oidcSubject: sub }),
-        null
-      );
+        user = databaseService.userModel.migrateToOIDC(
+          existingUser.id,
+          sub,
+          email,
+          name
+        )!;
+
+        // Audit log
+        databaseService.auditLog(
+          user.id,
+          'user_migrated_to_oidc',
+          'users',
+          JSON.stringify({ userId: user.id, username: user.username, oidcSubject: sub }),
+          null
+        );
+
+        logger.debug(`✅ User migrated to OIDC: ${user.username}`);
+      } else {
+        // Create new user
+        user = await databaseService.userModel.create({
+          username,
+          email,
+          displayName: name,
+          authProvider: 'oidc',
+          oidcSubject: sub,
+          isAdmin: false
+        });
+
+        // Grant default permissions
+        databaseService.permissionModel.grantDefaultPermissions(user.id, false);
+
+        logger.debug(`✅ OIDC user auto-created: ${user.username}`);
+
+        // Audit log
+        databaseService.auditLog(
+          user.id,
+          'oidc_user_created',
+          'users',
+          JSON.stringify({ userId: user.id, username, oidcSubject: sub }),
+          null
+        );
+      }
     }
 
     return user;
