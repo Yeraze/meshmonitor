@@ -33,7 +33,7 @@ export const migration = {
     const users = usersStmt.all() as Array<{ id: number }>;
 
     // Get all existing push preferences from settings
-    const settingsStmt = db.prepare('SELECT key, value FROM settings WHERE key LIKE "push_prefs_%"');
+    const settingsStmt = db.prepare("SELECT key, value FROM settings WHERE key LIKE 'push_prefs_%'");
     const settings = settingsStmt.all() as Array<{ key: string; value: string }>;
 
     const now = Date.now();
