@@ -51,7 +51,7 @@ describe('PushNotificationService', () => {
         { userId: Infinity, description: 'Infinity' },
       ];
 
-      testCases.forEach(({ userId, description }) => {
+      testCases.forEach(({ userId }) => {
         // Mock getSetting to ensure it's not called with invalid userId
         const getSettingMock = vi.spyOn(databaseService, 'getSetting');
 
@@ -146,11 +146,6 @@ describe('PushNotificationService', () => {
 
   describe('Filtering Logic - Case Insensitive Matching', () => {
     it('should match keywords case-insensitively', () => {
-      const prefs = {
-        whitelist: ['Emergency', 'HELP'],
-        blacklist: ['Test', 'SPAM']
-      };
-
       const testCases = [
         { message: 'emergency alert', keyword: 'Emergency', shouldMatch: true },
         { message: 'EMERGENCY ALERT', keyword: 'Emergency', shouldMatch: true },
@@ -173,11 +168,6 @@ describe('PushNotificationService', () => {
 
   describe('Filtering Logic - Substring Matching', () => {
     it('should match substrings, not just whole words', () => {
-      const prefs = {
-        whitelist: ['help'],
-        blacklist: ['test']
-      };
-
       const testCases = [
         { message: 'helpful message', keyword: 'help', shouldMatch: true },
         { message: 'can you help', keyword: 'help', shouldMatch: true },
@@ -427,10 +417,9 @@ describe('PushNotificationService', () => {
       serverErrorCodes.forEach(code => {
         // Check if it's a server error (should NOT remove subscription)
         const isServerError = code >= 500 && code < 600;
-        const shouldRemove = false; // We log but don't remove for 5xx
 
         expect(isServerError).toBe(true); // Verify it's a server error
-        // In actual code, we would NOT remove subscription for server errors
+        // In actual code, we would NOT remove subscription for server errors (temporary issues)
       });
     });
   });
