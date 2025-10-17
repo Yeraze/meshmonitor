@@ -560,20 +560,29 @@ describe('Authentication Routes', () => {
   });
 
   describe('Disable Anonymous Feature', () => {
-    let originalEnv: string | undefined;
+    let originalDisableAnonymous: string | undefined;
+    let originalDisableLocalAuth: string | undefined;
 
     beforeEach(() => {
-      // Save original environment variable
-      originalEnv = process.env.DISABLE_ANONYMOUS;
+      // Save original environment variables
+      originalDisableAnonymous = process.env.DISABLE_ANONYMOUS;
+      originalDisableLocalAuth = process.env.DISABLE_LOCAL_AUTH;
     });
 
     afterEach(async () => {
-      // Restore original environment variable
-      if (originalEnv !== undefined) {
-        process.env.DISABLE_ANONYMOUS = originalEnv;
+      // Restore original environment variables
+      if (originalDisableAnonymous !== undefined) {
+        process.env.DISABLE_ANONYMOUS = originalDisableAnonymous;
       } else {
         delete process.env.DISABLE_ANONYMOUS;
       }
+
+      if (originalDisableLocalAuth !== undefined) {
+        process.env.DISABLE_LOCAL_AUTH = originalDisableLocalAuth;
+      } else {
+        delete process.env.DISABLE_LOCAL_AUTH;
+      }
+
       // Reset environment config to pick up changes
       const { resetEnvironmentConfig } = await import('../config/environment.js');
       resetEnvironmentConfig();
@@ -628,6 +637,7 @@ describe('Authentication Routes', () => {
         // Create anonymous user if it doesn't exist
         anonymousUser = await userModel.create({
           username: 'anonymous',
+          password: 'anonymous123',
           authProvider: 'local',
           isAdmin: false
         });
