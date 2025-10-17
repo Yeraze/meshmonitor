@@ -235,6 +235,64 @@ export class UserModel {
   }
 
   /**
+   * Migrate a native-login user to OIDC authentication
+   * This preserves all user settings, permissions, and data while
+   * converting the authentication method to OIDC
+   */
+  migrateToOIDC(id: number, oidcSubject: string, email?: string, displayName?: string): User | null {
+    const user = this.findById(id);
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    if (user.authProvider === 'oidc') {
+      throw new Error('User is already using OIDC authentication');
+    }
+
+    const stmt = this.db.prepare(`
+      UPDATE users
+      SET
+        auth_provider = 'oidc',
+        oidc_subject = ?,
+        password_hash = NULL,
+        email = COALESCE(?, email),
+        display_name = COALESCE(?, display_name),
+        last_login_at = ?
+      WHERE id = ?
+    `);
+
+    stmt.run(
+      oidcSubject,
+      email || null,
+      displayName || null,
+      Date.now(),
+      id
+    );
+
+    return this.findById(id);
+  }
+
+  /**
+   * Find user by email (case-insensitive)
+   */
+  findByEmail(email: string): User | null {
+    const stmt = this.db.prepare(`
+      SELECT
+        id, username, password_hash as passwordHash, email, display_name as displayName,
+        auth_provider as authProvider, oidc_subject as oidcSubject,
+        is_admin as isAdmin, is_active as isActive,
+        created_at as createdAt, last_login_at as lastLoginAt, created_by as createdBy
+      FROM users
+      WHERE LOWER(email) = LOWER(?)
+    `);
+
+    const row = stmt.get(email) as any;
+    if (!row) return null;
+
+    return this.mapRowToUser(row);
+  }
+
+  /**
    * Delete (deactivate) a user
    */
   delete(id: number): void {
