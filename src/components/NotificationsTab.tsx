@@ -134,8 +134,22 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
       setPreferences(response);
       setWhitelistText(response.whitelist.join('\n'));
       setBlacklistText(response.blacklist.join('\n'));
+
+      // Load Apprise URLs if Apprise is enabled
+      if (response.enableApprise) {
+        loadAppriseUrls();
+      }
     } catch (error) {
       logger.debug('No saved preferences, using defaults');
+    }
+  };
+
+  const loadAppriseUrls = async () => {
+    try {
+      const response = await api.get<{ urls: string[] }>('/api/apprise/urls');
+      setAppriseUrls(response.urls.join('\n'));
+    } catch (error) {
+      logger.debug('No saved Apprise URLs, using empty');
     }
   };
 
@@ -178,6 +192,11 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
       await api.post('/api/push/preferences', prefs);
       setPreferences(prefs);
       logger.info('Notification preferences saved');
+
+      // Load Apprise URLs if Apprise was just enabled
+      if (prefs.enableApprise) {
+        loadAppriseUrls();
+      }
     } catch (error) {
       logger.error('Failed to save preferences:', error);
       alert('Failed to save notification preferences');

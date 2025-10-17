@@ -2042,6 +2042,37 @@ apiRouter.post('/apprise/test', requireAdmin(), async (_req, res) => {
   }
 });
 
+// Get configured Apprise URLs (admin only)
+apiRouter.get('/apprise/urls', requireAdmin(), async (_req, res) => {
+  try {
+    const configFile = process.env.APPRISE_CONFIG_DIR
+      ? `${process.env.APPRISE_CONFIG_DIR}/urls.txt`
+      : '/apprise-config/urls.txt';
+
+    // Check if file exists
+    const fs = await import('fs/promises');
+    try {
+      const content = await fs.readFile(configFile, 'utf-8');
+      const urls = content
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0 && !line.startsWith('#'));
+
+      res.json({ urls });
+    } catch (error: any) {
+      // File doesn't exist or can't be read - return empty array
+      if (error.code === 'ENOENT') {
+        res.json({ urls: [] });
+      } else {
+        throw error;
+      }
+    }
+  } catch (error: any) {
+    logger.error('Error reading Apprise URLs:', error);
+    res.status(500).json({ error: error.message || 'Failed to read Apprise URLs' });
+  }
+});
+
 // Configure Apprise URLs (admin only)
 apiRouter.post('/apprise/configure', requireAdmin(), async (req, res) => {
   try {
