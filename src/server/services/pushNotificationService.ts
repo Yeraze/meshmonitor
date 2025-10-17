@@ -419,7 +419,13 @@ class PushNotificationService {
       return false;
     }
 
-    // Load user preferences
+    // Validate userId is a safe positive integer to prevent injection attacks
+    if (!Number.isInteger(userId) || userId <= 0) {
+      logger.error(`❌ Invalid userId: ${userId} - rejecting notification filter`);
+      return false; // Allow notification on validation error (fail-open for user experience)
+    }
+
+    // Load user preferences - userId is now validated as safe integer
     const prefsJson = databaseService.getSetting(`push_prefs_${userId}`);
     if (!prefsJson) {
       // No preferences set - allow all notifications

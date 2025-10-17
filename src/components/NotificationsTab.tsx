@@ -146,8 +146,19 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
   };
 
   const sanitizeKeyword = (keyword: string): string => {
-    // Trim whitespace and limit length to 100 characters
-    return keyword.trim().slice(0, 100);
+    // Trim whitespace, limit length to 100 characters, and escape HTML entities
+    const htmlEntities: Record<string, string> = {
+      '<': '&lt;',
+      '>': '&gt;',
+      '&': '&amp;',
+      '"': '&quot;',
+      "'": '&#39;'
+    };
+
+    return keyword
+      .trim()
+      .slice(0, 100)
+      .replace(/[<>&"']/g, char => htmlEntities[char]);
   };
 
   const savePreferences = async () => {
