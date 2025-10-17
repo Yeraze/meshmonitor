@@ -3,24 +3,38 @@ import { logger } from '../../utils/logger.js';
 
 export const migration = {
   up: (db: Database.Database): void => {
-    logger.debug('Running migration 010: Add notify_on_emoji to notification preferences...');
+    logger.debug('Running migration 010: Add notify_on_emoji, notify_on_new_node, notify_on_traceroute to notification preferences...');
 
     // Add notify_on_emoji column with default value of 1 (true)
     db.exec(`
       ALTER TABLE user_notification_preferences
       ADD COLUMN notify_on_emoji BOOLEAN DEFAULT 1
     `);
+    logger.debug('✅ Added notify_on_emoji column');
 
-    logger.debug('✅ Added notify_on_emoji column to user_notification_preferences table');
+    // Add notify_on_new_node column with default value of 1 (true)
+    db.exec(`
+      ALTER TABLE user_notification_preferences
+      ADD COLUMN notify_on_new_node BOOLEAN DEFAULT 1
+    `);
+    logger.debug('✅ Added notify_on_new_node column');
+
+    // Add notify_on_traceroute column with default value of 1 (true)
+    db.exec(`
+      ALTER TABLE user_notification_preferences
+      ADD COLUMN notify_on_traceroute BOOLEAN DEFAULT 1
+    `);
+    logger.debug('✅ Added notify_on_traceroute column');
+
     logger.debug('✅ Migration 010 completed successfully');
   },
 
   down: (db: Database.Database): void => {
-    logger.debug('Reverting migration 010: Remove notify_on_emoji column...');
+    logger.debug('Reverting migration 010: Remove notify_on_emoji, notify_on_new_node, notify_on_traceroute columns...');
 
     // SQLite doesn't support DROP COLUMN directly, so we need to recreate the table
     db.exec(`
-      -- Create temporary table without notify_on_emoji
+      -- Create temporary table without new columns
       CREATE TABLE user_notification_preferences_temp (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,

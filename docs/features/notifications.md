@@ -531,17 +531,27 @@ Notification filtering applies to **both Web Push and Apprise** notifications:
 - **Whitelist**: Keywords that always trigger notifications (highest priority)
 - **Blacklist**: Keywords that never trigger notifications (second priority)
 - **Emoji Reactions**: Enable/disable notifications for emoji-only messages (third priority)
+- **Newly Found Nodes**: Enable/disable notifications when new nodes are discovered
+- **Successful Traceroutes**: Enable/disable notifications for completed traceroute responses
 - **Enabled Channels**: Specific channels to receive notifications from
 - **Direct Messages**: Enable/disable direct message notifications
 
-The filtering follows this priority order:
+The filtering follows this priority order for **message notifications**:
 1. **Whitelist** → Always send notification if keyword matches
 2. **Blacklist** → Never send notification if keyword matches
 3. **Emoji Reactions** → Filter emoji-only messages if disabled
 4. **Channel/DM Settings** → Send only if channel is enabled or DM is enabled
 
+**Special Event Notifications** (bypass message filtering):
+- **Newly Found Nodes** → Sent when a new node appears on the mesh (includes node name and hop count)
+- **Successful Traceroutes** → Sent when a traceroute completes (includes full forward and return route)
+
 ::: tip Emoji Reaction Filtering
 When "Emoji Reactions" is disabled, notifications will be suppressed for messages containing only emojis (e.g., "👍", "😀", "❤️"). Messages with emojis mixed with text will still trigger notifications normally. This is useful for reducing notification noise from emoji reactions and tapbacks.
+:::
+
+::: info Special Event Notifications
+New Node and Traceroute notifications bypass normal message filtering (whitelist/blacklist/channel settings) and are only sent if you have that specific preference enabled. These notifications help you stay informed about mesh network topology changes and connectivity testing without cluttering your message notifications.
 :::
 
 ### Client-Side Settings (Web Push Only)

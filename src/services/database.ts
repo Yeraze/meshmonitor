@@ -1046,6 +1046,18 @@ class DatabaseService {
         now,
         now
       );
+
+      // Send notification for newly discovered node (only if not broadcast node)
+      if (nodeData.nodeNum !== 4294967295 && nodeData.nodeId) {
+        // Import notification service dynamically to avoid circular dependencies
+        import('../server/services/notificationService.js').then(({ notificationService }) => {
+          notificationService.notifyNewNode(
+            nodeData.nodeId!,
+            nodeData.longName || nodeData.nodeId!,
+            nodeData.hopsAway
+          ).catch(err => logger.error('Failed to send new node notification:', err));
+        }).catch(err => logger.error('Failed to import notification service:', err));
+      }
     }
   }
 

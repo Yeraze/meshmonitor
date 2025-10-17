@@ -13,6 +13,8 @@ export interface NotificationPreferences {
   enabledChannels: number[];
   enableDirectMessages: boolean;
   notifyOnEmoji: boolean;
+  notifyOnNewNode: boolean;
+  notifyOnTraceroute: boolean;
   whitelist: string[];
   blacklist: string[];
 }
@@ -37,6 +39,8 @@ export function getUserNotificationPreferences(userId: number): NotificationPref
         enabled_channels,
         enable_direct_messages,
         notify_on_emoji,
+        notify_on_new_node,
+        notify_on_traceroute,
         whitelist,
         blacklist
       FROM user_notification_preferences
@@ -53,6 +57,8 @@ export function getUserNotificationPreferences(userId: number): NotificationPref
         enabledChannels: row.enabled_channels ? JSON.parse(row.enabled_channels) : [],
         enableDirectMessages: Boolean(row.enable_direct_messages),
         notifyOnEmoji: row.notify_on_emoji !== undefined ? Boolean(row.notify_on_emoji) : true,
+        notifyOnNewNode: row.notify_on_new_node !== undefined ? Boolean(row.notify_on_new_node) : true,
+        notifyOnTraceroute: row.notify_on_traceroute !== undefined ? Boolean(row.notify_on_traceroute) : true,
         whitelist: row.whitelist ? JSON.parse(row.whitelist) : [],
         blacklist: row.blacklist ? JSON.parse(row.blacklist) : []
       };
@@ -70,6 +76,8 @@ export function getUserNotificationPreferences(userId: number): NotificationPref
           ? oldPrefs.enableDirectMessages
           : true,
         notifyOnEmoji: true, // Default to enabled for backward compatibility
+        notifyOnNewNode: true, // Default to enabled for backward compatibility
+        notifyOnTraceroute: true, // Default to enabled for backward compatibility
         whitelist: oldPrefs.whitelist || [],
         blacklist: oldPrefs.blacklist || []
       };
@@ -102,15 +110,18 @@ export function saveUserNotificationPreferences(
       INSERT INTO user_notification_preferences (
         user_id, enable_web_push, enable_apprise,
         enabled_channels, enable_direct_messages, notify_on_emoji,
+        notify_on_new_node, notify_on_traceroute,
         whitelist, blacklist,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(user_id) DO UPDATE SET
         enable_web_push = excluded.enable_web_push,
         enable_apprise = excluded.enable_apprise,
         enabled_channels = excluded.enabled_channels,
         enable_direct_messages = excluded.enable_direct_messages,
         notify_on_emoji = excluded.notify_on_emoji,
+        notify_on_new_node = excluded.notify_on_new_node,
+        notify_on_traceroute = excluded.notify_on_traceroute,
         whitelist = excluded.whitelist,
         blacklist = excluded.blacklist,
         updated_at = excluded.updated_at
@@ -123,6 +134,8 @@ export function saveUserNotificationPreferences(
       JSON.stringify(preferences.enabledChannels),
       preferences.enableDirectMessages ? 1 : 0,
       preferences.notifyOnEmoji ? 1 : 0,
+      preferences.notifyOnNewNode ? 1 : 0,
+      preferences.notifyOnTraceroute ? 1 : 0,
       JSON.stringify(preferences.whitelist),
       JSON.stringify(preferences.blacklist),
       now,

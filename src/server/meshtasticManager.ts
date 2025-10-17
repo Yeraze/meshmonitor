@@ -1457,6 +1457,10 @@ class MeshtasticManager {
       databaseService.insertTraceroute(tracerouteRecord);
       logger.debug(`💾 Saved traceroute record to traceroutes table`);
 
+      // Send notification for successful traceroute
+      notificationService.notifyTraceroute(fromNodeId, toNodeId, routeText)
+        .catch(err => logger.error('Failed to send traceroute notification:', err));
+
       // Calculate and store route segment distances, and estimate positions for nodes without GPS
       try {
         // Build the full route path: toNode -> intermediates -> fromNode

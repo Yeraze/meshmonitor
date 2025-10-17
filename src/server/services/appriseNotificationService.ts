@@ -1,6 +1,6 @@
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
-import { getUserNotificationPreferences, shouldFilterNotification as shouldFilterNotificationUtil } from '../utils/notificationFiltering.js';
+import { getUserNotificationPreferences, getUsersWithServiceEnabled, shouldFilterNotification as shouldFilterNotificationUtil } from '../utils/notificationFiltering.js';
 
 export interface AppriseNotificationPayload {
   title: string;
@@ -260,6 +260,42 @@ class AppriseNotificationService {
 
     // Use shared filtering utility
     return shouldFilterNotificationUtil(userId, filterContext);
+  }
+
+  /**
+   * Broadcast to users who have a specific preference enabled
+   * Used for special notifications like new nodes and traceroutes
+   */
+  public async broadcastToPreferenceUsers(
+    preferenceKey: 'notifyOnNewNode' | 'notifyOnTraceroute',
+    payload: AppriseNotificationPayload
+  ): Promise<{ sent: number; failed: number; filtered: number }> {
+    let sent = 0;
+    let failed = 0;
+    let filtered = 0;
+
+    // Get all users with Apprise enabled and this preference enabled
+    const users = getUsersWithServiceEnabled('apprise');
+    logger.info(`📢 Broadcasting ${preferenceKey} notification to ${users.length} Apprise users`);
+
+    for (const userId of users) {
+      // Check if user has this preference enabled
+      const prefs = getUserNotificationPreferences(userId);
+      if (!prefs || !prefs.enableApprise || !prefs[preferenceKey]) {
+        filtered++;
+        continue;
+      }
+
+      const success = await this.sendNotification(payload);
+      if (success) {
+        sent++;
+      } else {
+        failed++;
+      }
+    }
+
+    logger.info(`📢 ${preferenceKey} Apprise broadcast complete: ${sent} sent, ${failed} failed, ${filtered} filtered`);
+    return { sent, failed, filtered };
   }
 }
 

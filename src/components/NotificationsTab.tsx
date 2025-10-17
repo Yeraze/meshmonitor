@@ -16,6 +16,8 @@ interface NotificationPreferences {
   enabledChannels: number[];
   enableDirectMessages: boolean;
   notifyOnEmoji: boolean;
+  notifyOnNewNode: boolean;
+  notifyOnTraceroute: boolean;
   whitelist: string[];
   blacklist: string[];
 }
@@ -42,6 +44,8 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
     enabledChannels: [],
     enableDirectMessages: true,
     notifyOnEmoji: true,
+    notifyOnNewNode: true,
+    notifyOnTraceroute: true,
     whitelist: ['Hi', 'Help'],
     blacklist: ['Test', 'Copy']
   });
@@ -555,6 +559,54 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                     style={{ width: '18px', height: '18px' }}
                   />
                   <span style={{ fontWeight: '500' }}>😀 Emoji Reactions</span>
+                </label>
+              </div>
+
+              {/* New Node Toggle */}
+              <div style={{
+                padding: '12px',
+                backgroundColor: '#252535',
+                borderRadius: '6px',
+                marginBottom: '16px',
+                border: '2px solid #3a3a3a'
+              }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', margin: 0 }}>
+                  <input
+                    type="checkbox"
+                    checked={preferences.notifyOnNewNode}
+                    onChange={(e) => {
+                      setPreferences(prev => ({
+                        ...prev,
+                        notifyOnNewNode: e.target.checked
+                      }));
+                    }}
+                    style={{ width: '18px', height: '18px' }}
+                  />
+                  <span style={{ fontWeight: '500' }}>🆕 Newly Found Nodes</span>
+                </label>
+              </div>
+
+              {/* Traceroute Success Toggle */}
+              <div style={{
+                padding: '12px',
+                backgroundColor: '#252535',
+                borderRadius: '6px',
+                marginBottom: '16px',
+                border: '2px solid #3a3a3a'
+              }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', margin: 0 }}>
+                  <input
+                    type="checkbox"
+                    checked={preferences.notifyOnTraceroute}
+                    onChange={(e) => {
+                      setPreferences(prev => ({
+                        ...prev,
+                        notifyOnTraceroute: e.target.checked
+                      }));
+                    }}
+                    style={{ width: '18px', height: '18px' }}
+                  />
+                  <span style={{ fontWeight: '500' }}>🗺️ Successful Traceroutes</span>
                 </label>
               </div>
 
