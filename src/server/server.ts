@@ -1971,7 +1971,10 @@ const rewriteHtml = (htmlContent: string, baseUrl: string): string => {
     .replace(/href="\/favicon\.ico"/g, `href="${baseUrl}/favicon.ico"`)
     .replace(/href="\/favicon-16x16\.png"/g, `href="${baseUrl}/favicon-16x16.png"`)
     .replace(/href="\/favicon-32x32\.png"/g, `href="${baseUrl}/favicon-32x32.png"`)
-    .replace(/href="\/logo\.png"/g, `href="${baseUrl}/logo.png"`);
+    .replace(/href="\/logo\.png"/g, `href="${baseUrl}/logo.png"`)
+    // PWA-related paths
+    .replace(/href="\/manifest\.webmanifest"/g, `href="${baseUrl}/manifest.webmanifest"`)
+    .replace(/src="\/registerSW\.js"/g, `src="${baseUrl}/registerSW.js"`);
 
   return rewritten;
 };
@@ -1982,6 +1985,30 @@ let cachedRewrittenHtml: string | null = null;
 
 // Serve static assets (JS, CSS, images)
 if (BASE_URL) {
+  // Serve PWA files with BASE_URL rewriting (MUST be before static middleware)
+  app.get(`${BASE_URL}/registerSW.js`, (_req: express.Request, res: express.Response) => {
+    const swRegisterPath = path.join(buildPath, 'registerSW.js');
+    let content = fs.readFileSync(swRegisterPath, 'utf-8');
+    // Rewrite service worker registration to use BASE_URL
+    // The generated file has: navigator.serviceWorker.register('/sw.js', { scope: '/' })
+    content = content
+      .replace("'/sw.js'", `'${BASE_URL}/sw.js'`)
+      .replace('"/sw.js"', `"${BASE_URL}/sw.js"`)
+      .replace("scope: '/'", `scope: '${BASE_URL}/'`)
+      .replace('scope: "/"', `scope: "${BASE_URL}/"`);
+    res.type('application/javascript').send(content);
+  });
+
+  app.get(`${BASE_URL}/manifest.webmanifest`, (_req: express.Request, res: express.Response) => {
+    const manifestPath = path.join(buildPath, 'manifest.webmanifest');
+    let content = fs.readFileSync(manifestPath, 'utf-8');
+    const manifest = JSON.parse(content);
+    // Update manifest paths
+    manifest.scope = `${BASE_URL}/`;
+    manifest.start_url = `${BASE_URL}/`;
+    res.type('application/manifest+json').json(manifest);
+  });
+
   // Serve assets folder specifically
   app.use(`${BASE_URL}/assets`, express.static(path.join(buildPath, 'assets')));
 

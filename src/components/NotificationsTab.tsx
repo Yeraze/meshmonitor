@@ -21,6 +21,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
   const [vapidSubject, setVapidSubject] = useState('');
   const [isUpdatingSubject, setIsUpdatingSubject] = useState(false);
   const [testStatus, setTestStatus] = useState<string>('');
+  const [debugInfo, setDebugInfo] = useState<string>('');
 
   // Check notification permission and subscription status
   useEffect(() => {
@@ -60,10 +61,10 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
 
   const loadVapidStatus = async () => {
     try {
-      const response = await api.get<{ status: VapidStatus }>('/push/status');
-      setVapidStatus(response.status);
-      if (response.status.subject) {
-        setVapidSubject(response.status.subject);
+      const response = await api.get<VapidStatus>('/api/push/status');
+      setVapidStatus(response);
+      if (response.subject) {
+        setVapidSubject(response.subject);
       }
     } catch (error) {
       logger.error('Failed to load VAPID status:', error);
@@ -80,9 +81,8 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
       const permission = await Notification.requestPermission();
       setNotificationPermission(permission);
 
-      if (permission === 'granted') {
-        // Automatically subscribe after permission granted
-        await subscribeToNotifications();
+      if (permission !== 'granted') {
+        logger.warn('Notification permission not granted:', permission);
       }
     } catch (error) {
       logger.error('Failed to request notification permission:', error);
@@ -97,25 +97,44 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
     }
 
     setIsSubscribing(true);
+    setDebugInfo('Starting subscription...');
 
     try {
+      setDebugInfo('Fetching VAPID public key...');
+      logger.info('Fetching VAPID public key...');
+
       // Get VAPID public key
-      const response = await api.get<{ publicKey: string }>('/push/vapid-key');
+      const response = await api.get<{ publicKey: string }>('/api/push/vapid-key');
+      logger.info('VAPID key response:', response);
+      setDebugInfo(`Got VAPID key: ${response.publicKey ? 'Yes' : 'No'}`);
+
       const publicKey = response.publicKey;
 
       if (!publicKey) {
         throw new Error('VAPID public key not available');
       }
 
+      setDebugInfo('Creating push subscription...');
+      logger.info('Subscribing to push notifications...');
+      logger.info('VAPID public key (first 20 chars):', publicKey.substring(0, 20));
+      logger.info('Converted key length:', urlBase64ToUint8Array(publicKey).length);
+
       // Subscribe to push notifications
       const registration = await navigator.serviceWorker.ready;
+      logger.info('Service worker ready, attempting subscription...');
+
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource
       });
 
+      logger.info('Push subscription created successfully');
+
+      setDebugInfo('Sending subscription to backend...');
+      logger.info('Push subscription created, sending to backend...');
+
       // Send subscription to backend
-      await api.post('/push/subscribe', {
+      const subscribeResult = await api.post('/api/push/subscribe', {
         subscription: {
           endpoint: subscription.endpoint,
           keys: {
@@ -125,12 +144,28 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
         }
       });
 
+      logger.info('Subscribe result:', subscribeResult);
+      setDebugInfo('Subscription saved! Reloading status...');
+
       setIsSubscribed(true);
       await loadVapidStatus();
+
+      setDebugInfo('✅ Successfully subscribed to push notifications!');
       logger.info('Successfully subscribed to push notifications');
+
+      setTimeout(() => setDebugInfo(''), 5000);
     } catch (error: any) {
       logger.error('Failed to subscribe to push notifications:', error);
-      alert(`Failed to subscribe: ${error.message || 'Unknown error'}`);
+      let errorMessage = 'Unknown error';
+
+      if (error.message) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
+
+      setDebugInfo(`❌ Error: ${errorMessage}`);
+      alert(`Failed to subscribe: ${errorMessage}`);
     } finally {
       setIsSubscribing(false);
     }
@@ -145,7 +180,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
 
       if (subscription) {
         // Unsubscribe from backend
-        await api.post('/push/unsubscribe', {
+        await api.post('/api/push/unsubscribe', {
           endpoint: subscription.endpoint
         });
 
@@ -172,7 +207,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
     setIsUpdatingSubject(true);
 
     try {
-      await api.put('/push/vapid-subject', { subject: vapidSubject });
+      await api.put('/api/push/vapid-subject', { subject: vapidSubject });
       await loadVapidStatus();
       alert('VAPID subject updated successfully');
     } catch (error) {
@@ -187,7 +222,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
     setTestStatus('Sending...');
 
     try {
-      const response = await api.post<{ sent: number; failed: number }>('/push/test', {});
+      const response = await api.post<{ sent: number; failed: number }>('/api/push/test', {});
       setTestStatus(`✅ Sent: ${response.sent}, Failed: ${response.failed}`);
       setTimeout(() => setTestStatus(''), 5000);
     } catch (error) {
@@ -225,10 +260,32 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
 
   const isSupported = 'Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window;
   const isPWAInstalled = window.matchMedia('(display-mode: standalone)').matches;
+  const isSecureContext = window.isSecureContext;
+  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
   return (
     <div className="tab-content">
       <h2>Push Notifications</h2>
+
+      {/* HTTPS Warning */}
+      {!isSecureContext && !isLocalhost && (
+        <div className="settings-section" style={{ backgroundColor: '#f8d7da', color: '#721c24', padding: '15px', borderRadius: '8px', border: '1px solid #f5c6cb', marginBottom: '20px' }}>
+          <h3 style={{ color: '#721c24' }}>⚠️ HTTPS Required</h3>
+          <p>
+            <strong>Push notifications are not available over HTTP.</strong>
+          </p>
+          <p>
+            To enable push notifications, you must access MeshMonitor via:
+          </p>
+          <ul style={{ paddingLeft: '20px', marginLeft: '0' }}>
+            <li><strong>HTTPS:</strong> Set up SSL certificates (recommended for production)</li>
+            <li><strong>Localhost:</strong> Access via <code>http://localhost</code> for local testing</li>
+          </ul>
+          <p>
+            Current connection: <strong>{window.location.protocol}//{window.location.host}</strong>
+          </p>
+        </div>
+      )}
 
       {/* Browser Support Status */}
       <div className="settings-section">
@@ -261,12 +318,13 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
 
       {/* iOS Instructions */}
       {!isPWAInstalled && (
-        <div className="settings-section" style={{ backgroundColor: '#fff3cd', padding: '15px', borderRadius: '8px', border: '1px solid #ffc107' }}>
-          <h3>📱 iOS Users: Installation Required</h3>
+        <div className="settings-section" style={{ backgroundColor: '#fff3cd', color: '#856404', padding: '15px', borderRadius: '8px', border: '1px solid #ffc107' }}>
+          <h3 style={{ color: '#856404' }}>📱 iOS Users: Installation Required</h3>
           <p>
-            On iOS (iPhone/iPad), push notifications only work when MeshMonitor is installed as a PWA:
+            On iOS (iPhone/iPad), push notifications require HTTPS and PWA installation:
           </p>
-          <ol>
+          <ol style={{ paddingLeft: '20px', marginLeft: '0' }}>
+            <li><strong>HTTPS Required:</strong> Access MeshMonitor via HTTPS (e.g., https://your-server.com)</li>
             <li>Open MeshMonitor in Safari</li>
             <li>Tap the Share button (square with arrow)</li>
             <li>Scroll down and tap "Add to Home Screen"</li>
@@ -279,52 +337,68 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
       {/* Enable Notifications */}
       {isSupported && (
         <div className="settings-section">
-          <h3>Enable Notifications</h3>
+          <h3>Setup Notifications</h3>
+          <p>Follow these steps to enable push notifications:</p>
 
-          {notificationPermission === 'default' && (
-            <div>
-              <p>Click below to enable push notifications. You'll receive alerts for new messages even when the app is in the background.</p>
-              <button
-                className="button button-primary"
-                onClick={requestNotificationPermission}
-                disabled={isSubscribing}
-              >
-                🔔 Enable Notifications
-              </button>
-            </div>
-          )}
+          {/* Step 1: Request Permission */}
+          <div style={{ marginBottom: '20px' }}>
+            <h4>Step 1: Enable Notifications</h4>
+            {notificationPermission === 'default' && (
+              <div>
+                <p>Grant permission for this site to show notifications.</p>
+                <button
+                  className="button button-primary"
+                  onClick={requestNotificationPermission}
+                >
+                  🔔 Enable Notifications
+                </button>
+              </div>
+            )}
+            {notificationPermission === 'granted' && (
+              <p>✅ Notification permission granted</p>
+            )}
+            {notificationPermission === 'denied' && (
+              <div className="error-message">
+                <p>❌ Notification permission denied. Please enable notifications in your browser settings.</p>
+                <p><strong>Chrome/Edge:</strong> Click the lock icon in the address bar → Site settings → Notifications</p>
+                <p><strong>Safari:</strong> Safari → Settings → Websites → Notifications</p>
+              </div>
+            )}
+          </div>
 
-          {notificationPermission === 'granted' && !isSubscribed && (
-            <div>
-              <p>Permission granted! Click below to subscribe to notifications.</p>
-              <button
-                className="button button-primary"
-                onClick={subscribeToNotifications}
-                disabled={isSubscribing}
-              >
-                {isSubscribing ? 'Subscribing...' : '📥 Subscribe to Notifications'}
-              </button>
-            </div>
-          )}
-
-          {notificationPermission === 'granted' && isSubscribed && (
-            <div>
-              <p>✅ You are subscribed to push notifications!</p>
-              <button
-                className="button button-secondary"
-                onClick={unsubscribeFromNotifications}
-                disabled={isSubscribing}
-              >
-                {isSubscribing ? 'Unsubscribing...' : '📤 Unsubscribe'}
-              </button>
-            </div>
-          )}
-
-          {notificationPermission === 'denied' && (
-            <div className="error-message">
-              <p>❌ Notification permission denied. Please enable notifications in your browser settings.</p>
-              <p><strong>Chrome/Edge:</strong> Click the lock icon in the address bar → Site settings → Notifications</p>
-              <p><strong>Safari:</strong> Safari → Settings → Websites → Notifications</p>
+          {/* Step 2: Subscribe */}
+          {notificationPermission === 'granted' && (
+            <div style={{ marginBottom: '20px' }}>
+              <h4>Step 2: Subscribe to Notifications</h4>
+              {!isSubscribed && (
+                <div>
+                  <p>Subscribe to receive push notifications for new messages.</p>
+                  <button
+                    className="button button-primary"
+                    onClick={subscribeToNotifications}
+                    disabled={isSubscribing}
+                  >
+                    {isSubscribing ? 'Subscribing...' : '📥 Subscribe to Notifications'}
+                  </button>
+                  {debugInfo && (
+                    <div style={{ marginTop: '10px', padding: '10px', backgroundColor: '#f0f0f0', borderRadius: '4px' }}>
+                      <strong>Debug:</strong> {debugInfo}
+                    </div>
+                  )}
+                </div>
+              )}
+              {isSubscribed && (
+                <div>
+                  <p>✅ You are subscribed to push notifications!</p>
+                  <button
+                    className="button button-secondary"
+                    onClick={unsubscribeFromNotifications}
+                    disabled={isSubscribing}
+                  >
+                    {isSubscribing ? 'Unsubscribing...' : '📤 Unsubscribe'}
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -4014,6 +4014,7 @@ function App() {
         setActiveTab={setActiveTab}
         hasPermission={hasPermission}
         isAdmin={authStatus?.user?.isAdmin || false}
+        isAuthenticated={authStatus?.authenticated || false}
         unreadCounts={unreadCounts}
         unreadCountsData={unreadCountsData}
         onMessagesClick={() => {

@@ -14,6 +14,7 @@ interface SidebarProps {
   setActiveTab: (tab: TabType) => void;
   hasPermission: (resource: ResourceType, action: PermissionAction) => boolean;
   isAdmin: boolean;
+  isAuthenticated: boolean;
   unreadCounts: { [key: number]: number };
   unreadCountsData?: UnreadCountsData | null;
   onMessagesClick: () => void;
@@ -27,6 +28,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   setActiveTab,
   hasPermission,
   isAdmin,
+  isAuthenticated,
   unreadCountsData,
   onMessagesClick,
   onChannelsClick,
@@ -129,7 +131,9 @@ const Sidebar: React.FC<SidebarProps> = ({
           {hasPermission('configuration', 'read') && (
             <NavItem id="configuration" label="Device" icon="📡" />
           )}
-          <NavItem id="notifications" label="Notifications" icon="🔔" />
+          {isAuthenticated && (
+            <NavItem id="notifications" label="Notifications" icon="🔔" />
+          )}
         </div>
 
         {(isAdmin || hasPermission('audit', 'read')) && (

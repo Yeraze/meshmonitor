@@ -193,7 +193,19 @@ class PushNotificationService {
         WHERE user_id = ? OR (user_id IS NULL AND ? IS NULL)
         ORDER BY created_at DESC
       `);
-      return stmt.all(userId || null, userId || null) as DbPushSubscription[];
+      const rows = stmt.all(userId || null, userId || null) as any[];
+      // Map snake_case database columns to camelCase
+      return rows.map(row => ({
+        id: row.id,
+        userId: row.user_id,
+        endpoint: row.endpoint,
+        p256dhKey: row.p256dh_key,
+        authKey: row.auth_key,
+        userAgent: row.user_agent,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        lastUsedAt: row.last_used_at
+      }));
     } catch (error) {
       logger.error('❌ Failed to get user subscriptions:', error);
       return [];
@@ -209,7 +221,19 @@ class PushNotificationService {
         SELECT * FROM push_subscriptions
         ORDER BY created_at DESC
       `);
-      return stmt.all() as DbPushSubscription[];
+      const rows = stmt.all() as any[];
+      // Map snake_case database columns to camelCase
+      return rows.map(row => ({
+        id: row.id,
+        userId: row.user_id,
+        endpoint: row.endpoint,
+        p256dhKey: row.p256dh_key,
+        authKey: row.auth_key,
+        userAgent: row.user_agent,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        lastUsedAt: row.last_used_at
+      }));
     } catch (error) {
       logger.error('❌ Failed to get all subscriptions:', error);
       return [];
