@@ -1703,7 +1703,11 @@ class MeshtasticManager {
         nodeData.shortName = nodeInfo.user.shortName;
         nodeData.hwModel = nodeInfo.user.hwModel;
         nodeData.role = nodeInfo.user.role;
-        nodeData.viaMqtt = nodeInfo.user.viaMqtt !== undefined ? nodeInfo.user.viaMqtt : undefined;
+      }
+
+      // viaMqtt is at the top level of NodeInfo, not inside user
+      if (nodeInfo.viaMqtt !== undefined) {
+        nodeData.viaMqtt = nodeInfo.viaMqtt;
       }
 
       // Add position information if available
