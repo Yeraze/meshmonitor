@@ -430,6 +430,49 @@ class PushNotificationService {
     // Use shared filtering utility
     return shouldFilterNotificationUtil(userId, filterContext);
   }
+
+  /**
+   * Broadcast to users who have a specific preference enabled
+   * Used for special notifications like new nodes and traceroutes
+   */
+  public async broadcastToPreferenceUsers(
+    preferenceKey: 'notifyOnNewNode' | 'notifyOnTraceroute',
+    payload: PushNotificationPayload
+  ): Promise<{ sent: number; failed: number; filtered: number }> {
+    const subscriptions = this.getAllSubscriptions();
+    let sent = 0;
+    let failed = 0;
+    let filtered = 0;
+
+    logger.info(`📢 Broadcasting ${preferenceKey} notification to ${subscriptions.length} subscriptions`);
+
+    for (const subscription of subscriptions) {
+      const userId = subscription.userId;
+
+      // Skip anonymous users for these special notifications
+      if (!userId) {
+        filtered++;
+        continue;
+      }
+
+      // Check if user has this preference enabled
+      const prefs = getUserNotificationPreferences(userId);
+      if (!prefs || !prefs.enableWebPush || !prefs[preferenceKey]) {
+        filtered++;
+        continue;
+      }
+
+      const success = await this.sendToSubscription(subscription, payload);
+      if (success) {
+        sent++;
+      } else {
+        failed++;
+      }
+    }
+
+    logger.info(`📢 ${preferenceKey} broadcast complete: ${sent} sent, ${failed} failed, ${filtered} filtered`);
+    return { sent, failed, filtered };
+  }
 }
 
 // Web Push subscription type (matches browser PushSubscription interface)

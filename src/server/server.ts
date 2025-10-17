@@ -1962,6 +1962,9 @@ apiRouter.get('/push/preferences', requireAuth(), async (req, res) => {
         enableApprise: false,
         enabledChannels: [],
         enableDirectMessages: true,
+        notifyOnEmoji: true,
+        notifyOnNewNode: true,
+        notifyOnTraceroute: true,
         whitelist: ['Hi', 'Help'],
         blacklist: ['Test', 'Copy']
       });
@@ -1980,11 +1983,13 @@ apiRouter.post('/push/preferences', requireAuth(), async (req, res) => {
       return res.status(401).json({ error: 'Authentication required' });
     }
 
-    const { enableWebPush, enableApprise, enabledChannels, enableDirectMessages, whitelist, blacklist } = req.body;
+    const { enableWebPush, enableApprise, enabledChannels, enableDirectMessages, notifyOnEmoji, notifyOnNewNode, notifyOnTraceroute, whitelist, blacklist } = req.body;
 
     // Validate input
     if (typeof enableWebPush !== 'boolean' || typeof enableApprise !== 'boolean' ||
         !Array.isArray(enabledChannels) || typeof enableDirectMessages !== 'boolean' ||
+        typeof notifyOnEmoji !== 'boolean' || typeof notifyOnNewNode !== 'boolean' ||
+        typeof notifyOnTraceroute !== 'boolean' ||
         !Array.isArray(whitelist) || !Array.isArray(blacklist)) {
       return res.status(400).json({ error: 'Invalid preferences data' });
     }
@@ -1994,6 +1999,9 @@ apiRouter.post('/push/preferences', requireAuth(), async (req, res) => {
       enableApprise,
       enabledChannels,
       enableDirectMessages,
+      notifyOnEmoji,
+      notifyOnNewNode,
+      notifyOnTraceroute,
       whitelist,
       blacklist
     };
