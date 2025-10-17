@@ -976,18 +976,6 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
           )}
         </div>
 
-        <div style={{
-          backgroundColor: '#1e2e1e',
-          border: '1px solid #2a4a2a',
-          borderRadius: '8px',
-          padding: '16px',
-          marginTop: '20px',
-          fontSize: '14px',
-          color: '#93c5a0'
-        }}>
-          <strong>💡 Tip:</strong> After saving your configuration, enable "Apprise Notifications" in the services
-          section above to start receiving notifications via your configured services.
-        </div>
       </div>
       )}
     </div>

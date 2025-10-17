@@ -23,7 +23,15 @@ class AppriseNotificationService {
   private initialize(): void {
     // Default to internal Apprise API (bundled in container)
     const appriseUrl = databaseService.getSetting('apprise_url') || 'http://localhost:8000';
-    const enabled = databaseService.getSetting('apprise_enabled') === 'true';
+    const enabledSetting = databaseService.getSetting('apprise_enabled');
+
+    // Default to enabled if not explicitly set (backward compatibility)
+    const enabled = enabledSetting !== 'false';
+
+    // If not set, initialize it to 'true'
+    if (enabledSetting === null || enabledSetting === undefined) {
+      databaseService.setSetting('apprise_enabled', 'true');
+    }
 
     this.config = {
       url: appriseUrl,
