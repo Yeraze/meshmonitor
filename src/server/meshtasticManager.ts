@@ -269,14 +269,16 @@ class MeshtasticManager {
         try {
           const targetNode = databaseService.getNodeNeedingTraceroute(this.localNodeInfo.nodeNum);
           if (targetNode) {
-            logger.debug(`🗺️ Auto-traceroute: Sending traceroute to ${targetNode.longName || targetNode.nodeId} (${targetNode.nodeId})`);
+            logger.info(`🗺️ Auto-traceroute: Sending traceroute to ${targetNode.longName || targetNode.nodeId} (${targetNode.nodeId})`);
             await this.sendTraceroute(targetNode.nodeNum, 0);
           } else {
-            logger.debug('🗺️ Auto-traceroute: No nodes available for traceroute');
+            logger.info('🗺️ Auto-traceroute: No nodes available for traceroute');
           }
         } catch (error) {
           logger.error('❌ Error in auto-traceroute:', error);
         }
+      } else {
+        logger.info('🗺️ Auto-traceroute: Skipping - not connected or no local node info');
       }
     }, intervalMs);
   }
@@ -3131,7 +3133,7 @@ class MeshtasticManager {
       await this.transport.send(tracerouteData);
 
       databaseService.recordTracerouteRequest(destination);
-      logger.debug(`Traceroute request sent to node: !${destination.toString(16).padStart(8, '0')}`);
+      logger.info(`📤 Traceroute request sent to node: !${destination.toString(16).padStart(8, '0')}`);
     } catch (error) {
       logger.error('Error sending traceroute:', error);
       throw error;
