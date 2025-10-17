@@ -135,7 +135,19 @@ export function saveUserNotificationPreferences(
  */
 export function getUsersWithServiceEnabled(service: 'web_push' | 'apprise'): number[] {
   try {
-    const column = service === 'web_push' ? 'enable_web_push' : 'enable_apprise';
+    // Security: Use explicit column mapping to prevent SQL injection
+    // Even though service is type-constrained, we explicitly validate and map columns
+    const COLUMN_MAP: Record<'web_push' | 'apprise', string> = {
+      'web_push': 'enable_web_push',
+      'apprise': 'enable_apprise'
+    };
+
+    const column = COLUMN_MAP[service];
+    if (!column) {
+      throw new Error(`Invalid service type: ${service}`);
+    }
+
+    // Now safe to use column name in query since it's from a whitelist
     const stmt = databaseService.db.prepare(`
       SELECT user_id
       FROM user_notification_preferences

@@ -2082,7 +2082,50 @@ apiRouter.post('/apprise/configure', requireAdmin(), async (req, res) => {
       return res.status(400).json({ error: 'URLs must be an array' });
     }
 
-    const result = await appriseNotificationService.configureUrls(urls);
+    // Security: Validate URL schemes to prevent malicious URLs
+    const ALLOWED_SCHEMES = [
+      // Apprise service protocols
+      'discord', 'slack', 'tgram', 'telegram', 'msteams', 'teams',
+      'mailto', 'email', 'smtp', 'smtps',
+      'webhook', 'webhooks', 'json', 'xml',
+      'gotify', 'ntfy', 'pushover', 'pushbullet',
+      'apprise', 'apprises',
+      // Standard web protocols (for webhooks)
+      'http', 'https'
+    ];
+
+    const invalidUrls: string[] = [];
+    const validUrls = urls.filter((url: string) => {
+      if (typeof url !== 'string' || !url.trim()) {
+        invalidUrls.push(url);
+        return false;
+      }
+
+      try {
+        const parsed = new URL(url);
+        const scheme = parsed.protocol.slice(0, -1).toLowerCase(); // Remove trailing ':' and normalize
+
+        if (!ALLOWED_SCHEMES.includes(scheme)) {
+          invalidUrls.push(url);
+          return false;
+        }
+
+        return true;
+      } catch {
+        invalidUrls.push(url);
+        return false;
+      }
+    });
+
+    if (invalidUrls.length > 0) {
+      return res.status(400).json({
+        error: 'Invalid or disallowed URL schemes detected',
+        invalidUrls,
+        allowedSchemes: ALLOWED_SCHEMES
+      });
+    }
+
+    const result = await appriseNotificationService.configureUrls(validUrls);
     res.json(result);
   } catch (error: any) {
     logger.error('Error configuring Apprise URLs:', error);
