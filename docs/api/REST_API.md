@@ -513,6 +513,280 @@ curl -X POST \
 
 ---
 
+## Notification Management
+
+### Web Push Notifications
+
+#### GET /api/push/vapid-key
+
+Get the public VAPID key for Web Push subscriptions.
+
+**Authentication:** Optional
+
+**Response:**
+```json
+{
+  "publicKey": "BKxJ3F..."
+}
+```
+
+#### GET /api/push/status
+
+Get Web Push notification service status.
+
+**Authentication:** Optional
+
+**Response:**
+```json
+{
+  "available": true,
+  "hasKeys": true
+}
+```
+
+#### POST /api/push/subscribe
+
+Subscribe to Web Push notifications.
+
+**Authentication:** Optional
+
+**Request Body:**
+```json
+{
+  "subscription": {
+    "endpoint": "https://fcm.googleapis.com/...",
+    "keys": {
+      "p256dh": "BL7ELU...",
+      "auth": "8eeIz4..."
+    }
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "success": true
+}
+```
+
+#### POST /api/push/unsubscribe
+
+Unsubscribe from Web Push notifications.
+
+**Authentication:** Optional
+
+**Request Body:**
+```json
+{
+  "endpoint": "https://fcm.googleapis.com/..."
+}
+```
+
+**Response:**
+```json
+{
+  "success": true
+}
+```
+
+#### POST /api/push/test
+
+Send a test Web Push notification (admin only).
+
+**Authentication:** Admin required
+
+**Response:**
+```json
+{
+  "success": true,
+  "sent": 2,
+  "failed": 0
+}
+```
+
+#### GET /api/push/preferences
+
+Get current user's notification preferences.
+
+**Authentication:** Required
+
+**Response:**
+```json
+{
+  "enableWebPush": true,
+  "enableApprise": false,
+  "enabledChannels": [0, 1, 2],
+  "enableDirectMessages": true,
+  "whitelist": ["Help", "Emergency"],
+  "blacklist": ["Test", "Copy"]
+}
+```
+
+#### POST /api/push/preferences
+
+Update notification preferences.
+
+**Authentication:** Required
+
+**Request Body:**
+```json
+{
+  "enableWebPush": true,
+  "enableApprise": true,
+  "enabledChannels": [0, 1, 2],
+  "enableDirectMessages": true,
+  "whitelist": ["Help", "Emergency"],
+  "blacklist": ["Test", "Copy"]
+}
+```
+
+**Response:**
+```json
+{
+  "success": true
+}
+```
+
+**Notes:**
+- Filtering preferences apply to both Web Push and Apprise
+- **Priority order**: Whitelist (highest) → Blacklist → Channel/DM settings
+- Empty arrays disable that filter type
+
+### Apprise Notifications
+
+#### GET /api/apprise/status
+
+Get Apprise notification service status.
+
+**Authentication:** Admin required
+
+**Response:**
+```json
+{
+  "available": true,
+  "enabled": true,
+  "url": "http://apprise-api:8000"
+}
+```
+
+#### POST /api/apprise/test
+
+Test Apprise notification service connection.
+
+**Authentication:** Admin required
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Apprise API is reachable",
+  "details": {
+    "version": "1.0.0"
+  }
+}
+```
+
+**Error Response:**
+```json
+{
+  "success": false,
+  "message": "Connection failed: ECONNREFUSED"
+}
+```
+
+#### GET /api/apprise/urls
+
+Get configured Apprise notification URLs (admin only).
+
+**Authentication:** Admin required
+
+**Response:**
+```json
+{
+  "urls": [
+    "discord://webhook_id/webhook_token",
+    "slack://token_a/token_b/token_c",
+    "mailto://user:password@gmail.com"
+  ]
+}
+```
+
+**Notes:**
+- Returns empty array if no URLs configured
+- URLs may contain sensitive tokens - admin access required
+
+#### POST /api/apprise/configure
+
+Configure Apprise notification URLs.
+
+**Authentication:** Admin required
+
+**Request Body:**
+```json
+{
+  "urls": [
+    "discord://webhook_id/webhook_token",
+    "slack://token_a/token_b/token_c",
+    "mailto://user:password@gmail.com"
+  ]
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Configured 3 notification URLs"
+}
+```
+
+**Error Responses:**
+- `400`: Missing or invalid URLs
+- `500`: Failed to configure Apprise
+
+**Example:**
+```bash
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"urls":["discord://webhook_id/token"]}' \
+  http://localhost:8080/api/apprise/configure
+```
+
+**Supported URL Formats:**
+- Discord: `discord://webhook_id/webhook_token`
+- Slack: `slack://token_a/token_b/token_c`
+- Telegram: `tgram://bot_token/chat_id`
+- Email (SMTP): `mailto://user:password@gmail.com`
+- Custom Webhook: `json://webhook.example.com/path`
+- See [Apprise Documentation](https://github.com/caronc/apprise) for full list
+
+#### PUT /api/apprise/enabled
+
+Enable or disable Apprise notifications system-wide.
+
+**Authentication:** Admin required
+
+**Request Body:**
+```json
+{
+  "enabled": true
+}
+```
+
+**Response:**
+```json
+{
+  "success": true
+}
+```
+
+**Notes:**
+- System-wide toggle independent of per-user preferences
+- Users must still enable Apprise in their own preferences
+
+---
+
 ## WebSocket API (Future)
 
 *Note: WebSocket endpoints are planned for future implementation to provide real-time updates.*
