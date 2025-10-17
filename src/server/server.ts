@@ -2031,14 +2031,23 @@ apiRouter.get('/apprise/status', requireAdmin(), async (_req, res) => {
   }
 });
 
-// Test Apprise connection (admin only)
+// Send test Apprise notification (admin only)
 apiRouter.post('/apprise/test', requireAdmin(), async (_req, res) => {
   try {
-    const result = await appriseNotificationService.testConnection();
-    res.json(result);
+    const success = await appriseNotificationService.sendNotification({
+      title: 'Test Notification',
+      body: 'This is a test notification from MeshMonitor via Apprise',
+      type: 'info'
+    });
+
+    if (success) {
+      res.json({ success: true, message: 'Test notification sent successfully' });
+    } else {
+      res.json({ success: false, message: 'Apprise not available or no URLs configured' });
+    }
   } catch (error: any) {
-    logger.error('Error testing Apprise connection:', error);
-    res.status(500).json({ error: error.message || 'Failed to test Apprise connection' });
+    logger.error('Error sending test Apprise notification:', error);
+    res.status(500).json({ error: error.message || 'Failed to send test notification' });
   }
 });
 

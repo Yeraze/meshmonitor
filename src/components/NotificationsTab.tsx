@@ -367,7 +367,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
   };
 
   const testAppriseConnection = async () => {
-    setAppriseTestStatus('Testing connection...');
+    setAppriseTestStatus('Sending test notification...');
     try {
       const response = await api.post<{ success: boolean; message: string }>('/api/apprise/test', {});
       if (response.success) {
@@ -971,7 +971,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
             onClick={testAppriseConnection}
             disabled={!!appriseTestStatus}
           >
-            🧪 Test Connection
+            🧪 Send Test Notification
           </button>
           {appriseTestStatus && (
             <div style={{ fontWeight: 'bold', marginLeft: '12px' }}>{appriseTestStatus}</div>
