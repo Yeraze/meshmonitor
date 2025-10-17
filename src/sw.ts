@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 import { precacheAndRoute, cleanupOutdatedCaches } from 'workbox-precaching';
 import { registerRoute } from 'workbox-routing';
-import { NetworkOnly, CacheFirst } from 'workbox-strategies';
+import { NetworkOnly, CacheFirst, NetworkFirst } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 
@@ -12,6 +12,16 @@ precacheAndRoute(self.__WB_MANIFEST);
 
 // Clean up outdated caches
 cleanupOutdatedCaches();
+
+// CRITICAL: Always fetch HTML from network to get latest paths/BASE_URL
+// This prevents serving stale cached HTML with wrong asset paths
+registerRoute(
+  ({ request }) => request.mode === 'navigate',
+  new NetworkFirst({
+    cacheName: 'html-cache',
+    networkTimeoutSeconds: 3
+  })
+);
 
 // Handle API routes (never cache)
 registerRoute(
@@ -156,6 +166,18 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 
 console.log('[Service Worker] MeshMonitor service worker with push notifications loaded');
 
-// Skip waiting and claim clients immediately
-self.skipWaiting();
-self.clients.claim();
+// Skip waiting on install to activate new service worker immediately
+self.addEventListener('install', (event) => {
+  console.log('[Service Worker] Installing new service worker');
+  event.waitUntil(self.skipWaiting());
+});
+
+// Claim all clients when activated
+self.addEventListener('activate', (event) => {
+  console.log('[Service Worker] Activating new service worker');
+  event.waitUntil(
+    self.clients.claim().then(() => {
+      console.log('[Service Worker] Claimed all clients');
+    })
+  );
+});

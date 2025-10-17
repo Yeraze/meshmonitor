@@ -13,6 +13,7 @@ import { getSessionConfig } from './auth/sessionConfig.js';
 import { initializeOIDC } from './auth/oidcAuth.js';
 import {
   optionalAuth,
+  requireAuth,
   requirePermission,
   requireAdmin,
   hasPermission
@@ -1937,6 +1938,67 @@ apiRouter.post('/push/test', requireAdmin(), async (req, res) => {
   } catch (error: any) {
     logger.error('Error sending test notification:', error);
     res.status(500).json({ error: error.message || 'Failed to send test notification' });
+  }
+});
+
+// Get push notification preferences
+apiRouter.get('/push/preferences', requireAuth(), async (req, res) => {
+  try {
+    const userId = req.session?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const prefsJson = databaseService.getSetting(`push_prefs_${userId}`);
+
+    if (prefsJson) {
+      const prefs = JSON.parse(prefsJson);
+      res.json(prefs);
+    } else {
+      // Return defaults
+      res.json({
+        enabledChannels: [],
+        enableDirectMessages: true,
+        whitelist: ['Hi', 'Help'],
+        blacklist: ['Test', 'Copy']
+      });
+    }
+  } catch (error: any) {
+    logger.error('Error loading push preferences:', error);
+    res.status(500).json({ error: error.message || 'Failed to load preferences' });
+  }
+});
+
+// Save push notification preferences
+apiRouter.post('/push/preferences', requireAuth(), async (req, res) => {
+  try {
+    const userId = req.session?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const { enabledChannels, enableDirectMessages, whitelist, blacklist } = req.body;
+
+    // Validate input
+    if (!Array.isArray(enabledChannels) || typeof enableDirectMessages !== 'boolean' ||
+        !Array.isArray(whitelist) || !Array.isArray(blacklist)) {
+      return res.status(400).json({ error: 'Invalid preferences data' });
+    }
+
+    const prefs = {
+      enabledChannels,
+      enableDirectMessages,
+      whitelist,
+      blacklist
+    };
+
+    databaseService.setSetting(`push_prefs_${userId}`, JSON.stringify(prefs));
+
+    logger.info(`✅ Saved push notification preferences for user ${userId}`);
+    res.json({ success: true });
+  } catch (error: any) {
+    logger.error('Error saving push preferences:', error);
+    res.status(500).json({ error: error.message || 'Failed to save preferences' });
   }
 });
 

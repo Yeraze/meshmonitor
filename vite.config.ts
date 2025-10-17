@@ -31,9 +31,10 @@ export default defineConfig({
         ]
       },
       injectManifest: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-        // Exclude API routes from precaching
-        globIgnores: ['**/api/**']
+        globPatterns: ['**/*.{js,css,ico,png,svg}'],
+        // Exclude HTML and API routes from precaching
+        // HTML must be fetched from server to get runtime BASE_URL path rewriting
+        globIgnores: ['**/api/**', '**/*.html']
       },
       devOptions: {
         enabled: true,

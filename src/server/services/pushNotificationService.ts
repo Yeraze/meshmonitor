@@ -333,6 +333,123 @@ class PushNotificationService {
     logger.info(`📢 Broadcast complete: ${sent} sent, ${failed} failed`);
     return { sent, failed };
   }
+
+  /**
+   * Broadcast a push notification with per-user filtering
+   */
+  public async broadcastWithFiltering(
+    payload: PushNotificationPayload,
+    filterContext: {
+      messageText: string;
+      channelId: number;
+      isDirectMessage: boolean;
+    }
+  ): Promise<{ sent: number; failed: number; filtered: number }> {
+    const subscriptions = this.getAllSubscriptions();
+    let sent = 0;
+    let failed = 0;
+    let filtered = 0;
+
+    logger.info(`📢 Broadcasting push notification to ${subscriptions.length} subscriptions with filtering`);
+
+    for (const subscription of subscriptions) {
+      // Get user preferences
+      const userId = subscription.userId;
+
+      // Skip if user should be filtered
+      if (this.shouldFilterNotification(userId, filterContext)) {
+        logger.debug(`🔇 Filtered notification for user ${userId || 'anonymous'}: ${filterContext.messageText.substring(0, 30)}...`);
+        filtered++;
+        continue;
+      }
+
+      const success = await this.sendToSubscription(subscription, payload);
+      if (success) {
+        sent++;
+      } else {
+        failed++;
+      }
+    }
+
+    logger.info(`📢 Broadcast complete: ${sent} sent, ${failed} failed, ${filtered} filtered`);
+    return { sent, failed, filtered };
+  }
+
+  /**
+   * Check if notification should be filtered for a user based on their preferences
+   */
+  private shouldFilterNotification(
+    userId: number | null | undefined,
+    filterContext: {
+      messageText: string;
+      channelId: number;
+      isDirectMessage: boolean;
+    }
+  ): boolean {
+    // Anonymous users get all notifications (no filtering)
+    if (!userId) {
+      return false;
+    }
+
+    // Load user preferences
+    const prefsJson = databaseService.getSetting(`push_prefs_${userId}`);
+    if (!prefsJson) {
+      // No preferences set - allow all notifications
+      logger.debug(`No preferences found for user ${userId} - allowing notification`);
+      return false;
+    }
+
+    let prefs: {
+      enabledChannels: number[];
+      enableDirectMessages: boolean;
+      whitelist: string[];
+      blacklist: string[];
+    };
+
+    try {
+      prefs = JSON.parse(prefsJson);
+      logger.debug(`Loaded preferences for user ${userId}:`, JSON.stringify(prefs));
+    } catch (error) {
+      logger.error(`Failed to parse preferences for user ${userId}:`, error);
+      return false; // On error, allow notification
+    }
+
+    const messageTextLower = filterContext.messageText.toLowerCase();
+    logger.debug(`Checking message: "${filterContext.messageText}" (lowercase: "${messageTextLower}")`);
+
+    // WHITELIST CHECK (highest priority - if message contains whitelisted word, always send)
+    for (const word of prefs.whitelist) {
+      if (word && messageTextLower.includes(word.toLowerCase())) {
+        logger.debug(`✅ Whitelist match for user ${userId}: "${word}"`);
+        return false; // Don't filter - send notification
+      }
+    }
+
+    // BLACKLIST CHECK (second priority - if message contains blacklisted word, never send)
+    for (const word of prefs.blacklist) {
+      if (word && messageTextLower.includes(word.toLowerCase())) {
+        logger.debug(`🚫 Blacklist match for user ${userId}: "${word}"`);
+        return true; // Filter - don't send notification
+      }
+    }
+
+    // CHANNEL/DM CHECK (third priority - check if channel/DM is enabled)
+    if (filterContext.isDirectMessage) {
+      if (!prefs.enableDirectMessages) {
+        logger.debug(`🔇 Direct messages disabled for user ${userId}`);
+        return true; // Filter - don't send
+      }
+    } else {
+      // Channel message - check if channel is enabled
+      if (!prefs.enabledChannels.includes(filterContext.channelId)) {
+        logger.debug(`🔇 Channel ${filterContext.channelId} disabled for user ${userId}`);
+        return true; // Filter - don't send
+      }
+    }
+
+    // All checks passed - send notification
+    return false;
+  }
 }
 
 // Web Push subscription type (matches browser PushSubscription interface)

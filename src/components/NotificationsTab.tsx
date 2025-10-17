@@ -1,12 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import { logger } from '../utils/logger';
+import { Channel } from '../types/device';
 
 interface VapidStatus {
   configured: boolean;
   publicKey: string | null;
   subject: string | null;
   subscriptionCount: number;
+}
+
+interface NotificationPreferences {
+  enabledChannels: number[];
+  enableDirectMessages: boolean;
+  whitelist: string[];
+  blacklist: string[];
 }
 
 interface NotificationsTabProps {
@@ -23,11 +31,31 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
   const [testStatus, setTestStatus] = useState<string>('');
   const [debugInfo, setDebugInfo] = useState<string>('');
 
+  // Notification preferences
+  const [channels, setChannels] = useState<Channel[]>([]);
+  const [preferences, setPreferences] = useState<NotificationPreferences>({
+    enabledChannels: [],
+    enableDirectMessages: true,
+    whitelist: ['Hi', 'Help'],
+    blacklist: ['Test', 'Copy']
+  });
+  const [whitelistText, setWhitelistText] = useState('Hi\nHelp');
+  const [blacklistText, setBlacklistText] = useState('Test\nCopy');
+  const [isSavingPreferences, setIsSavingPreferences] = useState(false);
+
   // Check notification permission and subscription status
   useEffect(() => {
     checkNotificationStatus();
     loadVapidStatus();
+    loadChannels();
   }, []);
+
+  // Load preferences after channels are loaded
+  useEffect(() => {
+    if (channels.length > 0) {
+      loadPreferences();
+    }
+  }, [channels.length]);
 
   const checkNotificationStatus = async () => {
     // Check browser support
@@ -68,6 +96,61 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
       }
     } catch (error) {
       logger.error('Failed to load VAPID status:', error);
+    }
+  };
+
+  const loadChannels = async () => {
+    try {
+      const response = await api.get<Channel[]>('/api/channels');
+      const channelList = Array.isArray(response) ? response : [];
+      setChannels(channelList);
+
+      // Initialize all channels as enabled by default
+      if (preferences.enabledChannels.length === 0 && channelList.length > 0) {
+        setPreferences(prev => ({
+          ...prev,
+          enabledChannels: channelList.map(c => c.id)
+        }));
+      }
+    } catch (error) {
+      logger.error('Failed to load channels:', error);
+    }
+  };
+
+  const loadPreferences = async () => {
+    try {
+      const response = await api.get<NotificationPreferences>('/api/push/preferences');
+
+      // If enabledChannels is empty, initialize with all channels
+      if (response.enabledChannels.length === 0 && channels.length > 0) {
+        response.enabledChannels = channels.map(c => c.id);
+      }
+
+      setPreferences(response);
+      setWhitelistText(response.whitelist.join('\n'));
+      setBlacklistText(response.blacklist.join('\n'));
+    } catch (error) {
+      logger.debug('No saved preferences, using defaults');
+    }
+  };
+
+  const savePreferences = async () => {
+    setIsSavingPreferences(true);
+    try {
+      const prefs: NotificationPreferences = {
+        ...preferences,
+        whitelist: whitelistText.split('\n').map(w => w.trim()).filter(w => w.length > 0),
+        blacklist: blacklistText.split('\n').map(w => w.trim()).filter(w => w.length > 0)
+      };
+
+      await api.post('/api/push/preferences', prefs);
+      setPreferences(prefs);
+      logger.info('Notification preferences saved');
+    } catch (error) {
+      logger.error('Failed to save preferences:', error);
+      alert('Failed to save notification preferences');
+    } finally {
+      setIsSavingPreferences(false);
     }
   };
 
@@ -417,6 +500,111 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
             🧪 Send Test Notification
           </button>
           {testStatus && <div style={{ marginTop: '10px', fontWeight: 'bold' }}>{testStatus}</div>}
+        </div>
+      )}
+
+      {/* Notification Filtering Preferences */}
+      {isSubscribed && (
+        <div className="settings-section">
+          <h3>Notification Preferences</h3>
+          <p>Control which notifications you receive by selecting channels and filtering by keywords.</p>
+
+          {/* Channel Selection */}
+          <div style={{ marginBottom: '20px' }}>
+            <h4>Enabled Channels</h4>
+            <p>Select which channels should send you notifications:</p>
+            {channels.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {channels.map(channel => (
+                  <label key={channel.id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="checkbox"
+                      checked={preferences.enabledChannels.includes(channel.id)}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setPreferences(prev => ({
+                          ...prev,
+                          enabledChannels: checked
+                            ? [...prev.enabledChannels, channel.id]
+                            : prev.enabledChannels.filter(id => id !== channel.id)
+                        }));
+                      }}
+                    />
+                    <span>{channel.name || `Channel ${channel.id}`}</span>
+                  </label>
+                ))}
+              </div>
+            ) : (
+              <p style={{ color: '#666', fontStyle: 'italic' }}>No channels available</p>
+            )}
+          </div>
+
+          {/* Direct Messages Toggle */}
+          <div style={{ marginBottom: '20px' }}>
+            <h4>Direct Messages</h4>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="checkbox"
+                checked={preferences.enableDirectMessages}
+                onChange={(e) => {
+                  setPreferences(prev => ({
+                    ...prev,
+                    enableDirectMessages: e.target.checked
+                  }));
+                }}
+              />
+              <span>Enable notifications for direct messages</span>
+            </label>
+          </div>
+
+          {/* Whitelist */}
+          <div style={{ marginBottom: '20px' }}>
+            <h4>Whitelist (Always Notify)</h4>
+            <p>Messages containing these words will always trigger a notification (one word per line, case-insensitive):</p>
+            <textarea
+              value={whitelistText}
+              onChange={(e) => setWhitelistText(e.target.value)}
+              placeholder="Enter words to always notify&#10;Example:&#10;Hi&#10;Help"
+              rows={5}
+              style={{
+                width: '100%',
+                padding: '8px',
+                fontFamily: 'monospace',
+                fontSize: '14px',
+                border: '1px solid #ccc',
+                borderRadius: '4px'
+              }}
+            />
+          </div>
+
+          {/* Blacklist */}
+          <div style={{ marginBottom: '20px' }}>
+            <h4>Blacklist (Silence Notifications)</h4>
+            <p>Messages containing these words will never trigger a notification (one word per line, case-insensitive):</p>
+            <textarea
+              value={blacklistText}
+              onChange={(e) => setBlacklistText(e.target.value)}
+              placeholder="Enter words to silence&#10;Example:&#10;Test&#10;Copy"
+              rows={5}
+              style={{
+                width: '100%',
+                padding: '8px',
+                fontFamily: 'monospace',
+                fontSize: '14px',
+                border: '1px solid #ccc',
+                borderRadius: '4px'
+              }}
+            />
+          </div>
+
+          {/* Save Button */}
+          <button
+            className="button button-primary"
+            onClick={savePreferences}
+            disabled={isSavingPreferences}
+          >
+            {isSavingPreferences ? 'Saving...' : '💾 Save Preferences'}
+          </button>
         </div>
       )}
 

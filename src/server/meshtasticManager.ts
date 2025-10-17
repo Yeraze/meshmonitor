@@ -3178,8 +3178,8 @@ class MeshtasticManager {
         body = messageText.length > 100 ? messageText.substring(0, 97) + '...' : messageText;
       }
 
-      // Send push notification to all subscribed users
-      const result = await pushNotificationService.broadcast({
+      // Send push notification with filtering to all subscribed users
+      const result = await pushNotificationService.broadcastWithFiltering({
         title,
         body,
         icon: '/logo.png',
@@ -3192,6 +3192,10 @@ class MeshtasticManager {
           isDirectMessage,
           url: '/' // Could be enhanced to deep-link to specific message/channel
         }
+      }, {
+        messageText,
+        channelId: message.channel,
+        isDirectMessage
       });
 
       logger.debug(`📤 Sent push notification: ${result.sent} delivered, ${result.failed} failed`);
