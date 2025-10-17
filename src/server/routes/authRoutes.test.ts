@@ -603,4 +603,192 @@ describe('Authentication Routes', () => {
       expect(typeof response.body.localAuthDisabled).toBe('boolean');
     });
   });
+
+  describe('OIDC Account Migration', () => {
+    it('should migrate native-login user to OIDC on first OIDC login', async () => {
+      // Create a native-login user
+      const nativeUser = await userModel.create({
+        username: 'migrateuser',
+        password: 'password123',
+        email: 'migrate@example.com',
+        authProvider: 'local',
+        isAdmin: false
+      });
+
+      // Grant permissions
+      permissionModel.grantDefaultPermissions(nativeUser.id, false);
+
+      // Verify the user exists as a native-login user
+      let user = userModel.findById(nativeUser.id);
+      expect(user).toBeTruthy();
+      expect(user!.authProvider).toBe('local');
+      expect(user!.passwordHash).toBeTruthy();
+
+      // Simulate OIDC migration by directly calling migrateToOIDC
+      const oidcSubject = 'oidc-sub-123';
+      const migratedUser = userModel.migrateToOIDC(
+        nativeUser.id,
+        oidcSubject,
+        'migrate@example.com',
+        'Migrate User'
+      );
+
+      // Verify migration
+      expect(migratedUser).toBeTruthy();
+      expect(migratedUser!.id).toBe(nativeUser.id); // Same user ID
+      expect(migratedUser!.username).toBe('migrateuser'); // Same username
+      expect(migratedUser!.authProvider).toBe('oidc');
+      expect(migratedUser!.oidcSubject).toBe(oidcSubject);
+      expect(migratedUser!.passwordHash).toBeNull(); // Password hash removed
+      expect(migratedUser!.email).toBe('migrate@example.com');
+      expect(migratedUser!.displayName).toBe('Migrate User');
+
+      // Verify old password no longer works
+      const oldAuth = await userModel.authenticate('migrateuser', 'password123');
+      expect(oldAuth).toBeNull();
+    });
+
+    it('should preserve user permissions when migrating to OIDC', async () => {
+      // Create a native-login user
+      const nativeUser = await userModel.create({
+        username: 'permissionuser',
+        password: 'password123',
+        email: 'permissions@example.com',
+        authProvider: 'local',
+        isAdmin: true
+      });
+
+      // Grant specific permissions
+      permissionModel.grantDefaultPermissions(nativeUser.id, true);
+
+      // Get permissions before migration
+      const permissionsBefore = permissionModel.getUserPermissions(nativeUser.id);
+
+      // Migrate to OIDC
+      const migratedUser = userModel.migrateToOIDC(
+        nativeUser.id,
+        'oidc-sub-456',
+        'permissions@example.com',
+        'Permission User'
+      );
+
+      // Get permissions after migration
+      const permissionsAfter = permissionModel.getUserPermissions(migratedUser!.id);
+
+      // Verify permissions are preserved
+      expect(permissionsAfter).toEqual(permissionsBefore);
+
+      // Verify admin status is preserved
+      expect(migratedUser!.isAdmin).toBe(true);
+    });
+
+    it('should find user by email for migration when username differs', async () => {
+      // Create a native-login user
+      const nativeUser = await userModel.create({
+        username: 'oldusername',
+        password: 'password123',
+        email: 'email-match@example.com',
+        authProvider: 'local',
+        isAdmin: false
+      });
+
+      // Verify findByEmail works (case-insensitive)
+      const foundUser = userModel.findByEmail('EMAIL-match@example.com');
+      expect(foundUser).toBeTruthy();
+      expect(foundUser!.id).toBe(nativeUser.id);
+      expect(foundUser!.username).toBe('oldusername');
+    });
+
+    it('should prevent migrating an already-OIDC user', async () => {
+      // Create an OIDC user
+      const oidcUser = await userModel.create({
+        username: 'oidcuser',
+        email: 'oidc@example.com',
+        authProvider: 'oidc',
+        oidcSubject: 'oidc-sub-789',
+        isAdmin: false
+      });
+
+      // Try to migrate again
+      expect(() => {
+        userModel.migrateToOIDC(
+          oidcUser.id,
+          'oidc-sub-new',
+          'oidc@example.com',
+          'OIDC User'
+        );
+      }).toThrow('User is already using OIDC authentication');
+    });
+
+    it('should update last login timestamp during migration', async () => {
+      // Create a native-login user
+      const nativeUser = await userModel.create({
+        username: 'timestampuser',
+        password: 'password123',
+        email: 'timestamp@example.com',
+        authProvider: 'local',
+        isAdmin: false
+      });
+
+      const beforeTimestamp = Date.now();
+
+      // Migrate to OIDC
+      const migratedUser = userModel.migrateToOIDC(
+        nativeUser.id,
+        'oidc-sub-timestamp',
+        'timestamp@example.com',
+        'Timestamp User'
+      );
+
+      // Verify last login was updated
+      expect(migratedUser!.lastLoginAt).toBeTruthy();
+      expect(migratedUser!.lastLoginAt!).toBeGreaterThanOrEqual(beforeTimestamp);
+    });
+
+    it('should preserve email and display name when not provided during migration', async () => {
+      // Create a native-login user with existing data
+      const nativeUser = await userModel.create({
+        username: 'preserveuser',
+        password: 'password123',
+        email: 'preserve@example.com',
+        displayName: 'Original Name',
+        authProvider: 'local',
+        isAdmin: false
+      });
+
+      // Migrate without providing email/displayName
+      const migratedUser = userModel.migrateToOIDC(
+        nativeUser.id,
+        'oidc-sub-preserve'
+      );
+
+      // Verify original values are preserved
+      expect(migratedUser!.email).toBe('preserve@example.com');
+      expect(migratedUser!.displayName).toBe('Original Name');
+    });
+
+    it('should update email and display name when provided during migration', async () => {
+      // Create a native-login user with existing data
+      const nativeUser = await userModel.create({
+        username: 'updateuser',
+        password: 'password123',
+        email: 'old@example.com',
+        displayName: 'Old Name',
+        authProvider: 'local',
+        isAdmin: false
+      });
+
+      // Migrate with new email/displayName
+      const migratedUser = userModel.migrateToOIDC(
+        nativeUser.id,
+        'oidc-sub-update',
+        'new@example.com',
+        'New Name'
+      );
+
+      // Verify values were updated
+      expect(migratedUser!.email).toBe('new@example.com');
+      expect(migratedUser!.displayName).toBe('New Name');
+    });
+  });
 });
