@@ -277,12 +277,33 @@ class PushNotificationService {
       logger.debug(`✅ Sent push notification to subscription ${subscription.id}`);
       return true;
     } catch (error: any) {
-      // Handle expired/invalid subscriptions
-      if (error.statusCode === 404 || error.statusCode === 410) {
-        logger.warn(`⚠️ Subscription expired/gone, removing: ${subscription.endpoint}`);
+      const statusCode = error.statusCode || error.status;
+
+      // Handle expired/invalid/gone subscriptions - remove them
+      if (statusCode === 404 || statusCode === 410) {
+        logger.warn(`⚠️ Subscription expired/gone (${statusCode}), removing: ${subscription.endpoint}`);
         await this.removeSubscription(subscription.endpoint);
-      } else {
-        logger.error('❌ Failed to send push notification:', error);
+      }
+      // Handle payload too large - log but don't remove subscription
+      else if (statusCode === 413) {
+        logger.error(`❌ Push notification payload too large for subscription ${subscription.id}`);
+      }
+      // Handle rate limiting - log but don't remove subscription
+      else if (statusCode === 429) {
+        logger.warn(`⚠️ Rate limited sending to subscription ${subscription.id}, will retry later`);
+      }
+      // Handle other client errors (400-499) - might indicate invalid subscription
+      else if (statusCode >= 400 && statusCode < 500) {
+        logger.warn(`⚠️ Client error (${statusCode}) sending to subscription ${subscription.id}, removing`);
+        await this.removeSubscription(subscription.endpoint);
+      }
+      // Handle server errors (500-599) - temporary issue, don't remove
+      else if (statusCode >= 500 && statusCode < 600) {
+        logger.error(`❌ Server error (${statusCode}) sending push notification to subscription ${subscription.id}`);
+      }
+      // Handle network/unknown errors
+      else {
+        logger.error(`❌ Failed to send push notification to subscription ${subscription.id}:`, error);
       }
       return false;
     }
@@ -377,6 +398,12 @@ class PushNotificationService {
 
   /**
    * Check if notification should be filtered for a user based on their preferences
+   *
+   * Design Note: Anonymous users receive all notifications by default because:
+   * 1. They haven't configured preferences yet (can't know what they want)
+   * 2. They've explicitly subscribed to push notifications (opt-in consent)
+   * 3. MeshMonitor is typically for private mesh networks (trusted environment)
+   * 4. Users can unsubscribe at any time or set up authentication + preferences
    */
   private shouldFilterNotification(
     userId: number | null | undefined,
@@ -386,8 +413,9 @@ class PushNotificationService {
       isDirectMessage: boolean;
     }
   ): boolean {
-    // Anonymous users get all notifications (no filtering)
+    // Anonymous users get all notifications (no filtering) - they've opted in by subscribing
     if (!userId) {
+      logger.debug('Anonymous user - no filtering applied (user opted in by subscribing)');
       return false;
     }
 

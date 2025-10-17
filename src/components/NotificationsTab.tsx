@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import api from '../services/api';
 import { logger } from '../utils/logger';
 import { Channel } from '../types/device';
@@ -42,6 +42,17 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
   const [whitelistText, setWhitelistText] = useState('Hi\nHelp');
   const [blacklistText, setBlacklistText] = useState('Test\nCopy');
   const [isSavingPreferences, setIsSavingPreferences] = useState(false);
+
+  // Track timeouts for cleanup on unmount
+  const timeoutsRef = useRef<NodeJS.Timeout[]>([]);
+
+  // Cleanup timeouts on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      timeoutsRef.current.forEach(timeout => clearTimeout(timeout));
+      timeoutsRef.current = [];
+    };
+  }, []);
 
   // Check notification permission and subscription status
   useEffect(() => {
@@ -134,13 +145,31 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
     }
   };
 
+  const sanitizeKeyword = (keyword: string): string => {
+    // Trim whitespace and limit length to 100 characters
+    return keyword.trim().slice(0, 100);
+  };
+
   const savePreferences = async () => {
     setIsSavingPreferences(true);
     try {
+      // Sanitize and validate keywords
+      const whitelist = whitelistText
+        .split('\n')
+        .map(w => sanitizeKeyword(w))
+        .filter(w => w.length > 0)
+        .slice(0, 100); // Max 100 keywords
+
+      const blacklist = blacklistText
+        .split('\n')
+        .map(w => sanitizeKeyword(w))
+        .filter(w => w.length > 0)
+        .slice(0, 100); // Max 100 keywords
+
       const prefs: NotificationPreferences = {
         ...preferences,
-        whitelist: whitelistText.split('\n').map(w => w.trim()).filter(w => w.length > 0),
-        blacklist: blacklistText.split('\n').map(w => w.trim()).filter(w => w.length > 0)
+        whitelist,
+        blacklist
       };
 
       await api.post('/api/push/preferences', prefs);
@@ -236,7 +265,8 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
       setDebugInfo('✅ Successfully subscribed to push notifications!');
       logger.info('Successfully subscribed to push notifications');
 
-      setTimeout(() => setDebugInfo(''), 5000);
+      const timeout = setTimeout(() => setDebugInfo(''), 5000);
+      timeoutsRef.current.push(timeout);
     } catch (error: any) {
       logger.error('Failed to subscribe to push notifications:', error);
       let errorMessage = 'Unknown error';
@@ -307,11 +337,13 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
     try {
       const response = await api.post<{ sent: number; failed: number }>('/api/push/test', {});
       setTestStatus(`✅ Sent: ${response.sent}, Failed: ${response.failed}`);
-      setTimeout(() => setTestStatus(''), 5000);
+      const timeout = setTimeout(() => setTestStatus(''), 5000);
+      timeoutsRef.current.push(timeout);
     } catch (error) {
       logger.error('Failed to send test notification:', error);
       setTestStatus('❌ Failed to send test notification');
-      setTimeout(() => setTestStatus(''), 5000);
+      const timeout = setTimeout(() => setTestStatus(''), 5000);
+      timeoutsRef.current.push(timeout);
     }
   };
 
