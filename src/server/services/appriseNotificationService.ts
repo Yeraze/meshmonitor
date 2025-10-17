@@ -192,12 +192,11 @@ class AppriseNotificationService {
     let failed = 0;
     let filtered = 0;
 
-    // If no users have Apprise enabled, but system-wide Apprise is enabled,
-    // send a single notification (backward compatibility mode)
+    // If no users have Apprise enabled, don't send anything
+    // (Users must explicitly enable Apprise in their preferences)
     if (users.length === 0) {
-      logger.debug('No per-user Apprise config, sending system-wide notification');
-      const success = await this.sendNotification(payload);
-      return success ? { sent: 1, failed: 0, filtered: 0 } : { sent: 0, failed: 1, filtered: 0 };
+      logger.debug('No users have Apprise enabled, skipping notification');
+      return { sent: 0, failed: 0, filtered: 0 };
     }
 
     // Per-user filtering
