@@ -91,7 +91,7 @@ version: '3.8'
 
 services:
   meshtasticd:
-    image: meshtastic/python:latest
+    image: meshtastic/meshtasticd:latest
     command: meshtasticd --hwmodel RAK4631
     ports:
       - "4403:4403"
@@ -260,7 +260,7 @@ docker run -d \
   --name meshtasticd \
   --restart unless-stopped \
   -p 4403:4403 \
-  meshtastic/python:latest \
+  meshtastic/meshtasticd:latest \
   meshtasticd --hwmodel RAK4631
 ```
 
