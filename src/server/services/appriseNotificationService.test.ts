@@ -258,14 +258,20 @@ describe('AppriseNotificationService', () => {
     it('should apply whitelist priority correctly (highest priority)', () => {
       const messageText = 'urgent test message';
       const whitelist = ['urgent', 'emergency'];
-      const blacklist = ['test', 'urgent']; // 'urgent' in both
+      const blacklist = ['test', 'urgent']; // 'urgent' in both - demonstrates whitelist takes priority
 
       // Check whitelist first (highest priority)
       const isWhitelisted = whitelist.some(word =>
         messageText.toLowerCase().includes(word.toLowerCase())
       );
 
+      // Verify blacklist would match (but whitelist should take priority)
+      const isBlacklisted = blacklist.some(word =>
+        messageText.toLowerCase().includes(word.toLowerCase())
+      );
+
       expect(isWhitelisted).toBe(true);
+      expect(isBlacklisted).toBe(true); // Both match, but whitelist wins
       // Message should NOT be filtered despite 'test' being blacklisted
     });
 
