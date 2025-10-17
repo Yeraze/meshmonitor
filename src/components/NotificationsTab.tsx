@@ -367,6 +367,17 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
           <p>
             Current connection: <strong>{window.location.protocol}//{window.location.host}</strong>
           </p>
+          <p style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #f5c6cb' }}>
+            <strong>Need help setting up HTTPS?</strong><br />
+            Check out our <a
+              href="https://github.com/Yeraze/meshmonitor/blob/main/docs/configuration/duckdns-https.md"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: '#721c24', textDecoration: 'underline' }}
+            >
+              beginner-friendly guide to setting up free HTTPS with DuckDNS
+            </a>.
+          </p>
         </div>
       )}
 
@@ -506,105 +517,203 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
       {/* Notification Filtering Preferences */}
       {isSubscribed && (
         <div className="settings-section">
-          <h3>Notification Preferences</h3>
-          <p>Control which notifications you receive by selecting channels and filtering by keywords.</p>
+          <h3>🔔 Notification Preferences</h3>
+          <p style={{ marginBottom: '24px', color: '#666' }}>
+            Control which notifications you receive by selecting channels and filtering by keywords.
+          </p>
 
-          {/* Channel Selection */}
-          <div style={{ marginBottom: '20px' }}>
-            <h4>Enabled Channels</h4>
-            <p>Select which channels should send you notifications:</p>
-            {channels.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {channels.map(channel => (
-                  <label key={channel.id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {/* Two-column layout for channels and keywords */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px', marginBottom: '24px' }}>
+
+            {/* Left Column: Channel/DM Selection */}
+            <div>
+              <div style={{
+                backgroundColor: '#1e1e2e',
+                padding: '20px',
+                borderRadius: '8px',
+                border: '1px solid #3a3a3a'
+              }}>
+                <h4 style={{ marginTop: '0', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>📢</span> Notification Sources
+                </h4>
+
+                {/* Direct Messages Toggle */}
+                <div style={{
+                  padding: '12px',
+                  backgroundColor: '#252535',
+                  borderRadius: '6px',
+                  marginBottom: '16px',
+                  border: '2px solid #3a3a3a'
+                }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', margin: 0 }}>
                     <input
                       type="checkbox"
-                      checked={preferences.enabledChannels.includes(channel.id)}
+                      checked={preferences.enableDirectMessages}
                       onChange={(e) => {
-                        const checked = e.target.checked;
                         setPreferences(prev => ({
                           ...prev,
-                          enabledChannels: checked
-                            ? [...prev.enabledChannels, channel.id]
-                            : prev.enabledChannels.filter(id => id !== channel.id)
+                          enableDirectMessages: e.target.checked
                         }));
                       }}
+                      style={{ width: '18px', height: '18px', cursor: 'pointer' }}
                     />
-                    <span>{channel.name || `Channel ${channel.id}`}</span>
+                    <span style={{ fontWeight: '500' }}>✉️ Direct Messages</span>
                   </label>
-                ))}
+                </div>
+
+                {/* Channel Selection */}
+                <div>
+                  <p style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '12px', marginTop: 0 }}>
+                    Select channels to receive notifications from:
+                  </p>
+                  {channels.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {channels.map(channel => (
+                        <div
+                          key={channel.id}
+                          style={{
+                            padding: '10px 12px',
+                            backgroundColor: '#252535',
+                            borderRadius: '6px',
+                            border: '1px solid #3a3a3a',
+                            transition: 'all 0.2s'
+                          }}
+                        >
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', margin: 0 }}>
+                            <input
+                              type="checkbox"
+                              checked={preferences.enabledChannels.includes(channel.id)}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setPreferences(prev => ({
+                                  ...prev,
+                                  enabledChannels: checked
+                                    ? [...prev.enabledChannels, channel.id]
+                                    : prev.enabledChannels.filter(id => id !== channel.id)
+                                }));
+                              }}
+                              style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                            />
+                            <span style={{ fontWeight: '500' }}>#{channel.name || `Channel ${channel.id}`}</span>
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p style={{ color: '#9ca3af', fontStyle: 'italic', fontSize: '14px' }}>No channels available</p>
+                  )}
+                </div>
               </div>
-            ) : (
-              <p style={{ color: '#666', fontStyle: 'italic' }}>No channels available</p>
-            )}
+            </div>
+
+            {/* Right Column: Keyword Filters */}
+            <div>
+              <div style={{
+                backgroundColor: '#1e1e2e',
+                padding: '20px',
+                borderRadius: '8px',
+                border: '1px solid #3a3a3a'
+              }}>
+                <h4 style={{ marginTop: '0', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>🔍</span> Keyword Filters
+                </h4>
+
+                {/* Whitelist */}
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{
+                    display: 'flex',
+                    fontWeight: '600',
+                    marginBottom: '8px',
+                    color: '#28a745',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}>
+                    <span>✅</span> Whitelist (Always Notify)
+                  </label>
+                  <p style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '8px', marginTop: 0 }}>
+                    Messages with these words will <strong>always</strong> send a notification (one per line):
+                  </p>
+                  <textarea
+                    value={whitelistText}
+                    onChange={(e) => setWhitelistText(e.target.value)}
+                    placeholder="Hi&#10;Help&#10;Emergency"
+                    rows={4}
+                    style={{
+                      width: '100%',
+                      padding: '10px',
+                      fontFamily: 'monospace',
+                      fontSize: '14px',
+                      border: '2px solid #28a745',
+                      borderRadius: '6px',
+                      resize: 'vertical',
+                      backgroundColor: '#252535',
+                      color: '#e5e7eb'
+                    }}
+                  />
+                </div>
+
+                {/* Blacklist */}
+                <div>
+                  <label style={{
+                    display: 'flex',
+                    fontWeight: '600',
+                    marginBottom: '8px',
+                    color: '#dc3545',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}>
+                    <span>🚫</span> Blacklist (Silence)
+                  </label>
+                  <p style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '8px', marginTop: 0 }}>
+                    Messages with these words will <strong>never</strong> send a notification (one per line):
+                  </p>
+                  <textarea
+                    value={blacklistText}
+                    onChange={(e) => setBlacklistText(e.target.value)}
+                    placeholder="Test&#10;Copy&#10;Spam"
+                    rows={4}
+                    style={{
+                      width: '100%',
+                      padding: '10px',
+                      fontFamily: 'monospace',
+                      fontSize: '14px',
+                      border: '2px solid #dc3545',
+                      borderRadius: '6px',
+                      resize: 'vertical',
+                      backgroundColor: '#252535',
+                      color: '#e5e7eb'
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
           </div>
 
-          {/* Direct Messages Toggle */}
-          <div style={{ marginBottom: '20px' }}>
-            <h4>Direct Messages</h4>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <input
-                type="checkbox"
-                checked={preferences.enableDirectMessages}
-                onChange={(e) => {
-                  setPreferences(prev => ({
-                    ...prev,
-                    enableDirectMessages: e.target.checked
-                  }));
-                }}
-              />
-              <span>Enable notifications for direct messages</span>
-            </label>
-          </div>
-
-          {/* Whitelist */}
-          <div style={{ marginBottom: '20px' }}>
-            <h4>Whitelist (Always Notify)</h4>
-            <p>Messages containing these words will always trigger a notification (one word per line, case-insensitive):</p>
-            <textarea
-              value={whitelistText}
-              onChange={(e) => setWhitelistText(e.target.value)}
-              placeholder="Enter words to always notify&#10;Example:&#10;Hi&#10;Help"
-              rows={5}
-              style={{
-                width: '100%',
-                padding: '8px',
-                fontFamily: 'monospace',
-                fontSize: '14px',
-                border: '1px solid #ccc',
-                borderRadius: '4px'
-              }}
-            />
-          </div>
-
-          {/* Blacklist */}
-          <div style={{ marginBottom: '20px' }}>
-            <h4>Blacklist (Silence Notifications)</h4>
-            <p>Messages containing these words will never trigger a notification (one word per line, case-insensitive):</p>
-            <textarea
-              value={blacklistText}
-              onChange={(e) => setBlacklistText(e.target.value)}
-              placeholder="Enter words to silence&#10;Example:&#10;Test&#10;Copy"
-              rows={5}
-              style={{
-                width: '100%',
-                padding: '8px',
-                fontFamily: 'monospace',
-                fontSize: '14px',
-                border: '1px solid #ccc',
-                borderRadius: '4px'
-              }}
-            />
+          {/* Info box about filter priority */}
+          <div style={{
+            backgroundColor: '#1e3a5f',
+            border: '1px solid #2a5a8a',
+            borderRadius: '8px',
+            padding: '16px',
+            marginBottom: '20px',
+            fontSize: '14px',
+            color: '#93c5fd'
+          }}>
+            <strong>ℹ️ Filter Priority:</strong> Whitelist (highest) → Blacklist → Channel/DM settings.
+            All matching is case-insensitive and checks for substrings.
           </div>
 
           {/* Save Button */}
-          <button
-            className="button button-primary"
-            onClick={savePreferences}
-            disabled={isSavingPreferences}
-          >
-            {isSavingPreferences ? 'Saving...' : '💾 Save Preferences'}
-          </button>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button
+              className="button button-primary"
+              onClick={savePreferences}
+              disabled={isSavingPreferences}
+              style={{ minWidth: '150px' }}
+            >
+              {isSavingPreferences ? 'Saving...' : '💾 Save Preferences'}
+            </button>
+          </div>
         </div>
       )}
 
