@@ -21,6 +21,8 @@ import {
 import { apiLimiter } from './middleware/rateLimiters.js';
 import { getEnvironmentConfig } from './config/environment.js';
 import { pushNotificationService } from './services/pushNotificationService.js';
+import { appriseNotificationService } from './services/appriseNotificationService.js';
+import { getUserNotificationPreferences, saveUserNotificationPreferences } from './utils/notificationFiltering.js';
 
 const require = createRequire(import.meta.url);
 const packageJson = require('../../package.json');
@@ -1941,7 +1943,7 @@ apiRouter.post('/push/test', requireAdmin(), async (req, res) => {
   }
 });
 
-// Get push notification preferences
+// Get notification preferences (unified for Web Push and Apprise)
 apiRouter.get('/push/preferences', requireAuth(), async (req, res) => {
   try {
     const userId = req.session?.userId;
@@ -1949,14 +1951,15 @@ apiRouter.get('/push/preferences', requireAuth(), async (req, res) => {
       return res.status(401).json({ error: 'Authentication required' });
     }
 
-    const prefsJson = databaseService.getSetting(`push_prefs_${userId}`);
+    const prefs = getUserNotificationPreferences(userId);
 
-    if (prefsJson) {
-      const prefs = JSON.parse(prefsJson);
+    if (prefs) {
       res.json(prefs);
     } else {
       // Return defaults
       res.json({
+        enableWebPush: true,
+        enableApprise: false,
         enabledChannels: [],
         enableDirectMessages: true,
         whitelist: ['Hi', 'Help'],
@@ -1964,12 +1967,12 @@ apiRouter.get('/push/preferences', requireAuth(), async (req, res) => {
       });
     }
   } catch (error: any) {
-    logger.error('Error loading push preferences:', error);
+    logger.error('Error loading notification preferences:', error);
     res.status(500).json({ error: error.message || 'Failed to load preferences' });
   }
 });
 
-// Save push notification preferences
+// Save notification preferences (unified for Web Push and Apprise)
 apiRouter.post('/push/preferences', requireAuth(), async (req, res) => {
   try {
     const userId = req.session?.userId;
@@ -1977,28 +1980,100 @@ apiRouter.post('/push/preferences', requireAuth(), async (req, res) => {
       return res.status(401).json({ error: 'Authentication required' });
     }
 
-    const { enabledChannels, enableDirectMessages, whitelist, blacklist } = req.body;
+    const { enableWebPush, enableApprise, enabledChannels, enableDirectMessages, whitelist, blacklist } = req.body;
 
     // Validate input
-    if (!Array.isArray(enabledChannels) || typeof enableDirectMessages !== 'boolean' ||
+    if (typeof enableWebPush !== 'boolean' || typeof enableApprise !== 'boolean' ||
+        !Array.isArray(enabledChannels) || typeof enableDirectMessages !== 'boolean' ||
         !Array.isArray(whitelist) || !Array.isArray(blacklist)) {
       return res.status(400).json({ error: 'Invalid preferences data' });
     }
 
     const prefs = {
+      enableWebPush,
+      enableApprise,
       enabledChannels,
       enableDirectMessages,
       whitelist,
       blacklist
     };
 
-    databaseService.setSetting(`push_prefs_${userId}`, JSON.stringify(prefs));
+    const success = saveUserNotificationPreferences(userId, prefs);
 
-    logger.info(`✅ Saved push notification preferences for user ${userId}`);
-    res.json({ success: true });
+    if (success) {
+      logger.info(`✅ Saved notification preferences for user ${userId} (WebPush: ${enableWebPush}, Apprise: ${enableApprise})`);
+      res.json({ success: true });
+    } else {
+      res.status(500).json({ error: 'Failed to save preferences' });
+    }
   } catch (error: any) {
-    logger.error('Error saving push preferences:', error);
+    logger.error('Error saving notification preferences:', error);
     res.status(500).json({ error: error.message || 'Failed to save preferences' });
+  }
+});
+
+// ==========================================
+// Apprise Notification Endpoints
+// ==========================================
+
+// Get Apprise status (admin only)
+apiRouter.get('/apprise/status', requireAdmin(), async (_req, res) => {
+  try {
+    const isAvailable = appriseNotificationService.isAvailable();
+    res.json({
+      available: isAvailable,
+      enabled: databaseService.getSetting('apprise_enabled') === 'true',
+      url: databaseService.getSetting('apprise_url') || 'http://localhost:8000'
+    });
+  } catch (error: any) {
+    logger.error('Error getting Apprise status:', error);
+    res.status(500).json({ error: error.message || 'Failed to get Apprise status' });
+  }
+});
+
+// Test Apprise connection (admin only)
+apiRouter.post('/apprise/test', requireAdmin(), async (_req, res) => {
+  try {
+    const result = await appriseNotificationService.testConnection();
+    res.json(result);
+  } catch (error: any) {
+    logger.error('Error testing Apprise connection:', error);
+    res.status(500).json({ error: error.message || 'Failed to test Apprise connection' });
+  }
+});
+
+// Configure Apprise URLs (admin only)
+apiRouter.post('/apprise/configure', requireAdmin(), async (req, res) => {
+  try {
+    const { urls } = req.body;
+
+    if (!Array.isArray(urls)) {
+      return res.status(400).json({ error: 'URLs must be an array' });
+    }
+
+    const result = await appriseNotificationService.configureUrls(urls);
+    res.json(result);
+  } catch (error: any) {
+    logger.error('Error configuring Apprise URLs:', error);
+    res.status(500).json({ error: error.message || 'Failed to configure Apprise URLs' });
+  }
+});
+
+// Enable/disable Apprise system-wide (admin only)
+apiRouter.put('/apprise/enabled', requireAdmin(), (req, res) => {
+  try {
+    const { enabled } = req.body;
+
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ error: 'Enabled must be a boolean' });
+    }
+
+    databaseService.setSetting('apprise_enabled', enabled ? 'true' : 'false');
+    logger.info(`✅ Apprise ${enabled ? 'enabled' : 'disabled'} system-wide`);
+    res.json({ success: true, enabled });
+  } catch (error: any) {
+    logger.error('Error updating Apprise enabled status:', error);
+    res.status(500).json({ error: error.message || 'Failed to update Apprise status' });
   }
 });
 

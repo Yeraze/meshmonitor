@@ -5,7 +5,7 @@ import { TcpTransport } from './tcpTransport.js';
 import { calculateDistance } from '../utils/distance.js';
 import { logger } from '../utils/logger.js';
 import { getEnvironmentConfig } from './config/environment.js';
-import { pushNotificationService } from './services/pushNotificationService.js';
+import { notificationService } from './services/notificationService.js';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const packageJson = require('../../package.json');
@@ -3138,12 +3138,13 @@ class MeshtasticManager {
    * Check if message matches auto-acknowledge pattern and send automated reply
    */
   /**
-   * Send push notification for new message
+   * Send notifications for new message (Web Push + Apprise)
    */
   private async sendMessagePushNotification(message: any, messageText: string, isDirectMessage: boolean): Promise<void> {
     try {
-      // Skip if push notifications not configured
-      if (!pushNotificationService.isAvailable()) {
+      // Skip if no notification services are available
+      const serviceStatus = notificationService.getServiceStatus();
+      if (!serviceStatus.anyAvailable) {
         return;
       }
 
@@ -3178,27 +3179,21 @@ class MeshtasticManager {
         body = messageText.length > 100 ? messageText.substring(0, 97) + '...' : messageText;
       }
 
-      // Send push notification with filtering to all subscribed users
-      const result = await pushNotificationService.broadcastWithFiltering({
+      // Send notifications (Web Push + Apprise) with filtering to all subscribed users
+      const result = await notificationService.broadcast({
         title,
-        body,
-        icon: '/logo.png',
-        badge: '/logo.png',
-        tag: `message-${message.id}`,
-        data: {
-          messageId: message.id,
-          fromNodeId: message.fromNodeId,
-          channelId: message.channel,
-          isDirectMessage,
-          url: '/' // Could be enhanced to deep-link to specific message/channel
-        }
+        body
       }, {
         messageText,
         channelId: message.channel,
         isDirectMessage
       });
 
-      logger.debug(`📤 Sent push notification: ${result.sent} delivered, ${result.failed} failed`);
+      logger.debug(
+        `📤 Sent notifications: ${result.total.sent} delivered, ${result.total.failed} failed, ${result.total.filtered} filtered ` +
+        `(Push: ${result.webPush.sent}/${result.webPush.failed}/${result.webPush.filtered}, ` +
+        `Apprise: ${result.apprise.sent}/${result.apprise.failed}/${result.apprise.filtered})`
+      );
     } catch (error) {
       logger.error('❌ Error sending message push notification:', error);
       // Don't throw - push notification failures shouldn't break message processing

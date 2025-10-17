@@ -11,6 +11,8 @@ interface VapidStatus {
 }
 
 interface NotificationPreferences {
+  enableWebPush: boolean;
+  enableApprise: boolean;
   enabledChannels: number[];
   enableDirectMessages: boolean;
   whitelist: string[];
@@ -34,6 +36,8 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
   // Notification preferences
   const [channels, setChannels] = useState<Channel[]>([]);
   const [preferences, setPreferences] = useState<NotificationPreferences>({
+    enableWebPush: true,
+    enableApprise: false,
     enabledChannels: [],
     enableDirectMessages: true,
     whitelist: ['Hi', 'Help'],
@@ -562,7 +566,91 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
         <div className="settings-section">
           <h3>🔔 Notification Preferences</h3>
           <p style={{ marginBottom: '24px', color: '#666' }}>
-            Control which notifications you receive by selecting channels and filtering by keywords.
+            Configure notification services and filtering preferences. All filters apply to both Web Push and Apprise notifications.
+          </p>
+
+          {/* Notification Service Toggles */}
+          <div style={{
+            backgroundColor: '#1e3a5f',
+            border: '1px solid #2a5a8a',
+            borderRadius: '8px',
+            padding: '20px',
+            marginBottom: '24px'
+          }}>
+            <h4 style={{ marginTop: 0, marginBottom: '16px', color: '#93c5fd' }}>
+              🔔 Notification Services
+            </h4>
+            <p style={{ fontSize: '14px', color: '#93c5fd', marginBottom: '16px' }}>
+              Enable or disable individual notification services. Both services use the same filtering preferences below.
+            </p>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '16px' }}>
+              {/* Web Push Toggle */}
+              <div style={{
+                padding: '16px',
+                backgroundColor: '#252535',
+                borderRadius: '6px',
+                border: '2px solid ' + (preferences.enableWebPush ? '#10b981' : '#3a3a3a')
+              }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', margin: 0 }}>
+                  <input
+                    type="checkbox"
+                    checked={preferences.enableWebPush}
+                    onChange={(e) => {
+                      setPreferences(prev => ({
+                        ...prev,
+                        enableWebPush: e.target.checked
+                      }));
+                    }}
+                    style={{ width: '20px', height: '20px' }}
+                  />
+                  <div>
+                    <div style={{ fontWeight: '600', fontSize: '15px' }}>
+                      📱 Web Push Notifications
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
+                      Browser-based push notifications (requires HTTPS)
+                    </div>
+                  </div>
+                </label>
+              </div>
+
+              {/* Apprise Toggle */}
+              <div style={{
+                padding: '16px',
+                backgroundColor: '#252535',
+                borderRadius: '6px',
+                border: '2px solid ' + (preferences.enableApprise ? '#10b981' : '#3a3a3a')
+              }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', margin: 0 }}>
+                  <input
+                    type="checkbox"
+                    checked={preferences.enableApprise}
+                    onChange={(e) => {
+                      setPreferences(prev => ({
+                        ...prev,
+                        enableApprise: e.target.checked
+                      }));
+                    }}
+                    style={{ width: '20px', height: '20px' }}
+                  />
+                  <div>
+                    <div style={{ fontWeight: '600', fontSize: '15px' }}>
+                      🔔 Apprise Notifications
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
+                      External services (Discord, Slack, etc.) - no HTTPS required
+                    </div>
+                  </div>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          {/* Filtering Options Header */}
+          <h4 style={{ marginBottom: '16px' }}>⚙️ Notification Filtering</h4>
+          <p style={{ marginBottom: '24px', color: '#666', fontSize: '14px' }}>
+            These filters apply to <strong>both Web Push and Apprise</strong> notifications.
           </p>
 
           {/* Two-column layout for channels and keywords */}
