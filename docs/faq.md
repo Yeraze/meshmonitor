@@ -475,6 +475,38 @@ Nodes may also display role badges:
 
 ---
 
+## 🔔 Notifications
+
+### Push notifications don't work in Brave browser
+
+**Problem:** When trying to subscribe to Web Push notifications in Brave browser, you get an error like `Registration failed - push service error`.
+
+**Cause:** Brave browser requires Google push services to be enabled for Web Push notifications to work.
+
+**Solution:**
+
+1. **Enable Google Services for Push Messaging:**
+   - Open Brave Settings: `brave://settings/privacy`
+   - Scroll down to the **"Web3"** or **"Privacy and Security"** section
+   - Find **"Use Google services for push messaging"**
+   - Toggle it **ON**
+
+2. **Restart Brave browser** completely (close all windows)
+
+3. **Try subscribing again:**
+   - Go to Configuration → Notifications
+   - Click "Enable Notifications"
+   - Click "Subscribe to Notifications"
+
+**Alternative:** If you don't want to enable Google services in Brave, you can:
+- Use **Apprise notifications** instead (supports Discord, Slack, Telegram, Email, etc.)
+- Use a different browser (Chrome, Edge, or Firefox have more reliable push support)
+- Install MeshMonitor as a PWA on mobile devices
+
+**Note:** Apprise notifications don't require browser push services and work independently of your browser choice.
+
+---
+
 ## 📊 Performance & Troubleshooting
 
 ### MeshMonitor is running slowly

@@ -264,10 +264,12 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
       setDebugInfo('Saving subscription to server...');
 
       const subscriptionData = {
-        endpoint: subscription.endpoint,
-        keys: {
-          p256dh: arrayBufferToBase64(subscription.getKey('p256dh')!),
-          auth: arrayBufferToBase64(subscription.getKey('auth')!)
+        subscription: {
+          endpoint: subscription.endpoint,
+          keys: {
+            p256dh: arrayBufferToBase64(subscription.getKey('p256dh')!),
+            auth: arrayBufferToBase64(subscription.getKey('auth')!)
+          }
         }
       };
 
