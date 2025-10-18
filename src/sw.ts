@@ -29,11 +29,15 @@ registerRoute(
   new NetworkOnly()
 );
 
-// Handle OpenStreetMap tiles (cache first)
+// Handle map tiles from all supported providers (cache first)
 registerRoute(
-  ({ url }) => url.hostname.includes('tile.openstreetmap.org'),
+  ({ url }) =>
+    url.hostname.includes('tile.openstreetmap.org') ||
+    url.hostname.includes('basemaps.cartocdn.com') ||
+    url.hostname.includes('tile.opentopomap.org') ||
+    url.hostname.includes('server.arcgisonline.com'),
   new CacheFirst({
-    cacheName: 'openstreetmap-tiles',
+    cacheName: 'map-tiles',
     plugins: [
       new ExpirationPlugin({
         maxEntries: 500,

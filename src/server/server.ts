@@ -83,11 +83,17 @@ const helmetConfig = env.isProduction && env.cookieSecure
             "'self'",
             "data:",
             "https:",
-            "https://*.tile.openstreetmap.org"  // OpenStreetMap tiles
+            "https://*.tile.openstreetmap.org",  // OpenStreetMap tiles
+            "https://*.basemaps.cartocdn.com",   // CartoDB tiles
+            "https://*.tile.opentopomap.org",    // OpenTopoMap tiles
+            "https://server.arcgisonline.com"    // Esri tiles
           ],
           connectSrc: [
             "'self'",
-            "https://*.tile.openstreetmap.org"  // OpenStreetMap tiles
+            "https://*.tile.openstreetmap.org",  // OpenStreetMap tiles
+            "https://*.basemaps.cartocdn.com",   // CartoDB tiles
+            "https://*.tile.opentopomap.org",    // OpenTopoMap tiles
+            "https://server.arcgisonline.com"    // Esri tiles
           ],
           fontSrc: ["'self'"],
           objectSrc: ["'none'"],
@@ -1332,15 +1338,10 @@ apiRouter.post('/settings/traceroute-interval', requirePermission('settings', 'w
 });
 
 // Get all settings
-apiRouter.get('/settings', optionalAuth(), (req, res) => {
+apiRouter.get('/settings', optionalAuth(), (_req, res) => {
   try {
-    // Allow users with settings read OR dashboard read (dashboard needs telemetryFavorites)
-    if (!req.user?.isAdmin &&
-        !hasPermission(req.user!, 'settings', 'read') &&
-        !hasPermission(req.user!, 'dashboard', 'read')) {
-      return res.status(403).json({ error: 'Insufficient permissions' });
-    }
-
+    // Allow all users (including anonymous) to read settings
+    // Settings contain UI preferences (temperature unit, map tileset, etc.) that all users need
     const settings = databaseService.getAllSettings();
     res.json(settings);
   } catch (error) {
@@ -1358,7 +1359,7 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
     const currentSettings = databaseService.getAllSettings();
 
     // Validate settings
-    const validKeys = ['maxNodeAgeHours', 'tracerouteIntervalMinutes', 'temperatureUnit', 'distanceUnit', 'telemetryVisualizationHours', 'telemetryFavorites', 'autoAckEnabled', 'autoAckRegex', 'autoAnnounceEnabled', 'autoAnnounceIntervalHours', 'autoAnnounceMessage', 'autoAnnounceChannelIndex', 'autoAnnounceOnStart'];
+    const validKeys = ['maxNodeAgeHours', 'tracerouteIntervalMinutes', 'temperatureUnit', 'distanceUnit', 'telemetryVisualizationHours', 'telemetryFavorites', 'autoAckEnabled', 'autoAckRegex', 'autoAnnounceEnabled', 'autoAnnounceIntervalHours', 'autoAnnounceMessage', 'autoAnnounceChannelIndex', 'autoAnnounceOnStart', 'preferredSortField', 'preferredSortDirection', 'timeFormat', 'dateFormat', 'mapTileset'];
     const filteredSettings: Record<string, string> = {};
 
     for (const key of validKeys) {

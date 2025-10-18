@@ -42,6 +42,8 @@ import { useCsrf } from './contexts/CsrfContext'
 import LoginModal from './components/LoginModal'
 import LoginPage from './components/LoginPage'
 import UserMenu from './components/UserMenu'
+import { getTilesetById, type TilesetId } from './config/tilesets'
+import { TilesetSelector } from './components/TilesetSelector'
 
 // Fix for default markers in React-Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -158,6 +160,7 @@ function App() {
     preferredSortDirection,
     timeFormat,
     dateFormat,
+    mapTileset,
     setMaxNodeAgeHours,
     setTracerouteIntervalMinutes,
     setTemperatureUnit,
@@ -166,8 +169,13 @@ function App() {
     setPreferredSortField,
     setPreferredSortDirection,
     setTimeFormat,
-    setDateFormat
+    setDateFormat,
+    setMapTileset
   } = useSettings();
+
+  // Local state for temporary tileset selection (desktop map preview only)
+  const [temporaryTileset, setTemporaryTileset] = useState<TilesetId | null>(null);
+  const activeTileset = temporaryTileset || mapTileset;
 
   // Map context
   const {
@@ -2244,8 +2252,9 @@ function App() {
                   onCenterComplete={handleCenterComplete}
                 />
                 <TileLayer
-                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  attribution={getTilesetById(activeTileset).attribution}
+                  url={getTilesetById(activeTileset).url}
+                  maxZoom={getTilesetById(activeTileset).maxZoom}
                 />
                 <ZoomHandler onZoomChange={setMapZoom} />
                 <MapLegend />
@@ -2672,6 +2681,10 @@ function App() {
                   return elements;
                 })()}
             </MapContainer>
+            <TilesetSelector
+              selectedTilesetId={activeTileset}
+              onTilesetChange={setTemporaryTileset}
+            />
             {nodesWithPosition.length === 0 && (
               <div className="map-overlay">
                 <div className="overlay-content">
@@ -4112,6 +4125,7 @@ function App() {
             preferredSortDirection={preferredSortDirection}
             timeFormat={timeFormat}
             dateFormat={dateFormat}
+            mapTileset={mapTileset}
             baseUrl={baseUrl}
             onMaxNodeAgeChange={setMaxNodeAgeHours}
             onTemperatureUnitChange={setTemperatureUnit}
@@ -4121,6 +4135,7 @@ function App() {
             onPreferredSortDirectionChange={setPreferredSortDirection}
             onTimeFormatChange={setTimeFormat}
             onDateFormatChange={setDateFormat}
+            onMapTilesetChange={setMapTileset}
           />
         )}
         {activeTab === 'automation' && (

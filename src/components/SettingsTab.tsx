@@ -6,6 +6,7 @@ import apiService from '../services/api';
 import { logger } from '../utils/logger';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
+import { getAllTilesets, type TilesetId } from '../config/tilesets';
 
 type DistanceUnit = 'km' | 'mi';
 type TimeFormat = '12' | '24';
@@ -20,6 +21,7 @@ interface SettingsTabProps {
   preferredSortDirection: SortDirection;
   timeFormat: TimeFormat;
   dateFormat: DateFormat;
+  mapTileset: TilesetId;
   baseUrl: string;
   onMaxNodeAgeChange: (hours: number) => void;
   onTemperatureUnitChange: (unit: TemperatureUnit) => void;
@@ -29,6 +31,7 @@ interface SettingsTabProps {
   onPreferredSortDirectionChange: (direction: SortDirection) => void;
   onTimeFormatChange: (format: TimeFormat) => void;
   onDateFormatChange: (format: DateFormat) => void;
+  onMapTilesetChange: (tilesetId: TilesetId) => void;
 }
 
 const SettingsTab: React.FC<SettingsTabProps> = ({
@@ -40,6 +43,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   preferredSortDirection,
   timeFormat,
   dateFormat,
+  mapTileset,
   baseUrl,
   onMaxNodeAgeChange,
   onTemperatureUnitChange,
@@ -48,7 +52,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   onPreferredSortFieldChange,
   onPreferredSortDirectionChange,
   onTimeFormatChange,
-  onDateFormatChange
+  onDateFormatChange,
+  onMapTilesetChange
 }) => {
   const csrfFetch = useCsrfFetch();
 
@@ -61,6 +66,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [localPreferredSortDirection, setLocalPreferredSortDirection] = useState(preferredSortDirection);
   const [localTimeFormat, setLocalTimeFormat] = useState(timeFormat);
   const [localDateFormat, setLocalDateFormat] = useState(dateFormat);
+  const [localMapTileset, setLocalMapTileset] = useState(mapTileset);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDocker, setIsDocker] = useState<boolean | null>(null);
@@ -95,7 +101,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLocalPreferredSortDirection(preferredSortDirection);
     setLocalTimeFormat(timeFormat);
     setLocalDateFormat(dateFormat);
-  }, [maxNodeAgeHours, temperatureUnit, distanceUnit, telemetryVisualizationHours, preferredSortField, preferredSortDirection, timeFormat, dateFormat]);
+    setLocalMapTileset(mapTileset);
+  }, [maxNodeAgeHours, temperatureUnit, distanceUnit, telemetryVisualizationHours, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset]);
 
   // Check if any settings have changed
   useEffect(() => {
@@ -107,10 +114,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localPreferredSortField !== preferredSortField ||
       localPreferredSortDirection !== preferredSortDirection ||
       localTimeFormat !== timeFormat ||
-      localDateFormat !== dateFormat;
+      localDateFormat !== dateFormat ||
+      localMapTileset !== mapTileset;
     setHasChanges(changed);
-  }, [localMaxNodeAge, localTemperatureUnit, localDistanceUnit, localTelemetryHours, localPreferredSortField, localPreferredSortDirection, localTimeFormat, localDateFormat,
-      maxNodeAgeHours, temperatureUnit, distanceUnit, telemetryVisualizationHours, preferredSortField, preferredSortDirection, timeFormat, dateFormat]);
+  }, [localMaxNodeAge, localTemperatureUnit, localDistanceUnit, localTelemetryHours, localPreferredSortField, localPreferredSortDirection, localTimeFormat, localDateFormat, localMapTileset,
+      maxNodeAgeHours, temperatureUnit, distanceUnit, telemetryVisualizationHours, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset]);
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -123,7 +131,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         preferredSortField: localPreferredSortField,
         preferredSortDirection: localPreferredSortDirection,
         timeFormat: localTimeFormat,
-        dateFormat: localDateFormat
+        dateFormat: localDateFormat,
+        mapTileset: localMapTileset
       };
 
       // Save to server
@@ -142,6 +151,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onPreferredSortDirectionChange(localPreferredSortDirection);
       onTimeFormatChange(localTimeFormat);
       onDateFormatChange(localDateFormat);
+      onMapTilesetChange(localMapTileset);
 
       showToast('Settings saved successfully!', 'success');
       setHasChanges(false);
@@ -163,7 +173,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       '• Telemetry Hours: 24\n' +
       '• Preferred Sort: Long Name (Ascending)\n' +
       '• Time Format: 24-hour\n' +
-      '• Date Format: MM/DD/YYYY\n\n' +
+      '• Date Format: MM/DD/YYYY\n' +
+      '• Map Tileset: OpenStreetMap\n\n' +
       'This will affect all browsers accessing this system.'
     );
 
@@ -184,6 +195,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       setLocalPreferredSortDirection('asc');
       setLocalTimeFormat('24');
       setLocalDateFormat('MM/DD/YYYY');
+      setLocalMapTileset('osm');
 
       // Update parent component with defaults
       onMaxNodeAgeChange(24);
@@ -194,6 +206,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onPreferredSortDirectionChange('asc');
       onTimeFormatChange('24');
       onDateFormatChange('MM/DD/YYYY');
+      onMapTilesetChange('osm');
 
       showToast('Settings reset to defaults!', 'success');
       setHasChanges(false);
@@ -459,6 +472,24 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               onChange={(e) => setLocalTelemetryHours(Math.min(168, Math.max(1, parseInt(e.target.value) || 24)))}
               className="setting-input"
             />
+          </div>
+          <div className="setting-item">
+            <label htmlFor="mapTileset">
+              Map Tileset
+              <span className="setting-description">Choose the map style for the network visualization</span>
+            </label>
+            <select
+              id="mapTileset"
+              value={localMapTileset}
+              onChange={(e) => setLocalMapTileset(e.target.value as TilesetId)}
+              className="setting-input"
+            >
+              {getAllTilesets().map((tileset) => (
+                <option key={tileset.id} value={tileset.id}>
+                  {tileset.name} {tileset.description && `- ${tileset.description}`}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 
