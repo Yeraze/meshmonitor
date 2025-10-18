@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile
     container_name: meshmonitor
     ports:
-      - "8081:3001"
+      - "8080:3001"
     restart: unless-stopped
     volumes:
       - meshmonitor-data:/data
@@ -16,7 +16,7 @@ services:
       - SESSION_SECRET=qlskjerhqlwkjehrlqkwejh
       - BASE_URL=/meshmonitor
       - TZ=America/New_York
-      - ALLOWED_ORIGINS=http://localhost:8081,http://sentry.yeraze.online:8081,https://meshdev.yeraze.online
+      - ALLOWED_ORIGINS=http://localhost:8080,http://sentry.yeraze.online:8080,https://meshdev.yeraze.online
       - TRUST_PROXY=1
       - COOKIE_SECURE=false
       - DISABLE_ANONYMOUS=${DISABLE_ANONYMOUS:-false}

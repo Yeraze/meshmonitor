@@ -1982,6 +1982,52 @@ body {
   line-height: 1;
 }
 
+.filter-mode-description {
+  color: var(--ctp-subtext0);
+  font-size: 0.8rem;
+  font-style: italic;
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background: var(--ctp-surface0);
+  border-radius: 4px;
+  border-left: 3px solid var(--ctp-blue);
+}
+
+.filter-toggle-group {
+  display: flex;
+  border: 1px solid var(--ctp-surface2);
+  border-radius: 6px;
+  overflow: hidden;
+  width: 100%;
+  margin-bottom: 0.5rem;
+}
+
+.filter-toggle-btn {
+  flex: 1;
+  padding: 0.6rem 1rem;
+  background: var(--ctp-surface0);
+  color: var(--ctp-text);
+  border: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+  border-right: 1px solid var(--ctp-surface2);
+}
+
+.filter-toggle-btn:last-child {
+  border-right: none;
+}
+
+.filter-toggle-btn:hover {
+  background: var(--ctp-surface1);
+}
+
+.filter-toggle-btn.active {
+  background: var(--ctp-blue);
+  color: var(--ctp-base);
+  font-weight: 600;
+}
+
 .filter-icon {
   font-size: 1.1rem;
   line-height: 1;
