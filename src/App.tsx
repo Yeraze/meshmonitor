@@ -109,14 +109,14 @@ function App() {
       }
     }
     return {
-      showMqtt: true,
-      showTelemetry: true,
-      showEnvironment: true,
+      showMqtt: false,
+      showTelemetry: false,
+      showEnvironment: false,
       powerSource: 'both' as 'powered' | 'battery' | 'both',
-      showPosition: true,
+      showPosition: false,
       minHops: 0,
       maxHops: 10,
-      showPKI: true,
+      showPKI: false,
       deviceRoles: [] as number[] // Empty array means show all roles
     };
   });
@@ -1888,21 +1888,21 @@ function App() {
     const advancedFiltered = textFiltered.filter(node => {
       const nodeId = node.user?.id;
 
-      // MQTT filter
-      if (!nodeFilters.showMqtt) {
+      // MQTT filter - when checked, REQUIRE MQTT nodes only
+      if (nodeFilters.showMqtt) {
         const role = typeof node.user?.role === 'number' ? node.user.role : parseInt(node.user?.role || '0');
-        if (role === 3) { // Role 3 is CLIENT_MQTT
+        if (role !== 3) { // Role 3 is CLIENT_MQTT
           return false;
         }
       }
 
-      // Telemetry filter
-      if (!nodeFilters.showTelemetry && nodeId && nodesWithTelemetry.has(nodeId)) {
+      // Telemetry filter - when checked, REQUIRE nodes with telemetry
+      if (nodeFilters.showTelemetry && nodeId && !nodesWithTelemetry.has(nodeId)) {
         return false;
       }
 
-      // Environment metrics filter
-      if (!nodeFilters.showEnvironment && nodeId && nodesWithWeatherTelemetry.has(nodeId)) {
+      // Environment metrics filter - when checked, REQUIRE nodes with environment data
+      if (nodeFilters.showEnvironment && nodeId && !nodesWithWeatherTelemetry.has(nodeId)) {
         return false;
       }
 
@@ -1918,12 +1918,12 @@ function App() {
         }
       }
 
-      // Position filter
-      if (!nodeFilters.showPosition) {
+      // Position filter - when checked, REQUIRE nodes with position data
+      if (nodeFilters.showPosition) {
         const hasPosition = node.position &&
           node.position.latitude != null &&
           node.position.longitude != null;
-        if (hasPosition) {
+        if (!hasPosition) {
           return false;
         }
       }
@@ -1935,8 +1935,8 @@ function App() {
         }
       }
 
-      // PKI filter
-      if (!nodeFilters.showPKI && nodeId && nodesWithPKC.has(nodeId)) {
+      // PKI filter - when checked, REQUIRE nodes with PKI
+      if (nodeFilters.showPKI && nodeId && !nodesWithPKC.has(nodeId)) {
         return false;
       }
 
@@ -2305,14 +2305,14 @@ function App() {
             <button
               className="filter-reset-btn"
               onClick={() => setNodeFilters({
-                showMqtt: true,
-                showTelemetry: true,
-                showEnvironment: true,
+                showMqtt: false,
+                showTelemetry: false,
+                showEnvironment: false,
                 powerSource: 'both',
-                showPosition: true,
+                showPosition: false,
                 minHops: 0,
                 maxHops: 10,
-                showPKI: true,
+                showPKI: false,
                 deviceRoles: []
               })}
             >
