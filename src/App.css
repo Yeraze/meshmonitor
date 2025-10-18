@@ -1001,12 +1001,6 @@ body {
     left: var(--sidebar-width);
   }
 
-  .filter-popup {
-    width: calc(100% - var(--sidebar-width) - 2rem);
-    max-width: calc(100vw - var(--sidebar-width) - 2rem);
-    margin: 0 1rem;
-  }
-
   /* Adjust banners for mobile */
   .warning-banner,
   .update-banner {
@@ -1900,7 +1894,8 @@ body {
   max-width: 500px;
   width: 90%;
   max-height: 80vh;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
@@ -1911,6 +1906,7 @@ body {
   padding: 1rem;
   border-bottom: 1px solid var(--ctp-surface2);
   background: var(--ctp-mantle);
+  flex-shrink: 0;
 }
 
 .filter-popup-header h4 {
@@ -1942,6 +1938,9 @@ body {
 
 .filter-popup-content {
   padding: 1rem;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
 
 .filter-section {
@@ -2108,9 +2107,10 @@ body {
 .filter-popup-actions {
   display: flex;
   gap: 0.5rem;
-  margin-top: 1.5rem;
-  padding-top: 1rem;
+  padding: 1rem;
   border-top: 1px solid var(--ctp-surface2);
+  background: var(--ctp-mantle);
+  flex-shrink: 0;
 }
 
 .filter-reset-btn,
@@ -2596,6 +2596,12 @@ body {
     left: 48px; /* Mobile collapsed sidebar is 48px */
   }
 
+  /* Make filter popup narrower on mobile */
+  .filter-popup {
+    width: 70% !important;
+    max-width: 70% !important;
+  }
+
   /* Show mobile node dropdown for Messages tab */
   .messages-split-view .node-dropdown-mobile {
     display: block !important;
@@ -2656,12 +2662,11 @@ body {
   }
 
   .nodes-sidebar {
-    top: 8px; /* Small gap from top of map */
-    left: 8px; /* Small gap from left of map */
+    top: 0; /* Tight to corner */
+    left: 0; /* Tight to corner */
     right: auto;
-    bottom: auto;
-    width: 280px;
-    max-width: calc(100vw - 64px);
+    width: 90vw;
+    max-width: 350px;
     max-height: calc(100vh - 120px);
     border-radius: 12px;
   }

@@ -2300,30 +2300,30 @@ function App() {
               </div>
             </div>
 
-            <div className="filter-popup-actions">
-              <button
-                className="filter-reset-btn"
-                onClick={() => setNodeFilters({
-                  showMqtt: true,
-                  showTelemetry: true,
-                  showEnvironment: true,
-                  powerSource: 'both',
-                  showPosition: true,
-                  minHops: 0,
-                  maxHops: 10,
-                  showPKI: true,
-                  deviceRoles: []
-                })}
-              >
-                Reset All
-              </button>
-              <button
-                className="filter-apply-btn"
-                onClick={() => setShowNodeFilterPopup(false)}
-              >
-                Apply
-              </button>
-            </div>
+          </div>
+          <div className="filter-popup-actions">
+            <button
+              className="filter-reset-btn"
+              onClick={() => setNodeFilters({
+                showMqtt: true,
+                showTelemetry: true,
+                showEnvironment: true,
+                powerSource: 'both',
+                showPosition: true,
+                minHops: 0,
+                maxHops: 10,
+                showPKI: true,
+                deviceRoles: []
+              })}
+            >
+              Reset All
+            </button>
+            <button
+              className="filter-apply-btn"
+              onClick={() => setShowNodeFilterPopup(false)}
+            >
+              Apply
+            </button>
           </div>
         </div>
       </div>
@@ -2420,6 +2420,15 @@ function App() {
                     onClick={() => {
                       setSelectedNodeId(node.user?.id || null);
                       centerMapOnNode(node);
+                      // Auto-collapse node list on mobile when a node with position is clicked
+                      if (window.innerWidth <= 768) {
+                        const hasPosition = node.position &&
+                          node.position.latitude != null &&
+                          node.position.longitude != null;
+                        if (hasPosition) {
+                          setIsNodeListCollapsed(true);
+                        }
+                      }
                     }}
                   >
                     <div className="node-header">
