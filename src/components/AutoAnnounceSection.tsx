@@ -131,7 +131,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
   const handleSendNow = async () => {
     setIsSendingNow(true);
     try {
-      const response = await fetch(`${baseUrl}/api/announce/send`, {
+      const response = await csrfFetch(`${baseUrl}/api/announce/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
