@@ -43,6 +43,7 @@ import LoginModal from './components/LoginModal'
 import LoginPage from './components/LoginPage'
 import UserMenu from './components/UserMenu'
 import { getTilesetById } from './config/tilesets'
+import { TilesetSelector } from './components/TilesetSelector'
 
 // Fix for default markers in React-Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -171,6 +172,10 @@ function App() {
     setDateFormat,
     setMapTileset
   } = useSettings();
+
+  // Local state for temporary tileset selection (desktop map preview only)
+  const [temporaryTileset, setTemporaryTileset] = useState<string | null>(null);
+  const activeTileset = temporaryTileset || mapTileset;
 
   // Map context
   const {
@@ -2247,9 +2252,9 @@ function App() {
                   onCenterComplete={handleCenterComplete}
                 />
                 <TileLayer
-                  attribution={getTilesetById(mapTileset).attribution}
-                  url={getTilesetById(mapTileset).url}
-                  maxZoom={getTilesetById(mapTileset).maxZoom}
+                  attribution={getTilesetById(activeTileset).attribution}
+                  url={getTilesetById(activeTileset).url}
+                  maxZoom={getTilesetById(activeTileset).maxZoom}
                 />
                 <ZoomHandler onZoomChange={setMapZoom} />
                 <MapLegend />
@@ -2676,6 +2681,10 @@ function App() {
                   return elements;
                 })()}
             </MapContainer>
+            <TilesetSelector
+              selectedTilesetId={activeTileset}
+              onTilesetChange={setTemporaryTileset}
+            />
             {nodesWithPosition.length === 0 && (
               <div className="map-overlay">
                 <div className="overlay-content">
