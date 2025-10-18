@@ -228,6 +228,31 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
 
   const groupedData = groupByType(telemetryData);
 
+  // Calculate global time range across all telemetry data
+  // Min time: earliest datapoint, Max time: current time
+  const getGlobalTimeRange = (): [number, number] | null => {
+    if (telemetryData.length === 0) {
+      return null;
+    }
+
+    let minTime = Infinity;
+
+    telemetryData.forEach((item) => {
+      if (item.timestamp < minTime) minTime = item.timestamp;
+    });
+
+    if (minTime === Infinity) {
+      return null;
+    }
+
+    // Use current time as the maximum time
+    const maxTime = Date.now();
+
+    return [minTime, maxTime];
+  };
+
+  const globalTimeRange = getGlobalTimeRange();
+
   // Filter out position telemetry (latitude, longitude)
   // Filter out altitude if it hasn't changed
   const filteredData = Array.from(groupedData.entries()).filter(([type, data]) => {
@@ -276,7 +301,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
                   <XAxis
                     dataKey="timestamp"
                     type="number"
-                    domain={['dataMin', 'dataMax']}
+                    domain={globalTimeRange || ['dataMin', 'dataMax']}
                     tick={{ fontSize: 12 }}
                     tickFormatter={(timestamp) => new Date(timestamp).toLocaleTimeString([], {
                       hour: '2-digit',
