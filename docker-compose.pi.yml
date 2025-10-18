@@ -1,0 +1,19 @@
+services:
+  meshmonitor:
+    image: ghcr.io/${GHCR_OWNER:-n30nex}/meshmonitor:latest
+    # Uncomment the next line only if you want to force AMD64 via emulation on a Pi (not recommended):
+    # platform: linux/amd64
+    container_name: meshmonitor
+    ports:
+      - "8080:3001"
+    restart: unless-stopped
+    volumes:
+      - meshmonitor-data:/data
+    environment:
+      # Generate a strong secret for production:
+      # openssl rand -hex 32
+      - SESSION_SECRET=dev_change_me
+      - COOKIE_SECURE=false
+
+volumes:
+  meshmonitor-data:
