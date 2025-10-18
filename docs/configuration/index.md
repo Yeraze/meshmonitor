@@ -56,6 +56,7 @@ MeshMonitor can be configured using environment variables. Here are the most imp
 
 | Variable | Description | Default |
 |----------|-------------|---------|
+| `DISABLE_ANONYMOUS` | Disable anonymous access - require login for all features | `false` |
 | `DISABLE_LOCAL_AUTH` | Disable local username/password authentication (OIDC only) | `false` |
 | `ADMIN_USERNAME` | Override default admin username on first run | `admin` |
 
