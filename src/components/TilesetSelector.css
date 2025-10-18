@@ -1,0 +1,157 @@
+.tileset-selector {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-20%);
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 8px;
+  padding: 12px 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+
+.tileset-selector-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  white-space: nowrap;
+}
+
+.tileset-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.tileset-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: white;
+  border: 2px solid #ddd;
+  border-radius: 6px;
+  padding: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 80px;
+}
+
+.tileset-button:hover {
+  border-color: #007bff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 123, 255, 0.2);
+}
+
+.tileset-button.active {
+  border-color: #007bff;
+  background: #e7f3ff;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.1);
+}
+
+.tileset-preview {
+  width: 64px;
+  height: 64px;
+  border-radius: 4px;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.tileset-name {
+  font-size: 11px;
+  font-weight: 500;
+  color: #555;
+  text-align: center;
+  line-height: 1.2;
+  max-width: 80px;
+  word-wrap: break-word;
+}
+
+.tileset-button.active .tileset-name {
+  color: #007bff;
+  font-weight: 600;
+}
+
+.collapse-button {
+  background: white;
+  border: 2px solid #ddd;
+  border-radius: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.2s ease;
+  color: #555;
+  min-width: 40px;
+}
+
+.collapse-button:hover {
+  border-color: #007bff;
+  color: #007bff;
+  background: #f0f8ff;
+}
+
+.expand-button {
+  background: white;
+  border: 2px solid #007bff;
+  border-radius: 6px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  color: #007bff;
+  white-space: nowrap;
+}
+
+.expand-button:hover {
+  background: #007bff;
+  color: white;
+}
+
+.tileset-selector.collapsed {
+  padding: 8px 12px;
+  bottom: 10px;
+}
+
+/* Hide on mobile devices */
+@media (max-width: 768px) {
+  .tileset-selector {
+    display: none;
+  }
+}
+
+/* Responsive adjustments for smaller desktop screens */
+@media (max-width: 1024px) {
+  .tileset-selector {
+    bottom: 10px;
+    padding: 8px 12px;
+  }
+
+  .tileset-selector-label {
+    font-size: 12px;
+  }
+
+  .tileset-buttons {
+    gap: 6px;
+  }
+
+  .tileset-button {
+    min-width: 70px;
+    padding: 6px;
+  }
+
+  .tileset-preview {
+    width: 56px;
+    height: 56px;
+  }
+
+  .tileset-name {
+    font-size: 10px;
+    max-width: 70px;
+  }
+}
