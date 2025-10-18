@@ -103,12 +103,18 @@ function App() {
     const savedFilters = localStorage.getItem('nodeFilters');
     if (savedFilters) {
       try {
-        return JSON.parse(savedFilters);
+        const parsed = JSON.parse(savedFilters);
+        // Add filterMode if it doesn't exist (backward compatibility)
+        if (!parsed.filterMode) {
+          parsed.filterMode = 'show';
+        }
+        return parsed;
       } catch (e) {
         logger.error('Failed to parse saved node filters:', e);
       }
     }
     return {
+      filterMode: 'show' as 'show' | 'hide',
       showMqtt: false,
       showTelemetry: false,
       showEnvironment: false,
@@ -1887,23 +1893,27 @@ function App() {
     // Apply advanced filters
     const advancedFiltered = textFiltered.filter(node => {
       const nodeId = node.user?.id;
+      const isShowMode = nodeFilters.filterMode === 'show';
 
-      // MQTT filter - when checked, REQUIRE MQTT nodes only
+      // MQTT filter
       if (nodeFilters.showMqtt) {
-        const role = typeof node.user?.role === 'number' ? node.user.role : parseInt(node.user?.role || '0');
-        if (role !== 3) { // Role 3 is CLIENT_MQTT
-          return false;
-        }
+        const matches = node.viaMqtt;
+        if (isShowMode && !matches) return false; // Show mode: exclude non-matches
+        if (!isShowMode && matches) return false; // Hide mode: exclude matches
       }
 
-      // Telemetry filter - when checked, REQUIRE nodes with telemetry
-      if (nodeFilters.showTelemetry && nodeId && !nodesWithTelemetry.has(nodeId)) {
-        return false;
+      // Telemetry filter
+      if (nodeFilters.showTelemetry) {
+        const matches = nodeId && nodesWithTelemetry.has(nodeId);
+        if (isShowMode && !matches) return false;
+        if (!isShowMode && matches) return false;
       }
 
-      // Environment metrics filter - when checked, REQUIRE nodes with environment data
-      if (nodeFilters.showEnvironment && nodeId && !nodesWithWeatherTelemetry.has(nodeId)) {
-        return false;
+      // Environment metrics filter
+      if (nodeFilters.showEnvironment) {
+        const matches = nodeId && nodesWithWeatherTelemetry.has(nodeId);
+        if (isShowMode && !matches) return false;
+        if (!isShowMode && matches) return false;
       }
 
       // Power source filter
@@ -1918,34 +1928,36 @@ function App() {
         }
       }
 
-      // Position filter - when checked, REQUIRE nodes with position data
+      // Position filter
       if (nodeFilters.showPosition) {
         const hasPosition = node.position &&
           node.position.latitude != null &&
           node.position.longitude != null;
-        if (!hasPosition) {
-          return false;
-        }
+        const matches = hasPosition;
+        if (isShowMode && !matches) return false;
+        if (!isShowMode && matches) return false;
       }
 
-      // Hops filter
+      // Hops filter (always applies regardless of mode)
       if (node.hopsAway != null) {
         if (node.hopsAway < nodeFilters.minHops || node.hopsAway > nodeFilters.maxHops) {
           return false;
         }
       }
 
-      // PKI filter - when checked, REQUIRE nodes with PKI
-      if (nodeFilters.showPKI && nodeId && !nodesWithPKC.has(nodeId)) {
-        return false;
+      // PKI filter
+      if (nodeFilters.showPKI) {
+        const matches = nodeId && nodesWithPKC.has(nodeId);
+        if (isShowMode && !matches) return false;
+        if (!isShowMode && matches) return false;
       }
 
       // Device role filter
       if (nodeFilters.deviceRoles.length > 0) {
         const role = typeof node.user?.role === 'number' ? node.user.role : parseInt(node.user?.role || '0');
-        if (!nodeFilters.deviceRoles.includes(role)) {
-          return false;
-        }
+        const matches = nodeFilters.deviceRoles.includes(role);
+        if (isShowMode && !matches) return false;
+        if (!isShowMode && matches) return false;
       }
 
       return true;
@@ -2119,6 +2131,29 @@ function App() {
             </button>
           </div>
           <div className="filter-popup-content">
+            <div className="filter-section">
+              <div className="filter-section-title">Filter Mode</div>
+              <div className="filter-toggle-group">
+                <button
+                  className={`filter-toggle-btn ${nodeFilters.filterMode === 'show' ? 'active' : ''}`}
+                  onClick={() => setNodeFilters({...nodeFilters, filterMode: 'show'})}
+                >
+                  Show only
+                </button>
+                <button
+                  className={`filter-toggle-btn ${nodeFilters.filterMode === 'hide' ? 'active' : ''}`}
+                  onClick={() => setNodeFilters({...nodeFilters, filterMode: 'hide'})}
+                >
+                  Hide matching
+                </button>
+              </div>
+              <div className="filter-mode-description">
+                {nodeFilters.filterMode === 'show'
+                  ? 'Show only nodes that match all selected filters'
+                  : 'Hide nodes that match any selected filters'}
+              </div>
+            </div>
+
             <div className="filter-section">
               <div className="filter-section-title">Node Features</div>
 
@@ -2305,6 +2340,7 @@ function App() {
             <button
               className="filter-reset-btn"
               onClick={() => setNodeFilters({
+                filterMode: 'show',
                 showMqtt: false,
                 showTelemetry: false,
                 showEnvironment: false,
