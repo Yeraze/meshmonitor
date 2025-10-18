@@ -140,10 +140,13 @@ class AppriseHandler(BaseHTTPRequestHandler):
 
         # Configure URLs
         elif parsed.path == '/config':
-            urls = data.get('urls', [])
-            if not urls:
+            urls = data.get('urls')
+            if not isinstance(urls, list):
                 self.send_json_response(400, {'error': 'URLs array is required'})
                 return
+
+            # Filter out empty strings
+            urls = [url for url in urls if url and isinstance(url, str) and url.strip()]
 
             try:
                 save_config(urls)
