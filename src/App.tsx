@@ -28,6 +28,7 @@ import api from './services/api'
 import { logger } from './utils/logger'
 import { createNodeIcon, getHopColor } from './utils/mapIcons'
 import { getRoleName, generateArrowMarkers } from './utils/mapHelpers.tsx'
+import { ROLE_NAMES } from './constants'
 import { getHardwareModelName } from './utils/nodeHelpers'
 import MapLegend from './components/MapLegend'
 import ZoomHandler from './components/ZoomHandler'
@@ -94,6 +95,31 @@ function App() {
   const isMobileViewport = () => window.innerWidth <= 768;
   const [isNodeListCollapsed, setIsNodeListCollapsed] = useState(isMobileViewport());
   const [isMessagesNodeListCollapsed, setIsMessagesNodeListCollapsed] = useState(isMobileViewport());
+  const [showNodeFilterPopup, setShowNodeFilterPopup] = useState(false);
+
+  // Node list filter options (shared between Map and Messages pages)
+  // Load from localStorage on initial render
+  const [nodeFilters, setNodeFilters] = useState(() => {
+    const savedFilters = localStorage.getItem('nodeFilters');
+    if (savedFilters) {
+      try {
+        return JSON.parse(savedFilters);
+      } catch (e) {
+        logger.error('Failed to parse saved node filters:', e);
+      }
+    }
+    return {
+      showMqtt: true,
+      showTelemetry: true,
+      showEnvironment: true,
+      powerSource: 'both' as 'powered' | 'battery' | 'both',
+      showPosition: true,
+      minHops: 0,
+      maxHops: 10,
+      showPKI: true,
+      deviceRoles: [] as number[] // Empty array means show all roles
+    };
+  });
 
   const hasSelectedInitialChannelRef = useRef<boolean>(false)
   const selectedChannelRef = useRef<number>(-1)
@@ -679,6 +705,11 @@ function App() {
       }
     }
   }, [selectedNodeId]);
+
+  // Save node filters to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem('nodeFilters', JSON.stringify(nodeFilters));
+  }, [nodeFilters]);
 
   // Check if container is scrolled near bottom (within 100px)
   const isScrolledNearBottom = useCallback((container: HTMLDivElement | null): boolean => {
@@ -1853,9 +1884,76 @@ function App() {
 
     const textFiltered = filterNodes(ageFiltered, nodeFilter);
 
+    // Apply advanced filters
+    const advancedFiltered = textFiltered.filter(node => {
+      const nodeId = node.user?.id;
+
+      // MQTT filter
+      if (!nodeFilters.showMqtt) {
+        const role = typeof node.user?.role === 'number' ? node.user.role : parseInt(node.user?.role || '0');
+        if (role === 3) { // Role 3 is CLIENT_MQTT
+          return false;
+        }
+      }
+
+      // Telemetry filter
+      if (!nodeFilters.showTelemetry && nodeId && nodesWithTelemetry.has(nodeId)) {
+        return false;
+      }
+
+      // Environment metrics filter
+      if (!nodeFilters.showEnvironment && nodeId && nodesWithWeatherTelemetry.has(nodeId)) {
+        return false;
+      }
+
+      // Power source filter
+      const batteryLevel = node.deviceMetrics?.batteryLevel;
+      if (nodeFilters.powerSource !== 'both' && batteryLevel !== undefined) {
+        const isPowered = batteryLevel === 101;
+        if (nodeFilters.powerSource === 'powered' && !isPowered) {
+          return false;
+        }
+        if (nodeFilters.powerSource === 'battery' && isPowered) {
+          return false;
+        }
+      }
+
+      // Position filter
+      if (!nodeFilters.showPosition) {
+        const hasPosition = node.position &&
+          node.position.latitude != null &&
+          node.position.longitude != null;
+        if (hasPosition) {
+          return false;
+        }
+      }
+
+      // Hops filter
+      if (node.hopsAway != null) {
+        if (node.hopsAway < nodeFilters.minHops || node.hopsAway > nodeFilters.maxHops) {
+          return false;
+        }
+      }
+
+      // PKI filter
+      if (!nodeFilters.showPKI && nodeId && nodesWithPKC.has(nodeId)) {
+        return false;
+      }
+
+      // Device role filter
+      if (nodeFilters.deviceRoles.length > 0) {
+        const role = typeof node.user?.role === 'number' ? node.user.role : parseInt(node.user?.role || '0');
+        if (!nodeFilters.deviceRoles.includes(role)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+
     // Separate favorites from non-favorites
-    const favorites = textFiltered.filter(node => node.isFavorite);
-    const nonFavorites = textFiltered.filter(node => !node.isFavorite);
+    const favorites = advancedFiltered.filter(node => node.isFavorite);
+    const nonFavorites = advancedFiltered.filter(node => !node.isFavorite);
 
     // Sort each group independently
     const sortedFavorites = sortNodes(favorites, sortField, sortDirection);
@@ -1863,7 +1961,7 @@ function App() {
 
     // Concatenate: favorites first, then non-favorites
     return [...sortedFavorites, ...sortedNonFavorites];
-  }, [nodes, maxNodeAgeHours, nodeFilter, sortField, sortDirection]);
+  }, [nodes, maxNodeAgeHours, nodeFilter, sortField, sortDirection, nodeFilters, nodesWithTelemetry, nodesWithWeatherTelemetry, nodesWithPKC]);
 
   // Memoize selected channel config for modal
   const selectedChannelConfig = useMemo(() => {
@@ -2005,6 +2103,233 @@ function App() {
     }) || null;
   };
 
+  const renderNodeFilterPopup = () => {
+    if (!showNodeFilterPopup) return null;
+
+    return (
+      <div className="filter-popup-overlay" onClick={() => setShowNodeFilterPopup(false)}>
+        <div className="filter-popup" onClick={(e) => e.stopPropagation()}>
+          <div className="filter-popup-header">
+            <h4>Filter Nodes</h4>
+            <button
+              className="filter-popup-close"
+              onClick={() => setShowNodeFilterPopup(false)}
+            >
+              ✕
+            </button>
+          </div>
+          <div className="filter-popup-content">
+            <div className="filter-section">
+              <div className="filter-section-title">Node Features</div>
+
+              <label className="filter-checkbox">
+                <input
+                  type="checkbox"
+                  checked={nodeFilters.showTelemetry}
+                  onChange={(e) => setNodeFilters({...nodeFilters, showTelemetry: e.target.checked})}
+                />
+                <span className="filter-label-with-icon">
+                  <span className="filter-icon">📊</span>
+                  <span>Telemetry data</span>
+                </span>
+              </label>
+
+              <label className="filter-checkbox">
+                <input
+                  type="checkbox"
+                  checked={nodeFilters.showEnvironment}
+                  onChange={(e) => setNodeFilters({...nodeFilters, showEnvironment: e.target.checked})}
+                />
+                <span className="filter-label-with-icon">
+                  <span className="filter-icon">☀️</span>
+                  <span>Environment metrics</span>
+                </span>
+              </label>
+
+              <label className="filter-checkbox">
+                <input
+                  type="checkbox"
+                  checked={nodeFilters.showPosition}
+                  onChange={(e) => setNodeFilters({...nodeFilters, showPosition: e.target.checked})}
+                />
+                <span className="filter-label-with-icon">
+                  <span className="filter-icon">📍</span>
+                  <span>Position data</span>
+                </span>
+              </label>
+
+              <label className="filter-checkbox">
+                <input
+                  type="checkbox"
+                  checked={nodeFilters.showPKI}
+                  onChange={(e) => setNodeFilters({...nodeFilters, showPKI: e.target.checked})}
+                />
+                <span className="filter-label-with-icon">
+                  <span className="filter-icon">🔐</span>
+                  <span>Public Key Crypto</span>
+                </span>
+              </label>
+
+              <label className="filter-checkbox">
+                <input
+                  type="checkbox"
+                  checked={nodeFilters.showMqtt}
+                  onChange={(e) => setNodeFilters({...nodeFilters, showMqtt: e.target.checked})}
+                />
+                <span className="filter-label-with-icon">
+                  <span className="filter-icon">🌐</span>
+                  <span>MQTT nodes</span>
+                </span>
+              </label>
+            </div>
+
+            <div className="filter-section">
+              <div className="filter-section-title">
+                <span className="filter-icon-wrapper"><span className="filter-icon">🔋</span></span>
+                <span>Power Source</span>
+              </div>
+              <div className="filter-radio-group">
+                <label className="filter-radio">
+                  <input
+                    type="radio"
+                    name="powerSource"
+                    value="both"
+                    checked={nodeFilters.powerSource === 'both'}
+                    onChange={(e) => setNodeFilters({...nodeFilters, powerSource: e.target.value as 'both'})}
+                  />
+                  <span>Both</span>
+                </label>
+                <label className="filter-radio">
+                  <input
+                    type="radio"
+                    name="powerSource"
+                    value="powered"
+                    checked={nodeFilters.powerSource === 'powered'}
+                    onChange={(e) => setNodeFilters({...nodeFilters, powerSource: e.target.value as 'powered'})}
+                  />
+                  <span>🔌 Powered only</span>
+                </label>
+                <label className="filter-radio">
+                  <input
+                    type="radio"
+                    name="powerSource"
+                    value="battery"
+                    checked={nodeFilters.powerSource === 'battery'}
+                    onChange={(e) => setNodeFilters({...nodeFilters, powerSource: e.target.value as 'battery'})}
+                  />
+                  <span>🔋 Battery only</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="filter-section">
+              <div className="filter-section-title">
+                <span className="filter-icon-wrapper"><span className="filter-icon">🔗</span></span>
+                <span>Hops Away</span>
+              </div>
+              <div className="filter-range-group">
+                <div className="filter-range-input">
+                  <label>Min:</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="10"
+                    value={nodeFilters.minHops}
+                    onChange={(e) => setNodeFilters({...nodeFilters, minHops: parseInt(e.target.value) || 0})}
+                  />
+                </div>
+                <div className="filter-range-input">
+                  <label>Max:</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="10"
+                    value={nodeFilters.maxHops}
+                    onChange={(e) => setNodeFilters({...nodeFilters, maxHops: parseInt(e.target.value) || 10})}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="filter-section">
+              <div className="filter-section-title">
+                <span className="filter-icon-wrapper"><span className="filter-icon">👤</span></span>
+                <span>Device Role</span>
+              </div>
+              <div className="filter-role-group">
+                {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(roleNum => (
+                  <label key={roleNum} className="filter-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={nodeFilters.deviceRoles.length === 0 || nodeFilters.deviceRoles.includes(roleNum)}
+                      onChange={(e) => {
+                        const allRoles = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+
+                        if (e.target.checked) {
+                          // If all were selected (empty array), keep it empty (already showing all)
+                          if (nodeFilters.deviceRoles.length === 0) {
+                            // Already showing all, do nothing
+                            return;
+                          } else {
+                            // Add this role to the array
+                            const newRoles = [...nodeFilters.deviceRoles, roleNum];
+                            // If all are now selected, set to empty array (show all)
+                            if (newRoles.length === 13) {
+                              setNodeFilters({...nodeFilters, deviceRoles: []});
+                            } else {
+                              setNodeFilters({...nodeFilters, deviceRoles: newRoles});
+                            }
+                          }
+                        } else {
+                          // Unchecking a role
+                          if (nodeFilters.deviceRoles.length === 0) {
+                            // All were selected (empty array), now exclude this one
+                            const newRoles = allRoles.filter((r: number) => r !== roleNum);
+                            setNodeFilters({...nodeFilters, deviceRoles: newRoles});
+                          } else {
+                            // Remove this role from the array
+                            const newRoles = nodeFilters.deviceRoles.filter((r: number) => r !== roleNum);
+                            setNodeFilters({...nodeFilters, deviceRoles: newRoles});
+                          }
+                        }
+                      }}
+                    />
+                    <span>{ROLE_NAMES[roleNum]}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="filter-popup-actions">
+              <button
+                className="filter-reset-btn"
+                onClick={() => setNodeFilters({
+                  showMqtt: true,
+                  showTelemetry: true,
+                  showEnvironment: true,
+                  powerSource: 'both',
+                  showPosition: true,
+                  minHops: 0,
+                  maxHops: 10,
+                  showPKI: true,
+                  deviceRoles: []
+                })}
+              >
+                Reset All
+              </button>
+              <button
+                className="filter-apply-btn"
+                onClick={() => setShowNodeFilterPopup(false)}
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderNodesTab = () => {
     const nodesWithPosition = processedNodes.filter(node =>
       node.position &&
@@ -2049,6 +2374,13 @@ function App() {
                 className="filter-input-small"
               />
               <div className="sort-controls">
+                <button
+                  className="filter-popup-btn"
+                  onClick={() => setShowNodeFilterPopup(!showNodeFilterPopup)}
+                  title="Filter nodes"
+                >
+                  Filter
+                </button>
                 <select
                   value={sortField}
                   onChange={(e) => setSortField(e.target.value as SortField)}
@@ -3138,6 +3470,7 @@ function App() {
   };
 
   const renderMessagesTab = () => {
+    // Use processedNodes which already has sorting applied from the Map page logic
     const nodesWithMessages = processedNodes
       .filter(node => node.user?.id !== currentNodeId) // Exclude local node
       .map(node => {
@@ -3161,23 +3494,8 @@ function App() {
         };
       });
 
-    // Sort with favorites first
-    const favorites = nodesWithMessages.filter(node => node.isFavorite);
-    const nonFavorites = nodesWithMessages.filter(node => !node.isFavorite);
-
-    const sortByMessages = (a: any, b: any) => {
-      if (a.unreadCount !== b.unreadCount) {
-        return b.unreadCount - a.unreadCount;
-      }
-      if (a.lastMessageTime !== b.lastMessageTime) {
-        return b.lastMessageTime - a.lastMessageTime;
-      }
-      return (b.lastHeard || 0) - (a.lastHeard || 0);
-    };
-
-    const sortedFavorites = [...favorites].sort(sortByMessages);
-    const sortedNonFavorites = [...nonFavorites].sort(sortByMessages);
-    const sortedNodesWithMessages = [...sortedFavorites, ...sortedNonFavorites];
+    // processedNodes already has favorites first and correct sorting applied
+    const sortedNodesWithMessages = nodesWithMessages;
 
     return (
       <div className="nodes-split-view messages-split-view">
@@ -3193,7 +3511,7 @@ function App() {
             </button>
             {!isMessagesNodeListCollapsed && (
             <div className="sidebar-header-content">
-              <h3>Messages ({processedNodes.length})</h3>
+              <h3>Nodes</h3>
             </div>
             )}
             {!isMessagesNodeListCollapsed && (
@@ -3205,6 +3523,37 @@ function App() {
                 onChange={(e) => setNodeFilter(e.target.value)}
                 className="filter-input-small"
               />
+              <div className="sort-controls">
+                <button
+                  className="filter-popup-btn"
+                  onClick={() => setShowNodeFilterPopup(!showNodeFilterPopup)}
+                  title="Filter nodes"
+                >
+                  Filter
+                </button>
+                <select
+                  value={sortField}
+                  onChange={(e) => setSortField(e.target.value as SortField)}
+                  className="sort-dropdown"
+                  title="Sort nodes by"
+                >
+                  <option value="longName">Sort: Name</option>
+                  <option value="shortName">Sort: Short Name</option>
+                  <option value="id">Sort: ID</option>
+                  <option value="lastHeard">Sort: Updated</option>
+                  <option value="snr">Sort: Signal</option>
+                  <option value="battery">Sort: Charge</option>
+                  <option value="hwModel">Sort: Hardware</option>
+                  <option value="hops">Sort: Hops</option>
+                </select>
+                <button
+                  className="sort-direction-btn"
+                  onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
+                  title={sortDirection === 'asc' ? 'Ascending' : 'Descending'}
+                >
+                  {sortDirection === 'asc' ? '↑' : '↓'}
+                </button>
+              </div>
             </div>
             )}
           </div>
@@ -3917,6 +4266,7 @@ function App() {
 
   return (
     <div className="app">
+      {renderNodeFilterPopup()}
       <header className="app-header">
         <div className="header-left">
           <div className="header-title">
