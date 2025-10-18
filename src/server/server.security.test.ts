@@ -8,14 +8,66 @@ describe('Security: Apprise URL Validation', () => {
   // Note: This test validates the URL validation logic conceptually
   // Integration tests with the actual endpoint are in the main test suite
 
+  // Comprehensive list of all Apprise-supported notification services
+  // Reference: https://github.com/caronc/apprise
   const ALLOWED_SCHEMES = [
-    // Apprise service protocols
-    'discord', 'slack', 'tgram', 'telegram', 'msteams', 'teams',
-    'mailto', 'email', 'smtp', 'smtps',
-    'webhook', 'webhooks', 'json', 'xml',
-    'gotify', 'ntfy', 'pushover', 'pushbullet',
+    // Core Apprise
     'apprise', 'apprises',
-    // Standard web protocols (for webhooks)
+
+    // Chat & Messaging
+    'discord', 'slack', 'msteams', 'teams', 'guilded', 'revolt',
+    'matrix', 'matrixs', 'mmost', 'mmosts', 'rocket', 'rockets',
+    'ryver', 'zulip', 'twist', 'gchat', 'flock',
+
+    // Instant Messaging & Social
+    'telegram', 'tgram', 'signal', 'signals', 'whatsapp', 'line',
+    'mastodon', 'mastodons', 'misskey', 'misskeys', 'bluesky', 'reddit', 'twitter',
+
+    // Team Communication
+    'workflows', 'wxteams', 'wecombot', 'feishu', 'lark', 'dingtalk',
+
+    // Push Notifications
+    'pushover', 'pover', 'pushbullet', 'pbul', 'pushed', 'pushme',
+    'pushplus', 'pushdeer', 'pushdeers', 'pushy', 'prowl',
+    'simplepush', 'spush', 'popcorn', 'push',
+
+    // Notification Services
+    'ntfy', 'ntfys', 'gotify', 'gotifys', 'join', 'ifttt', 'notica',
+    'notifiarr', 'notifico', 'onesignal', 'kumulos', 'bark', 'barks',
+    'chanify', 'serverchan', 'schan', 'qq', 'wxpusher',
+
+    // Incident Management & Monitoring
+    'pagerduty', 'pagertree', 'opsgenie', 'spike', 'splunk', 'victorops',
+    'signl4',
+
+    // Email Services
+    'mailto', 'email', 'smtp', 'smtps', 'ses', 'mailgun', 'sendgrid',
+    'smtp2go', 'sparkpost', 'o365', 'resend', 'sendpulse',
+
+    // SMS Services
+    'bulksms', 'bulkvs', 'burstsms', 'clickatell', 'clicksend', 'd7sms',
+    'freemobile', 'httpsms', 'atalk',
+
+    // Cloud/IoT/Home
+    'fcm', 'hassio', 'hassios', 'homeassistant', 'parsep', 'parseps',
+    'aws', 'sns',
+
+    // Media Centers
+    'kodi', 'kodis', 'xbmc', 'xbmcs', 'emby', 'embys', 'enigma2', 'enigma2s',
+
+    // Collaboration & Productivity
+    'ncloud', 'nclouds', 'nctalk', 'nctalks', 'office365',
+
+    // Streaming & Gaming
+    'streamlabs', 'strmlabs',
+
+    // Specialized
+    'lametric', 'synology', 'synologys', 'vapid', 'mqtt', 'mqtts',
+    'rsyslog', 'syslog', 'dapnet', 'aprs', 'growl', 'pjet', 'pjets',
+    'psafer', 'psafers', 'spugpush', 'pushsafer',
+
+    // Generic webhooks & protocols
+    'webhook', 'webhooks', 'json', 'xml', 'form',
     'http', 'https'
   ];
 
@@ -40,7 +92,9 @@ describe('Security: Apprise URL Validation', () => {
       'https://example.com/webhook',
       'mailto:admin@example.com',
       'gotify://hostname/token',
-      'ntfy://ntfy.sh/topic'
+      'ntfy://ntfy.sh/topic',
+      'pushover://user_key@token',
+      'pover://user_key@token'
     ];
 
     validUrls.forEach(url => {
