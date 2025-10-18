@@ -2,16 +2,19 @@
  * Available map tilesets configuration
  */
 
+// Type-safe tileset IDs using string literal union
+export type TilesetId = 'osm' | 'osmHot' | 'cartoDark' | 'cartoLight' | 'openTopo' | 'esriSatellite';
+
 export interface TilesetConfig {
-  id: string;
-  name: string;
-  url: string;
-  attribution: string;
-  maxZoom?: number;
-  description?: string;
+  readonly id: TilesetId;
+  readonly name: string;
+  readonly url: string;
+  readonly attribution: string;
+  readonly maxZoom: number;
+  readonly description: string;
 }
 
-export const TILESETS: Record<string, TilesetConfig> = {
+export const TILESETS: Readonly<Record<TilesetId, TilesetConfig>> = {
   osm: {
     id: 'osm',
     name: 'OpenStreetMap',
@@ -60,20 +63,31 @@ export const TILESETS: Record<string, TilesetConfig> = {
     maxZoom: 18,
     description: 'Satellite imagery'
   }
-};
+} as const;
 
-export const DEFAULT_TILESET_ID = 'osm';
+export const DEFAULT_TILESET_ID: TilesetId = 'osm';
 
 /**
- * Get tileset configuration by ID
+ * Type guard to check if a string is a valid TilesetId
+ */
+export function isTilesetId(id: string): id is TilesetId {
+  return id in TILESETS;
+}
+
+/**
+ * Get tileset configuration by ID with type safety
+ * Returns default tileset if ID is invalid
  */
 export function getTilesetById(id: string): TilesetConfig {
-  return TILESETS[id] || TILESETS[DEFAULT_TILESET_ID];
+  if (isTilesetId(id)) {
+    return TILESETS[id];
+  }
+  return TILESETS[DEFAULT_TILESET_ID];
 }
 
 /**
  * Get all available tilesets as an array
  */
-export function getAllTilesets(): TilesetConfig[] {
+export function getAllTilesets(): readonly TilesetConfig[] {
   return Object.values(TILESETS);
 }

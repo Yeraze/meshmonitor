@@ -42,7 +42,7 @@ import { useCsrf } from './contexts/CsrfContext'
 import LoginModal from './components/LoginModal'
 import LoginPage from './components/LoginPage'
 import UserMenu from './components/UserMenu'
-import { getTilesetById } from './config/tilesets'
+import { getTilesetById, type TilesetId } from './config/tilesets'
 import { TilesetSelector } from './components/TilesetSelector'
 
 // Fix for default markers in React-Leaflet
@@ -174,7 +174,7 @@ function App() {
   } = useSettings();
 
   // Local state for temporary tileset selection (desktop map preview only)
-  const [temporaryTileset, setTemporaryTileset] = useState<string | null>(null);
+  const [temporaryTileset, setTemporaryTileset] = useState<TilesetId | null>(null);
   const activeTileset = temporaryTileset || mapTileset;
 
   // Map context

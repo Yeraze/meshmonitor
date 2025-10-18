@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { getAllTilesets } from '../config/tilesets';
+import { getAllTilesets, type TilesetId } from '../config/tilesets';
 import './TilesetSelector.css';
 
 interface TilesetSelectorProps {
-  selectedTilesetId: string;
-  onTilesetChange: (tilesetId: string) => void;
+  selectedTilesetId: TilesetId;
+  onTilesetChange: (tilesetId: TilesetId) => void;
 }
 
 export const TilesetSelector: React.FC<TilesetSelectorProps> = ({

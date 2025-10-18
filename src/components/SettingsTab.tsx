@@ -6,7 +6,7 @@ import apiService from '../services/api';
 import { logger } from '../utils/logger';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
-import { getAllTilesets } from '../config/tilesets';
+import { getAllTilesets, type TilesetId } from '../config/tilesets';
 
 type DistanceUnit = 'km' | 'mi';
 type TimeFormat = '12' | '24';
@@ -21,7 +21,7 @@ interface SettingsTabProps {
   preferredSortDirection: SortDirection;
   timeFormat: TimeFormat;
   dateFormat: DateFormat;
-  mapTileset: string;
+  mapTileset: TilesetId;
   baseUrl: string;
   onMaxNodeAgeChange: (hours: number) => void;
   onTemperatureUnitChange: (unit: TemperatureUnit) => void;
@@ -31,7 +31,7 @@ interface SettingsTabProps {
   onPreferredSortDirectionChange: (direction: SortDirection) => void;
   onTimeFormatChange: (format: TimeFormat) => void;
   onDateFormatChange: (format: DateFormat) => void;
-  onMapTilesetChange: (tilesetId: string) => void;
+  onMapTilesetChange: (tilesetId: TilesetId) => void;
 }
 
 const SettingsTab: React.FC<SettingsTabProps> = ({
@@ -481,7 +481,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             <select
               id="mapTileset"
               value={localMapTileset}
-              onChange={(e) => setLocalMapTileset(e.target.value)}
+              onChange={(e) => setLocalMapTileset(e.target.value as TilesetId)}
               className="setting-input"
             >
               {getAllTilesets().map((tileset) => (

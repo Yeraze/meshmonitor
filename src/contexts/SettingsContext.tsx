@@ -3,7 +3,7 @@ import { type TemperatureUnit } from '../utils/temperature';
 import { type SortField, type SortDirection } from '../types/ui';
 import { logger } from '../utils/logger';
 import { useCsrf } from './CsrfContext';
-import { DEFAULT_TILESET_ID } from '../config/tilesets';
+import { DEFAULT_TILESET_ID, type TilesetId, isTilesetId } from '../config/tilesets';
 
 export type DistanceUnit = 'km' | 'mi';
 export type TimeFormat = '12' | '24';
@@ -19,7 +19,7 @@ interface SettingsContextType {
   preferredSortDirection: SortDirection;
   timeFormat: TimeFormat;
   dateFormat: DateFormat;
-  mapTileset: string;
+  mapTileset: TilesetId;
   isLoading: boolean;
   setMaxNodeAgeHours: (hours: number) => void;
   setTracerouteIntervalMinutes: (minutes: number) => void;
@@ -30,7 +30,7 @@ interface SettingsContextType {
   setPreferredSortDirection: (direction: SortDirection) => void;
   setTimeFormat: (format: TimeFormat) => void;
   setDateFormat: (format: DateFormat) => void;
-  setMapTileset: (tilesetId: string) => void;
+  setMapTileset: (tilesetId: TilesetId) => void;
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
@@ -89,9 +89,12 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     return (saved === 'DD/MM/YYYY' ? 'DD/MM/YYYY' : 'MM/DD/YYYY') as DateFormat;
   });
 
-  const [mapTileset, setMapTilesetState] = useState<string>(() => {
+  const [mapTileset, setMapTilesetState] = useState<TilesetId>(() => {
     const saved = localStorage.getItem('mapTileset');
-    return saved || DEFAULT_TILESET_ID;
+    if (saved && isTilesetId(saved)) {
+      return saved;
+    }
+    return DEFAULT_TILESET_ID;
   });
 
   const setMaxNodeAgeHours = (value: number) => {
@@ -159,7 +162,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     localStorage.setItem('dateFormat', format);
   };
 
-  const setMapTileset = (tilesetId: string) => {
+  const setMapTileset = (tilesetId: TilesetId) => {
     setMapTilesetState(tilesetId);
     localStorage.setItem('mapTileset', tilesetId);
   };
@@ -224,7 +227,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             localStorage.setItem('dateFormat', settings.dateFormat);
           }
 
-          if (settings.mapTileset) {
+          if (settings.mapTileset && isTilesetId(settings.mapTileset)) {
             setMapTilesetState(settings.mapTileset);
             localStorage.setItem('mapTileset', settings.mapTileset);
           }
