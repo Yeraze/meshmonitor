@@ -120,6 +120,10 @@ body {
 
 .device-name {
   color: var(--ctp-green);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px; /* Prevent header from becoming too wide */
 }
 
 /* Warning and Update Banners */
@@ -744,6 +748,9 @@ body {
 .node-card h3 {
   margin: 0 0 0.75rem 0;
   color: var(--ctp-subtext1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .node-card p {
@@ -2359,6 +2366,10 @@ body {
   flex: 1;
   margin-right: 0.5rem;
   line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0; /* Important for flexbox truncation */
 }
 
 .node-actions {
