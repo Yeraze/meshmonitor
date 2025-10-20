@@ -60,7 +60,7 @@
     "@types/react-dom": "^19.2.2",
     "@types/supertest": "^6.0.3",
     "@types/web-push": "^3.6.4",
-    "@typescript-eslint/eslint-plugin": "^8.46.0",
+    "@typescript-eslint/eslint-plugin": "^8.46.1",
     "@typescript-eslint/parser": "^8.46.0",
     "@vitejs/plugin-react": "^5.0.4",
     "@vitest/coverage-v8": "^3.2.4",
@@ -70,18 +70,18 @@
     "eslint-plugin-react-hooks": "^7.0.0",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.4.0",
-    "jsdom": "^27.0.0",
+    "jsdom": "^27.0.1",
     "supertest": "^7.1.4",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",
-    "vite": "^7.1.9",
+    "vite": "^7.1.10",
     "vite-plugin-pwa": "^1.1.0",
     "vitepress": "^1.5.0",
     "vitest": "^3.2.4",
     "workbox-window": "^7.3.0"
   },
   "optionalDependencies": {
-    "@rollup/rollup-linux-arm-gnueabihf": "^4.28.1",
-    "@rollup/rollup-linux-arm64-musl": "^4.28.1"
+    "@rollup/rollup-linux-arm-gnueabihf": "^4.52.5",
+    "@rollup/rollup-linux-arm64-musl": "^4.52.5"
   }
 }
