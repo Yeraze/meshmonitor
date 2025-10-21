@@ -357,14 +357,31 @@ cp data/meshmonitor.db ~/meshmonitor-backup-$(date +%Y%m%d).db
 
 ### Can I use MeshMonitor with a Bluetooth or Serial Meshtastic device?
 
-**Yes!** Use [meshtasticd](https://github.com/meshtastic/python/tree/master/meshtasticd) as a TCP proxy:
+**Yes!** The solution depends on your connection type:
+
+#### For Bluetooth Low Energy (BLE) Devices
+
+Use the [MeshMonitor BLE Bridge](https://github.com/Yeraze/meshtastic-ble-bridge) to create a TCP-to-BLE gateway:
+
+```bash
+# Create .env file with your device's BLE MAC address
+echo "BLE_ADDRESS=AA:BB:CC:DD:EE:FF" > .env
+
+# Start MeshMonitor with BLE bridge
+docker compose -f docker-compose.yml -f docker-compose.ble.yml up -d
+```
+
+The BLE bridge connects to your Bluetooth Meshtastic device and exposes it on TCP port 4403 for MeshMonitor.
+
+See the [BLE Bridge repository](https://github.com/Yeraze/meshtastic-ble-bridge) for detailed setup instructions.
+
+#### For Serial/USB Devices
+
+Use [meshtasticd](https://github.com/meshtastic/python/tree/master/meshtasticd) as a TCP proxy:
 
 ```bash
 # Install meshtasticd
 pip install meshtasticd
-
-# For Bluetooth devices:
-meshtasticd --ble-device "Meshtastic_1234"
 
 # For Serial devices:
 meshtasticd --serial-port /dev/ttyUSB0
@@ -377,8 +394,6 @@ environment:
   - MESHTASTIC_NODE_IP=localhost  # meshtasticd runs on localhost
   - MESHTASTIC_TCP_PORT=4403      # Default meshtasticd port
 ```
-
-See the [meshtasticd configuration guide](/configuration/meshtasticd) for detailed setup instructions.
 
 ---
 
