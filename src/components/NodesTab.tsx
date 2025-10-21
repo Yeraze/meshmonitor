@@ -1,5 +1,5 @@
-import React from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle } from 'react-leaflet';
+import React, { useEffect } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, useMap } from 'react-leaflet';
 import type { Marker as LeafletMarker } from 'leaflet';
 import { DeviceInfo } from '../types/device';
 import { TabType } from '../types/ui';
@@ -33,8 +33,6 @@ const MapCenterController: React.FC<{
   centerTarget: [number, number] | null;
   onCenterComplete: () => void;
 }> = ({ centerTarget, onCenterComplete }) => {
-  const { useMap } = require('react-leaflet');
-  const { useEffect } = require('react');
   const map = useMap();
 
   useEffect(() => {
