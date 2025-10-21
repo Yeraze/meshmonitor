@@ -2476,10 +2476,12 @@ function App() {
                         >
                           {node.isFavorite ? '⭐' : '☆'}
                         </button>
-                        {node.user?.longName || `Node ${node.nodeNum}`}
-                        {node.user?.role !== undefined && node.user?.role !== null && getRoleName(node.user.role) && (
-                          <span className="node-role" title="Node Role"> {getRoleName(node.user.role)}</span>
-                        )}
+                        <span className="node-name-text">
+                          {node.user?.longName || `Node ${node.nodeNum}`}
+                          {node.user?.role !== undefined && node.user?.role !== null && getRoleName(node.user.role) && (
+                            <span className="node-role" title="Node Role"> {getRoleName(node.user.role)}</span>
+                          )}
+                        </span>
                       </div>
                       <div className="node-actions">
                         {hasPermission('messages', 'read') && (
@@ -3629,10 +3631,12 @@ function App() {
                         <div className="node-header">
                           <div className="node-name">
                             {node.isFavorite && <span className="favorite-indicator">⭐</span>}
-                            {node.user?.longName || `Node ${node.nodeNum}`}
-                            {node.unreadCount > 0 && (
-                              <span className="unread-badge-inline">{node.unreadCount}</span>
-                            )}
+                            <span className="node-name-text">
+                              {node.user?.longName || `Node ${node.nodeNum}`}
+                              {node.unreadCount > 0 && (
+                                <span className="unread-badge-inline">{node.unreadCount}</span>
+                              )}
+                            </span>
                           </div>
                           <div className="node-short">
                             {node.user?.shortName || '-'}
