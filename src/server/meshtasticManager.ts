@@ -949,7 +949,7 @@ class MeshtasticManager {
           latitude: coords.latitude,
           longitude: coords.longitude,
           altitude: position.altitude,
-          lastHeard: position.time ? Number(position.time) : Date.now() / 1000
+          lastHeard: meshPacket.rxTime ? Number(meshPacket.rxTime) : Date.now() / 1000
         };
 
         // Only include SNR/RSSI if they have valid values
@@ -1023,7 +1023,7 @@ class MeshtasticManager {
         hwModel: user.hwModel,
         role: user.role,
         hopsAway: meshPacket.hopsAway,
-        lastHeard: timestamp / 1000
+        lastHeard: meshPacket.rxTime ? Number(meshPacket.rxTime) : timestamp / 1000
       };
 
       // Capture public key if present
@@ -1090,7 +1090,7 @@ class MeshtasticManager {
       const nodeData: any = {
         nodeNum: fromNum,
         nodeId: nodeId,
-        lastHeard: telemetry.time ? Number(telemetry.time) : Date.now() / 1000
+        lastHeard: meshPacket.rxTime ? Number(meshPacket.rxTime) : Date.now() / 1000
       };
 
       // Only include SNR/RSSI if they have valid values
@@ -1682,7 +1682,7 @@ class MeshtasticManager {
       const nodeData: any = {
         nodeNum: Number(nodeInfo.num),
         nodeId: nodeId,
-        lastHeard: nodeInfo.lastHeard ? Number(nodeInfo.lastHeard) : Date.now() / 1000,
+        lastHeard: Date.now() / 1000, // Use server time when we received this node info
         snr: nodeInfo.snr,
         rssi: 0, // Will be updated from mesh packet if available
         hopsAway: nodeInfo.hopsAway !== undefined ? nodeInfo.hopsAway : undefined
@@ -2946,7 +2946,7 @@ class MeshtasticManager {
       altitude: nodeInfo.position?.altitude,
       // Note: Telemetry data (batteryLevel, voltage, etc.) is NOT saved from NodeInfo packets
       // It is only saved from actual TELEMETRY_APP packets in processTelemetryMessageProtobuf()
-      lastHeard: nodeInfo.lastHeard ? Math.floor(nodeInfo.lastHeard) : Math.floor(Date.now() / 1000),
+      lastHeard: Math.floor(Date.now() / 1000), // Use server time, not node-reported time
       snr: nodeInfo.snr,
       rssi: nodeInfo.rssi
     };
@@ -3858,7 +3858,7 @@ class MeshtasticManager {
       text: msg.text,
       channel: msg.channel,
       portnum: msg.portnum,
-      timestamp: new Date(msg.timestamp),
+      timestamp: new Date(msg.rxTime ?? msg.timestamp),
       hopStart: msg.hopStart,
       hopLimit: msg.hopLimit,
       replyId: msg.replyId,
