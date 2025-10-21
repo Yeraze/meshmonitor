@@ -1120,7 +1120,7 @@ class DatabaseService {
   getMessages(limit: number = 100, offset: number = 0): DbMessage[] {
     const stmt = this.db.prepare(`
       SELECT * FROM messages
-      ORDER BY timestamp DESC
+      ORDER BY COALESCE(rxTime, timestamp) DESC
       LIMIT ? OFFSET ?
     `);
     const messages = stmt.all(limit, offset) as DbMessage[];
@@ -1131,7 +1131,7 @@ class DatabaseService {
     const stmt = this.db.prepare(`
       SELECT * FROM messages
       WHERE channel = ?
-      ORDER BY timestamp DESC
+      ORDER BY COALESCE(rxTime, timestamp) DESC
       LIMIT ?
     `);
     const messages = stmt.all(channel, limit) as DbMessage[];
@@ -1143,7 +1143,7 @@ class DatabaseService {
       SELECT * FROM messages
       WHERE (fromNodeId = ? AND toNodeId = ?)
          OR (fromNodeId = ? AND toNodeId = ?)
-      ORDER BY timestamp DESC
+      ORDER BY COALESCE(rxTime, timestamp) DESC
       LIMIT ?
     `);
     const messages = stmt.all(nodeId1, nodeId2, nodeId2, nodeId1, limit) as DbMessage[];

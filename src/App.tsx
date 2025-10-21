@@ -3654,6 +3654,14 @@ function App() {
           >
             View Release Notes →
           </a>
+          <button
+            className="banner-dismiss"
+            onClick={() => setUpdateAvailable(false)}
+            aria-label="Dismiss update notification"
+            title="Dismiss"
+          >
+            ✕
+          </button>
         </div>
       )}
 

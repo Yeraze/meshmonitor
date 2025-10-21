@@ -151,6 +151,28 @@ body {
   background-color: #3b82f6;
   color: white;
   border-bottom: 2px solid #1d4ed8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.banner-dismiss {
+  position: absolute;
+  right: 16px;
+  background: none;
+  border: none;
+  color: white;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px 8px;
+  opacity: 0.8;
+  transition: opacity 0.2s ease;
+}
+
+.banner-dismiss:hover {
+  opacity: 1;
 }
 
 .connection-status {
