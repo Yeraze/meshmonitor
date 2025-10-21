@@ -255,6 +255,8 @@ const apiRouter = express.Router();
 import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import auditRoutes from './routes/auditRoutes.js';
+import apiKeyRoutes from './routes/apiKeyRoutes.js';
+import v1Router from './routes/v1/index.js';
 
 // CSRF token endpoint (must be before CSRF protection middleware)
 apiRouter.get('/csrf-token', csrfTokenEndpoint);
@@ -265,8 +267,14 @@ apiRouter.use('/auth', authRoutes);
 // User management routes (admin only)
 apiRouter.use('/users', userRoutes);
 
+// API key management routes (authenticated users)
+apiRouter.use('/users', apiKeyRoutes);
+
 // Audit log routes (admin only)
 apiRouter.use('/audit', auditRoutes);
+
+// Mount v1 API router
+apiRouter.use('/v1', v1Router);
 
 // API Routes
 apiRouter.get('/nodes', optionalAuth(), (_req, res) => {

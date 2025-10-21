@@ -45,6 +45,8 @@
     "react-leaflet": "^5.0.0",
     "recharts": "^3.2.1",
     "rotating-file-stream": "^3.2.7",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1",
     "web-push": "^3.6.7"
   },
   "devDependencies": {
@@ -62,6 +64,8 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.2.2",
     "@types/supertest": "^6.0.3",
+    "@types/swagger-jsdoc": "^6.0.4",
+    "@types/swagger-ui-express": "^4.1.8",
     "@types/web-push": "^3.6.4",
     "@typescript-eslint/eslint-plugin": "^8.46.1",
     "@typescript-eslint/parser": "^8.46.0",

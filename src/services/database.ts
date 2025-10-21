@@ -6,6 +6,7 @@ import { logger } from '../utils/logger.js';
 import { getEnvironmentConfig } from '../server/config/environment.js';
 import { UserModel } from '../server/models/User.js';
 import { PermissionModel } from '../server/models/Permission.js';
+import { ApiKeyModel } from '../server/models/ApiKey.js';
 import { migration as authMigration } from '../server/migrations/001_add_auth_tables.js';
 import { migration as channelsMigration } from '../server/migrations/002_add_channels_permission.js';
 import { migration as connectionMigration } from '../server/migrations/003_add_connection_permission.js';
@@ -16,6 +17,7 @@ import { migration as readMessagesMigration } from '../server/migrations/007_add
 import { migration as pushSubscriptionsMigration } from '../server/migrations/008_add_push_subscriptions.js';
 import { migration as notificationPreferencesMigration } from '../server/migrations/009_add_notification_preferences.js';
 import { migration as notifyOnEmojiMigration } from '../server/migrations/010_add_notify_on_emoji.js';
+import { migration as apiKeysMigration } from '../server/migrations/011_add_api_keys.js';
 
 export interface DbNode {
   nodeNum: number;
@@ -140,6 +142,7 @@ class DatabaseService {
   private isInitialized = false;
   public userModel: UserModel;
   public permissionModel: PermissionModel;
+  public apiKeyModel: ApiKeyModel;
 
   constructor() {
     logger.debug('🔧🔧🔧 DatabaseService constructor called');
@@ -162,6 +165,7 @@ class DatabaseService {
     // Initialize models
     this.userModel = new UserModel(this.db);
     this.permissionModel = new PermissionModel(this.db);
+    this.apiKeyModel = new ApiKeyModel(this.db);
 
     this.initialize();
     // Always ensure Primary channel exists, even if database already initialized
@@ -189,6 +193,7 @@ class DatabaseService {
     this.runPushSubscriptionsMigration();
     this.runNotificationPreferencesMigration();
     this.runNotifyOnEmojiMigration();
+    this.runApiKeysMigration();
     this.ensureAutomationDefaults();
     this.isInitialized = true;
   }
@@ -431,6 +436,27 @@ class DatabaseService {
       logger.debug('✅ Notify on emoji migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run notify on emoji migration:', error);
+      throw error;
+    }
+  }
+
+  private runApiKeysMigration(): void {
+    logger.debug('Running API keys migration...');
+    try {
+      const migrationKey = 'migration_011_api_keys';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ API keys migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 011: Add api_keys table...');
+      apiKeysMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ API keys migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run API keys migration:', error);
       throw error;
     }
   }
