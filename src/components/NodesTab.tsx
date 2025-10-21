@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, useMap } from 'react-leaflet';
+import React from 'react';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle } from 'react-leaflet';
 import type { Marker as LeafletMarker } from 'leaflet';
 import { DeviceInfo } from '../types/device';
 import { TabType } from '../types/ui';
@@ -16,6 +16,7 @@ import { useAuth } from '../contexts/AuthContext';
 import MapLegend from './MapLegend';
 import ZoomHandler from './ZoomHandler';
 import { TilesetSelector } from './TilesetSelector';
+import { MapCenterController } from './MapCenterController';
 
 interface NodesTabProps {
   processedNodes: DeviceInfo[];
@@ -34,30 +35,6 @@ const isToday = (date: Date): boolean => {
   return date.getDate() === today.getDate() &&
     date.getMonth() === today.getMonth() &&
     date.getFullYear() === today.getFullYear();
-};
-
-// MapCenterController component
-const MapCenterController: React.FC<{
-  centerTarget: [number, number] | null;
-  onCenterComplete: () => void;
-}> = ({ centerTarget, onCenterComplete }) => {
-  const map = useMap();
-
-  useEffect(() => {
-    if (centerTarget) {
-      // Listen for moveend event after setView completes, then pan to show popup
-      map.once('moveend', () => {
-        // Pan the map down by 150 pixels to account for popup height
-        // This ensures both the marker and the popup above it are fully visible
-        map.panBy([0, -150], { animate: true, duration: 0.3 });
-      });
-
-      map.setView(centerTarget, 15); // Zoom level 15 for close view
-      onCenterComplete(); // Reset target after centering
-    }
-  }, [centerTarget, onCenterComplete, map]);
-
-  return null;
 };
 
 const NodesTab: React.FC<NodesTabProps> = ({
