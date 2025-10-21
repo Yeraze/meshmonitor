@@ -133,8 +133,10 @@ services:
       - TRUST_PROXY=true  # Required when behind a reverse proxy
       - COOKIE_SECURE=true  # Enable secure cookies for HTTPS
       - ALLOWED_ORIGINS=https://meshmonitor.example.com  # REQUIRED for HTTPS!
+      - ACCESS_LOG_ENABLED=true  # Optional: Enable for fail2ban
     volumes:
       - meshmonitor-data:/data
+      - ./meshmonitor-logs:/data/logs:rw  # Optional: For fail2ban access
     expose:
       - "8080"
     networks:
@@ -255,8 +257,10 @@ services:
       - TRUST_PROXY=true  # Required when behind a reverse proxy
       - COOKIE_SECURE=true  # Enable secure cookies for HTTPS
       - ALLOWED_ORIGINS=https://meshmonitor.example.com  # REQUIRED for HTTPS!
+      - ACCESS_LOG_ENABLED=true  # Optional: Enable for fail2ban
     volumes:
       - meshmonitor-data:/data
+      - ./meshmonitor-logs:/data/logs:rw  # Optional: For fail2ban access
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.meshmonitor.rule=Host(`meshmonitor.example.com`)"
@@ -339,8 +343,10 @@ services:
       - TRUST_PROXY=true  # Required when behind a reverse proxy
       - COOKIE_SECURE=true  # Enable secure cookies for HTTPS
       - ALLOWED_ORIGINS=https://meshmonitor.example.com  # REQUIRED for HTTPS!
+      - ACCESS_LOG_ENABLED=true  # Optional: Enable for fail2ban
     volumes:
       - meshmonitor-data:/data
+      - ./meshmonitor-logs:/data/logs:rw  # Optional: For fail2ban access
     expose:
       - "8080"
     networks:
