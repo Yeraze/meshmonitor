@@ -19,6 +19,9 @@ Understand the differences between HTTP and HTTPS deployments, security consider
 ### [Production Deployment](/configuration/production)
 Best practices and recommendations for deploying MeshMonitor in production environments, including high availability and monitoring.
 
+### [Fail2ban Integration](/configuration/fail2ban)
+Protect your instance from brute-force attacks using fail2ban. Includes setup guide, AbuseIPDB integration, and advanced configuration options.
+
 ### [Push Notifications](/features/notifications)
 Configure push notifications for iOS, Android, and desktop browsers. Learn about HTTPS requirements, VAPID keys, and step-by-step setup guides for all platforms.
 
@@ -69,6 +72,16 @@ MeshMonitor can be configured using environment variables. Here are the most imp
 | `RATE_LIMIT_MESSAGES` | Max messages per minute | `30` | `100` |
 
 **Note**: Rate limit violations are logged with IP address and path for troubleshooting. Adjust these values based on your usage patterns.
+
+### Access Logging Variables (for fail2ban)
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `ACCESS_LOG_ENABLED` | Enable Apache-style access logging for fail2ban integration | `false` |
+| `ACCESS_LOG_PATH` | Path to access log file | `/data/logs/access.log` |
+| `ACCESS_LOG_FORMAT` | Log format (`combined`, `common`, or `tiny`) | `combined` |
+
+**Note**: Requires bind mount for host access. See [Fail2ban Integration](/configuration/fail2ban) for complete setup guide.
 
 ### SSO Variables (OIDC)
 

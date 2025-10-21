@@ -19,6 +19,7 @@ import {
   hasPermission
 } from './auth/authMiddleware.js';
 import { apiLimiter } from './middleware/rateLimiters.js';
+import { setupAccessLogger } from './middleware/accessLogger.js';
 import { getEnvironmentConfig } from './config/environment.js';
 import { pushNotificationService } from './services/pushNotificationService.js';
 import { appriseNotificationService } from './services/appriseNotificationService.js';
@@ -174,6 +175,12 @@ app.use(cors({
   credentials: true,
   optionsSuccessStatus: 200
 }));
+
+// Access logging for fail2ban (optional, configured via ACCESS_LOG_ENABLED)
+const accessLogger = setupAccessLogger();
+if (accessLogger) {
+  app.use(accessLogger);
+}
 
 // Security: Request body size limits
 app.use(express.json({ limit: '10mb' }));

@@ -167,6 +167,14 @@ export interface EnvironmentConfig {
   vapidPrivateKeyProvided: boolean;
   vapidSubject: string | undefined;
   vapidSubjectProvided: boolean;
+
+  // Access Logging (for fail2ban)
+  accessLogEnabled: boolean;
+  accessLogEnabledProvided: boolean;
+  accessLogPath: string;
+  accessLogPathProvided: boolean;
+  accessLogFormat: 'combined' | 'common' | 'tiny';
+  accessLogFormatProvided: boolean;
 }
 
 /**
@@ -382,6 +390,14 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     wasProvided: process.env.VAPID_SUBJECT !== undefined
   };
 
+  // Access Logging (for fail2ban)
+  const accessLogEnabled = parseBoolean('ACCESS_LOG_ENABLED', process.env.ACCESS_LOG_ENABLED, false);
+  const accessLogPath = {
+    value: process.env.ACCESS_LOG_PATH || '/data/logs/access.log',
+    wasProvided: process.env.ACCESS_LOG_PATH !== undefined
+  };
+  const accessLogFormat = parseEnum('ACCESS_LOG_FORMAT', process.env.ACCESS_LOG_FORMAT, ['combined', 'common', 'tiny'] as const, 'combined');
+
   return {
     // Node environment
     nodeEnv: nodeEnv.value,
@@ -460,7 +476,15 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     vapidPrivateKey: vapidPrivateKey.value,
     vapidPrivateKeyProvided: vapidPrivateKey.wasProvided,
     vapidSubject: vapidSubject.value,
-    vapidSubjectProvided: vapidSubject.wasProvided
+    vapidSubjectProvided: vapidSubject.wasProvided,
+
+    // Access Logging (for fail2ban)
+    accessLogEnabled: accessLogEnabled.value,
+    accessLogEnabledProvided: accessLogEnabled.wasProvided,
+    accessLogPath: accessLogPath.value,
+    accessLogPathProvided: accessLogPath.wasProvided,
+    accessLogFormat: accessLogFormat.value,
+    accessLogFormatProvided: accessLogFormat.wasProvided
   };
 }
 
