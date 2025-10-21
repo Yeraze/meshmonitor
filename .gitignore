@@ -26,7 +26,14 @@ dist-ssr
 # Environment variables
 .env
 .env.local
+.env.ble
 .env.productioncoverage/
+
+# Temporary archives
+*.tar
+*.tar.gz
+*.tbz
+*.tgz
 
 # Python virtual environment
 bin/
