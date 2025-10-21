@@ -18,10 +18,16 @@ Benefits of using a reverse proxy:
 When deploying MeshMonitor behind a reverse proxy with HTTPS, you **MUST** set these environment variables:
 
 ```bash
+NODE_ENV=production                                 # Enable production mode with full CSP
 TRUST_PROXY=true                                    # Trust proxy headers
 COOKIE_SECURE=true                                  # Enable secure cookies for HTTPS
 ALLOWED_ORIGINS=https://meshmonitor.example.com    # Allow CORS from your domain
 ```
+
+**Without `NODE_ENV=production`, you will get:**
+- Map tiles won't load (gray/blank tiles) for satellite, dark mode, light mode, and topographic maps
+- Browser console shows CSP errors about refused connections to tile servers
+- Only OpenStreetMap tiles will work
 
 **Without `ALLOWED_ORIGINS`, you will get:**
 - Blank white pages
@@ -123,6 +129,7 @@ services:
     environment:
       - MESHTASTIC_NODE_IP=192.168.1.100
       - SESSION_SECRET=your-secure-random-string
+      - NODE_ENV=production  # Required for full CSP and map tiles
       - TRUST_PROXY=true  # Required when behind a reverse proxy
       - COOKIE_SECURE=true  # Enable secure cookies for HTTPS
       - ALLOWED_ORIGINS=https://meshmonitor.example.com  # REQUIRED for HTTPS!
@@ -244,6 +251,7 @@ services:
     environment:
       - MESHTASTIC_NODE_IP=192.168.1.100
       - SESSION_SECRET=your-secure-random-string
+      - NODE_ENV=production  # Required for full CSP and map tiles
       - TRUST_PROXY=true  # Required when behind a reverse proxy
       - COOKIE_SECURE=true  # Enable secure cookies for HTTPS
       - ALLOWED_ORIGINS=https://meshmonitor.example.com  # REQUIRED for HTTPS!
@@ -327,6 +335,7 @@ services:
     environment:
       - MESHTASTIC_NODE_IP=192.168.1.100
       - SESSION_SECRET=your-secure-random-string
+      - NODE_ENV=production  # Required for full CSP and map tiles
       - TRUST_PROXY=true  # Required when behind a reverse proxy
       - COOKIE_SECURE=true  # Enable secure cookies for HTTPS
       - ALLOWED_ORIGINS=https://meshmonitor.example.com  # REQUIRED for HTTPS!
@@ -515,6 +524,49 @@ COOKIE_SECURE=true
 If using HTTP (not recommended), you must explicitly set:
 ```bash
 COOKIE_SECURE=false
+```
+
+### Map Tiles Not Loading (CSP Errors)
+
+**Symptoms**:
+- Map displays but tiles don't load (gray/blank tiles)
+- Browser console shows CSP errors:
+  ```
+  Refused to connect to 'https://server.arcgisonline.com/...' because it violates the following
+  Content Security Policy directive: "connect-src 'self' https://*.tile.openstreetmap.org"
+  ```
+- Only OpenStreetMap tiles work, but satellite/dark/light/topo maps don't load
+
+**Cause**: MeshMonitor is not running in production mode with secure cookies enabled. The development CSP only allows OpenStreetMap tiles for security reasons.
+
+**Solution**: Set **BOTH** of these environment variables:
+```bash
+NODE_ENV=production
+COOKIE_SECURE=true
+TRUST_PROXY=true  # Also required when behind a reverse proxy
+```
+
+**Why this happens:**
+- MeshMonitor uses different Content Security Policy (CSP) headers based on deployment mode
+- Development/HTTP mode: Restrictive CSP that only allows OpenStreetMap (to prevent accidental exposure)
+- Production/HTTPS mode: Full CSP that allows all tile providers (OpenStreetMap, CartoDB, OpenTopoMap, Esri)
+
+**Verification:**
+Check the CSP header in your browser DevTools:
+1. Open DevTools (F12)
+2. Go to Network tab
+3. Click on the main HTML document request
+4. Look at Response Headers > Content-Security-Policy
+5. The `connect-src` directive should include:
+   ```
+   connect-src 'self' https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com
+   https://*.tile.opentopomap.org https://server.arcgisonline.com
+   ```
+
+**After changing**, restart MeshMonitor:
+```bash
+docker compose down
+docker compose up -d
 ```
 
 ## Next Steps
