@@ -501,8 +501,8 @@ Remove the logs bind mount from docker-compose.yml and restart.
 
 - [fail2ban Documentation](https://fail2ban.readthedocs.io/)
 - [AbuseIPDB Documentation](https://docs.abuseipdb.com/)
-- [MeshMonitor Security Guide](/docs/configuration/production)
-- [Reverse Proxy Configuration](/docs/configuration/reverse-proxy)
+- [MeshMonitor Security Guide](/configuration/production)
+- [Reverse Proxy Configuration](/configuration/reverse-proxy)
 
 ## Support
 
