@@ -1,15 +1,23 @@
 # Using meshtasticd
 
-`meshtasticd` is a virtual Meshtastic node daemon that runs on your computer without requiring physical hardware. It's perfect for development, testing, and running a node without a dedicated device.
+`meshtasticd` is a virtual Meshtastic node daemon and TCP proxy that runs on your computer. It's perfect for development, testing, and connecting Serial/USB Meshtastic devices to MeshMonitor.
 
 ## What is meshtasticd?
 
-`meshtasticd` simulates a Meshtastic node in software, allowing you to:
+`meshtasticd` provides two main capabilities:
 
-- Test MeshMonitor without physical hardware
-- Run a Meshtastic node on a server or Raspberry Pi
-- Develop and test mesh applications
-- Create virtual mesh networks
+1. **Virtual Node Simulation:** Run a software Meshtastic node without physical hardware
+2. **Serial/USB Proxy:** Bridge Serial/USB-connected devices to TCP for MeshMonitor
+
+Use cases include:
+
+- Testing MeshMonitor without physical hardware
+- Connecting Serial/USB Meshtastic devices (not Bluetooth)
+- Running a virtual Meshtastic node on a server or Raspberry Pi
+- Developing and testing mesh applications
+- Creating virtual mesh networks
+
+**Note:** For **Bluetooth (BLE)** devices, use the [MeshMonitor BLE Bridge](/configuration/ble-bridge) instead. `meshtasticd` does not support Bluetooth connections.
 
 ## Installing meshtasticd
 
@@ -266,6 +274,7 @@ docker run -d \
 
 ## Next Steps
 
+- [Connect Bluetooth devices](/configuration/ble-bridge) with the BLE Bridge
 - [Configure SSO](/configuration/sso) for authentication
 - [Set up a reverse proxy](/configuration/reverse-proxy) for external access
 - [Deploy to production](/configuration/production) with proper monitoring
