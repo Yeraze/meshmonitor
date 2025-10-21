@@ -6,7 +6,7 @@ import { TabType } from '../types/ui';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
 import { getRoleName, generateArrowMarkers } from '../utils/mapHelpers.tsx';
 import { getHardwareModelName } from '../utils/nodeHelpers';
-import { formatDateTime } from '../utils/datetime';
+import { formatTime, formatDateTime } from '../utils/datetime';
 import { getTilesetById } from '../config/tilesets';
 import { useMapContext } from '../contexts/MapContext';
 import { useData } from '../contexts/DataContext';
@@ -27,6 +27,14 @@ interface NodesTabProps {
   markerRefs: React.MutableRefObject<Map<string, LeafletMarker>>;
   traceroutePathsElements: React.ReactNode;
 }
+
+// Helper function to check if a date is today
+const isToday = (date: Date): boolean => {
+  const today = new Date();
+  return date.getDate() === today.getDate() &&
+    date.getMonth() === today.getMonth() &&
+    date.getFullYear() === today.getFullYear();
+};
 
 // MapCenterController component
 const MapCenterController: React.FC<{
@@ -282,10 +290,12 @@ const NodesTab: React.FC<NodesTabProps> = ({
                     </div>
 
                     <div className="node-time">
-                      {node.lastHeard ?
-                        formatDateTime(new Date(node.lastHeard * 1000), timeFormat, dateFormat)
-                        : 'Never'
-                      }
+                      {node.lastHeard ? (() => {
+                        const date = new Date(node.lastHeard * 1000);
+                        return isToday(date)
+                          ? formatTime(date, timeFormat)
+                          : formatDateTime(date, timeFormat, dateFormat);
+                      })() : 'Never'}
                     </div>
                   </div>
 
