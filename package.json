@@ -43,7 +43,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.2.0",
     "react-leaflet": "^5.0.0",
-    "recharts": "^3.2.1",
+    "recharts": "^3.3.0",
     "rotating-file-stream": "^3.2.7",
     "web-push": "^3.6.7"
   },
