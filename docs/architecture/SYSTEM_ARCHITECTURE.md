@@ -325,13 +325,19 @@ MeshMonitor → TCP:4403 → Meshtastic Node
 ```
 Standard deployment for nodes with network connectivity.
 
-**2. meshtasticd Proxy (BLE/Serial Nodes)**
+**2. BLE Bridge (Bluetooth Nodes)**
 ```
-MeshMonitor → TCP:4403 → meshtasticd → BLE/Serial → Meshtastic Node
+MeshMonitor → TCP:4403 → BLE Bridge → BLE → Meshtastic Node
 ```
-[meshtasticd](https://github.com/meshtastic/python) provides TCP proxy for Bluetooth and Serial devices, enabling MeshMonitor to connect to any Meshtastic hardware.
+[MeshMonitor BLE Bridge](https://github.com/Yeraze/meshtastic-ble-bridge) provides TCP-to-BLE translation for Bluetooth Low Energy Meshtastic devices.
 
-**3. HomeAssistant Integration**
+**3. meshtasticd Proxy (Serial Nodes)**
+```
+MeshMonitor → TCP:4403 → meshtasticd → Serial → Meshtastic Node
+```
+[meshtasticd](https://github.com/meshtastic/python) provides TCP proxy for Serial/USB-connected Meshtastic devices.
+
+**4. HomeAssistant Integration**
 ```
 MeshMonitor → TCP:4403 → HomeAssistant Meshtastic Integration → Node
 ```

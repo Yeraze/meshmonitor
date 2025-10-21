@@ -1,0 +1,44 @@
+# Docker Compose overlay for BLE-to-TCP Bridge
+# Usage: docker compose -f docker-compose.yml -f docker-compose.ble.yml up
+#
+# This adds an optional BLE bridge service that connects to Meshtastic devices
+# via Bluetooth Low Energy and exposes a TCP interface on localhost:4403
+#
+# BLE Bridge Repository: https://github.com/Yeraze/meshtastic-ble-bridge
+# See that repository for source code, documentation, and build instructions
+
+services:
+  ble-bridge:
+    image: ghcr.io/yeraze/meshtastic-ble-bridge:latest
+    # To build locally instead of using pre-built image:
+    # build:
+    #   context: /path/to/meshtastic-ble-bridge
+    #   dockerfile: Dockerfile
+    container_name: meshmonitor-ble-bridge
+    privileged: true  # Required for BLE hardware access
+    network_mode: host  # Allows localhost TCP communication with meshmonitor
+    restart: unless-stopped
+    volumes:
+      - /var/run/dbus:/var/run/dbus  # Required for D-Bus/Bluetooth access
+      - /var/lib/bluetooth:/var/lib/bluetooth:ro  # Pairing information
+    environment:
+      # BLE MAC address of your Meshtastic device
+      # Find it using: docker compose -f docker-compose.ble.yml run --rm ble-bridge --scan
+      - BLE_ADDRESS=${BLE_ADDRESS:-}
+    command: ${BLE_ADDRESS:-}
+    healthcheck:
+      test: ["CMD-SHELL", "netstat -tln | grep -q :4403 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Override meshmonitor service to connect to BLE bridge
+  meshmonitor:
+    environment:
+      # Configure MeshMonitor to connect to the BLE bridge
+      - MESHTASTIC_NODE_IP=localhost
+      - MESHTASTIC_NODE_PORT=4403
+    depends_on:
+      ble-bridge:
+        condition: service_healthy

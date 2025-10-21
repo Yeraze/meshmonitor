@@ -91,26 +91,33 @@ helm install meshmonitor ./helm/meshmonitor \
   --set env.meshtasticTcpPort=4403
 ```
 
-**4. Using meshtasticd for BLE/Serial Nodes**
+**4. Using BLE Bridge or Serial Proxy**
 
-If your Meshtastic device uses Bluetooth or Serial (not WiFi/Ethernet), you can use [meshtasticd](https://github.com/meshtastic/python/tree/master/meshtasticd) as a TCP proxy:
+**For Bluetooth Devices:**
+Use the [MeshMonitor BLE Bridge](https://github.com/Yeraze/meshtastic-ble-bridge) for connecting BLE-only Meshtastic devices:
+
+```bash
+# Using docker-compose overlay
+echo "BLE_ADDRESS=AA:BB:CC:DD:EE:FF" > .env
+docker compose -f docker-compose.yml -f docker-compose.ble.yml up -d
+```
+
+See the [BLE Bridge repository](https://github.com/Yeraze/meshtastic-ble-bridge) for detailed setup instructions.
+
+**For Serial Devices:**
+Use [meshtasticd](https://github.com/meshtastic/python/tree/master/meshtasticd) as a TCP proxy:
 
 ```bash
 # Install meshtasticd
-pip install meshtasticd
+pip install meshtastic
 
-# Run meshtasticd to bridge BLE -> TCP
-meshtasticd --ble-device "Meshtastic_1234"
-
-# Or for Serial devices
+# Run meshtasticd to bridge Serial -> TCP
 meshtasticd --serial-port /dev/ttyUSB0
 
 # Point MeshMonitor to meshtasticd (default: localhost:4403)
 export MESHTASTIC_NODE_IP=localhost
 docker compose up -d
 ```
-
-This allows MeshMonitor to connect to **any** Meshtastic device (BLE, Serial, or TCP) through meshtasticd's TCP interface.
 
 ## Features
 
@@ -597,13 +604,19 @@ MeshMonitor → TCP:4403 → Meshtastic Node
 ```
 Standard deployment for nodes with network connectivity.
 
-**2. meshtasticd Proxy (BLE/Serial nodes)**
+**2. BLE Bridge (Bluetooth nodes)**
 ```
-MeshMonitor → TCP:4403 → meshtasticd → BLE/Serial → Meshtastic Node
+MeshMonitor → TCP:4403 → BLE Bridge → BLE → Meshtastic Node
 ```
-[meshtasticd](https://github.com/meshtastic/python/tree/master/meshtasticd) bridges Bluetooth or Serial connections to TCP, allowing MeshMonitor to work with **any** Meshtastic device.
+The [MeshMonitor BLE Bridge](https://github.com/Yeraze/meshtastic-ble-bridge) connects Bluetooth Low Energy Meshtastic devices to MeshMonitor via TCP.
 
-**3. HomeAssistant Integration**
+**3. meshtasticd Proxy (Serial nodes)**
+```
+MeshMonitor → TCP:4403 → meshtasticd → Serial → Meshtastic Node
+```
+[meshtasticd](https://github.com/meshtastic/python/tree/master/meshtasticd) bridges Serial connections to TCP for USB-connected Meshtastic devices.
+
+**4. HomeAssistant Integration**
 ```
 MeshMonitor → TCP:4403 → HomeAssistant MQTT Bridge → Meshtastic
 ```
