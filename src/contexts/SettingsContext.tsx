@@ -20,6 +20,8 @@ interface SettingsContextType {
   timeFormat: TimeFormat;
   dateFormat: DateFormat;
   mapTileset: TilesetId;
+  temporaryTileset: TilesetId | null;
+  setTemporaryTileset: (tilesetId: TilesetId | null) => void;
   isLoading: boolean;
   setMaxNodeAgeHours: (hours: number) => void;
   setTracerouteIntervalMinutes: (minutes: number) => void;
@@ -96,6 +98,8 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     }
     return DEFAULT_TILESET_ID;
   });
+
+  const [temporaryTileset, setTemporaryTileset] = useState<TilesetId | null>(null);
 
   const setMaxNodeAgeHours = (value: number) => {
     setMaxNodeAgeHoursState(value);
@@ -258,6 +262,8 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     timeFormat,
     dateFormat,
     mapTileset,
+    temporaryTileset,
+    setTemporaryTileset,
     isLoading,
     setMaxNodeAgeHours,
     setTracerouteIntervalMinutes,
