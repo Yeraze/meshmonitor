@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, useMap } from 'react-leaflet'
+import { Popup, Polyline } from 'react-leaflet'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -12,6 +12,7 @@ import NotificationsTab from './components/NotificationsTab'
 import UsersTab from './components/UsersTab'
 import AuditLogTab from './components/AuditLogTab'
 import Dashboard from './components/Dashboard'
+import NodesTab from './components/NodesTab'
 import HopCountDisplay from './components/HopCountDisplay'
 import AutoAcknowledgeSection from './components/AutoAcknowledgeSection'
 import AutoTracerouteSection from './components/AutoTracerouteSection'
@@ -23,15 +24,12 @@ import { calculateDistance, formatDistance } from './utils/distance'
 import { formatTime, formatDateTime } from './utils/datetime'
 import { DeviceInfo, Channel } from './types/device'
 import { MeshMessage } from './types/message'
-import { MapCenterControllerProps, SortField, SortDirection } from './types/ui'
+import { SortField, SortDirection } from './types/ui'
 import api from './services/api'
 import { logger } from './utils/logger'
-import { createNodeIcon, getHopColor } from './utils/mapIcons'
-import { getRoleName, generateArrowMarkers } from './utils/mapHelpers.tsx'
+import { getRoleName } from './utils/mapHelpers.tsx'
 import { ROLE_NAMES } from './constants'
 import { getHardwareModelName } from './utils/nodeHelpers'
-import MapLegend from './components/MapLegend'
-import ZoomHandler from './components/ZoomHandler'
 import Sidebar from './components/Sidebar'
 import { SettingsProvider, useSettings } from './contexts/SettingsContext'
 import { MapProvider, useMapContext } from './contexts/MapContext'
@@ -43,8 +41,6 @@ import { useCsrf } from './contexts/CsrfContext'
 import LoginModal from './components/LoginModal'
 import LoginPage from './components/LoginPage'
 import UserMenu from './components/UserMenu'
-import { getTilesetById, type TilesetId } from './config/tilesets'
-import { TilesetSelector } from './components/TilesetSelector'
 
 // Fix for default markers in React-Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -58,26 +54,6 @@ L.Icon.Default.mergeOptions({
 });
 
 // Icons and helpers are now imported from utils/
-
-const MapCenterController: React.FC<MapCenterControllerProps> = ({ centerTarget, onCenterComplete }) => {
-  const map = useMap();
-
-  useEffect(() => {
-    if (centerTarget) {
-      // Listen for moveend event after setView completes, then pan to show popup
-      map.once('moveend', () => {
-        // Pan the map down by 150 pixels to account for popup height
-        // This ensures both the marker and the popup above it are fully visible
-        map.panBy([0, -150], { animate: true, duration: 0.3 });
-      });
-
-      map.setView(centerTarget, 15); // Zoom level 15 for close view
-      onCenterComplete(); // Reset target after centering
-    }
-  }, [centerTarget, onCenterComplete]); // Removed 'map' from dependencies to prevent repeated re-centering
-
-  return null;
-};
 
 function App() {
   const { authStatus, hasPermission } = useAuth();
@@ -93,9 +69,7 @@ function App() {
 
   // Check if mobile viewport and default to collapsed on mobile
   const isMobileViewport = () => window.innerWidth <= 768;
-  const [isNodeListCollapsed, setIsNodeListCollapsed] = useState(isMobileViewport());
   const [isMessagesNodeListCollapsed, setIsMessagesNodeListCollapsed] = useState(isMobileViewport());
-  const [showNodeFilterPopup, setShowNodeFilterPopup] = useState(false);
 
   // Node list filter options (shared between Map and Messages pages)
   // Load from localStorage on initial render
@@ -205,34 +179,16 @@ function App() {
     setMapTileset
   } = useSettings();
 
-  // Local state for temporary tileset selection (desktop map preview only)
-  const [temporaryTileset, setTemporaryTileset] = useState<TilesetId | null>(null);
-  const activeTileset = temporaryTileset || mapTileset;
-
   // Map context
   const {
     showPaths,
-    setShowPaths,
     showNeighborInfo,
-    setShowNeighborInfo,
-    showRoute,
-    setShowRoute,
-    showMotion,
-    setShowMotion,
-    showMqttNodes,
-    setShowMqttNodes,
-    mapCenterTarget,
     setMapCenterTarget,
-    mapZoom,
-    setMapZoom,
     traceroutes,
     setTraceroutes,
-    neighborInfo,
     setNeighborInfo,
-    positionHistory,
     setPositionHistory,
-    selectedNodeId,
-    setSelectedNodeId
+    selectedNodeId
   } = useMapContext();
 
   // Data context
@@ -259,7 +215,6 @@ function App() {
     setNodesWithTelemetry,
     nodesWithWeatherTelemetry,
     setNodesWithWeatherTelemetry,
-    nodesWithEstimatedPosition,
     setNodesWithEstimatedPosition,
     nodesWithPKC,
     setNodesWithPKC
@@ -323,7 +278,9 @@ function App() {
     autoAnnounceChannelIndex,
     setAutoAnnounceChannelIndex,
     autoAnnounceOnStart,
-    setAutoAnnounceOnStart
+    setAutoAnnounceOnStart,
+    showNodeFilterPopup,
+    setShowNodeFilterPopup
   } = useUI();
 
   // Track previous total unread count to detect when new messages arrive
@@ -2077,11 +2034,6 @@ function App() {
     }
   };
 
-  // Function to reset map center target
-  const handleCenterComplete = useCallback(() => {
-    setMapCenterTarget(null);
-  }, []);
-
   // Function to handle sender icon clicks
   const handleSenderClick = useCallback((nodeId: string, event: React.MouseEvent) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -2366,726 +2318,6 @@ function App() {
     );
   };
 
-  const renderNodesTab = () => {
-    const nodesWithPosition = processedNodes.filter(node =>
-      node.position &&
-      node.position.latitude != null &&
-      node.position.longitude != null
-    );
-
-    // Calculate center point of all nodes for initial map view
-    const getMapCenter = (): [number, number] => {
-      if (nodesWithPosition.length === 0) {
-        return [25.7617, -80.1918]; // Default to Miami area
-      }
-      const avgLat = nodesWithPosition.reduce((sum, node) => sum + node.position!.latitude, 0) / nodesWithPosition.length;
-      const avgLng = nodesWithPosition.reduce((sum, node) => sum + node.position!.longitude, 0) / nodesWithPosition.length;
-      return [avgLat, avgLng];
-    };
-
-    return (
-      <div className="nodes-split-view">
-        {/* Floating Node List Panel */}
-        <div className={`nodes-sidebar ${isNodeListCollapsed ? 'collapsed' : ''}`}>
-          <div className="sidebar-header">
-            <button
-              className="collapse-nodes-btn"
-              onClick={() => setIsNodeListCollapsed(!isNodeListCollapsed)}
-              title={isNodeListCollapsed ? 'Expand node list' : 'Collapse node list'}
-            >
-              {isNodeListCollapsed ? '▶' : '◀'}
-            </button>
-            {!isNodeListCollapsed && (
-            <div className="sidebar-header-content">
-              <h3>Nodes ({processedNodes.length})</h3>
-            </div>
-            )}
-            {!isNodeListCollapsed && (
-            <div className="node-controls">
-              <input
-                type="text"
-                placeholder="Filter nodes..."
-                value={nodeFilter}
-                onChange={(e) => setNodeFilter(e.target.value)}
-                className="filter-input-small"
-              />
-              <div className="sort-controls">
-                <button
-                  className="filter-popup-btn"
-                  onClick={() => setShowNodeFilterPopup(!showNodeFilterPopup)}
-                  title="Filter nodes"
-                >
-                  Filter
-                </button>
-                <select
-                  value={sortField}
-                  onChange={(e) => setSortField(e.target.value as SortField)}
-                  className="sort-dropdown"
-                  title="Sort nodes by"
-                >
-                  <option value="longName">Sort: Name</option>
-                  <option value="shortName">Sort: Short Name</option>
-                  <option value="id">Sort: ID</option>
-                  <option value="lastHeard">Sort: Updated</option>
-                  <option value="snr">Sort: Signal</option>
-                  <option value="battery">Sort: Charge</option>
-                  <option value="hwModel">Sort: Hardware</option>
-                  <option value="hops">Sort: Hops</option>
-                </select>
-                <button
-                  className="sort-direction-btn"
-                  onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
-                  title={sortDirection === 'asc' ? 'Ascending' : 'Descending'}
-                >
-                  {sortDirection === 'asc' ? '↑' : '↓'}
-                </button>
-              </div>
-            </div>
-            )}
-          </div>
-
-          {!isNodeListCollapsed && (
-          <div className="nodes-list">
-            {shouldShowData() ? (
-              processedNodes.length > 0 ? (
-                <>
-                {processedNodes.map(node => (
-                  <div
-                    key={node.nodeNum}
-                    className={`node-item ${selectedNodeId === node.user?.id ? 'selected' : ''}`}
-                    onClick={() => {
-                      setSelectedNodeId(node.user?.id || null);
-                      centerMapOnNode(node);
-                      // Auto-collapse node list on mobile when a node with position is clicked
-                      if (window.innerWidth <= 768) {
-                        const hasPosition = node.position &&
-                          node.position.latitude != null &&
-                          node.position.longitude != null;
-                        if (hasPosition) {
-                          setIsNodeListCollapsed(true);
-                        }
-                      }
-                    }}
-                  >
-                    <div className="node-header">
-                      <div className="node-name">
-                        <button
-                          className="favorite-star"
-                          title={node.isFavorite ? "Remove from favorites" : "Add to favorites"}
-                          onClick={(e) => toggleFavorite(node, e)}
-                        >
-                          {node.isFavorite ? '⭐' : '☆'}
-                        </button>
-                        <span className="node-name-text">
-                          {node.user?.longName || `Node ${node.nodeNum}`}
-                          {node.user?.role !== undefined && node.user?.role !== null && getRoleName(node.user.role) && (
-                            <span className="node-role" title="Node Role"> {getRoleName(node.user.role)}</span>
-                          )}
-                        </span>
-                      </div>
-                      <div className="node-actions">
-                        {hasPermission('messages', 'read') && (
-                          <button
-                            className="dm-icon"
-                            title="Send Direct Message"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedDMNode(node.user?.id || '');
-                              setActiveTab('messages');
-                            }}
-                          >
-                            💬
-                          </button>
-                        )}
-                        <div className="node-short">
-                          {node.user?.shortName || '-'}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="node-details">
-                      <div className="node-stats">
-                        {node.snr != null && (
-                          <span className="stat" title="Signal-to-Noise Ratio">
-                            📶 {node.snr.toFixed(1)}dB
-                          </span>
-                        )}
-                        {node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null && (
-                          <span className="stat" title={node.deviceMetrics.batteryLevel === 101 ? "Plugged In" : "Battery Level"}>
-                            {node.deviceMetrics.batteryLevel === 101 ? '🔌' : `🔋 ${node.deviceMetrics.batteryLevel}%`}
-                          </span>
-                        )}
-                        {node.hopsAway != null && (
-                          <span className="stat" title="Hops Away">
-                            🔗 {node.hopsAway} hop{node.hopsAway !== 1 ? 's' : ''}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="node-time">
-                        {node.lastHeard ?
-                          formatDateTime(new Date(node.lastHeard * 1000), timeFormat, dateFormat)
-                          : 'Never'
-                        }
-                      </div>
-                    </div>
-
-                    <div className="node-indicators">
-                      {node.position && node.position.latitude != null && node.position.longitude != null && (
-                        <div className="node-location" title="Location">
-                          📍 {node.position.latitude.toFixed(3)}, {node.position.longitude.toFixed(3)}
-                          {node.isMobile && <span title="Mobile Node (position varies > 1km)" style={{ marginLeft: '4px' }}>🚶</span>}
-                        </div>
-                      )}
-                      {node.viaMqtt && (
-                        <div className="node-mqtt" title="Connected via MQTT">
-                          🌐
-                        </div>
-                      )}
-                      {node.user?.id && nodesWithTelemetry.has(node.user.id) && (
-                        <div className="node-telemetry" title="Has Telemetry Data">
-                          📊
-                        </div>
-                      )}
-                      {node.user?.id && nodesWithWeatherTelemetry.has(node.user.id) && (
-                        <div className="node-weather" title="Has Weather Data">
-                          ☀️
-                        </div>
-                      )}
-                      {node.user?.id && nodesWithPKC.has(node.user.id) && (
-                        <div className="node-pkc" title="Has Public Key Cryptography">
-                          🔐
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                </>
-              ) : (
-                <div className="no-data">
-                  {nodeFilter ? 'No nodes match filter' : 'No nodes detected'}
-                </div>
-              )
-            ) : (
-              <div className="no-data">
-                Connect to Meshtastic node
-              </div>
-            )}
-          </div>
-          )}
-        </div>
-
-        {/* Right Side - Map */}
-        <div className="map-container">
-          {shouldShowData() ? (
-            <>
-              <div className="map-controls">
-                <label className="map-control-item">
-                  <input
-                    type="checkbox"
-                    checked={showPaths}
-                    onChange={(e) => setShowPaths(e.target.checked)}
-                  />
-                  <span>Show Route Segments</span>
-                </label>
-                <label className="map-control-item">
-                  <input
-                    type="checkbox"
-                    checked={showNeighborInfo}
-                    onChange={(e) => setShowNeighborInfo(e.target.checked)}
-                  />
-                  <span>Show Neighbor Info</span>
-                </label>
-                <label className="map-control-item">
-                  <input
-                    type="checkbox"
-                    checked={showRoute}
-                    onChange={(e) => setShowRoute(e.target.checked)}
-                  />
-                  <span>Show Traceroute</span>
-                </label>
-                <label className="map-control-item">
-                  <input
-                    type="checkbox"
-                    checked={showMqttNodes}
-                    onChange={(e) => setShowMqttNodes(e.target.checked)}
-                  />
-                  <span>Show MQTT</span>
-                </label>
-                <label className="map-control-item">
-                  <input
-                    type="checkbox"
-                    checked={showMotion}
-                    onChange={(e) => setShowMotion(e.target.checked)}
-                  />
-                  <span>Show Position History</span>
-                </label>
-              </div>
-              <MapContainer
-                center={getMapCenter()}
-                zoom={nodesWithPosition.length > 0 ? 10 : 8}
-                style={{ height: '100%', width: '100%' }}
-              >
-                <MapCenterController
-                  centerTarget={mapCenterTarget}
-                  onCenterComplete={handleCenterComplete}
-                />
-                <TileLayer
-                  attribution={getTilesetById(activeTileset).attribution}
-                  url={getTilesetById(activeTileset).url}
-                  maxZoom={getTilesetById(activeTileset).maxZoom}
-                />
-                <ZoomHandler onZoomChange={setMapZoom} />
-                <MapLegend />
-                {nodesWithPosition
-                  .filter(node => showMqttNodes || !node.viaMqtt)
-                  .map(node => {
-                  const roleNum = typeof node.user?.role === 'string'
-                    ? parseInt(node.user.role, 10)
-                    : (typeof node.user?.role === 'number' ? node.user.role : 0);
-                  const isRouter = roleNum === 2;
-                  const isSelected = selectedNodeId === node.user?.id;
-
-                  // Get hop count for this node
-                  // Local node always gets 0 hops (green), otherwise use hopsAway from protobuf
-                  const isLocalNode = node.user?.id === currentNodeId;
-                  const hops = isLocalNode ? 0 : (node.hopsAway ?? 999);
-                  const showLabel = mapZoom >= 13; // Show labels when zoomed in
-
-                  const markerIcon = createNodeIcon({
-                    hops: hops, // 0 (local) = green, 999 (no hops_away data) = grey
-                    isSelected,
-                    isRouter,
-                    shortName: node.user?.shortName,
-                    showLabel
-                  });
-
-                  return (
-                <Marker
-                  key={node.nodeNum}
-                  position={[node.position!.latitude, node.position!.longitude]}
-                  eventHandlers={{
-                    click: () => {
-                      setSelectedNodeId(node.user?.id || null);
-                      centerMapOnNode(node);
-                    }
-                  }}
-                  icon={markerIcon}
-                  ref={(ref) => {
-                    if (ref && node.user?.id) {
-                      markerRefs.current.set(node.user.id, ref);
-                    }
-                  }}
-                >
-                  <Popup autoPan={false}>
-                    <div className="node-popup">
-                      <div className="node-popup-header">
-                        <div className="node-popup-title">{node.user?.longName || `Node ${node.nodeNum}`}</div>
-                        {node.user?.shortName && (
-                          <div className="node-popup-subtitle">{node.user.shortName}</div>
-                        )}
-                      </div>
-
-                      <div className="node-popup-grid">
-                        {node.user?.id && (
-                          <div className="node-popup-item">
-                            <span className="node-popup-icon">🆔</span>
-                            <span className="node-popup-value">{node.user.id}</span>
-                          </div>
-                        )}
-
-                        {node.user?.role !== undefined && (() => {
-                          const roleNum = typeof node.user.role === 'string'
-                            ? parseInt(node.user.role, 10)
-                            : node.user.role;
-                          const roleName = getRoleName(roleNum);
-                          return roleName ? (
-                            <div className="node-popup-item">
-                              <span className="node-popup-icon">👤</span>
-                              <span className="node-popup-value">{roleName}</span>
-                            </div>
-                          ) : null;
-                        })()}
-
-                        {node.user?.hwModel !== undefined && (() => {
-                          const hwModelName = getHardwareModelName(node.user.hwModel);
-                          return hwModelName ? (
-                            <div className="node-popup-item">
-                              <span className="node-popup-icon">🖥️</span>
-                              <span className="node-popup-value">{hwModelName}</span>
-                            </div>
-                          ) : null;
-                        })()}
-
-                        {node.snr != null && (
-                          <div className="node-popup-item">
-                            <span className="node-popup-icon">📶</span>
-                            <span className="node-popup-value">{node.snr.toFixed(1)} dB</span>
-                          </div>
-                        )}
-
-                        {node.hopsAway != null && (
-                          <div className="node-popup-item">
-                            <span className="node-popup-icon">🔗</span>
-                            <span className="node-popup-value">{node.hopsAway} hop{node.hopsAway !== 1 ? 's' : ''}</span>
-                          </div>
-                        )}
-
-                        {node.position?.altitude != null && (
-                          <div className="node-popup-item">
-                            <span className="node-popup-icon">⛰️</span>
-                            <span className="node-popup-value">{node.position.altitude}m</span>
-                          </div>
-                        )}
-
-                        {node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null && (
-                          <div className="node-popup-item">
-                            <span className="node-popup-icon">{node.deviceMetrics.batteryLevel === 101 ? '🔌' : '🔋'}</span>
-                            <span className="node-popup-value">
-                              {node.deviceMetrics.batteryLevel === 101 ? 'Plugged In' : `${node.deviceMetrics.batteryLevel}%`}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-
-                      {node.lastHeard && (
-                        <div className="node-popup-footer">
-                          <span className="node-popup-icon">🕐</span>
-                          {formatDateTime(new Date(node.lastHeard * 1000), timeFormat, dateFormat)}
-                        </div>
-                      )}
-
-                      {node.user?.id && hasPermission('messages', 'read') && (
-                        <button
-                          className="node-popup-btn"
-                          onClick={() => {
-                            setSelectedDMNode(node.user!.id);
-                            setActiveTab('messages');
-                          }}
-                        >
-                          💬 Direct Message
-                        </button>
-                      )}
-                    </div>
-                  </Popup>
-                </Marker>
-                  );
-                })}
-
-                {/* Draw uncertainty circles for estimated positions */}
-                {nodesWithPosition
-                  .filter(node => node.user?.id && nodesWithEstimatedPosition.has(node.user.id))
-                  .map(node => {
-                    // Calculate radius based on precision bits (higher precision = smaller circle)
-                    // Meshtastic uses precision_bits to reduce coordinate precision
-                    // Each precision bit reduces precision by ~1 bit, roughly doubling the uncertainty
-                    // We'll use a base radius and scale it
-                    const baseRadiusMeters = 500; // Base uncertainty radius
-                    const radiusMeters = baseRadiusMeters; // Can be adjusted based on precision_bits if available
-
-                    // Get hop color for the circle (same as marker)
-                    const isLocalNode = node.user?.id === currentNodeId;
-                    const hops = isLocalNode ? 0 : (node.hopsAway ?? 999);
-                    const color = getHopColor(hops);
-
-                    return (
-                      <Circle
-                        key={`estimated-${node.nodeNum}`}
-                        center={[node.position!.latitude, node.position!.longitude]}
-                        radius={radiusMeters}
-                        pathOptions={{
-                          color: color,
-                          fillColor: color,
-                          fillOpacity: 0.1,
-                          opacity: 0.4,
-                          weight: 2,
-                          dashArray: '5, 5'
-                        }}
-                      />
-                    );
-                  })}
-
-                {/* Draw traceroute paths */}
-                {traceroutePathsElements}
-
-                {/* Draw neighbor info connections */}
-                {showNeighborInfo && neighborInfo.length > 0 && neighborInfo.map((ni, idx) => {
-                  // Skip if either node doesn't have position
-                  if (!ni.nodeLatitude || !ni.nodeLongitude || !ni.neighborLatitude || !ni.neighborLongitude) {
-                    return null;
-                  }
-
-                  const positions: [number, number][] = [
-                    [ni.nodeLatitude, ni.nodeLongitude],
-                    [ni.neighborLatitude, ni.neighborLongitude]
-                  ];
-
-                  return (
-                    <Polyline
-                      key={`neighbor-${idx}`}
-                      positions={positions}
-                      color="#cba6f7"
-                      weight={4}
-                      opacity={0.7}
-                      dashArray="5, 5"
-                    >
-                      <Popup>
-                        <div className="route-popup">
-                          <h4>Neighbor Connection</h4>
-                          <div className="route-endpoints">
-                            <strong>{ni.nodeName}</strong> ↔ <strong>{ni.neighborName}</strong>
-                          </div>
-                          {ni.snr !== null && ni.snr !== undefined && (
-                            <div className="route-usage">
-                              SNR: <strong>{ni.snr.toFixed(1)} dB</strong>
-                            </div>
-                          )}
-                          <div className="route-usage">
-                            Last seen: <strong>{formatDateTime(new Date(ni.timestamp), timeFormat, dateFormat)}</strong>
-                          </div>
-                        </div>
-                      </Popup>
-                    </Polyline>
-                  );
-                })}
-
-                {/* Draw selected node's traceroute with separate forward and back paths */}
-                {showRoute && selectedNodeId && (() => {
-                  const selectedTrace = traceroutes.find(tr =>
-                    tr.toNodeId === selectedNodeId || tr.fromNodeId === selectedNodeId
-                  );
-
-                  if (!selectedTrace) return null;
-
-                  try {
-                    const routeForward = JSON.parse(selectedTrace.route || '[]');
-                    const routeBack = JSON.parse(selectedTrace.routeBack || '[]');
-
-                    const fromNode = nodes.find(n => n.nodeNum === selectedTrace.fromNodeNum);
-                    const toNode = nodes.find(n => n.nodeNum === selectedTrace.toNodeNum);
-                    const fromName = fromNode?.user?.longName || fromNode?.user?.shortName || selectedTrace.fromNodeId;
-                    const toName = toNode?.user?.longName || toNode?.user?.shortName || selectedTrace.toNodeId;
-
-                    const paths = [];
-
-                    // Forward path (from -> to)
-                    // route contains intermediate hops but they're stored in reverse order
-                    // Need to reverse the intermediate hops but keep endpoints correct
-                    if (routeForward.length >= 0) {
-                      // Build path: [source, ...intermediate hops reversed..., destination]
-                      const forwardSequence: number[] = [selectedTrace.fromNodeNum, ...routeForward.slice().reverse(), selectedTrace.toNodeNum];
-                      const forwardPositions: [number, number][] = [];
-
-                      forwardSequence.forEach((nodeNum) => {
-                        const node = processedNodes.find(n => n.nodeNum === nodeNum);
-                        if (node?.position?.latitude && node?.position?.longitude) {
-                          forwardPositions.push([node.position.latitude, node.position.longitude]);
-                        }
-                      });
-
-                      if (forwardPositions.length >= 2) {
-                        // Calculate total distance for forward path
-                        let forwardTotalDistanceKm = 0;
-                        for (let i = 0; i < forwardSequence.length - 1; i++) {
-                          const node1 = processedNodes.find(n => n.nodeNum === forwardSequence[i]);
-                          const node2 = processedNodes.find(n => n.nodeNum === forwardSequence[i + 1]);
-                          if (node1?.position?.latitude && node1?.position?.longitude &&
-                              node2?.position?.latitude && node2?.position?.longitude) {
-                            forwardTotalDistanceKm += calculateDistance(
-                              node1.position.latitude, node1.position.longitude,
-                              node2.position.latitude, node2.position.longitude
-                            );
-                          }
-                        }
-
-                        paths.push(
-                          <Polyline
-                            key="selected-traceroute-forward"
-                            positions={forwardPositions}
-                            color="#f38ba8"
-                            weight={4}
-                            opacity={0.9}
-                            dashArray="10, 5"
-                          >
-                            <Popup>
-                              <div className="route-popup">
-                                <h4>Forward Path</h4>
-                                <div className="route-endpoints">
-                                  <strong>{toName}</strong> → <strong>{fromName}</strong>
-                                </div>
-                                <div className="route-usage">
-                                  Path: {forwardSequence.slice().reverse().map(num => {
-                                    const n = nodes.find(nd => nd.nodeNum === num);
-                                    return n?.user?.longName || n?.user?.shortName || `!${num.toString(16)}`;
-                                  }).join(' → ')}
-                                </div>
-                                {forwardTotalDistanceKm > 0 && (
-                                  <div className="route-usage">
-                                    Distance: <strong>{formatDistance(forwardTotalDistanceKm, distanceUnit)}</strong>
-                                  </div>
-                                )}
-                              </div>
-                            </Popup>
-                          </Polyline>
-                        );
-
-                        // Generate arrow markers for forward path
-                        const forwardArrows = generateArrowMarkers(
-                          forwardPositions,
-                          'forward',
-                          '#f38ba8',
-                          paths.length
-                        );
-                        paths.push(...forwardArrows);
-                      }
-                    }
-
-                    // Back path (to -> from) - routeBack contains hops from destination back to source
-                    if (routeBack.length >= 0) {
-                      // routeBack hops need to be reversed to get correct direction: destination -> hops -> source
-                      const backSequence: number[] = [selectedTrace.toNodeNum, ...routeBack.slice().reverse(), selectedTrace.fromNodeNum];
-                      const backPositions: [number, number][] = [];
-
-                      backSequence.forEach((nodeNum) => {
-                        const node = processedNodes.find(n => n.nodeNum === nodeNum);
-                        if (node?.position?.latitude && node?.position?.longitude) {
-                          backPositions.push([node.position.latitude, node.position.longitude]);
-                        }
-                      });
-
-                      if (backPositions.length >= 2) {
-                        // Calculate total distance for back path
-                        let backTotalDistanceKm = 0;
-                        for (let i = 0; i < backSequence.length - 1; i++) {
-                          const node1 = processedNodes.find(n => n.nodeNum === backSequence[i]);
-                          const node2 = processedNodes.find(n => n.nodeNum === backSequence[i + 1]);
-                          if (node1?.position?.latitude && node1?.position?.longitude &&
-                              node2?.position?.latitude && node2?.position?.longitude) {
-                            backTotalDistanceKm += calculateDistance(
-                              node1.position.latitude, node1.position.longitude,
-                              node2.position.latitude, node2.position.longitude
-                            );
-                          }
-                        }
-
-                        paths.push(
-                          <Polyline
-                            key="selected-traceroute-back"
-                            positions={backPositions}
-                            color="#f38ba8"
-                            weight={4}
-                            opacity={0.9}
-                            dashArray="5, 10"
-                          >
-                            <Popup>
-                              <div className="route-popup">
-                                <h4>Return Path</h4>
-                                <div className="route-endpoints">
-                                  <strong>{fromName}</strong> → <strong>{toName}</strong>
-                                </div>
-                                <div className="route-usage">
-                                  Path: {backSequence.slice().reverse().map(num => {
-                                    const n = nodes.find(nd => nd.nodeNum === num);
-                                    return n?.user?.longName || n?.user?.shortName || `!${num.toString(16)}`;
-                                  }).join(' → ')}
-                                </div>
-                                {backTotalDistanceKm > 0 && (
-                                  <div className="route-usage">
-                                    Distance: <strong>{formatDistance(backTotalDistanceKm, distanceUnit)}</strong>
-                                  </div>
-                                )}
-                              </div>
-                            </Popup>
-                          </Polyline>
-                        );
-
-                        // Generate arrow markers for back path
-                        const backArrows = generateArrowMarkers(
-                          backPositions,
-                          'back',
-                          '#f38ba8',
-                          paths.length
-                        );
-                        paths.push(...backArrows);
-                      }
-                    }
-
-                    return paths;
-                  } catch (error) {
-                    logger.error('Error rendering traceroute:', error);
-                    return null;
-                  }
-                })()}
-
-                {/* Draw position history for mobile nodes */}
-                {showMotion && positionHistory.length > 1 && (() => {
-                  const historyPositions: [number, number][] = positionHistory.map(p =>
-                    [p.latitude, p.longitude] as [number, number]
-                  );
-
-                  const elements: React.ReactElement[] = [];
-
-                  // Draw blue line for position history
-                  elements.push(
-                    <Polyline
-                      key="position-history-line"
-                      positions={historyPositions}
-                      color="#0066ff"
-                      weight={3}
-                      opacity={0.7}
-                    >
-                      <Popup>
-                        <div className="route-popup">
-                          <h4>Position History</h4>
-                          <div className="route-usage">
-                            {positionHistory.length} position{positionHistory.length !== 1 ? 's' : ''} recorded
-                          </div>
-                          <div className="route-usage">
-                            {formatDateTime(new Date(positionHistory[0].timestamp), timeFormat, dateFormat)} - {formatDateTime(new Date(positionHistory[positionHistory.length - 1].timestamp), timeFormat, dateFormat)}
-                          </div>
-                        </div>
-                      </Popup>
-                    </Polyline>
-                  );
-
-                  // Generate arrow markers for position history
-                  const historyArrows = generateArrowMarkers(
-                    historyPositions,
-                    'position-history',
-                    '#0066ff',
-                    0
-                  );
-                  elements.push(...historyArrows);
-
-                  return elements;
-                })()}
-            </MapContainer>
-            <TilesetSelector
-              selectedTilesetId={activeTileset}
-              onTilesetChange={setTemporaryTileset}
-            />
-            {nodesWithPosition.length === 0 && (
-              <div className="map-overlay">
-                <div className="overlay-content">
-                  <h3>📍 No Node Locations</h3>
-                  <p>No nodes in your network are currently sharing location data.</p>
-                  <p>Nodes with GPS enabled will appear as markers on this map.</p>
-                </div>
-              </div>
-            )}
-            </>
-          ) : (
-            <div className="map-placeholder">
-              <div className="placeholder-content">
-                <h3>Map View</h3>
-                <p>Connect to a Meshtastic node to view node locations on the map</p>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
 
   const renderChannelsTab = () => {
     const availableChannels = getAvailableChannels();
@@ -4485,7 +3717,18 @@ function App() {
           </div>
         )}
 
-        {activeTab === 'nodes' && renderNodesTab()}
+        {activeTab === 'nodes' && (
+          <NodesTab
+            processedNodes={processedNodes}
+            shouldShowData={shouldShowData}
+            centerMapOnNode={centerMapOnNode}
+            toggleFavorite={toggleFavorite}
+            setActiveTab={setActiveTab}
+            setSelectedDMNode={setSelectedDMNode}
+            markerRefs={markerRefs}
+            traceroutePathsElements={traceroutePathsElements}
+          />
+        )}
         {activeTab === 'channels' && renderChannelsTab()}
         {activeTab === 'messages' && renderMessagesTab()}
         {activeTab === 'info' && (
