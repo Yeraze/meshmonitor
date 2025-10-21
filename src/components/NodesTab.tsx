@@ -233,12 +233,14 @@ const NodesTab: React.FC<NodesTabProps> = ({
                       >
                         {node.isFavorite ? '⭐' : '☆'}
                       </button>
-                      <span className="node-name-text">
-                        {node.user?.longName || `Node ${node.nodeNum}`}
+                      <div className="node-name-text">
+                        <div className="node-longname">
+                          {node.user?.longName || `Node ${node.nodeNum}`}
+                        </div>
                         {node.user?.role !== undefined && node.user?.role !== null && getRoleName(node.user.role) && (
-                          <span className="node-role" title="Node Role"> {getRoleName(node.user.role)}</span>
+                          <div className="node-role" title="Node Role">{getRoleName(node.user.role)}</div>
                         )}
-                      </span>
+                      </div>
                     </div>
                     <div className="node-actions">
                       {hasPermission('messages', 'read') && (
