@@ -1,8 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { setupAccessLogger } from './accessLogger.js';
-import type { Request, Response } from 'express';
 import fs from 'fs';
-import path from 'path';
 
 // Mock dependencies
 vi.mock('../config/environment.js');
