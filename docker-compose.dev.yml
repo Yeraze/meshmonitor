@@ -9,6 +9,7 @@ services:
     restart: unless-stopped
     volumes:
       - meshmonitor-data:/data
+      - ./meshmonitor-logs:/data/logs:rw
     env_file: .env
     environment:
       - NODE_ENV=production
@@ -24,6 +25,9 @@ services:
       - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-}
       - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET:-}
       - OIDC_ALLOW_HTTP=${OIDC_ALLOW_HTTP:-false}
+      - ACCESS_LOG_ENABLED=true
+      - ACCESS_LOG_PATH=/data/logs/access.log
+      - ACCESS_LOG_FORMAT=combined
 
 volumes:
   meshmonitor-data:
