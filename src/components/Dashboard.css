@@ -69,6 +69,7 @@
   font-size: 0.95rem;
   font-weight: 500;
   flex: 1;
+  min-width: 0; /* Critical for flexbox text truncation */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
