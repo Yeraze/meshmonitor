@@ -4,8 +4,11 @@ MeshMonitor is designed to be flexible and adaptable to various deployment scena
 
 ## Configuration Topics
 
+### [BLE Bridge for Bluetooth Devices](/configuration/ble-bridge)
+Connect MeshMonitor to Bluetooth Low Energy (BLE) Meshtastic devices using the BLE Bridge. Perfect for portable devices and systems with Bluetooth support.
+
 ### [Using meshtasticd](/configuration/meshtasticd)
-Learn how to configure MeshMonitor to work with `meshtasticd`, the virtual Meshtastic node daemon, perfect for testing and development without physical hardware.
+Learn how to configure MeshMonitor to work with `meshtasticd`, the virtual Meshtastic node daemon, perfect for testing and development without physical hardware, or for Serial/USB-connected devices.
 
 ### [SSO Setup](/configuration/sso)
 Configure Single Sign-On (SSO) authentication using OpenID Connect (OIDC) for enterprise deployments and centralized identity management.
@@ -183,6 +186,7 @@ MeshMonitor logs to stdout/stderr by default. Configure log aggregation in your 
 
 ## Next Steps
 
+- [Connect to Bluetooth devices](/configuration/ble-bridge)
 - [Configure meshtasticd](/configuration/meshtasticd)
 - [Set up SSO](/configuration/sso)
 - [Configure a reverse proxy](/configuration/reverse-proxy)
