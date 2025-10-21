@@ -13,6 +13,7 @@
  */
 
 import crypto from 'crypto';
+import path from 'path';
 import { logger } from '../../utils/logger.js';
 
 /**
@@ -396,6 +397,14 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     value: process.env.ACCESS_LOG_PATH || '/data/logs/access.log',
     wasProvided: process.env.ACCESS_LOG_PATH !== undefined
   };
+
+  // Validate ACCESS_LOG_PATH for security
+  if (accessLogPath.value.includes('../') || !path.isAbsolute(accessLogPath.value)) {
+    logger.warn(`Invalid ACCESS_LOG_PATH: ${accessLogPath.value}. Must be absolute path without path traversal.`);
+    accessLogPath.value = '/data/logs/access.log';
+    accessLogPath.wasProvided = false;
+  }
+
   const accessLogFormat = parseEnum('ACCESS_LOG_FORMAT', process.env.ACCESS_LOG_FORMAT, ['combined', 'common', 'tiny'] as const, 'combined');
 
   return {
