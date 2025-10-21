@@ -36,6 +36,10 @@ interface UIContextType {
   setAutoAnnounceChannelIndex: React.Dispatch<React.SetStateAction<number>>;
   autoAnnounceOnStart: boolean;
   setAutoAnnounceOnStart: React.Dispatch<React.SetStateAction<boolean>>;
+  showNodeFilterPopup: boolean;
+  setShowNodeFilterPopup: React.Dispatch<React.SetStateAction<boolean>>;
+  isNodeListCollapsed: boolean;
+  setIsNodeListCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 const UIContext = createContext<UIContextType | undefined>(undefined);
@@ -69,6 +73,8 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   const [autoAnnounceMessage, setAutoAnnounceMessage] = useState<string>('MeshMonitor {VERSION} online for {DURATION} {FEATURES}');
   const [autoAnnounceChannelIndex, setAutoAnnounceChannelIndex] = useState<number>(0);
   const [autoAnnounceOnStart, setAutoAnnounceOnStart] = useState<boolean>(false);
+  const [showNodeFilterPopup, setShowNodeFilterPopup] = useState<boolean>(false);
+  const [isNodeListCollapsed, setIsNodeListCollapsed] = useState<boolean>(false);
 
   return (
     <UIContext.Provider
@@ -107,6 +113,10 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
         setAutoAnnounceChannelIndex,
         autoAnnounceOnStart,
         setAutoAnnounceOnStart,
+        showNodeFilterPopup,
+        setShowNodeFilterPopup,
+        isNodeListCollapsed,
+        setIsNodeListCollapsed,
       }}
     >
       {children}
