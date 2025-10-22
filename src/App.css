@@ -2265,6 +2265,17 @@ body {
   display: none;
 }
 
+.node-controls {
+  padding: 0 0.75rem 0.75rem 0.75rem;
+}
+
+/* Desktop - ensure controls have enough room */
+@media (min-width: 769px) {
+  .nodes-sidebar {
+    width: 360px; /* Slightly wider on desktop for controls */
+  }
+}
+
 .nodes-sidebar.collapsed .node-controls {
   display: none;
 }
@@ -2632,9 +2643,7 @@ body {
   background: var(--ctp-surface0);
 }
 
-.node-popup {
-  min-width: 200px;
-}
+/* Removed redundant min-width - see line 3138 for main node-popup styles */
 
 .popup-header {
   margin-bottom: 0.5rem;
@@ -2758,10 +2767,44 @@ body {
     top: 0; /* Tight to corner */
     left: 0; /* Tight to corner */
     right: auto;
-    width: 90vw;
-    max-width: 350px;
+    width: calc(100vw - 48px); /* Full width minus left sidebar */
+    max-width: 360px;
     max-height: calc(100vh - 120px);
     border-radius: 12px;
+  }
+
+  /* Compact header on mobile */
+  .sidebar-header h3 {
+    font-size: 0.95rem;
+  }
+
+  /* Compact controls for tablet/mobile */
+  .node-controls {
+    padding: 0 0.75rem 0.5rem 0.75rem;
+  }
+
+  .filter-input-small {
+    font-size: 0.85rem;
+    padding: 0.45rem 0.6rem;
+  }
+
+  .sort-controls {
+    gap: 0.35rem;
+  }
+
+  .filter-popup-btn {
+    padding: 0.45rem 0.6rem;
+    font-size: 0.8rem;
+  }
+
+  .sort-dropdown {
+    padding: 0.35rem 0.5rem;
+    font-size: 0.8rem;
+  }
+
+  .sort-direction-btn {
+    padding: 0.35rem 0.6rem;
+    min-width: 36px;
   }
 
   /* When collapsed, show as small button tight in upper-left corner */
@@ -2801,6 +2844,51 @@ body {
   .nodes-split-view .leaflet-top.leaflet-left {
     bottom: 10px !important;
     right: 10px !important;
+  }
+}
+
+/* Extra small screens - iPhone SE and similar */
+@media (max-width: 400px) {
+  .nodes-sidebar {
+    width: calc(100vw - 48px); /* Full width minus left sidebar */
+    max-width: 327px; /* 375px - 48px sidebar */
+  }
+
+  /* Even more compact header on very small screens */
+  .sidebar-header h3 {
+    font-size: 0.85rem;
+  }
+
+  /* Make node controls more compact on very small screens */
+  .node-controls {
+    padding: 0 0.5rem 0.5rem 0.5rem;
+  }
+
+  .filter-input-small {
+    font-size: 0.8rem;
+    padding: 0.4rem 0.5rem;
+  }
+
+  .sort-controls {
+    gap: 0.25rem;
+    margin-top: 0.4rem;
+  }
+
+  .filter-popup-btn {
+    padding: 0.4rem 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  .sort-dropdown {
+    padding: 0.3rem 0.4rem;
+    font-size: 0.75rem;
+    min-width: 0;
+  }
+
+  .sort-direction-btn {
+    padding: 0.3rem 0.5rem;
+    font-size: 1rem;
+    min-width: 32px;
   }
 }
 
@@ -2887,7 +2975,9 @@ body {
 /* Responsive Node Popup */
 @media (max-width: 768px) {
   .node-popup {
-    max-width: 240px;
+    min-width: 0;
+    max-width: calc(100vw - 40px);
+    width: min-content;
     padding: 10px;
     font-size: 13px;
   }
@@ -2898,6 +2988,31 @@ body {
 
   .node-popup .popup-details > div {
     font-size: 12px;
+  }
+
+  /* Route popup (sidebar node popup) responsive sizing */
+  .route-popup {
+    min-width: 0;
+    max-width: calc(100vw - 60px);
+  }
+}
+
+/* Extra small devices (iPhone SE, etc.) */
+@media (max-width: 400px) {
+  .node-popup {
+    min-width: 0;
+    max-width: calc(100vw - 30px);
+    width: max-content;
+  }
+
+  .node-popup-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Route popup - even narrower on very small screens */
+  .route-popup {
+    min-width: 0;
+    max-width: calc(100vw - 40px);
   }
 }
 
@@ -3136,7 +3251,7 @@ body {
 
 /* Node Popup Styles */
 .node-popup {
-  min-width: 240px;
+  min-width: 200px;
   max-width: 280px;
   max-height: 400px;
   overflow-y: auto;
@@ -3267,6 +3382,9 @@ body {
 /* Legacy Route Popup Styles (for other popups) */
 .route-popup {
   min-width: 200px;
+  max-width: 320px;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .route-popup h4 {
@@ -3275,6 +3393,8 @@ body {
   font-size: 1rem;
   border-bottom: 2px solid var(--ctp-mauve);
   padding-bottom: 0.25rem;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .route-endpoints {
