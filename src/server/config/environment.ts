@@ -66,6 +66,38 @@ function parseInt32(
 }
 
 /**
+ * Parse trust proxy setting
+ * Supports: 'true', 'false', numbers (1, 2, etc.), or IP/CIDR strings
+ * See: https://expressjs.com/en/guide/behind-proxies.html
+ */
+function parseTrustProxy(
+  _name: string,
+  envValue: string | undefined,
+  defaultValue: boolean | number | string
+): { value: boolean | number | string; wasProvided: boolean } {
+  if (envValue === undefined) {
+    return { value: defaultValue, wasProvided: false };
+  }
+
+  // Handle boolean values
+  if (envValue === 'true') {
+    return { value: true, wasProvided: true };
+  }
+  if (envValue === 'false') {
+    return { value: false, wasProvided: true };
+  }
+
+  // Handle numeric values (1, 2, etc.)
+  const parsed = parseInt(envValue, 10);
+  if (!isNaN(parsed)) {
+    return { value: parsed, wasProvided: true };
+  }
+
+  // Otherwise treat as string (IP address or CIDR notation)
+  return { value: envValue, wasProvided: true };
+}
+
+/**
  * Parse string with allowed values
  */
 function parseEnum<T extends string>(
@@ -103,7 +135,7 @@ export interface EnvironmentConfig {
   baseUrlProvided: boolean;
   allowedOrigins: string[];
   allowedOriginsProvided: boolean;
-  trustProxy: boolean;
+  trustProxy: boolean | number | string;
   trustProxyProvided: boolean;
 
   // Session/Security
@@ -242,7 +274,7 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     value: allowedOriginsRaw ? allowedOriginsRaw.split(',').map(o => o.trim()).filter(o => o.length > 0) : [],
     wasProvided: allowedOriginsRaw !== undefined
   };
-  const trustProxy = parseBoolean('TRUST_PROXY', process.env.TRUST_PROXY, false);
+  const trustProxy = parseTrustProxy('TRUST_PROXY', process.env.TRUST_PROXY, false);
 
   // Session/Security
   const sessionSecretRaw = process.env.SESSION_SECRET;
