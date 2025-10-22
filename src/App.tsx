@@ -3641,19 +3641,21 @@ function App() {
         <div className="update-banner" style={{
           top: isDefaultPassword ? 'calc(var(--header-height) + var(--banner-height))' : 'var(--header-height)'
         }}>
-          🔔 Update Available: Version {latestVersion} is now available.{' '}
-          <a
-            href={releaseUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              color: 'white',
-              textDecoration: 'underline',
-              fontWeight: '600'
-            }}
-          >
-            View Release Notes →
-          </a>
+          <div style={{ flex: 1, textAlign: 'center' }}>
+            🔔 Update Available: Version {latestVersion} is now available.{' '}
+            <a
+              href={releaseUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                color: 'white',
+                textDecoration: 'underline',
+                fontWeight: '600'
+              }}
+            >
+              View Release Notes →
+            </a>
+          </div>
           <button
             className="banner-dismiss"
             onClick={() => setUpdateAvailable(false)}
