@@ -2976,9 +2976,7 @@ body {
 /* Responsive Node Popup */
 @media (max-width: 768px) {
   .node-popup {
-    min-width: 0;
-    max-width: calc(100vw - 40px);
-    width: min-content;
+    max-width: 240px;
     padding: 10px;
     font-size: 13px;
   }
@@ -2989,31 +2987,6 @@ body {
 
   .node-popup .popup-details > div {
     font-size: 12px;
-  }
-
-  /* Route popup (sidebar node popup) responsive sizing */
-  .route-popup {
-    min-width: 0;
-    max-width: calc(100vw - 60px);
-  }
-}
-
-/* Extra small devices (iPhone SE, etc.) */
-@media (max-width: 400px) {
-  .node-popup {
-    min-width: 0;
-    max-width: calc(100vw - 30px);
-    width: max-content;
-  }
-
-  .node-popup-grid {
-    grid-template-columns: 1fr;
-  }
-
-  /* Route popup - even narrower on very small screens */
-  .route-popup {
-    min-width: 0;
-    max-width: calc(100vw - 40px);
   }
 }
 
