@@ -289,6 +289,10 @@ function App() {
   // Track the newest message ID to detect NEW messages (count-based tracking fails at the 100 message limit)
   const newestMessageId = useRef<string>('');
 
+  // Refs for message input fields (to focus on reply)
+  const channelMessageInputRef = useRef<HTMLInputElement>(null);
+  const dmMessageInputRef = useRef<HTMLInputElement>(null);
+
   // Play notification sound using Web Audio API
   const playNotificationSound = useCallback(() => {
     try {
@@ -2349,6 +2353,7 @@ function App() {
                   logger.debug('👆 User selected channel from dropdown:', channelId);
                   setSelectedChannel(channelId);
                   selectedChannelRef.current = channelId;
+                  setReplyingTo(null); // Clear reply state when switching channels
                   setUnreadCounts(prev => {
                     const updated = { ...prev, [channelId]: 0 };
                     logger.debug('📝 Setting unread counts:', updated);
@@ -2386,6 +2391,7 @@ function App() {
                     logger.debug('👆 User clicked channel:', channelId, 'Previous selected:', selectedChannel);
                     setSelectedChannel(channelId);
                     selectedChannelRef.current = channelId; // Update ref immediately
+                    setReplyingTo(null); // Clear reply state when switching channels
                     setUnreadCounts(prev => {
                       const updated = { ...prev, [channelId]: 0 };
                       logger.debug('📝 Setting unread counts:', updated);
@@ -2521,7 +2527,10 @@ function App() {
                                   <div className="message-actions">
                                     <button
                                       className="reply-button"
-                                      onClick={() => setReplyingTo(msg)}
+                                      onClick={() => {
+                                        setReplyingTo(msg);
+                                        channelMessageInputRef.current?.focus();
+                                      }}
                                       title="Reply to this message"
                                     >
                                       ↩
@@ -2609,6 +2618,7 @@ function App() {
                       {hasPermission('channels', 'write') && (
                         <div className="message-input-container">
                           <input
+                            ref={channelMessageInputRef}
                             type="text"
                             value={newMessage}
                             onChange={(e) => setNewMessage(e.target.value)}
@@ -2858,6 +2868,7 @@ function App() {
                         className={`node-item ${selectedDMNode === node.user?.id ? 'selected' : ''}`}
                         onClick={() => {
                           setSelectedDMNode(node.user?.id || '');
+                          setReplyingTo(null); // Clear reply state when switching DM nodes
                         }}
                       >
                         <div className="node-header">
@@ -2953,6 +2964,7 @@ function App() {
                 const nodeId = e.target.value;
                 logger.debug('👆 User selected node from dropdown:', nodeId);
                 setSelectedDMNode(nodeId);
+                setReplyingTo(null); // Clear reply state when switching DM nodes
               }}
             >
               <option value="">Select a conversation...</option>
@@ -3121,7 +3133,10 @@ function App() {
                                 <div className="message-actions">
                                   <button
                                     className="reply-button"
-                                    onClick={() => setReplyingTo(msg)}
+                                    onClick={() => {
+                                      setReplyingTo(msg);
+                                      dmMessageInputRef.current?.focus();
+                                    }}
                                     title="Reply to this message"
                                   >
                                     ↩
@@ -3209,6 +3224,7 @@ function App() {
                   {hasPermission('messages', 'write') && (
                     <div className="message-input-container">
                       <input
+                        ref={dmMessageInputRef}
                         type="text"
                         value={newMessage}
                         onChange={(e) => setNewMessage(e.target.value)}
