@@ -74,7 +74,10 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   const [autoAnnounceChannelIndex, setAutoAnnounceChannelIndex] = useState<number>(0);
   const [autoAnnounceOnStart, setAutoAnnounceOnStart] = useState<boolean>(false);
   const [showNodeFilterPopup, setShowNodeFilterPopup] = useState<boolean>(false);
-  const [isNodeListCollapsed, setIsNodeListCollapsed] = useState<boolean>(false);
+  // Start with node list collapsed on mobile devices (screens <= 768px)
+  const [isNodeListCollapsed, setIsNodeListCollapsed] = useState<boolean>(() => {
+    return window.innerWidth <= 768;
+  });
 
   return (
     <UIContext.Provider
