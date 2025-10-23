@@ -39,7 +39,7 @@ RUN apk add --no-cache \
     supervisor \
     su-exec \
     && python3 -m venv /opt/apprise-venv \
-    && /opt/apprise-venv/bin/pip install --no-cache-dir apprise
+    && /opt/apprise-venv/bin/pip install --no-cache-dir apprise "paho-mqtt<2.0"
 
 # Copy package files
 COPY package*.json ./
