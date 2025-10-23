@@ -8,4 +8,7 @@
 - Version 2.8.8
 - Fix TRUST_PROXY environment variable to support all Express values (true/false/number/IP)
 - Created GitHub release v2.8.8
+- Version 2.8.9
 - Reverted mobile node popup dimension changes from PR #279
+- Created GitHub release v2.8.9
+- Add paho-mqtt<2.0 dependency for Apprise MQTT support (issue #276, PR #287)
