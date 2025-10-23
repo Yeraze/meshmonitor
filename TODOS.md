@@ -47,3 +47,5 @@
   - [x] Add max limit validation (1000) to prevent unbounded queries
   - [x] Add input validation for offset and limit parameters
   - [x] Reduce polling interval from 2s to 5s (60% reduction in API calls)
+  - [x] Reduce traceroute polling from 10s to 60s (83% reduction)
+  - [x] Reduce neighbor info polling from 10s to 60s (83% reduction)

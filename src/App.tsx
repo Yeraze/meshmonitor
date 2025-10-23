@@ -617,7 +617,7 @@ function App() {
       fetchTraceroutes();
       // Only auto-refresh when connected (not when viewing cached data)
       if (connectionStatus === 'connected') {
-        const interval = setInterval(fetchTraceroutes, 10000); // Refresh every 10 seconds
+        const interval = setInterval(fetchTraceroutes, 60000); // Refresh every 60 seconds
         return () => clearInterval(interval);
       }
     }
@@ -629,7 +629,7 @@ function App() {
       fetchNeighborInfo();
       // Only auto-refresh when connected (not when viewing cached data)
       if (connectionStatus === 'connected') {
-        const interval = setInterval(fetchNeighborInfo, 10000); // Refresh every 10 seconds
+        const interval = setInterval(fetchNeighborInfo, 60000); // Refresh every 60 seconds
         return () => clearInterval(interval);
       }
     }
