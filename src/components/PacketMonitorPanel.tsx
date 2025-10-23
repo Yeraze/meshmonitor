@@ -56,8 +56,8 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
 
     fetchPackets();
 
-    // Poll for new packets every 2 seconds
-    pollIntervalRef.current = setInterval(fetchPackets, 2000);
+    // Poll for new packets every 5 seconds
+    pollIntervalRef.current = setInterval(fetchPackets, 5000);
 
     return () => {
       if (pollIntervalRef.current) {

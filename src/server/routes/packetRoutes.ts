@@ -48,7 +48,19 @@ const requirePacketPermissions: RequestHandler = (req, res, next) => {
 router.get('/', requirePacketPermissions, (req, res) => {
   try {
     const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
-    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 100;
+    let limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 100;
+
+    // Enforce maximum limit to prevent unbounded queries
+    const MAX_LIMIT = 1000;
+    if (limit > MAX_LIMIT) {
+      limit = MAX_LIMIT;
+    }
+    if (limit < 1) {
+      return res.status(400).json({ error: 'Limit must be at least 1' });
+    }
+    if (offset < 0) {
+      return res.status(400).json({ error: 'Offset must be non-negative' });
+    }
     const portnum = req.query.portnum ? parseInt(req.query.portnum as string, 10) : undefined;
     const from_node = req.query.from_node ? parseInt(req.query.from_node as string, 10) : undefined;
     const to_node = req.query.to_node ? parseInt(req.query.to_node as string, 10) : undefined;

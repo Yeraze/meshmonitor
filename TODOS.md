@@ -43,3 +43,7 @@
   - [x] Add color coding for 15+ packet types in PacketMonitorPanel
   - [x] Remove page footer (duplicate info in sidebar)
   - [x] Fix filter dropdown white background for dark mode readability
+- Packet monitor API improvements (PR #289 feedback)
+  - [x] Add max limit validation (1000) to prevent unbounded queries
+  - [x] Add input validation for offset and limit parameters
+  - [x] Reduce polling interval from 2s to 5s (60% reduction in API calls)
