@@ -255,6 +255,7 @@ const apiRouter = express.Router();
 import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import auditRoutes from './routes/auditRoutes.js';
+import packetRoutes from './routes/packetRoutes.js';
 
 // CSRF token endpoint (must be before CSRF protection middleware)
 apiRouter.get('/csrf-token', csrfTokenEndpoint);
@@ -267,6 +268,9 @@ apiRouter.use('/users', userRoutes);
 
 // Audit log routes (admin only)
 apiRouter.use('/audit', auditRoutes);
+
+// Packet log routes (requires channels:read AND messages:read)
+apiRouter.use('/packets', optionalAuth(), packetRoutes);
 
 // API Routes
 apiRouter.get('/nodes', optionalAuth(), (_req, res) => {
@@ -1366,7 +1370,7 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
     const currentSettings = databaseService.getAllSettings();
 
     // Validate settings
-    const validKeys = ['maxNodeAgeHours', 'tracerouteIntervalMinutes', 'temperatureUnit', 'distanceUnit', 'telemetryVisualizationHours', 'telemetryFavorites', 'autoAckEnabled', 'autoAckRegex', 'autoAnnounceEnabled', 'autoAnnounceIntervalHours', 'autoAnnounceMessage', 'autoAnnounceChannelIndex', 'autoAnnounceOnStart', 'preferredSortField', 'preferredSortDirection', 'timeFormat', 'dateFormat', 'mapTileset'];
+    const validKeys = ['maxNodeAgeHours', 'tracerouteIntervalMinutes', 'temperatureUnit', 'distanceUnit', 'telemetryVisualizationHours', 'telemetryFavorites', 'autoAckEnabled', 'autoAckRegex', 'autoAnnounceEnabled', 'autoAnnounceIntervalHours', 'autoAnnounceMessage', 'autoAnnounceChannelIndex', 'autoAnnounceOnStart', 'preferredSortField', 'preferredSortDirection', 'timeFormat', 'dateFormat', 'mapTileset', 'packet_log_enabled', 'packet_log_max_count', 'packet_log_max_age_hours'];
     const filteredSettings: Record<string, string> = {};
 
     for (const key of validKeys) {

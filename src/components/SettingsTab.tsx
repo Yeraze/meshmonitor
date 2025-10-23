@@ -7,6 +7,7 @@ import { logger } from '../utils/logger';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { getAllTilesets, type TilesetId } from '../config/tilesets';
+import PacketMonitorSettings from './PacketMonitorSettings';
 
 type DistanceUnit = 'km' | 'mi';
 type TimeFormat = '12' | '24';
@@ -490,6 +491,14 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                 </option>
               ))}
             </select>
+          </div>
+        </div>
+
+        <div className="settings-section">
+          <h3>Packet Monitor (Desktop Only)</h3>
+          <p className="setting-description">Configure the mesh traffic monitor that displays all packets on the network. Requires both channels:read and messages:read permissions.</p>
+          <div className="packet-monitor-settings">
+            <PacketMonitorSettings baseUrl={baseUrl} />
           </div>
         </div>
 

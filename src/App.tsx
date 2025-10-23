@@ -18,7 +18,7 @@ import AutoAcknowledgeSection from './components/AutoAcknowledgeSection'
 import AutoTracerouteSection from './components/AutoTracerouteSection'
 import AutoAnnounceSection from './components/AutoAnnounceSection'
 import { ToastProvider, useToast } from './components/ToastContainer'
-import { version } from '../package.json'
+// import { version } from '../package.json' // Removed - footer no longer displayed
 import { type TemperatureUnit } from './utils/temperature'
 import { calculateDistance, formatDistance } from './utils/distance'
 import { formatTime, formatDateTime } from './utils/datetime'
@@ -3969,21 +3969,6 @@ function App() {
         </div>
       )}
 
-      {/* Footer */}
-      <footer className="app-footer">
-        <div className="footer-content">
-          <span className="footer-title">MeshMonitor</span>
-          <span className="footer-version">v{version}</span>
-          <a
-            href="https://github.com/Yeraze/meshmonitor"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="footer-link"
-          >
-            GitHub
-          </a>
-        </div>
-      </footer>
     </div>
   )
 }

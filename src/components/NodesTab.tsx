@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle } from 'react-leaflet';
 import type { Marker as LeafletMarker } from 'leaflet';
 import { DeviceInfo } from '../types/device';
@@ -15,8 +15,11 @@ import { useSettings } from '../contexts/SettingsContext';
 import { useAuth } from '../contexts/AuthContext';
 import MapLegend from './MapLegend';
 import ZoomHandler from './ZoomHandler';
+import MapResizeHandler from './MapResizeHandler';
 import { TilesetSelector } from './TilesetSelector';
 import { MapCenterController } from './MapCenterController';
+import PacketMonitorPanel from './PacketMonitorPanel';
+import { getPacketStats } from '../services/packetApi';
 
 interface NodesTabProps {
   processedNodes: DeviceInfo[];
@@ -100,12 +103,57 @@ const NodesTab: React.FC<NodesTabProps> = ({
 
   const { hasPermission } = useAuth();
 
+  // Packet Monitor state (desktop only)
+  const [showPacketMonitor, setShowPacketMonitor] = useState(() => {
+    // Load from localStorage
+    const saved = localStorage.getItem('showPacketMonitor');
+    return saved === 'true';
+  });
+
+  // Track if packet logging is enabled on the server
+  const [packetLogEnabled, setPacketLogEnabled] = useState<boolean>(false);
+
+  // Save packet monitor preference to localStorage
+  useEffect(() => {
+    localStorage.setItem('showPacketMonitor', showPacketMonitor.toString());
+  }, [showPacketMonitor]);
+
+  // Check if user has permission to view packet monitor
+  const canViewPacketMonitor = hasPermission('channels', 'read') && hasPermission('messages', 'read');
+
+  // Fetch packet logging enabled status from server
+  useEffect(() => {
+    const fetchPacketLogStatus = async () => {
+      if (!canViewPacketMonitor) return;
+
+      try {
+        const stats = await getPacketStats();
+        setPacketLogEnabled(stats.enabled === true);
+      } catch (error) {
+        console.error('Failed to fetch packet log status:', error);
+      }
+    };
+
+    fetchPacketLogStatus();
+  }, [canViewPacketMonitor]);
+
   // Calculate active tileset
   const activeTileset = temporaryTileset || mapTileset;
 
   // Handle center complete
   const handleCenterComplete = () => {
     setMapCenterTarget(null);
+  };
+
+  // Handle node click from packet monitor
+  const handlePacketNodeClick = (nodeId: string) => {
+    // Find the node by ID
+    const node = processedNodes.find(n => n.user?.id === nodeId);
+    if (node) {
+      // Select and center on the node
+      setSelectedNodeId(nodeId);
+      centerMapOnNode(node);
+    }
   };
 
   // Calculate nodes with position
@@ -321,8 +369,8 @@ const NodesTab: React.FC<NodesTabProps> = ({
         )}
       </div>
 
-      {/* Right Side - Map */}
-      <div className="map-container">
+      {/* Right Side - Map and Optional Packet Monitor */}
+      <div className={`map-container ${showPacketMonitor && canViewPacketMonitor ? 'with-packet-monitor' : ''}`}>
         {shouldShowData() ? (
           <>
             <div className="map-controls">
@@ -366,6 +414,16 @@ const NodesTab: React.FC<NodesTabProps> = ({
                 />
                 <span>Show Position History</span>
               </label>
+              {canViewPacketMonitor && packetLogEnabled && (
+                <label className="map-control-item packet-monitor-toggle">
+                  <input
+                    type="checkbox"
+                    checked={showPacketMonitor}
+                    onChange={(e) => setShowPacketMonitor(e.target.checked)}
+                  />
+                  <span>Show Packet Monitor</span>
+                </label>
+              )}
             </div>
             <MapContainer
               center={getMapCenter()}
@@ -382,6 +440,7 @@ const NodesTab: React.FC<NodesTabProps> = ({
                 maxZoom={getTilesetById(activeTileset).maxZoom}
               />
               <ZoomHandler onZoomChange={setMapZoom} />
+              <MapResizeHandler trigger={showPacketMonitor} />
               <MapLegend />
               {nodesWithPosition
                 .filter(node => showMqttNodes || !node.viaMqtt)
@@ -664,6 +723,16 @@ const NodesTab: React.FC<NodesTabProps> = ({
           </div>
         )}
       </div>
+
+      {/* Packet Monitor Panel (Desktop Only) */}
+      {showPacketMonitor && canViewPacketMonitor && (
+        <div className="packet-monitor-container">
+          <PacketMonitorPanel
+            onClose={() => setShowPacketMonitor(false)}
+            onNodeClick={handlePacketNodeClick}
+          />
+        </div>
+      )}
     </div>
   );
 };

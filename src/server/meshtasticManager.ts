@@ -6,6 +6,7 @@ import { calculateDistance } from '../utils/distance.js';
 import { logger } from '../utils/logger.js';
 import { getEnvironmentConfig } from './config/environment.js';
 import { notificationService } from './services/notificationService.js';
+import packetLogService from './services/packetLogService.js';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const packageJson = require('../../package.json');
@@ -696,6 +697,124 @@ class MeshtasticManager {
    */
   private async processMeshPacket(meshPacket: any): Promise<void> {
     logger.debug(`🔄 Processing MeshPacket: ID=${meshPacket.id}, from=${meshPacket.from}, to=${meshPacket.to}`);
+
+    // Log packet to packet log (if enabled)
+    try {
+      if (packetLogService.isEnabled()) {
+        const fromNum = meshPacket.from ? Number(meshPacket.from) : 0;
+        const toNum = meshPacket.to ? Number(meshPacket.to) : null;
+        const fromNodeId = fromNum ? `!${fromNum.toString(16).padStart(8, '0')}` : null;
+        const toNodeId = toNum ? `!${toNum.toString(16).padStart(8, '0')}` : null;
+
+        // Check if packet is encrypted (no decoded field or empty payload)
+        const isEncrypted = !meshPacket.decoded || !meshPacket.decoded.payload;
+        const portnum = meshPacket.decoded?.portnum ?? 0;
+        const portnumName = meshtasticProtobufService.getPortNumName(portnum);
+
+        // Generate payload preview
+        let payloadPreview = null;
+        if (isEncrypted) {
+          payloadPreview = '🔒 <ENCRYPTED>';
+        } else if (meshPacket.decoded?.payload) {
+          try {
+            const processedPayload = meshtasticProtobufService.processPayload(portnum, meshPacket.decoded.payload);
+            if (portnum === 1 && typeof processedPayload === 'string') {
+              // TEXT_MESSAGE - show first 100 chars
+              payloadPreview = processedPayload.substring(0, 100);
+            } else if (portnum === 3) {
+              // POSITION - show coordinates (if available)
+              const pos = processedPayload as any;
+              if (pos.latitudeI !== undefined || pos.longitudeI !== undefined || pos.latitude_i !== undefined || pos.longitude_i !== undefined) {
+                const lat = pos.latitudeI || pos.latitude_i || 0;
+                const lon = pos.longitudeI || pos.longitude_i || 0;
+                const latDeg = (lat / 1e7).toFixed(5);
+                const lonDeg = (lon / 1e7).toFixed(5);
+                payloadPreview = `[Position: ${latDeg}°, ${lonDeg}°]`;
+              } else {
+                payloadPreview = '[Position update]';
+              }
+            } else if (portnum === 4) {
+              // NODEINFO - show node name (if available)
+              const nodeInfo = processedPayload as any;
+              const longName = nodeInfo.longName || nodeInfo.long_name;
+              const shortName = nodeInfo.shortName || nodeInfo.short_name;
+              if (longName || shortName) {
+                payloadPreview = `[NodeInfo: ${longName || shortName}]`;
+              } else {
+                payloadPreview = '[NodeInfo update]';
+              }
+            } else if (portnum === 67) {
+              // TELEMETRY - show telemetry type
+              const telemetry = processedPayload as any;
+              let telemetryType = 'Unknown';
+              if (telemetry.deviceMetrics || telemetry.device_metrics) {
+                telemetryType = 'Device';
+              } else if (telemetry.environmentMetrics || telemetry.environment_metrics) {
+                telemetryType = 'Environment';
+              } else if (telemetry.airQualityMetrics || telemetry.air_quality_metrics) {
+                telemetryType = 'Air Quality';
+              } else if (telemetry.powerMetrics || telemetry.power_metrics) {
+                telemetryType = 'Power';
+              } else if (telemetry.localStats || telemetry.local_stats) {
+                telemetryType = 'Local Stats';
+              } else if (telemetry.healthMetrics || telemetry.health_metrics) {
+                telemetryType = 'Health';
+              } else if (telemetry.hostMetrics || telemetry.host_metrics) {
+                telemetryType = 'Host';
+              }
+              payloadPreview = `[Telemetry: ${telemetryType}]`;
+            } else if (portnum === 70) {
+              // TRACEROUTE
+              payloadPreview = '[Traceroute]';
+            } else if (portnum === 71) {
+              // NEIGHBORINFO
+              payloadPreview = '[NeighborInfo]';
+            } else {
+              payloadPreview = `[${portnumName}]`;
+            }
+          } catch (error) {
+            payloadPreview = `[${portnumName}]`;
+          }
+        }
+
+        // Build metadata JSON
+        const metadata = {
+          id: meshPacket.id,
+          rx_time: meshPacket.rxTime,
+          rx_snr: meshPacket.rxSnr,
+          rx_rssi: meshPacket.rxRssi,
+          hop_limit: meshPacket.hopLimit,
+          hop_start: meshPacket.hopStart,
+          want_ack: meshPacket.wantAck,
+          priority: meshPacket.priority,
+          via_mqtt: meshPacket.viaMqtt
+        };
+
+        packetLogService.logPacket({
+          packet_id: meshPacket.id ?? undefined,
+          timestamp: meshPacket.rxTime ? Number(meshPacket.rxTime) : Math.floor(Date.now() / 1000),
+          from_node: fromNum,
+          from_node_id: fromNodeId ?? undefined,
+          to_node: toNum ?? undefined,
+          to_node_id: toNodeId ?? undefined,
+          channel: meshPacket.channel ?? undefined,
+          portnum: portnum,
+          portnum_name: portnumName,
+          encrypted: isEncrypted,
+          snr: meshPacket.rxSnr ?? undefined,
+          rssi: meshPacket.rxRssi ?? undefined,
+          hop_limit: meshPacket.hopLimit ?? undefined,
+          hop_start: meshPacket.hopStart ?? undefined,
+          payload_size: meshPacket.decoded?.payload?.length ?? undefined,
+          want_ack: meshPacket.wantAck ?? false,
+          priority: meshPacket.priority ?? undefined,
+          payload_preview: payloadPreview ?? undefined,
+          metadata: JSON.stringify(metadata)
+        });
+      }
+    } catch (error) {
+      logger.error('❌ Failed to log packet:', error);
+    }
 
     // Extract node information if available
     // Note: Only update technical fields (SNR/RSSI/lastHeard), not names

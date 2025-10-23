@@ -472,6 +472,8 @@ export class MeshtasticProtobufService {
    * Get human-readable port number name
    */
   getPortNumName(portnum: number): string {
+    // Port numbers from official Meshtastic protobuf definitions
+    // https://github.com/meshtastic/protobufs/blob/master/meshtastic/portnums.proto
     const portNames: { [key: number]: string } = {
       0: 'UNKNOWN_APP',
       1: 'TEXT_MESSAGE_APP',
@@ -484,23 +486,27 @@ export class MeshtasticProtobufService {
       8: 'WAYPOINT_APP',
       9: 'AUDIO_APP',
       10: 'DETECTION_SENSOR_APP',
+      11: 'ALERT_APP',
+      12: 'KEY_VERIFICATION_APP',
       32: 'REPLY_APP',
       33: 'IP_TUNNEL_APP',
       34: 'PAXCOUNTER_APP',
-      35: 'SERIAL_APP',
-      36: 'STORE_FORWARD_APP',
-      37: 'RANGE_TEST_APP',
-      38: 'TELEMETRY_APP',
-      39: 'ZPS_APP',
-      40: 'SIMULATOR_APP',
-      64: 'PRIVATE_APP',
-      65: 'ATAK_FORWARDER_APP',
+      64: 'SERIAL_APP',
+      65: 'STORE_FORWARD_APP',
+      66: 'RANGE_TEST_APP',
       67: 'TELEMETRY_APP',
+      68: 'ZPS_APP',
       69: 'SIMULATOR_APP',
       70: 'TRACEROUTE_APP',
       71: 'NEIGHBORINFO_APP',
-      72: 'ATAK_PLUGIN_APP',
-      73: 'MAP_REPORT_APP'
+      72: 'ATAK_PLUGIN',
+      73: 'MAP_REPORT_APP',
+      74: 'POWERSTRESS_APP',
+      76: 'RETICULUM_TUNNEL_APP',
+      77: 'CAYENNE_APP',
+      256: 'PRIVATE_APP',
+      257: 'ATAK_FORWARDER',
+      511: 'MAX'
     };
 
     return portNames[portnum] || `UNKNOWN_${portnum}`;

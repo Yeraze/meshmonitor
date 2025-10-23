@@ -16,6 +16,7 @@ import { migration as readMessagesMigration } from '../server/migrations/007_add
 import { migration as pushSubscriptionsMigration } from '../server/migrations/008_add_push_subscriptions.js';
 import { migration as notificationPreferencesMigration } from '../server/migrations/009_add_notification_preferences.js';
 import { migration as notifyOnEmojiMigration } from '../server/migrations/010_add_notify_on_emoji.js';
+import { migration as packetLogMigration } from '../server/migrations/011_add_packet_log.js';
 
 export interface DbNode {
   nodeNum: number;
@@ -135,6 +136,30 @@ export interface DbPushSubscription {
   lastUsedAt?: number;
 }
 
+export interface DbPacketLog {
+  id?: number;
+  packet_id?: number;
+  timestamp: number;
+  from_node: number;
+  from_node_id?: string;
+  to_node?: number;
+  to_node_id?: string;
+  channel?: number;
+  portnum: number;
+  portnum_name?: string;
+  encrypted: boolean;
+  snr?: number;
+  rssi?: number;
+  hop_limit?: number;
+  hop_start?: number;
+  payload_size?: number;
+  want_ack?: boolean;
+  priority?: number;
+  payload_preview?: string;
+  metadata?: string;
+  created_at?: number;
+}
+
 class DatabaseService {
   public db: Database.Database;
   private isInitialized = false;
@@ -189,6 +214,7 @@ class DatabaseService {
     this.runPushSubscriptionsMigration();
     this.runNotificationPreferencesMigration();
     this.runNotifyOnEmojiMigration();
+    this.runPacketLogMigration();
     this.ensureAutomationDefaults();
     this.isInitialized = true;
   }
@@ -431,6 +457,27 @@ class DatabaseService {
       logger.debug('✅ Notify on emoji migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run notify on emoji migration:', error);
+      throw error;
+    }
+  }
+
+  private runPacketLogMigration(): void {
+    logger.debug('Running packet log migration...');
+    try {
+      const migrationKey = 'migration_011_packet_log';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Packet log migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 011: Add packet log table...');
+      packetLogMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Packet log migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run packet log migration:', error);
       throw error;
     }
   }
@@ -2301,6 +2348,189 @@ class DatabaseService {
     const stmt = this.db.prepare('DELETE FROM read_messages WHERE read_at < ?');
     const result = stmt.run(cutoff);
     logger.debug(`🧹 Cleaned up ${result.changes} read_messages entries older than ${days} days`);
+    return Number(result.changes);
+  }
+
+  // Packet Log operations
+  insertPacketLog(packet: Omit<DbPacketLog, 'id' | 'created_at'>): number {
+    // Check if packet logging is enabled
+    const enabled = this.getSetting('packet_log_enabled');
+    if (enabled !== '1') {
+      return 0;
+    }
+
+    const stmt = this.db.prepare(`
+      INSERT INTO packet_log (
+        packet_id, timestamp, from_node, from_node_id, to_node, to_node_id,
+        channel, portnum, portnum_name, encrypted, snr, rssi, hop_limit, hop_start,
+        payload_size, want_ack, priority, payload_preview, metadata
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const result = stmt.run(
+      packet.packet_id ?? null,
+      packet.timestamp,
+      packet.from_node,
+      packet.from_node_id ?? null,
+      packet.to_node ?? null,
+      packet.to_node_id ?? null,
+      packet.channel ?? null,
+      packet.portnum,
+      packet.portnum_name ?? null,
+      packet.encrypted ? 1 : 0,
+      packet.snr ?? null,
+      packet.rssi ?? null,
+      packet.hop_limit ?? null,
+      packet.hop_start ?? null,
+      packet.payload_size ?? null,
+      packet.want_ack ? 1 : 0,
+      packet.priority ?? null,
+      packet.payload_preview ?? null,
+      packet.metadata ?? null
+    );
+
+    // Enforce max count limit
+    this.enforcePacketLogMaxCount();
+
+    return Number(result.lastInsertRowid);
+  }
+
+  private enforcePacketLogMaxCount(): void {
+    const maxCountStr = this.getSetting('packet_log_max_count');
+    const maxCount = maxCountStr ? parseInt(maxCountStr, 10) : 1000;
+
+    // Get current count
+    const countStmt = this.db.prepare('SELECT COUNT(*) as count FROM packet_log');
+    const countResult = countStmt.get() as { count: number };
+    const currentCount = Number(countResult.count);
+
+    if (currentCount > maxCount) {
+      // Delete oldest packets to get back to max count
+      const deleteCount = currentCount - maxCount;
+      const deleteStmt = this.db.prepare(`
+        DELETE FROM packet_log
+        WHERE id IN (
+          SELECT id FROM packet_log
+          ORDER BY timestamp ASC
+          LIMIT ?
+        )
+      `);
+      deleteStmt.run(deleteCount);
+      logger.debug(`🧹 Deleted ${deleteCount} old packets to enforce max count of ${maxCount}`);
+    }
+  }
+
+  getPacketLogs(options: {
+    offset?: number;
+    limit?: number;
+    portnum?: number;
+    from_node?: number;
+    to_node?: number;
+    channel?: number;
+    encrypted?: boolean;
+    since?: number;
+  }): DbPacketLog[] {
+    const { offset = 0, limit = 100, portnum, from_node, to_node, channel, encrypted, since } = options;
+
+    let query = 'SELECT * FROM packet_log WHERE 1=1';
+    const params: any[] = [];
+
+    if (portnum !== undefined) {
+      query += ' AND portnum = ?';
+      params.push(portnum);
+    }
+    if (from_node !== undefined) {
+      query += ' AND from_node = ?';
+      params.push(from_node);
+    }
+    if (to_node !== undefined) {
+      query += ' AND to_node = ?';
+      params.push(to_node);
+    }
+    if (channel !== undefined) {
+      query += ' AND channel = ?';
+      params.push(channel);
+    }
+    if (encrypted !== undefined) {
+      query += ' AND encrypted = ?';
+      params.push(encrypted ? 1 : 0);
+    }
+    if (since !== undefined) {
+      query += ' AND timestamp >= ?';
+      params.push(since);
+    }
+
+    query += ' ORDER BY timestamp DESC LIMIT ? OFFSET ?';
+    params.push(limit, offset);
+
+    const stmt = this.db.prepare(query);
+    return stmt.all(...params) as DbPacketLog[];
+  }
+
+  getPacketLogById(id: number): DbPacketLog | null {
+    const stmt = this.db.prepare('SELECT * FROM packet_log WHERE id = ?');
+    const result = stmt.get(id) as DbPacketLog | undefined;
+    return result || null;
+  }
+
+  getPacketLogCount(options: {
+    portnum?: number;
+    from_node?: number;
+    to_node?: number;
+    channel?: number;
+    encrypted?: boolean;
+    since?: number;
+  } = {}): number {
+    const { portnum, from_node, to_node, channel, encrypted, since } = options;
+
+    let query = 'SELECT COUNT(*) as count FROM packet_log WHERE 1=1';
+    const params: any[] = [];
+
+    if (portnum !== undefined) {
+      query += ' AND portnum = ?';
+      params.push(portnum);
+    }
+    if (from_node !== undefined) {
+      query += ' AND from_node = ?';
+      params.push(from_node);
+    }
+    if (to_node !== undefined) {
+      query += ' AND to_node = ?';
+      params.push(to_node);
+    }
+    if (channel !== undefined) {
+      query += ' AND channel = ?';
+      params.push(channel);
+    }
+    if (encrypted !== undefined) {
+      query += ' AND encrypted = ?';
+      params.push(encrypted ? 1 : 0);
+    }
+    if (since !== undefined) {
+      query += ' AND timestamp >= ?';
+      params.push(since);
+    }
+
+    const stmt = this.db.prepare(query);
+    const result = stmt.get(...params) as { count: number };
+    return Number(result.count);
+  }
+
+  clearPacketLogs(): number {
+    const stmt = this.db.prepare('DELETE FROM packet_log');
+    const result = stmt.run();
+    logger.debug(`🧹 Cleared ${result.changes} packet log entries`);
+    return Number(result.changes);
+  }
+
+  cleanupOldPacketLogs(): number {
+    const maxAgeHoursStr = this.getSetting('packet_log_max_age_hours');
+    const maxAgeHours = maxAgeHoursStr ? parseInt(maxAgeHoursStr, 10) : 24;
+    const cutoffTimestamp = Math.floor(Date.now() / 1000) - (maxAgeHours * 60 * 60);
+
+    const stmt = this.db.prepare('DELETE FROM packet_log WHERE timestamp < ?');
+    const result = stmt.run(cutoffTimestamp);
+    logger.debug(`🧹 Cleaned up ${result.changes} packet log entries older than ${maxAgeHours} hours`);
     return Number(result.changes);
   }
 }
