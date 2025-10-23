@@ -17,7 +17,6 @@ import { migration as tracerouteMigration } from '../migrations/004_add_tracerou
 import { migration as auditMigration } from '../migrations/006_add_audit_permission.js';
 import { migration as packetLogMigration } from '../migrations/011_add_packet_log.js';
 import packetRoutes from './packetRoutes.js';
-import packetLogService from '../services/packetLogService.js';
 
 // Mock the DatabaseService to prevent auto-initialization
 vi.mock('../../services/database.js', () => ({
@@ -203,7 +202,7 @@ describe('Packet Routes', () => {
     };
 
     // Mock req.user for permission checking
-    app.use((req: any, res, next) => {
+    app.use((req: any, _res, next) => {
       const authHeader = req.headers.authorization;
       if (authHeader === 'Bearer regular') {
         req.user = regularUser;

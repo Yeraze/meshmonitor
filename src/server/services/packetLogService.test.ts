@@ -284,7 +284,8 @@ describe('PacketLogService', () => {
       });
 
       const packets = packetLogService.getPackets({ limit: 10 });
-      const id = packets[0].id;
+      expect(packets.length).toBeGreaterThan(0);
+      const id = packets[0]!.id!; // Non-null assertions for both array element and id property
 
       const packet = packetLogService.getPacketById(id);
       expect(packet).toBeDefined();
