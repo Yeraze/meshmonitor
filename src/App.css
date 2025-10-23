@@ -4848,6 +4848,11 @@ body {
   height: 65%;
 }
 
+/* Adjust node list sidebar when packet monitor is visible */
+.nodes-split-view:has(.packet-monitor-container) .nodes-sidebar {
+  max-height: calc(65% - 32px);
+}
+
 /* Hide packet monitor toggle on mobile */
 @media (max-width: 768px) {
   .packet-monitor-toggle {
