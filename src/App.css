@@ -4829,3 +4829,36 @@ body {
     justify-content: center;
   }
 }
+
+/* Packet Monitor Panel Layout */
+.packet-monitor-container {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  height: 35%;
+  z-index: 2;
+  background: var(--bg-primary);
+  border-top: 2px solid var(--border-color);
+}
+
+/* Adjust map container when packet monitor is visible */
+.map-container.with-packet-monitor {
+  height: 65%;
+}
+
+/* Hide packet monitor toggle on mobile */
+@media (max-width: 768px) {
+  .packet-monitor-toggle {
+    display: none !important;
+  }
+
+  .packet-monitor-container {
+    display: none !important;
+  }
+
+  .map-container.with-packet-monitor {
+    height: 100% !important;
+  }
+}
