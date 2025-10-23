@@ -52,3 +52,4 @@
 - Packet logging test coverage
   - [x] Create comprehensive test suite for packetLogService (23 tests covering configuration, logging, filtering, counting, retrieval, cleanup, and state management)
   - [x] Create integration tests for packet API routes (16 tests covering GET /api/packets with filters, GET /api/packets/stats, GET /api/packets/:id, DELETE /api/packets with permission checks)
+  - [x] Fix TypeScript errors in CI/CD (removed unused imports, fixed parameter naming, added non-null assertions)
