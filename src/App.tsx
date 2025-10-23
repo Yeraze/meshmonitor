@@ -18,7 +18,7 @@ import AutoAcknowledgeSection from './components/AutoAcknowledgeSection'
 import AutoTracerouteSection from './components/AutoTracerouteSection'
 import AutoAnnounceSection from './components/AutoAnnounceSection'
 import { ToastProvider, useToast } from './components/ToastContainer'
-import { version } from '../package.json'
+// import { version } from '../package.json' // Removed - footer no longer displayed
 import { type TemperatureUnit } from './utils/temperature'
 import { calculateDistance, formatDistance } from './utils/distance'
 import { formatTime, formatDateTime } from './utils/datetime'
@@ -617,7 +617,7 @@ function App() {
       fetchTraceroutes();
       // Only auto-refresh when connected (not when viewing cached data)
       if (connectionStatus === 'connected') {
-        const interval = setInterval(fetchTraceroutes, 10000); // Refresh every 10 seconds
+        const interval = setInterval(fetchTraceroutes, 60000); // Refresh every 60 seconds
         return () => clearInterval(interval);
       }
     }
@@ -629,7 +629,7 @@ function App() {
       fetchNeighborInfo();
       // Only auto-refresh when connected (not when viewing cached data)
       if (connectionStatus === 'connected') {
-        const interval = setInterval(fetchNeighborInfo, 10000); // Refresh every 10 seconds
+        const interval = setInterval(fetchNeighborInfo, 60000); // Refresh every 60 seconds
         return () => clearInterval(interval);
       }
     }
@@ -3969,21 +3969,6 @@ function App() {
         </div>
       )}
 
-      {/* Footer */}
-      <footer className="app-footer">
-        <div className="footer-content">
-          <span className="footer-title">MeshMonitor</span>
-          <span className="footer-version">v{version}</span>
-          <a
-            href="https://github.com/Yeraze/meshmonitor"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="footer-link"
-          >
-            GitHub
-          </a>
-        </div>
-      </footer>
     </div>
   )
 }
