@@ -25,7 +25,7 @@ describe('MeshtasticManager - Auto-Acknowledge Channel Filtering', () => {
       });
 
       const autoAckChannels = mockGetSetting('autoAckChannels');
-      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map(c => parseInt(c.trim())) : [];
+      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map((c: string) => parseInt(c.trim())) : [];
 
       expect(enabledChannels).toEqual([0, 1, 2]);
     });
@@ -37,7 +37,7 @@ describe('MeshtasticManager - Auto-Acknowledge Channel Filtering', () => {
       });
 
       const autoAckChannels = mockGetSetting('autoAckChannels');
-      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map(c => parseInt(c.trim())) : [];
+      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map((c: string) => parseInt(c.trim())) : [];
 
       expect(enabledChannels).toEqual([0]);
     });
@@ -49,7 +49,7 @@ describe('MeshtasticManager - Auto-Acknowledge Channel Filtering', () => {
       });
 
       const autoAckChannels = mockGetSetting('autoAckChannels');
-      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map(c => parseInt(c.trim())).filter(c => !isNaN(c)) : [];
+      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map((c: string) => parseInt(c.trim())).filter((c: number) => !isNaN(c)) : [];
 
       expect(enabledChannels).toEqual([]);
     });
@@ -61,7 +61,7 @@ describe('MeshtasticManager - Auto-Acknowledge Channel Filtering', () => {
       });
 
       const autoAckChannels = mockGetSetting('autoAckChannels');
-      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map(c => parseInt(c.trim())) : [];
+      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map((c: string) => parseInt(c.trim())) : [];
 
       expect(enabledChannels).toEqual([]);
     });
@@ -73,7 +73,7 @@ describe('MeshtasticManager - Auto-Acknowledge Channel Filtering', () => {
       });
 
       const autoAckChannels = mockGetSetting('autoAckChannels');
-      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map(c => parseInt(c.trim())) : [];
+      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map((c: string) => parseInt(c.trim())) : [];
 
       expect(enabledChannels).toEqual([0, 1, 2]);
     });
@@ -124,10 +124,9 @@ describe('MeshtasticManager - Auto-Acknowledge Channel Filtering', () => {
       });
 
       const channelIndex = 1;
-      const isDirectMessage = false;
 
       const autoAckChannels = mockGetSetting('autoAckChannels');
-      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map(c => parseInt(c.trim())) : [];
+      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map((c: string) => parseInt(c.trim())) : [];
 
       const shouldAck = enabledChannels.includes(channelIndex);
       expect(shouldAck).toBe(true);
@@ -141,10 +140,9 @@ describe('MeshtasticManager - Auto-Acknowledge Channel Filtering', () => {
       });
 
       const channelIndex = 2;
-      const isDirectMessage = false;
 
       const autoAckChannels = mockGetSetting('autoAckChannels');
-      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map(c => parseInt(c.trim())) : [];
+      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map((c: string) => parseInt(c.trim())) : [];
 
       const shouldAck = enabledChannels.includes(channelIndex);
       expect(shouldAck).toBe(false);
@@ -156,8 +154,6 @@ describe('MeshtasticManager - Auto-Acknowledge Channel Filtering', () => {
         if (key === 'autoAckDirectMessages') return 'true';
         return null;
       });
-
-      const isDirectMessage = true;
 
       const autoAckDirectMessages = mockGetSetting('autoAckDirectMessages');
       const dmEnabled = autoAckDirectMessages === 'true';
@@ -171,8 +167,6 @@ describe('MeshtasticManager - Auto-Acknowledge Channel Filtering', () => {
         if (key === 'autoAckDirectMessages') return 'false';
         return null;
       });
-
-      const isDirectMessage = true;
 
       const autoAckDirectMessages = mockGetSetting('autoAckDirectMessages');
       const dmEnabled = autoAckDirectMessages === 'true';
@@ -190,7 +184,7 @@ describe('MeshtasticManager - Auto-Acknowledge Channel Filtering', () => {
 
       const channelIndex = 0;
       const autoAckChannels = mockGetSetting('autoAckChannels');
-      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map(c => parseInt(c.trim())) : [];
+      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map((c: string) => parseInt(c.trim())) : [];
 
       expect(enabledChannels.includes(channelIndex)).toBe(true);
     });
@@ -203,7 +197,7 @@ describe('MeshtasticManager - Auto-Acknowledge Channel Filtering', () => {
 
       const channelIndex = 10;
       const autoAckChannels = mockGetSetting('autoAckChannels');
-      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map(c => parseInt(c.trim())) : [];
+      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map((c: string) => parseInt(c.trim())) : [];
 
       expect(enabledChannels.includes(channelIndex)).toBe(true);
     });
@@ -216,10 +210,9 @@ describe('MeshtasticManager - Auto-Acknowledge Channel Filtering', () => {
       });
 
       const channelIndex = 0;
-      const isDirectMessage = false;
 
       const autoAckChannels = mockGetSetting('autoAckChannels');
-      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map(c => parseInt(c.trim())).filter(c => !isNaN(c)) : [];
+      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map((c: string) => parseInt(c.trim())).filter((c: number) => !isNaN(c)) : [];
 
       expect(enabledChannels.includes(channelIndex)).toBe(false);
     });
@@ -232,7 +225,7 @@ describe('MeshtasticManager - Auto-Acknowledge Channel Filtering', () => {
       });
 
       const autoAckChannels = mockGetSetting('autoAckChannels');
-      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map(c => parseInt(c.trim())) : [];
+      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map((c: string) => parseInt(c.trim())) : [];
       const autoAckDirectMessages = mockGetSetting('autoAckDirectMessages');
       const dmEnabled = autoAckDirectMessages === 'true';
 
@@ -248,7 +241,7 @@ describe('MeshtasticManager - Auto-Acknowledge Channel Filtering', () => {
 
       const channelIndex = -1;
       const autoAckChannels = mockGetSetting('autoAckChannels');
-      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map(c => parseInt(c.trim())) : [];
+      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map((c: string) => parseInt(c.trim())) : [];
 
       expect(enabledChannels.includes(channelIndex)).toBe(false);
     });
@@ -260,7 +253,7 @@ describe('MeshtasticManager - Auto-Acknowledge Channel Filtering', () => {
       });
 
       const autoAckChannels = mockGetSetting('autoAckChannels');
-      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map(c => parseInt(c.trim())).filter(c => !isNaN(c)) : [];
+      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map((c: string) => parseInt(c.trim())).filter((c: number) => !isNaN(c)) : [];
 
       // Should parse valid numbers and skip invalid
       expect(enabledChannels).toEqual([0, 2]);
@@ -282,7 +275,7 @@ describe('MeshtasticManager - Auto-Acknowledge Channel Filtering', () => {
       const messageText = 'test message';
 
       const autoAckChannels = mockGetSetting('autoAckChannels');
-      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map(c => parseInt(c.trim())) : [];
+      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map((c: string) => parseInt(c.trim())) : [];
 
       // Check channel eligibility
       const channelEligible = !isDirectMessage && enabledChannels.includes(channelIndex);
@@ -313,7 +306,7 @@ describe('MeshtasticManager - Auto-Acknowledge Channel Filtering', () => {
       const messageText = 'test message';
 
       const autoAckChannels = mockGetSetting('autoAckChannels');
-      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map(c => parseInt(c.trim())) : [];
+      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map((c: string) => parseInt(c.trim())) : [];
 
       // Check channel eligibility
       const channelEligible = !isDirectMessage && enabledChannels.includes(channelIndex);
@@ -398,7 +391,7 @@ describe('MeshtasticManager - Auto-Acknowledge Channel Filtering', () => {
       });
 
       const autoAckChannels = mockGetSetting('autoAckChannels');
-      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map(c => parseInt(c.trim())) : [];
+      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map((c: string) => parseInt(c.trim())) : [];
       const autoAckDirectMessages = mockGetSetting('autoAckDirectMessages');
       const dmEnabled = autoAckDirectMessages === 'true';
 
@@ -494,7 +487,7 @@ describe('MeshtasticManager - Auto-Acknowledge Channel Filtering', () => {
       });
 
       const autoAckChannels = mockGetSetting('autoAckChannels');
-      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map(c => parseInt(c.trim())) : [];
+      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map((c: string) => parseInt(c.trim())) : [];
 
       expect(enabledChannels).toEqual([]);
     });
