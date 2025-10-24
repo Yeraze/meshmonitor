@@ -3345,7 +3345,9 @@ class MeshtasticManager {
       const autoAckDirectMessages = databaseService.getSetting('autoAckDirectMessages');
 
       // Parse enabled channels (comma-separated list of channel indices)
-      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map(c => parseInt(c.trim())) : [];
+      const enabledChannels = autoAckChannels
+        ? autoAckChannels.split(',').map(c => parseInt(c.trim())).filter(n => !isNaN(n))
+        : [];
       const dmEnabled = autoAckDirectMessages === 'true';
 
       // Check if auto-ack is enabled for this channel/DM
@@ -3355,7 +3357,9 @@ class MeshtasticManager {
           return;
         }
       } else {
-        if (!enabledChannels.includes(channelIndex)) {
+        // Use Set for O(1) lookup performance
+        const enabledChannelsSet = new Set(enabledChannels);
+        if (!enabledChannelsSet.has(channelIndex)) {
           logger.debug(`⏭️  Skipping auto-acknowledge for channel ${channelIndex} (not in enabled channels)`);
           return;
         }

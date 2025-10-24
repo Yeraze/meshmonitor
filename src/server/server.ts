@@ -1401,6 +1401,16 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
       }
     }
 
+    // Validate autoAckChannels (channel indices must be 0-7)
+    if ('autoAckChannels' in filteredSettings) {
+      const channelList = filteredSettings.autoAckChannels.split(',');
+      const validChannels = channelList
+        .map(c => parseInt(c.trim()))
+        .filter(n => !isNaN(n) && n >= 0 && n < 8); // Max 8 channels in Meshtastic
+
+      filteredSettings.autoAckChannels = validChannels.join(',');
+    }
+
     // Save to database
     databaseService.setSettings(filteredSettings);
 
