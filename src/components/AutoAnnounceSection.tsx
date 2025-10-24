@@ -128,6 +128,27 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
     setLocalMessage(localMessage + token);
   };
 
+  // Generate sample message with example token values
+  const generateSampleMessage = (): string => {
+    let sample = localMessage;
+
+    // Replace with sample values
+    sample = sample.replace(/{VERSION}/g, '2.9.1');
+    sample = sample.replace(/{DURATION}/g, '3d 12h');
+
+    // Check which features would be shown
+    const sampleFeatures: string[] = [];
+    sampleFeatures.push('🗺️'); // Traceroute
+    sampleFeatures.push('🤖'); // Auto-ack
+    sampleFeatures.push('📢'); // Auto-announce
+    sample = sample.replace(/{FEATURES}/g, sampleFeatures.join(' '));
+
+    sample = sample.replace(/{NODECOUNT}/g, '42');
+    sample = sample.replace(/{DIRECTCOUNT}/g, '8');
+
+    return sample;
+  };
+
   const handleSendNow = async () => {
     setIsSendingNow(true);
     try {
@@ -400,6 +421,28 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
             >
               + {'{DIRECTCOUNT}'}
             </button>
+          </div>
+        </div>
+
+        <div className="setting-item" style={{ marginTop: '1rem' }}>
+          <label>
+            Sample Message Preview
+            <span className="setting-description">
+              Shows how your announcement will appear after token substitution (using example values)
+            </span>
+          </label>
+          <div style={{
+            padding: '0.75rem',
+            background: 'var(--ctp-surface0)',
+            border: '2px solid var(--ctp-blue)',
+            borderRadius: '4px',
+            fontFamily: 'monospace',
+            fontSize: '0.95rem',
+            color: 'var(--ctp-text)',
+            lineHeight: '1.5',
+            minHeight: '50px'
+          }}>
+            {generateSampleMessage()}
           </div>
         </div>
 

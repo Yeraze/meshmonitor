@@ -3340,6 +3340,27 @@ class MeshtasticManager {
         return;
       }
 
+      // Check channel-specific settings
+      const autoAckChannels = databaseService.getSetting('autoAckChannels');
+      const autoAckDirectMessages = databaseService.getSetting('autoAckDirectMessages');
+
+      // Parse enabled channels (comma-separated list of channel indices)
+      const enabledChannels = autoAckChannels ? autoAckChannels.split(',').map(c => parseInt(c.trim())) : [];
+      const dmEnabled = autoAckDirectMessages === 'true';
+
+      // Check if auto-ack is enabled for this channel/DM
+      if (isDirectMessage) {
+        if (!dmEnabled) {
+          logger.debug('⏭️  Skipping auto-acknowledge for direct message (DM auto-ack disabled)');
+          return;
+        }
+      } else {
+        if (!enabledChannels.includes(channelIndex)) {
+          logger.debug(`⏭️  Skipping auto-acknowledge for channel ${channelIndex} (not in enabled channels)`);
+          return;
+        }
+      }
+
       // Skip messages from our own locally connected node
       const localNodeNum = databaseService.getSetting('localNodeNum');
       if (localNodeNum && parseInt(localNodeNum) === fromNum) {

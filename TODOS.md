@@ -3,6 +3,15 @@
 ## In Progress
 
 ## Completed
+- Auto Acknowledge UI/UX improvements
+  - [x] Rearrange Auto Acknowledge Pattern Testing area with textarea and results side-by-side on desktop
+  - [x] Reduce vertical spacing of red/green bubble entries for better alignment
+  - [x] Add Sample Message Preview to Auto Announce section showing token substitution
+  - [x] Add channel-specific auto-acknowledge checkboxes to control which channels trigger auto-ack
+  - [x] Add Direct Messages checkbox for auto-acknowledge on DMs
+  - [x] Update backend to support channel-specific auto-ack settings (autoAckChannels, autoAckDirectMessages)
+  - [x] Update frontend AutoAcknowledgeSection component with channel checkboxes
+  - [x] Update UIContext and App.tsx to manage new state variables
 - Version 2.9.1 - Add Support MeshMonitor button to Settings page
   - [x] Add prominent "Support MeshMonitor" button with Ko-fi link to Settings header
   - [x] Style button as blue square with heart emoji and text

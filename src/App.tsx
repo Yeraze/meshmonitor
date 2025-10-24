@@ -269,6 +269,10 @@ function App() {
     setAutoAckEnabled,
     autoAckRegex,
     setAutoAckRegex,
+    autoAckChannels,
+    setAutoAckChannels,
+    autoAckDirectMessages,
+    setAutoAckDirectMessages,
     autoAnnounceEnabled,
     setAutoAnnounceEnabled,
     autoAnnounceIntervalHours,
@@ -526,6 +530,15 @@ function App() {
 
           if (settings.autoAckRegex) {
             setAutoAckRegex(settings.autoAckRegex);
+          }
+
+          if (settings.autoAckChannels) {
+            const channels = settings.autoAckChannels.split(',').map((c: string) => parseInt(c.trim())).filter((n: number) => !isNaN(n));
+            setAutoAckChannels(channels);
+          }
+
+          if (settings.autoAckDirectMessages !== undefined) {
+            setAutoAckDirectMessages(settings.autoAckDirectMessages === 'true');
           }
 
           if (settings.autoAnnounceEnabled !== undefined) {
@@ -3817,9 +3830,14 @@ function App() {
               <AutoAcknowledgeSection
                 enabled={autoAckEnabled}
                 regex={autoAckRegex}
+                channels={channels}
+                enabledChannels={autoAckChannels}
+                directMessagesEnabled={autoAckDirectMessages}
                 baseUrl={baseUrl}
                 onEnabledChange={setAutoAckEnabled}
                 onRegexChange={setAutoAckRegex}
+                onChannelsChange={setAutoAckChannels}
+                onDirectMessagesChange={setAutoAckDirectMessages}
               />
               <AutoAnnounceSection
                 enabled={autoAnnounceEnabled}
