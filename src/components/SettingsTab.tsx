@@ -340,6 +340,32 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         >
           ❓
         </a>
+        <a
+          href="https://ko-fi.com/yeraze"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            marginLeft: '0.5rem',
+            padding: '0.5rem 1rem',
+            fontSize: '1rem',
+            color: '#ffffff',
+            backgroundColor: '#89b4fa',
+            textDecoration: 'none',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            borderRadius: '6px',
+            fontWeight: '500',
+            transition: 'background-color 0.2s',
+            border: 'none',
+            cursor: 'pointer'
+          }}
+          title="Support MeshMonitor"
+          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#74a0e0'}
+          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#89b4fa'}
+        >
+          ❤️ Support MeshMonitor
+        </a>
       </div>
       <div className="settings-content">
         <div className="settings-section">
