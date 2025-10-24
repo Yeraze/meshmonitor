@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import apiService from '../services/api';
 import { useToast } from './ToastContainer';
-import type { DeviceInfo } from '../types/device';
+import type { DeviceInfo, Channel } from '../types/device';
 import { logger } from '../utils/logger';
 import NodeIdentitySection from './configuration/NodeIdentitySection';
 import DeviceConfigSection from './configuration/DeviceConfigSection';
@@ -9,16 +9,21 @@ import LoRaConfigSection from './configuration/LoRaConfigSection';
 import PositionConfigSection from './configuration/PositionConfigSection';
 import MQTTConfigSection from './configuration/MQTTConfigSection';
 import NeighborInfoSection from './configuration/NeighborInfoSection';
+import ChannelsConfigSection from './configuration/ChannelsConfigSection';
+import { ImportConfigModal } from './configuration/ImportConfigModal';
+import { ExportConfigModal } from './configuration/ExportConfigModal';
 import { ROLE_MAP, PRESET_MAP, REGION_MAP } from './configuration/constants';
 
 interface ConfigurationTabProps {
   baseUrl?: string; // Optional, not used in component but passed from App.tsx
   nodes?: DeviceInfo[]; // Pass nodes from App to avoid separate API call
+  channels?: Channel[]; // Pass channels from App
   onRebootDevice?: () => Promise<boolean>;
   onConfigChangeTriggeringReboot?: () => void;
+  onChannelsUpdated?: () => void; // Callback when channels are updated
 }
 
-const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, onRebootDevice, onConfigChangeTriggeringReboot }) => {
+const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [], onRebootDevice, onConfigChangeTriggeringReboot, onChannelsUpdated }) => {
   const { showToast } = useToast();
 
   // Device Config State
@@ -32,6 +37,8 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, onRebootDevi
   const [modemPreset, setModemPreset] = useState<number>(0);
   const [region, setRegion] = useState<number>(0);
   const [hopLimit, setHopLimit] = useState<number>(3);
+  const [channelNum, setChannelNum] = useState<number>(0);
+  const [sx126xRxBoostedGain, setSx126xRxBoostedGain] = useState<boolean>(false);
 
   // Position Config State
   const [positionBroadcastSecs, setPositionBroadcastSecs] = useState(900);
@@ -58,6 +65,10 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, onRebootDevi
   const [isSaving, setIsSaving] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+
+  // Import/Export Modal State
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
   // Fetch current configuration on mount (run once only)
   useEffect(() => {
@@ -104,6 +115,12 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, onRebootDevi
           }
           if (config.deviceConfig.lora.hopLimit !== undefined) {
             setHopLimit(config.deviceConfig.lora.hopLimit);
+          }
+          if (config.deviceConfig.lora.channelNum !== undefined) {
+            setChannelNum(config.deviceConfig.lora.channelNum);
+          }
+          if (config.deviceConfig.lora.sx126xRxBoostedGain !== undefined) {
+            setSx126xRxBoostedGain(config.deviceConfig.lora.sx126xRxBoostedGain);
           }
         }
 
@@ -247,7 +264,9 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, onRebootDevi
         usePreset,
         modemPreset,
         region,
-        hopLimit: validHopLimit
+        hopLimit: validHopLimit,
+        channelNum,
+        sx126xRxBoostedGain
       });
       setStatusMessage('LoRa configuration saved successfully! Device will reboot...');
       showToast('LoRa configuration saved! Device will reboot...', 'success');
@@ -448,6 +467,47 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, onRebootDevi
         </div>
       </div>
 
+      {/* Import/Export Configuration Section */}
+      <div className="settings-section" style={{ marginBottom: '2rem' }}>
+        <h3>Configuration Import/Export</h3>
+        <p style={{ color: 'var(--ctp-subtext0)', marginBottom: '1rem' }}>
+          Import or export channel configurations and device settings in Meshtastic URL format.
+          These URLs are compatible with the official Meshtastic apps.
+        </p>
+        <div style={{ display: 'flex', gap: '1rem' }}>
+          <button
+            onClick={() => setIsImportModalOpen(true)}
+            style={{
+              backgroundColor: 'var(--ctp-blue)',
+              color: '#fff',
+              padding: '0.75rem 1.5rem',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '1rem',
+              fontWeight: 'bold'
+            }}
+          >
+            📥 Import Configuration
+          </button>
+          <button
+            onClick={() => setIsExportModalOpen(true)}
+            style={{
+              backgroundColor: 'var(--ctp-green)',
+              color: '#fff',
+              padding: '0.75rem 1.5rem',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '1rem',
+              fontWeight: 'bold'
+            }}
+          >
+            📤 Export Configuration
+          </button>
+        </div>
+      </div>
+
       {statusMessage && (
         <div
           className={statusMessage.startsWith('Error') ? 'error-message' : 'success-message'}
@@ -492,6 +552,10 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, onRebootDevi
           setRegion={setRegion}
           hopLimit={hopLimit}
           setHopLimit={setHopLimit}
+          channelNum={channelNum}
+          setChannelNum={setChannelNum}
+          sx126xRxBoostedGain={sx126xRxBoostedGain}
+          setSx126xRxBoostedGain={setSx126xRxBoostedGain}
           isSaving={isSaving}
           onSave={handleSaveLoRaConfig}
         />
@@ -540,7 +604,36 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, onRebootDevi
           isSaving={isSaving}
           onSave={handleSaveNeighborInfoConfig}
         />
+
+        <ChannelsConfigSection
+          channels={channels}
+          onChannelsUpdated={onChannelsUpdated}
+        />
       </div>
+
+      {/* Import/Export Modals */}
+      <ImportConfigModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onImportSuccess={() => {
+          showToast('Configuration imported successfully', 'success');
+          if (onChannelsUpdated) onChannelsUpdated();
+        }}
+      />
+
+      <ExportConfigModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        channels={channels}
+        deviceConfig={{
+          lora: {
+            usePreset,
+            modemPreset,
+            region,
+            hopLimit
+          }
+        }}
+      />
     </div>
   );
 };

@@ -6,10 +6,14 @@ interface LoRaConfigSectionProps {
   modemPreset: number;
   region: number;
   hopLimit: number;
+  channelNum: number;
+  sx126xRxBoostedGain: boolean;
   setUsePreset: (value: boolean) => void;
   setModemPreset: (value: number) => void;
   setRegion: (value: number) => void;
   setHopLimit: (value: number) => void;
+  setChannelNum: (value: number) => void;
+  setSx126xRxBoostedGain: (value: boolean) => void;
   isSaving: boolean;
   onSave: () => Promise<void>;
 }
@@ -19,10 +23,14 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
   modemPreset,
   region,
   hopLimit,
+  channelNum,
+  sx126xRxBoostedGain,
   setUsePreset,
   setModemPreset,
   setRegion,
   setHopLimit,
+  setChannelNum,
+  setSx126xRxBoostedGain,
   isSaving,
   onSave
 }) => {
@@ -184,6 +192,36 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
           onChange={(e) => setHopLimit(parseInt(e.target.value))}
           className="setting-input"
         />
+      </div>
+      <div className="setting-item">
+        <label htmlFor="channelNum">
+          Channel Number
+          <span className="setting-description">LoRa channel number for frequency hopping. Range: 0-255 (default: 0)</span>
+        </label>
+        <input
+          id="channelNum"
+          type="number"
+          min="0"
+          max="255"
+          value={channelNum}
+          onChange={(e) => setChannelNum(parseInt(e.target.value))}
+          className="setting-input"
+        />
+      </div>
+      <div className="setting-item">
+        <label htmlFor="sx126xRxBoostedGain" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+          <input
+            id="sx126xRxBoostedGain"
+            type="checkbox"
+            checked={sx126xRxBoostedGain}
+            onChange={(e) => setSx126xRxBoostedGain(e.target.checked)}
+            style={{ marginTop: '0.2rem', flexShrink: 0 }}
+          />
+          <div style={{ flex: 1 }}>
+            <div>RX Boosted Gain (SX126x)</div>
+            <span className="setting-description">Enable boosted receive gain for SX126x radios (improves sensitivity but increases power consumption)</span>
+          </div>
+        </label>
       </div>
       <button
         className="save-button"

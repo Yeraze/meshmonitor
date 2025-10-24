@@ -348,6 +348,122 @@ class ApiService {
     return data.channels || [];
   }
 
+  async getAllChannels(): Promise<Channel[]> {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/channels/all`);
+    if (!response.ok) throw new Error('Failed to fetch all channels');
+    return response.json();
+  }
+
+  async updateChannel(channelId: number, channelData: {
+    name: string;
+    psk?: string;
+    role?: number;
+    uplinkEnabled?: boolean;
+    downlinkEnabled?: boolean;
+    positionPrecision?: number;
+  }): Promise<Channel> {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/channels/${channelId}`, {
+      method: 'PUT',
+      headers: this.getHeadersWithCsrf(),
+      credentials: 'include',
+      body: JSON.stringify(channelData),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to update channel');
+    }
+
+    const result = await response.json();
+    return result.channel;
+  }
+
+  async exportChannel(channelId: number): Promise<void> {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/channels/${channelId}/export`, {
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to export channel');
+    }
+
+    // Get filename from Content-Disposition header or create default
+    const contentDisposition = response.headers.get('Content-Disposition');
+    let filename = `channel-${channelId}-${Date.now()}.json`;
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+      if (filenameMatch) {
+        filename = filenameMatch[1];
+      }
+    }
+
+    // Download the file
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  }
+
+  async importChannel(slotId: number, channelData: any): Promise<Channel> {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/channels/${slotId}/import`, {
+      method: 'POST',
+      headers: this.getHeadersWithCsrf(),
+      credentials: 'include',
+      body: JSON.stringify({ channel: channelData }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to import channel');
+    }
+
+    const result = await response.json();
+    return result.channel;
+  }
+
+  async decodeChannelUrl(url: string): Promise<any> {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/channels/decode-url`, {
+      method: 'POST',
+      headers: this.getHeadersWithCsrf(),
+      body: JSON.stringify({ url }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to decode channel URL');
+    }
+
+    return response.json();
+  }
+
+  async encodeChannelUrl(channelIds: number[], includeLoraConfig: boolean): Promise<string> {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/channels/encode-url`, {
+      method: 'POST',
+      headers: this.getHeadersWithCsrf(),
+      body: JSON.stringify({ channelIds, includeLoraConfig }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to encode channel URL');
+    }
+
+    const result = await response.json();
+    return result.url;
+  }
+
   async getMessages(limit: number = 100): Promise<MeshMessage[]> {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/messages?limit=${limit}`);

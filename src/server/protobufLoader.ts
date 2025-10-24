@@ -36,6 +36,11 @@ export async function loadProtobufDefinitions(): Promise<protobuf.Root> {
     await root.load(adminProtoPath);
     logger.debug('✅ Loaded admin.proto for AdminMessage support');
 
+    // Load apponly.proto for ChannelSet support (used for import/export URLs)
+    const apponlyProtoPath = path.join(protoRoot, 'meshtastic/apponly.proto');
+    await root.load(apponlyProtoPath);
+    logger.debug('✅ Loaded apponly.proto for ChannelSet support');
+
     logger.debug('✅ Successfully loaded Meshtastic protobuf definitions');
     return root;
   } catch (error) {
