@@ -192,8 +192,7 @@ class DatabaseService {
     this.permissionModel = new PermissionModel(this.db);
 
     this.initialize();
-    // Always ensure Primary channel exists, even if database already initialized
-    this.ensurePrimaryChannel();
+    // Channel 0 will be created automatically when the device syncs its configuration
     // Always ensure broadcast node exists for channel messages
     this.ensureBroadcastNode();
     // Ensure admin user exists for authentication
@@ -506,27 +505,6 @@ class DatabaseService {
     }
   }
 
-  private ensurePrimaryChannel(): void {
-    logger.debug('🔍 ensurePrimaryChannel() called');
-    try {
-      const existingChannel0 = this.getChannelById(0);
-      logger.debug('🔍 getChannelById(0) returned:', existingChannel0);
-
-      if (!existingChannel0) {
-        logger.debug('🔍 No channel 0 found, calling upsertChannel with id: 0, name: Primary');
-        this.upsertChannel({ id: 0, name: 'Primary' });
-
-        // Verify it was created
-        const verify = this.getChannelById(0);
-        logger.debug('🔍 After upsert, getChannelById(0) returns:', verify);
-      } else {
-        logger.debug(`✅ Channel 0 already exists: ${existingChannel0.name}`);
-      }
-    } catch (error) {
-      logger.error('❌ Error in ensurePrimaryChannel:', error);
-    }
-  }
-
   private ensureBroadcastNode(): void {
     logger.debug('🔍 ensureBroadcastNode() called');
     try {
@@ -689,18 +667,8 @@ class DatabaseService {
       );
     `);
 
-    // Insert Primary channel with ID 0 if it doesn't exist
-    const now = Date.now();
-    try {
-      const stmt = this.db.prepare(`
-        INSERT OR IGNORE INTO channels (id, name, uplinkEnabled, downlinkEnabled, createdAt, updatedAt)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `);
-      const result = stmt.run(0, 'Primary', 1, 1, now, now);
-      logger.debug('✅ Primary channel INSERT result:', result);
-    } catch (error) {
-      logger.error('❌ Error inserting Primary channel:', error);
-    }
+    // Channel 0 (Primary) will be created automatically when device config syncs
+    // It should have an empty name as per Meshtastic protocol
 
     logger.debug('Database tables created successfully');
   }
@@ -1369,24 +1337,25 @@ class DatabaseService {
   upsertChannel(channelData: { id?: number; name: string; psk?: string; role?: number; uplinkEnabled?: boolean; downlinkEnabled?: boolean; positionPrecision?: number }): void {
     const now = Date.now();
 
-    logger.debug(`📝 upsertChannel called with:`, JSON.stringify(channelData));
+    logger.info(`📝 upsertChannel called with ID: ${channelData.id}, name: "${channelData.name}" (length: ${channelData.name.length})`);
 
     let existingChannel: DbChannel | null = null;
 
     // If we have an ID, check by ID FIRST (to support creating channel 0 even if "Primary" exists elsewhere)
     if (channelData.id !== undefined) {
       existingChannel = this.getChannelById(channelData.id);
-      logger.debug(`📝 getChannelById(${channelData.id}) returned:`, existingChannel);
+      logger.info(`📝 getChannelById(${channelData.id}) returned: ${existingChannel ? `"${existingChannel.name}"` : 'null'}`);
     }
 
     // Only check by name if we didn't find a channel by ID
     if (!existingChannel) {
       existingChannel = this.getChannelByName(channelData.name);
-      logger.debug(`📝 getChannelByName(${channelData.name}) returned:`, existingChannel);
+      logger.info(`📝 getChannelByName("${channelData.name}") returned: ${existingChannel ? `ID ${existingChannel.id}` : 'null'}`);
     }
 
     if (existingChannel) {
       // Update existing channel (by name match or ID match)
+      logger.info(`📝 Updating channel ${existingChannel.id} from "${existingChannel.name}" to "${channelData.name}"`);
       const stmt = this.db.prepare(`
         UPDATE channels SET
           name = ?,
@@ -1398,7 +1367,7 @@ class DatabaseService {
           updatedAt = ?
         WHERE id = ?
       `);
-      stmt.run(
+      const result = stmt.run(
         channelData.name,
         channelData.psk,
         channelData.role !== undefined ? channelData.role : null,
@@ -1408,7 +1377,7 @@ class DatabaseService {
         now,
         existingChannel.id
       );
-      logger.debug(`Updated channel: ${channelData.name} (ID: ${existingChannel.id})`);
+      logger.info(`✅ Updated channel ${existingChannel.id}, changes: ${result.changes}`);
     } else {
       // Create new channel
       logger.debug(`📝 Creating new channel with ID: ${channelData.id !== undefined ? channelData.id : null}`);
@@ -1440,6 +1409,9 @@ class DatabaseService {
   getChannelById(id: number): DbChannel | null {
     const stmt = this.db.prepare('SELECT * FROM channels WHERE id = ?');
     const channel = stmt.get(id) as DbChannel | null;
+    if (id === 0) {
+      logger.info(`🔍 getChannelById(0) - RAW from DB: ${channel ? `name="${channel.name}" (length: ${channel.name?.length || 0})` : 'null'}`);
+    }
     return channel ? this.normalizeBigInts(channel) : null;
   }
 

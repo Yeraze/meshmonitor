@@ -705,69 +705,18 @@ apiRouter.get('/channels', requirePermission('channels', 'read'), (_req, res) =>
   try {
     const allChannels = databaseService.getAllChannels();
 
-    // Ensure Primary channel exists and is properly named
-    // Look for existing channels that should be Primary (Channel 0 or Primary)
-    const primaryChannels = allChannels.filter(ch => ch.name === 'Primary' || ch.name === 'Channel 0');
-
-    if (primaryChannels.length === 0) {
-      // Create a new primary channel with ID 0 if none exists
-      // ID 0 is the default Meshtastic channel index
-      const newPrimary = {
-        id: 0,
-        name: 'Primary',
-        psk: undefined
-      };
-      try {
-        databaseService.upsertChannel(newPrimary);
-        logger.debug('📡 Created missing Primary channel with ID 0');
-      } catch (error) {
-        logger.error('❌ Failed to create Primary channel:', error);
-      }
-    } else if (primaryChannels.length === 1) {
-      // Single channel - rename if needed
-      const primaryChannel = primaryChannels[0];
-      if (primaryChannel.name === 'Channel 0') {
-        try {
-          const updatedChannel = { ...primaryChannel, name: 'Primary' };
-          databaseService.upsertChannel(updatedChannel);
-          primaryChannel.name = 'Primary'; // Update in memory
-          logger.debug('📡 Renamed "Channel 0" to "Primary"');
-        } catch (error) {
-          logger.error('❌ Failed to rename channel to Primary:', error);
-        }
-      }
-    } else {
-      // Multiple Primary channels - keep the older one, remove newer duplicates
-      const sortedPrimary = primaryChannels.sort((a, b) => a.createdAt - b.createdAt);
-      const keepChannel = sortedPrimary[0];
-      const removeChannels = sortedPrimary.slice(1);
-
-      // Rename the keeper if needed
-      if (keepChannel.name === 'Channel 0') {
-        try {
-          const updatedChannel = { ...keepChannel, name: 'Primary' };
-          databaseService.upsertChannel(updatedChannel);
-          keepChannel.name = 'Primary';
-          logger.debug('📡 Renamed primary channel to "Primary"');
-        } catch (error) {
-          logger.error('❌ Failed to rename primary channel:', error);
-        }
-      }
-
-      // Remove duplicates by filtering them out from the allChannels array
-      for (const duplicate of removeChannels) {
-        const index = allChannels.findIndex(ch => ch.id === duplicate.id);
-        if (index > -1) {
-          allChannels.splice(index, 1);
-          logger.debug(`📡 Removed duplicate Primary channel (id=${duplicate.id})`);
-        }
-      }
-    }
+    // Channel 0 will be created automatically when device config syncs
+    // It should have an empty name as per Meshtastic protocol
 
     // Filter channels to only show meaningful ones
     const filteredChannels = allChannels.filter(channel => {
-      // Always show Primary and telemetry by name
-      if (channel.name === 'Primary' || channel.name === 'telemetry') {
+      // Always show channel 0 (Primary channel - should have empty name)
+      if (channel.id === 0) {
+        return true;
+      }
+
+      // Always show telemetry channel
+      if (channel.name === 'telemetry') {
         return true;
       }
 
@@ -776,10 +725,10 @@ apiRouter.get('/channels', requirePermission('channels', 'read'), (_req, res) =>
         return true;
       }
 
-      // For generic "Channel X" names, only show if they're likely to be active
+      // For generic "Channel X" names, only show if they're likely to be active (channels 1-3)
       if (channel.name && channel.name.match(/^Channel \d+$/)) {
         const channelNumber = parseInt(channel.name.replace('Channel ', ''));
-        return channelNumber <= 3; // Only show Channel 1, 2, 3 (Channel 0 is now Primary)
+        return channelNumber >= 1 && channelNumber <= 3;
       }
 
       return false;
@@ -1012,13 +961,16 @@ apiRouter.post('/channels/encode-url', requirePermission('configuration', 'read'
     const channels = channelIds
       .map((id: number) => databaseService.getChannelById(id))
       .filter((ch): ch is NonNullable<typeof ch> => ch !== null)
-      .map(ch => ({
-        psk: ch.psk ? ch.psk : 'none',
-        name: ch.name, // Use the actual name from database (preserved from device)
-        uplinkEnabled: ch.uplinkEnabled,
-        downlinkEnabled: ch.downlinkEnabled,
-        positionPrecision: ch.positionPrecision
-      }));
+      .map(ch => {
+        logger.info(`📡 Channel ${ch.id} from DB - name: "${ch.name}" (length: ${ch.name.length})`);
+        return {
+          psk: ch.psk ? ch.psk : 'none',
+          name: ch.name, // Use the actual name from database (preserved from device)
+          uplinkEnabled: ch.uplinkEnabled,
+          downlinkEnabled: ch.downlinkEnabled,
+          positionPrecision: ch.positionPrecision
+        };
+      });
 
     if (channels.length === 0) {
       return res.status(400).json({ error: 'No valid channels selected' });

@@ -153,8 +153,7 @@ class MeshtasticManager {
 
       // Give the node a moment to send initial config, then do basic setup
       setTimeout(async () => {
-        // Ensure we have a Primary channel
-        this.ensurePrimaryChannel();
+        // Channel 0 will be created automatically when device config syncs
 
         // If localNodeInfo wasn't set during configuration, initialize it from database
         if (!this.localNodeInfo) {
@@ -693,6 +692,7 @@ class MeshtasticManager {
           const positionPrecision = channel.settings.moduleSettings?.positionPrecision;
 
           logger.info(`📡 Saving channel ${channel.index} (${displayName}) - role: ${channel.role}, positionPrecision: ${positionPrecision}`);
+          logger.info(`📡 Database will store name as: "${channelName}" (length: ${channelName.length})`);
 
           databaseService.upsertChannel({
             id: channel.index,
@@ -975,12 +975,12 @@ class MeshtasticManager {
         const isDirectMessage = toNum !== 4294967295;
         const channelIndex = isDirectMessage ? -1 : (meshPacket.channel !== undefined ? meshPacket.channel : 0);
 
-        // Ensure channel 0 (Primary) exists if this message uses it
+        // Ensure channel 0 exists if this message uses it
         if (!isDirectMessage && channelIndex === 0) {
           const channel0 = databaseService.getChannelById(0);
           if (!channel0) {
-            logger.debug('📡 Creating Primary channel (ID 0) for message with channel=0');
-            databaseService.upsertChannel({ id: 0, name: 'Primary' });
+            logger.debug('📡 Creating channel 0 for message (name will be set when device config syncs)');
+            databaseService.upsertChannel({ id: 0, name: '' });
           }
         }
 
@@ -2099,22 +2099,6 @@ class MeshtasticManager {
     }
 
     return null;
-  }
-
-  private ensurePrimaryChannel(): void {
-    logger.debug('🔍 Checking for Primary channel (ID 0)...');
-    const channel0 = databaseService.getChannelById(0);
-    logger.debug('🔍 getChannelById(0) result:', channel0);
-    if (!channel0) {
-      logger.debug('📡 Creating Primary channel (ID 0)');
-      databaseService.upsertChannel({
-        id: 0,
-        name: 'Primary'
-      });
-      logger.debug('✅ Primary channel created');
-    } else {
-      logger.debug('✅ Primary channel already exists');
-    }
   }
 
   private saveChannelsToDatabase(channelNames: string[]): void {
