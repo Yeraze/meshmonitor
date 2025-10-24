@@ -3860,8 +3860,10 @@ function App() {
           <ConfigurationTab
             baseUrl={baseUrl}
             nodes={nodes}
+            channels={channels}
             onRebootDevice={handleRebootDevice}
             onConfigChangeTriggeringReboot={handleConfigChangeTriggeringReboot}
+            onChannelsUpdated={() => fetchChannels()}
           />
         )}
         {activeTab === 'notifications' && <NotificationsTab isAdmin={authStatus?.user?.isAdmin || false} />}

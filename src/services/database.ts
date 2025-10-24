@@ -17,6 +17,7 @@ import { migration as pushSubscriptionsMigration } from '../server/migrations/00
 import { migration as notificationPreferencesMigration } from '../server/migrations/009_add_notification_preferences.js';
 import { migration as notifyOnEmojiMigration } from '../server/migrations/010_add_notify_on_emoji.js';
 import { migration as packetLogMigration } from '../server/migrations/011_add_packet_log.js';
+import { migration as channelRoleMigration } from '../server/migrations/012_add_channel_role_and_position.js';
 
 export interface DbNode {
   nodeNum: number;
@@ -71,8 +72,10 @@ export interface DbChannel {
   id: number;
   name: string;
   psk?: string;
+  role?: number; // 0=Disabled, 1=Primary, 2=Secondary
   uplinkEnabled: boolean;
   downlinkEnabled: boolean;
+  positionPrecision?: number; // Location precision bits (0-32)
   createdAt: number;
   updatedAt: number;
 }
@@ -189,8 +192,7 @@ class DatabaseService {
     this.permissionModel = new PermissionModel(this.db);
 
     this.initialize();
-    // Always ensure Primary channel exists, even if database already initialized
-    this.ensurePrimaryChannel();
+    // Channel 0 will be created automatically when the device syncs its configuration
     // Always ensure broadcast node exists for channel messages
     this.ensureBroadcastNode();
     // Ensure admin user exists for authentication
@@ -215,6 +217,7 @@ class DatabaseService {
     this.runNotificationPreferencesMigration();
     this.runNotifyOnEmojiMigration();
     this.runPacketLogMigration();
+    this.runChannelRoleMigration();
     this.ensureAutomationDefaults();
     this.isInitialized = true;
   }
@@ -482,24 +485,23 @@ class DatabaseService {
     }
   }
 
-  private ensurePrimaryChannel(): void {
-    logger.debug('🔍 ensurePrimaryChannel() called');
+  private runChannelRoleMigration(): void {
     try {
-      const existingChannel0 = this.getChannelById(0);
-      logger.debug('🔍 getChannelById(0) returned:', existingChannel0);
+      const migrationKey = 'migration_012_channel_role';
+      const migrationCompleted = this.getSetting(migrationKey);
 
-      if (!existingChannel0) {
-        logger.debug('🔍 No channel 0 found, calling upsertChannel with id: 0, name: Primary');
-        this.upsertChannel({ id: 0, name: 'Primary' });
-
-        // Verify it was created
-        const verify = this.getChannelById(0);
-        logger.debug('🔍 After upsert, getChannelById(0) returns:', verify);
-      } else {
-        logger.debug(`✅ Channel 0 already exists: ${existingChannel0.name}`);
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Channel role migration already completed');
+        return;
       }
+
+      logger.debug('Running migration 012: Add channel role and position precision...');
+      channelRoleMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Channel role migration completed successfully');
     } catch (error) {
-      logger.error('❌ Error in ensurePrimaryChannel:', error);
+      logger.error('❌ Failed to run channel role migration:', error);
+      throw error;
     }
   }
 
@@ -665,18 +667,8 @@ class DatabaseService {
       );
     `);
 
-    // Insert Primary channel with ID 0 if it doesn't exist
-    const now = Date.now();
-    try {
-      const stmt = this.db.prepare(`
-        INSERT OR IGNORE INTO channels (id, name, uplinkEnabled, downlinkEnabled, createdAt, updatedAt)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `);
-      const result = stmt.run(0, 'Primary', 1, 1, now, now);
-      logger.debug('✅ Primary channel INSERT result:', result);
-    } catch (error) {
-      logger.error('❌ Error inserting Primary channel:', error);
-    }
+    // Channel 0 (Primary) will be created automatically when device config syncs
+    // It should have an empty name as per Meshtastic protocol
 
     logger.debug('Database tables created successfully');
   }
@@ -1342,58 +1334,65 @@ class DatabaseService {
   }
 
   // Channel operations
-  upsertChannel(channelData: { id?: number; name: string; psk?: string; uplinkEnabled?: boolean; downlinkEnabled?: boolean }): void {
+  upsertChannel(channelData: { id?: number; name: string; psk?: string; role?: number; uplinkEnabled?: boolean; downlinkEnabled?: boolean; positionPrecision?: number }): void {
     const now = Date.now();
 
-    logger.debug(`📝 upsertChannel called with:`, JSON.stringify(channelData));
+    logger.info(`📝 upsertChannel called with ID: ${channelData.id}, name: "${channelData.name}" (length: ${channelData.name.length})`);
 
     let existingChannel: DbChannel | null = null;
 
     // If we have an ID, check by ID FIRST (to support creating channel 0 even if "Primary" exists elsewhere)
     if (channelData.id !== undefined) {
       existingChannel = this.getChannelById(channelData.id);
-      logger.debug(`📝 getChannelById(${channelData.id}) returned:`, existingChannel);
+      logger.info(`📝 getChannelById(${channelData.id}) returned: ${existingChannel ? `"${existingChannel.name}"` : 'null'}`);
     }
 
     // Only check by name if we didn't find a channel by ID
     if (!existingChannel) {
       existingChannel = this.getChannelByName(channelData.name);
-      logger.debug(`📝 getChannelByName(${channelData.name}) returned:`, existingChannel);
+      logger.info(`📝 getChannelByName("${channelData.name}") returned: ${existingChannel ? `ID ${existingChannel.id}` : 'null'}`);
     }
 
     if (existingChannel) {
       // Update existing channel (by name match or ID match)
+      logger.info(`📝 Updating channel ${existingChannel.id} from "${existingChannel.name}" to "${channelData.name}"`);
       const stmt = this.db.prepare(`
         UPDATE channels SET
           name = ?,
           psk = COALESCE(?, psk),
+          role = COALESCE(?, role),
           uplinkEnabled = COALESCE(?, uplinkEnabled),
           downlinkEnabled = COALESCE(?, downlinkEnabled),
+          positionPrecision = COALESCE(?, positionPrecision),
           updatedAt = ?
         WHERE id = ?
       `);
-      stmt.run(
+      const result = stmt.run(
         channelData.name,
         channelData.psk,
+        channelData.role !== undefined ? channelData.role : null,
         channelData.uplinkEnabled !== undefined ? (channelData.uplinkEnabled ? 1 : 0) : null,
         channelData.downlinkEnabled !== undefined ? (channelData.downlinkEnabled ? 1 : 0) : null,
+        channelData.positionPrecision !== undefined ? channelData.positionPrecision : null,
         now,
         existingChannel.id
       );
-      logger.debug(`Updated channel: ${channelData.name} (ID: ${existingChannel.id})`);
+      logger.info(`✅ Updated channel ${existingChannel.id}, changes: ${result.changes}`);
     } else {
       // Create new channel
       logger.debug(`📝 Creating new channel with ID: ${channelData.id !== undefined ? channelData.id : null}`);
       const stmt = this.db.prepare(`
-        INSERT INTO channels (id, name, psk, uplinkEnabled, downlinkEnabled, createdAt, updatedAt)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO channels (id, name, psk, role, uplinkEnabled, downlinkEnabled, positionPrecision, createdAt, updatedAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       const result = stmt.run(
         channelData.id !== undefined ? channelData.id : null,
         channelData.name,
         channelData.psk || null,
+        channelData.role !== undefined ? channelData.role : null,
         channelData.uplinkEnabled !== undefined ? (channelData.uplinkEnabled ? 1 : 0) : 1,
         channelData.downlinkEnabled !== undefined ? (channelData.downlinkEnabled ? 1 : 0) : 1,
+        channelData.positionPrecision !== undefined ? channelData.positionPrecision : null,
         now,
         now
       );
@@ -1410,6 +1409,9 @@ class DatabaseService {
   getChannelById(id: number): DbChannel | null {
     const stmt = this.db.prepare('SELECT * FROM channels WHERE id = ?');
     const channel = stmt.get(id) as DbChannel | null;
+    if (id === 0) {
+      logger.info(`🔍 getChannelById(0) - RAW from DB: ${channel ? `name="${channel.name}" (length: ${channel.name?.length || 0})` : 'null'}`);
+    }
     return channel ? this.normalizeBigInts(channel) : null;
   }
 

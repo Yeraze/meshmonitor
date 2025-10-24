@@ -32,8 +32,10 @@ export interface Channel {
   id: number
   name: string
   psk?: string
+  role?: number // 0=Disabled, 1=Primary, 2=Secondary
   uplinkEnabled: boolean
   downlinkEnabled: boolean
+  positionPrecision?: number // Location precision bits (0-32)
   createdAt: number
   updatedAt: number
 }

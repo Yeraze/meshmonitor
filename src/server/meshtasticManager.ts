@@ -140,10 +140,20 @@ class MeshtasticManager {
       // Note: With TCP, we don't need to poll - messages arrive via events
       // The configuration will come in automatically as the node sends it
 
+      // Explicitly request LoRa config (config type 5) for Configuration tab
+      // Give the device a moment to process want_config_id first
+      setTimeout(async () => {
+        try {
+          logger.info('📡 Requesting LoRa config from device...');
+          await this.requestConfig(5); // LORA_CONFIG = 5
+        } catch (error) {
+          logger.error('❌ Failed to request LoRa config:', error);
+        }
+      }, 2000);
+
       // Give the node a moment to send initial config, then do basic setup
       setTimeout(async () => {
-        // Ensure we have a Primary channel
-        this.ensurePrimaryChannel();
+        // Channel 0 will be created automatically when device config syncs
 
         // If localNodeInfo wasn't set during configuration, initialize it from database
         if (!this.localNodeInfo) {
@@ -424,15 +434,20 @@ class MeshtasticManager {
           await this.processDeviceMetadata(parsed.data);
           break;
         case 'config':
+          logger.info('⚙️ Received Config with keys:', Object.keys(parsed.data));
           logger.debug('⚙️ Received Config:', JSON.stringify(parsed.data, null, 2));
           // Merge the actual device configuration (don't overwrite)
           this.actualDeviceConfig = { ...this.actualDeviceConfig, ...parsed.data };
+          logger.info('📊 Merged actualDeviceConfig now has keys:', Object.keys(this.actualDeviceConfig));
+          logger.info('📊 actualDeviceConfig.lora present:', !!this.actualDeviceConfig?.lora);
           logger.debug('📊 Merged actualDeviceConfig now has:', Object.keys(this.actualDeviceConfig));
           break;
         case 'moduleConfig':
+          logger.info('⚙️ Received Module Config with keys:', Object.keys(parsed.data));
           logger.debug('⚙️ Received Module Config:', JSON.stringify(parsed.data, null, 2));
           // Merge the actual module configuration (don't overwrite)
           this.actualModuleConfig = { ...this.actualModuleConfig, ...parsed.data };
+          logger.info('📊 Merged actualModuleConfig now has keys:', Object.keys(this.actualModuleConfig));
           break;
         case 'channel':
           await this.processChannelProtobuf(parsed.data);
@@ -644,13 +659,17 @@ class MeshtasticManager {
       name: channel.settings?.name,
       hasPsk: !!channel.settings?.psk,
       uplinkEnabled: channel.settings?.uplinkEnabled,
-      downlinkEnabled: channel.settings?.downlinkEnabled
+      downlinkEnabled: channel.settings?.downlinkEnabled,
+      positionPrecision: channel.settings?.moduleSettings?.positionPrecision,
+      hasModuleSettings: !!channel.settings?.moduleSettings
     });
 
     if (channel.settings) {
       // Only save channels that are actually configured and useful
-      const channelName = channel.settings.name || `Channel ${channel.index}`;
-      const hasValidConfig = channel.settings.name ||
+      // Preserve the actual name from device (including empty strings for Channel 0)
+      const channelName = channel.settings.name !== undefined ? channel.settings.name : `Channel ${channel.index}`;
+      const displayName = channelName || `Channel ${channel.index}`; // For logging only
+      const hasValidConfig = channel.settings.name !== undefined ||
                             channel.settings.psk ||
                             channel.role === 1 || // PRIMARY role
                             channel.role === 2 || // SECONDARY role
@@ -664,19 +683,27 @@ class MeshtasticManager {
             try {
               pskString = Buffer.from(channel.settings.psk).toString('base64');
             } catch (pskError) {
-              logger.warn(`⚠️  Failed to convert PSK to base64 for channel ${channel.index} (${channelName}):`, pskError);
+              logger.warn(`⚠️  Failed to convert PSK to base64 for channel ${channel.index} (${displayName}):`, pskError);
               pskString = undefined;
             }
           }
+
+          // Extract position precision from module settings if available
+          const positionPrecision = channel.settings.moduleSettings?.positionPrecision;
+
+          logger.info(`📡 Saving channel ${channel.index} (${displayName}) - role: ${channel.role}, positionPrecision: ${positionPrecision}`);
+          logger.info(`📡 Database will store name as: "${channelName}" (length: ${channelName.length})`);
 
           databaseService.upsertChannel({
             id: channel.index,
             name: channelName,
             psk: pskString,
+            role: channel.role !== undefined ? channel.role : undefined,
             uplinkEnabled: channel.settings.uplinkEnabled ?? true,
-            downlinkEnabled: channel.settings.downlinkEnabled ?? true
+            downlinkEnabled: channel.settings.downlinkEnabled ?? true,
+            positionPrecision: positionPrecision !== undefined ? positionPrecision : undefined
           });
-          logger.debug(`📡 Saved channel: ${channelName} (role: ${channel.role}, index: ${channel.index}, psk: ${pskString}, uplink: ${channel.settings.uplinkEnabled}, downlink: ${channel.settings.downlinkEnabled})`);
+          logger.debug(`📡 Saved channel: ${displayName} (role: ${channel.role}, index: ${channel.index}, psk: ${pskString ? 'set' : 'none'}, uplink: ${channel.settings.uplinkEnabled}, downlink: ${channel.settings.downlinkEnabled}, positionPrecision: ${positionPrecision})`);
         } catch (error) {
           logger.error('❌ Failed to save channel:', error);
         }
@@ -948,12 +975,12 @@ class MeshtasticManager {
         const isDirectMessage = toNum !== 4294967295;
         const channelIndex = isDirectMessage ? -1 : (meshPacket.channel !== undefined ? meshPacket.channel : 0);
 
-        // Ensure channel 0 (Primary) exists if this message uses it
+        // Ensure channel 0 exists if this message uses it
         if (!isDirectMessage && channelIndex === 0) {
           const channel0 = databaseService.getChannelById(0);
           if (!channel0) {
-            logger.debug('📡 Creating Primary channel (ID 0) for message with channel=0');
-            databaseService.upsertChannel({ id: 0, name: 'Primary' });
+            logger.debug('📡 Creating channel 0 for message (name will be set when device config syncs)');
+            databaseService.upsertChannel({ id: 0, name: '' });
           }
         }
 
@@ -2074,22 +2101,6 @@ class MeshtasticManager {
     return null;
   }
 
-  private ensurePrimaryChannel(): void {
-    logger.debug('🔍 Checking for Primary channel (ID 0)...');
-    const channel0 = databaseService.getChannelById(0);
-    logger.debug('🔍 getChannelById(0) result:', channel0);
-    if (!channel0) {
-      logger.debug('📡 Creating Primary channel (ID 0)');
-      databaseService.upsertChannel({
-        id: 0,
-        name: 'Primary'
-      });
-      logger.debug('✅ Primary channel created');
-    } else {
-      logger.debug('✅ Primary channel already exists');
-    }
-  }
-
   private saveChannelsToDatabase(channelNames: string[]): void {
     for (let i = 0; i < channelNames.length; i++) {
       const channelName = channelNames[i].trim();
@@ -3081,11 +3092,16 @@ class MeshtasticManager {
   // Configuration retrieval methods
   async getDeviceConfig(): Promise<any> {
     // Return config data from what we've received via TCP stream
+    logger.info('🔍 getDeviceConfig called - actualDeviceConfig.lora present:', !!this.actualDeviceConfig?.lora);
+    logger.info('🔍 getDeviceConfig called - actualModuleConfig present:', !!this.actualModuleConfig);
+
     if (this.actualDeviceConfig?.lora || this.actualModuleConfig) {
       logger.debug('Using actualDeviceConfig:', JSON.stringify(this.actualDeviceConfig, null, 2));
+      logger.info('✅ Returning device config from actualDeviceConfig');
       return this.buildDeviceConfigFromActual();
     }
 
+    logger.info('⚠️ No device config available yet - returning null');
     logger.debug('No device config available yet');
     return null;
   }
@@ -3096,8 +3112,10 @@ class MeshtasticManager {
       index: ch.id,
       name: ch.name,
       psk: ch.psk ? 'Set' : 'None',
+      role: ch.role,
       uplinkEnabled: ch.uplinkEnabled,
-      downlinkEnabled: ch.downlinkEnabled
+      downlinkEnabled: ch.downlinkEnabled,
+      positionPrecision: ch.positionPrecision
     }));
 
     const localNode = this.localNodeInfo as any;
@@ -3180,7 +3198,9 @@ class MeshtasticManager {
       },
       channels: channels.length > 0 ? channels : [
         { index: 0, name: 'Primary', psk: 'None', uplinkEnabled: true, downlinkEnabled: true }
-      ]
+      ],
+      // Raw LoRa config for export/import functionality
+      lora: Object.keys(loraConfig).length > 0 ? loraConfig : undefined
     };
   }
 
