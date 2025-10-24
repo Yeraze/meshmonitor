@@ -16,3 +16,26 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+/* Auto Acknowledge Pattern Testing - Responsive Layout */
+.auto-ack-test-container {
+  display: flex;
+  flex-direction: row;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.auto-ack-test-container > div {
+  flex: 1 1 50%;
+  min-width: 200px;
+}
+
+@media (max-width: 768px) {
+  .auto-ack-test-container {
+    flex-direction: column;
+  }
+
+  .auto-ack-test-container > div {
+    width: 100%;
+  }
+}

@@ -1370,7 +1370,7 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
     const currentSettings = databaseService.getAllSettings();
 
     // Validate settings
-    const validKeys = ['maxNodeAgeHours', 'tracerouteIntervalMinutes', 'temperatureUnit', 'distanceUnit', 'telemetryVisualizationHours', 'telemetryFavorites', 'autoAckEnabled', 'autoAckRegex', 'autoAnnounceEnabled', 'autoAnnounceIntervalHours', 'autoAnnounceMessage', 'autoAnnounceChannelIndex', 'autoAnnounceOnStart', 'preferredSortField', 'preferredSortDirection', 'timeFormat', 'dateFormat', 'mapTileset', 'packet_log_enabled', 'packet_log_max_count', 'packet_log_max_age_hours'];
+    const validKeys = ['maxNodeAgeHours', 'tracerouteIntervalMinutes', 'temperatureUnit', 'distanceUnit', 'telemetryVisualizationHours', 'telemetryFavorites', 'autoAckEnabled', 'autoAckRegex', 'autoAckChannels', 'autoAckDirectMessages', 'autoAnnounceEnabled', 'autoAnnounceIntervalHours', 'autoAnnounceMessage', 'autoAnnounceChannelIndex', 'autoAnnounceOnStart', 'preferredSortField', 'preferredSortDirection', 'timeFormat', 'dateFormat', 'mapTileset', 'packet_log_enabled', 'packet_log_max_count', 'packet_log_max_age_hours'];
     const filteredSettings: Record<string, string> = {};
 
     for (const key of validKeys) {
@@ -1399,6 +1399,16 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
       } catch (error) {
         return res.status(400).json({ error: 'Invalid regex syntax' });
       }
+    }
+
+    // Validate autoAckChannels (channel indices must be 0-7)
+    if ('autoAckChannels' in filteredSettings) {
+      const channelList = filteredSettings.autoAckChannels.split(',');
+      const validChannels = channelList
+        .map(c => parseInt(c.trim()))
+        .filter(n => !isNaN(n) && n >= 0 && n < 8); // Max 8 channels in Meshtastic
+
+      filteredSettings.autoAckChannels = validChannels.join(',');
     }
 
     // Save to database

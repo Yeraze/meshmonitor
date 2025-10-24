@@ -1,26 +1,39 @@
 import React, { useState, useEffect } from 'react';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
+import { Channel } from '../types/device';
 
 interface AutoAcknowledgeSectionProps {
   enabled: boolean;
   regex: string;
+  channels: Channel[];
+  enabledChannels: number[];
+  directMessagesEnabled: boolean;
   baseUrl: string;
   onEnabledChange: (enabled: boolean) => void;
   onRegexChange: (regex: string) => void;
+  onChannelsChange: (channels: number[]) => void;
+  onDirectMessagesChange: (enabled: boolean) => void;
 }
 
 const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   enabled,
   regex,
+  channels,
+  enabledChannels,
+  directMessagesEnabled,
   baseUrl,
   onEnabledChange,
   onRegexChange,
+  onChannelsChange,
+  onDirectMessagesChange,
 }) => {
   const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();
   const [localEnabled, setLocalEnabled] = useState(enabled);
   const [localRegex, setLocalRegex] = useState(regex || '^(test|ping)');
+  const [localEnabledChannels, setLocalEnabledChannels] = useState<number[]>(enabledChannels);
+  const [localDirectMessagesEnabled, setLocalDirectMessagesEnabled] = useState(directMessagesEnabled);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [testMessages, setTestMessages] = useState('test\nTest message\nping\nPING\nHello world\nTESTING 123');
@@ -29,13 +42,16 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   useEffect(() => {
     setLocalEnabled(enabled);
     setLocalRegex(regex || '^(test|ping)');
-  }, [enabled, regex]);
+    setLocalEnabledChannels(enabledChannels);
+    setLocalDirectMessagesEnabled(directMessagesEnabled);
+  }, [enabled, regex, enabledChannels, directMessagesEnabled]);
 
   // Check if any settings have changed
   useEffect(() => {
-    const changed = localEnabled !== enabled || localRegex !== regex;
+    const channelsChanged = JSON.stringify(localEnabledChannels.sort()) !== JSON.stringify(enabledChannels.sort());
+    const changed = localEnabled !== enabled || localRegex !== regex || channelsChanged || localDirectMessagesEnabled !== directMessagesEnabled;
     setHasChanges(changed);
-  }, [localEnabled, localRegex, enabled, regex]);
+  }, [localEnabled, localRegex, localEnabledChannels, localDirectMessagesEnabled, enabled, regex, enabledChannels, directMessagesEnabled]);
 
   // Validate regex pattern for safety
   const validateRegex = (pattern: string): { valid: boolean; error?: string } => {
@@ -89,7 +105,9 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           autoAckEnabled: String(localEnabled),
-          autoAckRegex: localRegex
+          autoAckRegex: localRegex,
+          autoAckChannels: localEnabledChannels.join(','),
+          autoAckDirectMessages: String(localDirectMessagesEnabled)
         })
       });
 
@@ -104,6 +122,8 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
       // Only update parent state after successful API call (no localStorage)
       onEnabledChange(localEnabled);
       onRegexChange(localRegex);
+      onChannelsChange(localEnabledChannels);
+      onDirectMessagesChange(localDirectMessagesEnabled);
 
       setHasChanges(false);
       showToast('Settings saved successfully!', 'success');
@@ -191,6 +211,51 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
         </div>
 
         <div className="setting-item" style={{ marginTop: '1.5rem' }}>
+          <label>
+            Active Channels
+            <span className="setting-description">
+              Select which channels and direct messages should have auto-acknowledge enabled
+            </span>
+          </label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <input
+                type="checkbox"
+                id="autoAckDM"
+                checked={localDirectMessagesEnabled}
+                onChange={(e) => setLocalDirectMessagesEnabled(e.target.checked)}
+                disabled={!localEnabled}
+                style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
+              />
+              <label htmlFor="autoAckDM" style={{ margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed', fontWeight: 'bold' }}>
+                Direct Messages
+              </label>
+            </div>
+            {channels.map((channel, idx) => (
+              <div key={channel.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <input
+                  type="checkbox"
+                  id={`autoAckChannel${idx}`}
+                  checked={localEnabledChannels.includes(idx)}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setLocalEnabledChannels([...localEnabledChannels, idx]);
+                    } else {
+                      setLocalEnabledChannels(localEnabledChannels.filter(c => c !== idx));
+                    }
+                  }}
+                  disabled={!localEnabled}
+                  style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
+                />
+                <label htmlFor={`autoAckChannel${idx}`} style={{ margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}>
+                  {channel.name || `Channel ${idx}`}
+                </label>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="setting-item" style={{ marginTop: '1.5rem' }}>
           <label htmlFor="testMessages">
             Pattern Testing
             <span className="setting-description">
@@ -198,55 +263,61 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
               Green = will trigger auto-ack, Red = will not trigger
             </span>
           </label>
-          <textarea
-            id="testMessages"
-            value={testMessages}
-            onChange={(e) => setTestMessages(e.target.value)}
-            placeholder="Enter test messages, one per line..."
-            disabled={!localEnabled}
-            className="setting-input"
-            rows={6}
-            style={{
-              fontFamily: 'monospace',
-              resize: 'vertical',
-              minHeight: '120px'
-            }}
-          />
-          <div style={{ marginTop: '0.75rem' }}>
-            {testMessages.split('\n').filter(line => line.trim()).map((message, index) => {
-              const matches = testMessageMatch(message);
-              return (
-                <div
-                  key={index}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    padding: '0.5rem',
-                    marginBottom: '0.25rem',
-                    backgroundColor: matches ? 'rgba(166, 227, 161, 0.1)' : 'rgba(243, 139, 168, 0.1)',
-                    border: `1px solid ${matches ? 'var(--ctp-green)' : 'var(--ctp-red)'}`,
-                    borderRadius: '4px',
-                    fontFamily: 'monospace',
-                    fontSize: '0.9rem'
-                  }}
-                >
-                  <span
+          <div className="auto-ack-test-container">
+            <div>
+              <textarea
+                id="testMessages"
+                value={testMessages}
+                onChange={(e) => setTestMessages(e.target.value)}
+                placeholder="Enter test messages, one per line..."
+                disabled={!localEnabled}
+                className="setting-input"
+                rows={6}
+                style={{
+                  fontFamily: 'monospace',
+                  resize: 'vertical',
+                  minHeight: '120px',
+                  width: '100%'
+                }}
+              />
+            </div>
+            <div>
+              {testMessages.split('\n').filter(line => line.trim()).map((message, index) => {
+                const matches = testMessageMatch(message);
+                return (
+                  <div
+                    key={index}
                     style={{
-                      display: 'inline-block',
-                      width: '20px',
-                      height: '20px',
-                      borderRadius: '50%',
-                      backgroundColor: matches ? 'var(--ctp-green)' : 'var(--ctp-red)',
-                      marginRight: '0.75rem',
-                      flexShrink: 0
+                      display: 'flex',
+                      alignItems: 'center',
+                      padding: '0.25rem 0.5rem',
+                      marginBottom: '0.15rem',
+                      backgroundColor: matches ? 'rgba(166, 227, 161, 0.1)' : 'rgba(243, 139, 168, 0.1)',
+                      border: `1px solid ${matches ? 'var(--ctp-green)' : 'var(--ctp-red)'}`,
+                      borderRadius: '4px',
+                      fontFamily: 'monospace',
+                      fontSize: '0.9rem',
+                      lineHeight: '1.3'
                     }}
-                  />
-                  <span style={{ color: 'var(--ctp-text)', wordBreak: 'break-word' }}>
-                    {message}
-                  </span>
-                </div>
-              );
-            })}
+                  >
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        width: '16px',
+                        height: '16px',
+                        borderRadius: '50%',
+                        backgroundColor: matches ? 'var(--ctp-green)' : 'var(--ctp-red)',
+                        marginRight: '0.5rem',
+                        flexShrink: 0
+                      }}
+                    />
+                    <span style={{ color: 'var(--ctp-text)', wordBreak: 'break-word' }}>
+                      {message}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>
