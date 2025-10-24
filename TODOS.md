@@ -12,6 +12,8 @@
   - [x] Update backend to support channel-specific auto-ack settings (autoAckChannels, autoAckDirectMessages)
   - [x] Update frontend AutoAcknowledgeSection component with channel checkboxes
   - [x] Update UIContext and App.tsx to manage new state variables
+  - [x] Update system tests to use dev container node IP (192.168.4.217)
+  - [x] Configure vitest to run tests serially to prevent OOM issues
 - Version 2.9.1 - Add Support MeshMonitor button to Settings page
   - [x] Add prominent "Support MeshMonitor" button with Ko-fi link to Settings header
   - [x] Style button as blue square with heart emoji and text
