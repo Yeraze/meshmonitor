@@ -348,6 +348,13 @@ class ApiService {
     return data.channels || [];
   }
 
+  async getAllChannels(): Promise<Channel[]> {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/channels/all`);
+    if (!response.ok) throw new Error('Failed to fetch all channels');
+    return response.json();
+  }
+
   async updateChannel(channelId: number, channelData: {
     name: string;
     psk?: string;
@@ -422,6 +429,39 @@ class ApiService {
 
     const result = await response.json();
     return result.channel;
+  }
+
+  async decodeChannelUrl(url: string): Promise<any> {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/channels/decode-url`, {
+      method: 'POST',
+      headers: this.getHeadersWithCsrf(),
+      body: JSON.stringify({ url }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to decode channel URL');
+    }
+
+    return response.json();
+  }
+
+  async encodeChannelUrl(channelIds: number[], includeLoraConfig: boolean): Promise<string> {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/channels/encode-url`, {
+      method: 'POST',
+      headers: this.getHeadersWithCsrf(),
+      body: JSON.stringify({ channelIds, includeLoraConfig }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to encode channel URL');
+    }
+
+    const result = await response.json();
+    return result.url;
   }
 
   async getMessages(limit: number = 100): Promise<MeshMessage[]> {

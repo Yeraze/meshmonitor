@@ -689,6 +689,18 @@ apiRouter.get('/channels/debug', requirePermission('messages', 'read'), (_req, r
   }
 });
 
+// Get all channels (unfiltered, for export/config purposes)
+apiRouter.get('/channels/all', requirePermission('channels', 'read'), (_req, res) => {
+  try {
+    const allChannels = databaseService.getAllChannels();
+    logger.debug(`📡 Serving all ${allChannels.length} channels (unfiltered)`);
+    res.json(allChannels);
+  } catch (error) {
+    logger.error('Error fetching all channels:', error);
+    res.status(500).json({ error: 'Failed to fetch channels' });
+  }
+});
+
 apiRouter.get('/channels', requirePermission('channels', 'read'), (_req, res) => {
   try {
     const allChannels = databaseService.getAllChannels();
@@ -803,6 +815,13 @@ apiRouter.get('/channels/:id/export', requirePermission('channels', 'read'), (re
       return res.status(404).json({ error: 'Channel not found' });
     }
 
+    logger.info(`📤 Exporting channel ${channelId} (${channel.name}):`, {
+      role: channel.role,
+      positionPrecision: channel.positionPrecision,
+      uplinkEnabled: channel.uplinkEnabled,
+      downlinkEnabled: channel.downlinkEnabled
+    });
+
     // Create export data with metadata
     const exportData = {
       version: '1.0',
@@ -869,15 +888,15 @@ apiRouter.put('/channels/:id', requirePermission('channels', 'write'), async (re
       return res.status(404).json({ error: 'Channel not found' });
     }
 
-    // Update channel in database
+    // Update channel in database (treat null and undefined the same way)
     databaseService.upsertChannel({
       id: channelId,
       name,
-      psk: psk !== undefined ? psk : existingChannel.psk,
-      role: role !== undefined ? role : existingChannel.role,
+      psk: (psk !== undefined && psk !== null) ? psk : existingChannel.psk,
+      role: (role !== undefined && role !== null) ? role : existingChannel.role,
       uplinkEnabled: uplinkEnabled !== undefined ? uplinkEnabled : existingChannel.uplinkEnabled,
       downlinkEnabled: downlinkEnabled !== undefined ? downlinkEnabled : existingChannel.downlinkEnabled,
-      positionPrecision: positionPrecision !== undefined ? positionPrecision : existingChannel.positionPrecision
+      positionPrecision: (positionPrecision !== undefined && positionPrecision !== null) ? positionPrecision : existingChannel.positionPrecision
     });
 
     // TODO: Send channel configuration to Meshtastic device
@@ -918,15 +937,29 @@ apiRouter.post('/channels/:slotId/import', requirePermission('channels', 'write'
       return res.status(400).json({ error: 'Channel name must be 11 characters or less' });
     }
 
+    // Validate role if provided (handle both null and undefined as "not provided")
+    if (role !== null && role !== undefined) {
+      if (typeof role !== 'number' || role < 0 || role > 2) {
+        return res.status(400).json({ error: 'Channel role must be 0 (Disabled), 1 (Primary), or 2 (Secondary)' });
+      }
+    }
+
+    // Validate positionPrecision if provided (handle both null and undefined as "not provided")
+    if (positionPrecision !== null && positionPrecision !== undefined) {
+      if (typeof positionPrecision !== 'number' || positionPrecision < 0 || positionPrecision > 32) {
+        return res.status(400).json({ error: 'Position precision must be between 0-32 bits' });
+      }
+    }
+
     // Import channel to the specified slot
     databaseService.upsertChannel({
       id: slotId,
       name,
       psk: psk || undefined,
-      role: role !== undefined ? role : undefined,
+      role: (role !== null && role !== undefined) ? role : undefined,
       uplinkEnabled: uplinkEnabled !== undefined ? uplinkEnabled : true,
       downlinkEnabled: downlinkEnabled !== undefined ? downlinkEnabled : true,
-      positionPrecision: positionPrecision !== undefined ? positionPrecision : undefined
+      positionPrecision: (positionPrecision !== null && positionPrecision !== undefined) ? positionPrecision : undefined
     });
 
     // TODO: Send channel configuration to Meshtastic device
@@ -938,6 +971,99 @@ apiRouter.post('/channels/:slotId/import', requirePermission('channels', 'write'
   } catch (error) {
     logger.error('Error importing channel:', error);
     res.status(500).json({ error: 'Failed to import channel' });
+  }
+});
+
+// Decode Meshtastic channel URL for preview
+apiRouter.post('/channels/decode-url', requirePermission('configuration', 'read'), async (req, res) => {
+  try {
+    const { url } = req.body;
+
+    if (!url || typeof url !== 'string') {
+      return res.status(400).json({ error: 'URL is required' });
+    }
+
+    const channelUrlService = (await import('./services/channelUrlService.js')).default;
+    const decoded = channelUrlService.decodeUrl(url);
+
+    if (!decoded) {
+      return res.status(400).json({ error: 'Invalid or malformed Meshtastic URL' });
+    }
+
+    res.json(decoded);
+  } catch (error) {
+    logger.error('Error decoding channel URL:', error);
+    res.status(500).json({ error: 'Failed to decode channel URL' });
+  }
+});
+
+// Encode current configuration to Meshtastic URL
+apiRouter.post('/channels/encode-url', requirePermission('configuration', 'read'), async (req, res) => {
+  try {
+    const { channelIds, includeLoraConfig } = req.body;
+
+    if (!Array.isArray(channelIds)) {
+      return res.status(400).json({ error: 'channelIds must be an array' });
+    }
+
+    const channelUrlService = (await import('./services/channelUrlService.js')).default;
+
+    // Get selected channels from database
+    const channels = channelIds
+      .map((id: number) => databaseService.getChannelById(id))
+      .filter((ch): ch is NonNullable<typeof ch> => ch !== null)
+      .map(ch => ({
+        psk: ch.psk ? ch.psk : 'none',
+        name: ch.name, // Use the actual name from database (preserved from device)
+        uplinkEnabled: ch.uplinkEnabled,
+        downlinkEnabled: ch.downlinkEnabled,
+        positionPrecision: ch.positionPrecision
+      }));
+
+    if (channels.length === 0) {
+      return res.status(400).json({ error: 'No valid channels selected' });
+    }
+
+    // Get LoRa config if requested
+    let loraConfig = undefined;
+    if (includeLoraConfig) {
+      logger.info('📡 includeLoraConfig is TRUE, fetching device config...');
+      const deviceConfig = await meshtasticManager.getDeviceConfig();
+      logger.info('📡 Device config lora:', JSON.stringify(deviceConfig?.lora, null, 2));
+      if (deviceConfig?.lora) {
+        loraConfig = {
+          usePreset: deviceConfig.lora.usePreset,
+          modemPreset: deviceConfig.lora.modemPreset,
+          bandwidth: deviceConfig.lora.bandwidth,
+          spreadFactor: deviceConfig.lora.spreadFactor,
+          codingRate: deviceConfig.lora.codingRate,
+          frequencyOffset: deviceConfig.lora.frequencyOffset,
+          region: deviceConfig.lora.region,
+          hopLimit: deviceConfig.lora.hopLimit,
+          txEnabled: deviceConfig.lora.txEnabled,
+          txPower: deviceConfig.lora.txPower,
+          channelNum: deviceConfig.lora.channelNum,
+          sx126xRxBoostedGain: deviceConfig.lora.sx126xRxBoostedGain,
+          configOkToMqtt: deviceConfig.lora.configOkToMqtt
+        };
+        logger.info('📡 LoRa config to encode:', JSON.stringify(loraConfig, null, 2));
+      } else {
+        logger.warn('⚠️ Device config or lora config is missing');
+      }
+    } else {
+      logger.info('📡 includeLoraConfig is FALSE, skipping LoRa config');
+    }
+
+    const url = channelUrlService.encodeUrl(channels, loraConfig);
+
+    if (!url) {
+      return res.status(500).json({ error: 'Failed to encode URL' });
+    }
+
+    res.json({ url });
+  } catch (error) {
+    logger.error('Error encoding channel URL:', error);
+    res.status(500).json({ error: 'Failed to encode channel URL' });
   }
 });
 

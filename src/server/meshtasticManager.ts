@@ -667,8 +667,10 @@ class MeshtasticManager {
 
     if (channel.settings) {
       // Only save channels that are actually configured and useful
-      const channelName = channel.settings.name || `Channel ${channel.index}`;
-      const hasValidConfig = channel.settings.name ||
+      // Preserve the actual name from device (including empty strings for Channel 0)
+      const channelName = channel.settings.name !== undefined ? channel.settings.name : `Channel ${channel.index}`;
+      const displayName = channelName || `Channel ${channel.index}`; // For logging only
+      const hasValidConfig = channel.settings.name !== undefined ||
                             channel.settings.psk ||
                             channel.role === 1 || // PRIMARY role
                             channel.role === 2 || // SECONDARY role
@@ -682,13 +684,15 @@ class MeshtasticManager {
             try {
               pskString = Buffer.from(channel.settings.psk).toString('base64');
             } catch (pskError) {
-              logger.warn(`⚠️  Failed to convert PSK to base64 for channel ${channel.index} (${channelName}):`, pskError);
+              logger.warn(`⚠️  Failed to convert PSK to base64 for channel ${channel.index} (${displayName}):`, pskError);
               pskString = undefined;
             }
           }
 
           // Extract position precision from module settings if available
           const positionPrecision = channel.settings.moduleSettings?.positionPrecision;
+
+          logger.info(`📡 Saving channel ${channel.index} (${displayName}) - role: ${channel.role}, positionPrecision: ${positionPrecision}`);
 
           databaseService.upsertChannel({
             id: channel.index,
@@ -699,7 +703,7 @@ class MeshtasticManager {
             downlinkEnabled: channel.settings.downlinkEnabled ?? true,
             positionPrecision: positionPrecision !== undefined ? positionPrecision : undefined
           });
-          logger.debug(`📡 Saved channel: ${channelName} (role: ${channel.role}, index: ${channel.index}, psk: ${pskString ? 'set' : 'none'}, uplink: ${channel.settings.uplinkEnabled}, downlink: ${channel.settings.downlinkEnabled}, positionPrecision: ${positionPrecision})`);
+          logger.debug(`📡 Saved channel: ${displayName} (role: ${channel.role}, index: ${channel.index}, psk: ${pskString ? 'set' : 'none'}, uplink: ${channel.settings.uplinkEnabled}, downlink: ${channel.settings.downlinkEnabled}, positionPrecision: ${positionPrecision})`);
         } catch (error) {
           logger.error('❌ Failed to save channel:', error);
         }
@@ -3210,7 +3214,9 @@ class MeshtasticManager {
       },
       channels: channels.length > 0 ? channels : [
         { index: 0, name: 'Primary', psk: 'None', uplinkEnabled: true, downlinkEnabled: true }
-      ]
+      ],
+      // Raw LoRa config for export/import functionality
+      lora: Object.keys(loraConfig).length > 0 ? loraConfig : undefined
     };
   }
 
