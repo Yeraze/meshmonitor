@@ -19,6 +19,7 @@ describe('System Management', () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    vi.useRealTimers(); // Reset timers after each test to prevent leakage
   });
 
   afterEach(() => {
@@ -94,6 +95,7 @@ describe('System Management', () => {
     });
 
     it('should timeout if shutdown takes too long', () => {
+      vi.useRealTimers(); // Reset any existing fake timers first
       vi.useFakeTimers();
 
       const mockServer = {

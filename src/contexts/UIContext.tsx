@@ -26,6 +26,10 @@ interface UIContextType {
   setAutoAckEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   autoAckRegex: string;
   setAutoAckRegex: React.Dispatch<React.SetStateAction<string>>;
+  autoAckChannels: number[];
+  setAutoAckChannels: React.Dispatch<React.SetStateAction<number[]>>;
+  autoAckDirectMessages: boolean;
+  setAutoAckDirectMessages: React.Dispatch<React.SetStateAction<boolean>>;
   autoAnnounceEnabled: boolean;
   setAutoAnnounceEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   autoAnnounceIntervalHours: number;
@@ -68,6 +72,8 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   // Automation settings - loaded from backend API, not localStorage
   const [autoAckEnabled, setAutoAckEnabled] = useState<boolean>(false);
   const [autoAckRegex, setAutoAckRegex] = useState<string>('^(test|ping)');
+  const [autoAckChannels, setAutoAckChannels] = useState<number[]>([]);
+  const [autoAckDirectMessages, setAutoAckDirectMessages] = useState<boolean>(false);
   const [autoAnnounceEnabled, setAutoAnnounceEnabled] = useState<boolean>(false);
   const [autoAnnounceIntervalHours, setAutoAnnounceIntervalHours] = useState<number>(6);
   const [autoAnnounceMessage, setAutoAnnounceMessage] = useState<string>('MeshMonitor {VERSION} online for {DURATION} {FEATURES}');
@@ -106,6 +112,10 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
         setAutoAckEnabled,
         autoAckRegex,
         setAutoAckRegex,
+        autoAckChannels,
+        setAutoAckChannels,
+        autoAckDirectMessages,
+        setAutoAckDirectMessages,
         autoAnnounceEnabled,
         setAutoAnnounceEnabled,
         autoAnnounceIntervalHours,
