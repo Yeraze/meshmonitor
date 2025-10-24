@@ -43,7 +43,7 @@ services:
     volumes:
       - meshmonitor-quick-start-test-data:/data
     environment:
-      - MESHTASTIC_NODE_IP=192.168.5.106
+      - MESHTASTIC_NODE_IP=192.168.4.217
     restart: unless-stopped
 
 volumes:

@@ -11,6 +11,14 @@ export default defineConfig({
     isolate: true,
     testTimeout: 10000,
     hookTimeout: 10000,
+    // Run tests serially to avoid OOM issues
+    fileParallelism: false,
+    pool: 'forks',
+    poolOptions: {
+      forks: {
+        singleFork: true,
+      },
+    },
     env: {
       DATABASE_PATH: ':memory:',
     },

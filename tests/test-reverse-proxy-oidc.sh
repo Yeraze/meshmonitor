@@ -70,7 +70,7 @@ services:
     environment:
       # Production configuration
       - NODE_ENV=production
-      - MESHTASTIC_NODE_IP=192.168.5.106
+      - MESHTASTIC_NODE_IP=192.168.4.217
       - TRUST_PROXY=true
       - ALLOWED_ORIGINS=https://meshdev.yeraze.online
       - COOKIE_SECURE=true
