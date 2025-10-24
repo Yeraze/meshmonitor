@@ -3,6 +3,12 @@
 ## In Progress
 
 ## Completed
+- Version 2.9.1 - Add Support MeshMonitor button to Settings page
+  - [x] Add prominent "Support MeshMonitor" button with Ko-fi link to Settings header
+  - [x] Style button as blue square with heart emoji and text
+  - [x] Add hover effect for better UX
+- Version 2.9.0 - Mesh Traffic Monitor & UI Improvements
+- Created GitHub release v2.9.0
 - Implement mesh packet monitor feature (issue #285)
   - [x] Add packet_log database table and configuration settings
   - [x] Create PacketLogService for logging and cleanup
