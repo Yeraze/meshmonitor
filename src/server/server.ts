@@ -790,6 +790,157 @@ apiRouter.get('/channels', requirePermission('channels', 'read'), (_req, res) =>
   }
 });
 
+// Export a specific channel configuration
+apiRouter.get('/channels/:id/export', requirePermission('channels', 'read'), (req, res) => {
+  try {
+    const channelId = parseInt(req.params.id);
+    if (isNaN(channelId)) {
+      return res.status(400).json({ error: 'Invalid channel ID' });
+    }
+
+    const channel = databaseService.getChannelById(channelId);
+    if (!channel) {
+      return res.status(404).json({ error: 'Channel not found' });
+    }
+
+    // Create export data with metadata
+    const exportData = {
+      version: '1.0',
+      exportedAt: new Date().toISOString(),
+      channel: {
+        id: channel.id,
+        name: channel.name,
+        psk: channel.psk,
+        role: channel.role,
+        uplinkEnabled: channel.uplinkEnabled,
+        downlinkEnabled: channel.downlinkEnabled,
+        positionPrecision: channel.positionPrecision
+      }
+    };
+
+    // Set filename header
+    const filename = `meshmonitor-channel-${channel.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}-${Date.now()}.json`;
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Type', 'application/json');
+    res.json(exportData);
+  } catch (error) {
+    logger.error('Error exporting channel:', error);
+    res.status(500).json({ error: 'Failed to export channel' });
+  }
+});
+
+// Update a channel configuration
+apiRouter.put('/channels/:id', requirePermission('channels', 'write'), async (req, res) => {
+  try {
+    const channelId = parseInt(req.params.id);
+    if (isNaN(channelId) || channelId < 0 || channelId > 7) {
+      return res.status(400).json({ error: 'Invalid channel ID. Must be between 0-7' });
+    }
+
+    const { name, psk, role, uplinkEnabled, downlinkEnabled, positionPrecision } = req.body;
+
+    // Validate required fields
+    if (!name || typeof name !== 'string') {
+      return res.status(400).json({ error: 'Channel name is required' });
+    }
+
+    if (name.length > 11) {
+      return res.status(400).json({ error: 'Channel name must be 11 characters or less' });
+    }
+
+    // Validate PSK if provided
+    if (psk !== undefined && psk !== null && typeof psk !== 'string') {
+      return res.status(400).json({ error: 'Invalid PSK format' });
+    }
+
+    // Validate role if provided
+    if (role !== undefined && role !== null && (typeof role !== 'number' || role < 0 || role > 2)) {
+      return res.status(400).json({ error: 'Invalid role. Must be 0 (Disabled), 1 (Primary), or 2 (Secondary)' });
+    }
+
+    // Validate positionPrecision if provided
+    if (positionPrecision !== undefined && positionPrecision !== null && (typeof positionPrecision !== 'number' || positionPrecision < 0 || positionPrecision > 32)) {
+      return res.status(400).json({ error: 'Invalid position precision. Must be between 0-32' });
+    }
+
+    // Get existing channel
+    const existingChannel = databaseService.getChannelById(channelId);
+    if (!existingChannel) {
+      return res.status(404).json({ error: 'Channel not found' });
+    }
+
+    // Update channel in database
+    databaseService.upsertChannel({
+      id: channelId,
+      name,
+      psk: psk !== undefined ? psk : existingChannel.psk,
+      role: role !== undefined ? role : existingChannel.role,
+      uplinkEnabled: uplinkEnabled !== undefined ? uplinkEnabled : existingChannel.uplinkEnabled,
+      downlinkEnabled: downlinkEnabled !== undefined ? downlinkEnabled : existingChannel.downlinkEnabled,
+      positionPrecision: positionPrecision !== undefined ? positionPrecision : existingChannel.positionPrecision
+    });
+
+    // TODO: Send channel configuration to Meshtastic device
+    // This would require implementing setChannelConfig in meshtasticManager
+    // For now, we only update the database
+
+    const updatedChannel = databaseService.getChannelById(channelId);
+    logger.info(`✅ Updated channel ${channelId}: ${name}`);
+    res.json({ success: true, channel: updatedChannel });
+  } catch (error) {
+    logger.error('Error updating channel:', error);
+    res.status(500).json({ error: 'Failed to update channel' });
+  }
+});
+
+// Import a channel configuration to a specific slot
+apiRouter.post('/channels/:slotId/import', requirePermission('channels', 'write'), async (req, res) => {
+  try {
+    const slotId = parseInt(req.params.slotId);
+    if (isNaN(slotId) || slotId < 0 || slotId > 7) {
+      return res.status(400).json({ error: 'Invalid slot ID. Must be between 0-7' });
+    }
+
+    const { channel } = req.body;
+
+    if (!channel || typeof channel !== 'object') {
+      return res.status(400).json({ error: 'Invalid import data. Expected channel object' });
+    }
+
+    const { name, psk, role, uplinkEnabled, downlinkEnabled, positionPrecision } = channel;
+
+    // Validate required fields
+    if (!name || typeof name !== 'string') {
+      return res.status(400).json({ error: 'Channel name is required' });
+    }
+
+    if (name.length > 11) {
+      return res.status(400).json({ error: 'Channel name must be 11 characters or less' });
+    }
+
+    // Import channel to the specified slot
+    databaseService.upsertChannel({
+      id: slotId,
+      name,
+      psk: psk || undefined,
+      role: role !== undefined ? role : undefined,
+      uplinkEnabled: uplinkEnabled !== undefined ? uplinkEnabled : true,
+      downlinkEnabled: downlinkEnabled !== undefined ? downlinkEnabled : true,
+      positionPrecision: positionPrecision !== undefined ? positionPrecision : undefined
+    });
+
+    // TODO: Send channel configuration to Meshtastic device
+    // This would require implementing setChannelConfig in meshtasticManager
+
+    const importedChannel = databaseService.getChannelById(slotId);
+    logger.info(`✅ Imported channel to slot ${slotId}: ${name}`);
+    res.json({ success: true, channel: importedChannel });
+  } catch (error) {
+    logger.error('Error importing channel:', error);
+    res.status(500).json({ error: 'Failed to import channel' });
+  }
+});
+
 apiRouter.get('/stats', requirePermission('dashboard', 'read'), (_req, res) => {
   try {
     const messageCount = databaseService.getMessageCount();

@@ -17,6 +17,7 @@ import { migration as pushSubscriptionsMigration } from '../server/migrations/00
 import { migration as notificationPreferencesMigration } from '../server/migrations/009_add_notification_preferences.js';
 import { migration as notifyOnEmojiMigration } from '../server/migrations/010_add_notify_on_emoji.js';
 import { migration as packetLogMigration } from '../server/migrations/011_add_packet_log.js';
+import { migration as channelRoleMigration } from '../server/migrations/012_add_channel_role_and_position.js';
 
 export interface DbNode {
   nodeNum: number;
@@ -71,8 +72,10 @@ export interface DbChannel {
   id: number;
   name: string;
   psk?: string;
+  role?: number; // 0=Disabled, 1=Primary, 2=Secondary
   uplinkEnabled: boolean;
   downlinkEnabled: boolean;
+  positionPrecision?: number; // Location precision bits (0-32)
   createdAt: number;
   updatedAt: number;
 }
@@ -215,6 +218,7 @@ class DatabaseService {
     this.runNotificationPreferencesMigration();
     this.runNotifyOnEmojiMigration();
     this.runPacketLogMigration();
+    this.runChannelRoleMigration();
     this.ensureAutomationDefaults();
     this.isInitialized = true;
   }
@@ -478,6 +482,26 @@ class DatabaseService {
       logger.debug('✅ Packet log migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run packet log migration:', error);
+      throw error;
+    }
+  }
+
+  private runChannelRoleMigration(): void {
+    try {
+      const migrationKey = 'migration_012_channel_role';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Channel role migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 012: Add channel role and position precision...');
+      channelRoleMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Channel role migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run channel role migration:', error);
       throw error;
     }
   }
@@ -1342,7 +1366,7 @@ class DatabaseService {
   }
 
   // Channel operations
-  upsertChannel(channelData: { id?: number; name: string; psk?: string; uplinkEnabled?: boolean; downlinkEnabled?: boolean }): void {
+  upsertChannel(channelData: { id?: number; name: string; psk?: string; role?: number; uplinkEnabled?: boolean; downlinkEnabled?: boolean; positionPrecision?: number }): void {
     const now = Date.now();
 
     logger.debug(`📝 upsertChannel called with:`, JSON.stringify(channelData));
@@ -1367,16 +1391,20 @@ class DatabaseService {
         UPDATE channels SET
           name = ?,
           psk = COALESCE(?, psk),
+          role = COALESCE(?, role),
           uplinkEnabled = COALESCE(?, uplinkEnabled),
           downlinkEnabled = COALESCE(?, downlinkEnabled),
+          positionPrecision = COALESCE(?, positionPrecision),
           updatedAt = ?
         WHERE id = ?
       `);
       stmt.run(
         channelData.name,
         channelData.psk,
+        channelData.role !== undefined ? channelData.role : null,
         channelData.uplinkEnabled !== undefined ? (channelData.uplinkEnabled ? 1 : 0) : null,
         channelData.downlinkEnabled !== undefined ? (channelData.downlinkEnabled ? 1 : 0) : null,
+        channelData.positionPrecision !== undefined ? channelData.positionPrecision : null,
         now,
         existingChannel.id
       );
@@ -1385,15 +1413,17 @@ class DatabaseService {
       // Create new channel
       logger.debug(`📝 Creating new channel with ID: ${channelData.id !== undefined ? channelData.id : null}`);
       const stmt = this.db.prepare(`
-        INSERT INTO channels (id, name, psk, uplinkEnabled, downlinkEnabled, createdAt, updatedAt)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO channels (id, name, psk, role, uplinkEnabled, downlinkEnabled, positionPrecision, createdAt, updatedAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       const result = stmt.run(
         channelData.id !== undefined ? channelData.id : null,
         channelData.name,
         channelData.psk || null,
+        channelData.role !== undefined ? channelData.role : null,
         channelData.uplinkEnabled !== undefined ? (channelData.uplinkEnabled ? 1 : 0) : 1,
         channelData.downlinkEnabled !== undefined ? (channelData.downlinkEnabled ? 1 : 0) : 1,
+        channelData.positionPrecision !== undefined ? channelData.positionPrecision : null,
         now,
         now
       );

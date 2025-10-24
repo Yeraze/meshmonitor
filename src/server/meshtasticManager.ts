@@ -140,6 +140,17 @@ class MeshtasticManager {
       // Note: With TCP, we don't need to poll - messages arrive via events
       // The configuration will come in automatically as the node sends it
 
+      // Explicitly request LoRa config (config type 5) for Configuration tab
+      // Give the device a moment to process want_config_id first
+      setTimeout(async () => {
+        try {
+          logger.info('📡 Requesting LoRa config from device...');
+          await this.requestConfig(5); // LORA_CONFIG = 5
+        } catch (error) {
+          logger.error('❌ Failed to request LoRa config:', error);
+        }
+      }, 2000);
+
       // Give the node a moment to send initial config, then do basic setup
       setTimeout(async () => {
         // Ensure we have a Primary channel
@@ -424,15 +435,20 @@ class MeshtasticManager {
           await this.processDeviceMetadata(parsed.data);
           break;
         case 'config':
+          logger.info('⚙️ Received Config with keys:', Object.keys(parsed.data));
           logger.debug('⚙️ Received Config:', JSON.stringify(parsed.data, null, 2));
           // Merge the actual device configuration (don't overwrite)
           this.actualDeviceConfig = { ...this.actualDeviceConfig, ...parsed.data };
+          logger.info('📊 Merged actualDeviceConfig now has keys:', Object.keys(this.actualDeviceConfig));
+          logger.info('📊 actualDeviceConfig.lora present:', !!this.actualDeviceConfig?.lora);
           logger.debug('📊 Merged actualDeviceConfig now has:', Object.keys(this.actualDeviceConfig));
           break;
         case 'moduleConfig':
+          logger.info('⚙️ Received Module Config with keys:', Object.keys(parsed.data));
           logger.debug('⚙️ Received Module Config:', JSON.stringify(parsed.data, null, 2));
           // Merge the actual module configuration (don't overwrite)
           this.actualModuleConfig = { ...this.actualModuleConfig, ...parsed.data };
+          logger.info('📊 Merged actualModuleConfig now has keys:', Object.keys(this.actualModuleConfig));
           break;
         case 'channel':
           await this.processChannelProtobuf(parsed.data);
@@ -644,7 +660,9 @@ class MeshtasticManager {
       name: channel.settings?.name,
       hasPsk: !!channel.settings?.psk,
       uplinkEnabled: channel.settings?.uplinkEnabled,
-      downlinkEnabled: channel.settings?.downlinkEnabled
+      downlinkEnabled: channel.settings?.downlinkEnabled,
+      positionPrecision: channel.settings?.moduleSettings?.positionPrecision,
+      hasModuleSettings: !!channel.settings?.moduleSettings
     });
 
     if (channel.settings) {
@@ -669,14 +687,19 @@ class MeshtasticManager {
             }
           }
 
+          // Extract position precision from module settings if available
+          const positionPrecision = channel.settings.moduleSettings?.positionPrecision;
+
           databaseService.upsertChannel({
             id: channel.index,
             name: channelName,
             psk: pskString,
+            role: channel.role !== undefined ? channel.role : undefined,
             uplinkEnabled: channel.settings.uplinkEnabled ?? true,
-            downlinkEnabled: channel.settings.downlinkEnabled ?? true
+            downlinkEnabled: channel.settings.downlinkEnabled ?? true,
+            positionPrecision: positionPrecision !== undefined ? positionPrecision : undefined
           });
-          logger.debug(`📡 Saved channel: ${channelName} (role: ${channel.role}, index: ${channel.index}, psk: ${pskString}, uplink: ${channel.settings.uplinkEnabled}, downlink: ${channel.settings.downlinkEnabled})`);
+          logger.debug(`📡 Saved channel: ${channelName} (role: ${channel.role}, index: ${channel.index}, psk: ${pskString ? 'set' : 'none'}, uplink: ${channel.settings.uplinkEnabled}, downlink: ${channel.settings.downlinkEnabled}, positionPrecision: ${positionPrecision})`);
         } catch (error) {
           logger.error('❌ Failed to save channel:', error);
         }
@@ -3081,11 +3104,16 @@ class MeshtasticManager {
   // Configuration retrieval methods
   async getDeviceConfig(): Promise<any> {
     // Return config data from what we've received via TCP stream
+    logger.info('🔍 getDeviceConfig called - actualDeviceConfig.lora present:', !!this.actualDeviceConfig?.lora);
+    logger.info('🔍 getDeviceConfig called - actualModuleConfig present:', !!this.actualModuleConfig);
+
     if (this.actualDeviceConfig?.lora || this.actualModuleConfig) {
       logger.debug('Using actualDeviceConfig:', JSON.stringify(this.actualDeviceConfig, null, 2));
+      logger.info('✅ Returning device config from actualDeviceConfig');
       return this.buildDeviceConfigFromActual();
     }
 
+    logger.info('⚠️ No device config available yet - returning null');
     logger.debug('No device config available yet');
     return null;
   }
@@ -3096,8 +3124,10 @@ class MeshtasticManager {
       index: ch.id,
       name: ch.name,
       psk: ch.psk ? 'Set' : 'None',
+      role: ch.role,
       uplinkEnabled: ch.uplinkEnabled,
-      downlinkEnabled: ch.downlinkEnabled
+      downlinkEnabled: ch.downlinkEnabled,
+      positionPrecision: ch.positionPrecision
     }));
 
     const localNode = this.localNodeInfo as any;

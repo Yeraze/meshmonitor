@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import apiService from '../services/api';
 import { useToast } from './ToastContainer';
-import type { DeviceInfo } from '../types/device';
+import type { DeviceInfo, Channel } from '../types/device';
 import { logger } from '../utils/logger';
 import NodeIdentitySection from './configuration/NodeIdentitySection';
 import DeviceConfigSection from './configuration/DeviceConfigSection';
@@ -9,16 +9,19 @@ import LoRaConfigSection from './configuration/LoRaConfigSection';
 import PositionConfigSection from './configuration/PositionConfigSection';
 import MQTTConfigSection from './configuration/MQTTConfigSection';
 import NeighborInfoSection from './configuration/NeighborInfoSection';
+import ChannelsConfigSection from './configuration/ChannelsConfigSection';
 import { ROLE_MAP, PRESET_MAP, REGION_MAP } from './configuration/constants';
 
 interface ConfigurationTabProps {
   baseUrl?: string; // Optional, not used in component but passed from App.tsx
   nodes?: DeviceInfo[]; // Pass nodes from App to avoid separate API call
+  channels?: Channel[]; // Pass channels from App
   onRebootDevice?: () => Promise<boolean>;
   onConfigChangeTriggeringReboot?: () => void;
+  onChannelsUpdated?: () => void; // Callback when channels are updated
 }
 
-const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, onRebootDevice, onConfigChangeTriggeringReboot }) => {
+const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [], onRebootDevice, onConfigChangeTriggeringReboot, onChannelsUpdated }) => {
   const { showToast } = useToast();
 
   // Device Config State
@@ -539,6 +542,11 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, onRebootDevi
           setNeighborInfoInterval={setNeighborInfoInterval}
           isSaving={isSaving}
           onSave={handleSaveNeighborInfoConfig}
+        />
+
+        <ChannelsConfigSection
+          channels={channels}
+          onChannelsUpdated={onChannelsUpdated}
         />
       </div>
     </div>
