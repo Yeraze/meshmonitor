@@ -550,6 +550,13 @@ class ApiService {
     return response.json();
   }
 
+  async getTracerouteHistory(fromNodeNum: number, toNodeNum: number, limit: number = 50) {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/traceroutes/history/${fromNodeNum}/${toNodeNum}?limit=${limit}`);
+    if (!response.ok) throw new Error('Failed to fetch traceroute history');
+    return response.json();
+  }
+
   async getBaseUrl(): Promise<string> {
     await this.ensureBaseUrl();
     return this.baseUrl;
