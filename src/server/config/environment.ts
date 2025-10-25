@@ -143,6 +143,8 @@ export interface EnvironmentConfig {
   sessionSecretProvided: boolean;
   sessionMaxAge: number;
   sessionMaxAgeProvided: boolean;
+  sessionRolling: boolean;
+  sessionRollingProvided: boolean;
   cookieSecure: boolean;
   cookieSecureProvided: boolean;
   cookieSameSite: 'strict' | 'lax' | 'none';
@@ -306,6 +308,7 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
   }
 
   const sessionMaxAge = parseInt32('SESSION_MAX_AGE', process.env.SESSION_MAX_AGE, 86400000); // 24 hours
+  const sessionRolling = parseBoolean('SESSION_ROLLING', process.env.SESSION_ROLLING, true); // Reset session expiry on activity
   const cookieSecure = parseBoolean('COOKIE_SECURE', process.env.COOKIE_SECURE, false);
   const cookieSameSite = parseEnum('COOKIE_SAMESITE', process.env.COOKIE_SAMESITE, ['strict', 'lax', 'none'] as const, 'lax');
 
@@ -461,6 +464,8 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     sessionSecretProvided,
     sessionMaxAge: sessionMaxAge.value,
     sessionMaxAgeProvided: sessionMaxAge.wasProvided,
+    sessionRolling: sessionRolling.value,
+    sessionRollingProvided: sessionRolling.wasProvided,
     cookieSecure: cookieSecure.value,
     cookieSecureProvided: cookieSecure.wasProvided,
     cookieSameSite: cookieSameSite.value,
