@@ -3,6 +3,12 @@
 ## In Progress
 
 ## Completed
+- Session rolling timeout fix (PR #315)
+  - [x] Add SESSION_ROLLING environment variable (default: true)
+  - [x] Enable rolling sessions to reset expiry on each request
+  - [x] Add logging for SESSION_MAX_AGE and rolling setting
+  - [x] Update documentation in README.md, docs/, and .env.example
+  - Impact: Fixed premature logouts for users with multi-day SESSION_MAX_AGE settings
 - Configuration persistence after device reboot (FINAL FIX v2)
   - [x] Identified issue: getDeviceConfig() returns cached data instead of requesting fresh config
   - [x] Fixed RebootModal to call refreshNodes() instead of getDeviceConfig()

@@ -41,6 +41,8 @@ export function getSessionConfig(): session.SessionOptions {
 
   // Log configuration summary for troubleshooting
   logger.info('🔐 Session configuration:');
+  logger.info(`   - Session maxAge: ${env.sessionMaxAge}ms (${Math.round(env.sessionMaxAge / 3600000)}h)`);
+  logger.info(`   - Session rolling: ${env.sessionRolling}`);
   logger.info(`   - Cookie secure: ${env.cookieSecure}`);
   logger.info(`   - Cookie sameSite: ${env.cookieSameSite}`);
   logger.info(`   - Environment: ${env.nodeEnv}`);
@@ -56,6 +58,7 @@ export function getSessionConfig(): session.SessionOptions {
     secret: env.sessionSecret,
     resave: false,
     saveUninitialized: false,
+    rolling: env.sessionRolling, // Reset session expiry on each request
     cookie: {
       httpOnly: true,
       secure: env.cookieSecure,
