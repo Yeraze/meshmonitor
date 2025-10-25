@@ -29,21 +29,22 @@ When enabled, MeshMonitor monitors all incoming messages for patterns matching t
 **Custom Message Template**: Craft your auto-acknowledge response using dynamic tokens:
 
 - **`{HOPS}`**: Number of hops from the original message (e.g., "3")
-- **`{TIME}`**: Timestamp when the message was received (e.g., "14:35")
+- **`{DATE}`**: Date when the message was received (e.g., "1/15/2025")
+- **`{TIME}`**: Time when the message was received (e.g., "2:30:00 PM")
 - **`{SENDER}`**: Long name of the sender (e.g., "Alice's Node")
 - **`{MESSAGE}`**: The original message text
 
 **Default Template**:
 ```
-🤖 Copy, {HOPS} hops at {TIME}
+🤖 Copy, {HOPS} hops on {DATE} at {TIME}
 ```
 
 **Example Custom Templates**:
 ```
-✅ Received from {SENDER} at {TIME}
+✅ Received from {SENDER} on {DATE} at {TIME}
 ```
 ```
-📡 Signal test: {HOPS} hop(s) | Time: {TIME}
+📡 Signal test: {HOPS} hop(s) | Date: {DATE} | Time: {TIME}
 ```
 ```
 👋 Hey {SENDER}! Got your message: "{MESSAGE}"
@@ -138,7 +139,8 @@ When enabled, MeshMonitor monitors for nodes that appear for the first time in t
 
 - **`{SENDER}`**: Long name of the new node joining (e.g., "Alice's Node")
 - **`{NODEID}`**: Hex ID of the new node (e.g., "!a2b3c4d5")
-- **`{TIME}`**: Timestamp when the node was first seen (e.g., "14:35")
+- **`{DATE}`**: Date when the node was first seen (e.g., "1/15/2025")
+- **`{TIME}`**: Time when the node was first seen (e.g., "2:30:00 PM")
 - **`{VERSION}`**: Your MeshMonitor version (e.g., "v2.10.1")
 
 **Default Template**:
@@ -148,7 +150,7 @@ When enabled, MeshMonitor monitors for nodes that appear for the first time in t
 
 **Example Custom Templates**:
 ```
-🎉 Hey {SENDER}! Welcome to our mesh network at {TIME}
+🎉 Hey {SENDER}! Welcome to our mesh network on {DATE} at {TIME}
 ```
 ```
 👋 Welcome aboard {SENDER} ({NODEID})! Check meshmonitor.org for network stats.

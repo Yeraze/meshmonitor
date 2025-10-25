@@ -124,10 +124,12 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     let sample = localMessage;
 
     // Replace with sample values
+    const now = new Date();
     sample = sample.replace(/{NODE_ID}/g, '!a1b2c3d4');
     sample = sample.replace(/{NUMBER_HOPS}/g, '3');
     sample = sample.replace(/{RABBIT_HOPS}/g, '🐇🐇🐇'); // 3 rabbits for 3 hops
-    sample = sample.replace(/{TIME}/g, new Date().toLocaleString());
+    sample = sample.replace(/{DATE}/g, now.toLocaleDateString());
+    sample = sample.replace(/{TIME}/g, now.toLocaleTimeString());
     sample = sample.replace(/{VERSION}/g, '2.9.1');
     sample = sample.replace(/{DURATION}/g, '3d 12h');
     sample = sample.replace(/{LONG_NAME}/g, 'Meshtastic ABC1');
@@ -245,7 +247,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
       <div className="settings-section" style={{ opacity: localEnabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>
         <p style={{ marginBottom: '1rem', color: '#666', lineHeight: '1.5', marginLeft: '1.75rem' }}>
           When enabled, automatically reply to any message matching the RegEx pattern with a customizable template.
-          Use tokens like <code>{'{NODE_ID}'}</code>, <code>{'{NUMBER_HOPS}'}</code>, and <code>{'{TIME}'}</code> for dynamic content.
+          Use tokens like <code>{'{NODE_ID}'}</code>, <code>{'{NUMBER_HOPS}'}</code>, <code>{'{DATE}'}</code>, and <code>{'{TIME}'}</code> for dynamic content.
         </p>
 
         <div className="setting-item" style={{ marginTop: '1rem' }}>
@@ -317,7 +319,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
           <label htmlFor="autoAckMessage">
             Acknowledgment Message Template
             <span className="setting-description">
-              Message to send in response. Available tokens: {'{NODE_ID}'} (sender node ID), {'{NUMBER_HOPS}'} (hop count), {'{RABBIT_HOPS}'} (rabbit emojis equal to hop count, 🎯 for direct/0 hops), {'{TIME}'} (current time), {'{VERSION}'}, {'{DURATION}'}, {'{FEATURES}'}, {'{NODECOUNT}'}, {'{DIRECTCOUNT}'}, {'{LONG_NAME}'} (sender's long name), {'{SHORT_NAME}'} (sender's short name)
+              Message to send in response. Available tokens: {'{NODE_ID}'} (sender node ID), {'{NUMBER_HOPS}'} (hop count), {'{RABBIT_HOPS}'} (rabbit emojis equal to hop count, 🎯 for direct/0 hops), {'{DATE}'} (current date), {'{TIME}'} (current time), {'{VERSION}'}, {'{DURATION}'}, {'{FEATURES}'}, {'{NODECOUNT}'}, {'{DIRECTCOUNT}'}, {'{LONG_NAME}'} (sender's long name), {'{SHORT_NAME}'} (sender's short name)
             </span>
           </label>
           <textarea
@@ -382,6 +384,22 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
               }}
             >
               + {'{RABBIT_HOPS}'}
+            </button>
+            <button
+              type="button"
+              onClick={() => insertToken('{DATE}')}
+              disabled={!localEnabled}
+              style={{
+                padding: '0.25rem 0.5rem',
+                fontSize: '12px',
+                background: 'var(--ctp-surface2)',
+                border: '1px solid var(--ctp-overlay0)',
+                borderRadius: '4px',
+                cursor: localEnabled ? 'pointer' : 'not-allowed',
+                opacity: localEnabled ? 1 : 0.5
+              }}
+            >
+              + {'{DATE}'}
             </button>
             <button
               type="button"
