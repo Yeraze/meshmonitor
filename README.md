@@ -340,6 +340,7 @@ For complete Kubernetes documentation, configuration options, and examples, see 
 | `TZ` | `America/New_York` | Timezone for auto-acknowledge message timestamps (see [TZ database](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)) |
 | `SESSION_SECRET` | (auto-generated) | Secret key for session encryption. **Required for production deployments** |
 | `SESSION_MAX_AGE` | `86400000` | Session cookie lifetime in milliseconds (default: 24 hours) |
+| `SESSION_ROLLING` | `true` | Reset session expiry on each request. When true, active users stay logged in indefinitely |
 | `COOKIE_SECURE` | `true` (production)<br>`false` (development) | Require HTTPS for session cookies. Set to `false` if accessing over HTTP in production (not recommended) |
 | `COOKIE_SAMESITE` | `strict` (production)<br>`lax` (development) | SameSite cookie policy (`strict`, `lax`, or `none`) |
 | `TRUST_PROXY` | `1` (production)<br>unset (development) | Trust reverse proxy headers (`true`, `false`, number of hops, or IP/CIDR). Required for HTTPS reverse proxy setups |

@@ -56,6 +56,7 @@ MeshMonitor can be configured using environment variables. Here are the most imp
 | `COOKIE_SECURE` | Require HTTPS for cookies | `true` in production |
 | `COOKIE_SAMESITE` | Cookie SameSite policy (`strict`, `lax`, or `none`) | `strict` in production |
 | `SESSION_MAX_AGE` | Session cookie lifetime in milliseconds | `86400000` (24 hours) |
+| `SESSION_ROLLING` | Reset session expiry on each request (keeps active users logged in) | `true` |
 | `ALLOWED_ORIGINS` | **REQUIRED for HTTPS/reverse proxy**: Comma-separated list of allowed CORS origins | localhost URLs in development |
 
 ### Authentication Variables
