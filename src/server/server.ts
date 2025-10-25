@@ -1737,7 +1737,7 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
     const currentSettings = databaseService.getAllSettings();
 
     // Validate settings
-    const validKeys = ['maxNodeAgeHours', 'tracerouteIntervalMinutes', 'temperatureUnit', 'distanceUnit', 'telemetryVisualizationHours', 'telemetryFavorites', 'autoAckEnabled', 'autoAckRegex', 'autoAckChannels', 'autoAckDirectMessages', 'autoAnnounceEnabled', 'autoAnnounceIntervalHours', 'autoAnnounceMessage', 'autoAnnounceChannelIndex', 'autoAnnounceOnStart', 'preferredSortField', 'preferredSortDirection', 'timeFormat', 'dateFormat', 'mapTileset', 'packet_log_enabled', 'packet_log_max_count', 'packet_log_max_age_hours'];
+    const validKeys = ['maxNodeAgeHours', 'tracerouteIntervalMinutes', 'temperatureUnit', 'distanceUnit', 'telemetryVisualizationHours', 'telemetryFavorites', 'autoAckEnabled', 'autoAckRegex', 'autoAckMessage', 'autoAckChannels', 'autoAckDirectMessages', 'autoAnnounceEnabled', 'autoAnnounceIntervalHours', 'autoAnnounceMessage', 'autoAnnounceChannelIndex', 'autoAnnounceOnStart', 'preferredSortField', 'preferredSortDirection', 'timeFormat', 'dateFormat', 'mapTileset', 'packet_log_enabled', 'packet_log_max_count', 'packet_log_max_age_hours'];
     const filteredSettings: Record<string, string> = {};
 
     for (const key of validKeys) {
