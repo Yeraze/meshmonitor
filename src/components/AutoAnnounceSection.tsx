@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 import { Channel } from '../types/device';
 import { useToast } from './ToastContainer';
@@ -46,6 +46,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [isSendingNow, setIsSendingNow] = useState(false);
   const [lastAnnouncementTime, setLastAnnouncementTime] = useState<number | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Update local state when props change
   useEffect(() => {
@@ -125,7 +126,24 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
   };
 
   const insertToken = (token: string) => {
-    setLocalMessage(localMessage + token);
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      // Fallback: append to end if textarea ref not available
+      setLocalMessage(localMessage + token);
+      return;
+    }
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const newMessage = localMessage.substring(0, start) + token + localMessage.substring(end);
+
+    setLocalMessage(newMessage);
+
+    // Set cursor position after the inserted token
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + token.length, start + token.length);
+    }, 0);
   };
 
   // Generate sample message with example token values
@@ -329,6 +347,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
           </label>
           <textarea
             id="announceMessage"
+            ref={textareaRef}
             value={localMessage}
             onChange={(e) => setLocalMessage(e.target.value)}
             disabled={!localEnabled}

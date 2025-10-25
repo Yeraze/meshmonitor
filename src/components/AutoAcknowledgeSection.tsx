@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { Channel } from '../types/device';
@@ -44,6 +44,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [testMessages, setTestMessages] = useState('test\nTest message\nping\nPING\nHello world\nTESTING 123');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Update local state when props change
   useEffect(() => {
@@ -98,7 +99,24 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   };
 
   const insertToken = (token: string) => {
-    setLocalMessage(localMessage + token);
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      // Fallback: append to end if textarea ref not available
+      setLocalMessage(localMessage + token);
+      return;
+    }
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const newMessage = localMessage.substring(0, start) + token + localMessage.substring(end);
+
+    setLocalMessage(newMessage);
+
+    // Set cursor position after the inserted token
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + token.length, start + token.length);
+    }, 0);
   };
 
   // Generate sample message with example token values
@@ -112,6 +130,8 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     sample = sample.replace(/{TIME}/g, new Date().toLocaleString());
     sample = sample.replace(/{VERSION}/g, '2.9.1');
     sample = sample.replace(/{DURATION}/g, '3d 12h');
+    sample = sample.replace(/{LONG_NAME}/g, 'Meshtastic ABC1');
+    sample = sample.replace(/{SHORT_NAME}/g, 'ABC1');
 
     // Check which features would be shown
     const sampleFeatures: string[] = [];
@@ -297,11 +317,12 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
           <label htmlFor="autoAckMessage">
             Acknowledgment Message Template
             <span className="setting-description">
-              Message to send in response. Available tokens: {'{NODE_ID}'} (sender node ID), {'{NUMBER_HOPS}'} (hop count), {'{RABBIT_HOPS}'} (rabbit emojis equal to hop count, 🎯 for direct/0 hops), {'{TIME}'} (current time), {'{VERSION}'}, {'{DURATION}'}, {'{FEATURES}'}, {'{NODECOUNT}'}, {'{DIRECTCOUNT}'}
+              Message to send in response. Available tokens: {'{NODE_ID}'} (sender node ID), {'{NUMBER_HOPS}'} (hop count), {'{RABBIT_HOPS}'} (rabbit emojis equal to hop count, 🎯 for direct/0 hops), {'{TIME}'} (current time), {'{VERSION}'}, {'{DURATION}'}, {'{FEATURES}'}, {'{NODECOUNT}'}, {'{DIRECTCOUNT}'}, {'{LONG_NAME}'} (sender's long name), {'{SHORT_NAME}'} (sender's short name)
             </span>
           </label>
           <textarea
             id="autoAckMessage"
+            ref={textareaRef}
             value={localMessage}
             onChange={(e) => setLocalMessage(e.target.value)}
             disabled={!localEnabled}
@@ -457,6 +478,38 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
               }}
             >
               + {'{DIRECTCOUNT}'}
+            </button>
+            <button
+              type="button"
+              onClick={() => insertToken('{LONG_NAME}')}
+              disabled={!localEnabled}
+              style={{
+                padding: '0.25rem 0.5rem',
+                fontSize: '12px',
+                background: 'var(--ctp-surface2)',
+                border: '1px solid var(--ctp-overlay0)',
+                borderRadius: '4px',
+                cursor: localEnabled ? 'pointer' : 'not-allowed',
+                opacity: localEnabled ? 1 : 0.5
+              }}
+            >
+              + {'{LONG_NAME}'}
+            </button>
+            <button
+              type="button"
+              onClick={() => insertToken('{SHORT_NAME}')}
+              disabled={!localEnabled}
+              style={{
+                padding: '0.25rem 0.5rem',
+                fontSize: '12px',
+                background: 'var(--ctp-surface2)',
+                border: '1px solid var(--ctp-overlay0)',
+                borderRadius: '4px',
+                cursor: localEnabled ? 'pointer' : 'not-allowed',
+                opacity: localEnabled ? 1 : 0.5
+              }}
+            >
+              + {'{SHORT_NAME}'}
             </button>
           </div>
         </div>
