@@ -8,8 +8,10 @@ export interface PacketLog {
   timestamp: number;
   from_node: number;
   from_node_id?: string;
+  from_node_longName?: string;
   to_node?: number;
   to_node_id?: string;
+  to_node_longName?: string;
   channel?: number;
   portnum: number;
   portnum_name?: string;

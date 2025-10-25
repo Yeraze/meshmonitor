@@ -4,6 +4,7 @@ import { PacketLog, PacketFilters } from '../types/packet';
 import { getPackets, clearPackets } from '../services/packetApi';
 import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
+import { useData } from '../contexts/DataContext';
 import { formatDateTime } from '../utils/datetime';
 import './PacketMonitorPanel.css';
 
@@ -15,7 +16,8 @@ interface PacketMonitorPanelProps {
 const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNodeClick }) => {
   const { hasPermission, authStatus } = useAuth();
   const { timeFormat, dateFormat } = useSettings();
-  const [packets, setPackets] = useState<PacketLog[]>([]);
+  const { deviceInfo } = useData();
+  const [rawPackets, setRawPackets] = useState<PacketLog[]>([]);
   const [total, setTotal] = useState(0);
   const [maxCount, setMaxCount] = useState(1000);
   const [loading, setLoading] = useState(true);
@@ -23,11 +25,34 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
   const [selectedPacket, setSelectedPacket] = useState<PacketLog | null>(null);
   const [filters, setFilters] = useState<PacketFilters>({});
   const [showFilters, setShowFilters] = useState(false);
+  const [hideOwnPackets, setHideOwnPackets] = useState(true);
   const tableRef = useRef<HTMLDivElement>(null);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Check permissions
   const canView = hasPermission('channels', 'read') && hasPermission('messages', 'read');
+
+  // Get own node number for filtering
+  // Convert nodeId (hex string like "!43588558") to number
+  const ownNodeNum = React.useMemo(() => {
+    const nodeId = deviceInfo?.localNodeInfo?.nodeId;
+    if (!nodeId || !nodeId.startsWith('!')) return undefined;
+    return parseInt(nodeId.substring(1), 16);
+  }, [deviceInfo?.localNodeInfo?.nodeId]);
+
+  // Apply "Hide Own Packets" filter reactively
+  const packets = React.useMemo(() => {
+    if (hideOwnPackets && ownNodeNum) {
+      return rawPackets.filter(packet => packet.from_node !== ownNodeNum);
+    }
+    return rawPackets;
+  }, [rawPackets, hideOwnPackets, ownNodeNum]);
+
+  // Helper function to truncate long names
+  const truncateLongName = (longName: string | undefined, maxLength: number = 20): string | undefined => {
+    if (!longName) return undefined;
+    return longName.length > maxLength ? `${longName.substring(0, maxLength)}...` : longName;
+  };
 
   // Fetch packets
   const fetchPackets = useCallback(async () => {
@@ -35,7 +60,8 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
 
     try {
       const response = await getPackets(0, 100, filters);
-      setPackets(response.packets);
+
+      setRawPackets(response.packets);
       setTotal(response.total);
       setMaxCount(response.maxCount);
       setLoading(false);
@@ -213,6 +239,16 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
             <option value="false">Decoded Only</option>
           </select>
 
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={hideOwnPackets}
+              onChange={(e) => setHideOwnPackets(e.target.checked)}
+              style={{ cursor: 'pointer' }}
+            />
+            <span>Hide Own Packets</span>
+          </label>
+
           <button onClick={() => setFilters({})} className="clear-filters-btn">
             Clear Filters
           </button>
@@ -251,19 +287,19 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                     <td className="timestamp" title={formatDateTime(new Date(packet.timestamp * 1000), timeFormat, dateFormat)}>
                       {formatTimestamp(packet.timestamp)}
                     </td>
-                    <td className="from-node" title={packet.from_node_id || ''}>
+                    <td className="from-node" title={packet.from_node_longName || packet.from_node_id || ''}>
                       {packet.from_node_id && onNodeClick ? (
                         <span
                           className="node-id-link"
                           onClick={(e) => handleNodeClick(packet.from_node_id!, e)}
                         >
-                          {packet.from_node_id}
+                          {truncateLongName(packet.from_node_longName) || packet.from_node_id}
                         </span>
                       ) : (
-                        packet.from_node_id || packet.from_node
+                        truncateLongName(packet.from_node_longName) || packet.from_node_id || packet.from_node
                       )}
                     </td>
-                    <td className="to-node" title={packet.to_node_id || ''}>
+                    <td className="to-node" title={packet.to_node_longName || packet.to_node_id || ''}>
                       {packet.to_node_id === '!ffffffff' ? (
                         'Broadcast'
                       ) : packet.to_node_id && onNodeClick ? (
@@ -271,10 +307,10 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                           className="node-id-link"
                           onClick={(e) => handleNodeClick(packet.to_node_id!, e)}
                         >
-                          {packet.to_node_id}
+                          {truncateLongName(packet.to_node_longName) || packet.to_node_id}
                         </span>
                       ) : (
-                        packet.to_node_id || packet.to_node || 'N/A'
+                        truncateLongName(packet.to_node_longName) || packet.to_node_id || packet.to_node || 'N/A'
                       )}
                     </td>
                     <td
@@ -323,12 +359,16 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
             </div>
             <div className="detail-row">
               <span className="detail-label">From:</span>
-              <span className="detail-value">{selectedPacket.from_node_id} ({selectedPacket.from_node})</span>
+              <span className="detail-value">
+                {selectedPacket.from_node_longName || selectedPacket.from_node_id} ({selectedPacket.from_node})
+              </span>
             </div>
             <div className="detail-row">
               <span className="detail-label">To:</span>
               <span className="detail-value">
-                {selectedPacket.to_node_id === '!ffffffff' ? 'Broadcast' : `${selectedPacket.to_node_id || 'N/A'} (${selectedPacket.to_node ?? 'N/A'})`}
+                {selectedPacket.to_node_id === '!ffffffff'
+                  ? 'Broadcast'
+                  : `${selectedPacket.to_node_longName || selectedPacket.to_node_id || 'N/A'} (${selectedPacket.to_node ?? 'N/A'})`}
               </span>
             </div>
             <div className="detail-row">

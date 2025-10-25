@@ -68,6 +68,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [localTimeFormat, setLocalTimeFormat] = useState(timeFormat);
   const [localDateFormat, setLocalDateFormat] = useState(dateFormat);
   const [localMapTileset, setLocalMapTileset] = useState(mapTileset);
+  const [localPacketLogEnabled, setLocalPacketLogEnabled] = useState(false);
+  const [localPacketLogMaxCount, setLocalPacketLogMaxCount] = useState(1000);
+  const [localPacketLogMaxAgeHours, setLocalPacketLogMaxAgeHours] = useState(24);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDocker, setIsDocker] = useState<boolean | null>(null);
@@ -92,6 +95,31 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     fetchSystemStatus();
   }, [baseUrl]);
 
+  // Fetch packet monitor settings
+  useEffect(() => {
+    const fetchPacketMonitorSettings = async () => {
+      try {
+        const response = await fetch(`${baseUrl}/api/settings`, {
+          credentials: 'include'
+        });
+        if (response.ok) {
+          const settings = await response.json();
+          const enabled = settings.packet_log_enabled === '1';
+          const maxCount = parseInt(settings.packet_log_max_count || '1000', 10);
+          const maxAgeHours = parseInt(settings.packet_log_max_age_hours || '24', 10);
+
+          setLocalPacketLogEnabled(enabled);
+          setLocalPacketLogMaxCount(maxCount);
+          setLocalPacketLogMaxAgeHours(maxAgeHours);
+          setInitialPacketMonitorSettings({ enabled, maxCount, maxAgeHours });
+        }
+      } catch (error) {
+        logger.error('Failed to fetch packet monitor settings:', error);
+      }
+    };
+    fetchPacketMonitorSettings();
+  }, [baseUrl]);
+
   // Update local state when props change
   useEffect(() => {
     setLocalMaxNodeAge(maxNodeAgeHours);
@@ -106,6 +134,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   }, [maxNodeAgeHours, temperatureUnit, distanceUnit, telemetryVisualizationHours, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset]);
 
   // Check if any settings have changed
+  // Note: We can't compare packet monitor settings to props since they're not in props
+  // Instead, we'll track initial packet monitor values separately
+  const [initialPacketMonitorSettings, setInitialPacketMonitorSettings] = useState({ enabled: false, maxCount: 1000, maxAgeHours: 24 });
+
   useEffect(() => {
     const changed =
       localMaxNodeAge !== maxNodeAgeHours ||
@@ -116,10 +148,14 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localPreferredSortDirection !== preferredSortDirection ||
       localTimeFormat !== timeFormat ||
       localDateFormat !== dateFormat ||
-      localMapTileset !== mapTileset;
+      localMapTileset !== mapTileset ||
+      localPacketLogEnabled !== initialPacketMonitorSettings.enabled ||
+      localPacketLogMaxCount !== initialPacketMonitorSettings.maxCount ||
+      localPacketLogMaxAgeHours !== initialPacketMonitorSettings.maxAgeHours;
     setHasChanges(changed);
   }, [localMaxNodeAge, localTemperatureUnit, localDistanceUnit, localTelemetryHours, localPreferredSortField, localPreferredSortDirection, localTimeFormat, localDateFormat, localMapTileset,
-      maxNodeAgeHours, temperatureUnit, distanceUnit, telemetryVisualizationHours, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset]);
+      maxNodeAgeHours, temperatureUnit, distanceUnit, telemetryVisualizationHours, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset,
+      localPacketLogEnabled, localPacketLogMaxCount, localPacketLogMaxAgeHours, initialPacketMonitorSettings]);
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -133,7 +169,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         preferredSortDirection: localPreferredSortDirection,
         timeFormat: localTimeFormat,
         dateFormat: localDateFormat,
-        mapTileset: localMapTileset
+        mapTileset: localMapTileset,
+        packet_log_enabled: localPacketLogEnabled ? '1' : '0',
+        packet_log_max_count: localPacketLogMaxCount.toString(),
+        packet_log_max_age_hours: localPacketLogMaxAgeHours.toString()
       };
 
       // Save to server
@@ -153,6 +192,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onTimeFormatChange(localTimeFormat);
       onDateFormatChange(localDateFormat);
       onMapTilesetChange(localMapTileset);
+
+      // Update initial packet monitor settings after successful save
+      setInitialPacketMonitorSettings({ enabled: localPacketLogEnabled, maxCount: localPacketLogMaxCount, maxAgeHours: localPacketLogMaxAgeHours });
 
       showToast('Settings saved successfully!', 'success');
       setHasChanges(false);
@@ -175,7 +217,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       '• Preferred Sort: Long Name (Ascending)\n' +
       '• Time Format: 24-hour\n' +
       '• Date Format: MM/DD/YYYY\n' +
-      '• Map Tileset: OpenStreetMap\n\n' +
+      '• Map Tileset: OpenStreetMap\n' +
+      '• Packet Monitor: Disabled\n' +
+      '• Max Packets: 1000\n' +
+      '• Packet Age: 24 hours\n\n' +
       'This will affect all browsers accessing this system.'
     );
 
@@ -197,6 +242,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       setLocalTimeFormat('24');
       setLocalDateFormat('MM/DD/YYYY');
       setLocalMapTileset('osm');
+      setLocalPacketLogEnabled(false);
+      setLocalPacketLogMaxCount(1000);
+      setLocalPacketLogMaxAgeHours(24);
 
       // Update parent component with defaults
       onMaxNodeAgeChange(24);
@@ -208,6 +256,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onTimeFormatChange('24');
       onDateFormatChange('MM/DD/YYYY');
       onMapTilesetChange('osm');
+
+      // Update initial packet monitor settings
+      setInitialPacketMonitorSettings({ enabled: false, maxCount: 1000, maxAgeHours: 24 });
 
       showToast('Settings reset to defaults!', 'success');
       setHasChanges(false);
@@ -521,10 +572,27 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         </div>
 
         <div className="settings-section">
-          <h3>Packet Monitor (Desktop Only)</h3>
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={localPacketLogEnabled}
+                onChange={(e) => setLocalPacketLogEnabled(e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              <span>Packet Monitor</span>
+            </label>
+            <span style={{ fontSize: '0.85rem', fontWeight: 'normal', color: 'var(--text-secondary)' }}>(Desktop Only)</span>
+          </h3>
           <p className="setting-description">Configure the mesh traffic monitor that displays all packets on the network. Requires both channels:read and messages:read permissions.</p>
           <div className="packet-monitor-settings">
-            <PacketMonitorSettings baseUrl={baseUrl} />
+            <PacketMonitorSettings
+              enabled={localPacketLogEnabled}
+              maxCount={localPacketLogMaxCount}
+              maxAgeHours={localPacketLogMaxAgeHours}
+              onMaxCountChange={setLocalPacketLogMaxCount}
+              onMaxAgeHoursChange={setLocalPacketLogMaxAgeHours}
+            />
           </div>
         </div>
 
