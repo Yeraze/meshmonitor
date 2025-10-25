@@ -31,6 +31,7 @@ describe.skip('AutoAcknowledgeSection Component', () => {
   const mockCallbacks = {
     onEnabledChange: vi.fn(),
     onRegexChange: vi.fn(),
+    onMessageChange: vi.fn(),
     onChannelsChange: vi.fn(),
     onDirectMessagesChange: vi.fn()
   };
@@ -38,6 +39,7 @@ describe.skip('AutoAcknowledgeSection Component', () => {
   const defaultProps = {
     enabled: true,
     regex: '^(test|ping)',
+    message: '🤖 Copy, {NUMBER_HOPS} hops at {TIME}',
     channels: mockChannels,
     enabledChannels: [0, 1],
     directMessagesEnabled: true,

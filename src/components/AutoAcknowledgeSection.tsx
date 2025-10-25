@@ -6,25 +6,31 @@ import { Channel } from '../types/device';
 interface AutoAcknowledgeSectionProps {
   enabled: boolean;
   regex: string;
+  message: string;
   channels: Channel[];
   enabledChannels: number[];
   directMessagesEnabled: boolean;
   baseUrl: string;
   onEnabledChange: (enabled: boolean) => void;
   onRegexChange: (regex: string) => void;
+  onMessageChange: (message: string) => void;
   onChannelsChange: (channels: number[]) => void;
   onDirectMessagesChange: (enabled: boolean) => void;
 }
 
+const DEFAULT_MESSAGE = '🤖 Copy, {NUMBER_HOPS} hops at {TIME}';
+
 const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   enabled,
   regex,
+  message,
   channels,
   enabledChannels,
   directMessagesEnabled,
   baseUrl,
   onEnabledChange,
   onRegexChange,
+  onMessageChange,
   onChannelsChange,
   onDirectMessagesChange,
 }) => {
@@ -32,6 +38,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   const { showToast } = useToast();
   const [localEnabled, setLocalEnabled] = useState(enabled);
   const [localRegex, setLocalRegex] = useState(regex || '^(test|ping)');
+  const [localMessage, setLocalMessage] = useState(message || DEFAULT_MESSAGE);
   const [localEnabledChannels, setLocalEnabledChannels] = useState<number[]>(enabledChannels);
   const [localDirectMessagesEnabled, setLocalDirectMessagesEnabled] = useState(directMessagesEnabled);
   const [hasChanges, setHasChanges] = useState(false);
@@ -42,16 +49,17 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   useEffect(() => {
     setLocalEnabled(enabled);
     setLocalRegex(regex || '^(test|ping)');
+    setLocalMessage(message || DEFAULT_MESSAGE);
     setLocalEnabledChannels(enabledChannels);
     setLocalDirectMessagesEnabled(directMessagesEnabled);
-  }, [enabled, regex, enabledChannels, directMessagesEnabled]);
+  }, [enabled, regex, message, enabledChannels, directMessagesEnabled]);
 
   // Check if any settings have changed
   useEffect(() => {
     const channelsChanged = JSON.stringify(localEnabledChannels.sort()) !== JSON.stringify(enabledChannels.sort());
-    const changed = localEnabled !== enabled || localRegex !== regex || channelsChanged || localDirectMessagesEnabled !== directMessagesEnabled;
+    const changed = localEnabled !== enabled || localRegex !== regex || localMessage !== message || channelsChanged || localDirectMessagesEnabled !== directMessagesEnabled;
     setHasChanges(changed);
-  }, [localEnabled, localRegex, localEnabledChannels, localDirectMessagesEnabled, enabled, regex, enabledChannels, directMessagesEnabled]);
+  }, [localEnabled, localRegex, localMessage, localEnabledChannels, localDirectMessagesEnabled, enabled, regex, message, enabledChannels, directMessagesEnabled]);
 
   // Validate regex pattern for safety
   const validateRegex = (pattern: string): { valid: boolean; error?: string } => {
@@ -89,6 +97,35 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     }
   };
 
+  const insertToken = (token: string) => {
+    setLocalMessage(localMessage + token);
+  };
+
+  // Generate sample message with example token values
+  const generateSampleMessage = (): string => {
+    let sample = localMessage;
+
+    // Replace with sample values
+    sample = sample.replace(/{NODE_ID}/g, '!a1b2c3d4');
+    sample = sample.replace(/{NUMBER_HOPS}/g, '3');
+    sample = sample.replace(/{RABBIT_HOPS}/g, '🐇🐇🐇'); // 3 rabbits for 3 hops
+    sample = sample.replace(/{TIME}/g, new Date().toLocaleString());
+    sample = sample.replace(/{VERSION}/g, '2.9.1');
+    sample = sample.replace(/{DURATION}/g, '3d 12h');
+
+    // Check which features would be shown
+    const sampleFeatures: string[] = [];
+    sampleFeatures.push('🗺️'); // Traceroute
+    sampleFeatures.push('🤖'); // Auto-ack
+    sampleFeatures.push('📢'); // Auto-announce
+    sample = sample.replace(/{FEATURES}/g, sampleFeatures.join(' '));
+
+    sample = sample.replace(/{NODECOUNT}/g, '42');
+    sample = sample.replace(/{DIRECTCOUNT}/g, '8');
+
+    return sample;
+  };
+
   const handleSave = async () => {
     // Validate regex before saving
     const validation = validateRegex(localRegex);
@@ -106,6 +143,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
         body: JSON.stringify({
           autoAckEnabled: String(localEnabled),
           autoAckRegex: localRegex,
+          autoAckMessage: localMessage,
           autoAckChannels: localEnabledChannels.join(','),
           autoAckDirectMessages: String(localDirectMessagesEnabled)
         })
@@ -122,6 +160,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
       // Only update parent state after successful API call (no localStorage)
       onEnabledChange(localEnabled);
       onRegexChange(localRegex);
+      onMessageChange(localMessage);
       onChannelsChange(localEnabledChannels);
       onDirectMessagesChange(localDirectMessagesEnabled);
 
@@ -185,9 +224,8 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
 
       <div className="settings-section" style={{ opacity: localEnabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>
         <p style={{ marginBottom: '1rem', color: '#666', lineHeight: '1.5', marginLeft: '1.75rem' }}>
-          When enabled, automatically reply to any message matching the RegEx pattern with
-          <strong> 🤖 Copy, N hops at T</strong> where <strong>N</strong> is the number of hops in the originating
-          message, and <strong>T</strong> is the date/time the message was received.
+          When enabled, automatically reply to any message matching the RegEx pattern with a customizable template.
+          Use tokens like <code>{'{NODE_ID}'}</code>, <code>{'{NUMBER_HOPS}'}</code>, and <code>{'{TIME}'}</code> for dynamic content.
         </p>
 
         <div className="setting-item" style={{ marginTop: '1rem' }}>
@@ -252,6 +290,196 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
                 </label>
               </div>
             ))}
+          </div>
+        </div>
+
+        <div className="setting-item" style={{ marginTop: '1.5rem' }}>
+          <label htmlFor="autoAckMessage">
+            Acknowledgment Message Template
+            <span className="setting-description">
+              Message to send in response. Available tokens: {'{NODE_ID}'} (sender node ID), {'{NUMBER_HOPS}'} (hop count), {'{RABBIT_HOPS}'} (rabbit emojis equal to hop count, 🎯 for direct/0 hops), {'{TIME}'} (current time), {'{VERSION}'}, {'{DURATION}'}, {'{FEATURES}'}, {'{NODECOUNT}'}, {'{DIRECTCOUNT}'}
+            </span>
+          </label>
+          <textarea
+            id="autoAckMessage"
+            value={localMessage}
+            onChange={(e) => setLocalMessage(e.target.value)}
+            disabled={!localEnabled}
+            className="setting-input"
+            rows={3}
+            style={{
+              fontFamily: 'monospace',
+              resize: 'vertical',
+              minHeight: '60px'
+            }}
+          />
+          <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => insertToken('{NODE_ID}')}
+              disabled={!localEnabled}
+              style={{
+                padding: '0.25rem 0.5rem',
+                fontSize: '12px',
+                background: 'var(--ctp-surface2)',
+                border: '1px solid var(--ctp-overlay0)',
+                borderRadius: '4px',
+                cursor: localEnabled ? 'pointer' : 'not-allowed',
+                opacity: localEnabled ? 1 : 0.5
+              }}
+            >
+              + {'{NODE_ID}'}
+            </button>
+            <button
+              type="button"
+              onClick={() => insertToken('{NUMBER_HOPS}')}
+              disabled={!localEnabled}
+              style={{
+                padding: '0.25rem 0.5rem',
+                fontSize: '12px',
+                background: 'var(--ctp-surface2)',
+                border: '1px solid var(--ctp-overlay0)',
+                borderRadius: '4px',
+                cursor: localEnabled ? 'pointer' : 'not-allowed',
+                opacity: localEnabled ? 1 : 0.5
+              }}
+            >
+              + {'{NUMBER_HOPS}'}
+            </button>
+            <button
+              type="button"
+              onClick={() => insertToken('{RABBIT_HOPS}')}
+              disabled={!localEnabled}
+              style={{
+                padding: '0.25rem 0.5rem',
+                fontSize: '12px',
+                background: 'var(--ctp-surface2)',
+                border: '1px solid var(--ctp-overlay0)',
+                borderRadius: '4px',
+                cursor: localEnabled ? 'pointer' : 'not-allowed',
+                opacity: localEnabled ? 1 : 0.5
+              }}
+            >
+              + {'{RABBIT_HOPS}'}
+            </button>
+            <button
+              type="button"
+              onClick={() => insertToken('{TIME}')}
+              disabled={!localEnabled}
+              style={{
+                padding: '0.25rem 0.5rem',
+                fontSize: '12px',
+                background: 'var(--ctp-surface2)',
+                border: '1px solid var(--ctp-overlay0)',
+                borderRadius: '4px',
+                cursor: localEnabled ? 'pointer' : 'not-allowed',
+                opacity: localEnabled ? 1 : 0.5
+              }}
+            >
+              + {'{TIME}'}
+            </button>
+            <button
+              type="button"
+              onClick={() => insertToken('{VERSION}')}
+              disabled={!localEnabled}
+              style={{
+                padding: '0.25rem 0.5rem',
+                fontSize: '12px',
+                background: 'var(--ctp-surface2)',
+                border: '1px solid var(--ctp-overlay0)',
+                borderRadius: '4px',
+                cursor: localEnabled ? 'pointer' : 'not-allowed',
+                opacity: localEnabled ? 1 : 0.5
+              }}
+            >
+              + {'{VERSION}'}
+            </button>
+            <button
+              type="button"
+              onClick={() => insertToken('{DURATION}')}
+              disabled={!localEnabled}
+              style={{
+                padding: '0.25rem 0.5rem',
+                fontSize: '12px',
+                background: 'var(--ctp-surface2)',
+                border: '1px solid var(--ctp-overlay0)',
+                borderRadius: '4px',
+                cursor: localEnabled ? 'pointer' : 'not-allowed',
+                opacity: localEnabled ? 1 : 0.5
+              }}
+            >
+              + {'{DURATION}'}
+            </button>
+            <button
+              type="button"
+              onClick={() => insertToken('{FEATURES}')}
+              disabled={!localEnabled}
+              style={{
+                padding: '0.25rem 0.5rem',
+                fontSize: '12px',
+                background: 'var(--ctp-surface2)',
+                border: '1px solid var(--ctp-overlay0)',
+                borderRadius: '4px',
+                cursor: localEnabled ? 'pointer' : 'not-allowed',
+                opacity: localEnabled ? 1 : 0.5
+              }}
+            >
+              + {'{FEATURES}'}
+            </button>
+            <button
+              type="button"
+              onClick={() => insertToken('{NODECOUNT}')}
+              disabled={!localEnabled}
+              style={{
+                padding: '0.25rem 0.5rem',
+                fontSize: '12px',
+                background: 'var(--ctp-surface2)',
+                border: '1px solid var(--ctp-overlay0)',
+                borderRadius: '4px',
+                cursor: localEnabled ? 'pointer' : 'not-allowed',
+                opacity: localEnabled ? 1 : 0.5
+              }}
+            >
+              + {'{NODECOUNT}'}
+            </button>
+            <button
+              type="button"
+              onClick={() => insertToken('{DIRECTCOUNT}')}
+              disabled={!localEnabled}
+              style={{
+                padding: '0.25rem 0.5rem',
+                fontSize: '12px',
+                background: 'var(--ctp-surface2)',
+                border: '1px solid var(--ctp-overlay0)',
+                borderRadius: '4px',
+                cursor: localEnabled ? 'pointer' : 'not-allowed',
+                opacity: localEnabled ? 1 : 0.5
+              }}
+            >
+              + {'{DIRECTCOUNT}'}
+            </button>
+          </div>
+        </div>
+
+        <div className="setting-item" style={{ marginTop: '1rem' }}>
+          <label>
+            Sample Message Preview
+            <span className="setting-description">
+              Shows how your acknowledgment will appear after token substitution (using example values)
+            </span>
+          </label>
+          <div style={{
+            padding: '0.75rem',
+            background: 'var(--ctp-surface0)',
+            border: '2px solid var(--ctp-blue)',
+            borderRadius: '4px',
+            fontFamily: 'monospace',
+            fontSize: '0.95rem',
+            color: 'var(--ctp-text)',
+            lineHeight: '1.5',
+            minHeight: '50px'
+          }}>
+            {generateSampleMessage()}
           </div>
         </div>
 
