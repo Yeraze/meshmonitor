@@ -18,6 +18,7 @@ import AutoAcknowledgeSection from './components/AutoAcknowledgeSection'
 import AutoTracerouteSection from './components/AutoTracerouteSection'
 import AutoAnnounceSection from './components/AutoAnnounceSection'
 import { ToastProvider, useToast } from './components/ToastContainer'
+import { RebootModal } from './components/RebootModal'
 // import { version } from '../package.json' // Removed - footer no longer displayed
 import { type TemperatureUnit } from './utils/temperature'
 import { calculateDistance, formatDistance } from './utils/distance'
@@ -66,6 +67,8 @@ function App() {
   const [releaseUrl, setReleaseUrl] = useState('');
   const [channelInfoModal, setChannelInfoModal] = useState<number | null>(null);
   const [showPsk, setShowPsk] = useState(false);
+  const [showRebootModal, setShowRebootModal] = useState(false);
+  const [configRefreshTrigger, setConfigRefreshTrigger] = useState(0);
 
   // Check if mobile viewport and default to collapsed on mobile
   const isMobileViewport = () => window.innerWidth <= 768;
@@ -104,6 +107,8 @@ function App() {
   const hasSelectedInitialChannelRef = useRef<boolean>(false)
   const selectedChannelRef = useRef<number>(-1)
   const lastChannelSelectionRef = useRef<number>(-1) // Track last selected channel before switching to Messages tab
+  const showRebootModalRef = useRef<boolean>(false) // Track reboot modal state for interval closure
+  const connectionStatusRef = useRef<string>('disconnected') // Track connection status for interval closure
 
   // Constants for emoji tapbacks
   const EMOJI_FLAG = 1; // Protobuf flag indicating this is a tapback/reaction
@@ -624,6 +629,15 @@ function App() {
     selectedChannelRef.current = selectedChannel;
   }, [selectedChannel]);
 
+  // Keep refs in sync for interval closure
+  useEffect(() => {
+    showRebootModalRef.current = showRebootModal;
+  }, [showRebootModal]);
+
+  useEffect(() => {
+    connectionStatusRef.current = connectionStatus;
+  }, [connectionStatus]);
+
   // Fetch traceroutes when showPaths is enabled or Messages/Nodes tab is active
   useEffect(() => {
     if ((showPaths || activeTab === 'messages' || activeTab === 'nodes') && shouldShowData()) {
@@ -846,12 +860,21 @@ function App() {
   // Regular data updates (every 5 seconds)
   useEffect(() => {
     const updateInterval = setInterval(() => {
+      // Use refs to get current values without adding to deps (prevents interval multiplication)
+      const currentConnectionStatus = connectionStatusRef.current;
+      const currentShowRebootModal = showRebootModalRef.current;
+
       // Skip polling when user has manually disconnected or device is rebooting
-      if (connectionStatus === 'user-disconnected' || connectionStatus === 'rebooting') {
+      if (currentConnectionStatus === 'user-disconnected' || currentConnectionStatus === 'rebooting') {
         return;
       }
 
-      if (connectionStatus === 'connected') {
+      // Skip polling when RebootModal is active
+      if (currentShowRebootModal) {
+        return;
+      }
+
+      if (currentConnectionStatus === 'connected') {
         updateDataFromBackend();
       } else {
         checkConnectionStatus();
@@ -859,7 +882,7 @@ function App() {
     }, 5000);
 
     return () => clearInterval(updateInterval);
-  }, [connectionStatus]);
+  }, []); // Empty deps - interval created only once, uses refs for current values
 
   // Scheduled node database refresh (every 60 minutes)
   useEffect(() => {
@@ -960,12 +983,30 @@ function App() {
     }
   };
 
-  const handleConfigChangeTriggeringReboot = async () => {
+  const handleConfigChangeTriggeringReboot = () => {
     logger.debug('⚙️ Config change sent, device will reboot to apply changes...');
     setConnectionStatus('rebooting');
 
-    // Wait for device to reboot and reconnect
-    await waitForDeviceReconnection();
+    // Show reboot modal
+    setShowRebootModal(true);
+  };
+
+  const handleRebootModalClose = () => {
+    logger.debug('✅ Device reboot complete and verified');
+    console.log('[App] Reboot modal closing - will trigger config refresh');
+    setShowRebootModal(false);
+    setConnectionStatus('connected');
+
+    // Refresh data after reboot
+    fetchNodesWithTelemetry();
+    fetchChannels();
+
+    // Trigger config refresh in ConfigurationTab
+    setConfigRefreshTrigger(prev => {
+      const newValue = prev + 1;
+      console.log(`[App] Incrementing configRefreshTrigger: ${prev} → ${newValue}`);
+      return newValue;
+    });
   };
 
   const handleRebootDevice = async (): Promise<boolean> => {
@@ -1766,9 +1807,21 @@ function App() {
       channelSet.add(msg.channel);
     });
 
-    // Filter out channel -1 (used for direct messages) and sort
+    // Filter out channel -1 (used for direct messages), disabled channels (role = 0), and sort
     return Array.from(channelSet)
-      .filter(ch => ch !== -1)
+      .filter(ch => {
+        if (ch === -1) return false; // Exclude DM channel
+
+        // Check if channel has a configuration
+        const channelConfig = channels.find(c => c.id === ch);
+
+        // If channel has config and role is Disabled (0), exclude it
+        if (channelConfig && channelConfig.role === 0) {
+          return false;
+        }
+
+        return true;
+      })
       .sort((a, b) => a - b);
   };
 
@@ -3697,6 +3750,7 @@ function App() {
       )}
 
       <LoginModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />
+      <RebootModal isOpen={showRebootModal} onClose={handleRebootModalClose} />
 
       <Sidebar
         activeTab={activeTab}
@@ -3864,6 +3918,7 @@ function App() {
             onRebootDevice={handleRebootDevice}
             onConfigChangeTriggeringReboot={handleConfigChangeTriggeringReboot}
             onChannelsUpdated={() => fetchChannels()}
+            refreshTrigger={configRefreshTrigger}
           />
         )}
         {activeTab === 'notifications' && <NotificationsTab isAdmin={authStatus?.user?.isAdmin || false} />}

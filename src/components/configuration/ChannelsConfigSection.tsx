@@ -59,12 +59,8 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
   const handleSaveChannel = async () => {
     if (!editingChannel) return;
 
-    if (!editingChannel.name || editingChannel.name.trim().length === 0) {
-      showToast('Channel name is required', 'error');
-      return;
-    }
-
-    if (editingChannel.name.length > 11) {
+    // Allow empty names (Meshtastic supports unnamed channels)
+    if (editingChannel.name && editingChannel.name.length > 11) {
       showToast('Channel name must be 11 characters or less', 'error');
       return;
     }
@@ -185,16 +181,26 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
             <div
               key={slotId}
               style={{
-                border: '1px solid var(--ctp-surface1)',
+                border: channel?.role === 1
+                  ? '2px solid var(--ctp-blue)'
+                  : '1px solid var(--ctp-surface1)',
                 borderRadius: '8px',
                 padding: '1rem',
-                backgroundColor: channel ? 'var(--ctp-surface0)' : 'var(--ctp-mantle)'
+                backgroundColor: channel ? 'var(--ctp-surface0)' : 'var(--ctp-mantle)',
+                opacity: channel?.role === 0 ? 0.5 : 1,
+                boxShadow: channel?.role === 1 ? '0 0 10px rgba(137, 180, 250, 0.3)' : 'none'
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
                 <div>
                   <h4 style={{ margin: 0, color: 'var(--ctp-text)' }}>
-                    Slot {slotId}: {channel ? channel.name : <span style={{ color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>Empty</span>}
+                    Slot {slotId}: {channel ? (
+                      <>
+                        {channel.name || <span style={{ color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>(unnamed)</span>}
+                        {channel.role === 1 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-blue)', fontSize: '0.8rem' }}>★ PRIMARY</span>}
+                        {channel.role === 0 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-overlay0)', fontSize: '0.8rem' }}>⊘ DISABLED</span>}
+                      </>
+                    ) : <span style={{ color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>Empty</span>}
                   </h4>
                   {channel && (
                     <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: 'var(--ctp-subtext1)' }}>

@@ -440,6 +440,10 @@ class MeshtasticManager {
           this.actualDeviceConfig = { ...this.actualDeviceConfig, ...parsed.data };
           logger.info('📊 Merged actualDeviceConfig now has keys:', Object.keys(this.actualDeviceConfig));
           logger.info('📊 actualDeviceConfig.lora present:', !!this.actualDeviceConfig?.lora);
+          if (parsed.data.lora) {
+            logger.info(`📊 Received LoRa config - hopLimit=${parsed.data.lora.hopLimit}`);
+          }
+          logger.info(`📊 Current actualDeviceConfig.lora.hopLimit=${this.actualDeviceConfig?.lora?.hopLimit}`);
           logger.debug('📊 Merged actualDeviceConfig now has:', Object.keys(this.actualDeviceConfig));
           break;
         case 'moduleConfig':
@@ -612,6 +616,7 @@ class MeshtasticManager {
    * Get the current device configuration
    */
   getCurrentConfig(): { deviceConfig: any; moduleConfig: any; localNodeInfo: any } {
+    logger.info(`[CONFIG] getCurrentConfig called - hopLimit=${this.actualDeviceConfig?.lora?.hopLimit}`);
     return {
       deviceConfig: this.actualDeviceConfig || {},
       moduleConfig: this.actualModuleConfig || {},
@@ -3832,6 +3837,40 @@ class MeshtasticManager {
   }
 
   /**
+   * Set channel configuration
+   * @param channelIndex The channel index (0-7)
+   * @param config Channel configuration
+   */
+  async setChannelConfig(channelIndex: number, config: {
+    name?: string;
+    psk?: string;
+    role?: number;
+    uplinkEnabled?: boolean;
+    downlinkEnabled?: boolean;
+    positionPrecision?: number;
+  }): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    if (channelIndex < 0 || channelIndex > 7) {
+      throw new Error('Channel index must be between 0 and 7');
+    }
+
+    try {
+      logger.debug(`⚙️ Sending channel ${channelIndex} config:`, JSON.stringify(config));
+      const setChannelMsg = protobufService.createSetChannelMessage(channelIndex, config, new Uint8Array());
+      const adminPacket = protobufService.createAdminPacket(setChannelMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+
+      await this.transport.send(adminPacket);
+      logger.debug(`⚙️ Sent set_channel admin message for channel ${channelIndex}`);
+    } catch (error) {
+      logger.error(`❌ Error sending channel ${channelIndex} config:`, error);
+      throw error;
+    }
+  }
+
+  /**
    * Set position configuration (broadcast intervals, etc.)
    */
   async setPositionConfig(config: any): Promise<void> {
@@ -3934,6 +3973,51 @@ class MeshtasticManager {
       logger.debug('⚙️ Sent set_owner admin message (direct, no transaction)');
     } catch (error) {
       logger.error('❌ Error setting node owner:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Begin edit settings transaction to batch configuration changes
+   */
+  async beginEditSettings(): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    try {
+      logger.info('⚙️ Beginning edit settings transaction');
+      const beginMsg = protobufService.createBeginEditSettingsMessage(new Uint8Array());
+      const adminPacket = protobufService.createAdminPacket(beginMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+
+      await this.transport.send(adminPacket);
+      logger.info('⚙️ Sent begin_edit_settings admin message');
+    } catch (error) {
+      logger.error('❌ Error beginning edit settings:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Commit edit settings to persist configuration changes
+   */
+  async commitEditSettings(): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    try {
+      logger.info('⚙️ Committing edit settings to persist configuration');
+      const commitMsg = protobufService.createCommitEditSettingsMessage(new Uint8Array());
+      const adminPacket = protobufService.createAdminPacket(commitMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+
+      await this.transport.send(adminPacket);
+      logger.info('⚙️ Sent commit_edit_settings admin message');
+
+      // Wait a moment for device to save to flash
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    } catch (error) {
+      logger.error('❌ Error committing edit settings:', error);
       throw error;
     }
   }

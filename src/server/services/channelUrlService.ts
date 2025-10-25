@@ -11,6 +11,7 @@ export interface DecodedChannelSettings {
   psk?: string;  // Base64 encoded PSK, or special value like "default" for shorthand 1
   name?: string;
   id?: number;
+  role?: number;  // Channel role (DISABLED=0, PRIMARY=1, SECONDARY=2)
   uplinkEnabled?: boolean;
   downlinkEnabled?: boolean;
   positionPrecision?: number;
@@ -116,6 +117,7 @@ class ChannelUrlService {
 
           if (ch.name) channel.name = ch.name;
           if (ch.id !== undefined) channel.id = ch.id;
+          if (ch.role !== undefined) channel.role = ch.role;
           if (ch.uplinkEnabled !== undefined) channel.uplinkEnabled = ch.uplinkEnabled;
           if (ch.downlinkEnabled !== undefined) channel.downlinkEnabled = ch.downlinkEnabled;
           if (ch.mute !== undefined) channel.mute = ch.mute;
@@ -193,6 +195,7 @@ class ChannelUrlService {
 
         if (ch.name) channelSettings.name = ch.name;
         if (ch.id !== undefined) channelSettings.id = ch.id;
+        if (ch.role !== undefined) channelSettings.role = ch.role;
         if (ch.uplinkEnabled !== undefined) channelSettings.uplinkEnabled = ch.uplinkEnabled;
         if (ch.downlinkEnabled !== undefined) channelSettings.downlinkEnabled = ch.downlinkEnabled;
         if (ch.mute !== undefined) channelSettings.mute = ch.mute;
