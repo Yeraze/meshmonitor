@@ -191,4 +191,109 @@ describe('App Header Display Logic', () => {
       expect(displayValue).toBe('Test Node (TEST) - !a2e175b8');
     });
   });
+
+  describe('Unknown nodes filter logic', () => {
+    it('should identify nodes with no longName and no shortName as unknown', () => {
+      const node: DeviceInfo = {
+        nodeNum: 123456,
+        user: {
+          id: '!00012345',
+          hwModel: 31,
+          role: '1'
+        }
+      };
+
+      const hasLongName = node.user?.longName && node.user.longName.trim() !== '';
+      const hasShortName = node.user?.shortName && node.user.shortName.trim() !== '';
+      const isUnknown = !hasLongName && !hasShortName;
+
+      expect(isUnknown).toBe(true);
+    });
+
+    it('should NOT identify nodes with longName as unknown', () => {
+      const node: DeviceInfo = {
+        nodeNum: 123456,
+        user: {
+          id: '!00012345',
+          longName: 'Test Node',
+          hwModel: 31,
+          role: '1'
+        }
+      };
+
+      const hasLongName = node.user?.longName && node.user.longName.trim() !== '';
+      const hasShortName = node.user?.shortName && node.user.shortName.trim() !== '';
+      const isUnknown = !hasLongName && !hasShortName;
+
+      expect(isUnknown).toBe(false);
+    });
+
+    it('should NOT identify nodes with shortName as unknown', () => {
+      const node: DeviceInfo = {
+        nodeNum: 123456,
+        user: {
+          id: '!00012345',
+          shortName: 'TEST',
+          hwModel: 31,
+          role: '1'
+        }
+      };
+
+      const hasLongName = node.user?.longName && node.user.longName.trim() !== '';
+      const hasShortName = node.user?.shortName && node.user.shortName.trim() !== '';
+      const isUnknown = !hasLongName && !hasShortName;
+
+      expect(isUnknown).toBe(false);
+    });
+
+    it('should identify nodes with empty string longName and shortName as unknown', () => {
+      const node: DeviceInfo = {
+        nodeNum: 123456,
+        user: {
+          id: '!00012345',
+          longName: '   ',
+          shortName: '',
+          hwModel: 31,
+          role: '1'
+        }
+      };
+
+      const hasLongName = node.user?.longName && node.user.longName.trim() !== '';
+      const hasShortName = node.user?.shortName && node.user.shortName.trim() !== '';
+      const isUnknown = !hasLongName && !hasShortName;
+
+      expect(isUnknown).toBe(true);
+    });
+
+    it('should NOT identify nodes with both longName and shortName as unknown', () => {
+      const node: DeviceInfo = {
+        nodeNum: 123456,
+        user: {
+          id: '!00012345',
+          longName: 'Test Node',
+          shortName: 'TEST',
+          hwModel: 31,
+          role: '1'
+        }
+      };
+
+      const hasLongName = node.user?.longName && node.user.longName.trim() !== '';
+      const hasShortName = node.user?.shortName && node.user.shortName.trim() !== '';
+      const isUnknown = !hasLongName && !hasShortName;
+
+      expect(isUnknown).toBe(false);
+    });
+
+    it('should handle nodes without user object', () => {
+      const node: DeviceInfo = {
+        nodeNum: 123456
+      };
+
+      const hasLongName = node.user?.longName && node.user.longName.trim() !== '';
+      const hasShortName = node.user?.shortName && node.user.shortName.trim() !== '';
+      const isUnknown = !hasLongName && !hasShortName;
+
+      expect(isUnknown).toBe(true);
+    });
+  });
 });

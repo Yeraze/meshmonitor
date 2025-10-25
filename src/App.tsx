@@ -74,9 +74,27 @@ function App() {
   const isMobileViewport = () => window.innerWidth <= 768;
   const [isMessagesNodeListCollapsed, setIsMessagesNodeListCollapsed] = useState(isMobileViewport());
 
+  /**
+   * Node filter configuration interface
+   * Controls which nodes are displayed in the node list based on various criteria
+   */
+  interface NodeFilters {
+    filterMode: 'show' | 'hide';
+    showMqtt: boolean;
+    showTelemetry: boolean;
+    showEnvironment: boolean;
+    powerSource: 'powered' | 'battery' | 'both';
+    showPosition: boolean;
+    minHops: number;
+    maxHops: number;
+    showPKI: boolean;
+    showUnknown: boolean;
+    deviceRoles: number[];
+  }
+
   // Node list filter options (shared between Map and Messages pages)
   // Load from localStorage on initial render
-  const [nodeFilters, setNodeFilters] = useState(() => {
+  const [nodeFilters, setNodeFilters] = useState<NodeFilters>(() => {
     const savedFilters = localStorage.getItem('nodeFilters');
     if (savedFilters) {
       try {
@@ -100,6 +118,7 @@ function App() {
       minHops: 0,
       maxHops: 10,
       showPKI: false,
+      showUnknown: false,
       deviceRoles: [] as number[] // Empty array means show all roles
     };
   });
@@ -1985,6 +2004,21 @@ function App() {
         if (!isShowMode && matches) return false;
       }
 
+      /**
+       * Unknown nodes filter
+       * Identifies nodes that lack both longName and shortName, which are typically
+       * displayed as "Node 12345678" in the UI. These nodes have only been detected
+       * but haven't provided identifying information yet.
+       */
+      if (nodeFilters.showUnknown) {
+        const hasLongName = node.user?.longName && node.user.longName.trim() !== '';
+        const hasShortName = node.user?.shortName && node.user.shortName.trim() !== '';
+        const isUnknown = !hasLongName && !hasShortName;
+        const matches = isUnknown;
+        if (isShowMode && !matches) return false;
+        if (!isShowMode && matches) return false;
+      }
+
       // Device role filter
       if (nodeFilters.deviceRoles.length > 0) {
         const role = typeof node.user?.role === 'number' ? node.user.role : parseInt(node.user?.role || '0');
@@ -2244,6 +2278,18 @@ function App() {
                   <span>MQTT nodes</span>
                 </span>
               </label>
+
+              <label className="filter-checkbox">
+                <input
+                  type="checkbox"
+                  checked={nodeFilters.showUnknown}
+                  onChange={(e) => setNodeFilters({...nodeFilters, showUnknown: e.target.checked})}
+                />
+                <span className="filter-label-with-icon">
+                  <span className="filter-icon">❓</span>
+                  <span>Unknown nodes</span>
+                </span>
+              </label>
             </div>
 
             <div className="filter-section">
@@ -2377,6 +2423,7 @@ function App() {
                 minHops: 0,
                 maxHops: 10,
                 showPKI: false,
+                showUnknown: false,
                 deviceRoles: []
               })}
             >

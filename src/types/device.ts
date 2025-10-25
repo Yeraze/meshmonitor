@@ -2,8 +2,8 @@ export interface DeviceInfo {
   nodeNum: number
   user?: {
     id: string
-    longName: string
-    shortName: string
+    longName?: string
+    shortName?: string
     hwModel?: number
     role?: string
   }
