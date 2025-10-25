@@ -1556,31 +1556,83 @@ class DatabaseService {
   }
 
   insertTraceroute(tracerouteData: DbTraceroute): void {
-    // Delete any existing traceroute for the same source and destination
-    const deleteStmt = this.db.prepare(`
+    const now = Date.now();
+    const fiveMinutesAgo = now - (5 * 60 * 1000);
+
+    // Check if there's a pending traceroute request (with null route) within the last 5 minutes
+    // NOTE: When a traceroute response comes in, fromNum is the destination (responder) and toNum is the local node (requester)
+    // But when we created the pending record, fromNodeNum was the local node and toNodeNum was the destination
+    // So we need to check the REVERSE direction (toNum -> fromNum instead of fromNum -> toNum)
+    const findPendingStmt = this.db.prepare(`
+      SELECT id FROM traceroutes
+      WHERE fromNodeNum = ? AND toNodeNum = ?
+      AND route IS NULL
+      AND timestamp >= ?
+      ORDER BY timestamp DESC
+      LIMIT 1
+    `);
+
+    const pendingRecord = findPendingStmt.get(
+      tracerouteData.toNodeNum,    // Reversed: response's toNum is the requester
+      tracerouteData.fromNodeNum,  // Reversed: response's fromNum is the destination
+      fiveMinutesAgo
+    ) as { id: number } | undefined;
+
+    if (pendingRecord) {
+      // Update the existing pending record with the response data
+      const updateStmt = this.db.prepare(`
+        UPDATE traceroutes
+        SET route = ?, routeBack = ?, snrTowards = ?, snrBack = ?, timestamp = ?
+        WHERE id = ?
+      `);
+
+      updateStmt.run(
+        tracerouteData.route || null,
+        tracerouteData.routeBack || null,
+        tracerouteData.snrTowards || null,
+        tracerouteData.snrBack || null,
+        tracerouteData.timestamp,
+        pendingRecord.id
+      );
+    } else {
+      // No pending request found, insert a new traceroute record
+      const insertStmt = this.db.prepare(`
+        INSERT INTO traceroutes (
+          fromNodeNum, toNodeNum, fromNodeId, toNodeId, route, routeBack, snrTowards, snrBack, timestamp, createdAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      insertStmt.run(
+        tracerouteData.fromNodeNum,
+        tracerouteData.toNodeNum,
+        tracerouteData.fromNodeId,
+        tracerouteData.toNodeId,
+        tracerouteData.route || null,
+        tracerouteData.routeBack || null,
+        tracerouteData.snrTowards || null,
+        tracerouteData.snrBack || null,
+        tracerouteData.timestamp,
+        tracerouteData.createdAt
+      );
+    }
+
+    // Keep only the last 50 traceroutes for this source-destination pair
+    // Delete older traceroutes beyond the 50 most recent
+    const deleteOldStmt = this.db.prepare(`
       DELETE FROM traceroutes
       WHERE fromNodeNum = ? AND toNodeNum = ?
+      AND id NOT IN (
+        SELECT id FROM traceroutes
+        WHERE fromNodeNum = ? AND toNodeNum = ?
+        ORDER BY timestamp DESC
+        LIMIT 50
+      )
     `);
-    deleteStmt.run(tracerouteData.fromNodeNum, tracerouteData.toNodeNum);
-
-    // Insert the new traceroute
-    const stmt = this.db.prepare(`
-      INSERT INTO traceroutes (
-        fromNodeNum, toNodeNum, fromNodeId, toNodeId, route, routeBack, snrTowards, snrBack, timestamp, createdAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    stmt.run(
+    deleteOldStmt.run(
       tracerouteData.fromNodeNum,
       tracerouteData.toNodeNum,
-      tracerouteData.fromNodeId,
-      tracerouteData.toNodeId,
-      tracerouteData.route || null,
-      tracerouteData.routeBack || null,
-      tracerouteData.snrTowards || null,
-      tracerouteData.snrBack || null,
-      tracerouteData.timestamp,
-      tracerouteData.createdAt
+      tracerouteData.fromNodeNum,
+      tracerouteData.toNodeNum
     );
   }
 
@@ -1664,12 +1716,50 @@ class DatabaseService {
     return this.normalizeBigInts(eligibleNodes[randomIndex]);
   }
 
-  recordTracerouteRequest(nodeNum: number): void {
+  recordTracerouteRequest(fromNodeNum: number, toNodeNum: number): void {
     const now = Date.now();
-    const stmt = this.db.prepare(`
+
+    // Update the nodes table with last request time
+    const updateStmt = this.db.prepare(`
       UPDATE nodes SET lastTracerouteRequest = ? WHERE nodeNum = ?
     `);
-    stmt.run(now, nodeNum);
+    updateStmt.run(now, toNodeNum);
+
+    // Insert a traceroute record for the attempt (with null routes indicating pending)
+    const fromNodeId = `!${fromNodeNum.toString(16).padStart(8, '0')}`;
+    const toNodeId = `!${toNodeNum.toString(16).padStart(8, '0')}`;
+
+    const insertStmt = this.db.prepare(`
+      INSERT INTO traceroutes (
+        fromNodeNum, toNodeNum, fromNodeId, toNodeId, route, routeBack, snrTowards, snrBack, timestamp, createdAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    insertStmt.run(
+      fromNodeNum,
+      toNodeNum,
+      fromNodeId,
+      toNodeId,
+      null, // route will be null until response received
+      null, // routeBack will be null until response received
+      null, // snrTowards will be null until response received
+      null, // snrBack will be null until response received
+      now,
+      now
+    );
+
+    // Keep only the last 50 traceroutes for this source-destination pair
+    const deleteOldStmt = this.db.prepare(`
+      DELETE FROM traceroutes
+      WHERE fromNodeNum = ? AND toNodeNum = ?
+      AND id NOT IN (
+        SELECT id FROM traceroutes
+        WHERE fromNodeNum = ? AND toNodeNum = ?
+        ORDER BY timestamp DESC
+        LIMIT 50
+      )
+    `);
+    deleteOldStmt.run(fromNodeNum, toNodeNum, fromNodeNum, toNodeNum);
   }
 
   getTelemetryByType(telemetryType: string, limit: number = 100): DbTelemetry[] {

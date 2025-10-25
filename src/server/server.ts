@@ -1329,6 +1329,40 @@ apiRouter.get('/traceroutes/recent', (req, res) => {
   }
 });
 
+// Get traceroute history for a specific source-destination pair
+apiRouter.get('/traceroutes/history/:fromNodeNum/:toNodeNum', (req, res) => {
+  try {
+    const fromNodeNum = parseInt(req.params.fromNodeNum);
+    const toNodeNum = parseInt(req.params.toNodeNum);
+    const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+
+    if (isNaN(fromNodeNum) || isNaN(toNodeNum)) {
+      res.status(400).json({ error: 'Invalid node numbers provided' });
+      return;
+    }
+
+    const traceroutes = databaseService.getTraceroutesByNodes(fromNodeNum, toNodeNum, limit);
+
+    const traceroutesWithHops = traceroutes.map(tr => {
+      let hopCount = 999;
+      try {
+        if (tr.route) {
+          const routeArray = JSON.parse(tr.route);
+          hopCount = routeArray.length;
+        }
+      } catch (e) {
+        hopCount = 999;
+      }
+      return { ...tr, hopCount };
+    });
+
+    res.json(traceroutesWithHops);
+  } catch (error) {
+    logger.error('Error fetching traceroute history:', error);
+    res.status(500).json({ error: 'Failed to fetch traceroute history' });
+  }
+});
+
 // Get longest active route segment (within last 7 days)
 apiRouter.get('/route-segments/longest-active', requirePermission('info', 'read'), (_req, res) => {
   try {

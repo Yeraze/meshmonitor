@@ -29,7 +29,7 @@ import { MeshMessage } from './types/message'
 import { SortField, SortDirection } from './types/ui'
 import api from './services/api'
 import { logger } from './utils/logger'
-import { getRoleName } from './utils/mapHelpers.tsx'
+import { getRoleName, generateArrowMarkers } from './utils/mapHelpers.tsx'
 import { ROLE_NAMES } from './constants'
 import { getHardwareModelName } from './utils/nodeHelpers'
 import Sidebar from './components/Sidebar'
@@ -43,6 +43,7 @@ import { useCsrf } from './contexts/CsrfContext'
 import LoginModal from './components/LoginModal'
 import LoginPage from './components/LoginPage'
 import UserMenu from './components/UserMenu'
+import TracerouteHistoryModal from './components/TracerouteHistoryModal'
 
 // Fix for default markers in React-Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -70,6 +71,7 @@ function App() {
   const [showPsk, setShowPsk] = useState(false);
   const [showRebootModal, setShowRebootModal] = useState(false);
   const [configRefreshTrigger, setConfigRefreshTrigger] = useState(0);
+  const [showTracerouteHistoryModal, setShowTracerouteHistoryModal] = useState(false);
 
   // Check if mobile viewport and default to collapsed on mobile
   const isMobileViewport = () => window.innerWidth <= 768;
@@ -207,6 +209,7 @@ function App() {
   // Map context
   const {
     showPaths,
+    showRoute,
     showNeighborInfo,
     setMapCenterTarget,
     traceroutes,
@@ -688,9 +691,9 @@ function App() {
     connectionStatusRef.current = connectionStatus;
   }, [connectionStatus]);
 
-  // Fetch traceroutes when showPaths is enabled or Messages/Nodes tab is active
+  // Fetch traceroutes when showPaths or showRoute is enabled or Messages/Nodes tab is active
   useEffect(() => {
-    if ((showPaths || activeTab === 'messages' || activeTab === 'nodes') && shouldShowData()) {
+    if ((showPaths || showRoute || activeTab === 'messages' || activeTab === 'nodes') && shouldShowData()) {
       fetchTraceroutes();
       // Only auto-refresh when connected (not when viewing cached data)
       if (connectionStatus === 'connected') {
@@ -698,7 +701,7 @@ function App() {
         return () => clearInterval(interval);
       }
     }
-  }, [showPaths, activeTab, connectionStatus]);
+  }, [showPaths, showRoute, activeTab, connectionStatus]);
 
   // Fetch neighbor info when showNeighborInfo is enabled
   useEffect(() => {
@@ -3179,17 +3182,27 @@ function App() {
                     })()}
                   </h3>
                   {hasPermission('traceroute', 'write') && (
-                    <button
-                      onClick={() => handleTraceroute(selectedDMNode)}
-                      disabled={connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode}
-                      className="traceroute-btn"
-                      title="Run traceroute to this node"
-                    >
-                      🗺️ Traceroute
-                      {tracerouteLoading === selectedDMNode && (
-                        <span className="spinner"></span>
-                      )}
-                    </button>
+                    <>
+                      <button
+                        onClick={() => handleTraceroute(selectedDMNode)}
+                        disabled={connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode}
+                        className="traceroute-btn"
+                        title="Run traceroute to this node"
+                      >
+                        🗺️ Traceroute
+                        {tracerouteLoading === selectedDMNode && (
+                          <span className="spinner"></span>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => setShowTracerouteHistoryModal(true)}
+                        className="traceroute-btn"
+                        style={{ marginLeft: '0.5rem' }}
+                        title="View traceroute history for this node"
+                      >
+                        📜 Show History
+                      </button>
+                    </>
                   )}
                 </div>
 
@@ -3433,9 +3446,12 @@ function App() {
 
   // Memoize traceroute path rendering to prevent chart flickering
   const traceroutePathsElements = useMemo(() => {
-    if (!showPaths) return null;
+    if (!showPaths && !showRoute) return null;
 
-    // Calculate segment usage counts and collect SNR values with timestamps
+    // Collect all map elements to return
+    const allElements: React.ReactElement[] = [];
+
+    // Calculate segment usage counts and collect SNR values with timestamps (only if showPaths is enabled)
     const segmentUsage = new Map<string, number>();
     const segmentSNRs = new Map<string, Array<{snr: number; timestamp: number}>>();
     const segmentsList: Array<{
@@ -3444,7 +3460,8 @@ function App() {
       nodeNums: number[];
     }> = [];
 
-    traceroutes.forEach((tr, idx) => {
+    if (showPaths) {
+      traceroutes.forEach((tr, idx) => {
       try {
         // Process forward path
         const routeForward = JSON.parse(tr.route || '[]');
@@ -3536,8 +3553,8 @@ function App() {
       }
     });
 
-    // Render segments with weighted lines
-    return segmentsList.map((segment) => {
+      // Render segments with weighted lines
+      const segmentElements = segmentsList.map((segment) => {
       const segmentKey = segment.nodeNums.sort().join('-');
       const usage = segmentUsage.get(segmentKey) || 1;
       // Base weight 2, add 1 per usage, max 8
@@ -3718,7 +3735,172 @@ function App() {
         </Polyline>
       );
     });
-  }, [showPaths, traceroutes, nodes, distanceUnit]);
+
+      // Add route segments to elements
+      allElements.push(...segmentElements);
+    } // End of if (showPaths)
+
+    // Add selected node traceroute rendering with arrows (if enabled)
+    if (showRoute && selectedNodeId) {
+      const selectedTrace = traceroutes.find(tr =>
+        tr.toNodeId === selectedNodeId || tr.fromNodeId === selectedNodeId
+      );
+
+      if (selectedTrace) {
+        try {
+          const routeForward = JSON.parse(selectedTrace.route || '[]');
+          const routeBack = JSON.parse(selectedTrace.routeBack || '[]');
+
+          const fromNode = nodes.find(n => n.nodeNum === selectedTrace.fromNodeNum);
+          const toNode = nodes.find(n => n.nodeNum === selectedTrace.toNodeNum);
+          const fromName = fromNode?.user?.longName || fromNode?.user?.shortName || selectedTrace.fromNodeId;
+          const toName = toNode?.user?.longName || toNode?.user?.shortName || selectedTrace.toNodeId;
+
+          // Forward path (from -> to)
+          if (routeForward.length >= 0) {
+            const forwardSequence: number[] = [selectedTrace.fromNodeNum, ...routeForward.slice().reverse(), selectedTrace.toNodeNum];
+            const forwardPositions: [number, number][] = [];
+
+            forwardSequence.forEach((nodeNum) => {
+              const node = nodes.find(n => n.nodeNum === nodeNum);
+              if (node?.position?.latitude && node?.position?.longitude) {
+                forwardPositions.push([node.position.latitude, node.position.longitude]);
+              }
+            });
+
+            if (forwardPositions.length >= 2) {
+              // Calculate total distance for forward path
+              let forwardTotalDistanceKm = 0;
+              for (let i = 0; i < forwardSequence.length - 1; i++) {
+                const node1 = nodes.find(n => n.nodeNum === forwardSequence[i]);
+                const node2 = nodes.find(n => n.nodeNum === forwardSequence[i + 1]);
+                if (node1?.position?.latitude && node1?.position?.longitude &&
+                    node2?.position?.latitude && node2?.position?.longitude) {
+                  forwardTotalDistanceKm += calculateDistance(
+                    node1.position.latitude, node1.position.longitude,
+                    node2.position.latitude, node2.position.longitude
+                  );
+                }
+              }
+
+              allElements.push(
+                <Polyline
+                  key="selected-traceroute-forward"
+                  positions={forwardPositions}
+                  color="#f38ba8"
+                  weight={4}
+                  opacity={0.9}
+                  dashArray="10, 5"
+                >
+                  <Popup>
+                    <div className="route-popup">
+                      <h4>Forward Path</h4>
+                      <div className="route-endpoints">
+                        <strong>{toName}</strong> → <strong>{fromName}</strong>
+                      </div>
+                      <div className="route-usage">
+                        Path: {forwardSequence.slice().reverse().map(num => {
+                          const n = nodes.find(nd => nd.nodeNum === num);
+                          return n?.user?.longName || n?.user?.shortName || `!${num.toString(16)}`;
+                        }).join(' → ')}
+                      </div>
+                      {forwardTotalDistanceKm > 0 && (
+                        <div className="route-usage">
+                          Distance: <strong>{formatDistance(forwardTotalDistanceKm, distanceUnit)}</strong>
+                        </div>
+                      )}
+                    </div>
+                  </Popup>
+                </Polyline>
+              );
+
+              // Generate arrow markers for forward path
+              const forwardArrows = generateArrowMarkers(
+                forwardPositions,
+                'forward',
+                '#f38ba8',
+                allElements.length
+              );
+              allElements.push(...forwardArrows);
+            }
+          }
+
+          // Back path (to -> from)
+          if (routeBack.length >= 0) {
+            const backSequence: number[] = [selectedTrace.toNodeNum, ...routeBack.slice().reverse(), selectedTrace.fromNodeNum];
+            const backPositions: [number, number][] = [];
+
+            backSequence.forEach((nodeNum) => {
+              const node = nodes.find(n => n.nodeNum === nodeNum);
+              if (node?.position?.latitude && node?.position?.longitude) {
+                backPositions.push([node.position.latitude, node.position.longitude]);
+              }
+            });
+
+            if (backPositions.length >= 2) {
+              // Calculate total distance for back path
+              let backTotalDistanceKm = 0;
+              for (let i = 0; i < backSequence.length - 1; i++) {
+                const node1 = nodes.find(n => n.nodeNum === backSequence[i]);
+                const node2 = nodes.find(n => n.nodeNum === backSequence[i + 1]);
+                if (node1?.position?.latitude && node1?.position?.longitude &&
+                    node2?.position?.latitude && node2?.position?.longitude) {
+                  backTotalDistanceKm += calculateDistance(
+                    node1.position.latitude, node1.position.longitude,
+                    node2.position.latitude, node2.position.longitude
+                  );
+                }
+              }
+
+              allElements.push(
+                <Polyline
+                  key="selected-traceroute-back"
+                  positions={backPositions}
+                  color="#f38ba8"
+                  weight={4}
+                  opacity={0.9}
+                  dashArray="5, 10"
+                >
+                  <Popup>
+                    <div className="route-popup">
+                      <h4>Return Path</h4>
+                      <div className="route-endpoints">
+                        <strong>{fromName}</strong> → <strong>{toName}</strong>
+                      </div>
+                      <div className="route-usage">
+                        Path: {backSequence.slice().reverse().map(num => {
+                          const n = nodes.find(nd => nd.nodeNum === num);
+                          return n?.user?.longName || n?.user?.shortName || `!${num.toString(16)}`;
+                        }).join(' → ')}
+                      </div>
+                      {backTotalDistanceKm > 0 && (
+                        <div className="route-usage">
+                          Distance: <strong>{formatDistance(backTotalDistanceKm, distanceUnit)}</strong>
+                        </div>
+                      )}
+                    </div>
+                  </Popup>
+                </Polyline>
+              );
+
+              // Generate arrow markers for back path
+              const backArrows = generateArrowMarkers(
+                backPositions,
+                'back',
+                '#f38ba8',
+                allElements.length
+              );
+              allElements.push(...backArrows);
+            }
+          }
+        } catch (error) {
+          logger.error('Error rendering selected node traceroute:', error);
+        }
+      }
+    }
+
+    return allElements;
+  }, [showPaths, showRoute, selectedNodeId, traceroutes, nodes, distanceUnit]);
 
   // If anonymous is disabled and user is not authenticated, show login page
   if (authStatus?.anonymousDisabled && !authStatus?.authenticated) {
@@ -3849,6 +4031,22 @@ function App() {
 
       <LoginModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />
       <RebootModal isOpen={showRebootModal} onClose={handleRebootModalClose} />
+      {showTracerouteHistoryModal && selectedDMNode && (
+        <TracerouteHistoryModal
+          fromNodeNum={(() => {
+            const nodeNumStr = currentNodeId.replace('!', '');
+            return parseInt(nodeNumStr, 16);
+          })()}
+          toNodeNum={(() => {
+            const nodeNumStr = selectedDMNode.replace('!', '');
+            return parseInt(nodeNumStr, 16);
+          })()}
+          fromNodeName={getNodeName(currentNodeId)}
+          toNodeName={getNodeName(selectedDMNode)}
+          nodes={nodes}
+          onClose={() => setShowTracerouteHistoryModal(false)}
+        />
+      )}
 
       <Sidebar
         activeTab={activeTab}
