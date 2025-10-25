@@ -89,6 +89,7 @@ export interface DbTelemetry {
   value: number;
   unit?: string;
   createdAt: number;
+  packetTimestamp?: number; // Original timestamp from the packet (may be inaccurate if node has wrong time)
 }
 
 export interface DbTraceroute {
@@ -608,6 +609,7 @@ class DatabaseService {
         value REAL NOT NULL,
         unit TEXT,
         createdAt INTEGER NOT NULL,
+        packetTimestamp INTEGER,
         FOREIGN KEY (nodeNum) REFERENCES nodes(nodeNum)
       );
     `);
@@ -1455,8 +1457,8 @@ class DatabaseService {
   insertTelemetry(telemetryData: DbTelemetry): void {
     const stmt = this.db.prepare(`
       INSERT INTO telemetry (
-        nodeId, nodeNum, telemetryType, timestamp, value, unit, createdAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        nodeId, nodeNum, telemetryType, timestamp, value, unit, createdAt, packetTimestamp
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -1466,7 +1468,8 @@ class DatabaseService {
       telemetryData.timestamp,
       telemetryData.value,
       telemetryData.unit || null,
-      telemetryData.createdAt
+      telemetryData.createdAt,
+      telemetryData.packetTimestamp || null
     );
   }
 
