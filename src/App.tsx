@@ -1084,9 +1084,17 @@ function App() {
     const urlBase = providedBaseUrl !== undefined ? providedBaseUrl : baseUrl;
 
     try {
-      const response = await authFetch(`${baseUrl}/api/connection`);
+      // Use consolidated polling endpoint to check connection status
+      const response = await authFetch(`${baseUrl}/api/poll`);
       if (response.ok) {
-        const status = await response.json();
+        const pollData = await response.json();
+        const status = pollData.connection;
+
+        if (!status) {
+          logger.error('No connection status in poll response');
+          return;
+        }
+
         logger.debug(`📡 Connection API response: connected=${status.connected}, userDisconnected=${status.userDisconnected}`);
 
         // Check if user has manually disconnected
@@ -1257,17 +1265,23 @@ function App() {
 
   const updateDataFromBackend = async () => {
     try {
-      // Fetch nodes
-      const nodesResponse = await authFetch(`${baseUrl}/api/nodes`);
-      if (nodesResponse.ok) {
-        const nodesData = await nodesResponse.json();
-        setNodes(nodesData);
+      // Use consolidated polling endpoint to reduce API calls from 8 to 1
+      const pollResponse = await authFetch(`${baseUrl}/api/poll`);
+      if (!pollResponse.ok) {
+        logger.error('Failed to fetch consolidated poll data:', pollResponse.status);
+        return;
       }
 
-      // Fetch messages
-      const messagesResponse = await authFetch(`${baseUrl}/api/messages?limit=100`);
-      if (messagesResponse.ok) {
-        const messagesData = await messagesResponse.json();
+      const pollData = await pollResponse.json();
+
+      // Process nodes data
+      if (pollData.nodes) {
+        setNodes(pollData.nodes);
+      }
+
+      // Process messages data
+      if (pollData.messages) {
+        const messagesData = pollData.messages;
         // Convert timestamp strings back to Date objects
         const processedMessages = messagesData.map((msg: any) => ({
           ...msg,
@@ -1394,27 +1408,33 @@ function App() {
         }
       }
 
-      // Fetch device info
-      const configResponse = await authFetch(`${baseUrl}/api/config`);
-      if (configResponse.ok) {
-        const configData = await configResponse.json();
-        setDeviceInfo(configData);
+      // Process config data
+      if (pollData.config) {
+        setDeviceInfo(pollData.config);
       }
 
-      // Fetch device configuration
-      const deviceConfigResponse = await authFetch(`${baseUrl}/api/device-config`);
-      if (deviceConfigResponse.ok) {
-        const deviceConfigData = await deviceConfigResponse.json();
-        setDeviceConfig(deviceConfigData);
+      // Process device configuration data
+      if (pollData.deviceConfig) {
+        setDeviceConfig(pollData.deviceConfig);
 
         // Extract current node ID from device config
-        if (deviceConfigData.basic?.nodeId) {
-          setCurrentNodeId(deviceConfigData.basic.nodeId);
+        if (pollData.deviceConfig.basic?.nodeId) {
+          setCurrentNodeId(pollData.deviceConfig.basic.nodeId);
         }
       }
 
-      // Fetch telemetry availability
-      await fetchNodesWithTelemetry();
+      // Process telemetry availability data
+      if (pollData.telemetryNodes) {
+        setNodesWithTelemetry(new Set(pollData.telemetryNodes.nodes || []));
+        setNodesWithWeatherTelemetry(new Set(pollData.telemetryNodes.weather || []));
+        setNodesWithEstimatedPosition(new Set(pollData.telemetryNodes.estimatedPosition || []));
+        setNodesWithPKC(new Set(pollData.telemetryNodes.pkc || []));
+      }
+
+      // Process channels data (if available)
+      if (pollData.channels) {
+        setChannels(pollData.channels);
+      }
     } catch (error) {
       logger.error('Failed to update data from backend:', error);
     }
