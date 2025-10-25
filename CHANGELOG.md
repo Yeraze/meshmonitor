@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [2.10.3] - 2025-10-25
+
+### Added
+- **Telemetry Dashboard Enhancements**: Enhanced telemetry dashboard with advanced data management
+  - Filter telemetry by node name or ID with instant search
+  - Sort nodes by name, ID, battery level, voltage, or last update time
+  - Drag-and-drop to reorder telemetry cards for personalized layout
+  - Persistent card order saved to local storage
+  - Clear visual indicators for search and sort states
+
+### Fixed
+- **Session Management**: Added SESSION_ROLLING option for improved user experience
+  - When enabled, active users stay logged in indefinitely by resetting session expiry on each request
+  - Defaults to `true` for better UX - users won't be logged out while actively using the app
+  - Configurable via `SESSION_ROLLING` environment variable
+  - Works in conjunction with `SESSION_MAX_AGE` for flexible session control
+
+### Changed
+- Enhanced telemetry card layout with better visual hierarchy
+- Improved UX for managing large numbers of nodes
+- Updated README with SESSION_ROLLING documentation
+
 ## [2.4.6] - 2025-01-13
 
 ### Fixed

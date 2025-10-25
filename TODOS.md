@@ -3,6 +3,13 @@
 ## In Progress
 
 ## Completed
+- Telemetry Dashboard enhancements (PR #314)
+  - [x] Add filter functionality to search nodes by name or ID
+  - [x] Add sort functionality (by name, ID, battery, voltage, last update)
+  - [x] Implement drag-and-drop to reorder telemetry cards
+  - [x] Save card order to local storage for persistence
+  - [x] Add visual indicators for active filters and sort states
+  - Impact: Much better UX for users managing many nodes
 - Session rolling timeout fix (PR #315)
   - [x] Add SESSION_ROLLING environment variable (default: true)
   - [x] Enable rolling sessions to reset expiry on each request
