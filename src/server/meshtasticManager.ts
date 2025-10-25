@@ -1088,8 +1088,11 @@ class MeshtasticManager {
 
         const fromNum = Number(meshPacket.from);
         const nodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
-        const timestamp = position.time ? Number(position.time) * 1000 : Date.now();
+        // Use server receive time instead of packet time to avoid issues with nodes having incorrect time offsets
         const now = Date.now();
+        const timestamp = now;
+        // Preserve the original packet timestamp for analysis (may be inaccurate if node has wrong time)
+        const packetTimestamp = position.time ? Number(position.time) * 1000 : undefined;
 
         // Track PKI encryption
         this.trackPKIEncryption(meshPacket, fromNum);
@@ -1117,16 +1120,16 @@ class MeshtasticManager {
         // Save position to telemetry table (historical tracking)
         databaseService.insertTelemetry({
           nodeId, nodeNum: fromNum, telemetryType: 'latitude',
-          timestamp, value: coords.latitude, unit: '°', createdAt: now
+          timestamp, value: coords.latitude, unit: '°', createdAt: now, packetTimestamp
         });
         databaseService.insertTelemetry({
           nodeId, nodeNum: fromNum, telemetryType: 'longitude',
-          timestamp, value: coords.longitude, unit: '°', createdAt: now
+          timestamp, value: coords.longitude, unit: '°', createdAt: now, packetTimestamp
         });
         if (position.altitude !== undefined && position.altitude !== null) {
           databaseService.insertTelemetry({
             nodeId, nodeNum: fromNum, telemetryType: 'altitude',
-            timestamp, value: position.altitude, unit: 'm', createdAt: now
+            timestamp, value: position.altitude, unit: 'm', createdAt: now, packetTimestamp
           });
         }
 
@@ -1232,8 +1235,11 @@ class MeshtasticManager {
 
       const fromNum = Number(meshPacket.from);
       const nodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
-      const timestamp = telemetry.time ? Number(telemetry.time) * 1000 : Date.now();
+      // Use server receive time instead of packet time to avoid issues with nodes having incorrect time offsets
       const now = Date.now();
+      const timestamp = now;
+      // Preserve the original packet timestamp for analysis (may be inaccurate if node has wrong time)
+      const packetTimestamp = telemetry.time ? Number(telemetry.time) * 1000 : undefined;
 
       // Track PKI encryption
       this.trackPKIEncryption(meshPacket, fromNum);
@@ -1267,25 +1273,25 @@ class MeshtasticManager {
         if (deviceMetrics.batteryLevel !== undefined && deviceMetrics.batteryLevel !== null && !isNaN(deviceMetrics.batteryLevel)) {
           databaseService.insertTelemetry({
             nodeId, nodeNum: fromNum, telemetryType: 'batteryLevel',
-            timestamp, value: deviceMetrics.batteryLevel, unit: '%', createdAt: now
+            timestamp, value: deviceMetrics.batteryLevel, unit: '%', createdAt: now, packetTimestamp
           });
         }
         if (deviceMetrics.voltage !== undefined && deviceMetrics.voltage !== null && !isNaN(deviceMetrics.voltage)) {
           databaseService.insertTelemetry({
             nodeId, nodeNum: fromNum, telemetryType: 'voltage',
-            timestamp, value: deviceMetrics.voltage, unit: 'V', createdAt: now
+            timestamp, value: deviceMetrics.voltage, unit: 'V', createdAt: now, packetTimestamp
           });
         }
         if (deviceMetrics.channelUtilization !== undefined && deviceMetrics.channelUtilization !== null && !isNaN(deviceMetrics.channelUtilization)) {
           databaseService.insertTelemetry({
             nodeId, nodeNum: fromNum, telemetryType: 'channelUtilization',
-            timestamp, value: deviceMetrics.channelUtilization, unit: '%', createdAt: now
+            timestamp, value: deviceMetrics.channelUtilization, unit: '%', createdAt: now, packetTimestamp
           });
         }
         if (deviceMetrics.airUtilTx !== undefined && deviceMetrics.airUtilTx !== null && !isNaN(deviceMetrics.airUtilTx)) {
           databaseService.insertTelemetry({
             nodeId, nodeNum: fromNum, telemetryType: 'airUtilTx',
-            timestamp, value: deviceMetrics.airUtilTx, unit: '%', createdAt: now
+            timestamp, value: deviceMetrics.airUtilTx, unit: '%', createdAt: now, packetTimestamp
           });
         }
       } else if (telemetry.environmentMetrics) {
@@ -1295,19 +1301,19 @@ class MeshtasticManager {
         if (envMetrics.temperature !== undefined && envMetrics.temperature !== null && !isNaN(envMetrics.temperature)) {
           databaseService.insertTelemetry({
             nodeId, nodeNum: fromNum, telemetryType: 'temperature',
-            timestamp, value: envMetrics.temperature, unit: '°C', createdAt: now
+            timestamp, value: envMetrics.temperature, unit: '°C', createdAt: now, packetTimestamp
           });
         }
         if (envMetrics.relativeHumidity !== undefined && envMetrics.relativeHumidity !== null && !isNaN(envMetrics.relativeHumidity)) {
           databaseService.insertTelemetry({
             nodeId, nodeNum: fromNum, telemetryType: 'humidity',
-            timestamp, value: envMetrics.relativeHumidity, unit: '%', createdAt: now
+            timestamp, value: envMetrics.relativeHumidity, unit: '%', createdAt: now, packetTimestamp
           });
         }
         if (envMetrics.barometricPressure !== undefined && envMetrics.barometricPressure !== null && !isNaN(envMetrics.barometricPressure)) {
           databaseService.insertTelemetry({
             nodeId, nodeNum: fromNum, telemetryType: 'pressure',
-            timestamp, value: envMetrics.barometricPressure, unit: 'hPa', createdAt: now
+            timestamp, value: envMetrics.barometricPressure, unit: 'hPa', createdAt: now, packetTimestamp
           });
         }
       } else if (telemetry.powerMetrics) {
@@ -1317,13 +1323,13 @@ class MeshtasticManager {
         if (powerMetrics.ch1Voltage !== undefined && powerMetrics.ch1Voltage !== null && !isNaN(powerMetrics.ch1Voltage)) {
           databaseService.insertTelemetry({
             nodeId, nodeNum: fromNum, telemetryType: 'ch1Voltage',
-            timestamp, value: powerMetrics.ch1Voltage, unit: 'V', createdAt: now
+            timestamp, value: powerMetrics.ch1Voltage, unit: 'V', createdAt: now, packetTimestamp
           });
         }
         if (powerMetrics.ch1Current !== undefined && powerMetrics.ch1Current !== null && !isNaN(powerMetrics.ch1Current)) {
           databaseService.insertTelemetry({
             nodeId, nodeNum: fromNum, telemetryType: 'ch1Current',
-            timestamp, value: powerMetrics.ch1Current, unit: 'mA', createdAt: now
+            timestamp, value: powerMetrics.ch1Current, unit: 'mA', createdAt: now, packetTimestamp
           });
         }
       }
