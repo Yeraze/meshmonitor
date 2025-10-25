@@ -100,6 +100,7 @@ function App() {
       minHops: 0,
       maxHops: 10,
       showPKI: false,
+      showUnknown: false,
       deviceRoles: [] as number[] // Empty array means show all roles
     };
   });
@@ -1985,6 +1986,16 @@ function App() {
         if (!isShowMode && matches) return false;
       }
 
+      // Unknown nodes filter (nodes without longName or shortName)
+      if (nodeFilters.showUnknown) {
+        const hasLongName = node.user?.longName && node.user.longName.trim() !== '';
+        const hasShortName = node.user?.shortName && node.user.shortName.trim() !== '';
+        const isUnknown = !hasLongName && !hasShortName;
+        const matches = isUnknown;
+        if (isShowMode && !matches) return false;
+        if (!isShowMode && matches) return false;
+      }
+
       // Device role filter
       if (nodeFilters.deviceRoles.length > 0) {
         const role = typeof node.user?.role === 'number' ? node.user.role : parseInt(node.user?.role || '0');
@@ -2244,6 +2255,18 @@ function App() {
                   <span>MQTT nodes</span>
                 </span>
               </label>
+
+              <label className="filter-checkbox">
+                <input
+                  type="checkbox"
+                  checked={nodeFilters.showUnknown}
+                  onChange={(e) => setNodeFilters({...nodeFilters, showUnknown: e.target.checked})}
+                />
+                <span className="filter-label-with-icon">
+                  <span className="filter-icon">❓</span>
+                  <span>Unknown nodes</span>
+                </span>
+              </label>
             </div>
 
             <div className="filter-section">
@@ -2377,6 +2400,7 @@ function App() {
                 minHops: 0,
                 maxHops: 10,
                 showPKI: false,
+                showUnknown: false,
                 deviceRoles: []
               })}
             >
