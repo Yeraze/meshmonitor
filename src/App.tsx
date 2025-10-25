@@ -1085,7 +1085,7 @@ function App() {
 
     try {
       // Use consolidated polling endpoint to check connection status
-      const response = await authFetch(`${baseUrl}/api/poll`);
+      const response = await authFetch(`${urlBase}/api/poll`);
       if (response.ok) {
         const pollData = await response.json();
         const status = pollData.connection;
