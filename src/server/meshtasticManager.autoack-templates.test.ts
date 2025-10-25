@@ -3,7 +3,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Mock dependencies
 const mockGetSetting = vi.fn();
 const mockGetAllNodes = vi.fn();
-const mockGetVersion = vi.fn();
 
 vi.mock('../services/database.js', () => ({
   default: {
@@ -76,7 +75,7 @@ describe('MeshtasticManager - Auto-Acknowledge Message Template Token Replacemen
     it('should replace {RABBIT_HOPS} with 1 rabbit for 1 hop', () => {
       const template = 'Hops: {RABBIT_HOPS}';
       const numberHops = 1;
-      const rabbitEmojis = numberHops === 0 ? '🎯' : '🐇'.repeat(numberHops);
+      const rabbitEmojis = '🐇'.repeat(numberHops);
 
       const result = template.replace(/{RABBIT_HOPS}/g, rabbitEmojis);
 
@@ -86,7 +85,7 @@ describe('MeshtasticManager - Auto-Acknowledge Message Template Token Replacemen
     it('should replace {RABBIT_HOPS} with 3 rabbits for 3 hops', () => {
       const template = 'Hops: {RABBIT_HOPS}';
       const numberHops = 3;
-      const rabbitEmojis = numberHops === 0 ? '🎯' : '🐇'.repeat(numberHops);
+      const rabbitEmojis = '🐇'.repeat(numberHops);
 
       const result = template.replace(/{RABBIT_HOPS}/g, rabbitEmojis);
 
@@ -96,7 +95,7 @@ describe('MeshtasticManager - Auto-Acknowledge Message Template Token Replacemen
     it('should replace {RABBIT_HOPS} with 5 rabbits for 5 hops', () => {
       const template = 'Hops: {RABBIT_HOPS}';
       const numberHops = 5;
-      const rabbitEmojis = numberHops === 0 ? '🎯' : '🐇'.repeat(numberHops);
+      const rabbitEmojis = '🐇'.repeat(numberHops);
 
       const result = template.replace(/{RABBIT_HOPS}/g, rabbitEmojis);
 
@@ -106,7 +105,7 @@ describe('MeshtasticManager - Auto-Acknowledge Message Template Token Replacemen
     it('should handle high hop counts', () => {
       const template = 'Hops: {RABBIT_HOPS}';
       const numberHops = 7;
-      const rabbitEmojis = numberHops === 0 ? '🎯' : '🐇'.repeat(numberHops);
+      const rabbitEmojis = '🐇'.repeat(numberHops);
 
       const result = template.replace(/{RABBIT_HOPS}/g, rabbitEmojis);
 
@@ -453,7 +452,7 @@ describe('MeshtasticManager - Auto-Acknowledge Message Template Token Replacemen
       const template = '🤖 Copy, {NUMBER_HOPS} hops {RABBIT_HOPS} from {NODE_ID}';
       const nodeId = '!b2c3d4e5';
       const numberHops = 4;
-      const rabbitEmojis = numberHops === 0 ? '🎯' : '🐇'.repeat(numberHops);
+      const rabbitEmojis = '🐇'.repeat(numberHops);
 
       let result = template;
       result = result.replace(/{NODE_ID}/g, nodeId);

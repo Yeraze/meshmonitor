@@ -707,7 +707,6 @@ describe.skip('AutoAcknowledgeSection Component', () => {
     });
 
     it('should update preview when message template changes', async () => {
-      const user = userEvent.setup();
       const { rerender } = render(<AutoAcknowledgeSection {...defaultProps} message="{TIME}" />);
 
       const preview1 = screen.getByText(/Sample Message Preview/).parentElement?.querySelector('div[style*="border: 2px solid"]');
