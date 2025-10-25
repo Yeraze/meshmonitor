@@ -19,6 +19,10 @@ import { migration as notifyOnEmojiMigration } from '../server/migrations/010_ad
 import { migration as packetLogMigration } from '../server/migrations/011_add_packet_log.js';
 import { migration as channelRoleMigration } from '../server/migrations/012_add_channel_role_and_position.js';
 
+// Configuration constants for traceroute history
+const TRACEROUTE_HISTORY_LIMIT = 50;
+const PENDING_TRACEROUTE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
 export interface DbNode {
   nodeNum: number;
   nodeId: string;
@@ -630,6 +634,12 @@ class DatabaseService {
         FOREIGN KEY (fromNodeNum) REFERENCES nodes(nodeNum),
         FOREIGN KEY (toNodeNum) REFERENCES nodes(nodeNum)
       );
+    `);
+
+    // Create index for efficient traceroute queries
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_traceroutes_nodes
+      ON traceroutes(fromNodeNum, toNodeNum, timestamp DESC);
     `);
 
     this.db.exec(`
@@ -1556,84 +1566,90 @@ class DatabaseService {
   }
 
   insertTraceroute(tracerouteData: DbTraceroute): void {
-    const now = Date.now();
-    const fiveMinutesAgo = now - (5 * 60 * 1000);
+    // Wrap in transaction to prevent race conditions
+    const transaction = this.db.transaction(() => {
+      const now = Date.now();
+      const pendingTimeoutAgo = now - PENDING_TRACEROUTE_TIMEOUT_MS;
 
-    // Check if there's a pending traceroute request (with null route) within the last 5 minutes
-    // NOTE: When a traceroute response comes in, fromNum is the destination (responder) and toNum is the local node (requester)
-    // But when we created the pending record, fromNodeNum was the local node and toNodeNum was the destination
-    // So we need to check the REVERSE direction (toNum -> fromNum instead of fromNum -> toNum)
-    const findPendingStmt = this.db.prepare(`
-      SELECT id FROM traceroutes
-      WHERE fromNodeNum = ? AND toNodeNum = ?
-      AND route IS NULL
-      AND timestamp >= ?
-      ORDER BY timestamp DESC
-      LIMIT 1
-    `);
-
-    const pendingRecord = findPendingStmt.get(
-      tracerouteData.toNodeNum,    // Reversed: response's toNum is the requester
-      tracerouteData.fromNodeNum,  // Reversed: response's fromNum is the destination
-      fiveMinutesAgo
-    ) as { id: number } | undefined;
-
-    if (pendingRecord) {
-      // Update the existing pending record with the response data
-      const updateStmt = this.db.prepare(`
-        UPDATE traceroutes
-        SET route = ?, routeBack = ?, snrTowards = ?, snrBack = ?, timestamp = ?
-        WHERE id = ?
-      `);
-
-      updateStmt.run(
-        tracerouteData.route || null,
-        tracerouteData.routeBack || null,
-        tracerouteData.snrTowards || null,
-        tracerouteData.snrBack || null,
-        tracerouteData.timestamp,
-        pendingRecord.id
-      );
-    } else {
-      // No pending request found, insert a new traceroute record
-      const insertStmt = this.db.prepare(`
-        INSERT INTO traceroutes (
-          fromNodeNum, toNodeNum, fromNodeId, toNodeId, route, routeBack, snrTowards, snrBack, timestamp, createdAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-
-      insertStmt.run(
-        tracerouteData.fromNodeNum,
-        tracerouteData.toNodeNum,
-        tracerouteData.fromNodeId,
-        tracerouteData.toNodeId,
-        tracerouteData.route || null,
-        tracerouteData.routeBack || null,
-        tracerouteData.snrTowards || null,
-        tracerouteData.snrBack || null,
-        tracerouteData.timestamp,
-        tracerouteData.createdAt
-      );
-    }
-
-    // Keep only the last 50 traceroutes for this source-destination pair
-    // Delete older traceroutes beyond the 50 most recent
-    const deleteOldStmt = this.db.prepare(`
-      DELETE FROM traceroutes
-      WHERE fromNodeNum = ? AND toNodeNum = ?
-      AND id NOT IN (
+      // Check if there's a pending traceroute request (with null route) within the timeout window
+      // NOTE: When a traceroute response comes in, fromNum is the destination (responder) and toNum is the local node (requester)
+      // But when we created the pending record, fromNodeNum was the local node and toNodeNum was the destination
+      // So we need to check the REVERSE direction (toNum -> fromNum instead of fromNum -> toNum)
+      const findPendingStmt = this.db.prepare(`
         SELECT id FROM traceroutes
         WHERE fromNodeNum = ? AND toNodeNum = ?
+        AND route IS NULL
+        AND timestamp >= ?
         ORDER BY timestamp DESC
-        LIMIT 50
-      )
-    `);
-    deleteOldStmt.run(
-      tracerouteData.fromNodeNum,
-      tracerouteData.toNodeNum,
-      tracerouteData.fromNodeNum,
-      tracerouteData.toNodeNum
-    );
+        LIMIT 1
+      `);
+
+      const pendingRecord = findPendingStmt.get(
+        tracerouteData.toNodeNum,    // Reversed: response's toNum is the requester
+        tracerouteData.fromNodeNum,  // Reversed: response's fromNum is the destination
+        pendingTimeoutAgo
+      ) as { id: number } | undefined;
+
+      if (pendingRecord) {
+        // Update the existing pending record with the response data
+        const updateStmt = this.db.prepare(`
+          UPDATE traceroutes
+          SET route = ?, routeBack = ?, snrTowards = ?, snrBack = ?, timestamp = ?
+          WHERE id = ?
+        `);
+
+        updateStmt.run(
+          tracerouteData.route || null,
+          tracerouteData.routeBack || null,
+          tracerouteData.snrTowards || null,
+          tracerouteData.snrBack || null,
+          tracerouteData.timestamp,
+          pendingRecord.id
+        );
+      } else {
+        // No pending request found, insert a new traceroute record
+        const insertStmt = this.db.prepare(`
+          INSERT INTO traceroutes (
+            fromNodeNum, toNodeNum, fromNodeId, toNodeId, route, routeBack, snrTowards, snrBack, timestamp, createdAt
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+
+        insertStmt.run(
+          tracerouteData.fromNodeNum,
+          tracerouteData.toNodeNum,
+          tracerouteData.fromNodeId,
+          tracerouteData.toNodeId,
+          tracerouteData.route || null,
+          tracerouteData.routeBack || null,
+          tracerouteData.snrTowards || null,
+          tracerouteData.snrBack || null,
+          tracerouteData.timestamp,
+          tracerouteData.createdAt
+        );
+      }
+
+      // Keep only the last N traceroutes for this source-destination pair
+      // Delete older traceroutes beyond the limit
+      const deleteOldStmt = this.db.prepare(`
+        DELETE FROM traceroutes
+        WHERE fromNodeNum = ? AND toNodeNum = ?
+        AND id NOT IN (
+          SELECT id FROM traceroutes
+          WHERE fromNodeNum = ? AND toNodeNum = ?
+          ORDER BY timestamp DESC
+          LIMIT ?
+        )
+      `);
+      deleteOldStmt.run(
+        tracerouteData.fromNodeNum,
+        tracerouteData.toNodeNum,
+        tracerouteData.fromNodeNum,
+        tracerouteData.toNodeNum,
+        TRACEROUTE_HISTORY_LIMIT
+      );
+    });
+
+    transaction();
   }
 
   getTraceroutesByNodes(fromNodeNum: number, toNodeNum: number, limit: number = 10): DbTraceroute[] {
@@ -1748,7 +1764,7 @@ class DatabaseService {
       now
     );
 
-    // Keep only the last 50 traceroutes for this source-destination pair
+    // Keep only the last N traceroutes for this source-destination pair
     const deleteOldStmt = this.db.prepare(`
       DELETE FROM traceroutes
       WHERE fromNodeNum = ? AND toNodeNum = ?
@@ -1756,10 +1772,10 @@ class DatabaseService {
         SELECT id FROM traceroutes
         WHERE fromNodeNum = ? AND toNodeNum = ?
         ORDER BY timestamp DESC
-        LIMIT 50
+        LIMIT ?
       )
     `);
-    deleteOldStmt.run(fromNodeNum, toNodeNum, fromNodeNum, toNodeNum);
+    deleteOldStmt.run(fromNodeNum, toNodeNum, fromNodeNum, toNodeNum, TRACEROUTE_HISTORY_LIMIT);
   }
 
   getTelemetryByType(telemetryType: string, limit: number = 100): DbTelemetry[] {

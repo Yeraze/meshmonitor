@@ -325,6 +325,24 @@ function App() {
     setShowNodeFilterPopup
   } = useUI();
 
+  // Helper function to safely parse node IDs to node numbers
+  const parseNodeId = useCallback((nodeId: string): number => {
+    try {
+      const nodeNumStr = nodeId.replace('!', '');
+      const result = parseInt(nodeNumStr, 16);
+
+      if (isNaN(result)) {
+        logger.error(`Failed to parse node ID: ${nodeId}`);
+        throw new Error(`Invalid node ID: ${nodeId}`);
+      }
+
+      return result;
+    } catch (error) {
+      logger.error(`Error parsing node ID ${nodeId}:`, error);
+      throw error;
+    }
+  }, []);
+
   // Track previous total unread count to detect when new messages arrive
   const previousUnreadTotal = useRef<number>(0);
 
@@ -4033,14 +4051,8 @@ function App() {
       <RebootModal isOpen={showRebootModal} onClose={handleRebootModalClose} />
       {showTracerouteHistoryModal && selectedDMNode && (
         <TracerouteHistoryModal
-          fromNodeNum={(() => {
-            const nodeNumStr = currentNodeId.replace('!', '');
-            return parseInt(nodeNumStr, 16);
-          })()}
-          toNodeNum={(() => {
-            const nodeNumStr = selectedDMNode.replace('!', '');
-            return parseInt(nodeNumStr, 16);
-          })()}
+          fromNodeNum={parseNodeId(currentNodeId)}
+          toNodeNum={parseNodeId(selectedDMNode)}
           fromNodeName={getNodeName(currentNodeId)}
           toNodeName={getNodeName(selectedDMNode)}
           nodes={nodes}

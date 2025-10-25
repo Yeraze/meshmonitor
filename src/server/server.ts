@@ -1336,8 +1336,21 @@ apiRouter.get('/traceroutes/history/:fromNodeNum/:toNodeNum', (req, res) => {
     const toNodeNum = parseInt(req.params.toNodeNum);
     const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
 
+    // Validate node numbers
     if (isNaN(fromNodeNum) || isNaN(toNodeNum)) {
       res.status(400).json({ error: 'Invalid node numbers provided' });
+      return;
+    }
+
+    // Validate node numbers are positive integers (Meshtastic node numbers are 32-bit unsigned)
+    if (fromNodeNum < 0 || fromNodeNum > 0xFFFFFFFF || toNodeNum < 0 || toNodeNum > 0xFFFFFFFF) {
+      res.status(400).json({ error: 'Node numbers must be between 0 and 4294967295' });
+      return;
+    }
+
+    // Validate limit parameter
+    if (isNaN(limit) || limit < 1 || limit > 1000) {
+      res.status(400).json({ error: 'Limit must be between 1 and 1000' });
       return;
     }
 

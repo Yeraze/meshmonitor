@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import ApiService from '../services/api';
 import { DbTraceroute } from '../services/database';
 import { formatDateTime } from '../utils/datetime';
@@ -51,7 +51,8 @@ const TracerouteHistoryModal: React.FC<TracerouteHistoryModalProps> = ({
     fetchHistory();
   }, [fromNodeNum, toNodeNum]);
 
-  const formatTracerouteRoute = (route: string | null, snr: string | null, fromNum?: number, toNum?: number) => {
+  // Memoize the formatTracerouteRoute function to avoid recreating it on every render
+  const formatTracerouteRoute = useCallback((route: string | null, snr: string | null, fromNum?: number, toNum?: number) => {
     // Handle pending/null routes
     if (!route || route === 'null') {
       return '(No response received)';
@@ -107,7 +108,7 @@ const TracerouteHistoryModal: React.FC<TracerouteHistoryModalProps> = ({
       console.error('Error formatting traceroute:', error);
       return 'Error parsing route';
     }
-  };
+  }, [nodes, distanceUnit]);
 
   return (
     <div className="modal-overlay" onClick={onClose}>
