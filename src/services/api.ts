@@ -464,6 +464,22 @@ class ApiService {
     return result.url;
   }
 
+  async importConfig(url: string): Promise<{ success: boolean; imported: { channels: number; channelDetails: any[]; loraConfig: boolean }; requiresReboot?: boolean }> {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/channels/import-config`, {
+      method: 'POST',
+      headers: this.getHeadersWithCsrf(),
+      body: JSON.stringify({ url }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to import configuration');
+    }
+
+    return response.json();
+  }
+
   async getMessages(limit: number = 100): Promise<MeshMessage[]> {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/messages?limit=${limit}`);
@@ -667,9 +683,14 @@ class ApiService {
   // Configuration methods
   async getCurrentConfig() {
     await this.ensureBaseUrl();
-    const response = await fetch(`${this.baseUrl}/api/config/current`);
+    // Add cache-busting parameter to ensure fresh data after device reboot
+    const timestamp = Date.now();
+    console.log(`[API] Fetching config with timestamp: ${timestamp}`);
+    const response = await fetch(`${this.baseUrl}/api/config/current?t=${timestamp}`);
     if (!response.ok) throw new Error('Failed to fetch current configuration');
-    return response.json();
+    const config = await response.json();
+    console.log(`[API] Received config - hopLimit: ${config?.deviceConfig?.lora?.hopLimit}`);
+    return config;
   }
 
   async setDeviceConfig(config: any) {

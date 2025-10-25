@@ -776,6 +776,84 @@ class ProtobufService {
   }
 
   /**
+   * Create an AdminMessage to set channel configuration
+   * @param channelIndex The channel index (0-7)
+   * @param config Channel configuration
+   * @param sessionPasskey Optional session passkey for authentication
+   */
+  createSetChannelMessage(channelIndex: number, config: {
+    name?: string;
+    psk?: string;
+    role?: number;
+    uplinkEnabled?: boolean;
+    downlinkEnabled?: boolean;
+    positionPrecision?: number;
+  }, sessionPasskey?: Uint8Array): Uint8Array {
+    try {
+      const root = getProtobufRoot();
+      const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
+      const Channel = root?.lookupType('meshtastic.Channel');
+      const ChannelSettings = root?.lookupType('meshtastic.ChannelSettings');
+      if (!AdminMessage || !Channel || !ChannelSettings) {
+        throw new Error('Required proto types not found');
+      }
+
+      // Create channel settings
+      const settingsData: any = {};
+      if (config.name !== undefined) {
+        settingsData.name = config.name;
+      }
+      if (config.psk !== undefined) {
+        // Convert base64 PSK to bytes if provided
+        settingsData.psk = config.psk;
+      }
+      if (config.uplinkEnabled !== undefined) {
+        settingsData.uplinkEnabled = config.uplinkEnabled;
+      }
+      if (config.downlinkEnabled !== undefined) {
+        settingsData.downlinkEnabled = config.downlinkEnabled;
+      }
+      if (config.positionPrecision !== undefined) {
+        settingsData.moduleSettings = {
+          positionPrecision: config.positionPrecision
+        };
+      }
+
+      const settings = ChannelSettings.create(settingsData);
+
+      // Create channel with index and settings
+      const channelData: any = {
+        index: channelIndex,
+        settings
+      };
+
+      if (config.role !== undefined) {
+        channelData.role = config.role;
+      }
+
+      const channel = Channel.create(channelData);
+
+      const adminMsgData: any = {
+        setChannel: channel
+      };
+
+      // Only include sessionPasskey if provided
+      if (sessionPasskey && sessionPasskey.length > 0) {
+        adminMsgData.sessionPasskey = sessionPasskey;
+      }
+
+      const adminMsg = AdminMessage.create(adminMsgData);
+
+      const encoded = AdminMessage.encode(adminMsg).finish();
+      logger.debug(`⚙️ Created SetChannel admin message for channel ${channelIndex}`);
+      return encoded;
+    } catch (error) {
+      logger.error(`Failed to create SetChannel message for channel ${channelIndex}:`, error);
+      throw error;
+    }
+  }
+
+  /**
    * Create an AdminMessage to set position configuration (broadcast intervals, etc.)
    * @param config Position config object
    * @param sessionPasskey Optional session passkey for authentication

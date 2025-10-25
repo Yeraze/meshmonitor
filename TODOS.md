@@ -3,6 +3,92 @@
 ## In Progress
 
 ## Completed
+- Configuration persistence after device reboot (FINAL FIX v2)
+  - [x] Identified issue: getDeviceConfig() returns cached data instead of requesting fresh config
+  - [x] Fixed RebootModal to call refreshNodes() instead of getDeviceConfig()
+  - [x] Fixed ImportConfigModal to use same pattern (connection status check + refreshNodes)
+  - [x] refreshNodes() sends want_config_id to device to trigger fresh config transmission
+  - [x] Identified second issue: ConfigurationTab not refreshing after reboot modal closes
+  - [x] Added refreshTrigger prop to ConfigurationTab to force config reload
+  - [x] App.tsx increments refreshTrigger when reboot modal closes
+  - [x] ConfigurationTab re-fetches config when refreshTrigger changes
+  - [x] Identified third issue: Browser HTTP cache preventing fresh config fetch
+  - [x] Added timestamp cache-busting parameter to getCurrentConfig() API call
+  - [x] Build and deploy successfully
+- Configuration page reboot detection - fixed-time approach (FINAL v2)
+  - [x] Identified massive rate limiting issue from polling loops
+  - [x] Replaced complex two-phase polling with simple fixed-time approach
+  - [x] Modal now waits 30 seconds for device to reboot (typical reboot time)
+  - [x] After 30s, verifies connection with up to 3 retry attempts (3s apart)
+  - [x] Requests fresh device configuration after verification
+  - [x] Avoids all rate limiting issues by eliminating polling loops
+  - [x] Build and deploy successfully
+- RebootModal minimum wait time
+  - [x] Added 10-second minimum wait when device doesn't disconnect
+  - [x] Ensures device has time to fully reboot before verifying
+  - [x] Prevents modal from closing too quickly on fast reboots
+  - [x] Build and deploy successfully
+- RebootModal async loop cancellation fix
+  - [x] Identified exponential doubling of /api/connection requests (10+ req/sec)
+  - [x] Root cause: useEffect re-running when isOpen changes, creating multiple async polling loops
+  - [x] Added isCancelled flag to abort ongoing async loops when component unmounts
+  - [x] Added cancellation checks in both while loops (!isCancelled condition)
+  - [x] Set isCancelled=true in cleanup function to stop orphaned loops
+  - [x] Build and deploy successfully
+  - Problem: Each time modal opened/closed, a new pollForReconnection() started while old ones kept running
+  - Solution: Cancellation token pattern to abort async loops on cleanup
+- Configuration page reboot detection - rate limiting fix (FINAL)
+  - [x] Identify source of excessive /api/connection polling (App.tsx + RebootModal both polling every 5s)
+  - [x] Pause App.tsx connection polling when RebootModal is active
+  - [x] Fix interval multiplication bug (removing showRebootModal from useEffect deps)
+  - [x] Fix closure stale state issue using ref pattern (showRebootModalRef)
+  - [x] Add useEffect to keep ref in sync with state changes
+  - [x] Update interval to use ref instead of state variable
+  - [x] Build and deploy successfully
+  - Root causes:
+    1. Including showRebootModal in useEffect dependency array caused interval to recreate every time modal opened/closed
+    2. React closure captured stale value of showRebootModal when interval was created, so state changes weren't reflected
+  - Solution: Use ref pattern (showRebootModalRef) to access current value without triggering useEffect re-runs
+- Configuration page reboot detection and verification
+  - [x] Create RebootModal component with device reconnection polling
+  - [x] Add animated progress indicator showing reboot status
+  - [x] Implement two-phase reboot detection: wait for disconnect, then reconnect
+  - [x] Phase 1: Monitor connection status until device disconnects
+  - [x] Phase 2: Monitor connection status until device reconnects (60s timeout)
+  - [x] Request fresh device configuration after reconnect using getDeviceConfig()
+  - [x] Add status messages: "Waiting for device to disconnect...", "Device disconnected. Waiting for reboot...", "Device reconnected! Requesting fresh configuration...", "Waiting for device configuration...", "Configuration verified!"
+  - [x] Reduce polling interval to 5 seconds to avoid rate limiting
+  - [x] Add rate limit detection and exponential backoff (10s wait on 429 errors)
+  - [x] Update App.tsx to show RebootModal when configuration changes trigger reboot
+  - [x] Refresh nodes and channels data after successful reboot
+  - [x] Hook into existing onConfigChangeTriggeringReboot callback from ConfigurationTab
+  - [x] Applies to all configuration saves that require reboot: Device Config, LoRa Config, Position Config, MQTT Config, NeighborInfo Config
+  - [x] Build and deploy successfully
+- Channel import progress tracking and device reboot detection
+  - [x] Reorder import operations: send all channels first, then LoRa config (to avoid premature reboot)
+  - [x] Add requiresReboot flag to import API response
+  - [x] Update ImportConfigModal with "Import in Progress" status display
+  - [x] Add animated progress indicator during import
+  - [x] Implement device reconnection detection after reboot (60s timeout)
+  - [x] Implement channel update polling after import (30s timeout)
+  - [x] Prevent modal dismissal during import progress
+  - [x] Show real-time status messages: "Sending configuration", "Device rebooting...", "Verifying configuration"
+  - [x] Update API service interface to handle requiresReboot flag
+  - [x] Build and deploy successfully
+- Channel edit/import device synchronization
+  - [x] Add setChannelConfig calls to PUT /api/channels/:id endpoint
+  - [x] Add setChannelConfig calls to POST /api/channels/:slotId/import endpoint
+  - [x] Ensure channel edits from UI are sent to Meshtastic device
+  - [x] Ensure JSON channel imports are sent to Meshtastic device
+  - [x] Build and deploy successfully
+- Channel URL import functionality
+  - [x] Add role field to DecodedChannelSettings interface
+  - [x] Implement channel import API backend endpoint (POST /api/channels/import-config)
+  - [x] Add setChannelConfig method to meshtasticManager
+  - [x] Add createSetChannelMessage method to protobufService
+  - [x] Add importConfig method to frontend API service
+  - [x] Update ImportConfigModal to call import API
+  - [x] Build and deploy successfully
 - Device configuration endpoint improvements
   - [x] Add explicit LoRa config request on device connection
   - [x] Add diagnostic logging for config reception tracking

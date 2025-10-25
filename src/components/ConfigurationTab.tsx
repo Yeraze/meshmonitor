@@ -21,9 +21,10 @@ interface ConfigurationTabProps {
   onRebootDevice?: () => Promise<boolean>;
   onConfigChangeTriggeringReboot?: () => void;
   onChannelsUpdated?: () => void; // Callback when channels are updated
+  refreshTrigger?: number; // Increment this to trigger config refresh
 }
 
-const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [], onRebootDevice, onConfigChangeTriggeringReboot, onChannelsUpdated }) => {
+const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [], onRebootDevice, onConfigChangeTriggeringReboot, onChannelsUpdated, refreshTrigger }) => {
   const { showToast } = useToast();
 
   // Device Config State
@@ -73,9 +74,12 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   // Fetch current configuration on mount (run once only)
   useEffect(() => {
     const fetchConfig = async () => {
+      console.log(`[ConfigurationTab] useEffect triggered - refreshTrigger=${refreshTrigger}`);
       try {
         setIsLoading(true);
+        console.log('[ConfigurationTab] Fetching config from API...');
         const config = await apiService.getCurrentConfig();
+        console.log('[ConfigurationTab] Received config:', config);
 
         // Populate node info from localNodeInfo
         if (config.localNodeInfo) {
@@ -114,6 +118,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
             setRegion(regionValue);
           }
           if (config.deviceConfig.lora.hopLimit !== undefined) {
+            console.log(`[ConfigurationTab] Setting hopLimit to: ${config.deviceConfig.lora.hopLimit}`);
             setHopLimit(config.deviceConfig.lora.hopLimit);
           }
           if (config.deviceConfig.lora.channelNum !== undefined) {
@@ -162,7 +167,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
     };
 
     fetchConfig();
-  }, []); // Run once on mount only
+  }, [refreshTrigger]); // Re-run when refreshTrigger changes
 
   // Separate effect to load position data when nodes become available
   // This runs independently of config loading to avoid re-fetching config
