@@ -551,4 +551,172 @@ describe.skip('AutoAcknowledgeSection Component', () => {
       expect(docLink).toHaveAttribute('rel', 'noopener noreferrer');
     });
   });
+
+  describe('Message Template', () => {
+    it('should render message template textarea', () => {
+      render(<AutoAcknowledgeSection {...defaultProps} />);
+
+      const textarea = screen.getByLabelText(/Acknowledgment Message Template/);
+      expect(textarea).toBeInTheDocument();
+      expect(textarea).toHaveValue('🤖 Copy, {NUMBER_HOPS} hops at {TIME}');
+    });
+
+    it('should display custom message prop', () => {
+      render(<AutoAcknowledgeSection {...defaultProps} message="Custom {NODE_ID} message" />);
+
+      const textarea = screen.getByLabelText(/Acknowledgment Message Template/) as HTMLTextAreaElement;
+      expect(textarea.value).toBe('Custom {NODE_ID} message');
+    });
+
+    it('should call onMessageChange when message is modified', async () => {
+      const user = userEvent.setup();
+      render(<AutoAcknowledgeSection {...defaultProps} />);
+
+      const textarea = screen.getByLabelText(/Acknowledgment Message Template/);
+      await user.clear(textarea);
+      await user.type(textarea, 'New message');
+
+      // Should trigger hasChanges
+      await waitFor(() => {
+        const saveButton = screen.getByText('Save Changes');
+        expect(saveButton).not.toBeDisabled();
+      });
+    });
+
+    it('should disable message textarea when auto-ack is disabled', () => {
+      render(<AutoAcknowledgeSection {...defaultProps} enabled={false} />);
+
+      const textarea = screen.getByLabelText(/Acknowledgment Message Template/);
+      expect(textarea).toBeDisabled();
+    });
+
+    it('should save message template to backend', async () => {
+      mockCsrfFetch.mockResolvedValue({ ok: true, status: 200 });
+
+      const user = userEvent.setup();
+      render(<AutoAcknowledgeSection {...defaultProps} />);
+
+      const textarea = screen.getByLabelText(/Acknowledgment Message Template/);
+      await user.clear(textarea);
+      await user.type(textarea, 'Test {RABBIT_HOPS} template');
+
+      const saveButton = screen.getByText('Save Changes');
+      await user.click(saveButton);
+
+      await waitFor(() => {
+        expect(mockCsrfFetch).toHaveBeenCalledWith('/api/settings', expect.objectContaining({
+          body: expect.stringContaining('"autoAckMessage":"Test {RABBIT_HOPS} template"')
+        }));
+      });
+    });
+
+    it('should call onMessageChange callback after successful save', async () => {
+      mockCsrfFetch.mockResolvedValue({ ok: true, status: 200 });
+
+      const user = userEvent.setup();
+      render(<AutoAcknowledgeSection {...defaultProps} />);
+
+      const textarea = screen.getByLabelText(/Acknowledgment Message Template/);
+      await user.clear(textarea);
+      await user.type(textarea, 'Updated message');
+
+      const saveButton = screen.getByText('Save Changes');
+      await user.click(saveButton);
+
+      await waitFor(() => {
+        expect(mockCallbacks.onMessageChange).toHaveBeenCalledWith('Updated message');
+      });
+    });
+  });
+
+  describe('Token Insertion Buttons', () => {
+    it('should render all 9 token insertion buttons', () => {
+      render(<AutoAcknowledgeSection {...defaultProps} />);
+
+      expect(screen.getByText(/\+ \{NODE_ID\}/)).toBeInTheDocument();
+      expect(screen.getByText(/\+ \{NUMBER_HOPS\}/)).toBeInTheDocument();
+      expect(screen.getByText(/\+ \{RABBIT_HOPS\}/)).toBeInTheDocument();
+      expect(screen.getByText(/\+ \{TIME\}/)).toBeInTheDocument();
+      expect(screen.getByText(/\+ \{VERSION\}/)).toBeInTheDocument();
+      expect(screen.getByText(/\+ \{DURATION\}/)).toBeInTheDocument();
+      expect(screen.getByText(/\+ \{FEATURES\}/)).toBeInTheDocument();
+      expect(screen.getByText(/\+ \{NODECOUNT\}/)).toBeInTheDocument();
+      expect(screen.getByText(/\+ \{DIRECTCOUNT\}/)).toBeInTheDocument();
+    });
+
+    it('should insert token when button is clicked', async () => {
+      const user = userEvent.setup();
+      render(<AutoAcknowledgeSection {...defaultProps} message="Copy " />);
+
+      const nodeIdButton = screen.getByText(/\+ \{NODE_ID\}/);
+      await user.click(nodeIdButton);
+
+      // The message should be updated
+      await waitFor(() => {
+        const saveButton = screen.getByText('Save Changes');
+        expect(saveButton).not.toBeDisabled();
+      });
+    });
+
+    it('should insert RABBIT_HOPS token', async () => {
+      const user = userEvent.setup();
+      render(<AutoAcknowledgeSection {...defaultProps} message="Hops: " />);
+
+      const rabbitButton = screen.getByText(/\+ \{RABBIT_HOPS\}/);
+      await user.click(rabbitButton);
+
+      await waitFor(() => {
+        const saveButton = screen.getByText('Save Changes');
+        expect(saveButton).not.toBeDisabled();
+      });
+    });
+
+    it('should disable token buttons when auto-ack is disabled', () => {
+      render(<AutoAcknowledgeSection {...defaultProps} enabled={false} />);
+
+      const nodeIdButton = screen.getByText(/\+ \{NODE_ID\}/).closest('button');
+      expect(nodeIdButton).toBeDisabled();
+
+      const rabbitButton = screen.getByText(/\+ \{RABBIT_HOPS\}/).closest('button');
+      expect(rabbitButton).toBeDisabled();
+    });
+  });
+
+  describe('Sample Message Preview', () => {
+    it('should render sample message preview box', () => {
+      render(<AutoAcknowledgeSection {...defaultProps} />);
+
+      expect(screen.getByText(/Sample Message Preview/)).toBeInTheDocument();
+    });
+
+    it('should show expanded preview with example tokens', () => {
+      render(<AutoAcknowledgeSection {...defaultProps} message="Test {NODE_ID} {NUMBER_HOPS}" />);
+
+      const preview = screen.getByText(/Sample Message Preview/).parentElement?.querySelector('div[style*="border: 2px solid"]');
+      expect(preview).toBeInTheDocument();
+      expect(preview?.textContent).toContain('!a1b2c3d4'); // Sample NODE_ID
+      expect(preview?.textContent).toContain('3'); // Sample NUMBER_HOPS
+    });
+
+    it('should show rabbit emojis in preview for RABBIT_HOPS token', () => {
+      render(<AutoAcknowledgeSection {...defaultProps} message="{RABBIT_HOPS}" />);
+
+      const preview = screen.getByText(/Sample Message Preview/).parentElement?.querySelector('div[style*="border: 2px solid"]');
+      expect(preview).toBeInTheDocument();
+      expect(preview?.textContent).toContain('🐇'); // Should show rabbits for sample 3 hops
+    });
+
+    it('should update preview when message template changes', async () => {
+      const user = userEvent.setup();
+      const { rerender } = render(<AutoAcknowledgeSection {...defaultProps} message="{TIME}" />);
+
+      const preview1 = screen.getByText(/Sample Message Preview/).parentElement?.querySelector('div[style*="border: 2px solid"]');
+      expect(preview1?.textContent).not.toContain('NODE_ID');
+
+      rerender(<AutoAcknowledgeSection {...defaultProps} message="{NODE_ID}" />);
+
+      const preview2 = screen.getByText(/Sample Message Preview/).parentElement?.querySelector('div[style*="border: 2px solid"]');
+      expect(preview2?.textContent).toContain('!a1b2c3d4');
+    });
+  });
 });
