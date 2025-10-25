@@ -807,13 +807,14 @@ apiRouter.put('/channels/:id', requirePermission('channels', 'write'), async (re
 
     const { name, psk, role, uplinkEnabled, downlinkEnabled, positionPrecision } = req.body;
 
-    // Validate required fields
-    if (!name || typeof name !== 'string') {
-      return res.status(400).json({ error: 'Channel name is required' });
-    }
-
-    if (name.length > 11) {
-      return res.status(400).json({ error: 'Channel name must be 11 characters or less' });
+    // Validate name if provided (allow empty names for unnamed channels)
+    if (name !== undefined && name !== null) {
+      if (typeof name !== 'string') {
+        return res.status(400).json({ error: 'Channel name must be a string' });
+      }
+      if (name.length > 11) {
+        return res.status(400).json({ error: 'Channel name must be 11 characters or less' });
+      }
     }
 
     // Validate PSK if provided
@@ -837,20 +838,35 @@ apiRouter.put('/channels/:id', requirePermission('channels', 'write'), async (re
       return res.status(404).json({ error: 'Channel not found' });
     }
 
-    // Update channel in database (treat null and undefined the same way)
-    databaseService.upsertChannel({
+    // Prepare the updated channel data
+    const updatedChannelData = {
       id: channelId,
-      name,
+      name: (name !== undefined && name !== null) ? name : existingChannel.name,
       psk: (psk !== undefined && psk !== null) ? psk : existingChannel.psk,
       role: (role !== undefined && role !== null) ? role : existingChannel.role,
       uplinkEnabled: uplinkEnabled !== undefined ? uplinkEnabled : existingChannel.uplinkEnabled,
       downlinkEnabled: downlinkEnabled !== undefined ? downlinkEnabled : existingChannel.downlinkEnabled,
       positionPrecision: (positionPrecision !== undefined && positionPrecision !== null) ? positionPrecision : existingChannel.positionPrecision
-    });
+    };
 
-    // TODO: Send channel configuration to Meshtastic device
-    // This would require implementing setChannelConfig in meshtasticManager
-    // For now, we only update the database
+    // Update channel in database
+    databaseService.upsertChannel(updatedChannelData);
+
+    // Send channel configuration to Meshtastic device
+    try {
+      await meshtasticManager.setChannelConfig(channelId, {
+        name: updatedChannelData.name,
+        psk: updatedChannelData.psk === '' ? undefined : updatedChannelData.psk,
+        role: updatedChannelData.role,
+        uplinkEnabled: updatedChannelData.uplinkEnabled,
+        downlinkEnabled: updatedChannelData.downlinkEnabled,
+        positionPrecision: updatedChannelData.positionPrecision
+      });
+      logger.info(`✅ Sent channel ${channelId} configuration to device`);
+    } catch (deviceError) {
+      logger.error(`⚠️ Failed to send channel ${channelId} config to device:`, deviceError);
+      // Continue even if device update fails - database is updated
+    }
 
     const updatedChannel = databaseService.getChannelById(channelId);
     logger.info(`✅ Updated channel ${channelId}: ${name}`);
@@ -900,8 +916,8 @@ apiRouter.post('/channels/:slotId/import', requirePermission('channels', 'write'
       }
     }
 
-    // Import channel to the specified slot
-    databaseService.upsertChannel({
+    // Prepare the imported channel data
+    const importedChannelData = {
       id: slotId,
       name,
       psk: psk || undefined,
@@ -909,10 +925,26 @@ apiRouter.post('/channels/:slotId/import', requirePermission('channels', 'write'
       uplinkEnabled: uplinkEnabled !== undefined ? uplinkEnabled : true,
       downlinkEnabled: downlinkEnabled !== undefined ? downlinkEnabled : true,
       positionPrecision: (positionPrecision !== null && positionPrecision !== undefined) ? positionPrecision : undefined
-    });
+    };
 
-    // TODO: Send channel configuration to Meshtastic device
-    // This would require implementing setChannelConfig in meshtasticManager
+    // Import channel to the specified slot in database
+    databaseService.upsertChannel(importedChannelData);
+
+    // Send channel configuration to Meshtastic device
+    try {
+      await meshtasticManager.setChannelConfig(slotId, {
+        name: importedChannelData.name,
+        psk: importedChannelData.psk,
+        role: importedChannelData.role,
+        uplinkEnabled: importedChannelData.uplinkEnabled,
+        downlinkEnabled: importedChannelData.downlinkEnabled,
+        positionPrecision: importedChannelData.positionPrecision
+      });
+      logger.info(`✅ Sent imported channel ${slotId} configuration to device`);
+    } catch (deviceError) {
+      logger.error(`⚠️ Failed to send imported channel ${slotId} config to device:`, deviceError);
+      // Continue even if device update fails - database is updated
+    }
 
     const importedChannel = databaseService.getChannelById(slotId);
     logger.info(`✅ Imported channel to slot ${slotId}: ${name}`);
@@ -1016,6 +1048,112 @@ apiRouter.post('/channels/encode-url', requirePermission('configuration', 'read'
   } catch (error) {
     logger.error('Error encoding channel URL:', error);
     res.status(500).json({ error: 'Failed to encode channel URL' });
+  }
+});
+
+// Import configuration from URL
+apiRouter.post('/channels/import-config', requirePermission('configuration', 'write'), async (req, res) => {
+  try {
+    const { url: configUrl } = req.body;
+
+    if (!configUrl || typeof configUrl !== 'string') {
+      return res.status(400).json({ error: 'URL is required' });
+    }
+
+    logger.info(`📥 Importing configuration from URL: ${configUrl}`);
+
+    // Dynamically import channelUrlService
+    const channelUrlService = (await import('./services/channelUrlService.js')).default;
+
+    // Decode the URL to get channels and lora config
+    const decoded = channelUrlService.decodeUrl(configUrl);
+
+    if (!decoded || (!decoded.channels && !decoded.loraConfig)) {
+      return res.status(400).json({ error: 'Invalid or empty configuration URL' });
+    }
+
+    logger.info(`📥 Decoded ${decoded.channels?.length || 0} channels, LoRa config: ${!!decoded.loraConfig}`);
+
+    // Begin edit settings transaction to batch all changes
+    try {
+      logger.info(`🔄 Beginning edit settings transaction for import`);
+      await meshtasticManager.beginEditSettings();
+      logger.info(`✅ Edit settings transaction started`);
+    } catch (error) {
+      logger.error(`❌ Failed to begin edit settings transaction:`, error);
+      throw new Error('Failed to start configuration transaction');
+    }
+
+    // Import channels FIRST (before LoRa config to avoid premature reboot)
+    const importedChannels = [];
+    if (decoded.channels && decoded.channels.length > 0) {
+      for (let i = 0; i < decoded.channels.length; i++) {
+        const channel = decoded.channels[i];
+        try {
+          logger.info(`📥 Importing channel ${i}: ${channel.name || '(unnamed)'}`);
+
+          // Determine role: if not specified, channel 0 is PRIMARY (1), others are SECONDARY (2)
+          let role = channel.role;
+          if (role === undefined) {
+            role = i === 0 ? 1 : 2; // PRIMARY for channel 0, SECONDARY for others
+          }
+
+          // Write channel to device via Meshtastic manager
+          await meshtasticManager.setChannelConfig(i, {
+            name: channel.name || '',
+            psk: channel.psk === 'none' ? undefined : channel.psk,
+            role: role,
+            uplinkEnabled: channel.uplinkEnabled,
+            downlinkEnabled: channel.downlinkEnabled,
+            positionPrecision: channel.positionPrecision
+          });
+
+          importedChannels.push({ index: i, name: channel.name || '(unnamed)' });
+          logger.info(`✅ Imported channel ${i}`);
+        } catch (error) {
+          logger.error(`❌ Failed to import channel ${i}:`, error);
+          // Continue with other channels even if one fails
+        }
+      }
+    }
+
+    // Import LoRa config (part of transaction, won't trigger reboot yet)
+    let loraImported = false;
+    let requiresReboot = false;
+    if (decoded.loraConfig) {
+      try {
+        logger.info(`📥 Importing LoRa config:`, JSON.stringify(decoded.loraConfig, null, 2));
+        await meshtasticManager.setLoRaConfig(decoded.loraConfig);
+        loraImported = true;
+        requiresReboot = true; // LoRa config requires reboot when committed
+        logger.info(`✅ Imported LoRa config`);
+      } catch (error) {
+        logger.error(`❌ Failed to import LoRa config:`, error);
+      }
+    }
+
+    // Commit all changes (channels + LoRa config) as a single transaction
+    // This will save everything to flash and trigger the reboot
+    try {
+      logger.info(`💾 Committing all configuration changes (${importedChannels.length} channels${loraImported ? ' + LoRa config' : ''})...`);
+      await meshtasticManager.commitEditSettings();
+      logger.info(`✅ Configuration changes committed successfully - device will reboot`);
+    } catch (error) {
+      logger.error(`❌ Failed to commit configuration changes:`, error);
+    }
+
+    res.json({
+      success: true,
+      imported: {
+        channels: importedChannels.length,
+        channelDetails: importedChannels,
+        loraConfig: loraImported
+      },
+      requiresReboot
+    });
+  } catch (error) {
+    logger.error('Error importing configuration:', error);
+    res.status(500).json({ error: 'Failed to import configuration' });
   }
 });
 

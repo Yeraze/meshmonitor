@@ -3977,6 +3977,51 @@ class MeshtasticManager {
     }
   }
 
+  /**
+   * Begin edit settings transaction to batch configuration changes
+   */
+  async beginEditSettings(): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    try {
+      logger.info('⚙️ Beginning edit settings transaction');
+      const beginMsg = protobufService.createBeginEditSettingsMessage(new Uint8Array());
+      const adminPacket = protobufService.createAdminPacket(beginMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+
+      await this.transport.send(adminPacket);
+      logger.info('⚙️ Sent begin_edit_settings admin message');
+    } catch (error) {
+      logger.error('❌ Error beginning edit settings:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Commit edit settings to persist configuration changes
+   */
+  async commitEditSettings(): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    try {
+      logger.info('⚙️ Committing edit settings to persist configuration');
+      const commitMsg = protobufService.createCommitEditSettingsMessage(new Uint8Array());
+      const adminPacket = protobufService.createAdminPacket(commitMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+
+      await this.transport.send(adminPacket);
+      logger.info('⚙️ Sent commit_edit_settings admin message');
+
+      // Wait a moment for device to save to flash
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    } catch (error) {
+      logger.error('❌ Error committing edit settings:', error);
+      throw error;
+    }
+  }
+
   getConnectionStatus(): { connected: boolean; nodeIp: string; userDisconnected?: boolean } {
     logger.debug(`🔍 getConnectionStatus called: isConnected=${this.isConnected}, userDisconnected=${this.userDisconnectedState}`);
     return {
