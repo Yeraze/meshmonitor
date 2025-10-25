@@ -834,6 +834,17 @@ class DatabaseService {
       }
     }
 
+    try {
+      this.db.exec(`
+        ALTER TABLE telemetry ADD COLUMN packetTimestamp INTEGER;
+      `);
+      logger.debug('✅ Added packetTimestamp column to telemetry table');
+    } catch (error: any) {
+      if (!error.message?.includes('duplicate column')) {
+        logger.debug('⚠️ packetTimestamp column already exists or other error:', error.message);
+      }
+    }
+
     logger.debug('Database migrations completed');
   }
 

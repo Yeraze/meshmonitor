@@ -17,6 +17,7 @@ import HopCountDisplay from './components/HopCountDisplay'
 import AutoAcknowledgeSection from './components/AutoAcknowledgeSection'
 import AutoTracerouteSection from './components/AutoTracerouteSection'
 import AutoAnnounceSection from './components/AutoAnnounceSection'
+import AutoWelcomeSection from './components/AutoWelcomeSection'
 import { ToastProvider, useToast } from './components/ToastContainer'
 import { RebootModal } from './components/RebootModal'
 // import { version } from '../package.json' // Removed - footer no longer displayed
@@ -309,6 +310,14 @@ function App() {
     setAutoAnnounceChannelIndex,
     autoAnnounceOnStart,
     setAutoAnnounceOnStart,
+    autoWelcomeEnabled,
+    setAutoWelcomeEnabled,
+    autoWelcomeMessage,
+    setAutoWelcomeMessage,
+    autoWelcomeTarget,
+    setAutoWelcomeTarget,
+    autoWelcomeWaitForName,
+    setAutoWelcomeWaitForName,
     showNodeFilterPopup,
     setShowNodeFilterPopup
   } = useUI();
@@ -591,6 +600,22 @@ function App() {
 
           if (settings.autoAnnounceOnStart !== undefined) {
             setAutoAnnounceOnStart(settings.autoAnnounceOnStart === 'true');
+          }
+
+          if (settings.autoWelcomeEnabled !== undefined) {
+            setAutoWelcomeEnabled(settings.autoWelcomeEnabled === 'true');
+          }
+
+          if (settings.autoWelcomeMessage) {
+            setAutoWelcomeMessage(settings.autoWelcomeMessage);
+          }
+
+          if (settings.autoWelcomeTarget) {
+            setAutoWelcomeTarget(settings.autoWelcomeTarget);
+          }
+
+          if (settings.autoWelcomeWaitForName !== undefined) {
+            setAutoWelcomeWaitForName(settings.autoWelcomeWaitForName === 'true');
           }
         }
 
@@ -3929,6 +3954,18 @@ function App() {
         {activeTab === 'automation' && (
           <div className="settings-tab">
             <div className="settings-content">
+              <AutoWelcomeSection
+                enabled={autoWelcomeEnabled}
+                message={autoWelcomeMessage}
+                target={autoWelcomeTarget}
+                waitForName={autoWelcomeWaitForName}
+                channels={channels}
+                baseUrl={baseUrl}
+                onEnabledChange={setAutoWelcomeEnabled}
+                onMessageChange={setAutoWelcomeMessage}
+                onTargetChange={setAutoWelcomeTarget}
+                onWaitForNameChange={setAutoWelcomeWaitForName}
+              />
               <AutoTracerouteSection
                 intervalMinutes={tracerouteIntervalMinutes}
                 baseUrl={baseUrl}
