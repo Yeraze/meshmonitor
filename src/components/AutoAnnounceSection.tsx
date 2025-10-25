@@ -159,6 +159,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
     sampleFeatures.push('🗺️'); // Traceroute
     sampleFeatures.push('🤖'); // Auto-ack
     sampleFeatures.push('📢'); // Auto-announce
+    sampleFeatures.push('👋'); // Auto-welcome
     sample = sample.replace(/{FEATURES}/g, sampleFeatures.join(' '));
 
     sample = sample.replace(/{NODECOUNT}/g, '42');
@@ -479,6 +480,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
             <li>🗺️ Auto Traceroute - Network topology mapping</li>
             <li>🤖 Auto Acknowledge - Automated message responses</li>
             <li>📢 Auto Announce - Periodic announcements</li>
+            <li>👋 Auto Welcome - New node greetings</li>
           </ul>
         </div>
       </div>
