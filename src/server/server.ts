@@ -1539,6 +1539,285 @@ apiRouter.get('/connection', optionalAuth(), (_req, res) => {
   }
 });
 
+// Consolidated polling endpoint - reduces multiple API calls to one
+apiRouter.get('/poll', optionalAuth(), async (req, res) => {
+  try {
+    const result: {
+      connection?: any;
+      nodes?: any[];
+      messages?: any[];
+      unreadCounts?: any;
+      channels?: any[];
+      telemetryNodes?: any;
+      config?: any;
+      deviceConfig?: any;
+    } = {};
+
+    // 1. Connection status (always available)
+    try {
+      result.connection = meshtasticManager.getConnectionStatus();
+    } catch (error) {
+      logger.error('Error getting connection status in poll:', error);
+      result.connection = { error: 'Failed to get connection status' };
+    }
+
+    // 2. Nodes (always available with optionalAuth)
+    try {
+      const nodes = meshtasticManager.getAllNodes();
+      // Enhance nodes with mobility detection and estimated positions (same as /nodes endpoint)
+      const enhancedNodes = nodes.map(node => {
+        if (!node.user?.id) return { ...node, isMobile: false };
+
+        const positionTelemetry = databaseService.getTelemetryByNode(node.user.id, 100);
+        const latitudes = positionTelemetry.filter(t => t.telemetryType === 'latitude');
+        const longitudes = positionTelemetry.filter(t => t.telemetryType === 'longitude');
+        const estimatedLatitudes = positionTelemetry.filter(t => t.telemetryType === 'estimated_latitude');
+        const estimatedLongitudes = positionTelemetry.filter(t => t.telemetryType === 'estimated_longitude');
+
+        let isMobile = false;
+
+        if (latitudes.length >= 2 && longitudes.length >= 2) {
+          const latValues = latitudes.map(t => t.value);
+          const lonValues = longitudes.map(t => t.value);
+
+          const minLat = Math.min(...latValues);
+          const maxLat = Math.max(...latValues);
+          const minLon = Math.min(...lonValues);
+          const maxLon = Math.max(...lonValues);
+
+          const R = 6371;
+          const dLat = (maxLat - minLat) * Math.PI / 180;
+          const dLon = (maxLon - minLon) * Math.PI / 180;
+          const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                    Math.cos(minLat * Math.PI / 180) * Math.cos(maxLat * Math.PI / 180) *
+                    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          const distance = R * c;
+
+          isMobile = distance > 1.0;
+        }
+
+        let enhancedNode = { ...node, isMobile };
+        if (!node.position?.latitude && !node.position?.longitude &&
+            estimatedLatitudes.length > 0 && estimatedLongitudes.length > 0) {
+          const latestEstimatedLat = estimatedLatitudes[0];
+          const latestEstimatedLon = estimatedLongitudes[0];
+
+          enhancedNode.position = {
+            latitude: latestEstimatedLat.value,
+            longitude: latestEstimatedLon.value,
+            altitude: node.position?.altitude
+          };
+        }
+
+        return enhancedNode;
+      });
+
+      result.nodes = enhancedNodes;
+    } catch (error) {
+      logger.error('Error fetching nodes in poll:', error);
+      result.nodes = [];
+    }
+
+    // 3. Messages (requires channels OR messages permission)
+    try {
+      const hasChannelsRead = req.user?.isAdmin || hasPermission(req.user!, 'channels', 'read');
+      const hasMessagesRead = req.user?.isAdmin || hasPermission(req.user!, 'messages', 'read');
+
+      if (hasChannelsRead || hasMessagesRead) {
+        let messages = meshtasticManager.getRecentMessages(100);
+
+        // Filter messages based on permissions
+        if (hasChannelsRead && !hasMessagesRead) {
+          messages = messages.filter(msg => msg.channel !== -1);
+        } else if (hasMessagesRead && !hasChannelsRead) {
+          messages = messages.filter(msg => msg.channel === -1);
+        }
+
+        result.messages = messages;
+      }
+    } catch (error) {
+      logger.error('Error fetching messages in poll:', error);
+    }
+
+    // 4. Unread counts (requires channels OR messages permission)
+    try {
+      const hasChannelsRead = req.user?.isAdmin || hasPermission(req.user!, 'channels', 'read');
+      const hasMessagesRead = req.user?.isAdmin || hasPermission(req.user!, 'messages', 'read');
+
+      if (hasChannelsRead || hasMessagesRead) {
+        const userId = req.user?.id ?? null;
+        const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+
+        const unreadResult: {
+          channels?: {[channelId: number]: number},
+          directMessages?: {[nodeId: string]: number}
+        } = {};
+
+        if (hasChannelsRead) {
+          unreadResult.channels = databaseService.getUnreadCountsByChannel(userId);
+        }
+
+        if (hasMessagesRead && localNodeInfo) {
+          const directMessages: {[nodeId: string]: number} = {};
+          const allNodes = meshtasticManager.getAllNodes();
+          for (const node of allNodes) {
+            if (node.user?.id) {
+              const count = databaseService.getUnreadDMCount(localNodeInfo.nodeId, node.user.id, userId);
+              if (count > 0) {
+                directMessages[node.user.id] = count;
+              }
+            }
+          }
+          unreadResult.directMessages = directMessages;
+        }
+
+        result.unreadCounts = unreadResult;
+      }
+    } catch (error) {
+      logger.error('Error fetching unread counts in poll:', error);
+    }
+
+    // 5. Channels (requires channels:read permission)
+    try {
+      const hasChannelsRead = req.user?.isAdmin || hasPermission(req.user!, 'channels', 'read');
+      if (hasChannelsRead) {
+        const allChannels = databaseService.getAllChannels();
+
+        const filteredChannels = allChannels.filter(channel => {
+          if (channel.id === 0) return true;
+          if (channel.name === 'telemetry') return true;
+          if (channel.name && !channel.name.match(/^Channel \d+$/)) return true;
+          if (channel.name && channel.name.match(/^Channel \d+$/)) {
+            const channelNumber = parseInt(channel.name.replace('Channel ', ''));
+            return channelNumber >= 1 && channelNumber <= 3;
+          }
+          return false;
+        });
+
+        const primaryIndex = filteredChannels.findIndex(ch => ch.name === 'Primary');
+        if (primaryIndex > 0) {
+          const primary = filteredChannels.splice(primaryIndex, 1)[0];
+          filteredChannels.unshift(primary);
+        }
+
+        result.channels = filteredChannels;
+      }
+    } catch (error) {
+      logger.error('Error fetching channels in poll:', error);
+    }
+
+    // 6. Telemetry availability (requires info:read permission)
+    try {
+      const hasInfoRead = req.user?.isAdmin || hasPermission(req.user!, 'info', 'read');
+      if (hasInfoRead) {
+        const nodes = databaseService.getAllNodes();
+        const nodesWithTelemetry: string[] = [];
+        const nodesWithWeather: string[] = [];
+        const nodesWithEstimatedPosition: string[] = [];
+
+        const weatherTypes = new Set(['temperature', 'humidity', 'pressure']);
+        const estimatedPositionTypes = new Set(['estimated_latitude', 'estimated_longitude']);
+
+        const nodeTelemetryTypes = databaseService.getAllNodesTelemetryTypes();
+
+        nodes.forEach(node => {
+          const telemetryTypes = nodeTelemetryTypes.get(node.nodeId);
+          if (telemetryTypes && telemetryTypes.length > 0) {
+            nodesWithTelemetry.push(node.nodeId);
+
+            const hasWeather = telemetryTypes.some(t => weatherTypes.has(t));
+            if (hasWeather) {
+              nodesWithWeather.push(node.nodeId);
+            }
+
+            const hasEstimatedPosition = telemetryTypes.some(t => estimatedPositionTypes.has(t));
+            if (hasEstimatedPosition) {
+              nodesWithEstimatedPosition.push(node.nodeId);
+            }
+          }
+        });
+
+        const nodesWithPKC: string[] = [];
+        nodes.forEach(node => {
+          if (node.hasPKC || node.publicKey) {
+            nodesWithPKC.push(node.nodeId);
+          }
+        });
+
+        result.telemetryNodes = {
+          nodes: nodesWithTelemetry,
+          weather: nodesWithWeather,
+          estimatedPosition: nodesWithEstimatedPosition,
+          pkc: nodesWithPKC
+        };
+      }
+    } catch (error) {
+      logger.error('Error checking telemetry availability in poll:', error);
+    }
+
+    // 7. Config (always available with optionalAuth)
+    try {
+      const localNodeNumStr = databaseService.getSetting('localNodeNum');
+
+      let deviceMetadata = undefined;
+      let localNodeInfo = undefined;
+      if (localNodeNumStr) {
+        const localNodeNum = parseInt(localNodeNumStr, 10);
+        const currentNode = databaseService.getNode(localNodeNum);
+
+        if (currentNode) {
+          deviceMetadata = {
+            firmwareVersion: currentNode.firmwareVersion,
+            rebootCount: currentNode.rebootCount
+          };
+
+          localNodeInfo = {
+            nodeId: currentNode.nodeId,
+            longName: currentNode.longName,
+            shortName: currentNode.shortName
+          };
+        }
+      }
+
+      result.config = {
+        meshtasticNodeIp: env.meshtasticNodeIp,
+        meshtasticTcpPort: env.meshtasticTcpPort,
+        meshtasticUseTls: false,
+        baseUrl: BASE_URL,
+        deviceMetadata: deviceMetadata,
+        localNodeInfo: localNodeInfo
+      };
+    } catch (error) {
+      logger.error('Error in config section of poll:', error);
+      result.config = {
+        meshtasticNodeIp: env.meshtasticNodeIp,
+        meshtasticTcpPort: env.meshtasticTcpPort,
+        meshtasticUseTls: false,
+        baseUrl: BASE_URL
+      };
+    }
+
+    // 8. Device config (requires configuration:read permission)
+    try {
+      const hasConfigRead = req.user?.isAdmin || hasPermission(req.user!, 'configuration', 'read');
+      if (hasConfigRead) {
+        const config = await meshtasticManager.getDeviceConfig();
+        if (config) {
+          result.deviceConfig = config;
+        }
+      }
+    } catch (error) {
+      logger.error('Error fetching device config in poll:', error);
+    }
+
+    res.json(result);
+  } catch (error) {
+    logger.error('Error in consolidated poll endpoint:', error);
+    res.status(500).json({ error: 'Failed to fetch polling data' });
+  }
+});
+
 // User-initiated disconnect endpoint
 apiRouter.post('/connection/disconnect', requirePermission('connection', 'write'), async (req, res) => {
   try {

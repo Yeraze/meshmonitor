@@ -188,3 +188,12 @@
 - Packet logging test coverage
   - [x] Create comprehensive test suite for packetLogService (23 tests covering configuration, logging, filtering, counting, retrieval, cleanup, and state management)
   - [x] Create integration tests for packet API routes (16 tests covering GET /api/packets with filters, GET /api/packets/stats, GET /api/packets/:id, DELETE /api/packets with permission checks)
+- API consolidation performance improvement (PR #313)
+  - [x] Create backend /api/poll endpoint that consolidates all frequently-polled data
+  - [x] Update frontend App.tsx to use /api/poll instead of individual endpoints
+  - [x] Write comprehensive tests for /api/poll endpoint (21 API contract tests)
+  - [x] Review and update existing endpoint tests for redundancy
+  - [x] Update API documentation for new polling endpoint
+  - [x] Test the consolidated polling in Docker environment
+  - [x] Create PR for API consolidation performance improvement
+  - Impact: Reduced API requests from 96/minute to 12/minute (88% reduction), eliminating rate limit 429 errors
