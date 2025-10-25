@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [2.10.4] - 2025-10-25
+
+### Added
+- **Traceroute History**: View complete traceroute history for any node pair
+  - New "View History" button in Messages tab for nodes with traceroute data
+  - Displays all traceroute attempts including successful and failed attempts
+  - Shows both forward and return routes with SNR values
+  - Includes calculated total distance for each route
+  - Tracks auto-traceroute and manual user-initiated traceroutes
+  - Persistent storage with configurable history limit (50 records per node pair)
+
+### Fixed
+- Improved database performance with dedicated index for traceroute queries
+- Fixed potential race condition in traceroute recording with database transactions
+- Enhanced API input validation for better security
+
+### Changed
+- Replaced magic numbers with configuration constants for improved maintainability
+- Optimized traceroute display performance with memoized route formatting
+
 ## [2.10.3] - 2025-10-25
 
 ### Added
