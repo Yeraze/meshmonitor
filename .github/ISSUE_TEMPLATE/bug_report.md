@@ -2,7 +2,7 @@
 name: Bug report
 about: Create a report to help us improve
 title: "[BUG] "
-labels: ''
+labels: bug
 assignees: ''
 
 ---
@@ -25,9 +25,9 @@ If applicable, add screenshots to help explain your problem.
 
 **Environment (please complete the following information):**
 * Host OS: [Linux, Mac, Windows]
-* Docker or NPM? 
-* if Docker, which Container version?
+* Docker or Baremetal? 
+* if Docker, which Container version are you using?
 * If NPM, which commit?
 
 **Additional context**
-Add any other context about the problem here.
+Add any other context about the problem here.  Console Logs, Container Logs, or Screenshots.
