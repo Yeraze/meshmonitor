@@ -145,8 +145,10 @@ export interface DbPacketLog {
   timestamp: number;
   from_node: number;
   from_node_id?: string;
+  from_node_longName?: string;
   to_node?: number;
   to_node_id?: string;
+  to_node_longName?: string;
   channel?: number;
   portnum: number;
   portnum_name?: string;
@@ -2434,35 +2436,44 @@ class DatabaseService {
   }): DbPacketLog[] {
     const { offset = 0, limit = 100, portnum, from_node, to_node, channel, encrypted, since } = options;
 
-    let query = 'SELECT * FROM packet_log WHERE 1=1';
+    let query = `
+      SELECT
+        pl.*,
+        from_nodes.longName as from_node_longName,
+        to_nodes.longName as to_node_longName
+      FROM packet_log pl
+      LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes.nodeNum
+      LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes.nodeNum
+      WHERE 1=1
+    `;
     const params: any[] = [];
 
     if (portnum !== undefined) {
-      query += ' AND portnum = ?';
+      query += ' AND pl.portnum = ?';
       params.push(portnum);
     }
     if (from_node !== undefined) {
-      query += ' AND from_node = ?';
+      query += ' AND pl.from_node = ?';
       params.push(from_node);
     }
     if (to_node !== undefined) {
-      query += ' AND to_node = ?';
+      query += ' AND pl.to_node = ?';
       params.push(to_node);
     }
     if (channel !== undefined) {
-      query += ' AND channel = ?';
+      query += ' AND pl.channel = ?';
       params.push(channel);
     }
     if (encrypted !== undefined) {
-      query += ' AND encrypted = ?';
+      query += ' AND pl.encrypted = ?';
       params.push(encrypted ? 1 : 0);
     }
     if (since !== undefined) {
-      query += ' AND timestamp >= ?';
+      query += ' AND pl.timestamp >= ?';
       params.push(since);
     }
 
-    query += ' ORDER BY timestamp DESC LIMIT ? OFFSET ?';
+    query += ' ORDER BY pl.timestamp DESC LIMIT ? OFFSET ?';
     params.push(limit, offset);
 
     const stmt = this.db.prepare(query);
@@ -2470,7 +2481,16 @@ class DatabaseService {
   }
 
   getPacketLogById(id: number): DbPacketLog | null {
-    const stmt = this.db.prepare('SELECT * FROM packet_log WHERE id = ?');
+    const stmt = this.db.prepare(`
+      SELECT
+        pl.*,
+        from_nodes.longName as from_node_longName,
+        to_nodes.longName as to_node_longName
+      FROM packet_log pl
+      LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes.nodeNum
+      LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes.nodeNum
+      WHERE pl.id = ?
+    `);
     const result = stmt.get(id) as DbPacketLog | undefined;
     return result || null;
   }
