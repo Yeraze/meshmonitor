@@ -3421,6 +3421,9 @@ class MeshtasticManager {
         return;
       }
 
+      // Get auto-acknowledge message template
+      const autoAckMessage = databaseService.getSetting('autoAckMessage') || '🤖 Copy, {NUMBER_HOPS} hops at {TIME}';
+
       // Calculate hop count (hopStart - hopLimit gives hops traveled)
       const hopsTraveled = message.hopStart !== null && message.hopLimit !== null
         ? message.hopStart - message.hopLimit
@@ -3430,8 +3433,8 @@ class MeshtasticManager {
       const env = getEnvironmentConfig();
       const receivedTime = new Date(message.timestamp).toLocaleString('en-US', { timeZone: env.timezone });
 
-      // Create auto-acknowledge message with robot emoji
-      const ackText = `🤖 Copy, ${hopsTraveled} hops at ${receivedTime}`;
+      // Replace tokens in the message template
+      let ackText = await this.replaceAcknowledgementTokens(autoAckMessage, message.fromNodeId, hopsTraveled, receivedTime);
 
       // Send reply on same channel or as direct message
       const destination = isDirectMessage ? fromNum : undefined;
@@ -3521,6 +3524,87 @@ class MeshtasticManager {
       const nodes = databaseService.getActiveNodes(maxNodeAgeDays);
       const directCount = nodes.filter((n: any) => n.hopsAway === 0).length;
       logger.info(`📢 Token replacement - DIRECTCOUNT: ${directCount} direct nodes out of ${nodes.length} active nodes`);
+      result = result.replace(/{DIRECTCOUNT}/g, directCount.toString());
+    }
+
+    return result;
+  }
+
+  private async replaceAcknowledgementTokens(message: string, nodeId: string, numberHops: number, time: string): Promise<string> {
+    let result = message;
+
+    // {NODE_ID} - Sender node ID
+    if (result.includes('{NODE_ID}')) {
+      result = result.replace(/{NODE_ID}/g, nodeId);
+    }
+
+    // {NUMBER_HOPS} - Number of hops
+    if (result.includes('{NUMBER_HOPS}')) {
+      result = result.replace(/{NUMBER_HOPS}/g, numberHops.toString());
+    }
+
+    // {RABBIT_HOPS} - Rabbit emojis equal to hop count (or 🎯 for direct/0 hops)
+    if (result.includes('{RABBIT_HOPS}')) {
+      const rabbitEmojis = numberHops === 0 ? '🎯' : '🐇'.repeat(numberHops);
+      result = result.replace(/{RABBIT_HOPS}/g, rabbitEmojis);
+    }
+
+    // {TIME} - Timestamp
+    if (result.includes('{TIME}')) {
+      result = result.replace(/{TIME}/g, time);
+    }
+
+    // {VERSION} - MeshMonitor version
+    if (result.includes('{VERSION}')) {
+      result = result.replace(/{VERSION}/g, packageJson.version);
+    }
+
+    // {DURATION} - Uptime
+    if (result.includes('{DURATION}')) {
+      const uptimeMs = Date.now() - this.serverStartTime;
+      const duration = this.formatDuration(uptimeMs);
+      result = result.replace(/{DURATION}/g, duration);
+    }
+
+    // {FEATURES} - Enabled features as emojis
+    if (result.includes('{FEATURES}')) {
+      const features: string[] = [];
+
+      // Check traceroute
+      const tracerouteInterval = databaseService.getSetting('tracerouteIntervalMinutes');
+      if (tracerouteInterval && parseInt(tracerouteInterval) > 0) {
+        features.push('🗺️');
+      }
+
+      // Check auto-ack
+      const autoAckEnabled = databaseService.getSetting('autoAckEnabled');
+      if (autoAckEnabled === 'true') {
+        features.push('🤖');
+      }
+
+      // Check auto-announce
+      const autoAnnounceEnabled = databaseService.getSetting('autoAnnounceEnabled');
+      if (autoAnnounceEnabled === 'true') {
+        features.push('📢');
+      }
+
+      result = result.replace(/{FEATURES}/g, features.join(' '));
+    }
+
+    // {NODECOUNT} - Active nodes based on maxNodeAgeHours setting
+    if (result.includes('{NODECOUNT}')) {
+      const maxNodeAgeHours = parseInt(databaseService.getSetting('maxNodeAgeHours') || '24');
+      const maxNodeAgeDays = maxNodeAgeHours / 24;
+      const nodes = databaseService.getActiveNodes(maxNodeAgeDays);
+      result = result.replace(/{NODECOUNT}/g, nodes.length.toString());
+    }
+
+    // {DIRECTCOUNT} - Direct nodes (0 hops) from active nodes
+    if (result.includes('{DIRECTCOUNT}')) {
+      const maxNodeAgeHours = parseInt(databaseService.getSetting('maxNodeAgeHours') || '24');
+      const maxNodeAgeDays = maxNodeAgeHours / 24;
+      const nodes = databaseService.getActiveNodes(maxNodeAgeDays);
+      const directCount = nodes.filter((n: any) => n.hopsAway === 0).length;
       result = result.replace(/{DIRECTCOUNT}/g, directCount.toString());
     }
 

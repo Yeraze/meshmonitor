@@ -274,6 +274,8 @@ function App() {
     setAutoAckEnabled,
     autoAckRegex,
     setAutoAckRegex,
+    autoAckMessage,
+    setAutoAckMessage,
     autoAckChannels,
     setAutoAckChannels,
     autoAckDirectMessages,
@@ -535,6 +537,10 @@ function App() {
 
           if (settings.autoAckRegex) {
             setAutoAckRegex(settings.autoAckRegex);
+          }
+
+          if (settings.autoAckMessage) {
+            setAutoAckMessage(settings.autoAckMessage);
           }
 
           if (settings.autoAckChannels) {
@@ -3884,12 +3890,14 @@ function App() {
               <AutoAcknowledgeSection
                 enabled={autoAckEnabled}
                 regex={autoAckRegex}
+                message={autoAckMessage}
                 channels={channels}
                 enabledChannels={autoAckChannels}
                 directMessagesEnabled={autoAckDirectMessages}
                 baseUrl={baseUrl}
                 onEnabledChange={setAutoAckEnabled}
                 onRegexChange={setAutoAckRegex}
+                onMessageChange={setAutoAckMessage}
                 onChannelsChange={setAutoAckChannels}
                 onDirectMessagesChange={setAutoAckDirectMessages}
               />

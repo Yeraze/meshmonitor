@@ -26,6 +26,8 @@ interface UIContextType {
   setAutoAckEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   autoAckRegex: string;
   setAutoAckRegex: React.Dispatch<React.SetStateAction<string>>;
+  autoAckMessage: string;
+  setAutoAckMessage: React.Dispatch<React.SetStateAction<string>>;
   autoAckChannels: number[];
   setAutoAckChannels: React.Dispatch<React.SetStateAction<number[]>>;
   autoAckDirectMessages: boolean;
@@ -72,6 +74,7 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   // Automation settings - loaded from backend API, not localStorage
   const [autoAckEnabled, setAutoAckEnabled] = useState<boolean>(false);
   const [autoAckRegex, setAutoAckRegex] = useState<string>('^(test|ping)');
+  const [autoAckMessage, setAutoAckMessage] = useState<string>('🤖 Copy, {NUMBER_HOPS} hops at {TIME}');
   const [autoAckChannels, setAutoAckChannels] = useState<number[]>([]);
   const [autoAckDirectMessages, setAutoAckDirectMessages] = useState<boolean>(false);
   const [autoAnnounceEnabled, setAutoAnnounceEnabled] = useState<boolean>(false);
@@ -112,6 +115,8 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
         setAutoAckEnabled,
         autoAckRegex,
         setAutoAckRegex,
+        autoAckMessage,
+        setAutoAckMessage,
         autoAckChannels,
         setAutoAckChannels,
         autoAckDirectMessages,
