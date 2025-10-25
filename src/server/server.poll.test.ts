@@ -1,5 +1,4 @@
-import { describe, it, expect, beforeAll, beforeEach, vi, afterEach } from 'vitest';
-import request from 'supertest';
+import { describe, it, beforeAll, beforeEach, vi, afterEach } from 'vitest';
 import express from 'express';
 import cors from 'cors';
 
@@ -137,7 +136,7 @@ const mockHasPermission = vi.fn(() => true);
 vi.mock('../middleware/auth', () => ({
   optionalAuth: mockOptionalAuth,
   requirePermission: () => (_req: any, _res: any, next: any) => next(),
-  hasPermission: (...args: any[]) => mockHasPermission(...args)
+  hasPermission: mockHasPermission
 }));
 
 describe('/api/poll Consolidated Polling Endpoint', () => {
