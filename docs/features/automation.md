@@ -4,19 +4,11 @@ MeshMonitor includes several automation features that can help you manage your m
 
 ## Auto Acknowledge
 
-Automatically responds to messages matching a specific pattern with a confirmation message.
+Automatically responds to messages matching a specific pattern with a customizable confirmation message.
 
 ### How It Works
 
-When enabled, Mesh Monitor monitors all incoming messages for patterns matching the configured regular expression. When a match is found, it automatically replies with:
-
-```
-🤖 Copy, N hops at T
-```
-
-Where:
-- **N** is the number of hops in the originating message
-- **T** is the date/time the message was received
+When enabled, MeshMonitor monitors all incoming messages for patterns matching the configured regular expression. When a match is found, it automatically replies with your custom message template.
 
 ### Configuration
 
@@ -33,6 +25,31 @@ Where:
   - `^(hello|hi|hey)` - Matches messages starting with hello, hi, or hey
 
 **Pattern Testing**: The interface includes a live testing area where you can enter sample messages to see if they match your pattern. Matching messages are highlighted in green, non-matching in red.
+
+**Custom Message Template**: Craft your auto-acknowledge response using dynamic tokens:
+
+- **`{HOPS}`**: Number of hops from the original message (e.g., "3")
+- **`{TIME}`**: Timestamp when the message was received (e.g., "14:35")
+- **`{SENDER}`**: Long name of the sender (e.g., "Alice's Node")
+- **`{MESSAGE}`**: The original message text
+
+**Default Template**:
+```
+🤖 Copy, {HOPS} hops at {TIME}
+```
+
+**Example Custom Templates**:
+```
+✅ Received from {SENDER} at {TIME}
+```
+```
+📡 Signal test: {HOPS} hop(s) | Time: {TIME}
+```
+```
+👋 Hey {SENDER}! Got your message: "{MESSAGE}"
+```
+
+**Token Insertion**: Click on any token button to insert it at your cursor position, making it easy to build complex templates.
 
 ### Side Effects
 
@@ -98,6 +115,76 @@ When enabled, MeshMonitor periodically sends traceroute requests to all nodes in
 Traceroute uses Meshtastic's routing protocol. For more information:
 - [Meshtastic Routing Documentation](https://meshtastic.org/docs/overview/mesh-algo#routing)
 - [Traceroute Request Documentation](https://meshtastic.org/docs/configuration/module/traceroute)
+
+## Auto Welcome
+
+Automatically sends a personalized welcome message to new nodes when they join your mesh network.
+
+### How It Works
+
+When enabled, MeshMonitor monitors for nodes that appear for the first time in the mesh network. When a new node is detected, it automatically sends a direct message to welcome them with your custom template.
+
+### Configuration
+
+**Enable/Disable**: Toggle the checkbox next to "Auto Welcome"
+
+**Welcome Channel**: Select which channel to monitor for new nodes
+
+- **Primary**: Monitor only the primary channel (most common)
+- **All Channels**: Monitor all channels for new nodes
+- Choose the channel where you expect new users to appear
+
+**Custom Welcome Message**: Craft your welcome message using dynamic tokens:
+
+- **`{SENDER}`**: Long name of the new node joining (e.g., "Alice's Node")
+- **`{NODEID}`**: Hex ID of the new node (e.g., "!a2b3c4d5")
+- **`{TIME}`**: Timestamp when the node was first seen (e.g., "14:35")
+- **`{VERSION}`**: Your MeshMonitor version (e.g., "v2.10.1")
+
+**Default Template**:
+```
+👋 Welcome {SENDER}! Thanks for joining the mesh.
+```
+
+**Example Custom Templates**:
+```
+🎉 Hey {SENDER}! Welcome to our mesh network at {TIME}
+```
+```
+👋 Welcome aboard {SENDER} ({NODEID})! Check meshmonitor.org for network stats.
+```
+```
+🌐 New node detected: {SENDER}. MeshMonitor {VERSION} is watching!
+```
+
+**Token Insertion**: Click on any token button to insert it at your cursor position for easy template creation.
+
+### Side Effects
+
+- **Network Traffic**: Each welcome message consumes airtime and generates mesh traffic
+- **Privacy**: Welcome messages are sent as direct messages to the new node
+- **Spam Protection**: Built-in 24-hour cooldown prevents re-welcoming the same node
+- **First Join Only**: Only triggers when a node is seen for the very first time
+
+### Use Cases
+
+- Welcoming new members to your community mesh
+- Providing network information or guidelines to newcomers
+- Announcing the presence of MeshMonitor monitoring
+- Building a friendly mesh community atmosphere
+
+### Best Practices
+
+- Keep messages concise and friendly
+- Include useful information (network rules, contact info, website)
+- Test your template with the token preview before enabling
+- Consider what information would be helpful to a new user
+
+### Related Meshtastic Documentation
+
+Auto Welcome uses Meshtastic's direct messaging. For more information:
+- [Meshtastic Messaging Documentation](https://meshtastic.org/docs/overview/mesh-algo#messaging)
+- [Meshtastic Channels Documentation](https://meshtastic.org/docs/configuration/radio/channels)
 
 ## Auto Announce
 
