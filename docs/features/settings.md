@@ -16,6 +16,28 @@ The Settings tab allows you to customize MeshMonitor's behavior and manage your 
 
 **Side Effects**: Setting this too low may cause frequently-active nodes to disappear from the list temporarily. Setting it too high may clutter the list with offline nodes.
 
+### Unknown Nodes Filter
+
+**Description**: Allows you to filter nodes that have no identifying name information. Unknown nodes are those without both a long name and short name, typically displayed as "Node 12345678" in the interface.
+
+**Location**: Node List filter panel (identified by ❓ icon)
+
+**Filter Modes**:
+- **Show only**: Display only unknown nodes (useful for identifying devices that need configuration)
+- **Hide matching**: Hide unknown nodes from the list (default behavior, keeps the list clean)
+
+**How it works**: A node is considered "unknown" when it has no long name AND no short name (or both are empty/whitespace). This commonly happens with:
+- Newly added devices that haven't been configured yet
+- Devices reset to factory defaults
+- Nodes that haven't broadcast their user information
+
+**Use Cases**:
+- Identifying unconfigured nodes in your network
+- Cleaning up the node list to show only properly configured devices
+- Finding devices that may need attention or setup
+
+**Effect**: When combined with other filters, this helps manage large mesh networks by focusing on nodes with meaningful identification or highlighting those that need configuration.
+
 ## Display Preferences
 
 ### Preferred Node List Sorting
