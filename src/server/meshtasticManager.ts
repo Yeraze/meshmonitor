@@ -3440,7 +3440,7 @@ class MeshtasticManager {
       const receivedTime = new Date(message.timestamp).toLocaleString('en-US', { timeZone: env.timezone });
 
       // Replace tokens in the message template
-      let ackText = await this.replaceAcknowledgementTokens(autoAckMessage, message.fromNodeId, hopsTraveled, receivedTime);
+      let ackText = await this.replaceAcknowledgementTokens(autoAckMessage, message.fromNodeId, fromNum, hopsTraveled, receivedTime);
 
       // Send reply on same channel or as direct message
       const destination = isDirectMessage ? fromNum : undefined;
@@ -3536,12 +3536,26 @@ class MeshtasticManager {
     return result;
   }
 
-  private async replaceAcknowledgementTokens(message: string, nodeId: string, numberHops: number, time: string): Promise<string> {
+  private async replaceAcknowledgementTokens(message: string, nodeId: string, fromNum: number, numberHops: number, time: string): Promise<string> {
     let result = message;
 
     // {NODE_ID} - Sender node ID
     if (result.includes('{NODE_ID}')) {
       result = result.replace(/{NODE_ID}/g, nodeId);
+    }
+
+    // {LONG_NAME} - Sender node long name
+    if (result.includes('{LONG_NAME}')) {
+      const node = databaseService.getNode(fromNum);
+      const longName = node?.longName || 'Unknown';
+      result = result.replace(/{LONG_NAME}/g, longName);
+    }
+
+    // {SHORT_NAME} - Sender node short name
+    if (result.includes('{SHORT_NAME}')) {
+      const node = databaseService.getNode(fromNum);
+      const shortName = node?.shortName || '????';
+      result = result.replace(/{SHORT_NAME}/g, shortName);
     }
 
     // {NUMBER_HOPS} - Number of hops

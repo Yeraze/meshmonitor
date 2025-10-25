@@ -42,6 +42,14 @@ interface UIContextType {
   setAutoAnnounceChannelIndex: React.Dispatch<React.SetStateAction<number>>;
   autoAnnounceOnStart: boolean;
   setAutoAnnounceOnStart: React.Dispatch<React.SetStateAction<boolean>>;
+  autoWelcomeEnabled: boolean;
+  setAutoWelcomeEnabled: React.Dispatch<React.SetStateAction<boolean>>;
+  autoWelcomeMessage: string;
+  setAutoWelcomeMessage: React.Dispatch<React.SetStateAction<string>>;
+  autoWelcomeTarget: string;
+  setAutoWelcomeTarget: React.Dispatch<React.SetStateAction<string>>;
+  autoWelcomeWaitForName: boolean;
+  setAutoWelcomeWaitForName: React.Dispatch<React.SetStateAction<boolean>>;
   showNodeFilterPopup: boolean;
   setShowNodeFilterPopup: React.Dispatch<React.SetStateAction<boolean>>;
   isNodeListCollapsed: boolean;
@@ -82,6 +90,10 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   const [autoAnnounceMessage, setAutoAnnounceMessage] = useState<string>('MeshMonitor {VERSION} online for {DURATION} {FEATURES}');
   const [autoAnnounceChannelIndex, setAutoAnnounceChannelIndex] = useState<number>(0);
   const [autoAnnounceOnStart, setAutoAnnounceOnStart] = useState<boolean>(false);
+  const [autoWelcomeEnabled, setAutoWelcomeEnabled] = useState<boolean>(false);
+  const [autoWelcomeMessage, setAutoWelcomeMessage] = useState<string>('Welcome {LONG_NAME} ({SHORT_NAME}) to the mesh!');
+  const [autoWelcomeTarget, setAutoWelcomeTarget] = useState<string>('0');
+  const [autoWelcomeWaitForName, setAutoWelcomeWaitForName] = useState<boolean>(true);
   const [showNodeFilterPopup, setShowNodeFilterPopup] = useState<boolean>(false);
   // Start with node list collapsed on mobile devices (screens <= 768px)
   const [isNodeListCollapsed, setIsNodeListCollapsed] = useState<boolean>(() => {
@@ -131,6 +143,14 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
         setAutoAnnounceChannelIndex,
         autoAnnounceOnStart,
         setAutoAnnounceOnStart,
+        autoWelcomeEnabled,
+        setAutoWelcomeEnabled,
+        autoWelcomeMessage,
+        setAutoWelcomeMessage,
+        autoWelcomeTarget,
+        setAutoWelcomeTarget,
+        autoWelcomeWaitForName,
+        setAutoWelcomeWaitForName,
         showNodeFilterPopup,
         setShowNodeFilterPopup,
         isNodeListCollapsed,
