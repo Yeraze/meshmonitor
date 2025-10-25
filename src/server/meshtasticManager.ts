@@ -3281,13 +3281,17 @@ class MeshtasticManager {
       throw new Error('Not connected to Meshtastic node');
     }
 
+    if (!this.localNodeInfo) {
+      throw new Error('Local node information not available');
+    }
+
     try {
       const tracerouteData = meshtasticProtobufService.createTracerouteMessage(destination, channel);
 
       await this.transport.send(tracerouteData);
 
-      databaseService.recordTracerouteRequest(destination);
-      logger.info(`📤 Traceroute request sent to node: !${destination.toString(16).padStart(8, '0')}`);
+      databaseService.recordTracerouteRequest(this.localNodeInfo.nodeNum, destination);
+      logger.info(`📤 Traceroute request sent from ${this.localNodeInfo.nodeId} to !${destination.toString(16).padStart(8, '0')}`);
     } catch (error) {
       logger.error('Error sending traceroute:', error);
       throw error;
