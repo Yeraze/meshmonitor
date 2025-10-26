@@ -1480,7 +1480,35 @@ function App() {
           (tr.fromNodeNum === currentNodeNum && tr.toNodeNum === nodeNum) ||
           (tr.fromNodeNum === nodeNum && tr.toNodeNum === currentNodeNum)
         );
-        return isRelevant && tr.timestamp >= cutoff;
+
+        if (!isRelevant || tr.timestamp < cutoff) {
+          return false;
+        }
+
+        // Filter out failed traceroutes (where both directions are null)
+        // null or 'null' = failed (no response received)
+        // [] = successful with 0 hops (direct connection)
+        // [hops] = successful with intermediate hops
+        let routeData = null;
+        let routeBackData = null;
+
+        try {
+          if (tr.route && tr.route !== 'null') {
+            routeData = JSON.parse(tr.route);
+          }
+          if (tr.routeBack && tr.routeBack !== 'null') {
+            routeBackData = JSON.parse(tr.routeBack);
+          }
+        } catch (e) {
+          // If parsing fails, treat as null (failed)
+          console.error('Error parsing traceroute data:', e);
+        }
+
+        // A traceroute is successful if at least one direction has data (even if empty array)
+        const hasForwardData = routeData !== null;
+        const hasReturnData = routeBackData !== null;
+
+        return hasForwardData || hasReturnData;
       })
       .sort((a, b) => b.timestamp - a.timestamp);
 
