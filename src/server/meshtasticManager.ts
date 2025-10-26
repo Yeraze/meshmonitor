@@ -985,7 +985,8 @@ class MeshtasticManager {
           const channel0 = databaseService.getChannelById(0);
           if (!channel0) {
             logger.debug('📡 Creating channel 0 for message (name will be set when device config syncs)');
-            databaseService.upsertChannel({ id: 0, name: '' });
+            // Create with role=1 (Primary) as channel 0 is always the primary channel in Meshtastic
+            databaseService.upsertChannel({ id: 0, name: '', role: 1 });
           }
         }
 
