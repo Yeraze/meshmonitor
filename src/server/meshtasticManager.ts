@@ -1600,19 +1600,19 @@ class MeshtasticManager {
       logger.debug(`💾 Saved traceroute result from ${fromNodeId} (channel: ${channelIndex})`);
 
       // Save to traceroutes table (save raw data including broadcast addresses)
-      // NOTE: Reverse the route arrays to match the display order (fromNode -> intermediates -> toNode)
-      // Meshtastic protocol returns route as "nodenums visited on way to destination" starting from requester
-      // But we store fromNodeNum as the responder (destination) and toNodeNum as requester in the response packet
-      // So we reverse to get: fromNode (responder/destination) -> intermediates -> toNode (requester)
+      // Store route arrays exactly as Meshtastic sends them
+      // fromNodeNum = responder (remote), toNodeNum = requester (local)
+      // route = hops from requester toward responder
+      // routeBack = hops from responder toward requester
       const tracerouteRecord = {
         fromNodeNum: fromNum,
         toNodeNum: toNum,
         fromNodeId: fromNodeId,
         toNodeId: toNodeId,
-        route: JSON.stringify([...route].reverse()),
-        routeBack: JSON.stringify([...routeBack].reverse()),
-        snrTowards: JSON.stringify([...snrTowards].reverse()),
-        snrBack: JSON.stringify([...snrBack].reverse()),
+        route: JSON.stringify(route),
+        routeBack: JSON.stringify(routeBack),
+        snrTowards: JSON.stringify(snrTowards),
+        snrBack: JSON.stringify(snrBack),
         timestamp: timestamp,
         createdAt: Date.now()
       };
