@@ -537,14 +537,9 @@ apiRouter.get('/messages/channel/:channel', requirePermission('channels', 'read'
 
     // Check if this is a Primary channel request and map to channel 0 messages
     let messageChannel = requestedChannel;
-    const allChannels = databaseService.getAllChannels();
-
-    // Find any channel that could be Primary (name="Primary" or name="Channel 0")
-    const primaryChannels = allChannels.filter(ch => ch.name === 'Primary' || ch.name === 'Channel 0');
-
-    // If the requested channel is any of the Primary channels, map to channel 0
-    const isPrimaryRequest = primaryChannels.some(ch => ch.id === requestedChannel);
-    if (isPrimaryRequest) {
+    // In Meshtastic, channel 0 is always the Primary channel
+    // If the requested channel is 0, use it directly
+    if (requestedChannel === 0) {
       messageChannel = 0;
     }
 
@@ -708,34 +703,29 @@ apiRouter.get('/channels', requirePermission('channels', 'read'), (_req, res) =>
     // Channel 0 will be created automatically when device config syncs
     // It should have an empty name as per Meshtastic protocol
 
-    // Filter channels to only show meaningful ones
+    // Filter channels to only show configured ones
+    // Meshtastic supports channels 0-7 (8 total)
     const filteredChannels = allChannels.filter(channel => {
-      // Always show channel 0 (Primary channel - should have empty name)
+      // Always show channel 0 (Primary channel)
       if (channel.id === 0) {
         return true;
       }
 
-      // Always show telemetry channel
-      if (channel.name === 'telemetry') {
+      // Show channels 1-7 if they have a PSK configured (indicating they're in use)
+      if (channel.id >= 1 && channel.id <= 7 && channel.psk) {
         return true;
       }
 
-      // Show other channels only if they have a meaningful name (not just "Channel X")
-      if (channel.name && !channel.name.match(/^Channel \d+$/)) {
+      // Show channels with a role defined (PRIMARY, SECONDARY, DISABLED)
+      if (channel.role !== null && channel.role !== undefined) {
         return true;
-      }
-
-      // For generic "Channel X" names, only show if they're likely to be active (channels 1-3)
-      if (channel.name && channel.name.match(/^Channel \d+$/)) {
-        const channelNumber = parseInt(channel.name.replace('Channel ', ''));
-        return channelNumber >= 1 && channelNumber <= 3;
       }
 
       return false;
     });
 
-    // Ensure Primary channel is first in the list
-    const primaryIndex = filteredChannels.findIndex(ch => ch.name === 'Primary');
+    // Ensure Primary channel (ID 0) is first in the list
+    const primaryIndex = filteredChannels.findIndex(ch => ch.id === 0);
     if (primaryIndex > 0) {
       const primary = filteredChannels.splice(primaryIndex, 1)[0];
       filteredChannels.unshift(primary);
@@ -1257,14 +1247,9 @@ apiRouter.post('/messages/send', requirePermission('messages', 'write'), async (
 
     // Map Primary channel to channel 0 for mesh network
     let meshChannel = channel || 0;
-    const allChannels = databaseService.getAllChannels();
-
-    // Find any channel that could be Primary (name="Primary" or name="Channel 0")
-    const primaryChannels = allChannels.filter(ch => ch.name === 'Primary' || ch.name === 'Channel 0');
-    const isPrimaryChannel = primaryChannels.some(ch => ch.id === channel);
-
-    if (isPrimaryChannel) {
-      // User is sending to Primary channel, but mesh expects channel 0
+    // In Meshtastic, channel 0 is always the Primary channel
+    // If the user is sending to channel 0, use it directly
+    if (channel === 0) {
       meshChannel = 0;
     }
 
@@ -1732,17 +1717,20 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
         const allChannels = databaseService.getAllChannels();
 
         const filteredChannels = allChannels.filter(channel => {
+          // Always show channel 0 (Primary channel)
           if (channel.id === 0) return true;
-          if (channel.name === 'telemetry') return true;
-          if (channel.name && !channel.name.match(/^Channel \d+$/)) return true;
-          if (channel.name && channel.name.match(/^Channel \d+$/)) {
-            const channelNumber = parseInt(channel.name.replace('Channel ', ''));
-            return channelNumber >= 1 && channelNumber <= 3;
-          }
+
+          // Show channels 1-7 if they have a PSK configured (indicating they're in use)
+          if (channel.id >= 1 && channel.id <= 7 && channel.psk) return true;
+
+          // Show channels with a role defined (PRIMARY, SECONDARY, DISABLED)
+          if (channel.role !== null && channel.role !== undefined) return true;
+
           return false;
         });
 
-        const primaryIndex = filteredChannels.findIndex(ch => ch.name === 'Primary');
+        // Ensure Primary channel (ID 0) is first in the list
+        const primaryIndex = filteredChannels.findIndex(ch => ch.id === 0);
         if (primaryIndex > 0) {
           const primary = filteredChannels.splice(primaryIndex, 1)[0];
           filteredChannels.unshift(primary);
