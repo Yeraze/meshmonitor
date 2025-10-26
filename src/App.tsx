@@ -1468,10 +1468,20 @@ function App() {
     const nodeNumStr = nodeId.replace('!', '');
     const nodeNum = parseInt(nodeNumStr, 16);
 
-    // Find most recent traceroute from this node within last 24 hours
+    // Get current node number
+    const currentNodeNumStr = currentNodeId.replace('!', '');
+    const currentNodeNum = parseInt(currentNodeNumStr, 16);
+
+    // Find most recent traceroute between current node and selected node within last 24 hours
     const cutoff = Date.now() - (24 * 60 * 60 * 1000);
     const recentTraceroutes = traceroutes
-      .filter(tr => tr.fromNodeNum === nodeNum && tr.timestamp >= cutoff)
+      .filter(tr => {
+        const isRelevant = (
+          (tr.fromNodeNum === currentNodeNum && tr.toNodeNum === nodeNum) ||
+          (tr.fromNodeNum === nodeNum && tr.toNodeNum === currentNodeNum)
+        );
+        return isRelevant && tr.timestamp >= cutoff;
+      })
       .sort((a, b) => b.timestamp - a.timestamp);
 
     return recentTraceroutes.length > 0 ? recentTraceroutes[0] : null;
