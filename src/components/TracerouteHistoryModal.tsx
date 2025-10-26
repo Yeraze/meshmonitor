@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import ApiService from '../services/api';
 import { DbTraceroute } from '../services/database';
 import { formatDateTime } from '../utils/datetime';
@@ -31,6 +31,7 @@ const TracerouteHistoryModal: React.FC<TracerouteHistoryModalProps> = ({
   const [traceroutes, setTraceroutes] = useState<TracerouteWithHops[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showFailedTraceroutes, setShowFailedTraceroutes] = useState(true);
   const { timeFormat, dateFormat, distanceUnit } = useSettings();
 
   useEffect(() => {
@@ -127,6 +128,19 @@ const TracerouteHistoryModal: React.FC<TracerouteHistoryModalProps> = ({
     }
   }, [nodes, distanceUnit, formatNodeName]);
 
+  // Filter traceroutes based on the checkbox state
+  const filteredTraceroutes = useMemo(() => {
+    if (showFailedTraceroutes) {
+      return traceroutes;
+    }
+    // Filter out failed traceroutes (where both route and routeBack are null/'null')
+    return traceroutes.filter(tr => {
+      const hasRoute = tr.route && tr.route !== 'null';
+      const hasRouteBack = tr.routeBack && tr.routeBack !== 'null';
+      return hasRoute || hasRouteBack;
+    });
+  }, [traceroutes, showFailedTraceroutes]);
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '900px', maxHeight: '80vh' }}>
@@ -138,6 +152,18 @@ const TracerouteHistoryModal: React.FC<TracerouteHistoryModalProps> = ({
         <div className="modal-body" style={{ padding: '1.5rem', overflowY: 'auto', maxHeight: 'calc(80vh - 100px)' }}>
           <div style={{ marginBottom: '1.5rem' }}>
             <strong>From:</strong> {fromNodeName} → <strong>To:</strong> {toNodeName}
+          </div>
+
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}>
+              <input
+                type="checkbox"
+                checked={showFailedTraceroutes}
+                onChange={(e) => setShowFailedTraceroutes(e.target.checked)}
+                style={{ marginRight: '0.5rem', cursor: 'pointer' }}
+              />
+              Show failed traceroutes
+            </label>
           </div>
 
           {loading && (
@@ -153,19 +179,22 @@ const TracerouteHistoryModal: React.FC<TracerouteHistoryModalProps> = ({
             </div>
           )}
 
-          {!loading && !error && traceroutes.length === 0 && (
+          {!loading && !error && filteredTraceroutes.length === 0 && (
             <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--ctp-subtext0)' }}>
-              No traceroute history found for this node pair.
+              {traceroutes.length === 0 ? 'No traceroute history found for this node pair.' : 'No traceroutes match the current filter.'}
             </div>
           )}
 
-          {!loading && !error && traceroutes.length > 0 && (
+          {!loading && !error && filteredTraceroutes.length > 0 && (
             <div>
               <p style={{ marginBottom: '1rem', color: 'var(--ctp-subtext0)' }}>
-                Showing {traceroutes.length} traceroute{traceroutes.length !== 1 ? 's' : ''}
+                Showing {filteredTraceroutes.length} traceroute{filteredTraceroutes.length !== 1 ? 's' : ''}
+                {!showFailedTraceroutes && traceroutes.length > filteredTraceroutes.length && (
+                  <span> ({traceroutes.length - filteredTraceroutes.length} failed hidden)</span>
+                )}
               </p>
 
-              {traceroutes.map((tr, index) => {
+              {filteredTraceroutes.map((tr: TracerouteWithHops, index: number) => {
                 const age = Math.floor((Date.now() - tr.timestamp) / (1000 * 60));
                 const ageStr = age < 60 ? `${age}m ago` : age < 1440 ? `${Math.floor(age / 60)}h ago` : `${Math.floor(age / 1440)}d ago`;
 
@@ -182,7 +211,7 @@ const TracerouteHistoryModal: React.FC<TracerouteHistoryModalProps> = ({
                   >
                     <div style={{ marginBottom: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div>
-                        <strong>#{traceroutes.length - index}</strong>
+                        <strong>#{filteredTraceroutes.length - index}</strong>
                         <span style={{ marginLeft: '1rem', color: 'var(--ctp-subtext0)' }}>
                           {formatDateTime(new Date(tr.timestamp), timeFormat, dateFormat)}
                         </span>
