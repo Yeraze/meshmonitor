@@ -1362,18 +1362,36 @@ class DatabaseService {
   upsertChannel(channelData: { id?: number; name: string; psk?: string; role?: number; uplinkEnabled?: boolean; downlinkEnabled?: boolean; positionPrecision?: number }): void {
     const now = Date.now();
 
+    // Defensive checks for channel roles:
+    // 1. Channel 0 must NEVER be DISABLED (role=0) - it must be PRIMARY (role=1)
+    // 2. Channels 1-7 must NEVER be PRIMARY (role=1) - they can only be SECONDARY (role=2) or DISABLED (role=0)
+    // A mesh network requires exactly ONE PRIMARY channel, and Channel 0 is conventionally PRIMARY
+    if (channelData.id === 0 && channelData.role === 0) {
+      logger.warn(`⚠️  Blocking attempt to set Channel 0 role to DISABLED (0), forcing to PRIMARY (1)`);
+      channelData = { ...channelData, role: 1 };  // Clone and override
+    }
+
+    if (channelData.id !== undefined && channelData.id > 0 && channelData.role === 1) {
+      logger.warn(`⚠️  Blocking attempt to set Channel ${channelData.id} role to PRIMARY (1), forcing to SECONDARY (2)`);
+      logger.warn(`⚠️  Only Channel 0 can be PRIMARY - all other channels must be SECONDARY or DISABLED`);
+      channelData = { ...channelData, role: 2 };  // Clone and override to SECONDARY
+    }
+
     logger.info(`📝 upsertChannel called with ID: ${channelData.id}, name: "${channelData.name}" (length: ${channelData.name.length})`);
 
     let existingChannel: DbChannel | null = null;
 
-    // If we have an ID, check by ID FIRST (to support creating channel 0 even if "Primary" exists elsewhere)
+    // If we have an ID, check by ID FIRST
     if (channelData.id !== undefined) {
       existingChannel = this.getChannelById(channelData.id);
       logger.info(`📝 getChannelById(${channelData.id}) returned: ${existingChannel ? `"${existingChannel.name}"` : 'null'}`);
     }
 
-    // Only check by name if we didn't find a channel by ID
-    if (!existingChannel) {
+    // Only check by name if:
+    // 1. No ID was provided (legacy name-based lookup for backward compatibility)
+    // 2. OR if the name is non-empty and we didn't find by ID (to handle renaming)
+    // DO NOT use name-based lookup if we have an ID but it wasn't found - that means we should INSERT a new channel
+    if (!existingChannel && channelData.id === undefined) {
       existingChannel = this.getChannelByName(channelData.name);
       logger.info(`📝 getChannelByName("${channelData.name}") returned: ${existingChannel ? `ID ${existingChannel.id}` : 'null'}`);
     }

@@ -46,8 +46,8 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
     const existingChannel = channels.find(ch => ch.id === slotId);
     setEditingChannel({
       slotId,
-      name: existingChannel?.name || `Channel ${slotId}`,
-      psk: existingChannel?.psk || '',
+      name: existingChannel?.name ?? `Channel ${slotId}`,
+      psk: existingChannel?.psk ?? '',
       role: (existingChannel?.role !== undefined && existingChannel?.role !== null) ? existingChannel.role : (slotId === 0 ? 1 : 2), // Default: 1 for slot 0 (Primary), 2 for others (Secondary)
       uplinkEnabled: existingChannel?.uplinkEnabled !== undefined ? existingChannel.uplinkEnabled : true,
       downlinkEnabled: existingChannel?.downlinkEnabled !== undefined ? existingChannel.downlinkEnabled : true,

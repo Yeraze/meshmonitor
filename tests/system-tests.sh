@@ -49,8 +49,8 @@ echo -e "${BLUE}Step 1: Bootstrap - Building fresh Docker image${NC}"
 echo "This ensures tests run against the latest code..."
 echo ""
 
-# Build the Docker image
-docker build -t meshmonitor:test -f Dockerfile . --quiet
+# Build the Docker image (with --no-cache to ensure latest code is compiled)
+docker build -t meshmonitor:test -f Dockerfile . --no-cache --quiet
 
 if [ $? -eq 0 ]; then
     echo -e "${GREEN}✓ Build successful${NC}"
