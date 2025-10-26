@@ -26,10 +26,14 @@ export const MapCenterController: React.FC<MapCenterControllerProps> = ({
         // Pan the map down by 150 pixels to account for popup height
         // This ensures both the marker and the popup above it are fully visible
         map.panBy([0, -150], { animate: true, duration: 0.3 });
+
+        // Wait for the pan animation to complete before resetting
+        setTimeout(() => {
+          onCenterComplete(); // Reset target after all animations complete
+        }, 350); // Slightly longer than the 0.3s pan duration
       });
 
       map.setView(centerTarget, 15); // Zoom level 15 for close view
-      onCenterComplete(); // Reset target after centering
     }
   }, [centerTarget, onCenterComplete, map]);
 
