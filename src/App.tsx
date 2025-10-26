@@ -3905,11 +3905,12 @@ function App() {
           // Don't render anything for failed traceroutes
         } else {
         try {
-          // Backend reverses arrays due to Meshtastic sending them backwards
-          // Database: fromNodeNum = destination (remote), toNodeNum = originator (local)
-          // Despite protobuf docs, Meshtastic sends arrays in reverse, so we swap them
-          const routeForward = JSON.parse(selectedTrace.routeBack);  // Forward: local -> remote
-          const routeBack = JSON.parse(selectedTrace.route);  // Return: remote -> local
+          // Route arrays are stored exactly as Meshtastic provides them (no backend reversal)
+          // fromNodeNum = responder (remote), toNodeNum = requester (local)
+          // route = intermediate hops from requester toward responder
+          // routeBack = intermediate hops from responder toward requester
+          const routeForward = JSON.parse(selectedTrace.route);  // Forward: local -> remote
+          const routeBack = JSON.parse(selectedTrace.routeBack);  // Return: remote -> local
 
           // Skip if either route is empty array (no actual route hops - failed/incomplete traceroute)
           if (routeForward.length === 0 || routeBack.length === 0) {
@@ -3920,10 +3921,10 @@ function App() {
             const fromName = fromNode?.user?.longName || fromNode?.user?.shortName || selectedTrace.fromNodeId;
             const toName = toNode?.user?.longName || toNode?.user?.shortName || selectedTrace.toNodeId;
 
-            // Forward path (local -> remote)
+            // Forward path (responder -> requester, mirroring the data model)
             if (routeForward.length >= 0) {
-              // Route arrays are now stored in correct order (from -> intermediates -> to) after backend fix
-              const forwardSequence: number[] = [selectedTrace.toNodeNum, ...routeForward, selectedTrace.fromNodeNum];
+              // Build path: fromNodeNum (responder) → route intermediates → toNodeNum (requester)
+              const forwardSequence: number[] = [selectedTrace.fromNodeNum, ...routeForward, selectedTrace.toNodeNum];
               const forwardPositions: [number, number][] = [];
 
               forwardSequence.forEach((nodeNum) => {
@@ -3961,7 +3962,7 @@ function App() {
                       <div className="route-popup">
                         <h4>Forward Path</h4>
                         <div className="route-endpoints">
-                          <strong>{toName}</strong> → <strong>{fromName}</strong>
+                          <strong>{fromName}</strong> → <strong>{toName}</strong>
                         </div>
                         <div className="route-usage">
                           Path: {forwardSequence.map(num => {
@@ -3990,10 +3991,10 @@ function App() {
               }
             }
 
-            // Back path (remote -> local)
+            // Return path (requester -> responder)
             if (routeBack.length >= 0) {
-              // Route arrays are now stored in correct order (from -> intermediates -> to) after backend fix
-              const backSequence: number[] = [selectedTrace.fromNodeNum, ...routeBack, selectedTrace.toNodeNum];
+              // Build path: toNodeNum (requester) → routeBack intermediates → fromNodeNum (responder)
+              const backSequence: number[] = [selectedTrace.toNodeNum, ...routeBack, selectedTrace.fromNodeNum];
               const backPositions: [number, number][] = [];
 
               backSequence.forEach((nodeNum) => {
@@ -4031,7 +4032,7 @@ function App() {
                       <div className="route-popup">
                         <h4>Return Path</h4>
                         <div className="route-endpoints">
-                          <strong>{fromName}</strong> → <strong>{toName}</strong>
+                          <strong>{toName}</strong> → <strong>{fromName}</strong>
                         </div>
                         <div className="route-usage">
                           Path: {backSequence.map(num => {
