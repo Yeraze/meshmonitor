@@ -30,14 +30,17 @@ cleanup() {
     # Stop and remove test containers and volumes
     docker compose -f docker-compose.quick-start-test.yml down -v 2>/dev/null || true
     docker compose -f docker-compose.reverse-proxy-test.yml down -v 2>/dev/null || true
+    docker compose -f docker-compose-config-import-test.yml down -v 2>/dev/null || true
 
     # Remove any temporary compose files
     rm -f docker-compose.quick-start-test.yml 2>/dev/null || true
     rm -f docker-compose.reverse-proxy-test.yml 2>/dev/null || true
+    rm -f docker-compose-config-import-test.yml 2>/dev/null || true
 
     # Remove cookie files
     rm -f /tmp/meshmonitor-cookies.txt 2>/dev/null || true
     rm -f /tmp/meshmonitor-reverse-proxy-cookies.txt 2>/dev/null || true
+    rm -f /tmp/meshmonitor-config-import-cookies.txt 2>/dev/null || true
 
     echo -e "${GREEN}✓${NC} Cleanup complete"
 }
@@ -67,8 +70,34 @@ echo ""
 # Remove any existing test volumes
 docker volume rm meshmonitor_meshmonitor-quick-start-test-data 2>/dev/null || true
 docker volume rm meshmonitor_meshmonitor-reverse-proxy-test-data 2>/dev/null || true
+docker volume rm meshmonitor_meshmonitor-config-import-test-data 2>/dev/null || true
 
 echo -e "${GREEN}✓ Test volumes cleaned${NC}"
+echo ""
+
+echo "=========================================="
+echo -e "${BLUE}Running Configuration Import Test${NC}"
+echo "=========================================="
+echo ""
+
+# Run Configuration Import test FIRST
+# This test imports two different configurations and verifies them
+if bash "$SCRIPT_DIR/test-config-import.sh"; then
+    CONFIG_IMPORT_RESULT="PASSED"
+    echo ""
+    echo -e "${GREEN}✓ Configuration Import test PASSED${NC}"
+else
+    # Check if test was skipped (exit 0 with skip message)
+    if [ $? -eq 0 ]; then
+        CONFIG_IMPORT_RESULT="SKIPPED"
+        echo ""
+        echo -e "${YELLOW}⊘ Configuration Import test SKIPPED${NC}"
+    else
+        CONFIG_IMPORT_RESULT="FAILED"
+        echo ""
+        echo -e "${RED}✗ Configuration Import test FAILED${NC}"
+    fi
+fi
 echo ""
 
 echo "=========================================="
@@ -128,6 +157,14 @@ echo "System Test Results"
 echo "=========================================="
 echo ""
 
+if [ "$CONFIG_IMPORT_RESULT" = "PASSED" ]; then
+    echo -e "Configuration Import:     ${GREEN}✓ PASSED${NC}"
+elif [ "$CONFIG_IMPORT_RESULT" = "SKIPPED" ]; then
+    echo -e "Configuration Import:     ${YELLOW}⊘ SKIPPED${NC}"
+else
+    echo -e "Configuration Import:     ${RED}✗ FAILED${NC}"
+fi
+
 if [ "$QUICKSTART_RESULT" = "PASSED" ]; then
     echo -e "Quick Start Test:         ${GREEN}✓ PASSED${NC}"
 else
@@ -148,20 +185,124 @@ fi
 
 echo ""
 
-# Overall result
-if [ "$QUICKSTART_RESULT" = "PASSED" ] && [ "$REVERSE_PROXY_RESULT" = "PASSED" ] && [ "$OIDC_RESULT" = "PASSED" ]; then
+# Generate markdown report
+REPORT_FILE="test-results.md"
+echo "# MeshMonitor System Test Results" > "$REPORT_FILE"
+echo "" >> "$REPORT_FILE"
+echo "**Test Run:** $(date '+%Y-%m-%d %H:%M:%S %Z')" >> "$REPORT_FILE"
+echo "" >> "$REPORT_FILE"
+echo "## Test Summary" >> "$REPORT_FILE"
+echo "" >> "$REPORT_FILE"
+echo "| Test Suite | Result |" >> "$REPORT_FILE"
+echo "|------------|--------|" >> "$REPORT_FILE"
+
+if [ "$CONFIG_IMPORT_RESULT" = "PASSED" ]; then
+    echo "| Configuration Import | ✅ PASSED |" >> "$REPORT_FILE"
+elif [ "$CONFIG_IMPORT_RESULT" = "SKIPPED" ]; then
+    echo "| Configuration Import | ⊘ SKIPPED |" >> "$REPORT_FILE"
+else
+    echo "| Configuration Import | ❌ FAILED |" >> "$REPORT_FILE"
+fi
+
+if [ "$QUICKSTART_RESULT" = "PASSED" ]; then
+    echo "| Quick Start Test | ✅ PASSED |" >> "$REPORT_FILE"
+else
+    echo "| Quick Start Test | ❌ FAILED |" >> "$REPORT_FILE"
+fi
+
+if [ "$REVERSE_PROXY_RESULT" = "PASSED" ]; then
+    echo "| Reverse Proxy Test | ✅ PASSED |" >> "$REPORT_FILE"
+else
+    echo "| Reverse Proxy Test | ❌ FAILED |" >> "$REPORT_FILE"
+fi
+
+if [ "$OIDC_RESULT" = "PASSED" ]; then
+    echo "| Reverse Proxy + OIDC | ✅ PASSED |" >> "$REPORT_FILE"
+else
+    echo "| Reverse Proxy + OIDC | ❌ FAILED |" >> "$REPORT_FILE"
+fi
+
+echo "" >> "$REPORT_FILE"
+
+# Overall result (config import is optional, so only fail if it actually failed, not if skipped)
+REQUIRED_TESTS_PASSED=true
+if [ "$QUICKSTART_RESULT" != "PASSED" ] || [ "$REVERSE_PROXY_RESULT" != "PASSED" ] || [ "$OIDC_RESULT" != "PASSED" ]; then
+    REQUIRED_TESTS_PASSED=false
+fi
+
+if [ "$CONFIG_IMPORT_RESULT" = "FAILED" ]; then
+    REQUIRED_TESTS_PASSED=false
+fi
+
+if [ "$REQUIRED_TESTS_PASSED" = true ]; then
+    echo "## ✅ Overall Result: PASSED" >> "$REPORT_FILE"
+    echo "" >> "$REPORT_FILE"
+    echo "All deployment configurations are working correctly!" >> "$REPORT_FILE"
+    echo "" >> "$REPORT_FILE"
+    echo "### Test Details" >> "$REPORT_FILE"
+    echo "" >> "$REPORT_FILE"
+    echo "**Configuration Import:**" >> "$REPORT_FILE"
+    echo "- Tests configuration import and device reboot cycle" >> "$REPORT_FILE"
+    echo "- Verifies channel roles, PSKs, and LoRa configuration" >> "$REPORT_FILE"
+    echo "- Note: Channel name verification skipped due to architectural limitation" >> "$REPORT_FILE"
+    echo "" >> "$REPORT_FILE"
+    echo "**Quick Start Test:**" >> "$REPORT_FILE"
+    echo "- Zero-config deployment (no SESSION_SECRET or COOKIE_SECURE required)" >> "$REPORT_FILE"
+    echo "- HTTP access without HSTS" >> "$REPORT_FILE"
+    echo "- Auto-generated admin user with default credentials" >> "$REPORT_FILE"
+    echo "- Session cookies work over HTTP" >> "$REPORT_FILE"
+    echo "- Meshtastic node connection and message exchange verified" >> "$REPORT_FILE"
+    echo "" >> "$REPORT_FILE"
+    echo "**Reverse Proxy Test:**" >> "$REPORT_FILE"
+    echo "- Production deployment with COOKIE_SECURE=true" >> "$REPORT_FILE"
+    echo "- HTTPS-ready configuration" >> "$REPORT_FILE"
+    echo "- Trust proxy enabled for reverse proxy compatibility" >> "$REPORT_FILE"
+    echo "- CORS configured for HTTPS domain" >> "$REPORT_FILE"
+    echo "- Meshtastic node connection and message exchange verified" >> "$REPORT_FILE"
+    echo "" >> "$REPORT_FILE"
+    echo "**Reverse Proxy + OIDC Test:**" >> "$REPORT_FILE"
+    echo "- OIDC authentication integration" >> "$REPORT_FILE"
+    echo "- Mock OIDC provider health checks" >> "$REPORT_FILE"
+    echo "- Authorization flow and session creation" >> "$REPORT_FILE"
+    echo "- Hybrid mode (OIDC + local auth)" >> "$REPORT_FILE"
+    echo "- Meshtastic node connection verified" >> "$REPORT_FILE"
+
     echo -e "${GREEN}=========================================="
     echo "✓ ALL SYSTEM TESTS PASSED"
     echo "==========================================${NC}"
     echo ""
     echo "Your deployment configurations are working correctly!"
     echo "Ready to create or update PR."
+    echo ""
+    echo "Markdown report generated: $REPORT_FILE"
     exit 0
 else
+    echo "## ❌ Overall Result: FAILED" >> "$REPORT_FILE"
+    echo "" >> "$REPORT_FILE"
+    echo "Some tests failed. Please review the failures above and fix before creating/updating PR." >> "$REPORT_FILE"
+    echo "" >> "$REPORT_FILE"
+    echo "### Failed Tests" >> "$REPORT_FILE"
+    echo "" >> "$REPORT_FILE"
+
+    if [ "$CONFIG_IMPORT_RESULT" = "FAILED" ]; then
+        echo "- **Configuration Import:** Failed to import and verify device configuration" >> "$REPORT_FILE"
+    fi
+    if [ "$QUICKSTART_RESULT" != "PASSED" ]; then
+        echo "- **Quick Start Test:** Zero-config deployment test failed" >> "$REPORT_FILE"
+    fi
+    if [ "$REVERSE_PROXY_RESULT" != "PASSED" ]; then
+        echo "- **Reverse Proxy Test:** Production HTTPS deployment test failed" >> "$REPORT_FILE"
+    fi
+    if [ "$OIDC_RESULT" != "PASSED" ]; then
+        echo "- **Reverse Proxy + OIDC:** OIDC authentication integration test failed" >> "$REPORT_FILE"
+    fi
+
     echo -e "${RED}=========================================="
     echo "✗ SYSTEM TESTS FAILED"
     echo "==========================================${NC}"
     echo ""
     echo "Please fix failing tests before creating/updating PR."
+    echo ""
+    echo "Markdown report generated: $REPORT_FILE"
     exit 1
 fi
