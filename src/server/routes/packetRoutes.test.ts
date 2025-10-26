@@ -67,7 +67,8 @@ describe('Packet Routes', () => {
     // Mock database service
     (DatabaseService as any).userModel = userModel;
     (DatabaseService as any).permissionModel = permissionModel;
-    (DatabaseService as any).auditLog = () => {};
+    // Create a spy for auditLog that we can verify in tests
+    (DatabaseService as any).auditLog = vi.fn();
 
     // Mock database methods for packet logging
     (DatabaseService as any).getSetting = (key: string) => {
@@ -457,6 +458,28 @@ describe('Packet Routes', () => {
         .delete('/api/packets')
         .set('Authorization', 'Bearer noperm')
         .expect(403);
+    });
+
+    it('should create audit log entry when packets are cleared', async () => {
+      // Clear any previous calls to auditLog
+      vi.clearAllMocks();
+
+      const response = await request(app)
+        .delete('/api/packets')
+        .set('Authorization', 'Bearer admin')
+        .expect(200);
+
+      expect(response.body.deletedCount).toBe(2);
+
+      // Verify audit log was called
+      expect(DatabaseService.auditLog).toHaveBeenCalledTimes(1);
+      expect(DatabaseService.auditLog).toHaveBeenCalledWith(
+        adminUser.id,
+        'packets_cleared',
+        'packets',
+        expect.stringContaining('Cleared 2 packet log entries'),
+        expect.anything() // IP address
+      );
     });
   });
 });
