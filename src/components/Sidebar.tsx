@@ -52,17 +52,32 @@ const Sidebar: React.FC<SidebarProps> = ({
     icon: string;
     onClick?: () => void;
     showNotification?: boolean;
-  }> = ({ id, label, icon, onClick, showNotification }) => (
-    <button
-      className={`sidebar-nav-item ${activeTab === id ? 'active' : ''}`}
-      onClick={onClick || (() => setActiveTab(id))}
-      title={isCollapsed ? label : ''}
-    >
-      <span className="nav-icon">{icon}</span>
-      {!isCollapsed && <span className="nav-label">{label}</span>}
-      {showNotification && <span className="nav-notification-dot"></span>}
-    </button>
-  );
+  }> = ({ id, label, icon, onClick, showNotification }) => {
+    const handleClick = () => {
+      // Auto-collapse sidebar when navigation item is clicked (if expanded)
+      if (!isCollapsed) {
+        setIsCollapsed(true);
+      }
+      // Execute the custom onClick or default setActiveTab
+      if (onClick) {
+        onClick();
+      } else {
+        setActiveTab(id);
+      }
+    };
+
+    return (
+      <button
+        className={`sidebar-nav-item ${activeTab === id ? 'active' : ''}`}
+        onClick={handleClick}
+        title={isCollapsed ? label : ''}
+      >
+        <span className="nav-icon">{icon}</span>
+        {!isCollapsed && <span className="nav-label">{label}</span>}
+        {showNotification && <span className="nav-notification-dot"></span>}
+      </button>
+    );
+  };
 
   const SectionHeader: React.FC<{ title: string }> = ({ title }) => (
     !isCollapsed ? <div className="sidebar-section-header">{title}</div> : null
