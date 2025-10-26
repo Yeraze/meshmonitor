@@ -3880,10 +3880,10 @@ function App() {
             const fromName = fromNode?.user?.longName || fromNode?.user?.shortName || selectedTrace.fromNodeId;
             const toName = toNode?.user?.longName || toNode?.user?.shortName || selectedTrace.toNodeId;
 
-            // Forward path (from -> to)
+            // Forward path (local -> remote)
             if (routeForward.length >= 0) {
               // Route arrays are now stored in correct order (from -> intermediates -> to) after backend fix
-              const forwardSequence: number[] = [selectedTrace.fromNodeNum, ...routeForward, selectedTrace.toNodeNum];
+              const forwardSequence: number[] = [selectedTrace.toNodeNum, ...routeForward, selectedTrace.fromNodeNum];
               const forwardPositions: [number, number][] = [];
 
               forwardSequence.forEach((nodeNum) => {
@@ -3950,10 +3950,10 @@ function App() {
               }
             }
 
-            // Back path (to -> from)
+            // Back path (remote -> local)
             if (routeBack.length >= 0) {
               // Route arrays are now stored in correct order (from -> intermediates -> to) after backend fix
-              const backSequence: number[] = [selectedTrace.toNodeNum, ...routeBack, selectedTrace.fromNodeNum];
+              const backSequence: number[] = [selectedTrace.fromNodeNum, ...routeBack, selectedTrace.toNodeNum];
               const backPositions: [number, number][] = [];
 
               backSequence.forEach((nodeNum) => {

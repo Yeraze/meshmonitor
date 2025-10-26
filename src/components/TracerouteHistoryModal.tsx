@@ -195,14 +195,14 @@ const TracerouteHistoryModal: React.FC<TracerouteHistoryModalProps> = ({
                     <div style={{ marginBottom: '0.5rem' }}>
                       <strong style={{ color: 'var(--ctp-green)' }}>→ Forward:</strong>{' '}
                       <span style={{ fontFamily: 'monospace', fontSize: '0.95em' }}>
-                        {formatTracerouteRoute(tr.route, tr.snrTowards, tr.fromNodeNum, tr.toNodeNum)}
+                        {formatTracerouteRoute(tr.route, tr.snrTowards, tr.toNodeNum, tr.fromNodeNum)}
                       </span>
                     </div>
 
                     <div>
                       <strong style={{ color: 'var(--ctp-yellow)' }}>← Return:</strong>{' '}
                       <span style={{ fontFamily: 'monospace', fontSize: '0.95em' }}>
-                        {formatTracerouteRoute(tr.routeBack, tr.snrBack, tr.toNodeNum, tr.fromNodeNum)}
+                        {formatTracerouteRoute(tr.routeBack, tr.snrBack, tr.fromNodeNum, tr.toNodeNum)}
                       </span>
                     </div>
                   </div>
