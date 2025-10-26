@@ -1600,6 +1600,10 @@ class MeshtasticManager {
       logger.debug(`💾 Saved traceroute result from ${fromNodeId} (channel: ${channelIndex})`);
 
       // Save to traceroutes table (save raw data including broadcast addresses)
+      // Store traceroute data exactly as Meshtastic provides it (no transformations)
+      // fromNodeNum = responder (remote), toNodeNum = requester (local)
+      // route = intermediate hops from requester toward responder
+      // routeBack = intermediate hops from responder toward requester
       const tracerouteRecord = {
         fromNodeNum: fromNum,
         toNodeNum: toNum,
