@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle } from 'react-leaflet';
 import type { Marker as LeafletMarker } from 'leaflet';
 import { DeviceInfo } from '../types/device';
@@ -62,6 +62,10 @@ const NodesTab: React.FC<NodesTabProps> = ({
     setShowMotion,
     showMqttNodes,
     setShowMqttNodes,
+    showAnimations,
+    setShowAnimations,
+    animatedNodes,
+    triggerNodeAnimation,
     mapCenterTarget,
     setMapCenterTarget,
     mapZoom,
@@ -148,6 +152,35 @@ const NodesTab: React.FC<NodesTabProps> = ({
 
     fetchPacketLogStatus();
   }, [canViewPacketMonitor]);
+
+  // Track previous nodes to detect updates and trigger animations
+  const prevNodesRef = useRef<Map<string, number>>(new Map());
+
+  useEffect(() => {
+    if (!showAnimations) {
+      return;
+    }
+
+    // Build a map of current node IDs to their lastHeard timestamps
+    const currentNodes = new Map<string, number>();
+    processedNodes.forEach(node => {
+      if (node.user?.id && node.lastHeard) {
+        currentNodes.set(node.user.id, node.lastHeard);
+      }
+    });
+
+    // Compare with previous state and trigger animations for updated nodes
+    currentNodes.forEach((lastHeard, nodeId) => {
+      const prevLastHeard = prevNodesRef.current.get(nodeId);
+      if (prevLastHeard !== undefined && lastHeard > prevLastHeard) {
+        // Node has received an update - trigger animation
+        triggerNodeAnimation(nodeId);
+      }
+    });
+
+    // Update the ref for next comparison
+    prevNodesRef.current = currentNodes;
+  }, [processedNodes, showAnimations, triggerNodeAnimation]);
 
   // Calculate active tileset
   const activeTileset = temporaryTileset || mapTileset;
@@ -436,6 +469,14 @@ const NodesTab: React.FC<NodesTabProps> = ({
                     />
                     <span>Show Position History</span>
                   </label>
+                  <label className="map-control-item">
+                    <input
+                      type="checkbox"
+                      checked={showAnimations}
+                      onChange={(e) => setShowAnimations(e.target.checked)}
+                    />
+                    <span>Show Animations</span>
+                  </label>
                   {canViewPacketMonitor && packetLogEnabled && (
                     <label className="map-control-item packet-monitor-toggle">
                       <input
@@ -481,12 +522,15 @@ const NodesTab: React.FC<NodesTabProps> = ({
                 const hops = isLocalNode ? 0 : (node.hopsAway ?? 999);
                 const showLabel = mapZoom >= 13; // Show labels when zoomed in
 
+                const shouldAnimate = showAnimations && animatedNodes.has(node.user?.id || '');
+
                 const markerIcon = createNodeIcon({
                   hops: hops, // 0 (local) = green, 999 (no hops_away data) = grey
                   isSelected,
                   isRouter,
                   shortName: node.user?.shortName,
-                  showLabel
+                  showLabel: showLabel || shouldAnimate, // Show label when animating OR zoomed in
+                  animate: shouldAnimate
                 });
 
                 return (
@@ -500,6 +544,7 @@ const NodesTab: React.FC<NodesTabProps> = ({
                   }
                 }}
                 icon={markerIcon}
+                zIndexOffset={shouldAnimate ? 10000 : 0}
                 ref={(ref) => {
                   if (ref && node.user?.id) {
                     markerRefs.current.set(node.user.id, ref);

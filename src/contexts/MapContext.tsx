@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { DbTraceroute, DbNeighborInfo } from '../services/database';
 
 export interface PositionHistoryItem {
@@ -29,6 +29,10 @@ interface MapContextType {
   setShowMotion: (show: boolean) => void;
   showMqttNodes: boolean;
   setShowMqttNodes: (show: boolean) => void;
+  showAnimations: boolean;
+  setShowAnimations: (show: boolean) => void;
+  animatedNodes: Set<string>;
+  triggerNodeAnimation: (nodeId: string) => void;
   mapCenterTarget: [number, number] | null;
   setMapCenterTarget: (target: [number, number] | null) => void;
   mapZoom: number;
@@ -55,12 +59,38 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const [showRoute, setShowRoute] = useState<boolean>(true);
   const [showMotion, setShowMotion] = useState<boolean>(true);
   const [showMqttNodes, setShowMqttNodes] = useState<boolean>(true);
+  const [showAnimations, setShowAnimations] = useState<boolean>(() => {
+    const saved = localStorage.getItem('showAnimations');
+    return saved === 'true';
+  });
+  const [animatedNodes, setAnimatedNodes] = useState<Set<string>>(new Set());
   const [mapCenterTarget, setMapCenterTarget] = useState<[number, number] | null>(null);
   const [mapZoom, setMapZoom] = useState<number>(10);
   const [traceroutes, setTraceroutes] = useState<DbTraceroute[]>([]);
   const [neighborInfo, setNeighborInfo] = useState<EnrichedNeighborInfo[]>([]);
   const [positionHistory, setPositionHistory] = useState<PositionHistoryItem[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+
+  // Persist showAnimations to localStorage
+  useEffect(() => {
+    localStorage.setItem('showAnimations', showAnimations.toString());
+  }, [showAnimations]);
+
+  // Trigger animation for a node (lasts 1 second)
+  const triggerNodeAnimation = React.useCallback((nodeId: string) => {
+    if (!showAnimations) return;
+
+    setAnimatedNodes(prev => new Set([...prev, nodeId]));
+
+    // Remove from animated nodes after 1 second
+    setTimeout(() => {
+      setAnimatedNodes(prev => {
+        const next = new Set(prev);
+        next.delete(nodeId);
+        return next;
+      });
+    }, 1000);
+  }, [showAnimations]);
 
   return (
     <MapContext.Provider
@@ -75,6 +105,10 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
         setShowMotion,
         showMqttNodes,
         setShowMqttNodes,
+        showAnimations,
+        setShowAnimations,
+        animatedNodes,
+        triggerNodeAnimation,
         mapCenterTarget,
         setMapCenterTarget,
         mapZoom,
