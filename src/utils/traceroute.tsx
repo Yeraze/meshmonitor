@@ -39,13 +39,12 @@ export function formatNodeName(nodeNum: number, nodes: DeviceInfo[]): string {
  * - Return path: `formatTracerouteRoute(tr.routeBack, tr.snrBack, tr.toNodeNum, tr.fromNodeNum, ...)`
  *
  * **PATH BUILDING:**
- * This builds the path as: [toNum, ...route, fromNum]
- * This matches App.tsx's formatTracerouteRoute implementation
+ * This builds the path as: [fromNum, ...route, toNum]
  *
  * @param route - JSON string of intermediate node numbers, or null if failed
  * @param snr - JSON string of SNR values for each hop, or null
- * @param fromNum - Responder/remote node number (path ends here)
- * @param toNum - Requester/local node number (path starts here)
+ * @param fromNum - Responder/remote node number (path starts here)
+ * @param toNum - Requester/local node number (path ends here)
  * @param nodes - Array of all device information
  * @param distanceUnit - Unit for distance display ('km', 'mi', 'nm')
  * @param options - Optional configuration for highlighting and segment selection
@@ -76,9 +75,8 @@ export function formatTracerouteRoute(
     const pathElements: React.ReactNode[] = [];
     let totalDistanceKm = 0;
 
-    // Build the complete path: toNum -> intermediate hops -> fromNum
-    // This matches App.tsx's formatTracerouteRoute: requester → route → responder
-    const fullPath = [toNum, ...routeArray, fromNum];
+    // Build the complete path: fromNum -> intermediate hops -> toNum
+    const fullPath = [fromNum, ...routeArray, toNum];
 
     fullPath.forEach((nodeNum, idx) => {
       if (typeof nodeNum !== 'number') return;
