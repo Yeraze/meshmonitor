@@ -1606,6 +1606,15 @@ function App() {
 
       logger.debug(`🗺️ Traceroute request sent to ${nodeId}`);
 
+      // Poll for traceroute results with increasing delays
+      // This provides faster UI feedback instead of waiting for the 60s interval
+      const pollDelays = [2000, 5000, 10000, 15000]; // 2s, 5s, 10s, 15s
+      pollDelays.forEach((delay) => {
+        setTimeout(() => {
+          fetchTraceroutes();
+        }, delay);
+      });
+
       // Clear loading state after 30 seconds
       setTimeout(() => {
         setTracerouteLoading(null);
@@ -3868,11 +3877,11 @@ function App() {
           // Don't render anything for failed traceroutes
         } else {
         try {
-          // No backend reversal - data stored exactly as Meshtastic sends it
-          // route = hops from local (requester) to remote (responder)
-          // routeBack = hops from remote (responder) to local (requester)
-          const routeForward = JSON.parse(selectedTrace.route);  // Forward: local -> remote
-          const routeBack = JSON.parse(selectedTrace.routeBack);  // Return: remote -> local
+          // Backend reverses arrays due to Meshtastic sending them backwards
+          // Database: fromNodeNum = destination (remote), toNodeNum = originator (local)
+          // Despite protobuf docs, Meshtastic sends arrays in reverse, so we swap them
+          const routeForward = JSON.parse(selectedTrace.routeBack);  // Forward: local -> remote
+          const routeBack = JSON.parse(selectedTrace.route);  // Return: remote -> local
 
           // Skip if either route is empty array (no actual route hops - failed/incomplete traceroute)
           if (routeForward.length === 0 || routeBack.length === 0) {
