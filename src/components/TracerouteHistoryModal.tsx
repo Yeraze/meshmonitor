@@ -83,7 +83,8 @@ const TracerouteHistoryModal: React.FC<TracerouteHistoryModalProps> = ({
       let totalDistanceKm = 0;
 
       // Build the complete path: source -> hops -> destination
-      const fullPath = fromNum ? [fromNum, ...routeArray.slice().reverse(), toNum] : [...routeArray.slice().reverse()];
+      // Route arrays are now stored in correct order (from -> intermediates -> to) after backend fix
+      const fullPath = fromNum ? [fromNum, ...routeArray, toNum] : [...routeArray];
 
       fullPath.forEach((nodeNum, idx) => {
         if (typeof nodeNum !== 'number') return;

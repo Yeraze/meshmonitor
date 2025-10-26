@@ -100,7 +100,8 @@ const RouteSegmentTraceroutesModal: React.FC<RouteSegmentTraceroutesModalProps> 
       let totalDistanceKm = 0;
 
       // Build the complete path
-      const fullPath = [fromNum, ...routeArray.slice().reverse(), toNum];
+      // Route arrays are now stored in correct order (from -> intermediates -> to) after backend fix
+      const fullPath = [fromNum, ...routeArray, toNum];
 
       fullPath.forEach((nodeNum, idx) => {
         if (typeof nodeNum !== 'number') return;

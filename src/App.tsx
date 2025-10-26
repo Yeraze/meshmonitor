@@ -3539,8 +3539,8 @@ function App() {
           ? JSON.parse(tr.snrTowards)
           : [];
         const timestamp = tr.timestamp || tr.createdAt || Date.now();
-        // Reverse intermediate hops to get correct direction: source -> hops -> destination
-        const forwardSequence: number[] = [tr.fromNodeNum, ...routeForward.slice().reverse(), tr.toNodeNum];
+        // Route arrays are now stored in correct order (from -> intermediates -> to) after backend fix
+        const forwardSequence: number[] = [tr.fromNodeNum, ...routeForward, tr.toNodeNum];
         const forwardPositions: Array<{nodeNum: number; pos: [number, number]}> = [];
 
         // Build forward sequence with positions
@@ -3583,8 +3583,8 @@ function App() {
         const snrBack = tr.snrBack && tr.snrBack !== 'null' && tr.snrBack !== ''
           ? JSON.parse(tr.snrBack)
           : [];
-        // routeBack hops need to be reversed to get correct direction: destination -> hops -> source
-        const backSequence: number[] = [tr.toNodeNum, ...routeBack.slice().reverse(), tr.fromNodeNum];
+        // Route arrays are now stored in correct order (from -> intermediates -> to) after backend fix
+        const backSequence: number[] = [tr.toNodeNum, ...routeBack, tr.fromNodeNum];
         const backPositions: Array<{nodeNum: number; pos: [number, number]}> = [];
 
         // Build back sequence with positions
@@ -3882,7 +3882,8 @@ function App() {
 
             // Forward path (from -> to)
             if (routeForward.length >= 0) {
-              const forwardSequence: number[] = [selectedTrace.fromNodeNum, ...routeForward.slice().reverse(), selectedTrace.toNodeNum];
+              // Route arrays are now stored in correct order (from -> intermediates -> to) after backend fix
+              const forwardSequence: number[] = [selectedTrace.fromNodeNum, ...routeForward, selectedTrace.toNodeNum];
               const forwardPositions: [number, number][] = [];
 
               forwardSequence.forEach((nodeNum) => {
@@ -3923,7 +3924,7 @@ function App() {
                           <strong>{toName}</strong> → <strong>{fromName}</strong>
                         </div>
                         <div className="route-usage">
-                          Path: {forwardSequence.slice().reverse().map(num => {
+                          Path: {forwardSequence.map(num => {
                             const n = nodes.find(nd => nd.nodeNum === num);
                             return n?.user?.longName || n?.user?.shortName || `!${num.toString(16)}`;
                           }).join(' → ')}
@@ -3951,7 +3952,8 @@ function App() {
 
             // Back path (to -> from)
             if (routeBack.length >= 0) {
-              const backSequence: number[] = [selectedTrace.toNodeNum, ...routeBack.slice().reverse(), selectedTrace.fromNodeNum];
+              // Route arrays are now stored in correct order (from -> intermediates -> to) after backend fix
+              const backSequence: number[] = [selectedTrace.toNodeNum, ...routeBack, selectedTrace.fromNodeNum];
               const backPositions: [number, number][] = [];
 
               backSequence.forEach((nodeNum) => {
@@ -3992,7 +3994,7 @@ function App() {
                           <strong>{fromName}</strong> → <strong>{toName}</strong>
                         </div>
                         <div className="route-usage">
-                          Path: {backSequence.slice().reverse().map(num => {
+                          Path: {backSequence.map(num => {
                             const n = nodes.find(nd => nd.nodeNum === num);
                             return n?.user?.longName || n?.user?.shortName || `!${num.toString(16)}`;
                           }).join(' → ')}
