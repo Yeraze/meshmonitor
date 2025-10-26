@@ -1,11 +1,10 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import ApiService from '../services/api';
 import { DbTraceroute } from '../services/database';
 import { formatDateTime } from '../utils/datetime';
-import { formatDistance } from '../utils/distance';
-import { calculateDistance } from '../utils/distance';
 import { DeviceInfo } from '../types/device';
 import { useSettings } from '../contexts/SettingsContext';
+import { formatTracerouteRoute } from '../utils/traceroute';
 
 interface TracerouteHistoryModalProps {
   fromNodeNum: number;
@@ -51,82 +50,6 @@ const TracerouteHistoryModal: React.FC<TracerouteHistoryModalProps> = ({
 
     fetchHistory();
   }, [fromNodeNum, toNodeNum]);
-
-  // Helper function to format node name as "Longname [Shortname]"
-  const formatNodeName = useCallback((nodeNum: number): string => {
-    const node = nodes.find(n => n.nodeNum === nodeNum);
-    const longName = node?.user?.longName;
-    const shortName = node?.user?.shortName;
-
-    if (longName && shortName && longName !== shortName) {
-      return `${longName} [${shortName}]`;
-    } else if (longName) {
-      return longName;
-    } else if (shortName) {
-      return shortName;
-    }
-    return `!${nodeNum.toString(16)}`;
-  }, [nodes]);
-
-  // Memoize the formatTracerouteRoute function to avoid recreating it on every render
-  const formatTracerouteRoute = useCallback((route: string | null, snr: string | null, fromNum?: number, toNum?: number) => {
-    // Handle pending/null routes
-    if (!route || route === 'null') {
-      return '(No response received)';
-    }
-
-    try {
-      const routeArray = JSON.parse(route || '[]');
-      const snrArray = JSON.parse(snr || '[]');
-
-      const pathNodes: string[] = [];
-      const nodeNums: number[] = [];
-      let totalDistanceKm = 0;
-
-      // Build the complete path: source -> hops -> destination
-      // Route arrays are now stored in correct order (from -> intermediates -> to) after backend fix
-      const fullPath = fromNum ? [fromNum, ...routeArray, toNum] : [...routeArray];
-
-      fullPath.forEach((nodeNum, idx) => {
-        if (typeof nodeNum !== 'number') return;
-
-        const node = nodes.find(n => n.nodeNum === nodeNum);
-        const nodeName = formatNodeName(nodeNum);
-
-        // Get SNR for this hop (SNR array corresponds to hops between nodes)
-        const snrValue = snrArray[idx] !== undefined ? snrArray[idx] : null;
-        const snrDisplay = snrValue !== null ? ` (${snrValue} dB)` : '';
-
-        pathNodes.push(`${nodeName}${snrDisplay}`);
-        nodeNums.push(nodeNum);
-
-        // Calculate distance to next node if positions are available
-        if (idx < fullPath.length - 1) {
-          const nextNodeNum = fullPath[idx + 1];
-          const nextNode = nodes.find(n => n.nodeNum === nextNodeNum);
-
-          if (node?.position?.latitude && node?.position?.longitude &&
-              nextNode?.position?.latitude && nextNode?.position?.longitude) {
-            const segmentDistanceKm = calculateDistance(
-              node.position.latitude,
-              node.position.longitude,
-              nextNode.position.latitude,
-              nextNode.position.longitude
-            );
-            totalDistanceKm += segmentDistanceKm;
-          }
-        }
-      });
-
-      const pathStr = pathNodes.join(' → ');
-      const distanceStr = totalDistanceKm > 0 ? ` [${formatDistance(totalDistanceKm, distanceUnit)}]` : '';
-
-      return `${pathStr}${distanceStr}`;
-    } catch (error) {
-      console.error('Error formatting traceroute:', error);
-      return 'Error parsing route';
-    }
-  }, [nodes, distanceUnit, formatNodeName]);
 
   // Filter traceroutes based on the checkbox state
   const filteredTraceroutes = useMemo(() => {
@@ -246,14 +169,14 @@ const TracerouteHistoryModal: React.FC<TracerouteHistoryModalProps> = ({
                     <div style={{ marginBottom: '0.5rem' }}>
                       <strong style={{ color: 'var(--ctp-green)' }}>→ Forward:</strong>{' '}
                       <span style={{ fontFamily: 'monospace', fontSize: '0.95em' }}>
-                        {formatTracerouteRoute(tr.route, tr.snrTowards, tr.fromNodeNum, tr.toNodeNum)}
+                        {formatTracerouteRoute(tr.route, tr.snrTowards, tr.fromNodeNum, tr.toNodeNum, nodes, distanceUnit)}
                       </span>
                     </div>
 
                     <div>
                       <strong style={{ color: 'var(--ctp-yellow)' }}>← Return:</strong>{' '}
                       <span style={{ fontFamily: 'monospace', fontSize: '0.95em' }}>
-                        {formatTracerouteRoute(tr.routeBack, tr.snrBack, tr.toNodeNum, tr.fromNodeNum)}
+                        {formatTracerouteRoute(tr.routeBack, tr.snrBack, tr.toNodeNum, tr.fromNodeNum, nodes, distanceUnit)}
                       </span>
                     </div>
                   </div>

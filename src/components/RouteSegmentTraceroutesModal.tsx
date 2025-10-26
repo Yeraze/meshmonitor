@@ -1,10 +1,9 @@
 import React, { useMemo } from 'react';
 import { DbTraceroute } from '../services/database';
 import { formatDateTime } from '../utils/datetime';
-import { formatDistance } from '../utils/distance';
-import { calculateDistance } from '../utils/distance';
 import { DeviceInfo } from '../types/device';
 import { useSettings } from '../contexts/SettingsContext';
+import { formatNodeName, formatTracerouteRoute } from '../utils/traceroute';
 
 interface RouteSegmentTraceroutesModalProps {
   nodeNum1: number;
@@ -23,10 +22,8 @@ const RouteSegmentTraceroutesModal: React.FC<RouteSegmentTraceroutesModalProps> 
 }) => {
   const { timeFormat, dateFormat, distanceUnit } = useSettings();
 
-  const node1 = nodes.find(n => n.nodeNum === nodeNum1);
-  const node2 = nodes.find(n => n.nodeNum === nodeNum2);
-  const node1Name = node1?.user?.longName || node1?.user?.shortName || `!${nodeNum1.toString(16)}`;
-  const node2Name = node2?.user?.longName || node2?.user?.shortName || `!${nodeNum2.toString(16)}`;
+  const node1Name = formatNodeName(nodeNum1, nodes);
+  const node2Name = formatNodeName(nodeNum2, nodes);
 
   // Filter traceroutes that contain this segment
   const relevantTraceroutes = useMemo(() => {
@@ -63,118 +60,6 @@ const RouteSegmentTraceroutesModal: React.FC<RouteSegmentTraceroutesModalProps> 
       }
     });
   }, [traceroutes, nodeNum1, nodeNum2]);
-
-  // Helper function to format node name as "Longname [Shortname]"
-  const formatNodeName = (nodeNum: number): string => {
-    const node = nodes.find(n => n.nodeNum === nodeNum);
-    const longName = node?.user?.longName;
-    const shortName = node?.user?.shortName;
-
-    if (longName && shortName && longName !== shortName) {
-      return `${longName} [${shortName}]`;
-    } else if (longName) {
-      return longName;
-    } else if (shortName) {
-      return shortName;
-    }
-    return `!${nodeNum.toString(16)}`;
-  };
-
-  // Format a traceroute path with the segment highlighted
-  const formatTracerouteRoute = (
-    route: string | null,
-    snr: string | null,
-    fromNum: number,
-    toNum: number,
-    highlightSegment: boolean = true
-  ): React.ReactNode => {
-    if (!route || route === 'null') {
-      return '(No response received)';
-    }
-
-    try {
-      const routeArray = JSON.parse(route);
-      const snrArray = JSON.parse(snr || '[]');
-
-      const pathElements: React.ReactNode[] = [];
-      let totalDistanceKm = 0;
-
-      // Build the complete path
-      // Route arrays are now stored in correct order (from -> intermediates -> to) after backend fix
-      const fullPath = [fromNum, ...routeArray, toNum];
-
-      fullPath.forEach((nodeNum, idx) => {
-        if (typeof nodeNum !== 'number') return;
-
-        const node = nodes.find(n => n.nodeNum === nodeNum);
-        const nodeName = formatNodeName(nodeNum);
-
-        // Get SNR for this hop
-        const snrValue = snrArray[idx] !== undefined ? snrArray[idx] : null;
-        const snrDisplay = snrValue !== null ? ` (${snrValue} dB)` : '';
-
-        // Check if this segment should be highlighted
-        const isSegmentStart = highlightSegment && idx < fullPath.length - 1 && (
-          (nodeNum === nodeNum1 && fullPath[idx + 1] === nodeNum2) ||
-          (nodeNum === nodeNum2 && fullPath[idx + 1] === nodeNum1)
-        );
-
-        if (idx > 0) {
-          pathElements.push(' → ');
-        }
-
-        // Highlight the segment
-        if (isSegmentStart) {
-          const nextNodeName = formatNodeName(fullPath[idx + 1]);
-          const nextSnrValue = snrArray[idx + 1] !== undefined ? snrArray[idx + 1] : null;
-          const nextSnrDisplay = nextSnrValue !== null ? ` (${nextSnrValue} dB)` : '';
-
-          pathElements.push(
-            <span key={`highlight-${idx}`} style={{ background: 'var(--ctp-yellow)', color: 'var(--ctp-base)', padding: '0.1rem 0.3rem', borderRadius: '3px', fontWeight: 'bold' }}>
-              {nodeName}{snrDisplay} → {nextNodeName}{nextSnrDisplay}
-            </span>
-          );
-
-          // Skip the next node since we just rendered it
-          fullPath.splice(idx + 1, 1);
-          snrArray.splice(idx + 1, 1);
-        } else {
-          pathElements.push(
-            <span key={idx}>{nodeName}{snrDisplay}</span>
-          );
-        }
-
-        // Calculate distance to next node
-        if (idx < fullPath.length - 1) {
-          const nextNodeNum = fullPath[idx + 1];
-          const nextNode = nodes.find(n => n.nodeNum === nextNodeNum);
-
-          if (node?.position?.latitude && node?.position?.longitude &&
-              nextNode?.position?.latitude && nextNode?.position?.longitude) {
-            const segmentDistanceKm = calculateDistance(
-              node.position.latitude,
-              node.position.longitude,
-              nextNode.position.latitude,
-              nextNode.position.longitude
-            );
-            totalDistanceKm += segmentDistanceKm;
-          }
-        }
-      });
-
-      const distanceStr = totalDistanceKm > 0 ? ` [${formatDistance(totalDistanceKm, distanceUnit)}]` : '';
-
-      return (
-        <>
-          {pathElements}
-          {distanceStr}
-        </>
-      );
-    } catch (error) {
-      console.error('Error formatting traceroute:', error);
-      return 'Error parsing route';
-    }
-  };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -239,14 +124,38 @@ const RouteSegmentTraceroutesModal: React.FC<RouteSegmentTraceroutesModalProps> 
                     <div style={{ marginBottom: '0.5rem' }}>
                       <strong style={{ color: 'var(--ctp-green)' }}>→ Forward:</strong>{' '}
                       <span style={{ fontFamily: 'monospace', fontSize: '0.95em' }}>
-                        {formatTracerouteRoute(tr.route, tr.snrTowards, tr.fromNodeNum, tr.toNodeNum)}
+                        {formatTracerouteRoute(
+                          tr.route,
+                          tr.snrTowards,
+                          tr.fromNodeNum,
+                          tr.toNodeNum,
+                          nodes,
+                          distanceUnit,
+                          {
+                            highlightSegment: true,
+                            highlightNodeNum1: nodeNum1,
+                            highlightNodeNum2: nodeNum2
+                          }
+                        )}
                       </span>
                     </div>
 
                     <div>
                       <strong style={{ color: 'var(--ctp-yellow)' }}>← Return:</strong>{' '}
                       <span style={{ fontFamily: 'monospace', fontSize: '0.95em' }}>
-                        {formatTracerouteRoute(tr.routeBack, tr.snrBack, tr.toNodeNum, tr.fromNodeNum)}
+                        {formatTracerouteRoute(
+                          tr.routeBack,
+                          tr.snrBack,
+                          tr.toNodeNum,
+                          tr.fromNodeNum,
+                          nodes,
+                          distanceUnit,
+                          {
+                            highlightSegment: true,
+                            highlightNodeNum1: nodeNum1,
+                            highlightNodeNum2: nodeNum2
+                          }
+                        )}
                       </span>
                     </div>
                   </div>
