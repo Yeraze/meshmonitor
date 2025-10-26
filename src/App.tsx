@@ -3255,10 +3255,10 @@ function App() {
                     return (
                       <div className="traceroute-info">
                         <div className="traceroute-route">
-                          <strong>→ Forward:</strong> {formatTracerouteRoute(recentTrace.route, recentTrace.snrTowards, recentTrace.fromNodeNum, recentTrace.toNodeNum)}
+                          <strong>→ Forward:</strong> {formatTracerouteRoute(recentTrace.route, recentTrace.snrTowards, recentTrace.toNodeNum, recentTrace.fromNodeNum)}
                         </div>
                         <div className="traceroute-route">
-                          <strong>← Return:</strong> {formatTracerouteRoute(recentTrace.routeBack, recentTrace.snrBack, recentTrace.toNodeNum, recentTrace.fromNodeNum)}
+                          <strong>← Return:</strong> {formatTracerouteRoute(recentTrace.routeBack, recentTrace.snrBack, recentTrace.fromNodeNum, recentTrace.toNodeNum)}
                         </div>
                         <div className="traceroute-age">Last traced {ageStr}</div>
                       </div>
