@@ -225,7 +225,7 @@ const RouteSegmentTraceroutesModal: React.FC<RouteSegmentTraceroutesModalProps> 
                       <div>
                         <strong>#{relevantTraceroutes.length - index}</strong>{' '}
                         <span style={{ color: 'var(--ctp-subtext0)' }}>
-                          {fromName} → {toName}
+                          {toName} → {fromName}
                         </span>
                         <span style={{ marginLeft: '1rem', color: 'var(--ctp-subtext0)' }}>
                           {formatDateTime(new Date(tr.timestamp || tr.createdAt || Date.now()), timeFormat, dateFormat)}
