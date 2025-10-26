@@ -70,7 +70,7 @@ services:
     environment:
       # Production configuration
       - NODE_ENV=production
-      - MESHTASTIC_NODE_IP=192.168.4.217
+      - MESHTASTIC_NODE_IP=192.168.5.106
       - TRUST_PROXY=true
       - ALLOWED_ORIGINS=https://meshdev.yeraze.online
       - COOKIE_SECURE=true
@@ -304,7 +304,7 @@ echo ""
 
 # Test 11: Wait for node connection and data sync
 echo "Test 11: Wait for Meshtastic node connection and data sync"
-echo "Waiting up to 30 seconds for channels (>3) and nodes (>100)..."
+echo "Waiting up to 30 seconds for channels (>=3) and nodes (>100)..."
 MAX_WAIT=30
 ELAPSED=0
 NODE_CONNECTED=false
@@ -332,7 +332,7 @@ while [ $ELAPSED -lt $MAX_WAIT ]; do
         -b /tmp/meshmonitor-oidc-cookies.txt)
     NODE_COUNT=$(echo "$NODES_RESPONSE" | grep -o '"id"' | wc -l)
 
-    if [ "$CHANNEL_COUNT" -gt 3 ] && [ "$NODE_COUNT" -gt 100 ]; then
+    if [ "$CHANNEL_COUNT" -ge 3 ] && [ "$NODE_COUNT" -gt 100 ]; then
         NODE_CONNECTED=true
         echo -e "${GREEN}✓ PASS${NC}: Node connected (channels: $CHANNEL_COUNT, nodes: $NODE_COUNT)"
         break

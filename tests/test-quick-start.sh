@@ -43,7 +43,7 @@ services:
     volumes:
       - meshmonitor-quick-start-test-data:/data
     environment:
-      - MESHTASTIC_NODE_IP=192.168.4.217
+      - MESHTASTIC_NODE_IP=192.168.5.106
     restart: unless-stopped
 
 volumes:
@@ -218,7 +218,7 @@ echo ""
 
 # Test 12: Wait for node connection and data sync
 echo "Test 12: Wait for Meshtastic node connection and data sync"
-echo "Waiting up to 30 seconds for channels (>3) and nodes (>100)..."
+echo "Waiting up to 30 seconds for channels (>=3) and nodes (>100)..."
 MAX_WAIT=30
 ELAPSED=0
 NODE_CONNECTED=false
@@ -234,7 +234,7 @@ while [ $ELAPSED -lt $MAX_WAIT ]; do
         -b /tmp/meshmonitor-cookies.txt)
     NODE_COUNT=$(echo "$NODES_RESPONSE" | grep -o '"id"' | wc -l)
 
-    if [ "$CHANNEL_COUNT" -gt 3 ] && [ "$NODE_COUNT" -gt 100 ]; then
+    if [ "$CHANNEL_COUNT" -ge 3 ] && [ "$NODE_COUNT" -gt 100 ]; then
         NODE_CONNECTED=true
         echo -e "${GREEN}✓ PASS${NC}: Node connected (channels: $CHANNEL_COUNT, nodes: $NODE_COUNT)"
         break
@@ -252,8 +252,75 @@ if [ "$NODE_CONNECTED" = false ]; then
 fi
 echo ""
 
-# Test 13: Send message to node and wait for response (with retry)
-echo "Test 13: Send message to Yeraze Station G2 and wait for response"
+# Test 13: Verify Meshtastic device configuration (CRITICAL - runs after sync)
+echo "Test 13: Verify Meshtastic device configuration (CRITICAL)"
+
+# Get device config
+DEVICE_CONFIG=$(curl -s http://localhost:8083/api/device-config \
+    -b /tmp/meshmonitor-cookies.txt)
+
+# Verify modem preset is Medium Fast
+MODEM_PRESET=$(echo "$DEVICE_CONFIG" | grep -o '"modemPreset":"[^"]*"' | head -1 | cut -d'"' -f4)
+if [ "$MODEM_PRESET" = "Medium Fast" ]; then
+    echo -e "${GREEN}✓${NC} Modem preset: Medium Fast"
+else
+    echo -e "${RED}✗ FAIL${NC}: Expected modem preset 'Medium Fast', got '$MODEM_PRESET'"
+    exit 1
+fi
+
+# Verify frequency slot is 0
+FREQUENCY_SLOT=$(echo "$DEVICE_CONFIG" | grep -o '"channelNum":[0-9]*' | head -1 | cut -d':' -f2)
+if [ "$FREQUENCY_SLOT" = "0" ]; then
+    echo -e "${GREEN}✓${NC} Frequency slot: 0"
+else
+    echo -e "${RED}✗ FAIL${NC}: Expected frequency slot 0, got $FREQUENCY_SLOT"
+    exit 1
+fi
+
+# Verify Channel 0 is Primary (role=1) and unnamed
+CHANNEL_0_DATA=$(echo "$CHANNELS_RESPONSE" | grep -o '"id":0[^}]*}')
+CHANNEL_0_ROLE=$(echo "$CHANNEL_0_DATA" | grep -o '"role":[0-9]*' | cut -d':' -f2)
+CHANNEL_0_NAME=$(echo "$CHANNEL_0_DATA" | grep -o '"name":"[^"]*"' | cut -d'"' -f4)
+
+if [ "$CHANNEL_0_ROLE" = "1" ]; then
+    echo -e "${GREEN}✓${NC} Channel 0 role: Primary (1)"
+else
+    echo -e "${RED}✗ FAIL${NC}: Expected Channel 0 role 1 (Primary), got $CHANNEL_0_ROLE"
+    echo "   Channel 0 data: $CHANNEL_0_DATA"
+    exit 1
+fi
+
+if [ -z "$CHANNEL_0_NAME" ] || [ "$CHANNEL_0_NAME" = "null" ]; then
+    echo -e "${GREEN}✓${NC} Channel 0 name: unnamed"
+else
+    echo -e "${RED}✗ FAIL${NC}: Expected Channel 0 to be unnamed, got '$CHANNEL_0_NAME'"
+    exit 1
+fi
+
+# Verify Channel 2 is Secondary (role=2) and named "gauntlet"
+CHANNEL_2_DATA=$(echo "$CHANNELS_RESPONSE" | grep -o '"id":2[^}]*}')
+CHANNEL_2_ROLE=$(echo "$CHANNEL_2_DATA" | grep -o '"role":[0-9]*' | cut -d':' -f2)
+CHANNEL_2_NAME=$(echo "$CHANNEL_2_DATA" | grep -o '"name":"[^"]*"' | cut -d'"' -f4)
+
+if [ "$CHANNEL_2_ROLE" = "2" ]; then
+    echo -e "${GREEN}✓${NC} Channel 2 role: Secondary (2)"
+else
+    echo -e "${RED}✗ FAIL${NC}: Expected Channel 2 role 2 (Secondary), got $CHANNEL_2_ROLE"
+    exit 1
+fi
+
+if [ "$CHANNEL_2_NAME" = "gauntlet" ]; then
+    echo -e "${GREEN}✓${NC} Channel 2 name: gauntlet"
+else
+    echo -e "${RED}✗ FAIL${NC}: Expected Channel 2 name 'gauntlet', got '$CHANNEL_2_NAME'"
+    exit 1
+fi
+
+echo -e "${GREEN}✓ PASS${NC}: All configuration requirements verified"
+echo ""
+
+# Test 14: Send message to node and wait for response (with retry)
+echo "Test 14: Send message to Yeraze Station G2 and wait for response"
 TARGET_NODE_ID="a2e4ff4c"
 TEST_MESSAGE="Test in Quick Start"
 MAX_ATTEMPTS=3
