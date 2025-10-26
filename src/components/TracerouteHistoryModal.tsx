@@ -133,11 +133,33 @@ const TracerouteHistoryModal: React.FC<TracerouteHistoryModalProps> = ({
     if (showFailedTraceroutes) {
       return traceroutes;
     }
-    // Filter out failed traceroutes (where both route and routeBack are null/'null')
+    // Filter out failed traceroutes
+    // null or 'null' = failed (no response received)
+    // [] = successful with 0 hops (direct connection)
+    // [hops] = successful with intermediate hops
     return traceroutes.filter(tr => {
-      const hasRoute = tr.route && tr.route !== 'null';
-      const hasRouteBack = tr.routeBack && tr.routeBack !== 'null';
-      return hasRoute || hasRouteBack;
+      // Parse route data - null or 'null' string means no response (failed)
+      let routeData = null;
+      let routeBackData = null;
+
+      try {
+        if (tr.route && tr.route !== 'null') {
+          routeData = JSON.parse(tr.route);
+        }
+        if (tr.routeBack && tr.routeBack !== 'null') {
+          routeBackData = JSON.parse(tr.routeBack);
+        }
+      } catch (e) {
+        // If parsing fails, treat as null (failed)
+        console.error('Error parsing traceroute data:', e);
+      }
+
+      // A traceroute is successful if at least one direction has data (even if empty array)
+      // Failed traceroutes have null in both directions
+      const hasForwardData = routeData !== null;
+      const hasReturnData = routeBackData !== null;
+
+      return hasForwardData || hasReturnData;
     });
   }, [traceroutes, showFailedTraceroutes]);
 
