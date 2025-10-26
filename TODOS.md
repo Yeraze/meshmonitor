@@ -4,7 +4,20 @@
 None
 
 ## Technical Debt / Known Issues
-None
+- Auto-welcome settings validation improvements
+  - [ ] Add validation for autoWelcomeTarget (similar to autoAckChannels)
+    - Validate channel index is within 0-7 range
+    - Return 400 error for invalid values
+    - Location: src/server/server.ts POST /api/settings endpoint
+  - [ ] Add message length validation for autoWelcomeMessage
+    - Currently no length restrictions (unlike autoAckRegex limited to 100 chars)
+    - Consider max length to prevent database/UI issues
+    - Location: src/server/server.ts POST /api/settings endpoint
+  - [ ] Add test coverage for /api/settings POST endpoint
+    - No server-side tests found for settings persistence
+    - Should test auto-welcome settings validation
+    - Should test settings save/load cycle
+    - Location: tests/ directory (create new test file)
 
 ## Completed
 - Traceroute utility refactoring
