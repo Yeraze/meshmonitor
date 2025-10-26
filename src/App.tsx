@@ -3962,7 +3962,7 @@ function App() {
                       <div className="route-popup">
                         <h4>Forward Path</h4>
                         <div className="route-endpoints">
-                          <strong>{fromName}</strong> → <strong>{toName}</strong>
+                          <strong>{toName}</strong> → <strong>{fromName}</strong>
                         </div>
                         <div className="route-usage">
                           Path: {forwardSequence.map(num => {
@@ -4032,7 +4032,7 @@ function App() {
                       <div className="route-popup">
                         <h4>Return Path</h4>
                         <div className="route-endpoints">
-                          <strong>{toName}</strong> → <strong>{fromName}</strong>
+                          <strong>{fromName}</strong> → <strong>{toName}</strong>
                         </div>
                         <div className="route-usage">
                           Path: {backSequence.map(num => {
