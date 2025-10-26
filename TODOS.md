@@ -1,6 +1,9 @@
 # TODOs
 
 ## In Progress
+None
+
+## Completed
 - Traceroute display and interaction improvements (PR #328)
   - [x] Fix traceroute path direction display (multiple iterations to correct forward/return path mapping)
   - [x] Add RouteSegmentTraceroutesModal to view all traceroutes using a specific route segment
@@ -11,9 +14,9 @@
   - [x] Fix Messages page to show traceroutes in both directions
   - [x] Add "Show failed traceroutes" checkbox filter to TracerouteHistoryModal
   - [x] Correctly distinguish between null (failed), [] (0-hop direct), and [hops] (intermediate nodes)
+  - [x] Consolidate formatTracerouteRoute into shared utility to prevent future parameter order mistakes
+  - [x] Fix all traceroute endpoint direction displays across Messages page, TracerouteHistoryModal, RouteSegmentTraceroutesModal, and map popups/segments
   - Impact: Much better traceroute visualization and interaction
-
-## Completed
 - Telemetry Dashboard enhancements (PR #314)
   - [x] Add filter functionality to search nodes by name or ID
   - [x] Add sort functionality (by name, ID, battery, voltage, last update)
