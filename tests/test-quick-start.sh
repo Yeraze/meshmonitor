@@ -267,21 +267,40 @@ else
     exit 1
 fi
 
-# Get channels
-CHANNELS_DATA=$(curl -s http://localhost:8083/api/channels \
-    -b /tmp/meshmonitor-cookies.txt)
+# Wait for channels to sync (they may lag behind device config)
+echo "Waiting up to 60 seconds for channels to sync..."
+MAX_WAIT=60
+ELAPSED=0
+CHANNELS_SYNCED=false
 
-# Verify Channel 0 exists and is Primary
-CHANNEL_0_ROLE=$(echo "$CHANNELS_DATA" | grep -o '"id":0[^}]*"role":[0-9]*' | grep -o '"role":[0-9]*' | cut -d':' -f2)
-CHANNEL_0_NAME=$(echo "$CHANNELS_DATA" | grep -o '"id":0[^}]*"name":"[^"]*"' | grep -o '"name":"[^"]*"' | cut -d'"' -f4)
+while [ $ELAPSED -lt $MAX_WAIT ]; do
+    CHANNELS_DATA=$(curl -s http://localhost:8083/api/channels \
+        -b /tmp/meshmonitor-cookies.txt)
 
-if [ "$CHANNEL_0_ROLE" = "1" ]; then
-    echo -e "${GREEN}✓${NC} Channel 0 role: Primary (1)"
-else
-    echo -e "${RED}✗ FAIL${NC}: Expected Channel 0 role 1 (Primary), got $CHANNEL_0_ROLE"
-    echo "   Channel 0 must be configured as Primary"
+    # Check if Channel 0 exists with role=1
+    CHANNEL_0_ROLE=$(echo "$CHANNELS_DATA" | grep -o '"id":0[^}]*"role":[0-9]*' | grep -o '"role":[0-9]*' | cut -d':' -f2)
+
+    if [ "$CHANNEL_0_ROLE" = "1" ]; then
+        CHANNELS_SYNCED=true
+        break
+    fi
+
+    sleep 2
+    ELAPSED=$((ELAPSED + 2))
+    echo -n "."
+done
+echo ""
+
+if [ "$CHANNELS_SYNCED" = false ]; then
+    echo -e "${RED}✗ FAIL${NC}: Channel 0 not synced as Primary within 60 seconds (got role=$CHANNEL_0_ROLE)"
+    echo "   Channel 0 must be configured as Primary (role=1) on the Meshtastic node"
     exit 1
 fi
+
+# Verify Channel 0 name
+CHANNEL_0_NAME=$(echo "$CHANNELS_DATA" | grep -o '"id":0[^}]*"name":"[^"]*"' | grep -o '"name":"[^"]*"' | cut -d'"' -f4)
+
+echo -e "${GREEN}✓${NC} Channel 0 role: Primary (1)"
 
 if [ -z "$CHANNEL_0_NAME" ] || [ "$CHANNEL_0_NAME" = '""' ]; then
     echo -e "${GREEN}✓${NC} Channel 0 name: unnamed (empty)"
