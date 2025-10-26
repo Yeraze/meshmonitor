@@ -29,21 +29,23 @@ export function formatNodeName(nodeNum: number, nodes: DeviceInfo[]): string {
  * Formats a traceroute path with node names, SNR values, and optional distance calculation.
  *
  * **IMPORTANT DATA MODEL:**
- * - `fromNum` = The starting node of this path (responder/remote for forward, requester/local for return)
- * - `toNum` = The ending node of this path (requester/local for forward, responder/remote for return)
- * - `route` = Array of intermediate node numbers between fromNum and toNum
+ * - `fromNum` = Responder/remote node (where the traceroute response came from)
+ * - `toNum` = Requester/local node (where the traceroute was initiated)
+ * - `route` = Array of intermediate node numbers
  * - `snr` = Array of SNR values corresponding to each node in the path
  *
  * **PARAMETER ORDER FOR TRACEROUTE DISPLAY:**
  * - Forward path: `formatTracerouteRoute(tr.route, tr.snrTowards, tr.fromNodeNum, tr.toNodeNum, ...)`
  * - Return path: `formatTracerouteRoute(tr.routeBack, tr.snrBack, tr.toNodeNum, tr.fromNodeNum, ...)`
  *
- * This builds the path as: [fromNum, ...route, toNum]
+ * **PATH BUILDING:**
+ * This builds the path as: [toNum, ...route, fromNum]
+ * This matches App.tsx's formatTracerouteRoute implementation
  *
  * @param route - JSON string of intermediate node numbers, or null if failed
  * @param snr - JSON string of SNR values for each hop, or null
- * @param fromNum - Starting node number (builds path from this node)
- * @param toNum - Ending node number (builds path to this node)
+ * @param fromNum - Responder/remote node number (path ends here)
+ * @param toNum - Requester/local node number (path starts here)
  * @param nodes - Array of all device information
  * @param distanceUnit - Unit for distance display ('km', 'mi', 'nm')
  * @param options - Optional configuration for highlighting and segment selection
@@ -74,9 +76,9 @@ export function formatTracerouteRoute(
     const pathElements: React.ReactNode[] = [];
     let totalDistanceKm = 0;
 
-    // Build the complete path: fromNum -> intermediate hops -> toNum
-    // Route arrays are stored in correct order (from -> intermediates -> to)
-    const fullPath = [fromNum, ...routeArray, toNum];
+    // Build the complete path: toNum -> intermediate hops -> fromNum
+    // This matches App.tsx's formatTracerouteRoute: requester → route → responder
+    const fullPath = [toNum, ...routeArray, fromNum];
 
     fullPath.forEach((nodeNum, idx) => {
       if (typeof nodeNum !== 'number') return;

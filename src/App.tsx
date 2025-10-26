@@ -3576,8 +3576,8 @@ function App() {
           ? JSON.parse(tr.snrTowards)
           : [];
         const timestamp = tr.timestamp || tr.createdAt || Date.now();
-        // Route arrays are now stored in correct order (from -> intermediates -> to) after backend fix
-        const forwardSequence: number[] = [tr.fromNodeNum, ...routeForward, tr.toNodeNum];
+        // Build forward path: requester -> route -> responder (matches Messages page format)
+        const forwardSequence: number[] = [tr.toNodeNum, ...routeForward, tr.fromNodeNum];
         const forwardPositions: Array<{nodeNum: number; pos: [number, number]}> = [];
 
         // Build forward sequence with positions
@@ -3620,8 +3620,8 @@ function App() {
         const snrBack = tr.snrBack && tr.snrBack !== 'null' && tr.snrBack !== ''
           ? JSON.parse(tr.snrBack)
           : [];
-        // Route arrays are now stored in correct order (from -> intermediates -> to) after backend fix
-        const backSequence: number[] = [tr.toNodeNum, ...routeBack, tr.fromNodeNum];
+        // Build return path: responder -> routeBack -> requester (reverse of forward)
+        const backSequence: number[] = [tr.fromNodeNum, ...routeBack, tr.toNodeNum];
         const backPositions: Array<{nodeNum: number; pos: [number, number]}> = [];
 
         // Build back sequence with positions
@@ -3921,10 +3921,10 @@ function App() {
             const fromName = fromNode?.user?.longName || fromNode?.user?.shortName || selectedTrace.fromNodeId;
             const toName = toNode?.user?.longName || toNode?.user?.shortName || selectedTrace.toNodeId;
 
-            // Forward path (responder -> requester, mirroring the data model)
+            // Forward path: requester -> responder (matches Messages page format)
             if (routeForward.length >= 0) {
-              // Build path: fromNodeNum (responder) → route intermediates → toNodeNum (requester)
-              const forwardSequence: number[] = [selectedTrace.fromNodeNum, ...routeForward, selectedTrace.toNodeNum];
+              // Build path: toNodeNum (requester) → route intermediates → fromNodeNum (responder)
+              const forwardSequence: number[] = [selectedTrace.toNodeNum, ...routeForward, selectedTrace.fromNodeNum];
               const forwardPositions: [number, number][] = [];
 
               forwardSequence.forEach((nodeNum) => {
@@ -3991,10 +3991,10 @@ function App() {
               }
             }
 
-            // Return path (requester -> responder)
+            // Return path: responder -> requester (reverse of forward)
             if (routeBack.length >= 0) {
-              // Build path: toNodeNum (requester) → routeBack intermediates → fromNodeNum (responder)
-              const backSequence: number[] = [selectedTrace.toNodeNum, ...routeBack, selectedTrace.fromNodeNum];
+              // Build path: fromNodeNum (responder) → routeBack intermediates → toNodeNum (requester)
+              const backSequence: number[] = [selectedTrace.fromNodeNum, ...routeBack, selectedTrace.toNodeNum];
               const backPositions: [number, number][] = [];
 
               backSequence.forEach((nodeNum) => {
