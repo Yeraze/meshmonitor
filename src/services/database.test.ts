@@ -221,9 +221,15 @@ const createTestDatabase = () => {
       return stmt.all(limit, offset) as DbMessage[];
     }
 
-    upsertChannel(channelData: { id?: number; name: string; psk?: string }): void {
+    upsertChannel(channelData: { id: number; name: string; psk?: string }): void {
       const now = Date.now();
-      const existingChannel = this.getChannelByName(channelData.name);
+
+      // Channel ID is required - matching production implementation
+      if (channelData.id === undefined) {
+        throw new Error('Channel ID is required for upsert operation');
+      }
+
+      const existingChannel = this.getChannelById(channelData.id);
 
       if (existingChannel) {
         const stmt = this.db.prepare(`
@@ -236,13 +242,8 @@ const createTestDatabase = () => {
           INSERT INTO channels (id, name, psk, uplinkEnabled, downlinkEnabled, createdAt, updatedAt)
           VALUES (?, ?, ?, 1, 1, ?, ?)
         `);
-        stmt.run(channelData.id ?? null, channelData.name, channelData.psk ?? null, now, now);
+        stmt.run(channelData.id, channelData.name, channelData.psk ?? null, now, now);
       }
-    }
-
-    getChannelByName(name: string): DbChannel | null {
-      const stmt = this.db.prepare('SELECT * FROM channels WHERE name = ?');
-      return stmt.get(name) as DbChannel | null;
     }
 
     getChannelById(id: number): DbChannel | null {
@@ -553,25 +554,25 @@ describe('DatabaseService', () => {
     });
 
     it('should create a new channel', () => {
-      db.upsertChannel({ name: 'TestChannel', psk: 'secret123' });
+      db.upsertChannel({ id: 1, name: 'TestChannel', psk: 'secret123' });
 
-      const channel = db.getChannelByName('TestChannel');
+      const channel = db.getChannelById(1);
       expect(channel).toBeTruthy();
       expect(channel.name).toBe('TestChannel');
       expect(channel.psk).toBe('secret123');
     });
 
     it('should update an existing channel', () => {
-      db.upsertChannel({ name: 'TestChannel' });
-      db.upsertChannel({ name: 'TestChannel', psk: 'newsecret' });
+      db.upsertChannel({ id: 1, name: 'TestChannel' });
+      db.upsertChannel({ id: 1, name: 'TestChannel', psk: 'newsecret' });
 
-      const channel = db.getChannelByName('TestChannel');
+      const channel = db.getChannelById(1);
       expect(channel.psk).toBe('newsecret');
     });
 
     it('should retrieve all channels', () => {
-      db.upsertChannel({ name: 'Channel1' });
-      db.upsertChannel({ name: 'Channel2' });
+      db.upsertChannel({ id: 1, name: 'Channel1' });
+      db.upsertChannel({ id: 2, name: 'Channel2' });
 
       const channels = db.getAllChannels();
       expect(channels.length).toBeGreaterThanOrEqual(3); // Primary + 2 new
