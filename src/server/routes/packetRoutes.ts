@@ -168,6 +168,15 @@ router.delete('/', requirePacketPermissions, (req, res) => {
     const deletedCount = packetLogService.clearPackets();
     logger.info(`🧹 Admin ${user.username} cleared ${deletedCount} packet logs`);
 
+    // Log to audit log
+    databaseService.auditLog(
+      user.id,
+      'packets_cleared',
+      'packets',
+      `Cleared ${deletedCount} packet log entries`,
+      req.ip || null
+    );
+
     res.json({
       message: 'Packet logs cleared successfully',
       deletedCount
