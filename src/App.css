@@ -3530,6 +3530,26 @@ body {
   min-width: 40px;
 }
 
+/* Node Pulse Animation */
+@keyframes node-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.5);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.node-icon-pulse {
+  animation: node-pulse 1s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 /* Footer Styles */
 .app-footer {
   background: var(--ctp-crust);
