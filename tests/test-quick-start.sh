@@ -216,132 +216,8 @@ else
 fi
 echo ""
 
-# Test 12: Verify Meshtastic device configuration
-echo "Test 12: Verify Meshtastic device configuration (CRITICAL)"
-echo "Waiting up to 30 seconds for device config to sync..."
-
-# Wait for device config to be available
-MAX_WAIT=30
-ELAPSED=0
-CONFIG_SYNCED=false
-
-while [ $ELAPSED -lt $MAX_WAIT ]; do
-    DEVICE_CONFIG=$(curl -s http://localhost:8083/api/device-config \
-        -b /tmp/meshmonitor-cookies.txt)
-
-    # Check if we have radio config (indicates config has synced)
-    if echo "$DEVICE_CONFIG" | grep -q '"modemPreset"'; then
-        CONFIG_SYNCED=true
-        break
-    fi
-
-    sleep 2
-    ELAPSED=$((ELAPSED + 2))
-    echo -n "."
-done
-echo ""
-
-if [ "$CONFIG_SYNCED" = false ]; then
-    echo -e "${RED}✗ FAIL${NC}: Device config not synced within 30 seconds"
-    echo "   This indicates the Meshtastic node is not responding"
-    exit 1
-fi
-
-# Verify modem preset is Medium Fast
-MODEM_PRESET=$(echo "$DEVICE_CONFIG" | grep -o '"modemPreset":"[^"]*"' | head -1 | cut -d'"' -f4)
-if [ "$MODEM_PRESET" = "Medium Fast" ]; then
-    echo -e "${GREEN}✓${NC} Modem preset: Medium Fast"
-else
-    echo -e "${RED}✗ FAIL${NC}: Expected modem preset 'Medium Fast', got '$MODEM_PRESET'"
-    echo "   The Meshtastic node must be configured with Medium Fast preset"
-    exit 1
-fi
-
-# Verify frequency slot is 0
-CHANNEL_NUM=$(echo "$DEVICE_CONFIG" | grep -o '"channelNum":[0-9]*' | head -1 | cut -d':' -f2)
-if [ "$CHANNEL_NUM" = "0" ]; then
-    echo -e "${GREEN}✓${NC} Frequency slot: 0"
-else
-    echo -e "${RED}✗ FAIL${NC}: Expected frequency slot 0, got $CHANNEL_NUM"
-    echo "   The Meshtastic node must be configured on frequency slot 0"
-    exit 1
-fi
-
-# Wait for channels to sync (they may lag behind device config)
-echo "Waiting up to 60 seconds for channels to sync..."
-MAX_WAIT=60
-ELAPSED=0
-CHANNELS_SYNCED=false
-
-while [ $ELAPSED -lt $MAX_WAIT ]; do
-    CHANNELS_DATA=$(curl -s http://localhost:8083/api/channels \
-        -b /tmp/meshmonitor-cookies.txt)
-
-    # Check if Channel 0 exists with role=1
-    CHANNEL_0_ROLE=$(echo "$CHANNELS_DATA" | grep -o '"id":0[^}]*"role":[0-9]*' | grep -o '"role":[0-9]*' | cut -d':' -f2)
-
-    if [ "$CHANNEL_0_ROLE" = "1" ]; then
-        CHANNELS_SYNCED=true
-        break
-    fi
-
-    sleep 2
-    ELAPSED=$((ELAPSED + 2))
-    echo -n "."
-done
-echo ""
-
-if [ "$CHANNELS_SYNCED" = false ]; then
-    echo -e "${RED}✗ FAIL${NC}: Channel 0 not synced as Primary within 60 seconds (got role=$CHANNEL_0_ROLE)"
-    echo "   Channel 0 must be configured as Primary (role=1) on the Meshtastic node"
-    exit 1
-fi
-
-# Verify Channel 0 name
-CHANNEL_0_NAME=$(echo "$CHANNELS_DATA" | grep -o '"id":0[^}]*"name":"[^"]*"' | grep -o '"name":"[^"]*"' | cut -d'"' -f4)
-
-echo -e "${GREEN}✓${NC} Channel 0 role: Primary (1)"
-
-if [ -z "$CHANNEL_0_NAME" ] || [ "$CHANNEL_0_NAME" = '""' ]; then
-    echo -e "${GREEN}✓${NC} Channel 0 name: unnamed (empty)"
-else
-    echo -e "${RED}✗ FAIL${NC}: Expected Channel 0 to be unnamed, got '$CHANNEL_0_NAME'"
-    echo "   Channel 0 should not have a name"
-    exit 1
-fi
-
-# Verify Channel 2 exists and is named "gauntlet"
-CHANNEL_2_EXISTS=$(echo "$CHANNELS_DATA" | grep -q '"id":2' && echo "yes" || echo "no")
-if [ "$CHANNEL_2_EXISTS" = "no" ]; then
-    echo -e "${RED}✗ FAIL${NC}: Channel 2 not found"
-    echo "   The Meshtastic node must have Channel 2 configured"
-    exit 1
-fi
-
-CHANNEL_2_ROLE=$(echo "$CHANNELS_DATA" | grep -o '"id":2[^}]*"role":[0-9]*' | grep -o '"role":[0-9]*' | cut -d':' -f2)
-CHANNEL_2_NAME=$(echo "$CHANNELS_DATA" | grep -o '"id":2[^}]*"name":"[^"]*"' | grep -o '"name":"[^"]*"' | cut -d'"' -f4)
-
-if [ "$CHANNEL_2_ROLE" = "2" ]; then
-    echo -e "${GREEN}✓${NC} Channel 2 role: Secondary (2)"
-else
-    echo -e "${RED}✗ FAIL${NC}: Expected Channel 2 role 2 (Secondary), got $CHANNEL_2_ROLE"
-    echo "   Channel 2 must be configured as Secondary"
-    exit 1
-fi
-
-if [ "$CHANNEL_2_NAME" = "gauntlet" ]; then
-    echo -e "${GREEN}✓${NC} Channel 2 name: gauntlet"
-else
-    echo -e "${RED}✗ FAIL${NC}: Expected Channel 2 name 'gauntlet', got '$CHANNEL_2_NAME'"
-    echo "   Channel 2 must be named 'gauntlet' for testing"
-    exit 1
-fi
-
-echo -e "${GREEN}✓ PASS${NC}: Device configuration verified"
-echo ""
-
-# Test 13: Wait for node connection and data sync
-echo "Test 13: Wait for Meshtastic node connection and data sync"
+# Test 12: Wait for node connection and data sync
+echo "Test 12: Wait for Meshtastic node connection and data sync"
 echo "Waiting up to 30 seconds for channels (>=3) and nodes (>100)..."
 MAX_WAIT=30
 ELAPSED=0
@@ -374,6 +250,73 @@ if [ "$NODE_CONNECTED" = false ]; then
     echo -e "${RED}✗ FAIL${NC}: Node connection timeout (channels: $CHANNEL_COUNT, nodes: $NODE_COUNT)"
     exit 1
 fi
+echo ""
+
+# Test 13: Verify Meshtastic device configuration (CRITICAL - runs after sync)
+echo "Test 13: Verify Meshtastic device configuration (CRITICAL)"
+
+# Get device config
+DEVICE_CONFIG=$(curl -s http://localhost:8083/api/device-config \
+    -b /tmp/meshmonitor-cookies.txt)
+
+# Verify modem preset is Medium Fast
+MODEM_PRESET=$(echo "$DEVICE_CONFIG" | grep -o '"modemPreset":"[^"]*"' | head -1 | cut -d'"' -f4)
+if [ "$MODEM_PRESET" = "Medium Fast" ]; then
+    echo -e "${GREEN}✓${NC} Modem preset: Medium Fast"
+else
+    echo -e "${RED}✗ FAIL${NC}: Expected modem preset 'Medium Fast', got '$MODEM_PRESET'"
+    exit 1
+fi
+
+# Verify frequency slot is 0
+FREQUENCY_SLOT=$(echo "$DEVICE_CONFIG" | grep -o '"channelNum":[0-9]*' | head -1 | cut -d':' -f2)
+if [ "$FREQUENCY_SLOT" = "0" ]; then
+    echo -e "${GREEN}✓${NC} Frequency slot: 0"
+else
+    echo -e "${RED}✗ FAIL${NC}: Expected frequency slot 0, got $FREQUENCY_SLOT"
+    exit 1
+fi
+
+# Verify Channel 0 is Primary (role=1) and unnamed
+CHANNEL_0_DATA=$(echo "$CHANNELS_RESPONSE" | grep -o '"id":0[^}]*}')
+CHANNEL_0_ROLE=$(echo "$CHANNEL_0_DATA" | grep -o '"role":[0-9]*' | cut -d':' -f2)
+CHANNEL_0_NAME=$(echo "$CHANNEL_0_DATA" | grep -o '"name":"[^"]*"' | cut -d'"' -f4)
+
+if [ "$CHANNEL_0_ROLE" = "1" ]; then
+    echo -e "${GREEN}✓${NC} Channel 0 role: Primary (1)"
+else
+    echo -e "${RED}✗ FAIL${NC}: Expected Channel 0 role 1 (Primary), got $CHANNEL_0_ROLE"
+    echo "   Channel 0 data: $CHANNEL_0_DATA"
+    exit 1
+fi
+
+if [ -z "$CHANNEL_0_NAME" ] || [ "$CHANNEL_0_NAME" = "null" ]; then
+    echo -e "${GREEN}✓${NC} Channel 0 name: unnamed"
+else
+    echo -e "${RED}✗ FAIL${NC}: Expected Channel 0 to be unnamed, got '$CHANNEL_0_NAME'"
+    exit 1
+fi
+
+# Verify Channel 2 is Secondary (role=2) and named "gauntlet"
+CHANNEL_2_DATA=$(echo "$CHANNELS_RESPONSE" | grep -o '"id":2[^}]*}')
+CHANNEL_2_ROLE=$(echo "$CHANNEL_2_DATA" | grep -o '"role":[0-9]*' | cut -d':' -f2)
+CHANNEL_2_NAME=$(echo "$CHANNEL_2_DATA" | grep -o '"name":"[^"]*"' | cut -d'"' -f4)
+
+if [ "$CHANNEL_2_ROLE" = "2" ]; then
+    echo -e "${GREEN}✓${NC} Channel 2 role: Secondary (2)"
+else
+    echo -e "${RED}✗ FAIL${NC}: Expected Channel 2 role 2 (Secondary), got $CHANNEL_2_ROLE"
+    exit 1
+fi
+
+if [ "$CHANNEL_2_NAME" = "gauntlet" ]; then
+    echo -e "${GREEN}✓${NC} Channel 2 name: gauntlet"
+else
+    echo -e "${RED}✗ FAIL${NC}: Expected Channel 2 name 'gauntlet', got '$CHANNEL_2_NAME'"
+    exit 1
+fi
+
+echo -e "${GREEN}✓ PASS${NC}: All configuration requirements verified"
 echo ""
 
 # Test 14: Send message to node and wait for response (with retry)

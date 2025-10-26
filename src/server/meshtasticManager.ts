@@ -199,13 +199,13 @@ class MeshtasticManager {
       const existingChannel0 = databaseService.getChannelById(0);
       if (!existingChannel0) {
         // Manually insert channel with ID 0 since it might not come from device
-        const stmt = databaseService.db.prepare(`
-          INSERT OR REPLACE INTO channels (id, name, createdAt, updatedAt)
-          VALUES (0, 'Primary', ?, ?)
-        `);
-        const now = Date.now();
-        stmt.run(now, now);
-        logger.debug('📡 Created Primary channel with ID 0');
+        // Use upsertChannel to properly set role=PRIMARY (1)
+        databaseService.upsertChannel({
+          id: 0,
+          name: 'Primary',
+          role: 1  // PRIMARY
+        });
+        logger.debug('📡 Created Primary channel with ID 0 and role PRIMARY');
       }
     } catch (error) {
       logger.error('❌ Failed to create Primary channel:', error);
@@ -696,14 +696,30 @@ class MeshtasticManager {
           // Extract position precision from module settings if available
           const positionPrecision = channel.settings.moduleSettings?.positionPrecision;
 
-          logger.info(`📡 Saving channel ${channel.index} (${displayName}) - role: ${channel.role}, positionPrecision: ${positionPrecision}`);
+          // Defensive channel role validation:
+          // 1. Channel 0 must be PRIMARY (role=1), never DISABLED (role=0)
+          // 2. Channels 1-7 must be SECONDARY (role=2) or DISABLED (role=0), never PRIMARY (role=1)
+          // A mesh network MUST have exactly ONE PRIMARY channel, and Channel 0 is conventionally PRIMARY
+          let channelRole = channel.role !== undefined ? channel.role : undefined;
+          if (channel.index === 0 && channel.role === 0) {
+            logger.warn(`⚠️  Channel 0 received with role=DISABLED (0), overriding to PRIMARY (1)`);
+            channelRole = 1;  // PRIMARY
+          }
+
+          if (channel.index > 0 && channel.role === 1) {
+            logger.warn(`⚠️  Channel ${channel.index} received with role=PRIMARY (1), overriding to SECONDARY (2)`);
+            logger.warn(`⚠️  Only Channel 0 can be PRIMARY - all other channels must be SECONDARY or DISABLED`);
+            channelRole = 2;  // SECONDARY
+          }
+
+          logger.info(`📡 Saving channel ${channel.index} (${displayName}) - role: ${channelRole}, positionPrecision: ${positionPrecision}`);
           logger.info(`📡 Database will store name as: "${channelName}" (length: ${channelName.length})`);
 
           databaseService.upsertChannel({
             id: channel.index,
             name: channelName,
             psk: pskString,
-            role: channel.role !== undefined ? channel.role : undefined,
+            role: channelRole,
             uplinkEnabled: channel.settings.uplinkEnabled ?? true,
             downlinkEnabled: channel.settings.downlinkEnabled ?? true,
             positionPrecision: positionPrecision !== undefined ? positionPrecision : undefined
