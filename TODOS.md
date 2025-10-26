@@ -12,6 +12,12 @@ None
   - Impact: Array mutation causes index misalignment for SNR values and distance calculations
 
 ## Completed
+- Telemetry Dashboard Local Storage persistence
+  - [x] Add Local Storage save functionality when drag-and-drop reordering
+  - [x] Add Local Storage load functionality on component mount with localStorage priority
+  - [x] Implement smart merge logic (localStorage takes priority over server settings)
+  - [x] Ensure persistence across browser sessions and page reloads
+  - Impact: Custom telemetry dashboard layout now persists across sessions
 - Traceroute display and interaction improvements (PR #328)
   - [x] Fix traceroute path direction display (multiple iterations to correct forward/return path mapping)
   - [x] Add RouteSegmentTraceroutesModal to view all traceroutes using a specific route segment

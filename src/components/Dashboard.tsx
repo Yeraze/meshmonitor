@@ -259,12 +259,38 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C',
           ? JSON.parse(settings.telemetryFavorites)
           : [];
 
-        const customOrderArray: string[] = settings.telemetryCustomOrder
+        const serverCustomOrder: string[] = settings.telemetryCustomOrder
           ? JSON.parse(settings.telemetryCustomOrder)
           : [];
 
         setFavorites(favoritesArray);
-        setCustomOrder(customOrderArray);
+
+        // Load custom order - prioritize localStorage over server
+        let finalCustomOrder: string[] = [];
+        try {
+          const localStorageOrder = localStorage.getItem('telemetryCustomOrder');
+          if (localStorageOrder) {
+            const localOrder = JSON.parse(localStorageOrder);
+            // Use localStorage if it has data, otherwise use server order
+            finalCustomOrder = localOrder.length > 0 ? localOrder : serverCustomOrder;
+          } else {
+            // No localStorage data, use server order
+            finalCustomOrder = serverCustomOrder;
+          }
+        } catch (error) {
+          logger.error('Error loading custom order from Local Storage:', error);
+          // Fallback to server order on error
+          finalCustomOrder = serverCustomOrder;
+        }
+
+        setCustomOrder(finalCustomOrder);
+
+        // Save the final order to localStorage if not already there
+        try {
+          localStorage.setItem('telemetryCustomOrder', JSON.stringify(finalCustomOrder));
+        } catch (error) {
+          logger.error('Error saving custom order to Local Storage:', error);
+        }
 
         // Fetch node information
         const nodesData = await api.get<NodeInfo[]>('/api/nodes');
@@ -384,6 +410,13 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C',
 
       setCustomOrder(newCustomOrder);
       setSortOption('custom');
+
+      // Save to Local Storage
+      try {
+        localStorage.setItem('telemetryCustomOrder', JSON.stringify(newCustomOrder));
+      } catch (error) {
+        logger.error('Error saving custom order to Local Storage:', error);
+      }
 
       // Save to server
       try {
