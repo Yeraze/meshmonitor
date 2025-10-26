@@ -43,8 +43,9 @@ export function createNodeIcon(options: {
   isRouter: boolean;
   shortName?: string;
   showLabel: boolean;
+  animate?: boolean;
 }): L.DivIcon {
-  const { hops, isSelected, isRouter, shortName, showLabel } = options;
+  const { hops, isSelected, isRouter, shortName, showLabel, animate = false } = options;
   const color = getHopColor(hops);
   const size = isSelected ? 60 : 48;
   const strokeWidth = isSelected ? 3 : 2;
@@ -97,7 +98,7 @@ export function createNodeIcon(options: {
   ` : '';
 
   const html = `
-    <div style="position: relative; width: ${size}px; height: ${size}px;">
+    <div class="${animate ? 'node-icon-pulse' : ''}" style="position: relative; width: ${size}px; height: ${size}px;">
       ${markerSvg}
       ${label}
     </div>
