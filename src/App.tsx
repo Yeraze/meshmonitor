@@ -2197,10 +2197,27 @@ function App() {
   // Function to handle sender icon clicks
   const handleSenderClick = useCallback((nodeId: string, event: React.MouseEvent) => {
     const rect = event.currentTarget.getBoundingClientRect();
+
+    // Get sidebar width from CSS variable to avoid overlap
+    const sidebarWidth = parseInt(
+      getComputedStyle(document.documentElement).getPropertyValue('--sidebar-width') || '60px'
+    );
+
+    // Popup max-width is 280px, and it's centered with translateX(-50%)
+    // So the left edge will be at x - 140px
+    const popupHalfWidth = 140;
+    let x = rect.left + rect.width / 2;
+
+    // Ensure popup doesn't go under the sidebar (with 10px padding for safety)
+    const minX = sidebarWidth + popupHalfWidth + 10;
+    if (x < minX) {
+      x = minX;
+    }
+
     setNodePopup({
       nodeId,
       position: {
-        x: rect.left + rect.width / 2,
+        x,
         y: rect.top
       }
     });

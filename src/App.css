@@ -2915,7 +2915,7 @@ body {
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
   max-width: 280px;
   font-size: 14px;
-  z-index: 1000;
+  z-index: 10002; /* Above sidebar (10001) to prevent overlap */
 }
 
 .node-popup .popup-header {
