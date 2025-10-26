@@ -8,7 +8,7 @@ export const ARROW_DISTANCE_THRESHOLD = 0.05; // One arrow per 0.05 degrees
 export const MIN_ARROWS_PER_SEGMENT = 1;
 export const MAX_ARROWS_PER_SEGMENT = 5;
 export const MAX_TOTAL_ARROWS = 50; // Global limit to prevent performance issues
-export const ARROW_ROTATION_OFFSET = 180; // Degrees to rotate arrow to point forward
+export const ARROW_ROTATION_OFFSET = 0; // Degrees to rotate arrow to point forward
 
 /**
  * Convert role number/string to readable role name
