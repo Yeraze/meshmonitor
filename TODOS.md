@@ -3,6 +3,14 @@
 ## In Progress
 None
 
+## Technical Debt / Known Issues
+- Traceroute utility refactoring (post-PR #328)
+  - [ ] Fix array mutation bug in traceroute.tsx:126-127 - replace fullPath.splice() with immutable operations
+  - [ ] Fix SNR index calculation error in traceroute.tsx:88 after array mutation
+  - [ ] Fix distance calculation in traceroute.tsx:135-149 that uses mutated array indices
+  - [ ] Consolidate formatTracerouteRoute signatures - migrate App.tsx to use utility or align parameter order
+  - Impact: Array mutation causes index misalignment for SNR values and distance calculations
+
 ## Completed
 - Traceroute display and interaction improvements (PR #328)
   - [x] Fix traceroute path direction display (multiple iterations to correct forward/return path mapping)
