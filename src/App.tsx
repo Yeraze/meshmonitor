@@ -216,7 +216,8 @@ function App() {
     setTraceroutes,
     setNeighborInfo,
     setPositionHistory,
-    selectedNodeId
+    selectedNodeId,
+    setSelectedNodeId
   } = useMapContext();
 
   // Data context
@@ -3479,11 +3480,52 @@ function App() {
     }> = [];
 
     if (showPaths) {
-      traceroutes.forEach((tr, idx) => {
+      // Filter traceroutes by age using the same maxNodeAgeHours setting
+      const cutoffTime = Date.now() - (maxNodeAgeHours * 60 * 60 * 1000);
+      const recentTraceroutes = traceroutes.filter(tr => {
+        const timestamp = tr.timestamp || tr.createdAt || 0;
+        return timestamp >= cutoffTime;
+      });
+
+      // Deduplicate: keep only the most recent traceroute per node pair
+      const tracerouteMap = new Map<string, typeof traceroutes[0]>();
+      recentTraceroutes.forEach(tr => {
+        // Create a bidirectional key (same for A→B and B→A)
+        const key = [tr.fromNodeNum, tr.toNodeNum].sort().join('-');
+        const existing = tracerouteMap.get(key);
+        const timestamp = tr.timestamp || tr.createdAt || 0;
+        const existingTimestamp = existing?.timestamp || existing?.createdAt || 0;
+
+        // Keep the most recent traceroute for this node pair
+        if (!existing || timestamp > existingTimestamp) {
+          tracerouteMap.set(key, tr);
+        }
+      });
+
+      // Convert back to array for processing
+      const deduplicatedTraceroutes = Array.from(tracerouteMap.values());
+
+      deduplicatedTraceroutes.forEach((tr, idx) => {
       try {
+        // Skip traceroutes with null or invalid route data (failed traceroutes)
+        if (!tr.route || tr.route === 'null' || tr.route === '' ||
+            !tr.routeBack || tr.routeBack === 'null' || tr.routeBack === '') {
+          return; // Skip this traceroute - no valid route data to display
+        }
+
         // Process forward path
-        const routeForward = JSON.parse(tr.route || '[]');
-        const snrForward = JSON.parse(tr.snrTowards || '[]');
+        const routeForward = JSON.parse(tr.route);
+        const routeBack = JSON.parse(tr.routeBack);
+
+        // Skip if either route is empty array (no actual route hops - failed/incomplete traceroute)
+        // An empty route would create a direct line from source to destination which is misleading
+        if (routeForward.length === 0 || routeBack.length === 0) {
+          return; // Skip - at least one direction failed, don't show misleading direct lines
+        }
+
+        const snrForward = tr.snrTowards && tr.snrTowards !== 'null' && tr.snrTowards !== ''
+          ? JSON.parse(tr.snrTowards)
+          : [];
         const timestamp = tr.timestamp || tr.createdAt || Date.now();
         // Reverse intermediate hops to get correct direction: source -> hops -> destination
         const forwardSequence: number[] = [tr.fromNodeNum, ...routeForward.slice().reverse(), tr.toNodeNum];
@@ -3525,9 +3567,10 @@ function App() {
           });
         }
 
-        // Process return path
-        const routeBack = JSON.parse(tr.routeBack || '[]');
-        const snrBack = JSON.parse(tr.snrBack || '[]');
+        // Process return path (already parsed above for validation)
+        const snrBack = tr.snrBack && tr.snrBack !== 'null' && tr.snrBack !== ''
+          ? JSON.parse(tr.snrBack)
+          : [];
         // routeBack hops need to be reversed to get correct direction: destination -> hops -> source
         const backSequence: number[] = [tr.toNodeNum, ...routeBack.slice().reverse(), tr.fromNodeNum];
         const backPositions: Array<{nodeNum: number; pos: [number, number]}> = [];
@@ -3643,7 +3686,37 @@ function App() {
             <div className="route-popup">
               <h4>Route Segment</h4>
               <div className="route-endpoints">
-                <strong>{node1Name}</strong> ↔ <strong>{node2Name}</strong>
+                <strong
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    // Look up fresh node data by nodeNum from segment
+                    const freshNode = nodes.find(n => n.nodeNum === segment.nodeNums[0]);
+                    if (freshNode?.user?.id && freshNode?.position?.latitude && freshNode?.position?.longitude) {
+                      setSelectedNodeId(freshNode.user.id);
+                      setMapCenterTarget([freshNode.position.latitude, freshNode.position.longitude]);
+                    }
+                  }}
+                  style={{ cursor: node1?.user?.id ? 'pointer' : 'default', color: node1?.user?.id ? 'var(--ctp-blue)' : 'inherit' }}
+                  title={node1?.user?.id ? 'Click to select and center on this node' : ''}
+                >
+                  {node1Name}
+                </strong>
+                {' ↔ '}
+                <strong
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    // Look up fresh node data by nodeNum from segment
+                    const freshNode = nodes.find(n => n.nodeNum === segment.nodeNums[1]);
+                    if (freshNode?.user?.id && freshNode?.position?.latitude && freshNode?.position?.longitude) {
+                      setSelectedNodeId(freshNode.user.id);
+                      setMapCenterTarget([freshNode.position.latitude, freshNode.position.longitude]);
+                    }
+                  }}
+                  style={{ cursor: node2?.user?.id ? 'pointer' : 'default', color: node2?.user?.id ? 'var(--ctp-blue)' : 'inherit' }}
+                  title={node2?.user?.id ? 'Click to select and center on this node' : ''}
+                >
+                  {node2Name}
+                </strong>
               </div>
               <div className="route-usage">
                 Used in <strong>{usage}</strong> traceroute{usage !== 1 ? 's' : ''}
@@ -3759,166 +3832,178 @@ function App() {
     } // End of if (showPaths)
 
     // Add selected node traceroute rendering with arrows (if enabled)
-    if (showRoute && selectedNodeId) {
+    // Skip rendering traceroute if the selected node is the current/local node (traceroute to yourself doesn't make sense)
+    if (showRoute && selectedNodeId && selectedNodeId !== currentNodeId) {
       const selectedTrace = traceroutes.find(tr =>
         tr.toNodeId === selectedNodeId || tr.fromNodeId === selectedNodeId
       );
 
       if (selectedTrace) {
+        // Skip if the traceroute has null or invalid route data (failed traceroute)
+        if (!selectedTrace.route || selectedTrace.route === 'null' || selectedTrace.route === '' ||
+            !selectedTrace.routeBack || selectedTrace.routeBack === 'null' || selectedTrace.routeBack === '') {
+          // Don't render anything for failed traceroutes
+        } else {
         try {
-          const routeForward = JSON.parse(selectedTrace.route || '[]');
-          const routeBack = JSON.parse(selectedTrace.routeBack || '[]');
+          const routeForward = JSON.parse(selectedTrace.route);
+          const routeBack = JSON.parse(selectedTrace.routeBack);
 
-          const fromNode = nodes.find(n => n.nodeNum === selectedTrace.fromNodeNum);
-          const toNode = nodes.find(n => n.nodeNum === selectedTrace.toNodeNum);
-          const fromName = fromNode?.user?.longName || fromNode?.user?.shortName || selectedTrace.fromNodeId;
-          const toName = toNode?.user?.longName || toNode?.user?.shortName || selectedTrace.toNodeId;
+          // Skip if either route is empty array (no actual route hops - failed/incomplete traceroute)
+          if (routeForward.length === 0 || routeBack.length === 0) {
+            // Don't render - at least one direction failed
+          } else {
+            const fromNode = nodes.find(n => n.nodeNum === selectedTrace.fromNodeNum);
+            const toNode = nodes.find(n => n.nodeNum === selectedTrace.toNodeNum);
+            const fromName = fromNode?.user?.longName || fromNode?.user?.shortName || selectedTrace.fromNodeId;
+            const toName = toNode?.user?.longName || toNode?.user?.shortName || selectedTrace.toNodeId;
 
-          // Forward path (from -> to)
-          if (routeForward.length >= 0) {
-            const forwardSequence: number[] = [selectedTrace.fromNodeNum, ...routeForward.slice().reverse(), selectedTrace.toNodeNum];
-            const forwardPositions: [number, number][] = [];
+            // Forward path (from -> to)
+            if (routeForward.length >= 0) {
+              const forwardSequence: number[] = [selectedTrace.fromNodeNum, ...routeForward.slice().reverse(), selectedTrace.toNodeNum];
+              const forwardPositions: [number, number][] = [];
 
-            forwardSequence.forEach((nodeNum) => {
-              const node = nodes.find(n => n.nodeNum === nodeNum);
-              if (node?.position?.latitude && node?.position?.longitude) {
-                forwardPositions.push([node.position.latitude, node.position.longitude]);
-              }
-            });
-
-            if (forwardPositions.length >= 2) {
-              // Calculate total distance for forward path
-              let forwardTotalDistanceKm = 0;
-              for (let i = 0; i < forwardSequence.length - 1; i++) {
-                const node1 = nodes.find(n => n.nodeNum === forwardSequence[i]);
-                const node2 = nodes.find(n => n.nodeNum === forwardSequence[i + 1]);
-                if (node1?.position?.latitude && node1?.position?.longitude &&
-                    node2?.position?.latitude && node2?.position?.longitude) {
-                  forwardTotalDistanceKm += calculateDistance(
-                    node1.position.latitude, node1.position.longitude,
-                    node2.position.latitude, node2.position.longitude
-                  );
+              forwardSequence.forEach((nodeNum) => {
+                const node = nodes.find(n => n.nodeNum === nodeNum);
+                if (node?.position?.latitude && node?.position?.longitude) {
+                  forwardPositions.push([node.position.latitude, node.position.longitude]);
                 }
-              }
+              });
 
-              allElements.push(
-                <Polyline
-                  key="selected-traceroute-forward"
-                  positions={forwardPositions}
-                  color="#f38ba8"
-                  weight={4}
-                  opacity={0.9}
-                  dashArray="10, 5"
-                >
-                  <Popup>
-                    <div className="route-popup">
-                      <h4>Forward Path</h4>
-                      <div className="route-endpoints">
-                        <strong>{toName}</strong> → <strong>{fromName}</strong>
-                      </div>
-                      <div className="route-usage">
-                        Path: {forwardSequence.slice().reverse().map(num => {
-                          const n = nodes.find(nd => nd.nodeNum === num);
-                          return n?.user?.longName || n?.user?.shortName || `!${num.toString(16)}`;
-                        }).join(' → ')}
-                      </div>
-                      {forwardTotalDistanceKm > 0 && (
-                        <div className="route-usage">
-                          Distance: <strong>{formatDistance(forwardTotalDistanceKm, distanceUnit)}</strong>
-                        </div>
-                      )}
-                    </div>
-                  </Popup>
-                </Polyline>
-              );
-
-              // Generate arrow markers for forward path
-              const forwardArrows = generateArrowMarkers(
-                forwardPositions,
-                'forward',
-                '#f38ba8',
-                allElements.length
-              );
-              allElements.push(...forwardArrows);
-            }
-          }
-
-          // Back path (to -> from)
-          if (routeBack.length >= 0) {
-            const backSequence: number[] = [selectedTrace.toNodeNum, ...routeBack.slice().reverse(), selectedTrace.fromNodeNum];
-            const backPositions: [number, number][] = [];
-
-            backSequence.forEach((nodeNum) => {
-              const node = nodes.find(n => n.nodeNum === nodeNum);
-              if (node?.position?.latitude && node?.position?.longitude) {
-                backPositions.push([node.position.latitude, node.position.longitude]);
-              }
-            });
-
-            if (backPositions.length >= 2) {
-              // Calculate total distance for back path
-              let backTotalDistanceKm = 0;
-              for (let i = 0; i < backSequence.length - 1; i++) {
-                const node1 = nodes.find(n => n.nodeNum === backSequence[i]);
-                const node2 = nodes.find(n => n.nodeNum === backSequence[i + 1]);
-                if (node1?.position?.latitude && node1?.position?.longitude &&
-                    node2?.position?.latitude && node2?.position?.longitude) {
-                  backTotalDistanceKm += calculateDistance(
-                    node1.position.latitude, node1.position.longitude,
-                    node2.position.latitude, node2.position.longitude
-                  );
+              if (forwardPositions.length >= 2) {
+                // Calculate total distance for forward path
+                let forwardTotalDistanceKm = 0;
+                for (let i = 0; i < forwardSequence.length - 1; i++) {
+                  const node1 = nodes.find(n => n.nodeNum === forwardSequence[i]);
+                  const node2 = nodes.find(n => n.nodeNum === forwardSequence[i + 1]);
+                  if (node1?.position?.latitude && node1?.position?.longitude &&
+                      node2?.position?.latitude && node2?.position?.longitude) {
+                    forwardTotalDistanceKm += calculateDistance(
+                      node1.position.latitude, node1.position.longitude,
+                      node2.position.latitude, node2.position.longitude
+                    );
+                  }
                 }
-              }
 
-              allElements.push(
-                <Polyline
-                  key="selected-traceroute-back"
-                  positions={backPositions}
-                  color="#f38ba8"
-                  weight={4}
-                  opacity={0.9}
-                  dashArray="5, 10"
-                >
-                  <Popup>
-                    <div className="route-popup">
-                      <h4>Return Path</h4>
-                      <div className="route-endpoints">
-                        <strong>{fromName}</strong> → <strong>{toName}</strong>
-                      </div>
-                      <div className="route-usage">
-                        Path: {backSequence.slice().reverse().map(num => {
-                          const n = nodes.find(nd => nd.nodeNum === num);
-                          return n?.user?.longName || n?.user?.shortName || `!${num.toString(16)}`;
-                        }).join(' → ')}
-                      </div>
-                      {backTotalDistanceKm > 0 && (
-                        <div className="route-usage">
-                          Distance: <strong>{formatDistance(backTotalDistanceKm, distanceUnit)}</strong>
+                allElements.push(
+                  <Polyline
+                    key="selected-traceroute-forward"
+                    positions={forwardPositions}
+                    color="#f38ba8"
+                    weight={4}
+                    opacity={0.9}
+                    dashArray="10, 5"
+                  >
+                    <Popup>
+                      <div className="route-popup">
+                        <h4>Forward Path</h4>
+                        <div className="route-endpoints">
+                          <strong>{toName}</strong> → <strong>{fromName}</strong>
                         </div>
-                      )}
-                    </div>
-                  </Popup>
-                </Polyline>
-              );
+                        <div className="route-usage">
+                          Path: {forwardSequence.slice().reverse().map(num => {
+                            const n = nodes.find(nd => nd.nodeNum === num);
+                            return n?.user?.longName || n?.user?.shortName || `!${num.toString(16)}`;
+                          }).join(' → ')}
+                        </div>
+                        {forwardTotalDistanceKm > 0 && (
+                          <div className="route-usage">
+                            Distance: <strong>{formatDistance(forwardTotalDistanceKm, distanceUnit)}</strong>
+                          </div>
+                        )}
+                      </div>
+                    </Popup>
+                  </Polyline>
+                );
 
-              // Generate arrow markers for back path
-              const backArrows = generateArrowMarkers(
-                backPositions,
-                'back',
-                '#f38ba8',
-                allElements.length
-              );
-              allElements.push(...backArrows);
+                // Generate arrow markers for forward path
+                const forwardArrows = generateArrowMarkers(
+                  forwardPositions,
+                  'forward',
+                  '#f38ba8',
+                  allElements.length
+                );
+                allElements.push(...forwardArrows);
+              }
             }
-          }
+
+            // Back path (to -> from)
+            if (routeBack.length >= 0) {
+              const backSequence: number[] = [selectedTrace.toNodeNum, ...routeBack.slice().reverse(), selectedTrace.fromNodeNum];
+              const backPositions: [number, number][] = [];
+
+              backSequence.forEach((nodeNum) => {
+                const node = nodes.find(n => n.nodeNum === nodeNum);
+                if (node?.position?.latitude && node?.position?.longitude) {
+                  backPositions.push([node.position.latitude, node.position.longitude]);
+                }
+              });
+
+              if (backPositions.length >= 2) {
+                // Calculate total distance for back path
+                let backTotalDistanceKm = 0;
+                for (let i = 0; i < backSequence.length - 1; i++) {
+                  const node1 = nodes.find(n => n.nodeNum === backSequence[i]);
+                  const node2 = nodes.find(n => n.nodeNum === backSequence[i + 1]);
+                  if (node1?.position?.latitude && node1?.position?.longitude &&
+                      node2?.position?.latitude && node2?.position?.longitude) {
+                    backTotalDistanceKm += calculateDistance(
+                      node1.position.latitude, node1.position.longitude,
+                      node2.position.latitude, node2.position.longitude
+                    );
+                  }
+                }
+
+                allElements.push(
+                  <Polyline
+                    key="selected-traceroute-back"
+                    positions={backPositions}
+                    color="#f38ba8"
+                    weight={4}
+                    opacity={0.9}
+                    dashArray="5, 10"
+                  >
+                    <Popup>
+                      <div className="route-popup">
+                        <h4>Return Path</h4>
+                        <div className="route-endpoints">
+                          <strong>{fromName}</strong> → <strong>{toName}</strong>
+                        </div>
+                        <div className="route-usage">
+                          Path: {backSequence.slice().reverse().map(num => {
+                            const n = nodes.find(nd => nd.nodeNum === num);
+                            return n?.user?.longName || n?.user?.shortName || `!${num.toString(16)}`;
+                          }).join(' → ')}
+                        </div>
+                        {backTotalDistanceKm > 0 && (
+                          <div className="route-usage">
+                            Distance: <strong>{formatDistance(backTotalDistanceKm, distanceUnit)}</strong>
+                          </div>
+                        )}
+                      </div>
+                    </Popup>
+                  </Polyline>
+                );
+
+                // Generate arrow markers for back path
+                const backArrows = generateArrowMarkers(
+                  backPositions,
+                  'back',
+                  '#f38ba8',
+                  allElements.length
+                );
+                allElements.push(...backArrows);
+              }
+            }
+          } // End of else block for non-empty arrays
         } catch (error) {
           logger.error('Error rendering selected node traceroute:', error);
         }
+        } // End of else block for valid route data
       }
     }
 
     return allElements;
-  }, [showPaths, showRoute, selectedNodeId, traceroutes, nodes, distanceUnit]);
+  }, [showPaths, showRoute, selectedNodeId, traceroutes, nodes, distanceUnit, maxNodeAgeHours, currentNodeId]);
 
   // If anonymous is disabled and user is not authenticated, show login page
   if (authStatus?.anonymousDisabled && !authStatus?.authenticated) {
