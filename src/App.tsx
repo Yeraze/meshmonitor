@@ -3868,8 +3868,9 @@ function App() {
           // Don't render anything for failed traceroutes
         } else {
         try {
-          const routeForward = JSON.parse(selectedTrace.route);
-          const routeBack = JSON.parse(selectedTrace.routeBack);
+          // Note: After backend reversal, route = remote->local, routeBack = local->remote
+          const routeForward = JSON.parse(selectedTrace.routeBack);  // Forward: local -> remote
+          const routeBack = JSON.parse(selectedTrace.route);  // Return: remote -> local
 
           // Skip if either route is empty array (no actual route hops - failed/incomplete traceroute)
           if (routeForward.length === 0 || routeBack.length === 0) {
