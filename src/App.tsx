@@ -2633,9 +2633,8 @@ function App() {
                         messagesForChannel = messagesForChannel.filter(msg => !isMqttBridgeMessage(msg));
                       }
 
-                      // Filter traceroutes from Primary channel
-                      const primaryChannel = channels.find(ch => ch.name === 'Primary');
-                      if (primaryChannel && messageChannel === primaryChannel.id) {
+                      // Filter traceroutes from Primary channel (channel 0)
+                      if (messageChannel === 0) {
                         messagesForChannel = messagesForChannel.filter(msg => msg.portnum !== 70);
                       }
 
