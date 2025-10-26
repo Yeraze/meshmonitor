@@ -4,14 +4,17 @@
 None
 
 ## Technical Debt / Known Issues
-- Traceroute utility refactoring (post-PR #328)
-  - [ ] Fix array mutation bug in traceroute.tsx:126-127 - replace fullPath.splice() with immutable operations
-  - [ ] Fix SNR index calculation error in traceroute.tsx:88 after array mutation
-  - [ ] Fix distance calculation in traceroute.tsx:135-149 that uses mutated array indices
-  - [ ] Consolidate formatTracerouteRoute signatures - migrate App.tsx to use utility or align parameter order
-  - Impact: Array mutation causes index misalignment for SNR values and distance calculations
+None
 
 ## Completed
+- Traceroute utility refactoring
+  - [x] Fixed array mutation bug in traceroute.tsx using immutable Set-based tracking instead of splice()
+  - [x] Fixed SNR index calculation to use correct indices from unmutated arrays
+  - [x] Fixed distance calculation to use correct indices from unmutated arrays
+  - [x] Consolidated formatTracerouteRoute implementations - removed duplicate from App.tsx
+  - [x] Created baseline tests for formatNodeName utility (6 tests)
+  - [x] All 898 tests passing with no regressions
+  - Impact: Accurate SNR values and distance calculations in traceroute displays, eliminated code duplication
 - Telemetry Dashboard Local Storage persistence
   - [x] Add Local Storage save functionality when drag-and-drop reordering
   - [x] Add Local Storage load functionality on component mount with localStorage priority

@@ -24,6 +24,7 @@ import { RebootModal } from './components/RebootModal'
 import { type TemperatureUnit } from './utils/temperature'
 import { calculateDistance, formatDistance } from './utils/distance'
 import { formatTime, formatDateTime } from './utils/datetime'
+import { formatTracerouteRoute } from './utils/traceroute'
 import { DeviceInfo, Channel } from './types/device'
 import { MeshMessage } from './types/message'
 import { SortField, SortDirection } from './types/ui'
@@ -1513,73 +1514,6 @@ function App() {
       .sort((a, b) => b.timestamp - a.timestamp);
 
     return recentTraceroutes.length > 0 ? recentTraceroutes[0] : null;
-  };
-
-  const formatTracerouteRoute = (route: string, snr: string, fromNodeNum?: number, toNodeNum?: number) => {
-    try {
-      const routeArray = JSON.parse(route || '[]');
-      const snrArray = JSON.parse(snr || '[]');
-
-      const pathNodes: string[] = [];
-      const nodeNums: number[] = [];
-      let totalDistanceKm = 0;
-
-      // Build full sequence of node numbers
-      if (toNodeNum !== undefined) {
-        nodeNums.push(toNodeNum);
-      }
-      nodeNums.push(...routeArray);
-      if (fromNodeNum !== undefined) {
-        nodeNums.push(fromNodeNum);
-      }
-
-      // Format each hop with SNR and distance
-      const BROADCAST_ADDR = 4294967295;
-      nodeNums.forEach((nodeNum, idx) => {
-        const node = nodes.find(n => n.nodeNum === nodeNum);
-        const nodeName = nodeNum === BROADCAST_ADDR ? '(unknown)' :
-                        (node?.user?.longName || node?.user?.shortName || `!${nodeNum.toString(16)}`);
-
-        // Get SNR for this hop
-        const snrIdx = idx === 0 ? -1 : idx - 1; // First node has no SNR, subsequent nodes use previous indices
-        const snrValue = snrIdx >= 0 && snrArray[snrIdx] !== undefined
-          ? ` (${(snrArray[snrIdx]/4).toFixed(1)}dB)`
-          : '';
-
-        // Calculate distance to next hop if available
-        let distanceStr = '';
-        if (idx < nodeNums.length - 1) {
-          const nextNodeNum = nodeNums[idx + 1];
-          const nextNode = nodes.find(n => n.nodeNum === nextNodeNum);
-
-          if (node?.position?.latitude && node?.position?.longitude &&
-              nextNode?.position?.latitude && nextNode?.position?.longitude) {
-            const distKm = calculateDistance(
-              node.position.latitude, node.position.longitude,
-              nextNode.position.latitude, nextNode.position.longitude
-            );
-            totalDistanceKm += distKm;
-            distanceStr = ` [${formatDistance(distKm, distanceUnit)}]`;
-          }
-        }
-
-        pathNodes.push(nodeName + snrValue + distanceStr);
-      });
-
-      if (pathNodes.length === 0) {
-        return 'No route data';
-      }
-
-      if (pathNodes.length === 2 && routeArray.length === 0) {
-        const distanceInfo = totalDistanceKm > 0 ? ` - ${formatDistance(totalDistanceKm, distanceUnit)} (direct)` : ' (direct)';
-        return `${pathNodes[0]} ↔ ${pathNodes[1]}${distanceInfo}`;
-      }
-
-      const totalInfo = totalDistanceKm > 0 ? ` - Total: ${formatDistance(totalDistanceKm, distanceUnit)}` : '';
-      return pathNodes.join(' → ') + totalInfo;
-    } catch (error) {
-      return 'Error parsing route';
-    }
   };
 
   // Helper to check if we should show cached data
@@ -3283,10 +3217,10 @@ function App() {
                     return (
                       <div className="traceroute-info">
                         <div className="traceroute-route">
-                          <strong>→ Forward:</strong> {formatTracerouteRoute(recentTrace.route, recentTrace.snrTowards, recentTrace.fromNodeNum, recentTrace.toNodeNum)}
+                          <strong>→ Forward:</strong> {formatTracerouteRoute(recentTrace.route, recentTrace.snrTowards, recentTrace.toNodeNum, recentTrace.fromNodeNum, nodes, distanceUnit)}
                         </div>
                         <div className="traceroute-route">
-                          <strong>← Return:</strong> {formatTracerouteRoute(recentTrace.routeBack, recentTrace.snrBack, recentTrace.toNodeNum, recentTrace.fromNodeNum)}
+                          <strong>← Return:</strong> {formatTracerouteRoute(recentTrace.routeBack, recentTrace.snrBack, recentTrace.fromNodeNum, recentTrace.toNodeNum, nodes, distanceUnit)}
                         </div>
                         <div className="traceroute-age">Last traced {ageStr}</div>
                       </div>

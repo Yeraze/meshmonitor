@@ -78,8 +78,14 @@ export function formatTracerouteRoute(
     // Build the complete path: fromNum -> intermediate hops -> toNum
     const fullPath = [fromNum, ...routeArray, toNum];
 
+    // Track which indices have been rendered (for skipping highlighted segments)
+    const renderedIndices = new Set<number>();
+
     fullPath.forEach((nodeNum, idx) => {
       if (typeof nodeNum !== 'number') return;
+
+      // Skip if this node was already rendered as part of a highlighted segment
+      if (renderedIndices.has(idx)) return;
 
       const node = nodes.find(n => n.nodeNum === nodeNum);
       const nodeName = formatNodeName(nodeNum, nodes);
@@ -97,7 +103,7 @@ export function formatTracerouteRoute(
           (nodeNum === options.highlightNodeNum2 && fullPath[idx + 1] === options.highlightNodeNum1)
         );
 
-      if (idx > 0) {
+      if (idx > 0 && !renderedIndices.has(idx - 1)) {
         pathElements.push(' → ');
       }
 
@@ -122,9 +128,8 @@ export function formatTracerouteRoute(
           </span>
         );
 
-        // Skip the next node since we just rendered it
-        fullPath.splice(idx + 1, 1);
-        snrArray.splice(idx + 1, 1);
+        // Mark the next node as rendered so we skip it in the loop
+        renderedIndices.add(idx + 1);
       } else {
         pathElements.push(
           <span key={idx}>{nodeName}{snrDisplay}</span>
