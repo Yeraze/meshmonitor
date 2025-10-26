@@ -1387,13 +1387,11 @@ class DatabaseService {
       logger.info(`📝 getChannelById(${channelData.id}) returned: ${existingChannel ? `"${existingChannel.name}"` : 'null'}`);
     }
 
-    // Only check by name if:
-    // 1. No ID was provided (legacy name-based lookup for backward compatibility)
-    // 2. OR if the name is non-empty and we didn't find by ID (to handle renaming)
-    // DO NOT use name-based lookup if we have an ID but it wasn't found - that means we should INSERT a new channel
-    if (!existingChannel && channelData.id === undefined) {
-      existingChannel = this.getChannelByName(channelData.name);
-      logger.info(`📝 getChannelByName("${channelData.name}") returned: ${existingChannel ? `ID ${existingChannel.id}` : 'null'}`);
+    // Channel ID is required - we no longer support name-based lookups
+    // All channels must have a numeric ID for proper indexing
+    if (channelData.id === undefined) {
+      logger.error(`❌ Cannot upsert channel without ID. Name: "${channelData.name}"`);
+      throw new Error('Channel ID is required for upsert operation');
     }
 
     if (existingChannel) {
@@ -1443,12 +1441,6 @@ class DatabaseService {
     }
   }
 
-  getChannelByName(name: string): DbChannel | null {
-    const stmt = this.db.prepare('SELECT * FROM channels WHERE name = ?');
-    const channel = stmt.get(name) as DbChannel | null;
-    return channel ? this.normalizeBigInts(channel) : null;
-  }
-
   getChannelById(id: number): DbChannel | null {
     const stmt = this.db.prepare('SELECT * FROM channels WHERE id = ?');
     const channel = stmt.get(id) as DbChannel | null;
@@ -1471,24 +1463,26 @@ class DatabaseService {
   }
 
   // Clean up invalid channels that shouldn't have been created
+  // Meshtastic supports channels 0-7 (8 total channels)
   cleanupInvalidChannels(): number {
-    const validChannelNames = ['Primary', 'admin', 'gauntlet', 'telemetry', 'Secondary', 'LongFast', 'VeryLong'];
-    const placeholders = validChannelNames.map(() => '?').join(', ');
-    const stmt = this.db.prepare(`DELETE FROM channels WHERE name NOT IN (${placeholders})`);
-    const result = stmt.run(...validChannelNames);
+    const stmt = this.db.prepare(`DELETE FROM channels WHERE id < 0 OR id > 7`);
+    const result = stmt.run();
+    logger.debug(`🧹 Cleaned up ${result.changes} invalid channels (outside 0-7 range)`);
     return Number(result.changes);
   }
 
   // Clean up channels that appear to be empty/unused
+  // Keep channels 0-1 (Primary and typically one active secondary)
+  // Remove higher ID channels that have no PSK (not configured)
   cleanupEmptyChannels(): number {
     const stmt = this.db.prepare(`
       DELETE FROM channels
-      WHERE name LIKE 'Channel %'
-      AND id NOT IN (0, 1)
+      WHERE id > 1
       AND psk IS NULL
+      AND role IS NULL
     `);
     const result = stmt.run();
-    logger.debug(`🧹 Cleaned up ${result.changes} empty channels`);
+    logger.debug(`🧹 Cleaned up ${result.changes} empty channels (ID > 1, no PSK/role)`);
     return Number(result.changes);
   }
 
