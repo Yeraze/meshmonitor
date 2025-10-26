@@ -1600,20 +1600,19 @@ class MeshtasticManager {
       logger.debug(`💾 Saved traceroute result from ${fromNodeId} (channel: ${channelIndex})`);
 
       // Save to traceroutes table (save raw data including broadcast addresses)
-      // Meshtastic sends route arrays in REVERSE order (despite protobuf docs)
-      // We reverse them here so frontend can display them in correct order
+      // Store traceroute data exactly as Meshtastic provides it (no transformations)
       // fromNodeNum = responder (remote), toNodeNum = requester (local)
-      // route = hops from requester toward responder
-      // routeBack = hops from responder toward requester
+      // route = intermediate hops from requester toward responder
+      // routeBack = intermediate hops from responder toward requester
       const tracerouteRecord = {
         fromNodeNum: fromNum,
         toNodeNum: toNum,
         fromNodeId: fromNodeId,
         toNodeId: toNodeId,
-        route: JSON.stringify(route.slice().reverse()),
-        routeBack: JSON.stringify(routeBack.slice().reverse()),
-        snrTowards: JSON.stringify(snrTowards.slice().reverse()),
-        snrBack: JSON.stringify(snrBack.slice().reverse()),
+        route: JSON.stringify(route),
+        routeBack: JSON.stringify(routeBack),
+        snrTowards: JSON.stringify(snrTowards),
+        snrBack: JSON.stringify(snrBack),
         timestamp: timestamp,
         createdAt: Date.now()
       };

@@ -40,8 +40,8 @@ const RouteSegmentTraceroutesModal: React.FC<RouteSegmentTraceroutesModalProps> 
         const routeBack = JSON.parse(tr.routeBack);
 
         // Build full path sequences
-        const forwardSequence = [tr.fromNodeNum, ...routeForward.slice().reverse(), tr.toNodeNum];
-        const backSequence = [tr.toNodeNum, ...routeBack.slice().reverse(), tr.fromNodeNum];
+        const forwardSequence = [tr.fromNodeNum, ...routeForward, tr.toNodeNum];
+        const backSequence = [tr.toNodeNum, ...routeBack, tr.fromNodeNum];
 
         // Check if segment exists in forward path
         const segmentInForward = forwardSequence.some((num, idx) => {
