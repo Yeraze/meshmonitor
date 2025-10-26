@@ -113,10 +113,22 @@ const NodesTab: React.FC<NodesTabProps> = ({
   // Track if packet logging is enabled on the server
   const [packetLogEnabled, setPacketLogEnabled] = useState<boolean>(false);
 
+  // Track if map controls are collapsed
+  const [isMapControlsCollapsed, setIsMapControlsCollapsed] = useState(() => {
+    // Load from localStorage
+    const saved = localStorage.getItem('isMapControlsCollapsed');
+    return saved === 'true';
+  });
+
   // Save packet monitor preference to localStorage
   useEffect(() => {
     localStorage.setItem('showPacketMonitor', showPacketMonitor.toString());
   }, [showPacketMonitor]);
+
+  // Save map controls collapse state to localStorage
+  useEffect(() => {
+    localStorage.setItem('isMapControlsCollapsed', isMapControlsCollapsed.toString());
+  }, [isMapControlsCollapsed]);
 
   // Check if user has permission to view packet monitor
   const canViewPacketMonitor = hasPermission('channels', 'read') && hasPermission('messages', 'read');
@@ -373,56 +385,68 @@ const NodesTab: React.FC<NodesTabProps> = ({
       <div className={`map-container ${showPacketMonitor && canViewPacketMonitor ? 'with-packet-monitor' : ''}`}>
         {shouldShowData() ? (
           <>
-            <div className="map-controls">
-              <label className="map-control-item">
-                <input
-                  type="checkbox"
-                  checked={showPaths}
-                  onChange={(e) => setShowPaths(e.target.checked)}
-                />
-                <span>Show Route Segments</span>
-              </label>
-              <label className="map-control-item">
-                <input
-                  type="checkbox"
-                  checked={showNeighborInfo}
-                  onChange={(e) => setShowNeighborInfo(e.target.checked)}
-                />
-                <span>Show Neighbor Info</span>
-              </label>
-              <label className="map-control-item">
-                <input
-                  type="checkbox"
-                  checked={showRoute}
-                  onChange={(e) => setShowRoute(e.target.checked)}
-                />
-                <span>Show Traceroute</span>
-              </label>
-              <label className="map-control-item">
-                <input
-                  type="checkbox"
-                  checked={showMqttNodes}
-                  onChange={(e) => setShowMqttNodes(e.target.checked)}
-                />
-                <span>Show MQTT</span>
-              </label>
-              <label className="map-control-item">
-                <input
-                  type="checkbox"
-                  checked={showMotion}
-                  onChange={(e) => setShowMotion(e.target.checked)}
-                />
-                <span>Show Position History</span>
-              </label>
-              {canViewPacketMonitor && packetLogEnabled && (
-                <label className="map-control-item packet-monitor-toggle">
-                  <input
-                    type="checkbox"
-                    checked={showPacketMonitor}
-                    onChange={(e) => setShowPacketMonitor(e.target.checked)}
-                  />
-                  <span>Show Packet Monitor</span>
-                </label>
+            <div className={`map-controls ${isMapControlsCollapsed ? 'collapsed' : ''}`}>
+              <button
+                className="map-controls-collapse-btn"
+                onClick={() => setIsMapControlsCollapsed(!isMapControlsCollapsed)}
+                title={isMapControlsCollapsed ? 'Expand controls' : 'Collapse controls'}
+              >
+                {isMapControlsCollapsed ? '▼' : '▲'}
+              </button>
+              {!isMapControlsCollapsed && (
+                <>
+                  <div className="map-controls-title">Features</div>
+                  <label className="map-control-item">
+                    <input
+                      type="checkbox"
+                      checked={showPaths}
+                      onChange={(e) => setShowPaths(e.target.checked)}
+                    />
+                    <span>Show Route Segments</span>
+                  </label>
+                  <label className="map-control-item">
+                    <input
+                      type="checkbox"
+                      checked={showNeighborInfo}
+                      onChange={(e) => setShowNeighborInfo(e.target.checked)}
+                    />
+                    <span>Show Neighbor Info</span>
+                  </label>
+                  <label className="map-control-item">
+                    <input
+                      type="checkbox"
+                      checked={showRoute}
+                      onChange={(e) => setShowRoute(e.target.checked)}
+                    />
+                    <span>Show Traceroute</span>
+                  </label>
+                  <label className="map-control-item">
+                    <input
+                      type="checkbox"
+                      checked={showMqttNodes}
+                      onChange={(e) => setShowMqttNodes(e.target.checked)}
+                    />
+                    <span>Show MQTT</span>
+                  </label>
+                  <label className="map-control-item">
+                    <input
+                      type="checkbox"
+                      checked={showMotion}
+                      onChange={(e) => setShowMotion(e.target.checked)}
+                    />
+                    <span>Show Position History</span>
+                  </label>
+                  {canViewPacketMonitor && packetLogEnabled && (
+                    <label className="map-control-item packet-monitor-toggle">
+                      <input
+                        type="checkbox"
+                        checked={showPacketMonitor}
+                        onChange={(e) => setShowPacketMonitor(e.target.checked)}
+                      />
+                      <span>Show Packet Monitor</span>
+                    </label>
+                  )}
+                </>
               )}
             </div>
             <MapContainer
