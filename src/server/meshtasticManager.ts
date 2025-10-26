@@ -3441,10 +3441,12 @@ class MeshtasticManager {
 
       // Format timestamp in local timezone (from TZ environment variable)
       const env = getEnvironmentConfig();
-      const receivedTime = new Date(message.timestamp).toLocaleString('en-US', { timeZone: env.timezone });
+      const timestamp = new Date(message.timestamp);
+      const receivedDate = timestamp.toLocaleDateString('en-US', { timeZone: env.timezone });
+      const receivedTime = timestamp.toLocaleTimeString('en-US', { timeZone: env.timezone });
 
       // Replace tokens in the message template
-      let ackText = await this.replaceAcknowledgementTokens(autoAckMessage, message.fromNodeId, fromNum, hopsTraveled, receivedTime);
+      let ackText = await this.replaceAcknowledgementTokens(autoAckMessage, message.fromNodeId, fromNum, hopsTraveled, receivedDate, receivedTime);
 
       // Send reply on same channel or as direct message
       const destination = isDirectMessage ? fromNum : undefined;
@@ -3540,7 +3542,7 @@ class MeshtasticManager {
     return result;
   }
 
-  private async replaceAcknowledgementTokens(message: string, nodeId: string, fromNum: number, numberHops: number, time: string): Promise<string> {
+  private async replaceAcknowledgementTokens(message: string, nodeId: string, fromNum: number, numberHops: number, date: string, time: string): Promise<string> {
     let result = message;
 
     // {NODE_ID} - Sender node ID
@@ -3573,7 +3575,12 @@ class MeshtasticManager {
       result = result.replace(/{RABBIT_HOPS}/g, rabbitEmojis);
     }
 
-    // {TIME} - Timestamp
+    // {DATE} - Date
+    if (result.includes('{DATE}')) {
+      result = result.replace(/{DATE}/g, date);
+    }
+
+    // {TIME} - Time
     if (result.includes('{TIME}')) {
       result = result.replace(/{TIME}/g, time);
     }

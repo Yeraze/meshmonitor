@@ -42,13 +42,38 @@ describe('MeshtasticManager - Auto-Acknowledge Message Template Token Replacemen
       expect(result).toBe('Received in 3 hops');
     });
 
-    it('should replace {TIME} with formatted timestamp', () => {
+    it('should replace {DATE} with formatted date', () => {
+      const template = 'On {DATE}';
+      const timestamp = new Date('2025-01-15T10:30:00Z');
+      const date = timestamp.toLocaleDateString('en-US', { timeZone: 'America/New_York' });
+
+      const result = template.replace(/{DATE}/g, date);
+
+      expect(result).toBe('On 1/15/2025');
+    });
+
+    it('should replace {TIME} with formatted time', () => {
       const template = 'At {TIME}';
-      const time = new Date('2025-01-15T10:30:00Z').toLocaleString('en-US', { timeZone: 'America/New_York' });
+      const timestamp = new Date('2025-01-15T10:30:00Z');
+      const time = timestamp.toLocaleTimeString('en-US', { timeZone: 'America/New_York' });
 
       const result = template.replace(/{TIME}/g, time);
 
+      expect(result).toContain('5:30:00');
+    });
+
+    it('should replace both {DATE} and {TIME} in template', () => {
+      const template = 'Received on {DATE} at {TIME}';
+      const timestamp = new Date('2025-01-15T10:30:00Z');
+      const date = timestamp.toLocaleDateString('en-US', { timeZone: 'America/New_York' });
+      const time = timestamp.toLocaleTimeString('en-US', { timeZone: 'America/New_York' });
+
+      let result = template;
+      result = result.replace(/{DATE}/g, date);
+      result = result.replace(/{TIME}/g, time);
+
       expect(result).toContain('1/15/2025');
+      expect(result).toContain('at');
     });
 
     it('should replace {VERSION} with app version', () => {
@@ -116,17 +141,19 @@ describe('MeshtasticManager - Auto-Acknowledge Message Template Token Replacemen
 
   describe('Multiple token replacement', () => {
     it('should replace multiple different tokens in one template', () => {
-      const template = '🤖 Copy from {NODE_ID}, {NUMBER_HOPS} hops at {TIME}';
+      const template = '🤖 Copy from {NODE_ID}, {NUMBER_HOPS} hops on {DATE} at {TIME}';
       const nodeId = '!a1b2c3d4';
       const numberHops = 3;
-      const time = '1/15/2025, 10:30:00 AM';
+      const date = '1/15/2025';
+      const time = '10:30:00 AM';
 
       let result = template;
       result = result.replace(/{NODE_ID}/g, nodeId);
       result = result.replace(/{NUMBER_HOPS}/g, numberHops.toString());
+      result = result.replace(/{DATE}/g, date);
       result = result.replace(/{TIME}/g, time);
 
-      expect(result).toBe('🤖 Copy from !a1b2c3d4, 3 hops at 1/15/2025, 10:30:00 AM');
+      expect(result).toBe('🤖 Copy from !a1b2c3d4, 3 hops on 1/15/2025 at 10:30:00 AM');
     });
 
     it('should replace same token appearing multiple times', () => {
@@ -139,23 +166,26 @@ describe('MeshtasticManager - Auto-Acknowledge Message Template Token Replacemen
     });
 
     it('should handle default template with all tokens', () => {
-      const template = '🤖 Copy, {NUMBER_HOPS} hops at {TIME}';
+      const template = '🤖 Copy, {NUMBER_HOPS} hops on {DATE} at {TIME}';
       const numberHops = 2;
-      const time = '1/15/2025, 3:45:00 PM';
+      const date = '1/15/2025';
+      const time = '3:45:00 PM';
 
       let result = template;
       result = result.replace(/{NUMBER_HOPS}/g, numberHops.toString());
+      result = result.replace(/{DATE}/g, date);
       result = result.replace(/{TIME}/g, time);
 
-      expect(result).toBe('🤖 Copy, 2 hops at 1/15/2025, 3:45:00 PM');
+      expect(result).toBe('🤖 Copy, 2 hops on 1/15/2025 at 3:45:00 PM');
     });
 
     it('should handle template with all available tokens', () => {
-      const template = '{NODE_ID} {NUMBER_HOPS} {RABBIT_HOPS} {TIME} {VERSION} {DURATION} {FEATURES} {NODECOUNT} {DIRECTCOUNT}';
+      const template = '{NODE_ID} {NUMBER_HOPS} {RABBIT_HOPS} {DATE} {TIME} {VERSION} {DURATION} {FEATURES} {NODECOUNT} {DIRECTCOUNT}';
       const nodeId = '!12345678';
       const numberHops = 2;
       const rabbitEmojis = '🐇🐇';
-      const time = '1/15/2025';
+      const date = '1/15/2025';
+      const time = '10:30:00 AM';
       const version = '2.10.0';
       const duration = '5h 23m';
       const features = 'Auto-Ack';
@@ -166,6 +196,7 @@ describe('MeshtasticManager - Auto-Acknowledge Message Template Token Replacemen
       result = result.replace(/{NODE_ID}/g, nodeId);
       result = result.replace(/{NUMBER_HOPS}/g, numberHops.toString());
       result = result.replace(/{RABBIT_HOPS}/g, rabbitEmojis);
+      result = result.replace(/{DATE}/g, date);
       result = result.replace(/{TIME}/g, time);
       result = result.replace(/{VERSION}/g, version);
       result = result.replace(/{DURATION}/g, duration);
@@ -173,7 +204,7 @@ describe('MeshtasticManager - Auto-Acknowledge Message Template Token Replacemen
       result = result.replace(/{NODECOUNT}/g, nodeCount);
       result = result.replace(/{DIRECTCOUNT}/g, directCount);
 
-      expect(result).toBe('!12345678 2 🐇🐇 1/15/2025 2.10.0 5h 23m Auto-Ack 42 8');
+      expect(result).toBe('!12345678 2 🐇🐇 1/15/2025 10:30:00 AM 2.10.0 5h 23m Auto-Ack 42 8');
     });
   });
 
@@ -434,18 +465,20 @@ describe('MeshtasticManager - Auto-Acknowledge Message Template Token Replacemen
 
   describe('Integration with auto-acknowledge flow', () => {
     it('should create complete acknowledgment message for direct message (0 hops)', () => {
-      const template = '🤖 Copy from {NODE_ID}, {RABBIT_HOPS} at {TIME}';
+      const template = '🤖 Copy from {NODE_ID}, {RABBIT_HOPS} on {DATE} at {TIME}';
       const nodeId = '!a1b2c3d4';
       const numberHops = 0;
-      const time = '1/15/2025, 10:30:00 AM';
+      const date = '1/15/2025';
+      const time = '10:30:00 AM';
       const rabbitEmojis = numberHops === 0 ? '🎯' : '🐇'.repeat(numberHops);
 
       let result = template;
       result = result.replace(/{NODE_ID}/g, nodeId);
       result = result.replace(/{RABBIT_HOPS}/g, rabbitEmojis);
+      result = result.replace(/{DATE}/g, date);
       result = result.replace(/{TIME}/g, time);
 
-      expect(result).toBe('🤖 Copy from !a1b2c3d4, 🎯 at 1/15/2025, 10:30:00 AM');
+      expect(result).toBe('🤖 Copy from !a1b2c3d4, 🎯 on 1/15/2025 at 10:30:00 AM');
     });
 
     it('should create complete acknowledgment message for multi-hop message', () => {
@@ -463,39 +496,44 @@ describe('MeshtasticManager - Auto-Acknowledge Message Template Token Replacemen
     });
 
     it('should process default template correctly', () => {
-      const template = '🤖 Copy, {NUMBER_HOPS} hops at {TIME}';
+      const template = '🤖 Copy, {NUMBER_HOPS} hops on {DATE} at {TIME}';
       const numberHops = 3;
-      const time = '1/15/2025, 2:45:00 PM';
+      const date = '1/15/2025';
+      const time = '2:45:00 PM';
 
       let result = template;
       result = result.replace(/{NUMBER_HOPS}/g, numberHops.toString());
+      result = result.replace(/{DATE}/g, date);
       result = result.replace(/{TIME}/g, time);
 
-      expect(result).toBe('🤖 Copy, 3 hops at 1/15/2025, 2:45:00 PM');
+      expect(result).toBe('🤖 Copy, 3 hops on 1/15/2025 at 2:45:00 PM');
     });
   });
 
   describe('Token replacement order independence', () => {
     it('should produce same result regardless of replacement order', () => {
-      const template = '{NODE_ID} {NUMBER_HOPS} {TIME}';
+      const template = '{NODE_ID} {NUMBER_HOPS} {DATE} {TIME}';
       const nodeId = '!12345678';
       const numberHops = 2;
+      const date = '1/15/2025';
       const time = '10:30 AM';
 
-      // Order 1: NODE_ID, NUMBER_HOPS, TIME
+      // Order 1: NODE_ID, NUMBER_HOPS, DATE, TIME
       let result1 = template;
       result1 = result1.replace(/{NODE_ID}/g, nodeId);
       result1 = result1.replace(/{NUMBER_HOPS}/g, numberHops.toString());
+      result1 = result1.replace(/{DATE}/g, date);
       result1 = result1.replace(/{TIME}/g, time);
 
-      // Order 2: TIME, NODE_ID, NUMBER_HOPS
+      // Order 2: TIME, DATE, NODE_ID, NUMBER_HOPS
       let result2 = template;
       result2 = result2.replace(/{TIME}/g, time);
+      result2 = result2.replace(/{DATE}/g, date);
       result2 = result2.replace(/{NODE_ID}/g, nodeId);
       result2 = result2.replace(/{NUMBER_HOPS}/g, numberHops.toString());
 
       expect(result1).toBe(result2);
-      expect(result1).toBe('!12345678 2 10:30 AM');
+      expect(result1).toBe('!12345678 2 1/15/2025 10:30 AM');
     });
   });
 });
