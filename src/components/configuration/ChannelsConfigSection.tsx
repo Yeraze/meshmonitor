@@ -152,6 +152,20 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
     }
   };
 
+  const handleGeneratePSK = () => {
+    // Generate 32 random bytes (256 bits for AES256)
+    const randomBytes = new Uint8Array(32);
+    crypto.getRandomValues(randomBytes);
+
+    // Convert to base64
+    const base64Key = btoa(String.fromCharCode(...randomBytes));
+
+    if (editingChannel) {
+      setEditingChannel({ ...editingChannel, psk: base64Key });
+      showToast('Generated new AES256 key', 'success');
+    }
+  };
+
   return (
     <>
       <div className="settings-section">
@@ -319,14 +333,33 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                   Leave empty for no encryption, or enter base64-encoded key (16 or 32 bytes)
                 </span>
               </label>
-              <input
-                id="edit-channel-psk"
-                type="text"
-                value={editingChannel.psk}
-                onChange={(e) => setEditingChannel({ ...editingChannel, psk: e.target.value })}
-                className="setting-input"
-                placeholder="Optional: base64 PSK"
-              />
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <input
+                  id="edit-channel-psk"
+                  type="text"
+                  value={editingChannel.psk}
+                  onChange={(e) => setEditingChannel({ ...editingChannel, psk: e.target.value })}
+                  className="setting-input"
+                  placeholder="Optional: base64 PSK"
+                  style={{ flex: 1 }}
+                />
+                <button
+                  onClick={handleGeneratePSK}
+                  type="button"
+                  style={{
+                    padding: '0.5rem 1rem',
+                    backgroundColor: 'var(--ctp-green)',
+                    color: 'var(--ctp-base)',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap'
+                  }}
+                  title="Generate random AES256 key"
+                >
+                  Generate
+                </button>
+              </div>
             </div>
 
             <div className="setting-item">
