@@ -51,6 +51,22 @@ const TracerouteHistoryModal: React.FC<TracerouteHistoryModalProps> = ({
     fetchHistory();
   }, [fromNodeNum, toNodeNum]);
 
+  // Helper function to format node name as "Longname [Shortname]"
+  const formatNodeName = useCallback((nodeNum: number): string => {
+    const node = nodes.find(n => n.nodeNum === nodeNum);
+    const longName = node?.user?.longName;
+    const shortName = node?.user?.shortName;
+
+    if (longName && shortName && longName !== shortName) {
+      return `${longName} [${shortName}]`;
+    } else if (longName) {
+      return longName;
+    } else if (shortName) {
+      return shortName;
+    }
+    return `!${nodeNum.toString(16)}`;
+  }, [nodes]);
+
   // Memoize the formatTracerouteRoute function to avoid recreating it on every render
   const formatTracerouteRoute = useCallback((route: string | null, snr: string | null, fromNum?: number, toNum?: number) => {
     // Handle pending/null routes
@@ -73,7 +89,7 @@ const TracerouteHistoryModal: React.FC<TracerouteHistoryModalProps> = ({
         if (typeof nodeNum !== 'number') return;
 
         const node = nodes.find(n => n.nodeNum === nodeNum);
-        const nodeName = node?.user?.shortName || node?.user?.longName || `!${nodeNum.toString(16)}`;
+        const nodeName = formatNodeName(nodeNum);
 
         // Get SNR for this hop (SNR array corresponds to hops between nodes)
         const snrValue = snrArray[idx] !== undefined ? snrArray[idx] : null;
@@ -108,7 +124,7 @@ const TracerouteHistoryModal: React.FC<TracerouteHistoryModalProps> = ({
       console.error('Error formatting traceroute:', error);
       return 'Error parsing route';
     }
-  }, [nodes, distanceUnit]);
+  }, [nodes, distanceUnit, formatNodeName]);
 
   return (
     <div className="modal-overlay" onClick={onClose}>

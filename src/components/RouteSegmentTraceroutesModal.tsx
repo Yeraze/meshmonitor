@@ -64,6 +64,22 @@ const RouteSegmentTraceroutesModal: React.FC<RouteSegmentTraceroutesModalProps> 
     });
   }, [traceroutes, nodeNum1, nodeNum2]);
 
+  // Helper function to format node name as "Longname [Shortname]"
+  const formatNodeName = (nodeNum: number): string => {
+    const node = nodes.find(n => n.nodeNum === nodeNum);
+    const longName = node?.user?.longName;
+    const shortName = node?.user?.shortName;
+
+    if (longName && shortName && longName !== shortName) {
+      return `${longName} [${shortName}]`;
+    } else if (longName) {
+      return longName;
+    } else if (shortName) {
+      return shortName;
+    }
+    return `!${nodeNum.toString(16)}`;
+  };
+
   // Format a traceroute path with the segment highlighted
   const formatTracerouteRoute = (
     route: string | null,
@@ -90,7 +106,7 @@ const RouteSegmentTraceroutesModal: React.FC<RouteSegmentTraceroutesModalProps> 
         if (typeof nodeNum !== 'number') return;
 
         const node = nodes.find(n => n.nodeNum === nodeNum);
-        const nodeName = node?.user?.shortName || node?.user?.longName || `!${nodeNum.toString(16)}`;
+        const nodeName = formatNodeName(nodeNum);
 
         // Get SNR for this hop
         const snrValue = snrArray[idx] !== undefined ? snrArray[idx] : null;
@@ -108,8 +124,7 @@ const RouteSegmentTraceroutesModal: React.FC<RouteSegmentTraceroutesModalProps> 
 
         // Highlight the segment
         if (isSegmentStart) {
-          const nextNode = nodes.find(n => n.nodeNum === fullPath[idx + 1]);
-          const nextNodeName = nextNode?.user?.shortName || nextNode?.user?.longName || `!${fullPath[idx + 1].toString(16)}`;
+          const nextNodeName = formatNodeName(fullPath[idx + 1]);
           const nextSnrValue = snrArray[idx + 1] !== undefined ? snrArray[idx + 1] : null;
           const nextSnrDisplay = nextSnrValue !== null ? ` (${nextSnrValue} dB)` : '';
 
