@@ -44,6 +44,7 @@ import LoginModal from './components/LoginModal'
 import LoginPage from './components/LoginPage'
 import UserMenu from './components/UserMenu'
 import TracerouteHistoryModal from './components/TracerouteHistoryModal'
+import RouteSegmentTraceroutesModal from './components/RouteSegmentTraceroutesModal'
 
 // Fix for default markers in React-Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -72,6 +73,7 @@ function App() {
   const [showRebootModal, setShowRebootModal] = useState(false);
   const [configRefreshTrigger, setConfigRefreshTrigger] = useState(0);
   const [showTracerouteHistoryModal, setShowTracerouteHistoryModal] = useState(false);
+  const [selectedRouteSegment, setSelectedRouteSegment] = useState<{nodeNum1: number; nodeNum2: number} | null>(null);
 
   // Check if mobile viewport and default to collapsed on mobile
   const isMobileViewport = () => window.innerWidth <= 768;
@@ -3719,7 +3721,18 @@ function App() {
                 </strong>
               </div>
               <div className="route-usage">
-                Used in <strong>{usage}</strong> traceroute{usage !== 1 ? 's' : ''}
+                Used in{' '}
+                <strong
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedRouteSegment({ nodeNum1: segment.nodeNums[0], nodeNum2: segment.nodeNums[1] });
+                  }}
+                  style={{ cursor: 'pointer', color: 'var(--ctp-blue)', textDecoration: 'underline' }}
+                  title="Click to view all traceroutes using this segment"
+                >
+                  {usage}
+                </strong>
+                {' '}traceroute{usage !== 1 ? 's' : ''}
               </div>
               {segmentDistanceKm > 0 && (
                 <div className="route-usage">
@@ -4142,6 +4155,16 @@ function App() {
           toNodeName={getNodeName(selectedDMNode)}
           nodes={nodes}
           onClose={() => setShowTracerouteHistoryModal(false)}
+        />
+      )}
+
+      {selectedRouteSegment && (
+        <RouteSegmentTraceroutesModal
+          nodeNum1={selectedRouteSegment.nodeNum1}
+          nodeNum2={selectedRouteSegment.nodeNum2}
+          traceroutes={traceroutes}
+          nodes={nodes}
+          onClose={() => setSelectedRouteSegment(null)}
         />
       )}
 
