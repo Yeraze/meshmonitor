@@ -297,22 +297,22 @@ else
     exit 1
 fi
 
-# Verify Channel 2 is Secondary (role=2) and named "gauntlet"
-CHANNEL_2_DATA=$(echo "$CHANNELS_RESPONSE" | grep -o '"id":2[^}]*}')
-CHANNEL_2_ROLE=$(echo "$CHANNEL_2_DATA" | grep -o '"role":[0-9]*' | cut -d':' -f2)
-CHANNEL_2_NAME=$(echo "$CHANNEL_2_DATA" | grep -o '"name":"[^"]*"' | cut -d'"' -f4)
+# Verify Channel 1 is Secondary (role=2) and named "meshmonitor"
+CHANNEL_1_DATA=$(echo "$CHANNELS_RESPONSE" | grep -o '"id":1[^}]*}')
+CHANNEL_1_ROLE=$(echo "$CHANNEL_1_DATA" | grep -o '"role":[0-9]*' | cut -d':' -f2)
+CHANNEL_1_NAME=$(echo "$CHANNEL_1_DATA" | grep -o '"name":"[^"]*"' | cut -d'"' -f4)
 
-if [ "$CHANNEL_2_ROLE" = "2" ]; then
-    echo -e "${GREEN}✓${NC} Channel 2 role: Secondary (2)"
+if [ "$CHANNEL_1_ROLE" = "2" ]; then
+    echo -e "${GREEN}✓${NC} Channel 1 role: Secondary (2)"
 else
-    echo -e "${RED}✗ FAIL${NC}: Expected Channel 2 role 2 (Secondary), got $CHANNEL_2_ROLE"
+    echo -e "${RED}✗ FAIL${NC}: Expected Channel 1 role 2 (Secondary), got $CHANNEL_1_ROLE"
     exit 1
 fi
 
-if [ "$CHANNEL_2_NAME" = "gauntlet" ]; then
-    echo -e "${GREEN}✓${NC} Channel 2 name: gauntlet"
+if [ "$CHANNEL_1_NAME" = "meshmonitor" ]; then
+    echo -e "${GREEN}✓${NC} Channel 1 name: meshmonitor"
 else
-    echo -e "${RED}✗ FAIL${NC}: Expected Channel 2 name 'gauntlet', got '$CHANNEL_2_NAME'"
+    echo -e "${RED}✗ FAIL${NC}: Expected Channel 1 name 'meshmonitor', got '$CHANNEL_1_NAME'"
     exit 1
 fi
 
