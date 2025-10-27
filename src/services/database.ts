@@ -1883,6 +1883,13 @@ class DatabaseService {
     this.db.exec('DELETE FROM messages');
   }
 
+  purgeAllTraceroutes(): void {
+    logger.debug('⚠️ PURGING all traceroutes and route segments from database');
+    this.db.exec('DELETE FROM traceroutes');
+    this.db.exec('DELETE FROM route_segments');
+    logger.debug('✅ Successfully purged all traceroutes and route segments');
+  }
+
   // Settings methods
   getSetting(key: string): string | null {
     const stmt = this.db.prepare('SELECT value FROM settings WHERE key = ?');

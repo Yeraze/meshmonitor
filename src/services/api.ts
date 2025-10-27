@@ -649,6 +649,22 @@ class ApiService {
     return response.json();
   }
 
+  async purgeTraceroutes() {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/purge/traceroutes`, {
+      method: 'POST',
+      headers: this.getHeadersWithCsrf(),
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to purge traceroutes');
+    }
+
+    return response.json();
+  }
+
   async getLongestActiveRouteSegment() {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/route-segments/longest-active`);

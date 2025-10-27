@@ -2279,6 +2279,26 @@ apiRouter.post('/purge/messages', requireAdmin(), (req, res) => {
   }
 });
 
+apiRouter.post('/purge/traceroutes', requireAdmin(), (req, res) => {
+  try {
+    databaseService.purgeAllTraceroutes();
+
+    // Audit log
+    databaseService.auditLog(
+      req.user!.id,
+      'traceroutes_purged',
+      'traceroutes',
+      'All traceroutes and route segments purged',
+      req.ip || null
+    );
+
+    res.json({ success: true, message: 'All traceroutes and route segments purged' });
+  } catch (error) {
+    logger.error('Error purging traceroutes:', error);
+    res.status(500).json({ error: 'Failed to purge traceroutes' });
+  }
+});
+
 // Configuration endpoints
 // GET current configuration
 apiRouter.get('/config/current', requirePermission('configuration', 'read'), (_req, res) => {
