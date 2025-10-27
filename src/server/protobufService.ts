@@ -751,8 +751,32 @@ class ProtobufService {
         throw new Error('Required proto types not found');
       }
 
+      // Build LoRa config object, ensuring fields with value 0 or false are included
+      // This is critical for modemPreset which can be 0 (LONG_FAST)
+      const loraConfigData: any = {};
+      if (config.usePreset !== undefined) loraConfigData.usePreset = config.usePreset;
+      if (config.modemPreset !== undefined) loraConfigData.modemPreset = config.modemPreset;
+      if (config.bandwidth !== undefined) loraConfigData.bandwidth = config.bandwidth;
+      if (config.spreadFactor !== undefined) loraConfigData.spreadFactor = config.spreadFactor;
+      if (config.codingRate !== undefined) loraConfigData.codingRate = config.codingRate;
+      if (config.frequencyOffset !== undefined) loraConfigData.frequencyOffset = config.frequencyOffset;
+      if (config.region !== undefined) loraConfigData.region = config.region;
+      if (config.hopLimit !== undefined) loraConfigData.hopLimit = config.hopLimit;
+      if (config.txEnabled !== undefined) loraConfigData.txEnabled = config.txEnabled;
+      if (config.txPower !== undefined) loraConfigData.txPower = config.txPower;
+      if (config.channelNum !== undefined) loraConfigData.channelNum = config.channelNum;
+      if (config.sx126xRxBoostedGain !== undefined) loraConfigData.sx126xRxBoostedGain = config.sx126xRxBoostedGain;
+      if (config.configOkToMqtt !== undefined) loraConfigData.configOkToMqtt = config.configOkToMqtt;
+      if (config.ignoreIncoming !== undefined) loraConfigData.ignoreIncoming = config.ignoreIncoming;
+      if (config.overrideDutyCycle !== undefined) loraConfigData.overrideDutyCycle = config.overrideDutyCycle;
+      if (config.overrideFrequency !== undefined) loraConfigData.overrideFrequency = config.overrideFrequency;
+      if (config.paFanDisabled !== undefined) loraConfigData.paFanDisabled = config.paFanDisabled;
+      if (config.ignoreMqtt !== undefined) loraConfigData.ignoreMqtt = config.ignoreMqtt;
+
+      logger.debug('LoRa config data being sent to device:', JSON.stringify(loraConfigData, null, 2));
+
       const configMsg = Config.create({
-        lora: config
+        lora: loraConfigData
       });
 
       const adminMsgData: any = {
