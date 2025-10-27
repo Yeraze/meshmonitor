@@ -19,6 +19,7 @@ services:
       # Minimal configuration for http://localhost:8080
       - NODE_ENV=development  # Use development mode for simple HTTP deployments
       - TZ=America/New_York
+      - ALLOWED_ORIGINS=http://localhost:8080  # Required for CORS
 
       # OPTIONAL: Uncomment and configure for production deployments
       # See docs/configuration/production.md for full production setup guide
