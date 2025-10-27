@@ -706,6 +706,11 @@ apiRouter.get('/channels', requirePermission('channels', 'read'), (_req, res) =>
     // Filter channels to only show configured ones
     // Meshtastic supports channels 0-7 (8 total)
     const filteredChannels = allChannels.filter(channel => {
+      // Exclude disabled channels (role === 0)
+      if (channel.role === 0) {
+        return false;
+      }
+
       // Always show channel 0 (Primary channel)
       if (channel.id === 0) {
         return true;
@@ -716,7 +721,7 @@ apiRouter.get('/channels', requirePermission('channels', 'read'), (_req, res) =>
         return true;
       }
 
-      // Show channels with a role defined (PRIMARY, SECONDARY, DISABLED)
+      // Show channels with a role defined (PRIMARY, SECONDARY)
       if (channel.role !== null && channel.role !== undefined) {
         return true;
       }
@@ -1717,13 +1722,18 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
         const allChannels = databaseService.getAllChannels();
 
         const filteredChannels = allChannels.filter(channel => {
+          // Exclude disabled channels (role === 0)
+          if (channel.role === 0) {
+            return false;
+          }
+
           // Always show channel 0 (Primary channel)
           if (channel.id === 0) return true;
 
           // Show channels 1-7 if they have a PSK configured (indicating they're in use)
           if (channel.id >= 1 && channel.id <= 7 && channel.psk) return true;
 
-          // Show channels with a role defined (PRIMARY, SECONDARY, DISABLED)
+          // Show channels with a role defined (PRIMARY, SECONDARY)
           if (channel.role !== null && channel.role !== undefined) return true;
 
           return false;
