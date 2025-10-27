@@ -10,12 +10,14 @@ interface AutoAcknowledgeSectionProps {
   channels: Channel[];
   enabledChannels: number[];
   directMessagesEnabled: boolean;
+  useDM: boolean;
   baseUrl: string;
   onEnabledChange: (enabled: boolean) => void;
   onRegexChange: (regex: string) => void;
   onMessageChange: (message: string) => void;
   onChannelsChange: (channels: number[]) => void;
   onDirectMessagesChange: (enabled: boolean) => void;
+  onUseDMChange: (enabled: boolean) => void;
 }
 
 const DEFAULT_MESSAGE = '🤖 Copy, {NUMBER_HOPS} hops at {TIME}';
@@ -27,12 +29,14 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   channels,
   enabledChannels,
   directMessagesEnabled,
+  useDM,
   baseUrl,
   onEnabledChange,
   onRegexChange,
   onMessageChange,
   onChannelsChange,
   onDirectMessagesChange,
+  onUseDMChange,
 }) => {
   const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();
@@ -41,6 +45,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   const [localMessage, setLocalMessage] = useState(message || DEFAULT_MESSAGE);
   const [localEnabledChannels, setLocalEnabledChannels] = useState<number[]>(enabledChannels);
   const [localDirectMessagesEnabled, setLocalDirectMessagesEnabled] = useState(directMessagesEnabled);
+  const [localUseDM, setLocalUseDM] = useState(useDM);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [testMessages, setTestMessages] = useState('test\nTest message\nping\nPING\nHello world\nTESTING 123');
@@ -53,14 +58,15 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     setLocalMessage(message || DEFAULT_MESSAGE);
     setLocalEnabledChannels(enabledChannels);
     setLocalDirectMessagesEnabled(directMessagesEnabled);
-  }, [enabled, regex, message, enabledChannels, directMessagesEnabled]);
+    setLocalUseDM(useDM);
+  }, [enabled, regex, message, enabledChannels, directMessagesEnabled, useDM]);
 
   // Check if any settings have changed
   useEffect(() => {
     const channelsChanged = JSON.stringify(localEnabledChannels.sort()) !== JSON.stringify(enabledChannels.sort());
-    const changed = localEnabled !== enabled || localRegex !== regex || localMessage !== message || channelsChanged || localDirectMessagesEnabled !== directMessagesEnabled;
+    const changed = localEnabled !== enabled || localRegex !== regex || localMessage !== message || channelsChanged || localDirectMessagesEnabled !== directMessagesEnabled || localUseDM !== useDM;
     setHasChanges(changed);
-  }, [localEnabled, localRegex, localMessage, localEnabledChannels, localDirectMessagesEnabled, enabled, regex, message, enabledChannels, directMessagesEnabled]);
+  }, [localEnabled, localRegex, localMessage, localEnabledChannels, localDirectMessagesEnabled, localUseDM, enabled, regex, message, enabledChannels, directMessagesEnabled, useDM]);
 
   // Validate regex pattern for safety
   const validateRegex = (pattern: string): { valid: boolean; error?: string } => {
@@ -167,7 +173,8 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
           autoAckRegex: localRegex,
           autoAckMessage: localMessage,
           autoAckChannels: localEnabledChannels.join(','),
-          autoAckDirectMessages: String(localDirectMessagesEnabled)
+          autoAckDirectMessages: String(localDirectMessagesEnabled),
+          autoAckUseDM: String(localUseDM)
         })
       });
 
@@ -185,6 +192,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
       onMessageChange(localMessage);
       onChannelsChange(localEnabledChannels);
       onDirectMessagesChange(localDirectMessagesEnabled);
+      onUseDMChange(localUseDM);
 
       setHasChanges(false);
       showToast('Settings saved successfully!', 'success');
@@ -312,6 +320,31 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
                 </label>
               </div>
             ))}
+          </div>
+        </div>
+
+        <div className="setting-item" style={{ marginTop: '1.5rem' }}>
+          <label>
+            Response Delivery
+            <span className="setting-description">
+              Control how acknowledgment responses are delivered
+            </span>
+          </label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
+            <input
+              type="checkbox"
+              id="autoAckUseDM"
+              checked={localUseDM}
+              onChange={(e) => setLocalUseDM(e.target.checked)}
+              disabled={!localEnabled}
+              style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
+            />
+            <label htmlFor="autoAckUseDM" style={{ margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed', fontWeight: 'bold' }}>
+              Always respond via Direct Message
+            </label>
+          </div>
+          <div style={{ marginTop: '0.5rem', marginLeft: '1.75rem', fontSize: '0.9rem', color: 'var(--ctp-subtext0)' }}>
+            When enabled, acknowledgments will be sent as DMs regardless of which channel triggered them
           </div>
         </div>
 

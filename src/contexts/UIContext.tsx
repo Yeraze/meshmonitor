@@ -32,6 +32,8 @@ interface UIContextType {
   setAutoAckChannels: React.Dispatch<React.SetStateAction<number[]>>;
   autoAckDirectMessages: boolean;
   setAutoAckDirectMessages: React.Dispatch<React.SetStateAction<boolean>>;
+  autoAckUseDM: boolean;
+  setAutoAckUseDM: React.Dispatch<React.SetStateAction<boolean>>;
   autoAnnounceEnabled: boolean;
   setAutoAnnounceEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   autoAnnounceIntervalHours: number;
@@ -85,6 +87,7 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   const [autoAckMessage, setAutoAckMessage] = useState<string>('🤖 Copy, {NUMBER_HOPS} hops at {TIME}');
   const [autoAckChannels, setAutoAckChannels] = useState<number[]>([]);
   const [autoAckDirectMessages, setAutoAckDirectMessages] = useState<boolean>(false);
+  const [autoAckUseDM, setAutoAckUseDM] = useState<boolean>(false);
   const [autoAnnounceEnabled, setAutoAnnounceEnabled] = useState<boolean>(false);
   const [autoAnnounceIntervalHours, setAutoAnnounceIntervalHours] = useState<number>(6);
   const [autoAnnounceMessage, setAutoAnnounceMessage] = useState<string>('MeshMonitor {VERSION} online for {DURATION} {FEATURES}');
@@ -133,6 +136,8 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
         setAutoAckChannels,
         autoAckDirectMessages,
         setAutoAckDirectMessages,
+        autoAckUseDM,
+        setAutoAckUseDM,
         autoAnnounceEnabled,
         setAutoAnnounceEnabled,
         autoAnnounceIntervalHours,
