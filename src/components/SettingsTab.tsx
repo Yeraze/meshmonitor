@@ -336,6 +336,29 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     }
   };
 
+  const handlePurgeTraceroutes = async () => {
+    const confirmed = window.confirm(
+      'Are you sure you want to reset all traceroutes?\n\n' +
+      'Impact:\n' +
+      '• All saved traceroutes will be deleted\n' +
+      '• All traceroute history will be deleted\n' +
+      '• All route segments (including record holders) will be deleted\n' +
+      '• New traceroutes will continue to be collected\n\n' +
+      'This action cannot be undone!'
+    );
+
+    if (!confirmed) return;
+
+    try {
+      await apiService.purgeTraceroutes();
+      showToast('Traceroutes have been purged. Refreshing...', 'success');
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (error) {
+      logger.error('Error purging traceroutes:', error);
+      showToast('Error purging traceroutes. Please try again.', 'error');
+    }
+  };
+
   const handleRestartContainer = async () => {
     const action = isDocker ? 'restart' : 'shut down';
     const confirmed = window.confirm(
@@ -657,6 +680,19 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               onClick={handlePurgeMessages}
             >
               Purge Messages
+            </button>
+          </div>
+
+          <div className="danger-action">
+            <div className="danger-action-info">
+              <h4>Reset Traceroutes</h4>
+              <p>Removes all saved traceroutes, traceroute history, and route segments (including record holders). New traceroutes will continue to be collected.</p>
+            </div>
+            <button
+              className="danger-button"
+              onClick={handlePurgeTraceroutes}
+            >
+              Reset Traceroutes
             </button>
           </div>
 

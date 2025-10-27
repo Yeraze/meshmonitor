@@ -1,7 +1,14 @@
 # TODOs
 
 ## In Progress
-None
+- Add "Reset Traceroutes" button to Settings Danger Zone
+  - [x] Explore Settings page structure and Danger Zone
+  - [x] Identify traceroute data storage and schemas
+  - [x] Create backend API endpoint to reset traceroutes
+  - [x] Add Reset Traceroutes button to Settings UI
+  - [x] Wire up frontend to call the backend endpoint
+  - [x] Test the reset functionality
+  - Ready for commit and PR
 
 ## Technical Debt / Known Issues
 - Auto-welcome settings validation improvements
