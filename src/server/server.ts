@@ -1123,11 +1123,11 @@ apiRouter.post('/channels/import-config', requirePermission('configuration', 'wr
     }
 
     // Commit all changes (channels + LoRa config) as a single transaction
-    // This will save everything to flash and trigger the reboot
+    // This will save everything to flash and trigger device reboot if needed
     try {
       logger.info(`💾 Committing all configuration changes (${importedChannels.length} channels${loraImported ? ' + LoRa config' : ''})...`);
       await meshtasticManager.commitEditSettings();
-      logger.info(`✅ Configuration changes committed successfully - device will reboot`);
+      logger.info(`✅ Configuration changes committed successfully`);
     } catch (error) {
       logger.error(`❌ Failed to commit configuration changes:`, error);
     }
