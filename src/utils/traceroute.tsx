@@ -43,8 +43,8 @@ export function formatNodeName(nodeNum: number, nodes: DeviceInfo[]): string {
  *
  * @param route - JSON string of intermediate node numbers, or null if failed
  * @param snr - JSON string of SNR values for each hop, or null
- * @param fromNum - Responder/remote node number (path starts here)
- * @param toNum - Requester/local node number (path ends here)
+ * @param fromNum - Starting node number (path starts here)
+ * @param toNum - Ending node number (path ends here)
  * @param nodes - Array of all device information
  * @param distanceUnit - Unit for distance display ('km', 'mi', 'nm')
  * @param options - Optional configuration for highlighting and segment selection
