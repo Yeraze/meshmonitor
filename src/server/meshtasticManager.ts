@@ -1860,7 +1860,7 @@ class MeshtasticManager {
       const nodeData: any = {
         nodeNum: Number(nodeInfo.num),
         nodeId: nodeId,
-        lastHeard: Date.now() / 1000, // Use server time when we received this node info
+        lastHeard: Math.min(nodeInfo.lastHeard || (Date.now() / 1000), Date.now() / 1000), // Cap at current time to prevent future timestamps
         snr: nodeInfo.snr,
         rssi: 0, // Will be updated from mesh packet if available
         hopsAway: nodeInfo.hopsAway !== undefined ? nodeInfo.hopsAway : undefined
@@ -3108,7 +3108,7 @@ class MeshtasticManager {
       altitude: nodeInfo.position?.altitude,
       // Note: Telemetry data (batteryLevel, voltage, etc.) is NOT saved from NodeInfo packets
       // It is only saved from actual TELEMETRY_APP packets in processTelemetryMessageProtobuf()
-      lastHeard: Math.floor(Date.now() / 1000), // Use server time, not node-reported time
+      lastHeard: Math.min(nodeInfo.lastHeard || Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)), // Cap at current time to prevent future timestamps
       snr: nodeInfo.snr,
       rssi: nodeInfo.rssi
     };
