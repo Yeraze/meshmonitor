@@ -3892,10 +3892,11 @@ function App() {
             const fromName = fromNode?.user?.longName || fromNode?.user?.shortName || selectedTrace.fromNodeId;
             const toName = toNode?.user?.longName || toNode?.user?.shortName || selectedTrace.toNodeId;
 
-            // Forward path: requester -> responder (matches Messages page format)
+            // Forward path: responder -> requester (for correct visualization)
             if (routeForward.length >= 0) {
-              // Build path: toNodeNum (requester) → route intermediates → fromNodeNum (responder)
-              const forwardSequence: number[] = [selectedTrace.toNodeNum, ...routeForward, selectedTrace.fromNodeNum];
+              // Build path: fromNodeNum (responder) → route intermediates → toNodeNum (requester)
+              // Use routeBack since it goes from responder toward requester
+              const forwardSequence: number[] = [selectedTrace.fromNodeNum, ...routeBack, selectedTrace.toNodeNum];
               const forwardPositions: [number, number][] = [];
 
               forwardSequence.forEach((nodeNum) => {
@@ -3936,19 +3937,10 @@ function App() {
                           <strong>{fromName}</strong> → <strong>{toName}</strong>
                         </div>
                         <div className="route-usage">
-                          Path: {(() => {
-                            // Swap only the endpoints, keep intermediate hops in order
-                            const displaySequence = [...forwardSequence];
-                            if (displaySequence.length >= 2) {
-                              const temp = displaySequence[0];
-                              displaySequence[0] = displaySequence[displaySequence.length - 1];
-                              displaySequence[displaySequence.length - 1] = temp;
-                            }
-                            return displaySequence.map(num => {
-                              const n = nodes.find(nd => nd.nodeNum === num);
-                              return n?.user?.longName || n?.user?.shortName || `!${num.toString(16)}`;
-                            }).join(' → ');
-                          })()}
+                          Path: {forwardSequence.map(num => {
+                            const n = nodes.find(nd => nd.nodeNum === num);
+                            return n?.user?.longName || n?.user?.shortName || `!${num.toString(16)}`;
+                          }).join(' → ')}
                         </div>
                         {forwardTotalDistanceKm > 0 && (
                           <div className="route-usage">
@@ -3971,10 +3963,10 @@ function App() {
               }
             }
 
-            // Return path: responder -> requester (reverse of forward)
+            // Return path: requester -> responder (using route array)
             if (routeBack.length >= 0) {
-              // Build path: fromNodeNum (responder) → routeBack intermediates → toNodeNum (requester)
-              const backSequence: number[] = [selectedTrace.fromNodeNum, ...routeBack, selectedTrace.toNodeNum];
+              // Build path: toNodeNum (requester) → route intermediates → fromNodeNum (responder)
+              const backSequence: number[] = [selectedTrace.toNodeNum, ...routeForward, selectedTrace.fromNodeNum];
               const backPositions: [number, number][] = [];
 
               backSequence.forEach((nodeNum) => {
@@ -4015,19 +4007,10 @@ function App() {
                           <strong>{toName}</strong> → <strong>{fromName}</strong>
                         </div>
                         <div className="route-usage">
-                          Path: {(() => {
-                            // Swap only the endpoints, keep intermediate hops in order
-                            const displaySequence = [...backSequence];
-                            if (displaySequence.length >= 2) {
-                              const temp = displaySequence[0];
-                              displaySequence[0] = displaySequence[displaySequence.length - 1];
-                              displaySequence[displaySequence.length - 1] = temp;
-                            }
-                            return displaySequence.map(num => {
-                              const n = nodes.find(nd => nd.nodeNum === num);
-                              return n?.user?.longName || n?.user?.shortName || `!${num.toString(16)}`;
-                            }).join(' → ');
-                          })()}
+                          Path: {backSequence.map(num => {
+                            const n = nodes.find(nd => nd.nodeNum === num);
+                            return n?.user?.longName || n?.user?.shortName || `!${num.toString(16)}`;
+                          }).join(' → ')}
                         </div>
                         {backTotalDistanceKm > 0 && (
                           <div className="route-usage">
