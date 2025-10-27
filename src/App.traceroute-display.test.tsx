@@ -31,7 +31,6 @@ describe('Traceroute Display - Endpoint Ordering', () => {
         latitude: 40.0,
         longitude: -75.0,
         altitude: 100,
-        time: Date.now(),
       },
     },
     {
@@ -47,7 +46,6 @@ describe('Traceroute Display - Endpoint Ordering', () => {
         latitude: 40.1,
         longitude: -75.1,
         altitude: 100,
-        time: Date.now(),
       },
     },
     {
@@ -63,7 +61,6 @@ describe('Traceroute Display - Endpoint Ordering', () => {
         latitude: 40.05,
         longitude: -75.05,
         altitude: 200,
-        time: Date.now(),
       },
     },
   ];
