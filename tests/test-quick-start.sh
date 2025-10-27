@@ -319,6 +319,11 @@ fi
 echo -e "${GREEN}✓ PASS${NC}: All configuration requirements verified"
 echo ""
 
+# Allow time for system to settle before messaging test
+echo "Waiting 15 seconds for system to settle..."
+sleep 15
+echo ""
+
 # Test 14: Send message to node and wait for response (with retry)
 echo "Test 14: Send message to Yeraze Station G2 and wait for response"
 TARGET_NODE_ID="a2e4ff4c"
@@ -340,9 +345,9 @@ for ATTEMPT in $(seq 1 $MAX_ATTEMPTS); do
     if [ "$HTTP_CODE" = "200" ]; then
         echo -e "${GREEN}✓${NC} Message sent successfully"
 
-        # Wait up to 60 seconds for a response
-        echo "Waiting up to 60 seconds for response from Yeraze Station G2..."
-        MAX_WAIT=60
+        # Wait up to 10 seconds for a response
+        echo "Waiting up to 10 seconds for response from Yeraze Station G2..."
+        MAX_WAIT=10
         ELAPSED=0
 
         while [ $ELAPSED -lt $MAX_WAIT ]; do
