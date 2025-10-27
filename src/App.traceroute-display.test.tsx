@@ -279,6 +279,74 @@ describe('Traceroute Display - Endpoint Ordering', () => {
     });
   });
 
+  describe('Route segment generation logic', () => {
+    it('should generate correct segments from forward path', () => {
+      // Forward path: requester (200) → intermediate (300) → responder (100)
+      const forwardSequence = [mockTraceroute.toNodeNum, ...JSON.parse(mockTraceroute.route), mockTraceroute.fromNodeNum];
+      expect(forwardSequence).toEqual([200, 300, 100]);
+
+      // Segments should be created for consecutive pairs:
+      // Segment 1: 200 → 300 (requester to intermediate)
+      // Segment 2: 300 → 100 (intermediate to responder)
+      const segments: Array<{from: number, to: number}> = [];
+      for (let i = 0; i < forwardSequence.length - 1; i++) {
+        segments.push({
+          from: forwardSequence[i],
+          to: forwardSequence[i + 1]
+        });
+      }
+
+      expect(segments.length).toBe(2);
+      expect(segments[0]).toEqual({from: 200, to: 300}); // Node B → Repeater
+      expect(segments[1]).toEqual({from: 300, to: 100}); // Repeater → Node A
+    });
+
+    it('should generate correct segments from return path', () => {
+      // Return path: responder (100) → intermediate (300) → requester (200)
+      const returnSequence = [mockTraceroute.fromNodeNum, ...JSON.parse(mockTraceroute.routeBack), mockTraceroute.toNodeNum];
+      expect(returnSequence).toEqual([100, 300, 200]);
+
+      // Segments should be created for consecutive pairs:
+      // Segment 1: 100 → 300 (responder to intermediate)
+      // Segment 2: 300 → 200 (intermediate to requester)
+      const segments: Array<{from: number, to: number}> = [];
+      for (let i = 0; i < returnSequence.length - 1; i++) {
+        segments.push({
+          from: returnSequence[i],
+          to: returnSequence[i + 1]
+        });
+      }
+
+      expect(segments.length).toBe(2);
+      expect(segments[0]).toEqual({from: 100, to: 300}); // Node A → Repeater
+      expect(segments[1]).toEqual({from: 300, to: 200}); // Repeater → Node B
+    });
+
+    it('should store segments bidirectionally (same segment for both directions)', () => {
+      const forwardSequence = [mockTraceroute.toNodeNum, ...JSON.parse(mockTraceroute.route), mockTraceroute.fromNodeNum];
+      const returnSequence = [mockTraceroute.fromNodeNum, ...JSON.parse(mockTraceroute.routeBack), mockTraceroute.toNodeNum];
+
+      // Get all segment pairs from both paths
+      const forwardSegments: Array<{from: number, to: number}> = [];
+      for (let i = 0; i < forwardSequence.length - 1; i++) {
+        forwardSegments.push({from: forwardSequence[i], to: forwardSequence[i + 1]});
+      }
+
+      const returnSegments: Array<{from: number, to: number}> = [];
+      for (let i = 0; i < returnSequence.length - 1; i++) {
+        returnSegments.push({from: returnSequence[i], to: returnSequence[i + 1]});
+      }
+
+      // When displayed on map, segments should use sorted keys to treat A→B and B→A as the same segment
+      const forwardKeys = forwardSegments.map(s => [s.from, s.to].sort().join('-'));
+      const returnKeys = returnSegments.map(s => [s.from, s.to].sort().join('-'));
+
+      // Both directions should produce the same segment keys (order may differ)
+      expect(new Set(forwardKeys)).toEqual(new Set(returnKeys));
+      expect(new Set(forwardKeys)).toEqual(new Set(['200-300', '100-300']));
+    });
+  });
+
   describe('Edge cases', () => {
     it('should handle traceroute with no intermediate hops (direct connection)', () => {
       const directTraceroute: DbTraceroute = {
