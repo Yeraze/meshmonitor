@@ -42,3 +42,6 @@ lib64
 pyvenv.cfg
 include/
 *.har
+
+# Test results
+test-results.md

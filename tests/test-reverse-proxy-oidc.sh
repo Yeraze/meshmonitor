@@ -350,6 +350,11 @@ if [ "$NODE_CONNECTED" = false ]; then
 fi
 echo ""
 
+# Allow time for system to settle before messaging test
+echo "Waiting 15 seconds for system to settle..."
+sleep 15
+echo ""
+
 # Test 12: Send message to node
 echo "Test 12: Send message to Yeraze Station G2"
 TARGET_NODE_ID="a2e4ff4c"
