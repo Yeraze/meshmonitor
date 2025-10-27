@@ -1019,7 +1019,9 @@ apiRouter.post('/channels/encode-url', requirePermission('configuration', 'read'
           frequencyOffset: deviceConfig.lora.frequencyOffset,
           region: deviceConfig.lora.region,
           hopLimit: deviceConfig.lora.hopLimit,
-          txEnabled: deviceConfig.lora.txEnabled,
+          // IMPORTANT: Default txEnabled to true for exported configs
+          // This ensures that when someone imports the config, TX is enabled by default
+          txEnabled: deviceConfig.lora.txEnabled !== undefined ? deviceConfig.lora.txEnabled : true,
           txPower: deviceConfig.lora.txPower,
           channelNum: deviceConfig.lora.channelNum,
           sx126xRxBoostedGain: deviceConfig.lora.sx126xRxBoostedGain,
@@ -1118,7 +1120,16 @@ apiRouter.post('/channels/import-config', requirePermission('configuration', 'wr
     if (decoded.loraConfig) {
       try {
         logger.info(`📥 Importing LoRa config:`, JSON.stringify(decoded.loraConfig, null, 2));
-        await meshtasticManager.setLoRaConfig(decoded.loraConfig);
+
+        // IMPORTANT: Default txEnabled to true if not explicitly set
+        // MeshMonitor users need TX enabled to send messages
+        const loraConfigToImport = {
+          ...decoded.loraConfig,
+          txEnabled: decoded.loraConfig.txEnabled !== undefined ? decoded.loraConfig.txEnabled : true
+        };
+
+        logger.info(`📥 LoRa config with txEnabled defaulted: txEnabled=${loraConfigToImport.txEnabled}`);
+        await meshtasticManager.setLoRaConfig(loraConfigToImport);
         loraImported = true;
         requiresReboot = true; // LoRa config requires reboot when committed
         logger.info(`✅ Imported LoRa config`);
@@ -1250,13 +1261,10 @@ apiRouter.post('/messages/send', requirePermission('messages', 'write'), async (
       destinationNum = parseInt(nodeIdStr, 16);
     }
 
-    // Map Primary channel to channel 0 for mesh network
-    let meshChannel = channel || 0;
-    // In Meshtastic, channel 0 is always the Primary channel
-    // If the user is sending to channel 0, use it directly
-    if (channel === 0) {
-      meshChannel = 0;
-    }
+    // Map channel to mesh network
+    // Channel must be 0-7 for Meshtastic. If undefined or invalid, default to 0 (Primary)
+    let meshChannel = (channel !== undefined && channel >= 0 && channel <= 7) ? channel : 0;
+    logger.info(`📨 Sending message - Received channel: ${channel}, Using meshChannel: ${meshChannel}, Text: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
 
     // Send the message to the mesh network (with optional destination for DMs, replyId, and emoji flag)
     // Note: sendTextMessage() now handles saving the message to the database
@@ -1573,6 +1581,18 @@ apiRouter.get('/connection', optionalAuth(), (_req, res) => {
   } catch (error) {
     logger.error('Error getting connection status:', error);
     res.status(500).json({ error: 'Failed to get connection status' });
+  }
+});
+
+// Check if TX is disabled
+apiRouter.get('/device/tx-status', optionalAuth(), async (_req, res) => {
+  try {
+    const deviceConfig = await meshtasticManager.getDeviceConfig();
+    const txEnabled = deviceConfig?.lora?.txEnabled !== false; // Default to true if undefined
+    res.json({ txEnabled });
+  } catch (error) {
+    logger.error('Error getting TX status:', error);
+    res.status(500).json({ error: 'Failed to get TX status' });
   }
 });
 
@@ -2285,7 +2305,16 @@ apiRouter.post('/config/device', requirePermission('configuration', 'write'), as
 apiRouter.post('/config/lora', requirePermission('configuration', 'write'), async (req, res) => {
   try {
     const config = req.body;
-    await meshtasticManager.setLoRaConfig(config);
+
+    // IMPORTANT: Default txEnabled to true if not explicitly set
+    // MeshMonitor users need TX enabled to send messages
+    const loraConfigToSet = {
+      ...config,
+      txEnabled: config.txEnabled !== undefined ? config.txEnabled : true
+    };
+
+    logger.info(`⚙️ Setting LoRa config with txEnabled defaulted: txEnabled=${loraConfigToSet.txEnabled}`);
+    await meshtasticManager.setLoRaConfig(loraConfigToSet);
     res.json({ success: true, message: 'LoRa configuration sent' });
   } catch (error) {
     logger.error('Error setting LoRa config:', error);

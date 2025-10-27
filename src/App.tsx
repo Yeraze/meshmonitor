@@ -66,6 +66,7 @@ function App() {
   const { showToast } = useToast();
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [isDefaultPassword, setIsDefaultPassword] = useState(false);
+  const [isTxDisabled, setIsTxDisabled] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [latestVersion, setLatestVersion] = useState('');
   const [releaseUrl, setReleaseUrl] = useState('');
@@ -670,6 +671,26 @@ function App() {
     };
 
     checkDefaultPassword();
+  }, [baseUrl]);
+
+  // Check if TX is disabled
+  useEffect(() => {
+    const checkTxStatus = async () => {
+      try {
+        const response = await authFetch(`${baseUrl}/api/device/tx-status`);
+        if (response.ok) {
+          const data = await response.json();
+          setIsTxDisabled(!data.txEnabled);
+        }
+      } catch (error) {
+        logger.error('Error checking TX status:', error);
+      }
+    };
+
+    checkTxStatus();
+    // Recheck TX status periodically (every 30 seconds)
+    const interval = setInterval(checkTxStatus, 30000);
+    return () => clearInterval(interval);
   }, [baseUrl]);
 
   // Check for version updates
@@ -4118,9 +4139,18 @@ function App() {
         </div>
       )}
 
+      {/* TX Disabled Warning Banner */}
+      {isTxDisabled && (
+        <div className="warning-banner" style={{
+          top: isDefaultPassword ? 'calc(var(--header-height) + var(--banner-height))' : 'var(--header-height)'
+        }}>
+          ⚠️ Transmit Disabled: Your device cannot send messages. TX is currently disabled in the LoRa configuration. Enable it via the Meshtastic app or re-import your configuration.
+        </div>
+      )}
+
       {updateAvailable && (
         <div className="update-banner" style={{
-          top: isDefaultPassword ? 'calc(var(--header-height) + var(--banner-height))' : 'var(--header-height)'
+          top: (isDefaultPassword && isTxDisabled) ? 'calc(var(--header-height) + var(--banner-height) + var(--banner-height))' : (isDefaultPassword || isTxDisabled) ? 'calc(var(--header-height) + var(--banner-height))' : 'var(--header-height)'
         }}>
           <div style={{ flex: 1, textAlign: 'center' }}>
             🔔 Update Available: Version {latestVersion} is now available.{' '}
