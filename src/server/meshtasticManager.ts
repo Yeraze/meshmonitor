@@ -1643,8 +1643,9 @@ class MeshtasticManager {
 
       // Calculate and store route segment distances, and estimate positions for nodes without GPS
       try {
-        // Build the full route path: toNode -> intermediates -> fromNode
-        const fullRoute = [toNum, ...route, fromNum];
+        // Build the full route path: fromNode (responder) -> route intermediates -> toNode (requester)
+        // Use route because it contains intermediate hops from fromNum to toNum
+        const fullRoute = [fromNum, ...route, toNum];
 
         // Calculate distance for each consecutive pair of nodes
         for (let i = 0; i < fullRoute.length - 1; i++) {
@@ -1688,12 +1689,12 @@ class MeshtasticManager {
         }
 
         // Estimate positions for intermediate nodes without GPS
-        // Process forward route
+        // Process forward route (responder -> requester)
         this.estimateIntermediatePositions(fullRoute, timestamp);
 
-        // Process return route if it exists
+        // Process return route if it exists (requester -> responder)
         if (routeBack.length > 0) {
-          const fullReturnRoute = [fromNum, ...routeBack, toNum];
+          const fullReturnRoute = [toNum, ...routeBack, fromNum];
           this.estimateIntermediatePositions(fullReturnRoute, timestamp);
         }
       } catch (error) {

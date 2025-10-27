@@ -3254,10 +3254,10 @@ function App() {
                     return (
                       <div className="traceroute-info">
                         <div className="traceroute-route">
-                          <strong>→ Forward:</strong> {formatTracerouteRoute(recentTrace.route, recentTrace.snrTowards, recentTrace.toNodeNum, recentTrace.fromNodeNum, nodes, distanceUnit)}
+                          <strong>→ Forward:</strong> {formatTracerouteRoute(recentTrace.route, recentTrace.snrTowards, recentTrace.fromNodeNum, recentTrace.toNodeNum, nodes, distanceUnit)}
                         </div>
                         <div className="traceroute-route">
-                          <strong>← Return:</strong> {formatTracerouteRoute(recentTrace.routeBack, recentTrace.snrBack, recentTrace.fromNodeNum, recentTrace.toNodeNum, nodes, distanceUnit)}
+                          <strong>← Return:</strong> {formatTracerouteRoute(recentTrace.routeBack, recentTrace.snrBack, recentTrace.toNodeNum, recentTrace.fromNodeNum, nodes, distanceUnit)}
                         </div>
                         <div className="traceroute-age">Last traced {ageStr}</div>
                       </div>
@@ -3547,8 +3547,8 @@ function App() {
           ? JSON.parse(tr.snrTowards)
           : [];
         const timestamp = tr.timestamp || tr.createdAt || Date.now();
-        // Build forward path: requester -> route -> responder (matches Messages page format)
-        const forwardSequence: number[] = [tr.toNodeNum, ...routeForward, tr.fromNodeNum];
+        // Build forward path: responder -> route -> requester (fromNodeNum -> toNodeNum)
+        const forwardSequence: number[] = [tr.fromNodeNum, ...routeForward, tr.toNodeNum];
         const forwardPositions: Array<{nodeNum: number; pos: [number, number]}> = [];
 
         // Build forward sequence with positions
@@ -3591,8 +3591,8 @@ function App() {
         const snrBack = tr.snrBack && tr.snrBack !== 'null' && tr.snrBack !== ''
           ? JSON.parse(tr.snrBack)
           : [];
-        // Build return path: responder -> routeBack -> requester (reverse of forward)
-        const backSequence: number[] = [tr.fromNodeNum, ...routeBack, tr.toNodeNum];
+        // Build return path: requester -> routeBack -> responder (toNodeNum -> fromNodeNum)
+        const backSequence: number[] = [tr.toNodeNum, ...routeBack, tr.fromNodeNum];
         const backPositions: Array<{nodeNum: number; pos: [number, number]}> = [];
 
         // Build back sequence with positions
@@ -3892,10 +3892,10 @@ function App() {
             const fromName = fromNode?.user?.longName || fromNode?.user?.shortName || selectedTrace.fromNodeId;
             const toName = toNode?.user?.longName || toNode?.user?.shortName || selectedTrace.toNodeId;
 
-            // Forward path: requester -> responder (matches Messages page format)
+            // Forward path: responder -> requester (for correct visualization)
             if (routeForward.length >= 0) {
-              // Build path: toNodeNum (requester) → route intermediates → fromNodeNum (responder)
-              const forwardSequence: number[] = [selectedTrace.toNodeNum, ...routeForward, selectedTrace.fromNodeNum];
+              // Build path: fromNodeNum (responder) → route intermediates → toNodeNum (requester)
+              const forwardSequence: number[] = [selectedTrace.fromNodeNum, ...routeForward, selectedTrace.toNodeNum];
               const forwardPositions: [number, number][] = [];
 
               forwardSequence.forEach((nodeNum) => {
@@ -3933,7 +3933,7 @@ function App() {
                       <div className="route-popup">
                         <h4>Forward Path</h4>
                         <div className="route-endpoints">
-                          <strong>{toName}</strong> → <strong>{fromName}</strong>
+                          <strong>{fromName}</strong> → <strong>{toName}</strong>
                         </div>
                         <div className="route-usage">
                           Path: {forwardSequence.map(num => {
@@ -3962,10 +3962,10 @@ function App() {
               }
             }
 
-            // Return path: responder -> requester (reverse of forward)
+            // Return path: requester -> responder (using routeBack array)
             if (routeBack.length >= 0) {
-              // Build path: fromNodeNum (responder) → routeBack intermediates → toNodeNum (requester)
-              const backSequence: number[] = [selectedTrace.fromNodeNum, ...routeBack, selectedTrace.toNodeNum];
+              // Build path: toNodeNum (requester) → routeBack intermediates → fromNodeNum (responder)
+              const backSequence: number[] = [selectedTrace.toNodeNum, ...routeBack, selectedTrace.fromNodeNum];
               const backPositions: [number, number][] = [];
 
               backSequence.forEach((nodeNum) => {
@@ -4003,7 +4003,7 @@ function App() {
                       <div className="route-popup">
                         <h4>Return Path</h4>
                         <div className="route-endpoints">
-                          <strong>{fromName}</strong> → <strong>{toName}</strong>
+                          <strong>{toName}</strong> → <strong>{fromName}</strong>
                         </div>
                         <div className="route-usage">
                           Path: {backSequence.map(num => {
