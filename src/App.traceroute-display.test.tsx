@@ -6,13 +6,49 @@ import { DbTraceroute } from './services/database';
  * Traceroute Display Tests
  *
  * Tests that traceroute Forward/Return paths are displayed correctly with proper
- * endpoint ordering in all four locations:
+ * endpoint ordering in all five locations:
  * 1. Messages page - Top panel (recent traceroute)
  * 2. Messages page - Traceroute History window
- * 3. Map - Traceroute popup (clicking red line)
- * 4. Map - RouteSegmentTraceroutesModal (clicking segment)
+ * 3. Map - Red traceroute popup (clicking red visualization line)
+ * 4. Map - Purple segment visualization (showPaths enabled)
+ * 5. Map - RouteSegmentTraceroutesModal (clicking purple segment)
  *
- * This test addresses issue #361 where endpoints were swapped.
+ * This test addresses issue #361 where endpoints were swapped in multiple locations.
+ *
+ * **CRITICAL PATH BUILDING RULES:**
+ *
+ * Data Model:
+ * - fromNodeNum/fromNodeId = Responder (remote node that responded to traceroute request)
+ * - toNodeNum/toNodeId = Requester (local node that initiated traceroute request)
+ * - route = Array of intermediate node numbers for path FROM responder TO requester
+ * - routeBack = Array of intermediate node numbers for path FROM requester TO responder
+ * - snrTowards = SNR values for forward path hops
+ * - snrBack = SNR values for return path hops
+ *
+ * Path Building (MUST be followed in all locations):
+ * - Forward path: [fromNodeNum, ...route, toNodeNum] = responder → requester (Node A → Node B)
+ * - Return path: [toNodeNum, ...routeBack, fromNodeNum] = requester → responder (Node B → Node A)
+ *
+ * Display Locations:
+ * 1. Messages page (App.tsx ~3257, ~3260):
+ *    - Forward: formatTracerouteRoute(route, snrTowards, fromNodeNum, toNodeNum)
+ *    - Return: formatTracerouteRoute(routeBack, snrBack, toNodeNum, fromNodeNum)
+ *
+ * 2. Red traceroute visualization (App.tsx ~3898, ~3968):
+ *    - Forward: [fromNodeNum, ...routeForward, toNodeNum]
+ *    - Return: [toNodeNum, ...routeBack, fromNodeNum]
+ *
+ * 3. Purple segment visualization (App.tsx ~3551, ~3595):
+ *    - Forward: [fromNodeNum, ...routeForward, toNodeNum]
+ *    - Return: [toNodeNum, ...routeBack, fromNodeNum]
+ *
+ * 4. Route segment database storage (meshtasticManager.ts ~1648, ~1697):
+ *    - Forward: [fromNum, ...route, toNum]
+ *    - Return: [toNum, ...routeBack, fromNum]
+ *
+ * 5. RouteSegmentTraceroutesModal (RouteSegmentTraceroutesModal.tsx ~127, ~146):
+ *    - Forward: formatTracerouteRoute(route, snrTowards, fromNodeNum, toNodeNum)
+ *    - Return: formatTracerouteRoute(routeBack, snrBack, toNodeNum, fromNodeNum)
  */
 
 describe('Traceroute Display - Endpoint Ordering', () => {
@@ -278,13 +314,13 @@ describe('Traceroute Display - Endpoint Ordering', () => {
 
   describe('Route segment generation logic', () => {
     it('should generate correct segments from forward path', () => {
-      // Forward path: requester (200) → intermediate (300) → responder (100)
-      const forwardSequence = [mockTraceroute.toNodeNum, ...JSON.parse(mockTraceroute.route), mockTraceroute.fromNodeNum];
-      expect(forwardSequence).toEqual([200, 300, 100]);
+      // Forward path: responder (100) → intermediate (300) → requester (200)
+      const forwardSequence = [mockTraceroute.fromNodeNum, ...JSON.parse(mockTraceroute.route), mockTraceroute.toNodeNum];
+      expect(forwardSequence).toEqual([100, 300, 200]);
 
       // Segments should be created for consecutive pairs:
-      // Segment 1: 200 → 300 (requester to intermediate)
-      // Segment 2: 300 → 100 (intermediate to responder)
+      // Segment 1: 100 → 300 (responder to intermediate)
+      // Segment 2: 300 → 200 (intermediate to requester)
       const segments: Array<{from: number, to: number}> = [];
       for (let i = 0; i < forwardSequence.length - 1; i++) {
         segments.push({
@@ -294,18 +330,18 @@ describe('Traceroute Display - Endpoint Ordering', () => {
       }
 
       expect(segments.length).toBe(2);
-      expect(segments[0]).toEqual({from: 200, to: 300}); // Node B → Repeater
-      expect(segments[1]).toEqual({from: 300, to: 100}); // Repeater → Node A
+      expect(segments[0]).toEqual({from: 100, to: 300}); // Node A → Repeater
+      expect(segments[1]).toEqual({from: 300, to: 200}); // Repeater → Node B
     });
 
     it('should generate correct segments from return path', () => {
-      // Return path: responder (100) → intermediate (300) → requester (200)
-      const returnSequence = [mockTraceroute.fromNodeNum, ...JSON.parse(mockTraceroute.routeBack), mockTraceroute.toNodeNum];
-      expect(returnSequence).toEqual([100, 300, 200]);
+      // Return path: requester (200) → intermediate (300) → responder (100)
+      const returnSequence = [mockTraceroute.toNodeNum, ...JSON.parse(mockTraceroute.routeBack), mockTraceroute.fromNodeNum];
+      expect(returnSequence).toEqual([200, 300, 100]);
 
       // Segments should be created for consecutive pairs:
-      // Segment 1: 100 → 300 (responder to intermediate)
-      // Segment 2: 300 → 200 (intermediate to requester)
+      // Segment 1: 200 → 300 (requester to intermediate)
+      // Segment 2: 300 → 100 (intermediate to responder)
       const segments: Array<{from: number, to: number}> = [];
       for (let i = 0; i < returnSequence.length - 1; i++) {
         segments.push({
@@ -315,13 +351,13 @@ describe('Traceroute Display - Endpoint Ordering', () => {
       }
 
       expect(segments.length).toBe(2);
-      expect(segments[0]).toEqual({from: 100, to: 300}); // Node A → Repeater
-      expect(segments[1]).toEqual({from: 300, to: 200}); // Repeater → Node B
+      expect(segments[0]).toEqual({from: 200, to: 300}); // Node B → Repeater
+      expect(segments[1]).toEqual({from: 300, to: 100}); // Repeater → Node A
     });
 
     it('should store segments bidirectionally (same segment for both directions)', () => {
-      const forwardSequence = [mockTraceroute.toNodeNum, ...JSON.parse(mockTraceroute.route), mockTraceroute.fromNodeNum];
-      const returnSequence = [mockTraceroute.fromNodeNum, ...JSON.parse(mockTraceroute.routeBack), mockTraceroute.toNodeNum];
+      const forwardSequence = [mockTraceroute.fromNodeNum, ...JSON.parse(mockTraceroute.route), mockTraceroute.toNodeNum];
+      const returnSequence = [mockTraceroute.toNodeNum, ...JSON.parse(mockTraceroute.routeBack), mockTraceroute.fromNodeNum];
 
       // Get all segment pairs from both paths
       const forwardSegments: Array<{from: number, to: number}> = [];
@@ -341,6 +377,94 @@ describe('Traceroute Display - Endpoint Ordering', () => {
       // Both directions should produce the same segment keys (order may differ)
       expect(new Set(forwardKeys)).toEqual(new Set(returnKeys));
       expect(new Set(forwardKeys)).toEqual(new Set(['200-300', '100-300']));
+    });
+  });
+
+  describe('Purple segment visualization (map showPaths)', () => {
+    it('should build forward path correctly for purple segments', () => {
+      // This matches the logic in App.tsx lines 3550-3551
+      const routeForward = JSON.parse(mockTraceroute.route);
+      const forwardSequence = [mockTraceroute.fromNodeNum, ...routeForward, mockTraceroute.toNodeNum];
+
+      // Forward path goes: responder (100) → intermediate (300) → requester (200)
+      expect(forwardSequence).toEqual([100, 300, 200]);
+      expect(forwardSequence[0]).toBe(mockTraceroute.fromNodeNum); // Responder
+      expect(forwardSequence[forwardSequence.length - 1]).toBe(mockTraceroute.toNodeNum); // Requester
+    });
+
+    it('should build return path correctly for purple segments', () => {
+      // This matches the logic in App.tsx lines 3594-3595
+      const routeBack = JSON.parse(mockTraceroute.routeBack);
+      const backSequence = [mockTraceroute.toNodeNum, ...routeBack, mockTraceroute.fromNodeNum];
+
+      // Return path goes: requester (200) → intermediate (300) → responder (100)
+      expect(backSequence).toEqual([200, 300, 100]);
+      expect(backSequence[0]).toBe(mockTraceroute.toNodeNum); // Requester
+      expect(backSequence[backSequence.length - 1]).toBe(mockTraceroute.fromNodeNum); // Responder
+    });
+
+    it('should create purple segments between consecutive nodes in forward path', () => {
+      const routeForward = JSON.parse(mockTraceroute.route);
+      const forwardSequence = [mockTraceroute.fromNodeNum, ...routeForward, mockTraceroute.toNodeNum];
+
+      // Segments are created for each consecutive pair
+      const purpleSegments: Array<{from: number, to: number}> = [];
+      for (let i = 0; i < forwardSequence.length - 1; i++) {
+        purpleSegments.push({
+          from: forwardSequence[i],
+          to: forwardSequence[i + 1]
+        });
+      }
+
+      expect(purpleSegments).toEqual([
+        {from: 100, to: 300}, // Responder → Repeater
+        {from: 300, to: 200}  // Repeater → Requester
+      ]);
+    });
+
+    it('should create purple segments between consecutive nodes in return path', () => {
+      const routeBack = JSON.parse(mockTraceroute.routeBack);
+      const backSequence = [mockTraceroute.toNodeNum, ...routeBack, mockTraceroute.fromNodeNum];
+
+      // Segments are created for each consecutive pair
+      const purpleSegments: Array<{from: number, to: number}> = [];
+      for (let i = 0; i < backSequence.length - 1; i++) {
+        purpleSegments.push({
+          from: backSequence[i],
+          to: backSequence[i + 1]
+        });
+      }
+
+      expect(purpleSegments).toEqual([
+        {from: 200, to: 300}, // Requester → Repeater
+        {from: 300, to: 100}  // Repeater → Responder
+      ]);
+    });
+
+    it('should use sorted keys for purple segment deduplication', () => {
+      // Purple segments use sorted keys so A→B and B→A are treated as the same segment
+      const routeForward = JSON.parse(mockTraceroute.route);
+      const routeBack = JSON.parse(mockTraceroute.routeBack);
+      const forwardSequence = [mockTraceroute.fromNodeNum, ...routeForward, mockTraceroute.toNodeNum];
+      const backSequence = [mockTraceroute.toNodeNum, ...routeBack, mockTraceroute.fromNodeNum];
+
+      // Collect all segments
+      const allSegments: Array<{from: number, to: number}> = [];
+      for (let i = 0; i < forwardSequence.length - 1; i++) {
+        allSegments.push({from: forwardSequence[i], to: forwardSequence[i + 1]});
+      }
+      for (let i = 0; i < backSequence.length - 1; i++) {
+        allSegments.push({from: backSequence[i], to: backSequence[i + 1]});
+      }
+
+      // Create sorted keys for deduplication
+      const segmentKeys = allSegments.map(s => [s.from, s.to].sort().join('-'));
+      const uniqueKeys = new Set(segmentKeys);
+
+      // Even though we have 4 segments total (2 forward + 2 return),
+      // they should deduplicate to 2 unique bidirectional segments
+      expect(uniqueKeys.size).toBe(2);
+      expect(uniqueKeys).toEqual(new Set(['100-300', '200-300']));
     });
   });
 
