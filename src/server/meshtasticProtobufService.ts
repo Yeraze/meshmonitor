@@ -137,15 +137,17 @@ export class MeshtasticProtobufService {
 
       // Create the MeshPacket
       const MeshPacket = root.lookupType('meshtastic.MeshPacket');
+      // Ensure channel is valid (0-7) for Meshtastic, default to 0 if invalid
+      const validChannel = (channel !== undefined && channel >= 0 && channel <= 7) ? channel : 0;
       const meshPacket = MeshPacket.create({
         id: messageId,
         to: destination || 0xFFFFFFFF, // Broadcast if no destination
-        channel: channel || 0,
+        channel: validChannel,
         decoded: dataMessage,
         wantAck: true
       });
 
-      logger.debug(`📤 Sending message with ID: ${messageId}`);
+      logger.debug(`📤 Creating MeshPacket - ID: ${messageId}, to: ${(meshPacket as any).to.toString(16)}, channel: ${validChannel}, wantAck: ${(meshPacket as any).wantAck}`);
 
       // Create the ToRadio message
       const ToRadio = root.lookupType('meshtastic.ToRadio');
