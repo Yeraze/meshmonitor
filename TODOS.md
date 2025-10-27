@@ -1,14 +1,7 @@
 # TODOs
 
 ## In Progress
-- Add "Reset Traceroutes" button to Settings Danger Zone
-  - [x] Explore Settings page structure and Danger Zone
-  - [x] Identify traceroute data storage and schemas
-  - [x] Create backend API endpoint to reset traceroutes
-  - [x] Add Reset Traceroutes button to Settings UI
-  - [x] Wire up frontend to call the backend endpoint
-  - [x] Test the reset functionality
-  - Ready for commit and PR
+None
 
 ## Technical Debt / Known Issues
 - Auto-welcome settings validation improvements
@@ -27,6 +20,16 @@
     - Location: tests/ directory (create new test file)
 
 ## Completed
+- Reset Traceroutes button (PR #362)
+  - [x] Explore Settings page structure and Danger Zone
+  - [x] Identify traceroute data storage and schemas (traceroutes and route_segments tables)
+  - [x] Create backend API endpoint POST /api/purge/traceroutes with admin access
+  - [x] Add purgeAllTraceroutes() method to database service
+  - [x] Add Reset Traceroutes button to Settings Danger Zone UI
+  - [x] Wire up frontend API service with CSRF token handling
+  - [x] Test functionality with all system tests passing
+  - [x] Create commit and pull request
+  - Impact: Admins can now reset all traceroute data independently while preserving node information
 - Node lastHeard timestamp fix
   - [x] Identified issue: processNodeInfoProtobuf and processNodeInfo were using server time instead of node's lastHeard from protobuf
   - [x] Root cause: All nodes got same timestamp when nodelist was downloaded, not reflecting when each node was actually last heard
