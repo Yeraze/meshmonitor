@@ -20,6 +20,14 @@ None
     - Location: tests/ directory (create new test file)
 
 ## Completed
+- Node lastHeard timestamp fix
+  - [x] Identified issue: processNodeInfoProtobuf and processNodeInfo were using server time instead of node's lastHeard from protobuf
+  - [x] Root cause: All nodes got same timestamp when nodelist was downloaded, not reflecting when each node was actually last heard
+  - [x] Fixed processNodeInfoProtobuf (line 1863) to use nodeInfo.lastHeard from protobuf with fallback to server time
+  - [x] Fixed legacy processNodeInfo function (line 3111) to use nodeInfo.lastHeard with fallback to server time
+  - [x] Added Math.min() cap to prevent future timestamps from being stored (handles nodes with incorrect time)
+  - [x] Built and deployed fix to Docker container
+  - Impact: Each node now shows its actual last heard time, not the time of the last nodelist download, with protection against future timestamps
 - Traceroute utility refactoring
   - [x] Fixed array mutation bug in traceroute.tsx using immutable Set-based tracking instead of splice()
   - [x] Fixed SNR index calculation to use correct indices from unmutated arrays
