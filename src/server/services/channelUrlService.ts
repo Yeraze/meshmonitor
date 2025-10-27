@@ -218,7 +218,26 @@ class ChannelUrlService {
 
       // Add LoRa config if provided
       if (loraConfig) {
-        channelSetData.loraConfig = LoRaConfig.create(loraConfig);
+        // Build the LoRa config object, filtering out undefined values
+        // but keeping values that are explicitly 0 or false
+        const loraConfigToEncode: any = {};
+
+        // Always include these if they're defined (even if 0 or false)
+        if (loraConfig.usePreset !== undefined) loraConfigToEncode.usePreset = loraConfig.usePreset;
+        if (loraConfig.modemPreset !== undefined) loraConfigToEncode.modemPreset = loraConfig.modemPreset;
+        if (loraConfig.bandwidth !== undefined) loraConfigToEncode.bandwidth = loraConfig.bandwidth;
+        if (loraConfig.spreadFactor !== undefined) loraConfigToEncode.spreadFactor = loraConfig.spreadFactor;
+        if (loraConfig.codingRate !== undefined) loraConfigToEncode.codingRate = loraConfig.codingRate;
+        if (loraConfig.frequencyOffset !== undefined) loraConfigToEncode.frequencyOffset = loraConfig.frequencyOffset;
+        if (loraConfig.region !== undefined) loraConfigToEncode.region = loraConfig.region;
+        if (loraConfig.hopLimit !== undefined) loraConfigToEncode.hopLimit = loraConfig.hopLimit;
+        if (loraConfig.txEnabled !== undefined) loraConfigToEncode.txEnabled = loraConfig.txEnabled;
+        if (loraConfig.txPower !== undefined) loraConfigToEncode.txPower = loraConfig.txPower;
+        if (loraConfig.channelNum !== undefined) loraConfigToEncode.channelNum = loraConfig.channelNum;
+        if (loraConfig.sx126xRxBoostedGain !== undefined) loraConfigToEncode.sx126xRxBoostedGain = loraConfig.sx126xRxBoostedGain;
+        if (loraConfig.configOkToMqtt !== undefined) loraConfigToEncode.configOkToMqtt = loraConfig.configOkToMqtt;
+
+        channelSetData.loraConfig = LoRaConfig.create(loraConfigToEncode);
       }
 
       const channelSet = ChannelSet.create(channelSetData);

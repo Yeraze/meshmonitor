@@ -134,6 +134,11 @@ if [ "$NODE_CONNECTED" = false ]; then
     echo -e "${RED}✗ FAIL${NC}: Node connection timeout"
     exit 1
 fi
+
+# Wait for things to settle after connection
+echo "Waiting 15 seconds for connection to stabilize..."
+sleep 15
+echo -e "${GREEN}✓${NC} Connection stabilized"
 echo ""
 
 # Test 3: Get CSRF token and login
