@@ -796,10 +796,21 @@ function App() {
   // Open popup for selected node
   useEffect(() => {
     if (selectedNodeId) {
-      const marker = markerRefs.current.get(selectedNodeId);
-      if (marker) {
-        marker.openPopup();
-      }
+      // Delay opening popup to ensure MapCenterController completes first
+      // This prevents competing pan operations
+      const timer = setTimeout(() => {
+        const marker = markerRefs.current.get(selectedNodeId);
+        if (marker) {
+          // Open popup without autopanning - let MapCenterController handle positioning
+          const popup = marker.getPopup();
+          if (popup) {
+            popup.options.autoPan = false;
+          }
+          marker.openPopup();
+        }
+      }, 100); // Small delay to let MapCenterController start
+
+      return () => clearTimeout(timer);
     }
   }, [selectedNodeId]);
 
