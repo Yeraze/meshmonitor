@@ -1575,10 +1575,16 @@ apiRouter.get('/telemetry/available/nodes', requirePermission('info', 'read'), (
 });
 
 // Connection status endpoint
-apiRouter.get('/connection', optionalAuth(), (_req, res) => {
+apiRouter.get('/connection', optionalAuth(), (req, res) => {
   try {
     const status = meshtasticManager.getConnectionStatus();
-    res.json(status);
+    // Hide nodeIp from anonymous users
+    if (!req.session.userId) {
+      const { nodeIp, ...statusWithoutNodeIp } = status;
+      res.json(statusWithoutNodeIp);
+    } else {
+      res.json(status);
+    }
   } catch (error) {
     logger.error('Error getting connection status:', error);
     res.status(500).json({ error: 'Failed to get connection status' });
@@ -1613,7 +1619,14 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
 
     // 1. Connection status (always available)
     try {
-      result.connection = meshtasticManager.getConnectionStatus();
+      const connectionStatus = meshtasticManager.getConnectionStatus();
+      // Hide nodeIp from anonymous users
+      if (!req.session.userId) {
+        const { nodeIp, ...statusWithoutNodeIp } = connectionStatus;
+        result.connection = statusWithoutNodeIp;
+      } else {
+        result.connection = connectionStatus;
+      }
     } catch (error) {
       logger.error('Error getting connection status in poll:', error);
       result.connection = { error: 'Failed to get connection status' };
