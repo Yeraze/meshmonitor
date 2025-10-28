@@ -493,8 +493,6 @@ function App() {
         signal: controller.signal,
       });
 
-      clearTimeout(timeoutId);
-
       // Handle 403 CSRF errors with automatic token refresh and retry
       if (response.status === 403 && retryCount < 1) {
         if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
@@ -517,11 +515,15 @@ function App() {
 
       return response;
     } catch (error) {
-      clearTimeout(timeoutId);
-      if (error instanceof Error && error.name === 'AbortError') {
+      // Check for AbortError from both Error and DOMException for browser compatibility
+      if ((error instanceof DOMException && error.name === 'AbortError') ||
+          (error instanceof Error && error.name === 'AbortError')) {
         throw new Error(`Request timeout after ${timeoutMs}ms`);
       }
       throw error;
+    } finally {
+      // Always clear timeout to prevent memory leaks
+      clearTimeout(timeoutId);
     }
   };
 
