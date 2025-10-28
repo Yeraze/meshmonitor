@@ -20,7 +20,13 @@ class YAMLGenerator {
     const lines: string[] = [];
     const currentIndent = this.indent.repeat(indentLevel);
 
-    for (const [key, value] of Object.entries(obj)) {
+    // Sort keys alphabetically for nested objects (indentLevel > 0)
+    // Top level (indentLevel === 0) preserves insertion order for intentional field ordering
+    const entries = indentLevel > 0
+      ? Object.entries(obj).sort(([a], [b]) => a.localeCompare(b))
+      : Object.entries(obj);
+
+    for (const [key, value] of entries) {
       if (value === null || value === undefined) {
         continue; // Skip null/undefined values
       }
