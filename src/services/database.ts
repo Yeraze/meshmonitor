@@ -18,6 +18,7 @@ import { migration as notificationPreferencesMigration } from '../server/migrati
 import { migration as notifyOnEmojiMigration } from '../server/migrations/010_add_notify_on_emoji.js';
 import { migration as packetLogMigration } from '../server/migrations/011_add_packet_log.js';
 import { migration as channelRoleMigration } from '../server/migrations/012_add_channel_role_and_position.js';
+import { migration as backupTablesMigration } from '../server/migrations/013_add_backup_tables.js';
 
 // Configuration constants for traceroute history
 const TRACEROUTE_HISTORY_LIMIT = 50;
@@ -225,6 +226,7 @@ class DatabaseService {
     this.runNotifyOnEmojiMigration();
     this.runPacketLogMigration();
     this.runChannelRoleMigration();
+    this.runBackupTablesMigration();
     this.ensureAutomationDefaults();
     this.isInitialized = true;
   }
@@ -509,6 +511,26 @@ class DatabaseService {
       logger.debug('✅ Channel role migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run channel role migration:', error);
+      throw error;
+    }
+  }
+
+  private runBackupTablesMigration(): void {
+    try {
+      const migrationKey = 'migration_013_add_backup_tables';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Backup tables migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 013: Add backup tables...');
+      backupTablesMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Backup tables migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run backup tables migration:', error);
       throw error;
     }
   }

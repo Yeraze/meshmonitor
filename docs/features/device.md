@@ -598,8 +598,271 @@ All configuration changes require clicking the "Save" button in each section. Mo
 - Verify the frequency is legal in your location
 - Check that modem preset is compatible
 
+## Device Configuration Backup
+
+MeshMonitor provides comprehensive backup functionality that exports your complete device configuration in a format fully compatible with the official Meshtastic CLI `--export-config` command.
+
+### What Gets Backed Up
+
+The backup export includes your complete device configuration:
+
+- **Device Settings**: Node identity, role, timezone, broadcast intervals
+- **LoRa Radio**: Modem preset, region, bandwidth, spreading factor, coding rate, hop limit, TX power
+- **Position**: GPS settings, broadcast intervals, smart position, fixed position coordinates
+- **Power**: Battery management, sleep settings, shutdown behavior
+- **Network**: WiFi credentials, Bluetooth settings
+- **Security**: Device keys (encrypted)
+- **MQTT**: Broker settings, encryption, topics, credentials
+- **Module Configuration**: All enabled modules (telemetry, neighbor info, canned messages, detection sensor, etc.)
+- **Channel Configuration**: All channels with encryption keys (encoded in channel URL)
+
+### Backup Features
+
+#### Automated Backups
+
+MeshMonitor can automatically create backups on a daily schedule:
+
+1. Navigate to **Settings** → **Backup**
+2. Enable **Automated Backups**
+3. Set your preferred backup time (UTC)
+4. Configure retention (how many backups to keep)
+
+Automated backups are stored in the `/data/backups/` directory with filenames in the format:
+```
+{nodeId}-{timestamp}.yaml
+```
+
+Example: `43588558-2025-10-28-12-34-18.yaml`
+
+#### Manual Backups
+
+To create an on-demand backup:
+
+1. Navigate to the **Configuration** tab
+2. Click the **Backup** button in the top-right corner
+3. Choose whether to save to disk or just download
+4. The backup file will be downloaded to your computer
+
+### Backup File Format
+
+Backups are saved in YAML format and are fully compatible with the official Meshtastic CLI. The format matches the output of:
+
+```bash
+meshtastic --export-config output.yaml
+```
+
+This means you can use MeshMonitor backups interchangeably with backups created by the official Meshtastic tools.
+
+Example backup structure:
+
+```yaml
+# start of Meshtastic configure yaml
+channel_url: https://meshtastic.org/e/#ChASAQE...
+config:
+  bluetooth:
+    enabled: false
+    fixedPin: 123456
+  device:
+    nodeInfoBroadcastSecs: 10800
+    role: CLIENT_MUTE
+    tzdef: EST5EDT,M3.2.0/2:00:00,M11.1.0/2:00:00
+  lora:
+    modemPreset: MEDIUM_FAST
+    region: US
+    hopLimit: 5
+  position:
+    fixedPosition: true
+    positionBroadcastSecs: 1800
+location:
+  lat: 26.333431
+  lon: -80.267695
+  alt: 5.0
+module_config:
+  mqtt:
+    enabled: true
+    address: mqtt.example.com
+owner: My Node Name
+owner_short: MNN
+```
+
+### Restoring Configuration with Meshtastic CLI
+
+You can restore a MeshMonitor backup to any Meshtastic device using the official Meshtastic CLI tools.
+
+#### Prerequisites
+
+1. Install the Meshtastic Python CLI:
+   ```bash
+   pip install meshtastic
+   ```
+
+2. Connect your device:
+   - **USB/Serial**: Connect device via USB cable
+   - **Network**: Ensure device is on same network
+   - **Bluetooth**: Enable Bluetooth on your computer
+
+#### Restore Process
+
+**Using USB/Serial Connection:**
+
+```bash
+meshtastic --configure backup.yaml
+```
+
+The CLI will automatically detect your connected device and apply the configuration.
+
+**Using Network Connection:**
+
+```bash
+meshtastic --host 192.168.1.100 --configure backup.yaml
+```
+
+Replace `192.168.1.100` with your device's IP address.
+
+**Using Bluetooth:**
+
+```bash
+meshtastic --ble "Device Name" --configure backup.yaml
+```
+
+#### What Happens During Restore
+
+When you restore a configuration:
+
+1. **Device receives configuration**: All settings are sent to the device
+2. **Channels are configured**: The channel URL is decoded and all channels are set up with encryption keys
+3. **Device reboots**: The device automatically reboots to apply changes
+4. **Settings take effect**: After reboot, device operates with restored configuration
+
+::: warning Backup Encryption Keys
+The backup includes your device's encryption keys and WiFi passwords. Store backup files securely and never share them publicly. Anyone with access to your backup file can decrypt messages from your mesh network and connect to your WiFi.
+:::
+
+### Restore Behavior
+
+#### What Gets Overwritten
+
+When restoring a backup, these settings are **completely replaced**:
+- Device identity (names)
+- LoRa radio settings
+- All module configurations
+- Channel settings and encryption keys
+- WiFi and Bluetooth settings
+
+#### What Doesn't Change
+
+These items are **not affected** by restore:
+- Device hardware model
+- Firmware version
+- MAC address
+- Any locally stored messages or telemetry data
+
+#### Partial Restore
+
+You can manually edit the YAML backup file to restore only specific sections:
+
+1. Open the backup file in a text editor
+2. Delete the sections you don't want to restore
+3. Save the modified file
+4. Run the restore command
+
+For example, to restore only LoRa settings, keep only the `config.lora` section.
+
+### Best Practices
+
+#### Regular Backups
+
+- Enable automated backups to protect against configuration loss
+- Create manual backups before making significant configuration changes
+- Keep backups after firmware updates in case you need to rollback
+
+#### Backup Storage
+
+- Store backups in multiple locations (local computer, cloud storage, USB drive)
+- Keep backups from different time periods (don't immediately delete old backups)
+- Consider encrypting backups if storing in cloud services
+
+#### Before Restoring
+
+- Verify the backup file is for the correct device or a compatible model
+- Review the backup contents to ensure it has the settings you want
+- Make a backup of the current configuration before restoring
+- Ensure the device has adequate power (battery or connected to power)
+
+#### After Restoring
+
+- Wait for the device to fully reboot (30-60 seconds)
+- Verify critical settings like region and channel configuration
+- Test connectivity with other mesh nodes
+- Check that module configurations are working as expected
+
+### Troubleshooting
+
+#### Restore Fails or Hangs
+
+- Ensure device is powered and responding
+- Check USB cable connection quality
+- Try using `--port /dev/ttyUSB0` (Linux/Mac) or `--port COM3` (Windows) to specify port
+- Verify Python and meshtastic CLI are up to date:
+  ```bash
+  pip install --upgrade meshtastic
+  ```
+
+#### Device Won't Reconnect After Restore
+
+- Wait 60-90 seconds for full reboot cycle
+- If using WiFi, the restored WiFi settings may be different
+- Try connecting via USB/serial instead
+- Check if region settings are compatible with your local regulations
+
+#### Configuration Partially Applied
+
+- Some settings may require multiple reboots to fully take effect
+- Channels in particular may need an extra reboot
+- Power cycle the device completely (disconnect power/battery) and reconnect
+
+#### "Invalid Configuration" Error
+
+- Verify the backup YAML file is not corrupted
+- Check that the backup is from a compatible firmware version
+- Ensure the backup file follows proper YAML formatting
+- Try restoring individual sections instead of the complete file
+
+### Use Cases
+
+#### Device Replacement
+
+When replacing a failed device:
+1. Restore your backup to the new device
+2. The new device will have identical configuration
+3. Channels and encryption keys will match your network
+4. No manual reconfiguration needed
+
+#### Multiple Identical Nodes
+
+To deploy multiple nodes with the same configuration:
+1. Configure one node as a template
+2. Export its configuration
+3. Edit the backup to change node name/ID for each device
+4. Restore to each new device
+
+#### Configuration Templates
+
+Create backup templates for different use cases:
+- `router-template.yaml` - Settings for infrastructure nodes
+- `mobile-template.yaml` - Settings for handheld devices
+- `sensor-template.yaml` - Settings for sensor nodes
+
+#### Testing and Development
+
+- Backup production configuration
+- Test experimental settings
+- Restore original config if tests fail
+- No need to manually track settings changes
+
 ## Related Documentation
 
-- [Settings](/features/settings) - Learn about MeshMonitor settings
+- [Settings](/features/settings) - Learn about MeshMonitor settings and backup automation
 - [Automation](/features/automation) - Configure automation features
 - [Meshtastic Official Documentation](https://meshtastic.org/docs/)
+- [Meshtastic CLI Documentation](https://meshtastic.org/docs/software/python/cli/)

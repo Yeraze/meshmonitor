@@ -10,6 +10,7 @@ import PositionConfigSection from './configuration/PositionConfigSection';
 import MQTTConfigSection from './configuration/MQTTConfigSection';
 import NeighborInfoSection from './configuration/NeighborInfoSection';
 import ChannelsConfigSection from './configuration/ChannelsConfigSection';
+import BackupManagementSection from './configuration/BackupManagementSection';
 import { ImportConfigModal } from './configuration/ImportConfigModal';
 import { ExportConfigModal } from './configuration/ExportConfigModal';
 import { ROLE_MAP, PRESET_MAP, REGION_MAP } from './configuration/constants';
@@ -479,7 +480,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           Import or export channel configurations and device settings in Meshtastic URL format.
           These URLs are compatible with the official Meshtastic apps.
         </p>
-        <div style={{ display: 'flex', gap: '1rem' }}>
+        <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
           <button
             onClick={() => setIsImportModalOpen(true)}
             style={{
@@ -511,6 +512,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
             📤 Export Configuration
           </button>
         </div>
+
       </div>
 
       {statusMessage && (
@@ -614,6 +616,8 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           channels={channels}
           onChannelsUpdated={onChannelsUpdated}
         />
+
+        <BackupManagementSection />
       </div>
 
       {/* Import/Export Modals */}
