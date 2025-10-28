@@ -55,7 +55,7 @@ echo ""
 
 # Build and start
 echo "Building container..."
-docker compose -f "$COMPOSE_FILE" build --quiet
+docker compose -f "$COMPOSE_FILE" build --no-cache --quiet
 
 echo -e "${GREEN}✓${NC} Build complete"
 echo ""
@@ -397,6 +397,20 @@ if [ "$RESPONSE_RECEIVED" = false ]; then
     echo -e "${RED}✗ FAIL${NC}: No response received after $MAX_ATTEMPTS attempts"
     echo "   Node may be offline or not responding to direct messages"
     exit 1
+fi
+echo ""
+
+# Test 15: Security Test - Run before cleanup while container is still running
+echo "Test 15: Security verification (API endpoint protection)"
+if [ -f "$(dirname "$0")/test-security.sh" ]; then
+    if bash "$(dirname "$0")/test-security.sh"; then
+        echo -e "${GREEN}✓ PASS${NC}: Security test passed"
+    else
+        echo -e "${RED}✗ FAIL${NC}: Security test failed"
+        exit 1
+    fi
+else
+    echo -e "${YELLOW}⚠ WARN${NC}: Security test script not found"
 fi
 echo ""
 

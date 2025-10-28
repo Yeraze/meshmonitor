@@ -4087,8 +4087,8 @@ function App() {
                 return (
                   <span
                     className="node-address"
-                    title={`Connected to: ${nodeAddress}`}
-                    style={{ cursor: 'help' }}
+                    title={authStatus?.authenticated ? `Connected to: ${nodeAddress}` : undefined}
+                    style={{ cursor: authStatus?.authenticated ? 'help' : 'default' }}
                   >
                     {longName} ({shortName}) - {nodeId}
                   </span>
@@ -4099,8 +4099,8 @@ function App() {
                 return (
                   <span
                     className="node-address"
-                    title={`Connected to: ${nodeAddress}`}
-                    style={{ cursor: 'help' }}
+                    title={authStatus?.authenticated ? `Connected to: ${nodeAddress}` : undefined}
+                    style={{ cursor: authStatus?.authenticated ? 'help' : 'default' }}
                   >
                     {localNode.user.longName} ({localNode.user.shortName}) - {localNode.user.id}
                   </span>
@@ -4308,6 +4308,7 @@ function App() {
             distanceUnit={distanceUnit}
             timeFormat={timeFormat}
             dateFormat={dateFormat}
+            isAuthenticated={authStatus?.authenticated || false}
           />
         )}
         {activeTab === 'dashboard' && (
