@@ -247,13 +247,13 @@ The default `docker-compose.yml` is configured to use `ghcr.io/yeraze/meshmonito
 
 You can also specify a specific version:
 ```bash
-docker pull ghcr.io/yeraze/meshmonitor:1.10.0
+docker pull ghcr.io/yeraze/meshmonitor:2.11.3
 docker run -d \
   -p 8080:3001 \
   -v meshmonitor-data:/data \
   -e MESHTASTIC_NODE_IP=192.168.1.100 \
   -e MESHTASTIC_TCP_PORT=4403 \
-  ghcr.io/yeraze/meshmonitor:1.10.0
+  ghcr.io/yeraze/meshmonitor:2.11.3
 ```
 
 #### Option 2: Build Locally
