@@ -1019,9 +1019,9 @@ apiRouter.post('/channels/encode-url', requirePermission('configuration', 'read'
           frequencyOffset: deviceConfig.lora.frequencyOffset,
           region: deviceConfig.lora.region,
           hopLimit: deviceConfig.lora.hopLimit,
-          // IMPORTANT: Default txEnabled to true for exported configs
-          // This ensures that when someone imports the config, TX is enabled by default
-          txEnabled: deviceConfig.lora.txEnabled !== undefined ? deviceConfig.lora.txEnabled : true,
+          // IMPORTANT: Always force txEnabled to true for exported configs
+          // This ensures that when someone imports the config, TX is always enabled
+          txEnabled: true,
           txPower: deviceConfig.lora.txPower,
           channelNum: deviceConfig.lora.channelNum,
           sx126xRxBoostedGain: deviceConfig.lora.sx126xRxBoostedGain,
@@ -1121,11 +1121,12 @@ apiRouter.post('/channels/import-config', requirePermission('configuration', 'wr
       try {
         logger.info(`📥 Importing LoRa config:`, JSON.stringify(decoded.loraConfig, null, 2));
 
-        // IMPORTANT: Default txEnabled to true if not explicitly set
+        // IMPORTANT: Always force txEnabled to true
         // MeshMonitor users need TX enabled to send messages
+        // Ignore any incoming configuration that tries to disable TX
         const loraConfigToImport = {
           ...decoded.loraConfig,
-          txEnabled: decoded.loraConfig.txEnabled !== undefined ? decoded.loraConfig.txEnabled : true
+          txEnabled: true
         };
 
         logger.info(`📥 LoRa config with txEnabled defaulted: txEnabled=${loraConfigToImport.txEnabled}`);
@@ -2326,11 +2327,12 @@ apiRouter.post('/config/lora', requirePermission('configuration', 'write'), asyn
   try {
     const config = req.body;
 
-    // IMPORTANT: Default txEnabled to true if not explicitly set
+    // IMPORTANT: Always force txEnabled to true
     // MeshMonitor users need TX enabled to send messages
+    // Ignore any incoming configuration that tries to disable TX
     const loraConfigToSet = {
       ...config,
-      txEnabled: config.txEnabled !== undefined ? config.txEnabled : true
+      txEnabled: true
     };
 
     logger.info(`⚙️ Setting LoRa config with txEnabled defaulted: txEnabled=${loraConfigToSet.txEnabled}`);

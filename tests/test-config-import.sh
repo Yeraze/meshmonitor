@@ -545,6 +545,21 @@ except: pass
         return 1
     fi
 
+    # Verify TX is enabled (CRITICAL)
+    ACTUAL_TX_ENABLED=$(echo "$ACTUAL_DEVICE" | grep -o '"txEnabled":[^,}]*' | head -1 | cut -d':' -f2 | tr -d ' ')
+    echo ""
+    echo "  TX Enabled (CRITICAL):"
+    echo "    Expected: true"
+    echo "    Actual:   $ACTUAL_TX_ENABLED"
+
+    if [ "$ACTUAL_TX_ENABLED" = "true" ]; then
+        echo -e "    ${GREEN}✓ PASS${NC}: TX is enabled"
+    else
+        echo -e "    ${RED}✗ FAIL${NC}: TX is DISABLED - MeshMonitor requires TX enabled to send messages"
+        echo "    This is a CRITICAL failure - users cannot send messages with TX disabled"
+        return 1
+    fi
+
     echo ""
     echo -e "${GREEN}=========================================="
     echo "✓ ALL VERIFICATION TESTS PASSED"
