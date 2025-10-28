@@ -1575,10 +1575,16 @@ apiRouter.get('/telemetry/available/nodes', requirePermission('info', 'read'), (
 });
 
 // Connection status endpoint
-apiRouter.get('/connection', optionalAuth(), (_req, res) => {
+apiRouter.get('/connection', optionalAuth(), (req, res) => {
   try {
     const status = meshtasticManager.getConnectionStatus();
-    res.json(status);
+    // Hide nodeIp from anonymous users
+    if (!req.session.userId) {
+      const { nodeIp, ...statusWithoutNodeIp } = status;
+      res.json(statusWithoutNodeIp);
+    } else {
+      res.json(status);
+    }
   } catch (error) {
     logger.error('Error getting connection status:', error);
     res.status(500).json({ error: 'Failed to get connection status' });
@@ -1613,7 +1619,14 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
 
     // 1. Connection status (always available)
     try {
-      result.connection = meshtasticManager.getConnectionStatus();
+      const connectionStatus = meshtasticManager.getConnectionStatus();
+      // Hide nodeIp from anonymous users
+      if (!req.session.userId) {
+        const { nodeIp, ...statusWithoutNodeIp } = connectionStatus;
+        result.connection = statusWithoutNodeIp;
+      } else {
+        result.connection = connectionStatus;
+      }
     } catch (error) {
       logger.error('Error getting connection status in poll:', error);
       result.connection = { error: 'Failed to get connection status' };
@@ -1847,7 +1860,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       }
 
       result.config = {
-        meshtasticNodeIp: env.meshtasticNodeIp,
+        ...(req.session.userId ? { meshtasticNodeIp: env.meshtasticNodeIp } : {}),
         meshtasticTcpPort: env.meshtasticTcpPort,
         meshtasticUseTls: false,
         baseUrl: BASE_URL,
@@ -1857,7 +1870,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
     } catch (error) {
       logger.error('Error in config section of poll:', error);
       result.config = {
-        meshtasticNodeIp: env.meshtasticNodeIp,
+        ...(req.session.userId ? { meshtasticNodeIp: env.meshtasticNodeIp } : {}),
         meshtasticTcpPort: env.meshtasticTcpPort,
         meshtasticUseTls: false,
         baseUrl: BASE_URL
@@ -1870,7 +1883,16 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       if (hasConfigRead) {
         const config = await meshtasticManager.getDeviceConfig();
         if (config) {
-          result.deviceConfig = config;
+          // Hide node address from anonymous users
+          if (!req.session.userId && config.basic) {
+            const { nodeAddress, ...basicWithoutNodeAddress } = config.basic;
+            result.deviceConfig = {
+              ...config,
+              basic: basicWithoutNodeAddress
+            };
+          } else {
+            result.deviceConfig = config;
+          }
         }
       }
     } catch (error) {
@@ -1930,7 +1952,7 @@ apiRouter.post('/connection/reconnect', requirePermission('connection', 'write')
 });
 
 // Configuration endpoint for frontend
-apiRouter.get('/config', optionalAuth(), async (_req, res) => {
+apiRouter.get('/config', optionalAuth(), async (req, res) => {
   try {
     // Get the local node number from settings to include rebootCount
     const localNodeNumStr = databaseService.getSetting('localNodeNum');
@@ -1957,7 +1979,7 @@ apiRouter.get('/config', optionalAuth(), async (_req, res) => {
     }
 
     res.json({
-      meshtasticNodeIp: env.meshtasticNodeIp,
+      ...(req.session.userId ? { meshtasticNodeIp: env.meshtasticNodeIp } : {}),
       meshtasticTcpPort: env.meshtasticTcpPort,
       meshtasticUseTls: false,  // We're using TCP, not TLS
       baseUrl: BASE_URL,
@@ -1967,7 +1989,7 @@ apiRouter.get('/config', optionalAuth(), async (_req, res) => {
   } catch (error) {
     logger.error('Error in /api/config:', error);
     res.json({
-      meshtasticNodeIp: env.meshtasticNodeIp,
+      ...(req.session.userId ? { meshtasticNodeIp: env.meshtasticNodeIp } : {}),
       meshtasticTcpPort: env.meshtasticTcpPort,
       meshtasticUseTls: false,
       baseUrl: BASE_URL
