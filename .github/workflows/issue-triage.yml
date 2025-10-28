@@ -10,6 +10,7 @@ permissions:
   contents: read
   issues: write
   pull-requests: read
+  id-token: write  # Required for Claude Code Action OIDC authentication
 
 concurrency:
   group: issue-triage-${{ github.event.issue.number }}
