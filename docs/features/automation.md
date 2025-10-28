@@ -141,7 +141,7 @@ When enabled, MeshMonitor monitors for nodes that appear for the first time in t
 - **`{NODEID}`**: Hex ID of the new node (e.g., "!a2b3c4d5")
 - **`{DATE}`**: Date when the node was first seen (e.g., "1/15/2025")
 - **`{TIME}`**: Time when the node was first seen (e.g., "2:30:00 PM")
-- **`{VERSION}`**: Your MeshMonitor version (e.g., "v2.10.1")
+- **`{VERSION}`**: Your MeshMonitor version (e.g., "v2.11.3")
 
 **Default Template**:
 ```
