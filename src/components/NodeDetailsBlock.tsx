@@ -96,6 +96,22 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
     return formatRelativeTime(lastHeard * 1000, timeFormat, dateFormat, false);
   };
 
+  /**
+   * Format node ID in hex format
+   */
+  const formatNodeIdHex = (nodeNum: number | undefined): string => {
+    if (nodeNum === undefined || nodeNum === null) return 'N/A';
+    return `0x${nodeNum.toString(16).toUpperCase().padStart(8, '0')}`;
+  };
+
+  /**
+   * Format node ID in decimal format
+   */
+  const formatNodeIdDecimal = (nodeNum: number | undefined): string => {
+    if (nodeNum === undefined || nodeNum === null) return 'N/A';
+    return nodeNum.toString();
+  };
+
   const { deviceMetrics, snr, rssi, lastHeard, hopsAway, viaMqtt, user, firmwareVersion } = node;
   const hwModel = user?.hwModel;
   const role = user?.role;
@@ -171,6 +187,17 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
                 />
               )}
               <span className="hardware-name">{getHardwareModelShortName(hwModel)}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Node ID */}
+        {node.nodeNum !== undefined && (
+          <div className="node-detail-card">
+            <div className="node-detail-label">Node ID</div>
+            <div className="node-detail-value">
+              <div>{formatNodeIdHex(node.nodeNum)}</div>
+              <div className="node-detail-secondary">{formatNodeIdDecimal(node.nodeNum)}</div>
             </div>
           </div>
         )}
