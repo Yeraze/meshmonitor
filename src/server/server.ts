@@ -1870,7 +1870,16 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       if (hasConfigRead) {
         const config = await meshtasticManager.getDeviceConfig();
         if (config) {
-          result.deviceConfig = config;
+          // Hide node address from anonymous users
+          if (!req.session.userId && config.basic) {
+            const { nodeAddress, ...basicWithoutNodeAddress } = config.basic;
+            result.deviceConfig = {
+              ...config,
+              basic: basicWithoutNodeAddress
+            };
+          } else {
+            result.deviceConfig = config;
+          }
         }
       }
     } catch (error) {
