@@ -1,7 +1,16 @@
 # TODOs
 
 ## In Progress
-None
+- Auto-acknowledge DM response feature (Issue #364)
+  - [x] Add 'autoAckUseDM' setting to database defaults
+  - [x] Update server.ts to accept autoAckUseDM setting
+  - [x] Add useDM prop to AutoAcknowledgeSection component
+  - [x] Add "Always respond via Direct Message" checkbox to Automation page
+  - [x] Update checkAutoAcknowledge logic to send DM when enabled
+  - [x] Update App.tsx and UIContext with new state
+  - [ ] Build and test in Docker dev environment
+  - [ ] Run system tests to verify functionality
+  - [ ] Create pull request
 
 ## Technical Debt / Known Issues
 - Auto-welcome settings validation improvements

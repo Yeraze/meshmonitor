@@ -33,7 +33,8 @@ describe.skip('AutoAcknowledgeSection Component', () => {
     onRegexChange: vi.fn(),
     onMessageChange: vi.fn(),
     onChannelsChange: vi.fn(),
-    onDirectMessagesChange: vi.fn()
+    onDirectMessagesChange: vi.fn(),
+    onUseDMChange: vi.fn()
   };
 
   const defaultProps = {
@@ -43,6 +44,7 @@ describe.skip('AutoAcknowledgeSection Component', () => {
     channels: mockChannels,
     enabledChannels: [0, 1],
     directMessagesEnabled: true,
+    useDM: false,
     baseUrl: '',
     ...mockCallbacks
   };

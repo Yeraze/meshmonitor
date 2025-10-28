@@ -3470,13 +3470,23 @@ class MeshtasticManager {
       // Replace tokens in the message template
       let ackText = await this.replaceAcknowledgementTokens(autoAckMessage, message.fromNodeId, fromNum, hopsTraveled, receivedDate, receivedTime);
 
+      // Check if we should always use DM
+      const autoAckUseDM = databaseService.getSetting('autoAckUseDM');
+      const alwaysUseDM = autoAckUseDM === 'true';
+
       // Send reply on same channel or as direct message
-      const destination = isDirectMessage ? fromNum : undefined;
-      const channel = isDirectMessage ? 0 : channelIndex;
+      // If alwaysUseDM is enabled, always send as DM (destination = fromNum, channel = 0)
+      // If the original message was a DM, reply as DM
+      // Otherwise, reply on the same channel
+      const destination = (alwaysUseDM || isDirectMessage) ? fromNum : undefined;
+      const channel = (alwaysUseDM || isDirectMessage) ? 0 : channelIndex;
 
-      logger.debug(`🤖 Auto-acknowledging message from ${message.fromNodeId}: "${messageText}" with "${ackText}"`);
+      // Don't make it a reply if we're changing channels (DM when triggered by channel message)
+      const replyId = (alwaysUseDM && !isDirectMessage) ? undefined : packetId;
 
-      await this.sendTextMessage(ackText, channel, destination, packetId);
+      logger.debug(`🤖 Auto-acknowledging message from ${message.fromNodeId}: "${messageText}" with "${ackText}" ${alwaysUseDM ? '(via DM)' : ''}`);
+
+      await this.sendTextMessage(ackText, channel, destination, replyId);
     } catch (error) {
       logger.error('❌ Error in auto-acknowledge:', error);
     }
