@@ -76,13 +76,18 @@ describe('Security: Apprise URL Validation', () => {
       return false;
     }
 
-    try {
-      const parsed = new URL(url);
-      const scheme = parsed.protocol.slice(0, -1).toLowerCase();
-      return ALLOWED_SCHEMES.includes(scheme);
-    } catch {
+    // Extract scheme using regex instead of URL parser
+    // This allows Apprise URLs with special characters (colons, multiple slashes, etc.)
+    // that don't conform to strict URL syntax but are valid for Apprise
+    // Support both "scheme://" format and special cases like "mailto:"
+    const schemeMatch = url.match(/^([a-zA-Z][a-zA-Z0-9+.-]*):/);
+
+    if (!schemeMatch) {
       return false;
     }
+
+    const scheme = schemeMatch[1].toLowerCase();
+    return ALLOWED_SCHEMES.includes(scheme);
   }
 
   it('should allow valid Apprise service URLs', () => {
@@ -98,6 +103,29 @@ describe('Security: Apprise URL Validation', () => {
     ];
 
     validUrls.forEach(url => {
+      expect(validateUrl(url)).toBe(true);
+    });
+  });
+
+  it('should allow Apprise URLs with special characters (colons, multiple slashes)', () => {
+    const specialCharUrls = [
+      // Telegram bot tokens contain colons
+      'tgram://1234567890:ABCdefGHIjklMNOpqrsTUVwxyz/123456',
+      'telegram://bot_token:with_colon/chat_id',
+      // Discord webhooks with multiple slashes
+      'discord://webhook_id/webhook_token/extra/path',
+      // Generic webhooks with complex paths
+      'webhook://example.com/path/with/many/slashes',
+      'https://example.com/webhook/path?key=value&other=data',
+      // URLs with authentication
+      'mqtt://user:pass@hostname:1883/topic',
+      'smtp://user:password@smtp.example.com:587',
+      // Complex paths with special characters
+      'ntfy://ntfy.sh/topic_with_underscores',
+      'gotify://hostname/token-with-dashes'
+    ];
+
+    specialCharUrls.forEach(url => {
       expect(validateUrl(url)).toBe(true);
     });
   });

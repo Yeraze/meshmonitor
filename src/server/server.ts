@@ -3131,20 +3131,25 @@ apiRouter.post('/apprise/configure', requireAdmin(), async (req, res) => {
         return false;
       }
 
-      try {
-        const parsed = new URL(url);
-        const scheme = parsed.protocol.slice(0, -1).toLowerCase(); // Remove trailing ':' and normalize
+      // Extract scheme using regex instead of URL parser
+      // This allows Apprise URLs with special characters (colons, multiple slashes, etc.)
+      // that don't conform to strict URL syntax but are valid for Apprise
+      // Support both "scheme://" format and special cases like "mailto:"
+      const schemeMatch = url.match(/^([a-zA-Z][a-zA-Z0-9+.-]*):/);
 
-        if (!ALLOWED_SCHEMES.includes(scheme)) {
-          invalidUrls.push(url);
-          return false;
-        }
-
-        return true;
-      } catch {
+      if (!schemeMatch) {
         invalidUrls.push(url);
         return false;
       }
+
+      const scheme = schemeMatch[1].toLowerCase();
+
+      if (!ALLOWED_SCHEMES.includes(scheme)) {
+        invalidUrls.push(url);
+        return false;
+      }
+
+      return true;
     });
 
     if (invalidUrls.length > 0) {
