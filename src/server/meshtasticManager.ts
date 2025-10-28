@@ -151,6 +151,16 @@ class MeshtasticManager {
         }
       }, 2000);
 
+      // Request all module configs for complete device backup capability
+      setTimeout(async () => {
+        try {
+          logger.info('📦 Requesting all module configs for backup...');
+          await this.requestAllModuleConfigs();
+        } catch (error) {
+          logger.error('❌ Failed to request all module configs:', error);
+        }
+      }, 3000); // Start after LoRa config request
+
       // Give the node a moment to send initial config, then do basic setup
       setTimeout(async () => {
         // Channel 0 will be created automatically when device config syncs
@@ -610,6 +620,22 @@ class MeshtasticManager {
 
   getLocalNodeInfo(): { nodeNum: number; nodeId: string; longName: string; shortName: string; hwModel?: number } | null {
     return this.localNodeInfo;
+  }
+
+  /**
+   * Get the actual device configuration received from the node
+   * Used for backup/export functionality
+   */
+  getActualDeviceConfig(): any {
+    return this.actualDeviceConfig;
+  }
+
+  /**
+   * Get the actual module configuration received from the node
+   * Used for backup/export functionality
+   */
+  getActualModuleConfig(): any {
+    return this.actualModuleConfig;
   }
 
   /**
@@ -3915,6 +3941,48 @@ class MeshtasticManager {
       logger.error('❌ Error requesting module config:', error);
       throw error;
     }
+  }
+
+  /**
+   * Request all module configurations from the device for complete backup
+   * This requests all 13 module config types defined in the protobufs
+   */
+  async requestAllModuleConfigs(): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    // All module config types from admin.proto ModuleConfigType enum
+    const moduleConfigTypes = [
+      0,  // MQTT_CONFIG
+      1,  // SERIAL_CONFIG
+      2,  // EXTNOTIF_CONFIG
+      3,  // STOREFORWARD_CONFIG
+      4,  // RANGETEST_CONFIG
+      5,  // TELEMETRY_CONFIG
+      6,  // CANNEDMSG_CONFIG
+      7,  // AUDIO_CONFIG
+      8,  // REMOTEHARDWARE_CONFIG
+      9,  // NEIGHBORINFO_CONFIG
+      10, // AMBIENTLIGHTING_CONFIG
+      11, // DETECTIONSENSOR_CONFIG
+      12  // PAXCOUNTER_CONFIG
+    ];
+
+    logger.info('📦 Requesting all module configs for complete backup...');
+
+    for (const configType of moduleConfigTypes) {
+      try {
+        await this.requestModuleConfig(configType);
+        // Small delay between requests to avoid overwhelming the device
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch (error) {
+        logger.error(`❌ Failed to request module config type ${configType}:`, error);
+        // Continue with other configs even if one fails
+      }
+    }
+
+    logger.info('✅ All module config requests sent');
   }
 
   /**
