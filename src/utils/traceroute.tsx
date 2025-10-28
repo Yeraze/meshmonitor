@@ -91,8 +91,9 @@ export function formatTracerouteRoute(
       const nodeName = formatNodeName(nodeNum, nodes);
 
       // Get SNR for this hop (SNR array corresponds to hops between nodes)
+      // Note: Traceroute SNR values are scaled by 4 in the protobuf, so divide by 4
       const snrValue = snrArray[idx] !== undefined ? snrArray[idx] : null;
-      const snrDisplay = snrValue !== null ? ` (${snrValue} dB)` : '';
+      const snrDisplay = snrValue !== null ? ` (${(snrValue / 4).toFixed(1)} dB)` : '';
 
       // Check if this segment should be highlighted
       const isSegmentStart = options?.highlightSegment &&
@@ -111,7 +112,8 @@ export function formatTracerouteRoute(
       if (isSegmentStart) {
         const nextNodeName = formatNodeName(fullPath[idx + 1], nodes);
         const nextSnrValue = snrArray[idx + 1] !== undefined ? snrArray[idx + 1] : null;
-        const nextSnrDisplay = nextSnrValue !== null ? ` (${nextSnrValue} dB)` : '';
+        // Note: Traceroute SNR values are scaled by 4 in the protobuf, so divide by 4
+        const nextSnrDisplay = nextSnrValue !== null ? ` (${(nextSnrValue / 4).toFixed(1)} dB)` : '';
 
         pathElements.push(
           <span
