@@ -1,5 +1,17 @@
 # TODOs
 
+## In Progress
+- Fix Apprise URL validation to accept special characters (Issue #376)
+  - [x] Analyze URL validation issue - JavaScript's URL parser rejects valid Apprise URLs with colons in tokens
+  - [x] Replace strict `new URL()` parser with regex-based scheme extraction
+  - [x] Add support for both `scheme://` format and special cases like `mailto:`
+  - [x] Add test cases for Telegram URLs with colons in bot tokens
+  - [x] Add test cases for URLs with authentication credentials and complex paths
+  - [x] Verify all security tests pass
+  - [ ] Test with real Telegram bot token to confirm issue is resolved
+  - [ ] Update issue #376 with resolution
+  - Impact: Users can now configure Telegram and other Apprise services with special characters in tokens/credentials
+
 ## Completed
 - Enhanced Node Details Block (Issue #366)
   - [x] Create hardware model and role decoder utilities
