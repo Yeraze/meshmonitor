@@ -23,6 +23,9 @@ import { setupAccessLogger } from './middleware/accessLogger.js';
 import { getEnvironmentConfig } from './config/environment.js';
 import { pushNotificationService } from './services/pushNotificationService.js';
 import { appriseNotificationService } from './services/appriseNotificationService.js';
+import { deviceBackupService } from './services/deviceBackupService.js';
+import { backupFileService } from './services/backupFileService.js';
+import { backupSchedulerService } from './services/backupSchedulerService.js';
 import { getUserNotificationPreferences, saveUserNotificationPreferences } from './utils/notificationFiltering.js';
 
 const require = createRequire(import.meta.url);
@@ -220,6 +223,10 @@ setTimeout(async () => {
 
     await meshtasticManager.connect();
     logger.debug('Meshtastic manager connected successfully');
+
+    // Initialize backup scheduler
+    backupSchedulerService.initialize(meshtasticManager);
+    logger.debug('Backup scheduler initialized');
   } catch (error) {
     logger.error('Failed to connect to Meshtastic node on startup:', error);
   }
@@ -2009,6 +2016,174 @@ apiRouter.get('/device-config', requirePermission('configuration', 'read'), asyn
   } catch (error) {
     logger.error('Error fetching device config:', error);
     res.status(500).json({ error: 'Failed to fetch device configuration' });
+  }
+});
+
+// Export complete device configuration as YAML backup
+// Compatible with Meshtastic CLI --export-config format
+// Query param ?save=true will save to disk instead of just downloading
+apiRouter.get('/device/backup', requirePermission('configuration', 'read'), async (req, res) => {
+  try {
+    const saveToFile = req.query.save === 'true';
+    logger.info(`📦 Device backup requested (save=${saveToFile})...`);
+
+    // Generate YAML backup using the device backup service
+    const yamlBackup = await deviceBackupService.generateBackup(meshtasticManager);
+
+    // Get node ID for filename
+    const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+    const nodeId = localNodeInfo?.nodeId || '!unknown';
+
+    if (saveToFile) {
+      // Save to disk with new filename format
+      const filename = await backupFileService.saveBackup(yamlBackup, 'manual', nodeId);
+
+      // Also send the file for download
+      res.setHeader('Content-Type', 'application/x-yaml');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(yamlBackup);
+
+      logger.info(`✅ Device backup saved and downloaded: ${filename}`);
+    } else {
+      // Just download, don't save - generate filename for display
+      const nodeIdNumber = nodeId.startsWith('!') ? nodeId.substring(1) : nodeId;
+      const now = new Date();
+      const date = now.toISOString().split('T')[0];
+      const time = now.toTimeString().split(' ')[0].replace(/:/g, '-');
+      const filename = `${nodeIdNumber}-${date}-${time}.yaml`;
+
+      res.setHeader('Content-Type', 'application/x-yaml');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(yamlBackup);
+
+      logger.info(`✅ Device backup generated: ${filename}`);
+    }
+  } catch (error) {
+    logger.error('❌ Error generating device backup:', error);
+    res.status(500).json({
+      error: 'Failed to generate device backup',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Get backup settings
+apiRouter.get('/backup/settings', requirePermission('configuration', 'read'), async (_req, res) => {
+  try {
+    const enabled = databaseService.getSetting('backup_enabled') === 'true';
+    const maxBackups = parseInt(databaseService.getSetting('backup_maxBackups') || '7', 10);
+    const backupTime = databaseService.getSetting('backup_time') || '02:00';
+
+    res.json({
+      enabled,
+      maxBackups,
+      backupTime
+    });
+  } catch (error) {
+    logger.error('❌ Error getting backup settings:', error);
+    res.status(500).json({
+      error: 'Failed to get backup settings',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Save backup settings
+apiRouter.post('/backup/settings', requirePermission('configuration', 'write'), async (req, res) => {
+  try {
+    const { enabled, maxBackups, backupTime } = req.body;
+
+    // Validate inputs
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ error: 'Invalid enabled value' });
+    }
+
+    if (typeof maxBackups !== 'number' || maxBackups < 1 || maxBackups > 365) {
+      return res.status(400).json({ error: 'Invalid maxBackups value (must be 1-365)' });
+    }
+
+    if (!backupTime || !/^\d{2}:\d{2}$/.test(backupTime)) {
+      return res.status(400).json({ error: 'Invalid backupTime format (must be HH:MM)' });
+    }
+
+    // Save settings
+    databaseService.setSetting('backup_enabled', enabled.toString());
+    databaseService.setSetting('backup_maxBackups', maxBackups.toString());
+    databaseService.setSetting('backup_time', backupTime);
+
+    logger.info(`⚙️  Backup settings updated: enabled=${enabled}, maxBackups=${maxBackups}, time=${backupTime}`);
+
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('❌ Error saving backup settings:', error);
+    res.status(500).json({
+      error: 'Failed to save backup settings',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// List all backups
+apiRouter.get('/backup/list', requirePermission('configuration', 'read'), async (_req, res) => {
+  try {
+    const backups = await backupFileService.listBackups();
+    res.json(backups);
+  } catch (error) {
+    logger.error('❌ Error listing backups:', error);
+    res.status(500).json({
+      error: 'Failed to list backups',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Download a specific backup
+apiRouter.get('/backup/download/:filename', requirePermission('configuration', 'read'), async (req, res) => {
+  try {
+    const { filename } = req.params;
+
+    // Validate filename to prevent directory traversal
+    if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+      return res.status(400).json({ error: 'Invalid filename' });
+    }
+
+    const content = await backupFileService.getBackup(filename);
+
+    res.setHeader('Content-Type', 'application/x-yaml');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(content);
+
+    logger.info(`📥 Backup downloaded: ${filename}`);
+  } catch (error) {
+    logger.error('❌ Error downloading backup:', error);
+    res.status(500).json({
+      error: 'Failed to download backup',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Delete a specific backup
+apiRouter.delete('/backup/delete/:filename', requirePermission('configuration', 'write'), async (req, res) => {
+  try {
+    const { filename } = req.params;
+
+    // Validate filename to prevent directory traversal
+    if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+      return res.status(400).json({ error: 'Invalid filename' });
+    }
+
+    await backupFileService.deleteBackup(filename);
+
+    logger.info(`🗑️  Backup deleted: ${filename}`);
+
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('❌ Error deleting backup:', error);
+    res.status(500).json({
+      error: 'Failed to delete backup',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 });
 
