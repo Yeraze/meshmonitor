@@ -6,9 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [2.11.3] - 2025-10-28
+
 ### Added
-- **Enhanced Node Details Block** (issue #366): Added comprehensive node information display on Messages page
+- **Enhanced Node Details Block** (#366, #384): Added comprehensive node information display on Messages page
   - New "Node Details" block displays between message conversation and telemetry graphs
+  - **Node ID display in hex and decimal formats** (e.g., 0x43588558 and 1129874776)
   - Shows battery level with voltage (color-coded: green >75%, yellow 25-75%, red <25%)
   - Displays signal quality metrics (SNR and RSSI with quality indicators)
   - Shows network utilization (channel utilization and air utilization TX)
@@ -22,6 +25,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
   - Color-coded indicators for battery, signal quality, and utilization levels
   - Comprehensive hardware model decoder (116 device types from Meshtastic protobufs)
   - Device role decoder (Client, Router, Tracker, Sensor, etc.)
+
+- **Device Configuration Backup Improvements** (#381): Enhanced backup functionality and user experience
+  - Improved backup filename format with timestamp (NodeID-YYYY-MM-DD-HH-MM-SS.yaml)
+  - Enhanced backup modal UI with clearer instructions
+  - Better error handling and user feedback
+
+### Fixed
+- **Map Popup Visibility** (#383, #386): Improved popup centering when clicking node markers
+  - Dynamic viewport-relative offset (1/4 of map height) adapts to different screen sizes
+  - Single smooth animation instead of competing pan operations
+  - Popup consistently centers in viewport without being cut off
+  - Eliminated "fighting" animations between map controller and popup opening
+
+- **Connection Status Detection** (#378, #387): Added timeout to detect backend unavailability
+  - 10-second timeout on fetch requests prevents indefinite hanging
+  - Connection status updates to "Disconnected" within 10-15 seconds when backend unavailable
+  - Improved browser compatibility with DOMException and Error handling
+  - Memory leak prevention with proper timeout cleanup in finally block
+
+- **Apprise URL Validation** (#385): Loosened URL validation to support special characters
+  - Improved compatibility with Apprise notification services
+  - Supports special characters in Apprise URLs
+  - Better error messages for invalid URLs
 
 ## [2.10.4] - 2025-10-25
 

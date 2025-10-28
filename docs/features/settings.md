@@ -38,6 +38,98 @@ The Settings tab allows you to customize MeshMonitor's behavior and manage your 
 
 **Effect**: When combined with other filters, this helps manage large mesh networks by focusing on nodes with meaningful identification or highlighting those that need configuration.
 
+## Node Details Block
+
+**Location**: Messages page, displayed when a node is selected in the conversation list
+
+The Node Details block provides comprehensive information about the currently selected node, displaying real-time metrics and device information in an easy-to-read format.
+
+### Information Displayed
+
+#### Node Identification
+- **Node ID (Hex)**: Node identifier in hexadecimal format (e.g., `0x43588558`)
+  - Standard Meshtastic node ID format
+  - Used in URLs and API calls
+  - Matches the format displayed in the Meshtastic app
+
+- **Node ID (Decimal)**: Same identifier in decimal format (e.g., `1129874776`)
+  - Useful for debugging and database queries
+  - Alternative format for different use cases
+
+#### Power Status
+- **Battery Level**: Current battery percentage (0-100%)
+  - Color-coded indicators:
+    - 🟢 Green: >75% (good)
+    - 🟡 Yellow: 25-75% (moderate)
+    - 🔴 Red: <25% (low)
+  - Shows voltage in parentheses (e.g., "85% (4.15V)")
+
+#### Network Quality
+- **Signal (SNR)**: Signal-to-Noise Ratio in decibels
+  - Color-coded quality indicators:
+    - 🟢 Green: >10 dB (excellent)
+    - 🟡 Yellow: 0-10 dB (good)
+    - 🔴 Red: <0 dB (poor)
+
+- **Signal (RSSI)**: Received Signal Strength Indicator in dBm
+  - Shows absolute signal strength
+  - Lower (more negative) values indicate weaker signal
+
+#### Network Performance
+- **Channel Utilization**: Percentage of airtime used by all nodes
+  - Helps identify network congestion
+  - Values >75% may indicate overcrowded channel
+
+- **Air Utilization TX**: This node's transmission airtime percentage
+  - Shows how much this specific node is transmitting
+  - Useful for identifying chatty nodes
+
+#### Device Information
+- **Hardware Model**: Device type with friendly name
+  - Displays official Meshtastic hardware names (e.g., "STATION G2", "HELTEC V3")
+  - Shows hardware images when available (70+ device types supported)
+  - Hardware images fetched from Meshtastic web-flasher repository
+
+- **Role**: Device role in the mesh network
+  - CLIENT: End-user device (most common)
+  - CLIENT_MUTE: Receives but doesn't route
+  - ROUTER: Dedicated routing node
+  - ROUTER_CLIENT: Routes and used by user
+  - REPEATER: Dedicated repeater
+  - TRACKER: GPS tracker device
+  - SENSOR: Sensor node
+  - And more specialized roles
+
+- **Firmware Version**: Current Meshtastic firmware version
+  - Displays version string (e.g., "2.3.2.d1e2f3a")
+  - Useful for troubleshooting compatibility issues
+
+#### Network Position
+- **Hops Away**: Number of hops from your node
+  - "Direct": Node is directly reachable
+  - Number (e.g., "2 hops"): Requires intermediate nodes
+
+- **Via MQTT**: Indicates if node connected via MQTT bridge
+  - Shows when node is reachable through MQTT instead of radio
+
+#### Activity
+- **Last Heard**: When the node was last active
+  - Relative time format (e.g., "5 minutes ago", "2 hours ago")
+  - Uses your configured time/date format preferences
+
+### Layout
+
+The Node Details block uses a responsive grid layout:
+- **Desktop**: 2-column grid for efficient space usage
+- **Mobile**: Single column for better readability on small screens
+
+### Missing Data
+
+When information is unavailable, the block displays "N/A" for that metric. This commonly occurs when:
+- Node hasn't transmitted certain telemetry data yet
+- Information isn't available from the device type
+- Connection was lost before all data was received
+
 ## Display Preferences
 
 ### Preferred Node List Sorting
