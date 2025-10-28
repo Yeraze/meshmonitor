@@ -109,27 +109,66 @@ class DeviceBackupService {
       const channels = databaseService.getAllChannels();
 
       // Build backup object in the same structure as Meshtastic CLI
+      // Field order matters for official format compatibility
       const backup: any = {};
 
-      // Owner information
-      if (localNodeInfo) {
-        backup.owner = localNodeInfo.longName || localNodeInfo.user?.longName || '';
-        backup.owner_short = localNodeInfo.shortName || localNodeInfo.user?.shortName || '';
+      // 1. Canned messages (if configured in cannedMessage module)
+      if (moduleConfig?.cannedMessage?.messages) {
+        backup.canned_messages = moduleConfig.cannedMessage.messages;
       }
 
-      // Channel URL (if we can generate it)
+      // 2. Channel URL (if we can generate it)
       try {
-        // Try to get the channel URL from the API
-        const channelIds = channels.map((ch: any) => ch.id).sort((a: number, b: number) => a - b);
-        if (channelIds.length > 0) {
-          // Note: We'd need to import channelUrlService here, but for now skip it
-          // backup.channelUrl = await channelUrlService.encodeChannelUrl(channelIds, true);
+        if (channels.length > 0) {
+          const channelUrlService = (await import('./channelUrlService.js')).default;
+
+          // Convert database channels to DecodedChannelSettings format
+          const channelSettings = channels.map((ch: any) => ({
+            psk: ch.psk ? ch.psk : 'none',
+            name: ch.name,
+            id: ch.id,
+            role: ch.role,
+            uplinkEnabled: ch.uplinkEnabled,
+            downlinkEnabled: ch.downlinkEnabled,
+            positionPrecision: ch.positionPrecision,
+            mute: ch.mute
+          }));
+
+          // Get LoRa config from device configuration
+          let loraConfig = undefined;
+          if (deviceConfig?.lora) {
+            loraConfig = {
+              usePreset: deviceConfig.lora.usePreset,
+              modemPreset: deviceConfig.lora.modemPreset,
+              bandwidth: deviceConfig.lora.bandwidth,
+              spreadFactor: deviceConfig.lora.spreadFactor,
+              codingRate: deviceConfig.lora.codingRate,
+              frequencyOffset: deviceConfig.lora.frequencyOffset,
+              region: deviceConfig.lora.region,
+              hopLimit: deviceConfig.lora.hopLimit,
+              txEnabled: deviceConfig.lora.txEnabled,
+              txPower: deviceConfig.lora.txPower,
+              channelNum: deviceConfig.lora.channelNum,
+              sx126xRxBoostedGain: deviceConfig.lora.sx126xRxBoostedGain,
+              configOkToMqtt: deviceConfig.lora.configOkToMqtt
+            };
+          }
+
+          const channelUrl = channelUrlService.encodeUrl(channelSettings, loraConfig);
+          if (channelUrl) {
+            backup.channel_url = channelUrl;
+          }
         }
       } catch (error) {
-        logger.debug('Could not generate channel URL for backup');
+        logger.debug('Could not generate channel URL for backup:', error);
       }
 
-      // Location (if available from position)
+      // 3. Device configurations
+      if (deviceConfig && Object.keys(deviceConfig).length > 0) {
+        backup.config = this.cleanConfig(deviceConfig);
+      }
+
+      // 4. Location (if available from position)
       const position = localNodeInfo?.position;
       if (position && (position.latitude || position.longitude)) {
         backup.location = {
@@ -139,53 +178,22 @@ class DeviceBackupService {
         };
       }
 
-      // Device configurations
-      if (deviceConfig && Object.keys(deviceConfig).length > 0) {
-        backup.config = this.cleanConfig(deviceConfig);
-      }
-
-      // Module configurations
+      // 5. Module configurations
       if (moduleConfig && Object.keys(moduleConfig).length > 0) {
         backup.module_config = this.cleanConfig(moduleConfig);
       }
 
-      // Channel configurations
-      if (channels && channels.length > 0) {
-        backup.channels = channels.map((ch: any) => {
-          const channelConfig: any = {
-            index: ch.id,
-            role: ch.role || 0
-          };
-
-          // Only include name if it's not empty
-          if (ch.name && ch.name.trim()) {
-            channelConfig.name = ch.name;
-          }
-
-          // Include PSK if present (as base64)
-          if (ch.psk) {
-            channelConfig.psk = ch.psk;
-          }
-
-          // Include uplink/downlink settings if they differ from defaults
-          if (ch.uplinkEnabled !== undefined) {
-            channelConfig.uplink_enabled = ch.uplinkEnabled;
-          }
-          if (ch.downlinkEnabled !== undefined) {
-            channelConfig.downlink_enabled = ch.downlinkEnabled;
-          }
-
-          // Include position precision if set
-          if (ch.positionPrecision !== undefined && ch.positionPrecision !== null) {
-            channelConfig.position_precision = ch.positionPrecision;
-          }
-
-          return channelConfig;
-        });
+      // 6. Owner information (at the end like official format)
+      if (localNodeInfo) {
+        backup.owner = localNodeInfo.longName || localNodeInfo.user?.longName || '';
+        backup.owner_short = localNodeInfo.shortName || localNodeInfo.user?.shortName || '';
       }
 
-      // Generate YAML
-      const yaml = this.yamlGenerator.toYAML(backup, 0);
+      // NOTE: Channels array is NOT included in official --export-config format
+      // The channel_url field contains all channel configuration data
+
+      // Generate YAML with header comment
+      const yaml = '# start of Meshtastic configure yaml\n' + this.yamlGenerator.toYAML(backup, 0);
 
       logger.info('✅ Device backup generated successfully');
       return yaml;
