@@ -277,6 +277,16 @@ else
     exit 1
 fi
 
+# Verify TX is enabled (CRITICAL)
+TX_ENABLED=$(echo "$DEVICE_CONFIG" | grep -o '"txEnabled":[^,}]*' | head -1 | cut -d':' -f2 | tr -d ' ')
+if [ "$TX_ENABLED" = "true" ]; then
+    echo -e "${GREEN}✓${NC} TX Enabled: true (CRITICAL)"
+else
+    echo -e "${RED}✗ FAIL${NC}: TX is DISABLED - MeshMonitor requires TX enabled to send messages"
+    echo "   This is a CRITICAL failure - users cannot send messages with TX disabled"
+    exit 1
+fi
+
 # Verify Channel 0 is Primary (role=1) and unnamed
 CHANNEL_0_DATA=$(echo "$CHANNELS_RESPONSE" | grep -o '"id":0[^}]*}')
 CHANNEL_0_ROLE=$(echo "$CHANNEL_0_DATA" | grep -o '"role":[0-9]*' | cut -d':' -f2)
