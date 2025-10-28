@@ -11,6 +11,7 @@ import { backupFileService } from './backupFileService.js';
 class BackupSchedulerService {
   private schedulerInterval: NodeJS.Timeout | null = null;
   private isRunning = false;
+  private isBackupInProgress = false;
   private meshtasticManager: any = null;
 
   /**
@@ -67,6 +68,11 @@ class BackupSchedulerService {
    * Check if it's time to run a backup and execute if needed
    */
   private async checkAndRunBackup(): Promise<void> {
+    // Prevent multiple concurrent backup executions
+    if (this.isBackupInProgress) {
+      return;
+    }
+
     try {
       // Check if automated backups are enabled
       const enabled = databaseService.getSetting('backup_enabled');
@@ -97,6 +103,9 @@ class BackupSchedulerService {
         return; // Already ran a backup today
       }
 
+      // Set flag to prevent race conditions
+      this.isBackupInProgress = true;
+
       // Run the automated backup
       logger.info('⏰ Time for automated backup...');
       await this.runAutomatedBackup();
@@ -105,6 +114,9 @@ class BackupSchedulerService {
       databaseService.setSetting(lastBackupKey, now.toISOString());
     } catch (error) {
       logger.error('❌ Error in backup scheduler check:', error);
+    } finally {
+      // Always release the lock
+      this.isBackupInProgress = false;
     }
   }
 

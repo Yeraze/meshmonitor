@@ -42,8 +42,15 @@ class BackupFileService {
 
     // Extract numeric part from node ID (e.g., "!abc123" -> "abc123")
     let nodeIdNumber = 'unknown';
-    if (nodeIdFull && nodeIdFull.startsWith('!')) {
-      nodeIdNumber = nodeIdFull.substring(1);
+    if (nodeIdFull && typeof nodeIdFull === 'string' && nodeIdFull.length > 1) {
+      // Remove ! prefix if present, otherwise use the ID as-is
+      nodeIdNumber = nodeIdFull.startsWith('!') ? nodeIdFull.substring(1) : nodeIdFull;
+      // Sanitize to ensure filename-safe characters only
+      nodeIdNumber = nodeIdNumber.replace(/[^a-zA-Z0-9]/g, '');
+      // Fallback if sanitization resulted in empty string
+      if (!nodeIdNumber) {
+        nodeIdNumber = 'unknown';
+      }
     }
 
     // Format: nodeidnumber-YYYY-MM-DD-HH-MM-SS

@@ -2142,9 +2142,9 @@ apiRouter.get('/backup/download/:filename', requirePermission('configuration', '
   try {
     const { filename } = req.params;
 
-    // Validate filename to prevent directory traversal
-    if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
-      return res.status(400).json({ error: 'Invalid filename' });
+    // Validate filename to prevent directory traversal - only allow alphanumeric, hyphens, underscores, and .yaml extension
+    if (!/^[a-zA-Z0-9\-_]+\.yaml$/.test(filename)) {
+      return res.status(400).json({ error: 'Invalid filename format' });
     }
 
     const content = await backupFileService.getBackup(filename);
@@ -2168,9 +2168,9 @@ apiRouter.delete('/backup/delete/:filename', requirePermission('configuration', 
   try {
     const { filename } = req.params;
 
-    // Validate filename to prevent directory traversal
-    if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
-      return res.status(400).json({ error: 'Invalid filename' });
+    // Validate filename to prevent directory traversal - only allow alphanumeric, hyphens, underscores, and .yaml extension
+    if (!/^[a-zA-Z0-9\-_]+\.yaml$/.test(filename)) {
+      return res.status(400).json({ error: 'Invalid filename format' });
     }
 
     await backupFileService.deleteBackup(filename);
