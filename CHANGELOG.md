@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Added
+- **Enhanced Node Details Block** (issue #366): Added comprehensive node information display on Messages page
+  - New "Node Details" block displays between message conversation and telemetry graphs
+  - Shows battery level with voltage (color-coded: green >75%, yellow 25-75%, red <25%)
+  - Displays signal quality metrics (SNR and RSSI with quality indicators)
+  - Shows network utilization (channel utilization and air utilization TX)
+  - Displays device information (hardware model with image, role, firmware version)
+  - Hardware images fetched from Meshtastic web-flasher repository (70+ device images)
+  - Friendly hardware names (e.g., "STATION G2" instead of "STATION_G2")
+  - Shows network position (hops away, MQTT connection status)
+  - Displays last heard timestamp with relative time formatting
+  - Responsive grid layout (2 columns on desktop, 1 column on mobile)
+  - Graceful handling of missing metrics (shows "N/A" for unavailable data)
+  - Color-coded indicators for battery, signal quality, and utilization levels
+  - Comprehensive hardware model decoder (116 device types from Meshtastic protobufs)
+  - Device role decoder (Client, Router, Tracker, Sensor, etc.)
+
 ## [2.10.4] - 2025-10-25
 
 ### Added

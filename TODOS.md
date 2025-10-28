@@ -1,16 +1,15 @@
 # TODOs
 
-## In Progress
-- Auto-acknowledge DM response feature (Issue #364)
-  - [x] Add 'autoAckUseDM' setting to database defaults
-  - [x] Update server.ts to accept autoAckUseDM setting
-  - [x] Add useDM prop to AutoAcknowledgeSection component
-  - [x] Add "Always respond via Direct Message" checkbox to Automation page
-  - [x] Update checkAutoAcknowledge logic to send DM when enabled
-  - [x] Update App.tsx and UIContext with new state
-  - [ ] Build and test in Docker dev environment
-  - [ ] Run system tests to verify functionality
-  - [ ] Create pull request
+## Completed
+- Enhanced Node Details Block (Issue #366)
+  - [x] Create hardware model and role decoder utilities
+  - [x] Create NodeDetailsBlock component with grid layout
+  - [x] Add CSS styling for node details block
+  - [x] Integrate NodeDetailsBlock into Messages page (between messages and telemetry)
+  - [x] Handle edge cases (missing data, N/A values, formatting)
+  - [x] Test responsive design on mobile and desktop viewports
+  - [x] Run system-tests.sh to ensure no regressions
+  - [x] Update documentation and CHANGELOG
 
 ## Technical Debt / Known Issues
 - Auto-welcome settings validation improvements

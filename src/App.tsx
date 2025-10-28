@@ -5,6 +5,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import './App.css'
 import TelemetryGraphs from './components/TelemetryGraphs'
+import NodeDetailsBlock from './components/NodeDetailsBlock'
 import InfoTab from './components/InfoTab'
 import SettingsTab from './components/SettingsTab'
 import ConfigurationTab from './components/ConfigurationTab'
@@ -3469,6 +3470,17 @@ function App() {
                   )}
                 </div>
               )}
+
+              {(() => {
+                const selectedNode = nodes.find(n => n.user?.id === selectedDMNode);
+                return selectedNode ? (
+                  <NodeDetailsBlock
+                    node={selectedNode}
+                    timeFormat={timeFormat}
+                    dateFormat={dateFormat}
+                  />
+                ) : null;
+              })()}
 
               <TelemetryGraphs nodeId={selectedDMNode} temperatureUnit={temperatureUnit} telemetryHours={telemetryVisualizationHours} baseUrl={baseUrl} />
             </div>
