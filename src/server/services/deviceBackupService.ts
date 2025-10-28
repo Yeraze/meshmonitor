@@ -31,7 +31,8 @@ class YAMLGenerator {
         continue; // Skip null/undefined values
       }
 
-      const yamlKey = this.toSnakeCase(key);
+      // Keep original key name - official format uses camelCase, not snake_case
+      const yamlKey = key;
 
       if (typeof value === 'object' && !Array.isArray(value) && !(value instanceof Uint8Array)) {
         // Nested object
@@ -67,7 +68,17 @@ class YAMLGenerator {
     }
 
     if (typeof value === 'string') {
-      // Escape strings that need quoting
+      // Special handling for base64: prefixed strings (already quoted above)
+      if (value.startsWith('base64:')) {
+        return `"${value}"`;
+      }
+
+      // Special handling for URLs - don't quote
+      if (value.startsWith('http://') || value.startsWith('https://')) {
+        return value;
+      }
+
+      // Escape strings that need quoting (contains special YAML chars)
       if (value.includes(':') || value.includes('#') || value.includes('\n') || value.startsWith(' ') || value.endsWith(' ')) {
         return `"${value.replace(/"/g, '\\"')}"`;
       }
@@ -83,13 +94,6 @@ class YAMLGenerator {
     }
 
     return String(value);
-  }
-
-  /**
-   * Convert camelCase to snake_case
-   */
-  private toSnakeCase(str: string): string {
-    return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
   }
 }
 
