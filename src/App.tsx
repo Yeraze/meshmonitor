@@ -308,6 +308,8 @@ function App() {
     setAutoAckChannels,
     autoAckDirectMessages,
     setAutoAckDirectMessages,
+    autoAckUseDM,
+    setAutoAckUseDM,
     autoAnnounceEnabled,
     setAutoAnnounceEnabled,
     autoAnnounceIntervalHours,
@@ -604,6 +606,10 @@ function App() {
 
           if (settings.autoAckDirectMessages !== undefined) {
             setAutoAckDirectMessages(settings.autoAckDirectMessages === 'true');
+          }
+
+          if (settings.autoAckUseDM !== undefined) {
+            setAutoAckUseDM(settings.autoAckUseDM === 'true');
           }
 
           if (settings.autoAnnounceEnabled !== undefined) {
@@ -4349,12 +4355,14 @@ function App() {
                 channels={channels}
                 enabledChannels={autoAckChannels}
                 directMessagesEnabled={autoAckDirectMessages}
+                useDM={autoAckUseDM}
                 baseUrl={baseUrl}
                 onEnabledChange={setAutoAckEnabled}
                 onRegexChange={setAutoAckRegex}
                 onMessageChange={setAutoAckMessage}
                 onChannelsChange={setAutoAckChannels}
                 onDirectMessagesChange={setAutoAckDirectMessages}
+                onUseDMChange={setAutoAckUseDM}
               />
               <AutoAnnounceSection
                 enabled={autoAnnounceEnabled}

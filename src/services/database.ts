@@ -236,6 +236,7 @@ class DatabaseService {
       const automationSettings = {
         autoAckEnabled: 'false',
         autoAckRegex: '^(test|ping)',
+        autoAckUseDM: 'false',
         autoAnnounceEnabled: 'false',
         autoAnnounceIntervalHours: '6',
         autoAnnounceMessage: 'MeshMonitor {VERSION} online for {DURATION} {FEATURES}',
