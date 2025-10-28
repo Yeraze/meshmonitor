@@ -23,9 +23,9 @@ export const MapCenterController: React.FC<MapCenterControllerProps> = ({
     if (centerTarget) {
       // Listen for moveend event after setView completes, then pan to show popup
       map.once('moveend', () => {
-        // Pan the map down by 150 pixels to account for popup height
+        // Pan the map down by 220 pixels to account for popup height
         // This ensures both the marker and the popup above it are fully visible
-        map.panBy([0, -150], { animate: true, duration: 0.3 });
+        map.panBy([0, -220], { animate: true, duration: 0.3 });
 
         // Wait for the pan animation to complete before resetting
         setTimeout(() => {
