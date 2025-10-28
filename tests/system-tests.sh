@@ -39,6 +39,7 @@ cleanup() {
 
     # Remove cookie files
     rm -f /tmp/meshmonitor-cookies.txt 2>/dev/null || true
+    rm -f /tmp/meshmonitor-security-cookies.txt 2>/dev/null || true
     rm -f /tmp/meshmonitor-reverse-proxy-cookies.txt 2>/dev/null || true
     rm -f /tmp/meshmonitor-config-import-cookies.txt 2>/dev/null || true
 
@@ -105,13 +106,15 @@ echo -e "${BLUE}Running Quick Start Test${NC}"
 echo "=========================================="
 echo ""
 
-# Run Quick Start test
+# Run Quick Start test (includes security test)
 if bash "$SCRIPT_DIR/test-quick-start.sh"; then
     QUICKSTART_RESULT="PASSED"
+    SECURITY_RESULT="PASSED"  # Security test is integrated into Quick Start
     echo ""
-    echo -e "${GREEN}✓ Quick Start test PASSED${NC}"
+    echo -e "${GREEN}✓ Quick Start test PASSED (includes security test)${NC}"
 else
     QUICKSTART_RESULT="FAILED"
+    SECURITY_RESULT="FAILED"
     echo ""
     echo -e "${RED}✗ Quick Start test FAILED${NC}"
 fi
@@ -171,6 +174,12 @@ else
     echo -e "Quick Start Test:         ${RED}✗ FAILED${NC}"
 fi
 
+if [ "$SECURITY_RESULT" = "PASSED" ]; then
+    echo -e "Security Test:            ${GREEN}✓ PASSED${NC}"
+else
+    echo -e "Security Test:            ${RED}✗ FAILED${NC}"
+fi
+
 if [ "$REVERSE_PROXY_RESULT" = "PASSED" ]; then
     echo -e "Reverse Proxy Test:       ${GREEN}✓ PASSED${NC}"
 else
@@ -210,6 +219,12 @@ else
     echo "| Quick Start Test | ❌ FAILED |" >> "$REPORT_FILE"
 fi
 
+if [ "$SECURITY_RESULT" = "PASSED" ]; then
+    echo "| Security Test | ✅ PASSED |" >> "$REPORT_FILE"
+else
+    echo "| Security Test | ❌ FAILED |" >> "$REPORT_FILE"
+fi
+
 if [ "$REVERSE_PROXY_RESULT" = "PASSED" ]; then
     echo "| Reverse Proxy Test | ✅ PASSED |" >> "$REPORT_FILE"
 else
@@ -226,7 +241,7 @@ echo "" >> "$REPORT_FILE"
 
 # Overall result (config import is optional, so only fail if it actually failed, not if skipped)
 REQUIRED_TESTS_PASSED=true
-if [ "$QUICKSTART_RESULT" != "PASSED" ] || [ "$REVERSE_PROXY_RESULT" != "PASSED" ] || [ "$OIDC_RESULT" != "PASSED" ]; then
+if [ "$QUICKSTART_RESULT" != "PASSED" ] || [ "$SECURITY_RESULT" != "PASSED" ] || [ "$REVERSE_PROXY_RESULT" != "PASSED" ] || [ "$OIDC_RESULT" != "PASSED" ]; then
     REQUIRED_TESTS_PASSED=false
 fi
 
@@ -252,6 +267,13 @@ if [ "$REQUIRED_TESTS_PASSED" = true ]; then
     echo "- Auto-generated admin user with default credentials" >> "$REPORT_FILE"
     echo "- Session cookies work over HTTP" >> "$REPORT_FILE"
     echo "- Meshtastic node connection and message exchange verified" >> "$REPORT_FILE"
+    echo "" >> "$REPORT_FILE"
+    echo "**Security Test:**" >> "$REPORT_FILE"
+    echo "- Verifies Node IP address hidden from anonymous users in API responses" >> "$REPORT_FILE"
+    echo "- Verifies MQTT configuration hidden from anonymous users" >> "$REPORT_FILE"
+    echo "- Verifies Node IP address visible to authenticated users" >> "$REPORT_FILE"
+    echo "- Verifies MQTT configuration visible to authenticated users" >> "$REPORT_FILE"
+    echo "- Verifies protected endpoints require authentication" >> "$REPORT_FILE"
     echo "" >> "$REPORT_FILE"
     echo "**Reverse Proxy Test:**" >> "$REPORT_FILE"
     echo "- Production deployment with COOKIE_SECURE=true" >> "$REPORT_FILE"
@@ -289,6 +311,9 @@ else
     fi
     if [ "$QUICKSTART_RESULT" != "PASSED" ]; then
         echo "- **Quick Start Test:** Zero-config deployment test failed" >> "$REPORT_FILE"
+    fi
+    if [ "$SECURITY_RESULT" != "PASSED" ]; then
+        echo "- **Security Test:** API endpoint security test failed" >> "$REPORT_FILE"
     fi
     if [ "$REVERSE_PROXY_RESULT" != "PASSED" ]; then
         echo "- **Reverse Proxy Test:** Production HTTPS deployment test failed" >> "$REPORT_FILE"

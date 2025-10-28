@@ -40,6 +40,7 @@ interface InfoTabProps {
   distanceUnit?: 'km' | 'mi';
   timeFormat?: TimeFormat;
   dateFormat?: DateFormat;
+  isAuthenticated?: boolean;
 }
 
 const InfoTab: React.FC<InfoTabProps> = React.memo(({
@@ -57,7 +58,8 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
   getAvailableChannels,
   distanceUnit = 'km',
   timeFormat = '24',
-  dateFormat = 'MM/DD/YYYY'
+  dateFormat = 'MM/DD/YYYY',
+  isAuthenticated = false
 }) => {
   const { showToast } = useToast();
   const [longestActiveSegment, setLongestActiveSegment] = useState<RouteSegment | null>(null);
@@ -115,7 +117,9 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
       <div className="device-info">
         <div className="info-section">
           <h3>Connection Status</h3>
-          <p><strong>Node Address:</strong> {nodeAddress}</p>
+          {isAuthenticated && (
+            <p><strong>Node Address:</strong> {nodeAddress}</p>
+          )}
           {deviceConfig?.basic?.nodeId && (
             <p><strong>Node ID:</strong> {deviceConfig.basic.nodeId}</p>
           )}
@@ -164,16 +168,18 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
               <p><strong>Boosted RX Gain:</strong> {deviceConfig.radio?.sx126xRxBoostedGain !== undefined ? (deviceConfig.radio.sx126xRxBoostedGain ? 'Yes' : 'No') : 'Unknown'}</p>
             </div>
 
-            <div className="info-section">
-              <h3>MQTT Configuration</h3>
-              <p><strong>Enabled:</strong> {deviceConfig.mqtt?.enabled ? 'Yes' : 'No'}</p>
-              <p><strong>Server:</strong> {deviceConfig.mqtt?.server || 'Not configured'}</p>
-              <p><strong>Username:</strong> {deviceConfig.mqtt?.username || 'Not set'}</p>
-              <p><strong>Encryption Enabled:</strong> {deviceConfig.mqtt?.encryption ? 'Yes' : 'No'}</p>
-              <p><strong>JSON Format:</strong> {deviceConfig.mqtt?.json ? 'Enabled' : 'Disabled'}</p>
-              <p><strong>TLS Enabled:</strong> {deviceConfig.mqtt?.tls ? 'Yes' : 'No'}</p>
-              <p><strong>Root Topic:</strong> {deviceConfig.mqtt?.rootTopic || 'msh'}</p>
-            </div>
+            {isAuthenticated && (
+              <div className="info-section">
+                <h3>MQTT Configuration</h3>
+                <p><strong>Enabled:</strong> {deviceConfig.mqtt?.enabled ? 'Yes' : 'No'}</p>
+                <p><strong>Server:</strong> {deviceConfig.mqtt?.server || 'Not configured'}</p>
+                <p><strong>Username:</strong> {deviceConfig.mqtt?.username || 'Not set'}</p>
+                <p><strong>Encryption Enabled:</strong> {deviceConfig.mqtt?.encryption ? 'Yes' : 'No'}</p>
+                <p><strong>JSON Format:</strong> {deviceConfig.mqtt?.json ? 'Enabled' : 'Disabled'}</p>
+                <p><strong>TLS Enabled:</strong> {deviceConfig.mqtt?.tls ? 'Yes' : 'No'}</p>
+                <p><strong>Root Topic:</strong> {deviceConfig.mqtt?.rootTopic || 'msh'}</p>
+              </div>
+            )}
           </>
         )}
 
@@ -230,13 +236,15 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
               <p style={{ fontSize: '0.85em', color: '#888' }}>
                 Achieved: {formatDateTime(new Date(recordHolderSegment.timestamp), timeFormat, dateFormat)}
               </p>
-              <button
-                onClick={handleClearRecordHolder}
-                className="danger-button"
-                style={{ marginTop: '8px' }}
-              >
-                Clear Record
-              </button>
+              {isAuthenticated && (
+                <button
+                  onClick={handleClearRecordHolder}
+                  className="danger-button"
+                  style={{ marginTop: '8px' }}
+                >
+                  Clear Record
+                </button>
+              )}
             </>
           )}
           {!loadingSegments && !recordHolderSegment && (

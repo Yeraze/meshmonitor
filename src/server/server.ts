@@ -1847,7 +1847,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       }
 
       result.config = {
-        meshtasticNodeIp: env.meshtasticNodeIp,
+        ...(req.session.userId ? { meshtasticNodeIp: env.meshtasticNodeIp } : {}),
         meshtasticTcpPort: env.meshtasticTcpPort,
         meshtasticUseTls: false,
         baseUrl: BASE_URL,
@@ -1857,7 +1857,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
     } catch (error) {
       logger.error('Error in config section of poll:', error);
       result.config = {
-        meshtasticNodeIp: env.meshtasticNodeIp,
+        ...(req.session.userId ? { meshtasticNodeIp: env.meshtasticNodeIp } : {}),
         meshtasticTcpPort: env.meshtasticTcpPort,
         meshtasticUseTls: false,
         baseUrl: BASE_URL
@@ -1930,7 +1930,7 @@ apiRouter.post('/connection/reconnect', requirePermission('connection', 'write')
 });
 
 // Configuration endpoint for frontend
-apiRouter.get('/config', optionalAuth(), async (_req, res) => {
+apiRouter.get('/config', optionalAuth(), async (req, res) => {
   try {
     // Get the local node number from settings to include rebootCount
     const localNodeNumStr = databaseService.getSetting('localNodeNum');
@@ -1957,7 +1957,7 @@ apiRouter.get('/config', optionalAuth(), async (_req, res) => {
     }
 
     res.json({
-      meshtasticNodeIp: env.meshtasticNodeIp,
+      ...(req.session.userId ? { meshtasticNodeIp: env.meshtasticNodeIp } : {}),
       meshtasticTcpPort: env.meshtasticTcpPort,
       meshtasticUseTls: false,  // We're using TCP, not TLS
       baseUrl: BASE_URL,
@@ -1967,7 +1967,7 @@ apiRouter.get('/config', optionalAuth(), async (_req, res) => {
   } catch (error) {
     logger.error('Error in /api/config:', error);
     res.json({
-      meshtasticNodeIp: env.meshtasticNodeIp,
+      ...(req.session.userId ? { meshtasticNodeIp: env.meshtasticNodeIp } : {}),
       meshtasticTcpPort: env.meshtasticTcpPort,
       meshtasticUseTls: false,
       baseUrl: BASE_URL
