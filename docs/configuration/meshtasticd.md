@@ -17,7 +17,7 @@ Use cases include:
 
 **For physical Meshtastic devices, use the appropriate bridge:**
 
-- **Serial/USB devices:** Use the [Meshtastic Serial Bridge](https://github.com/Yeraze/meshtastic-serial-bridge) instead
+- **Serial/USB devices:** Use the [Meshtastic Serial Bridge](/configuration/serial-bridge) instead
 - **Bluetooth (BLE) devices:** Use the [MeshMonitor BLE Bridge](/configuration/ble-bridge) instead
 
 `meshtasticd` is designed for virtual node simulation, not for connecting physical hardware.
@@ -277,7 +277,7 @@ docker run -d \
 
 ## Next Steps
 
-- [Connect Serial/USB devices](https://github.com/Yeraze/meshtastic-serial-bridge) with the Serial Bridge
+- [Connect Serial/USB devices](/configuration/serial-bridge) with the Serial Bridge
 - [Connect Bluetooth devices](/configuration/ble-bridge) with the BLE Bridge
 - [Configure SSO](/configuration/sso) for authentication
 - [Set up a reverse proxy](/configuration/reverse-proxy) for external access

@@ -4,8 +4,8 @@ MeshMonitor is designed to be flexible and adaptable to various deployment scena
 
 ## Configuration Topics
 
-### [Serial Bridge for USB/Serial Devices](https://github.com/Yeraze/meshtastic-serial-bridge)
-Connect MeshMonitor to Serial or USB-connected Meshtastic devices using the Serial Bridge. Simple Docker-based TCP-to-Serial gateway with zero configuration.
+### [Serial Bridge for USB/Serial Devices](/configuration/serial-bridge)
+Connect MeshMonitor to Serial or USB-connected Meshtastic devices using the Serial Bridge. Simple Docker-based TCP-to-Serial gateway with automatic device discovery.
 
 ### [BLE Bridge for Bluetooth Devices](/configuration/ble-bridge)
 Connect MeshMonitor to Bluetooth Low Energy (BLE) Meshtastic devices using the BLE Bridge. Perfect for portable devices and systems with Bluetooth support.
@@ -190,7 +190,7 @@ MeshMonitor logs to stdout/stderr by default. Configure log aggregation in your 
 
 ## Next Steps
 
-- [Connect Serial/USB devices](https://github.com/Yeraze/meshtastic-serial-bridge)
+- [Connect Serial/USB devices](/configuration/serial-bridge)
 - [Connect to Bluetooth devices](/configuration/ble-bridge)
 - [Configure meshtasticd](/configuration/meshtasticd)
 - [Set up SSO](/configuration/sso)

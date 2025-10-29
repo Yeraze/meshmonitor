@@ -335,7 +335,7 @@ MeshMonitor → TCP:4403 → BLE Bridge → BLE → Meshtastic Node
 ```
 MeshMonitor → TCP:4403 → Serial Bridge → Serial/USB → Meshtastic Node
 ```
-[Meshtastic Serial Bridge](https://github.com/Yeraze/meshtastic-serial-bridge) provides TCP-to-Serial translation for USB and Serial-connected Meshtastic devices.
+[Meshtastic Serial Bridge](/configuration/serial-bridge) provides TCP-to-Serial translation for USB and Serial-connected Meshtastic devices.
 
 **4. meshtasticd Proxy (Virtual Nodes)**
 ```

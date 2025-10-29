@@ -377,7 +377,7 @@ See the [BLE Bridge repository](https://github.com/Yeraze/meshtastic-ble-bridge)
 
 #### For Serial/USB Devices
 
-Use the [Meshtastic Serial Bridge](https://github.com/Yeraze/meshtastic-serial-bridge) to create a TCP-to-Serial gateway:
+Use the [Meshtastic Serial Bridge](/configuration/serial-bridge) to create a TCP-to-Serial gateway:
 
 ```bash
 # Create docker-compose.yml with serial-bridge
@@ -405,7 +405,7 @@ docker compose up -d
 
 The serial bridge connects to your USB/Serial Meshtastic device and exposes it on TCP port 4403 for MeshMonitor.
 
-See the [Serial Bridge repository](https://github.com/Yeraze/meshtastic-serial-bridge) for detailed setup instructions.
+See the [Serial Bridge configuration guide](/configuration/serial-bridge) for detailed setup instructions.
 
 ---
 
