@@ -61,6 +61,62 @@ L.Icon.Default.mergeOptions({
 
 // Icons and helpers are now imported from utils/
 
+/**
+ * Render enhanced message delivery status indicator
+ * @param msg The message to render status for
+ * @param isDirectMessage Whether this is a direct message (vs channel message)
+ * @returns JSX element with status icon and tooltip
+ */
+function renderMessageStatus(msg: MeshMessage, isDirectMessage: boolean): React.ReactElement {
+  const messageAge = Date.now() - msg.timestamp.getTime();
+  const TIMEOUT_MS = 30000; // 30 seconds
+
+  // Check for explicit failures first
+  if (msg.ackFailed || msg.routingErrorReceived) {
+    return (
+      <span className="status-failed" title="Failed to send - routing error or max retries exceeded">
+        ❌
+      </span>
+    );
+  }
+
+  // If message is acknowledged
+  if (msg.acknowledged) {
+    // For direct messages, show special indicator when received by target
+    if (isDirectMessage) {
+      return (
+        <span className="status-received-target" title="Received by target node">
+          🔒
+        </span>
+      );
+    } else {
+      // For channel messages, show received by another node
+      return (
+        <span className="status-received-node" title="Received by another node">
+          📨
+        </span>
+      );
+    }
+  }
+
+  // If waiting for acknowledgment
+  if (messageAge < TIMEOUT_MS) {
+    // Still waiting for acknowledgment
+    return (
+      <span className="status-pending" title="Sending...">
+        ⏳
+      </span>
+    );
+  }
+
+  // Timeout - no acknowledgment received within 30 seconds
+  return (
+    <span className="status-timeout" title="No acknowledgment received (timeout)">
+      ⏱️
+    </span>
+  );
+}
+
 function App() {
   const { authStatus, hasPermission } = useAuth();
   const { getToken: getCsrfToken, refreshToken: refreshCsrfToken } = useCsrf();
@@ -1040,7 +1096,7 @@ function App() {
     };
   }, [connectionStatus]);
 
-  // Timer to update message status indicators (waiting -> delivered after 10s)
+  // Timer to update message status indicators (timeout detection after 30s)
   const [, setStatusTick] = useState(0);
   useEffect(() => {
     const interval = setInterval(() => {
@@ -2815,18 +2871,7 @@ function App() {
                             </div>
                             {isMine && (
                               <div className="message-status">
-                                {(() => {
-                                  const messageAge = Date.now() - msg.timestamp.getTime();
-                                  const isWaiting = messageAge < 10000 && !msg.acknowledged;
-
-                                  if (msg.ackFailed) {
-                                    return <span className="status-failed" title="Failed to send">✗</span>;
-                                  } else if (isWaiting) {
-                                    return <span className="status-pending" title="Sending...">⏳</span>;
-                                  } else {
-                                    return <span className="status-delivered" title="Delivered">✓</span>;
-                                  }
-                                })()}
+                                {renderMessageStatus(msg, false)}
                               </div>
                             )}
                           </div>
@@ -3431,18 +3476,7 @@ function App() {
                           </div>
                           {isMine && (
                             <div className="message-status">
-                              {(() => {
-                                const messageAge = Date.now() - msg.timestamp.getTime();
-                                const isWaiting = messageAge < 10000 && !msg.acknowledged;
-
-                                if (msg.ackFailed) {
-                                  return <span className="status-failed" title="Failed to send">✗</span>;
-                                } else if (isWaiting) {
-                                  return <span className="status-pending" title="Sending...">⏳</span>;
-                                } else {
-                                  return <span className="status-delivered" title="Delivered">✓</span>;
-                                }
-                              })()}
+                              {renderMessageStatus(msg, true)}
                             </div>
                           )}
                         </div>

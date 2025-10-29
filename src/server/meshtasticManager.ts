@@ -947,7 +947,7 @@ class MeshtasticManager {
             await this.processTelemetryMessageProtobuf(meshPacket, processedPayload as any);
             break;
           case 5: // ROUTING_APP
-            logger.debug('🗺️ Routing message:', processedPayload);
+            await this.processRoutingErrorMessage(meshPacket, processedPayload as any);
             break;
           case 6: // ADMIN_APP
             await this.processAdminMessage(processedPayload as Uint8Array);
@@ -1728,6 +1728,48 @@ class MeshtasticManager {
       }
     } catch (error) {
       logger.error('❌ Error processing traceroute message:', error);
+    }
+  }
+
+  /**
+   * Process routing error messages to track message delivery failures
+   */
+  private async processRoutingErrorMessage(meshPacket: any, routing: any): Promise<void> {
+    try {
+      const fromNum = Number(meshPacket.from);
+      const fromNodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
+      const errorReason = routing.error_reason || routing.errorReason;
+
+      const errorReasonNames: Record<number, string> = {
+        0: 'NONE',
+        1: 'NO_ROUTE',
+        2: 'GOT_NAK',
+        3: 'TIMEOUT',
+        4: 'NO_INTERFACE',
+        5: 'MAX_RETRANSMIT',
+        6: 'NO_CHANNEL',
+        7: 'TOO_LARGE',
+        8: 'NO_RESPONSE',
+        9: 'DUTY_CYCLE_LIMIT',
+        10: 'BAD_REQUEST',
+        11: 'NOT_AUTHORIZED'
+      };
+
+      const errorName = errorReasonNames[errorReason] || `UNKNOWN(${errorReason})`;
+
+      logger.warn(`📮 Routing error from ${fromNodeId}: ${errorName} (${errorReason})`);
+      logger.debug('Routing error details:', {
+        from: fromNodeId,
+        to: meshPacket.to ? `!${Number(meshPacket.to).toString(16).padStart(8, '0')}` : 'unknown',
+        errorReason: errorName,
+        requestId: meshPacket.id,
+        route: routing.route || []
+      });
+
+      // Note: The frontend will handle timeout-based failure detection
+      // This logging helps with debugging mesh network issues
+    } catch (error) {
+      logger.error('❌ Error processing routing error message:', error);
     }
   }
 
