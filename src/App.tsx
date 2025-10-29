@@ -1511,12 +1511,24 @@ function App() {
           // For each pending message, check if a matching message appears in recent messages
           // Match by text content, channel, and approximate timestamp (within 30 seconds)
           updatedPending.forEach((pendingMsg, tempId) => {
-            const matchingMessage = processedMessages.find((msg: MeshMessage) =>
-              msg.text === pendingMsg.text &&
-              msg.channel === pendingMsg.channel &&
-              Math.abs(msg.timestamp.getTime() - pendingMsg.timestamp.getTime()) < 30000 &&
-              msg.from === currentNodeId
-            );
+            // For direct messages (channel -1), match by text, to/from nodes, and timestamp
+            // For channel messages, match by text, channel, and timestamp
+            const isDM = pendingMsg.channel === -1;
+
+            const matchingMessage = processedMessages.find((msg: MeshMessage) => {
+              if (msg.text !== pendingMsg.text) return false;
+              if (msg.from !== currentNodeId) return false;
+              if (Math.abs(msg.timestamp.getTime() - pendingMsg.timestamp.getTime()) >= 30000) return false;
+
+              if (isDM) {
+                // For DMs, match by destination node (backend may use channel 0 for DMs)
+                return msg.toNodeId === pendingMsg.toNodeId ||
+                       (msg.to === pendingMsg.to && (msg.channel === 0 || msg.channel === -1));
+              } else {
+                // For channel messages, match by channel
+                return msg.channel === pendingMsg.channel;
+              }
+            });
 
             if (matchingMessage) {
               // Found a matching message from server, so this message was acknowledged
@@ -1532,10 +1544,14 @@ function App() {
               };
 
               setMessages(prev => prev.map(m => m.id === tempId ? acknowledgedMessage : m));
-              setChannelMessages(prev => ({
-                ...prev,
-                [pendingMsg.channel]: prev[pendingMsg.channel]?.map(m => m.id === tempId ? acknowledgedMessage : m) || []
-              }));
+
+              // Update channel messages if it's a channel message
+              if (!isDM) {
+                setChannelMessages(prev => ({
+                  ...prev,
+                  [pendingMsg.channel]: prev[pendingMsg.channel]?.map(m => m.id === tempId ? acknowledgedMessage : m) || []
+                }));
+              }
             }
           });
 
