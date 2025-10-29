@@ -45,3 +45,12 @@ include/
 
 # Test results
 test-results.md
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+data/
+
+# Log directories
+meshmonitor-logs/
