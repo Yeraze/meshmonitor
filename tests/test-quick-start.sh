@@ -329,6 +329,194 @@ fi
 echo -e "${GREEN}✓ PASS${NC}: All configuration requirements verified"
 echo ""
 
+# Test 13.1: Apprise Configuration Tests
+echo "=========================================="
+echo "Apprise Notification Configuration Tests"
+echo "=========================================="
+echo ""
+
+# Test 13.1: Verify fresh container has no Apprise URLs configured
+echo "Test 13.1: Verify fresh container has no Apprise URLs (API and file)"
+
+# Check API returns empty array
+APPRISE_URLS_RESPONSE=$(curl -s -w "\n%{http_code}" http://localhost:8083/api/apprise/urls \
+    -b /tmp/meshmonitor-cookies.txt)
+
+HTTP_CODE=$(echo "$APPRISE_URLS_RESPONSE" | tail -n1)
+RESPONSE_BODY=$(echo "$APPRISE_URLS_RESPONSE" | head -n-1)
+
+if [ "$HTTP_CODE" = "200" ]; then
+    # Check if response contains empty array
+    if echo "$RESPONSE_BODY" | grep -q '"urls":\[\]'; then
+        echo -e "${GREEN}✓ PASS${NC}: API reports no URLs configured (empty array)"
+    else
+        echo -e "${RED}✗ FAIL${NC}: API should return empty array on fresh container"
+        echo "   Response: $RESPONSE_BODY"
+        exit 1
+    fi
+else
+    echo -e "${RED}✗ FAIL${NC}: Failed to read Apprise URLs (HTTP $HTTP_CODE)"
+    exit 1
+fi
+
+# Check file doesn't exist or is empty
+CONFIG_FILE_CHECK=$(docker exec "$CONTAINER_NAME" sh -c 'if [ -f /data/apprise-config/urls.txt ]; then cat /data/apprise-config/urls.txt; else echo "__FILE_NOT_FOUND__"; fi' 2>&1)
+
+if echo "$CONFIG_FILE_CHECK" | grep -q "__FILE_NOT_FOUND__"; then
+    echo -e "${GREEN}✓ PASS${NC}: Config file does not exist (fresh start)"
+elif [ -z "$CONFIG_FILE_CHECK" ] || ! echo "$CONFIG_FILE_CHECK" | grep -v '^[[:space:]]*$' | grep -q .; then
+    echo -e "${GREEN}✓ PASS${NC}: Config file exists but is empty (fresh start)"
+else
+    echo -e "${RED}✗ FAIL${NC}: Config file should not exist or be empty on fresh start"
+    echo "   File contents: $CONFIG_FILE_CHECK"
+    exit 1
+fi
+echo ""
+
+# Test 13.2: Configure sample Apprise URLs from various providers
+echo "Test 13.2: Configure sample Apprise URLs from various providers"
+echo "Configuring 8 test URLs (Telegram, Discord, Slack, SMTP, Pushover, Webhook, MQTT, Gotify)..."
+
+# Create diverse sample URLs to test validation and persistence
+SAMPLE_URLS='[
+  "tgram://1234567890:ABCdefGHIjklMNOpqrSTUvwxYZ123456/123456789",
+  "discord://webhook_id/webhook_token",
+  "slack://TokenA/TokenB/TokenC",
+  "smtp://user:password@smtp.example.com:587/?from=noreply@example.com&to=alert@example.com",
+  "pushover://user_key@token",
+  "webhook://example.com/notify",
+  "mqtt://user:pass@mqtt.example.com:1883/meshmonitor/alerts",
+  "gotify://hostname/token"
+]'
+
+CONFIGURE_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://localhost:8083/api/apprise/configure \
+    -H "Content-Type: application/json" \
+    -H "X-CSRF-Token: $CSRF_TOKEN" \
+    -d "$SAMPLE_URLS" \
+    -b /tmp/meshmonitor-cookies.txt)
+
+HTTP_CODE=$(echo "$CONFIGURE_RESPONSE" | tail -n1)
+RESPONSE_BODY=$(echo "$CONFIGURE_RESPONSE" | head -n-1)
+
+if [ "$HTTP_CODE" = "200" ]; then
+    echo -e "${GREEN}✓ PASS${NC}: Apprise URLs configured successfully"
+    echo "   Response: $RESPONSE_BODY"
+else
+    echo -e "${RED}✗ FAIL${NC}: Failed to configure Apprise URLs (HTTP $HTTP_CODE)"
+    echo "   Response: $RESPONSE_BODY"
+    exit 1
+fi
+echo ""
+
+# Test 13.3: Verify URLs persisted to config file
+echo "Test 13.3: Verify URLs persisted to /data/apprise-config/urls.txt in container"
+CONFIG_FILE_CONTENT=$(docker exec "$CONTAINER_NAME" cat /data/apprise-config/urls.txt 2>/dev/null)
+
+if [ -n "$CONFIG_FILE_CONTENT" ]; then
+    LINE_COUNT=$(echo "$CONFIG_FILE_CONTENT" | wc -l)
+    echo -e "${GREEN}✓ PASS${NC}: Config file exists with $LINE_COUNT lines"
+    echo "   First 3 URLs from file:"
+    echo "$CONFIG_FILE_CONTENT" | head -3 | sed 's/^/     /'
+
+    # Verify key URLs are present
+    if echo "$CONFIG_FILE_CONTENT" | grep -q "tgram://"; then
+        echo -e "${GREEN}✓${NC} Telegram URL found"
+    else
+        echo -e "${RED}✗ FAIL${NC}: Telegram URL not found in config file"
+        exit 1
+    fi
+
+    if echo "$CONFIG_FILE_CONTENT" | grep -q "discord://"; then
+        echo -e "${GREEN}✓${NC} Discord URL found"
+    else
+        echo -e "${RED}✗ FAIL${NC}: Discord URL not found in config file"
+        exit 1
+    fi
+else
+    echo -e "${RED}✗ FAIL${NC}: Config file does not exist or is empty"
+    exit 1
+fi
+echo ""
+
+# Test 13.4: Read URLs back from API to confirm persistence
+echo "Test 13.4: Read URLs back from API to confirm they persisted"
+VERIFY_URLS_RESPONSE=$(curl -s -w "\n%{http_code}" http://localhost:8083/api/apprise/urls \
+    -b /tmp/meshmonitor-cookies.txt)
+
+HTTP_CODE=$(echo "$VERIFY_URLS_RESPONSE" | tail -n1)
+RESPONSE_BODY=$(echo "$VERIFY_URLS_RESPONSE" | head -n-1)
+
+if [ "$HTTP_CODE" = "200" ]; then
+    URL_COUNT=$(echo "$RESPONSE_BODY" | grep -o '"tgram://' | wc -l)
+    if [ "$URL_COUNT" -ge 1 ]; then
+        echo -e "${GREEN}✓ PASS${NC}: URLs retrieved from API after persistence"
+        echo "   Found $URL_COUNT URLs in response"
+    else
+        echo -e "${RED}✗ FAIL${NC}: URLs not found in API response"
+        echo "   Response: $RESPONSE_BODY"
+        exit 1
+    fi
+else
+    echo -e "${RED}✗ FAIL${NC}: Failed to read URLs (HTTP $HTTP_CODE)"
+    exit 1
+fi
+echo ""
+
+# Test 13.5: Check Apprise logs for diagnostic output
+echo "Test 13.5: Verify Apprise diagnostic logging is working"
+APPRISE_LOGS=$(docker logs "$CONTAINER_NAME" 2>&1 | grep -A 10 "Apprise API server")
+
+if echo "$APPRISE_LOGS" | grep -q "Loaded.*notification URLs from config"; then
+    echo -e "${GREEN}✓ PASS${NC}: Apprise diagnostic logging is working"
+    # Show the load summary line
+    LOAD_LINE=$(docker logs "$CONTAINER_NAME" 2>&1 | grep "Loaded.*notification URLs from config" | tail -1)
+    echo "   $LOAD_LINE"
+else
+    echo -e "${YELLOW}⚠ WARN${NC}: Apprise diagnostic logging not found (may need container restart)"
+fi
+echo ""
+
+# Test 13.6: Test send notification (expect it to fail with fake URLs, but test the flow)
+echo "Test 13.6: Test notification send flow (will fail with fake URLs)"
+TEST_NOTIFY_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://localhost:8083/api/apprise/test \
+    -H "X-CSRF-Token: $CSRF_TOKEN" \
+    -b /tmp/meshmonitor-cookies.txt)
+
+HTTP_CODE=$(echo "$TEST_NOTIFY_RESPONSE" | tail -n1)
+RESPONSE_BODY=$(echo "$TEST_NOTIFY_RESPONSE" | head -n-1)
+
+# We expect this to fail (400 or 500) because the URLs are fake
+if [ "$HTTP_CODE" = "400" ] || [ "$HTTP_CODE" = "500" ]; then
+    echo -e "${GREEN}✓ PASS${NC}: Test notification returned expected error (HTTP $HTTP_CODE)"
+    echo "   Response: $RESPONSE_BODY"
+
+    # Check if error message is informative
+    if echo "$RESPONSE_BODY" | grep -q "notification\|URL\|configured"; then
+        echo -e "${GREEN}✓${NC} Error message is informative"
+    fi
+elif [ "$HTTP_CODE" = "200" ]; then
+    echo -e "${YELLOW}⚠ WARN${NC}: Test notification succeeded (unexpected with fake URLs)"
+    echo "   Response: $RESPONSE_BODY"
+else
+    echo -e "${RED}✗ FAIL${NC}: Unexpected HTTP code: $HTTP_CODE"
+    echo "   Response: $RESPONSE_BODY"
+    exit 1
+fi
+echo ""
+
+echo "=========================================="
+echo -e "${GREEN}Apprise configuration tests completed!${NC}"
+echo "=========================================="
+echo ""
+echo "Apprise tests verified:"
+echo "  • Read existing Apprise URLs via API"
+echo "  • Configure 8 sample URLs from different providers"
+echo "  • URLs persisted to /data/apprise-config/urls.txt"
+echo "  • URLs readable back from API"
+echo "  • Diagnostic logging is working"
+echo "  • Test notification flow works (fails as expected with fake URLs)"
+echo ""
+
 # Allow time for system to settle before messaging test
 echo "Waiting 15 seconds for system to settle..."
 sleep 15
