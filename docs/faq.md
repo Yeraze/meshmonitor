@@ -377,23 +377,35 @@ See the [BLE Bridge repository](https://github.com/Yeraze/meshtastic-ble-bridge)
 
 #### For Serial/USB Devices
 
-Use [meshtasticd](https://github.com/meshtastic/python/tree/master/meshtasticd) as a TCP proxy:
+Use the [Meshtastic Serial Bridge](https://github.com/Yeraze/meshtastic-serial-bridge) to create a TCP-to-Serial gateway:
 
 ```bash
-# Install meshtasticd
-pip install meshtasticd
+# Create docker-compose.yml with serial-bridge
+cat > docker-compose.yml << 'EOF'
+services:
+  serial-bridge:
+    image: ghcr.io/yeraze/meshtastic-serial-bridge:latest
+    container_name: meshtastic-serial-bridge
+    devices:
+      - /dev/ttyUSB0:/dev/ttyUSB0  # Change to your device
+    ports:
+      - "4403:4403"
+    restart: unless-stopped
 
-# For Serial devices:
-meshtasticd --serial-port /dev/ttyUSB0
+  meshmonitor:
+    image: ghcr.io/yeraze/meshmonitor:latest
+    environment:
+      - MESHTASTIC_NODE_IP=serial-bridge
+    depends_on:
+      - serial-bridge
+EOF
+
+docker compose up -d
 ```
 
-Then configure MeshMonitor to connect to meshtasticd:
+The serial bridge connects to your USB/Serial Meshtastic device and exposes it on TCP port 4403 for MeshMonitor.
 
-```yaml
-environment:
-  - MESHTASTIC_NODE_IP=localhost  # meshtasticd runs on localhost
-  - MESHTASTIC_TCP_PORT=4403      # Default meshtasticd port
-```
+See the [Serial Bridge repository](https://github.com/Yeraze/meshtastic-serial-bridge) for detailed setup instructions.
 
 ---
 
