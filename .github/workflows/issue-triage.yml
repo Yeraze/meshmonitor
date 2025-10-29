@@ -78,12 +78,37 @@ jobs:
       github.actor != 'github-actions[bot]'
 
     steps:
+      - name: Check user permissions
+        id: check-permissions
+        uses: actions/github-script@v8
+        with:
+          script: |
+            try {
+              const { data: permission } = await github.rest.repos.getCollaboratorPermissionLevel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                username: context.actor
+              });
+
+              const hasWriteAccess = ['write', 'admin', 'maintain'].includes(permission.permission);
+              console.log(`Actor: ${context.actor}, Permission: ${permission.permission}, Has write access: ${hasWriteAccess}`);
+
+              core.setOutput('has_write_access', hasWriteAccess);
+              return hasWriteAccess;
+            } catch (error) {
+              console.log(`Error checking permissions: ${error.message}`);
+              core.setOutput('has_write_access', false);
+              return false;
+            }
+
       - name: Checkout repository
+        if: steps.check-permissions.outputs.has_write_access == 'true'
         uses: actions/checkout@v5
         with:
           fetch-depth: 1
 
       - name: Triage with Claude
+        if: steps.check-permissions.outputs.has_write_access == 'true'
         uses: anthropics/claude-code-action@beta
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -236,12 +261,37 @@ jobs:
       github.actor != 'Yeraze'
 
     steps:
+      - name: Check user permissions
+        id: check-permissions
+        uses: actions/github-script@v8
+        with:
+          script: |
+            try {
+              const { data: permission } = await github.rest.repos.getCollaboratorPermissionLevel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                username: context.actor
+              });
+
+              const hasWriteAccess = ['write', 'admin', 'maintain'].includes(permission.permission);
+              console.log(`Actor: ${context.actor}, Permission: ${permission.permission}, Has write access: ${hasWriteAccess}`);
+
+              core.setOutput('has_write_access', hasWriteAccess);
+              return hasWriteAccess;
+            } catch (error) {
+              console.log(`Error checking permissions: ${error.message}`);
+              core.setOutput('has_write_access', false);
+              return false;
+            }
+
       - name: Checkout repository
+        if: steps.check-permissions.outputs.has_write_access == 'true'
         uses: actions/checkout@v5
         with:
           fetch-depth: 1
 
       - name: Check if this is a bug issue needing follow-up
+        if: steps.check-permissions.outputs.has_write_access == 'true'
         id: check-bug
         uses: actions/github-script@v8
         with:
@@ -257,7 +307,7 @@ jobs:
             core.setOutput('should_analyze', isBug && !needsReview);
 
       - name: Follow-up Analysis with Claude
-        if: steps.check-bug.outputs.should_analyze == 'true'
+        if: steps.check-permissions.outputs.has_write_access == 'true' && steps.check-bug.outputs.should_analyze == 'true'
         uses: anthropics/claude-code-action@beta
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
