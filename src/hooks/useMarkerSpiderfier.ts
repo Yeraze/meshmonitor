@@ -6,7 +6,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useMap } from 'react-leaflet';
 import { Marker as LeafletMarker } from 'leaflet';
-import { OverlappingMarkerSpiderfier } from 'ts-overlapping-marker-spiderfier-leaflet';
+import { OverlappingMarkerSpiderfier, type SpiderfierEventMap, type SpiderfierEventHandler } from 'ts-overlapping-marker-spiderfier-leaflet';
 
 export interface SpiderfierOptions {
   /**
@@ -49,14 +49,16 @@ export function useMarkerSpiderfier(options: SpiderfierOptions = {}) {
   const map = useMap();
   const spiderfierRef = useRef<OverlappingMarkerSpiderfier | null>(null);
   const markersRef = useRef<Set<LeafletMarker>>(new Set());
+  // Track markers by nodeId or leaflet ID to allow multiple markers at same location
+  const markerByIdRef = useRef<Map<string, LeafletMarker>>(new Map());
 
-  // Initialize spiderfier instance
+  // Initialize spiderfier instance (only once when map is available)
   useEffect(() => {
     if (!map) return;
 
-    // Create spiderfier with options
+    // Create spiderfier with initial options
     const spiderfier = new OverlappingMarkerSpiderfier(map, {
-      keepSpiderfied: options.keepSpiderfied ?? false,
+      keepSpiderfied: options.keepSpiderfied ?? true, // Keep markers fanned out
       nearbyDistance: options.nearbyDistance ?? 20,
       circleSpiralSwitchover: options.circleSpiralSwitchover ?? 9,
       legWeight: options.legWeight ?? 2,
@@ -65,6 +67,8 @@ export function useMarkerSpiderfier(options: SpiderfierOptions = {}) {
         highlighted: 'rgba(50, 50, 50, 0.8)',
       },
     });
+
+    console.log('[Spiderfier] Initialized once with nearbyDistance:', options.nearbyDistance ?? 20, 'pixels');
 
     spiderfierRef.current = spiderfier;
 
@@ -80,25 +84,86 @@ export function useMarkerSpiderfier(options: SpiderfierOptions = {}) {
           }
         });
         markersRef.current.clear();
+        markerByIdRef.current.clear();
         spiderfierRef.current = null;
       }
     };
-  }, [map, options.keepSpiderfied, options.nearbyDistance, options.circleSpiralSwitchover, options.legWeight]);
+  }, [map]); // Only recreate when map changes, not on every option change
+
+  // Update nearbyDistance when it changes (without recreating the entire instance)
+  useEffect(() => {
+    if (spiderfierRef.current && options.nearbyDistance !== undefined) {
+      spiderfierRef.current.nearbyDistance = options.nearbyDistance;
+    }
+  }, [options.nearbyDistance]);
 
   /**
    * Add a marker to the spiderfier
+   * @param marker - The Leaflet marker instance
+   * @param nodeId - Optional node ID to track this marker (allows multiple markers at same position)
    */
-  const addMarker = useCallback((marker: LeafletMarker | null) => {
-    if (!marker || !spiderfierRef.current) return;
+  const addMarker = useCallback((marker: LeafletMarker | null, nodeId?: string) => {
+    if (!marker || !spiderfierRef.current) {
+      return;
+    }
 
-    // Don't add if already added
-    if (markersRef.current.has(marker)) return;
+    // Track by node ID if provided, otherwise generate a unique key
+    const trackingKey = nodeId || `marker-${Date.now()}-${Math.random()}`;
+    const existingMarker = markerByIdRef.current.get(trackingKey);
 
+    // If the existing marker is the same object, we're done (already added)
+    if (existingMarker === marker) {
+      console.log(`[Spiderfier] Marker ${trackingKey} - same object, already added`);
+      return;
+    }
+
+    // If there's a different marker for this node ID, we need to check if it's truly different
+    // or just a React-Leaflet re-creation at the same position
+    if (existingMarker && existingMarker !== marker) {
+      const existingLatLng = existingMarker.getLatLng();
+      const newLatLng = marker.getLatLng();
+      const isSamePosition =
+        existingLatLng.lat === newLatLng.lat &&
+        existingLatLng.lng === newLatLng.lng;
+
+      console.log(`[Spiderfier] ⚠️ Marker ${trackingKey} - DIFFERENT object detected!`);
+      console.log(`[Spiderfier]   - Same position? ${isSamePosition}`);
+      console.log(`[Spiderfier]   - Old: ${existingLatLng.lat}, ${existingLatLng.lng}`);
+      console.log(`[Spiderfier]   - New: ${newLatLng.lat}, ${newLatLng.lng}`);
+
+      if (isSamePosition) {
+        // Same position - this is likely React-Leaflet recreating the marker
+        // DON'T remove the old marker to preserve spiderfier state
+        console.log('[Spiderfier]   - ACTION: Preserving spiderfier state (NOT removing old marker)');
+
+        // Update tracking without touching spiderfier
+        // The spiderfier will continue to work with the old marker object
+        // This is safe because Leaflet markers at the same position are functionally identical
+        return; // Keep the existing marker in the spiderfier
+      } else {
+        // Different position - truly a different marker
+        console.log('[Spiderfier]   - ACTION: Removing old marker and adding new one');
+        try {
+          spiderfierRef.current.removeMarker(existingMarker);
+          markersRef.current.delete(existingMarker);
+        } catch (e) {
+          // Ignore removal errors
+        }
+      }
+    }
+
+    // Add the new marker
     try {
+      console.log(`[Spiderfier] Adding NEW marker ${trackingKey}`);
       spiderfierRef.current.addMarker(marker);
       markersRef.current.add(marker);
+      markerByIdRef.current.set(trackingKey, marker);
+
+      if (markersRef.current.size === 1 || markersRef.current.size % 50 === 0) {
+        console.log('[Spiderfier] Total markers:', markersRef.current.size);
+      }
     } catch (e) {
-      console.warn('Failed to add marker to spiderfier:', e);
+      console.warn('[Spiderfier] Failed to add marker:', e);
     }
   }, []);
 
@@ -125,9 +190,39 @@ export function useMarkerSpiderfier(options: SpiderfierOptions = {}) {
     return spiderfierRef.current;
   }, []);
 
+  /**
+   * Add an event listener to the spiderfier
+   * Events: 'click', 'spiderfy', 'unspiderfy'
+   */
+  const addListener = useCallback(<K extends keyof SpiderfierEventMap>(
+    event: K,
+    handler: SpiderfierEventHandler<K>
+  ) => {
+    if (!spiderfierRef.current) {
+      console.warn('[Spiderfier] Cannot add listener: spiderfier not initialized');
+      return;
+    }
+    spiderfierRef.current.addListener(event, handler);
+  }, []);
+
+  /**
+   * Remove an event listener from the spiderfier
+   */
+  const removeListener = useCallback(<K extends keyof SpiderfierEventMap>(
+    event: K,
+    handler: SpiderfierEventHandler<K>
+  ) => {
+    if (!spiderfierRef.current) {
+      return;
+    }
+    spiderfierRef.current.removeListener(event, handler);
+  }, []);
+
   return {
     addMarker,
     removeMarker,
     getSpiderfier,
+    addListener,
+    removeListener,
   };
 }

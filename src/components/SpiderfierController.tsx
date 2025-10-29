@@ -5,6 +5,7 @@
 
 import { useImperativeHandle, forwardRef } from 'react';
 import { Marker as LeafletMarker } from 'leaflet';
+import { OverlappingMarkerSpiderfier, type SpiderfierEventMap, type SpiderfierEventHandler } from 'ts-overlapping-marker-spiderfier-leaflet';
 import { useMarkerSpiderfier } from '../hooks/useMarkerSpiderfier';
 
 interface SpiderfierControllerProps {
@@ -16,21 +17,29 @@ interface SpiderfierControllerProps {
 }
 
 export interface SpiderfierControllerRef {
-  addMarker: (marker: LeafletMarker | null) => void;
+  addMarker: (marker: LeafletMarker | null, nodeId?: string) => void;
   removeMarker: (marker: LeafletMarker | null) => void;
+  addListener: <K extends keyof SpiderfierEventMap>(
+    event: K,
+    handler: SpiderfierEventHandler<K>
+  ) => void;
+  removeListener: <K extends keyof SpiderfierEventMap>(
+    event: K,
+    handler: SpiderfierEventHandler<K>
+  ) => void;
+  getSpiderfier: () => OverlappingMarkerSpiderfier | null;
 }
 
 export const SpiderfierController = forwardRef<SpiderfierControllerRef, SpiderfierControllerProps>(
-  ({ zoomLevel }, ref) => {
-    // Initialize spiderfier with adaptive configuration
-    // nearbyDistance adapts based on zoom level
-    // At higher zoom, markers need to be closer to trigger spiderfying
-    const baseDistance = 20; // pixels at zoom 10
-    const zoomAdjustedDistance = Math.max(10, baseDistance * Math.pow(0.9, zoomLevel - 10));
+  ({}, ref) => {
+    // Use a generous fixed nearbyDistance to ensure overlapping markers are detected
+    // at all zoom levels. 50 pixels is enough to catch markers at the same GPS coordinates
+    // while avoiding false positives from nearby but distinct locations
+    const nearbyDistance = 50;
 
-    const { addMarker, removeMarker } = useMarkerSpiderfier({
-      keepSpiderfied: false, // Collapse fan when clicking elsewhere
-      nearbyDistance: zoomAdjustedDistance,
+    const { addMarker, removeMarker, addListener, removeListener, getSpiderfier } = useMarkerSpiderfier({
+      keepSpiderfied: true, // Keep markers fanned out after clicking
+      nearbyDistance: nearbyDistance,
       circleSpiralSwitchover: 9, // Use spiral layout for 9+ markers
       legWeight: 2,
       legColors: {
@@ -39,11 +48,14 @@ export const SpiderfierController = forwardRef<SpiderfierControllerRef, Spiderfi
       },
     });
 
-    // Expose addMarker and removeMarker methods via ref
+    // Expose methods via ref
     useImperativeHandle(ref, () => ({
       addMarker,
       removeMarker,
-    }), [addMarker, removeMarker]);
+      addListener,
+      removeListener,
+      getSpiderfier,
+    }), [addMarker, removeMarker, addListener, removeListener, getSpiderfier]);
 
     // This component doesn't render anything
     return null;
