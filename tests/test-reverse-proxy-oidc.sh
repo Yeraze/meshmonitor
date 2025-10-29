@@ -32,6 +32,18 @@ cleanup() {
     docker compose -f "$COMPOSE_FILE" down -v 2>/dev/null || true
     rm -f "$COMPOSE_FILE"
     rm -f /tmp/meshmonitor-oidc-cookies.txt
+
+    # Verify containers stopped (don't fail on cleanup issues)
+    for container in "$MESHMONITOR_CONTAINER" "$OIDC_CONTAINER"; do
+        if docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
+            echo "Warning: Container ${container} still running, forcing stop..."
+            docker stop "$container" 2>/dev/null || true
+            docker rm "$container" 2>/dev/null || true
+        fi
+    done
+
+    # Always return success from cleanup
+    return 0
 }
 
 # Set trap to cleanup on exit

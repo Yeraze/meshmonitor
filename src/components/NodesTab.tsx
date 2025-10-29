@@ -16,10 +16,21 @@ import { useAuth } from '../contexts/AuthContext';
 import MapLegend from './MapLegend';
 import ZoomHandler from './ZoomHandler';
 import MapResizeHandler from './MapResizeHandler';
+import { SpiderfierController, SpiderfierControllerRef } from './SpiderfierController';
 import { TilesetSelector } from './TilesetSelector';
 import { MapCenterController } from './MapCenterController';
 import PacketMonitorPanel from './PacketMonitorPanel';
 import { getPacketStats } from '../services/packetApi';
+
+/**
+ * Spiderfier initialization constants
+ */
+const SPIDERFIER_INIT = {
+  /** Maximum attempts to wait for spiderfier initialization */
+  MAX_ATTEMPTS: 50,
+  /** Interval between initialization attempts (ms) - 50 attempts × 100ms = 5 seconds total */
+  RETRY_INTERVAL_MS: 100,
+} as const;
 
 interface NodesTabProps {
   processedNodes: DeviceInfo[];
@@ -30,6 +41,7 @@ interface NodesTabProps {
   setSelectedDMNode: (nodeId: string) => void;
   markerRefs: React.MutableRefObject<Map<string, LeafletMarker>>;
   traceroutePathsElements: React.ReactNode;
+  selectedNodeTraceroute: React.ReactNode;
 }
 
 // Helper function to check if a date is today
@@ -40,7 +52,21 @@ const isToday = (date: Date): boolean => {
     date.getFullYear() === today.getFullYear();
 };
 
-const NodesTab: React.FC<NodesTabProps> = ({
+// Separate components for traceroutes that can update independently
+// These prevent marker re-renders when only the traceroute paths change
+const TraceroutePathsLayer = React.memo<{ paths: React.ReactNode }>(
+  ({ paths }) => {
+    return <>{paths}</>;
+  }
+);
+
+const SelectedTracerouteLayer = React.memo<{ traceroute: React.ReactNode }>(
+  ({ traceroute }) => {
+    return <>{traceroute}</>;
+  }
+);
+
+const NodesTabComponent: React.FC<NodesTabProps> = ({
   processedNodes,
   shouldShowData,
   centerMapOnNode,
@@ -49,6 +75,7 @@ const NodesTab: React.FC<NodesTabProps> = ({
   setSelectedDMNode,
   markerRefs,
   traceroutePathsElements,
+  selectedNodeTraceroute,
 }) => {
   // Use context hooks
   const {
@@ -107,6 +134,9 @@ const NodesTab: React.FC<NodesTabProps> = ({
 
   const { hasPermission } = useAuth();
 
+  // Ref for spiderfier controller to manage overlapping markers
+  const spiderfierRef = useRef<SpiderfierControllerRef>(null);
+
   // Packet Monitor state (desktop only)
   const [showPacketMonitor, setShowPacketMonitor] = useState(() => {
     // Load from localStorage
@@ -152,6 +182,85 @@ const NodesTab: React.FC<NodesTabProps> = ({
 
     fetchPacketLogStatus();
   }, [canViewPacketMonitor]);
+
+  // Refs to access latest values without recreating listeners
+  const processedNodesRef = useRef(processedNodes);
+  const setSelectedNodeIdRef = useRef(setSelectedNodeId);
+  const centerMapOnNodeRef = useRef(centerMapOnNode);
+
+  // Stable ref callback for markers to prevent unnecessary re-renders
+  const handleMarkerRef = React.useCallback((ref: LeafletMarker | null, nodeId: string | undefined) => {
+    if (ref && nodeId) {
+      markerRefs.current.set(nodeId, ref);
+      // Add marker to spiderfier for overlap handling, passing nodeId to allow multiple markers at same position
+      spiderfierRef.current?.addMarker(ref, nodeId);
+    }
+  }, []); // Empty deps - function never changes
+
+  // Update refs when values change
+  useEffect(() => {
+    processedNodesRef.current = processedNodes;
+    setSelectedNodeIdRef.current = setSelectedNodeId;
+    centerMapOnNodeRef.current = centerMapOnNode;
+  });
+
+  // Track if listeners have been set up
+  const listenersSetupRef = useRef(false);
+
+  // Set up spiderfier event listeners ONCE when component mounts
+  useEffect(() => {
+    // Wait for spiderfier to be ready
+    const checkAndSetup = () => {
+      if (listenersSetupRef.current) {
+        return true; // Already set up
+      }
+
+      if (!spiderfierRef.current) {
+        return false;
+      }
+
+      const clickHandler = (marker: any) => {
+        // Find the node data from the marker
+        const nodeEntry = Array.from(markerRefs.current.entries()).find(([_, ref]) => ref === marker);
+        if (nodeEntry) {
+          const nodeId = nodeEntry[0];
+          setSelectedNodeIdRef.current(nodeId);
+          // Find the node to center on it
+          const node = processedNodesRef.current.find(n => n.user?.id === nodeId);
+          if (node) {
+            centerMapOnNodeRef.current(node);
+          }
+        }
+      };
+
+      const spiderfyHandler = (_markers: any[]) => {
+        // Markers fanned out
+      };
+
+      const unspiderfyHandler = (_markers: any[]) => {
+        // Markers collapsed
+      };
+
+      // Add listeners only once
+      spiderfierRef.current.addListener('click', clickHandler);
+      spiderfierRef.current.addListener('spiderfy', spiderfyHandler);
+      spiderfierRef.current.addListener('unspiderfy', unspiderfyHandler);
+      listenersSetupRef.current = true;
+
+      return true;
+    };
+
+    // Keep retrying until spiderfier is ready
+    let attempts = 0;
+    const intervalId = setInterval(() => {
+      attempts++;
+      if (checkAndSetup() || attempts >= SPIDERFIER_INIT.MAX_ATTEMPTS) {
+        clearInterval(intervalId);
+      }
+    }, SPIDERFIER_INIT.RETRY_INTERVAL_MS);
+
+    return () => clearInterval(intervalId);
+  }, []); // Empty array - run only once on mount
 
   // Track previous nodes to detect updates and trigger animations
   const prevNodesRef = useRef<Map<string, number>>(new Map());
@@ -207,6 +316,16 @@ const NodesTab: React.FC<NodesTabProps> = ({
     node.position.latitude != null &&
     node.position.longitude != null
   );
+
+  // Memoize node positions to prevent React-Leaflet from resetting marker positions
+  // Creating new [lat, lng] arrays causes React-Leaflet to move markers, destroying spiderfier state
+  const nodePositions = React.useMemo(() => {
+    const posMap = new Map<number, [number, number]>();
+    nodesWithPosition.forEach(node => {
+      posMap.set(node.nodeNum, [node.position!.latitude, node.position!.longitude]);
+    });
+    return posMap;
+  }, [nodesWithPosition.map(n => `${n.nodeNum}-${n.position!.latitude}-${n.position!.longitude}`).join(',')]);
 
   // Calculate center point of all nodes for initial map view
   const getMapCenter = (): [number, number] => {
@@ -506,6 +625,7 @@ const NodesTab: React.FC<NodesTabProps> = ({
               />
               <ZoomHandler onZoomChange={setMapZoom} />
               <MapResizeHandler trigger={showPacketMonitor} />
+              <SpiderfierController ref={spiderfierRef} zoomLevel={mapZoom} />
               <MapLegend />
               {nodesWithPosition
                 .filter(node => showMqttNodes || !node.viaMqtt)
@@ -533,23 +653,16 @@ const NodesTab: React.FC<NodesTabProps> = ({
                   animate: shouldAnimate
                 });
 
+                // Use memoized position to prevent React-Leaflet from resetting marker position
+                const position = nodePositions.get(node.nodeNum)!;
+
                 return (
               <Marker
                 key={node.nodeNum}
-                position={[node.position!.latitude, node.position!.longitude]}
-                eventHandlers={{
-                  click: () => {
-                    setSelectedNodeId(node.user?.id || null);
-                    centerMapOnNode(node);
-                  }
-                }}
+                position={position}
                 icon={markerIcon}
                 zIndexOffset={shouldAnimate ? 10000 : 0}
-                ref={(ref) => {
-                  if (ref && node.user?.id) {
-                    markerRefs.current.set(node.user.id, ref);
-                  }
-                }}
+                ref={(ref) => handleMarkerRef(ref, node.user?.id)}
               >
                 <Popup autoPan={false}>
                   <div className="node-popup">
@@ -679,8 +792,11 @@ const NodesTab: React.FC<NodesTabProps> = ({
                   );
                 })}
 
-              {/* Draw traceroute paths */}
-              {traceroutePathsElements}
+              {/* Draw traceroute paths (independent layer) */}
+              <TraceroutePathsLayer paths={traceroutePathsElements} />
+
+              {/* Draw selected node traceroute (independent layer) */}
+              <SelectedTracerouteLayer traceroute={selectedNodeTraceroute} />
 
               {/* Draw neighbor info connections */}
               {showNeighborInfo && neighborInfo.length > 0 && neighborInfo.map((ni, idx) => {
@@ -805,5 +921,38 @@ const NodesTab: React.FC<NodesTabProps> = ({
     </div>
   );
 };
+
+// Memoize NodesTab to prevent re-rendering when App.tsx updates for message status
+// Only re-render when actual node data or map-related props change
+const NodesTab = React.memo(NodesTabComponent, (prevProps, nextProps) => {
+  // Compare processedNodes array - only re-render if nodes actually changed
+  if (prevProps.processedNodes.length !== nextProps.processedNodes.length) {
+    return false; // Re-render
+  }
+
+  // Check if any node's position changed
+  // If spiderfier is active (keepSpiderfied), avoid re-rendering to preserve fanout
+  // Users can manually refresh the map if a mobile node moves while markers are fanned
+  const hasPositionChanges = prevProps.processedNodes.some((prev, i) => {
+    const next = nextProps.processedNodes[i];
+    return (
+      prev.position?.latitude !== next.position?.latitude ||
+      prev.position?.longitude !== next.position?.longitude
+    );
+  });
+
+  if (hasPositionChanges) {
+    // Position changed, but skip re-render to preserve spiderfier state
+    return true; // Skip re-render to keep markers stable
+  }
+
+  // DON'T check traceroutePathsElements or selectedNodeTraceroute
+  // These are rendered as separate memoized components that can update independently
+  // This prevents the spiderfier from collapsing when traceroute paths update
+
+  // All other props are stable function references or refs, no need to check
+  // Skip re-render - nothing map-relevant changed
+  return true;
+});
 
 export default NodesTab;

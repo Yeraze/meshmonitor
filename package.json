@@ -50,6 +50,7 @@
     "react-leaflet": "^5.0.0",
     "recharts": "^3.3.0",
     "rotating-file-stream": "^3.2.7",
+    "ts-overlapping-marker-spiderfier-leaflet": "^1.0.5",
     "web-push": "^3.6.7"
   },
   "devDependencies": {

@@ -24,6 +24,17 @@ cleanup() {
     echo "Cleaning up..."
     docker compose -f "$COMPOSE_FILE" down -v 2>/dev/null || true
     rm -f "$COMPOSE_FILE"
+    rm -f /tmp/meshmonitor-cookies.txt
+
+    # Verify container stopped (don't fail on cleanup issues)
+    if docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+        echo "Warning: Container ${CONTAINER_NAME} still running, forcing stop..."
+        docker stop "$CONTAINER_NAME" 2>/dev/null || true
+        docker rm "$CONTAINER_NAME" 2>/dev/null || true
+    fi
+
+    # Always return success from cleanup
+    return 0
 }
 
 # Set trap to cleanup on exit
@@ -378,7 +389,7 @@ echo "Test 13.2: Configure sample Apprise URLs from various providers"
 echo "Configuring 8 test URLs (Telegram, Discord, Slack, SMTP, Pushover, Webhook, MQTT, Gotify)..."
 
 # Create diverse sample URLs to test validation and persistence
-SAMPLE_URLS='[
+SAMPLE_URLS='{"urls": [
   "tgram://1234567890:ABCdefGHIjklMNOpqrSTUvwxYZ123456/123456789",
   "discord://webhook_id/webhook_token",
   "slack://TokenA/TokenB/TokenC",
@@ -387,7 +398,7 @@ SAMPLE_URLS='[
   "webhook://example.com/notify",
   "mqtt://user:pass@mqtt.example.com:1883/meshmonitor/alerts",
   "gotify://hostname/token"
-]'
+]}'
 
 CONFIGURE_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://localhost:8083/api/apprise/configure \
     -H "Content-Type: application/json" \
@@ -464,7 +475,7 @@ echo ""
 
 # Test 13.5: Check Apprise logs for diagnostic output
 echo "Test 13.5: Verify Apprise diagnostic logging is working"
-APPRISE_LOGS=$(docker logs "$CONTAINER_NAME" 2>&1 | grep -A 10 "Apprise API server")
+APPRISE_LOGS=$(docker logs "$CONTAINER_NAME" 2>&1 | grep -A 10 "Apprise API server" || true)
 
 if echo "$APPRISE_LOGS" | grep -q "Loaded.*notification URLs from config"; then
     echo -e "${GREEN}✓ PASS${NC}: Apprise diagnostic logging is working"

@@ -3529,9 +3529,46 @@ function App() {
 
   // Removed renderSettingsTab - using SettingsTab component instead
 
-  // Memoize traceroute path rendering to prevent chart flickering
+  // Create stable digests of nodes and traceroutes that only change when relevant data changes
+  // This prevents unnecessary recalculation of traceroutePathsElements
+  const nodesPositionDigest = useMemo(() => {
+    return nodes.map(n => ({
+      nodeNum: n.nodeNum,
+      position: n.position ? {
+        latitude: n.position.latitude,
+        longitude: n.position.longitude
+      } : undefined,
+      user: n.user ? {
+        longName: n.user.longName,
+        shortName: n.user.shortName,
+        id: n.user.id
+      } : undefined
+    }));
+  }, [nodes.map(n => `${n.nodeNum}-${n.position?.latitude}-${n.position?.longitude}`).join(',')]);
+
+  const traceroutesDigest = useMemo(() => {
+    return traceroutes.map(tr => ({
+      fromNodeNum: tr.fromNodeNum,
+      toNodeNum: tr.toNodeNum,
+      fromNodeId: tr.fromNodeId,
+      toNodeId: tr.toNodeId,
+      route: tr.route,
+      routeBack: tr.routeBack,
+      snrTowards: tr.snrTowards,
+      snrBack: tr.snrBack,
+      timestamp: tr.timestamp,
+      createdAt: tr.createdAt
+    }));
+  }, [traceroutes.map(tr => `${tr.fromNodeNum}-${tr.toNodeNum}-${tr.route}-${tr.routeBack}-${tr.timestamp || tr.createdAt}`).join(',')]);
+
+  // Memoize base traceroute paths (showPaths) - doesn't depend on selectedNodeId
+  // This prevents re-rendering markers when clicking to select a node
   const traceroutePathsElements = useMemo(() => {
-    if (!showPaths && !showRoute) return null;
+    if (!showPaths) return null;
+
+    // Use digest arrays for stable references
+    const nodesForRender = nodesPositionDigest;
+    const traceroutesForRender = traceroutesDigest;
 
     // Collect all map elements to return
     const allElements: React.ReactElement[] = [];
@@ -3548,13 +3585,13 @@ function App() {
     if (showPaths) {
       // Filter traceroutes by age using the same maxNodeAgeHours setting
       const cutoffTime = Date.now() - (maxNodeAgeHours * 60 * 60 * 1000);
-      const recentTraceroutes = traceroutes.filter(tr => {
+      const recentTraceroutes = traceroutesForRender.filter(tr => {
         const timestamp = tr.timestamp || tr.createdAt || 0;
         return timestamp >= cutoffTime;
       });
 
       // Deduplicate: keep only the most recent traceroute per node pair
-      const tracerouteMap = new Map<string, typeof traceroutes[0]>();
+      const tracerouteMap = new Map<string, typeof traceroutesForRender[0]>();
       recentTraceroutes.forEach(tr => {
         // Create a bidirectional key (same for A→B and B→A)
         const key = [tr.fromNodeNum, tr.toNodeNum].sort().join('-');
@@ -3599,7 +3636,7 @@ function App() {
 
         // Build forward sequence with positions
         forwardSequence.forEach((nodeNum) => {
-          const node = nodes.find(n => n.nodeNum === nodeNum);
+          const node = nodesForRender.find(n => n.nodeNum === nodeNum);
           if (node?.position?.latitude && node?.position?.longitude) {
             forwardPositions.push({
               nodeNum,
@@ -3643,7 +3680,7 @@ function App() {
 
         // Build back sequence with positions
         backSequence.forEach((nodeNum) => {
-          const node = nodes.find(n => n.nodeNum === nodeNum);
+          const node = nodesForRender.find(n => n.nodeNum === nodeNum);
           if (node?.position?.latitude && node?.position?.longitude) {
             backPositions.push({
               nodeNum,
@@ -3689,8 +3726,8 @@ function App() {
 
       // Get node names for popup
       const BROADCAST_ADDR = 4294967295;
-      const node1 = nodes.find(n => n.nodeNum === segment.nodeNums[0]);
-      const node2 = nodes.find(n => n.nodeNum === segment.nodeNums[1]);
+      const node1 = nodesForRender.find(n => n.nodeNum === segment.nodeNums[0]);
+      const node2 = nodesForRender.find(n => n.nodeNum === segment.nodeNums[1]);
       const node1Name = segment.nodeNums[0] === BROADCAST_ADDR ? '(unknown)' :
                         (node1?.user?.longName || node1?.user?.shortName || `!${segment.nodeNums[0].toString(16)}`);
       const node2Name = segment.nodeNums[1] === BROADCAST_ADDR ? '(unknown)' :
@@ -3756,7 +3793,7 @@ function App() {
                   onClick={(e) => {
                     e.stopPropagation();
                     // Look up fresh node data by nodeNum from segment
-                    const freshNode = nodes.find(n => n.nodeNum === segment.nodeNums[0]);
+                    const freshNode = nodesForRender.find(n => n.nodeNum === segment.nodeNums[0]);
                     if (freshNode?.user?.id && freshNode?.position?.latitude && freshNode?.position?.longitude) {
                       setSelectedNodeId(freshNode.user.id);
                       setMapCenterTarget([freshNode.position.latitude, freshNode.position.longitude]);
@@ -3772,7 +3809,7 @@ function App() {
                   onClick={(e) => {
                     e.stopPropagation();
                     // Look up fresh node data by nodeNum from segment
-                    const freshNode = nodes.find(n => n.nodeNum === segment.nodeNums[1]);
+                    const freshNode = nodesForRender.find(n => n.nodeNum === segment.nodeNums[1]);
                     if (freshNode?.user?.id && freshNode?.position?.latitude && freshNode?.position?.longitude) {
                       setSelectedNodeId(freshNode.user.id);
                       setMapCenterTarget([freshNode.position.latitude, freshNode.position.longitude]);
@@ -3908,10 +3945,23 @@ function App() {
       allElements.push(...segmentElements);
     } // End of if (showPaths)
 
-    // Add selected node traceroute rendering with arrows (if enabled)
+    return allElements;
+  }, [showPaths, traceroutesDigest, nodesPositionDigest, distanceUnit, maxNodeAgeHours]);
+
+  // Separate memoization for selected node traceroute (showRoute)
+  // This can change independently without re-rendering the base map markers
+  const selectedNodeTraceroute = useMemo(() => {
     // Skip rendering traceroute if the selected node is the current/local node (traceroute to yourself doesn't make sense)
+    if (!showRoute || !selectedNodeId || selectedNodeId === currentNodeId) return null;
+
+    // Use digest arrays for stable references
+    const nodesForRender = nodesPositionDigest;
+    const traceroutesForRender = traceroutesDigest;
+
+    const allElements: React.ReactElement[] = [];
+
     if (showRoute && selectedNodeId && selectedNodeId !== currentNodeId) {
-      const selectedTrace = traceroutes.find(tr =>
+      const selectedTrace = traceroutesForRender.find(tr =>
         tr.toNodeId === selectedNodeId || tr.fromNodeId === selectedNodeId
       );
 
@@ -3933,8 +3983,8 @@ function App() {
           if (routeForward.length === 0 || routeBack.length === 0) {
             // Don't render - at least one direction failed
           } else {
-            const fromNode = nodes.find(n => n.nodeNum === selectedTrace.fromNodeNum);
-            const toNode = nodes.find(n => n.nodeNum === selectedTrace.toNodeNum);
+            const fromNode = nodesForRender.find(n => n.nodeNum === selectedTrace.fromNodeNum);
+            const toNode = nodesForRender.find(n => n.nodeNum === selectedTrace.toNodeNum);
             const fromName = fromNode?.user?.longName || fromNode?.user?.shortName || selectedTrace.fromNodeId;
             const toName = toNode?.user?.longName || toNode?.user?.shortName || selectedTrace.toNodeId;
 
@@ -3945,7 +3995,7 @@ function App() {
               const forwardPositions: [number, number][] = [];
 
               forwardSequence.forEach((nodeNum) => {
-                const node = nodes.find(n => n.nodeNum === nodeNum);
+                const node = nodesForRender.find(n => n.nodeNum === nodeNum);
                 if (node?.position?.latitude && node?.position?.longitude) {
                   forwardPositions.push([node.position.latitude, node.position.longitude]);
                 }
@@ -3955,8 +4005,8 @@ function App() {
                 // Calculate total distance for forward path
                 let forwardTotalDistanceKm = 0;
                 for (let i = 0; i < forwardSequence.length - 1; i++) {
-                  const node1 = nodes.find(n => n.nodeNum === forwardSequence[i]);
-                  const node2 = nodes.find(n => n.nodeNum === forwardSequence[i + 1]);
+                  const node1 = nodesForRender.find(n => n.nodeNum === forwardSequence[i]);
+                  const node2 = nodesForRender.find(n => n.nodeNum === forwardSequence[i + 1]);
                   if (node1?.position?.latitude && node1?.position?.longitude &&
                       node2?.position?.latitude && node2?.position?.longitude) {
                     forwardTotalDistanceKm += calculateDistance(
@@ -3983,7 +4033,7 @@ function App() {
                         </div>
                         <div className="route-usage">
                           Path: {forwardSequence.map(num => {
-                            const n = nodes.find(nd => nd.nodeNum === num);
+                            const n = nodesForRender.find(nd => nd.nodeNum === num);
                             return n?.user?.longName || n?.user?.shortName || `!${num.toString(16)}`;
                           }).join(' → ')}
                         </div>
@@ -4015,7 +4065,7 @@ function App() {
               const backPositions: [number, number][] = [];
 
               backSequence.forEach((nodeNum) => {
-                const node = nodes.find(n => n.nodeNum === nodeNum);
+                const node = nodesForRender.find(n => n.nodeNum === nodeNum);
                 if (node?.position?.latitude && node?.position?.longitude) {
                   backPositions.push([node.position.latitude, node.position.longitude]);
                 }
@@ -4025,8 +4075,8 @@ function App() {
                 // Calculate total distance for back path
                 let backTotalDistanceKm = 0;
                 for (let i = 0; i < backSequence.length - 1; i++) {
-                  const node1 = nodes.find(n => n.nodeNum === backSequence[i]);
-                  const node2 = nodes.find(n => n.nodeNum === backSequence[i + 1]);
+                  const node1 = nodesForRender.find(n => n.nodeNum === backSequence[i]);
+                  const node2 = nodesForRender.find(n => n.nodeNum === backSequence[i + 1]);
                   if (node1?.position?.latitude && node1?.position?.longitude &&
                       node2?.position?.latitude && node2?.position?.longitude) {
                     backTotalDistanceKm += calculateDistance(
@@ -4053,7 +4103,7 @@ function App() {
                         </div>
                         <div className="route-usage">
                           Path: {backSequence.map(num => {
-                            const n = nodes.find(nd => nd.nodeNum === num);
+                            const n = nodesForRender.find(nd => nd.nodeNum === num);
                             return n?.user?.longName || n?.user?.shortName || `!${num.toString(16)}`;
                           }).join(' → ')}
                         </div>
@@ -4086,7 +4136,7 @@ function App() {
     }
 
     return allElements;
-  }, [showPaths, showRoute, selectedNodeId, traceroutes, nodes, distanceUnit, maxNodeAgeHours, currentNodeId]);
+  }, [showRoute, selectedNodeId, traceroutesDigest, nodesPositionDigest, currentNodeId]);
 
   // If anonymous is disabled and user is not authenticated, show login page
   if (authStatus?.anonymousDisabled && !authStatus?.authenticated) {
@@ -4315,6 +4365,7 @@ function App() {
             setSelectedDMNode={setSelectedDMNode}
             markerRefs={markerRefs}
             traceroutePathsElements={traceroutePathsElements}
+            selectedNodeTraceroute={selectedNodeTraceroute}
           />
         )}
         {activeTab === 'channels' && renderChannelsTab()}
