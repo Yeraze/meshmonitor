@@ -107,19 +107,25 @@ class AppriseNotificationService {
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        logger.error(`❌ Failed to configure Apprise URLs: ${response.status} - ${errorText}`);
+        let errorDetails = '';
+        try {
+          const errorData = await response.json();
+          errorDetails = errorData.error || JSON.stringify(errorData);
+        } catch {
+          errorDetails = await response.text();
+        }
+        logger.error(`❌ Failed to configure Apprise URLs: ${response.status} - ${errorDetails}`);
         return {
           success: false,
-          message: `Configuration failed: ${response.status}`
+          message: `Configuration failed: ${errorDetails}`
         };
       }
 
-      await response.json(); // Acknowledge response
+      const responseData = await response.json();
       logger.info(`✅ Configured ${urls.length} Apprise notification URLs`);
       return {
         success: true,
-        message: `Configured ${urls.length} notification URLs`
+        message: `Configured ${responseData.count || urls.length} notification URLs`
       };
     } catch (error: any) {
       logger.error('❌ Failed to configure Apprise URLs:', error);
@@ -154,8 +160,14 @@ class AppriseNotificationService {
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        logger.error(`❌ Apprise notification failed: ${response.status} - ${errorText}`);
+        let errorDetails = '';
+        try {
+          const errorData = await response.json();
+          errorDetails = errorData.error || JSON.stringify(errorData);
+        } catch {
+          errorDetails = await response.text();
+        }
+        logger.error(`❌ Apprise notification failed: ${response.status} - ${errorDetails}`);
         return false;
       }
 

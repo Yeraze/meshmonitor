@@ -22,9 +22,19 @@ def load_config():
         with open(config_file, 'r') as f:
             urls = [line.strip() for line in f if line.strip() and not line.startswith('#')]
             apobj.clear()
+            loaded_count = 0
             for url in urls:
-                apobj.add(url)
-        print(f"✅ Loaded {len(urls)} notification URLs from config")
+                # Show first 30 chars of URL for debugging (mask sensitive parts)
+                url_preview = url[:30] + '...' if len(url) > 30 else url
+                result = apobj.add(url)
+                if result:
+                    loaded_count += 1
+                    print(f"✅ Successfully added URL: {url_preview}")
+                else:
+                    print(f"❌ Failed to add URL: {url_preview}")
+        print(f"✅ Loaded {loaded_count}/{len(urls)} notification URLs from config")
+        if loaded_count == 0 and len(urls) > 0:
+            print(f"⚠️  WARNING: No URLs were successfully loaded! Check URL format.")
     else:
         print(f"⚠️  No config file found at {config_file}")
 
@@ -113,6 +123,15 @@ class AppriseHandler(BaseHTTPRequestHandler):
             }
             apprise_type = type_map.get(notify_type, apprise.NotifyType.INFO)
 
+            # Check if any URLs are configured
+            if len(apobj) == 0:
+                self.send_json_response(400, {
+                    'success': False,
+                    'error': 'No notification URLs configured',
+                    'urls_configured': 0
+                })
+                return
+
             try:
                 # Send notification
                 result = apobj.notify(
@@ -130,7 +149,8 @@ class AppriseHandler(BaseHTTPRequestHandler):
                 else:
                     self.send_json_response(500, {
                         'success': False,
-                        'error': 'Failed to send notification'
+                        'error': 'Failed to send notification (check logs for details)',
+                        'urls_configured': len(apobj)
                     })
             except Exception as e:
                 self.send_json_response(500, {
