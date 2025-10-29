@@ -22,6 +22,16 @@ import { MapCenterController } from './MapCenterController';
 import PacketMonitorPanel from './PacketMonitorPanel';
 import { getPacketStats } from '../services/packetApi';
 
+/**
+ * Spiderfier initialization constants
+ */
+const SPIDERFIER_INIT = {
+  /** Maximum attempts to wait for spiderfier initialization */
+  MAX_ATTEMPTS: 50,
+  /** Interval between initialization attempts (ms) - 50 attempts × 100ms = 5 seconds total */
+  RETRY_INTERVAL_MS: 100,
+} as const;
+
 interface NodesTabProps {
   processedNodes: DeviceInfo[];
   shouldShowData: () => boolean;
@@ -242,13 +252,12 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
     // Keep retrying until spiderfier is ready
     let attempts = 0;
-    const maxAttempts = 50; // Try for up to 5 seconds
     const intervalId = setInterval(() => {
       attempts++;
-      if (checkAndSetup() || attempts >= maxAttempts) {
+      if (checkAndSetup() || attempts >= SPIDERFIER_INIT.MAX_ATTEMPTS) {
         clearInterval(intervalId);
       }
-    }, 100);
+    }, SPIDERFIER_INIT.RETRY_INTERVAL_MS);
 
     return () => clearInterval(intervalId);
   }, []); // Empty array - run only once on mount

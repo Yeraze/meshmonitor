@@ -159,12 +159,18 @@ export function useMarkerSpiderfier(options: SpiderfierOptions = {}) {
         // This is safe because Leaflet markers at the same position are functionally identical
         return; // Keep the existing marker in the spiderfier
       } else {
-        // Different position - truly a different marker
+        // Different position - truly a different marker, remove the old one
         try {
           spiderfierRef.current.removeMarker(existingMarker);
           markersRef.current.delete(existingMarker);
+          markerByIdRef.current.delete(trackingKey);
         } catch (e) {
-          // Ignore removal errors
+          // Log but don't fail - we'll add the new marker anyway
+          const error = e instanceof Error ? e : new Error(String(e));
+          console.warn('[Spiderfier] Failed to remove old marker during position change:', {
+            nodeId,
+            error: error.message,
+          });
         }
       }
     }
@@ -175,7 +181,14 @@ export function useMarkerSpiderfier(options: SpiderfierOptions = {}) {
       markersRef.current.add(marker);
       markerByIdRef.current.set(trackingKey, marker);
     } catch (e) {
-      console.warn('[Spiderfier] Failed to add marker:', e);
+      // Log detailed error information for debugging
+      const error = e instanceof Error ? e : new Error(String(e));
+      console.error('[Spiderfier] Failed to add marker:', {
+        nodeId,
+        position: marker.getLatLng(),
+        error: error.message,
+        stack: error.stack,
+      });
     }
   }, []);
 
@@ -190,8 +203,22 @@ export function useMarkerSpiderfier(options: SpiderfierOptions = {}) {
     try {
       spiderfierRef.current.removeMarker(marker);
       markersRef.current.delete(marker);
+
+      // Clean up markerByIdRef to prevent memory leaks
+      // Find and remove the entry for this marker
+      for (const [key, value] of markerByIdRef.current.entries()) {
+        if (value === marker) {
+          markerByIdRef.current.delete(key);
+          break;
+        }
+      }
     } catch (e) {
-      console.warn('Failed to remove marker from spiderfier:', e);
+      // Log detailed error for debugging, but don't throw - removal failures during cleanup are tolerable
+      const error = e instanceof Error ? e : new Error(String(e));
+      console.warn('[Spiderfier] Failed to remove marker:', {
+        position: marker.getLatLng(),
+        error: error.message,
+      });
     }
   }, []);
 

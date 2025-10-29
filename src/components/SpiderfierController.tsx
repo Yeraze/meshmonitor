@@ -8,6 +8,26 @@ import { Marker as LeafletMarker } from 'leaflet';
 import { OverlappingMarkerSpiderfier, type SpiderfierEventMap, type SpiderfierEventHandler } from 'ts-overlapping-marker-spiderfier-leaflet';
 import { useMarkerSpiderfier } from '../hooks/useMarkerSpiderfier';
 
+/**
+ * Spiderfier configuration constants
+ */
+const SPIDERFIER_CONFIG = {
+  /** Pixel radius for detecting overlapping markers - 50px catches markers at same GPS coords */
+  NEARBY_DISTANCE: 50,
+  /** Number of markers before switching from circle to spiral layout */
+  CIRCLE_SPIRAL_SWITCHOVER: 9,
+  /** Distance between markers in circle layout (pixels) - increased for better separation */
+  CIRCLE_FOOT_SEPARATION: 50,
+  /** Distance between markers in spiral layout (pixels) - increased for better separation */
+  SPIRAL_FOOT_SEPARATION: 50,
+  /** Starting radius for spiral layout (pixels) - larger start for better spacing */
+  SPIRAL_LENGTH_START: 20,
+  /** How quickly spiral grows - higher = faster growth and more spacing */
+  SPIRAL_LENGTH_FACTOR: 8,
+  /** Line thickness for spider legs */
+  LEG_WEIGHT: 2,
+} as const;
+
 interface SpiderfierControllerProps {
   /**
    * Current zoom level of the map
@@ -32,20 +52,15 @@ export interface SpiderfierControllerRef {
 
 export const SpiderfierController = forwardRef<SpiderfierControllerRef, SpiderfierControllerProps>(
   ({}, ref) => {
-    // Use a generous fixed nearbyDistance to ensure overlapping markers are detected
-    // at all zoom levels. 50 pixels is enough to catch markers at the same GPS coordinates
-    // while avoiding false positives from nearby but distinct locations
-    const nearbyDistance = 50;
-
     const { addMarker, removeMarker, addListener, removeListener, getSpiderfier } = useMarkerSpiderfier({
       keepSpiderfied: true, // Keep markers fanned out after clicking
-      nearbyDistance: nearbyDistance,
-      circleSpiralSwitchover: 9, // Use spiral layout for 9+ markers
-      circleFootSeparation: 50, // Increased from default 25 to spread markers further apart
-      spiralFootSeparation: 50, // Increased from default 28 to spread markers further apart
-      spiralLengthStart: 20, // Increased from default 11 to start spiral further from center
-      spiralLengthFactor: 8, // Increased from default 5 for faster spiral growth
-      legWeight: 2,
+      nearbyDistance: SPIDERFIER_CONFIG.NEARBY_DISTANCE,
+      circleSpiralSwitchover: SPIDERFIER_CONFIG.CIRCLE_SPIRAL_SWITCHOVER,
+      circleFootSeparation: SPIDERFIER_CONFIG.CIRCLE_FOOT_SEPARATION,
+      spiralFootSeparation: SPIDERFIER_CONFIG.SPIRAL_FOOT_SEPARATION,
+      spiralLengthStart: SPIDERFIER_CONFIG.SPIRAL_LENGTH_START,
+      spiralLengthFactor: SPIDERFIER_CONFIG.SPIRAL_LENGTH_FACTOR,
+      legWeight: SPIDERFIER_CONFIG.LEG_WEIGHT,
       legColors: {
         usual: 'rgba(100, 100, 100, 0.6)', // Semi-transparent gray
         highlighted: 'rgba(50, 50, 50, 0.8)', // Darker when hovering
