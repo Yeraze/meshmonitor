@@ -1515,15 +1515,49 @@ function App() {
             // For channel messages, match by text, channel, and timestamp
             const isDM = pendingMsg.channel === -1;
 
+            logger.debug(`🔍 Checking pending message ${tempId}:`, {
+              isDM,
+              text: pendingMsg.text.substring(0, 30),
+              channel: pendingMsg.channel,
+              from: pendingMsg.from,
+              to: pendingMsg.to,
+              toNodeId: pendingMsg.toNodeId
+            });
+
             const matchingMessage = processedMessages.find((msg: MeshMessage) => {
               if (msg.text !== pendingMsg.text) return false;
-              if (msg.from !== currentNodeId) return false;
+
+              // Match by sender - check if server message is from the same node as pending message
+              // Handle both real node IDs and 'me' fallback
+              const senderMatches = (currentNodeId && msg.from === currentNodeId) ||
+                                   (msg.from === pendingMsg.from) ||
+                                   (msg.fromNodeId === pendingMsg.fromNodeId);
+
+              if (!senderMatches) return false;
               if (Math.abs(msg.timestamp.getTime() - pendingMsg.timestamp.getTime()) >= 30000) return false;
 
               if (isDM) {
                 // For DMs, match by destination node (backend may use channel 0 for DMs)
-                return msg.toNodeId === pendingMsg.toNodeId ||
+                const matches = msg.toNodeId === pendingMsg.toNodeId ||
                        (msg.to === pendingMsg.to && (msg.channel === 0 || msg.channel === -1));
+
+                if (msg.text === pendingMsg.text) {
+                  logger.debug(`📝 Comparing potential DM match:`, {
+                    msgFrom: msg.from,
+                    msgFromNodeId: msg.fromNodeId,
+                    pendingFrom: pendingMsg.from,
+                    pendingFromNodeId: pendingMsg.fromNodeId,
+                    senderMatches,
+                    msgToNodeId: msg.toNodeId,
+                    pendingToNodeId: pendingMsg.toNodeId,
+                    msgTo: msg.to,
+                    pendingTo: pendingMsg.to,
+                    msgChannel: msg.channel,
+                    matches
+                  });
+                }
+
+                return matches;
               } else {
                 // For channel messages, match by channel
                 return msg.channel === pendingMsg.channel;
