@@ -7,7 +7,7 @@ This guide will help you get MeshMonitor up and running quickly.
 Before you begin, ensure you have:
 
 - A Meshtastic device connected to your network via IP (WiFi or Ethernet)
-- **OR** A Serial/USB device with the [Serial Bridge](https://github.com/Yeraze/meshtastic-serial-bridge)
+- **OR** A Serial/USB device with the [Serial Bridge](/configuration/serial-bridge)
 - **OR** A Bluetooth device with the [BLE Bridge](/configuration/ble-bridge)
 - **OR** `meshtasticd` running as a virtual node
 - Docker and Docker Compose installed (for Docker deployment)
@@ -185,7 +185,7 @@ See the [meshtasticd configuration guide](/configuration/meshtasticd) for more d
 
 ### Serial/USB Devices
 
-For Serial or USB-connected Meshtastic devices, use the [Meshtastic Serial Bridge](https://github.com/Yeraze/meshtastic-serial-bridge) to expose your device on TCP port 4403.
+For Serial or USB-connected Meshtastic devices, use the [Meshtastic Serial Bridge](/configuration/serial-bridge) to expose your device on TCP port 4403.
 
 ### Bluetooth Devices
 

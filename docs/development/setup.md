@@ -177,7 +177,7 @@ See the [meshtasticd configuration guide](/configuration/meshtasticd) for more d
 
 ### Serial/USB Devices
 
-For Serial or USB-connected Meshtastic devices, use the [Meshtastic Serial Bridge](https://github.com/Yeraze/meshtastic-serial-bridge):
+For Serial or USB-connected Meshtastic devices, use the [Meshtastic Serial Bridge](/configuration/serial-bridge):
 
 ```bash
 # Run the serial bridge

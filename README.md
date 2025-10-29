@@ -105,7 +105,7 @@ docker compose -f docker-compose.yml -f docker-compose.ble.yml up -d
 See the [BLE Bridge repository](https://github.com/Yeraze/meshtastic-ble-bridge) for detailed setup instructions.
 
 **For Serial/USB Devices:**
-Use the [Meshtastic Serial Bridge](https://github.com/Yeraze/meshtastic-serial-bridge):
+Use the [Meshtastic Serial Bridge](/configuration/serial-bridge):
 
 ```bash
 # Create docker-compose.yml with serial-bridge
@@ -137,7 +137,7 @@ EOF
 docker compose up -d
 ```
 
-See the [Serial Bridge repository](https://github.com/Yeraze/meshtastic-serial-bridge) for detailed setup instructions.
+See the [Serial Bridge configuration guide](/configuration/serial-bridge) for detailed setup instructions.
 
 ## Features
 
@@ -635,7 +635,7 @@ The [MeshMonitor BLE Bridge](https://github.com/Yeraze/meshtastic-ble-bridge) co
 ```
 MeshMonitor → TCP:4403 → Serial Bridge → Serial/USB → Meshtastic Node
 ```
-The [Meshtastic Serial Bridge](https://github.com/Yeraze/meshtastic-serial-bridge) bridges Serial/USB connections to TCP for physically-connected Meshtastic devices.
+The [Meshtastic Serial Bridge](/configuration/serial-bridge) bridges Serial/USB connections to TCP for physically-connected Meshtastic devices.
 
 **4. meshtasticd Proxy (Virtual nodes)**
 ```
