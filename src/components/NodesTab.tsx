@@ -199,25 +199,17 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
   // Set up spiderfier event listeners ONCE when component mounts
   useEffect(() => {
-    console.log('[Spiderfier] Event listener setup effect running, spiderfierRef.current:', spiderfierRef.current ? 'READY' : 'NULL');
-
     // Wait for spiderfier to be ready
     const checkAndSetup = () => {
       if (listenersSetupRef.current) {
-        console.log('[Spiderfier] Listeners already set up, skipping');
         return true; // Already set up
       }
 
       if (!spiderfierRef.current) {
-        console.log('[Spiderfier] Ref not ready yet, will retry...');
         return false;
       }
 
-      console.log('[Spiderfier] Ref is ready, setting up event listeners now');
-
       const clickHandler = (marker: any) => {
-        console.log('[Spiderfier] Marker clicked:', marker);
-
         // Find the node data from the marker
         const nodeEntry = Array.from(markerRefs.current.entries()).find(([_, ref]) => ref === marker);
         if (nodeEntry) {
@@ -231,21 +223,19 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         }
       };
 
-      const spiderfyHandler = (markers: any[]) => {
-        console.log('[Spiderfier] Spiderfied markers:', markers.length);
+      const spiderfyHandler = (_markers: any[]) => {
+        // Markers fanned out
       };
 
-      const unspiderfyHandler = (markers: any[]) => {
-        console.log('[Spiderfier] Unspiderfied markers:', markers.length);
+      const unspiderfyHandler = (_markers: any[]) => {
+        // Markers collapsed
       };
 
       // Add listeners only once
-      console.log('[Spiderfier] Adding event listeners to spiderfier instance');
       spiderfierRef.current.addListener('click', clickHandler);
       spiderfierRef.current.addListener('spiderfy', spiderfyHandler);
       spiderfierRef.current.addListener('unspiderfy', unspiderfyHandler);
       listenersSetupRef.current = true;
-      console.log('[Spiderfier] Event listeners successfully added!');
 
       return true;
     };
@@ -257,9 +247,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
       attempts++;
       if (checkAndSetup() || attempts >= maxAttempts) {
         clearInterval(intervalId);
-        if (attempts >= maxAttempts && !listenersSetupRef.current) {
-          console.error('[Spiderfier] Failed to set up event listeners after', attempts, 'attempts');
-        }
       }
     }, 100);
 
@@ -929,31 +916,13 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 // Memoize NodesTab to prevent re-rendering when App.tsx updates for message status
 // Only re-render when actual node data or map-related props change
 const NodesTab = React.memo(NodesTabComponent, (prevProps, nextProps) => {
-  // Check if array reference changed (even if content is same)
-  if (prevProps.processedNodes !== nextProps.processedNodes) {
-    console.log('[NodesTab Memo] processedNodes array reference changed');
-
-    // Log first node comparison for debugging
-    if (prevProps.processedNodes.length > 0 && nextProps.processedNodes.length > 0) {
-      const prev = prevProps.processedNodes[0];
-      const next = nextProps.processedNodes[0];
-      console.log('[NodesTab Memo] First node same object?', prev === next);
-      console.log('[NodesTab Memo] First node position:',
-        prev.position?.latitude === next.position?.latitude,
-        prev.position?.longitude === next.position?.longitude
-      );
-    }
-  }
-
   // Compare processedNodes array - only re-render if nodes actually changed
   if (prevProps.processedNodes.length !== nextProps.processedNodes.length) {
-    console.log('[NodesTab Memo] Re-rendering: node count changed',
-      prevProps.processedNodes.length, '→', nextProps.processedNodes.length);
     return false; // Re-render
   }
 
   // Check if any node's position changed
-  // BUT: If spiderfier is active (keepSpiderfied), avoid re-rendering to preserve fanout
+  // If spiderfier is active (keepSpiderfied), avoid re-rendering to preserve fanout
   // Users can manually refresh the map if a mobile node moves while markers are fanned
   const hasPositionChanges = prevProps.processedNodes.some((prev, i) => {
     const next = nextProps.processedNodes[i];
@@ -964,9 +933,7 @@ const NodesTab = React.memo(NodesTabComponent, (prevProps, nextProps) => {
   });
 
   if (hasPositionChanges) {
-    // Position changed, but don't log every time to reduce console spam
-    // Just skip re-render to preserve spiderfier state
-    console.log('[NodesTab Memo] Position change detected, but skipping re-render to preserve spiderfier state');
+    // Position changed, but skip re-render to preserve spiderfier state
     return true; // Skip re-render to keep markers stable
   }
 
@@ -976,7 +943,6 @@ const NodesTab = React.memo(NodesTabComponent, (prevProps, nextProps) => {
 
   // All other props are stable function references or refs, no need to check
   // Skip re-render - nothing map-relevant changed
-  console.log('[NodesTab Memo] Skipping re-render - no marker-relevant changes');
   return true;
 });
 

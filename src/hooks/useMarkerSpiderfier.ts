@@ -68,8 +68,6 @@ export function useMarkerSpiderfier(options: SpiderfierOptions = {}) {
       },
     });
 
-    console.log('[Spiderfier] Initialized once with nearbyDistance:', options.nearbyDistance ?? 20, 'pixels');
-
     spiderfierRef.current = spiderfier;
 
     // Cleanup on unmount
@@ -113,7 +111,6 @@ export function useMarkerSpiderfier(options: SpiderfierOptions = {}) {
 
     // If the existing marker is the same object, we're done (already added)
     if (existingMarker === marker) {
-      console.log(`[Spiderfier] Marker ${trackingKey} - same object, already added`);
       return;
     }
 
@@ -126,23 +123,15 @@ export function useMarkerSpiderfier(options: SpiderfierOptions = {}) {
         existingLatLng.lat === newLatLng.lat &&
         existingLatLng.lng === newLatLng.lng;
 
-      console.log(`[Spiderfier] ⚠️ Marker ${trackingKey} - DIFFERENT object detected!`);
-      console.log(`[Spiderfier]   - Same position? ${isSamePosition}`);
-      console.log(`[Spiderfier]   - Old: ${existingLatLng.lat}, ${existingLatLng.lng}`);
-      console.log(`[Spiderfier]   - New: ${newLatLng.lat}, ${newLatLng.lng}`);
-
       if (isSamePosition) {
         // Same position - this is likely React-Leaflet recreating the marker
         // DON'T remove the old marker to preserve spiderfier state
-        console.log('[Spiderfier]   - ACTION: Preserving spiderfier state (NOT removing old marker)');
-
         // Update tracking without touching spiderfier
         // The spiderfier will continue to work with the old marker object
         // This is safe because Leaflet markers at the same position are functionally identical
         return; // Keep the existing marker in the spiderfier
       } else {
         // Different position - truly a different marker
-        console.log('[Spiderfier]   - ACTION: Removing old marker and adding new one');
         try {
           spiderfierRef.current.removeMarker(existingMarker);
           markersRef.current.delete(existingMarker);
@@ -154,14 +143,9 @@ export function useMarkerSpiderfier(options: SpiderfierOptions = {}) {
 
     // Add the new marker
     try {
-      console.log(`[Spiderfier] Adding NEW marker ${trackingKey}`);
       spiderfierRef.current.addMarker(marker);
       markersRef.current.add(marker);
       markerByIdRef.current.set(trackingKey, marker);
-
-      if (markersRef.current.size === 1 || markersRef.current.size % 50 === 0) {
-        console.log('[Spiderfier] Total markers:', markersRef.current.size);
-      }
     } catch (e) {
       console.warn('[Spiderfier] Failed to add marker:', e);
     }
