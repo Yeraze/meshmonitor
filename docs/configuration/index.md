@@ -4,11 +4,14 @@ MeshMonitor is designed to be flexible and adaptable to various deployment scena
 
 ## Configuration Topics
 
+### [Serial Bridge for USB/Serial Devices](https://github.com/Yeraze/meshtastic-serial-bridge)
+Connect MeshMonitor to Serial or USB-connected Meshtastic devices using the Serial Bridge. Simple Docker-based TCP-to-Serial gateway with zero configuration.
+
 ### [BLE Bridge for Bluetooth Devices](/configuration/ble-bridge)
 Connect MeshMonitor to Bluetooth Low Energy (BLE) Meshtastic devices using the BLE Bridge. Perfect for portable devices and systems with Bluetooth support.
 
 ### [Using meshtasticd](/configuration/meshtasticd)
-Learn how to configure MeshMonitor to work with `meshtasticd`, the virtual Meshtastic node daemon, perfect for testing and development without physical hardware, or for Serial/USB-connected devices.
+Learn how to configure MeshMonitor to work with `meshtasticd`, the virtual Meshtastic node daemon, perfect for testing and development without physical hardware.
 
 ### [SSO Setup](/configuration/sso)
 Configure Single Sign-On (SSO) authentication using OpenID Connect (OIDC) for enterprise deployments and centralized identity management.
@@ -187,6 +190,7 @@ MeshMonitor logs to stdout/stderr by default. Configure log aggregation in your 
 
 ## Next Steps
 
+- [Connect Serial/USB devices](https://github.com/Yeraze/meshtastic-serial-bridge)
 - [Connect to Bluetooth devices](/configuration/ble-bridge)
 - [Configure meshtasticd](/configuration/meshtasticd)
 - [Set up SSO](/configuration/sso)

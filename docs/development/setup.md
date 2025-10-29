@@ -155,19 +155,18 @@ npm run build:server
 npm start
 ```
 
-## Using with meshtasticd
+## Using with Physical or Virtual Devices
 
-If you're developing with a Bluetooth or Serial Meshtastic device, use `meshtasticd` as a TCP proxy:
+### Virtual Nodes with meshtasticd
+
+If you're developing without physical hardware, use `meshtasticd` for virtual node simulation:
 
 ```bash
 # Install meshtasticd
 pip install meshtasticd
 
-# For Bluetooth devices
-meshtasticd --ble-device "Meshtastic_1234"
-
-# For Serial devices
-meshtasticd --serial-port /dev/ttyUSB0
+# Run a virtual node
+meshtasticd --hwmodel RAK4631
 
 # Point MeshMonitor to localhost
 export MESHTASTIC_NODE_IP=localhost
@@ -175,6 +174,33 @@ npm run dev:full
 ```
 
 See the [meshtasticd configuration guide](/configuration/meshtasticd) for more details.
+
+### Serial/USB Devices
+
+For Serial or USB-connected Meshtastic devices, use the [Meshtastic Serial Bridge](https://github.com/Yeraze/meshtastic-serial-bridge):
+
+```bash
+# Run the serial bridge
+docker run -d --device /dev/ttyUSB0:/dev/ttyUSB0 -p 4403:4403 \
+  ghcr.io/yeraze/meshtastic-serial-bridge:latest
+
+# Point MeshMonitor to localhost
+export MESHTASTIC_NODE_IP=localhost
+npm run dev:full
+```
+
+### Bluetooth Devices
+
+For Bluetooth Low Energy (BLE) Meshtastic devices, use the [MeshMonitor BLE Bridge](/configuration/ble-bridge):
+
+```bash
+# Run the BLE bridge (see BLE Bridge documentation for setup)
+docker compose -f docker-compose.ble.yml up -d
+
+# Point MeshMonitor to localhost
+export MESHTASTIC_NODE_IP=localhost
+npm run dev:full
+```
 
 ## Development Environment Details
 
