@@ -28,6 +28,16 @@ cleanup() {
     docker compose -f "$COMPOSE_FILE" down -v 2>/dev/null || true
     rm -f "$COMPOSE_FILE"
     rm -f /tmp/meshmonitor-reverse-proxy-cookies.txt
+
+    # Verify container stopped (don't fail on cleanup issues)
+    if docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+        echo "Warning: Container ${CONTAINER_NAME} still running, forcing stop..."
+        docker stop "$CONTAINER_NAME" 2>/dev/null || true
+        docker rm "$CONTAINER_NAME" 2>/dev/null || true
+    fi
+
+    # Always return success from cleanup
+    return 0
 }
 
 # Set trap to cleanup on exit
