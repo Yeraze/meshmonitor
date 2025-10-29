@@ -16,6 +16,7 @@ import { useAuth } from '../contexts/AuthContext';
 import MapLegend from './MapLegend';
 import ZoomHandler from './ZoomHandler';
 import MapResizeHandler from './MapResizeHandler';
+import { SpiderfierController, SpiderfierControllerRef } from './SpiderfierController';
 import { TilesetSelector } from './TilesetSelector';
 import { MapCenterController } from './MapCenterController';
 import PacketMonitorPanel from './PacketMonitorPanel';
@@ -106,6 +107,9 @@ const NodesTab: React.FC<NodesTabProps> = ({
   } = useSettings();
 
   const { hasPermission } = useAuth();
+
+  // Ref for spiderfier controller to manage overlapping markers
+  const spiderfierRef = useRef<SpiderfierControllerRef>(null);
 
   // Packet Monitor state (desktop only)
   const [showPacketMonitor, setShowPacketMonitor] = useState(() => {
@@ -506,6 +510,7 @@ const NodesTab: React.FC<NodesTabProps> = ({
               />
               <ZoomHandler onZoomChange={setMapZoom} />
               <MapResizeHandler trigger={showPacketMonitor} />
+              <SpiderfierController ref={spiderfierRef} zoomLevel={mapZoom} />
               <MapLegend />
               {nodesWithPosition
                 .filter(node => showMqttNodes || !node.viaMqtt)
@@ -548,6 +553,8 @@ const NodesTab: React.FC<NodesTabProps> = ({
                 ref={(ref) => {
                   if (ref && node.user?.id) {
                     markerRefs.current.set(node.user.id, ref);
+                    // Add marker to spiderfier for overlap handling
+                    spiderfierRef.current?.addMarker(ref);
                   }
                 }}
               >
