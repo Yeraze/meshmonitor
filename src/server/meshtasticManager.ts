@@ -3323,8 +3323,16 @@ class MeshtasticManager {
       logger.debug('Message sent successfully:', text, 'with ID:', messageId);
 
       // Save sent message to database for UI display
-      const localNodeNum = databaseService.getSetting('localNodeNum');
-      const localNodeId = databaseService.getSetting('localNodeId');
+      // Try database settings first, then fall back to this.localNodeInfo
+      let localNodeNum = databaseService.getSetting('localNodeNum');
+      let localNodeId = databaseService.getSetting('localNodeId');
+
+      // Fallback to this.localNodeInfo if settings aren't available
+      if (!localNodeNum && this.localNodeInfo) {
+        localNodeNum = this.localNodeInfo.nodeNum.toString();
+        localNodeId = this.localNodeInfo.nodeId;
+        logger.debug(`Using localNodeInfo as fallback: ${localNodeId}`);
+      }
 
       if (localNodeNum && localNodeId) {
         const toNodeId = destination ? `!${destination.toString(16).padStart(8, '0')}` : 'broadcast';
