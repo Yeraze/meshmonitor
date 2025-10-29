@@ -335,17 +335,40 @@ echo "Apprise Notification Configuration Tests"
 echo "=========================================="
 echo ""
 
-# Test 13.1: Read existing Apprise URLs
-echo "Test 13.1: Read existing Apprise URLs"
+# Test 13.1: Verify fresh container has no Apprise URLs configured
+echo "Test 13.1: Verify fresh container has no Apprise URLs (API and file)"
+
+# Check API returns empty array
 APPRISE_URLS_RESPONSE=$(curl -s -w "\n%{http_code}" http://localhost:8083/api/apprise/urls \
     -b /tmp/meshmonitor-cookies.txt)
 
 HTTP_CODE=$(echo "$APPRISE_URLS_RESPONSE" | tail -n1)
+RESPONSE_BODY=$(echo "$APPRISE_URLS_RESPONSE" | head -n-1)
+
 if [ "$HTTP_CODE" = "200" ]; then
-    EXISTING_COUNT=$(echo "$APPRISE_URLS_RESPONSE" | head -n-1 | grep -o '"urls":\[' | wc -l)
-    echo -e "${GREEN}✓ PASS${NC}: Retrieved existing Apprise URLs (count: $EXISTING_COUNT)"
+    # Check if response contains empty array
+    if echo "$RESPONSE_BODY" | grep -q '"urls":\[\]'; then
+        echo -e "${GREEN}✓ PASS${NC}: API reports no URLs configured (empty array)"
+    else
+        echo -e "${RED}✗ FAIL${NC}: API should return empty array on fresh container"
+        echo "   Response: $RESPONSE_BODY"
+        exit 1
+    fi
 else
     echo -e "${RED}✗ FAIL${NC}: Failed to read Apprise URLs (HTTP $HTTP_CODE)"
+    exit 1
+fi
+
+# Check file doesn't exist or is empty
+CONFIG_FILE_CHECK=$(docker exec "$CONTAINER_NAME" sh -c 'if [ -f /data/apprise-config/urls.txt ]; then cat /data/apprise-config/urls.txt; else echo "__FILE_NOT_FOUND__"; fi' 2>&1)
+
+if echo "$CONFIG_FILE_CHECK" | grep -q "__FILE_NOT_FOUND__"; then
+    echo -e "${GREEN}✓ PASS${NC}: Config file does not exist (fresh start)"
+elif [ -z "$CONFIG_FILE_CHECK" ] || ! echo "$CONFIG_FILE_CHECK" | grep -v '^[[:space:]]*$' | grep -q .; then
+    echo -e "${GREEN}✓ PASS${NC}: Config file exists but is empty (fresh start)"
+else
+    echo -e "${RED}✗ FAIL${NC}: Config file should not exist or be empty on fresh start"
+    echo "   File contents: $CONFIG_FILE_CHECK"
     exit 1
 fi
 echo ""
