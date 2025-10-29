@@ -24,7 +24,7 @@ Use the BLE Bridge when:
 **Do NOT use the BLE Bridge if:**
 
 - ❌ Your device has WiFi/Ethernet - connect directly via TCP instead
-- ❌ Your device is USB/Serial connected - use [meshtasticd](/configuration/meshtasticd) instead
+- ❌ Your device is USB/Serial connected - use the [Meshtastic Serial Bridge](https://github.com/Yeraze/meshtastic-serial-bridge) instead
 - ❌ Your system doesn't have Bluetooth hardware
 
 ## Prerequisites
@@ -409,6 +409,7 @@ The BLE bridge handles translation between these protocols automatically.
 If the BLE bridge doesn't meet your needs:
 
 - **WiFi/Ethernet devices:** Connect directly via TCP (no bridge needed)
-- **Serial/USB devices:** Use [meshtasticd](/configuration/meshtasticd) instead
+- **Serial/USB devices:** Use the [Meshtastic Serial Bridge](https://github.com/Yeraze/meshtastic-serial-bridge) instead
+- **Virtual nodes:** Use [meshtasticd](/configuration/meshtasticd) for testing without hardware
 - **HomeAssistant users:** Connect through HomeAssistant's Meshtastic integration
 - **Long-range BLE:** Consider using a BLE-to-WiFi bridge device

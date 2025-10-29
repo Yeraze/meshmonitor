@@ -1,23 +1,26 @@
-# Using meshtasticd
+# Using meshtasticd for Virtual Nodes
 
-`meshtasticd` is a virtual Meshtastic node daemon and TCP proxy that runs on your computer. It's perfect for development, testing, and connecting Serial/USB Meshtastic devices to MeshMonitor.
+`meshtasticd` is a virtual Meshtastic node daemon that simulates a Meshtastic device in software. It's perfect for development, testing, and running virtual mesh networks without physical hardware.
 
 ## What is meshtasticd?
 
-`meshtasticd` provides two main capabilities:
-
-1. **Virtual Node Simulation:** Run a software Meshtastic node without physical hardware
-2. **Serial/USB Proxy:** Bridge Serial/USB-connected devices to TCP for MeshMonitor
+`meshtasticd` provides **virtual node simulation** - running a software Meshtastic node without physical hardware.
 
 Use cases include:
 
 - Testing MeshMonitor without physical hardware
-- Connecting Serial/USB Meshtastic devices (not Bluetooth)
 - Running a virtual Meshtastic node on a server or Raspberry Pi
 - Developing and testing mesh applications
-- Creating virtual mesh networks
+- Creating virtual mesh networks for simulation and testing
 
-**Note:** For **Bluetooth (BLE)** devices, use the [MeshMonitor BLE Bridge](/configuration/ble-bridge) instead. `meshtasticd` does not support Bluetooth connections.
+## Physical Device Connections
+
+**For physical Meshtastic devices, use the appropriate bridge:**
+
+- **Serial/USB devices:** Use the [Meshtastic Serial Bridge](https://github.com/Yeraze/meshtastic-serial-bridge) instead
+- **Bluetooth (BLE) devices:** Use the [MeshMonitor BLE Bridge](/configuration/ble-bridge) instead
+
+`meshtasticd` is designed for virtual node simulation, not for connecting physical hardware.
 
 ## Installing meshtasticd
 
@@ -274,6 +277,7 @@ docker run -d \
 
 ## Next Steps
 
+- [Connect Serial/USB devices](https://github.com/Yeraze/meshtastic-serial-bridge) with the Serial Bridge
 - [Connect Bluetooth devices](/configuration/ble-bridge) with the BLE Bridge
 - [Configure SSO](/configuration/sso) for authentication
 - [Set up a reverse proxy](/configuration/reverse-proxy) for external access

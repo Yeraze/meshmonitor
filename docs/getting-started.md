@@ -7,6 +7,8 @@ This guide will help you get MeshMonitor up and running quickly.
 Before you begin, ensure you have:
 
 - A Meshtastic device connected to your network via IP (WiFi or Ethernet)
+- **OR** A Serial/USB device with the [Serial Bridge](https://github.com/Yeraze/meshtastic-serial-bridge)
+- **OR** A Bluetooth device with the [BLE Bridge](/configuration/ble-bridge)
 - **OR** `meshtasticd` running as a virtual node
 - Docker and Docker Compose installed (for Docker deployment)
 - **OR** Node.js 20+ and npm (for bare metal deployment)
@@ -164,9 +166,11 @@ ALLOWED_ORIGINS=https://meshmonitor.example.com # REQUIRED!
 - **`ALLOWED_ORIGINS`**: **CRITICAL** - Must match your HTTPS domain, or frontend won't load
 - **Rate limiting**: Stricter (1000 requests/15min vs 10,000)
 
-## Using with meshtasticd
+## Using with Virtual or Physical Devices
 
-If you're using `meshtasticd` (the virtual Meshtastic node daemon), make sure it's running and accessible before starting MeshMonitor:
+### Virtual Nodes with meshtasticd
+
+If you're using `meshtasticd` (the virtual Meshtastic node daemon) for testing without physical hardware:
 
 ```bash
 # Start meshtasticd (example)
@@ -178,6 +182,14 @@ docker compose up -d
 ```
 
 See the [meshtasticd configuration guide](/configuration/meshtasticd) for more details.
+
+### Serial/USB Devices
+
+For Serial or USB-connected Meshtastic devices, use the [Meshtastic Serial Bridge](https://github.com/Yeraze/meshtastic-serial-bridge) to expose your device on TCP port 4403.
+
+### Bluetooth Devices
+
+For Bluetooth Low Energy (BLE) Meshtastic devices, use the [MeshMonitor BLE Bridge](/configuration/ble-bridge) to create a TCP-to-BLE gateway.
 
 ## Next Steps
 
