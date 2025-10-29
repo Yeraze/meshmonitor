@@ -26,6 +26,30 @@ export interface SpiderfierOptions {
   circleSpiralSwitchover?: number;
 
   /**
+   * Distance between markers in circle layout (default: 25 pixels)
+   * Higher values = more spread out
+   */
+  circleFootSeparation?: number;
+
+  /**
+   * Distance between markers in spiral layout (default: 28 pixels)
+   * Higher values = more spread out
+   */
+  spiralFootSeparation?: number;
+
+  /**
+   * Starting radius for spiral layout (default: 11 pixels)
+   * Higher values = start spiral further from center
+   */
+  spiralLengthStart?: number;
+
+  /**
+   * How quickly spiral grows (default: 5)
+   * Higher values = faster growth
+   */
+  spiralLengthFactor?: number;
+
+  /**
    * Line thickness for spider legs connecting markers to center (default: 1.5)
    */
   legWeight?: number;
@@ -61,6 +85,10 @@ export function useMarkerSpiderfier(options: SpiderfierOptions = {}) {
       keepSpiderfied: options.keepSpiderfied ?? true, // Keep markers fanned out
       nearbyDistance: options.nearbyDistance ?? 20,
       circleSpiralSwitchover: options.circleSpiralSwitchover ?? 9,
+      circleFootSeparation: options.circleFootSeparation ?? 25,
+      spiralFootSeparation: options.spiralFootSeparation ?? 28,
+      spiralLengthStart: options.spiralLengthStart ?? 11,
+      spiralLengthFactor: options.spiralLengthFactor ?? 5,
       legWeight: options.legWeight ?? 2,
       legColors: options.legColors ?? {
         usual: 'rgba(100, 100, 100, 0.6)',

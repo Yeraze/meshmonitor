@@ -41,6 +41,10 @@ export const SpiderfierController = forwardRef<SpiderfierControllerRef, Spiderfi
       keepSpiderfied: true, // Keep markers fanned out after clicking
       nearbyDistance: nearbyDistance,
       circleSpiralSwitchover: 9, // Use spiral layout for 9+ markers
+      circleFootSeparation: 50, // Increased from default 25 to spread markers further apart
+      spiralFootSeparation: 50, // Increased from default 28 to spread markers further apart
+      spiralLengthStart: 20, // Increased from default 11 to start spiral further from center
+      spiralLengthFactor: 8, // Increased from default 5 for faster spiral growth
       legWeight: 2,
       legColors: {
         usual: 'rgba(100, 100, 100, 0.6)', // Semi-transparent gray
