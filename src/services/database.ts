@@ -19,6 +19,7 @@ import { migration as notifyOnEmojiMigration } from '../server/migrations/010_ad
 import { migration as packetLogMigration } from '../server/migrations/011_add_packet_log.js';
 import { migration as channelRoleMigration } from '../server/migrations/012_add_channel_role_and_position.js';
 import { migration as backupTablesMigration } from '../server/migrations/013_add_backup_tables.js';
+import { migration as messageDeliveryTrackingMigration } from '../server/migrations/014_add_message_delivery_tracking.js';
 
 // Configuration constants for traceroute history
 const TRACEROUTE_HISTORY_LIMIT = 50;
@@ -227,6 +228,7 @@ class DatabaseService {
     this.runPacketLogMigration();
     this.runChannelRoleMigration();
     this.runBackupTablesMigration();
+    this.runMessageDeliveryTrackingMigration();
     this.ensureAutomationDefaults();
     this.isInitialized = true;
   }
@@ -531,6 +533,26 @@ class DatabaseService {
       logger.debug('✅ Backup tables migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run backup tables migration:', error);
+      throw error;
+    }
+  }
+
+  private runMessageDeliveryTrackingMigration(): void {
+    try {
+      const migrationKey = 'migration_014_message_delivery_tracking';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Message delivery tracking migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 014: Add message delivery tracking fields...');
+      messageDeliveryTrackingMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Message delivery tracking migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run message delivery tracking migration:', error);
       throw error;
     }
   }
@@ -1175,8 +1197,9 @@ class DatabaseService {
     const stmt = this.db.prepare(`
       INSERT OR IGNORE INTO messages (
         id, fromNodeNum, toNodeNum, fromNodeId, toNodeId,
-        text, channel, portnum, timestamp, rxTime, hopStart, hopLimit, replyId, emoji, createdAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        text, channel, portnum, timestamp, rxTime, hopStart, hopLimit, replyId, emoji,
+        requestId, ackFailed, routingErrorReceived, deliveryState, wantAck, createdAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -1194,6 +1217,11 @@ class DatabaseService {
       messageData.hopLimit ?? null,
       messageData.replyId ?? null,
       messageData.emoji ?? null,
+      (messageData as any).requestId ?? null,
+      (messageData as any).ackFailed ?? 0,
+      (messageData as any).routingErrorReceived ?? 0,
+      (messageData as any).deliveryState ?? null,
+      (messageData as any).wantAck ?? 0,
       messageData.createdAt
     );
   }
@@ -1201,6 +1229,12 @@ class DatabaseService {
   getMessage(id: string): DbMessage | null {
     const stmt = this.db.prepare('SELECT * FROM messages WHERE id = ?');
     const message = stmt.get(id) as DbMessage | null;
+    return message ? this.normalizeBigInts(message) : null;
+  }
+
+  getMessageByRequestId(requestId: number): DbMessage | null {
+    const stmt = this.db.prepare('SELECT * FROM messages WHERE requestId = ?');
+    const message = stmt.get(requestId) as DbMessage | null;
     return message ? this.normalizeBigInts(message) : null;
   }
 
@@ -2456,6 +2490,31 @@ class DatabaseService {
     const stmt = this.db.prepare(query);
     const result = stmt.run(...params);
     return Number(result.changes);
+  }
+
+  // Update message acknowledgment status by requestId (for tracking routing ACKs)
+  updateMessageAckByRequestId(requestId: number, _acknowledged: boolean = true, ackFailed: boolean = false): boolean {
+    const stmt = this.db.prepare(`
+      UPDATE messages
+      SET ackFailed = ?, routingErrorReceived = ?, deliveryState = ?
+      WHERE requestId = ?
+    `);
+    // Set deliveryState based on whether ACK was successful or failed
+    const deliveryState = ackFailed ? 'failed' : 'delivered';
+    const result = stmt.run(ackFailed ? 1 : 0, ackFailed ? 1 : 0, deliveryState, requestId);
+    return Number(result.changes) > 0;
+  }
+
+  // Update message delivery state directly (undefined/delivered/confirmed)
+  updateMessageDeliveryState(requestId: number, deliveryState: 'delivered' | 'confirmed' | 'failed'): boolean {
+    const stmt = this.db.prepare(`
+      UPDATE messages
+      SET deliveryState = ?, ackFailed = ?
+      WHERE requestId = ?
+    `);
+    const ackFailed = deliveryState === 'failed' ? 1 : 0;
+    const result = stmt.run(deliveryState, ackFailed, requestId);
+    return Number(result.changes) > 0;
   }
 
   getUnreadMessageIds(userId: number | null): string[] {

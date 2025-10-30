@@ -54,13 +54,13 @@ const isToday = (date: Date): boolean => {
 
 // Separate components for traceroutes that can update independently
 // These prevent marker re-renders when only the traceroute paths change
-const TraceroutePathsLayer = React.memo<{ paths: React.ReactNode }>(
+const TraceroutePathsLayer = React.memo<{ paths: React.ReactNode; enabled: boolean }>(
   ({ paths }) => {
     return <>{paths}</>;
   }
 );
 
-const SelectedTracerouteLayer = React.memo<{ traceroute: React.ReactNode }>(
+const SelectedTracerouteLayer = React.memo<{ traceroute: React.ReactNode; enabled: boolean }>(
   ({ traceroute }) => {
     return <>{traceroute}</>;
   }
@@ -793,10 +793,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 })}
 
               {/* Draw traceroute paths (independent layer) */}
-              <TraceroutePathsLayer paths={traceroutePathsElements} />
+              <TraceroutePathsLayer paths={traceroutePathsElements} enabled={showPaths} />
 
               {/* Draw selected node traceroute (independent layer) */}
-              <SelectedTracerouteLayer traceroute={selectedNodeTraceroute} />
+              <SelectedTracerouteLayer traceroute={selectedNodeTraceroute} enabled={showRoute} />
 
               {/* Draw neighbor info connections */}
               {showNeighborInfo && neighborInfo.length > 0 && neighborInfo.map((ni, idx) => {
@@ -925,34 +925,39 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 // Memoize NodesTab to prevent re-rendering when App.tsx updates for message status
 // Only re-render when actual node data or map-related props change
 const NodesTab = React.memo(NodesTabComponent, (prevProps, nextProps) => {
-  // Compare processedNodes array - only re-render if nodes actually changed
-  if (prevProps.processedNodes.length !== nextProps.processedNodes.length) {
-    return false; // Re-render
-  }
-
   // Check if any node's position changed
   // If spiderfier is active (keepSpiderfied), avoid re-rendering to preserve fanout
   // Users can manually refresh the map if a mobile node moves while markers are fanned
-  const hasPositionChanges = prevProps.processedNodes.some((prev, i) => {
-    const next = nextProps.processedNodes[i];
-    return (
-      prev.position?.latitude !== next.position?.latitude ||
-      prev.position?.longitude !== next.position?.longitude
-    );
-  });
+  if (prevProps.processedNodes.length === nextProps.processedNodes.length) {
+    const hasPositionChanges = prevProps.processedNodes.some((prev, i) => {
+      const next = nextProps.processedNodes[i];
+      return (
+        prev.position?.latitude !== next.position?.latitude ||
+        prev.position?.longitude !== next.position?.longitude
+      );
+    });
 
-  if (hasPositionChanges) {
-    // Position changed, but skip re-render to preserve spiderfier state
-    return true; // Skip re-render to keep markers stable
+    if (hasPositionChanges) {
+      // Position changed, but skip re-render to preserve spiderfier state
+      return true; // Skip re-render to keep markers stable
+    }
   }
 
-  // DON'T check traceroutePathsElements or selectedNodeTraceroute
-  // These are rendered as separate memoized components that can update independently
-  // This prevents the spiderfier from collapsing when traceroute paths update
+  // Check if traceroute visibility changed (null <-> non-null)
+  // This detects when "Show Paths" or "Show Route" checkboxes are toggled
+  const prevPathsVisible = prevProps.traceroutePathsElements !== null;
+  const nextPathsVisible = nextProps.traceroutePathsElements !== null;
+  const prevRouteVisible = prevProps.selectedNodeTraceroute !== null;
+  const nextRouteVisible = nextProps.selectedNodeTraceroute !== null;
 
-  // All other props are stable function references or refs, no need to check
-  // Skip re-render - nothing map-relevant changed
-  return true;
+  if (prevPathsVisible !== nextPathsVisible || prevRouteVisible !== nextRouteVisible) {
+    // Visibility changed - must re-render to show/hide
+    return false; // Allow re-render
+  }
+
+  // For everything else (including MapContext changes like animatedNodes),
+  // use default comparison which will cause re-render if props differ
+  return false; // Allow re-render for other changes
 });
 
 export default NodesTab;

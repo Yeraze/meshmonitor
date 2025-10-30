@@ -27,7 +27,7 @@ import { calculateDistance, formatDistance } from './utils/distance'
 import { formatTime, formatDateTime } from './utils/datetime'
 import { formatTracerouteRoute } from './utils/traceroute'
 import { DeviceInfo, Channel } from './types/device'
-import { MeshMessage } from './types/message'
+import { MeshMessage, MessageDeliveryState } from './types/message'
 import { SortField, SortDirection } from './types/ui'
 import api from './services/api'
 import { logger } from './utils/logger'
@@ -60,6 +60,61 @@ L.Icon.Default.mergeOptions({
 });
 
 // Icons and helpers are now imported from utils/
+
+/**
+ * Render enhanced message delivery status indicator
+ * @param msg The message to render status for
+ * @returns JSX element with status icon and tooltip
+ */
+function renderMessageStatus(msg: MeshMessage): React.ReactElement {
+  const messageAge = Date.now() - msg.timestamp.getTime();
+  const TIMEOUT_MS = 30000; // 30 seconds
+
+  // Check for explicit failures first
+  if (msg.ackFailed || msg.routingErrorReceived || msg.deliveryState === MessageDeliveryState.FAILED) {
+    return (
+      <span className="status-failed" title="Failed to send - routing error or max retries exceeded">
+        ❌
+      </span>
+    );
+  }
+
+  // Check delivery state for granular status
+  if (msg.deliveryState === MessageDeliveryState.CONFIRMED) {
+    // Only DMs can be confirmed (received by target)
+    return (
+      <span className="status-confirmed" title="Received by target node">
+        🔒
+      </span>
+    );
+  }
+
+  if (msg.deliveryState === MessageDeliveryState.DELIVERED) {
+    // Transmitted to mesh
+    return (
+      <span className="status-delivered" title="Transmitted to mesh">
+        ✅
+      </span>
+    );
+  }
+
+  // If waiting for acknowledgment
+  if (messageAge < TIMEOUT_MS) {
+    // Still waiting for acknowledgment
+    return (
+      <span className="status-pending" title="Sending...">
+        ⏳
+      </span>
+    );
+  }
+
+  // Timeout - no acknowledgment received within 30 seconds
+  return (
+    <span className="status-timeout" title="No acknowledgment received (timeout)">
+      ⏱️
+    </span>
+  );
+}
 
 function App() {
   const { authStatus, hasPermission } = useAuth();
@@ -136,6 +191,8 @@ function App() {
   const lastChannelSelectionRef = useRef<number>(-1) // Track last selected channel before switching to Messages tab
   const showRebootModalRef = useRef<boolean>(false) // Track reboot modal state for interval closure
   const connectionStatusRef = useRef<string>('disconnected') // Track connection status for interval closure
+  const localNodeIdRef = useRef<string>('') // Track local node ID for immediate access (bypasses React state delay)
+  const pendingMessagesRef = useRef<Map<string, MeshMessage>>(new Map()) // Track pending messages for interval access (bypasses closure stale state)
 
   // Constants for emoji tapbacks
   const EMOJI_FLAG = 1; // Protobuf flag indicating this is a tapback/reaction
@@ -264,7 +321,7 @@ function App() {
     setNewMessage,
     replyingTo,
     setReplyingTo,
-    pendingMessages,
+    pendingMessages: _pendingMessages, // Not used directly - we use pendingMessagesRef for interval access
     setPendingMessages,
     unreadCounts,
     setUnreadCounts,
@@ -1040,7 +1097,7 @@ function App() {
     };
   }, [connectionStatus]);
 
-  // Timer to update message status indicators (waiting -> delivered after 10s)
+  // Timer to update message status indicators (timeout detection after 30s)
   const [, setStatusTick] = useState(0);
   useEffect(() => {
     const interval = setInterval(() => {
@@ -1355,6 +1412,14 @@ function App() {
 
       const pollData = await pollResponse.json();
 
+      // Extract localNodeId early to use in message processing (don't wait for state update)
+      const localNodeId = pollData.deviceConfig?.basic?.nodeId || pollData.config?.localNodeInfo?.nodeId || currentNodeId;
+
+      // Store in ref for immediate access across functions (bypasses React state delay)
+      if (localNodeId) {
+        localNodeIdRef.current = localNodeId;
+      }
+
       // Process nodes data
       if (pollData.nodes) {
         setNodes(pollData.nodes);
@@ -1375,47 +1440,91 @@ function App() {
           const currentNewestMessage = processedMessages[0]; // Messages are sorted newest first
           const currentNewestId = currentNewestMessage.id;
 
-          console.log('📊 Message ID check:', {
-            currentNewest: currentNewestId,
-            previousNewest: newestMessageId.current,
-            currentNodeId: currentNodeId
-          });
 
           // Check if this is a new message (different ID than before)
           if (newestMessageId.current && currentNewestId !== newestMessageId.current) {
             // New message detected! Check if it's from someone else and is a text message
-            const isFromOther = currentNewestMessage.fromNodeId !== currentNodeId;
+            const isFromOther = currentNewestMessage.fromNodeId !== localNodeId;
             const isTextMessage = currentNewestMessage.portnum === 1; // Only TEXT_MESSAGE_APP
-            console.log('🔍 New message detected! From:', currentNewestMessage.fromNodeId, 'Text:', currentNewestMessage.text.substring(0, 30));
-            console.log('🔍 Is from another user?', isFromOther, 'Is text message?', isTextMessage);
 
             if (isFromOther && isTextMessage) {
-              console.log('🔊 New message from another user, playing notification sound');
-              logger.debug('🔊 New message arrived from other user:', currentNewestMessage.fromNodeId);
+              logger.debug('New message arrived from other user:', currentNewestMessage.fromNodeId);
               playNotificationSound();
-            } else if (!isTextMessage) {
-              console.log('🔇 Message is telemetry/traceroute, skipping notification sound');
-            } else {
-              console.log('🔇 New message is your own, skipping notification sound');
             }
-          } else if (!newestMessageId.current) {
-            console.log('📊 First load, setting initial newest message ID');
-          } else {
-            console.log('📊 No new messages (same newest ID)');
           }
 
           // Update the tracked newest message ID
           newestMessageId.current = currentNewestId;
         }
 
-        setMessages(processedMessages);
+        // Check for matching messages to remove from pending
+        const currentPending = pendingMessagesRef.current;
+        let updatedPending = new Map(currentPending);
+        let pendingChanged = false;
 
-        // Group messages by channel
+        if (currentPending.size > 0) {
+          // For each pending message, check if a matching message appears in backend response
+          currentPending.forEach((pendingMsg, tempId) => {
+            const isDM = pendingMsg.channel === -1;
+
+            const matchingMessage = processedMessages.find((msg: MeshMessage) => {
+              if (msg.text !== pendingMsg.text) return false;
+
+              // Match by sender
+              const senderMatches = (localNodeId && msg.from === localNodeId) ||
+                                   (msg.from === pendingMsg.from) ||
+                                   (msg.fromNodeId === pendingMsg.fromNodeId);
+
+              if (!senderMatches) return false;
+              if (Math.abs(msg.timestamp.getTime() - pendingMsg.timestamp.getTime()) >= 30000) return false;
+
+              if (isDM) {
+                const matches = msg.toNodeId === pendingMsg.toNodeId ||
+                       (msg.to === pendingMsg.to && (msg.channel === 0 || msg.channel === -1));
+                return matches;
+              } else {
+                return msg.channel === pendingMsg.channel;
+              }
+            });
+
+            if (matchingMessage) {
+              // Remove from pending - backend now has this message
+              updatedPending.delete(tempId);
+              pendingChanged = true;
+            }
+          });
+
+          // Only update state once after all deletions
+          if (pendingChanged) {
+            pendingMessagesRef.current = updatedPending;
+            setPendingMessages(updatedPending);
+          }
+        }
+
+        // Compute merged messages BEFORE updating state (so we can use the same array for channelGroups)
+        const pendingIds = new Set(Array.from(pendingMessagesRef.current.keys()));
+
+        // Build merged messages from current messages state
+        const currentMessages = messages || [];
+        const pendingToKeep = currentMessages.filter(m => pendingIds.has(m.id));
+
+        // Trust the backend's acknowledged field - no frontend override
+        const mergedMessages = [...processedMessages, ...pendingToKeep];
+
+        // Update messages state
+        setMessages(mergedMessages);
+
+        // Group messages by channel using the SAME mergedMessages array (not processedMessages)
         const channelGroups: {[key: number]: MeshMessage[]} = {};
-        processedMessages.forEach((msg: MeshMessage) => {
+
+        // Process merged messages (which already have acknowledged status preserved)
+        mergedMessages.forEach((msg: MeshMessage) => {
+          if (msg.channel === -1) return; // Skip DMs for channel grouping
+
           if (!channelGroups[msg.channel]) {
             channelGroups[msg.channel] = [];
           }
+
           channelGroups[msg.channel].push(msg);
         });
 
@@ -1446,47 +1555,6 @@ function App() {
         setUnreadCounts(newUnreadCounts);
 
         setChannelMessages(channelGroups);
-
-        // Check for message acknowledgments
-        if (pendingMessages.size > 0) {
-          const updatedPending = new Map(pendingMessages);
-          let hasUpdates = false;
-
-          // For each pending message, check if a matching message appears in recent messages
-          // Match by text content, channel, and approximate timestamp (within 30 seconds)
-          updatedPending.forEach((pendingMsg, tempId) => {
-            const matchingMessage = processedMessages.find((msg: MeshMessage) =>
-              msg.text === pendingMsg.text &&
-              msg.channel === pendingMsg.channel &&
-              Math.abs(msg.timestamp.getTime() - pendingMsg.timestamp.getTime()) < 30000 &&
-              msg.from === currentNodeId
-            );
-
-            if (matchingMessage) {
-              // Found a matching message from server, so this message was acknowledged
-              updatedPending.delete(tempId);
-              hasUpdates = true;
-
-              // Update the messages list to replace the temporary message with the server one
-              // IMPORTANT: Preserve the original timestamp to maintain message order
-              const acknowledgedMessage = {
-                ...matchingMessage,
-                timestamp: pendingMsg.timestamp, // Keep original send time, not ACK receive time
-                acknowledged: true
-              };
-
-              setMessages(prev => prev.map(m => m.id === tempId ? acknowledgedMessage : m));
-              setChannelMessages(prev => ({
-                ...prev,
-                [pendingMsg.channel]: prev[pendingMsg.channel]?.map(m => m.id === tempId ? acknowledgedMessage : m) || []
-              }));
-            }
-          });
-
-          if (hasUpdates) {
-            setPendingMessages(updatedPending);
-          }
-        }
       }
 
       // Process config data
@@ -1502,6 +1570,13 @@ function App() {
         if (pollData.deviceConfig.basic?.nodeId) {
           setCurrentNodeId(pollData.deviceConfig.basic.nodeId);
         }
+      }
+
+      // Fallback: Get currentNodeId from config.localNodeInfo if deviceConfig isn't available
+      // (deviceConfig requires configuration:read permission, but localNodeInfo doesn't)
+      if (!currentNodeId && pollData.config?.localNodeInfo?.nodeId) {
+        console.log('🔧 Setting currentNodeId from config.localNodeInfo:', pollData.config.localNodeInfo.nodeId);
+        setCurrentNodeId(pollData.config.localNodeInfo.nodeId);
       }
 
       // Process telemetry availability data
@@ -1659,11 +1734,13 @@ function App() {
 
     // Create a temporary message ID for immediate display
     const tempId = `temp_dm_${Date.now()}_${Math.random()}`;
+    // Use localNodeIdRef for immediate access (bypasses React state delay)
+    const nodeId = localNodeIdRef.current || currentNodeId || 'me';
     const sentMessage: MeshMessage = {
       id: tempId,
-      from: currentNodeId || 'me',
+      from: nodeId,
       to: destinationNodeId,
-      fromNodeId: currentNodeId || 'me',
+      fromNodeId: nodeId,
       toNodeId: destinationNodeId,
       text: newMessage,
       channel: -1, // -1 indicates a direct message
@@ -1678,7 +1755,11 @@ function App() {
     setMessages(prev => [...prev, sentMessage]);
 
     // Add to pending acknowledgments
-    setPendingMessages(prev => new Map(prev).set(tempId, sentMessage));
+    setPendingMessages(prev => {
+      const updated = new Map(prev).set(tempId, sentMessage);
+      pendingMessagesRef.current = updated; // Update ref for interval access
+      return updated;
+    });
 
     // Scroll to bottom after sending message
     setTimeout(() => {
@@ -1754,7 +1835,9 @@ function App() {
         // For DMs: send to the other party in the conversation
         // If the message is from someone else, reply to them
         // If the message is from me, send to the original recipient
-        const toNodeId = originalMessage.fromNodeId === currentNodeId
+        // Use localNodeIdRef for immediate access (bypasses React state delay)
+        const nodeId = localNodeIdRef.current || currentNodeId;
+        const toNodeId = originalMessage.fromNodeId === nodeId
           ? originalMessage.toNodeId
           : originalMessage.fromNodeId;
 
@@ -1813,11 +1896,13 @@ function App() {
 
     // Create a temporary message ID for immediate display
     const tempId = `temp_${Date.now()}_${Math.random()}`;
+    // Use localNodeIdRef for immediate access (bypasses React state delay)
+    const nodeId = localNodeIdRef.current || currentNodeId || 'me';
     const sentMessage: MeshMessage = {
       id: tempId,
-      from: currentNodeId || 'me',
+      from: nodeId,
       to: '!ffffffff', // Broadcast
-      fromNodeId: currentNodeId || 'me',
+      fromNodeId: nodeId,
       toNodeId: '!ffffffff',
       text: newMessage,
       channel: messageChannel,
@@ -1835,7 +1920,19 @@ function App() {
     }));
 
     // Add to pending acknowledgments
-    setPendingMessages(prev => new Map(prev).set(tempId, sentMessage));
+    console.log(`📤 Adding message to pending acknowledgments:`, {
+      tempId,
+      text: sentMessage.text,
+      from: sentMessage.from,
+      fromNodeId: sentMessage.fromNodeId,
+      channel: sentMessage.channel
+    });
+    setPendingMessages(prev => {
+      const updated = new Map(prev).set(tempId, sentMessage);
+      pendingMessagesRef.current = updated; // Update ref for interval access
+      console.log(`📊 Pending messages map size after add: ${updated.size}`);
+      return updated;
+    });
 
     // Scroll to bottom after sending message
     setTimeout(() => {
@@ -1880,6 +1977,7 @@ function App() {
         setPendingMessages(prev => {
           const updated = new Map(prev);
           updated.delete(tempId);
+          pendingMessagesRef.current = updated; // Update ref
           return updated;
         });
       }
@@ -1895,6 +1993,7 @@ function App() {
       setPendingMessages(prev => {
         const updated = new Map(prev);
         updated.delete(tempId);
+        pendingMessagesRef.current = updated; // Update ref
         return updated;
       });
     }
@@ -2815,18 +2914,7 @@ function App() {
                             </div>
                             {isMine && (
                               <div className="message-status">
-                                {(() => {
-                                  const messageAge = Date.now() - msg.timestamp.getTime();
-                                  const isWaiting = messageAge < 10000 && !msg.acknowledged;
-
-                                  if (msg.ackFailed) {
-                                    return <span className="status-failed" title="Failed to send">✗</span>;
-                                  } else if (isWaiting) {
-                                    return <span className="status-pending" title="Sending...">⏳</span>;
-                                  } else {
-                                    return <span className="status-delivered" title="Delivered">✓</span>;
-                                  }
-                                })()}
+                                {renderMessageStatus(msg)}
                               </div>
                             )}
                           </div>
@@ -3431,18 +3519,7 @@ function App() {
                           </div>
                           {isMine && (
                             <div className="message-status">
-                              {(() => {
-                                const messageAge = Date.now() - msg.timestamp.getTime();
-                                const isWaiting = messageAge < 10000 && !msg.acknowledged;
-
-                                if (msg.ackFailed) {
-                                  return <span className="status-failed" title="Failed to send">✗</span>;
-                                } else if (isWaiting) {
-                                  return <span className="status-pending" title="Sending...">⏳</span>;
-                                } else {
-                                  return <span className="status-delivered" title="Delivered">✓</span>;
-                                }
-                              })()}
+                              {renderMessageStatus(msg)}
                             </div>
                           )}
                         </div>

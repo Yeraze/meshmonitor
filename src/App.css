@@ -1751,6 +1751,22 @@ body {
   font-weight: bold;
 }
 
+.status-received-node {
+  color: var(--ctp-teal);
+  font-size: 0.8rem;
+}
+
+.status-received-target {
+  color: var(--ctp-green);
+  font-size: 0.8rem;
+  font-weight: bold;
+}
+
+.status-timeout {
+  color: var(--ctp-peach);
+  font-size: 0.8rem;
+}
+
 /* Messages container adjustments */
 .messages-container {
   flex: 1;
