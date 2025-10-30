@@ -364,6 +364,7 @@ For complete Kubernetes documentation, configuration options, and examples, see 
 | `COOKIE_SECURE` | `true` (production)<br>`false` (development) | Require HTTPS for session cookies. Set to `false` if accessing over HTTP in production (not recommended) |
 | `COOKIE_SAMESITE` | `strict` (production)<br>`lax` (development) | SameSite cookie policy (`strict`, `lax`, or `none`) |
 | `TRUST_PROXY` | `1` (production)<br>unset (development) | Trust reverse proxy headers (`true`, `false`, number of hops, or IP/CIDR). Required for HTTPS reverse proxy setups |
+| `PUSH_NOTIFICATION_TTL` | `3600` | Push notification Time To Live in seconds (300-86400). Prevents notification flooding when devices come back online |
 
 ### Meshtastic Node Requirements
 
