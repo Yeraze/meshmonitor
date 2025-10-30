@@ -70,7 +70,11 @@ class PushNotificationService {
         privateKey
       );
       this.isConfigured = true;
-      logger.info('✅ Push notification service configured with VAPID keys');
+
+      // Log TTL configuration for visibility
+      const config = getEnvironmentConfig();
+      const ttlMinutes = Math.round(config.pushNotificationTtl / 60);
+      logger.info(`✅ Push notification service configured with VAPID keys (TTL: ${config.pushNotificationTtl}s / ${ttlMinutes}min)`);
     } catch (error) {
       logger.error('❌ Failed to configure push notification service:', error);
       this.isConfigured = false;
