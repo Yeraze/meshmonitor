@@ -349,11 +349,13 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                       />
                       <div style={{ flex: 1 }}>
                         <div style={{ fontWeight: '500', color: 'var(--ctp-text)' }}>
-                          {node.longName || node.shortName || 'Unknown'}
+                          {node.longName || node.shortName || node.nodeId || 'Unknown'}
                         </div>
-                        <div style={{ fontSize: '12px', color: 'var(--ctp-subtext0)' }}>
-                          {node.nodeId}
-                        </div>
+                        {(node.longName || node.shortName) && (
+                          <div style={{ fontSize: '12px', color: 'var(--ctp-subtext0)' }}>
+                            {node.nodeId}
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))
