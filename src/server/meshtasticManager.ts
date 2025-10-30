@@ -1739,7 +1739,7 @@ class MeshtasticManager {
       const fromNum = Number(meshPacket.from);
       const fromNodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
       const errorReason = routing.error_reason || routing.errorReason;
-      // Use decoded.requestId which contains the ID of the original message that failed
+      // Use decoded.requestId which contains the ID of the original message that was ACK'd/failed
       const requestId = meshPacket.decoded?.requestId;
 
       const errorReasonNames: Record<number, string> = {
@@ -1759,6 +1759,45 @@ class MeshtasticManager {
 
       const errorName = errorReasonNames[errorReason] || `UNKNOWN(${errorReason})`;
 
+      // Handle successful ACKs (error_reason = 0 means success)
+      if (errorReason === 0 && requestId) {
+        // Look up the original message to check if this ACK is from the intended recipient
+        const originalMessage = databaseService.getMessageByRequestId(requestId);
+
+        if (originalMessage) {
+          const targetNodeId = originalMessage.toNodeId;
+          const localNodeId = databaseService.getSetting('localNodeId');
+          const isDM = originalMessage.channel === -1;
+
+          // ACK from our own radio - message transmitted to mesh
+          if (fromNodeId === localNodeId) {
+            logger.info(`📡 ACK from our own radio ${fromNodeId} for requestId ${requestId} - message transmitted to mesh`);
+            const updated = databaseService.updateMessageDeliveryState(requestId, 'delivered');
+            if (updated) {
+              logger.debug(`💾 Marked message ${requestId} as delivered (transmitted)`);
+            }
+            return;
+          }
+
+          // ACK from target node - message confirmed received by recipient (only for DMs)
+          if (fromNodeId === targetNodeId && isDM) {
+            logger.info(`✅ ACK received from TARGET node ${fromNodeId} for requestId ${requestId} - message confirmed`);
+            const updated = databaseService.updateMessageDeliveryState(requestId, 'confirmed');
+            if (updated) {
+              logger.debug(`💾 Marked message ${requestId} as confirmed (received by target)`);
+            }
+          } else if (fromNodeId === targetNodeId && !isDM) {
+            logger.debug(`📢 ACK from ${fromNodeId} for channel message ${requestId} (already marked as delivered)`);
+          } else {
+            logger.warn(`⚠️  ACK from ${fromNodeId} but message was sent to ${targetNodeId} - ignoring (intermediate node)`);
+          }
+        } else {
+          logger.debug(`⚠️  Could not find original message with requestId ${requestId}`);
+        }
+        return;
+      }
+
+      // Handle actual routing errors
       logger.warn(`📮 Routing error from ${fromNodeId}: ${errorName} (${errorReason}), requestId: ${requestId}`);
       logger.debug('Routing error details:', {
         from: fromNodeId,
@@ -1768,11 +1807,10 @@ class MeshtasticManager {
         route: routing.route || []
       });
 
-      // Note routing error but don't immediately fail the message
-      // Messages can still be delivered even if routing errors occur
-      // We'll rely on ACKs and timeouts to determine actual delivery status
+      // Update message in database to mark delivery as failed
       if (requestId) {
-        logger.info(`⚠️  Routing error for requestId ${requestId} - will wait for ACK to determine delivery status`);
+        logger.info(`❌ Marking message ${requestId} as failed due to routing error: ${errorName}`);
+        databaseService.updateMessageDeliveryState(requestId, 'failed');
       }
     } catch (error) {
       logger.error('❌ Error processing routing error message:', error);
@@ -3361,6 +3399,8 @@ class MeshtasticManager {
           replyId: replyId || undefined,
           emoji: emoji || undefined,
           requestId: messageId, // Save requestId for routing error matching
+          wantAck: 1, // Request acknowledgment for this message
+          deliveryState: 'pending', // Initial delivery state
           createdAt: Date.now()
         };
 
@@ -4382,7 +4422,20 @@ class MeshtasticManager {
       hopStart: msg.hopStart,
       hopLimit: msg.hopLimit,
       replyId: msg.replyId,
-      emoji: msg.emoji
+      emoji: msg.emoji,
+      // Include delivery tracking fields
+      requestId: (msg as any).requestId,
+      wantAck: Boolean((msg as any).wantAck),
+      ackFailed: Boolean((msg as any).ackFailed),
+      routingErrorReceived: Boolean((msg as any).routingErrorReceived),
+      deliveryState: (msg as any).deliveryState,
+      // Acknowledged status depends on message type and delivery state:
+      // - DMs: only 'confirmed' counts (received by target)
+      // - Channel messages: 'delivered' counts (transmitted to mesh)
+      // - undefined/failed: not acknowledged
+      acknowledged: msg.channel === -1
+        ? ((msg as any).deliveryState === 'confirmed' ? true : undefined)
+        : ((msg as any).deliveryState === 'delivered' || (msg as any).deliveryState === 'confirmed' ? true : undefined)
     }));
   }
 

@@ -445,6 +445,11 @@ export class MeshtasticProtobufService {
           const user = User.decode(payload);
           return user;
 
+        case 5: // ROUTING_APP
+          const Routing = root.lookupType('meshtastic.Routing');
+          const routing = Routing.decode(payload);
+          return routing;
+
         case 67: // TELEMETRY_APP
           const Telemetry = root.lookupType('meshtastic.Telemetry');
           const telemetry = Telemetry.decode(payload);

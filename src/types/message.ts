@@ -1,10 +1,8 @@
 export enum MessageDeliveryState {
-  PENDING = 'pending',                    // Message being sent
-  TRANSMITTED = 'transmitted',            // Transmitted by local node
-  RECEIVED_BY_NODE = 'received_by_node',  // Received by another node (channel messages)
-  RECEIVED_BY_TARGET = 'received_by_target', // Received by target node (direct messages)
-  FAILED_MAX_RETRIES = 'failed_max_retries', // Failed after maximum retransmissions
-  FAILED_ROUTING = 'failed_routing'       // Failed due to routing error
+  DELIVERED = 'delivered',    // Transmitted to mesh by local radio
+  CONFIRMED = 'confirmed',    // Received by target node (DMs only)
+  FAILED = 'failed'          // Failed due to routing error
+  // undefined = pending (message not yet acknowledged)
 }
 
 export interface MeshMessage {

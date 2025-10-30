@@ -1232,6 +1232,12 @@ class DatabaseService {
     return message ? this.normalizeBigInts(message) : null;
   }
 
+  getMessageByRequestId(requestId: number): DbMessage | null {
+    const stmt = this.db.prepare('SELECT * FROM messages WHERE requestId = ?');
+    const message = stmt.get(requestId) as DbMessage | null;
+    return message ? this.normalizeBigInts(message) : null;
+  }
+
   getMessages(limit: number = 100, offset: number = 0): DbMessage[] {
     const stmt = this.db.prepare(`
       SELECT * FROM messages
@@ -2484,6 +2490,31 @@ class DatabaseService {
     const stmt = this.db.prepare(query);
     const result = stmt.run(...params);
     return Number(result.changes);
+  }
+
+  // Update message acknowledgment status by requestId (for tracking routing ACKs)
+  updateMessageAckByRequestId(requestId: number, _acknowledged: boolean = true, ackFailed: boolean = false): boolean {
+    const stmt = this.db.prepare(`
+      UPDATE messages
+      SET ackFailed = ?, routingErrorReceived = ?, deliveryState = ?
+      WHERE requestId = ?
+    `);
+    // Set deliveryState based on whether ACK was successful or failed
+    const deliveryState = ackFailed ? 'failed' : 'delivered';
+    const result = stmt.run(ackFailed ? 1 : 0, ackFailed ? 1 : 0, deliveryState, requestId);
+    return Number(result.changes) > 0;
+  }
+
+  // Update message delivery state directly (undefined/delivered/confirmed)
+  updateMessageDeliveryState(requestId: number, deliveryState: 'delivered' | 'confirmed' | 'failed'): boolean {
+    const stmt = this.db.prepare(`
+      UPDATE messages
+      SET deliveryState = ?, ackFailed = ?
+      WHERE requestId = ?
+    `);
+    const ackFailed = deliveryState === 'failed' ? 1 : 0;
+    const result = stmt.run(deliveryState, ackFailed, requestId);
+    return Number(result.changes) > 0;
   }
 
   getUnreadMessageIds(userId: number | null): string[] {
