@@ -89,6 +89,18 @@ When enabled, MeshMonitor periodically sends traceroute requests to all nodes in
 - **Default**: 3 minutes
 - **Recommendation**: Use longer intervals (10-15 minutes) for larger networks or slower mesh presets
 
+**Node Filter** *(New in v2.12)*: Limit traceroutes to specific nodes instead of all nodes
+
+- **Enable Filter**: Toggle to restrict traceroutes to selected nodes only
+- **Node Selection**: Choose specific nodes from your network to trace
+- **Search**: Filter available nodes by name or ID for easy selection
+- **Benefits**:
+  - Reduces network congestion in large networks
+  - Focus on critical or problem nodes
+  - Save battery on mobile nodes by excluding them
+  - Customize monitoring for specific network segments
+- **Recommendation**: Enable filtering in networks with 20+ nodes to reduce overhead
+
 ### Side Effects
 
 - **Network Congestion**: Each traceroute request generates multiple packets. In large networks with many nodes, this can significantly increase mesh traffic
