@@ -31,12 +31,21 @@ export function getDeviceRoleName(role: number | string | undefined): string {
     return 'N/A';
   }
 
-  // If already a string, return it
+  // Convert to number if it's a numeric string
+  let numericRole: number;
   if (typeof role === 'string') {
-    return role;
+    const parsed = parseInt(role, 10);
+    // If it's a valid number string, use it; otherwise assume it's already a readable name
+    if (!isNaN(parsed)) {
+      numericRole = parsed;
+    } else {
+      return role;
+    }
+  } else {
+    numericRole = role;
   }
 
-  return DEVICE_ROLES[role] || `Unknown (${role})`;
+  return DEVICE_ROLES[numericRole] || `Unknown (${numericRole})`;
 }
 
 /**
@@ -45,10 +54,20 @@ export function getDeviceRoleName(role: number | string | undefined): string {
  * @returns Description of the role's function
  */
 export function getDeviceRoleDescription(role: number | string | undefined): string {
-  const numericRole = typeof role === 'string' ? undefined : role;
-
-  if (numericRole === undefined || numericRole === null) {
+  if (role === undefined || role === null) {
     return 'No role specified';
+  }
+
+  // Convert to number if it's a numeric string
+  let numericRole: number;
+  if (typeof role === 'string') {
+    const parsed = parseInt(role, 10);
+    if (isNaN(parsed)) {
+      return 'No role specified';
+    }
+    numericRole = parsed;
+  } else {
+    numericRole = role;
   }
 
   const descriptions: Record<number, string> = {
@@ -76,10 +95,20 @@ export function getDeviceRoleDescription(role: number | string | undefined): str
  * @returns True if the role involves routing packets
  */
 export function isRoutingRole(role: number | string | undefined): boolean {
-  const numericRole = typeof role === 'string' ? undefined : role;
-
-  if (numericRole === undefined || numericRole === null) {
+  if (role === undefined || role === null) {
     return false;
+  }
+
+  // Convert to number if it's a numeric string
+  let numericRole: number;
+  if (typeof role === 'string') {
+    const parsed = parseInt(role, 10);
+    if (isNaN(parsed)) {
+      return false;
+    }
+    numericRole = parsed;
+  } else {
+    numericRole = role;
   }
 
   // Roles that route/forward packets

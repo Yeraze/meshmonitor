@@ -84,6 +84,90 @@
   border-color: #89b4fa;
 }
 
+.dashboard-role-filter-dropdown {
+  position: relative;
+  min-width: 200px;
+}
+
+.dashboard-role-filter-button {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background-color: #1e1e2e;
+  border: 1px solid #45475a;
+  border-radius: 6px;
+  color: #cdd6f4;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+  user-select: none;
+}
+
+.dashboard-role-filter-button:hover {
+  border-color: #585b70;
+}
+
+.dashboard-dropdown-arrow {
+  margin-left: 8px;
+  color: #a6adc8;
+  font-size: 0.7rem;
+}
+
+.dashboard-role-dropdown-content {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
+  background-color: #1e1e2e;
+  border: 1px solid #45475a;
+  border-radius: 6px;
+  padding: 8px;
+  z-index: 1000;
+  max-height: 300px;
+  overflow-y: auto;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+.dashboard-role-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: #cdd6f4;
+  font-size: 0.85rem;
+  padding: 6px 4px;
+  transition: background-color 0.2s ease;
+  border-radius: 4px;
+}
+
+.dashboard-role-checkbox-label:hover {
+  background-color: #313244;
+}
+
+.dashboard-role-checkbox-label input[type="checkbox"] {
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+  accent-color: #89b4fa;
+  flex-shrink: 0;
+}
+
+.dashboard-role-divider {
+  height: 1px;
+  background-color: #45475a;
+  margin: 4px 0;
+}
+
+.dashboard-no-roles {
+  color: #6c7086;
+  font-size: 0.85rem;
+  font-style: italic;
+  padding: 8px;
+  display: block;
+}
+
 .dashboard-sort {
   display: flex;
   align-items: center;
@@ -269,7 +353,8 @@
   }
 
   .dashboard-filter-select,
-  .dashboard-sort-select {
+  .dashboard-sort-select,
+  .dashboard-role-filter-dropdown {
     min-width: unset;
     width: 100%;
   }
