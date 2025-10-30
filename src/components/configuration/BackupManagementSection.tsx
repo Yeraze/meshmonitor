@@ -437,7 +437,8 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
                             borderRadius: '4px',
                             fontSize: '0.8rem',
                             backgroundColor: backup.type === 'automatic' ? 'var(--ctp-blue)' : 'var(--ctp-mauve)',
-                            color: '#fff'
+                            color: '#fff',
+                            whiteSpace: 'nowrap'
                           }}>
                             {backup.type === 'automatic' ? '🤖 Auto' : '👤 Manual'}
                           </span>
