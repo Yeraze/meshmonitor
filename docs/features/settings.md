@@ -38,6 +38,38 @@ The Settings tab allows you to customize MeshMonitor's behavior and manage your 
 
 **Effect**: When combined with other filters, this helps manage large mesh networks by focusing on nodes with meaningful identification or highlighting those that need configuration.
 
+### Device Role Filter *(New in v2.12)*
+
+**Description**: Filter nodes based on their assigned Meshtastic device role, allowing you to focus on specific types of nodes in your network.
+
+**Location**: Node List filter panel and Telemetry Dashboard
+
+**Filter Modes**:
+- **Show only**: Display only nodes with selected roles
+- **Hide matching**: Hide nodes with selected roles from the list
+
+**Available Roles**:
+- **CLIENT**: Standard end-user devices (most common)
+- **CLIENT_MUTE**: Receives messages but doesn't route
+- **ROUTER**: Dedicated routing nodes
+- **ROUTER_CLIENT**: Routes traffic and used by user
+- **REPEATER**: Dedicated message repeaters
+- **TRACKER**: GPS tracker devices
+- **SENSOR**: Environmental sensor nodes
+- **TAK**: Team Awareness Kit integration
+- **CLIENT_HIDDEN**: Hidden client nodes
+- **LOST_AND_FOUND**: Lost and found trackers
+- **TAK_TRACKER**: TAK-enabled trackers
+
+**Use Cases**:
+- View only routing infrastructure (ROUTER, REPEATER roles)
+- Focus on end-user devices (CLIENT roles)
+- Monitor specialized nodes (SENSOR, TRACKER roles)
+- Analyze network topology by node function
+- Create focused views for network management
+
+**Effect**: Helps organize and analyze large networks by grouping nodes by their functional role in the mesh.
+
 ## Node Details Block
 
 **Location**: Messages page, displayed when a node is selected in the conversation list
