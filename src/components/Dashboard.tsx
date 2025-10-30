@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import {
   DndContext,
@@ -22,6 +22,7 @@ import { type TemperatureUnit, formatTemperature, getTemperatureUnit } from '../
 import { logger } from '../utils/logger';
 import api from '../services/api';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
+import { getDeviceRoleName } from '../utils/deviceRole';
 
 interface TelemetryData {
   id?: number;
@@ -46,6 +47,7 @@ interface NodeInfo {
     longName?: string;
     shortName?: string;
     hwModel?: number;
+    role?: number | string;
   };
   deviceMetrics?: {
     batteryLevel?: number | null;
@@ -237,6 +239,8 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C',
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedNode, setSelectedNode] = useState<string>('all');
   const [selectedType, setSelectedType] = useState<string>('all');
+  const [selectedRoles, setSelectedRoles] = useState<Set<string>>(new Set());
+  const [roleDropdownOpen, setRoleDropdownOpen] = useState<boolean>(false);
   const [sortOption, setSortOption] = useState<SortOption>('custom');
 
   // Drag and drop sensors
@@ -246,6 +250,25 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C',
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
+
+  // Ref for role dropdown
+  const roleDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (roleDropdownRef.current && !roleDropdownRef.current.contains(event.target as Node)) {
+        setRoleDropdownOpen(false);
+      }
+    };
+
+    if (roleDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [roleDropdownOpen]);
 
   // Fetch favorites and node information
   useEffect(() => {
@@ -449,6 +472,19 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C',
     return Array.from(uniqueTypes).sort();
   }, [favorites]);
 
+  // Get unique device roles for filter dropdown
+  const getUniqueDeviceRoles = useMemo(() => {
+    const uniqueRoles = new Map<string, string>();
+    favorites.forEach(fav => {
+      const node = nodes.get(fav.nodeId);
+      if (node?.user?.role !== undefined) {
+        const roleName = getDeviceRoleName(node.user.role);
+        uniqueRoles.set(roleName, roleName);
+      }
+    });
+    return Array.from(uniqueRoles.values()).sort();
+  }, [favorites, nodes]);
+
   // Filter and sort favorites
   const filteredAndSortedFavorites = useMemo(() => {
     let result = [...favorites];
@@ -470,6 +506,15 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C',
 
     if (selectedType !== 'all') {
       result = result.filter(fav => fav.telemetryType === selectedType);
+    }
+
+    if (selectedRoles.size > 0) {
+      result = result.filter(fav => {
+        const node = nodes.get(fav.nodeId);
+        if (!node?.user?.role) return false;
+        const roleName = getDeviceRoleName(node.user.role);
+        return selectedRoles.has(roleName);
+      });
     }
 
     // Apply sorting
@@ -507,7 +552,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C',
     }
 
     return result;
-  }, [favorites, nodes, searchQuery, selectedNode, selectedType, sortOption, customOrder, getTelemetryLabel]);
+  }, [favorites, nodes, searchQuery, selectedNode, selectedType, selectedRoles, sortOption, customOrder, getTelemetryLabel]);
 
   const removeFavorite = async (nodeId: string, telemetryType: string) => {
     try {
@@ -597,6 +642,59 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C',
               <option key={type} value={type}>{getTelemetryLabel(type)}</option>
             ))}
           </select>
+
+          <div className="dashboard-role-filter-dropdown" ref={roleDropdownRef}>
+            <div
+              className="dashboard-role-filter-button"
+              onClick={() => setRoleDropdownOpen(!roleDropdownOpen)}
+            >
+              <span>
+                {selectedRoles.size === 0
+                  ? 'Device Roles: All'
+                  : `Device Roles: ${selectedRoles.size} selected`}
+              </span>
+              <span className="dashboard-dropdown-arrow">{roleDropdownOpen ? '▲' : '▼'}</span>
+            </div>
+            {roleDropdownOpen && (
+              <div className="dashboard-role-dropdown-content">
+                {getUniqueDeviceRoles.length > 0 ? (
+                  <>
+                    <label className="dashboard-role-checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={selectedRoles.size === 0}
+                        onChange={() => {
+                          setSelectedRoles(new Set());
+                        }}
+                      />
+                      <span>All Roles</span>
+                    </label>
+                    <div className="dashboard-role-divider" />
+                    {getUniqueDeviceRoles.map((role) => (
+                      <label key={role} className="dashboard-role-checkbox-label">
+                        <input
+                          type="checkbox"
+                          checked={selectedRoles.has(role)}
+                          onChange={(e) => {
+                            const newRoles = new Set(selectedRoles);
+                            if (e.target.checked) {
+                              newRoles.add(role);
+                            } else {
+                              newRoles.delete(role);
+                            }
+                            setSelectedRoles(newRoles);
+                          }}
+                        />
+                        <span>{role}</span>
+                      </label>
+                    ))}
+                  </>
+                ) : (
+                  <span className="dashboard-no-roles">No roles available</span>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="dashboard-sort">
