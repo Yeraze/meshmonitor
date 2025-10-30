@@ -10,11 +10,17 @@ interface AutoTracerouteSectionProps {
 
 interface Node {
   nodeNum: number;
-  nodeId: string;
-  longName: string;
-  shortName: string;
+  nodeId?: string;
+  longName?: string;
+  shortName?: string;
   lastHeard?: number;
   role?: number;
+  user?: {
+    id: string;
+    longName: string;
+    shortName: string;
+    role?: string;
+  };
 }
 
 const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
@@ -166,9 +172,9 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
     }
     const lowerSearch = searchTerm.toLowerCase().trim();
     return availableNodes.filter(node => {
-      const longName = (node.longName || '').toLowerCase();
-      const shortName = (node.shortName || '').toLowerCase();
-      const nodeId = (node.nodeId || '').toLowerCase();
+      const longName = (node.user?.longName || node.longName || '').toLowerCase();
+      const shortName = (node.user?.shortName || node.shortName || '').toLowerCase();
+      const nodeId = (node.user?.id || node.nodeId || '').toLowerCase();
       return longName.includes(lowerSearch) ||
              shortName.includes(lowerSearch) ||
              nodeId.includes(lowerSearch);
@@ -349,11 +355,11 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                       />
                       <div style={{ flex: 1 }}>
                         <div style={{ fontWeight: '500', color: 'var(--ctp-text)' }}>
-                          {node.longName || node.shortName || node.nodeId || 'Unknown'}
+                          {node.user?.longName || node.longName || node.user?.shortName || node.shortName || node.user?.id || node.nodeId || 'Unknown'}
                         </div>
-                        {(node.longName || node.shortName) && (
+                        {(node.user?.longName || node.longName || node.user?.shortName || node.shortName) && (
                           <div style={{ fontSize: '12px', color: 'var(--ctp-subtext0)' }}>
-                            {node.nodeId}
+                            {node.user?.id || node.nodeId}
                           </div>
                         )}
                       </div>
