@@ -149,22 +149,6 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
     }
   };
 
-  const handleNodeToggle = (nodeNum: number) => {
-    setSelectedNodeNums(prev =>
-      prev.includes(nodeNum)
-        ? prev.filter(n => n !== nodeNum)
-        : [...prev, nodeNum]
-    );
-  };
-
-  const handleSelectAll = () => {
-    setSelectedNodeNums(availableNodes.map(n => n.nodeNum));
-  };
-
-  const handleDeselectAll = () => {
-    setSelectedNodeNums([]);
-  };
-
   // Filter nodes based on search term
   const filteredNodes = React.useMemo(() => {
     if (!searchTerm.trim()) {
@@ -180,6 +164,26 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
              nodeId.includes(lowerSearch);
     });
   }, [availableNodes, searchTerm]);
+
+  const handleNodeToggle = (nodeNum: number) => {
+    setSelectedNodeNums(prev =>
+      prev.includes(nodeNum)
+        ? prev.filter(n => n !== nodeNum)
+        : [...prev, nodeNum]
+    );
+  };
+
+  const handleSelectAll = () => {
+    // Add all filtered nodes to selection (preserving any already selected)
+    const newSelection = new Set([...selectedNodeNums, ...filteredNodes.map(n => n.nodeNum)]);
+    setSelectedNodeNums(Array.from(newSelection));
+  };
+
+  const handleDeselectAll = () => {
+    // Remove only the filtered nodes from selection
+    const filteredNums = new Set(filteredNodes.map(n => n.nodeNum));
+    setSelectedNodeNums(selectedNodeNums.filter(num => !filteredNums.has(num)));
+  };
 
   return (
     <>
