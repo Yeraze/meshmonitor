@@ -10,6 +10,7 @@ MeshMonitor now supports PWA push notifications on both iOS and Android! This fe
 - **Background Notifications**: Receive alerts even when app is closed
 - **iOS-Compliant**: Proper implementation prevents subscription cancellation
 - **Smart Filtering**: Only sends notifications for messages from other users
+- **Notification Expiration**: Configurable TTL (default 1 hour) prevents notification flooding after being offline
 
 ## Browser Support
 
@@ -75,6 +76,23 @@ If you prefer to manage VAPID keys manually:
    VAPID_PRIVATE_KEY=your-private-key-here
    VAPID_SUBJECT=mailto:admin@example.com
    ```
+
+### Notification Expiration (TTL)
+
+By default, notifications expire after **1 hour (3600 seconds)**. This prevents old notifications from flooding your device when it comes back online after being offline for a while (e.g., laptop sleeping overnight).
+
+The push service will attempt to deliver notifications for up to 1 hour, after which they are discarded. This is configurable:
+
+```env
+# Time in seconds before notifications expire (default: 3600 = 1 hour)
+PUSH_NOTIFICATION_TTL=3600
+```
+
+Common TTL values:
+- `3600` (1 hour) - Default, good for most users
+- `7200` (2 hours) - For longer offline periods
+- `300` (5 minutes) - For time-sensitive notifications only
+- `86400` (24 hours) - Maximum recommended value
 
 ### Update Contact Email
 

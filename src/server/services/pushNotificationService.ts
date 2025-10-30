@@ -262,9 +262,17 @@ class PushNotificationService {
         }
       };
 
+      // Get TTL (Time To Live) from config - prevents old notifications from flooding
+      // when devices come back online after being offline
+      const config = getEnvironmentConfig();
+      const ttl = config.pushNotificationTtl;
+
       await webpush.sendNotification(
         pushSubscription,
-        JSON.stringify(payload)
+        JSON.stringify(payload),
+        {
+          TTL: ttl
+        }
       );
 
       // Update last_used_at
