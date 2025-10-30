@@ -2,7 +2,7 @@
  * Push Notification TTL Environment Configuration Tests
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { resetEnvironmentConfig, getEnvironmentConfig } from './environment.js';
 
 describe('Push Notification TTL Configuration', () => {
@@ -40,7 +40,7 @@ describe('Push Notification TTL Configuration', () => {
         { value: '1800', expected: 1800, description: '30 minutes (arbitrary valid value)' }
       ];
 
-      validValues.forEach(({ value, expected, description }) => {
+      validValues.forEach(({ value, expected }) => {
         process.env.PUSH_NOTIFICATION_TTL = value;
         resetEnvironmentConfig();
 
