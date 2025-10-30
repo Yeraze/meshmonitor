@@ -1,0 +1,80 @@
+# start of Meshtastic configure yaml
+canned_messages: Hi|Bye|Yes|No|Ok
+channel_url: https://meshtastic.org/e/#CgkSAQEoAToCCA4KMRIgn2GT9ipPJ1zhp3ijUBv9hGSJz1xXmD6Kd0N5c_-abJIaC21lc2htb25pdG9yOgAKFRIFdefaulsaBmR1bW15QjABOgIIBwouEiAxNnBmcFhnUG1RUjgyeGdYb0ZaZUMxa2IwVXI0dVNVYxoIZ2F1bnRsZXQ6ABIYCAEQBBj6ASALKAU4AUAFSAFQHmgByAYB
+config:
+  bluetooth:
+    enabled: false
+    fixedPin: 123456
+  device:
+    nodeInfoBroadcastSecs: 10800
+    role: CLIENT_MUTE
+    tzdef: EST5EDT,M3.2.0/2:00:00,M11.1.0/2:00:00
+  display:
+    screenOnSecs: 600
+  lora:
+    bandwidth: 250
+    codingRate: 5
+    configOkToMqtt: true
+    hopLimit: 5
+    modemPreset: MEDIUM_FAST
+    region: US
+    spreadFactor: 11
+    sx126xRxBoostedGain: true
+    txEnabled: true
+    txPower: 30
+    usePreset: true
+  mqtt:
+    encryptionEnabled: false
+  network:
+    wifiEnabled: true
+    wifiPsk: b10nAB-=lego20
+    wifiSsid: GauntletN-5G
+  position:
+    fixedPosition: true
+    positionBroadcastSecs: 1800
+    positionBroadcastSmartEnabled: true
+  power:
+    lsSecs: 300
+    minWakeSecs: 10
+    onBatteryShutdownAfterSecs: 14400
+    waitBluetoothSecs: 60
+  security:
+    privateKey: base64:yI46kxT1uvc33CkewEbkpKccqp81VR1UeS3lfEThYHo=
+    publicKey: base64:TEa0rfrd28aWuLeZgbBgUPdZY3Phjvlj1q9p9yoqUH0=
+    serialEnabled: true
+location:
+  alt: 5
+  lat: 26.333431
+  lon: -80.267695
+module_config:
+  ambientLighting:
+    blue: 88
+    current: 10
+    green: 133
+    red: 88
+  cannedMessage:
+    enabled: true
+  detectionSensor:
+    detectionTriggerType: LOGIC_HIGH
+    minimumBroadcastSecs: 45
+  mqtt:
+    address: mqtt.areyoumeshingwith.us
+    enabled: true
+    encryptionEnabled: true
+    mapReportSettings:
+      positionPrecision: 14
+      publishIntervalSecs: 3600
+    mapReportingEnabled: true
+    password: uplink
+    proxyToClientEnabled: true
+    root: msh/US/FL
+    username: uplink
+  neighborInfo:
+    enabled: true
+    updateInterval: 14400
+  telemetry:
+    deviceUpdateInterval: 3600
+    powerMeasurementEnabled: true
+    powerUpdateInterval: 1800
+owner: Yeraze Sandbox
+owner_short: Yrze

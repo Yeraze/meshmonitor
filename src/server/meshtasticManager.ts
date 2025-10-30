@@ -1739,6 +1739,8 @@ class MeshtasticManager {
       const fromNum = Number(meshPacket.from);
       const fromNodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
       const errorReason = routing.error_reason || routing.errorReason;
+      // Use decoded.requestId which contains the ID of the original message that failed
+      const requestId = meshPacket.decoded?.requestId;
 
       const errorReasonNames: Record<number, string> = {
         0: 'NONE',
@@ -1757,17 +1759,21 @@ class MeshtasticManager {
 
       const errorName = errorReasonNames[errorReason] || `UNKNOWN(${errorReason})`;
 
-      logger.warn(`📮 Routing error from ${fromNodeId}: ${errorName} (${errorReason})`);
+      logger.warn(`📮 Routing error from ${fromNodeId}: ${errorName} (${errorReason}), requestId: ${requestId}`);
       logger.debug('Routing error details:', {
         from: fromNodeId,
         to: meshPacket.to ? `!${Number(meshPacket.to).toString(16).padStart(8, '0')}` : 'unknown',
         errorReason: errorName,
-        requestId: meshPacket.id,
+        requestId: requestId,
         route: routing.route || []
       });
 
-      // Note: The frontend will handle timeout-based failure detection
-      // This logging helps with debugging mesh network issues
+      // Note routing error but don't immediately fail the message
+      // Messages can still be delivered even if routing errors occur
+      // We'll rely on ACKs and timeouts to determine actual delivery status
+      if (requestId) {
+        logger.info(`⚠️  Routing error for requestId ${requestId} - will wait for ACK to determine delivery status`);
+      }
     } catch (error) {
       logger.error('❌ Error processing routing error message:', error);
     }
@@ -3354,6 +3360,7 @@ class MeshtasticManager {
           hopLimit: undefined,
           replyId: replyId || undefined,
           emoji: emoji || undefined,
+          requestId: messageId, // Save requestId for routing error matching
           createdAt: Date.now()
         };
 

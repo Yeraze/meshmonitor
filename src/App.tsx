@@ -1505,6 +1505,7 @@ function App() {
 
         // Check for message acknowledgments
         if (pendingMessages.size > 0) {
+          console.log(`🔎 PENDING MESSAGES CHECK: ${pendingMessages.size} pending messages`);
           const updatedPending = new Map(pendingMessages);
           let hasUpdates = false;
 
@@ -1515,7 +1516,7 @@ function App() {
             // For channel messages, match by text, channel, and timestamp
             const isDM = pendingMsg.channel === -1;
 
-            logger.debug(`🔍 Checking pending message ${tempId}:`, {
+            console.log(`🔍 Checking pending message ${tempId}:`, {
               isDM,
               text: pendingMsg.text.substring(0, 30),
               channel: pendingMsg.channel,
@@ -1542,7 +1543,7 @@ function App() {
                        (msg.to === pendingMsg.to && (msg.channel === 0 || msg.channel === -1));
 
                 if (msg.text === pendingMsg.text) {
-                  logger.debug(`📝 Comparing potential DM match:`, {
+                  console.log(`📝 Comparing potential DM match:`, {
                     msgFrom: msg.from,
                     msgFromNodeId: msg.fromNodeId,
                     pendingFrom: pendingMsg.from,
@@ -1566,6 +1567,7 @@ function App() {
 
             if (matchingMessage) {
               // Found a matching message from server, so this message was acknowledged
+              console.log(`✅ MATCH FOUND for ${tempId}! Acknowledging message: "${pendingMsg.text.substring(0, 30)}"`);
               updatedPending.delete(tempId);
               hasUpdates = true;
 
