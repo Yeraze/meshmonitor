@@ -20,6 +20,7 @@ import { migration as packetLogMigration } from '../server/migrations/011_add_pa
 import { migration as channelRoleMigration } from '../server/migrations/012_add_channel_role_and_position.js';
 import { migration as backupTablesMigration } from '../server/migrations/013_add_backup_tables.js';
 import { migration as messageDeliveryTrackingMigration } from '../server/migrations/014_add_message_delivery_tracking.js';
+import { migration as autoTracerouteFilterMigration } from '../server/migrations/015_add_auto_traceroute_filter.js';
 
 // Configuration constants for traceroute history
 const TRACEROUTE_HISTORY_LIMIT = 50;
@@ -229,6 +230,7 @@ class DatabaseService {
     this.runChannelRoleMigration();
     this.runBackupTablesMigration();
     this.runMessageDeliveryTrackingMigration();
+    this.runAutoTracerouteFilterMigration();
     this.ensureAutomationDefaults();
     this.isInitialized = true;
   }
@@ -553,6 +555,26 @@ class DatabaseService {
       logger.debug('✅ Message delivery tracking migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run message delivery tracking migration:', error);
+      throw error;
+    }
+  }
+
+  private runAutoTracerouteFilterMigration(): void {
+    try {
+      const migrationKey = 'migration_015_auto_traceroute_filter';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Auto-traceroute filter migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 015: Add auto-traceroute node filter...');
+      autoTracerouteFilterMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Auto-traceroute filter migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run auto-traceroute filter migration:', error);
       throw error;
     }
   }
@@ -1754,6 +1776,16 @@ class DatabaseService {
     const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
     const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 
+    // Check if node filter is enabled
+    const filterEnabled = this.isAutoTracerouteNodeFilterEnabled();
+    const allowedNodes = filterEnabled ? this.getAutoTracerouteNodes() : [];
+
+    // Build the node filter clause
+    let nodeFilterClause = '';
+    if (filterEnabled && allowedNodes.length > 0) {
+      nodeFilterClause = `AND n.nodeNum IN (${allowedNodes.join(',')})`;
+    }
+
     // Get all nodes that are eligible for traceroute based on their status
     // Two categories:
     // 1. Nodes with no successful traceroute: retry every 3 hours
@@ -1764,6 +1796,7 @@ class DatabaseService {
          WHERE t.fromNodeNum = ? AND t.toNodeNum = n.nodeNum) as hasTraceroute
       FROM nodes n
       WHERE n.nodeNum != ?
+        ${nodeFilterClause}
         AND (
           -- Category 1: No traceroute exists, and (never requested OR requested > 3 hours ago)
           (
@@ -1845,6 +1878,54 @@ class DatabaseService {
       )
     `);
     deleteOldStmt.run(fromNodeNum, toNodeNum, fromNodeNum, toNodeNum, TRACEROUTE_HISTORY_LIMIT);
+  }
+
+  // Auto-traceroute node filter methods
+  getAutoTracerouteNodes(): number[] {
+    const stmt = this.db.prepare(`
+      SELECT nodeNum FROM auto_traceroute_nodes
+      ORDER BY addedAt ASC
+    `);
+    const nodes = stmt.all() as { nodeNum: number }[];
+    return nodes.map(n => Number(n.nodeNum));
+  }
+
+  setAutoTracerouteNodes(nodeNums: number[]): void {
+    const now = Date.now();
+
+    // Use a transaction for atomic operation
+    const deleteStmt = this.db.prepare('DELETE FROM auto_traceroute_nodes');
+    const insertStmt = this.db.prepare(`
+      INSERT INTO auto_traceroute_nodes (nodeNum, addedAt)
+      VALUES (?, ?)
+    `);
+
+    this.db.transaction(() => {
+      // Clear existing entries
+      deleteStmt.run();
+
+      // Insert new entries
+      for (const nodeNum of nodeNums) {
+        try {
+          insertStmt.run(nodeNum, now);
+        } catch (error) {
+          // Ignore duplicate entries or foreign key violations
+          logger.debug(`Skipping invalid nodeNum: ${nodeNum}`, error);
+        }
+      }
+    })();
+
+    logger.debug(`✅ Set auto-traceroute filter to ${nodeNums.length} nodes`);
+  }
+
+  isAutoTracerouteNodeFilterEnabled(): boolean {
+    const value = this.getSetting('tracerouteNodeFilterEnabled');
+    return value === 'true';
+  }
+
+  setAutoTracerouteNodeFilterEnabled(enabled: boolean): void {
+    this.setSetting('tracerouteNodeFilterEnabled', enabled ? 'true' : 'false');
+    logger.debug(`✅ Auto-traceroute node filter ${enabled ? 'enabled' : 'disabled'}`);
   }
 
   getTelemetryByType(telemetryType: string, limit: number = 100): DbTelemetry[] {

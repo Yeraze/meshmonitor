@@ -2257,6 +2257,50 @@ apiRouter.post('/settings/traceroute-interval', requirePermission('settings', 'w
   }
 });
 
+// Get auto-traceroute node filter settings
+apiRouter.get('/settings/traceroute-nodes', requirePermission('settings', 'read'), (_req, res) => {
+  try {
+    const enabled = databaseService.isAutoTracerouteNodeFilterEnabled();
+    const nodeNums = databaseService.getAutoTracerouteNodes();
+    res.json({ enabled, nodeNums });
+  } catch (error) {
+    logger.error('Error fetching auto-traceroute node filter:', error);
+    res.status(500).json({ error: 'Failed to fetch auto-traceroute node filter' });
+  }
+});
+
+// Update auto-traceroute node filter settings
+apiRouter.post('/settings/traceroute-nodes', requirePermission('settings', 'write'), (req, res) => {
+  try {
+    const { enabled, nodeNums } = req.body;
+
+    // Validate input
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ error: 'Invalid enabled value. Must be a boolean.' });
+    }
+
+    if (!Array.isArray(nodeNums)) {
+      return res.status(400).json({ error: 'Invalid nodeNums value. Must be an array.' });
+    }
+
+    // Validate all node numbers are valid integers
+    for (const nodeNum of nodeNums) {
+      if (!Number.isInteger(nodeNum) || nodeNum < 0) {
+        return res.status(400).json({ error: 'All node numbers must be positive integers.' });
+      }
+    }
+
+    // Update settings
+    databaseService.setAutoTracerouteNodeFilterEnabled(enabled);
+    databaseService.setAutoTracerouteNodes(nodeNums);
+
+    res.json({ success: true, enabled, nodeNums });
+  } catch (error) {
+    logger.error('Error updating auto-traceroute node filter:', error);
+    res.status(500).json({ error: 'Failed to update auto-traceroute node filter' });
+  }
+});
+
 // Get all settings
 apiRouter.get('/settings', optionalAuth(), (_req, res) => {
   try {
