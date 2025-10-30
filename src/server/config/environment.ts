@@ -202,6 +202,8 @@ export interface EnvironmentConfig {
   vapidPrivateKeyProvided: boolean;
   vapidSubject: string | undefined;
   vapidSubjectProvided: boolean;
+  pushNotificationTtl: number;
+  pushNotificationTtlProvided: boolean;
 
   // Access Logging (for fail2ban)
   accessLogEnabled: boolean;
@@ -425,6 +427,16 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     value: process.env.VAPID_SUBJECT,
     wasProvided: process.env.VAPID_SUBJECT !== undefined
   };
+  // TTL (Time To Live) for push notifications in seconds
+  // Default: 3600 seconds (1 hour) - prevents old notifications from flooding when device comes online
+  const pushNotificationTtl = parseInt32('PUSH_NOTIFICATION_TTL', process.env.PUSH_NOTIFICATION_TTL, 3600);
+
+  // Validate TTL is in recommended range (5 minutes to 24 hours)
+  if (pushNotificationTtl.value < 300 || pushNotificationTtl.value > 86400) {
+    logger.warn(`⚠️  PUSH_NOTIFICATION_TTL out of recommended range (300-86400 seconds). Using default: 3600`);
+    pushNotificationTtl.value = 3600;
+    pushNotificationTtl.wasProvided = false;
+  }
 
   // Access Logging (for fail2ban)
   const accessLogEnabled = parseBoolean('ACCESS_LOG_ENABLED', process.env.ACCESS_LOG_ENABLED, false);
@@ -523,6 +535,8 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     vapidPrivateKeyProvided: vapidPrivateKey.wasProvided,
     vapidSubject: vapidSubject.value,
     vapidSubjectProvided: vapidSubject.wasProvided,
+    pushNotificationTtl: pushNotificationTtl.value,
+    pushNotificationTtlProvided: pushNotificationTtl.wasProvided,
 
     // Access Logging (for fail2ban)
     accessLogEnabled: accessLogEnabled.value,
