@@ -1459,6 +1459,8 @@ function App() {
 
         // Check for matching messages to remove from pending
         const currentPending = pendingMessagesRef.current;
+        let updatedPending = new Map(currentPending);
+        let pendingChanged = false;
 
         if (currentPending.size > 0) {
           // For each pending message, check if a matching message appears in backend response
@@ -1487,12 +1489,16 @@ function App() {
 
             if (matchingMessage) {
               // Remove from pending - backend now has this message
-              const updatedPending = new Map(currentPending);
               updatedPending.delete(tempId);
-              pendingMessagesRef.current = updatedPending;
-              setPendingMessages(updatedPending);
+              pendingChanged = true;
             }
           });
+
+          // Only update state once after all deletions
+          if (pendingChanged) {
+            pendingMessagesRef.current = updatedPending;
+            setPendingMessages(updatedPending);
+          }
         }
 
         // Compute merged messages BEFORE updating state (so we can use the same array for channelGroups)
