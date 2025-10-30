@@ -160,11 +160,20 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
   };
 
   // Filter nodes based on search term
-  const filteredNodes = availableNodes.filter(node =>
-    node.longName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    node.shortName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    node.nodeId?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredNodes = React.useMemo(() => {
+    if (!searchTerm.trim()) {
+      return availableNodes;
+    }
+    const lowerSearch = searchTerm.toLowerCase().trim();
+    return availableNodes.filter(node => {
+      const longName = (node.longName || '').toLowerCase();
+      const shortName = (node.shortName || '').toLowerCase();
+      const nodeId = (node.nodeId || '').toLowerCase();
+      return longName.includes(lowerSearch) ||
+             shortName.includes(lowerSearch) ||
+             nodeId.includes(lowerSearch);
+    });
+  }, [availableNodes, searchTerm]);
 
   return (
     <>
