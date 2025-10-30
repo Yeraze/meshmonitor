@@ -96,7 +96,7 @@ const TracerouteHistoryModal: React.FC<TracerouteHistoryModalProps> = ({
 
         <div className="modal-body" style={{ padding: '1.5rem', overflowY: 'auto', maxHeight: 'calc(80vh - 100px)' }}>
           <div style={{ marginBottom: '1.5rem' }}>
-            <strong>From:</strong> {toNodeName} → <strong>To:</strong> {fromNodeName}
+            <strong>From:</strong> {fromNodeName} → <strong>To:</strong> {toNodeName}
           </div>
 
           <div style={{ marginBottom: '1rem' }}>
