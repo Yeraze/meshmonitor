@@ -1270,6 +1270,9 @@ class MeshtasticManager {
       logger.debug(`🔍 Saving node with role=${user.role}, hopsAway=${meshPacket.hopsAway}`);
       databaseService.upsertNode(nodeData);
       logger.debug(`👤 Updated user info: ${user.longName || nodeId}`);
+
+      // Check if we should send auto-welcome message
+      await this.checkAutoWelcome(fromNum, nodeId);
     } catch (error) {
       logger.error('❌ Error processing user message:', error);
     }
@@ -3625,6 +3628,172 @@ class MeshtasticManager {
     }
   }
 
+  private async checkAutoWelcome(nodeNum: number, nodeId: string): Promise<void> {
+    try {
+      // Get auto-welcome settings from database
+      const autoWelcomeEnabled = databaseService.getSetting('autoWelcomeEnabled');
+
+      // Skip if auto-welcome is disabled
+      if (autoWelcomeEnabled !== 'true') {
+        return;
+      }
+
+      // Skip messages from our own locally connected node
+      const localNodeNum = databaseService.getSetting('localNodeNum');
+      if (localNodeNum && parseInt(localNodeNum) === nodeNum) {
+        logger.debug('⏭️  Skipping auto-welcome for local node');
+        return;
+      }
+
+      // Check if we've already welcomed this node
+      const node = databaseService.getNode(nodeNum);
+      if (!node) {
+        logger.debug('⏭️  Node not found in database for auto-welcome check');
+        return;
+      }
+
+      // Check if already welcomed (with 24-hour cooldown)
+      if (node.welcomedAt) {
+        const timeSinceWelcome = Date.now() - node.welcomedAt;
+        const cooldownHours = 24;
+        if (timeSinceWelcome < cooldownHours * 60 * 60 * 1000) {
+          logger.debug(`⏭️  Skipping auto-welcome for ${nodeId} - already welcomed ${Math.floor(timeSinceWelcome / (60 * 60 * 1000))}h ago`);
+          return;
+        }
+      }
+
+      // Check if we should wait for name
+      const autoWelcomeWaitForName = databaseService.getSetting('autoWelcomeWaitForName');
+      if (autoWelcomeWaitForName === 'true') {
+        // Check if node has a proper name (not default "Node !xxxxxxxx")
+        if (!node.longName || node.longName.startsWith('Node !')) {
+          logger.debug(`⏭️  Skipping auto-welcome for ${nodeId} - waiting for proper name (current: ${node.longName})`);
+          return;
+        }
+        if (!node.shortName || node.shortName === nodeId.substring(1, 5)) {
+          logger.debug(`⏭️  Skipping auto-welcome for ${nodeId} - waiting for proper short name (current: ${node.shortName})`);
+          return;
+        }
+      }
+
+      // Get welcome message template
+      const autoWelcomeMessage = databaseService.getSetting('autoWelcomeMessage') || 'Welcome {LONG_NAME} ({SHORT_NAME}) to the mesh!';
+
+      // Replace tokens in the message template
+      const welcomeText = await this.replaceWelcomeTokens(autoWelcomeMessage, nodeNum, nodeId);
+
+      // Get target (DM or channel)
+      const autoWelcomeTarget = databaseService.getSetting('autoWelcomeTarget') || '0';
+
+      let destination: number | undefined;
+      let channel: number;
+
+      if (autoWelcomeTarget === 'dm') {
+        // Send as direct message
+        destination = nodeNum;
+        channel = 0;
+      } else {
+        // Send to channel
+        destination = undefined;
+        channel = parseInt(autoWelcomeTarget);
+      }
+
+      logger.info(`👋 Sending auto-welcome to ${nodeId} (${node.longName}): "${welcomeText}" ${autoWelcomeTarget === 'dm' ? '(via DM)' : `(channel ${channel})`}`);
+
+      await this.sendTextMessage(welcomeText, channel, destination);
+
+      // Mark node as welcomed
+      databaseService.upsertNode({
+        nodeNum: nodeNum,
+        nodeId: nodeId,
+        welcomedAt: Date.now()
+      });
+      logger.debug(`✅ Marked ${nodeId} as welcomed`);
+    } catch (error) {
+      logger.error('❌ Error in auto-welcome:', error);
+    }
+  }
+
+  private async replaceWelcomeTokens(message: string, nodeNum: number, _nodeId: string): Promise<string> {
+    let result = message;
+
+    // Get node info
+    const node = databaseService.getNode(nodeNum);
+
+    // {LONG_NAME} - Node long name
+    if (result.includes('{LONG_NAME}')) {
+      const longName = node?.longName || 'Unknown';
+      result = result.replace(/{LONG_NAME}/g, longName);
+    }
+
+    // {SHORT_NAME} - Node short name
+    if (result.includes('{SHORT_NAME}')) {
+      const shortName = node?.shortName || '????';
+      result = result.replace(/{SHORT_NAME}/g, shortName);
+    }
+
+    // {VERSION} - Firmware version
+    if (result.includes('{VERSION}')) {
+      const version = node?.firmwareVersion || 'unknown';
+      result = result.replace(/{VERSION}/g, version);
+    }
+
+    // {DURATION} - Time since first seen (using createdAt)
+    if (result.includes('{DURATION}')) {
+      if (node?.createdAt) {
+        const durationMs = Date.now() - node.createdAt;
+        const duration = this.formatDuration(durationMs);
+        result = result.replace(/{DURATION}/g, duration);
+      } else {
+        result = result.replace(/{DURATION}/g, 'just now');
+      }
+    }
+
+    // {FEATURES} - Enabled features as emojis
+    if (result.includes('{FEATURES}')) {
+      const features: string[] = [];
+
+      // Check traceroute
+      const tracerouteInterval = databaseService.getSetting('tracerouteIntervalMinutes');
+      if (tracerouteInterval && parseInt(tracerouteInterval) > 0) {
+        features.push('🗺️');
+      }
+
+      // Check auto-ack
+      const autoAckEnabled = databaseService.getSetting('autoAckEnabled');
+      if (autoAckEnabled === 'true') {
+        features.push('🤖');
+      }
+
+      // Check auto-announce
+      const autoAnnounceEnabled = databaseService.getSetting('autoAnnounceEnabled');
+      if (autoAnnounceEnabled === 'true') {
+        features.push('📢');
+      }
+
+      result = result.replace(/{FEATURES}/g, features.join(' '));
+    }
+
+    // {NODECOUNT} - Active nodes based on maxNodeAgeHours setting
+    if (result.includes('{NODECOUNT}')) {
+      const maxNodeAgeHours = parseInt(databaseService.getSetting('maxNodeAgeHours') || '24');
+      const maxNodeAgeDays = maxNodeAgeHours / 24;
+      const nodes = databaseService.getActiveNodes(maxNodeAgeDays);
+      result = result.replace(/{NODECOUNT}/g, nodes.length.toString());
+    }
+
+    // {DIRECTCOUNT} - Direct nodes (0 hops) from active nodes
+    if (result.includes('{DIRECTCOUNT}')) {
+      const maxNodeAgeHours = parseInt(databaseService.getSetting('maxNodeAgeHours') || '24');
+      const maxNodeAgeDays = maxNodeAgeHours / 24;
+      const nodes = databaseService.getActiveNodes(maxNodeAgeDays);
+      const directCount = nodes.filter((n: any) => n.hopsAway === 0).length;
+      result = result.replace(/{DIRECTCOUNT}/g, directCount.toString());
+    }
+
+    return result;
+  }
+
   async sendAutoAnnouncement(): Promise<void> {
     try {
       const message = databaseService.getSetting('autoAnnounceMessage') || 'MeshMonitor {VERSION} online for {DURATION} {FEATURES}';
@@ -4534,5 +4703,8 @@ class MeshtasticManager {
     return this.userDisconnectedState;
   }
 }
+
+// Export the class for testing purposes (allows creating isolated test instances)
+export { MeshtasticManager };
 
 export default new MeshtasticManager();
