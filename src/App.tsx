@@ -380,6 +380,10 @@ function App() {
     setAutoAnnounceChannelIndex,
     autoAnnounceOnStart,
     setAutoAnnounceOnStart,
+    autoAnnounceUseSchedule,
+    setAutoAnnounceUseSchedule,
+    autoAnnounceSchedule,
+    setAutoAnnounceSchedule,
     autoWelcomeEnabled,
     setAutoWelcomeEnabled,
     autoWelcomeMessage,
@@ -709,6 +713,14 @@ function App() {
 
           if (settings.autoAnnounceOnStart !== undefined) {
             setAutoAnnounceOnStart(settings.autoAnnounceOnStart === 'true');
+          }
+
+          if (settings.autoAnnounceUseSchedule !== undefined) {
+            setAutoAnnounceUseSchedule(settings.autoAnnounceUseSchedule === 'true');
+          }
+
+          if (settings.autoAnnounceSchedule) {
+            setAutoAnnounceSchedule(settings.autoAnnounceSchedule);
           }
 
           if (settings.autoWelcomeEnabled !== undefined) {
@@ -4682,6 +4694,8 @@ function App() {
                 message={autoAnnounceMessage}
                 channelIndex={autoAnnounceChannelIndex}
                 announceOnStart={autoAnnounceOnStart}
+                useSchedule={autoAnnounceUseSchedule}
+                schedule={autoAnnounceSchedule}
                 channels={channels}
                 baseUrl={baseUrl}
                 onEnabledChange={setAutoAnnounceEnabled}
@@ -4689,6 +4703,8 @@ function App() {
                 onMessageChange={setAutoAnnounceMessage}
                 onChannelChange={setAutoAnnounceChannelIndex}
                 onAnnounceOnStartChange={setAutoAnnounceOnStart}
+                onUseScheduleChange={setAutoAnnounceUseSchedule}
+                onScheduleChange={setAutoAnnounceSchedule}
               />
             </div>
           </div>

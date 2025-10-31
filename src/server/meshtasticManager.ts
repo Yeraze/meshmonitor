@@ -8,6 +8,7 @@ import { getEnvironmentConfig } from './config/environment.js';
 import { notificationService } from './services/notificationService.js';
 import packetLogService from './services/packetLogService.js';
 import { createRequire } from 'module';
+import * as cron from 'node-cron';
 const require = createRequire(import.meta.url);
 const packageJson = require('../../package.json');
 
@@ -62,6 +63,7 @@ class MeshtasticManager {
   private tracerouteInterval: NodeJS.Timeout | null = null;
   private tracerouteIntervalMinutes: number = 0;
   private announceInterval: NodeJS.Timeout | null = null;
+  private announceCronJob: cron.ScheduledTask | null = null;
   private serverStartTime: number = Date.now();
   private localNodeInfo: {
     nodeNum: number;
@@ -322,9 +324,14 @@ class MeshtasticManager {
   }
 
   private startAnnounceScheduler(): void {
+    // Clear any existing interval or cron job
     if (this.announceInterval) {
       clearInterval(this.announceInterval);
       this.announceInterval = null;
+    }
+    if (this.announceCronJob) {
+      this.announceCronJob.stop();
+      this.announceCronJob = null;
     }
 
     // Check if auto-announce is enabled
@@ -334,12 +341,57 @@ class MeshtasticManager {
       return;
     }
 
-    const intervalHours = parseInt(databaseService.getSetting('autoAnnounceIntervalHours') || '6');
-    const intervalMs = intervalHours * 60 * 60 * 1000;
+    // Check if we should use scheduled sends (cron) or interval
+    const useSchedule = databaseService.getSetting('autoAnnounceUseSchedule') === 'true';
 
-    logger.debug(`📢 Starting announce scheduler with ${intervalHours} hour interval`);
+    if (useSchedule) {
+      const scheduleExpression = databaseService.getSetting('autoAnnounceSchedule') || '0 */6 * * *';
+      logger.debug(`📢 Starting announce scheduler with cron expression: ${scheduleExpression}`);
 
-    // Check if announce-on-start is enabled
+      // Validate and schedule the cron job
+      if (cron.validate(scheduleExpression)) {
+        this.announceCronJob = cron.schedule(scheduleExpression, async () => {
+          logger.debug(`📢 Cron job triggered (connected: ${this.isConnected})`);
+          if (this.isConnected) {
+            try {
+              await this.sendAutoAnnouncement();
+            } catch (error) {
+              logger.error('❌ Error in cron auto-announce:', error);
+            }
+          } else {
+            logger.debug('📢 Skipping announcement - not connected to node');
+          }
+        });
+
+        logger.info(`📢 Announce scheduler started with cron expression: ${scheduleExpression}`);
+      } else {
+        logger.error(`❌ Invalid cron expression: ${scheduleExpression}`);
+        return;
+      }
+    } else {
+      // Use interval-based scheduling
+      const intervalHours = parseInt(databaseService.getSetting('autoAnnounceIntervalHours') || '6');
+      const intervalMs = intervalHours * 60 * 60 * 1000;
+
+      logger.debug(`📢 Starting announce scheduler with ${intervalHours} hour interval`);
+
+      this.announceInterval = setInterval(async () => {
+        logger.debug(`📢 Announce interval triggered (connected: ${this.isConnected})`);
+        if (this.isConnected) {
+          try {
+            await this.sendAutoAnnouncement();
+          } catch (error) {
+            logger.error('❌ Error in auto-announce:', error);
+          }
+        } else {
+          logger.debug('📢 Skipping announcement - not connected to node');
+        }
+      }, intervalMs);
+
+      logger.info(`📢 Announce scheduler started - next announcement in ${intervalHours} hours`);
+    }
+
+    // Check if announce-on-start is enabled (applies to both cron and interval modes)
     const announceOnStart = databaseService.getSetting('autoAnnounceOnStart');
     if (announceOnStart === 'true') {
       // Check spam protection: don't send if announced within last hour
@@ -379,21 +431,6 @@ class MeshtasticManager {
         }, 5000);
       }
     }
-
-    this.announceInterval = setInterval(async () => {
-      logger.debug(`📢 Announce interval triggered (connected: ${this.isConnected})`);
-      if (this.isConnected) {
-        try {
-          await this.sendAutoAnnouncement();
-        } catch (error) {
-          logger.error('❌ Error in auto-announce:', error);
-        }
-      } else {
-        logger.debug('📢 Skipping announcement - not connected to node');
-      }
-    }, intervalMs);
-
-    logger.info(`📢 Announce scheduler started - next announcement in ${intervalHours} hours`);
   }
 
   setAnnounceInterval(hours: number): void {
@@ -402,6 +439,14 @@ class MeshtasticManager {
     }
 
     logger.debug(`📢 Announce interval updated to ${hours} hours`);
+
+    if (this.isConnected) {
+      this.startAnnounceScheduler();
+    }
+  }
+
+  restartAnnounceScheduler(): void {
+    logger.debug('📢 Restarting announce scheduler due to settings change');
 
     if (this.isConnected) {
       this.startAnnounceScheduler();

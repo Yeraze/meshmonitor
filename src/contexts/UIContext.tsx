@@ -46,6 +46,10 @@ interface UIContextType {
   setAutoAnnounceChannelIndex: React.Dispatch<React.SetStateAction<number>>;
   autoAnnounceOnStart: boolean;
   setAutoAnnounceOnStart: React.Dispatch<React.SetStateAction<boolean>>;
+  autoAnnounceUseSchedule: boolean;
+  setAutoAnnounceUseSchedule: React.Dispatch<React.SetStateAction<boolean>>;
+  autoAnnounceSchedule: string;
+  setAutoAnnounceSchedule: React.Dispatch<React.SetStateAction<string>>;
   autoWelcomeEnabled: boolean;
   setAutoWelcomeEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   autoWelcomeMessage: string;
@@ -96,6 +100,8 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   const [autoAnnounceMessage, setAutoAnnounceMessage] = useState<string>('MeshMonitor {VERSION} online for {DURATION} {FEATURES}');
   const [autoAnnounceChannelIndex, setAutoAnnounceChannelIndex] = useState<number>(0);
   const [autoAnnounceOnStart, setAutoAnnounceOnStart] = useState<boolean>(false);
+  const [autoAnnounceUseSchedule, setAutoAnnounceUseSchedule] = useState<boolean>(false);
+  const [autoAnnounceSchedule, setAutoAnnounceSchedule] = useState<string>('0 */6 * * *');
   const [autoWelcomeEnabled, setAutoWelcomeEnabled] = useState<boolean>(false);
   const [autoWelcomeMessage, setAutoWelcomeMessage] = useState<string>('Welcome {LONG_NAME} ({SHORT_NAME}) to the mesh!');
   const [autoWelcomeTarget, setAutoWelcomeTarget] = useState<string>('0');
@@ -153,6 +159,10 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
         setAutoAnnounceChannelIndex,
         autoAnnounceOnStart,
         setAutoAnnounceOnStart,
+        autoAnnounceUseSchedule,
+        setAutoAnnounceUseSchedule,
+        autoAnnounceSchedule,
+        setAutoAnnounceSchedule,
         autoWelcomeEnabled,
         setAutoWelcomeEnabled,
         autoWelcomeMessage,

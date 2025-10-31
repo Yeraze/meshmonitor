@@ -36,7 +36,9 @@ describe.skip('AutoAnnounceSection Component', () => {
     onIntervalChange: vi.fn(),
     onMessageChange: vi.fn(),
     onChannelChange: vi.fn(),
-    onAnnounceOnStartChange: vi.fn()
+    onAnnounceOnStartChange: vi.fn(),
+    onUseScheduleChange: vi.fn(),
+    onScheduleChange: vi.fn()
   };
 
   const defaultProps = {
@@ -45,6 +47,8 @@ describe.skip('AutoAnnounceSection Component', () => {
     message: 'MeshMonitor {VERSION} online for {DURATION} {FEATURES}',
     channelIndex: 0,
     announceOnStart: false,
+    useSchedule: false,
+    schedule: '0 */6 * * *',
     channels: mockChannels,
     baseUrl: '',
     ...mockCallbacks
@@ -644,6 +648,139 @@ describe.skip('AutoAnnounceSection Component', () => {
       expect(docLink).toHaveAttribute('href', 'https://meshmonitor.org/features/automation#auto-announce');
       expect(docLink).toHaveAttribute('target', '_blank');
       expect(docLink).toHaveAttribute('rel', 'noopener noreferrer');
+    });
+  });
+
+  describe('Scheduled Sends', () => {
+    it('should render scheduled sends checkbox', () => {
+      render(<AutoAnnounceSection {...defaultProps} />);
+
+      const scheduleCheckbox = screen.getByLabelText(/Scheduled Sends/i);
+      expect(scheduleCheckbox).toBeInTheDocument();
+      expect(scheduleCheckbox).not.toBeChecked();
+    });
+
+    it('should show cron expression input when scheduled sends is enabled', async () => {
+      const user = userEvent.setup({ delay: null });
+      render(<AutoAnnounceSection {...defaultProps} />);
+
+      const scheduleCheckbox = screen.getByLabelText(/Scheduled Sends/i);
+      await user.click(scheduleCheckbox);
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/Cron Expression/i)).toBeInTheDocument();
+      });
+    });
+
+    it('should hide interval input when scheduled sends is enabled', async () => {
+      const user = userEvent.setup({ delay: null });
+      render(<AutoAnnounceSection {...defaultProps} />);
+
+      // Initially, interval input should be visible
+      expect(screen.getByLabelText(/Announcement Interval/i)).toBeInTheDocument();
+
+      const scheduleCheckbox = screen.getByLabelText(/Scheduled Sends/i);
+      await user.click(scheduleCheckbox);
+
+      // After enabling scheduled sends, interval input should be hidden
+      await waitFor(() => {
+        expect(screen.queryByLabelText(/Announcement Interval/i)).not.toBeInTheDocument();
+      });
+    });
+
+    it('should validate cron expression and show error for invalid expression', async () => {
+      const user = userEvent.setup({ delay: null });
+      render(<AutoAnnounceSection {...defaultProps} useSchedule={true} />);
+
+      const cronInput = screen.getByLabelText(/Cron Expression/i);
+      await user.clear(cronInput);
+      await user.type(cronInput, 'invalid cron');
+
+      await waitFor(() => {
+        expect(screen.getByText(/Invalid cron expression/i)).toBeInTheDocument();
+      });
+    });
+
+    it('should show success message for valid cron expression', async () => {
+      const user = userEvent.setup({ delay: null });
+      render(<AutoAnnounceSection {...defaultProps} useSchedule={true} />);
+
+      const cronInput = screen.getByLabelText(/Cron Expression/i);
+      await user.clear(cronInput);
+      await user.type(cronInput, '0 */6 * * *');
+
+      await waitFor(() => {
+        expect(screen.getByText(/Valid cron expression/i)).toBeInTheDocument();
+      });
+    });
+
+    it('should prevent saving when cron expression is invalid', async () => {
+      const user = userEvent.setup({ delay: null });
+      render(<AutoAnnounceSection {...defaultProps} useSchedule={true} />);
+
+      const cronInput = screen.getByLabelText(/Cron Expression/i);
+      await user.clear(cronInput);
+      await user.type(cronInput, 'invalid');
+
+      const saveButton = screen.getByText('Save Changes');
+      await user.click(saveButton);
+
+      await waitFor(() => {
+        expect(mockShowToast).toHaveBeenCalledWith('Cannot save: Invalid cron expression', 'error');
+      });
+      expect(mockCsrfFetch).not.toHaveBeenCalled();
+    });
+
+    it('should include schedule settings when saving with scheduled sends enabled', async () => {
+      const user = userEvent.setup({ delay: null });
+      mockCsrfFetch.mockResolvedValueOnce({ ok: true });
+
+      render(<AutoAnnounceSection {...defaultProps} />);
+
+      // Enable scheduled sends
+      const scheduleCheckbox = screen.getByLabelText(/Scheduled Sends/i);
+      await user.click(scheduleCheckbox);
+
+      // Set a cron expression
+      const cronInput = screen.getByLabelText(/Cron Expression/i);
+      await user.clear(cronInput);
+      await user.type(cronInput, '0 */3 * * *');
+
+      // Save
+      const saveButton = screen.getByText('Save Changes');
+      await user.click(saveButton);
+
+      await waitFor(() => {
+        expect(mockCsrfFetch).toHaveBeenCalledWith('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            autoAnnounceEnabled: 'true',
+            autoAnnounceIntervalHours: 6,
+            autoAnnounceMessage: 'MeshMonitor {VERSION} online for {DURATION} {FEATURES}',
+            autoAnnounceChannelIndex: 0,
+            autoAnnounceOnStart: 'false',
+            autoAnnounceUseSchedule: 'true',
+            autoAnnounceSchedule: '0 */3 * * *'
+          })
+        });
+      });
+    });
+
+    it('should render link to crontab.guru', () => {
+      render(<AutoAnnounceSection {...defaultProps} useSchedule={true} />);
+
+      const link = screen.getByText(/crontab.guru/i);
+      expect(link).toBeInTheDocument();
+      expect(link).toHaveAttribute('href', 'https://crontab.guru/');
+      expect(link).toHaveAttribute('target', '_blank');
+    });
+
+    it('should show default cron expression when rendered with scheduled sends enabled', () => {
+      render(<AutoAnnounceSection {...defaultProps} useSchedule={true} schedule="0 */6 * * *" />);
+
+      const cronInput = screen.getByLabelText(/Cron Expression/i);
+      expect(cronInput).toHaveValue('0 */6 * * *');
     });
   });
 });
