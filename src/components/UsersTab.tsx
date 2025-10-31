@@ -102,7 +102,7 @@ const UsersTab: React.FC = () => {
     try {
       // Filter out empty/undefined permissions and ensure valid structure
       const validPermissions: PermissionSet = {};
-      (['dashboard', 'nodes', 'channels', 'messages', 'settings', 'configuration', 'info', 'automation', 'connection', 'traceroute', 'audit'] as const).forEach(resource => {
+      (['dashboard', 'nodes', 'channels', 'messages', 'settings', 'configuration', 'info', 'automation', 'connection', 'traceroute', 'audit', 'security'] as const).forEach(resource => {
         if (permissions[resource]) {
           validPermissions[resource] = {
             read: permissions[resource]?.read || false,
@@ -382,11 +382,11 @@ const UsersTab: React.FC = () => {
 
             <h3>Permissions</h3>
             <div className="permissions-grid">
-              {(['dashboard', 'nodes', 'channels', 'messages', 'settings', 'configuration', 'info', 'automation', 'connection', 'traceroute', 'audit'] as const).map(resource => (
+              {(['dashboard', 'nodes', 'channels', 'messages', 'settings', 'configuration', 'info', 'automation', 'connection', 'traceroute', 'audit', 'security'] as const).map(resource => (
                 <div key={resource} className="permission-item">
                   <div className="permission-label">{resource.charAt(0).toUpperCase() + resource.slice(1)}</div>
                   <div className="permission-actions">
-                    {(resource === 'connection' || resource === 'traceroute') ? (
+                    {(resource === 'connection' || resource === 'traceroute' || resource === 'security') ? (
                       // Connection and traceroute permissions use a single checkbox
                       <label>
                         <input

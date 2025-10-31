@@ -1,0 +1,572 @@
+.security-tab {
+  padding: 20px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.security-header {
+  margin-bottom: 30px;
+}
+
+.security-header h2 {
+  margin: 0 0 10px 0;
+  color: #333;
+}
+
+.security-header p {
+  margin: 0;
+  color: #666;
+  font-size: 14px;
+}
+
+/* Scanner Status */
+.scanner-status {
+  margin-bottom: 30px;
+}
+
+.status-card {
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.status-card h3 {
+  margin: 0 0 15px 0;
+  font-size: 18px;
+  color: #333;
+}
+
+.status-details {
+  margin-bottom: 15px;
+}
+
+.status-row {
+  display: flex;
+  padding: 8px 0;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.status-row:last-child {
+  border-bottom: none;
+}
+
+.status-row .label {
+  font-weight: 600;
+  min-width: 140px;
+  color: #666;
+}
+
+.status-row .value {
+  color: #495057;
+  font-weight: 500;
+}
+
+.status-row .value.running {
+  color: #28a745;
+  font-weight: 600;
+}
+
+.status-row .value.stopped {
+  color: #dc3545;
+  font-weight: 600;
+}
+
+.status-row .timestamp {
+  color: #999;
+  font-size: 12px;
+  margin-left: 5px;
+}
+
+.scan-button {
+  background: #007bff;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+
+.scan-button:hover:not(:disabled) {
+  background: #0056b3;
+}
+
+.scan-button:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Summary Statistics */
+.security-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+.stat-card {
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+  border: 2px solid #dee2e6;
+}
+
+.stat-card.total {
+  border-color: #007bff;
+}
+
+.stat-card.low-entropy {
+  border-color: #ffc107;
+}
+
+.stat-card.duplicate {
+  border-color: #dc3545;
+}
+
+.stat-value {
+  font-size: 36px;
+  font-weight: 700;
+  margin-bottom: 5px;
+}
+
+.stat-card.total .stat-value {
+  color: #007bff;
+}
+
+.stat-card.low-entropy .stat-value {
+  color: #ffc107;
+}
+
+.stat-card.duplicate .stat-value {
+  color: #dc3545;
+}
+
+.stat-label {
+  font-size: 14px;
+  color: #666;
+  font-weight: 500;
+}
+
+/* Security Issues */
+.security-issues {
+  margin-top: 30px;
+}
+
+.issues-section {
+  margin-bottom: 40px;
+}
+
+.issues-section h3 {
+  margin-bottom: 20px;
+  color: #333;
+  font-size: 20px;
+}
+
+.no-issues {
+  background: #d4edda;
+  border: 1px solid #c3e6cb;
+  border-radius: 8px;
+  padding: 30px;
+  text-align: center;
+}
+
+.no-issues p {
+  margin: 10px 0;
+  color: #155724;
+  font-size: 16px;
+}
+
+.no-issues .help-text {
+  font-size: 14px;
+  color: #155724;
+  opacity: 0.8;
+}
+
+.issues-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.issue-card {
+  background: white;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  overflow: hidden;
+  transition: box-shadow 0.2s;
+}
+
+.issue-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.issue-header {
+  padding: 15px 20px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.issue-header:hover {
+  background: #f8f9fa;
+}
+
+.node-info {
+  flex: 1;
+}
+
+.node-name {
+  font-size: 16px;
+  margin-bottom: 5px;
+}
+
+.node-name strong {
+  color: #333;
+}
+
+.node-name .long-name {
+  color: #666;
+  font-size: 14px;
+}
+
+.node-id {
+  font-size: 12px;
+  color: #999;
+}
+
+.node-id .hw-model {
+  color: #666;
+  font-weight: 500;
+}
+
+.issue-types {
+  display: flex;
+  gap: 8px;
+}
+
+.badge {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.badge.low-entropy {
+  background: #fff3cd;
+  color: #856404;
+  border: 1px solid #ffc107;
+}
+
+.badge.duplicate {
+  background: #f8d7da;
+  color: #721c24;
+  border: 1px solid #dc3545;
+}
+
+.expand-icon {
+  color: #999;
+  font-size: 12px;
+  margin-left: 10px;
+}
+
+.issue-details {
+  padding: 20px;
+  border-top: 1px solid #dee2e6;
+  background: #f8f9fa;
+}
+
+.detail-row {
+  margin-bottom: 15px;
+  display: flex;
+  gap: 10px;
+}
+
+.detail-row:last-child {
+  margin-bottom: 0;
+}
+
+.detail-label {
+  font-weight: 600;
+  min-width: 120px;
+  color: #666;
+}
+
+.detail-value {
+  color: #333;
+  flex: 1;
+}
+
+.detail-value.key-hash {
+  font-family: monospace;
+  font-size: 12px;
+  background: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  word-break: break-all;
+}
+
+.detail-row.recommendations {
+  flex-direction: column;
+  gap: 10px;
+}
+
+.detail-row.recommendations ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.detail-row.recommendations li {
+  margin-bottom: 8px;
+  color: #666;
+  line-height: 1.5;
+}
+
+.detail-row.recommendations li:last-child {
+  margin-bottom: 0;
+}
+
+/* Clickable Node Links */
+.node-link {
+  color: #007bff;
+  cursor: pointer;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.node-link:hover {
+  color: #0056b3;
+  text-decoration: underline;
+}
+
+/* Duplicate Key Groups */
+.duplicate-group {
+  background: white;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+
+.duplicate-group-header {
+  padding: 15px 20px;
+  background: #f8d7da;
+  border-bottom: 1px solid #dc3545;
+}
+
+.group-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.group-title .key-hash {
+  font-family: monospace;
+  font-size: 12px;
+  color: #721c24;
+  background: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  flex: 1;
+}
+
+.node-count {
+  font-size: 14px;
+  color: #721c24;
+  font-weight: 500;
+}
+
+.duplicate-node-list {
+  padding: 15px 20px;
+  background: #fff;
+}
+
+.duplicate-node-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 15px;
+  margin-bottom: 8px;
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 5px;
+  transition: background 0.2s;
+}
+
+.duplicate-node-item:hover {
+  background: #e9ecef;
+}
+
+.duplicate-node-item:last-child {
+  margin-bottom: 0;
+}
+
+.duplicate-node-item .node-id {
+  font-size: 12px;
+  color: #999;
+  font-family: monospace;
+}
+
+.group-recommendations {
+  padding: 15px 20px;
+  background: #fff3cd;
+  border-top: 1px solid #ffc107;
+  color: #856404;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.group-recommendations strong {
+  color: #721c24;
+}
+
+/* Loading & Error States */
+.loading,
+.error {
+  text-align: center;
+  padding: 40px;
+  color: #666;
+}
+
+.error {
+  color: #dc3545;
+}
+
+.error button {
+  margin-top: 10px;
+  padding: 8px 16px;
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.error button:hover {
+  background: #0056b3;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .security-tab {
+    color: #e9ecef;
+  }
+
+  .security-header h2,
+  .issues-section h3,
+  .status-card h3,
+  .node-name strong,
+  .detail-value {
+    color: #e9ecef;
+  }
+
+  .security-header p,
+  .status-row .label,
+  .status-row .value,
+  .stat-label,
+  .node-id,
+  .detail-label,
+  .detail-row.recommendations li {
+    color: #adb5bd;
+  }
+
+  .status-card {
+    background: #2b3035;
+    border-color: #495057;
+  }
+
+  .stat-card {
+    background: #2b3035;
+    border-color: #495057;
+  }
+
+  .issue-card {
+    background: #2b3035;
+    border-color: #495057;
+  }
+
+  .issue-header:hover {
+    background: #343a40;
+  }
+
+  .issue-details {
+    background: #212529;
+    border-top-color: #495057;
+  }
+
+  .detail-value.key-hash {
+    background: #343a40;
+  }
+
+  .no-issues {
+    background: #1e4620;
+    border-color: #2d5930;
+  }
+
+  .no-issues p,
+  .no-issues .help-text {
+    color: #7fd37f;
+  }
+
+  .node-link {
+    color: #6ea8fe;
+  }
+
+  .node-link:hover {
+    color: #9ec5fe;
+  }
+
+  .duplicate-group {
+    background: #2b3035;
+    border-color: #495057;
+  }
+
+  .duplicate-group-header {
+    background: #3a2428;
+    border-bottom-color: #dc3545;
+  }
+
+  .group-title .key-hash {
+    background: #212529;
+    color: #f8b9c0;
+  }
+
+  .node-count {
+    color: #f8b9c0;
+  }
+
+  .duplicate-node-list {
+    background: #2b3035;
+  }
+
+  .duplicate-node-item {
+    background: #343a40;
+    border-color: #495057;
+  }
+
+  .duplicate-node-item:hover {
+    background: #495057;
+  }
+
+  .group-recommendations {
+    background: #3a3420;
+    border-top-color: #ffc107;
+    color: #ffecb5;
+  }
+
+  .group-recommendations strong {
+    color: #f8b9c0;
+  }
+
+  .node-id .hw-model {
+    color: #adb5bd;
+  }
+}

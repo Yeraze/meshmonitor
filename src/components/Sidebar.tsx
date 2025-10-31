@@ -151,7 +151,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           )}
         </div>
 
-        {(isAdmin || hasPermission('audit', 'read')) && (
+        {(isAdmin || hasPermission('audit', 'read') || hasPermission('security', 'read')) && (
           <>
             <SectionHeader title="Admin" />
             <div className="sidebar-section">
@@ -160,6 +160,9 @@ const Sidebar: React.FC<SidebarProps> = ({
               )}
               {hasPermission('audit', 'read') && (
                 <NavItem id="audit" label="Audit Log" icon="📋" />
+              )}
+              {hasPermission('security', 'read') && (
+                <NavItem id="security" label="Security" icon="🔐" />
               )}
             </div>
           </>

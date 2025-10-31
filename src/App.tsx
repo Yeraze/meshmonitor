@@ -12,6 +12,7 @@ import ConfigurationTab from './components/ConfigurationTab'
 import NotificationsTab from './components/NotificationsTab'
 import UsersTab from './components/UsersTab'
 import AuditLogTab from './components/AuditLogTab'
+import { SecurityTab } from './components/SecurityTab'
 import Dashboard from './components/Dashboard'
 import NodesTab from './components/NodesTab'
 import HopCountDisplay from './components/HopCountDisplay'
@@ -4723,6 +4724,7 @@ function App() {
         {activeTab === 'notifications' && <NotificationsTab isAdmin={authStatus?.user?.isAdmin || false} />}
         {activeTab === 'users' && <UsersTab />}
         {activeTab === 'audit' && <AuditLogTab />}
+        {activeTab === 'security' && <SecurityTab onTabChange={setActiveTab} onSelectDMNode={setSelectedDMNode} />}
       </main>
 
       {/* Node Popup */}

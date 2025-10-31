@@ -13,7 +13,8 @@ export type ResourceType =
   | 'automation'
   | 'connection'
   | 'traceroute'
-  | 'audit';
+  | 'audit'
+  | 'security';
 
 export type PermissionAction = 'read' | 'write';
 
@@ -59,7 +60,8 @@ export const RESOURCES: readonly ResourceDefinition[] = [
   { id: 'automation', name: 'Automation', description: 'Automated tasks and announcements' },
   { id: 'connection', name: 'Connection', description: 'Control node connection (disconnect/reconnect)' },
   { id: 'traceroute', name: 'Traceroute', description: 'Initiate traceroute requests to nodes' },
-  { id: 'audit', name: 'Audit Log', description: 'View and manage audit logs (admin only)' }
+  { id: 'audit', name: 'Audit Log', description: 'View and manage audit logs (admin only)' },
+  { id: 'security', name: 'Security', description: 'View security scan results and key management' }
 ] as const;
 
 // Default permissions for different user types
@@ -74,7 +76,8 @@ export const ADMIN_PERMISSIONS: PermissionSet = {
   automation: { read: true, write: true },
   connection: { read: true, write: true },
   traceroute: { read: true, write: true },
-  audit: { read: true, write: true }
+  audit: { read: true, write: true },
+  security: { read: true, write: true }
 };
 
 export const DEFAULT_USER_PERMISSIONS: PermissionSet = {
@@ -88,5 +91,6 @@ export const DEFAULT_USER_PERMISSIONS: PermissionSet = {
   automation: { read: false, write: false },
   connection: { read: true, write: false },
   traceroute: { read: true, write: false },
-  audit: { read: false, write: false }
+  audit: { read: false, write: false },
+  security: { read: false, write: false }
 };
