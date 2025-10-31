@@ -70,7 +70,7 @@ The Settings tab allows you to customize MeshMonitor's behavior and manage your 
 
 **Effect**: Helps organize and analyze large networks by grouping nodes by their functional role in the mesh.
 
-### Security Filter *(New in v2.13)*
+### Security Filter *(New in v2.12.1)*
 
 **Description**: Filter nodes based on detected security issues, allowing you to focus on nodes with security problems or hide them from view.
 
