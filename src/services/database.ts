@@ -56,6 +56,7 @@ export interface DbNode {
   keyIsLowEntropy?: boolean;
   duplicateKeyDetected?: boolean;
   keySecurityIssueDetails?: string;
+  welcomedAt?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -234,6 +235,7 @@ class DatabaseService {
     this.runBackupTablesMigration();
     this.runMessageDeliveryTrackingMigration();
     this.runAutoTracerouteFilterMigration();
+    this.runAutoWelcomeMigration();
     this.ensureAutomationDefaults();
     this.isInitialized = true;
   }
@@ -578,6 +580,51 @@ class DatabaseService {
       logger.debug('✅ Auto-traceroute filter migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run auto-traceroute filter migration:', error);
+      throw error;
+    }
+  }
+
+  private runAutoWelcomeMigration(): void {
+    try {
+      const migrationKey = 'migration_016_auto_welcome_existing_nodes';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Auto-welcome existing nodes migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 016: Mark existing nodes as already welcomed...');
+
+      // Get all existing nodes
+      const stmt = this.db.prepare('SELECT nodeNum, nodeId, createdAt FROM nodes WHERE welcomedAt IS NULL');
+      const nodes = stmt.all() as Array<{ nodeNum: number; nodeId: string; createdAt?: number }>;
+
+      if (nodes.length === 0) {
+        logger.debug('No existing nodes to mark as welcomed');
+      } else {
+        logger.debug(`📊 Marking ${nodes.length} existing nodes as welcomed to prevent thundering herd...`);
+
+        // Mark all existing nodes as already welcomed
+        // Use their createdAt timestamp if available, otherwise use current timestamp
+        const updateStmt = this.db.prepare('UPDATE nodes SET welcomedAt = ? WHERE nodeNum = ?');
+        const currentTime = Date.now();
+
+        let markedCount = 0;
+        for (const node of nodes) {
+          // Use the node's createdAt time if available, otherwise use current time
+          const welcomedAt = node.createdAt || currentTime;
+          updateStmt.run(welcomedAt, node.nodeNum);
+          markedCount++;
+        }
+
+        logger.debug(`✅ Marked ${markedCount} existing nodes as welcomed`);
+      }
+
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Auto-welcome existing nodes migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run auto-welcome existing nodes migration:', error);
       throw error;
     }
   }
@@ -958,6 +1005,17 @@ class DatabaseService {
       }
     }
 
+    try {
+      this.db.exec(`
+        ALTER TABLE nodes ADD COLUMN welcomedAt INTEGER;
+      `);
+      logger.debug('✅ Added welcomedAt column');
+    } catch (error: any) {
+      if (!error.message?.includes('duplicate column')) {
+        logger.debug('⚠️ welcomedAt column already exists or other error:', error.message);
+      }
+    }
+
     logger.debug('Database migrations completed');
   }
 
@@ -1142,6 +1200,7 @@ class DatabaseService {
           publicKey = COALESCE(?, publicKey),
           hasPKC = COALESCE(?, hasPKC),
           lastPKIPacket = COALESCE(?, lastPKIPacket),
+          welcomedAt = COALESCE(?, welcomedAt),
           updatedAt = ?
         WHERE nodeNum = ?
       `);
@@ -1171,6 +1230,7 @@ class DatabaseService {
         nodeData.publicKey || null,
         nodeData.hasPKC !== undefined ? (nodeData.hasPKC ? 1 : 0) : null,
         nodeData.lastPKIPacket !== undefined ? nodeData.lastPKIPacket : null,
+        nodeData.welcomedAt !== undefined ? nodeData.welcomedAt : null,
         now,
         nodeData.nodeNum
       );
@@ -1180,8 +1240,8 @@ class DatabaseService {
           nodeNum, nodeId, longName, shortName, hwModel, role, hopsAway, viaMqtt, macaddr,
           latitude, longitude, altitude, batteryLevel, voltage,
           channelUtilization, airUtilTx, lastHeard, snr, rssi, firmwareVersion,
-          isFavorite, rebootCount, publicKey, hasPKC, lastPKIPacket, createdAt, updatedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          isFavorite, rebootCount, publicKey, hasPKC, lastPKIPacket, welcomedAt, createdAt, updatedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       stmt.run(
@@ -1210,6 +1270,7 @@ class DatabaseService {
         nodeData.publicKey || null,
         nodeData.hasPKC ? 1 : 0,
         nodeData.lastPKIPacket || null,
+        nodeData.welcomedAt || null,
         now,
         now
       );
@@ -2934,5 +2995,8 @@ class DatabaseService {
     return Number(result.changes);
   }
 }
+
+// Export the class for testing purposes (allows creating isolated test instances)
+export { DatabaseService };
 
 export default new DatabaseService();
