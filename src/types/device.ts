@@ -26,6 +26,9 @@ export interface DeviceInfo {
   firmwareVersion?: string
   isMobile?: boolean
   isFavorite?: boolean
+  keyIsLowEntropy?: boolean
+  duplicateKeyDetected?: boolean
+  keySecurityIssueDetails?: string
 }
 
 export interface Channel {

@@ -26,6 +26,7 @@ import { appriseNotificationService } from './services/appriseNotificationServic
 import { deviceBackupService } from './services/deviceBackupService.js';
 import { backupFileService } from './services/backupFileService.js';
 import { backupSchedulerService } from './services/backupSchedulerService.js';
+import { duplicateKeySchedulerService } from './services/duplicateKeySchedulerService.js';
 import { getUserNotificationPreferences, saveUserNotificationPreferences } from './utils/notificationFiltering.js';
 
 const require = createRequire(import.meta.url);
@@ -227,6 +228,10 @@ setTimeout(async () => {
     // Initialize backup scheduler
     backupSchedulerService.initialize(meshtasticManager);
     logger.debug('Backup scheduler initialized');
+
+    // Initialize duplicate key scanner
+    duplicateKeySchedulerService.start();
+    logger.debug('Duplicate key scanner initialized');
   } catch (error) {
     logger.error('Failed to connect to Meshtastic node on startup:', error);
   }
@@ -494,6 +499,156 @@ apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write'), a
     logger.error('Error setting node favorite:', error);
     const errorResponse: ApiErrorResponse = {
       error: 'Failed to set node favorite',
+      code: 'INTERNAL_ERROR',
+      details: error instanceof Error ? error.message : 'Unknown error occurred'
+    };
+    res.status(500).json(errorResponse);
+  }
+});
+
+// Get nodes with key security issues (low-entropy or duplicate keys)
+apiRouter.get('/nodes/security-issues', optionalAuth(), (_req, res) => {
+  try {
+    const nodes = databaseService.getNodesWithKeySecurityIssues();
+    res.json(nodes);
+  } catch (error) {
+    logger.error('Error getting nodes with security issues:', error);
+    const errorResponse: ApiErrorResponse = {
+      error: 'Failed to get nodes with security issues',
+      code: 'INTERNAL_ERROR',
+      details: error instanceof Error ? error.message : 'Unknown error occurred'
+    };
+    res.status(500).json(errorResponse);
+  }
+});
+
+// Send key security warning DM to a specific node
+apiRouter.post('/nodes/:nodeId/send-key-warning', requirePermission('messages', 'write'), async (req, res) => {
+  try {
+    const { nodeId } = req.params;
+
+    // Convert nodeId (hex string like !a1b2c3d4) to nodeNum (integer)
+    const nodeNumStr = nodeId.replace('!', '');
+
+    // Validate hex string format
+    if (!/^[0-9a-fA-F]{8}$/.test(nodeNumStr)) {
+      const errorResponse: ApiErrorResponse = {
+        error: 'Invalid nodeId format',
+        code: 'INVALID_NODE_ID',
+        details: 'nodeId must be in format !XXXXXXXX (8 hex characters)'
+      };
+      res.status(400).json(errorResponse);
+      return;
+    }
+
+    const nodeNum = parseInt(nodeNumStr, 16);
+
+    // Verify the node actually has a security issue
+    const node = databaseService.getNode(nodeNum);
+    if (!node) {
+      const errorResponse: ApiErrorResponse = {
+        error: 'Node not found',
+        code: 'NODE_NOT_FOUND',
+        details: `No node found with ID ${nodeId}`
+      };
+      res.status(404).json(errorResponse);
+      return;
+    }
+
+    if (!node.keyIsLowEntropy && !node.duplicateKeyDetected) {
+      const errorResponse: ApiErrorResponse = {
+        error: 'Node has no security issues',
+        code: 'NO_SECURITY_ISSUE',
+        details: 'This node does not have any detected key security issues'
+      };
+      res.status(400).json(errorResponse);
+      return;
+    }
+
+    // Send warning message on gauntlet channel
+    const warningMessage = `⚠️ SECURITY WARNING: Your encryption key has been identified as compromised (${
+      node.keyIsLowEntropy ? 'low-entropy' : 'duplicate'
+    }). Your direct messages may not be private. Please regenerate your key in Settings > Security.`;
+
+    const messageId = await meshtasticManager.sendTextMessage(
+      warningMessage,
+      0,  // Channel 0
+      nodeNum  // Destination
+    );
+
+    logger.info(`🔐 Sent key security warning to node ${nodeId} (${node.longName || 'Unknown'})`);
+
+    res.json({
+      success: true,
+      nodeNum,
+      nodeId,
+      messageId,
+      messageSent: warningMessage
+    });
+  } catch (error) {
+    logger.error('Error sending key warning:', error);
+    const errorResponse: ApiErrorResponse = {
+      error: 'Failed to send key warning',
+      code: 'INTERNAL_ERROR',
+      details: error instanceof Error ? error.message : 'Unknown error occurred'
+    };
+    res.status(500).json(errorResponse);
+  }
+});
+
+// Scan all nodes for duplicate keys and update database
+apiRouter.post('/nodes/scan-duplicate-keys', requirePermission('nodes', 'write'), async (_req, res) => {
+  try {
+    const { detectDuplicateKeys } = await import('../services/lowEntropyKeyService.js');
+    const nodesWithKeys = databaseService.getNodesWithPublicKeys();
+    const duplicates = detectDuplicateKeys(nodesWithKeys);
+
+    // Clear existing duplicate flags first
+    const allNodes = databaseService.getAllNodes();
+    for (const node of allNodes) {
+      if (node.duplicateKeyDetected) {
+        databaseService.upsertNode({
+          nodeNum: node.nodeNum,
+          nodeId: node.nodeId,
+          duplicateKeyDetected: false,
+          keySecurityIssueDetails: node.keyIsLowEntropy
+            ? 'Known low-entropy key detected'
+            : undefined
+        });
+      }
+    }
+
+    // Update database with new duplicate flags
+    for (const [keyHash, nodeNums] of duplicates) {
+      for (const nodeNum of nodeNums) {
+        const node = databaseService.getNode(nodeNum);
+        if (!node) continue;
+
+        const otherNodes = nodeNums.filter(n => n !== nodeNum);
+        const details = node.keyIsLowEntropy
+          ? `Known low-entropy key; Key shared with nodes: ${otherNodes.join(', ')}`
+          : `Key shared with nodes: ${otherNodes.join(', ')}`;
+
+        databaseService.upsertNode({
+          nodeNum,
+          nodeId: node.nodeId,
+          duplicateKeyDetected: true,
+          keySecurityIssueDetails: details
+        });
+      }
+      logger.info(`🔐 Detected ${nodeNums.length} nodes sharing key hash ${keyHash.substring(0, 16)}...`);
+    }
+
+    res.json({
+      success: true,
+      duplicatesFound: duplicates.size,
+      affectedNodes: Array.from(duplicates.values()).flat(),
+      totalNodesScanned: nodesWithKeys.length
+    });
+  } catch (error) {
+    logger.error('Error scanning for duplicate keys:', error);
+    const errorResponse: ApiErrorResponse = {
+      error: 'Failed to scan for duplicate keys',
       code: 'INTERNAL_ERROR',
       details: error instanceof Error ? error.message : 'Unknown error occurred'
     };

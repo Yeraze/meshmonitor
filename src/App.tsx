@@ -346,6 +346,8 @@ function App() {
     setTracerouteLoading,
     nodeFilter,
     setNodeFilter,
+    securityFilter,
+    setSecurityFilter,
     sortField,
     setSortField,
     sortDirection,
@@ -2439,6 +2441,45 @@ function App() {
             </div>
 
             <div className="filter-section">
+              <div className="filter-section-title">
+                <span className="filter-icon-wrapper"><span className="filter-icon">⚠️</span></span>
+                <span>Security</span>
+              </div>
+              <div className="filter-radio-group">
+                <label className="filter-radio">
+                  <input
+                    type="radio"
+                    name="securityFilter"
+                    value="all"
+                    checked={securityFilter === 'all'}
+                    onChange={(e) => setSecurityFilter(e.target.value as any)}
+                  />
+                  <span>All Nodes</span>
+                </label>
+                <label className="filter-radio">
+                  <input
+                    type="radio"
+                    name="securityFilter"
+                    value="flaggedOnly"
+                    checked={securityFilter === 'flaggedOnly'}
+                    onChange={(e) => setSecurityFilter(e.target.value as any)}
+                  />
+                  <span>⚠️ Flagged Only</span>
+                </label>
+                <label className="filter-radio">
+                  <input
+                    type="radio"
+                    name="securityFilter"
+                    value="hideFlagged"
+                    checked={securityFilter === 'hideFlagged'}
+                    onChange={(e) => setSecurityFilter(e.target.value as any)}
+                  />
+                  <span>Hide Flagged</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="filter-section">
               <div className="filter-section-title">Node Features</div>
 
               <label className="filter-checkbox">
@@ -3183,6 +3224,13 @@ function App() {
                 <>
                   {sortedNodesWithMessages
                     .filter(node => {
+                      // Apply security filter
+                      if (securityFilter === 'flaggedOnly') {
+                        if (!node.keyIsLowEntropy && !node.duplicateKeyDetected) return false;
+                      } else if (securityFilter === 'hideFlagged') {
+                        if (node.keyIsLowEntropy || node.duplicateKeyDetected) return false;
+                      }
+                      // Apply text filter
                       if (!nodeFilter) return true;
                       const searchTerm = nodeFilter.toLowerCase();
                       return (
@@ -3210,8 +3258,24 @@ function App() {
                               )}
                             </span>
                           </div>
-                          <div className="node-short">
-                            {node.user?.shortName || '-'}
+                          <div className="node-actions">
+                            {(node.keyIsLowEntropy || node.duplicateKeyDetected) && (
+                              <span
+                                className="security-warning-icon"
+                                title={node.keySecurityIssueDetails || 'Key security issue detected'}
+                                style={{
+                                  fontSize: '16px',
+                                  color: '#f44336',
+                                  marginLeft: '4px',
+                                  cursor: 'help'
+                                }}
+                              >
+                                ⚠️
+                              </span>
+                            )}
+                            <div className="node-short">
+                              {node.user?.shortName || '-'}
+                            </div>
                           </div>
                         </div>
 
@@ -3389,6 +3453,27 @@ function App() {
                   return null;
                 })()}
               </div>
+
+              {/* Security Warning Bar */}
+              {(() => {
+                const selectedNode = nodes.find(n => n.user?.id === selectedDMNode);
+                if (selectedNode && (selectedNode.keyIsLowEntropy || selectedNode.duplicateKeyDetected)) {
+                  return (
+                    <div style={{
+                      backgroundColor: '#f44336',
+                      color: 'white',
+                      padding: '12px',
+                      marginBottom: '10px',
+                      borderRadius: '4px',
+                      fontWeight: 'bold',
+                      textAlign: 'center'
+                    }}>
+                      ⚠️ This node is a security risk
+                    </div>
+                  );
+                }
+                return null;
+              })()}
 
               <div className="messages-container" ref={dmMessagesContainerRef}>
                 {(() => {
@@ -3585,6 +3670,64 @@ function App() {
                     dateFormat={dateFormat}
                   />
                 ) : null;
+              })()}
+
+              {/* Security Details Section */}
+              {(() => {
+                const selectedNode = nodes.find(n => n.user?.id === selectedDMNode);
+                if (selectedNode && (selectedNode.keyIsLowEntropy || selectedNode.duplicateKeyDetected) && selectedNode.keySecurityIssueDetails) {
+                  // Parse node IDs from the details string (format: "Key shared with nodes: 1234, 5678")
+                  const match = selectedNode.keySecurityIssueDetails.match(/nodes?: ([\d, ]+)/);
+                  const sharedNodeNums = match ? match[1].split(',').map(s => parseInt(s.trim(), 10)) : [];
+
+                  return (
+                    <div className="node-details-block" style={{ marginTop: '1rem' }}>
+                      <h3 className="node-details-title" style={{ color: '#f44336' }}>⚠️ Security Issue</h3>
+                      <div className="node-details-grid">
+                        <div className="node-detail-card" style={{ gridColumn: '1 / -1', borderLeft: '4px solid #f44336' }}>
+                          <div className="node-detail-label">Issue Details</div>
+                          <div className="node-detail-value" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                            {selectedNode.keyIsLowEntropy && 'This node uses a known low-entropy cryptographic key. '}
+                            {selectedNode.duplicateKeyDetected && sharedNodeNums.length > 0 && (
+                              <>
+                                This key is shared with: {sharedNodeNums.map((nodeNum, idx) => {
+                                  const sharedNode = nodes.find(n => n.nodeNum === nodeNum);
+                                  const displayName = sharedNode?.user?.longName || `Node ${nodeNum}`;
+                                  const shortName = sharedNode?.user?.shortName || '?';
+                                  return (
+                                    <span key={nodeNum}>
+                                      {idx > 0 && ', '}
+                                      <button
+                                        onClick={() => {
+                                          if (sharedNode?.user?.id) {
+                                            setSelectedDMNode(sharedNode.user.id);
+                                          }
+                                        }}
+                                        style={{
+                                          background: 'none',
+                                          border: 'none',
+                                          color: '#6698f5',
+                                          textDecoration: 'underline',
+                                          cursor: 'pointer',
+                                          padding: 0,
+                                          font: 'inherit'
+                                        }}
+                                        title={`Switch to ${displayName}`}
+                                      >
+                                        {displayName} ({shortName})
+                                      </button>
+                                    </span>
+                                  );
+                                })}
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
               })()}
 
               <TelemetryGraphs nodeId={selectedDMNode} temperatureUnit={temperatureUnit} telemetryHours={telemetryVisualizationHours} baseUrl={baseUrl} />

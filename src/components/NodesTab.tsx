@@ -114,6 +114,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   const {
     nodeFilter,
     setNodeFilter,
+    securityFilter,
     sortField,
     setSortField,
     sortDirection,
@@ -351,7 +352,18 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
           </button>
           {!isNodeListCollapsed && (
           <div className="sidebar-header-content">
-            <h3>Nodes ({processedNodes.length})</h3>
+            <h3>Nodes ({(() => {
+              const filteredCount = processedNodes.filter(node => {
+                if (securityFilter === 'flaggedOnly') {
+                  return node.keyIsLowEntropy || node.duplicateKeyDetected;
+                }
+                if (securityFilter === 'hideFlagged') {
+                  return !node.keyIsLowEntropy && !node.duplicateKeyDetected;
+                }
+                return true;
+              }).length;
+              return securityFilter !== 'all' ? `${filteredCount}/${processedNodes.length}` : processedNodes.length;
+            })()})</h3>
           </div>
           )}
           {!isNodeListCollapsed && (
@@ -400,10 +412,21 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
         {!isNodeListCollapsed && (
         <div className="nodes-list">
-          {shouldShowData() ? (
-            processedNodes.length > 0 ? (
+          {shouldShowData() ? (() => {
+            // Apply security filter
+            const filteredNodes = processedNodes.filter(node => {
+              if (securityFilter === 'flaggedOnly') {
+                return node.keyIsLowEntropy || node.duplicateKeyDetected;
+              }
+              if (securityFilter === 'hideFlagged') {
+                return !node.keyIsLowEntropy && !node.duplicateKeyDetected;
+              }
+              return true; // 'all'
+            });
+
+            return filteredNodes.length > 0 ? (
               <>
-              {processedNodes.map(node => (
+              {filteredNodes.map(node => (
                 <div
                   key={node.nodeNum}
                   className={`node-item ${selectedNodeId === node.user?.id ? 'selected' : ''}`}
@@ -452,6 +475,20 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                         >
                           💬
                         </button>
+                      )}
+                      {(node.keyIsLowEntropy || node.duplicateKeyDetected) && (
+                        <span
+                          className="security-warning-icon"
+                          title={node.keySecurityIssueDetails || 'Key security issue detected'}
+                          style={{
+                            fontSize: '16px',
+                            color: '#f44336',
+                            marginLeft: '4px',
+                            cursor: 'help'
+                          }}
+                        >
+                          ⚠️
+                        </span>
                       )}
                       <div className="node-short">
                         {node.user?.shortName || '-'}
@@ -521,10 +558,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               </>
             ) : (
               <div className="no-data">
-                {nodeFilter ? 'No nodes match filter' : 'No nodes detected'}
+                {securityFilter !== 'all' ? 'No nodes match security filter' : (nodeFilter ? 'No nodes match filter' : 'No nodes detected')}
               </div>
-            )
-          ) : (
+            );
+          })() : (
             <div className="no-data">
               Connect to Meshtastic node
             </div>

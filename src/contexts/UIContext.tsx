@@ -12,6 +12,8 @@ interface UIContextType {
   setTracerouteLoading: React.Dispatch<React.SetStateAction<string | null>>;
   nodeFilter: string;
   setNodeFilter: React.Dispatch<React.SetStateAction<string>>;
+  securityFilter: 'all' | 'flaggedOnly' | 'hideFlagged';
+  setSecurityFilter: React.Dispatch<React.SetStateAction<'all' | 'flaggedOnly' | 'hideFlagged'>>;
   sortField: SortField;
   setSortField: React.Dispatch<React.SetStateAction<SortField>>;
   sortDirection: SortDirection;
@@ -70,6 +72,7 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   const [error, setError] = useState<string | null>(null);
   const [tracerouteLoading, setTracerouteLoading] = useState<string | null>(null);
   const [nodeFilter, setNodeFilter] = useState<string>('');
+  const [securityFilter, setSecurityFilter] = useState<'all' | 'flaggedOnly' | 'hideFlagged'>('all');
   const [sortField, setSortField] = useState<SortField>(() => {
     const saved = localStorage.getItem('preferredSortField');
     return (saved as SortField) || 'longName';
@@ -116,6 +119,8 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
         setTracerouteLoading,
         nodeFilter,
         setNodeFilter,
+        securityFilter,
+        setSecurityFilter,
         sortField,
         setSortField,
         sortDirection,

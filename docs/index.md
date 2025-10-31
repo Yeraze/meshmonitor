@@ -33,8 +33,8 @@ features:
     details: View, send, and manage messages across your mesh network. Support for multiple channels and message history.
 
   - icon: 🔐
-    title: Secure Authentication
-    details: Built-in authentication system with support for local accounts and SSO (Single Sign-On) for enterprise deployments.
+    title: Security Monitoring
+    details: Automatic detection of weak encryption keys and duplicate key issues. Built-in authentication with local accounts and SSO support for enterprise deployments.
 
   - icon: 🐳
     title: Easy Deployment
@@ -105,6 +105,9 @@ Monitor individual node health, battery levels, environmental telemetry, and con
 
 ### Channel Configuration
 Manage multiple channels, view channel settings, and monitor message flow across different communication channels in your mesh.
+
+### Security Monitoring
+Automatically detect and flag nodes with security vulnerabilities. MeshMonitor identifies low-entropy (weak) encryption keys and duplicate keys shared across multiple nodes. Visual warnings and filtering options help you maintain a secure mesh network.
 
 ## Deployment Options
 

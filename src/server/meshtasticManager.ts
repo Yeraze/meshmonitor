@@ -1229,6 +1229,16 @@ class MeshtasticManager {
         nodeData.publicKey = Buffer.from(user.publicKey).toString('base64');
         nodeData.hasPKC = true;
         logger.debug(`🔐 Captured public key for ${nodeId} (${user.longName}): ${nodeData.publicKey.substring(0, 16)}...`);
+
+        // Check for key security issues
+        const { checkLowEntropyKey } = await import('../services/lowEntropyKeyService.js');
+        const isLowEntropy = checkLowEntropyKey(nodeData.publicKey, 'base64');
+
+        if (isLowEntropy) {
+          nodeData.keyIsLowEntropy = true;
+          nodeData.keySecurityIssueDetails = 'Known low-entropy key detected - this key is compromised and should be regenerated';
+          logger.warn(`⚠️ Low-entropy key detected for node ${nodeId} (${user.longName})!`);
+        }
       }
 
       // Track if this packet was PKI encrypted (using the helper method)
@@ -4392,6 +4402,17 @@ class MeshtasticManager {
       // Add isFavorite if it exists
       if (node.isFavorite !== null && node.isFavorite !== undefined) {
         deviceInfo.isFavorite = Boolean(node.isFavorite);
+      }
+
+      // Add security fields for low-entropy and duplicate key detection
+      if (node.keyIsLowEntropy !== null && node.keyIsLowEntropy !== undefined) {
+        deviceInfo.keyIsLowEntropy = Boolean(node.keyIsLowEntropy);
+      }
+      if (node.duplicateKeyDetected !== null && node.duplicateKeyDetected !== undefined) {
+        deviceInfo.duplicateKeyDetected = Boolean(node.duplicateKeyDetected);
+      }
+      if (node.keySecurityIssueDetails) {
+        deviceInfo.keySecurityIssueDetails = node.keySecurityIssueDetails;
       }
 
       // Add position if coordinates exist
