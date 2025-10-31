@@ -155,7 +155,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
       onScheduleChange(localSchedule);
 
       setHasChanges(false);
-      showToast('Settings saved! Container restart required for changes to take effect.', 'success');
+      showToast('Settings saved! Schedule changes applied immediately.', 'success');
     } catch (error) {
       console.error('Failed to save auto-announce settings:', error);
       showToast('Failed to save settings. Please try again.', 'error');
