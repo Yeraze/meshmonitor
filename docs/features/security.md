@@ -47,7 +47,7 @@ When security issues are detected, nodes are flagged with warning indicators thr
 **Detection frequency**:
 - Initial scan: 5 minutes after server start
 - Recurring scans: Every 24 hours (configurable via `DUPLICATE_KEY_SCAN_INTERVAL_HOURS` environment variable)
-- Manual scans: Can be triggered via the `/api/security/scan-duplicates` endpoint
+- Manual scans: Can be triggered via the `/api/nodes/scan-duplicate-keys` endpoint
 
 **Configuration**:
 ```bash
@@ -189,10 +189,10 @@ publicKey TEXT                              -- Base64-encoded public key
 Trigger a manual scan for duplicate keys:
 
 ```bash
-POST /api/security/scan-duplicates
+POST /api/nodes/scan-duplicate-keys
 ```
 
-**Authentication**: Requires authentication
+**Authentication**: Requires `nodes:write` permission
 
 **Response**:
 ```json
@@ -209,22 +209,28 @@ POST /api/security/scan-duplicates
 - Verification after key rotation
 - Troubleshooting security alerts
 
-### Get Security Status
+### Get Nodes with Security Issues
 
-Retrieve current security scanner status:
+Retrieve all nodes currently flagged with security issues:
 
 ```bash
-GET /api/security/status
+GET /api/nodes/security-issues
 ```
 
 **Response**:
 ```json
 {
-  "duplicateKeyScanner": {
-    "running": true,
-    "scanningNow": false,
-    "intervalHours": 24
-  }
+  "nodes": [
+    {
+      "nodeNum": 123456789,
+      "nodeId": "!12345678",
+      "longName": "Node Name",
+      "keyIsLowEntropy": true,
+      "duplicateKeyDetected": false,
+      "keySecurityIssueDetails": "Known low-entropy key detected"
+    }
+  ],
+  "count": 1
 }
 ```
 
@@ -289,7 +295,7 @@ GET /api/security/status
 
 **Solutions**:
 - Wait for the next scheduled scan (up to 24 hours)
-- Trigger a manual scan via `/api/security/scan-duplicates`
+- Trigger a manual scan via `/api/nodes/scan-duplicate-keys`
 - Verify the node has broadcasted its new public key
 - Check server logs for scan errors
 
@@ -305,14 +311,14 @@ GET /api/security/status
 
 **Diagnostic Commands**:
 ```bash
-# Check scanner status
-curl http://localhost:8080/api/security/status
+# Get nodes with security issues
+curl http://localhost:8080/api/nodes/security-issues
 
 # View scanner logs (Docker)
 docker logs meshmonitor 2>&1 | grep "🔐"
 
 # Trigger manual scan
-curl -X POST http://localhost:8080/api/security/scan-duplicates
+curl -X POST http://localhost:8080/api/nodes/scan-duplicate-keys
 ```
 
 ## Security Considerations

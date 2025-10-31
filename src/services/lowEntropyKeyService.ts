@@ -56,11 +56,25 @@ export function checkLowEntropyKey(publicKey: string, format: 'hex' | 'base64' =
     if (format === 'base64') {
       keyBuffer = Buffer.from(publicKey, 'base64');
     } else {
-      if (publicKey.length !== 64) {
-        // Public key should be 32 bytes = 64 hex characters
+      // Strip optional "0x" prefix and validate hex format
+      let hexKey = publicKey.toLowerCase();
+      if (hexKey.startsWith('0x')) {
+        hexKey = hexKey.slice(2);
+      }
+
+      // Validate hex format (only hex characters allowed)
+      if (!/^[0-9a-f]+$/.test(hexKey)) {
+        logger.warn(`Invalid hex format for public key: contains non-hex characters`);
         return false;
       }
-      keyBuffer = Buffer.from(publicKey, 'hex');
+
+      // Public key should be 32 bytes = 64 hex characters
+      if (hexKey.length !== 64) {
+        logger.warn(`Invalid public key length: ${hexKey.length} hex characters (expected 64)`);
+        return false;
+      }
+
+      keyBuffer = Buffer.from(hexKey, 'hex');
     }
 
     // Validate key size (should be 32 bytes)
