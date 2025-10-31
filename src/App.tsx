@@ -1166,7 +1166,7 @@ function App() {
               return true;
             }
           }
-        } catch (error) {
+        } catch (_error) {
           // Connection still not available, continue polling
         }
 
@@ -2113,13 +2113,14 @@ function App() {
           aVal = a.user?.hwModel || 0;
           bVal = b.user?.hwModel || 0;
           break;
-        case 'hops':
+        case 'hops': {
           // For nodes without hop data, use fallback values that push them to bottom
           // Ascending: use 999 (high value = bottom), Descending: use -1 (low value = bottom)
           const noHopFallback = direction === 'asc' ? 999 : -1;
           aVal = a.hopsAway !== undefined && a.hopsAway !== null ? a.hopsAway : noHopFallback;
           bVal = b.hopsAway !== undefined && b.hopsAway !== null ? b.hopsAway : noHopFallback;
           break;
+        }
         default:
           return 0;
       }
