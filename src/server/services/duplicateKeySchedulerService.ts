@@ -1,6 +1,6 @@
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
-import { detectDuplicateKeys } from '../../services/lowEntropyKeyService.js';
+import { detectDuplicateKeys, checkLowEntropyKey } from '../../services/lowEntropyKeyService.js';
 
 /**
  * Scheduled duplicate key detection service
@@ -77,7 +77,32 @@ class DuplicateKeySchedulerService {
         return;
       }
 
-      logger.debug(`🔐 Scanning ${nodesWithKeys.length} nodes for duplicate keys`);
+      logger.debug(`🔐 Scanning ${nodesWithKeys.length} nodes for security issues (duplicates and low-entropy keys)`);
+
+      // First, check all nodes for low-entropy keys
+      let lowEntropyCount = 0;
+      for (const nodeData of nodesWithKeys) {
+        if (!nodeData.publicKey) continue;
+
+        const node = databaseService.getNode(nodeData.nodeNum);
+        if (!node) continue;
+
+        const isLowEntropy = checkLowEntropyKey(nodeData.publicKey, 'base64');
+
+        if (isLowEntropy && !node.keyIsLowEntropy) {
+          // Flag this node as having low-entropy key
+          databaseService.updateNodeLowEntropyFlag(nodeData.nodeNum, true, 'Known low-entropy key detected');
+          lowEntropyCount++;
+          logger.warn(`🔐 Low-entropy key detected on node ${nodeData.nodeNum}`);
+        } else if (!isLowEntropy && node.keyIsLowEntropy) {
+          // Clear the flag if it was previously set but key is not low-entropy
+          databaseService.updateNodeLowEntropyFlag(nodeData.nodeNum, false, undefined);
+        }
+      }
+
+      if (lowEntropyCount > 0) {
+        logger.info(`🔐 Found ${lowEntropyCount} nodes with low-entropy keys`);
+      }
 
       // Detect duplicates
       const duplicates = detectDuplicateKeys(nodesWithKeys);

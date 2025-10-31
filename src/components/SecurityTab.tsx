@@ -197,17 +197,22 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
       <div className="security-stats">
         <div className="stat-card total">
           <div className="stat-value">{issues?.total || 0}</div>
-          <div className="stat-label">Total Issues</div>
+          <div className="stat-label">Nodes with Issues</div>
         </div>
         <div className="stat-card low-entropy">
           <div className="stat-value">{issues?.lowEntropyCount || 0}</div>
-          <div className="stat-label">Low-Entropy Keys</div>
+          <div className="stat-label">Have Low-Entropy Keys</div>
         </div>
         <div className="stat-card duplicate">
           <div className="stat-value">{issues?.duplicateKeyCount || 0}</div>
-          <div className="stat-label">Duplicate Keys</div>
+          <div className="stat-label">Have Duplicate Keys</div>
         </div>
       </div>
+      {issues && issues.total > 0 && (issues.lowEntropyCount + issues.duplicateKeyCount > issues.total) && (
+        <div className="info-note" style={{marginTop: '0.5rem', fontSize: '0.85rem', color: '#666', fontStyle: 'italic'}}>
+          Note: Some nodes have both low-entropy and duplicate keys
+        </div>
+      )}
 
       {/* Issues List */}
       <div className="security-issues">

@@ -1385,6 +1385,38 @@ class DatabaseService {
     stmt.run(duplicateKeyDetected ? 1 : 0, keySecurityIssueDetails ?? null, now, nodeNum);
   }
 
+  updateNodeLowEntropyFlag(nodeNum: number, keyIsLowEntropy: boolean, details?: string): void {
+    const node = this.getNode(nodeNum);
+    if (!node) return;
+
+    // Combine low-entropy details with existing duplicate details if needed
+    let combinedDetails = details || '';
+    if (node.duplicateKeyDetected && node.keySecurityIssueDetails) {
+      const existingDetails = node.keySecurityIssueDetails;
+      if (keyIsLowEntropy && details) {
+        // Add low-entropy info to existing duplicate info
+        if (existingDetails.includes('Key shared with')) {
+          combinedDetails = `${details}; ${existingDetails}`;
+        } else {
+          combinedDetails = details;
+        }
+      } else {
+        // Keep existing duplicate info
+        combinedDetails = existingDetails;
+      }
+    }
+
+    const stmt = this.db.prepare(`
+      UPDATE nodes
+      SET keyIsLowEntropy = ?,
+          keySecurityIssueDetails = ?,
+          updatedAt = ?
+      WHERE nodeNum = ?
+    `);
+    const now = Date.now();
+    stmt.run(keyIsLowEntropy ? 1 : 0, combinedDetails || null, now, nodeNum);
+  }
+
   // Message operations
   insertMessage(messageData: DbMessage): void {
     // Use INSERT OR IGNORE to silently skip duplicate messages
