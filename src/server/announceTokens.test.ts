@@ -134,6 +134,7 @@ describe('Auto-Announce Token Replacement', () => {
         if (key === 'tracerouteIntervalMinutes') return '3';
         if (key === 'autoAckEnabled') return 'true';
         if (key === 'autoAnnounceEnabled') return 'true';
+        if (key === 'autoWelcomeEnabled') return 'true';
         return null;
       });
 
@@ -150,8 +151,12 @@ describe('Auto-Announce Token Replacement', () => {
       if (autoAnnounceEnabled === 'true') {
         features.push('📢');
       }
+      const autoWelcomeEnabled = mockGetSetting('autoWelcomeEnabled');
+      if (autoWelcomeEnabled === 'true') {
+        features.push('👋');
+      }
 
-      expect(features.join(' ')).toBe('🗺️ 🤖 📢');
+      expect(features.join(' ')).toBe('🗺️ 🤖 📢 👋');
     });
   });
 
@@ -213,6 +218,7 @@ describe('Auto-Announce Token Replacement', () => {
         if (key === 'tracerouteIntervalMinutes') return '3';
         if (key === 'autoAckEnabled') return 'true';
         if (key === 'autoAnnounceEnabled') return 'true';
+        if (key === 'autoWelcomeEnabled') return 'true';
         return null;
       });
 
@@ -244,9 +250,13 @@ describe('Auto-Announce Token Replacement', () => {
       if (autoAnnounceEnabled === 'true') {
         features.push('📢');
       }
+      const autoWelcomeEnabled = mockGetSetting('autoWelcomeEnabled');
+      if (autoWelcomeEnabled === 'true') {
+        features.push('👋');
+      }
       message = message.replace(/{FEATURES}/g, features.join(' '));
 
-      expect(message).toBe('MeshMonitor 1.18.0 online for 2d 5h 🗺️ 🤖 📢');
+      expect(message).toBe('MeshMonitor 1.18.0 online for 2d 5h 🗺️ 🤖 📢 👋');
     });
 
     it('should replace NODECOUNT and DIRECTCOUNT tokens', () => {
