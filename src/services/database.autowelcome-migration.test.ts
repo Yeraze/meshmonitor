@@ -56,7 +56,7 @@ describe('DatabaseService - Auto Welcome Migration', () => {
 
       // Run the migration manually (it already ran in constructor, but we inserted after)
       // We need to reset the migration flag first
-      dbService.setSetting('migration_016_auto_welcome_existing_nodes', 'not_completed');
+      dbService.setSetting('migration_017_auto_welcome_existing_nodes', 'not_completed');
       (dbService as any).runAutoWelcomeMigration();
 
       // Verify all nodes now have welcomedAt (excluding broadcast node)
@@ -85,7 +85,7 @@ describe('DatabaseService - Auto Welcome Migration', () => {
       `);
 
       // Reset and run migration
-      dbService.setSetting('migration_016_auto_welcome_existing_nodes', 'not_completed');
+      dbService.setSetting('migration_017_auto_welcome_existing_nodes', 'not_completed');
       (dbService as any).runAutoWelcomeMigration();
 
       const stmt = dbService.db.prepare('SELECT welcomedAt, createdAt FROM nodes WHERE nodeNum = ?');
@@ -103,7 +103,7 @@ describe('DatabaseService - Auto Welcome Migration', () => {
       `);
 
       // Run migration first time
-      dbService.setSetting('migration_016_auto_welcome_existing_nodes', 'not_completed');
+      dbService.setSetting('migration_017_auto_welcome_existing_nodes', 'not_completed');
       (dbService as any).runAutoWelcomeMigration();
 
       // Get the welcomedAt value
@@ -131,7 +131,7 @@ describe('DatabaseService - Auto Welcome Migration', () => {
       `);
 
       // Run migration
-      dbService.setSetting('migration_016_auto_welcome_existing_nodes', 'not_completed');
+      dbService.setSetting('migration_017_auto_welcome_existing_nodes', 'not_completed');
       (dbService as any).runAutoWelcomeMigration();
 
       // Check that welcomedAt wasn't changed
@@ -146,7 +146,7 @@ describe('DatabaseService - Auto Welcome Migration', () => {
       dbService.db.exec('DELETE FROM nodes WHERE nodeNum != 4294967295');
 
       // Run migration
-      dbService.setSetting('migration_016_auto_welcome_existing_nodes', 'not_completed');
+      dbService.setSetting('migration_017_auto_welcome_existing_nodes', 'not_completed');
 
       // Should not throw
       expect(() => {
@@ -154,19 +154,19 @@ describe('DatabaseService - Auto Welcome Migration', () => {
       }).not.toThrow();
 
       // Migration should be marked as completed
-      const migrationStatus = dbService.getSetting('migration_016_auto_welcome_existing_nodes');
+      const migrationStatus = dbService.getSetting('migration_017_auto_welcome_existing_nodes');
       expect(migrationStatus).toBe('completed');
     });
 
     it('should mark migration as completed', () => {
       // Reset migration
-      dbService.setSetting('migration_016_auto_welcome_existing_nodes', 'not_completed');
+      dbService.setSetting('migration_017_auto_welcome_existing_nodes', 'not_completed');
 
       // Run migration
       (dbService as any).runAutoWelcomeMigration();
 
       // Check it's marked as completed
-      const migrationStatus = dbService.getSetting('migration_016_auto_welcome_existing_nodes');
+      const migrationStatus = dbService.getSetting('migration_017_auto_welcome_existing_nodes');
       expect(migrationStatus).toBe('completed');
     });
 
@@ -185,7 +185,7 @@ describe('DatabaseService - Auto Welcome Migration', () => {
 
       // Run migration
       const startTime = Date.now();
-      dbService.setSetting('migration_016_auto_welcome_existing_nodes', 'not_completed');
+      dbService.setSetting('migration_017_auto_welcome_existing_nodes', 'not_completed');
       (dbService as any).runAutoWelcomeMigration();
       const duration = Date.now() - startTime;
 

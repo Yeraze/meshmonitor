@@ -14,6 +14,7 @@ import { PermissionModel } from '../models/Permission.js';
 import { migration as authMigration } from '../migrations/001_add_auth_tables.js';
 import { migration as auditEnhancementMigration } from '../migrations/005_enhance_audit_log.js';
 import { migration as auditPermissionMigration } from '../migrations/006_add_audit_permission.js';
+import { migration as securityPermissionMigration } from '../migrations/016_add_security_permission.js';
 import auditRoutes from './auditRoutes.js';
 import authRoutes from './authRoutes.js';
 
@@ -76,6 +77,7 @@ describe('Audit Log Routes', () => {
     authMigration.up(db);
     auditEnhancementMigration.up(db);
     auditPermissionMigration.up(db);
+    securityPermissionMigration.up(db);
 
     userModel = new UserModel(db);
     permissionModel = new PermissionModel(db);
