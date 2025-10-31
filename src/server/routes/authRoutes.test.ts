@@ -16,6 +16,7 @@ import { migration as channelsMigration } from '../migrations/002_add_channels_p
 import { migration as connectionMigration } from '../migrations/003_add_connection_permission.js';
 import { migration as tracerouteMigration } from '../migrations/004_add_traceroute_permission.js';
 import { migration as auditPermissionMigration } from '../migrations/006_add_audit_permission.js';
+import { migration as securityPermissionMigration } from '../migrations/016_add_security_permission.js';
 import authRoutes from './authRoutes.js';
 
 // Mock the DatabaseService to prevent auto-initialization
@@ -55,6 +56,7 @@ describe('Authentication Routes', () => {
     connectionMigration.up(db);
     tracerouteMigration.up(db);
     auditPermissionMigration.up(db);
+    securityPermissionMigration.up(db);
 
     userModel = new UserModel(db);
     permissionModel = new PermissionModel(db);

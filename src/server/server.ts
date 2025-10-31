@@ -267,6 +267,7 @@ const apiRouter = express.Router();
 import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import auditRoutes from './routes/auditRoutes.js';
+import securityRoutes from './routes/securityRoutes.js';
 import packetRoutes from './routes/packetRoutes.js';
 
 // CSRF token endpoint (must be before CSRF protection middleware)
@@ -280,6 +281,9 @@ apiRouter.use('/users', userRoutes);
 
 // Audit log routes (admin only)
 apiRouter.use('/audit', auditRoutes);
+
+// Security routes (requires security:read)
+apiRouter.use('/security', securityRoutes);
 
 // Packet log routes (requires channels:read AND messages:read)
 apiRouter.use('/packets', optionalAuth(), packetRoutes);

@@ -21,6 +21,7 @@ import { migration as channelRoleMigration } from '../server/migrations/012_add_
 import { migration as backupTablesMigration } from '../server/migrations/013_add_backup_tables.js';
 import { migration as messageDeliveryTrackingMigration } from '../server/migrations/014_add_message_delivery_tracking.js';
 import { migration as autoTracerouteFilterMigration } from '../server/migrations/015_add_auto_traceroute_filter.js';
+import { migration as securityPermissionMigration } from '../server/migrations/016_add_security_permission.js';
 
 // Configuration constants for traceroute history
 const TRACEROUTE_HISTORY_LIMIT = 50;
@@ -235,6 +236,7 @@ class DatabaseService {
     this.runBackupTablesMigration();
     this.runMessageDeliveryTrackingMigration();
     this.runAutoTracerouteFilterMigration();
+    this.runSecurityPermissionMigration();
     this.runAutoWelcomeMigration();
     this.ensureAutomationDefaults();
     this.isInitialized = true;
@@ -586,9 +588,30 @@ class DatabaseService {
     }
   }
 
+  private runSecurityPermissionMigration(): void {
+    logger.debug('Running security permission migration...');
+    try {
+      const migrationKey = 'migration_016_security_permission';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Security permission migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 016: Add security permission resource...');
+      securityPermissionMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Security permission migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run security permission migration:', error);
+      throw error;
+    }
+  }
+
   private runAutoWelcomeMigration(): void {
     try {
-      const migrationKey = 'migration_016_auto_welcome_existing_nodes';
+      const migrationKey = 'migration_017_auto_welcome_existing_nodes';
       const migrationCompleted = this.getSetting(migrationKey);
 
       if (migrationCompleted === 'completed') {
@@ -596,7 +619,7 @@ class DatabaseService {
         return;
       }
 
-      logger.debug('Running migration 016: Mark existing nodes as already welcomed...');
+      logger.debug('Running migration 017: Mark existing nodes as already welcomed...');
 
       // Get all existing nodes
       const stmt = this.db.prepare('SELECT nodeNum, nodeId, createdAt FROM nodes WHERE welcomedAt IS NULL');
