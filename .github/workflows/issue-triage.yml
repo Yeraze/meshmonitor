@@ -2,7 +2,7 @@ name: Automated Issue Triage
 
 on:
   issues:
-    types: [opened]
+    types: [opened, labeled]
   issue_comment:
     types: [created]
 
@@ -246,6 +246,178 @@ jobs:
             - Use tools to search codebase and issues
 
             Now analyze the issue and provide your response!
+
+  # Manual triage trigger via label (for external contributors)
+  triage-on-label:
+    runs-on: ubuntu-latest
+
+    # Only run when needs-triage label is added
+    if: |
+      github.event_name == 'issues' &&
+      github.event.action == 'labeled' &&
+      github.event.label.name == 'needs-triage'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Triage with Claude
+        uses: anthropics/claude-code-action@beta
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.CLAUDE_GITHUB_TOKEN }}
+          model: "claude-sonnet-4-20250514"
+
+          direct_prompt: |
+            🤖 **Automated Issue Triage** (Manual Trigger)
+
+            A maintainer has requested AI triage for this issue. Your job is to provide an initial response following these STRICT guidelines:
+
+            ## Step 1: Classify the Issue
+
+            First, determine if this is:
+            - **BUG**: Something is broken or not working as expected
+            - **FEATURE**: New functionality request or enhancement
+            - **QUESTION**: User needs help or clarification
+            - **DUPLICATE**: Already reported in another issue
+
+            Note: Some issues labeled as bugs might actually be feature requests. Reclassify if needed.
+
+            ## Step 2: Check for Duplicates
+
+            Search both OPEN and CLOSED issues for similar reports:
+            - Use Grep/Glob to search issue templates and existing issues
+            - If you find a duplicate:
+              1. Post a comment: "Closing as duplicate of #XXX" (reference the original issue number)
+              2. Add the 'duplicate' label
+              3. Close the issue
+              4. STOP - do not continue analysis
+
+            ## Step 3: Response Based on Type
+
+            ### For BUG Reports:
+
+            1. **Analyze the issue description** - what information is provided?
+            2. **Check the codebase** - look for relevant code sections that might be involved
+            3. **Search for similar patterns** - check if this is a known pattern
+            4. **Provide diagnostic steps** - give the user specific commands/checks to run
+            5. **Reference documentation** - link to relevant docs from:
+               - https://meshmonitor.org (primary documentation)
+               - https://meshtastic.org (Meshtastic protocol/device docs)
+               - https://docs.docker.com (if Docker-related)
+               - https://github.com/caronc/apprise/wiki (if Apprise/notifications)
+
+            Your response should:
+            - Start with "🤖 **Automated Triage**" header
+            - Summarize what you understand about the bug
+            - List specific diagnostic steps for the user to run
+            - Include expected outputs for each step
+            - Reference relevant documentation
+            - Be helpful and professional
+
+            Example format:
+            ```
+            🤖 **Automated Triage**
+
+            Thank you for reporting this issue! This appears to be [brief summary of the bug].
+
+            To help diagnose this issue, please run the following diagnostic steps:
+
+            ### 1. [Diagnostic step name]
+            [command or check to perform]
+            [what to look for in output]
+
+            ### 2. [Next diagnostic step]
+            ...
+
+            ### Documentation References
+            - [Relevant meshmonitor.org link]
+            - [Relevant external docs]
+
+            Please share the outputs from these diagnostics, and I'll analyze the results.
+            ```
+
+            IMPORTANT: This is your FIRST response. Do not repeat the same diagnostic steps later.
+
+            ### For FEATURE Requests:
+
+            1. **Search the codebase** - look for similar existing features
+            2. **Check closed issues/PRs** - see if this was already implemented or rejected
+            3. **Search documentation** - find related features on meshmonitor.org
+            4. **Provide links** - point user to existing documentation and similar features
+
+            Your response should:
+            - Start with "🤖 **Automated Triage**" header
+            - Acknowledge the feature request
+            - Link to any similar existing features with documentation
+            - Reference relevant meshmonitor.org pages
+            - Be concise - ONE response only
+            - Do NOT continue the conversation beyond this first response
+
+            Example format:
+            ```
+            🤖 **Automated Triage**
+
+            Thank you for the feature request!
+
+            We have some related functionality that might help:
+            - [Existing Feature Name]: [link to meshmonitor.org docs]
+            - [Related Feature]: [link to docs]
+
+            You might also find these resources helpful:
+            - [Relevant meshmonitor.org documentation]
+            - [External documentation if applicable]
+
+            A maintainer will review your request and provide feedback.
+            ```
+
+            ## Step 4: Apply Labels
+
+            Based on your analysis, suggest labels by mentioning them in your response:
+            - bug / enhancement / question / duplicate
+            - docker / apprise / configuration / meshtastic / notifications
+            - needs-maintainer-review (if the issue needs human attention)
+
+            ## Available Tools
+
+            You have access to:
+            - Read: Read files from the codebase
+            - Grep: Search for patterns in code
+            - Glob: Find files by pattern
+            - Bash: Run read-only commands (git log, gh issue list, etc.)
+
+            Use these to understand the codebase and find similar issues/features.
+
+            ## Important Reminders
+
+            - Be professional and helpful
+            - Identify yourself as automated (🤖 prefix)
+            - For bugs: provide detailed diagnostics
+            - For features: link to existing docs, one response only
+            - For duplicates: close with reference to original
+            - Liberally reference official documentation
+            - Use tools to search codebase and issues
+
+            Now analyze the issue and provide your response!
+
+      - name: Remove needs-triage label
+        if: always()
+        uses: actions/github-script@v8
+        with:
+          script: |
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                name: 'needs-triage'
+              });
+              console.log('Removed needs-triage label');
+            } catch (error) {
+              console.log(`Error removing label: ${error.message}`);
+            }
 
   # Follow-up analysis when users respond to bug diagnostic requests
   triage-followup:
