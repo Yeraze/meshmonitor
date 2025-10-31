@@ -386,7 +386,7 @@ const UsersTab: React.FC = () => {
                 <div key={resource} className="permission-item">
                   <div className="permission-label">{resource.charAt(0).toUpperCase() + resource.slice(1)}</div>
                   <div className="permission-actions">
-                    {(resource === 'connection' || resource === 'traceroute' || resource === 'security') ? (
+                    {(resource === 'connection' || resource === 'traceroute') ? (
                       // Connection and traceroute permissions use a single checkbox
                       <label>
                         <input
