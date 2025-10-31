@@ -53,6 +53,9 @@ export interface DbNode {
   publicKey?: string;
   hasPKC?: boolean;
   lastPKIPacket?: number;
+  keyIsLowEntropy?: boolean;
+  duplicateKeyDetected?: boolean;
+  keySecurityIssueDetails?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -922,6 +925,39 @@ class DatabaseService {
       }
     }
 
+    try {
+      this.db.exec(`
+        ALTER TABLE nodes ADD COLUMN keyIsLowEntropy BOOLEAN DEFAULT 0;
+      `);
+      logger.debug('✅ Added keyIsLowEntropy column');
+    } catch (error: any) {
+      if (!error.message?.includes('duplicate column')) {
+        logger.debug('⚠️ keyIsLowEntropy column already exists or other error:', error.message);
+      }
+    }
+
+    try {
+      this.db.exec(`
+        ALTER TABLE nodes ADD COLUMN duplicateKeyDetected BOOLEAN DEFAULT 0;
+      `);
+      logger.debug('✅ Added duplicateKeyDetected column');
+    } catch (error: any) {
+      if (!error.message?.includes('duplicate column')) {
+        logger.debug('⚠️ duplicateKeyDetected column already exists or other error:', error.message);
+      }
+    }
+
+    try {
+      this.db.exec(`
+        ALTER TABLE nodes ADD COLUMN keySecurityIssueDetails TEXT;
+      `);
+      logger.debug('✅ Added keySecurityIssueDetails column');
+    } catch (error: any) {
+      if (!error.message?.includes('duplicate column')) {
+        logger.debug('⚠️ keySecurityIssueDetails column already exists or other error:', error.message);
+      }
+    }
+
     logger.debug('Database migrations completed');
   }
 
@@ -1210,6 +1246,46 @@ class DatabaseService {
     const stmt = this.db.prepare('SELECT * FROM nodes WHERE lastHeard > ? ORDER BY lastHeard DESC');
     const nodes = stmt.all(cutoff) as DbNode[];
     return nodes.map(node => this.normalizeBigInts(node));
+  }
+
+  /**
+   * Get nodes with key security issues (low-entropy or duplicate keys)
+   */
+  getNodesWithKeySecurityIssues(): DbNode[] {
+    const stmt = this.db.prepare(`
+      SELECT * FROM nodes
+      WHERE keyIsLowEntropy = 1 OR duplicateKeyDetected = 1
+      ORDER BY lastHeard DESC
+    `);
+    const nodes = stmt.all() as DbNode[];
+    return nodes.map(node => this.normalizeBigInts(node));
+  }
+
+  /**
+   * Get all nodes that have public keys (for duplicate detection)
+   */
+  getNodesWithPublicKeys(): Array<{ nodeNum: number; publicKey: string | null }> {
+    const stmt = this.db.prepare(`
+      SELECT nodeNum, publicKey FROM nodes
+      WHERE publicKey IS NOT NULL AND publicKey != ''
+    `);
+    return stmt.all() as Array<{ nodeNum: number; publicKey: string | null }>;
+  }
+
+  /**
+   * Update security flags for a node by nodeNum (doesn't require nodeId)
+   * Used by duplicate key scanner which needs to update nodes that may not have nodeIds yet
+   */
+  updateNodeSecurityFlags(nodeNum: number, duplicateKeyDetected: boolean, keySecurityIssueDetails?: string): void {
+    const stmt = this.db.prepare(`
+      UPDATE nodes
+      SET duplicateKeyDetected = ?,
+          keySecurityIssueDetails = ?,
+          updatedAt = ?
+      WHERE nodeNum = ?
+    `);
+    const now = Date.now();
+    stmt.run(duplicateKeyDetected ? 1 : 0, keySecurityIssueDetails ?? null, now, nodeNum);
   }
 
   // Message operations

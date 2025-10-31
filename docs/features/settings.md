@@ -70,6 +70,36 @@ The Settings tab allows you to customize MeshMonitor's behavior and manage your 
 
 **Effect**: Helps organize and analyze large networks by grouping nodes by their functional role in the mesh.
 
+### Security Filter *(New in v2.13)*
+
+**Description**: Filter nodes based on detected security issues, allowing you to focus on nodes with security problems or hide them from view.
+
+**Location**: Filter Modal popup (click "Filter" button in Nodes or Messages tab sidebar)
+
+**Filter Options**:
+- **All Nodes**: Show all nodes regardless of security status (default)
+- **⚠️ Flagged Only**: Display only nodes with detected security issues
+- **Hide Flagged**: Hide all flagged nodes from the list
+
+**Security Issues Detected**:
+- **Low-Entropy Keys**: Nodes using known weak public encryption keys
+- **Duplicate Keys**: Multiple nodes sharing the same public key
+
+**Use Cases**:
+- Security audits: View all nodes with potential security vulnerabilities
+- Clean view: Hide problematic nodes to focus on trusted devices
+- Network monitoring: Quickly identify new security issues as they're detected
+- Compliance: Ensure all nodes meet security standards
+
+**Visual Indicators**:
+- Flagged nodes display a ⚠️ warning icon in the node list
+- Messages from flagged nodes show a red warning bar with details
+- Hovering over warning icons shows specific security issue details
+
+**Effect**: When "⚠️ Flagged Only" is selected, the node count updates to show "X/Total" format (e.g., "8/156 nodes"). This filter works alongside other filters (text search, device role, unknown nodes) and applies to both Nodes and Messages tabs.
+
+**Learn More**: See [Security Features](/features/security) for detailed information about security monitoring, detection methods, and best practices.
+
 ## Node Details Block
 
 **Location**: Messages page, displayed when a node is selected in the conversation list
