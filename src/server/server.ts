@@ -2478,7 +2478,7 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
     const currentSettings = databaseService.getAllSettings();
 
     // Validate settings
-    const validKeys = ['maxNodeAgeHours', 'tracerouteIntervalMinutes', 'temperatureUnit', 'distanceUnit', 'telemetryVisualizationHours', 'telemetryFavorites', 'autoAckEnabled', 'autoAckRegex', 'autoAckMessage', 'autoAckChannels', 'autoAckDirectMessages', 'autoAckUseDM', 'autoAnnounceEnabled', 'autoAnnounceIntervalHours', 'autoAnnounceMessage', 'autoAnnounceChannelIndex', 'autoAnnounceOnStart', 'autoWelcomeEnabled', 'autoWelcomeMessage', 'autoWelcomeTarget', 'autoWelcomeWaitForName', 'preferredSortField', 'preferredSortDirection', 'timeFormat', 'dateFormat', 'mapTileset', 'packet_log_enabled', 'packet_log_max_count', 'packet_log_max_age_hours'];
+    const validKeys = ['maxNodeAgeHours', 'tracerouteIntervalMinutes', 'temperatureUnit', 'distanceUnit', 'telemetryVisualizationHours', 'telemetryFavorites', 'autoAckEnabled', 'autoAckRegex', 'autoAckMessage', 'autoAckChannels', 'autoAckDirectMessages', 'autoAckUseDM', 'autoAnnounceEnabled', 'autoAnnounceIntervalHours', 'autoAnnounceMessage', 'autoAnnounceChannelIndex', 'autoAnnounceOnStart', 'autoAnnounceUseSchedule', 'autoAnnounceSchedule', 'autoWelcomeEnabled', 'autoWelcomeMessage', 'autoWelcomeTarget', 'autoWelcomeWaitForName', 'preferredSortField', 'preferredSortDirection', 'timeFormat', 'dateFormat', 'mapTileset', 'packet_log_enabled', 'packet_log_max_count', 'packet_log_max_age_hours'];
     const filteredSettings: Record<string, string> = {};
 
     for (const key of validKeys) {
@@ -2528,6 +2528,13 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
       if (!isNaN(interval) && interval >= 0 && interval <= 60) {
         meshtasticManager.setTracerouteInterval(interval);
       }
+    }
+
+    // Restart announce scheduler if announce settings changed
+    const announceSettings = ['autoAnnounceEnabled', 'autoAnnounceIntervalHours', 'autoAnnounceUseSchedule', 'autoAnnounceSchedule'];
+    const announceSettingsChanged = announceSettings.some(key => key in filteredSettings);
+    if (announceSettingsChanged) {
+      meshtasticManager.restartAnnounceScheduler();
     }
 
     // Audit log with before/after values

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { isValidCron } from 'cron-validator';
 
 import { Channel } from '../types/device';
 import { useToast } from './ToastContainer';
@@ -10,6 +11,8 @@ interface AutoAnnounceSectionProps {
   message: string;
   channelIndex: number;
   announceOnStart: boolean;
+  useSchedule: boolean;
+  schedule: string;
   channels: Channel[];
   baseUrl: string;
   onEnabledChange: (enabled: boolean) => void;
@@ -17,6 +20,8 @@ interface AutoAnnounceSectionProps {
   onMessageChange: (message: string) => void;
   onChannelChange: (channelIndex: number) => void;
   onAnnounceOnStartChange: (announceOnStart: boolean) => void;
+  onUseScheduleChange: (useSchedule: boolean) => void;
+  onScheduleChange: (schedule: string) => void;
 }
 
 const DEFAULT_MESSAGE = 'MeshMonitor {VERSION} online for {DURATION} {FEATURES}';
@@ -27,6 +32,8 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
   message,
   channelIndex,
   announceOnStart,
+  useSchedule,
+  schedule,
   channels,
   baseUrl,
   onEnabledChange,
@@ -34,6 +41,8 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
   onMessageChange,
   onChannelChange,
   onAnnounceOnStartChange,
+  onUseScheduleChange,
+  onScheduleChange,
 }) => {
   const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();
@@ -42,6 +51,9 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
   const [localMessage, setLocalMessage] = useState(message || DEFAULT_MESSAGE);
   const [localChannelIndex, setLocalChannelIndex] = useState(channelIndex || 0);
   const [localAnnounceOnStart, setLocalAnnounceOnStart] = useState(announceOnStart);
+  const [localUseSchedule, setLocalUseSchedule] = useState(useSchedule);
+  const [localSchedule, setLocalSchedule] = useState(schedule || '0 */6 * * *');
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isSendingNow, setIsSendingNow] = useState(false);
@@ -55,7 +67,9 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
     setLocalMessage(message || DEFAULT_MESSAGE);
     setLocalChannelIndex(channelIndex || 0);
     setLocalAnnounceOnStart(announceOnStart);
-  }, [enabled, intervalHours, message, channelIndex, announceOnStart]);
+    setLocalUseSchedule(useSchedule);
+    setLocalSchedule(schedule || '0 */6 * * *');
+  }, [enabled, intervalHours, message, channelIndex, announceOnStart, useSchedule, schedule]);
 
   // Fetch last announcement time
   useEffect(() => {
@@ -77,6 +91,19 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
     return () => clearInterval(interval);
   }, [baseUrl]);
 
+  // Validate cron expression whenever it changes
+  useEffect(() => {
+    if (localUseSchedule && localSchedule) {
+      if (!isValidCron(localSchedule, { seconds: false, alias: true, allowBlankDay: true })) {
+        setScheduleError('Invalid cron expression');
+      } else {
+        setScheduleError(null);
+      }
+    } else {
+      setScheduleError(null);
+    }
+  }, [localSchedule, localUseSchedule]);
+
   // Check if any settings have changed
   useEffect(() => {
     const changed =
@@ -84,11 +111,19 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
       localInterval !== intervalHours ||
       localMessage !== message ||
       localChannelIndex !== channelIndex ||
-      localAnnounceOnStart !== announceOnStart;
+      localAnnounceOnStart !== announceOnStart ||
+      localUseSchedule !== useSchedule ||
+      localSchedule !== schedule;
     setHasChanges(changed);
-  }, [localEnabled, localInterval, localMessage, localChannelIndex, localAnnounceOnStart, enabled, intervalHours, message, channelIndex, announceOnStart]);
+  }, [localEnabled, localInterval, localMessage, localChannelIndex, localAnnounceOnStart, localUseSchedule, localSchedule, enabled, intervalHours, message, channelIndex, announceOnStart, useSchedule, schedule]);
 
   const handleSave = async () => {
+    // Validate cron expression before saving
+    if (localUseSchedule && scheduleError) {
+      showToast('Cannot save: Invalid cron expression', 'error');
+      return;
+    }
+
     setIsSaving(true);
     try {
       // Sync to backend first
@@ -100,7 +135,9 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
           autoAnnounceIntervalHours: localInterval,
           autoAnnounceMessage: localMessage,
           autoAnnounceChannelIndex: localChannelIndex,
-          autoAnnounceOnStart: String(localAnnounceOnStart)
+          autoAnnounceOnStart: String(localAnnounceOnStart),
+          autoAnnounceUseSchedule: String(localUseSchedule),
+          autoAnnounceSchedule: localSchedule
         })
       });
 
@@ -114,9 +151,11 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
       onMessageChange(localMessage);
       onChannelChange(localChannelIndex);
       onAnnounceOnStartChange(localAnnounceOnStart);
+      onUseScheduleChange(localUseSchedule);
+      onScheduleChange(localSchedule);
 
       setHasChanges(false);
-      showToast('Settings saved! Container restart required for changes to take effect.', 'success');
+      showToast('Settings saved! Schedule changes applied immediately.', 'success');
     } catch (error) {
       console.error('Failed to save auto-announce settings:', error);
       showToast('Failed to save settings. Please try again.', 'error');
@@ -299,23 +338,94 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
         </div>
 
         <div className="setting-item" style={{ marginTop: '1rem' }}>
-          <label htmlFor="announceInterval">
-            Announcement Interval (hours)
+          <label htmlFor="useSchedule">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <input
+                id="useSchedule"
+                type="checkbox"
+                checked={localUseSchedule}
+                onChange={(e) => setLocalUseSchedule(e.target.checked)}
+                disabled={!localEnabled}
+                style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
+              />
+              Scheduled Sends
+            </div>
             <span className="setting-description">
-              How often to broadcast the announcement (3-24 hours). Default: 6 hours
+              Use a cron expression to schedule announcements instead of a fixed interval
             </span>
           </label>
-          <input
-            id="announceInterval"
-            type="number"
-            min="3"
-            max="24"
-            value={localInterval}
-            onChange={(e) => setLocalInterval(parseInt(e.target.value))}
-            disabled={!localEnabled}
-            className="setting-input"
-          />
         </div>
+
+        {localUseSchedule && (
+          <div className="setting-item" style={{ marginTop: '1rem', marginLeft: '1.5rem' }}>
+            <label htmlFor="scheduleExpression">
+              Cron Expression
+              <span className="setting-description">
+                Schedule format: minute hour day month weekday.{' '}
+                <a
+                  href="https://crontab.guru/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: '#89b4fa', textDecoration: 'underline' }}
+                >
+                  Get help at crontab.guru
+                </a>
+              </span>
+            </label>
+            <input
+              id="scheduleExpression"
+              type="text"
+              value={localSchedule}
+              onChange={(e) => setLocalSchedule(e.target.value)}
+              disabled={!localEnabled}
+              className="setting-input"
+              placeholder="0 */6 * * *"
+              style={{
+                fontFamily: 'monospace',
+                borderColor: scheduleError ? 'var(--ctp-red)' : undefined
+              }}
+            />
+            {scheduleError && (
+              <div style={{
+                color: 'var(--ctp-red)',
+                fontSize: '0.875rem',
+                marginTop: '0.25rem'
+              }}>
+                {scheduleError}
+              </div>
+            )}
+            {!scheduleError && localSchedule && (
+              <div style={{
+                color: 'var(--ctp-green)',
+                fontSize: '0.875rem',
+                marginTop: '0.25rem'
+              }}>
+                Valid cron expression
+              </div>
+            )}
+          </div>
+        )}
+
+        {!localUseSchedule && (
+          <div className="setting-item" style={{ marginTop: '1rem' }}>
+            <label htmlFor="announceInterval">
+                Announcement Interval (hours)
+              <span className="setting-description">
+                How often to broadcast the announcement (3-24 hours). Default: 6 hours
+              </span>
+            </label>
+            <input
+              id="announceInterval"
+              type="number"
+              min="3"
+              max="24"
+              value={localInterval}
+              onChange={(e) => setLocalInterval(parseInt(e.target.value))}
+              disabled={!localEnabled}
+              className="setting-input"
+            />
+          </div>
+        )}
 
         <div className="setting-item" style={{ marginTop: '1rem' }}>
           <label htmlFor="announceChannel">

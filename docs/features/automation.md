@@ -218,6 +218,23 @@ When enabled, MeshMonitor sends a scheduled message to the configured channel at
 - **Default**: 6 hours
 - **Recommendation**: Use longer intervals (6-12 hours) to avoid annoying mesh users
 
+**Scheduled Sends**: Use cron expressions for precise scheduling
+
+- **Enable/Disable**: Toggle the "Use Scheduled Sends" checkbox
+- **Cron Expression**: When enabled, replaces the interval-based scheduling with precise time-based scheduling
+- **Default Expression**: `0 */6 * * *` (every 6 hours at the top of the hour)
+- **Validation**: Live validation with visual feedback (green checkmark for valid expressions, red error for invalid)
+- **Cron Helper**: Click the link to [crontab.guru](https://crontab.guru/) for assistance building cron expressions
+- **Format**: Standard 5-field cron format (minute hour day month weekday)
+- **Examples**:
+  - `0 */6 * * *` - Every 6 hours at minute 0 (12:00 AM, 6:00 AM, 12:00 PM, 6:00 PM)
+  - `0 9 * * *` - Every day at 9:00 AM
+  - `0 12 * * 1` - Every Monday at noon
+  - `30 8,20 * * *` - 8:30 AM and 8:30 PM daily
+  - `0 0 1 * *` - First day of every month at midnight
+- **UI Behavior**: When scheduled sends is enabled, the "Send every X hours" setting is hidden
+- **Immediate Apply**: Changes to the cron schedule take effect immediately without requiring a container restart
+
 **Announce on Start**: When enabled, automatically sends an announcement when the container starts
 
 - Includes 1-hour spam protection to prevent network flooding during container restarts
@@ -249,7 +266,7 @@ MeshMonitor {VERSION} online for {DURATION} {FEATURES}
 
 - **Network Traffic**: Each announcement consumes airtime and generates mesh traffic
 - **User Annoyance**: Too-frequent announcements may be seen as spam by mesh users
-- **Requires Restart**: Changes to this setting require a container restart to take effect
+- **Immediate Apply**: Changes to announce settings (interval, cron schedule, enabled/disabled) take effect immediately without requiring a container restart
 - **Channel Impact**: Announcement messages appear in the selected channel for all users
 
 ### Use Cases
@@ -262,7 +279,9 @@ MeshMonitor {VERSION} online for {DURATION} {FEATURES}
 ### Best Practices
 
 - Keep messages concise to minimize airtime usage
-- Use intervals of 6-12 hours to avoid spam
+- Use intervals of 6-12 hours to avoid spam, or use cron expressions for precise scheduling
+- Use cron expressions for precise timing (e.g., daily at 9 AM instead of every 6 hours)
+- Consider time zones when scheduling (container timezone applies to cron expressions)
 - Include useful information using tokens
 - Test messages with "Send Now" before enabling automatic scheduling
 - Be considerate of other mesh users

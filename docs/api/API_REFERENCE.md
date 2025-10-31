@@ -534,6 +534,58 @@ Get Meshtastic device configuration.
 }
 ```
 
+### POST /api/settings
+Update automation and system settings.
+
+**Authentication:** Required (write permissions on `settings` resource)
+
+**Request Body:**
+```json
+{
+  "autoAnnounceEnabled": "true",
+  "autoAnnounceIntervalHours": "6",
+  "autoAnnounceUseSchedule": "true",
+  "autoAnnounceSchedule": "0 9 * * *",
+  "autoAnnounceMessage": "MeshMonitor {VERSION} online",
+  "autoAnnounceChannelIndex": "0",
+  "autoAnnounceOnStart": "false",
+  "autoAckEnabled": "false",
+  "autoWelcomeEnabled": "true"
+}
+```
+
+**Supported Settings:**
+- **Auto Announce**:
+  - `autoAnnounceEnabled` (string: "true"/"false"): Enable automatic announcements
+  - `autoAnnounceIntervalHours` (string: "3"-"24"): Hours between announcements (when not using schedule)
+  - `autoAnnounceUseSchedule` (string: "true"/"false"): Use cron-based scheduling instead of intervals
+  - `autoAnnounceSchedule` (string): Cron expression for scheduled sends (e.g., "0 */6 * * *")
+  - `autoAnnounceMessage` (string): Message template with tokens
+  - `autoAnnounceChannelIndex` (string: "0"-"7"): Channel to broadcast on
+  - `autoAnnounceOnStart` (string: "true"/"false"): Send announcement on container start
+- **Auto Acknowledge**: `autoAckEnabled`, `autoAckRegex`, `autoAckMessage`, etc.
+- **Auto Welcome**: `autoWelcomeEnabled`, `autoWelcomeMessage`, etc.
+- **Display Preferences**: `temperatureUnit`, `distanceUnit`, `timeFormat`, `dateFormat`, etc.
+- **Traceroute**: `tracerouteIntervalMinutes` (1-60)
+
+**Response:**
+```json
+{
+  "success": true,
+  "settings": {
+    "autoAnnounceUseSchedule": "true",
+    "autoAnnounceSchedule": "0 9 * * *"
+  }
+}
+```
+
+**Notes:**
+- All settings values are strings for database storage compatibility
+- Changes to announce settings (`autoAnnounceEnabled`, `autoAnnounceIntervalHours`, `autoAnnounceUseSchedule`, `autoAnnounceSchedule`) trigger automatic scheduler restart
+- No container restart required for schedule changes - changes take effect immediately
+- Cron expressions are validated before accepting (must be valid 5-field cron format)
+- See [Automation Documentation](/docs/features/automation.md) for detailed information about each automation feature
+
 ### POST /api/settings/traceroute-interval
 Update the automatic traceroute interval.
 

@@ -253,6 +253,8 @@ class DatabaseService {
         autoAnnounceMessage: 'MeshMonitor {VERSION} online for {DURATION} {FEATURES}',
         autoAnnounceChannelIndex: '0',
         autoAnnounceOnStart: 'false',
+        autoAnnounceUseSchedule: 'false',
+        autoAnnounceSchedule: '0 */6 * * *',
         tracerouteIntervalMinutes: '0'
       };
 
