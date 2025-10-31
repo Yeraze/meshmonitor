@@ -395,13 +395,15 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
     });
 
     it('should handle node without createdAt for duration', async () => {
+      const now = Date.now();
       vi.mocked(databaseService.getNode).mockReturnValue({
         nodeNum: 999999,
         nodeId: '!000f423f',
         longName: 'Test Node',
         shortName: 'TEST',
         hwModel: 0,
-        updatedAt: Date.now()
+        createdAt: now,
+        updatedAt: now
       });
 
       const template = 'Active for {DURATION}';

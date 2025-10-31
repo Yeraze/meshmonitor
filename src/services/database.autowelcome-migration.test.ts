@@ -111,9 +111,6 @@ describe('DatabaseService - Auto Welcome Migration', () => {
       const firstRun = firstRunStmt.get(555555) as { welcomedAt: number };
       const firstWelcomedAt = firstRun.welcomedAt;
 
-      // Wait a bit
-      const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
       // Try to run migration again (should be skipped)
       (dbService as any).runAutoWelcomeMigration();
 
