@@ -90,8 +90,8 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
       expect(mockTransport.send).not.toHaveBeenCalled();
     });
 
-    it('should skip node already welcomed within 24 hours', async () => {
-      const recentTime = Date.now() - (12 * 60 * 60 * 1000); // 12 hours ago
+    it('should skip node that has already been welcomed', async () => {
+      const previouslyWelcomedTime = Date.now() - (30 * 24 * 60 * 60 * 1000); // 30 days ago
 
       vi.mocked(databaseService.getSetting).mockImplementation((key: string) => {
         if (key === 'autoWelcomeEnabled') return 'true';
@@ -105,48 +105,15 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
         longName: 'Test Node',
         shortName: 'TEST',
         hwModel: 0,
-        welcomedAt: recentTime,
+        welcomedAt: previouslyWelcomedTime, // Node has been welcomed before
         createdAt: Date.now() - (30 * 24 * 60 * 60 * 1000),
         updatedAt: Date.now()
       });
 
       await (manager as any).checkAutoWelcome(999999, '!000f423f');
 
+      // Should not send welcome again - nodes are only welcomed once
       expect(mockTransport.send).not.toHaveBeenCalled();
-    });
-
-    it('should welcome node if welcomed more than 24 hours ago', async () => {
-      const oldTime = Date.now() - (25 * 60 * 60 * 1000); // 25 hours ago
-
-      vi.mocked(databaseService.getSetting).mockImplementation((key: string) => {
-        if (key === 'autoWelcomeEnabled') return 'true';
-        if (key === 'localNodeNum') return '123456';
-        if (key === 'autoWelcomeMessage') return 'Welcome {LONG_NAME}!';
-        if (key === 'autoWelcomeTarget') return 'dm';
-        return null;
-      });
-
-      vi.mocked(databaseService.getNode).mockReturnValue({
-        nodeNum: 999999,
-        nodeId: '!000f423f',
-        longName: 'Test Node',
-        shortName: 'TEST',
-        hwModel: 0,
-        welcomedAt: oldTime,
-        createdAt: Date.now() - (30 * 24 * 60 * 60 * 1000),
-        updatedAt: Date.now()
-      });
-
-      await (manager as any).checkAutoWelcome(999999, '!000f423f');
-
-      expect(mockTransport.send).toHaveBeenCalledTimes(1);
-      expect(databaseService.upsertNode).toHaveBeenCalledWith(
-        expect.objectContaining({
-          nodeNum: 999999,
-          nodeId: '!000f423f',
-          welcomedAt: expect.any(Number)
-        })
-      );
     });
 
     it('should skip node with default name when waitForName is enabled', async () => {
