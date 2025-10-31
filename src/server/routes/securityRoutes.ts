@@ -51,24 +51,7 @@ router.get('/scanner/status', (_req: Request, res: Response) => {
   try {
     const status = duplicateKeySchedulerService.getStatus();
 
-    // Get last scan information from the most recently updated node
-    const nodesWithIssues = databaseService.getNodesWithKeySecurityIssues();
-    let lastScanTime: number | null = null;
-
-    if (nodesWithIssues.length > 0) {
-      // Find the most recently checked node
-      const allNodes = databaseService.getAllNodes();
-      const nodesWithKeys = allNodes.filter(n => n.publicKey);
-      if (nodesWithKeys.length > 0) {
-        // Use lastHeard as proxy for last scan (not perfect but works)
-        lastScanTime = Math.max(...nodesWithKeys.map(n => n.lastHeard || 0));
-      }
-    }
-
-    return res.json({
-      ...status,
-      lastScanTime
-    });
+    return res.json(status);
   } catch (error) {
     logger.error('Error getting scanner status:', error);
     return res.status(500).json({ error: 'Failed to get scanner status' });

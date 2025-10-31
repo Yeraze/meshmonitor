@@ -10,6 +10,7 @@ class DuplicateKeySchedulerService {
   private intervalId: NodeJS.Timeout | null = null;
   private scanInterval: number;
   private isScanning: boolean = false;
+  private lastScanTime: number | null = null;
 
   /**
    * @param intervalHours - How often to scan for duplicates (in hours). Default: 24 hours
@@ -93,6 +94,9 @@ class DuplicateKeySchedulerService {
           }
         }
 
+        // Update last scan time (Unix timestamp in seconds)
+        this.lastScanTime = Math.floor(Date.now() / 1000);
+
         this.isScanning = false;
         return;
       }
@@ -119,6 +123,9 @@ class DuplicateKeySchedulerService {
 
       logger.info(`✅ Duplicate key scan complete: ${updateCount} nodes flagged across ${duplicates.size} duplicate groups`);
 
+      // Update last scan time (Unix timestamp in seconds)
+      this.lastScanTime = Math.floor(Date.now() / 1000);
+
     } catch (error) {
       logger.error('Error during duplicate key scan:', error);
     } finally {
@@ -129,11 +136,12 @@ class DuplicateKeySchedulerService {
   /**
    * Get scanner status
    */
-  getStatus(): { running: boolean; scanningNow: boolean; intervalHours: number } {
+  getStatus(): { running: boolean; scanningNow: boolean; intervalHours: number; lastScanTime: number | null } {
     return {
       running: this.intervalId !== null,
       scanningNow: this.isScanning,
-      intervalHours: this.scanInterval / (60 * 60 * 1000)
+      intervalHours: this.scanInterval / (60 * 60 * 1000),
+      lastScanTime: this.lastScanTime
     };
   }
 }
