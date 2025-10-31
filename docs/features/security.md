@@ -346,10 +346,10 @@ curl -X POST http://localhost:8080/api/nodes/scan-duplicate-keys
 
 ## Related Documentation
 
-- [Database Schema](/database/SCHEMA) - Complete database structure
-- [REST API](/api/REST_API) - Full API reference
+- [API Documentation](/development/api) - API reference and examples
 - [Settings](/features/settings) - General settings and configuration
 - [Production Deployment](/configuration/production) - Security best practices for production
+- [Database Schema](https://github.com/Yeraze/meshmonitor/blob/main/docs/database/SCHEMA.md) - Complete database structure
 
 ## Future Enhancements
 
