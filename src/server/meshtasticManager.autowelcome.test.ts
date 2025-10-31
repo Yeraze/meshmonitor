@@ -402,9 +402,9 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
         longName: 'Test Node',
         shortName: 'TEST',
         hwModel: 0,
-        createdAt: now,
+        createdAt: undefined, // Testing the case where createdAt is missing
         updatedAt: now
-      });
+      } as any);
 
       const template = 'Active for {DURATION}';
 
