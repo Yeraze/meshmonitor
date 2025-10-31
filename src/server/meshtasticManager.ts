@@ -3697,14 +3697,10 @@ class MeshtasticManager {
         return;
       }
 
-      // Check if already welcomed (with 24-hour cooldown)
+      // Skip if node has already been welcomed (nodes should only be welcomed once)
       if (node.welcomedAt) {
-        const timeSinceWelcome = Date.now() - node.welcomedAt;
-        const cooldownHours = 24;
-        if (timeSinceWelcome < cooldownHours * 60 * 60 * 1000) {
-          logger.debug(`⏭️  Skipping auto-welcome for ${nodeId} - already welcomed ${Math.floor(timeSinceWelcome / (60 * 60 * 1000))}h ago`);
-          return;
-        }
+        logger.debug(`⏭️  Skipping auto-welcome for ${nodeId} - already welcomed previously`);
+        return;
       }
 
       // Check if we should wait for name
@@ -3816,6 +3812,12 @@ class MeshtasticManager {
         features.push('📢');
       }
 
+      // Check auto-welcome
+      const autoWelcomeEnabled = databaseService.getSetting('autoWelcomeEnabled');
+      if (autoWelcomeEnabled === 'true') {
+        features.push('👋');
+      }
+
       result = result.replace(/{FEATURES}/g, features.join(' '));
     }
 
@@ -3894,6 +3896,12 @@ class MeshtasticManager {
       const autoAnnounceEnabled = databaseService.getSetting('autoAnnounceEnabled');
       if (autoAnnounceEnabled === 'true') {
         features.push('📢');
+      }
+
+      // Check auto-welcome
+      const autoWelcomeEnabled = databaseService.getSetting('autoWelcomeEnabled');
+      if (autoWelcomeEnabled === 'true') {
+        features.push('👋');
       }
 
       result = result.replace(/{FEATURES}/g, features.join(' '));
@@ -3996,6 +4004,12 @@ class MeshtasticManager {
       const autoAnnounceEnabled = databaseService.getSetting('autoAnnounceEnabled');
       if (autoAnnounceEnabled === 'true') {
         features.push('📢');
+      }
+
+      // Check auto-welcome
+      const autoWelcomeEnabled = databaseService.getSetting('autoWelcomeEnabled');
+      if (autoWelcomeEnabled === 'true') {
+        features.push('👋');
       }
 
       result = result.replace(/{FEATURES}/g, features.join(' '));

@@ -225,6 +225,15 @@ setTimeout(async () => {
     await meshtasticManager.connect();
     logger.debug('Meshtastic manager connected successfully');
 
+    // Mark all existing nodes as welcomed to prevent thundering herd on startup
+    const autoWelcomeEnabled = databaseService.getSetting('autoWelcomeEnabled');
+    if (autoWelcomeEnabled === 'true') {
+      const markedCount = databaseService.markAllNodesAsWelcomed();
+      if (markedCount > 0) {
+        logger.info(`👋 Marked ${markedCount} existing node(s) as welcomed to prevent spam on startup`);
+      }
+    }
+
     // Initialize backup scheduler
     backupSchedulerService.initialize(meshtasticManager);
     logger.debug('Backup scheduler initialized');

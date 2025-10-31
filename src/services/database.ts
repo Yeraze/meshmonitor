@@ -1335,6 +1335,17 @@ class DatabaseService {
   }
 
   /**
+   * Mark all existing nodes as welcomed to prevent thundering herd on startup
+   * Should be called when Auto-Welcome is enabled during server initialization
+   */
+  markAllNodesAsWelcomed(): number {
+    const now = Date.now();
+    const stmt = this.db.prepare('UPDATE nodes SET welcomedAt = ? WHERE welcomedAt IS NULL');
+    const result = stmt.run(now);
+    return result.changes;
+  }
+
+  /**
    * Get nodes with key security issues (low-entropy or duplicate keys)
    */
   getNodesWithKeySecurityIssues(): DbNode[] {
