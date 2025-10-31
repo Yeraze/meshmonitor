@@ -215,10 +215,27 @@ See the [Serial Bridge configuration guide](/configuration/serial-bridge) for de
 - **Role-based access control (RBAC)** with granular permissions
 - **Connection control permission** - manage who can disconnect/reconnect from nodes
 - **Traceroute permission** - control who can initiate traceroute requests
+- **Security monitoring permission** - control access to encryption key security scans
 - **Anonymous user support** for read-only public access
 - **Default password warning** banner for security best practices
 - **Audit logging** for all authentication and administrative actions
 - **User management** interface for admins (create, deactivate, reset passwords)
+
+### 🛡️ **Security Monitoring**
+- **Encryption Key Security Analysis**: Monitor mesh network for encryption vulnerabilities
+- **Low-Entropy Key Detection**: Identify nodes using weak encryption keys vulnerable to brute-force attacks
+  - Entropy score calculation with severity indicators (High Risk, Medium Risk, Low Risk)
+  - Hardware model identification for affected devices
+  - Direct links to detailed fix documentation
+- **Duplicate Key Detection**: Identify nodes sharing the same encryption key
+  - Privacy violation warnings between devices
+  - Grouped display showing all nodes with duplicate keys
+  - Impacted node count per duplicate key
+- **Comprehensive Remediation Guides**: Platform-specific instructions for fixing security issues
+  - Step-by-step guides for iOS, Android, and CLI
+  - Real-world attack scenarios explained
+  - Best practices for encryption key management
+  - FAQ addressing common security concerns
 
 ### 🔄 **System Management**
 - **Manual connection control** - disconnect/reconnect from nodes with permission control

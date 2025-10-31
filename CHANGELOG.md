@@ -6,6 +6,66 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [2.12.2] - 2025-10-31
+
+### Added
+- **Auto Welcome Functionality** ([#412](https://github.com/Yeraze/meshmonitor/pull/412)): Automatically send personalized welcome messages to new nodes joining the mesh network
+  - **Dynamic Token System**: 7 customizable tokens for personalized messages
+    - `{LONG_NAME}`, `{SHORT_NAME}` - Node identification
+    - `{VERSION}` - MeshMonitor version
+    - `{DURATION}` - Time since node first seen
+    - `{FEATURES}` - Enabled automation features with emojis
+    - `{NODECOUNT}`, `{DIRECTCOUNT}` - Network statistics
+  - **Smart Welcome Logic**: 24-hour cooldown to prevent spam
+  - **Wait for Name Feature**: Skip nodes with default names until personalized
+  - **Routing Options**: Send as DM or to specific channel
+  - **Database Migration**: Automatic migration prevents "thundering herd" of welcome messages on first boot
+  - **Comprehensive Testing**: 27 new tests covering integration and migration scenarios
+
+- **Auto Announce Scheduled Sends** ([#413](https://github.com/Yeraze/meshmonitor/pull/413)): Precise time-based scheduling using cron expressions as alternative to fixed intervals
+  - **Cron Expression Scheduling**: Schedule announcements at specific times (e.g., daily at 9 AM)
+  - **Live Validation**: Real-time validation with visual feedback (green checkmark/red error)
+  - **Integrated Help**: Direct link to [crontab.guru](https://crontab.guru/) for cron expression assistance
+  - **Smart UI**: Conditional display of interval OR cron input based on selected mode
+  - **Immediate Apply**: Schedule changes restart scheduler instantly - no container restart needed
+  - **Default Expression**: `0 */6 * * *` (every 6 hours at top of hour)
+  - **Dual-Mode Scheduler**: Supports both interval-based and cron-based execution
+  - **New Dependencies**: `node-cron` for backend scheduling, `cron-validator` for frontend validation
+
+- **Security Monitoring Page** ([#414](https://github.com/Yeraze/meshmonitor/pull/414)): Comprehensive mesh network security monitoring
+  - **New Security Tab**: Dedicated interface for monitoring encryption key security
+  - **Low-Entropy Key Detection**: Identifies nodes using weak encryption keys vulnerable to brute-force attacks
+    - Displays key entropy scores with severity indicators (High Risk, Medium Risk, Low Risk)
+    - Shows hardware model information for affected nodes
+    - Direct links to detailed remediation documentation
+  - **Duplicate Key Detection**: Identifies nodes sharing the same encryption key
+    - Groups nodes by duplicate encryption keys
+    - Highlights privacy violations between devices
+    - Shows impacted node count per duplicate key
+    - Links to comprehensive fix instructions
+  - **Security Permission**: New granular permission for accessing security monitoring
+    - Read permission for viewing security scan results
+    - Write permission for initiating security scans
+    - Integrated into user management UI with proper Read/Write checkboxes
+  - **Comprehensive Documentation**: User-facing guides for fixing security issues
+    - `docs/security-low-entropy-keys.md` (257 lines) - Complete guide to fixing weak keys
+    - `docs/security-duplicate-keys.md` (355 lines) - Complete guide to resolving duplicate keys
+    - Platform-specific instructions for iOS, Android, and CLI
+    - Real-world security scenarios and attack explanations
+    - Step-by-step remediation instructions
+    - FAQ sections addressing common concerns
+
+### Fixed
+- **Permission UI**: Fixed Security permission displaying incorrect text in Users panel
+  - Changed from "Can initiate traceroutes" to proper Read/Write checkboxes
+  - Security permission now displays consistently with other resources
+
+### Changed
+- **User Management**: Enhanced permission model to include security resource
+  - Added 'security' to default admin permissions
+  - Security resource excluded from default user permissions
+- **Auto Announce Architecture**: Enhanced scheduler to support both interval and cron-based execution modes
+
 ## [2.11.3] - 2025-10-28
 
 ### Added
