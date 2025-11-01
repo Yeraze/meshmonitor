@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle } from 'react-leaflet';
 import type { Marker as LeafletMarker } from 'leaflet';
 import { DeviceInfo } from '../types/device';
@@ -198,6 +198,59 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     }
   }, []); // Empty deps - function never changes
 
+  // Stable callback factories for node item interactions
+  const handleNodeClick = useCallback((node: DeviceInfo) => {
+    return () => {
+      setSelectedNodeId(node.user?.id || null);
+      centerMapOnNode(node);
+      // Auto-collapse node list on mobile when a node with position is clicked
+      if (window.innerWidth <= 768) {
+        const hasPosition = node.position &&
+          node.position.latitude != null &&
+          node.position.longitude != null;
+        if (hasPosition) {
+          setIsNodeListCollapsed(true);
+        }
+      }
+    };
+  }, [setSelectedNodeId, centerMapOnNode, setIsNodeListCollapsed]);
+
+  const handleFavoriteClick = useCallback((node: DeviceInfo) => {
+    return (e: React.MouseEvent) => toggleFavorite(node, e);
+  }, [toggleFavorite]);
+
+  const handleDMClick = useCallback((node: DeviceInfo) => {
+    return (e: React.MouseEvent) => {
+      e.stopPropagation();
+      setSelectedDMNode(node.user?.id || '');
+      setActiveTab('messages');
+    };
+  }, [setSelectedDMNode, setActiveTab]);
+
+  const handlePopupDMClick = useCallback((node: DeviceInfo) => {
+    return () => {
+      setSelectedDMNode(node.user!.id);
+      setActiveTab('messages');
+    };
+  }, [setSelectedDMNode, setActiveTab]);
+
+  // Simple toggle callbacks
+  const handleCollapseNodeList = useCallback(() => {
+    setIsNodeListCollapsed(!isNodeListCollapsed);
+  }, [isNodeListCollapsed, setIsNodeListCollapsed]);
+
+  const handleToggleFilterPopup = useCallback(() => {
+    setShowNodeFilterPopup(!showNodeFilterPopup);
+  }, [showNodeFilterPopup, setShowNodeFilterPopup]);
+
+  const handleToggleSortDirection = useCallback(() => {
+    setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+  }, [sortDirection, setSortDirection]);
+
+  const handleCollapseMapControls = useCallback(() => {
+    setIsMapControlsCollapsed(!isMapControlsCollapsed);
+  }, [isMapControlsCollapsed, setIsMapControlsCollapsed]);
+
   // Update refs when values change
   useEffect(() => {
     processedNodesRef.current = processedNodes;
@@ -345,7 +398,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         <div className="sidebar-header">
           <button
             className="collapse-nodes-btn"
-            onClick={() => setIsNodeListCollapsed(!isNodeListCollapsed)}
+            onClick={handleCollapseNodeList}
             title={isNodeListCollapsed ? 'Expand node list' : 'Collapse node list'}
           >
             {isNodeListCollapsed ? '▶' : '◀'}
@@ -378,7 +431,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
             <div className="sort-controls">
               <button
                 className="filter-popup-btn"
-                onClick={() => setShowNodeFilterPopup(!showNodeFilterPopup)}
+                onClick={handleToggleFilterPopup}
                 title="Filter nodes"
               >
                 Filter
@@ -400,7 +453,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               </select>
               <button
                 className="sort-direction-btn"
-                onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
+                onClick={handleToggleSortDirection}
                 title={sortDirection === 'asc' ? 'Ascending' : 'Descending'}
               >
                 {sortDirection === 'asc' ? '↑' : '↓'}
@@ -430,26 +483,14 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 <div
                   key={node.nodeNum}
                   className={`node-item ${selectedNodeId === node.user?.id ? 'selected' : ''}`}
-                  onClick={() => {
-                    setSelectedNodeId(node.user?.id || null);
-                    centerMapOnNode(node);
-                    // Auto-collapse node list on mobile when a node with position is clicked
-                    if (window.innerWidth <= 768) {
-                      const hasPosition = node.position &&
-                        node.position.latitude != null &&
-                        node.position.longitude != null;
-                      if (hasPosition) {
-                        setIsNodeListCollapsed(true);
-                      }
-                    }
-                  }}
+                  onClick={handleNodeClick(node)}
                 >
                   <div className="node-header">
                     <div className="node-name">
                       <button
                         className="favorite-star"
                         title={node.isFavorite ? "Remove from favorites" : "Add to favorites"}
-                        onClick={(e) => toggleFavorite(node, e)}
+                        onClick={handleFavoriteClick(node)}
                       >
                         {node.isFavorite ? '⭐' : '☆'}
                       </button>
@@ -467,11 +508,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                         <button
                           className="dm-icon"
                           title="Send Direct Message"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedDMNode(node.user?.id || '');
-                            setActiveTab('messages');
-                          }}
+                          onClick={handleDMClick(node)}
                         >
                           💬
                         </button>
@@ -577,7 +614,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
             <div className={`map-controls ${isMapControlsCollapsed ? 'collapsed' : ''}`}>
               <button
                 className="map-controls-collapse-btn"
-                onClick={() => setIsMapControlsCollapsed(!isMapControlsCollapsed)}
+                onClick={handleCollapseMapControls}
                 title={isMapControlsCollapsed ? 'Expand controls' : 'Collapse controls'}
               >
                 {isMapControlsCollapsed ? '▼' : '▲'}
@@ -782,10 +819,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                     {node.user?.id && hasPermission('messages', 'read') && (
                       <button
                         className="node-popup-btn"
-                        onClick={() => {
-                          setSelectedDMNode(node.user!.id);
-                          setActiveTab('messages');
-                        }}
+                        onClick={handlePopupDMClick(node)}
                       >
                         💬 Direct Message
                       </button>

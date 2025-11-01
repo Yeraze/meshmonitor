@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import './TelemetryGraphs.css';
 import { type TemperatureUnit, formatTemperature, getTemperatureUnit } from '../utils/temperature';
@@ -158,6 +158,11 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
     }
   };
 
+  // Create stable callback factory for favorite toggles
+  const createToggleFavorite = useCallback((type: string) => {
+    return () => toggleFavorite(type);
+  }, [toggleFavorite]);
+
   const groupByType = (data: TelemetryData[]): Map<string, TelemetryData[]> => {
     const grouped = new Map<string, TelemetryData[]>();
     data.forEach(item => {
@@ -289,7 +294,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
                 <h4 className="graph-title">{label} {unit && `(${unit})`}</h4>
                 <button
                   className={`favorite-btn ${favorites.has(type) ? 'favorited' : ''}`}
-                  onClick={() => toggleFavorite(type)}
+                  onClick={createToggleFavorite(type)}
                   aria-label={favorites.has(type) ? 'Remove from favorites' : 'Add to favorites'}
                 >
                   {favorites.has(type) ? '★' : '☆'}

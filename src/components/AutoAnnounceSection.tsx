@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { isValidCron } from 'cron-validator';
 
 import { Channel } from '../types/device';
@@ -233,6 +233,19 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
     }
   };
 
+  // Stable callbacks
+  const handleSendNowClick = useCallback(() => {
+    handleSendNow();
+  }, [handleSendNow]);
+
+  const handleSaveClick = useCallback(() => {
+    handleSave();
+  }, [handleSave]);
+
+  const createInsertTokenHandler = useCallback((token: string) => {
+    return () => insertToken(token);
+  }, [insertToken]);
+
   return (
     <>
       <div className="automation-section-header" style={{
@@ -269,7 +282,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
         </h2>
         <div className="automation-button-container" style={{ display: 'flex', gap: '0.75rem' }}>
           <button
-            onClick={handleSendNow}
+            onClick={handleSendNowClick}
             disabled={isSendingNow || !localEnabled}
             className="btn-primary"
             style={{
@@ -282,7 +295,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
             {isSendingNow ? 'Sending...' : 'Send Now'}
           </button>
           <button
-            onClick={handleSave}
+            onClick={handleSaveClick}
             disabled={!hasChanges || isSaving}
             className="btn-primary"
             style={{
@@ -473,7 +486,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
           <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
             <button
               type="button"
-              onClick={() => insertToken('{VERSION}')}
+              onClick={createInsertTokenHandler('{VERSION}')}
               disabled={!localEnabled}
               style={{
                 padding: '0.25rem 0.5rem',
@@ -489,7 +502,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => insertToken('{DURATION}')}
+              onClick={createInsertTokenHandler('{DURATION}')}
               disabled={!localEnabled}
               style={{
                 padding: '0.25rem 0.5rem',
@@ -505,7 +518,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => insertToken('{FEATURES}')}
+              onClick={createInsertTokenHandler('{FEATURES}')}
               disabled={!localEnabled}
               style={{
                 padding: '0.25rem 0.5rem',
@@ -521,7 +534,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => insertToken('{NODECOUNT}')}
+              onClick={createInsertTokenHandler('{NODECOUNT}')}
               disabled={!localEnabled}
               style={{
                 padding: '0.25rem 0.5rem',
@@ -537,7 +550,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => insertToken('{DIRECTCOUNT}')}
+              onClick={createInsertTokenHandler('{DIRECTCOUNT}')}
               disabled={!localEnabled}
               style={{
                 padding: '0.25rem 0.5rem',
