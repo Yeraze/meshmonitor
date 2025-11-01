@@ -4725,7 +4725,7 @@ function App() {
         {activeTab === 'notifications' && <NotificationsTab isAdmin={authStatus?.user?.isAdmin || false} />}
         {activeTab === 'users' && <UsersTab />}
         {activeTab === 'audit' && <AuditLogTab />}
-        {activeTab === 'security' && <SecurityTab onTabChange={setActiveTab} onSelectDMNode={setSelectedDMNode} />}
+        {activeTab === 'security' && <SecurityTab onTabChange={setActiveTab} onSelectDMNode={setSelectedDMNode} setNewMessage={setNewMessage} />}
       </main>
 
       {/* Node Popup */}

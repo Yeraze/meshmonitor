@@ -277,6 +277,29 @@
   margin-left: 10px;
 }
 
+.send-notification-btn {
+  background: #007bff;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: bold;
+  transition: background 0.2s, transform 0.1s;
+  margin-left: 8px;
+  min-width: 36px;
+}
+
+.send-notification-btn:hover {
+  background: #0056b3;
+  transform: scale(1.05);
+}
+
+.send-notification-btn:active {
+  transform: scale(0.95);
+}
+
 .issue-details {
   padding: 20px;
   border-top: 1px solid #dee2e6;
@@ -413,6 +436,12 @@
   font-size: 12px;
   color: #999;
   font-family: monospace;
+}
+
+.duplicate-node-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .group-recommendations {

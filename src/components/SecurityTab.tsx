@@ -39,9 +39,10 @@ interface DuplicateKeyGroup {
 interface SecurityTabProps {
   onTabChange?: (tab: TabType) => void;
   onSelectDMNode?: (nodeId: string) => void;
+  setNewMessage?: (message: string) => void;
 }
 
-export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectDMNode }) => {
+export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectDMNode, setNewMessage }) => {
   const { hasPermission } = useAuth();
   const [issues, setIssues] = useState<SecurityIssuesResponse | null>(null);
   const [scannerStatus, setScannerStatus] = useState<ScannerStatus | null>(null);
@@ -128,6 +129,26 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
       // Convert nodeNum to hex string with leading ! for DM node ID
       const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
       onSelectDMNode(nodeId);
+      onTabChange('messages');
+    }
+  };
+
+  const handleSendNotification = (node: SecurityNode, duplicateCount?: number) => {
+    if (onTabChange && onSelectDMNode && setNewMessage) {
+      // Convert nodeNum to hex string with leading ! for DM node ID
+      const nodeId = `!${node.nodeNum.toString(16).padStart(8, '0')}`;
+
+      // Determine the message based on the issue type
+      let message = '';
+      if (node.keyIsLowEntropy) {
+        message = 'MeshMonitor Security Notification: Your node has a low entropy key. Read more: https://bit.ly/4oL5m0P';
+      } else if (node.duplicateKeyDetected && duplicateCount) {
+        message = `MeshMonitor Security Notification: Your node has a key shared with ${duplicateCount} other nearby nodes. Read more: https://bit.ly/4okVACV`;
+      }
+
+      // Set the node, message, and switch to messages tab
+      onSelectDMNode(nodeId);
+      setNewMessage(message);
       onTabChange('messages');
     }
   };
@@ -263,6 +284,16 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
                       <span className="badge duplicate">Duplicate</span>
                     )}
                   </div>
+                  <button
+                    className="send-notification-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSendNotification(node);
+                    }}
+                    title="Send security notification to this node"
+                  >
+                    →
+                  </button>
                   <div className="expand-icon">
                     {expandedNode === node.nodeNum ? '▼' : '▶'}
                   </div>
@@ -331,12 +362,24 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
                           >
                             {node.longName || node.shortName} ({node.shortName})
                           </span>
-                          <span className="node-id">
-                            #{node.nodeNum.toString(16).toUpperCase()}
-                            {node.hwModel !== undefined && node.hwModel !== 0 && (
-                              <span className="hw-model"> - {getHardwareModelName(node.hwModel)}</span>
-                            )}
-                          </span>
+                          <div className="duplicate-node-actions">
+                            <span className="node-id">
+                              #{node.nodeNum.toString(16).toUpperCase()}
+                              {node.hwModel !== undefined && node.hwModel !== 0 && (
+                                <span className="hw-model"> - {getHardwareModelName(node.hwModel)}</span>
+                              )}
+                            </span>
+                            <button
+                              className="send-notification-btn"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSendNotification(node, group.nodes.length - 1);
+                              }}
+                              title="Send security notification to this node"
+                            >
+                              →
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
