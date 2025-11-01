@@ -307,7 +307,9 @@ apiRouter.get('/nodes', optionalAuth(), (_req, res) => {
       if (!node.user?.id) return { ...node, isMobile: false };
 
       // Check position telemetry for this node
-      const positionTelemetry = databaseService.getTelemetryByNode(node.user.id, 100);
+      // Fetch more telemetry to detect movement over a longer time window
+      // (500 records still missed movement for nodes with lots of non-position telemetry)
+      const positionTelemetry = databaseService.getTelemetryByNode(node.user.id, 2000);
       const latitudes = positionTelemetry.filter(t => t.telemetryType === 'latitude');
       const longitudes = positionTelemetry.filter(t => t.telemetryType === 'longitude');
       const estimatedLatitudes = positionTelemetry.filter(t => t.telemetryType === 'estimated_latitude');
@@ -337,6 +339,11 @@ apiRouter.get('/nodes', optionalAuth(), (_req, res) => {
 
         // If movement is greater than 1km, mark as mobile
         isMobile = distance > 1.0;
+
+        // Debug logging for Yeraze V4
+        if (node.user.id === '!b29fa938') {
+          logger.info(`🚗 Yeraze V4 mobility check: ${latitudes.length} lat, ${longitudes.length} lon, distance=${distance.toFixed(3)}km, isMobile=${isMobile}`);
+        }
       }
 
       // If node doesn't have a regular position, check for estimated position
@@ -386,12 +393,14 @@ apiRouter.get('/nodes/active', optionalAuth(), (req, res) => {
 apiRouter.get('/nodes/:nodeId/position-history', optionalAuth(), (req, res) => {
   try {
     const { nodeId } = req.params;
-    const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 168; // Default 7 days
 
-    const cutoffTime = Date.now() - (hoursParam * 60 * 60 * 1000);
+    // Allow hours parameter for future use, but default to fetching ALL position history
+    // This ensures we capture movement that may have happened long ago
+    const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : null;
+    const cutoffTime = hoursParam ? Date.now() - (hoursParam * 60 * 60 * 1000) : 0;
 
-    // Get position telemetry
-    const positionTelemetry = databaseService.getTelemetryByNode(nodeId, 1000, cutoffTime);
+    // Get only position-related telemetry (lat/lon/alt) for the node - much more efficient!
+    const positionTelemetry = databaseService.getPositionTelemetryByNode(nodeId, 1500, cutoffTime);
 
     // Group by timestamp to get lat/lon pairs
     const positionMap = new Map<number, { lat?: number; lon?: number; alt?: number }>();
@@ -1780,6 +1789,7 @@ apiRouter.get('/device/tx-status', optionalAuth(), async (_req, res) => {
 
 // Consolidated polling endpoint - reduces multiple API calls to one
 apiRouter.get('/poll', optionalAuth(), async (req, res) => {
+  logger.info('🔔 [POLL] Endpoint called');
   try {
     const result: {
       connection?: any;
@@ -1810,11 +1820,21 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
     // 2. Nodes (always available with optionalAuth)
     try {
       const nodes = meshtasticManager.getAllNodes();
+      logger.info(`🔍 [POLL] Processing ${nodes.length} nodes for mobility detection`);
+
       // Enhance nodes with mobility detection and estimated positions (same as /nodes endpoint)
       const enhancedNodes = nodes.map(node => {
         if (!node.user?.id) return { ...node, isMobile: false };
 
-        const positionTelemetry = databaseService.getTelemetryByNode(node.user.id, 100);
+        // Debug: log all node IDs
+        const shortName = node.user?.shortName || 'unknown';
+        if (shortName.toLowerCase().includes('yz') || shortName.toLowerCase().includes('yeraze')) {
+          logger.info(`🔍 [POLL] Found Yeraze node: ${node.user.id} (${shortName})`);
+        }
+
+        // Fetch more telemetry to detect movement over a longer time window
+        // (500 records still missed movement for nodes with lots of non-position telemetry)
+        const positionTelemetry = databaseService.getTelemetryByNode(node.user.id, 2000);
         const latitudes = positionTelemetry.filter(t => t.telemetryType === 'latitude');
         const longitudes = positionTelemetry.filter(t => t.telemetryType === 'longitude');
         const estimatedLatitudes = positionTelemetry.filter(t => t.telemetryType === 'estimated_latitude');
@@ -1841,6 +1861,11 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
           const distance = R * c;
 
           isMobile = distance > 1.0;
+
+          // Debug logging for Yeraze V4
+          if (node.user.id === '!b29fa938') {
+            logger.info(`🚗 [POLL] Yeraze V4 mobility check: ${latitudes.length} lat, ${longitudes.length} lon, distance=${distance.toFixed(3)}km, isMobile=${isMobile}`);
+          }
         }
 
         let enhancedNode = { ...node, isMobile };

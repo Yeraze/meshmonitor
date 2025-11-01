@@ -869,7 +869,8 @@ function App() {
 
     const fetchPositionHistory = async () => {
       try {
-        const response = await authFetch(`${baseUrl}/api/nodes/${selectedNodeId}/position-history?hours=168`);
+        // Fetch all position history (no time limit) to show complete movement trail
+        const response = await authFetch(`${baseUrl}/api/nodes/${selectedNodeId}/position-history`);
         if (response.ok) {
           const history = await response.json();
           setPositionHistory(history);
