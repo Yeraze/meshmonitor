@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import apiService from '../../services/api';
 import { useToast } from '../ToastContainer';
 import { logger } from '../../utils/logger';
+import '../../styles/BackupManagement.css';
 
 interface BackupFile {
   filename: string;
@@ -378,103 +379,59 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
       {/* Backup List Modal */}
       {isBackupModalOpen && (
         <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.7)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000
-          }}
+          className="backup-modal-overlay"
           onClick={() => setIsBackupModalOpen(false)}
         >
           <div
-            style={{
-              backgroundColor: 'var(--ctp-base)',
-              padding: '2rem',
-              borderRadius: '8px',
-              maxWidth: '800px',
-              width: '90%',
-              maxHeight: '80vh',
-              overflow: 'auto'
-            }}
+            className="backup-modal-content"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 style={{ marginTop: 0 }}>📋 Saved Backups</h3>
+            <h3>📋 Saved Backups</h3>
 
             {backupList.length === 0 ? (
               <p style={{ color: 'var(--ctp-subtext0)' }}>
                 No backups found. Create your first backup using the button above.
               </p>
             ) : (
-              <div style={{ marginTop: '1rem' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <div>
+                <table className="backup-table">
                   <thead>
-                    <tr style={{ borderBottom: '2px solid var(--ctp-surface2)' }}>
-                      <th style={{ padding: '0.75rem', textAlign: 'left' }}>Filename</th>
-                      <th style={{ padding: '0.75rem', textAlign: 'left' }}>Date</th>
-                      <th style={{ padding: '0.75rem', textAlign: 'left' }}>Type</th>
-                      <th style={{ padding: '0.75rem', textAlign: 'left' }}>Size</th>
-                      <th style={{ padding: '0.75rem', textAlign: 'center' }}>Actions</th>
+                    <tr>
+                      <th>Filename</th>
+                      <th>Date</th>
+                      <th>Type</th>
+                      <th>Size</th>
+                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {backupList.map((backup) => (
-                      <tr key={backup.filename} style={{ borderBottom: '1px solid var(--ctp-surface1)' }}>
-                        <td style={{ padding: '0.75rem', fontFamily: 'monospace', fontSize: '0.9rem' }}>
+                      <tr key={backup.filename}>
+                        <td data-label="Filename:" className="backup-filename">
                           {backup.filename}
                         </td>
-                        <td style={{ padding: '0.75rem', fontSize: '0.9rem' }}>
+                        <td data-label="Date:" className="backup-date">
                           {formatTimestamp(backup.timestamp)}
                         </td>
-                        <td style={{ padding: '0.75rem' }}>
-                          <span style={{
-                            padding: '0.25rem 0.5rem',
-                            borderRadius: '4px',
-                            fontSize: '0.8rem',
-                            backgroundColor: backup.type === 'automatic' ? 'var(--ctp-blue)' : 'var(--ctp-mauve)',
-                            color: '#fff',
-                            whiteSpace: 'nowrap'
-                          }}>
+                        <td data-label="Type:">
+                          <span className={`backup-type-badge ${backup.type === 'automatic' ? 'automatic' : 'manual'}`}>
                             {backup.type === 'automatic' ? '🤖 Auto' : '👤 Manual'}
                           </span>
                         </td>
-                        <td style={{ padding: '0.75rem', fontSize: '0.9rem' }}>
+                        <td data-label="Size:" className="backup-size">
                           {formatFileSize(backup.size)}
                         </td>
-                        <td style={{ padding: '0.75rem' }}>
-                          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+                        <td>
+                          <div className="backup-actions">
                             <button
                               onClick={() => handleDownloadBackup(backup.filename)}
-                              style={{
-                                backgroundColor: 'var(--ctp-green)',
-                                color: '#fff',
-                                padding: '0.5rem 1rem',
-                                border: 'none',
-                                borderRadius: '4px',
-                                cursor: 'pointer',
-                                fontSize: '0.9rem',
-                                whiteSpace: 'nowrap'
-                              }}
+                              className="backup-btn download"
                             >
                               ⬇️ Download
                             </button>
                             <button
                               onClick={() => handleDeleteBackup(backup.filename)}
-                              style={{
-                                backgroundColor: 'var(--ctp-red)',
-                                color: '#fff',
-                                padding: '0.5rem 1rem',
-                                border: 'none',
-                                borderRadius: '4px',
-                                cursor: 'pointer',
-                                fontSize: '0.9rem',
-                                whiteSpace: 'nowrap'
-                              }}
+                              className="backup-btn delete"
                             >
                               🗑️ Delete
                             </button>
@@ -487,19 +444,10 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
               </div>
             )}
 
-            <div style={{ marginTop: '1.5rem', textAlign: 'right' }}>
+            <div className="backup-modal-footer">
               <button
                 onClick={() => setIsBackupModalOpen(false)}
-                style={{
-                  backgroundColor: 'var(--ctp-surface2)',
-                  color: 'var(--ctp-text)',
-                  padding: '0.75rem 1.5rem',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '1rem',
-                  fontWeight: 'bold'
-                }}
+                className="backup-close-btn"
               >
                 Close
               </button>

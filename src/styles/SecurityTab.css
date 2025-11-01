@@ -599,3 +599,23 @@
     color: #adb5bd;
   }
 }
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+  .issue-header {
+    flex-wrap: wrap;
+  }
+
+  .node-info {
+    flex-basis: 100%;
+    margin-bottom: 10px;
+  }
+
+  .issue-types {
+    flex: 1;
+  }
+
+  .send-notification-btn {
+    margin-left: 0;
+  }
+}
