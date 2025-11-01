@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../services/api';
 import { TabType } from '../types/ui';
@@ -77,7 +77,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
     return () => clearInterval(interval);
   }, []);
 
-  const triggerScan = async () => {
+  const triggerScan = useCallback(async () => {
     setScanning(true);
     try {
       await api.post('/api/security/scanner/scan', {});
@@ -89,7 +89,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
     } finally {
       setScanning(false);
     }
-  };
+  }, []);
 
   const formatDate = (timestamp: number | null) => {
     if (!timestamp) return 'Never';
@@ -124,16 +124,16 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
       .map(([publicKey, nodeList]) => ({ publicKey, nodes: nodeList }));
   };
 
-  const handleNodeClick = (nodeNum: number) => {
+  const handleNodeClick = useCallback((nodeNum: number) => {
     if (onTabChange && onSelectDMNode) {
       // Convert nodeNum to hex string with leading ! for DM node ID
       const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
       onSelectDMNode(nodeId);
       onTabChange('messages');
     }
-  };
+  }, [onTabChange, onSelectDMNode]);
 
-  const handleSendNotification = (node: SecurityNode, duplicateCount?: number) => {
+  const handleSendNotification = useCallback((node: SecurityNode, duplicateCount?: number) => {
     if (onTabChange && onSelectDMNode && setNewMessage) {
       // Convert nodeNum to hex string with leading ! for DM node ID
       const nodeId = `!${node.nodeNum.toString(16).padStart(8, '0')}`;
@@ -151,7 +151,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
       setNewMessage(message);
       onTabChange('messages');
     }
-  };
+  }, [onTabChange, onSelectDMNode, setNewMessage]);
 
   if (loading) {
     return (

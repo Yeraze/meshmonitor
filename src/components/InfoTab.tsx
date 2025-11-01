@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { DeviceInfo, Channel } from '../types/device';
 import { MeshMessage } from '../types/message';
 import { ConnectionStatus } from '../types/ui';
@@ -110,6 +110,19 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
     const interval = setInterval(fetchRouteSegments, 60000); // Refresh every minute
     return () => clearInterval(interval);
   }, [connectionStatus]);
+
+  // Stable callbacks
+  const handleClearRecordClick = useCallback(() => {
+    handleClearRecordHolder();
+  }, [handleClearRecordHolder]);
+
+  const handleCancelConfirm = useCallback(() => {
+    setShowConfirmDialog(false);
+  }, []);
+
+  const handleConfirmClear = useCallback(() => {
+    confirmClearRecordHolder();
+  }, [confirmClearRecordHolder]);
 
   return (
     <div className="tab-content">
@@ -238,7 +251,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
               </p>
               {isAuthenticated && (
                 <button
-                  onClick={handleClearRecordHolder}
+                  onClick={handleClearRecordClick}
                   className="danger-button"
                   style={{ marginTop: '8px' }}
                 >
@@ -290,13 +303,13 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
             <p>Are you sure you want to clear the record holder? This action cannot be undone.</p>
             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
               <button
-                onClick={() => setShowConfirmDialog(false)}
+                onClick={handleCancelConfirm}
                 className="btn-secondary"
               >
                 Cancel
               </button>
               <button
-                onClick={confirmClearRecordHolder}
+                onClick={handleConfirmClear}
                 className="danger-button"
               >
                 Clear Record

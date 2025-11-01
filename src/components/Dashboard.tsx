@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import {
   DndContext,
@@ -87,7 +87,7 @@ interface SortableChartItemProps {
   prepareChartData: (data: TelemetryData[], isTemperature: boolean) => ChartData[];
 }
 
-const SortableChartItem: React.FC<SortableChartItemProps> = ({
+const SortableChartItem: React.FC<SortableChartItemProps> = React.memo(({
   id,
   favorite,
   data,
@@ -107,6 +107,10 @@ const SortableChartItem: React.FC<SortableChartItemProps> = ({
     transition,
     isDragging,
   } = useSortable({ id });
+
+  const handleRemoveClick = useCallback(() => {
+    onRemove(favorite.nodeId, favorite.telemetryType);
+  }, [favorite.nodeId, favorite.telemetryType, onRemove]);
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -142,7 +146,7 @@ const SortableChartItem: React.FC<SortableChartItemProps> = ({
           </h3>
           <button
             className="dashboard-remove-btn"
-            onClick={() => onRemove(favorite.nodeId, favorite.telemetryType)}
+            onClick={handleRemoveClick}
             aria-label="Remove from dashboard"
           >
             ✕
@@ -169,7 +173,7 @@ const SortableChartItem: React.FC<SortableChartItemProps> = ({
         </h3>
         <button
           className="dashboard-remove-btn"
-          onClick={() => onRemove(favorite.nodeId, favorite.telemetryType)}
+          onClick={handleRemoveClick}
           aria-label="Remove from dashboard"
         >
           ✕
@@ -224,7 +228,9 @@ const SortableChartItem: React.FC<SortableChartItemProps> = ({
       </ResponsiveContainer>
     </div>
   );
-};
+});
+
+SortableChartItem.displayName = 'SortableChartItem';
 
 const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C', telemetryHours = 24, baseUrl }) => {
   const csrfFetch = useCsrfFetch();
@@ -242,6 +248,25 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C',
   const [selectedRoles, setSelectedRoles] = useState<Set<string>>(new Set());
   const [roleDropdownOpen, setRoleDropdownOpen] = useState<boolean>(false);
   const [sortOption, setSortOption] = useState<SortOption>('custom');
+
+  // Toggle callbacks
+  const handleToggleRoleDropdown = useCallback(() => {
+    setRoleDropdownOpen(!roleDropdownOpen);
+  }, [roleDropdownOpen]);
+
+  const handleClearRoleFilter = useCallback(() => {
+    setSelectedRoles(new Set());
+  }, []);
+
+  const handleToggleRole = useCallback((role: string, checked: boolean) => {
+    const newRoles = new Set(selectedRoles);
+    if (checked) {
+      newRoles.add(role);
+    } else {
+      newRoles.delete(role);
+    }
+    setSelectedRoles(newRoles);
+  }, [selectedRoles]);
 
   // Drag and drop sensors
   const sensors = useSensors(
@@ -646,7 +671,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C',
           <div className="dashboard-role-filter-dropdown" ref={roleDropdownRef}>
             <div
               className="dashboard-role-filter-button"
-              onClick={() => setRoleDropdownOpen(!roleDropdownOpen)}
+              onClick={handleToggleRoleDropdown}
             >
               <span>
                 {selectedRoles.size === 0
@@ -663,9 +688,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C',
                       <input
                         type="checkbox"
                         checked={selectedRoles.size === 0}
-                        onChange={() => {
-                          setSelectedRoles(new Set());
-                        }}
+                        onChange={handleClearRoleFilter}
                       />
                       <span>All Roles</span>
                     </label>
@@ -675,15 +698,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C',
                         <input
                           type="checkbox"
                           checked={selectedRoles.has(role)}
-                          onChange={(e) => {
-                            const newRoles = new Set(selectedRoles);
-                            if (e.target.checked) {
-                              newRoles.add(role);
-                            } else {
-                              newRoles.delete(role);
-                            }
-                            setSelectedRoles(newRoles);
-                          }}
+                          onChange={(e) => handleToggleRole(role, e.target.checked)}
                         />
                         <span>{role}</span>
                       </label>
