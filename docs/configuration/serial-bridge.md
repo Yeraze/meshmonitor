@@ -458,6 +458,214 @@ services:
 - Add `pi` user to dialout group: `sudo usermod -aG dialout pi`
 - Use `restart: unless-stopped` for automatic recovery after power outages
 
+### Windows WSL Setup
+
+> **Community Contribution:** These instructions were contributed by [@andresee](https://github.com/andresee) for running MeshMonitor and the Serial Bridge on Windows using WSL (Windows Subsystem for Linux) with USB passthrough.
+
+Running the Serial Bridge on Windows requires WSL2 and the usbipd-win tool to pass USB devices from Windows to WSL.
+
+#### Prerequisites
+
+1. **Windows Subsystem for Linux (WSL2)**
+   - Install WSL2 if not already installed
+   - Use a supported Linux distribution (Ubuntu recommended)
+
+2. **usbipd-win**
+   - Download and install from: [usbipd-win releases](https://github.com/dorssel/usbipd-win/releases)
+   - Recommended version: v5.3.0 or later
+   - Official documentation: [WSL support guide](https://github.com/dorssel/usbipd-win/wiki/WSL-support)
+
+#### Step 1: Find Your USB Device
+
+In Windows PowerShell or Command Prompt (run as Administrator):
+
+```powershell
+# List all USB devices
+usbipd list
+```
+
+Example output:
+```
+BUSID  DEVICE                                      STATE
+1-7    USB Input Device                            Not shared
+4-4    STMicroelectronics STLink dongle, STMic...  Not shared
+5-2    Surface Ethernet Adapter                    Not shared
+1-8    239a:8029  USB Serial Device (COM7)         Not shared
+```
+
+Identify your Meshtastic device's BUSID (e.g., `1-8` for the USB Serial Device above).
+
+#### Step 2: Bind the Device to WSL
+
+Bind the device to make it available for WSL sharing:
+
+```powershell
+# Replace 1-8 with your device's BUSID
+usbipd bind --busid 1-8
+```
+
+Verify the device is now shared:
+
+```powershell
+usbipd list
+```
+
+You should see the device state changed to "Shared":
+```
+BUSID  DEVICE                                      STATE
+1-8    239a:8029  USB Serial Device (COM7)         Shared
+```
+
+#### Step 3: Attach Device to WSL
+
+Attach the shared device to your WSL instance:
+
+```powershell
+# Replace 1-8 with your device's BUSID
+usbipd attach --wsl --busid 1-8
+```
+
+Verify the device is attached:
+
+```powershell
+usbipd list
+```
+
+The device state should now show "Attached":
+```
+BUSID  DEVICE                                      STATE
+1-8    239a:8029  USB Serial Device (COM7)         Attached
+```
+
+#### Step 4: Verify Device in WSL
+
+Open your WSL terminal and verify the device is available:
+
+```bash
+# List USB devices
+lsusb
+```
+
+Example output:
+```
+Bus 001 Device 001: ID 1d6b:0002 Linux Foundation 2.0 root hub
+Bus 001 Device 009: ID 239a:8029 Adafruit WisCore RAK4631 Board
+Bus 002 Device 001: ID 1d6b:0003 Linux Foundation 3.0 root hub
+```
+
+Find the TTY device path:
+
+```bash
+# Check kernel messages for TTY assignment
+dmesg | grep tty
+```
+
+Example output:
+```
+[1211963.942117] cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+```
+
+Verify the device path exists:
+
+```bash
+ls /dev/ttyACM*
+```
+
+Expected output:
+```
+/dev/ttyACM0
+```
+
+#### Step 5: Configure Docker Compose
+
+Create or update your `docker-compose.yml` with the WSL device path:
+
+```yaml
+services:
+  serial-bridge:
+    image: ghcr.io/yeraze/meshtastic-serial-bridge:latest
+    container_name: meshtastic-serial-bridge
+    devices:
+      - /dev/ttyACM0:/dev/ttyACM0  # WSL serial device → container
+    ports:
+      - "4403:4403"
+    restart: unless-stopped
+    environment:
+      - SERIAL_DEVICE=/dev/ttyACM0  # Must match device mapping
+      - BAUD_RATE=115200
+      - TCP_PORT=4403
+
+  meshmonitor:
+    image: ghcr.io/yeraze/meshmonitor:latest
+    container_name: meshmonitor
+    ports:
+      - "8080:3001"
+    volumes:
+      - meshmonitor-data:/data
+    environment:
+      - MESHTASTIC_NODE_IP=serial-bridge
+    restart: unless-stopped
+    depends_on:
+      - serial-bridge
+
+volumes:
+  meshmonitor-data:
+```
+
+**Important notes:**
+- Replace `/dev/ttyACM0` with your actual device path from Step 4
+- The device path in `devices:` and `SERIAL_DEVICE` environment variable must match
+- Common device paths in WSL: `/dev/ttyACM0`, `/dev/ttyUSB0`
+
+#### Step 6: Start the Services
+
+In your WSL terminal:
+
+```bash
+docker compose up -d
+```
+
+#### Step 7: Verify Operation
+
+Check that both services are running correctly:
+
+```bash
+# Check Serial Bridge logs
+docker compose logs serial-bridge
+
+# Check MeshMonitor logs
+docker compose logs meshmonitor
+```
+
+Access MeshMonitor at: http://localhost:8080
+
+#### Windows WSL Troubleshooting
+
+**Device not appearing in WSL:**
+- Ensure usbipd-win is running as Administrator
+- Try detaching and reattaching: `usbipd detach --busid 1-8` then `usbipd attach --wsl --busid 1-8`
+- Verify WSL2 is being used: `wsl --list --verbose`
+
+**Permission denied in WSL:**
+- Add your WSL user to the dialout group: `sudo usermod -aG dialout $USER`
+- Log out and back into WSL
+- Check device permissions: `ls -la /dev/ttyACM0`
+
+**Device path changes after reboot:**
+- The device path (`/dev/ttyACM0` vs `/dev/ttyUSB0`) may vary
+- Update your docker-compose.yml if the path changes
+- Consider using udev rules for consistent device naming
+
+**USB device resets when attaching:**
+- This is normal WSL behavior
+- Wait a few seconds after attaching before starting Docker services
+- Check `dmesg` to confirm device enumeration completed
+
+**Docker can't access device:**
+- Verify Docker Desktop is using WSL2 integration
+- Ensure WSL integration is enabled for your distribution in Docker Desktop settings
+- Restart Docker Desktop if needed
+
 ### Multiple Serial Devices
 
 To bridge multiple devices, run separate instances:
