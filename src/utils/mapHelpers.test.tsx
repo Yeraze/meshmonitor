@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect } from 'vitest';
-import { getRoleName } from './mapHelpers';
+import { getRoleName } from './nodeHelpers';
 import { ROLE_NAMES } from '../constants';
 
 describe('mapHelpers', () => {

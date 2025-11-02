@@ -4,8 +4,8 @@ import type { Marker as LeafletMarker } from 'leaflet';
 import { DeviceInfo } from '../types/device';
 import { TabType } from '../types/ui';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
-import { getRoleName, generateArrowMarkers } from '../utils/mapHelpers.tsx';
-import { getHardwareModelName } from '../utils/nodeHelpers';
+import { generateArrowMarkers } from '../utils/mapHelpers.tsx';
+import { getHardwareModelName, getRoleName } from '../utils/nodeHelpers';
 import { formatTime, formatDateTime } from '../utils/datetime';
 import { getTilesetById } from '../config/tilesets';
 import { useMapContext } from '../contexts/MapContext';
@@ -14,7 +14,6 @@ import { useUI } from '../contexts/UIContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { useAuth } from '../contexts/AuthContext';
 import MapLegend from './MapLegend';
-import ZoomHandler from './ZoomHandler';
 import MapResizeHandler from './MapResizeHandler';
 import { SpiderfierController, SpiderfierControllerRef } from './SpiderfierController';
 import { TilesetSelector } from './TilesetSelector';
@@ -96,7 +95,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     mapCenterTarget,
     setMapCenterTarget,
     mapZoom,
-    setMapZoom,
     selectedNodeId,
     setSelectedNodeId,
     neighborInfo,
@@ -758,7 +756,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 url={getTilesetById(activeTileset).url}
                 maxZoom={getTilesetById(activeTileset).maxZoom}
               />
-              <ZoomHandler onZoomChange={setMapZoom} />
               <MapResizeHandler trigger={showPacketMonitor} />
               <SpiderfierController ref={spiderfierRef} zoomLevel={mapZoom} />
               <MapLegend />
