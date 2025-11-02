@@ -6,6 +6,7 @@ services:
     container_name: meshmonitor
     ports:
       - "8080:3001"
+      - "4404:4404"  # Virtual Node Server (optional, requires ENABLE_VIRTUAL_NODE=true)
     restart: unless-stopped
     volumes:
       - meshmonitor-data:/data
@@ -28,6 +29,8 @@ services:
       - ACCESS_LOG_ENABLED=true
       - ACCESS_LOG_PATH=/data/logs/access.log
       - ACCESS_LOG_FORMAT=combined
+      - ENABLE_VIRTUAL_NODE=${ENABLE_VIRTUAL_NODE:-true}
+      - VIRTUAL_NODE_PORT=${VIRTUAL_NODE_PORT:-4404}
 
 volumes:
   meshmonitor-data:

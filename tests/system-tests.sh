@@ -31,17 +31,20 @@ cleanup() {
     docker compose -f docker-compose.quick-start-test.yml down -v 2>/dev/null || true
     docker compose -f docker-compose.reverse-proxy-test.yml down -v 2>/dev/null || true
     docker compose -f docker-compose-config-import-test.yml down -v 2>/dev/null || true
+    docker compose -f docker-compose.virtual-node-cli-test.yml down -v 2>/dev/null || true
 
     # Remove any temporary compose files
     rm -f docker-compose.quick-start-test.yml 2>/dev/null || true
     rm -f docker-compose.reverse-proxy-test.yml 2>/dev/null || true
     rm -f docker-compose-config-import-test.yml 2>/dev/null || true
+    rm -f docker-compose.virtual-node-cli-test.yml 2>/dev/null || true
 
     # Remove cookie files
     rm -f /tmp/meshmonitor-cookies.txt 2>/dev/null || true
     rm -f /tmp/meshmonitor-security-cookies.txt 2>/dev/null || true
     rm -f /tmp/meshmonitor-reverse-proxy-cookies.txt 2>/dev/null || true
     rm -f /tmp/meshmonitor-config-import-cookies.txt 2>/dev/null || true
+    rm -f /tmp/vn-test-client.py 2>/dev/null || true
 
     echo -e "${GREEN}✓${NC} Cleanup complete"
 }
@@ -72,6 +75,7 @@ echo ""
 docker volume rm meshmonitor_meshmonitor-quick-start-test-data 2>/dev/null || true
 docker volume rm meshmonitor_meshmonitor-reverse-proxy-test-data 2>/dev/null || true
 docker volume rm meshmonitor_meshmonitor-config-import-test-data 2>/dev/null || true
+docker volume rm meshmonitor_meshmonitor-virtual-node-cli-test-data 2>/dev/null || true
 
 echo -e "${GREEN}✓ Test volumes cleaned${NC}"
 echo ""
@@ -154,6 +158,23 @@ else
 fi
 echo ""
 
+echo "=========================================="
+echo -e "${BLUE}Running Virtual Node CLI Test${NC}"
+echo "=========================================="
+echo ""
+
+# Run Virtual Node CLI test
+if bash "$SCRIPT_DIR/test-virtual-node-cli.sh"; then
+    VIRTUAL_NODE_CLI_RESULT="PASSED"
+    echo ""
+    echo -e "${GREEN}✓ Virtual Node CLI test PASSED${NC}"
+else
+    VIRTUAL_NODE_CLI_RESULT="FAILED"
+    echo ""
+    echo -e "${RED}✗ Virtual Node CLI test FAILED${NC}"
+fi
+echo ""
+
 # Summary
 echo "=========================================="
 echo "System Test Results"
@@ -190,6 +211,12 @@ if [ "$OIDC_RESULT" = "PASSED" ]; then
     echo -e "Reverse Proxy + OIDC:     ${GREEN}✓ PASSED${NC}"
 else
     echo -e "Reverse Proxy + OIDC:     ${RED}✗ FAILED${NC}"
+fi
+
+if [ "$VIRTUAL_NODE_CLI_RESULT" = "PASSED" ]; then
+    echo -e "Virtual Node CLI Test:    ${GREEN}✓ PASSED${NC}"
+else
+    echo -e "Virtual Node CLI Test:    ${RED}✗ FAILED${NC}"
 fi
 
 echo ""
@@ -237,11 +264,17 @@ else
     echo "| Reverse Proxy + OIDC | ❌ FAILED |" >> "$REPORT_FILE"
 fi
 
+if [ "$VIRTUAL_NODE_CLI_RESULT" = "PASSED" ]; then
+    echo "| Virtual Node CLI Test | ✅ PASSED |" >> "$REPORT_FILE"
+else
+    echo "| Virtual Node CLI Test | ❌ FAILED |" >> "$REPORT_FILE"
+fi
+
 echo "" >> "$REPORT_FILE"
 
 # Overall result (config import is optional, so only fail if it actually failed, not if skipped)
 REQUIRED_TESTS_PASSED=true
-if [ "$QUICKSTART_RESULT" != "PASSED" ] || [ "$SECURITY_RESULT" != "PASSED" ] || [ "$REVERSE_PROXY_RESULT" != "PASSED" ] || [ "$OIDC_RESULT" != "PASSED" ]; then
+if [ "$QUICKSTART_RESULT" != "PASSED" ] || [ "$SECURITY_RESULT" != "PASSED" ] || [ "$REVERSE_PROXY_RESULT" != "PASSED" ] || [ "$OIDC_RESULT" != "PASSED" ] || [ "$VIRTUAL_NODE_CLI_RESULT" != "PASSED" ]; then
     REQUIRED_TESTS_PASSED=false
 fi
 
@@ -288,6 +321,14 @@ if [ "$REQUIRED_TESTS_PASSED" = true ]; then
     echo "- Authorization flow and session creation" >> "$REPORT_FILE"
     echo "- Hybrid mode (OIDC + local auth)" >> "$REPORT_FILE"
     echo "- Meshtastic node connection verified" >> "$REPORT_FILE"
+    echo "" >> "$REPORT_FILE"
+    echo "**Virtual Node CLI Test:**" >> "$REPORT_FILE"
+    echo "- Virtual Node Server enabled on TCP port 4404" >> "$REPORT_FILE"
+    echo "- Meshtastic Python client successfully connects" >> "$REPORT_FILE"
+    echo "- Node data download and synchronization verified" >> "$REPORT_FILE"
+    echo "- Test message sent on gauntlet channel (index 3)" >> "$REPORT_FILE"
+    echo "- Message delivery confirmed via Web UI API" >> "$REPORT_FILE"
+    echo "- Virtual Node Server connection logging verified" >> "$REPORT_FILE"
 
     echo -e "${GREEN}=========================================="
     echo "✓ ALL SYSTEM TESTS PASSED"
@@ -320,6 +361,9 @@ else
     fi
     if [ "$OIDC_RESULT" != "PASSED" ]; then
         echo "- **Reverse Proxy + OIDC:** OIDC authentication integration test failed" >> "$REPORT_FILE"
+    fi
+    if [ "$VIRTUAL_NODE_CLI_RESULT" != "PASSED" ]; then
+        echo "- **Virtual Node CLI Test:** Virtual Node Server CLI integration test failed" >> "$REPORT_FILE"
     fi
 
     echo -e "${RED}=========================================="

@@ -538,6 +538,237 @@ export class MeshtasticProtobufService {
       longitudeI: Math.round(longitude * 10000000)
     };
   }
+
+  /**
+   * Parse ToRadio message from mobile app client
+   */
+  async parseToRadio(data: Uint8Array): Promise<any | null> {
+    const root = getProtobufRoot();
+    if (!root) {
+      logger.error('❌ Protobuf definitions not loaded');
+      return null;
+    }
+
+    try {
+      const ToRadio = root.lookupType('meshtastic.ToRadio');
+      const toRadio = ToRadio.decode(data);
+      return toRadio;
+    } catch (error) {
+      logger.error('❌ Failed to parse ToRadio:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Create MyNodeInfo FromRadio message
+   */
+  async createMyNodeInfo(info: {
+    myNodeNum: number;
+    numBands?: number;
+    firmwareVersion?: string;
+    rebootCount?: number;
+    bitrate?: number;
+    messageTimeoutMsec?: number;
+    minAppVersion?: number;
+    maxChannels?: number;
+  }): Promise<Uint8Array | null> {
+    const root = getProtobufRoot();
+    if (!root) {
+      logger.error('❌ Protobuf definitions not loaded');
+      return null;
+    }
+
+    try {
+      const MyNodeInfo = root.lookupType('meshtastic.MyNodeInfo');
+      const FromRadio = root.lookupType('meshtastic.FromRadio');
+
+      const myInfo = MyNodeInfo.create({
+        myNodeNum: info.myNodeNum,
+        numBands: info.numBands || 13,
+        firmwareVersion: info.firmwareVersion || '2.0.0',
+        rebootCount: info.rebootCount || 0,
+        bitrate: info.bitrate || 17.24,
+        messageTimeoutMsec: info.messageTimeoutMsec || 300000,
+        minAppVersion: info.minAppVersion || 20200,
+        maxChannels: info.maxChannels || 8,
+      });
+
+      const fromRadio = FromRadio.create({
+        myInfo: myInfo,
+      });
+
+      return FromRadio.encode(fromRadio).finish();
+    } catch (error) {
+      logger.error('❌ Failed to create MyNodeInfo:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Create NodeInfo FromRadio message
+   */
+  async createNodeInfo(info: {
+    nodeNum: number;
+    user: {
+      id: string;
+      longName: string;
+      shortName: string;
+      hwModel?: number;
+    };
+    position?: {
+      latitude: number;
+      longitude: number;
+      altitude: number;
+      time: number;
+    };
+    snr?: number;
+    lastHeard?: number;
+  }): Promise<Uint8Array | null> {
+    const root = getProtobufRoot();
+    if (!root) {
+      logger.error('❌ Protobuf definitions not loaded');
+      return null;
+    }
+
+    try {
+      const NodeInfo = root.lookupType('meshtastic.NodeInfo');
+      const User = root.lookupType('meshtastic.User');
+      const Position = root.lookupType('meshtastic.Position');
+      const FromRadio = root.lookupType('meshtastic.FromRadio');
+
+      const user = User.create({
+        id: info.user.id,
+        longName: info.user.longName,
+        shortName: info.user.shortName,
+        hwModel: info.user.hwModel || 0,
+      });
+
+      let position = undefined;
+      if (info.position) {
+        const coords = this.convertCoordinatesToInt(info.position.latitude, info.position.longitude);
+        position = Position.create({
+          latitudeI: coords.latitudeI,
+          longitudeI: coords.longitudeI,
+          altitude: info.position.altitude,
+          time: info.position.time,
+        });
+      }
+
+      const nodeInfo = NodeInfo.create({
+        num: info.nodeNum,
+        user: user,
+        position: position,
+        snr: info.snr,
+        lastHeard: info.lastHeard,
+      });
+
+      const fromRadio = FromRadio.create({
+        nodeInfo: nodeInfo,
+      });
+
+      return FromRadio.encode(fromRadio).finish();
+    } catch (error) {
+      logger.error('❌ Failed to create NodeInfo:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Create Channel FromRadio message
+   */
+  async createChannel(channelData: {
+    index: number;
+    settings: {
+      name: string;
+      psk?: Buffer;
+      uplinkEnabled: boolean;
+      downlinkEnabled: boolean;
+    };
+    role: number;
+  }): Promise<Uint8Array | null> {
+    const root = getProtobufRoot();
+    if (!root) {
+      logger.error('❌ Protobuf definitions not loaded');
+      return null;
+    }
+
+    try {
+      const Channel = root.lookupType('meshtastic.Channel');
+      const ChannelSettings = root.lookupType('meshtastic.ChannelSettings');
+      const FromRadio = root.lookupType('meshtastic.FromRadio');
+
+      const settings = ChannelSettings.create({
+        name: channelData.settings.name,
+        psk: channelData.settings.psk || Buffer.alloc(0),
+        uplinkEnabled: channelData.settings.uplinkEnabled,
+        downlinkEnabled: channelData.settings.downlinkEnabled,
+      });
+
+      const channel = Channel.create({
+        index: channelData.index,
+        settings: settings,
+        role: channelData.role,
+      });
+
+      const fromRadio = FromRadio.create({
+        channel: channel,
+      });
+
+      return FromRadio.encode(fromRadio).finish();
+    } catch (error) {
+      logger.error('❌ Failed to create Channel:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Create ConfigComplete FromRadio message
+   */
+  async createConfigComplete(configId: number): Promise<Uint8Array | null> {
+    const root = getProtobufRoot();
+    if (!root) {
+      logger.error('❌ Protobuf definitions not loaded');
+      return null;
+    }
+
+    try {
+      const FromRadio = root.lookupType('meshtastic.FromRadio');
+
+      const fromRadio = FromRadio.create({
+        configCompleteId: configId,
+      });
+
+      return FromRadio.encode(fromRadio).finish();
+    } catch (error) {
+      logger.error('❌ Failed to create ConfigComplete:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Create FromRadio message wrapping a MeshPacket
+   * Used for processing outgoing messages locally so they appear in the web UI
+   */
+  async createFromRadioWithPacket(meshPacket: MeshPacket): Promise<Uint8Array | null> {
+    const root = getProtobufRoot();
+    if (!root) {
+      logger.error('❌ Protobuf definitions not loaded');
+      return null;
+    }
+
+    try {
+      const FromRadio = root.lookupType('meshtastic.FromRadio');
+
+      const fromRadio = FromRadio.create({
+        packet: meshPacket,
+      });
+
+      return FromRadio.encode(fromRadio).finish();
+    } catch (error) {
+      logger.error('❌ Failed to create FromRadio with packet:', error);
+      return null;
+    }
+  }
 }
 
 // Export singleton instance

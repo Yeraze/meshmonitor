@@ -162,6 +162,12 @@ export interface EnvironmentConfig {
   timezone: string;
   timezoneProvided: boolean;
 
+  // Virtual Node
+  enableVirtualNode: boolean;
+  enableVirtualNodeProvided: boolean;
+  virtualNodePort: number;
+  virtualNodePortProvided: boolean;
+
   // OIDC
   oidcIssuer: string | undefined;
   oidcIssuerProvided: boolean;
@@ -356,6 +362,10 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     wasProvided: process.env.TZ !== undefined
   };
 
+  // Virtual Node
+  const enableVirtualNode = parseBoolean('ENABLE_VIRTUAL_NODE', process.env.ENABLE_VIRTUAL_NODE, false);
+  const virtualNodePort = parseInt32('VIRTUAL_NODE_PORT', process.env.VIRTUAL_NODE_PORT, 4404);
+
   // OIDC
   const oidcIssuer = {
     value: process.env.OIDC_ISSUER,
@@ -494,6 +504,12 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     meshtasticTcpPortProvided: meshtasticTcpPort.wasProvided,
     timezone: timezone.value,
     timezoneProvided: timezone.wasProvided,
+
+    // Virtual Node
+    enableVirtualNode: enableVirtualNode.value,
+    enableVirtualNodeProvided: enableVirtualNode.wasProvided,
+    virtualNodePort: virtualNodePort.value,
+    virtualNodePortProvided: virtualNodePort.wasProvided,
 
     // OIDC
     oidcIssuer: oidcIssuer.value,
