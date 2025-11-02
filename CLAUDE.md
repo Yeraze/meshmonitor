@@ -1,6 +1,7 @@
 - Always use context7 when I need code generation, setup or configuration steps, or
 library/API documentation. This means you should automatically use the Context7 MCP
 tools to resolve library id and get library docs without me having to explicitly ask.
+- IMPORTANT: Review docs/ARCHITECTURE_LESSONS.md before implementing node communication, state management, backup/restore, or asynchronous operations. These patterns prevent common mistakes.
 - Only the backend talks to the Node. the Frontend never talks directly to the node.
 - When sending messages for testing, use the "gauntlet" channel. Never send on Primary!
 - Always start the Dev environment via docker, and make sure to 'build' first
