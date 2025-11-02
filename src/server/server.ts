@@ -896,7 +896,7 @@ apiRouter.get('/messages/unread-counts', optionalAuth(), (req, res) => {
 });
 
 // Get Virtual Node server status (requires authentication)
-apiRouter.get('/virtual-node/status', requireAuth(), (req, res) => {
+apiRouter.get('/virtual-node/status', requireAuth(), (_req, res) => {
   try {
     const virtualNodeServer = (global as any).virtualNodeServer;
 
