@@ -364,6 +364,60 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     }
   };
 
+  // Helper function to sort nodes
+  const sortNodes = useCallback((nodes: DeviceInfo[]): DeviceInfo[] => {
+    return [...nodes].sort((a, b) => {
+      let aVal: any, bVal: any;
+
+      switch (sortField) {
+        case 'longName':
+          aVal = a.user?.longName || `Node ${a.nodeNum}`;
+          bVal = b.user?.longName || `Node ${b.nodeNum}`;
+          break;
+        case 'shortName':
+          aVal = a.user?.shortName || '';
+          bVal = b.user?.shortName || '';
+          break;
+        case 'id':
+          aVal = a.user?.id || a.nodeNum;
+          bVal = b.user?.id || b.nodeNum;
+          break;
+        case 'lastHeard':
+          aVal = a.lastHeard || 0;
+          bVal = b.lastHeard || 0;
+          break;
+        case 'snr':
+          aVal = a.snr ?? -999;
+          bVal = b.snr ?? -999;
+          break;
+        case 'battery':
+          aVal = a.deviceMetrics?.batteryLevel ?? -1;
+          bVal = b.deviceMetrics?.batteryLevel ?? -1;
+          break;
+        case 'hwModel':
+          aVal = a.user?.hwModel ?? 0;
+          bVal = b.user?.hwModel ?? 0;
+          break;
+        case 'hops':
+          aVal = a.hopsAway ?? 999;
+          bVal = b.hopsAway ?? 999;
+          break;
+        default:
+          return 0;
+      }
+
+      // Compare values
+      let comparison = 0;
+      if (typeof aVal === 'string' && typeof bVal === 'string') {
+        comparison = aVal.localeCompare(bVal);
+      } else {
+        comparison = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+      }
+
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+  }, [sortField, sortDirection]);
+
   // Calculate nodes with position
   const nodesWithPosition = processedNodes.filter(node =>
     node.position &&
@@ -477,9 +531,16 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               return true; // 'all'
             });
 
-            return filteredNodes.length > 0 ? (
+            // Sort nodes: favorites first, then non-favorites, each group sorted independently
+            const favorites = filteredNodes.filter(node => node.isFavorite);
+            const nonFavorites = filteredNodes.filter(node => !node.isFavorite);
+            const sortedFavorites = sortNodes(favorites);
+            const sortedNonFavorites = sortNodes(nonFavorites);
+            const sortedNodes = [...sortedFavorites, ...sortedNonFavorites];
+
+            return sortedNodes.length > 0 ? (
               <>
-              {filteredNodes.map(node => (
+              {sortedNodes.map(node => (
                 <div
                   key={node.nodeNum}
                   className={`node-item ${selectedNodeId === node.user?.id ? 'selected' : ''}`}
