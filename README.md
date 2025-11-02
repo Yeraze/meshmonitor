@@ -382,6 +382,8 @@ For complete Kubernetes documentation, configuration options, and examples, see 
 | `COOKIE_SAMESITE` | `strict` (production)<br>`lax` (development) | SameSite cookie policy (`strict`, `lax`, or `none`) |
 | `TRUST_PROXY` | `1` (production)<br>unset (development) | Trust reverse proxy headers (`true`, `false`, number of hops, or IP/CIDR). Required for HTTPS reverse proxy setups |
 | `PUSH_NOTIFICATION_TTL` | `3600` | Push notification Time To Live in seconds (300-86400). Prevents notification flooding when devices come back online |
+| `ENABLE_VIRTUAL_NODE` | `false` | Enable virtual node server for multiple mobile app connections. Acts as TCP proxy to physical node |
+| `VIRTUAL_NODE_PORT` | `4404` | TCP port for virtual node server. Mobile apps connect to this port instead of directly to physical node |
 
 ### Meshtastic Node Requirements
 
@@ -667,7 +669,49 @@ MeshMonitor → TCP:4403 → HomeAssistant MQTT Bridge → Meshtastic
 ```
 Connect through HomeAssistant's Meshtastic integration for unified smart home monitoring.
 
-**6. Other TCP Implementations**
+**6. Virtual Node Server (Multi-client Proxy)**
+```
+Mobile App 1 → TCP:4404 ┐
+Mobile App 2 → TCP:4404 ├→ MeshMonitor → TCP:4403 → Physical Node
+Mobile App 3 → TCP:4404 ┘
+```
+MeshMonitor includes an optional virtual node server that acts as a TCP proxy, allowing multiple Meshtastic mobile apps to connect simultaneously without overwhelming the physical node.
+
+**Features:**
+- Multiple clients connect to MeshMonitor instead of directly to the physical node
+- Message queuing and serialization prevents flooding the physical node
+- Bidirectional message proxy (text messages, positions, telemetry, traceroutes)
+- Security filtering blocks admin commands and config changes
+- Serves cached node/channel/config data to connecting clients
+- Reduces load on physical node by handling multiple client connections
+
+**Enable Virtual Node Server:**
+```yaml
+environment:
+  - ENABLE_VIRTUAL_NODE=true
+  - VIRTUAL_NODE_PORT=4404  # Default port for mobile apps to connect to
+```
+
+**Mobile App Configuration:**
+Point your Meshtastic mobile app's TCP connection to:
+- **Host**: Your MeshMonitor server IP
+- **Port**: 4404 (or your custom VIRTUAL_NODE_PORT)
+
+**Security Notes:**
+- Admin commands (ADMIN_APP, NODEINFO_APP) are automatically blocked
+- Configuration changes are prevented for security
+- All clients receive broadcasts from the physical node
+- Messages are queued with 100ms serialization to prevent node overload
+
+**Docker Port Mapping:**
+If using Docker, expose the virtual node port:
+```yaml
+ports:
+  - "8080:3001"      # Web interface
+  - "4404:4404"      # Virtual node server
+```
+
+**7. Other TCP Implementations**
 ```
 MeshMonitor → TCP:4403 → Custom Proxy → Meshtastic Network
 ```

@@ -81,6 +81,11 @@ class MeshtasticManager {
   private favoritesSupportCache: boolean | null = null;  // Cache firmware support check result
   private cachedAutoAckRegex: { pattern: string; regex: RegExp } | null = null;  // Cached compiled regex
 
+  // Virtual Node Server - Message capture for initialization sequence
+  private initConfigCache: Uint8Array[] = [];  // Store raw FromRadio messages during init
+  private isCapturingInitConfig = false;  // Flag to track when we're capturing messages
+  private configCaptureComplete = false;  // Flag to track when capture is done
+
   constructor() {
     const env = getEnvironmentConfig();
     this.config = {
@@ -134,6 +139,13 @@ class MeshtasticManager {
     this.isConnected = true;
 
     try {
+      // Enable message capture for virtual node server
+      // Clear any previous cache and start capturing
+      this.initConfigCache = [];
+      this.configCaptureComplete = false;
+      this.isCapturingInitConfig = true;
+      logger.info('📸 Starting init config capture for virtual node server');
+
       // Send want_config_id to request full node DB and config
       await this.sendWantConfigId();
 
@@ -461,6 +473,14 @@ class MeshtasticManager {
 
       logger.debug(`📦 Processing single FromRadio message (${data.length} bytes)...`);
 
+      // Capture raw message bytes if we're in capture mode
+      if (this.isCapturingInitConfig && !this.configCaptureComplete) {
+        // Store a copy of the raw message bytes
+        const messageCopy = new Uint8Array(data);
+        this.initConfigCache.push(messageCopy);
+        logger.debug(`📸 Captured init message #${this.initConfigCache.length} (${data.length} bytes)`);
+      }
+
       // Parse single message (using ?all=false approach)
       const parsed = meshtasticProtobufService.parseIncomingData(data);
 
@@ -513,6 +533,13 @@ class MeshtasticManager {
           break;
         case 'configComplete':
           logger.debug('✅ Config complete received, ID:', parsed.data.configCompleteId);
+
+          // Stop capturing init messages
+          if (this.isCapturingInitConfig && !this.configCaptureComplete) {
+            this.configCaptureComplete = true;
+            this.isCapturingInitConfig = false;
+            logger.info(`📸 Init config capture complete! Captured ${this.initConfigCache.length} messages for virtual node replay`);
+          }
           break;
       }
 
@@ -3499,6 +3526,43 @@ class MeshtasticManager {
       logger.error('Error sending traceroute:', error);
       throw error;
     }
+  }
+
+  /**
+   * Send raw ToRadio message to the physical node
+   * Used by virtual node server to forward messages from mobile clients
+   */
+  async sendRawMessage(data: Uint8Array): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    try {
+      await this.transport.send(data);
+      logger.debug(`📤 Raw message forwarded to physical node (${data.length} bytes)`);
+    } catch (error) {
+      logger.error('Error sending raw message:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get cached initialization config messages for virtual node server
+   * Returns the raw FromRadio messages captured during our connection to the physical node
+   * These can be replayed to virtual node clients for faster initialization
+   */
+  getCachedInitConfig(): Uint8Array[] {
+    if (!this.configCaptureComplete) {
+      logger.warn('⚠️ Init config capture not yet complete, returning partial cache');
+    }
+    return [...this.initConfigCache]; // Return a copy
+  }
+
+  /**
+   * Check if init config capture is complete
+   */
+  isInitConfigCaptureComplete(): boolean {
+    return this.configCaptureComplete;
   }
 
   /**

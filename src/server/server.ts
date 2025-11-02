@@ -7,6 +7,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import databaseService from '../services/database.js';
 import meshtasticManager from './meshtasticManager.js';
+import { VirtualNodeServer } from './virtualNodeServer.js';
 import { createRequire } from 'module';
 import { logger } from '../utils/logger.js';
 import { getSessionConfig } from './auth/sessionConfig.js';
@@ -241,6 +242,27 @@ setTimeout(async () => {
     // Initialize duplicate key scanner
     duplicateKeySchedulerService.start();
     logger.debug('Duplicate key scanner initialized');
+
+    // Initialize virtual node server if enabled
+    if (env.enableVirtualNode) {
+      try {
+        const virtualNodeServer = new VirtualNodeServer({
+          port: env.virtualNodePort,
+          meshtasticManager: meshtasticManager,
+        });
+
+        await virtualNodeServer.start();
+        logger.info(`🌐 Virtual node server started on port ${env.virtualNodePort}`);
+
+        // Store reference for cleanup
+        (global as any).virtualNodeServer = virtualNodeServer;
+      } catch (error) {
+        logger.error('❌ Failed to start virtual node server:', error);
+        logger.warn('⚠️  Continuing without virtual node server');
+      }
+    } else {
+      logger.debug('Virtual node server disabled (ENABLE_VIRTUAL_NODE=false)');
+    }
   } catch (error) {
     logger.error('Failed to connect to Meshtastic node on startup:', error);
   }
@@ -3588,6 +3610,17 @@ function gracefulShutdown(reason: string): void {
       logger.debug('✅ Meshtastic connection closed');
     } catch (error) {
       logger.error('Error disconnecting from Meshtastic:', error);
+    }
+
+    // Stop virtual node server
+    const virtualNodeServer = (global as any).virtualNodeServer;
+    if (virtualNodeServer) {
+      try {
+        virtualNodeServer.stop();
+        logger.debug('✅ Virtual node server stopped');
+      } catch (error) {
+        logger.error('Error stopping virtual node server:', error);
+      }
     }
 
     // Close database connections
