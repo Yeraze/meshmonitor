@@ -19,6 +19,7 @@ export interface MeshtasticConfig {
 
 export interface ProcessingContext {
   skipVirtualNodeBroadcast?: boolean;
+  virtualNodeRequestId?: number; // Packet ID from Virtual Node client for ACK matching
 }
 
 export interface DeviceInfo {
@@ -523,7 +524,7 @@ class MeshtasticManager {
           logger.debug('⚠️ Generic FromRadio message (no specific field set)');
           break;
         case 'meshPacket':
-          await this.processMeshPacket(parsed.data);
+          await this.processMeshPacket(parsed.data, context);
           break;
         case 'myInfo':
           await this.processMyNodeInfo(parsed.data);
@@ -876,7 +877,7 @@ class MeshtasticManager {
   /**
    * Process MeshPacket protobuf message
    */
-  private async processMeshPacket(meshPacket: any): Promise<void> {
+  private async processMeshPacket(meshPacket: any, context?: ProcessingContext): Promise<void> {
     logger.debug(`🔄 Processing MeshPacket: ID=${meshPacket.id}, from=${meshPacket.from}, to=${meshPacket.to}`);
 
     // Log packet to packet log (if enabled)
@@ -1042,7 +1043,7 @@ class MeshtasticManager {
 
         switch (portnum) {
           case 1: // TEXT_MESSAGE_APP
-            await this.processTextMessageProtobuf(meshPacket, processedPayload as string);
+            await this.processTextMessageProtobuf(meshPacket, processedPayload as string, context);
             break;
           case 3: // POSITION_APP
             await this.processPositionMessageProtobuf(meshPacket, processedPayload as any);
@@ -1075,7 +1076,7 @@ class MeshtasticManager {
   /**
    * Process text message using protobuf types
    */
-  private async processTextMessageProtobuf(meshPacket: any, messageText: string): Promise<void> {
+  private async processTextMessageProtobuf(meshPacket: any, messageText: string, context?: ProcessingContext): Promise<void> {
     try {
       logger.debug(`💬 Text message: "${messageText}"`);
 
@@ -1169,6 +1170,9 @@ class MeshtasticManager {
           hopLimit: hopLimit,
           replyId: replyId && replyId > 0 ? replyId : undefined,
           emoji: emoji,
+          requestId: context?.virtualNodeRequestId, // For Virtual Node messages, preserve packet ID for ACK matching
+          wantAck: context?.virtualNodeRequestId ? 1 : undefined, // Expect ACK for Virtual Node messages
+          deliveryState: context?.virtualNodeRequestId ? 'pending' : undefined, // Track delivery for Virtual Node messages
           createdAt: Date.now()
         };
         databaseService.insertMessage(message);

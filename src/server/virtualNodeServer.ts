@@ -3,6 +3,7 @@ import { EventEmitter } from 'events';
 import { logger } from '../utils/logger.js';
 import meshtasticProtobufService from './meshtasticProtobufService.js';
 import { MeshtasticManager } from './meshtasticManager.js';
+import databaseService from '../services/database.js';
 
 export interface VirtualNodeConfig {
   port: number;
@@ -154,6 +155,19 @@ export class VirtualNodeServer extends EventEmitter {
     this.clients.set(clientId, client);
     logger.info(`📱 Virtual node client connected: ${clientId} (${this.clients.size} total)`);
 
+    // Audit log the connection
+    try {
+      databaseService.auditLog(
+        null, // system event
+        'virtual_node_connect',
+        'virtual_node',
+        JSON.stringify({ clientId, ip: socket.remoteAddress || 'unknown' }),
+        socket.remoteAddress || null
+      );
+    } catch (error) {
+      logger.error('Failed to audit log virtual node connection:', error);
+    }
+
     socket.on('data', (data: Buffer) => this.handleClientData(clientId, data));
     socket.on('close', () => this.handleClientDisconnect(clientId));
     socket.on('error', (error) => {
@@ -175,6 +189,20 @@ export class VirtualNodeServer extends EventEmitter {
     if (client) {
       this.clients.delete(clientId);
       logger.info(`📱 Virtual node client disconnected: ${clientId} (${this.clients.size} remaining)`);
+
+      // Audit log the disconnection
+      try {
+        databaseService.auditLog(
+          null, // system event
+          'virtual_node_disconnect',
+          'virtual_node',
+          JSON.stringify({ clientId, ip: client.socket.remoteAddress || 'unknown' }),
+          client.socket.remoteAddress || null
+        );
+      } catch (error) {
+        logger.error('Failed to audit log virtual node disconnection:', error);
+      }
+
       this.emit('client-disconnected', clientId);
     }
   }
@@ -329,9 +357,13 @@ export class VirtualNodeServer extends EventEmitter {
           if (fromRadioMessage) {
             logger.info(`Virtual node: Processing outgoing message locally from ${clientId} (portnum: ${portnum})`);
             // Process locally through MeshtasticManager to store in database
-            // Pass context to prevent broadcast loop (no need to broadcast back to virtual node clients)
-            await this.config.meshtasticManager.processIncomingData(fromRadioMessage, { skipVirtualNodeBroadcast: true });
-            logger.debug(`Virtual node: Stored outgoing message in database`);
+            // Pass context to prevent broadcast loop and preserve the packet ID as requestId for ACK matching
+            // The packet.id is the client-generated message ID that will be returned in ACK packets
+            await this.config.meshtasticManager.processIncomingData(fromRadioMessage, {
+              skipVirtualNodeBroadcast: true,
+              virtualNodeRequestId: toRadio.packet.id // Preserve for ACK matching
+            });
+            logger.debug(`Virtual node: Stored outgoing message in database with requestId: ${toRadio.packet.id}`);
           }
         } catch (error) {
           logger.error(`Virtual node: Failed to process outgoing message locally:`, error);
@@ -590,5 +622,40 @@ export class VirtualNodeServer extends EventEmitter {
    */
   public getQueueSize(): number {
     return this.messageQueue.length;
+  }
+
+  /**
+   * Get detailed client information
+   */
+  public getClientDetails(): Array<{
+    id: string;
+    ip: string;
+    connectedAt: Date;
+    lastActivity: Date;
+  }> {
+    const details: Array<{
+      id: string;
+      ip: string;
+      connectedAt: Date;
+      lastActivity: Date;
+    }> = [];
+
+    for (const [clientId, client] of this.clients.entries()) {
+      details.push({
+        id: clientId,
+        ip: client.socket.remoteAddress || 'unknown',
+        connectedAt: client.connectedAt,
+        lastActivity: client.lastActivity,
+      });
+    }
+
+    return details;
+  }
+
+  /**
+   * Check if server is running
+   */
+  public isRunning(): boolean {
+    return this.server !== null;
   }
 }

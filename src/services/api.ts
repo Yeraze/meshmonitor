@@ -917,6 +917,19 @@ class ApiService {
 
     return response.json();
   }
+
+  async getVirtualNodeStatus() {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/virtual-node/status`, {
+      credentials: 'include'
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch virtual node status');
+    }
+
+    return response.json();
+  }
 }
 
 export default new ApiService();
