@@ -273,18 +273,39 @@ export class VirtualNodeServer extends EventEmitter {
       if (toRadio.packet) {
         // Check if this is a blocked portnum (admin commands)
         const portnum = toRadio.packet.decoded?.portnum;
+        const isSelfAddressed = toRadio.packet.from === toRadio.packet.to;
+
         if (portnum && this.BLOCKED_PORTNUMS.includes(portnum)) {
-          logger.warn(`Virtual node: Blocked admin command from ${clientId} (portnum ${portnum})`);
-          // Silently drop the message
-          return;
+          // Allow self-addressed admin commands (device querying itself)
+          if (isSelfAddressed) {
+            logger.debug(`Virtual node: Allowing self-addressed admin command from ${clientId} (portnum ${portnum})`);
+            // Allow this message to be queued and forwarded
+          } else {
+            // Block admin commands to other devices
+            logger.warn(`Virtual node: Blocked admin command from ${clientId} (portnum ${portnum})`);
+            logger.warn(`Virtual node: Blocked packet details:`, JSON.stringify({
+              from: toRadio.packet.from,
+              to: toRadio.packet.to,
+              wantAck: toRadio.packet.wantAck,
+              portnum: portnum,
+              decoded: toRadio.packet.decoded,
+            }, null, 2));
+            // Silently drop the message
+            return;
+          }
         }
 
         // Queue the message to be sent to the physical node
+        logger.info(`Virtual node: Queueing message from ${clientId} (portnum: ${portnum})`);
         this.queueMessage(clientId, payload);
       } else if (toRadio.wantConfigId) {
         // Client is requesting config with a specific ID
         logger.info(`Virtual node: Client ${clientId} requesting config with ID ${toRadio.wantConfigId}`);
         await this.sendInitialConfig(clientId, toRadio.wantConfigId);
+      } else {
+        // Forward other message types (heartbeats, etc.) to physical node
+        logger.info(`Virtual node: Forwarding other message type from ${clientId} to physical node`);
+        this.queueMessage(clientId, payload);
       }
     } catch (error) {
       logger.error(`Virtual node: Error handling message from ${clientId}:`, error);
@@ -306,7 +327,7 @@ export class VirtualNodeServer extends EventEmitter {
       timestamp: new Date(),
     });
 
-    logger.debug(`Virtual node: Queued message from ${clientId} (queue size: ${this.messageQueue.length})`);
+    logger.info(`Virtual node: Queued message from ${clientId} (queue size: ${this.messageQueue.length})`);
 
     // Start processing queue if not already
     if (!this.isProcessingQueue) {
@@ -333,13 +354,13 @@ export class VirtualNodeServer extends EventEmitter {
       try {
         // Forward to physical node via MeshtasticManager
         await this.config.meshtasticManager.sendRawMessage(message.data);
-        logger.debug(`Virtual node: Forwarded message from ${message.clientId} to physical node`);
+        logger.info(`Virtual node: Forwarded message from ${message.clientId} to physical node`);
       } catch (error) {
         logger.error(`Virtual node: Failed to forward message from ${message.clientId}:`, error);
       }
 
       // Small delay between messages to avoid overwhelming the physical node
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 10));
     }
 
     this.isProcessingQueue = false;
@@ -447,19 +468,32 @@ export class VirtualNodeServer extends EventEmitter {
     const promises: Promise<void>[] = [];
 
     for (const [clientId, client] of this.clients.entries()) {
+      // Skip clients with destroyed sockets
+      if (client.socket.destroyed || !client.socket.writable) {
+        logger.debug(`Virtual node: Skipping broadcast to ${clientId} (socket not writable)`);
+        continue;
+      }
+
       const promise = new Promise<void>((resolve) => {
-        client.socket.write(frame, (error) => {
-          if (error) {
-            logger.error(`Virtual node: Failed to broadcast to ${clientId}:`, error.message);
-          }
+        try {
+          client.socket.write(frame, (error) => {
+            if (error) {
+              logger.error(`Virtual node: Failed to broadcast to ${clientId}:`, error.message);
+            }
+            resolve();
+          });
+        } catch (error) {
+          logger.error(`Virtual node: Exception broadcasting to ${clientId}:`, error);
           resolve();
-        });
+        }
       });
       promises.push(promise);
     }
 
     await Promise.all(promises);
-    logger.debug(`Virtual node: Broadcasted message to ${this.clients.size} clients`);
+    if (this.clients.size > 0) {
+      logger.debug(`Virtual node: Broadcasted message to ${promises.length}/${this.clients.size} clients`);
+    }
   }
 
   /**

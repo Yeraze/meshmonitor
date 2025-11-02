@@ -481,6 +481,17 @@ class MeshtasticManager {
         logger.debug(`📸 Captured init message #${this.initConfigCache.length} (${data.length} bytes)`);
       }
 
+      // Broadcast to virtual node clients if virtual node server is enabled
+      const virtualNodeServer = (global as any).virtualNodeServer;
+      if (virtualNodeServer) {
+        try {
+          await virtualNodeServer.broadcastToClients(data);
+          logger.info(`📡 Broadcasted message to virtual node clients (${data.length} bytes)`);
+        } catch (error) {
+          logger.error('Virtual node: Failed to broadcast message to clients:', error);
+        }
+      }
+
       // Parse single message (using ?all=false approach)
       const parsed = meshtasticProtobufService.parseIncomingData(data);
 
