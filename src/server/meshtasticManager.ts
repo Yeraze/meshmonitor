@@ -85,6 +85,7 @@ class MeshtasticManager {
   private initConfigCache: Uint8Array[] = [];  // Store raw FromRadio messages during init
   private isCapturingInitConfig = false;  // Flag to track when we're capturing messages
   private configCaptureComplete = false;  // Flag to track when capture is done
+  private onConfigCaptureComplete: (() => void) | null = null;  // Callback for when config capture completes
 
   constructor() {
     const env = getEnvironmentConfig();
@@ -284,6 +285,14 @@ class MeshtasticManager {
     logger.debug('Disconnected from Meshtastic node');
   }
 
+  /**
+   * Register a callback to be called when config capture is complete
+   * This is used to initialize the virtual node server after connection is ready
+   */
+  public registerConfigCaptureCompleteCallback(callback: () => void): void {
+    this.onConfigCaptureComplete = callback;
+  }
+
   private startTracerouteScheduler(): void {
     if (this.tracerouteInterval) {
       clearInterval(this.tracerouteInterval);
@@ -465,7 +474,7 @@ class MeshtasticManager {
     }
   }
 
-  private async processIncomingData(data: Uint8Array): Promise<void> {
+  public async processIncomingData(data: Uint8Array): Promise<void> {
     try {
       if (data.length === 0) {
         return;
@@ -550,6 +559,15 @@ class MeshtasticManager {
             this.configCaptureComplete = true;
             this.isCapturingInitConfig = false;
             logger.info(`📸 Init config capture complete! Captured ${this.initConfigCache.length} messages for virtual node replay`);
+
+            // Call registered callback if present
+            if (this.onConfigCaptureComplete) {
+              try {
+                this.onConfigCaptureComplete();
+              } catch (error) {
+                logger.error('❌ Error in config capture complete callback:', error);
+              }
+            }
           }
           break;
       }

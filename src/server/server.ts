@@ -210,6 +210,39 @@ initializeOIDC().then(enabled => {
   logger.error('Failed to initialize OIDC:', error);
 });
 
+// Function to initialize virtual node server after config capture is complete
+async function initializeVirtualNodeServer(): Promise<void> {
+  // Only initialize once
+  if ((global as any).virtualNodeServer) {
+    logger.debug('Virtual node server already initialized, skipping');
+    return;
+  }
+
+  if (env.enableVirtualNode) {
+    try {
+      const virtualNodeServer = new VirtualNodeServer({
+        port: env.virtualNodePort,
+        meshtasticManager: meshtasticManager,
+      });
+
+      await virtualNodeServer.start();
+      logger.info(`🌐 Virtual node server started on port ${env.virtualNodePort}`);
+
+      // Store reference for cleanup
+      (global as any).virtualNodeServer = virtualNodeServer;
+    } catch (error) {
+      logger.error('❌ Failed to start virtual node server:', error);
+      logger.warn('⚠️  Continuing without virtual node server');
+    }
+  } else {
+    logger.debug('Virtual node server disabled (ENABLE_VIRTUAL_NODE=false)');
+  }
+}
+
+// Register callback to initialize virtual node server when config capture completes
+// This ensures it starts after both initial connection and reconnections
+meshtasticManager.registerConfigCaptureCompleteCallback(initializeVirtualNodeServer);
+
 // Initialize Meshtastic connection
 setTimeout(async () => {
   try {
@@ -243,28 +276,12 @@ setTimeout(async () => {
     duplicateKeySchedulerService.start();
     logger.debug('Duplicate key scanner initialized');
 
-    // Initialize virtual node server if enabled
-    if (env.enableVirtualNode) {
-      try {
-        const virtualNodeServer = new VirtualNodeServer({
-          port: env.virtualNodePort,
-          meshtasticManager: meshtasticManager,
-        });
-
-        await virtualNodeServer.start();
-        logger.info(`🌐 Virtual node server started on port ${env.virtualNodePort}`);
-
-        // Store reference for cleanup
-        (global as any).virtualNodeServer = virtualNodeServer;
-      } catch (error) {
-        logger.error('❌ Failed to start virtual node server:', error);
-        logger.warn('⚠️  Continuing without virtual node server');
-      }
-    } else {
-      logger.debug('Virtual node server disabled (ENABLE_VIRTUAL_NODE=false)');
-    }
+    // Note: Virtual node server initialization has been moved to a callback
+    // that triggers when config capture completes (see registerConfigCaptureCompleteCallback above)
   } catch (error) {
     logger.error('Failed to connect to Meshtastic node on startup:', error);
+    // Virtual node server will still initialize on successful reconnection
+    // via the registered callback
   }
 }, 1000);
 
