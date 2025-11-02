@@ -295,6 +295,29 @@ export class VirtualNodeServer extends EventEmitter {
           }
         }
 
+        // Process the packet locally so it appears in the web UI
+        // Create a FromRadio message wrapping this MeshPacket
+        try {
+          const fromRadioMessage = await meshtasticProtobufService.createFromRadioWithPacket(toRadio.packet);
+          if (fromRadioMessage) {
+            logger.info(`Virtual node: Processing outgoing message locally from ${clientId} (portnum: ${portnum})`);
+            // Process locally through MeshtasticManager to store in database
+            // Temporarily clear the global virtualNodeServer reference to prevent broadcast loop
+            const savedVirtualNodeServer = (global as any).virtualNodeServer;
+            (global as any).virtualNodeServer = null;
+            try {
+              await this.config.meshtasticManager.processIncomingData(fromRadioMessage);
+              logger.debug(`Virtual node: Stored outgoing message in database`);
+            } finally {
+              // Restore the virtualNodeServer reference
+              (global as any).virtualNodeServer = savedVirtualNodeServer;
+            }
+          }
+        } catch (error) {
+          logger.error(`Virtual node: Failed to process outgoing message locally:`, error);
+          // Continue anyway - we still want to forward to physical node
+        }
+
         // Queue the message to be sent to the physical node
         logger.info(`Virtual node: Queueing message from ${clientId} (portnum: ${portnum})`);
         this.queueMessage(clientId, payload);

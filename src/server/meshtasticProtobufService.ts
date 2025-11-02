@@ -744,6 +744,31 @@ export class MeshtasticProtobufService {
       return null;
     }
   }
+
+  /**
+   * Create FromRadio message wrapping a MeshPacket
+   * Used for processing outgoing messages locally so they appear in the web UI
+   */
+  async createFromRadioWithPacket(meshPacket: MeshPacket): Promise<Uint8Array | null> {
+    const root = getProtobufRoot();
+    if (!root) {
+      logger.error('❌ Protobuf definitions not loaded');
+      return null;
+    }
+
+    try {
+      const FromRadio = root.lookupType('meshtastic.FromRadio');
+
+      const fromRadio = FromRadio.create({
+        packet: meshPacket,
+      });
+
+      return FromRadio.encode(fromRadio).finish();
+    } catch (error) {
+      logger.error('❌ Failed to create FromRadio with packet:', error);
+      return null;
+    }
+  }
 }
 
 // Export singleton instance
