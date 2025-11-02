@@ -895,6 +895,36 @@ apiRouter.get('/messages/unread-counts', optionalAuth(), (req, res) => {
   }
 });
 
+// Get Virtual Node server status (requires authentication)
+apiRouter.get('/virtual-node/status', requireAuth(), (_req, res) => {
+  try {
+    const virtualNodeServer = (global as any).virtualNodeServer;
+
+    if (!virtualNodeServer) {
+      return res.json({
+        enabled: false,
+        isRunning: false,
+        clientCount: 0,
+        clients: []
+      });
+    }
+
+    const isRunning = virtualNodeServer.isRunning();
+    const clientCount = virtualNodeServer.getClientCount();
+    const clients = virtualNodeServer.getClientDetails();
+
+    res.json({
+      enabled: true,
+      isRunning,
+      clientCount,
+      clients
+    });
+  } catch (error) {
+    logger.error('Error getting virtual node status:', error);
+    res.status(500).json({ error: 'Failed to get virtual node status' });
+  }
+});
+
 // Debug endpoint to see all channels
 apiRouter.get('/channels/debug', requirePermission('messages', 'read'), (_req, res) => {
   try {

@@ -66,6 +66,22 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
   const [recordHolderSegment, setRecordHolderSegment] = useState<RouteSegment | null>(null);
   const [loadingSegments, setLoadingSegments] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [virtualNodeStatus, setVirtualNodeStatus] = useState<any>(null);
+  const [loadingVirtualNode, setLoadingVirtualNode] = useState(false);
+
+  const fetchVirtualNodeStatus = async () => {
+    if (connectionStatus !== 'connected') return;
+
+    setLoadingVirtualNode(true);
+    try {
+      const status = await apiService.getVirtualNodeStatus();
+      setVirtualNodeStatus(status);
+    } catch (error) {
+      logger.error('Error fetching virtual node status:', error);
+    } finally {
+      setLoadingVirtualNode(false);
+    }
+  };
 
   const fetchRouteSegments = async () => {
     if (connectionStatus !== 'connected') return;
@@ -108,6 +124,12 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
   useEffect(() => {
     fetchRouteSegments();
     const interval = setInterval(fetchRouteSegments, 60000); // Refresh every minute
+    return () => clearInterval(interval);
+  }, [connectionStatus]);
+
+  useEffect(() => {
+    fetchVirtualNodeStatus();
+    const interval = setInterval(fetchVirtualNodeStatus, 60000); // Refresh every minute
     return () => clearInterval(interval);
   }, [connectionStatus]);
 
@@ -203,24 +225,47 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
 
         <div className="info-section">
           <h3>Virtual Node Server</h3>
-          <p style={{ marginBottom: '0.5rem' }}>
-            The Virtual Node Server feature allows multiple Meshtastic mobile apps to connect to this MeshMonitor instance instead of directly to your physical node.
-          </p>
-          <p style={{ fontSize: '0.9em', color: '#888', marginBottom: '0.5rem' }}>
-            <strong>Benefits:</strong>
-          </p>
-          <ul style={{ fontSize: '0.9em', color: '#888', marginLeft: '1.5rem', marginBottom: '0.5rem' }}>
-            <li>Reduces load on your physical Meshtastic node</li>
-            <li>Allows multiple devices to connect simultaneously</li>
-            <li>Messages sent from mobile apps appear in MeshMonitor's web UI</li>
-            <li>Automatic config capture and replay for new connections</li>
-          </ul>
-          <p style={{ fontSize: '0.9em', color: '#888', marginTop: '0.5rem' }}>
-            <strong>Configuration:</strong> Set <code style={{ backgroundColor: 'var(--ctp-surface0)', padding: '2px 6px', borderRadius: '3px' }}>ENABLE_VIRTUAL_NODE=true</code> and configure your mobile app to connect to TCP port 4404 (default).
-          </p>
-          <p style={{ fontSize: '0.85em', color: '#999', marginTop: '0.5rem', fontStyle: 'italic' }}>
-            Note: Admin commands are blocked for security. See .env.example for complete documentation.
-          </p>
+          {loadingVirtualNode && <p>Loading...</p>}
+          {!loadingVirtualNode && virtualNodeStatus && (
+            <>
+              <p><strong>Status:</strong> {virtualNodeStatus.enabled ? 'Enabled' : 'Disabled'}</p>
+              {virtualNodeStatus.enabled && (
+                <>
+                  <p><strong>Server Running:</strong> {virtualNodeStatus.isRunning ? 'Yes' : 'No'}</p>
+                  <p><strong>Connected Clients:</strong> {virtualNodeStatus.clientCount}</p>
+
+                  {virtualNodeStatus.clients && virtualNodeStatus.clients.length > 0 && (
+                    <div style={{ marginTop: '0.75rem', fontSize: '0.9em' }}>
+                      <strong>Client Details:</strong>
+                      {virtualNodeStatus.clients.map((client: any) => (
+                        <div key={client.id} style={{
+                          marginTop: '0.5rem',
+                          padding: '0.5rem',
+                          backgroundColor: 'var(--ctp-surface0)',
+                          borderRadius: '4px'
+                        }}>
+                          <p style={{ margin: '0.25rem 0' }}><strong>ID:</strong> {client.id}</p>
+                          <p style={{ margin: '0.25rem 0' }}><strong>IP:</strong> {client.ip}</p>
+                          <p style={{ margin: '0.25rem 0' }}><strong>Connected:</strong> {formatDateTime(new Date(client.connectedAt), timeFormat, dateFormat)}</p>
+                          <p style={{ margin: '0.25rem 0' }}><strong>Last Activity:</strong> {formatDateTime(new Date(client.lastActivity), timeFormat, dateFormat)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+
+              <p style={{ fontSize: '0.9em', color: '#888', marginTop: '0.75rem' }}>
+                The Virtual Node Server allows multiple Meshtastic mobile apps to connect simultaneously, reducing load on your physical node.
+              </p>
+              <p style={{ fontSize: '0.85em', color: '#999', marginTop: '0.5rem', fontStyle: 'italic' }}>
+                Note: Admin commands are blocked for security. See .env.example for configuration details.
+              </p>
+            </>
+          )}
+          {!loadingVirtualNode && !virtualNodeStatus && (
+            <p className="no-data">Virtual Node status unavailable</p>
+          )}
         </div>
 
         <div className="info-section">
