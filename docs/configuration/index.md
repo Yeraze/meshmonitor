@@ -10,6 +10,9 @@ Connect MeshMonitor to Serial or USB-connected Meshtastic devices using the Seri
 ### [BLE Bridge for Bluetooth Devices](/configuration/ble-bridge)
 Connect MeshMonitor to Bluetooth Low Energy (BLE) Meshtastic devices using the BLE Bridge. Perfect for portable devices and systems with Bluetooth support.
 
+### [Virtual Node Server](/configuration/virtual-node)
+Connect multiple Meshtastic mobile apps simultaneously through MeshMonitor's Virtual Node proxy. Configuration caching, message queuing, and connection stability for 3-5+ concurrent mobile clients.
+
 ### [Using meshtasticd](/configuration/meshtasticd)
 Learn how to configure MeshMonitor to work with `meshtasticd`, the virtual Meshtastic node daemon, perfect for testing and development without physical hardware.
 
@@ -50,6 +53,15 @@ MeshMonitor can be configured using environment variables. Here are the most imp
 | `NODE_ENV` | Environment mode (`development` or `production`) | `development` |
 | `DATABASE_PATH` | SQLite database file path | `/data/meshmonitor.db` |
 | `BASE_URL` | Base path if serving from subfolder (e.g., `/meshmonitor`) | `/` (root) |
+
+### Virtual Node Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `ENABLE_VIRTUAL_NODE` | Enable Virtual Node Server for multiple mobile app connections | `true` |
+| `VIRTUAL_NODE_PORT` | TCP port for Virtual Node Server (mobile apps connect to this) | `4404` |
+
+See the [Virtual Node Server guide](/configuration/virtual-node) for detailed configuration and usage.
 
 ### Security & Reverse Proxy Variables
 

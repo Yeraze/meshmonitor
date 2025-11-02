@@ -41,8 +41,8 @@ features:
     details: Deploy with Docker Compose or Kubernetes (Helm charts included). Simple configuration for both development and production environments.
 
   - icon: 🌐
-    title: Multi-Node Support (Coming Soon!)
-    details: Monitor multiple Meshtastic nodes simultaneously, whether using physical devices or meshtasticd virtual nodes.
+    title: Virtual Node Server
+    details: Connect multiple Meshtastic mobile apps simultaneously through MeshMonitor's Virtual Node proxy. Message queuing, config caching, and connection stability for 3-5+ concurrent mobile clients.
 
   - icon: 📱
     title: Responsive Design
