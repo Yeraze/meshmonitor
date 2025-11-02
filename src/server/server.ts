@@ -895,8 +895,8 @@ apiRouter.get('/messages/unread-counts', optionalAuth(), (req, res) => {
   }
 });
 
-// Get Virtual Node server status
-apiRouter.get('/virtual-node/status', optionalAuth(), (req, res) => {
+// Get Virtual Node server status (requires authentication)
+apiRouter.get('/virtual-node/status', requireAuth(), (req, res) => {
   try {
     const virtualNodeServer = (global as any).virtualNodeServer;
 
@@ -911,20 +911,14 @@ apiRouter.get('/virtual-node/status', optionalAuth(), (req, res) => {
 
     const isRunning = virtualNodeServer.isRunning();
     const clientCount = virtualNodeServer.getClientCount();
-    const isAuthenticated = !!req.session.userId; // Check for actual session, not anonymous user
+    const clients = virtualNodeServer.getClientDetails();
 
-    // Only include client details for authenticated users
-    const response: any = {
+    res.json({
       enabled: true,
       isRunning,
-      clientCount
-    };
-
-    if (isAuthenticated) {
-      response.clients = virtualNodeServer.getClientDetails();
-    }
-
-    res.json(response);
+      clientCount,
+      clients
+    });
   } catch (error) {
     logger.error('Error getting virtual node status:', error);
     res.status(500).json({ error: 'Failed to get virtual node status' });
