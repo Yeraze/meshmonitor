@@ -2152,9 +2152,25 @@ class MeshtasticManager {
         }
       }
 
-      // Note: Device telemetry (batteryLevel, voltage, etc.) is NOT saved from NodeInfo packets
-      // It is only saved from actual TELEMETRY_APP packets in processTelemetryMessageProtobuf()
-      // However, position data IS saved as telemetry for historical tracking
+      // Process device telemetry from NodeInfo if available
+      // This allows the local node's telemetry to be captured, since TCP clients
+      // only receive TELEMETRY_APP packets from OTHER nodes via mesh, not from the local node
+      let deviceMetricsTelemetryData: any = null;
+      if (nodeInfo.deviceMetrics) {
+        const deviceMetrics = nodeInfo.deviceMetrics;
+        const timestamp = nodeInfo.lastHeard ? Number(nodeInfo.lastHeard) * 1000 : Date.now();
+
+        logger.debug(`📊 Processing device telemetry from NodeInfo: battery=${deviceMetrics.batteryLevel}%, voltage=${deviceMetrics.voltage}V`);
+
+        // Store device metrics to be inserted after node is created
+        deviceMetricsTelemetryData = {
+          timestamp,
+          batteryLevel: deviceMetrics.batteryLevel,
+          voltage: deviceMetrics.voltage,
+          channelUtilization: deviceMetrics.channelUtilization,
+          airUtilTx: deviceMetrics.airUtilTx
+        };
+      }
 
       // If this is the local node, update localNodeInfo with names (only if not locked)
       if (this.localNodeInfo && this.localNodeInfo.nodeNum === Number(nodeInfo.num) && !this.localNodeInfo.isLocked) {
@@ -2186,6 +2202,39 @@ class MeshtasticManager {
           databaseService.insertTelemetry({
             nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'altitude',
             timestamp: positionTelemetryData.timestamp, value: positionTelemetryData.altitude, unit: 'm', createdAt: now
+          });
+        }
+      }
+
+      // Insert device metrics telemetry if we have it (after node exists in database)
+      if (deviceMetricsTelemetryData) {
+        const now = Date.now();
+
+        if (deviceMetricsTelemetryData.batteryLevel !== undefined && deviceMetricsTelemetryData.batteryLevel !== null && !isNaN(deviceMetricsTelemetryData.batteryLevel)) {
+          databaseService.insertTelemetry({
+            nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'batteryLevel',
+            timestamp: deviceMetricsTelemetryData.timestamp, value: deviceMetricsTelemetryData.batteryLevel, unit: '%', createdAt: now
+          });
+        }
+
+        if (deviceMetricsTelemetryData.voltage !== undefined && deviceMetricsTelemetryData.voltage !== null && !isNaN(deviceMetricsTelemetryData.voltage)) {
+          databaseService.insertTelemetry({
+            nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'voltage',
+            timestamp: deviceMetricsTelemetryData.timestamp, value: deviceMetricsTelemetryData.voltage, unit: 'V', createdAt: now
+          });
+        }
+
+        if (deviceMetricsTelemetryData.channelUtilization !== undefined && deviceMetricsTelemetryData.channelUtilization !== null && !isNaN(deviceMetricsTelemetryData.channelUtilization)) {
+          databaseService.insertTelemetry({
+            nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'channelUtilization',
+            timestamp: deviceMetricsTelemetryData.timestamp, value: deviceMetricsTelemetryData.channelUtilization, unit: '%', createdAt: now
+          });
+        }
+
+        if (deviceMetricsTelemetryData.airUtilTx !== undefined && deviceMetricsTelemetryData.airUtilTx !== null && !isNaN(deviceMetricsTelemetryData.airUtilTx)) {
+          databaseService.insertTelemetry({
+            nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'airUtilTx',
+            timestamp: deviceMetricsTelemetryData.timestamp, value: deviceMetricsTelemetryData.airUtilTx, unit: '%', createdAt: now
           });
         }
       }
