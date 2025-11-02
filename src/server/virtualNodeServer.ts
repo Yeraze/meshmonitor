@@ -14,6 +14,7 @@ interface ConnectedClient {
   id: string;
   buffer: Buffer;
   connectedAt: Date;
+  lastActivity: Date;
 }
 
 interface QueuedMessage {
@@ -43,12 +44,21 @@ export class VirtualNodeServer extends EventEmitter {
   private messageQueue: QueuedMessage[] = [];
   private isProcessingQueue = false;
   private nextClientId = 1;
+  private cleanupTimer: NodeJS.Timeout | null = null;
 
   // Protocol constants (same as Meshtastic TCP)
   private readonly START1 = 0x94;
   private readonly START2 = 0xc3;
   private readonly MAX_PACKET_SIZE = 512;
   private readonly QUEUE_MAX_SIZE = 100;
+
+  // Config replay constants
+  private readonly CONFIG_COMPLETE_MAX_SIZE = 10; // ConfigComplete messages are typically small (< 10 bytes)
+  private readonly LOG_EVERY_N_MESSAGES = 10; // Log progress every N messages during config replay
+
+  // Client timeout and cleanup constants
+  private readonly CLIENT_TIMEOUT_MS = 300000; // 5 minutes of inactivity before disconnect
+  private readonly CLEANUP_INTERVAL_MS = 60000; // Check for inactive clients every minute
 
   // Admin portnums to block (security)
   private readonly BLOCKED_PORTNUMS = [
@@ -81,6 +91,12 @@ export class VirtualNodeServer extends EventEmitter {
 
       this.server.listen(this.config.port, () => {
         logger.info(`🌐 Virtual node server listening on port ${this.config.port}`);
+
+        // Start cleanup timer
+        this.cleanupTimer = setInterval(() => {
+          this.cleanupInactiveClients();
+        }, this.CLEANUP_INTERVAL_MS);
+
         this.emit('listening');
         resolve();
       });
@@ -93,6 +109,12 @@ export class VirtualNodeServer extends EventEmitter {
   async stop(): Promise<void> {
     if (!this.server) {
       return;
+    }
+
+    // Stop cleanup timer
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
     }
 
     // Disconnect all clients
@@ -120,11 +142,13 @@ export class VirtualNodeServer extends EventEmitter {
    */
   private handleNewClient(socket: Socket): void {
     const clientId = `vn-${this.nextClientId++}`;
+    const now = new Date();
     const client: ConnectedClient = {
       socket,
       id: clientId,
       buffer: Buffer.alloc(0),
-      connectedAt: new Date(),
+      connectedAt: now,
+      lastActivity: now,
     };
 
     this.clients.set(clientId, client);
@@ -163,6 +187,9 @@ export class VirtualNodeServer extends EventEmitter {
     if (!client) {
       return;
     }
+
+    // Update last activity timestamp
+    client.lastActivity = new Date();
 
     // Append to client's buffer
     client.buffer = Buffer.concat([client.buffer, data]);
@@ -302,16 +329,9 @@ export class VirtualNodeServer extends EventEmitter {
           if (fromRadioMessage) {
             logger.info(`Virtual node: Processing outgoing message locally from ${clientId} (portnum: ${portnum})`);
             // Process locally through MeshtasticManager to store in database
-            // Temporarily clear the global virtualNodeServer reference to prevent broadcast loop
-            const savedVirtualNodeServer = (global as any).virtualNodeServer;
-            (global as any).virtualNodeServer = null;
-            try {
-              await this.config.meshtasticManager.processIncomingData(fromRadioMessage);
-              logger.debug(`Virtual node: Stored outgoing message in database`);
-            } finally {
-              // Restore the virtualNodeServer reference
-              (global as any).virtualNodeServer = savedVirtualNodeServer;
-            }
+            // Pass context to prevent broadcast loop (no need to broadcast back to virtual node clients)
+            await this.config.meshtasticManager.processIncomingData(fromRadioMessage, { skipVirtualNodeBroadcast: true });
+            logger.debug(`Virtual node: Stored outgoing message in database`);
           }
         } catch (error) {
           logger.error(`Virtual node: Failed to process outgoing message locally:`, error);
@@ -414,8 +434,8 @@ export class VirtualNodeServer extends EventEmitter {
         const message = cachedMessages[i];
 
         // Check if this is the last message and it's a ConfigComplete
-        // We identify ConfigComplete by checking if it's the last message and small (usually < 10 bytes)
-        const isLikelyConfigComplete = (i === cachedMessages.length - 1) && (message.length < 10);
+        // We identify ConfigComplete by checking if it's the last message and small
+        const isLikelyConfigComplete = (i === cachedMessages.length - 1) && (message.length < this.CONFIG_COMPLETE_MAX_SIZE);
 
         if (isLikelyConfigComplete) {
           logger.debug(`Virtual node: Skipping cached ConfigComplete, will send custom one`);
@@ -433,7 +453,7 @@ export class VirtualNodeServer extends EventEmitter {
         await this.sendToClient(clientId, message);
         sentCount++;
 
-        if (sentCount % 10 === 0 || i < 5) {
+        if (sentCount % this.LOG_EVERY_N_MESSAGES === 0 || i < 5) {
           logger.debug(`Virtual node: Replayed message ${sentCount}/${cachedMessages.length} (${message.length} bytes)`);
         }
       }
@@ -531,6 +551,31 @@ export class VirtualNodeServer extends EventEmitter {
       length & 0xff,         // LSB
     ]);
     return Buffer.concat([header, Buffer.from(data)]);
+  }
+
+  /**
+   * Clean up inactive clients that haven't sent data within the timeout period
+   */
+  private cleanupInactiveClients(): void {
+    const now = Date.now();
+    const clientsToRemove: string[] = [];
+
+    for (const [clientId, client] of this.clients.entries()) {
+      const inactiveMs = now - client.lastActivity.getTime();
+      if (inactiveMs > this.CLIENT_TIMEOUT_MS) {
+        logger.info(`Virtual node: Client ${clientId} inactive for ${Math.floor(inactiveMs / 1000)}s, disconnecting`);
+        clientsToRemove.push(clientId);
+      }
+    }
+
+    // Disconnect inactive clients
+    for (const clientId of clientsToRemove) {
+      const client = this.clients.get(clientId);
+      if (client) {
+        client.socket.destroy();
+        this.handleClientDisconnect(clientId);
+      }
+    }
   }
 
   /**

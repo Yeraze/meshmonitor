@@ -17,6 +17,10 @@ export interface MeshtasticConfig {
   tcpPort: number;
 }
 
+export interface ProcessingContext {
+  skipVirtualNodeBroadcast?: boolean;
+}
+
 export interface DeviceInfo {
   nodeNum: number;
   user?: {
@@ -474,7 +478,7 @@ class MeshtasticManager {
     }
   }
 
-  public async processIncomingData(data: Uint8Array): Promise<void> {
+  public async processIncomingData(data: Uint8Array, context?: ProcessingContext): Promise<void> {
     try {
       if (data.length === 0) {
         return;
@@ -490,14 +494,16 @@ class MeshtasticManager {
         logger.debug(`📸 Captured init message #${this.initConfigCache.length} (${data.length} bytes)`);
       }
 
-      // Broadcast to virtual node clients if virtual node server is enabled
-      const virtualNodeServer = (global as any).virtualNodeServer;
-      if (virtualNodeServer) {
-        try {
-          await virtualNodeServer.broadcastToClients(data);
-          logger.info(`📡 Broadcasted message to virtual node clients (${data.length} bytes)`);
-        } catch (error) {
-          logger.error('Virtual node: Failed to broadcast message to clients:', error);
+      // Broadcast to virtual node clients if virtual node server is enabled (unless explicitly skipped)
+      if (!context?.skipVirtualNodeBroadcast) {
+        const virtualNodeServer = (global as any).virtualNodeServer;
+        if (virtualNodeServer) {
+          try {
+            await virtualNodeServer.broadcastToClients(data);
+            logger.info(`📡 Broadcasted message to virtual node clients (${data.length} bytes)`);
+          } catch (error) {
+            logger.error('Virtual node: Failed to broadcast message to clients:', error);
+          }
         }
       }
 
