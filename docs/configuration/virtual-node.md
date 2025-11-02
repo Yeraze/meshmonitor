@@ -376,7 +376,7 @@ Mobile Apps → Virtual Node (4404) → MeshMonitor → meshtasticd (4403)
 
 No. The Virtual Node Server uses the Meshtastic TCP protocol (binary protobuf messages), not HTTP. It's designed specifically for Meshtastic mobile apps and TCP clients.
 
-For HTTP access, use MeshMonitor's REST API endpoints (see [API Documentation](/api/REST_API)).
+For HTTP access, use MeshMonitor's REST API endpoints (see [API Documentation](/api/REST_API.md)).
 
 ### What happens if MeshMonitor restarts?
 
@@ -407,5 +407,5 @@ In practice, 3-5 simultaneous mobile connections work well. Beyond that, you may
 
 - [Getting Started Guide](/getting-started) - Basic MeshMonitor setup
 - [Configuration Overview](/configuration/index) - All configuration options
-- [REST API Reference](/api/REST_API) - HTTP API for web/automation access
+- [REST API Reference](/api/REST_API.md) - HTTP API for web/automation access
 - [Production Deployment](/configuration/production) - Best practices for production use
