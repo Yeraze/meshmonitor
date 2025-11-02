@@ -1,35 +1,13 @@
 import React from 'react';
 import L from 'leaflet';
 import { Marker } from 'react-leaflet';
-import { ROLE_NAMES } from '../constants';
 
 // Constants for arrow generation
-export const ARROW_DISTANCE_THRESHOLD = 0.05; // One arrow per 0.05 degrees
-export const MIN_ARROWS_PER_SEGMENT = 1;
-export const MAX_ARROWS_PER_SEGMENT = 5;
-export const MAX_TOTAL_ARROWS = 50; // Global limit to prevent performance issues
-export const ARROW_ROTATION_OFFSET = 0; // Degrees to rotate arrow to point forward
-
-/**
- * Convert role number/string to readable role name
- */
-export const getRoleName = (role: number | string | undefined): string | null => {
-  if (role === undefined || role === null) return null;
-  const roleNum = typeof role === 'string' ? parseInt(role, 10) : role;
-  if (isNaN(roleNum)) return null;
-  return ROLE_NAMES[roleNum] || `Role ${roleNum}`;
-};
-
-/**
- * Parse role from string or number with validation
- */
-export const parseRoleNumber = (role: string | number | undefined): number => {
-  if (role === undefined || role === null) return 0;
-  const roleNum = typeof role === 'string'
-    ? parseInt(role, 10)
-    : (typeof role === 'number' ? role : 0);
-  return isNaN(roleNum) ? 0 : roleNum;
-};
+const ARROW_DISTANCE_THRESHOLD = 0.05; // One arrow per 0.05 degrees
+const MIN_ARROWS_PER_SEGMENT = 1;
+const MAX_ARROWS_PER_SEGMENT = 5;
+const MAX_TOTAL_ARROWS = 50; // Global limit to prevent performance issues
+const ARROW_ROTATION_OFFSET = 0; // Degrees to rotate arrow to point forward
 
 /**
  * Generate arrow markers along a path to indicate direction

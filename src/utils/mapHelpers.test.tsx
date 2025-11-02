@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect } from 'vitest';
-import { getRoleName } from './mapHelpers';
+import { getRoleName } from './nodeHelpers';
 import { ROLE_NAMES } from '../constants';
 
 describe('mapHelpers', () => {
@@ -31,9 +31,9 @@ describe('mapHelpers', () => {
     });
 
     it('should return fallback for unknown roles', () => {
-      expect(getRoleName(99)).toBe('Role 99');
-      expect(getRoleName(13)).toBe('Role 13');
-      expect(getRoleName(-1)).toBe('Role -1');
+      expect(getRoleName(99)).toBe('Unknown (99)');
+      expect(getRoleName(13)).toBe('Unknown (13)');
+      expect(getRoleName(-1)).toBe('Unknown (-1)');
     });
 
     it('should return null for undefined or null input', () => {

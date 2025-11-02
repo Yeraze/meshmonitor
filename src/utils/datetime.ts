@@ -28,7 +28,7 @@ export function formatTime(date: Date, format: TimeFormat = '24'): string {
  * @param format - 'MM/DD/YYYY' or 'DD/MM/YYYY'
  * @returns Formatted date string
  */
-export function formatDate(date: Date, format: DateFormat = 'MM/DD/YYYY'): string {
+function formatDate(date: Date, format: DateFormat = 'MM/DD/YYYY'): string {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   const year = date.getFullYear();
@@ -62,7 +62,7 @@ export function formatDateTime(
  * @param dateFormat - 'MM/DD/YYYY' or 'DD/MM/YYYY'
  * @returns Formatted date and time string
  */
-export function formatTimestamp(
+function formatTimestamp(
   timestamp: number,
   timeFormat: TimeFormat = '24',
   dateFormat: DateFormat = 'MM/DD/YYYY'

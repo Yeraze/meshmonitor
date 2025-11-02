@@ -112,9 +112,3 @@ export function createNodeIcon(options: {
     popupAnchor: [0, -size]
   });
 }
-
-// Legacy exports for backward compatibility (deprecated)
-export const defaultIcon = createNodeIcon({ hops: 3, isSelected: false, isRouter: false, showLabel: false });
-export const selectedIcon = createNodeIcon({ hops: 3, isSelected: true, isRouter: false, showLabel: false });
-export const routerIcon = createNodeIcon({ hops: 3, isSelected: false, isRouter: true, showLabel: false });
-export const selectedRouterIcon = createNodeIcon({ hops: 3, isSelected: true, isRouter: true, showLabel: false });
