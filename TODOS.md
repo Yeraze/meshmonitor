@@ -16,4 +16,6 @@
   - Modified `processTextMessageProtobuf` to accept context parameter
   - Modified `processMeshPacket` to accept and pass context parameter
   - Updated call to `processTextMessageProtobuf` to pass context through (src/server/meshtasticManager.ts:1046)
+  - Fixed context parameter passing in `processIncomingData` to `processMeshPacket` (src/server/meshtasticManager.ts:527)
   - Messages now store `requestId`, `wantAck`, and `deliveryState` for Virtual Node messages
+- [x] Secure Virtual Node status endpoint to require authentication (src/server/server.ts:899)
