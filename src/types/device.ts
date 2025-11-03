@@ -29,6 +29,7 @@ export interface DeviceInfo {
   keyIsLowEntropy?: boolean
   duplicateKeyDetected?: boolean
   keySecurityIssueDetails?: string
+  channel?: number
 }
 
 export interface Channel {
