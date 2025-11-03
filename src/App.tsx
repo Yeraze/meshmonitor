@@ -27,6 +27,7 @@ import { type TemperatureUnit } from './utils/temperature'
 import { calculateDistance, formatDistance } from './utils/distance'
 import { formatTime, formatDateTime } from './utils/datetime'
 import { formatTracerouteRoute } from './utils/traceroute'
+import { getUtf8ByteLength, formatByteCount } from './utils/text'
 import { DeviceInfo, Channel } from './types/device'
 import { MeshMessage, MessageDeliveryState } from './types/message'
 import { SortField, SortDirection } from './types/ui'
@@ -3002,19 +3003,24 @@ function App() {
                       )}
                       {hasPermission('channels', 'write') && (
                         <div className="message-input-container">
-                          <input
-                            ref={channelMessageInputRef}
-                            type="text"
-                            value={newMessage}
-                            onChange={(e) => setNewMessage(e.target.value)}
-                            placeholder={`Send message to ${getChannelName(selectedChannel)}...`}
-                            className="message-input"
-                            onKeyPress={(e) => {
-                              if (e.key === 'Enter') {
-                                handleSendMessage(selectedChannel);
-                              }
-                            }}
-                          />
+                          <div className="input-with-counter">
+                            <input
+                              ref={channelMessageInputRef}
+                              type="text"
+                              value={newMessage}
+                              onChange={(e) => setNewMessage(e.target.value)}
+                              placeholder={`Send message to ${getChannelName(selectedChannel)}...`}
+                              className="message-input"
+                              onKeyPress={(e) => {
+                                if (e.key === 'Enter') {
+                                  handleSendMessage(selectedChannel);
+                                }
+                              }}
+                            />
+                            <div className={formatByteCount(getUtf8ByteLength(newMessage)).className}>
+                              {formatByteCount(getUtf8ByteLength(newMessage)).text}
+                            </div>
+                          </div>
                           <button
                             onClick={() => handleSendMessage(selectedChannel)}
                             disabled={!newMessage.trim()}
@@ -3651,19 +3657,24 @@ function App() {
                   )}
                   {hasPermission('messages', 'write') && (
                     <div className="message-input-container">
-                      <input
-                        ref={dmMessageInputRef}
-                        type="text"
-                        value={newMessage}
-                        onChange={(e) => setNewMessage(e.target.value)}
-                        placeholder={`Send direct message to ${getNodeName(selectedDMNode)}...`}
-                        className="message-input"
-                        onKeyPress={(e) => {
-                          if (e.key === 'Enter') {
-                            handleSendDirectMessage(selectedDMNode);
-                          }
-                        }}
-                      />
+                      <div className="input-with-counter">
+                        <input
+                          ref={dmMessageInputRef}
+                          type="text"
+                          value={newMessage}
+                          onChange={(e) => setNewMessage(e.target.value)}
+                          placeholder={`Send direct message to ${getNodeName(selectedDMNode)}...`}
+                          className="message-input"
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter') {
+                              handleSendDirectMessage(selectedDMNode);
+                            }
+                          }}
+                        />
+                        <div className={formatByteCount(getUtf8ByteLength(newMessage)).className}>
+                          {formatByteCount(getUtf8ByteLength(newMessage)).text}
+                        </div>
+                      </div>
                       <button
                         onClick={() => handleSendDirectMessage(selectedDMNode)}
                         disabled={!newMessage.trim()}
