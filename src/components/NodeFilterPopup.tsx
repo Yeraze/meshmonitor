@@ -1,7 +1,6 @@
 import React from 'react';
 import { useUI } from '../contexts/UIContext';
 import { useData } from '../contexts/DataContext';
-import './NodeFilterPopup.css';
 
 interface NodeFilterPopupProps {
   isOpen: boolean;
@@ -18,19 +17,19 @@ export const NodeFilterPopup: React.FC<NodeFilterPopupProps> = ({ isOpen, onClos
   const availableChannels = channels.map(ch => ch.id).sort((a, b) => a - b);
 
   return (
-    <div className="node-filter-popup-overlay" onClick={onClose}>
-      <div className="node-filter-popup" onClick={(e) => e.stopPropagation()}>
-        <div className="node-filter-popup-header">
-          <h3>Filter Nodes</h3>
-          <button className="close-btn" onClick={onClose} aria-label="Close">
+    <div className="filter-popup-overlay" onClick={onClose}>
+      <div className="filter-popup" onClick={(e) => e.stopPropagation()}>
+        <div className="filter-popup-header">
+          <h4>Filter Nodes</h4>
+          <button className="filter-popup-close" onClick={onClose} aria-label="Close">
             ×
           </button>
         </div>
 
-        <div className="node-filter-popup-content">
+        <div className="filter-popup-content">
           {/* Security Filter */}
           <div className="filter-section">
-            <label>Security Status</label>
+            <span className="filter-section-title">Security Status</span>
             <select
               value={securityFilter}
               onChange={(e) => setSecurityFilter(e.target.value as 'all' | 'flaggedOnly' | 'hideFlagged')}
@@ -44,7 +43,7 @@ export const NodeFilterPopup: React.FC<NodeFilterPopupProps> = ({ isOpen, onClos
 
           {/* Channel Filter */}
           <div className="filter-section">
-            <label>Channel</label>
+            <span className="filter-section-title">Channel</span>
             <select
               value={channelFilter}
               onChange={(e) => setChannelFilter(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
@@ -61,21 +60,6 @@ export const NodeFilterPopup: React.FC<NodeFilterPopupProps> = ({ isOpen, onClos
               })}
             </select>
           </div>
-        </div>
-
-        <div className="node-filter-popup-footer">
-          <button
-            className="reset-btn"
-            onClick={() => {
-              setSecurityFilter('all');
-              setChannelFilter('all');
-            }}
-          >
-            Reset Filters
-          </button>
-          <button className="apply-btn" onClick={onClose}>
-            Close
-          </button>
         </div>
       </div>
     </div>
