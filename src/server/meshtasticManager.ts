@@ -1485,19 +1485,40 @@ class MeshtasticManager {
         }
       } else if (telemetry.powerMetrics) {
         const powerMetrics = telemetry.powerMetrics;
-        logger.debug(`⚡ Power telemetry: ch1_voltage=${powerMetrics.ch1Voltage}V`);
 
-        if (powerMetrics.ch1Voltage !== undefined && powerMetrics.ch1Voltage !== null && !isNaN(powerMetrics.ch1Voltage)) {
-          databaseService.insertTelemetry({
-            nodeId, nodeNum: fromNum, telemetryType: 'ch1Voltage',
-            timestamp, value: powerMetrics.ch1Voltage, unit: 'V', createdAt: now, packetTimestamp
-          });
+        // Build debug string showing all available channels
+        const channelInfo = [];
+        for (let ch = 1; ch <= 8; ch++) {
+          const voltageKey = `ch${ch}Voltage` as keyof typeof powerMetrics;
+          const currentKey = `ch${ch}Current` as keyof typeof powerMetrics;
+          if (powerMetrics[voltageKey] !== undefined || powerMetrics[currentKey] !== undefined) {
+            channelInfo.push(`ch${ch}: ${powerMetrics[voltageKey] || 0}V/${powerMetrics[currentKey] || 0}mA`);
+          }
         }
-        if (powerMetrics.ch1Current !== undefined && powerMetrics.ch1Current !== null && !isNaN(powerMetrics.ch1Current)) {
-          databaseService.insertTelemetry({
-            nodeId, nodeNum: fromNum, telemetryType: 'ch1Current',
-            timestamp, value: powerMetrics.ch1Current, unit: 'mA', createdAt: now, packetTimestamp
-          });
+        logger.debug(`⚡ Power telemetry: ${channelInfo.join(', ')}`);
+
+        // Process all 8 power channels
+        for (let ch = 1; ch <= 8; ch++) {
+          const voltageKey = `ch${ch}Voltage` as keyof typeof powerMetrics;
+          const currentKey = `ch${ch}Current` as keyof typeof powerMetrics;
+
+          // Save voltage for this channel
+          const voltage = powerMetrics[voltageKey];
+          if (voltage !== undefined && voltage !== null && !isNaN(Number(voltage))) {
+            databaseService.insertTelemetry({
+              nodeId, nodeNum: fromNum, telemetryType: String(voltageKey),
+              timestamp, value: Number(voltage), unit: 'V', createdAt: now, packetTimestamp
+            });
+          }
+
+          // Save current for this channel
+          const current = powerMetrics[currentKey];
+          if (current !== undefined && current !== null && !isNaN(Number(current))) {
+            databaseService.insertTelemetry({
+              nodeId, nodeNum: fromNum, telemetryType: String(currentKey),
+              timestamp, value: Number(current), unit: 'mA', createdAt: now, packetTimestamp
+            });
+          }
         }
       }
 

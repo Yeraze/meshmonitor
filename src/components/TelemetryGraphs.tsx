@@ -198,6 +198,20 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
       pressure: 'Barometric Pressure',
       ch1Voltage: 'Channel 1 Voltage',
       ch1Current: 'Channel 1 Current',
+      ch2Voltage: 'Channel 2 Voltage',
+      ch2Current: 'Channel 2 Current',
+      ch3Voltage: 'Channel 3 Voltage',
+      ch3Current: 'Channel 3 Current',
+      ch4Voltage: 'Channel 4 Voltage',
+      ch4Current: 'Channel 4 Current',
+      ch5Voltage: 'Channel 5 Voltage',
+      ch5Current: 'Channel 5 Current',
+      ch6Voltage: 'Channel 6 Voltage',
+      ch6Current: 'Channel 6 Current',
+      ch7Voltage: 'Channel 7 Voltage',
+      ch7Current: 'Channel 7 Current',
+      ch8Voltage: 'Channel 8 Voltage',
+      ch8Current: 'Channel 8 Current',
       altitude: 'Altitude'
     };
     return labels[type] || type;
@@ -214,6 +228,20 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
       pressure: '#a28dff',
       ch1Voltage: '#d084d8',
       ch1Current: '#ff6b9d',
+      ch2Voltage: '#c084ff',
+      ch2Current: '#ff6bcf',
+      ch3Voltage: '#84d0c0',
+      ch3Current: '#6bff8f',
+      ch4Voltage: '#d8d084',
+      ch4Current: '#ffcf6b',
+      ch5Voltage: '#d88488',
+      ch5Current: '#ff8b6b',
+      ch6Voltage: '#8488d8',
+      ch6Current: '#6b8bff',
+      ch7Voltage: '#88d8c0',
+      ch7Current: '#6bffcf',
+      ch8Voltage: '#d8c088',
+      ch8Current: '#ffbf6b',
       altitude: '#74c0fc'
     };
     return colors[type] || '#8884d8';
