@@ -49,6 +49,7 @@ import LoginPage from './components/LoginPage'
 import UserMenu from './components/UserMenu'
 import TracerouteHistoryModal from './components/TracerouteHistoryModal'
 import RouteSegmentTraceroutesModal from './components/RouteSegmentTraceroutesModal'
+import { NodeFilterPopup } from './components/NodeFilterPopup'
 
 // Fix for default markers in React-Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -3238,6 +3239,11 @@ function App() {
             )}
           </div>
 
+          <NodeFilterPopup
+            isOpen={showNodeFilterPopup}
+            onClose={() => setShowNodeFilterPopup(false)}
+          />
+
           {!isMessagesNodeListCollapsed && (
           <div className="nodes-list">
             {shouldShowData() ? (
@@ -3250,6 +3256,11 @@ function App() {
                         if (!node.keyIsLowEntropy && !node.duplicateKeyDetected) return false;
                       } else if (securityFilter === 'hideFlagged') {
                         if (node.keyIsLowEntropy || node.duplicateKeyDetected) return false;
+                      }
+                      // Apply channel filter
+                      if (channelFilter !== 'all') {
+                        const nodeChannel = node.channel ?? 0;
+                        if (nodeChannel !== channelFilter) return false;
                       }
                       // Apply text filter
                       if (!nodeFilter) return true;
@@ -3318,6 +3329,7 @@ function App() {
                             {node.hopsAway != null && (
                               <span className="stat" title="Hops Away">
                                 🔗 {node.hopsAway} hop{node.hopsAway !== 1 ? 's' : ''}
+                                {node.channel != null && node.channel !== 0 && ` (ch:${node.channel})`}
                               </span>
                             )}
                           </div>
