@@ -12,6 +12,7 @@ import PacketMonitorSettings from './PacketMonitorSettings';
 type DistanceUnit = 'km' | 'mi';
 type TimeFormat = '12' | '24';
 type DateFormat = 'MM/DD/YYYY' | 'DD/MM/YYYY';
+type MapPinStyle = 'meshmonitor' | 'official';
 
 interface SettingsTabProps {
   maxNodeAgeHours: number;
@@ -23,6 +24,7 @@ interface SettingsTabProps {
   timeFormat: TimeFormat;
   dateFormat: DateFormat;
   mapTileset: TilesetId;
+  mapPinStyle: MapPinStyle;
   baseUrl: string;
   onMaxNodeAgeChange: (hours: number) => void;
   onTemperatureUnitChange: (unit: TemperatureUnit) => void;
@@ -33,6 +35,7 @@ interface SettingsTabProps {
   onTimeFormatChange: (format: TimeFormat) => void;
   onDateFormatChange: (format: DateFormat) => void;
   onMapTilesetChange: (tilesetId: TilesetId) => void;
+  onMapPinStyleChange: (style: MapPinStyle) => void;
 }
 
 const SettingsTab: React.FC<SettingsTabProps> = ({
@@ -45,6 +48,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   timeFormat,
   dateFormat,
   mapTileset,
+  mapPinStyle,
   baseUrl,
   onMaxNodeAgeChange,
   onTemperatureUnitChange,
@@ -54,7 +58,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   onPreferredSortDirectionChange,
   onTimeFormatChange,
   onDateFormatChange,
-  onMapTilesetChange
+  onMapTilesetChange,
+  onMapPinStyleChange
 }) => {
   const csrfFetch = useCsrfFetch();
 
@@ -68,6 +73,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [localTimeFormat, setLocalTimeFormat] = useState(timeFormat);
   const [localDateFormat, setLocalDateFormat] = useState(dateFormat);
   const [localMapTileset, setLocalMapTileset] = useState(mapTileset);
+  const [localMapPinStyle, setLocalMapPinStyle] = useState(mapPinStyle);
   const [localPacketLogEnabled, setLocalPacketLogEnabled] = useState(false);
   const [localPacketLogMaxCount, setLocalPacketLogMaxCount] = useState(1000);
   const [localPacketLogMaxAgeHours, setLocalPacketLogMaxAgeHours] = useState(24);
@@ -131,7 +137,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLocalTimeFormat(timeFormat);
     setLocalDateFormat(dateFormat);
     setLocalMapTileset(mapTileset);
-  }, [maxNodeAgeHours, temperatureUnit, distanceUnit, telemetryVisualizationHours, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset]);
+    setLocalMapPinStyle(mapPinStyle);
+  }, [maxNodeAgeHours, temperatureUnit, distanceUnit, telemetryVisualizationHours, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle]);
 
   // Check if any settings have changed
   // Note: We can't compare packet monitor settings to props since they're not in props
@@ -149,12 +156,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localTimeFormat !== timeFormat ||
       localDateFormat !== dateFormat ||
       localMapTileset !== mapTileset ||
+      localMapPinStyle !== mapPinStyle ||
       localPacketLogEnabled !== initialPacketMonitorSettings.enabled ||
       localPacketLogMaxCount !== initialPacketMonitorSettings.maxCount ||
       localPacketLogMaxAgeHours !== initialPacketMonitorSettings.maxAgeHours;
     setHasChanges(changed);
-  }, [localMaxNodeAge, localTemperatureUnit, localDistanceUnit, localTelemetryHours, localPreferredSortField, localPreferredSortDirection, localTimeFormat, localDateFormat, localMapTileset,
-      maxNodeAgeHours, temperatureUnit, distanceUnit, telemetryVisualizationHours, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset,
+  }, [localMaxNodeAge, localTemperatureUnit, localDistanceUnit, localTelemetryHours, localPreferredSortField, localPreferredSortDirection, localTimeFormat, localDateFormat, localMapTileset, localMapPinStyle,
+      maxNodeAgeHours, temperatureUnit, distanceUnit, telemetryVisualizationHours, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle,
       localPacketLogEnabled, localPacketLogMaxCount, localPacketLogMaxAgeHours, initialPacketMonitorSettings]);
 
   const handleSave = async () => {
@@ -170,6 +178,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         timeFormat: localTimeFormat,
         dateFormat: localDateFormat,
         mapTileset: localMapTileset,
+        mapPinStyle: localMapPinStyle,
         packet_log_enabled: localPacketLogEnabled ? '1' : '0',
         packet_log_max_count: localPacketLogMaxCount.toString(),
         packet_log_max_age_hours: localPacketLogMaxAgeHours.toString()
@@ -192,6 +201,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onTimeFormatChange(localTimeFormat);
       onDateFormatChange(localDateFormat);
       onMapTilesetChange(localMapTileset);
+      onMapPinStyleChange(localMapPinStyle);
 
       // Update initial packet monitor settings after successful save
       setInitialPacketMonitorSettings({ enabled: localPacketLogEnabled, maxCount: localPacketLogMaxCount, maxAgeHours: localPacketLogMaxAgeHours });
@@ -218,6 +228,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       '• Time Format: 24-hour\n' +
       '• Date Format: MM/DD/YYYY\n' +
       '• Map Tileset: OpenStreetMap\n' +
+      '• Map Pin Style: MeshMonitor\n' +
       '• Packet Monitor: Disabled\n' +
       '• Max Packets: 1000\n' +
       '• Packet Age: 24 hours\n\n' +
@@ -242,6 +253,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       setLocalTimeFormat('24');
       setLocalDateFormat('MM/DD/YYYY');
       setLocalMapTileset('osm');
+      setLocalMapPinStyle('meshmonitor');
       setLocalPacketLogEnabled(false);
       setLocalPacketLogMaxCount(1000);
       setLocalPacketLogMaxAgeHours(24);
@@ -256,6 +268,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onTimeFormatChange('24');
       onDateFormatChange('MM/DD/YYYY');
       onMapTilesetChange('osm');
+      onMapPinStyleChange('meshmonitor');
 
       // Update initial packet monitor settings
       setInitialPacketMonitorSettings({ enabled: false, maxCount: 1000, maxAgeHours: 24 });
@@ -590,6 +603,21 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                   {tileset.name} {tileset.description && `- ${tileset.description}`}
                 </option>
               ))}
+            </select>
+          </div>
+          <div className="setting-item">
+            <label htmlFor="mapPinStyle">
+              Map Pin Style
+              <span className="setting-description">Choose the style of node markers on the map</span>
+            </label>
+            <select
+              id="mapPinStyle"
+              value={localMapPinStyle}
+              onChange={(e) => setLocalMapPinStyle(e.target.value as MapPinStyle)}
+              className="setting-input"
+            >
+              <option value="meshmonitor">MeshMonitor - Pin markers with zoom-based labels</option>
+              <option value="official">Official Meshtastic - Circle markers with always-visible labels</option>
             </select>
           </div>
         </div>

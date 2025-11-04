@@ -44,13 +44,41 @@ export function createNodeIcon(options: {
   shortName?: string;
   showLabel: boolean;
   animate?: boolean;
+  pinStyle?: 'meshmonitor' | 'official';
 }): L.DivIcon {
-  const { hops, isSelected, isRouter, shortName, showLabel, animate = false } = options;
+  const { hops, isSelected, isRouter, shortName, showLabel, animate = false, pinStyle = 'meshmonitor' } = options;
   const color = getHopColor(hops);
   const size = isSelected ? 60 : 48;
   const strokeWidth = isSelected ? 3 : 2;
 
-  // Create SVG for the marker
+  // Official Meshtastic style: Circle with always-visible label
+  if (pinStyle === 'official') {
+    const circleSize = size;
+    const markerSvg = `
+      <svg width="${circleSize}" height="${circleSize}" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+        <!-- Circle with colored border -->
+        <circle cx="24" cy="24" r="20" fill="white" fill-opacity="0.95" stroke="${color}" stroke-width="${strokeWidth}" />
+        <!-- Text in center -->
+        <text x="24" y="28" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#333">${shortName || '?'}</text>
+      </svg>
+    `;
+
+    const html = `
+      <div class="${animate ? 'node-icon-pulse' : ''}" style="position: relative; width: ${circleSize}px; height: ${circleSize}px;">
+        ${markerSvg}
+      </div>
+    `;
+
+    return L.divIcon({
+      html,
+      className: 'custom-node-icon',
+      iconSize: [circleSize, circleSize],
+      iconAnchor: [circleSize / 2, circleSize / 2],
+      popupAnchor: [0, -circleSize / 2]
+    });
+  }
+
+  // MeshMonitor style: Pin/tower markers with zoom-based labels
   const markerSvg = isRouter ? `
     <svg width="${size}" height="${size}" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
       <!-- Background circle -->
