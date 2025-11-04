@@ -170,6 +170,14 @@ function App() {
         if (!parsed.filterMode) {
           parsed.filterMode = 'show';
         }
+        // Add channels if it doesn't exist (backward compatibility)
+        if (!parsed.channels) {
+          parsed.channels = [];
+        }
+        // Add deviceRoles if it doesn't exist (backward compatibility)
+        if (!parsed.deviceRoles) {
+          parsed.deviceRoles = [];
+        }
         return parsed;
       } catch (e) {
         logger.error('Failed to parse saved node filters:', e);
@@ -2700,9 +2708,6 @@ function App() {
               </div>
             </div>
 
-          </div>
-          <div className="filter-popup-actions">
-
             <div className="filter-section">
               <div className="filter-section-title">
                 <span className="filter-icon-wrapper"><span className="filter-icon">📡</span></span>
@@ -2744,6 +2749,9 @@ function App() {
                 ))}
               </div>
             </div>
+
+          </div>
+          <div className="filter-popup-actions">
             <button
               className="filter-reset-btn"
               onClick={() => setNodeFilters({
