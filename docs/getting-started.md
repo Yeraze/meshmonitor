@@ -2,6 +2,10 @@
 
 This guide will help you get MeshMonitor up and running quickly.
 
+::: tip Interactive Configurator
+Want a custom configuration generated for you? Try our **[Docker Compose Configurator](/configurator)** - it generates a ready-to-use `docker-compose.yml` and `.env` file based on your specific setup (TCP, BLE, Serial, with or without reverse proxy, etc.).
+:::
+
 ## Prerequisites
 
 Before you begin, ensure you have:

@@ -20,9 +20,14 @@ export default defineConfig({
       { text: 'Home', link: '/' },
       { text: 'Getting Started', link: '/getting-started' },
       { text: 'FAQ', link: '/faq' },
-      { text: 'Features', link: '/features/settings' },
-      { text: 'Configuration', link: '/configuration/' },
-      { text: 'Development', link: '/development/' },
+      {
+        text: 'Docs',
+        items: [
+          { text: 'Features', link: '/features/settings' },
+          { text: 'Configuration', link: '/configuration/' },
+          { text: 'Development', link: '/development/' }
+        ]
+      },
       { text: '📦 Releases', link: 'https://github.com/yeraze/meshmonitor/releases' }
     ],
 
@@ -43,7 +48,11 @@ export default defineConfig({
           text: 'Configuration',
           items: [
             { text: 'Overview', link: '/configuration/' },
+            { text: '⚡ Docker Compose Configurator', link: '/configurator' },
             { text: 'Using meshtasticd', link: '/configuration/meshtasticd' },
+            { text: 'BLE Bridge', link: '/configuration/ble-bridge' },
+            { text: 'Serial Bridge', link: '/configuration/serial-bridge' },
+            { text: 'Virtual Node', link: '/configuration/virtual-node' },
             { text: 'SSO Setup', link: '/configuration/sso' },
             { text: 'Reverse Proxy', link: '/configuration/reverse-proxy' },
             { text: 'HTTP vs HTTPS', link: '/configuration/http-vs-https' },

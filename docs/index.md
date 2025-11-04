@@ -59,6 +59,10 @@ features:
 
 ## Quick Start
 
+::: tip Need a Custom Configuration?
+Use our **[Interactive Configurator](/configurator)** to generate a customized `docker-compose.yml` for your specific setup (TCP, BLE, Serial, reverse proxy, etc.).
+:::
+
 Get MeshMonitor running in under 60 seconds with Docker Compose:
 
 ```bash
