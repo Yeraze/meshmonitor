@@ -2,6 +2,12 @@
 
 MeshMonitor is designed to be flexible and adaptable to various deployment scenarios. This section covers all configuration options and deployment strategies.
 
+::: tip Quick Start: Interactive Configurator
+**New!** Use our **[Interactive Docker Compose Configurator](/configurator)** to generate a customized `docker-compose.yml` and `.env` file for your specific setup. Just answer a few questions and get a ready-to-deploy configuration!
+
+Supports: TCP/Network, BLE Bridge, Serial Bridge, reverse proxy, Virtual Node, and more.
+:::
+
 ## Configuration Topics
 
 ### [Serial Bridge for USB/Serial Devices](/configuration/serial-bridge)
