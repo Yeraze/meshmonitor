@@ -59,6 +59,7 @@ export interface DbNode extends Partial<DeviceInfo> {
   voltage?: number
   channelUtilization?: number
   airUtilTx?: number
+  channel?: number
   createdAt?: number
   updatedAt?: number
   lastTracerouteRequest?: number

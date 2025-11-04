@@ -5,6 +5,7 @@ import { getDeviceRoleName } from '../utils/deviceRole';
 import { getHardwareImageUrl } from '../utils/hardwareImages';
 import { formatRelativeTime } from '../utils/datetime';
 import { TimeFormat, DateFormat } from '../contexts/SettingsContext';
+import { useData } from '../contexts/DataContext';
 import './NodeDetailsBlock.css';
 
 interface NodeDetailsBlockProps {
@@ -14,6 +15,8 @@ interface NodeDetailsBlockProps {
 }
 
 const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = '24', dateFormat = 'MM/DD/YYYY' }) => {
+  const { channels } = useData();
+
   if (!node) {
     return null;
   }
@@ -208,6 +211,21 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
             <div className="node-detail-label">Role</div>
             <div className="node-detail-value">
               {getDeviceRoleName(role)}
+            </div>
+          </div>
+        )}
+
+        {/* Channel */}
+        {node.channel !== undefined && (
+          <div className="node-detail-card">
+            <div className="node-detail-label">Channel</div>
+            <div className="node-detail-value">
+              {(() => {
+                const channel = (channels || []).find(ch => ch.id === node.channel);
+                return channel?.name
+                  ? `${node.channel} (${channel.name})`
+                  : `${node.channel}`;
+              })()}
             </div>
           </div>
         )}
