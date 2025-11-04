@@ -14,7 +14,7 @@ export const NodeFilterPopup: React.FC<NodeFilterPopupProps> = ({ isOpen, onClos
   if (!isOpen) return null;
 
   // Get unique channel numbers from available channels
-  const availableChannels = channels.map(ch => ch.id).sort((a, b) => a - b);
+  const availableChannels = (channels || []).map(ch => ch.id).sort((a, b) => a - b);
 
   return (
     <div className="filter-popup-overlay" onClick={onClose}>
