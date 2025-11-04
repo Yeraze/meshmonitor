@@ -14,6 +14,7 @@ import { useUI } from '../contexts/UIContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { useAuth } from '../contexts/AuthContext';
 import MapLegend from './MapLegend';
+import ZoomHandler from './ZoomHandler';
 import MapResizeHandler from './MapResizeHandler';
 import { SpiderfierController, SpiderfierControllerRef } from './SpiderfierController';
 import { TilesetSelector } from './TilesetSelector';
@@ -96,6 +97,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     mapCenterTarget,
     setMapCenterTarget,
     mapZoom,
+    setMapZoom,
     selectedNodeId,
     setSelectedNodeId,
     neighborInfo,
@@ -767,6 +769,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 url={getTilesetById(activeTileset).url}
                 maxZoom={getTilesetById(activeTileset).maxZoom}
               />
+              <ZoomHandler onZoomChange={setMapZoom} />
               <MapResizeHandler trigger={showPacketMonitor} />
               <SpiderfierController ref={spiderfierRef} zoomLevel={mapZoom} />
               <MapLegend />
