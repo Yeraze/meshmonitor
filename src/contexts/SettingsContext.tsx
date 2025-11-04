@@ -8,6 +8,7 @@ import { DEFAULT_TILESET_ID, type TilesetId, isTilesetId } from '../config/tiles
 export type DistanceUnit = 'km' | 'mi';
 export type TimeFormat = '12' | '24';
 export type DateFormat = 'MM/DD/YYYY' | 'DD/MM/YYYY';
+export type MapPinStyle = 'meshmonitor' | 'official';
 
 interface SettingsContextType {
   maxNodeAgeHours: number;
@@ -20,6 +21,7 @@ interface SettingsContextType {
   timeFormat: TimeFormat;
   dateFormat: DateFormat;
   mapTileset: TilesetId;
+  mapPinStyle: MapPinStyle;
   temporaryTileset: TilesetId | null;
   setTemporaryTileset: (tilesetId: TilesetId | null) => void;
   isLoading: boolean;
@@ -33,6 +35,7 @@ interface SettingsContextType {
   setTimeFormat: (format: TimeFormat) => void;
   setDateFormat: (format: DateFormat) => void;
   setMapTileset: (tilesetId: TilesetId) => void;
+  setMapPinStyle: (style: MapPinStyle) => void;
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
@@ -97,6 +100,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
       return saved;
     }
     return DEFAULT_TILESET_ID;
+  });
+
+  const [mapPinStyle, setMapPinStyleState] = useState<MapPinStyle>(() => {
+    const saved = localStorage.getItem('mapPinStyle');
+    return (saved === 'official' ? 'official' : 'meshmonitor') as MapPinStyle;
   });
 
   const [temporaryTileset, setTemporaryTileset] = useState<TilesetId | null>(null);
@@ -171,6 +179,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     localStorage.setItem('mapTileset', tilesetId);
   };
 
+  const setMapPinStyle = (style: MapPinStyle) => {
+    setMapPinStyleState(style);
+    localStorage.setItem('mapPinStyle', style);
+  };
+
   // Load settings from server on mount
   React.useEffect(() => {
     const loadServerSettings = async () => {
@@ -236,6 +249,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             localStorage.setItem('mapTileset', settings.mapTileset);
           }
 
+          if (settings.mapPinStyle) {
+            setMapPinStyleState(settings.mapPinStyle as MapPinStyle);
+            localStorage.setItem('mapPinStyle', settings.mapPinStyle);
+          }
+
           logger.debug('✅ Settings loaded from server and applied to state');
         } else {
           logger.error(`❌ Failed to fetch settings: ${response.status} ${response.statusText}`);
@@ -262,6 +280,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     timeFormat,
     dateFormat,
     mapTileset,
+    mapPinStyle,
     temporaryTileset,
     setTemporaryTileset,
     isLoading,
@@ -275,6 +294,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setTimeFormat,
     setDateFormat,
     setMapTileset,
+    setMapPinStyle,
   };
 
   return (

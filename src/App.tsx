@@ -269,6 +269,7 @@ function App() {
     timeFormat,
     dateFormat,
     mapTileset,
+    mapPinStyle,
     setMaxNodeAgeHours,
     setTracerouteIntervalMinutes,
     setTemperatureUnit,
@@ -278,7 +279,8 @@ function App() {
     setPreferredSortDirection,
     setTimeFormat,
     setDateFormat,
-    setMapTileset
+    setMapTileset,
+    setMapPinStyle
   } = useSettings();
 
   // Map context
@@ -4728,6 +4730,7 @@ function App() {
             timeFormat={timeFormat}
             dateFormat={dateFormat}
             mapTileset={mapTileset}
+            mapPinStyle={mapPinStyle}
             baseUrl={baseUrl}
             onMaxNodeAgeChange={setMaxNodeAgeHours}
             onTemperatureUnitChange={setTemperatureUnit}
@@ -4738,6 +4741,7 @@ function App() {
             onTimeFormatChange={setTimeFormat}
             onDateFormatChange={setDateFormat}
             onMapTilesetChange={setMapTileset}
+            onMapPinStyleChange={setMapPinStyle}
           />
         )}
         {activeTab === 'automation' && (

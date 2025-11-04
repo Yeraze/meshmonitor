@@ -133,6 +133,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     temporaryTileset,
     setTemporaryTileset,
     mapTileset,
+    mapPinStyle,
   } = useSettings();
 
   const { hasPermission } = useAuth();
@@ -796,7 +797,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   isRouter,
                   shortName: node.user?.shortName,
                   showLabel: showLabel || shouldAnimate, // Show label when animating OR zoomed in
-                  animate: shouldAnimate
+                  animate: shouldAnimate,
+                  pinStyle: mapPinStyle
                 });
 
                 // Use memoized position to prevent React-Leaflet from resetting marker position
