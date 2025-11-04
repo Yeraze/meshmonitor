@@ -50,11 +50,11 @@ describe('Validation Utilities', () => {
     });
 
     it('should handle non-string input gracefully', () => {
-      // @ts-ignore - Testing runtime behavior
+      // @ts-expect-error - Testing runtime behavior
       expect(sanitizeTextInput(null)).toBe('');
-      // @ts-ignore - Testing runtime behavior
+      // @ts-expect-error - Testing runtime behavior
       expect(sanitizeTextInput(undefined)).toBe('');
-      // @ts-ignore - Testing runtime behavior
+      // @ts-expect-error - Testing runtime behavior
       expect(sanitizeTextInput(123)).toBe('');
     });
 
