@@ -46,6 +46,7 @@ export interface DeviceInfo {
   lastHeard?: number;
   snr?: number;
   rssi?: number;
+  mobile?: number; // Database field: 0 = not mobile, 1 = mobile (moved >100m)
 }
 
 export interface MeshMessage {
@@ -1287,6 +1288,9 @@ class MeshtasticManager {
           });
         }
 
+        // Update mobility detection for this node
+        databaseService.updateNodeMobility(nodeId);
+
         logger.debug(`🗺️ Updated node position: ${nodeId} -> ${coords.latitude}, ${coords.longitude}`);
       }
     } catch (error) {
@@ -2233,6 +2237,9 @@ class MeshtasticManager {
             timestamp: positionTelemetryData.timestamp, value: positionTelemetryData.altitude, unit: 'm', createdAt: now
           });
         }
+
+        // Update mobility detection for this node
+        databaseService.updateNodeMobility(nodeId);
       }
 
       // Insert device metrics telemetry if we have it (after node exists in database)
@@ -4816,6 +4823,11 @@ class MeshtasticManager {
       // Add channel if it exists
       if (node.channel !== null && node.channel !== undefined) {
         deviceInfo.channel = node.channel;
+      }
+
+      // Add mobile flag if it exists (pre-computed during packet processing)
+      if (node.mobile !== null && node.mobile !== undefined) {
+        deviceInfo.mobile = node.mobile;
       }
 
       // Add security fields for low-entropy and duplicate key detection

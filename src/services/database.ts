@@ -23,6 +23,7 @@ import { migration as messageDeliveryTrackingMigration } from '../server/migrati
 import { migration as autoTracerouteFilterMigration } from '../server/migrations/015_add_auto_traceroute_filter.js';
 import { migration as securityPermissionMigration } from '../server/migrations/016_add_security_permission.js';
 import { migration as channelColumnMigration } from '../server/migrations/017_add_channel_to_nodes.js';
+import { migration as mobileMigration } from '../server/migrations/018_add_mobile_to_nodes.js';
 
 // Configuration constants for traceroute history
 const TRACEROUTE_HISTORY_LIMIT = 50;
@@ -52,6 +53,7 @@ export interface DbNode {
   firmwareVersion?: string;
   channel?: number;
   isFavorite?: boolean;
+  mobile?: number; // 0 = not mobile, 1 = mobile (moved >100m)
   rebootCount?: number;
   publicKey?: string;
   hasPKC?: boolean;
@@ -203,6 +205,7 @@ class DatabaseService {
     this.db = new Database(dbPath);
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
+    this.db.pragma('busy_timeout = 5000'); // 5 second timeout for locked database
 
     // Initialize models
     this.userModel = new UserModel(this.db);
@@ -240,6 +243,7 @@ class DatabaseService {
     this.runAutoTracerouteFilterMigration();
     this.runSecurityPermissionMigration();
     this.runChannelColumnMigration();
+    this.runMobileMigration();
     this.runAutoWelcomeMigration();
     this.ensureAutomationDefaults();
     this.isInitialized = true;
@@ -629,6 +633,27 @@ class DatabaseService {
       logger.debug('✅ Channel column migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run channel column migration:', error);
+      throw error;
+    }
+  }
+
+  private runMobileMigration(): void {
+    logger.debug('Running mobile column migration...');
+    try {
+      const migrationKey = 'migration_018_add_mobile_to_nodes';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Mobile column migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 018: Add mobile column to nodes table...');
+      mobileMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Mobile column migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run mobile column migration:', error);
       throw error;
     }
   }
@@ -1549,6 +1574,59 @@ class DatabaseService {
     const stmt = this.db.prepare('SELECT COUNT(*) as count FROM nodes');
     const result = stmt.get() as { count: number };
     return Number(result.count);
+  }
+
+  /**
+   * Update node mobility status based on position telemetry
+   * Checks if a node has moved more than 100 meters based on its last 50 position records
+   * @param nodeId The node ID to check
+   * @returns The updated mobility status (0 = stationary, 1 = mobile)
+   */
+  updateNodeMobility(nodeId: string): number {
+    try {
+      // Get last 50 position telemetry records for this node
+      const positionTelemetry = this.getPositionTelemetryByNode(nodeId, 50);
+
+      const latitudes = positionTelemetry.filter(t => t.telemetryType === 'latitude');
+      const longitudes = positionTelemetry.filter(t => t.telemetryType === 'longitude');
+
+      let isMobile = 0;
+
+      // Need at least 2 position records to detect movement
+      if (latitudes.length >= 2 && longitudes.length >= 2) {
+        const latValues = latitudes.map(t => t.value);
+        const lonValues = longitudes.map(t => t.value);
+
+        const minLat = Math.min(...latValues);
+        const maxLat = Math.max(...latValues);
+        const minLon = Math.min(...lonValues);
+        const maxLon = Math.max(...lonValues);
+
+        // Calculate distance between min/max corners using Haversine formula
+        const R = 6371; // Earth's radius in km
+        const dLat = (maxLat - minLat) * Math.PI / 180;
+        const dLon = (maxLon - minLon) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                  Math.cos(minLat * Math.PI / 180) * Math.cos(maxLat * Math.PI / 180) *
+                  Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const distance = R * c;
+
+        // If movement is greater than 100 meters (0.1 km), mark as mobile
+        isMobile = distance > 0.1 ? 1 : 0;
+
+        logger.debug(`📍 Node ${nodeId} mobility check: ${latitudes.length} positions, distance=${distance.toFixed(3)}km, mobile=${isMobile}`);
+      }
+
+      // Update the mobile flag in the database
+      const stmt = this.db.prepare('UPDATE nodes SET mobile = ? WHERE nodeId = ?');
+      stmt.run(isMobile, nodeId);
+
+      return isMobile;
+    } catch (error) {
+      logger.error(`Failed to update mobility for node ${nodeId}:`, error);
+      return 0; // Default to non-mobile on error
+    }
   }
 
   getMessagesByDay(days: number = 7): Array<{ date: string; count: number }> {
