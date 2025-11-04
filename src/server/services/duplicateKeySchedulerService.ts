@@ -126,6 +126,29 @@ class DuplicateKeySchedulerService {
         return;
       }
 
+      // Build set of all nodes that currently have duplicates
+      const currentDuplicateNodes = new Set<number>();
+      for (const [, nodeNums] of duplicates) {
+        nodeNums.forEach(num => currentDuplicateNodes.add(num));
+      }
+
+      // Clear duplicate flags from nodes that are no longer duplicates
+      const allNodes = databaseService.getAllNodes();
+      let clearedCount = 0;
+      for (const node of allNodes) {
+        if (node.duplicateKeyDetected && !currentDuplicateNodes.has(node.nodeNum)) {
+          // This node was previously flagged but no longer has duplicates
+          const details = node.keyIsLowEntropy ? 'Known low-entropy key detected' : undefined;
+          databaseService.updateNodeSecurityFlags(node.nodeNum, false, details);
+          clearedCount++;
+          logger.debug(`🔐 Cleared duplicate flag from node ${node.nodeNum} (no longer has duplicates)`);
+        }
+      }
+
+      if (clearedCount > 0) {
+        logger.info(`🔐 Cleared duplicate flags from ${clearedCount} nodes that no longer have duplicates`);
+      }
+
       // Update database with duplicate flags
       let updateCount = 0;
       for (const [keyHash, nodeNums] of duplicates) {
