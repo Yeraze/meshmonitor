@@ -9,10 +9,10 @@ import Toast, { ToastProps } from './Toast';
 // Skip Toast tests in CI - they have timing issues with fake timers
 // Tests work locally but timeout in CI environment
 describe.skip('Toast Component', () => {
-  let mockOnClose: ReturnType<typeof vi.fn> = vi.fn();
+  let mockOnClose = vi.fn() as unknown as (id: string) => void;
 
   beforeEach(() => {
-    mockOnClose = vi.fn();
+    mockOnClose = vi.fn() as unknown as (id: string) => void;
     vi.useFakeTimers();
   });
 
