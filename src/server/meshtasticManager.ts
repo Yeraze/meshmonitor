@@ -2121,8 +2121,16 @@ class MeshtasticManager {
         lastHeard: Math.min(nodeInfo.lastHeard || (Date.now() / 1000), Date.now() / 1000), // Cap at current time to prevent future timestamps
         snr: nodeInfo.snr,
         rssi: 0, // Will be updated from mesh packet if available
-        hopsAway: nodeInfo.hopsAway !== undefined ? nodeInfo.hopsAway : undefined
+        hopsAway: nodeInfo.hopsAway !== undefined ? nodeInfo.hopsAway : undefined,
+        channel: nodeInfo.channel !== undefined ? nodeInfo.channel : undefined
       };
+
+      // Debug logging for channel extraction
+      if (nodeInfo.channel !== undefined) {
+        logger.debug(`📡 NodeInfo for ${nodeId}: extracted channel=${nodeInfo.channel}`);
+      } else {
+        logger.debug(`📡 NodeInfo for ${nodeId}: no channel field present`);
+      }
 
       // Always sync isFavorite from device to keep in sync with changes made while offline
       // This ensures favorites are updated when reconnecting (fixes #213)
@@ -4803,6 +4811,11 @@ class MeshtasticManager {
       // Add isFavorite if it exists
       if (node.isFavorite !== null && node.isFavorite !== undefined) {
         deviceInfo.isFavorite = Boolean(node.isFavorite);
+      }
+
+      // Add channel if it exists
+      if (node.channel !== null && node.channel !== undefined) {
+        deviceInfo.channel = node.channel;
       }
 
       // Add security fields for low-entropy and duplicate key detection

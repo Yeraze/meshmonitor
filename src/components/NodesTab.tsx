@@ -20,6 +20,7 @@ import { TilesetSelector } from './TilesetSelector';
 import { MapCenterController } from './MapCenterController';
 import PacketMonitorPanel from './PacketMonitorPanel';
 import { getPacketStats } from '../services/packetApi';
+import { NodeFilterPopup } from './NodeFilterPopup';
 
 /**
  * Spiderfier initialization constants
@@ -113,6 +114,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     nodeFilter,
     setNodeFilter,
     securityFilter,
+    channelFilter,
     sortField,
     setSortField,
     sortDirection,
@@ -518,15 +520,23 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         {!isNodeListCollapsed && (
         <div className="nodes-list">
           {shouldShowData() ? (() => {
-            // Apply security filter
+            // Apply security and channel filters
             const filteredNodes = processedNodes.filter(node => {
+              // Security filter
               if (securityFilter === 'flaggedOnly') {
-                return node.keyIsLowEntropy || node.duplicateKeyDetected;
+                if (!node.keyIsLowEntropy && !node.duplicateKeyDetected) return false;
               }
               if (securityFilter === 'hideFlagged') {
-                return !node.keyIsLowEntropy && !node.duplicateKeyDetected;
+                if (node.keyIsLowEntropy || node.duplicateKeyDetected) return false;
               }
-              return true; // 'all'
+
+              // Channel filter
+              if (channelFilter !== 'all') {
+                const nodeChannel = node.channel ?? 0;
+                if (nodeChannel !== channelFilter) return false;
+              }
+
+              return true;
             });
 
             // Sort nodes: favorites first, then non-favorites, each group sorted independently
@@ -607,6 +617,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       {node.hopsAway != null && (
                         <span className="stat" title="Hops Away">
                           🔗 {node.hopsAway} hop{node.hopsAway !== 1 ? 's' : ''}
+                          {node.channel != null && node.channel !== 0 && ` (ch:${node.channel})`}
                         </span>
                       )}
                     </div>
@@ -1047,6 +1058,12 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
           />
         </div>
       )}
+
+      {/* Node Filter Popup */}
+      <NodeFilterPopup
+        isOpen={showNodeFilterPopup}
+        onClose={() => setShowNodeFilterPopup(false)}
+      />
     </div>
   );
 };

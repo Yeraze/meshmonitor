@@ -22,6 +22,7 @@ import { migration as backupTablesMigration } from '../server/migrations/013_add
 import { migration as messageDeliveryTrackingMigration } from '../server/migrations/014_add_message_delivery_tracking.js';
 import { migration as autoTracerouteFilterMigration } from '../server/migrations/015_add_auto_traceroute_filter.js';
 import { migration as securityPermissionMigration } from '../server/migrations/016_add_security_permission.js';
+import { migration as channelColumnMigration } from '../server/migrations/017_add_channel_to_nodes.js';
 
 // Configuration constants for traceroute history
 const TRACEROUTE_HISTORY_LIMIT = 50;
@@ -49,6 +50,7 @@ export interface DbNode {
   rssi?: number;
   lastTracerouteRequest?: number;
   firmwareVersion?: string;
+  channel?: number;
   isFavorite?: boolean;
   rebootCount?: number;
   publicKey?: string;
@@ -237,6 +239,7 @@ class DatabaseService {
     this.runMessageDeliveryTrackingMigration();
     this.runAutoTracerouteFilterMigration();
     this.runSecurityPermissionMigration();
+    this.runChannelColumnMigration();
     this.runAutoWelcomeMigration();
     this.ensureAutomationDefaults();
     this.isInitialized = true;
@@ -609,6 +612,27 @@ class DatabaseService {
     }
   }
 
+  private runChannelColumnMigration(): void {
+    logger.debug('Running channel column migration...');
+    try {
+      const migrationKey = 'migration_017_add_channel_to_nodes';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Channel column migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 017: Add channel column to nodes table...');
+      channelColumnMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Channel column migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run channel column migration:', error);
+      throw error;
+    }
+  }
+
   private runAutoWelcomeMigration(): void {
     try {
       const migrationKey = 'migration_017_auto_welcome_existing_nodes';
@@ -706,6 +730,7 @@ class DatabaseService {
         snr REAL,
         rssi INTEGER,
         firmwareVersion TEXT,
+        channel INTEGER,
         isFavorite BOOLEAN DEFAULT 0,
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL
@@ -1222,6 +1247,7 @@ class DatabaseService {
           snr = COALESCE(?, snr),
           rssi = COALESCE(?, rssi),
           firmwareVersion = COALESCE(?, firmwareVersion),
+          channel = COALESCE(?, channel),
           isFavorite = COALESCE(?, isFavorite),
           rebootCount = COALESCE(?, rebootCount),
           publicKey = COALESCE(?, publicKey),
@@ -1252,6 +1278,7 @@ class DatabaseService {
         nodeData.snr,
         nodeData.rssi,
         nodeData.firmwareVersion || null,
+        nodeData.channel !== undefined ? nodeData.channel : null,
         nodeData.isFavorite !== undefined ? (nodeData.isFavorite ? 1 : 0) : null,
         nodeData.rebootCount !== undefined ? nodeData.rebootCount : null,
         nodeData.publicKey || null,
@@ -1266,9 +1293,9 @@ class DatabaseService {
         INSERT INTO nodes (
           nodeNum, nodeId, longName, shortName, hwModel, role, hopsAway, viaMqtt, macaddr,
           latitude, longitude, altitude, batteryLevel, voltage,
-          channelUtilization, airUtilTx, lastHeard, snr, rssi, firmwareVersion,
+          channelUtilization, airUtilTx, lastHeard, snr, rssi, firmwareVersion, channel,
           isFavorite, rebootCount, publicKey, hasPKC, lastPKIPacket, welcomedAt, createdAt, updatedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       stmt.run(
@@ -1292,6 +1319,7 @@ class DatabaseService {
         nodeData.snr || null,
         nodeData.rssi || null,
         nodeData.firmwareVersion || null,
+        nodeData.channel !== undefined ? nodeData.channel : null,
         nodeData.isFavorite ? 1 : 0,
         nodeData.rebootCount || null,
         nodeData.publicKey || null,
