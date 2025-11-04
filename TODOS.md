@@ -1,12 +1,21 @@
 # TODO List
 
-## Mobile UI Improvements
+## Version 2.13.3 Release Tasks
+
+- [x] Update version in package.json to 2.13.3
+- [x] Update version in Helm chart to 2.13.3
+- [x] Regenerate package-lock.json
+- [x] Update documentation with recent changes
+
+## Completed Tasks
+
+### Mobile UI Improvements
 
 - [x] Add unread message indicator to dropdown on Messages page
 - [x] Reflow Security page rows to 2 lines for mobile display
 - [x] Break Device Backup modal onto 2 lines for mobile compatibility
 
-## Virtual Node Enhancements
+### Virtual Node Enhancements
 
 - [x] Add Virtual Node status block to Info page showing connection status and number of connected clients
 - [x] Display IP addresses of connected Virtual Node clients when authenticated
