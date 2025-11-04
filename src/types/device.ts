@@ -25,6 +25,7 @@ export interface DeviceInfo {
   rssi?: number
   firmwareVersion?: string
   isMobile?: boolean
+  mobile?: number // Database field: 0 = not mobile, 1 = mobile (moved >100m)
   isFavorite?: boolean
   keyIsLowEntropy?: boolean
   duplicateKeyDetected?: boolean
@@ -60,6 +61,7 @@ export interface DbNode extends Partial<DeviceInfo> {
   channelUtilization?: number
   airUtilTx?: number
   channel?: number
+  mobile?: number // 0 = not mobile, 1 = mobile (moved >100m)
   createdAt?: number
   updatedAt?: number
   lastTracerouteRequest?: number
