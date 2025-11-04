@@ -37,7 +37,7 @@
     "cors": "^2.8.5",
     "cron-validator": "^1.4.0",
     "express": "^5.1.0",
-    "express-rate-limit": "^8.1.0",
+    "express-rate-limit": "^8.2.1",
     "express-session": "^1.18.2",
     "helmet": "^8.1.0",
     "leaflet": "^1.9.4",
