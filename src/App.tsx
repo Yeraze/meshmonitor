@@ -27,6 +27,7 @@ import { type TemperatureUnit } from './utils/temperature'
 import { calculateDistance, formatDistance } from './utils/distance'
 import { formatTime, formatDateTime } from './utils/datetime'
 import { formatTracerouteRoute } from './utils/traceroute'
+import { getUtf8ByteLength, formatByteCount } from './utils/text'
 import { DeviceInfo, Channel } from './types/device'
 import { MeshMessage, MessageDeliveryState } from './types/message'
 import { SortField, SortDirection } from './types/ui'
@@ -48,6 +49,7 @@ import LoginPage from './components/LoginPage'
 import UserMenu from './components/UserMenu'
 import TracerouteHistoryModal from './components/TracerouteHistoryModal'
 import RouteSegmentTraceroutesModal from './components/RouteSegmentTraceroutesModal'
+import { NodeFilterPopup } from './components/NodeFilterPopup'
 
 // Fix for default markers in React-Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -154,6 +156,7 @@ function App() {
     showPKI: boolean;
     showUnknown: boolean;
     deviceRoles: number[];
+    channels: number[];
   }
 
   // Node list filter options (shared between Map and Messages pages)
@@ -166,6 +169,14 @@ function App() {
         // Add filterMode if it doesn't exist (backward compatibility)
         if (!parsed.filterMode) {
           parsed.filterMode = 'show';
+        }
+        // Add channels if it doesn't exist (backward compatibility)
+        if (!parsed.channels) {
+          parsed.channels = [];
+        }
+        // Add deviceRoles if it doesn't exist (backward compatibility)
+        if (!parsed.deviceRoles) {
+          parsed.deviceRoles = [];
         }
         return parsed;
       } catch (e) {
@@ -183,7 +194,8 @@ function App() {
       maxHops: 10,
       showPKI: false,
       showUnknown: false,
-      deviceRoles: [] as number[] // Empty array means show all roles
+      deviceRoles: [] as number[], // Empty array means show all roles
+      channels: [] as number[]
     };
   });
 
@@ -349,6 +361,7 @@ function App() {
     setNodeFilter,
     securityFilter,
     setSecurityFilter,
+    channelFilter,
     sortField,
     setSortField,
     sortDirection,
@@ -2249,6 +2262,14 @@ function App() {
         if (!isShowMode && matches) return false;
       }
 
+      // Channel filter
+      if (nodeFilters.channels.length > 0) {
+        const nodeChannel = node.channel ?? -1;
+        const matches = nodeFilters.channels.includes(nodeChannel);
+        if (isShowMode && !matches) return false;
+        if (!isShowMode && matches) return false;
+      }
+
       return true;
     });
 
@@ -2687,6 +2708,48 @@ function App() {
               </div>
             </div>
 
+            <div className="filter-section">
+              <div className="filter-section-title">
+                <span className="filter-icon-wrapper"><span className="filter-icon">📡</span></span>
+                <span>Channel</span>
+              </div>
+              <div className="filter-role-group">
+                {(channels || []).map(ch => (
+                  <label key={ch.id} className="filter-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={nodeFilters.channels.length === 0 || nodeFilters.channels.includes(ch.id)}
+                      onChange={(e) => {
+                        const allChannels = (channels || []).map(c => c.id);
+
+                        if (e.target.checked) {
+                          if (nodeFilters.channels.length === 0) {
+                            return;
+                          } else {
+                            const newChannels = [...nodeFilters.channels, ch.id];
+                            if (newChannels.length === (channels || []).length) {
+                              setNodeFilters({...nodeFilters, channels: []});
+                            } else {
+                              setNodeFilters({...nodeFilters, channels: newChannels});
+                            }
+                          }
+                        } else {
+                          if (nodeFilters.channels.length === 0) {
+                            const newChannels = allChannels.filter((c: number) => c !== ch.id);
+                            setNodeFilters({...nodeFilters, channels: newChannels});
+                          } else {
+                            const newChannels = nodeFilters.channels.filter((c: number) => c !== ch.id);
+                            setNodeFilters({...nodeFilters, channels: newChannels});
+                          }
+                        }
+                      }}
+                    />
+                    <span>Channel {ch.id}{ch.name ? ` (${ch.name})` : ""}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
           </div>
           <div className="filter-popup-actions">
             <button
@@ -2702,7 +2765,8 @@ function App() {
                 maxHops: 10,
                 showPKI: false,
                 showUnknown: false,
-                deviceRoles: []
+                deviceRoles: [],
+                channels: []
               })}
             >
               Reset All
@@ -3002,19 +3066,24 @@ function App() {
                       )}
                       {hasPermission('channels', 'write') && (
                         <div className="message-input-container">
-                          <input
-                            ref={channelMessageInputRef}
-                            type="text"
-                            value={newMessage}
-                            onChange={(e) => setNewMessage(e.target.value)}
-                            placeholder={`Send message to ${getChannelName(selectedChannel)}...`}
-                            className="message-input"
-                            onKeyPress={(e) => {
-                              if (e.key === 'Enter') {
-                                handleSendMessage(selectedChannel);
-                              }
-                            }}
-                          />
+                          <div className="input-with-counter">
+                            <input
+                              ref={channelMessageInputRef}
+                              type="text"
+                              value={newMessage}
+                              onChange={(e) => setNewMessage(e.target.value)}
+                              placeholder={`Send message to ${getChannelName(selectedChannel)}...`}
+                              className="message-input"
+                              onKeyPress={(e) => {
+                                if (e.key === 'Enter') {
+                                  handleSendMessage(selectedChannel);
+                                }
+                              }}
+                            />
+                            <div className={formatByteCount(getUtf8ByteLength(newMessage)).className}>
+                              {formatByteCount(getUtf8ByteLength(newMessage)).text}
+                            </div>
+                          </div>
                           <button
                             onClick={() => handleSendMessage(selectedChannel)}
                             disabled={!newMessage.trim()}
@@ -3232,6 +3301,11 @@ function App() {
             )}
           </div>
 
+          <NodeFilterPopup
+            isOpen={showNodeFilterPopup}
+            onClose={() => setShowNodeFilterPopup(false)}
+          />
+
           {!isMessagesNodeListCollapsed && (
           <div className="nodes-list">
             {shouldShowData() ? (
@@ -3244,6 +3318,11 @@ function App() {
                         if (!node.keyIsLowEntropy && !node.duplicateKeyDetected) return false;
                       } else if (securityFilter === 'hideFlagged') {
                         if (node.keyIsLowEntropy || node.duplicateKeyDetected) return false;
+                      }
+                      // Apply channel filter
+                      if (channelFilter !== 'all') {
+                        const nodeChannel = node.channel ?? 0;
+                        if (nodeChannel !== channelFilter) return false;
                       }
                       // Apply text filter
                       if (!nodeFilter) return true;
@@ -3312,6 +3391,7 @@ function App() {
                             {node.hopsAway != null && (
                               <span className="stat" title="Hops Away">
                                 🔗 {node.hopsAway} hop{node.hopsAway !== 1 ? 's' : ''}
+                                {node.channel != null && node.channel !== 0 && ` (ch:${node.channel})`}
                               </span>
                             )}
                           </div>
@@ -3651,19 +3731,24 @@ function App() {
                   )}
                   {hasPermission('messages', 'write') && (
                     <div className="message-input-container">
-                      <input
-                        ref={dmMessageInputRef}
-                        type="text"
-                        value={newMessage}
-                        onChange={(e) => setNewMessage(e.target.value)}
-                        placeholder={`Send direct message to ${getNodeName(selectedDMNode)}...`}
-                        className="message-input"
-                        onKeyPress={(e) => {
-                          if (e.key === 'Enter') {
-                            handleSendDirectMessage(selectedDMNode);
-                          }
-                        }}
-                      />
+                      <div className="input-with-counter">
+                        <input
+                          ref={dmMessageInputRef}
+                          type="text"
+                          value={newMessage}
+                          onChange={(e) => setNewMessage(e.target.value)}
+                          placeholder={`Send direct message to ${getNodeName(selectedDMNode)}...`}
+                          className="message-input"
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter') {
+                              handleSendDirectMessage(selectedDMNode);
+                            }
+                          }}
+                        />
+                        <div className={formatByteCount(getUtf8ByteLength(newMessage)).className}>
+                          {formatByteCount(getUtf8ByteLength(newMessage)).text}
+                        </div>
+                      </div>
                       <button
                         onClick={() => handleSendDirectMessage(selectedDMNode)}
                         disabled={!newMessage.trim()}

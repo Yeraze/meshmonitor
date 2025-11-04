@@ -4950,3 +4950,43 @@ body {
     height: 100% !important;
   }
 }
+
+/* Message Byte Counter - Overlay Style */
+.input-with-counter {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.input-with-counter .message-input {
+  padding-right: 65px; /* Make room for the counter overlay */
+}
+
+.byte-counter {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-family: monospace;
+  white-space: nowrap;
+  opacity: 0.6;
+  pointer-events: none; /* Allow clicking through to the input */
+  background: var(--bg-primary);
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.byte-counter-warning {
+  color: var(--warning-color, #f59e0b);
+  font-weight: 600;
+  opacity: 0.9;
+}
+
+.byte-counter-over {
+  color: var(--error-color, #ef4444);
+  font-weight: 700;
+  opacity: 1;
+}

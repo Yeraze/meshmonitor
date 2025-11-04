@@ -46,6 +46,7 @@ export interface DeviceInfo {
   lastHeard?: number;
   snr?: number;
   rssi?: number;
+  mobile?: number; // Database field: 0 = not mobile, 1 = mobile (moved >100m)
 }
 
 export interface MeshMessage {
@@ -1287,6 +1288,9 @@ class MeshtasticManager {
           });
         }
 
+        // Update mobility detection for this node
+        databaseService.updateNodeMobility(nodeId);
+
         logger.debug(`🗺️ Updated node position: ${nodeId} -> ${coords.latitude}, ${coords.longitude}`);
       }
     } catch (error) {
@@ -2121,8 +2125,16 @@ class MeshtasticManager {
         lastHeard: Math.min(nodeInfo.lastHeard || (Date.now() / 1000), Date.now() / 1000), // Cap at current time to prevent future timestamps
         snr: nodeInfo.snr,
         rssi: 0, // Will be updated from mesh packet if available
-        hopsAway: nodeInfo.hopsAway !== undefined ? nodeInfo.hopsAway : undefined
+        hopsAway: nodeInfo.hopsAway !== undefined ? nodeInfo.hopsAway : undefined,
+        channel: nodeInfo.channel !== undefined ? nodeInfo.channel : undefined
       };
+
+      // Debug logging for channel extraction
+      if (nodeInfo.channel !== undefined) {
+        logger.debug(`📡 NodeInfo for ${nodeId}: extracted channel=${nodeInfo.channel}`);
+      } else {
+        logger.debug(`📡 NodeInfo for ${nodeId}: no channel field present`);
+      }
 
       // Always sync isFavorite from device to keep in sync with changes made while offline
       // This ensures favorites are updated when reconnecting (fixes #213)
@@ -2225,6 +2237,9 @@ class MeshtasticManager {
             timestamp: positionTelemetryData.timestamp, value: positionTelemetryData.altitude, unit: 'm', createdAt: now
           });
         }
+
+        // Update mobility detection for this node
+        databaseService.updateNodeMobility(nodeId);
       }
 
       // Insert device metrics telemetry if we have it (after node exists in database)
@@ -4803,6 +4818,16 @@ class MeshtasticManager {
       // Add isFavorite if it exists
       if (node.isFavorite !== null && node.isFavorite !== undefined) {
         deviceInfo.isFavorite = Boolean(node.isFavorite);
+      }
+
+      // Add channel if it exists
+      if (node.channel !== null && node.channel !== undefined) {
+        deviceInfo.channel = node.channel;
+      }
+
+      // Add mobile flag if it exists (pre-computed during packet processing)
+      if (node.mobile !== null && node.mobile !== undefined) {
+        deviceInfo.mobile = node.mobile;
       }
 
       // Add security fields for low-entropy and duplicate key detection

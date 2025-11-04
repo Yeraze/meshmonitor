@@ -341,63 +341,31 @@ apiRouter.get('/nodes', optionalAuth(), (_req, res) => {
   try {
     const nodes = meshtasticManager.getAllNodes();
 
-    // Enhance nodes with mobility detection and estimated positions
+    // Enhance nodes with estimated positions if no regular position is available
+    // Mobile status is now pre-computed in the database during packet processing
     const enhancedNodes = nodes.map(node => {
       if (!node.user?.id) return { ...node, isMobile: false };
 
-      // Check position telemetry for this node
-      // Fetch more telemetry to detect movement over a longer time window
-      // (500 records still missed movement for nodes with lots of non-position telemetry)
-      const positionTelemetry = databaseService.getTelemetryByNode(node.user.id, 2000);
-      const latitudes = positionTelemetry.filter(t => t.telemetryType === 'latitude');
-      const longitudes = positionTelemetry.filter(t => t.telemetryType === 'longitude');
-      const estimatedLatitudes = positionTelemetry.filter(t => t.telemetryType === 'estimated_latitude');
-      const estimatedLongitudes = positionTelemetry.filter(t => t.telemetryType === 'estimated_longitude');
-
-      let isMobile = false;
-
-      if (latitudes.length >= 2 && longitudes.length >= 2) {
-        // Calculate distance variation
-        const latValues = latitudes.map(t => t.value);
-        const lonValues = longitudes.map(t => t.value);
-
-        const minLat = Math.min(...latValues);
-        const maxLat = Math.max(...latValues);
-        const minLon = Math.min(...lonValues);
-        const maxLon = Math.max(...lonValues);
-
-        // Calculate distance between min/max corners using Haversine formula
-        const R = 6371; // Earth's radius in km
-        const dLat = (maxLat - minLat) * Math.PI / 180;
-        const dLon = (maxLon - minLon) * Math.PI / 180;
-        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                  Math.cos(minLat * Math.PI / 180) * Math.cos(maxLat * Math.PI / 180) *
-                  Math.sin(dLon / 2) * Math.sin(dLon / 2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        const distance = R * c;
-
-        // If movement is greater than 1km, mark as mobile
-        isMobile = distance > 1.0;
-
-        // Debug logging for Yeraze V4
-        if (node.user.id === '!b29fa938') {
-          logger.info(`🚗 Yeraze V4 mobility check: ${latitudes.length} lat, ${longitudes.length} lon, distance=${distance.toFixed(3)}km, isMobile=${isMobile}`);
-        }
-      }
+      let enhancedNode = { ...node, isMobile: node.mobile === 1 };
 
       // If node doesn't have a regular position, check for estimated position
-      let enhancedNode = { ...node, isMobile };
-      if (!node.position?.latitude && !node.position?.longitude &&
-          estimatedLatitudes.length > 0 && estimatedLongitudes.length > 0) {
-        // Use the most recent estimated position
-        const latestEstimatedLat = estimatedLatitudes[0]; // getTelemetryByNode returns most recent first
-        const latestEstimatedLon = estimatedLongitudes[0];
+      if (!node.position?.latitude && !node.position?.longitude) {
+        // Get only the most recent estimated position (limit 1 of each type)
+        const positionTelemetry = databaseService.getPositionTelemetryByNode(node.user.id, 2);
+        const estimatedLatitudes = positionTelemetry.filter(t => t.telemetryType === 'estimated_latitude');
+        const estimatedLongitudes = positionTelemetry.filter(t => t.telemetryType === 'estimated_longitude');
 
-        enhancedNode.position = {
-          latitude: latestEstimatedLat.value,
-          longitude: latestEstimatedLon.value,
-          altitude: node.position?.altitude
-        };
+        if (estimatedLatitudes.length > 0 && estimatedLongitudes.length > 0) {
+          // Use the most recent estimated position
+          const latestEstimatedLat = estimatedLatitudes[0]; // getPositionTelemetryByNode returns most recent first
+          const latestEstimatedLon = estimatedLongitudes[0];
+
+          enhancedNode.position = {
+            latitude: latestEstimatedLat.value,
+            longitude: latestEstimatedLon.value,
+            altitude: node.position?.altitude
+          };
+        }
       }
 
       return enhancedNode;
@@ -474,6 +442,51 @@ apiRouter.get('/nodes/:nodeId/position-history', optionalAuth(), (req, res) => {
   } catch (error) {
     logger.error('Error fetching position history:', error);
     res.status(500).json({ error: 'Failed to fetch position history' });
+  }
+});
+
+// Alternative endpoint with limit parameter for fetching positions
+apiRouter.get('/nodes/:nodeId/positions', optionalAuth(), (req, res) => {
+  try {
+    const { nodeId } = req.params;
+    const limit = req.query.limit ? parseInt(req.query.limit as string) : 2000;
+
+    // Get only position-related telemetry (lat/lon/alt) for the node
+    const positionTelemetry = databaseService.getPositionTelemetryByNode(nodeId, limit);
+
+    // Group by timestamp to get lat/lon pairs
+    const positionMap = new Map<number, { lat?: number; lon?: number; alt?: number }>();
+
+    positionTelemetry.forEach(t => {
+      if (!positionMap.has(t.timestamp)) {
+        positionMap.set(t.timestamp, {});
+      }
+      const pos = positionMap.get(t.timestamp)!;
+
+      if (t.telemetryType === 'latitude') {
+        pos.lat = t.value;
+      } else if (t.telemetryType === 'longitude') {
+        pos.lon = t.value;
+      } else if (t.telemetryType === 'altitude') {
+        pos.alt = t.value;
+      }
+    });
+
+    // Convert to array of positions, filter incomplete ones
+    const positions = Array.from(positionMap.entries())
+      .filter(([_timestamp, pos]) => pos.lat !== undefined && pos.lon !== undefined)
+      .map(([timestamp, pos]) => ({
+        timestamp,
+        latitude: pos.lat!,
+        longitude: pos.lon!,
+        altitude: pos.alt
+      }))
+      .sort((a, b) => a.timestamp - b.timestamp);
+
+    res.json(positions);
+  } catch (error) {
+    logger.error('Error fetching positions:', error);
+    res.status(500).json({ error: 'Failed to fetch positions' });
   }
 });
 
@@ -1889,65 +1902,31 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
     // 2. Nodes (always available with optionalAuth)
     try {
       const nodes = meshtasticManager.getAllNodes();
-      logger.info(`🔍 [POLL] Processing ${nodes.length} nodes for mobility detection`);
 
-      // Enhance nodes with mobility detection and estimated positions (same as /nodes endpoint)
+      // Enhance nodes with estimated positions if no regular position is available
+      // Mobile status is now pre-computed in the database during packet processing
       const enhancedNodes = nodes.map(node => {
         if (!node.user?.id) return { ...node, isMobile: false };
 
-        // Debug: log all node IDs
-        const shortName = node.user?.shortName || 'unknown';
-        if (shortName.toLowerCase().includes('yz') || shortName.toLowerCase().includes('yeraze')) {
-          logger.info(`🔍 [POLL] Found Yeraze node: ${node.user.id} (${shortName})`);
-        }
+        let enhancedNode = { ...node, isMobile: node.mobile === 1 };
 
-        // Fetch more telemetry to detect movement over a longer time window
-        // (500 records still missed movement for nodes with lots of non-position telemetry)
-        const positionTelemetry = databaseService.getTelemetryByNode(node.user.id, 2000);
-        const latitudes = positionTelemetry.filter(t => t.telemetryType === 'latitude');
-        const longitudes = positionTelemetry.filter(t => t.telemetryType === 'longitude');
-        const estimatedLatitudes = positionTelemetry.filter(t => t.telemetryType === 'estimated_latitude');
-        const estimatedLongitudes = positionTelemetry.filter(t => t.telemetryType === 'estimated_longitude');
+        // If node doesn't have a regular position, check for estimated position
+        if (!node.position?.latitude && !node.position?.longitude) {
+          // Get only the most recent estimated position (limit 1 of each type)
+          const positionTelemetry = databaseService.getPositionTelemetryByNode(node.user.id, 2);
+          const estimatedLatitudes = positionTelemetry.filter(t => t.telemetryType === 'estimated_latitude');
+          const estimatedLongitudes = positionTelemetry.filter(t => t.telemetryType === 'estimated_longitude');
 
-        let isMobile = false;
+          if (estimatedLatitudes.length > 0 && estimatedLongitudes.length > 0) {
+            const latestEstimatedLat = estimatedLatitudes[0];
+            const latestEstimatedLon = estimatedLongitudes[0];
 
-        if (latitudes.length >= 2 && longitudes.length >= 2) {
-          const latValues = latitudes.map(t => t.value);
-          const lonValues = longitudes.map(t => t.value);
-
-          const minLat = Math.min(...latValues);
-          const maxLat = Math.max(...latValues);
-          const minLon = Math.min(...lonValues);
-          const maxLon = Math.max(...lonValues);
-
-          const R = 6371;
-          const dLat = (maxLat - minLat) * Math.PI / 180;
-          const dLon = (maxLon - minLon) * Math.PI / 180;
-          const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                    Math.cos(minLat * Math.PI / 180) * Math.cos(maxLat * Math.PI / 180) *
-                    Math.sin(dLon / 2) * Math.sin(dLon / 2);
-          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-          const distance = R * c;
-
-          isMobile = distance > 1.0;
-
-          // Debug logging for Yeraze V4
-          if (node.user.id === '!b29fa938') {
-            logger.info(`🚗 [POLL] Yeraze V4 mobility check: ${latitudes.length} lat, ${longitudes.length} lon, distance=${distance.toFixed(3)}km, isMobile=${isMobile}`);
+            enhancedNode.position = {
+              latitude: latestEstimatedLat.value,
+              longitude: latestEstimatedLon.value,
+              altitude: node.position?.altitude
+            };
           }
-        }
-
-        let enhancedNode = { ...node, isMobile };
-        if (!node.position?.latitude && !node.position?.longitude &&
-            estimatedLatitudes.length > 0 && estimatedLongitudes.length > 0) {
-          const latestEstimatedLat = estimatedLatitudes[0];
-          const latestEstimatedLon = estimatedLongitudes[0];
-
-          enhancedNode.position = {
-            latitude: latestEstimatedLat.value,
-            longitude: latestEstimatedLon.value,
-            altitude: node.position?.altitude
-          };
         }
 
         return enhancedNode;
@@ -3697,3 +3676,8 @@ const server = app.listen(PORT, () => {
   logger.debug(`MeshMonitor server running on port ${PORT}`);
   logger.debug(`Environment: ${env.nodeEnv}`);
 });
+
+// Configure server timeouts to prevent hanging requests
+server.setTimeout(30000); // 30 seconds
+server.keepAliveTimeout = 65000; // 65 seconds (must be > setTimeout)
+server.headersTimeout = 66000; // 66 seconds (must be > keepAliveTimeout)
