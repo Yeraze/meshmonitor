@@ -135,10 +135,13 @@ Get all nodes from the database.
     "rssi": -45,
     "lastTracerouteRequest": 1641990000,
     "createdAt": 1640990000,
-    "updatedAt": 1641995200
+    "updatedAt": 1641995200,
+    "mobile": 1
   }
 ]
 ```
+
+**Note:** The `mobile` field (0 or 1) indicates whether the node has been detected as mobile based on position changes. Nodes are marked mobile if they have moved more than 100 meters across their last 50 position records.
 
 ### GET /api/nodes/active
 Get active nodes (heard within specified days).
@@ -239,6 +242,43 @@ curl -X POST \
   -d '{"isFavorite": false, "syncToDevice": false}' \
   http://localhost:3001/api/nodes/!a2e4ff4c/favorite
 ```
+
+---
+
+### GET /api/nodes/:nodeId/positions
+
+Get position history for a specific node.
+
+**URL Parameters:**
+- `nodeId`: The node ID (e.g., "!a2e4ff4c")
+
+**Query Parameters:**
+- `limit` (optional): Number of positions to return (default: 50, max: 1000)
+
+**Response:**
+```json
+{
+  "success": true,
+  "positions": [
+    {
+      "id": 123,
+      "nodeId": "!a2e4ff4c",
+      "latitude": 40.7128,
+      "longitude": -74.0060,
+      "altitude": 10,
+      "timestamp": 1641995200,
+      "createdAt": 1641995200
+    }
+  ]
+}
+```
+
+**Example:**
+```bash
+curl http://localhost:3001/api/nodes/!a2e4ff4c/positions?limit=100
+```
+
+**Note:** Position data is used to calculate the `mobile` field for nodes. Nodes are marked as mobile if they have moved more than 100 meters (using Haversine distance calculation) across their most recent position records.
 
 ---
 
