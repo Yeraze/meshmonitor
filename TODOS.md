@@ -1,5 +1,12 @@
 # TODO List
 
+## Current Sprint
+
+### Bug Fixes
+- [x] Fix traceroute visualization not updating when clicking different nodes
+  - Issue: NodesTab memo comparison only checked null vs non-null for traceroutes
+  - Fixed by adding reference comparison to detect when traceroute content changes (src/components/NodesTab.tsx:1110-1114)
+
 ## Version 2.13.3 Release Tasks
 
 - [x] Update version in package.json to 2.13.3
