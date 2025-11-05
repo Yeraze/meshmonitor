@@ -8,8 +8,8 @@
 - [x] Update version in Helm chart to 2.13.4
 - [x] Regenerate package-lock.json
 - [x] Run system tests
-- [ ] Create pull request
-- [ ] Merge and create release
+- [x] Create pull request (#460)
+- [x] Merge and create release (v2.13.4)
 
 ## Completed Tasks
 
