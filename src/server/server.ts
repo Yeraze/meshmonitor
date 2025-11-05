@@ -290,7 +290,10 @@ setTimeout(async () => {
 const TELEMETRY_RETENTION_HOURS = 168; // 7 days
 setInterval(() => {
   try {
-    const purgedCount = databaseService.purgeOldTelemetry(TELEMETRY_RETENTION_HOURS);
+    // Get favorite telemetry storage days from settings (defaults to 7 if not set)
+    const favoriteDaysStr = databaseService.getSetting('favoriteTelemetryStorageDays');
+    const favoriteDays = favoriteDaysStr ? parseInt(favoriteDaysStr) : 7;
+    const purgedCount = databaseService.purgeOldTelemetry(TELEMETRY_RETENTION_HOURS, favoriteDays);
     if (purgedCount > 0) {
       logger.debug(`⏰ Hourly telemetry purge completed: removed ${purgedCount} records`);
     }
@@ -302,7 +305,10 @@ setInterval(() => {
 // Run initial purge on startup
 setTimeout(() => {
   try {
-    databaseService.purgeOldTelemetry(TELEMETRY_RETENTION_HOURS);
+    // Get favorite telemetry storage days from settings (defaults to 7 if not set)
+    const favoriteDaysStr = databaseService.getSetting('favoriteTelemetryStorageDays');
+    const favoriteDays = favoriteDaysStr ? parseInt(favoriteDaysStr) : 7;
+    databaseService.purgeOldTelemetry(TELEMETRY_RETENTION_HOURS, favoriteDays);
   } catch (error) {
     logger.error('Error during initial telemetry purge:', error);
   }

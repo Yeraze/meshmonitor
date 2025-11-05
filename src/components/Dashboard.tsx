@@ -69,6 +69,7 @@ interface ChartData {
 interface DashboardProps {
   temperatureUnit?: TemperatureUnit;
   telemetryHours?: number;
+  favoriteTelemetryStorageDays?: number;
   baseUrl: string;
 }
 
@@ -232,7 +233,7 @@ const SortableChartItem: React.FC<SortableChartItemProps> = React.memo(({
 
 SortableChartItem.displayName = 'SortableChartItem';
 
-const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C', telemetryHours = 24, baseUrl }) => {
+const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C', telemetryHours: _telemetryHours = 24, favoriteTelemetryStorageDays = 7, baseUrl }) => {
   const csrfFetch = useCsrfFetch();
   const [favorites, setFavorites] = useState<FavoriteChart[]>([]);
   const [customOrder, setCustomOrder] = useState<string[]>([]);
@@ -240,6 +241,9 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C',
   const [nodes, setNodes] = useState<Map<string, NodeInfo>>(new Map());
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Days to view control (defaults to all available, max is favoriteTelemetryStorageDays)
+  const [daysToView, setDaysToView] = useState<number>(favoriteTelemetryStorageDays);
 
   // Filter and sort state
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -356,7 +360,9 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C',
         await Promise.all(
           favoritesArray.map(async (favorite) => {
             try {
-              const data: TelemetryData[] = await api.get(`/api/telemetry/${favorite.nodeId}?hours=${telemetryHours}`);
+              // Use daysToView * 24 to convert days to hours
+              const hoursToFetch = daysToView * 24;
+              const data: TelemetryData[] = await api.get(`/api/telemetry/${favorite.nodeId}?hours=${hoursToFetch}`);
               // Filter to only get the specific telemetry type
               const filteredData = data.filter(d => d.telemetryType === favorite.telemetryType);
               const key = `${favorite.nodeId}-${favorite.telemetryType}`;
@@ -381,7 +387,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C',
     const interval = setInterval(fetchFavoritesAndNodes, 30000); // Refresh every 30 seconds
 
     return () => clearInterval(interval);
-  }, [telemetryHours, baseUrl]);
+  }, [daysToView, baseUrl]);
 
   const prepareChartData = (data: TelemetryData[], isTemperature: boolean = false): ChartData[] => {
     return data
@@ -632,12 +638,28 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C',
       <div className="dashboard-header-section">
         <div>
           <h2 className="dashboard-title">Telemetry Dashboard</h2>
-          <p className="dashboard-subtitle">Showing last {telemetryHours} hours of favorited telemetry</p>
+          <p className="dashboard-subtitle">Showing last {daysToView} days of favorited telemetry</p>
         </div>
       </div>
 
       <div className="dashboard-controls">
         <div className="dashboard-filters">
+          <div className="dashboard-filter-group">
+            <label htmlFor="daysToView" style={{ marginRight: '0.5rem', fontWeight: '500' }}>
+              Days to View:
+            </label>
+            <input
+              type="number"
+              id="daysToView"
+              className="dashboard-number-input"
+              min="1"
+              max={favoriteTelemetryStorageDays}
+              value={daysToView}
+              onChange={(e) => setDaysToView(Math.min(favoriteTelemetryStorageDays, Math.max(1, parseInt(e.target.value) || 1)))}
+              style={{ width: '80px', padding: '0.5rem', border: '1px solid #45475a', borderRadius: '4px', backgroundColor: '#1e1e2e', color: '#cdd6f4' }}
+            />
+          </div>
+
           <input
             type="text"
             className="dashboard-search"

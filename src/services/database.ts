@@ -2347,12 +2347,67 @@ class DatabaseService {
     this.db.exec('DELETE FROM telemetry');
   }
 
-  purgeOldTelemetry(hoursToKeep: number): number {
-    const cutoffTime = Date.now() - (hoursToKeep * 60 * 60 * 1000);
-    const stmt = this.db.prepare('DELETE FROM telemetry WHERE timestamp < ?');
-    const result = stmt.run(cutoffTime);
-    logger.debug(`🧹 Purged ${result.changes} old telemetry records (keeping last ${hoursToKeep} hours)`);
-    return Number(result.changes);
+  purgeOldTelemetry(hoursToKeep: number, favoriteDaysToKeep?: number): number {
+    const regularCutoffTime = Date.now() - (hoursToKeep * 60 * 60 * 1000);
+
+    // If no favorite storage duration specified, purge all telemetry older than hoursToKeep
+    if (!favoriteDaysToKeep) {
+      const stmt = this.db.prepare('DELETE FROM telemetry WHERE timestamp < ?');
+      const result = stmt.run(regularCutoffTime);
+      logger.debug(`🧹 Purged ${result.changes} old telemetry records (keeping last ${hoursToKeep} hours)`);
+      return Number(result.changes);
+    }
+
+    // Get the list of favorited telemetry from settings
+    const favoritesStr = this.getSetting('telemetryFavorites');
+    let favorites: Array<{ nodeId: string; telemetryType: string }> = [];
+    if (favoritesStr) {
+      try {
+        favorites = JSON.parse(favoritesStr);
+      } catch (error) {
+        logger.error('Failed to parse telemetryFavorites from settings:', error);
+      }
+    }
+
+    // If no favorites, just purge everything older than hoursToKeep
+    if (favorites.length === 0) {
+      const stmt = this.db.prepare('DELETE FROM telemetry WHERE timestamp < ?');
+      const result = stmt.run(regularCutoffTime);
+      logger.debug(`🧹 Purged ${result.changes} old telemetry records (keeping last ${hoursToKeep} hours, no favorites)`);
+      return Number(result.changes);
+    }
+
+    // Calculate the cutoff time for favorited telemetry
+    const favoriteCutoffTime = Date.now() - (favoriteDaysToKeep * 24 * 60 * 60 * 1000);
+
+    // Build a query to purge old telemetry, exempting favorited telemetry
+    // Purge non-favorited telemetry older than hoursToKeep
+    // Purge favorited telemetry older than favoriteDaysToKeep
+    let totalDeleted = 0;
+
+    // First, delete non-favorited telemetry older than regularCutoffTime
+    const conditions = favorites.map(() => '(nodeId = ? AND telemetryType = ?)').join(' OR ');
+    const params = favorites.flatMap(f => [f.nodeId, f.telemetryType]);
+
+    const deleteNonFavoritesStmt = this.db.prepare(
+      `DELETE FROM telemetry WHERE timestamp < ? AND NOT (${conditions})`
+    );
+    const nonFavoritesResult = deleteNonFavoritesStmt.run(regularCutoffTime, ...params);
+    totalDeleted += Number(nonFavoritesResult.changes);
+
+    // Then, delete favorited telemetry older than favoriteCutoffTime
+    const deleteFavoritesStmt = this.db.prepare(
+      `DELETE FROM telemetry WHERE timestamp < ? AND (${conditions})`
+    );
+    const favoritesResult = deleteFavoritesStmt.run(favoriteCutoffTime, ...params);
+    totalDeleted += Number(favoritesResult.changes);
+
+    logger.debug(
+      `🧹 Purged ${totalDeleted} old telemetry records ` +
+      `(${nonFavoritesResult.changes} non-favorites older than ${hoursToKeep}h, ` +
+      `${favoritesResult.changes} favorites older than ${favoriteDaysToKeep}d)`
+    );
+    return totalDeleted;
   }
 
   purgeAllMessages(): void {

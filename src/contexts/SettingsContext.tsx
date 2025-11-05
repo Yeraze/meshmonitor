@@ -16,6 +16,7 @@ interface SettingsContextType {
   temperatureUnit: TemperatureUnit;
   distanceUnit: DistanceUnit;
   telemetryVisualizationHours: number;
+  favoriteTelemetryStorageDays: number;
   preferredSortField: SortField;
   preferredSortDirection: SortDirection;
   timeFormat: TimeFormat;
@@ -30,6 +31,7 @@ interface SettingsContextType {
   setTemperatureUnit: (unit: TemperatureUnit) => void;
   setDistanceUnit: (unit: DistanceUnit) => void;
   setTelemetryVisualizationHours: (hours: number) => void;
+  setFavoriteTelemetryStorageDays: (days: number) => void;
   setPreferredSortField: (field: SortField) => void;
   setPreferredSortDirection: (direction: SortDirection) => void;
   setTimeFormat: (format: TimeFormat) => void;
@@ -72,6 +74,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   const [telemetryVisualizationHours, setTelemetryVisualizationHoursState] = useState<number>(() => {
     const saved = localStorage.getItem('telemetryVisualizationHours');
     return saved ? parseInt(saved) : 24;
+  });
+
+  const [favoriteTelemetryStorageDays, setFavoriteTelemetryStorageDaysState] = useState<number>(() => {
+    const saved = localStorage.getItem('favoriteTelemetryStorageDays');
+    return saved ? parseInt(saved) : 7;
   });
 
   const [preferredSortField, setPreferredSortFieldState] = useState<SortField>(() => {
@@ -154,6 +161,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     localStorage.setItem('telemetryVisualizationHours', hours.toString());
   };
 
+  const setFavoriteTelemetryStorageDays = (days: number) => {
+    setFavoriteTelemetryStorageDaysState(days);
+    localStorage.setItem('favoriteTelemetryStorageDays', days.toString());
+  };
+
   const setPreferredSortField = (field: SortField) => {
     setPreferredSortFieldState(field);
     localStorage.setItem('preferredSortField', field);
@@ -224,6 +236,14 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             }
           }
 
+          if (settings.favoriteTelemetryStorageDays) {
+            const value = parseInt(settings.favoriteTelemetryStorageDays);
+            if (!isNaN(value)) {
+              setFavoriteTelemetryStorageDaysState(value);
+              localStorage.setItem('favoriteTelemetryStorageDays', value.toString());
+            }
+          }
+
           if (settings.preferredSortField) {
             setPreferredSortFieldState(settings.preferredSortField as SortField);
             localStorage.setItem('preferredSortField', settings.preferredSortField);
@@ -275,6 +295,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     temperatureUnit,
     distanceUnit,
     telemetryVisualizationHours,
+    favoriteTelemetryStorageDays,
     preferredSortField,
     preferredSortDirection,
     timeFormat,
@@ -289,6 +310,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setTemperatureUnit,
     setDistanceUnit,
     setTelemetryVisualizationHours,
+    setFavoriteTelemetryStorageDays,
     setPreferredSortField,
     setPreferredSortDirection,
     setTimeFormat,

@@ -117,8 +117,8 @@ describe('Dashboard', () => {
       );
 
       // Check that the useEffect has baseUrl in its dependency array
-      // Pattern: }, [telemetryHours, baseUrl]);
-      const useEffectPattern = /},\s*\[telemetryHours,\s*baseUrl\]/;
+      // Pattern: }, [daysToView, baseUrl]);
+      const useEffectPattern = /},\s*\[daysToView,\s*baseUrl\]/;
       expect(dashboardSource).toMatch(useEffectPattern);
     });
   });

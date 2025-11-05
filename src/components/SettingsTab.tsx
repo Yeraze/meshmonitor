@@ -19,6 +19,7 @@ interface SettingsTabProps {
   temperatureUnit: TemperatureUnit;
   distanceUnit: DistanceUnit;
   telemetryVisualizationHours: number;
+  favoriteTelemetryStorageDays: number;
   preferredSortField: SortField;
   preferredSortDirection: SortDirection;
   timeFormat: TimeFormat;
@@ -30,6 +31,7 @@ interface SettingsTabProps {
   onTemperatureUnitChange: (unit: TemperatureUnit) => void;
   onDistanceUnitChange: (unit: DistanceUnit) => void;
   onTelemetryVisualizationChange: (hours: number) => void;
+  onFavoriteTelemetryStorageDaysChange: (days: number) => void;
   onPreferredSortFieldChange: (field: SortField) => void;
   onPreferredSortDirectionChange: (direction: SortDirection) => void;
   onTimeFormatChange: (format: TimeFormat) => void;
@@ -43,6 +45,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   temperatureUnit,
   distanceUnit,
   telemetryVisualizationHours,
+  favoriteTelemetryStorageDays,
   preferredSortField,
   preferredSortDirection,
   timeFormat,
@@ -54,6 +57,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   onTemperatureUnitChange,
   onDistanceUnitChange,
   onTelemetryVisualizationChange,
+  onFavoriteTelemetryStorageDaysChange,
   onPreferredSortFieldChange,
   onPreferredSortDirectionChange,
   onTimeFormatChange,
@@ -68,6 +72,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [localTemperatureUnit, setLocalTemperatureUnit] = useState(temperatureUnit);
   const [localDistanceUnit, setLocalDistanceUnit] = useState(distanceUnit);
   const [localTelemetryHours, setLocalTelemetryHours] = useState(telemetryVisualizationHours);
+  const [localFavoriteTelemetryStorageDays, setLocalFavoriteTelemetryStorageDays] = useState(favoriteTelemetryStorageDays);
   const [localPreferredSortField, setLocalPreferredSortField] = useState(preferredSortField);
   const [localPreferredSortDirection, setLocalPreferredSortDirection] = useState(preferredSortDirection);
   const [localTimeFormat, setLocalTimeFormat] = useState(timeFormat);
@@ -132,13 +137,14 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLocalTemperatureUnit(temperatureUnit);
     setLocalDistanceUnit(distanceUnit);
     setLocalTelemetryHours(telemetryVisualizationHours);
+    setLocalFavoriteTelemetryStorageDays(favoriteTelemetryStorageDays);
     setLocalPreferredSortField(preferredSortField);
     setLocalPreferredSortDirection(preferredSortDirection);
     setLocalTimeFormat(timeFormat);
     setLocalDateFormat(dateFormat);
     setLocalMapTileset(mapTileset);
     setLocalMapPinStyle(mapPinStyle);
-  }, [maxNodeAgeHours, temperatureUnit, distanceUnit, telemetryVisualizationHours, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle]);
+  }, [maxNodeAgeHours, temperatureUnit, distanceUnit, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle]);
 
   // Check if any settings have changed
   // Note: We can't compare packet monitor settings to props since they're not in props
@@ -151,6 +157,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localTemperatureUnit !== temperatureUnit ||
       localDistanceUnit !== distanceUnit ||
       localTelemetryHours !== telemetryVisualizationHours ||
+      localFavoriteTelemetryStorageDays !== favoriteTelemetryStorageDays ||
       localPreferredSortField !== preferredSortField ||
       localPreferredSortDirection !== preferredSortDirection ||
       localTimeFormat !== timeFormat ||
@@ -161,8 +168,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localPacketLogMaxCount !== initialPacketMonitorSettings.maxCount ||
       localPacketLogMaxAgeHours !== initialPacketMonitorSettings.maxAgeHours;
     setHasChanges(changed);
-  }, [localMaxNodeAge, localTemperatureUnit, localDistanceUnit, localTelemetryHours, localPreferredSortField, localPreferredSortDirection, localTimeFormat, localDateFormat, localMapTileset, localMapPinStyle,
-      maxNodeAgeHours, temperatureUnit, distanceUnit, telemetryVisualizationHours, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle,
+  }, [localMaxNodeAge, localTemperatureUnit, localDistanceUnit, localTelemetryHours, localFavoriteTelemetryStorageDays, localPreferredSortField, localPreferredSortDirection, localTimeFormat, localDateFormat, localMapTileset, localMapPinStyle,
+      maxNodeAgeHours, temperatureUnit, distanceUnit, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle,
       localPacketLogEnabled, localPacketLogMaxCount, localPacketLogMaxAgeHours, initialPacketMonitorSettings]);
 
   const handleSave = async () => {
@@ -173,6 +180,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         temperatureUnit: localTemperatureUnit,
         distanceUnit: localDistanceUnit,
         telemetryVisualizationHours: localTelemetryHours,
+        favoriteTelemetryStorageDays: localFavoriteTelemetryStorageDays,
         preferredSortField: localPreferredSortField,
         preferredSortDirection: localPreferredSortDirection,
         timeFormat: localTimeFormat,
@@ -196,6 +204,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onTemperatureUnitChange(localTemperatureUnit);
       onDistanceUnitChange(localDistanceUnit);
       onTelemetryVisualizationChange(localTelemetryHours);
+      onFavoriteTelemetryStorageDaysChange(localFavoriteTelemetryStorageDays);
       onPreferredSortFieldChange(localPreferredSortField);
       onPreferredSortDirectionChange(localPreferredSortDirection);
       onTimeFormatChange(localTimeFormat);
@@ -248,6 +257,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       setLocalTemperatureUnit('C');
       setLocalDistanceUnit('km');
       setLocalTelemetryHours(24);
+      setLocalFavoriteTelemetryStorageDays(7);
       setLocalPreferredSortField('longName');
       setLocalPreferredSortDirection('asc');
       setLocalTimeFormat('24');
@@ -263,6 +273,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onTemperatureUnitChange('C');
       onDistanceUnitChange('km');
       onTelemetryVisualizationChange(24);
+      onFavoriteTelemetryStorageDaysChange(7);
       onPreferredSortFieldChange('longName');
       onPreferredSortDirectionChange('asc');
       onTimeFormatChange('24');
@@ -584,6 +595,21 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               max="168"
               value={localTelemetryHours}
               onChange={(e) => setLocalTelemetryHours(Math.min(168, Math.max(1, parseInt(e.target.value) || 24)))}
+              className="setting-input"
+            />
+          </div>
+          <div className="setting-item">
+            <label htmlFor="favoriteTelemetryStorageDays">
+              Favorite Telemetry Storage Length (Days)
+              <span className="setting-description">How many days to retain favorited telemetry data (7-90 days). Favorited telemetry is exempt from regular purge.</span>
+            </label>
+            <input
+              type="number"
+              id="favoriteTelemetryStorageDays"
+              min="7"
+              max="90"
+              value={localFavoriteTelemetryStorageDays}
+              onChange={(e) => setLocalFavoriteTelemetryStorageDays(Math.min(90, Math.max(7, parseInt(e.target.value) || 7)))}
               className="setting-input"
             />
           </div>
