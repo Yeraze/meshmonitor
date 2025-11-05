@@ -281,7 +281,9 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
 
   const allowedOriginsRaw = process.env.ALLOWED_ORIGINS;
   const allowedOrigins = {
-    value: allowedOriginsRaw ? allowedOriginsRaw.split(',').map(o => o.trim()).filter(o => o.length > 0) : [],
+    value: allowedOriginsRaw
+      ? allowedOriginsRaw.split(',').map(o => o.trim()).filter(o => o.length > 0)
+      : ['http://localhost:8080', 'http://localhost:3001'],
     wasProvided: allowedOriginsRaw !== undefined
   };
   const trustProxy = parseTrustProxy('TRUST_PROXY', process.env.TRUST_PROXY, false);

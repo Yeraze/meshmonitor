@@ -78,7 +78,7 @@ See the [Virtual Node Server guide](/configuration/virtual-node) for detailed co
 | `COOKIE_SAMESITE` | Cookie SameSite policy (`strict`, `lax`, or `none`) | `strict` in production |
 | `SESSION_MAX_AGE` | Session cookie lifetime in milliseconds | `86400000` (24 hours) |
 | `SESSION_ROLLING` | Reset session expiry on each request (keeps active users logged in) | `true` |
-| `ALLOWED_ORIGINS` | **REQUIRED for HTTPS/reverse proxy**: Comma-separated list of allowed CORS origins | localhost URLs in development |
+| `ALLOWED_ORIGINS` | **REQUIRED for HTTPS/reverse proxy**: Comma-separated list of allowed CORS origins | `http://localhost:8080, http://localhost:3001` |
 
 ### Authentication Variables
 
