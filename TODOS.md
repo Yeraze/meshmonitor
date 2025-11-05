@@ -2,6 +2,13 @@
 
 ## Current Sprint
 
+### Configuration Improvements
+- [x] Add localhost to default ALLOWED_ORIGINS configuration (#458)
+  - Changed default from empty array to `['http://localhost:8080', 'http://localhost:3001']`
+  - Improves out-of-box experience for local development and testing
+  - Still requires explicit configuration for production deployments
+  - Files: src/server/config/environment.ts:282-288, .env.example, docs/configuration/index.md:81
+
 ### Bug Fixes
 - [x] Fix traceroute visualization not updating when clicking different nodes
   - Issue: NodesTab memo comparison only checked null vs non-null for traceroutes
