@@ -1094,15 +1094,22 @@ const NodesTab = React.memo(NodesTabComponent, (prevProps, nextProps) => {
     }
   }
 
-  // Check if traceroute visibility changed (null <-> non-null)
-  // This detects when "Show Paths" or "Show Route" checkboxes are toggled
+  // Check if traceroute data changed
+  // This detects when "Show Paths" or "Show Route" checkboxes are toggled,
+  // or when the selected node changes (different traceroute content)
   const prevPathsVisible = prevProps.traceroutePathsElements !== null;
   const nextPathsVisible = nextProps.traceroutePathsElements !== null;
   const prevRouteVisible = prevProps.selectedNodeTraceroute !== null;
   const nextRouteVisible = nextProps.selectedNodeTraceroute !== null;
 
+  // If visibility changed, must re-render
   if (prevPathsVisible !== nextPathsVisible || prevRouteVisible !== nextRouteVisible) {
-    // Visibility changed - must re-render to show/hide
+    return false; // Allow re-render
+  }
+
+  // If traceroute reference changed (different selected node), must re-render
+  // This handles the case where both old and new traceroutes are non-null but different
+  if (prevProps.selectedNodeTraceroute !== nextProps.selectedNodeTraceroute) {
     return false; // Allow re-render
   }
 
