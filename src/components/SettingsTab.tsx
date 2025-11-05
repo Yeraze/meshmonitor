@@ -26,6 +26,13 @@ interface SettingsTabProps {
   dateFormat: DateFormat;
   mapTileset: TilesetId;
   mapPinStyle: MapPinStyle;
+  solarMonitoringEnabled: boolean;
+  solarMonitoringLatitude: number;
+  solarMonitoringLongitude: number;
+  solarMonitoringAzimuth: number;
+  solarMonitoringDeclination: number;
+  currentNodeId: string;
+  nodes: any[];
   baseUrl: string;
   onMaxNodeAgeChange: (hours: number) => void;
   onTemperatureUnitChange: (unit: TemperatureUnit) => void;
@@ -38,6 +45,11 @@ interface SettingsTabProps {
   onDateFormatChange: (format: DateFormat) => void;
   onMapTilesetChange: (tilesetId: TilesetId) => void;
   onMapPinStyleChange: (style: MapPinStyle) => void;
+  onSolarMonitoringEnabledChange: (enabled: boolean) => void;
+  onSolarMonitoringLatitudeChange: (latitude: number) => void;
+  onSolarMonitoringLongitudeChange: (longitude: number) => void;
+  onSolarMonitoringAzimuthChange: (azimuth: number) => void;
+  onSolarMonitoringDeclinationChange: (declination: number) => void;
 }
 
 const SettingsTab: React.FC<SettingsTabProps> = ({
@@ -52,6 +64,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   dateFormat,
   mapTileset,
   mapPinStyle,
+  solarMonitoringEnabled,
+  solarMonitoringLatitude,
+  solarMonitoringLongitude,
+  solarMonitoringAzimuth,
+  solarMonitoringDeclination,
+  currentNodeId,
+  nodes,
   baseUrl,
   onMaxNodeAgeChange,
   onTemperatureUnitChange,
@@ -63,7 +82,12 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   onTimeFormatChange,
   onDateFormatChange,
   onMapTilesetChange,
-  onMapPinStyleChange
+  onMapPinStyleChange,
+  onSolarMonitoringEnabledChange,
+  onSolarMonitoringLatitudeChange,
+  onSolarMonitoringLongitudeChange,
+  onSolarMonitoringAzimuthChange,
+  onSolarMonitoringDeclinationChange
 }) => {
   const csrfFetch = useCsrfFetch();
 
@@ -82,6 +106,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [localPacketLogEnabled, setLocalPacketLogEnabled] = useState(false);
   const [localPacketLogMaxCount, setLocalPacketLogMaxCount] = useState(1000);
   const [localPacketLogMaxAgeHours, setLocalPacketLogMaxAgeHours] = useState(24);
+  const [localSolarMonitoringEnabled, setLocalSolarMonitoringEnabled] = useState(solarMonitoringEnabled);
+  const [localSolarMonitoringLatitude, setLocalSolarMonitoringLatitude] = useState(solarMonitoringLatitude);
+  const [localSolarMonitoringLongitude, setLocalSolarMonitoringLongitude] = useState(solarMonitoringLongitude);
+  const [localSolarMonitoringAzimuth, setLocalSolarMonitoringAzimuth] = useState(solarMonitoringAzimuth);
+  const [localSolarMonitoringDeclination, setLocalSolarMonitoringDeclination] = useState(solarMonitoringDeclination);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDocker, setIsDocker] = useState<boolean | null>(null);
@@ -144,7 +173,24 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLocalDateFormat(dateFormat);
     setLocalMapTileset(mapTileset);
     setLocalMapPinStyle(mapPinStyle);
-  }, [maxNodeAgeHours, temperatureUnit, distanceUnit, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle]);
+    setLocalSolarMonitoringEnabled(solarMonitoringEnabled);
+    setLocalSolarMonitoringLatitude(solarMonitoringLatitude);
+    setLocalSolarMonitoringLongitude(solarMonitoringLongitude);
+    setLocalSolarMonitoringAzimuth(solarMonitoringAzimuth);
+    setLocalSolarMonitoringDeclination(solarMonitoringDeclination);
+  }, [maxNodeAgeHours, temperatureUnit, distanceUnit, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle, solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination]);
+
+  // Default solar monitoring lat/long to device position if still at 0
+  useEffect(() => {
+    // Only set defaults if solar monitoring is enabled and values are at 0
+    if (solarMonitoringLatitude === 0 && solarMonitoringLongitude === 0 && currentNodeId && nodes.length > 0) {
+      const currentNode = nodes.find(n => n.user?.id === currentNodeId);
+      if (currentNode?.position?.latitude != null && currentNode?.position?.longitude != null) {
+        setLocalSolarMonitoringLatitude(currentNode.position.latitude);
+        setLocalSolarMonitoringLongitude(currentNode.position.longitude);
+      }
+    }
+  }, [currentNodeId, nodes, solarMonitoringLatitude, solarMonitoringLongitude]);
 
   // Check if any settings have changed
   // Note: We can't compare packet monitor settings to props since they're not in props
@@ -166,11 +212,18 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localMapPinStyle !== mapPinStyle ||
       localPacketLogEnabled !== initialPacketMonitorSettings.enabled ||
       localPacketLogMaxCount !== initialPacketMonitorSettings.maxCount ||
-      localPacketLogMaxAgeHours !== initialPacketMonitorSettings.maxAgeHours;
+      localPacketLogMaxAgeHours !== initialPacketMonitorSettings.maxAgeHours ||
+      localSolarMonitoringEnabled !== solarMonitoringEnabled ||
+      localSolarMonitoringLatitude !== solarMonitoringLatitude ||
+      localSolarMonitoringLongitude !== solarMonitoringLongitude ||
+      localSolarMonitoringAzimuth !== solarMonitoringAzimuth ||
+      localSolarMonitoringDeclination !== solarMonitoringDeclination;
     setHasChanges(changed);
   }, [localMaxNodeAge, localTemperatureUnit, localDistanceUnit, localTelemetryHours, localFavoriteTelemetryStorageDays, localPreferredSortField, localPreferredSortDirection, localTimeFormat, localDateFormat, localMapTileset, localMapPinStyle,
       maxNodeAgeHours, temperatureUnit, distanceUnit, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle,
-      localPacketLogEnabled, localPacketLogMaxCount, localPacketLogMaxAgeHours, initialPacketMonitorSettings]);
+      localPacketLogEnabled, localPacketLogMaxCount, localPacketLogMaxAgeHours, initialPacketMonitorSettings,
+      localSolarMonitoringEnabled, localSolarMonitoringLatitude, localSolarMonitoringLongitude, localSolarMonitoringAzimuth, localSolarMonitoringDeclination,
+      solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination]);
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -189,7 +242,12 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         mapPinStyle: localMapPinStyle,
         packet_log_enabled: localPacketLogEnabled ? '1' : '0',
         packet_log_max_count: localPacketLogMaxCount.toString(),
-        packet_log_max_age_hours: localPacketLogMaxAgeHours.toString()
+        packet_log_max_age_hours: localPacketLogMaxAgeHours.toString(),
+        solarMonitoringEnabled: localSolarMonitoringEnabled ? '1' : '0',
+        solarMonitoringLatitude: localSolarMonitoringLatitude.toString(),
+        solarMonitoringLongitude: localSolarMonitoringLongitude.toString(),
+        solarMonitoringAzimuth: localSolarMonitoringAzimuth.toString(),
+        solarMonitoringDeclination: localSolarMonitoringDeclination.toString()
       };
 
       // Save to server
@@ -211,6 +269,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onDateFormatChange(localDateFormat);
       onMapTilesetChange(localMapTileset);
       onMapPinStyleChange(localMapPinStyle);
+      onSolarMonitoringEnabledChange(localSolarMonitoringEnabled);
+      onSolarMonitoringLatitudeChange(localSolarMonitoringLatitude);
+      onSolarMonitoringLongitudeChange(localSolarMonitoringLongitude);
+      onSolarMonitoringAzimuthChange(localSolarMonitoringAzimuth);
+      onSolarMonitoringDeclinationChange(localSolarMonitoringDeclination);
 
       // Update initial packet monitor settings after successful save
       setInitialPacketMonitorSettings({ enabled: localPacketLogEnabled, maxCount: localPacketLogMaxCount, maxAgeHours: localPacketLogMaxAgeHours });
@@ -267,6 +330,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       setLocalPacketLogEnabled(false);
       setLocalPacketLogMaxCount(1000);
       setLocalPacketLogMaxAgeHours(24);
+      setLocalSolarMonitoringEnabled(false);
+      setLocalSolarMonitoringLatitude(0);
+      setLocalSolarMonitoringLongitude(0);
+      setLocalSolarMonitoringAzimuth(0);
+      setLocalSolarMonitoringDeclination(30);
 
       // Update parent component with defaults
       onMaxNodeAgeChange(24);
@@ -280,6 +348,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onDateFormatChange('MM/DD/YYYY');
       onMapTilesetChange('osm');
       onMapPinStyleChange('meshmonitor');
+      onSolarMonitoringEnabledChange(false);
+      onSolarMonitoringLatitudeChange(0);
+      onSolarMonitoringLongitudeChange(0);
+      onSolarMonitoringAzimuthChange(0);
+      onSolarMonitoringDeclinationChange(30);
 
       // Update initial packet monitor settings
       setInitialPacketMonitorSettings({ enabled: false, maxCount: 1000, maxAgeHours: 24 });
@@ -671,6 +744,97 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               onMaxAgeHoursChange={setLocalPacketLogMaxAgeHours}
             />
           </div>
+        </div>
+
+        <div className="settings-section">
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={localSolarMonitoringEnabled}
+                onChange={(e) => setLocalSolarMonitoringEnabled(e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              <span>Solar Monitoring</span>
+            </label>
+          </h3>
+          <p className="setting-description">
+            Configure solar panel monitoring for production estimates. Thanks to{' '}
+            <a href="https://forecast.solar/" target="_blank" rel="noopener noreferrer" style={{ color: '#89b4fa' }}>
+              Forecast.Solar
+            </a>
+            {' '}for their Solar Estimates API!
+          </p>
+          {localSolarMonitoringEnabled && (
+            <>
+              <div className="setting-item">
+                <label htmlFor="solarLatitude">
+                  Latitude
+                  <span className="setting-description">
+                    North-south position on Earth (-90 south to +90 north) • <a href="https://gps-coordinates.org/" target="_blank" rel="noopener noreferrer" style={{ color: '#4a9eff', textDecoration: 'underline' }}>Find your GPS coordinates here</a>
+                  </span>
+                </label>
+                <input
+                  id="solarLatitude"
+                  type="number"
+                  min="-90"
+                  max="90"
+                  step="0.0001"
+                  value={localSolarMonitoringLatitude}
+                  onChange={(e) => setLocalSolarMonitoringLatitude(parseFloat(e.target.value) || 0)}
+                  className="setting-input"
+                />
+              </div>
+              <div className="setting-item">
+                <label htmlFor="solarLongitude">
+                  Longitude
+                  <span className="setting-description">East-west position on Earth (-180 west to +180 east)</span>
+                </label>
+                <input
+                  id="solarLongitude"
+                  type="number"
+                  min="-180"
+                  max="180"
+                  step="0.0001"
+                  value={localSolarMonitoringLongitude}
+                  onChange={(e) => setLocalSolarMonitoringLongitude(parseFloat(e.target.value) || 0)}
+                  className="setting-input"
+                />
+              </div>
+              <div className="setting-item">
+                <label htmlFor="solarAzimuth">
+                  Azimuth (degrees)
+                  <span className="setting-description">Compass direction panels face: -180=north, -90=east, 0=south, 90=west, 180=north</span>
+                </label>
+                <input
+                  id="solarAzimuth"
+                  type="number"
+                  min="-180"
+                  max="180"
+                  step="1"
+                  value={localSolarMonitoringAzimuth}
+                  onChange={(e) => setLocalSolarMonitoringAzimuth(parseInt(e.target.value) || 0)}
+                  className="setting-input"
+                />
+              </div>
+              <div className="setting-item">
+                <label htmlFor="solarDeclination">
+                  Declination/Tilt (degrees)
+                  <span className="setting-description">Panel angle from ground: 0=horizontal, 90=vertical. Typical: 20-40 degrees</span>
+                </label>
+                <input
+                  id="solarDeclination"
+                  type="number"
+                  min="0"
+                  max="90"
+                  step="1"
+                  value={localSolarMonitoringDeclination}
+                  onChange={(e) => setLocalSolarMonitoringDeclination(parseInt(e.target.value) || 30)}
+                  className="setting-input"
+                />
+              </div>
+            </>
+          )}
         </div>
 
         <div className="settings-section">
