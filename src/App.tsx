@@ -264,6 +264,7 @@ function App() {
     temperatureUnit,
     distanceUnit,
     telemetryVisualizationHours,
+    favoriteTelemetryStorageDays,
     preferredSortField,
     preferredSortDirection,
     timeFormat,
@@ -275,6 +276,7 @@ function App() {
     setTemperatureUnit,
     setDistanceUnit,
     setTelemetryVisualizationHours,
+    setFavoriteTelemetryStorageDays,
     setPreferredSortField,
     setPreferredSortDirection,
     setTimeFormat,
@@ -4716,6 +4718,7 @@ function App() {
           <Dashboard
             temperatureUnit={temperatureUnit}
             telemetryHours={telemetryVisualizationHours}
+            favoriteTelemetryStorageDays={favoriteTelemetryStorageDays}
             baseUrl={baseUrl}
           />
         )}
@@ -4725,6 +4728,7 @@ function App() {
             temperatureUnit={temperatureUnit}
             distanceUnit={distanceUnit}
             telemetryVisualizationHours={telemetryVisualizationHours}
+            favoriteTelemetryStorageDays={favoriteTelemetryStorageDays}
             preferredSortField={preferredSortField}
             preferredSortDirection={preferredSortDirection}
             timeFormat={timeFormat}
@@ -4736,6 +4740,7 @@ function App() {
             onTemperatureUnitChange={setTemperatureUnit}
             onDistanceUnitChange={setDistanceUnit}
             onTelemetryVisualizationChange={setTelemetryVisualizationHours}
+            onFavoriteTelemetryStorageDaysChange={setFavoriteTelemetryStorageDays}
             onPreferredSortFieldChange={setPreferredSortField}
             onPreferredSortDirectionChange={setPreferredSortDirection}
             onTimeFormatChange={setTimeFormat}
