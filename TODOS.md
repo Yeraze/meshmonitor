@@ -3,11 +3,12 @@
 ## Current Sprint
 
 ### Bug Fix - Issue #470
-- [ ] Fix hop count calculation to handle missing or invalid values
-- [ ] Add validation to ensure hopStart >= hopLimit before calculating
-- [ ] Add defensive check in RABBIT_HOPS to prevent negative repeat values
-- [ ] Test the fix locally
-- [ ] Run system tests before creating PR
+- [x] Fix hop count calculation to handle missing or invalid values
+- [x] Add validation to ensure hopStart >= hopLimit before calculating
+- [x] Add defensive check in RABBIT_HOPS to prevent negative repeat values
+- [x] Test the fix locally
+- [x] Run system tests before creating PR
+- [x] Create PR #471
 
 ## Completed Tasks
 
