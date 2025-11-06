@@ -24,6 +24,7 @@ import { migration as autoTracerouteFilterMigration } from '../server/migrations
 import { migration as securityPermissionMigration } from '../server/migrations/016_add_security_permission.js';
 import { migration as channelColumnMigration } from '../server/migrations/017_add_channel_to_nodes.js';
 import { migration as mobileMigration } from '../server/migrations/018_add_mobile_to_nodes.js';
+import { migration as solarEstimatesMigration } from '../server/migrations/019_add_solar_estimates.js';
 
 // Configuration constants for traceroute history
 const TRACEROUTE_HISTORY_LIMIT = 50;
@@ -244,6 +245,7 @@ class DatabaseService {
     this.runSecurityPermissionMigration();
     this.runChannelColumnMigration();
     this.runMobileMigration();
+    this.runSolarEstimatesMigration();
     this.runAutoWelcomeMigration();
     this.ensureAutomationDefaults();
     this.isInitialized = true;
@@ -654,6 +656,26 @@ class DatabaseService {
       logger.debug('✅ Mobile column migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run mobile column migration:', error);
+      throw error;
+    }
+  }
+
+  private runSolarEstimatesMigration(): void {
+    try {
+      const migrationKey = 'migration_019_solar_estimates';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Solar estimates migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 019: Add solar estimates table...');
+      solarEstimatesMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Solar estimates migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run solar estimates migration:', error);
       throw error;
     }
   }
