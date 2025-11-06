@@ -153,6 +153,15 @@ describe('TelemetryGraphs Component', () => {
           json: async () => ({})  // No favorites
         });
       }
+      if (url.includes('/api/solar/estimates')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            count: 0,
+            estimates: []
+          })
+        });
+      }
       // Telemetry fetch fails
       return Promise.reject(new Error('Network error'));
     });
@@ -170,6 +179,15 @@ describe('TelemetryGraphs Component', () => {
         return Promise.resolve({
           ok: true,
           json: async () => ({})  // No favorites
+        });
+      }
+      if (url.includes('/api/solar/estimates')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            count: 0,
+            estimates: []
+          })
         });
       }
       // Return empty telemetry
@@ -247,6 +265,15 @@ describe('TelemetryGraphs Component', () => {
           json: async () => ({})
         });
       }
+      if (url.includes('/api/solar/estimates')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            count: 0,
+            estimates: []
+          })
+        });
+      }
       // Telemetry fetch returns non-ok
       return Promise.resolve({
         ok: false,
@@ -275,6 +302,15 @@ describe('TelemetryGraphs Component', () => {
         return Promise.resolve({
           ok: true,
           json: async () => ({})
+        });
+      }
+      if (url.includes('/api/solar/estimates')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            count: 0,
+            estimates: []
+          })
         });
       }
       return Promise.resolve({
@@ -354,6 +390,15 @@ describe('TelemetryGraphs Component', () => {
           json: async () => ({})
         });
       }
+      if (url.includes('/api/solar/estimates')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            count: 0,
+            estimates: []
+          })
+        });
+      }
       return Promise.resolve({
         ok: true,
         json: async () => mockDataWithUnits
@@ -402,7 +447,16 @@ describe('TelemetryGraphs Component', () => {
             json: async () => ({})
           });
         }
+        if (url.includes(\'/api/solar/estimates\')) {
         return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            count: 0,
+            estimates: []
+          })
+        });
+      }
+      return Promise.resolve({
           ok: true,
           json: async () => mockData
         });
@@ -435,7 +489,16 @@ describe('TelemetryGraphs Component', () => {
             json: async () => ({})
           });
         }
+        if (url.includes(\'/api/solar/estimates\')) {
         return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            count: 0,
+            estimates: []
+          })
+        });
+      }
+      return Promise.resolve({
           ok: true,
           json: async () => mockData
         });
@@ -486,7 +549,16 @@ describe('TelemetryGraphs Component', () => {
             json: async () => ({})
           });
         }
+        if (url.includes(\'/api/solar/estimates\')) {
         return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            count: 0,
+            estimates: []
+          })
+        });
+      }
+      return Promise.resolve({
           ok: true,
           json: async () => mockData
         });
