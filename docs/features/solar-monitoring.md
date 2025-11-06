@@ -285,8 +285,8 @@ Use solar forecasts to:
 
 - [Settings](/features/settings) - Configure solar panel parameters
 - [Telemetry Visualization](/features/device#telemetry-graphs) - Understanding telemetry graphs
-- [API Reference](/api/API_REFERENCE) - Complete API documentation
-- [Database Schema](/database/SCHEMA) - Solar estimates table structure
+- [API Reference](https://github.com/Yeraze/meshmonitor/blob/main/docs/api/API_REFERENCE.md) - Complete API documentation
+- [Database Schema](https://github.com/Yeraze/meshmonitor/blob/main/docs/database/SCHEMA.md) - Solar estimates table structure
 
 ## Version History
 
