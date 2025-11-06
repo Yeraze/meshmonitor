@@ -490,21 +490,21 @@ describe('TelemetryGraphs Component', () => {
           });
         }
         if (url.includes('/api/solar/estimates')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              count: 0,
+              estimates: []
+            })
+          });
+        }
+        if (url.includes('/api/csrf-token')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ token: 'test-csrf-token' })
+          });
+        }
         return Promise.resolve({
-          ok: true,
-          json: async () => ({
-            count: 0,
-            estimates: []
-          })
-        });
-      }
-      if (url.includes('/api/csrf-token')) {
-        return Promise.resolve({
-          ok: true,
-          json: async () => ({ token: 'test-csrf-token' })
-        });
-      }
-      return Promise.resolve({
           ok: true,
           json: async () => mockData
         });
@@ -538,21 +538,21 @@ describe('TelemetryGraphs Component', () => {
           });
         }
         if (url.includes('/api/solar/estimates')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              count: 0,
+              estimates: []
+            })
+          });
+        }
+        if (url.includes('/api/csrf-token')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ token: 'test-csrf-token' })
+          });
+        }
         return Promise.resolve({
-          ok: true,
-          json: async () => ({
-            count: 0,
-            estimates: []
-          })
-        });
-      }
-      if (url.includes('/api/csrf-token')) {
-        return Promise.resolve({
-          ok: true,
-          json: async () => ({ token: 'test-csrf-token' })
-        });
-      }
-      return Promise.resolve({
           ok: true,
           json: async () => mockData
         });
@@ -604,21 +604,21 @@ describe('TelemetryGraphs Component', () => {
           });
         }
         if (url.includes('/api/solar/estimates')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              count: 0,
+              estimates: []
+            })
+          });
+        }
+        if (url.includes('/api/csrf-token')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ token: 'test-csrf-token' })
+          });
+        }
         return Promise.resolve({
-          ok: true,
-          json: async () => ({
-            count: 0,
-            estimates: []
-          })
-        });
-      }
-      if (url.includes('/api/csrf-token')) {
-        return Promise.resolve({
-          ok: true,
-          json: async () => ({ token: 'test-csrf-token' })
-        });
-      }
-      return Promise.resolve({
           ok: true,
           json: async () => mockData
         });
