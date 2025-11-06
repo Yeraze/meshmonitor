@@ -369,10 +369,7 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
   // Virtual Node
   const enableVirtualNode = parseBoolean('ENABLE_VIRTUAL_NODE', process.env.ENABLE_VIRTUAL_NODE, false);
   const virtualNodePort = parseInt32('VIRTUAL_NODE_PORT', process.env.VIRTUAL_NODE_PORT, 4404);
-  const virtualNodeAllowAdminCommands = {
-    value: parseBoolean('VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS', process.env.VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS, false),
-    wasProvided: process.env.VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS !== undefined
-  };
+  const virtualNodeAllowAdminCommands = parseBoolean('VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS', process.env.VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS, false);
 
   // OIDC
   const oidcIssuer = {
