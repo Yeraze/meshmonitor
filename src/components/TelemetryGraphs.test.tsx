@@ -79,7 +79,7 @@ describe('TelemetryGraphs Component', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // Mock both settings fetch (for favorites), solar estimates, and telemetry fetch
+    // Mock both settings fetch (for favorites), solar estimates, CSRF token, and telemetry fetch
     (global.fetch as Mock).mockImplementation((url: string) => {
       if (url.includes('/api/settings')) {
         return Promise.resolve({
@@ -96,6 +96,12 @@ describe('TelemetryGraphs Component', () => {
           })
         });
       }
+      if (url.includes('/api/csrf-token')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ token: 'test-csrf-token' })
+        });
+      }
       // Default to telemetry data
       return Promise.resolve({
         ok: true,
@@ -107,6 +113,12 @@ describe('TelemetryGraphs Component', () => {
   it('should render loading state initially', async () => {
     // Mock fetch to be slow
     (global.fetch as Mock).mockImplementation((url: string) =>
+      if (url.includes('/api/csrf-token')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ token: 'test-csrf-token' })
+        });
+      }
       new Promise(resolve => setTimeout(() => {
         if (url.includes('/api/settings')) {
           resolve({
@@ -162,6 +174,12 @@ describe('TelemetryGraphs Component', () => {
           })
         });
       }
+      if (url.includes('/api/csrf-token')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ token: 'test-csrf-token' })
+        });
+      }
       // Telemetry fetch fails
       return Promise.reject(new Error('Network error'));
     });
@@ -191,6 +209,12 @@ describe('TelemetryGraphs Component', () => {
         });
       }
       // Return empty telemetry
+      if (url.includes('/api/csrf-token')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ token: 'test-csrf-token' })
+        });
+      }
       return Promise.resolve({
         ok: true,
         json: async () => []
@@ -275,6 +299,12 @@ describe('TelemetryGraphs Component', () => {
         });
       }
       // Telemetry fetch returns non-ok
+      if (url.includes('/api/csrf-token')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ token: 'test-csrf-token' })
+        });
+      }
       return Promise.resolve({
         ok: false,
         status: 404,
@@ -311,6 +341,12 @@ describe('TelemetryGraphs Component', () => {
             count: 0,
             estimates: []
           })
+        });
+      }
+      if (url.includes('/api/csrf-token')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ token: 'test-csrf-token' })
         });
       }
       return Promise.resolve({
@@ -399,6 +435,12 @@ describe('TelemetryGraphs Component', () => {
           })
         });
       }
+      if (url.includes('/api/csrf-token')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ token: 'test-csrf-token' })
+        });
+      }
       return Promise.resolve({
         ok: true,
         json: async () => mockDataWithUnits
@@ -456,6 +498,12 @@ describe('TelemetryGraphs Component', () => {
           })
         });
       }
+      if (url.includes('/api/csrf-token')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ token: 'test-csrf-token' })
+        });
+      }
       return Promise.resolve({
           ok: true,
           json: async () => mockData
@@ -496,6 +544,12 @@ describe('TelemetryGraphs Component', () => {
             count: 0,
             estimates: []
           })
+        });
+      }
+      if (url.includes('/api/csrf-token')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ token: 'test-csrf-token' })
         });
       }
       return Promise.resolve({
@@ -556,6 +610,12 @@ describe('TelemetryGraphs Component', () => {
             count: 0,
             estimates: []
           })
+        });
+      }
+      if (url.includes('/api/csrf-token')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ token: 'test-csrf-token' })
         });
       }
       return Promise.resolve({
