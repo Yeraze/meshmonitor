@@ -271,6 +271,11 @@ function App() {
     dateFormat,
     mapTileset,
     mapPinStyle,
+    solarMonitoringEnabled,
+    solarMonitoringLatitude,
+    solarMonitoringLongitude,
+    solarMonitoringAzimuth,
+    solarMonitoringDeclination,
     setMaxNodeAgeHours,
     setTracerouteIntervalMinutes,
     setTemperatureUnit,
@@ -282,7 +287,12 @@ function App() {
     setTimeFormat,
     setDateFormat,
     setMapTileset,
-    setMapPinStyle
+    setMapPinStyle,
+    setSolarMonitoringEnabled,
+    setSolarMonitoringLatitude,
+    setSolarMonitoringLongitude,
+    setSolarMonitoringAzimuth,
+    setSolarMonitoringDeclination
   } = useSettings();
 
   // Map context
@@ -4735,6 +4745,13 @@ function App() {
             dateFormat={dateFormat}
             mapTileset={mapTileset}
             mapPinStyle={mapPinStyle}
+            solarMonitoringEnabled={solarMonitoringEnabled}
+            solarMonitoringLatitude={solarMonitoringLatitude}
+            solarMonitoringLongitude={solarMonitoringLongitude}
+            solarMonitoringAzimuth={solarMonitoringAzimuth}
+            solarMonitoringDeclination={solarMonitoringDeclination}
+            currentNodeId={currentNodeId}
+            nodes={nodes}
             baseUrl={baseUrl}
             onMaxNodeAgeChange={setMaxNodeAgeHours}
             onTemperatureUnitChange={setTemperatureUnit}
@@ -4747,6 +4764,11 @@ function App() {
             onDateFormatChange={setDateFormat}
             onMapTilesetChange={setMapTileset}
             onMapPinStyleChange={setMapPinStyle}
+            onSolarMonitoringEnabledChange={setSolarMonitoringEnabled}
+            onSolarMonitoringLatitudeChange={setSolarMonitoringLatitude}
+            onSolarMonitoringLongitudeChange={setSolarMonitoringLongitude}
+            onSolarMonitoringAzimuthChange={setSolarMonitoringAzimuth}
+            onSolarMonitoringDeclinationChange={setSolarMonitoringDeclination}
           />
         )}
         {activeTab === 'automation' && (

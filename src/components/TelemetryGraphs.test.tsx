@@ -21,8 +21,10 @@ const renderWithProviders = (component: React.ReactElement) => {
 
 // Mock Recharts components to avoid rendering issues in tests
 vi.mock('recharts', () => ({
+  ComposedChart: ({ children }: { children?: React.ReactNode }) => <div data-testid="line-chart">{children}</div>,
   LineChart: ({ children }: { children?: React.ReactNode }) => <div data-testid="line-chart">{children}</div>,
   Line: () => null,
+  Area: () => null,
   XAxis: () => null,
   YAxis: () => null,
   CartesianGrid: () => null,
@@ -77,12 +79,27 @@ describe('TelemetryGraphs Component', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // Mock both settings fetch (for favorites) and telemetry fetch
+    // Mock both settings fetch (for favorites), solar estimates, CSRF token, and telemetry fetch
     (global.fetch as Mock).mockImplementation((url: string) => {
       if (url.includes('/api/settings')) {
         return Promise.resolve({
           ok: true,
           json: async () => ({})  // No favorites by default
+        });
+      }
+      if (url.includes('/api/solar/estimates')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            count: 0,
+            estimates: []
+          })
+        });
+      }
+      if (url.includes('/api/csrf-token')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ token: 'test-csrf-token' })
         });
       }
       // Default to telemetry data
@@ -95,8 +112,14 @@ describe('TelemetryGraphs Component', () => {
 
   it('should render loading state initially', async () => {
     // Mock fetch to be slow
-    (global.fetch as Mock).mockImplementation((url: string) =>
-      new Promise(resolve => setTimeout(() => {
+    (global.fetch as Mock).mockImplementation((url: string) => {
+      if (url.includes('/api/csrf-token')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ token: 'test-csrf-token' })
+        });
+      }
+      return new Promise(resolve => setTimeout(() => {
         if (url.includes('/api/settings')) {
           resolve({
             ok: true,
@@ -108,8 +131,8 @@ describe('TelemetryGraphs Component', () => {
             json: async () => mockTelemetryData
           });
         }
-      }, 100))
-    );
+      }, 100));
+    });
 
     await act(async () => {
       renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} />);
@@ -142,6 +165,21 @@ describe('TelemetryGraphs Component', () => {
           json: async () => ({})  // No favorites
         });
       }
+      if (url.includes('/api/solar/estimates')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            count: 0,
+            estimates: []
+          })
+        });
+      }
+      if (url.includes('/api/csrf-token')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ token: 'test-csrf-token' })
+        });
+      }
       // Telemetry fetch fails
       return Promise.reject(new Error('Network error'));
     });
@@ -161,7 +199,22 @@ describe('TelemetryGraphs Component', () => {
           json: async () => ({})  // No favorites
         });
       }
+      if (url.includes('/api/solar/estimates')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            count: 0,
+            estimates: []
+          })
+        });
+      }
       // Return empty telemetry
+      if (url.includes('/api/csrf-token')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ token: 'test-csrf-token' })
+        });
+      }
       return Promise.resolve({
         ok: true,
         json: async () => []
@@ -236,7 +289,22 @@ describe('TelemetryGraphs Component', () => {
           json: async () => ({})
         });
       }
+      if (url.includes('/api/solar/estimates')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            count: 0,
+            estimates: []
+          })
+        });
+      }
       // Telemetry fetch returns non-ok
+      if (url.includes('/api/csrf-token')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ token: 'test-csrf-token' })
+        });
+      }
       return Promise.resolve({
         ok: false,
         status: 404,
@@ -266,6 +334,21 @@ describe('TelemetryGraphs Component', () => {
           json: async () => ({})
         });
       }
+      if (url.includes('/api/solar/estimates')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            count: 0,
+            estimates: []
+          })
+        });
+      }
+      if (url.includes('/api/csrf-token')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ token: 'test-csrf-token' })
+        });
+      }
       return Promise.resolve({
         ok: true,
         json: async () => mockData
@@ -293,9 +376,32 @@ describe('TelemetryGraphs Component', () => {
       }
     ];
 
-    (global.fetch as Mock).mockResolvedValueOnce({
-      ok: true,
-      json: async () => incompleteData
+    (global.fetch as Mock).mockImplementation((url: string) => {
+      if (url.includes('/api/settings')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({})
+        });
+      }
+      if (url.includes('/api/solar/estimates')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            count: 0,
+            estimates: []
+          })
+        });
+      }
+      if (url.includes('/api/csrf-token')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ token: 'test-csrf-token' })
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => incompleteData
+      });
     });
 
     renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} />);
@@ -314,9 +420,32 @@ describe('TelemetryGraphs Component', () => {
       { nodeId: mockNodeId, telemetryType: 'airUtilTx', value: 5, timestamp: Date.now() }
     ];
 
-    (global.fetch as Mock).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockData
+    (global.fetch as Mock).mockImplementation((url: string) => {
+      if (url.includes('/api/settings')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({})
+        });
+      }
+      if (url.includes('/api/solar/estimates')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            count: 0,
+            estimates: []
+          })
+        });
+      }
+      if (url.includes('/api/csrf-token')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ token: 'test-csrf-token' })
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => mockData
+      });
     });
 
     renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} />);
@@ -341,6 +470,21 @@ describe('TelemetryGraphs Component', () => {
         return Promise.resolve({
           ok: true,
           json: async () => ({})
+        });
+      }
+      if (url.includes('/api/solar/estimates')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            count: 0,
+            estimates: []
+          })
+        });
+      }
+      if (url.includes('/api/csrf-token')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ token: 'test-csrf-token' })
         });
       }
       return Promise.resolve({
@@ -391,6 +535,21 @@ describe('TelemetryGraphs Component', () => {
             json: async () => ({})
           });
         }
+        if (url.includes('/api/solar/estimates')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              count: 0,
+              estimates: []
+            })
+          });
+        }
+        if (url.includes('/api/csrf-token')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ token: 'test-csrf-token' })
+          });
+        }
         return Promise.resolve({
           ok: true,
           json: async () => mockData
@@ -422,6 +581,21 @@ describe('TelemetryGraphs Component', () => {
           return Promise.resolve({
             ok: true,
             json: async () => ({})
+          });
+        }
+        if (url.includes('/api/solar/estimates')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              count: 0,
+              estimates: []
+            })
+          });
+        }
+        if (url.includes('/api/csrf-token')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ token: 'test-csrf-token' })
           });
         }
         return Promise.resolve({
@@ -475,6 +649,21 @@ describe('TelemetryGraphs Component', () => {
             json: async () => ({})
           });
         }
+        if (url.includes('/api/solar/estimates')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              count: 0,
+              estimates: []
+            })
+          });
+        }
+        if (url.includes('/api/csrf-token')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ token: 'test-csrf-token' })
+          });
+        }
         return Promise.resolve({
           ok: true,
           json: async () => mockData
@@ -505,27 +694,34 @@ describe('TelemetryGraphs Component', () => {
         }
       ];
 
-      const refreshedData = [
-        {
-          nodeId: mockNodeId,
-          nodeNum: 1,
-          telemetryType: 'temperature',
-          value: 22,
-          unit: '°C',
-          timestamp: Date.now(),
-          createdAt: Date.now()
+      (global.fetch as Mock).mockImplementation((url: string) => {
+        if (url.includes('/api/settings')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({})
+          });
         }
-      ];
-
-      (global.fetch as Mock)
-        .mockResolvedValueOnce({
+        if (url.includes('/api/solar/estimates')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              count: 0,
+              estimates: []
+            })
+          });
+        }
+        if (url.includes('/api/csrf-token')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ token: 'test-csrf-token' })
+          });
+        }
+        // Return telemetry data
+        return Promise.resolve({
           ok: true,
           json: async () => initialData
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => refreshedData
         });
+      });
 
       const { rerender } = renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} temperatureUnit="F" />);
 

@@ -23,6 +23,11 @@ interface SettingsContextType {
   dateFormat: DateFormat;
   mapTileset: TilesetId;
   mapPinStyle: MapPinStyle;
+  solarMonitoringEnabled: boolean;
+  solarMonitoringLatitude: number;
+  solarMonitoringLongitude: number;
+  solarMonitoringAzimuth: number;
+  solarMonitoringDeclination: number;
   temporaryTileset: TilesetId | null;
   setTemporaryTileset: (tilesetId: TilesetId | null) => void;
   isLoading: boolean;
@@ -38,6 +43,11 @@ interface SettingsContextType {
   setDateFormat: (format: DateFormat) => void;
   setMapTileset: (tilesetId: TilesetId) => void;
   setMapPinStyle: (style: MapPinStyle) => void;
+  setSolarMonitoringEnabled: (enabled: boolean) => void;
+  setSolarMonitoringLatitude: (latitude: number) => void;
+  setSolarMonitoringLongitude: (longitude: number) => void;
+  setSolarMonitoringAzimuth: (azimuth: number) => void;
+  setSolarMonitoringDeclination: (declination: number) => void;
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
@@ -112,6 +122,31 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   const [mapPinStyle, setMapPinStyleState] = useState<MapPinStyle>(() => {
     const saved = localStorage.getItem('mapPinStyle');
     return (saved === 'official' ? 'official' : 'meshmonitor') as MapPinStyle;
+  });
+
+  const [solarMonitoringEnabled, setSolarMonitoringEnabledState] = useState<boolean>(() => {
+    const saved = localStorage.getItem('solarMonitoringEnabled');
+    return saved === 'true';
+  });
+
+  const [solarMonitoringLatitude, setSolarMonitoringLatitudeState] = useState<number>(() => {
+    const saved = localStorage.getItem('solarMonitoringLatitude');
+    return saved ? parseFloat(saved) : 0;
+  });
+
+  const [solarMonitoringLongitude, setSolarMonitoringLongitudeState] = useState<number>(() => {
+    const saved = localStorage.getItem('solarMonitoringLongitude');
+    return saved ? parseFloat(saved) : 0;
+  });
+
+  const [solarMonitoringAzimuth, setSolarMonitoringAzimuthState] = useState<number>(() => {
+    const saved = localStorage.getItem('solarMonitoringAzimuth');
+    return saved ? parseInt(saved) : 0;
+  });
+
+  const [solarMonitoringDeclination, setSolarMonitoringDeclinationState] = useState<number>(() => {
+    const saved = localStorage.getItem('solarMonitoringDeclination');
+    return saved ? parseInt(saved) : 30;
   });
 
   const [temporaryTileset, setTemporaryTileset] = useState<TilesetId | null>(null);
@@ -196,6 +231,31 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     localStorage.setItem('mapPinStyle', style);
   };
 
+  const setSolarMonitoringEnabled = (enabled: boolean) => {
+    setSolarMonitoringEnabledState(enabled);
+    localStorage.setItem('solarMonitoringEnabled', enabled.toString());
+  };
+
+  const setSolarMonitoringLatitude = (latitude: number) => {
+    setSolarMonitoringLatitudeState(latitude);
+    localStorage.setItem('solarMonitoringLatitude', latitude.toString());
+  };
+
+  const setSolarMonitoringLongitude = (longitude: number) => {
+    setSolarMonitoringLongitudeState(longitude);
+    localStorage.setItem('solarMonitoringLongitude', longitude.toString());
+  };
+
+  const setSolarMonitoringAzimuth = (azimuth: number) => {
+    setSolarMonitoringAzimuthState(azimuth);
+    localStorage.setItem('solarMonitoringAzimuth', azimuth.toString());
+  };
+
+  const setSolarMonitoringDeclination = (declination: number) => {
+    setSolarMonitoringDeclinationState(declination);
+    localStorage.setItem('solarMonitoringDeclination', declination.toString());
+  };
+
   // Load settings from server on mount
   React.useEffect(() => {
     const loadServerSettings = async () => {
@@ -274,6 +334,44 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             localStorage.setItem('mapPinStyle', settings.mapPinStyle);
           }
 
+          if (settings.solarMonitoringEnabled !== undefined) {
+            const enabled = settings.solarMonitoringEnabled === '1' || settings.solarMonitoringEnabled === 'true';
+            setSolarMonitoringEnabledState(enabled);
+            localStorage.setItem('solarMonitoringEnabled', enabled.toString());
+          }
+
+          if (settings.solarMonitoringLatitude !== undefined) {
+            const latitude = parseFloat(settings.solarMonitoringLatitude);
+            if (!isNaN(latitude)) {
+              setSolarMonitoringLatitudeState(latitude);
+              localStorage.setItem('solarMonitoringLatitude', latitude.toString());
+            }
+          }
+
+          if (settings.solarMonitoringLongitude !== undefined) {
+            const longitude = parseFloat(settings.solarMonitoringLongitude);
+            if (!isNaN(longitude)) {
+              setSolarMonitoringLongitudeState(longitude);
+              localStorage.setItem('solarMonitoringLongitude', longitude.toString());
+            }
+          }
+
+          if (settings.solarMonitoringAzimuth !== undefined) {
+            const azimuth = parseInt(settings.solarMonitoringAzimuth);
+            if (!isNaN(azimuth)) {
+              setSolarMonitoringAzimuthState(azimuth);
+              localStorage.setItem('solarMonitoringAzimuth', azimuth.toString());
+            }
+          }
+
+          if (settings.solarMonitoringDeclination !== undefined) {
+            const declination = parseInt(settings.solarMonitoringDeclination);
+            if (!isNaN(declination)) {
+              setSolarMonitoringDeclinationState(declination);
+              localStorage.setItem('solarMonitoringDeclination', declination.toString());
+            }
+          }
+
           logger.debug('✅ Settings loaded from server and applied to state');
         } else {
           logger.error(`❌ Failed to fetch settings: ${response.status} ${response.statusText}`);
@@ -302,6 +400,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     dateFormat,
     mapTileset,
     mapPinStyle,
+    solarMonitoringEnabled,
+    solarMonitoringLatitude,
+    solarMonitoringLongitude,
+    solarMonitoringAzimuth,
+    solarMonitoringDeclination,
     temporaryTileset,
     setTemporaryTileset,
     isLoading,
@@ -317,6 +420,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setDateFormat,
     setMapTileset,
     setMapPinStyle,
+    setSolarMonitoringEnabled,
+    setSolarMonitoringLatitude,
+    setSolarMonitoringLongitude,
+    setSolarMonitoringAzimuth,
+    setSolarMonitoringDeclination,
   };
 
   return (
