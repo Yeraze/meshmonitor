@@ -2,7 +2,21 @@
 
 ## Current Sprint
 
-## Version 2.13.4 Release Tasks
+## Version 2.14.0 Release Tasks
+
+- [x] Update version in package.json to 2.14.0
+- [x] Update version in Helm chart to 2.14.0
+- [x] Regenerate package-lock.json
+- [x] Create comprehensive solar monitoring documentation
+- [x] Update main documentation page to highlight solar monitoring
+- [x] Enhance settings documentation with solar configuration details
+- [x] Run system tests
+- [ ] Create pull request
+- [ ] Merge and create release (v2.14.0)
+
+## Completed Tasks
+
+### Version 2.13.4
 
 - [x] Update version in package.json to 2.13.4
 - [x] Update version in Helm chart to 2.13.4
@@ -10,8 +24,6 @@
 - [x] Run system tests
 - [x] Create pull request (#460)
 - [x] Merge and create release (v2.13.4)
-
-## Completed Tasks
 
 ### Version 2.13.4 (Current Release)
 

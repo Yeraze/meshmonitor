@@ -55,6 +55,10 @@ features:
   - icon: 🔧
     title: Flexible Configuration
     details: Configure reverse proxies, HTTPS, environment variables, and more. Adapt MeshMonitor to your infrastructure needs.
+
+  - icon: ☀️
+    title: Solar Monitoring
+    details: Integrate with forecast.solar to visualize expected solar production alongside telemetry data. Perfect for optimizing off-grid deployments and predicting power availability.
 ---
 
 ## Quick Start

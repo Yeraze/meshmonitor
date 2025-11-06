@@ -192,6 +192,69 @@ When information is unavailable, the block displays "N/A" for that metric. This 
 - Information isn't available from the device type
 - Connection was lost before all data was received
 
+## Solar Monitoring *(New in v2.13)*
+
+**Description**: Configure solar production monitoring to visualize expected solar power generation on telemetry graphs.
+
+**Integration**: Uses the [forecast.solar](https://forecast.solar) API to fetch solar production estimates based on your panel configuration and location.
+
+**Configuration Parameters**:
+
+### Latitude
+- **Range**: -90 to 90 degrees
+- **Description**: Geographic latitude of your solar installation
+- **Examples**:
+  - 37.7749 (San Francisco, CA)
+  - 51.5074 (London, UK)
+  - -33.8688 (Sydney, Australia)
+
+### Longitude
+- **Range**: -180 to 180 degrees
+- **Description**: Geographic longitude of your solar installation
+- **Examples**:
+  - -122.4194 (San Francisco, CA)
+  - -0.1278 (London, UK)
+  - 151.2093 (Sydney, Australia)
+
+### Declination (Tilt)
+- **Range**: 0-90 degrees
+- **Description**: The angle your solar panels are tilted from horizontal
+- **Values**:
+  - 0° = Horizontal (flat mounting)
+  - 20-40° = Typical roof mount (varies by latitude)
+  - 90° = Vertical (wall mounting)
+- **Tip**: Use a protractor or angle finder to measure your panel tilt
+
+### Azimuth (Compass Direction)
+- **Range**: 0-360 degrees
+- **Description**: Compass direction your solar panels face
+- **Values**:
+  - 0° = North
+  - 90° = East
+  - 180° = South (optimal in Northern Hemisphere)
+  - 270° = West
+- **Tip**: Use a compass app on your phone to determine panel orientation
+
+**Effect**: When configured, MeshMonitor will automatically fetch solar production estimates every hour and display them as translucent yellow overlays on telemetry graphs.
+
+**Visual Indicator**: Solar estimates appear as a yellow background on:
+- Node Details telemetry graphs
+- Telemetry Dashboard charts
+- Any time-series telemetry visualization
+
+**Side Effects**:
+- Hourly API requests to forecast.solar (free tier)
+- Additional database storage for solar estimates
+- Minimal performance impact on graph rendering
+
+**When to use**:
+- Off-grid or solar-powered Meshtastic deployments
+- Battery optimization and planning
+- Correlating node performance with available solar power
+- Predicting when nodes may go offline due to insufficient power
+
+**Learn More**: See [Solar Monitoring](/features/solar-monitoring) for detailed documentation, API endpoints, and troubleshooting.
+
 ## Display Preferences
 
 ### Preferred Node List Sorting
