@@ -210,6 +210,16 @@
           class="text-input"
         />
         <p class="field-help">Port for Meshtastic mobile apps to connect (default: 4404)</p>
+
+        <div class="checkbox-group" style="margin-top: 1rem;">
+          <label class="checkbox-option">
+            <input type="checkbox" v-model="config.allowVirtualNodeAdminCommands" />
+            <div class="option-content">
+              <strong>Allow Admin Commands</strong>
+              <span class="option-desc">⚠️ Allow admin commands through virtual node (reduces security, use only if multiple services need access)</span>
+            </div>
+          </label>
+        </div>
       </div>
     </section>
 
@@ -289,6 +299,7 @@ const config = ref({
   webPort: 8080,
   enableVirtualNode: true,
   virtualNodePort: 4404,
+  allowVirtualNodeAdminCommands: false,
   disableAnonymous: false,
   timezone: 'America/New_York'
 })
@@ -399,6 +410,9 @@ const dockerComposeYaml = computed(() => {
     if (config.value.virtualNodePort !== 4404) {
       lines.push(`      - VIRTUAL_NODE_PORT=${config.value.virtualNodePort}`)
     }
+    if (config.value.allowVirtualNodeAdminCommands) {
+      lines.push('      - VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS=true')
+    }
   }
 
   // Disable Anonymous
@@ -461,6 +475,10 @@ const envFile = computed(() => {
     lines.push('ENABLE_VIRTUAL_NODE=true')
     if (config.value.virtualNodePort !== 4404) {
       lines.push(`VIRTUAL_NODE_PORT=${config.value.virtualNodePort}`)
+    }
+    if (config.value.allowVirtualNodeAdminCommands) {
+      lines.push('# WARNING: Enabling admin commands reduces security')
+      lines.push('VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS=true')
     }
     lines.push('')
   }

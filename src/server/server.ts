@@ -224,6 +224,7 @@ async function initializeVirtualNodeServer(): Promise<void> {
       const virtualNodeServer = new VirtualNodeServer({
         port: env.virtualNodePort,
         meshtasticManager: meshtasticManager,
+        allowAdminCommands: env.virtualNodeAllowAdminCommands,
       });
 
       await virtualNodeServer.start();

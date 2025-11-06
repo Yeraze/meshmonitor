@@ -15,9 +15,9 @@ import { describe, it, expect } from 'vitest';
 // Meshtastic portnum constants (from @meshtastic/js protobuf definitions)
 const PORTNUM = {
   TEXT_MESSAGE_APP: 1,
-  ADMIN_APP: 1,
   POSITION_APP: 3,
-  NODEINFO_APP: 4,
+  ADMIN_APP: 6,
+  NODEINFO_APP: 8,
   TELEMETRY_APP: 67,
 } as const;
 
@@ -60,13 +60,13 @@ describe('Virtual Node Server - Constants and Configuration', () => {
 
 describe('Virtual Node Server - Admin Command Filtering', () => {
   describe('Blocked Admin Portnums', () => {
-    it('should block ADMIN_APP portnum (1)', () => {
+    it('should block ADMIN_APP portnum (6)', () => {
       const ADMIN_APP = PORTNUM.ADMIN_APP;
-      expect(ADMIN_APP).toBe(1);
+      expect(ADMIN_APP).toBe(6);
 
       // Should be blocked for security
       const isAdminCommand = (portnum: number) => portnum === ADMIN_APP;
-      expect(isAdminCommand(1)).toBe(true);
+      expect(isAdminCommand(6)).toBe(true);
       expect(isAdminCommand(2)).toBe(false);
     });
 
@@ -74,31 +74,33 @@ describe('Virtual Node Server - Admin Command Filtering', () => {
       const TEXT_MESSAGE_APP = PORTNUM.TEXT_MESSAGE_APP;
       expect(TEXT_MESSAGE_APP).toBe(1);
 
-      // Note: ADMIN_APP and TEXT_MESSAGE_APP share the same value (1)
-      // This is why we need additional context to distinguish them
+      // TEXT_MESSAGE_APP should not be blocked
+      const isAdminCommand = (portnum: number) => portnum === 6 || portnum === 8;
+      expect(isAdminCommand(TEXT_MESSAGE_APP)).toBe(false);
     });
 
     it('should allow POSITION_APP portnum (3)', () => {
       const POSITION_APP = PORTNUM.POSITION_APP;
       expect(POSITION_APP).toBe(3);
 
-      const isAdminCommand = (portnum: number) => portnum === 1; // Simplified check
+      const isAdminCommand = (portnum: number) => portnum === 6 || portnum === 8;
       expect(isAdminCommand(POSITION_APP)).toBe(false);
     });
 
-    it('should allow NODEINFO_APP portnum (4)', () => {
+    it('should block NODEINFO_APP portnum (8)', () => {
       const NODEINFO_APP = PORTNUM.NODEINFO_APP;
-      expect(NODEINFO_APP).toBe(4);
+      expect(NODEINFO_APP).toBe(8);
 
-      const isAdminCommand = (portnum: number) => portnum === 1;
-      expect(isAdminCommand(NODEINFO_APP)).toBe(false);
+      // Should be blocked for security
+      const isAdminCommand = (portnum: number) => portnum === 6 || portnum === 8;
+      expect(isAdminCommand(NODEINFO_APP)).toBe(true);
     });
 
     it('should allow TELEMETRY_APP portnum (67)', () => {
       const TELEMETRY_APP = PORTNUM.TELEMETRY_APP;
       expect(TELEMETRY_APP).toBe(67);
 
-      const isAdminCommand = (portnum: number) => portnum === 1;
+      const isAdminCommand = (portnum: number) => portnum === 6 || portnum === 8;
       expect(isAdminCommand(TELEMETRY_APP)).toBe(false);
     });
   });
@@ -106,22 +108,24 @@ describe('Virtual Node Server - Admin Command Filtering', () => {
   describe('Admin Message Detection', () => {
     it('should identify admin messages by portnum', () => {
       const isAdminMessage = (portnum: number) => {
-        return portnum === PORTNUM.ADMIN_APP;
+        return portnum === PORTNUM.ADMIN_APP || portnum === PORTNUM.NODEINFO_APP;
       };
 
-      expect(isAdminMessage(1)).toBe(true);
-      expect(isAdminMessage(3)).toBe(false);
-      expect(isAdminMessage(4)).toBe(false);
+      expect(isAdminMessage(6)).toBe(true); // ADMIN_APP
+      expect(isAdminMessage(8)).toBe(true); // NODEINFO_APP
+      expect(isAdminMessage(3)).toBe(false); // POSITION_APP
+      expect(isAdminMessage(1)).toBe(false); // TEXT_MESSAGE_APP
     });
 
     it('should handle undefined portnum gracefully', () => {
       const isAdminMessage = (portnum: number | undefined) => {
         if (portnum === undefined) return false;
-        return portnum === PORTNUM.ADMIN_APP;
+        return portnum === PORTNUM.ADMIN_APP || portnum === PORTNUM.NODEINFO_APP;
       };
 
       expect(isAdminMessage(undefined)).toBe(false);
-      expect(isAdminMessage(1)).toBe(true);
+      expect(isAdminMessage(6)).toBe(true); // ADMIN_APP
+      expect(isAdminMessage(8)).toBe(true); // NODEINFO_APP
     });
   });
 });
@@ -142,7 +146,7 @@ describe('Virtual Node Server - Config State Management', () => {
       };
 
       // Simulate capturing packets
-      capturePacket({ decoded: { portnum: 4 } }); // NODEINFO_APP
+      capturePacket({ decoded: { portnum: 8 } }); // NODEINFO_APP
       capturePacket({ decoded: { portnum: 3 } }); // POSITION_APP
       capturePacket({ decoded: { portnum: 1 } }); // TEXT_MESSAGE_APP (not captured)
 
@@ -151,9 +155,9 @@ describe('Virtual Node Server - Config State Management', () => {
 
     it('should replay config to new clients', () => {
       const configPackets = [
-        { decoded: { portnum: 4, payload: 'nodeinfo1' } },
-        { decoded: { portnum: 4, payload: 'nodeinfo2' } },
-        { decoded: { portnum: 3, payload: 'position1' } }
+        { decoded: { portnum: 8, payload: 'nodeinfo1' } }, // NODEINFO_APP
+        { decoded: { portnum: 8, payload: 'nodeinfo2' } }, // NODEINFO_APP
+        { decoded: { portnum: 3, payload: 'position1' } }   // POSITION_APP
       ];
 
       const replayedPackets: any[] = [];
@@ -163,7 +167,7 @@ describe('Virtual Node Server - Config State Management', () => {
 
       replayConfig({}, configPackets);
       expect(replayedPackets).toHaveLength(3);
-      expect(replayedPackets[0].decoded.portnum).toBe(4);
+      expect(replayedPackets[0].decoded.portnum).toBe(8); // NODEINFO_APP
     });
 
     it('should not replay empty config', () => {
@@ -365,16 +369,58 @@ describe('Virtual Node Server - Client Lifecycle', () => {
 
 describe('Virtual Node Server - Security', () => {
   describe('Admin Command Blocking', () => {
-    it('should block admin commands from clients', () => {
-      const ADMIN_PORTNUM = 1; // ADMIN_APP
+    it('should block admin commands from clients by default', () => {
+      const ADMIN_PORTNUM = 6; // ADMIN_APP
+      const NODEINFO_PORTNUM = 8; // NODEINFO_APP
+      const allowAdminCommands = false; // Default
 
       const isBlockedPortnum = (portnum: number) => {
-        return portnum === ADMIN_PORTNUM;
+        return portnum === ADMIN_PORTNUM || portnum === NODEINFO_PORTNUM;
       };
 
-      expect(isBlockedPortnum(ADMIN_PORTNUM)).toBe(true);
+      // When allowAdminCommands is false, admin commands should be blocked
+      const shouldBlock = !allowAdminCommands && isBlockedPortnum(ADMIN_PORTNUM);
+      expect(shouldBlock).toBe(true);
+      expect(isBlockedPortnum(NODEINFO_PORTNUM)).toBe(true); // NODEINFO_APP should be blocked
       expect(isBlockedPortnum(3)).toBe(false); // POSITION_APP
-      expect(isBlockedPortnum(4)).toBe(false); // NODEINFO_APP
+    });
+
+    it('should allow admin commands when explicitly enabled', () => {
+      const ADMIN_PORTNUM = 6; // ADMIN_APP
+      const NODEINFO_PORTNUM = 8; // NODEINFO_APP
+      const allowAdminCommands = true; // Explicitly enabled
+
+      const isBlockedPortnum = (portnum: number) => {
+        return portnum === ADMIN_PORTNUM || portnum === NODEINFO_PORTNUM;
+      };
+
+      // When allowAdminCommands is true, admin commands should NOT be blocked
+      const shouldBlock = !allowAdminCommands && isBlockedPortnum(ADMIN_PORTNUM);
+      expect(shouldBlock).toBe(false);
+
+      // Verify other portnums still work normally
+      expect(isBlockedPortnum(3)).toBe(false); // POSITION_APP
+    });
+
+    it('should respect allowAdminCommands configuration', () => {
+      const ADMIN_PORTNUM = 6; // ADMIN_APP
+      const NODEINFO_PORTNUM = 8; // NODEINFO_APP
+
+      const processCommand = (portnum: number, allowAdmin: boolean) => {
+        const isAdminCommand = portnum === ADMIN_PORTNUM || portnum === NODEINFO_PORTNUM;
+
+        if (!allowAdmin && isAdminCommand) {
+          return 'blocked';
+        }
+        return 'allowed';
+      };
+
+      expect(processCommand(ADMIN_PORTNUM, false)).toBe('blocked');
+      expect(processCommand(ADMIN_PORTNUM, true)).toBe('allowed');
+      expect(processCommand(NODEINFO_PORTNUM, false)).toBe('blocked');
+      expect(processCommand(NODEINFO_PORTNUM, true)).toBe('allowed');
+      expect(processCommand(3, false)).toBe('allowed'); // Non-admin always allowed
+      expect(processCommand(3, true)).toBe('allowed'); // Non-admin always allowed
     });
 
     it('should log blocked admin command attempts', () => {
