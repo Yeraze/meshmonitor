@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import {
   DndContext,
   closestCenter,
@@ -64,6 +64,7 @@ interface ChartData {
   timestamp: number;
   value: number;
   time: string;
+  solarEstimate?: number; // Solar power estimate in watt-hours
 }
 
 interface DashboardProps {
@@ -86,6 +87,7 @@ interface SortableChartItemProps {
   getTelemetryLabel: (type: string) => string;
   getColor: (type: string) => string;
   prepareChartData: (data: TelemetryData[], isTemperature: boolean) => ChartData[];
+  solarEstimates: Map<number, number>;
 }
 
 const SortableChartItem: React.FC<SortableChartItemProps> = React.memo(({
@@ -99,6 +101,7 @@ const SortableChartItem: React.FC<SortableChartItemProps> = React.memo(({
   getTelemetryLabel,
   getColor,
   prepareChartData,
+  solarEstimates,
 }) => {
   const {
     attributes,
@@ -182,7 +185,7 @@ const SortableChartItem: React.FC<SortableChartItemProps> = React.memo(({
       </div>
 
       <ResponsiveContainer width="100%" height={200}>
-        <LineChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+        <ComposedChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#ccc" />
           <XAxis
             dataKey="timestamp"
@@ -195,8 +198,16 @@ const SortableChartItem: React.FC<SortableChartItemProps> = React.memo(({
             })}
           />
           <YAxis
+            yAxisId="left"
             tick={{ fontSize: 12 }}
             domain={['auto', 'auto']}
+          />
+          <YAxis
+            yAxisId="right"
+            orientation="right"
+            tick={{ fontSize: 12 }}
+            domain={['auto', 'auto']}
+            hide={true}
           />
           <Tooltip
             contentStyle={{
@@ -217,7 +228,21 @@ const SortableChartItem: React.FC<SortableChartItemProps> = React.memo(({
               });
             }}
           />
+          {solarEstimates.size > 0 && (
+            <Area
+              yAxisId="right"
+              type="monotone"
+              dataKey="solarEstimate"
+              fill="#f9e2af"
+              fillOpacity={0.3}
+              stroke="#f9e2af"
+              strokeOpacity={0.5}
+              strokeWidth={1}
+              isAnimationActive={false}
+            />
+          )}
           <Line
+            yAxisId="left"
             type="monotone"
             dataKey="value"
             stroke={color}
@@ -225,7 +250,7 @@ const SortableChartItem: React.FC<SortableChartItemProps> = React.memo(({
             dot={{ fill: color, r: 3 }}
             activeDot={{ r: 5 }}
           />
-        </LineChart>
+        </ComposedChart>
       </ResponsiveContainer>
     </div>
   );
@@ -241,9 +266,22 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C',
   const [nodes, setNodes] = useState<Map<string, NodeInfo>>(new Map());
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [solarEstimates, setSolarEstimates] = useState<Map<number, number>>(new Map());
 
   // Days to view control (defaults to all available, max is favoriteTelemetryStorageDays)
-  const [daysToView, setDaysToView] = useState<number>(favoriteTelemetryStorageDays);
+  const [daysToView, setDaysToView] = useState<number>(() => {
+    try {
+      const savedDaysToView = localStorage.getItem('telemetryDaysToView');
+      if (savedDaysToView) {
+        const parsed = parseInt(savedDaysToView);
+        // Validate: must be between 1 and favoriteTelemetryStorageDays
+        return Math.min(favoriteTelemetryStorageDays, Math.max(1, parsed));
+      }
+    } catch (error) {
+      logger.error('Error loading days to view from Local Storage:', error);
+    }
+    return favoriteTelemetryStorageDays;
+  });
 
   // Filter and sort state
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -298,6 +336,49 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C',
       };
     }
   }, [roleDropdownOpen]);
+
+  // Fetch solar estimates on component mount
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchSolarEstimates = async () => {
+      try {
+        const response = await fetch(`${baseUrl}/api/solar/estimates?limit=500`);
+        if (!response.ok) {
+          return; // Silently fail if solar monitoring not configured
+        }
+
+        const data = await response.json();
+        if (isMounted && data.estimates && data.estimates.length > 0) {
+          const estimatesMap = new Map<number, number>();
+          data.estimates.forEach((est: { timestamp: number; wattHours: number }) => {
+            estimatesMap.set(est.timestamp * 1000, est.wattHours); // Convert to milliseconds
+          });
+          setSolarEstimates(estimatesMap);
+        }
+      } catch (error) {
+        // Silently fail - solar monitoring is optional
+        logger.debug('Solar estimates not available:', error);
+      }
+    };
+
+    fetchSolarEstimates();
+    const interval = setInterval(fetchSolarEstimates, 60000); // Refresh every minute
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [baseUrl]);
+
+  // Save daysToView to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem('telemetryDaysToView', daysToView.toString());
+    } catch (error) {
+      logger.error('Error saving days to view to Local Storage:', error);
+    }
+  }, [daysToView]);
 
   // Fetch favorites and node information
   useEffect(() => {
@@ -389,6 +470,25 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C',
     return () => clearInterval(interval);
   }, [daysToView, baseUrl]);
 
+  const getNearestSolarEstimate = (timestamp: number): number | undefined => {
+    if (solarEstimates.size === 0) return undefined;
+
+    // Find the closest solar estimate (within 1 hour)
+    const oneHour = 3600000; // 1 hour in milliseconds
+    let closestEstimate: number | undefined;
+    let closestDiff = Infinity;
+
+    for (const [solarTime, estimate] of solarEstimates) {
+      const diff = Math.abs(solarTime - timestamp);
+      if (diff < closestDiff && diff <= oneHour) {
+        closestDiff = diff;
+        closestEstimate = estimate;
+      }
+    }
+
+    return closestEstimate;
+  };
+
   const prepareChartData = (data: TelemetryData[], isTemperature: boolean = false): ChartData[] => {
     return data
       .sort((a, b) => a.timestamp - b.timestamp)
@@ -398,7 +498,8 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C',
         time: new Date(item.timestamp).toLocaleTimeString([], {
           hour: '2-digit',
           minute: '2-digit'
-        })
+        }),
+        solarEstimate: getNearestSolarEstimate(item.timestamp)
       }));
   };
 
@@ -783,6 +884,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C',
                   getTelemetryLabel={getTelemetryLabel}
                   getColor={getColor}
                   prepareChartData={prepareChartData}
+                  solarEstimates={solarEstimates}
                 />
               );
             })}
