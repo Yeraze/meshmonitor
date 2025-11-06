@@ -4,7 +4,25 @@
 
 ## Completed Tasks
 
-### Version 2.14.0 (Current Release)
+### Version 2.14.1 (Current Release)
+
+- [x] Update version in package.json to 2.14.1
+- [x] Update version in Helm chart to 2.14.1
+- [x] Regenerate package-lock.json
+- [x] Fix missing solar_estimates table migration (#467)
+  - Added import for migration 019 in database.ts
+  - Added runSolarEstimatesMigration() method
+  - Called migration in initialization sequence
+- [x] Add manual solar fetch functionality
+  - Added "Fetch Estimates Now" button to Settings page
+  - Button appears in Solar Monitoring section when enabled
+  - Uses existing POST /api/solar/trigger endpoint
+  - Provides user feedback via toast notifications
+- [x] Run system tests
+- [x] Create pull request (#468)
+- [x] Merge and create release (v2.14.1)
+
+### Version 2.14.0
 
 - [x] Update version in package.json to 2.14.0
 - [x] Update version in Helm chart to 2.14.0
