@@ -111,6 +111,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [localSolarMonitoringLongitude, setLocalSolarMonitoringLongitude] = useState(solarMonitoringLongitude);
   const [localSolarMonitoringAzimuth, setLocalSolarMonitoringAzimuth] = useState(solarMonitoringAzimuth);
   const [localSolarMonitoringDeclination, setLocalSolarMonitoringDeclination] = useState(solarMonitoringDeclination);
+  const [isFetchingSolarEstimates, setIsFetchingSolarEstimates] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDocker, setIsDocker] = useState<boolean | null>(null);
@@ -285,6 +286,29 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       showToast('Failed to save settings. Please try again.', 'error');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleFetchSolarEstimates = async () => {
+    setIsFetchingSolarEstimates(true);
+    try {
+      const response = await csrfFetch(`${baseUrl}/api/solar/trigger`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to trigger solar estimate fetch');
+      }
+
+      showToast('Solar estimates fetch triggered successfully!', 'success');
+    } catch (error) {
+      logger.error('Error triggering solar estimate fetch:', error);
+      showToast('Failed to trigger solar estimate fetch', 'error');
+    } finally {
+      setIsFetchingSolarEstimates(false);
     }
   };
 
@@ -832,6 +856,19 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                   onChange={(e) => setLocalSolarMonitoringDeclination(parseInt(e.target.value) || 30)}
                   className="setting-input"
                 />
+              </div>
+              <div className="setting-item" style={{ marginTop: '1rem' }}>
+                <button
+                  onClick={handleFetchSolarEstimates}
+                  disabled={isFetchingSolarEstimates}
+                  className="save-button"
+                  style={{ width: 'auto', padding: '0.5rem 1rem' }}
+                >
+                  {isFetchingSolarEstimates ? 'Fetching...' : 'Fetch Estimates Now'}
+                </button>
+                <p className="setting-description" style={{ marginTop: '0.5rem' }}>
+                  Manually trigger a solar estimate fetch from Forecast.Solar. Estimates are automatically fetched every hour at :05 past the hour.
+                </p>
               </div>
             </>
           )}
