@@ -350,6 +350,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C',
 
         const data = await response.json();
         if (isMounted && data.estimates && data.estimates.length > 0) {
+          // Replace entire Map to prevent memory accumulation (API limit=500 ensures bounded size)
           const estimatesMap = new Map<number, number>();
           data.estimates.forEach((est: { timestamp: number; wattHours: number }) => {
             estimatesMap.set(est.timestamp * 1000, est.wattHours); // Convert to milliseconds
@@ -363,7 +364,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C',
     };
 
     fetchSolarEstimates();
-    const interval = setInterval(fetchSolarEstimates, 60000); // Refresh every minute
+    const interval = setInterval(fetchSolarEstimates, 300000); // Refresh every 5 minutes (solar data changes slowly)
 
     return () => {
       isMounted = false;
@@ -471,6 +472,11 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C',
   }, [daysToView, baseUrl]);
 
   const getNearestSolarEstimate = (timestamp: number): number | undefined => {
+    // Validate input
+    if (!timestamp || timestamp <= 0 || !Number.isFinite(timestamp)) {
+      return undefined;
+    }
+
     if (solarEstimates.size === 0) return undefined;
 
     // Find the closest solar estimate (within 1 hour)
