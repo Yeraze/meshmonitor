@@ -447,7 +447,7 @@ describe('TelemetryGraphs Component', () => {
             json: async () => ({})
           });
         }
-        if (url.includes(\'/api/solar/estimates\')) {
+        if (url.includes('/api/solar/estimates')) {
         return Promise.resolve({
           ok: true,
           json: async () => ({
@@ -489,7 +489,7 @@ describe('TelemetryGraphs Component', () => {
             json: async () => ({})
           });
         }
-        if (url.includes(\'/api/solar/estimates\')) {
+        if (url.includes('/api/solar/estimates')) {
         return Promise.resolve({
           ok: true,
           json: async () => ({
@@ -549,7 +549,7 @@ describe('TelemetryGraphs Component', () => {
             json: async () => ({})
           });
         }
-        if (url.includes(\'/api/solar/estimates\')) {
+        if (url.includes('/api/solar/estimates')) {
         return Promise.resolve({
           ok: true,
           json: async () => ({
