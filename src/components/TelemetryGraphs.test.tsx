@@ -112,14 +112,14 @@ describe('TelemetryGraphs Component', () => {
 
   it('should render loading state initially', async () => {
     // Mock fetch to be slow
-    (global.fetch as Mock).mockImplementation((url: string) =>
+    (global.fetch as Mock).mockImplementation((url: string) => {
       if (url.includes('/api/csrf-token')) {
         return Promise.resolve({
           ok: true,
           json: async () => ({ token: 'test-csrf-token' })
         });
       }
-      new Promise(resolve => setTimeout(() => {
+      return new Promise(resolve => setTimeout(() => {
         if (url.includes('/api/settings')) {
           resolve({
             ok: true,
@@ -131,8 +131,8 @@ describe('TelemetryGraphs Component', () => {
             json: async () => mockTelemetryData
           });
         }
-      }, 100))
-    );
+      }, 100));
+    });
 
     await act(async () => {
       renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} />);
