@@ -28,6 +28,7 @@ import { deviceBackupService } from './services/deviceBackupService.js';
 import { backupFileService } from './services/backupFileService.js';
 import { backupSchedulerService } from './services/backupSchedulerService.js';
 import { duplicateKeySchedulerService } from './services/duplicateKeySchedulerService.js';
+import { solarMonitoringService } from './services/solarMonitoringService.js';
 import { getUserNotificationPreferences, saveUserNotificationPreferences } from './utils/notificationFiltering.js';
 
 const require = createRequire(import.meta.url);
@@ -276,6 +277,10 @@ setTimeout(async () => {
     duplicateKeySchedulerService.start();
     logger.debug('Duplicate key scanner initialized');
 
+    // Initialize solar monitoring service
+    solarMonitoringService.initialize();
+    logger.debug('Solar monitoring service initialized');
+
     // Note: Virtual node server initialization has been moved to a callback
     // that triggers when config capture completes (see registerConfigCaptureCompleteCallback above)
   } catch (error) {
@@ -323,6 +328,7 @@ import userRoutes from './routes/userRoutes.js';
 import auditRoutes from './routes/auditRoutes.js';
 import securityRoutes from './routes/securityRoutes.js';
 import packetRoutes from './routes/packetRoutes.js';
+import solarRoutes from './routes/solarRoutes.js';
 
 // CSRF token endpoint (must be before CSRF protection middleware)
 apiRouter.get('/csrf-token', csrfTokenEndpoint);
@@ -341,6 +347,9 @@ apiRouter.use('/security', securityRoutes);
 
 // Packet log routes (requires channels:read AND messages:read)
 apiRouter.use('/packets', optionalAuth(), packetRoutes);
+
+// Solar monitoring routes
+apiRouter.use('/solar', optionalAuth(), solarRoutes);
 
 // API Routes
 apiRouter.get('/nodes', optionalAuth(), (_req, res) => {

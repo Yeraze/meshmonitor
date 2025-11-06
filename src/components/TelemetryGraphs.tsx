@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import './TelemetryGraphs.css';
 import { type TemperatureUnit, formatTemperature, getTemperatureUnit } from '../utils/temperature';
 import { logger } from '../utils/logger';
@@ -28,6 +28,7 @@ interface ChartData {
   timestamp: number;
   value: number;
   time: string;
+  solarEstimate?: number; // Solar power estimate in watt-hours
 }
 
 interface FavoriteChart {
@@ -42,6 +43,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const [solarEstimates, setSolarEstimates] = useState<Map<number, number>>(new Map());
 
   // Fetch favorites on component mount
   useEffect(() => {
@@ -66,6 +68,40 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
     };
     fetchFavorites();
   }, [nodeId]);
+
+  // Fetch solar estimates on component mount
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchSolarEstimates = async () => {
+      try {
+        const response = await fetch(`${baseUrl}/api/solar/estimates?limit=500`);
+        if (!response.ok) {
+          return; // Silently fail if solar monitoring not configured
+        }
+
+        const data = await response.json();
+        if (isMounted && data.estimates && data.estimates.length > 0) {
+          const estimatesMap = new Map<number, number>();
+          data.estimates.forEach((est: { timestamp: number; wattHours: number }) => {
+            estimatesMap.set(est.timestamp * 1000, est.wattHours); // Convert to milliseconds
+          });
+          setSolarEstimates(estimatesMap);
+        }
+      } catch (error) {
+        // Silently fail - solar monitoring is optional
+        logger.debug('Solar estimates not available:', error);
+      }
+    };
+
+    fetchSolarEstimates();
+    const interval = setInterval(fetchSolarEstimates, 60000); // Refresh every minute
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [baseUrl]);
 
   useEffect(() => {
     let isMounted = true;
@@ -174,6 +210,25 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
     return grouped;
   };
 
+  const getNearestSolarEstimate = (timestamp: number): number | undefined => {
+    if (solarEstimates.size === 0) return undefined;
+
+    // Find the closest solar estimate (within 1 hour)
+    const oneHour = 3600000; // 1 hour in milliseconds
+    let closestEstimate: number | undefined;
+    let closestDiff = Infinity;
+
+    for (const [solarTime, estimate] of solarEstimates) {
+      const diff = Math.abs(solarTime - timestamp);
+      if (diff < closestDiff && diff <= oneHour) {
+        closestDiff = diff;
+        closestEstimate = estimate;
+      }
+    }
+
+    return closestEstimate;
+  };
+
   const prepareChartData = (data: TelemetryData[], isTemperature: boolean = false): ChartData[] => {
     return data
       .sort((a, b) => a.timestamp - b.timestamp)
@@ -183,7 +238,8 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
         time: new Date(item.timestamp).toLocaleTimeString([], {
           hour: '2-digit',
           minute: '2-digit'
-        })
+        }),
+        solarEstimate: getNearestSolarEstimate(item.timestamp)
       }));
   };
 
@@ -329,7 +385,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
                 </button>
               </div>
               <ResponsiveContainer width="100%" height={200}>
-                <LineChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+                <ComposedChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#ccc" />
                   <XAxis
                     dataKey="timestamp"
@@ -342,8 +398,16 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
                     })}
                   />
                   <YAxis
+                    yAxisId="left"
                     tick={{ fontSize: 12 }}
                     domain={['auto', 'auto']}
+                  />
+                  <YAxis
+                    yAxisId="right"
+                    orientation="right"
+                    tick={{ fontSize: 12 }}
+                    domain={['auto', 'auto']}
+                    hide={true}
                   />
                   <Tooltip
                     contentStyle={{
@@ -364,7 +428,21 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
                       });
                     }}
                   />
+                  {solarEstimates.size > 0 && (
+                    <Area
+                      yAxisId="right"
+                      type="monotone"
+                      dataKey="solarEstimate"
+                      fill="#f9e2af"
+                      fillOpacity={0.3}
+                      stroke="#f9e2af"
+                      strokeOpacity={0.5}
+                      strokeWidth={1}
+                      isAnimationActive={false}
+                    />
+                  )}
                   <Line
+                    yAxisId="left"
                     type="monotone"
                     dataKey="value"
                     stroke={color}
@@ -372,7 +450,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
                     dot={{ fill: color, r: 3 }}
                     activeDot={{ r: 5 }}
                   />
-                </LineChart>
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
           );
