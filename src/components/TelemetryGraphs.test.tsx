@@ -21,8 +21,10 @@ const renderWithProviders = (component: React.ReactElement) => {
 
 // Mock Recharts components to avoid rendering issues in tests
 vi.mock('recharts', () => ({
+  ComposedChart: ({ children }: { children?: React.ReactNode }) => <div data-testid="line-chart">{children}</div>,
   LineChart: ({ children }: { children?: React.ReactNode }) => <div data-testid="line-chart">{children}</div>,
   Line: () => null,
+  Area: () => null,
   XAxis: () => null,
   YAxis: () => null,
   CartesianGrid: () => null,
@@ -77,12 +79,21 @@ describe('TelemetryGraphs Component', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // Mock both settings fetch (for favorites) and telemetry fetch
+    // Mock both settings fetch (for favorites), solar estimates, and telemetry fetch
     (global.fetch as Mock).mockImplementation((url: string) => {
       if (url.includes('/api/settings')) {
         return Promise.resolve({
           ok: true,
           json: async () => ({})  // No favorites by default
+        });
+      }
+      if (url.includes('/api/solar/estimates')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            count: 0,
+            estimates: []
+          })
         });
       }
       // Default to telemetry data
