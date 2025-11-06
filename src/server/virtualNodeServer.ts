@@ -8,6 +8,7 @@ import databaseService from '../services/database.js';
 export interface VirtualNodeConfig {
   port: number;
   meshtasticManager: MeshtasticManager;
+  allowAdminCommands?: boolean; // Allow admin commands through virtual node (default: false for security)
 }
 
 interface ConnectedClient {
@@ -40,6 +41,7 @@ interface QueuedMessage {
  */
 export class VirtualNodeServer extends EventEmitter {
   private config: VirtualNodeConfig;
+  private allowAdminCommands: boolean;
   private server: Server | null = null;
   private clients: Map<string, ConnectedClient> = new Map();
   private messageQueue: QueuedMessage[] = [];
@@ -70,6 +72,7 @@ export class VirtualNodeServer extends EventEmitter {
   constructor(config: VirtualNodeConfig) {
     super();
     this.config = config;
+    this.allowAdminCommands = config.allowAdminCommands ?? false; // Default to false for security
   }
 
   /**
@@ -330,7 +333,8 @@ export class VirtualNodeServer extends EventEmitter {
         const portnum = toRadio.packet.decoded?.portnum;
         const isSelfAddressed = toRadio.packet.from === toRadio.packet.to;
 
-        if (portnum && this.BLOCKED_PORTNUMS.includes(portnum)) {
+        // Only enforce blocking if allowAdminCommands is false (default)
+        if (!this.allowAdminCommands && portnum && this.BLOCKED_PORTNUMS.includes(portnum)) {
           // Allow self-addressed admin commands (device querying itself)
           if (isSelfAddressed) {
             logger.debug(`Virtual node: Allowing self-addressed admin command from ${clientId} (portnum ${portnum})`);
@@ -348,6 +352,9 @@ export class VirtualNodeServer extends EventEmitter {
             // Silently drop the message
             return;
           }
+        } else if (this.allowAdminCommands && portnum && this.BLOCKED_PORTNUMS.includes(portnum)) {
+          // Admin commands are explicitly allowed via configuration
+          logger.info(`Virtual node: Allowing admin command from ${clientId} (portnum ${portnum}) - VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS=true`);
         }
 
         // Process the packet locally so it appears in the web UI

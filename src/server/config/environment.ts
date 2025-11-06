@@ -167,6 +167,8 @@ export interface EnvironmentConfig {
   enableVirtualNodeProvided: boolean;
   virtualNodePort: number;
   virtualNodePortProvided: boolean;
+  virtualNodeAllowAdminCommands: boolean;
+  virtualNodeAllowAdminCommandsProvided: boolean;
 
   // OIDC
   oidcIssuer: string | undefined;
@@ -367,6 +369,10 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
   // Virtual Node
   const enableVirtualNode = parseBoolean('ENABLE_VIRTUAL_NODE', process.env.ENABLE_VIRTUAL_NODE, false);
   const virtualNodePort = parseInt32('VIRTUAL_NODE_PORT', process.env.VIRTUAL_NODE_PORT, 4404);
+  const virtualNodeAllowAdminCommands = {
+    value: parseBoolean('VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS', process.env.VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS, false),
+    wasProvided: process.env.VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS !== undefined
+  };
 
   // OIDC
   const oidcIssuer = {
@@ -512,6 +518,8 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     enableVirtualNodeProvided: enableVirtualNode.wasProvided,
     virtualNodePort: virtualNodePort.value,
     virtualNodePortProvided: virtualNodePort.wasProvided,
+    virtualNodeAllowAdminCommands: virtualNodeAllowAdminCommands.value,
+    virtualNodeAllowAdminCommandsProvided: virtualNodeAllowAdminCommands.wasProvided,
 
     // OIDC
     oidcIssuer: oidcIssuer.value,
