@@ -2,14 +2,6 @@
 
 ## Current Sprint
 
-### Bug Fix - Issue #470
-- [x] Fix hop count calculation to handle missing or invalid values
-- [x] Add validation to ensure hopStart >= hopLimit before calculating
-- [x] Add defensive check in RABBIT_HOPS to prevent negative repeat values
-- [x] Test the fix locally
-- [x] Run system tests before creating PR
-- [x] Create PR #471
-
 ## Completed Tasks
 
 ### Version 2.14.1 (Current Release)
@@ -26,6 +18,13 @@
   - Button appears in Solar Monitoring section when enabled
   - Uses existing POST /api/solar/trigger endpoint
   - Provides user feedback via toast notifications
+- [x] Fix auto-acknowledge hop count calculation (#470, #471)
+  - Enhanced hop count validation to check for both null and undefined values
+  - Added validation that hopStart >= hopLimit before calculating
+  - Added defensive check in RABBIT_HOPS using Math.max(0, numberHops)
+  - Falls back to 0 for invalid or missing hop data
+  - Prevents RangeError when using {RABBIT_HOPS} token
+  - Fixes incorrect -7 value displayed for {NUMBER_HOPS}
 - [x] Run system tests
 - [x] Create pull request (#468)
 - [x] Merge and create release (v2.14.1)
