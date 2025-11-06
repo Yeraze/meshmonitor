@@ -11,7 +11,7 @@
 - [x] Update main documentation page to highlight solar monitoring
 - [x] Enhance settings documentation with solar configuration details
 - [x] Run system tests
-- [ ] Create pull request
+- [x] Create pull request (#465)
 - [ ] Merge and create release (v2.14.0)
 
 ## Completed Tasks
