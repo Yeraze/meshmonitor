@@ -2,7 +2,9 @@
 
 ## Current Sprint
 
-## Version 2.14.0 Release Tasks
+## Completed Tasks
+
+### Version 2.14.0 (Current Release)
 
 - [x] Update version in package.json to 2.14.0
 - [x] Update version in Helm chart to 2.14.0
@@ -12,9 +14,24 @@
 - [x] Enhance settings documentation with solar configuration details
 - [x] Run system tests
 - [x] Create pull request (#465)
-- [ ] Merge and create release (v2.14.0)
+- [x] Merge and create release (v2.14.0)
 
-## Completed Tasks
+#### Solar Monitoring Integration
+- [x] Integration with forecast.solar API for solar production estimates (#463)
+- [x] Automated hourly fetching via cron scheduler
+- [x] Database migration 019 creating `solar_estimates` table
+- [x] API endpoints for accessing solar estimate data
+- [x] Translucent yellow overlay visualization on telemetry graphs (#464)
+- [x] ComposedChart with dual Y-axes for mixed visualization
+- [x] Nearest-neighbor timestamp matching algorithm
+- [x] Auto-refresh solar data every 60 seconds
+- [x] Solar estimates visible in graph tooltips
+- [x] Complete documentation and configuration guide (#465)
+
+#### Telemetry Management Enhancements
+- [x] Configurable favorite telemetry storage period (1-365 days) (#462)
+- [x] Configurable favorite telemetry viewing period (#462)
+- [x] localStorage persistence for "Days to View" setting on Dashboard (#464)
 
 ### Version 2.13.4
 
