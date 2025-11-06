@@ -3826,9 +3826,15 @@ class MeshtasticManager {
       const autoAckMessage = databaseService.getSetting('autoAckMessage') || '🤖 Copy, {NUMBER_HOPS} hops at {TIME}';
 
       // Calculate hop count (hopStart - hopLimit gives hops traveled)
-      const hopsTraveled = message.hopStart !== null && message.hopLimit !== null
-        ? message.hopStart - message.hopLimit
-        : 0;
+      // Only calculate if both values are valid and hopStart >= hopLimit
+      const hopsTraveled =
+        message.hopStart !== null &&
+        message.hopStart !== undefined &&
+        message.hopLimit !== null &&
+        message.hopLimit !== undefined &&
+        message.hopStart >= message.hopLimit
+          ? message.hopStart - message.hopLimit
+          : 0;
 
       // Format timestamp in local timezone (from TZ environment variable)
       const env = getEnvironmentConfig();
@@ -4146,7 +4152,9 @@ class MeshtasticManager {
 
     // {RABBIT_HOPS} - Rabbit emojis equal to hop count (or 🎯 for direct/0 hops)
     if (result.includes('{RABBIT_HOPS}')) {
-      const rabbitEmojis = numberHops === 0 ? '🎯' : '🐇'.repeat(numberHops);
+      // Ensure numberHops is valid (>= 0) to prevent String.repeat() errors
+      const validHops = Math.max(0, numberHops);
+      const rabbitEmojis = validHops === 0 ? '🎯' : '🐇'.repeat(validHops);
       result = result.replace(/{RABBIT_HOPS}/g, rabbitEmojis);
     }
 
