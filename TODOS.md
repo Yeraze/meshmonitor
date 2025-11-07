@@ -4,6 +4,48 @@
 
 ## Completed Tasks
 
+### Version 2.15.3 (Current Release)
+
+- [x] Add audit logging for upgrade events (#486)
+  - Upgrade trigger events with version information (who initiated, when, from/to versions)
+  - Upgrade cancellation events with full context
+  - User attribution and IP address tracking
+  - Upgrade script deployment logged with SHA256 hash for verification
+- [x] Fix critical auto-upgrade container recreation bug (#487)
+  - Fixed bug where upgrades failed with "Unable to find image 'profile:latest'" error
+  - Root cause: Port mappings included protocol suffixes (`-p 8080:3001/tcp`) invalid for `docker run`
+  - Root cause: Docker Compose env vars (`COMPOSE_PROFILES`) passed through, causing misparse
+  - Strip `/tcp` and `/udp` protocol suffixes from port mappings
+  - Filter out `COMPOSE_*`, `DOCKER_*`, `PATH`, `HOME`, `HOSTNAME` env vars
+  - Added comprehensive environment variable filtering
+- [x] Update version to 2.15.3 in package.json, package-lock.json, and Helm chart
+- [x] Run system tests - all passed
+- [x] Create pull request (#487)
+- [x] Merge and create release (v2.15.3)
+
+### Version 2.15.2
+
+- [x] Fix auto-upgrade timing issues (#485)
+  - Fixed premature upgrade prompts appearing before container images were built
+  - Implemented time-based heuristic (15-minute wait after release publication)
+  - Replaced reliance on GHCR's ambiguous HTTP 401 responses
+- [x] Fix excessive API polling (#485)
+  - Fixed upgrade status endpoint being polled twice per second
+  - Properly memoized `authFetch` function with `useCallback`
+  - Increased polling intervals (10s base, 30s max during active upgrades)
+- [x] Run system tests
+- [x] Create release (v2.15.2)
+
+### Version 2.15.1
+
+- [x] UI improvements and bug fixes
+- [x] Create release (v2.15.1)
+
+### Version 2.15.0
+
+- [x] Implement automatic self-upgrade functionality
+- [x] Create release (v2.15.0)
+
 ### Auto-Upgrade Functionality (#480)
 - [x] Implement automatic self-upgrade functionality for Docker deployments
   - Backend: upgradeService for orchestration and pre-flight checks
@@ -32,7 +74,7 @@
 - [x] All CI tests passing
 - [x] PR reviewed and merged
 
-### Version 2.14.2 (Current Release)
+### Version 2.14.2
 
 - [x] Add VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS environment variable (#455, #474)
   - Security-first design with default disabled (false) for backward compatibility
