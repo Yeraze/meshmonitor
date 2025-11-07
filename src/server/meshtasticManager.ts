@@ -1249,49 +1249,88 @@ class MeshtasticManager {
         // Preserve the original packet timestamp for analysis (may be inaccurate if node has wrong time)
         const packetTimestamp = position.time ? Number(position.time) * 1000 : undefined;
 
+        // Extract position precision metadata
+        const channelIndex = meshPacket.channel !== undefined ? meshPacket.channel : 0;
+        const precisionBits = position.precisionBits ?? position.precision_bits ?? undefined;
+        const gpsAccuracy = position.gpsAccuracy ?? position.gps_accuracy ?? undefined;
+        const hdop = position.HDOP ?? position.hdop ?? undefined;
+
         // Track PKI encryption
         this.trackPKIEncryption(meshPacket, fromNum);
 
-        const nodeData: any = {
-          nodeNum: fromNum,
-          nodeId: nodeId,
-          latitude: coords.latitude,
-          longitude: coords.longitude,
-          altitude: position.altitude,
-          lastHeard: meshPacket.rxTime ? Number(meshPacket.rxTime) : Date.now() / 1000
-        };
+        // Determine if we should update position based on precision upgrade/downgrade logic
+        const existingNode = databaseService.getNode(fromNum);
+        let shouldUpdatePosition = true;
 
-        // Only include SNR/RSSI if they have valid values
-        if (meshPacket.rxSnr && meshPacket.rxSnr !== 0) {
-          nodeData.snr = meshPacket.rxSnr;
+        if (existingNode && existingNode.positionPrecisionBits !== undefined && precisionBits !== undefined) {
+          const existingPrecision = existingNode.positionPrecisionBits;
+          const newPrecision = precisionBits;
+          const existingPositionAge = existingNode.positionTimestamp ? (now - existingNode.positionTimestamp) : Infinity;
+          const twelveHoursMs = 12 * 60 * 60 * 1000;
+
+          // Smart upgrade/downgrade logic:
+          // - Always upgrade to higher precision
+          // - Only downgrade if existing position is >12 hours old
+          if (newPrecision < existingPrecision && existingPositionAge < twelveHoursMs) {
+            shouldUpdatePosition = false;
+            logger.debug(`🗺️ Skipping position update for ${nodeId}: New precision (${newPrecision}) < existing (${existingPrecision}) and existing position is recent (${Math.round(existingPositionAge / 1000 / 60)}min old)`);
+          } else if (newPrecision > existingPrecision) {
+            logger.debug(`🗺️ Upgrading position precision for ${nodeId}: ${existingPrecision} -> ${newPrecision} bits (channel ${channelIndex})`);
+          } else if (existingPositionAge >= twelveHoursMs) {
+            logger.debug(`🗺️ Updating stale position for ${nodeId}: existing is ${Math.round(existingPositionAge / 1000 / 60 / 60)}h old`);
+          }
         }
-        if (meshPacket.rxRssi && meshPacket.rxRssi !== 0) {
-          nodeData.rssi = meshPacket.rxRssi;
-        }
 
-        // Save position to nodes table (current position)
-        databaseService.upsertNode(nodeData);
+        if (shouldUpdatePosition) {
+          const nodeData: any = {
+            nodeNum: fromNum,
+            nodeId: nodeId,
+            latitude: coords.latitude,
+            longitude: coords.longitude,
+            altitude: position.altitude,
+            lastHeard: meshPacket.rxTime ? Number(meshPacket.rxTime) : Date.now() / 1000,
+            positionChannel: channelIndex,
+            positionPrecisionBits: precisionBits,
+            positionGpsAccuracy: gpsAccuracy,
+            positionHdop: hdop,
+            positionTimestamp: now
+          };
 
-        // Save position to telemetry table (historical tracking)
-        databaseService.insertTelemetry({
-          nodeId, nodeNum: fromNum, telemetryType: 'latitude',
-          timestamp, value: coords.latitude, unit: '°', createdAt: now, packetTimestamp
-        });
-        databaseService.insertTelemetry({
-          nodeId, nodeNum: fromNum, telemetryType: 'longitude',
-          timestamp, value: coords.longitude, unit: '°', createdAt: now, packetTimestamp
-        });
-        if (position.altitude !== undefined && position.altitude !== null) {
+          // Only include SNR/RSSI if they have valid values
+          if (meshPacket.rxSnr && meshPacket.rxSnr !== 0) {
+            nodeData.snr = meshPacket.rxSnr;
+          }
+          if (meshPacket.rxRssi && meshPacket.rxRssi !== 0) {
+            nodeData.rssi = meshPacket.rxRssi;
+          }
+
+          // Save position to nodes table (current position)
+          databaseService.upsertNode(nodeData);
+
+          // Save position to telemetry table (historical tracking with precision metadata)
           databaseService.insertTelemetry({
-            nodeId, nodeNum: fromNum, telemetryType: 'altitude',
-            timestamp, value: position.altitude, unit: 'm', createdAt: now, packetTimestamp
+            nodeId, nodeNum: fromNum, telemetryType: 'latitude',
+            timestamp, value: coords.latitude, unit: '°', createdAt: now, packetTimestamp,
+            channel: channelIndex, precisionBits, gpsAccuracy
           });
+          databaseService.insertTelemetry({
+            nodeId, nodeNum: fromNum, telemetryType: 'longitude',
+            timestamp, value: coords.longitude, unit: '°', createdAt: now, packetTimestamp,
+            channel: channelIndex, precisionBits, gpsAccuracy
+          });
+          if (position.altitude !== undefined && position.altitude !== null) {
+            databaseService.insertTelemetry({
+              nodeId, nodeNum: fromNum, telemetryType: 'altitude',
+              timestamp, value: position.altitude, unit: 'm', createdAt: now, packetTimestamp,
+              channel: channelIndex
+            });
+          }
+
+          // Update mobility detection for this node
+          databaseService.updateNodeMobility(nodeId);
+
+          logger.debug(`🗺️ Updated node position: ${nodeId} -> ${coords.latitude}, ${coords.longitude} (precision: ${precisionBits ?? 'unknown'} bits, channel: ${channelIndex})`);
         }
-
-        // Update mobility detection for this node
-        databaseService.updateNodeMobility(nodeId);
-
-        logger.debug(`🗺️ Updated node position: ${nodeId} -> ${coords.latitude}, ${coords.longitude}`);
       }
     } catch (error) {
       logger.error('❌ Error processing position message:', error);

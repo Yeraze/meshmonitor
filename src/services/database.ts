@@ -25,6 +25,7 @@ import { migration as securityPermissionMigration } from '../server/migrations/0
 import { migration as channelColumnMigration } from '../server/migrations/017_add_channel_to_nodes.js';
 import { migration as mobileMigration } from '../server/migrations/018_add_mobile_to_nodes.js';
 import { migration as solarEstimatesMigration } from '../server/migrations/019_add_solar_estimates.js';
+import { migration as positionPrecisionMigration } from '../server/migrations/020_add_position_precision_tracking.js';
 
 // Configuration constants for traceroute history
 const TRACEROUTE_HISTORY_LIMIT = 50;
@@ -63,6 +64,12 @@ export interface DbNode {
   duplicateKeyDetected?: boolean;
   keySecurityIssueDetails?: string;
   welcomedAt?: number;
+  // Position precision tracking (Migration 020)
+  positionChannel?: number; // Which channel the position came from
+  positionPrecisionBits?: number; // Position precision (0-32 bits, higher = more precise)
+  positionGpsAccuracy?: number; // GPS accuracy in meters
+  positionHdop?: number; // Horizontal Dilution of Precision
+  positionTimestamp?: number; // When this position was received (for upgrade/downgrade logic)
   createdAt: number;
   updatedAt: number;
 }
@@ -107,6 +114,10 @@ export interface DbTelemetry {
   unit?: string;
   createdAt: number;
   packetTimestamp?: number; // Original timestamp from the packet (may be inaccurate if node has wrong time)
+  // Position precision tracking metadata (Migration 020)
+  channel?: number; // Which channel this telemetry came from
+  precisionBits?: number; // Position precision bits (for latitude/longitude telemetry)
+  gpsAccuracy?: number; // GPS accuracy in meters (for position telemetry)
 }
 
 export interface DbTraceroute {
@@ -246,6 +257,7 @@ class DatabaseService {
     this.runChannelColumnMigration();
     this.runMobileMigration();
     this.runSolarEstimatesMigration();
+    this.runPositionPrecisionMigration();
     this.runAutoWelcomeMigration();
     this.ensureAutomationDefaults();
     this.isInitialized = true;
@@ -676,6 +688,26 @@ class DatabaseService {
       logger.debug('✅ Solar estimates migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run solar estimates migration:', error);
+      throw error;
+    }
+  }
+
+  private runPositionPrecisionMigration(): void {
+    try {
+      const migrationKey = 'migration_020_position_precision';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Position precision migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 020: Add position precision tracking...');
+      positionPrecisionMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Position precision migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run position precision migration:', error);
       throw error;
     }
   }
