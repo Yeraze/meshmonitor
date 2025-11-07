@@ -12,7 +12,7 @@ import databaseService from '../../services/database.js';
 const { mockStart, mockStop, mockSchedule, mockValidate } = vi.hoisted(() => {
   const mockStart = vi.fn();
   const mockStop = vi.fn();
-  const mockSchedule = vi.fn((expression, callback, options) => {
+  const mockSchedule = vi.fn((_expression, _callback, _options) => {
     return {
       start: mockStart,
       stop: mockStop
