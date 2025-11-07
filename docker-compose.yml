@@ -8,6 +8,10 @@ services:
     #   context: .
     #   dockerfile: Dockerfile
 
+    # Auto-Upgrade: To enable automatic upgrades through the UI, use:
+    #   docker compose -f docker-compose.yml -f docker-compose.upgrade.yml up -d
+    # See docs/configuration/auto-upgrade.md for details
+
     container_name: meshmonitor
     ports:
       - "8080:3001"

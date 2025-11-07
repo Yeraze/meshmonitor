@@ -64,6 +64,7 @@ For detailed installation instructions, configuration options, and deployment sc
 - **Security Monitoring** - Encryption key analysis and vulnerability detection
 - **Device Configuration** - Full node configuration UI
 - **Docker Ready** - Pre-built multi-architecture images
+- **🆕 One-click Self-Upgrade** - Automatic upgrades from the UI with backup and rollback
 
 For a complete feature list and technical details, visit **[meshmonitor.org](https://meshmonitor.org/)**.
 

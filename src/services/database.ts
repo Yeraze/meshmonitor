@@ -927,6 +927,31 @@ class DatabaseService {
       );
     `);
 
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS upgrade_history (
+        id TEXT PRIMARY KEY,
+        fromVersion TEXT NOT NULL,
+        toVersion TEXT NOT NULL,
+        deploymentMethod TEXT NOT NULL,
+        status TEXT NOT NULL,
+        progress INTEGER DEFAULT 0,
+        currentStep TEXT,
+        logs TEXT,
+        backupPath TEXT,
+        startedAt INTEGER NOT NULL,
+        completedAt INTEGER,
+        initiatedBy TEXT,
+        errorMessage TEXT,
+        rollbackAvailable INTEGER DEFAULT 1
+      );
+    `);
+
+    // Create index for efficient upgrade history queries
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_upgrade_history_timestamp
+      ON upgrade_history(startedAt DESC);
+    `);
+
     // Channel 0 (Primary) will be created automatically when device config syncs
     // It should have an empty name as per Meshtastic protocol
 

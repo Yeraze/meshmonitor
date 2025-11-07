@@ -57,6 +57,7 @@ export default defineConfig({
             { text: 'Reverse Proxy', link: '/configuration/reverse-proxy' },
             { text: 'HTTP vs HTTPS', link: '/configuration/http-vs-https' },
             { text: 'Production Deployment', link: '/configuration/production' },
+            { text: '🔄 Automatic Self-Upgrade', link: '/configuration/auto-upgrade' },
             { text: 'Push Notifications', link: '/features/notifications' }
           ]
         }

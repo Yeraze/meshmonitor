@@ -51,6 +51,17 @@ env:
   # Example: "/meshmonitor" for hosting at https://example.com/meshmonitor/
   baseUrl: ""
 
+# Auto-upgrade configuration (Docker only)
+# Note: Kubernetes deployments should use kubectl/helm for upgrades
+autoupgrade:
+  # Enable auto-upgrade feature in the application UI
+  # When enabled, an "Upgrade Now" button appears in the update notification banner
+  enabled: false
+
+  # Note: For Docker deployments, use docker-compose.upgrade.yml overlay
+  # For Kubernetes, this setting only enables the UI feature - actual upgrades
+  # should be performed via standard Kubernetes deployment updates
+
 # Persistent storage for SQLite database
 persistence:
   enabled: true

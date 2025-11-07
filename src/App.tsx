@@ -129,6 +129,11 @@ function App() {
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [latestVersion, setLatestVersion] = useState('');
   const [releaseUrl, setReleaseUrl] = useState('');
+  const [upgradeEnabled, setUpgradeEnabled] = useState(false);
+  const [upgradeInProgress, setUpgradeInProgress] = useState(false);
+  const [upgradeStatus, setUpgradeStatus] = useState('');
+  const [upgradeProgress, setUpgradeProgress] = useState(0);
+  const [upgradeId, setUpgradeId] = useState<string | null>(null);
   const [channelInfoModal, setChannelInfoModal] = useState<number | null>(null);
   const [showPsk, setShowPsk] = useState(false);
   const [showRebootModal, setShowRebootModal] = useState(false);
@@ -841,6 +846,113 @@ function App() {
 
     return () => clearInterval(interval);
   }, [baseUrl]);
+
+  // Check if auto-upgrade is enabled
+  useEffect(() => {
+    const checkUpgradeStatus = async () => {
+      try {
+        const response = await fetch(`${baseUrl}/api/upgrade/status`);
+        if (response.ok) {
+          const data = await response.json();
+          setUpgradeEnabled(data.enabled && data.deploymentMethod === 'docker');
+        }
+      } catch (error) {
+        logger.debug('Auto-upgrade not available:', error);
+      }
+    };
+
+    checkUpgradeStatus();
+  }, [baseUrl]);
+
+  // Handle upgrade trigger
+  const handleUpgrade = async () => {
+    if (!updateAvailable || upgradeInProgress) return;
+
+    try {
+      setUpgradeInProgress(true);
+      setUpgradeStatus('Initiating upgrade...');
+      setUpgradeProgress(0);
+
+      const response = await fetch(`${baseUrl}/api/upgrade/trigger`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          targetVersion: latestVersion,
+          backup: true
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setUpgradeId(data.upgradeId);
+        setUpgradeStatus('Upgrade initiated...');
+        showToast?.('Upgrade initiated! The application will restart shortly.', 'info');
+
+        // Poll for status updates
+        pollUpgradeStatus(data.upgradeId);
+      } else {
+        showToast?.(`Upgrade failed: ${data.message}`, 'error');
+        setUpgradeInProgress(false);
+        setUpgradeStatus('');
+      }
+    } catch (error) {
+      logger.error('Error triggering upgrade:', error);
+      showToast?.('Failed to trigger upgrade', 'error');
+      setUpgradeInProgress(false);
+      setUpgradeStatus('');
+    }
+  };
+
+  // Poll upgrade status
+  const pollUpgradeStatus = (id: string) => {
+    let attempts = 0;
+    const maxAttempts = 60; // 5 minutes max
+
+    const interval = setInterval(async () => {
+      attempts++;
+
+      try {
+        const response = await fetch(`${baseUrl}/api/upgrade/status/${id}`);
+        if (response.ok) {
+          const data = await response.json();
+
+          setUpgradeStatus(data.currentStep || data.status);
+          setUpgradeProgress(data.progress || 0);
+
+          // Update status messages
+          if (data.status === 'complete') {
+            clearInterval(interval);
+            showToast?.('Upgrade complete! Reloading...', 'success');
+            setUpgradeStatus('Complete! Reloading...');
+            setUpgradeProgress(100);
+
+            // Reload after 3 seconds
+            setTimeout(() => {
+              window.location.reload();
+            }, 3000);
+          } else if (data.status === 'failed') {
+            clearInterval(interval);
+            showToast?.('Upgrade failed. Check logs for details.', 'error');
+            setUpgradeInProgress(false);
+            setUpgradeStatus('Failed');
+          }
+        }
+      } catch (error) {
+        // Connection may be lost during restart - this is expected
+        logger.debug('Polling upgrade status (connection may be restarting):', error);
+      }
+
+      // Stop polling after max attempts
+      if (attempts >= maxAttempts) {
+        clearInterval(interval);
+        setUpgradeInProgress(false);
+        setUpgradeStatus('Upgrade timeout - check status manually');
+      }
+    }, 5000); // Poll every 5 seconds
+  };
 
   // Debug effect to track selectedChannel changes and keep ref in sync
   useEffect(() => {
@@ -4582,29 +4694,64 @@ function App() {
         <div className="update-banner" style={{
           top: (isDefaultPassword && isTxDisabled) ? 'calc(var(--header-height) + var(--banner-height) + var(--banner-height))' : (isDefaultPassword || isTxDisabled) ? 'calc(var(--header-height) + var(--banner-height))' : 'var(--header-height)'
         }}>
-          <div style={{ flex: 1, textAlign: 'center' }}>
-            🔔 Update Available: Version {latestVersion} is now available.{' '}
-            <a
-              href={releaseUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                color: 'white',
-                textDecoration: 'underline',
-                fontWeight: '600'
-              }}
-            >
-              View Release Notes →
-            </a>
+          <div style={{ flex: 1, textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem' }}>
+            {upgradeInProgress ? (
+              <>
+                <span>⚙️ Upgrading to {latestVersion}...</span>
+                <span style={{ fontSize: '0.9em', opacity: 0.9 }}>{upgradeStatus}</span>
+                {upgradeProgress > 0 && (
+                  <span style={{ fontSize: '0.9em', opacity: 0.9 }}>({upgradeProgress}%)</span>
+                )}
+              </>
+            ) : (
+              <>
+                <span>🔔 Update Available: Version {latestVersion} is now available.</span>
+                <a
+                  href={releaseUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    color: 'white',
+                    textDecoration: 'underline',
+                    fontWeight: '600'
+                  }}
+                >
+                  View Release Notes →
+                </a>
+                {upgradeEnabled && (
+                  <button
+                    onClick={handleUpgrade}
+                    style={{
+                      padding: '0.4rem 1rem',
+                      backgroundColor: '#10b981',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontWeight: '600',
+                      fontSize: '0.9em',
+                      transition: 'background-color 0.2s'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#059669'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#10b981'}
+                    title="Automatically upgrade to the latest version"
+                  >
+                    Upgrade Now
+                  </button>
+                )}
+              </>
+            )}
           </div>
-          <button
-            className="banner-dismiss"
-            onClick={() => setUpdateAvailable(false)}
-            aria-label="Dismiss update notification"
-            title="Dismiss"
-          >
-            ✕
-          </button>
+          {!upgradeInProgress && (
+            <button
+              className="banner-dismiss"
+              onClick={() => setUpdateAvailable(false)}
+              aria-label="Dismiss update notification"
+              title="Dismiss"
+            >
+              ✕
+            </button>
+          )}
         </div>
       )}
 

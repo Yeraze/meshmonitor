@@ -241,6 +241,17 @@
           <a href="https://en.wikipedia.org/wiki/List_of_tz_database_time_zones" target="_blank">See list</a>
         </p>
       </div>
+
+      <div class="form-group">
+        <label class="checkbox-label">
+          <input type="checkbox" v-model="config.enableAutoUpgrade" />
+          Enable Automatic Self-Upgrade
+        </label>
+        <p class="field-help">
+          Adds a watchdog sidecar container that allows one-click upgrades through the web UI.
+          <a href="/configuration/auto-upgrade" target="_blank">Learn more</a>
+        </p>
+      </div>
     </section>
 
     <!-- Generated Files -->
@@ -275,6 +286,13 @@
           <li v-if="config.deploymentMode !== 'development'">
             Generate a secure session secret: <code>openssl rand -base64 32</code> and update it in the .env file
           </li>
+          <li v-if="config.enableAutoUpgrade">
+            Download the upgrade watchdog script:
+            <pre style="margin-top: 0.5rem; padding: 0.5rem; background: #f5f5f5; border-radius: 4px; overflow-x: auto;"><code>mkdir -p scripts
+curl -o scripts/upgrade-watchdog.sh \
+  https://raw.githubusercontent.com/yeraze/meshmonitor/main/scripts/upgrade-watchdog.sh
+chmod +x scripts/upgrade-watchdog.sh</code></pre>
+          </li>
           <li>Run <code>docker compose up -d</code> to start MeshMonitor</li>
           <li>Access MeshMonitor at {{ accessUrl }}</li>
         </ol>
@@ -301,7 +319,8 @@ const config = ref({
   virtualNodePort: 4404,
   allowVirtualNodeAdminCommands: false,
   disableAnonymous: false,
-  timezone: 'America/New_York'
+  timezone: 'America/New_York',
+  enableAutoUpgrade: false
 })
 
 const copiedDockerCompose = ref(false)
@@ -420,6 +439,11 @@ const dockerComposeYaml = computed(() => {
     lines.push('      - DISABLE_ANONYMOUS=true')
   }
 
+  // Auto-upgrade environment
+  if (config.value.enableAutoUpgrade) {
+    lines.push('      - AUTO_UPGRADE_ENABLED=true')
+  }
+
   // Dependencies
   if (config.value.connectionType === 'ble') {
     lines.push('    depends_on:')
@@ -428,6 +452,31 @@ const dockerComposeYaml = computed(() => {
   } else if (config.value.connectionType === 'serial') {
     lines.push('    depends_on:')
     lines.push('      - serial-bridge')
+  }
+
+  // Add upgrader sidecar if auto-upgrade is enabled
+  if (config.value.enableAutoUpgrade) {
+    lines.push('')
+    lines.push('  # Auto-upgrade watchdog sidecar')
+    lines.push('  meshmonitor-upgrader:')
+    lines.push('    image: docker:27-cli-alpine3.20')
+    lines.push('    container_name: meshmonitor-upgrader')
+    lines.push('    restart: unless-stopped')
+    lines.push('    volumes:')
+    lines.push('      - /var/run/docker.sock:/var/run/docker.sock')
+    lines.push('      - meshmonitor-data:/data:ro')
+    lines.push('      - ./scripts:/scripts:ro')
+    lines.push('      - .:/compose:ro')
+    lines.push('    environment:')
+    lines.push('      - CONTAINER_NAME=meshmonitor')
+    lines.push('      - IMAGE_NAME=ghcr.io/yeraze/meshmonitor')
+    lines.push('      - TRIGGER_FILE=/data/.upgrade-trigger')
+    lines.push('      - STATUS_FILE=/data/.upgrade-status')
+    lines.push('      - CHECK_INTERVAL=5')
+    lines.push('      - COMPOSE_PROJECT_DIR=/compose')
+    lines.push('    command: /scripts/upgrade-watchdog.sh')
+    lines.push('    depends_on:')
+    lines.push('      - meshmonitor')
   }
 
   lines.push('')
