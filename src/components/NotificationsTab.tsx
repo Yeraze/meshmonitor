@@ -59,7 +59,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
   const [appriseTestStatus, setAppriseTestStatus] = useState('');
 
   // Track timeouts for cleanup on unmount
-  const timeoutsRef = useRef<NodeJS.Timeout[]>([]);
+  const timeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   // Cleanup timeouts on unmount to prevent memory leaks
   useEffect(() => {
@@ -145,7 +145,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
       if (response.enableApprise) {
         loadAppriseUrls();
       }
-    } catch (error) {
+    } catch (_error) {
       logger.debug('No saved preferences, using defaults');
     }
   };
@@ -154,7 +154,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
     try {
       const response = await api.get<{ urls: string[] }>('/api/apprise/urls');
       setAppriseUrls(response.urls.join('\n'));
-    } catch (error) {
+    } catch (_error) {
       logger.debug('No saved Apprise URLs, using empty');
     }
   };

@@ -133,7 +133,7 @@ function App() {
   const [upgradeInProgress, setUpgradeInProgress] = useState(false);
   const [upgradeStatus, setUpgradeStatus] = useState('');
   const [upgradeProgress, setUpgradeProgress] = useState(0);
-  const [upgradeId, setUpgradeId] = useState<string | null>(null);
+  const [_upgradeId, setUpgradeId] = useState<string | null>(null);
   const [channelInfoModal, setChannelInfoModal] = useState<number | null>(null);
   const [showPsk, setShowPsk] = useState(false);
   const [showRebootModal, setShowRebootModal] = useState(false);
@@ -775,7 +775,7 @@ function App() {
 
         // Check connection status with the loaded baseUrl
         await checkConnectionStatus(configBaseUrl);
-      } catch (error) {
+      } catch (_error) {
         setNodeAddress('192.168.1.100');
         setError('Failed to load configuration');
       }

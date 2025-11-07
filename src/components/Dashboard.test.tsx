@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 describe('Dashboard', () => {
 
@@ -111,8 +114,10 @@ describe('Dashboard', () => {
       // We verify this by checking that the dependency array includes baseUrl
 
       // Read the Dashboard component source to verify dependencies
-      const dashboardSource = require('fs').readFileSync(
-        require('path').join(__dirname, 'Dashboard.tsx'),
+      const __filename = fileURLToPath(import.meta.url);
+      const __dirname = path.dirname(__filename);
+      const dashboardSource = fs.readFileSync(
+        path.join(__dirname, 'Dashboard.tsx'),
         'utf8'
       );
 

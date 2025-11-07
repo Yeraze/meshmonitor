@@ -31,6 +31,7 @@
     "@types/bcrypt": "^6.0.0",
     "@types/express-session": "^1.18.2",
     "@types/qrcode": "^1.5.6",
+    "@types/uuid": "^11.0.0",
     "bcrypt": "^6.0.0",
     "better-sqlite3": "^12.4.1",
     "better-sqlite3-session-store": "^0.1.0",
@@ -52,6 +53,7 @@
     "recharts": "^3.3.0",
     "rotating-file-stream": "^3.2.7",
     "ts-overlapping-marker-spiderfier-leaflet": "^1.0.5",
+    "uuid": "^13.0.0",
     "web-push": "^3.6.7"
   },
   "devDependencies": {

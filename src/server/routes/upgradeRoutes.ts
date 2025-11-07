@@ -22,7 +22,7 @@ router.use(requireAuth);
  * GET /api/upgrade/status
  * Check if upgrade functionality is enabled
  */
-router.get('/status', (req: Request, res: Response) => {
+router.get('/status', (_req: Request, res: Response) => {
   try {
     return res.json({
       enabled: upgradeService.isEnabled(),
@@ -146,7 +146,7 @@ router.post('/cancel/:upgradeId', async (req: Request, res: Response) => {
  * GET /api/upgrade/latest-status
  * Get latest status from watchdog (file-based)
  */
-router.get('/latest-status', async (req: Request, res: Response) => {
+router.get('/latest-status', async (_req: Request, res: Response) => {
   try {
     const status = await upgradeService.getLatestUpgradeStatus();
     return res.json({ status });

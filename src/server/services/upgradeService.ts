@@ -128,23 +128,22 @@ class UpgradeService {
       const upgradeId = uuidv4();
       const now = Date.now();
 
-      databaseService.db.run(
+      databaseService.db.prepare(
         `INSERT INTO upgrade_history
         (id, fromVersion, toVersion, deploymentMethod, status, progress, currentStep, logs, startedAt, initiatedBy, rollbackAvailable)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          upgradeId,
-          currentVersion,
-          targetVersion,
-          this.DEPLOYMENT_METHOD,
-          'pending',
-          0,
-          'Preparing upgrade',
-          JSON.stringify(['Upgrade initiated']),
-          now,
-          initiatedBy,
-          1
-        ]
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        upgradeId,
+        currentVersion,
+        targetVersion,
+        this.DEPLOYMENT_METHOD,
+        'pending',
+        0,
+        'Preparing upgrade',
+        JSON.stringify(['Upgrade initiated']),
+        now,
+        initiatedBy,
+        1
       );
 
       // Write trigger file for watchdog
@@ -266,7 +265,7 @@ class UpgradeService {
   /**
    * Pre-flight checks before upgrade
    */
-  private async preFlightChecks(targetVersion: string): Promise<{ safe: boolean; issues: string[] }> {
+  private async preFlightChecks(_targetVersion: string): Promise<{ safe: boolean; issues: string[] }> {
     const issues: string[] = [];
 
     try {
@@ -335,10 +334,9 @@ class UpgradeService {
       }
 
       // Update database status
-      databaseService.db.run(
-        `UPDATE upgrade_history SET status = ?, completedAt = ?, errorMessage = ? WHERE id = ?`,
-        ['failed', Date.now(), 'Cancelled by user', upgradeId]
-      );
+      databaseService.db.prepare(
+        `UPDATE upgrade_history SET status = ?, completedAt = ?, errorMessage = ? WHERE id = ?`
+      ).run('failed', Date.now(), 'Cancelled by user', upgradeId);
 
       logger.info(`⚠️ Upgrade cancelled: ${upgradeId}`);
 

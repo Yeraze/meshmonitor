@@ -84,7 +84,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     try {
       new RegExp(pattern, 'i');
       return { valid: true };
-    } catch (error) {
+    } catch (_error) {
       return { valid: false, error: 'Invalid regex syntax' };
     }
   };
@@ -98,7 +98,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     try {
       const regex = new RegExp(localRegex, 'i');
       return regex.test(message);
-    } catch (error) {
+    } catch (_error) {
       // Invalid regex
       return false;
     }

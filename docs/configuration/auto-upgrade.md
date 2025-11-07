@@ -576,5 +576,3 @@ Typical upgrade timeline:
 
 - [Production Deployment](/configuration/production) - Production setup guide
 - [Docker Compose Configurator](/configurator) - Generate Docker configs
-- [Backup & Restore](/configuration/backup) - Manual backup procedures
-- [Troubleshooting](/troubleshooting) - Common issues and solutions
