@@ -41,13 +41,28 @@ class SolarMonitoringService {
       return;
     }
 
-    this.cronJob = cron.schedule(cronExpression, async () => {
-      logger.debug('☀️  Solar monitoring cron job triggered');
-      await this.fetchAndStoreSolarEstimates();
-    });
+    this.cronJob = cron.schedule(
+      cronExpression,
+      async () => {
+        logger.info('☀️  Solar monitoring cron job triggered');
+        await this.fetchAndStoreSolarEstimates();
+      },
+      {
+        timezone: 'Etc/UTC' // Use UTC timezone for consistency
+      }
+    );
+
+    // Explicitly start the cron job
+    this.cronJob.start();
 
     this.isInitialized = true;
     logger.info('✅ Solar monitoring service initialized (runs at :05 of every hour)');
+
+    // Run initial fetch
+    logger.info('☀️  Running initial solar estimate fetch...');
+    this.fetchAndStoreSolarEstimates().catch(err => {
+      logger.error('❌ Initial solar fetch failed:', err);
+    });
   }
 
   /**
