@@ -9,6 +9,7 @@ import { requireAuth } from '../auth/authMiddleware.js';
 import { upgradeService } from '../services/upgradeService.js';
 import { logger } from '../../utils/logger.js';
 import { createRequire } from 'module';
+import databaseService from '../../services/database.js';
 
 const require = createRequire(import.meta.url);
 const packageJson = require('../../../package.json');
@@ -83,6 +84,15 @@ router.post('/trigger', async (req: Request, res: Response) => {
     );
 
     if (result.success) {
+      // Log upgrade trigger to audit log
+      databaseService.auditLog(
+        typeof userId === 'number' ? userId : null,
+        'upgrade_triggered',
+        'system',
+        `Upgrade initiated: ${packageJson.version} → ${targetVersion || 'latest'}`,
+        req.ip || null
+      );
+
       return res.json({
         success: true,
         upgradeId: result.upgradeId,
@@ -180,9 +190,25 @@ router.post('/cancel/:upgradeId', async (req: Request, res: Response) => {
       });
     }
 
+    // Get upgrade details before cancelling for audit log
+    const upgradeStatus = await upgradeService.getUpgradeStatus(upgradeId);
+
     const result = await upgradeService.cancelUpgrade(upgradeId);
 
     if (result.success) {
+      // Log upgrade cancellation to audit log
+      const versionInfo = upgradeStatus
+        ? `${upgradeStatus.fromVersion} → ${upgradeStatus.toVersion}`
+        : 'unknown version';
+
+      databaseService.auditLog(
+        req.user?.id || null,
+        'upgrade_cancelled',
+        'system',
+        `Upgrade cancelled: ${versionInfo} (ID: ${upgradeId})`,
+        req.ip || null
+      );
+
       return res.json(result);
     } else {
       return res.status(400).json(result);
