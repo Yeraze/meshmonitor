@@ -297,13 +297,52 @@ class UpgradeService {
 
   /**
    * Check if an upgrade is currently in progress
+   * Also cleans up stale upgrades that have been stuck for too long
    */
   private async isUpgradeInProgress(): Promise<boolean> {
     try {
+      // First, clean up any stale upgrades (stuck for more than 30 minutes)
+      const STALE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+      const staleThreshold = Date.now() - STALE_TIMEOUT_MS;
+
+      const staleUpgrades = databaseService.db.prepare(
+        `SELECT id, startedAt, currentStep FROM upgrade_history
+         WHERE status IN ('pending', 'backing_up', 'downloading', 'restarting', 'health_check')
+         AND startedAt < ?`
+      ).all(staleThreshold) as any[];
+
+      if (staleUpgrades.length > 0) {
+        logger.warn(`⚠️ Found ${staleUpgrades.length} stale upgrade(s), marking as failed`);
+
+        for (const staleUpgrade of staleUpgrades) {
+          const minutesStuck = Math.round((Date.now() - staleUpgrade.startedAt) / 60000);
+          logger.warn(`⚠️ Upgrade ${staleUpgrade.id} stuck at "${staleUpgrade.currentStep}" for ${minutesStuck} minutes`);
+
+          databaseService.db.prepare(
+            `UPDATE upgrade_history
+             SET status = ?, completedAt = ?, errorMessage = ?
+             WHERE id = ?`
+          ).run(
+            'failed',
+            Date.now(),
+            `Upgrade timed out after ${minutesStuck} minutes (stuck at: ${staleUpgrade.currentStep})`,
+            staleUpgrade.id
+          );
+
+          // Also remove trigger file if it exists
+          if (fs.existsSync(UPGRADE_TRIGGER_FILE)) {
+            fs.unlinkSync(UPGRADE_TRIGGER_FILE);
+            logger.info('🗑️ Removed stale upgrade trigger file');
+          }
+        }
+      }
+
+      // Now check if any non-stale upgrades are in progress
       const row = databaseService.db.prepare(
         `SELECT COUNT(*) as count FROM upgrade_history
-         WHERE status IN ('pending', 'backing_up', 'downloading', 'restarting', 'health_check')`
-      ).get() as any;
+         WHERE status IN ('pending', 'backing_up', 'downloading', 'restarting', 'health_check')
+         AND startedAt >= ?`
+      ).get(staleThreshold) as any;
 
       return row.count > 0;
     } catch (error) {
