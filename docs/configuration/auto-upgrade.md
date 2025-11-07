@@ -27,6 +27,7 @@ The auto-upgrade feature uses a **watchdog sidecar** container that:
 - Has access to the Docker socket to manage containers
 - Pulls new images and recreates containers
 - Maintains all your existing configuration and data
+- Automatically deploys the upgrade watchdog script to the shared data volume (no manual download needed)
 
 ```
 ┌─────────────────┐         ┌──────────────────┐
@@ -45,6 +46,10 @@ The auto-upgrade feature uses a **watchdog sidecar** container that:
 ## Setup Instructions
 
 ### Docker Compose Setup
+
+::: info
+The upgrade watchdog script is automatically deployed to `/data/scripts/` by the MeshMonitor container on startup. No manual script download is required.
+:::
 
 1. **Enable the watchdog sidecar** by using the upgrade overlay:
 

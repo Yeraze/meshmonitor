@@ -286,14 +286,7 @@
           <li v-if="config.deploymentMode !== 'development'">
             Generate a secure session secret: <code>openssl rand -base64 32</code> and update it in the .env file
           </li>
-          <li v-if="config.enableAutoUpgrade">
-            Download the upgrade watchdog script:
-            <pre style="margin-top: 0.5rem; padding: 0.5rem; background: #f5f5f5; border-radius: 4px; overflow-x: auto;"><code>mkdir -p scripts
-curl -o scripts/upgrade-watchdog.sh \
-  https://raw.githubusercontent.com/yeraze/meshmonitor/main/scripts/upgrade-watchdog.sh
-chmod +x scripts/upgrade-watchdog.sh</code></pre>
-          </li>
-          <li>Run <code>docker compose up -d</code> to start MeshMonitor</li>
+          <li>Run <code>docker compose up -d</code> to start MeshMonitor<span v-if="config.enableAutoUpgrade"> (the upgrade watchdog script will be automatically deployed to the data volume)</span></li>
           <li>Access MeshMonitor at {{ accessUrl }}</li>
         </ol>
       </div>
