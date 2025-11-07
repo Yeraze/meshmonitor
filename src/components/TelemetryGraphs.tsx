@@ -210,37 +210,78 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
     return grouped;
   };
 
-  const getNearestSolarEstimate = (timestamp: number): number | undefined => {
-    if (solarEstimates.size === 0) return undefined;
-
-    // Find the closest solar estimate (within 1 hour)
-    const oneHour = 3600000; // 1 hour in milliseconds
-    let closestEstimate: number | undefined;
-    let closestDiff = Infinity;
-
-    for (const [solarTime, estimate] of solarEstimates) {
-      const diff = Math.abs(solarTime - timestamp);
-      if (diff < closestDiff && diff <= oneHour) {
-        closestDiff = diff;
-        closestEstimate = estimate;
-      }
-    }
-
-    return closestEstimate;
-  };
-
   const prepareChartData = (data: TelemetryData[], isTemperature: boolean = false): ChartData[] => {
-    return data
-      .sort((a, b) => a.timestamp - b.timestamp)
-      .map(item => ({
+    // Create a map of all unique timestamps from both telemetry and solar data
+    const allTimestamps = new Map<number, ChartData>();
+
+    // Add telemetry data points
+    data.forEach(item => {
+      allTimestamps.set(item.timestamp, {
         timestamp: item.timestamp,
         value: isTemperature ? formatTemperature(item.value, 'C', temperatureUnit) : item.value,
         time: new Date(item.timestamp).toLocaleTimeString([], {
           hour: '2-digit',
           minute: '2-digit'
-        }),
-        solarEstimate: getNearestSolarEstimate(item.timestamp)
-      }));
+        })
+      });
+    });
+
+    // Add solar data points (at their own timestamps)
+    // Only include solar data up to the current time to avoid showing forecasts
+    if (solarEstimates.size > 0) {
+      // Use current time with a 5-minute buffer to account for minor clock differences
+      const now = Date.now() + (5 * 60 * 1000);
+
+      solarEstimates.forEach((wattHours, timestamp) => {
+        // Filter out future data (forecasts beyond current time)
+        if (timestamp > now) return;
+
+        if (allTimestamps.has(timestamp)) {
+          // If telemetry exists at this timestamp, add solar data to it
+          allTimestamps.get(timestamp)!.solarEstimate = wattHours;
+        } else {
+          // Create a new point for solar-only data
+          // Use null (not undefined) - Line will connect over these with connectNulls={true}
+          allTimestamps.set(timestamp, {
+            timestamp,
+            value: null as any, // null = solar-only (will be skipped by Line with connectNulls)
+            time: new Date(timestamp).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit'
+            }),
+            solarEstimate: wattHours
+          });
+        }
+      });
+    }
+
+    // Convert to array and sort by timestamp
+    const sortedData = Array.from(allTimestamps.values()).sort((a, b) => a.timestamp - b.timestamp);
+
+    // Insert gaps when telemetry points are more than 3 hours apart
+    const threeHours = 3 * 60 * 60 * 1000; // 3 hours in milliseconds
+    const dataWithGaps: ChartData[] = [];
+
+    for (let i = 0; i < sortedData.length; i++) {
+      dataWithGaps.push(sortedData[i]);
+
+      // Check if we should insert a gap before the next point
+      if (i < sortedData.length - 1) {
+        const timeDiff = sortedData[i + 1].timestamp - sortedData[i].timestamp;
+
+        if (timeDiff > threeHours) {
+          // Insert a gap point to break the line
+          dataWithGaps.push({
+            timestamp: sortedData[i].timestamp + 1, // Just after current point
+            value: undefined as any,
+            time: '',
+            solarEstimate: undefined
+          });
+        }
+      }
+    }
+
+    return dataWithGaps;
   };
 
   const getTelemetryLabel = (type: string): string => {
@@ -438,6 +479,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
                       stroke="#f9e2af"
                       strokeOpacity={0.5}
                       strokeWidth={1}
+                      connectNulls={true}
                       isAnimationActive={false}
                     />
                   )}
@@ -449,6 +491,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
                     strokeWidth={2}
                     dot={{ fill: color, r: 3 }}
                     activeDot={{ r: 5 }}
+                    connectNulls={true}
                   />
                 </ComposedChart>
               </ResponsiveContainer>
