@@ -33,7 +33,6 @@ To enable solar monitoring, navigate to **Settings** and configure the following
 
 #### Additional Configuration Details
 
-- **Panel Capacity**: The wattage of your solar panels (optional, affects scaling)
 - **API Requests**: Estimates are automatically fetched hourly at :05 minutes past the hour
 - **Data Retention**: Solar estimates are stored in the database for historical analysis
 
