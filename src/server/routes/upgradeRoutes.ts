@@ -16,7 +16,7 @@ const packageJson = require('../../../package.json');
 const router = Router();
 
 // All routes require authentication
-router.use(requireAuth);
+router.use(requireAuth());
 
 /**
  * GET /api/upgrade/status

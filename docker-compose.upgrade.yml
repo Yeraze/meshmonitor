@@ -19,14 +19,14 @@ services:
 
   # Upgrade watchdog sidecar
   meshmonitor-upgrader:
-    image: docker:27-cli-alpine3.20
+    image: docker:latest
     container_name: meshmonitor-upgrader
     restart: unless-stopped
     volumes:
       # Docker socket for container control
       - /var/run/docker.sock:/var/run/docker.sock
-      # Shared data volume to monitor trigger file and access upgrade script
-      - meshmonitor-data:/data:ro
+      # Shared data volume to monitor trigger file and access upgrade script (rw for status file)
+      - meshmonitor-data:/data
       # Mount docker-compose directory for proper recreation
       - .:/compose:ro
     environment:

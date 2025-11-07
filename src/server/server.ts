@@ -335,6 +335,15 @@ import upgradeRoutes from './routes/upgradeRoutes.js';
 // CSRF token endpoint (must be before CSRF protection middleware)
 apiRouter.get('/csrf-token', csrfTokenEndpoint);
 
+// Health check endpoint (for upgrade watchdog and monitoring)
+apiRouter.get('/health', (_req, res) => {
+  res.json({
+    status: 'ok',
+    version: packageJson.version,
+    uptime: Date.now() - serverStartTime
+  });
+});
+
 // Authentication routes
 apiRouter.use('/auth', authRoutes);
 
