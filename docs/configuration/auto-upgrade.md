@@ -27,6 +27,7 @@ The auto-upgrade feature uses a **watchdog sidecar** container that:
 - Has access to the Docker socket to manage containers
 - Pulls new images and recreates containers
 - Maintains all your existing configuration and data
+- Automatically deploys the upgrade watchdog script to the shared data volume (no manual download needed)
 
 ```
 ┌─────────────────┐         ┌──────────────────┐
@@ -45,6 +46,10 @@ The auto-upgrade feature uses a **watchdog sidecar** container that:
 ## Setup Instructions
 
 ### Docker Compose Setup
+
+::: info
+The upgrade watchdog script is automatically deployed to `/data/scripts/` by the MeshMonitor container on startup. No manual script download is required.
+:::
 
 1. **Enable the watchdog sidecar** by using the upgrade overlay:
 
@@ -156,11 +161,18 @@ docker tag ghcr.io/yeraze/meshmonitor:2.14.0 ghcr.io/yeraze/meshmonitor:latest
 
 ### 4. Container Recreation
 
-The watchdog recreates the container using docker-compose:
+The watchdog recreates the container using direct Docker commands (this works regardless of how the container was originally started - via docker-compose, docker run, or any overlay files):
 
 ```bash
-cd /compose
-docker compose up -d meshmonitor
+# Capture current container configuration
+docker inspect meshmonitor
+
+# Stop and remove old container
+docker stop meshmonitor
+docker rm meshmonitor
+
+# Create new container with same configuration
+docker run -d --name meshmonitor ...
 ```
 
 This preserves:
@@ -270,6 +282,35 @@ Each entry includes:
    ```
 
 4. **Manually restart if needed:**
+   ```bash
+   docker compose restart meshmonitor
+   ```
+
+### Upgrade Stuck in "In Progress" State
+
+**Problem:** UI shows "Upgrade already in progress" but upgrade has been stuck for a long time
+
+**Automatic Recovery:** The system automatically detects and cleans up stale upgrades after 30 minutes. Any upgrade stuck in progress for more than 30 minutes will be automatically marked as failed and the system will be ready for a new upgrade attempt.
+
+**Manual Recovery:**
+
+1. **Check if upgrade is actually running:**
+   ```bash
+   docker logs meshmonitor-upgrader --tail 50
+   ```
+
+2. **Force cancel if needed:**
+   ```bash
+   # Remove trigger file
+   docker exec meshmonitor rm -f /data/.upgrade-trigger
+
+   # Update database to mark as failed (requires SQL access)
+   docker exec meshmonitor sqlite3 /data/meshmonitor.db \
+     "UPDATE upgrade_history SET status='failed', completedAt=$(date +%s)000 \
+      WHERE status IN ('pending','backing_up','downloading','restarting','health_check')"
+   ```
+
+3. **Restart services:**
    ```bash
    docker compose restart meshmonitor
    ```

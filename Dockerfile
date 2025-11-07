@@ -53,8 +53,12 @@ COPY --from=builder /app/dist ./dist
 # Copy protobuf definitions needed by the server
 COPY --from=builder /app/protobufs ./protobufs
 
+# Copy upgrade watchdog script into container
+COPY scripts/upgrade-watchdog.sh /app/scripts/upgrade-watchdog.sh
+RUN chmod +x /app/scripts/upgrade-watchdog.sh
+
 # Create data directory for SQLite database and Apprise configs
-RUN mkdir -p /data/apprise-config && chown -R node:node /data
+RUN mkdir -p /data/apprise-config /data/scripts && chown -R node:node /data
 
 # Create supervisor configuration to run both Node.js and Apprise
 RUN mkdir -p /etc/supervisor/conf.d
@@ -63,6 +67,10 @@ COPY docker/supervisord.conf /etc/supervisord.conf
 # Create Apprise API wrapper script
 COPY docker/apprise-api.py /app/apprise-api.py
 RUN chmod +x /app/apprise-api.py
+
+# Copy and set up entrypoint script
+COPY docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Expose ports
 # 3001: MeshMonitor Express server
@@ -74,6 +82,9 @@ ENV NODE_ENV=production
 ENV PORT=3001
 ENV APPRISE_CONFIG_DIR=/data/apprise-config
 ENV APPRISE_STATEFUL_MODE=simple
+
+# Use entrypoint to deploy scripts before starting supervisor
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 
 # Run supervisor to manage both processes
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]

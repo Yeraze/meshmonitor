@@ -89,52 +89,43 @@ pull_image() {
 recreate_container() {
   log "Recreating container: $CONTAINER_NAME"
 
-  # Try docker-compose first if available
-  if [ -f "$COMPOSE_PROJECT_DIR/docker-compose.yml" ]; then
-    log "Using docker-compose from $COMPOSE_PROJECT_DIR"
-    cd "$COMPOSE_PROJECT_DIR" || return 1
+  # Use direct Docker commands to recreate the container
+  # This works regardless of which compose files were originally used
+  log "Recreating container using Docker commands"
 
-    if docker compose pull "$CONTAINER_NAME" 2>/dev/null || docker-compose pull "$CONTAINER_NAME" 2>/dev/null; then
-      log_success "Pulled via docker-compose"
-    fi
+  # Pull the new image
+  if docker pull "${IMAGE_NAME}:latest" 2>/dev/null; then
+    log_success "Image pulled: ${IMAGE_NAME}:latest"
+  fi
 
-    if docker compose up -d "$CONTAINER_NAME" 2>/dev/null || docker-compose up -d "$CONTAINER_NAME" 2>/dev/null; then
-      log_success "Container recreated via docker-compose"
-      return 0
-    else
-      log_error "Failed to recreate via docker-compose"
-      return 1
-    fi
+  # Get current container configuration before stopping
+  local network=$(docker inspect --format='{{range $net,$v := .NetworkSettings.Networks}}{{$net}}{{end}}' "$CONTAINER_NAME" 2>/dev/null | head -n1)
+  local volumes=$(docker inspect --format='{{range .Mounts}}{{if eq .Type "volume"}}-v {{.Name}}:{{.Destination}}{{if .RW}}{{else}}:ro{{end}} {{end}}{{end}}' "$CONTAINER_NAME" 2>/dev/null)
+  local ports=$(docker inspect --format='{{range $p, $conf := .NetworkSettings.Ports}}{{if $conf}}-p {{(index $conf 0).HostPort}}:{{$p}} {{end}}{{end}}' "$CONTAINER_NAME" 2>/dev/null)
+  local env_vars=$(docker inspect --format='{{range .Config.Env}}-e {{.}} {{end}}' "$CONTAINER_NAME" 2>/dev/null)
+
+  # Stop and remove old container
+  log "Stopping current container..."
+  docker stop "$CONTAINER_NAME" || true
+  docker rm "$CONTAINER_NAME" || true
+
+  # Start new container with same configuration
+  log "Starting new container..."
+  docker run -d \
+    --name "$CONTAINER_NAME" \
+    --restart unless-stopped \
+    $ports \
+    $volumes \
+    $env_vars \
+    ${network:+--network "$network"} \
+    "${IMAGE_NAME}:latest"
+
+  if [ $? -eq 0 ]; then
+    log_success "Container recreated successfully"
+    return 0
   else
-    log_warn "No docker-compose.yml found at $COMPOSE_PROJECT_DIR"
-    log "Attempting direct container recreation..."
-
-    # Get current container configuration
-    local network=$(docker inspect --format='{{range $net,$v := .NetworkSettings.Networks}}{{$net}}{{end}}' "$CONTAINER_NAME" 2>/dev/null | head -n1)
-    local volumes=$(docker inspect --format='{{range .Mounts}}{{if eq .Type "volume"}}-v {{.Name}}:{{.Destination}} {{end}}{{end}}' "$CONTAINER_NAME" 2>/dev/null)
-    local ports=$(docker inspect --format='{{range $p, $conf := .NetworkSettings.Ports}}{{if $conf}}-p {{(index $conf 0).HostPort}}:{{$p}} {{end}}{{end}}' "$CONTAINER_NAME" 2>/dev/null)
-
-    # Stop and remove old container
-    docker stop "$CONTAINER_NAME" || true
-    docker rm "$CONTAINER_NAME" || true
-
-    # Start new container with same configuration
-    # Note: This is a fallback and may not preserve all settings
-    docker run -d \
-      --name "$CONTAINER_NAME" \
-      --restart unless-stopped \
-      $ports \
-      $volumes \
-      ${network:+--network "$network"} \
-      "${IMAGE_NAME}:latest"
-
-    if [ $? -eq 0 ]; then
-      log_success "Container recreated directly"
-      return 0
-    else
-      log_error "Failed to recreate container"
-      return 1
-    fi
+    log_error "Failed to recreate container"
+    return 1
   fi
 }
 

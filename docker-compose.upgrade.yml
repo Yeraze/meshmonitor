@@ -7,6 +7,9 @@
 # This adds a lightweight sidecar container that monitors for upgrade triggers
 # and automatically pulls new images and restarts the main container when
 # an upgrade is requested through the MeshMonitor UI.
+#
+# Note: The upgrade-watchdog.sh script is automatically deployed to the shared
+# /data/scripts directory by the meshmonitor container on startup.
 
 services:
   meshmonitor:
@@ -16,16 +19,14 @@ services:
 
   # Upgrade watchdog sidecar
   meshmonitor-upgrader:
-    image: docker:27-cli-alpine3.20
+    image: docker:latest
     container_name: meshmonitor-upgrader
     restart: unless-stopped
     volumes:
       # Docker socket for container control
       - /var/run/docker.sock:/var/run/docker.sock
-      # Shared data volume to monitor trigger file
-      - meshmonitor-data:/data:ro
-      # Upgrade script
-      - ./scripts:/scripts:ro
+      # Shared data volume to monitor trigger file and access upgrade script (rw for status file)
+      - meshmonitor-data:/data
       # Mount docker-compose directory for proper recreation
       - .:/compose:ro
     environment:
@@ -35,7 +36,7 @@ services:
       - STATUS_FILE=/data/.upgrade-status
       - CHECK_INTERVAL=5
       - COMPOSE_PROJECT_DIR=/compose
-    command: /scripts/upgrade-watchdog.sh
+    command: /data/scripts/upgrade-watchdog.sh
     depends_on:
       - meshmonitor
     networks:
