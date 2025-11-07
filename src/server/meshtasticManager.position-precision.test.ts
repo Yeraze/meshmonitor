@@ -109,8 +109,6 @@ describe('MeshtasticManager - Position Precision Tracking', () => {
     });
 
     it('should accept position when existing has no precision data', () => {
-      const now = Date.now();
-
       // Existing node without precision tracking (old data)
       mockGetNode.mockReturnValue({
         nodeNum: 123456,
