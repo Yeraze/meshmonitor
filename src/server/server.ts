@@ -3030,7 +3030,7 @@ apiRouter.get('/status', optionalAuth(), (_req, res) => {
 });
 
 // Helper function to check if Docker image exists in GHCR
-async function checkDockerImageExists(version: string): Promise<boolean> {
+async function checkDockerImageExists(version: string, publishedAt?: string): Promise<boolean> {
   try {
     // GHCR uses the format: ghcr.io/owner/repo:tag
     // We can check if the tag exists by querying the GitHub Container Registry API
@@ -3049,18 +3049,51 @@ async function checkDockerImageExists(version: string): Promise<boolean> {
       }
     });
 
-    // 200 = image exists, 404 = doesn't exist, 401 = exists but need auth (still counts as exists for public images)
-    return response.status === 200 || response.status === 401;
+    // NOTE: GHCR returns 401 for ALL unauthenticated requests, even for non-existent images
+    // So we can only trust 200 OK as a definitive "exists" signal
+    // 200 = image definitely exists
+    // 404 = image definitely doesn't exist
+    // 401 = ambiguous (could exist or not exist)
+    if (response.status === 200) {
+      return true;
+    } else if (response.status === 404) {
+      return false;
+    }
+
+    // For 401 or other responses, use time-based heuristic
+    // GitHub Actions typically takes 10-15 minutes to build and push container images
+    // If release was published more than 15 minutes ago, assume the build completed
+    if (publishedAt) {
+      const publishTime = new Date(publishedAt).getTime();
+      const now = Date.now();
+      const minutesSincePublish = (now - publishTime) / (60 * 1000);
+
+      if (minutesSincePublish >= 15) {
+        logger.info(`✓ Image for ${version} assumed ready (${Math.round(minutesSincePublish)} minutes since release)`);
+        return true;
+      } else {
+        logger.info(`⏳ Image for ${version} still building (${Math.round(minutesSincePublish)}/15 minutes since release)`);
+        return false;
+      }
+    }
+
+    // If no publish time provided, be conservative and return false
+    return false;
   } catch (error) {
     logger.warn(`Error checking Docker image existence for ${version}:`, error);
-    // On error, assume image might exist (fail open) to avoid blocking legitimate updates
-    return true;
+    // On error with known publish time, use time-based fallback
+    if (publishedAt) {
+      const minutesSincePublish = (Date.now() - new Date(publishedAt).getTime()) / (60 * 1000);
+      return minutesSincePublish >= 15;
+    }
+    // Otherwise fail closed to avoid false positives
+    return false;
   }
 }
 
 // Version check endpoint - compares current version with latest GitHub release
 let versionCheckCache: { data: any; timestamp: number } | null = null;
-const VERSION_CHECK_CACHE_MS = 60 * 60 * 1000; // 1 hour cache
+const VERSION_CHECK_CACHE_MS = 5 * 60 * 1000; // 5 minute cache (reduced to detect image availability sooner)
 
 apiRouter.get('/version/check', optionalAuth(), async (_req, res) => {
   try {
@@ -3088,8 +3121,8 @@ apiRouter.get('/version/check', optionalAuth(), async (_req, res) => {
     // Simple semantic version comparison
     const isNewerVersion = compareVersions(latestVersion, current) > 0;
 
-    // Check if Docker image exists for this version
-    const imageReady = await checkDockerImageExists(latestVersion);
+    // Check if Docker image exists for this version (pass publish time for time-based heuristic)
+    const imageReady = await checkDockerImageExists(latestVersion, release.published_at);
 
     // Only mark update as available if it's a newer version AND container image exists
     const updateAvailable = isNewerVersion && imageReady;

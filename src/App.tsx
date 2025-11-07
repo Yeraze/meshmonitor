@@ -564,7 +564,8 @@ function App() {
   }, [connectedNodeName]);
 
   // Helper to fetch with credentials and automatic CSRF token retry
-  const authFetch = async (url: string, options?: RequestInit, retryCount = 0, timeoutMs = 10000): Promise<Response> => {
+  // Memoized to prevent unnecessary re-renders of components that depend on it
+  const authFetch = useCallback(async (url: string, options?: RequestInit, retryCount = 0, timeoutMs = 10000): Promise<Response> => {
     const headers = new Headers(options?.headers);
 
     // Add CSRF token for mutation requests
@@ -623,7 +624,7 @@ function App() {
       // Always clear timeout to prevent memory leaks
       clearTimeout(timeoutId);
     }
-  };
+  }, [getCsrfToken, refreshCsrfToken]);
 
   // Function to detect MQTT/bridge messages that should be filtered
   const isMqttBridgeMessage = (msg: MeshMessage): boolean => {
@@ -936,9 +937,9 @@ function App() {
     }
 
     let attempts = 0;
-    const maxAttempts = 60; // 5 minutes max at base interval
-    const baseInterval = 5000; // Start at 5 seconds
-    const maxInterval = 15000; // Cap at 15 seconds
+    const maxAttempts = 60; // Max attempts before timeout
+    const baseInterval = 10000; // Start at 10 seconds (reduced from 5s to limit server load)
+    const maxInterval = 30000; // Cap at 30 seconds (increased from 15s)
     let currentInterval = baseInterval;
 
     const poll = async () => {
