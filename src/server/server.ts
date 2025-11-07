@@ -330,6 +330,7 @@ import auditRoutes from './routes/auditRoutes.js';
 import securityRoutes from './routes/securityRoutes.js';
 import packetRoutes from './routes/packetRoutes.js';
 import solarRoutes from './routes/solarRoutes.js';
+import upgradeRoutes from './routes/upgradeRoutes.js';
 
 // CSRF token endpoint (must be before CSRF protection middleware)
 apiRouter.get('/csrf-token', csrfTokenEndpoint);
@@ -351,6 +352,9 @@ apiRouter.use('/packets', optionalAuth(), packetRoutes);
 
 // Solar monitoring routes
 apiRouter.use('/solar', optionalAuth(), solarRoutes);
+
+// Upgrade routes (requires authentication)
+apiRouter.use('/upgrade', upgradeRoutes);
 
 // API Routes
 apiRouter.get('/nodes', optionalAuth(), (_req, res) => {

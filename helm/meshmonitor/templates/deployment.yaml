@@ -43,6 +43,10 @@ spec:
         - name: BASE_URL
           value: {{ .Values.env.baseUrl | quote }}
         {{- end }}
+        {{- if .Values.autoupgrade.enabled }}
+        - name: AUTO_UPGRADE_ENABLED
+          value: "true"
+        {{- end }}
         livenessProbe:
           httpGet:
             path: /api/health

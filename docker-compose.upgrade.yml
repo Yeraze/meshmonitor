@@ -1,0 +1,47 @@
+# Docker Compose Upgrade Overlay
+# Adds automatic upgrade capability via watchdog sidecar
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.upgrade.yml up -d
+#
+# This adds a lightweight sidecar container that monitors for upgrade triggers
+# and automatically pulls new images and restarts the main container when
+# an upgrade is requested through the MeshMonitor UI.
+
+services:
+  meshmonitor:
+    environment:
+      # Enable auto-upgrade functionality
+      - AUTO_UPGRADE_ENABLED=true
+
+  # Upgrade watchdog sidecar
+  meshmonitor-upgrader:
+    image: docker:27-cli-alpine3.20
+    container_name: meshmonitor-upgrader
+    restart: unless-stopped
+    volumes:
+      # Docker socket for container control
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Shared data volume to monitor trigger file
+      - meshmonitor-data:/data:ro
+      # Upgrade script
+      - ./scripts:/scripts:ro
+      # Mount docker-compose directory for proper recreation
+      - .:/compose:ro
+    environment:
+      - CONTAINER_NAME=meshmonitor
+      - IMAGE_NAME=ghcr.io/yeraze/meshmonitor
+      - TRIGGER_FILE=/data/.upgrade-trigger
+      - STATUS_FILE=/data/.upgrade-status
+      - CHECK_INTERVAL=5
+      - COMPOSE_PROJECT_DIR=/compose
+    command: /scripts/upgrade-watchdog.sh
+    depends_on:
+      - meshmonitor
+    networks:
+      - default
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
