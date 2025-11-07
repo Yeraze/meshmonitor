@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { DeviceInfo } from '../types/device';
 import { getHardwareModelShortName } from '../utils/hardwareModel';
 import { getDeviceRoleName } from '../utils/deviceRole';
@@ -16,6 +16,14 @@ interface NodeDetailsBlockProps {
 
 const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = '24', dateFormat = 'MM/DD/YYYY' }) => {
   const { channels } = useData();
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
+    const stored = localStorage.getItem('nodeDetailsCollapsed');
+    return stored === 'true';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('nodeDetailsCollapsed', isCollapsed.toString());
+  }, [isCollapsed]);
 
   if (!node) {
     return null;
@@ -122,77 +130,87 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
 
   return (
     <div className="node-details-block">
-      <h3 className="node-details-title">Node Details</h3>
-      <div className="node-details-grid">
-        {/* Battery Status */}
-        {(deviceMetrics?.batteryLevel !== undefined || deviceMetrics?.voltage !== undefined) && (
-          <div className="node-detail-card">
-            <div className="node-detail-label">Battery</div>
-            <div className={`node-detail-value ${getBatteryClass(deviceMetrics?.batteryLevel)}`}>
-              {formatBatteryLevel(deviceMetrics?.batteryLevel)}
-              {deviceMetrics?.voltage !== undefined && (
-                <span className="node-detail-secondary"> ({formatVoltage(deviceMetrics.voltage)})</span>
-              )}
+      <div className="node-details-header">
+        <h3 className="node-details-title">Node Details</h3>
+        <button
+          className="node-details-toggle"
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          aria-label={isCollapsed ? 'Expand node details' : 'Collapse node details'}
+        >
+          {isCollapsed ? '▼' : '▲'}
+        </button>
+      </div>
+      {!isCollapsed && (
+        <div className="node-details-grid">
+          {/* Hardware Model - Now First */}
+          {hwModel !== undefined && (
+            <div className="node-detail-card node-detail-card-hardware">
+              <div className="node-detail-label">Hardware</div>
+              <div className="node-detail-value node-detail-hardware-content">
+                {hardwareImageUrl && (
+                  <img
+                    src={hardwareImageUrl}
+                    alt={getHardwareModelShortName(hwModel)}
+                    className="hardware-image"
+                  />
+                )}
+                <span className="hardware-name">{getHardwareModelShortName(hwModel)}</span>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Signal Quality - SNR */}
-        {snr !== undefined && (
-          <div className="node-detail-card">
-            <div className="node-detail-label">Signal (SNR)</div>
-            <div className={`node-detail-value ${getSignalClass(snr)}`}>
-              {formatSNR(snr)}
+          {/* Battery Status */}
+          {(deviceMetrics?.batteryLevel !== undefined || deviceMetrics?.voltage !== undefined) && (
+            <div className="node-detail-card">
+              <div className="node-detail-label">Battery</div>
+              <div className={`node-detail-value ${getBatteryClass(deviceMetrics?.batteryLevel)}`}>
+                {formatBatteryLevel(deviceMetrics?.batteryLevel)}
+                {deviceMetrics?.voltage !== undefined && (
+                  <span className="node-detail-secondary"> ({formatVoltage(deviceMetrics.voltage)})</span>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Signal Quality - RSSI */}
-        {rssi !== undefined && (
-          <div className="node-detail-card">
-            <div className="node-detail-label">Signal (RSSI)</div>
-            <div className="node-detail-value">
-              {formatRSSI(rssi)}
+          {/* Signal Quality - SNR */}
+          {snr !== undefined && (
+            <div className="node-detail-card">
+              <div className="node-detail-label">Signal (SNR)</div>
+              <div className={`node-detail-value ${getSignalClass(snr)}`}>
+                {formatSNR(snr)}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Channel Utilization */}
-        {deviceMetrics?.channelUtilization !== undefined && (
-          <div className="node-detail-card">
-            <div className="node-detail-label">Channel Utilization</div>
-            <div className={`node-detail-value ${getUtilizationClass(deviceMetrics.channelUtilization)}`}>
-              {formatUtilization(deviceMetrics.channelUtilization)}
+          {/* Signal Quality - RSSI */}
+          {rssi !== undefined && (
+            <div className="node-detail-card">
+              <div className="node-detail-label">Signal (RSSI)</div>
+              <div className="node-detail-value">
+                {formatRSSI(rssi)}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Air Utilization TX */}
-        {deviceMetrics?.airUtilTx !== undefined && (
-          <div className="node-detail-card">
-            <div className="node-detail-label">Air Utilization TX</div>
-            <div className={`node-detail-value ${getUtilizationClass(deviceMetrics.airUtilTx)}`}>
-              {formatUtilization(deviceMetrics.airUtilTx)}
+          {/* Channel Utilization */}
+          {deviceMetrics?.channelUtilization !== undefined && (
+            <div className="node-detail-card">
+              <div className="node-detail-label">Channel Utilization</div>
+              <div className={`node-detail-value ${getUtilizationClass(deviceMetrics.channelUtilization)}`}>
+                {formatUtilization(deviceMetrics.channelUtilization)}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Hardware Model */}
-        {hwModel !== undefined && (
-          <div className="node-detail-card node-detail-card-hardware">
-            <div className="node-detail-label">Hardware</div>
-            <div className="node-detail-value node-detail-hardware-content">
-              {hardwareImageUrl && (
-                <img
-                  src={hardwareImageUrl}
-                  alt={getHardwareModelShortName(hwModel)}
-                  className="hardware-image"
-                />
-              )}
-              <span className="hardware-name">{getHardwareModelShortName(hwModel)}</span>
+          {/* Air Utilization TX */}
+          {deviceMetrics?.airUtilTx !== undefined && (
+            <div className="node-detail-card">
+              <div className="node-detail-label">Air Utilization TX</div>
+              <div className={`node-detail-value ${getUtilizationClass(deviceMetrics.airUtilTx)}`}>
+                {formatUtilization(deviceMetrics.airUtilTx)}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
         {/* Node ID */}
         {node.nodeNum !== undefined && (
@@ -260,16 +278,17 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
           </div>
         )}
 
-        {/* Last Heard */}
-        {lastHeard !== undefined && (
-          <div className="node-detail-card">
-            <div className="node-detail-label">Last Heard</div>
-            <div className="node-detail-value">
-              {formatLastHeard(lastHeard)}
+          {/* Last Heard */}
+          {lastHeard !== undefined && (
+            <div className="node-detail-card">
+              <div className="node-detail-label">Last Heard</div>
+              <div className="node-detail-value">
+                {formatLastHeard(lastHeard)}
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
