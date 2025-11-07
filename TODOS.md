@@ -2,32 +2,35 @@
 
 ## Current Sprint
 
-### PR #480 - Auto-upgrade functionality (In Progress)
-- [x] Fix TypeScript type errors in upgradeService.ts
-  - Fixed Database.run() calls to use prepare().run() pattern
-  - Prefixed unused parameter _targetVersion with underscore
-- [x] Fix TypeScript type errors in upgradeRoutes.ts
-  - Prefixed unused _req parameters with underscore
-- [x] Fix missing uuid dependency
-  - Installed uuid package and @types/uuid
-- [x] Fix unused variable errors
-  - Prefixed _upgradeId, _error variables with underscore
-- [x] Fix missing React import in MapResizeHandler.tsx
-- [x] Fix NodeJS.Timeout type to use ReturnType<typeof setTimeout>
-- [x] Convert require() imports to ES6 imports in Dashboard.test.tsx
-- [x] Fix documentation build dead links
-  - Removed references to non-existent /configuration/backup and /troubleshooting pages
-- [x] Address code review security and reliability issues
-  - Fix CSRF vulnerability by using authFetch consistently
-  - Add comprehensive input validation (version format, UUID, bounded integers)
-  - Add error handling for JSON.parse operations
-  - Implement atomic file writes to prevent race conditions
-  - Add exponential backoff for upgrade polling
-  - Fix memory leaks with proper interval cleanup
-- [ ] Verify all CI tests pass
-- [ ] Review and merge PR
-
 ## Completed Tasks
+
+### Auto-Upgrade Functionality (#480)
+- [x] Implement automatic self-upgrade functionality for Docker deployments
+  - Backend: upgradeService for orchestration and pre-flight checks
+  - Backend: upgrade API endpoints (trigger, status, history, cancel)
+  - Backend: Backup/restore and automatic rollback on failure
+  - Frontend: Upgrade state management and UI with real-time progress
+  - Docker: upgrade-watchdog.sh sidecar for monitoring and execution
+  - Docker: Watchdog performs backup → pull → recreate → health check → rollback
+  - Helm: autoupgrade.enabled configuration option
+  - Documentation: Comprehensive auto-upgrade guide
+- [x] Fix TypeScript type errors
+  - Fixed Database.run() calls to use prepare().run() pattern
+  - Prefixed unused parameters with underscore
+  - Added missing uuid dependency
+  - Fixed React imports and NodeJS.Timeout types
+  - Converted require() to ES6 imports
+- [x] Fix documentation build issues
+  - Removed dead links to non-existent pages
+- [x] Address critical security and reliability issues from code review
+  - Fixed CSRF vulnerability by using authFetch consistently
+  - Added comprehensive input validation (version format, UUID, bounded integers)
+  - Added error handling for JSON.parse operations with proper fallbacks
+  - Implemented atomic file writes to prevent race conditions
+  - Added exponential backoff for upgrade polling (5s → 15s max)
+  - Fixed memory leaks with proper interval cleanup
+- [x] All CI tests passing
+- [x] PR reviewed and merged
 
 ### Version 2.14.2 (Current Release)
 
