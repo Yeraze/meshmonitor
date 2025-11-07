@@ -4,7 +4,33 @@
 
 ## Completed Tasks
 
-### Version 2.14.1 (Current Release)
+### Version 2.14.2 (Current Release)
+
+- [x] Add VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS environment variable (#455, #474)
+  - Security-first design with default disabled (false) for backward compatibility
+  - Allows admin commands (ADMIN_APP, NODEINFO_APP) through virtual node when enabled
+  - Enables multi-service scenarios (e.g., MeshMonitor + Home Assistant)
+  - Updated environment.ts with new configuration option
+  - Modified VirtualNodeServer to respect allowAdminCommands flag
+  - Added comprehensive tests for admin command configuration
+  - Updated Docker Compose Configurator with security warning
+- [x] Fix hop count calculation in auto-acknowledge (#470, #471)
+  - Enhanced hop count validation to check for both null and undefined values
+  - Added validation that hopStart >= hopLimit before calculating
+  - Added defensive check in RABBIT_HOPS using Math.max(0, numberHops)
+  - Falls back to 0 for invalid or missing hop data
+  - Prevents RangeError when using {RABBIT_HOPS} token
+- [x] Add position precision tracking for multi-channel support (#473)
+  - Database migration 020 adds position precision fields to nodes and telemetry tables
+  - Track channel, precisionBits, gpsAccuracy, and HDOP for all positions
+  - Smart upgrade/downgrade logic: always upgrade to higher precision, only downgrade after 12 hours
+  - Enables precise location from secondary channels to be preferred over approximate primary channel positions
+  - Logs precision upgrades/downgrades for debugging
+- [x] Update TODOS.md documentation (#472, #469)
+- [x] Run system tests
+- [x] Create GitHub release (v2.14.2)
+
+### Version 2.14.1
 
 - [x] Update version in package.json to 2.14.1
 - [x] Update version in Helm chart to 2.14.1
