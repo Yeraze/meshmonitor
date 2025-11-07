@@ -101,8 +101,19 @@ recreate_container() {
   # Get current container configuration before stopping
   local network=$(docker inspect --format='{{range $net,$v := .NetworkSettings.Networks}}{{$net}}{{end}}' "$CONTAINER_NAME" 2>/dev/null | head -n1)
   local volumes=$(docker inspect --format='{{range .Mounts}}{{if eq .Type "volume"}}-v {{.Name}}:{{.Destination}}{{if .RW}}{{else}}:ro{{end}} {{end}}{{end}}' "$CONTAINER_NAME" 2>/dev/null)
-  local ports=$(docker inspect --format='{{range $p, $conf := .NetworkSettings.Ports}}{{if $conf}}-p {{(index $conf 0).HostPort}}:{{$p}} {{end}}{{end}}' "$CONTAINER_NAME" 2>/dev/null)
-  local env_vars=$(docker inspect --format='{{range .Config.Env}}-e {{.}} {{end}}' "$CONTAINER_NAME" 2>/dev/null)
+
+  # Extract ports - remove /tcp or /udp protocol suffix for docker run compatibility
+  local ports=$(docker inspect --format='{{range $p, $conf := .NetworkSettings.Ports}}{{if $conf}}-p {{(index $conf 0).HostPort}}:{{$p}} {{end}}{{end}}' "$CONTAINER_NAME" 2>/dev/null | sed 's|/tcp||g; s|/udp||g')
+
+  # Extract env vars - filter out Docker Compose specific vars that can cause issues
+  local env_vars=$(docker inspect --format='{{range .Config.Env}}{{.}}{{"\n"}}{{end}}' "$CONTAINER_NAME" 2>/dev/null | \
+    grep -v '^COMPOSE_' | \
+    grep -v '^DOCKER_' | \
+    grep -v '^PATH=' | \
+    grep -v '^HOME=' | \
+    grep -v '^HOSTNAME=' | \
+    sed 's/^/-e /' | \
+    tr '\n' ' ')
 
   # Stop and remove old container
   log "Stopping current container..."
