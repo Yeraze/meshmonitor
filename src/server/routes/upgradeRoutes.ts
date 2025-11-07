@@ -44,6 +44,32 @@ router.post('/trigger', async (req: Request, res: Response) => {
     const { targetVersion, force, backup } = req.body;
     const userId = req.user?.id || 'unknown';
 
+    // Validate targetVersion format if provided
+    if (targetVersion !== undefined && targetVersion !== null && targetVersion !== 'latest') {
+      const versionPattern = /^v?\d+\.\d+\.\d+(-[a-zA-Z0-9.-]+)?$/;
+      if (typeof targetVersion !== 'string' || !versionPattern.test(targetVersion)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid targetVersion format. Must be "latest" or a valid semantic version (e.g., "2.14.4", "v2.14.4")'
+        });
+      }
+    }
+
+    // Validate boolean parameters
+    if (force !== undefined && typeof force !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid force parameter. Must be a boolean'
+      });
+    }
+
+    if (backup !== undefined && typeof backup !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid backup parameter. Must be a boolean'
+      });
+    }
+
     logger.info(`Upgrade requested by user ${userId}: ${packageJson.version} → ${targetVersion || 'latest'}`);
 
     const result = await upgradeService.triggerUpgrade(
@@ -89,6 +115,12 @@ router.get('/status/:upgradeId', async (req: Request, res: Response) => {
   try {
     const { upgradeId } = req.params;
 
+    // Validate UUID format
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidPattern.test(upgradeId)) {
+      return res.status(400).json({ error: 'Invalid upgrade ID format. Must be a valid UUID' });
+    }
+
     const status = await upgradeService.getUpgradeStatus(upgradeId);
 
     if (!status) {
@@ -108,7 +140,17 @@ router.get('/status/:upgradeId', async (req: Request, res: Response) => {
  */
 router.get('/history', async (req: Request, res: Response) => {
   try {
-    const limit = parseInt(req.query.limit as string) || 10;
+    // Validate and bound the limit parameter
+    let limit = 10; // Default
+    if (req.query.limit) {
+      const parsedLimit = parseInt(req.query.limit as string, 10);
+      if (isNaN(parsedLimit) || parsedLimit < 1) {
+        return res.status(400).json({ error: 'Invalid limit parameter. Must be a positive integer' });
+      }
+      // Cap at 100 to prevent resource exhaustion
+      limit = Math.min(parsedLimit, 100);
+    }
+
     const history = await upgradeService.getUpgradeHistory(limit);
 
     return res.json({
@@ -128,6 +170,15 @@ router.get('/history', async (req: Request, res: Response) => {
 router.post('/cancel/:upgradeId', async (req: Request, res: Response) => {
   try {
     const { upgradeId } = req.params;
+
+    // Validate UUID format
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidPattern.test(upgradeId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid upgrade ID format. Must be a valid UUID'
+      });
+    }
 
     const result = await upgradeService.cancelUpgrade(upgradeId);
 

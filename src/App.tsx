@@ -211,6 +211,7 @@ function App() {
   const connectionStatusRef = useRef<string>('disconnected') // Track connection status for interval closure
   const localNodeIdRef = useRef<string>('') // Track local node ID for immediate access (bypasses React state delay)
   const pendingMessagesRef = useRef<Map<string, MeshMessage>>(new Map()) // Track pending messages for interval access (bypasses closure stale state)
+  const upgradePollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null) // Track upgrade polling interval for cleanup
 
   // Constants for emoji tapbacks
   const EMOJI_FLAG = 1; // Protobuf flag indicating this is a tapback/reaction
@@ -851,7 +852,7 @@ function App() {
   useEffect(() => {
     const checkUpgradeStatus = async () => {
       try {
-        const response = await fetch(`${baseUrl}/api/upgrade/status`);
+        const response = await authFetch(`${baseUrl}/api/upgrade/status`);
         if (response.ok) {
           const data = await response.json();
           setUpgradeEnabled(data.enabled && data.deploymentMethod === 'docker');
@@ -862,7 +863,17 @@ function App() {
     };
 
     checkUpgradeStatus();
-  }, [baseUrl]);
+  }, [baseUrl, authFetch]);
+
+  // Cleanup upgrade polling on unmount
+  useEffect(() => {
+    return () => {
+      if (upgradePollingIntervalRef.current) {
+        clearInterval(upgradePollingIntervalRef.current);
+        upgradePollingIntervalRef.current = null;
+      }
+    };
+  }, []);
 
   // Handle upgrade trigger
   const handleUpgrade = async () => {
@@ -873,7 +884,7 @@ function App() {
       setUpgradeStatus('Initiating upgrade...');
       setUpgradeProgress(0);
 
-      const response = await fetch(`${baseUrl}/api/upgrade/trigger`, {
+      const response = await authFetch(`${baseUrl}/api/upgrade/trigger`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -906,16 +917,25 @@ function App() {
     }
   };
 
-  // Poll upgrade status
+  // Poll upgrade status with exponential backoff
   const pollUpgradeStatus = (id: string) => {
-    let attempts = 0;
-    const maxAttempts = 60; // 5 minutes max
+    // Clear any existing polling interval
+    if (upgradePollingIntervalRef.current) {
+      clearInterval(upgradePollingIntervalRef.current);
+      upgradePollingIntervalRef.current = null;
+    }
 
-    const interval = setInterval(async () => {
+    let attempts = 0;
+    const maxAttempts = 60; // 5 minutes max at base interval
+    const baseInterval = 5000; // Start at 5 seconds
+    const maxInterval = 15000; // Cap at 15 seconds
+    let currentInterval = baseInterval;
+
+    const poll = async () => {
       attempts++;
 
       try {
-        const response = await fetch(`${baseUrl}/api/upgrade/status/${id}`);
+        const response = await authFetch(`${baseUrl}/api/upgrade/status/${id}`);
         if (response.ok) {
           const data = await response.json();
 
@@ -924,7 +944,10 @@ function App() {
 
           // Update status messages
           if (data.status === 'complete') {
-            clearInterval(interval);
+            if (upgradePollingIntervalRef.current) {
+              clearInterval(upgradePollingIntervalRef.current);
+              upgradePollingIntervalRef.current = null;
+            }
             showToast?.('Upgrade complete! Reloading...', 'success');
             setUpgradeStatus('Complete! Reloading...');
             setUpgradeProgress(100);
@@ -933,25 +956,45 @@ function App() {
             setTimeout(() => {
               window.location.reload();
             }, 3000);
+            return;
           } else if (data.status === 'failed') {
-            clearInterval(interval);
+            if (upgradePollingIntervalRef.current) {
+              clearInterval(upgradePollingIntervalRef.current);
+              upgradePollingIntervalRef.current = null;
+            }
             showToast?.('Upgrade failed. Check logs for details.', 'error');
             setUpgradeInProgress(false);
             setUpgradeStatus('Failed');
+            return;
           }
+
+          // Reset interval on successful response (application is responsive)
+          currentInterval = baseInterval;
         }
       } catch (error) {
         // Connection may be lost during restart - this is expected
+        // Use exponential backoff for retries
+        currentInterval = Math.min(currentInterval * 1.5, maxInterval);
         logger.debug('Polling upgrade status (connection may be restarting):', error);
       }
 
       // Stop polling after max attempts
       if (attempts >= maxAttempts) {
-        clearInterval(interval);
+        if (upgradePollingIntervalRef.current) {
+          clearInterval(upgradePollingIntervalRef.current);
+          upgradePollingIntervalRef.current = null;
+        }
         setUpgradeInProgress(false);
         setUpgradeStatus('Upgrade timeout - check status manually');
+        return;
       }
-    }, 5000); // Poll every 5 seconds
+
+      // Schedule next poll with current interval
+      upgradePollingIntervalRef.current = setTimeout(poll, currentInterval) as unknown as ReturnType<typeof setInterval>;
+    };
+
+    // Start polling
+    poll();
   };
 
   // Debug effect to track selectedChannel changes and keep ref in sync

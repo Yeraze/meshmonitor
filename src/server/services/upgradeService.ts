@@ -47,6 +47,30 @@ class UpgradeService {
   }
 
   /**
+   * Atomic file write using temp file + rename
+   * This prevents race conditions and partial writes
+   */
+  private atomicWriteFile(filePath: string, content: string): void {
+    const tempPath = `${filePath}.tmp.${Date.now()}.${Math.random().toString(36).slice(2)}`;
+    try {
+      // Write to temporary file first
+      fs.writeFileSync(tempPath, content, { mode: 0o644 });
+      // Atomic rename (replaces target file if it exists)
+      fs.renameSync(tempPath, filePath);
+    } catch (error) {
+      // Clean up temp file if rename failed
+      try {
+        if (fs.existsSync(tempPath)) {
+          fs.unlinkSync(tempPath);
+        }
+      } catch (_cleanupError) {
+        // Ignore cleanup errors
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Check if upgrade functionality is enabled
    */
   isEnabled(): boolean {
@@ -146,7 +170,7 @@ class UpgradeService {
         1
       );
 
-      // Write trigger file for watchdog
+      // Write trigger file for watchdog (using atomic write to prevent race conditions)
       const triggerData = {
         upgradeId,
         version: targetVersion,
@@ -154,7 +178,7 @@ class UpgradeService {
         timestamp: now
       };
 
-      fs.writeFileSync(UPGRADE_TRIGGER_FILE, JSON.stringify(triggerData, null, 2));
+      this.atomicWriteFile(UPGRADE_TRIGGER_FILE, JSON.stringify(triggerData, null, 2));
       logger.info(`🚀 Upgrade triggered: ${currentVersion} → ${targetVersion} (ID: ${upgradeId})`);
 
       return {
@@ -184,12 +208,24 @@ class UpgradeService {
         return null;
       }
 
+      // Safely parse logs JSON
+      let logs: string[] = [];
+      if (row.logs) {
+        try {
+          const parsed = JSON.parse(row.logs);
+          logs = Array.isArray(parsed) ? parsed : [];
+        } catch (parseError) {
+          logger.warn(`Failed to parse logs for upgrade ${upgradeId}:`, parseError);
+          logs = [];
+        }
+      }
+
       return {
         upgradeId: row.id,
         status: row.status,
         progress: row.progress || 0,
         currentStep: row.currentStep || '',
-        logs: row.logs ? JSON.parse(row.logs) : [],
+        logs,
         startedAt: new Date(row.startedAt).toISOString(),
         completedAt: row.completedAt ? new Date(row.completedAt).toISOString() : undefined,
         error: row.errorMessage,
@@ -227,18 +263,32 @@ class UpgradeService {
         `SELECT * FROM upgrade_history ORDER BY startedAt DESC LIMIT ?`
       ).all(limit) as any[];
 
-      return rows.map(row => ({
-        upgradeId: row.id,
-        status: row.status,
-        progress: row.progress || 0,
-        currentStep: row.currentStep || '',
-        logs: row.logs ? JSON.parse(row.logs) : [],
-        startedAt: new Date(row.startedAt).toISOString(),
-        completedAt: row.completedAt ? new Date(row.completedAt).toISOString() : undefined,
-        error: row.errorMessage,
-        fromVersion: row.fromVersion,
-        toVersion: row.toVersion
-      }));
+      return rows.map(row => {
+        // Safely parse logs JSON
+        let logs: string[] = [];
+        if (row.logs) {
+          try {
+            const parsed = JSON.parse(row.logs);
+            logs = Array.isArray(parsed) ? parsed : [];
+          } catch (parseError) {
+            logger.warn(`Failed to parse logs for upgrade ${row.id}:`, parseError);
+            logs = [];
+          }
+        }
+
+        return {
+          upgradeId: row.id,
+          status: row.status,
+          progress: row.progress || 0,
+          currentStep: row.currentStep || '',
+          logs,
+          startedAt: new Date(row.startedAt).toISOString(),
+          completedAt: row.completedAt ? new Date(row.completedAt).toISOString() : undefined,
+          error: row.errorMessage,
+          fromVersion: row.fromVersion,
+          toVersion: row.toVersion
+        };
+      });
     } catch (error) {
       logger.error('❌ Failed to get upgrade history:', error);
       return [];
