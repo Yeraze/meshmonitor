@@ -2,6 +2,24 @@
 
 ## Current Sprint
 
+### PR #480 - Auto-upgrade functionality (In Progress)
+- [x] Fix TypeScript type errors in upgradeService.ts
+  - Fixed Database.run() calls to use prepare().run() pattern
+  - Prefixed unused parameter _targetVersion with underscore
+- [x] Fix TypeScript type errors in upgradeRoutes.ts
+  - Prefixed unused _req parameters with underscore
+- [x] Fix missing uuid dependency
+  - Installed uuid package and @types/uuid
+- [x] Fix unused variable errors
+  - Prefixed _upgradeId, _error variables with underscore
+- [x] Fix missing React import in MapResizeHandler.tsx
+- [x] Fix NodeJS.Timeout type to use ReturnType<typeof setTimeout>
+- [x] Convert require() imports to ES6 imports in Dashboard.test.tsx
+- [x] Fix documentation build dead links
+  - Removed references to non-existent /configuration/backup and /troubleshooting pages
+- [ ] Verify all CI tests pass
+- [ ] Review and merge PR
+
 ## Completed Tasks
 
 ### Version 2.14.2 (Current Release)
