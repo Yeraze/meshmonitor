@@ -3020,6 +3020,35 @@ apiRouter.get('/status', optionalAuth(), (_req, res) => {
   });
 });
 
+// Helper function to check if Docker image exists in GHCR
+async function checkDockerImageExists(version: string): Promise<boolean> {
+  try {
+    // GHCR uses the format: ghcr.io/owner/repo:tag
+    // We can check if the tag exists by querying the GitHub Container Registry API
+    const owner = 'yeraze';
+    const repo = 'meshmonitor';
+    const tag = `v${version}`;
+
+    // Try to fetch the manifest for the specific tag
+    // GHCR manifest URL format: https://ghcr.io/v2/{owner}/{repo}/manifests/{tag}
+    const manifestUrl = `https://ghcr.io/v2/${owner}/${repo}/manifests/${tag}`;
+
+    const response = await fetch(manifestUrl, {
+      method: 'HEAD', // Just check if it exists
+      headers: {
+        'Accept': 'application/vnd.docker.distribution.manifest.v2+json'
+      }
+    });
+
+    // 200 = image exists, 404 = doesn't exist, 401 = exists but need auth (still counts as exists for public images)
+    return response.status === 200 || response.status === 401;
+  } catch (error) {
+    logger.warn(`Error checking Docker image existence for ${version}:`, error);
+    // On error, assume image might exist (fail open) to avoid blocking legitimate updates
+    return true;
+  }
+}
+
 // Version check endpoint - compares current version with latest GitHub release
 let versionCheckCache: { data: any; timestamp: number } | null = null;
 const VERSION_CHECK_CACHE_MS = 60 * 60 * 1000; // 1 hour cache
@@ -3048,14 +3077,22 @@ apiRouter.get('/version/check', optionalAuth(), async (_req, res) => {
     const current = currentVersion.replace(/^v/, '');
 
     // Simple semantic version comparison
-    const updateAvailable = compareVersions(latestVersion, current) > 0;
+    const isNewerVersion = compareVersions(latestVersion, current) > 0;
+
+    // Check if Docker image exists for this version
+    const imageReady = await checkDockerImageExists(latestVersion);
+
+    // Only mark update as available if it's a newer version AND container image exists
+    const updateAvailable = isNewerVersion && imageReady;
 
     const result = {
       updateAvailable,
       currentVersion,
       latestVersion,
       releaseUrl: release.html_url,
-      releaseName: release.name
+      releaseName: release.name,
+      publishedAt: release.published_at,
+      imageReady
     };
 
     // Cache the result

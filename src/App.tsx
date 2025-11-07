@@ -129,6 +129,7 @@ function App() {
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [latestVersion, setLatestVersion] = useState('');
   const [releaseUrl, setReleaseUrl] = useState('');
+  const [imageReady, setImageReady] = useState(true);
   const [upgradeEnabled, setUpgradeEnabled] = useState(false);
   const [upgradeInProgress, setUpgradeInProgress] = useState(false);
   const [upgradeStatus, setUpgradeStatus] = useState('');
@@ -829,10 +830,19 @@ function App() {
         const response = await fetch(`${baseUrl}/api/version/check`);
         if (response.ok) {
           const data = await response.json();
-          if (data.updateAvailable) {
-            setUpdateAvailable(true);
+
+          // Always update version info if a newer version exists
+          if (data.latestVersion && data.latestVersion !== data.currentVersion) {
             setLatestVersion(data.latestVersion);
             setReleaseUrl(data.releaseUrl);
+            setImageReady(data.imageReady !== false); // Default to true if not specified
+          }
+
+          // Only show update available if images are ready
+          if (data.updateAvailable) {
+            setUpdateAvailable(true);
+          } else {
+            setUpdateAvailable(false);
           }
         }
       } catch (error) {
@@ -4730,6 +4740,41 @@ function App() {
           top: isDefaultPassword ? 'calc(var(--header-height) + var(--banner-height))' : 'var(--header-height)'
         }}>
           ⚠️ Transmit Disabled: Your device cannot send messages. TX is currently disabled in the LoRa configuration. Enable it via the Meshtastic app or re-import your configuration.
+        </div>
+      )}
+
+      {/* New Release Coming Soon Banner - shown when release published but container images not ready yet */}
+      {latestVersion && !imageReady && !updateAvailable && (
+        <div className="update-banner" style={{
+          top: (isDefaultPassword && isTxDisabled) ? 'calc(var(--header-height) + var(--banner-height) + var(--banner-height))' : (isDefaultPassword || isTxDisabled) ? 'calc(var(--header-height) + var(--banner-height))' : 'var(--header-height)',
+          backgroundColor: '#3b82f6' // Blue color to differentiate from ready updates
+        }}>
+          <div style={{ flex: 1, textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem' }}>
+            <span>🎉 New Release: Version {latestVersion} has been published!</span>
+            <span style={{ fontSize: '0.9em', opacity: 0.9 }}>
+              Docker images are building... Upgrade will be available soon
+            </span>
+            <a
+              href={releaseUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                color: 'white',
+                textDecoration: 'underline',
+                fontWeight: '600'
+              }}
+            >
+              View Release Notes →
+            </a>
+          </div>
+          <button
+            className="banner-dismiss"
+            onClick={() => setLatestVersion('')}
+            aria-label="Dismiss notification"
+            title="Dismiss"
+          >
+            ×
+          </button>
         </div>
       )}
 
