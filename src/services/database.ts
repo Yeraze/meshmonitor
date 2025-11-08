@@ -26,6 +26,7 @@ import { migration as channelColumnMigration } from '../server/migrations/017_ad
 import { migration as mobileMigration } from '../server/migrations/018_add_mobile_to_nodes.js';
 import { migration as solarEstimatesMigration } from '../server/migrations/019_add_solar_estimates.js';
 import { migration as positionPrecisionMigration } from '../server/migrations/020_add_position_precision_tracking.js';
+import { migration as systemBackupTableMigration } from '../server/migrations/021_add_system_backup_table.js';
 
 // Configuration constants for traceroute history
 const TRACEROUTE_HISTORY_LIMIT = 50;
@@ -258,6 +259,7 @@ class DatabaseService {
     this.runMobileMigration();
     this.runSolarEstimatesMigration();
     this.runPositionPrecisionMigration();
+    this.runSystemBackupTableMigration();
     this.runAutoWelcomeMigration();
     this.ensureAutomationDefaults();
     this.isInitialized = true;
@@ -708,6 +710,26 @@ class DatabaseService {
       logger.debug('✅ Position precision migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run position precision migration:', error);
+      throw error;
+    }
+  }
+
+  private runSystemBackupTableMigration(): void {
+    try {
+      const migrationKey = 'migration_021_system_backup_table';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ System backup table migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 021: Add system_backup_history table...');
+      systemBackupTableMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ System backup table migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run system backup table migration:', error);
       throw error;
     }
   }

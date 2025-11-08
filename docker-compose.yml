@@ -39,6 +39,13 @@ services:
       # - SESSION_SECRET=your-generated-secret-here  # Required in production
       # - COOKIE_SECURE=false
 
+      # DISASTER RECOVERY: Restore from system backup
+      # To restore from a backup on container startup, set RESTORE_FROM_BACKUP
+      # to the backup directory name (e.g., 2025-11-08_151637)
+      # Backups must be in /data/system-backups/ directory
+      # See docs/operations/disaster-recovery.md for details
+      # - RESTORE_FROM_BACKUP=2025-11-08_151637
+
 volumes:
   meshmonitor-data:
     driver: local

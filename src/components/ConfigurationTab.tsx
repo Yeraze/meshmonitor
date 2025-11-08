@@ -11,6 +11,7 @@ import MQTTConfigSection from './configuration/MQTTConfigSection';
 import NeighborInfoSection from './configuration/NeighborInfoSection';
 import ChannelsConfigSection from './configuration/ChannelsConfigSection';
 import BackupManagementSection from './configuration/BackupManagementSection';
+import SystemBackupSection from './configuration/SystemBackupSection';
 import { ImportConfigModal } from './configuration/ImportConfigModal';
 import { ExportConfigModal } from './configuration/ExportConfigModal';
 import { ROLE_MAP, PRESET_MAP, REGION_MAP } from './configuration/constants';
@@ -618,6 +619,8 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         />
 
         <BackupManagementSection />
+
+        <SystemBackupSection />
       </div>
 
       {/* Import/Export Modals */}

@@ -27,6 +27,8 @@ import { appriseNotificationService } from './services/appriseNotificationServic
 import { deviceBackupService } from './services/deviceBackupService.js';
 import { backupFileService } from './services/backupFileService.js';
 import { backupSchedulerService } from './services/backupSchedulerService.js';
+import { systemBackupService } from './services/systemBackupService.js';
+import { systemRestoreService } from './services/systemRestoreService.js';
 import { duplicateKeySchedulerService } from './services/duplicateKeySchedulerService.js';
 import { solarMonitoringService } from './services/solarMonitoringService.js';
 import { getUserNotificationPreferences, saveUserNotificationPreferences } from './utils/notificationFiltering.js';
@@ -244,6 +246,53 @@ async function initializeVirtualNodeServer(): Promise<void> {
 // Register callback to initialize virtual node server when config capture completes
 // This ensures it starts after both initial connection and reconnections
 meshtasticManager.registerConfigCaptureCompleteCallback(initializeVirtualNodeServer);
+
+// ========== Bootstrap Restore Logic ==========
+// Check for RESTORE_FROM_BACKUP environment variable and restore if set
+// This MUST happen before services start (per ARCHITECTURE_LESSONS.md)
+(async () => {
+  try {
+    const restoreFromBackup = systemRestoreService.shouldRestore();
+
+    if (restoreFromBackup) {
+      logger.info('🔄 RESTORE_FROM_BACKUP environment variable detected');
+      logger.info(`📦 Attempting to restore from: ${restoreFromBackup}`);
+
+      // Validate restore can proceed
+      const validation = await systemRestoreService.canRestore(restoreFromBackup);
+      if (!validation.can) {
+        logger.error(`❌ Cannot restore from backup: ${validation.reason}`);
+        logger.error('⚠️  Container will start normally without restore');
+        return;
+      }
+
+      logger.info('✅ Backup validation passed, starting restore...');
+
+      // Restore the system (this happens BEFORE services start)
+      const result = await systemRestoreService.restoreFromBackup(restoreFromBackup);
+
+      if (result.success) {
+        logger.info('✅ System restore completed successfully!');
+        logger.info(`📊 Restored ${result.tablesRestored} tables with ${result.rowsRestored} rows`);
+
+        if (result.migrationRequired) {
+          logger.info('⚠️  Schema migration was required and completed');
+        }
+
+        logger.info('🚀 Continuing with normal startup...');
+      } else {
+        logger.error('❌ System restore failed:', result.message);
+        if (result.errors) {
+          result.errors.forEach(err => logger.error(`  - ${err}`));
+        }
+        logger.error('⚠️  Container will start normally with existing database');
+      }
+    }
+  } catch (error) {
+    logger.error('❌ Fatal error during bootstrap restore:', error);
+    logger.error('⚠️  Container will start normally with existing database');
+  }
+})();
 
 // Initialize Meshtastic connection
 setTimeout(async () => {
@@ -2452,6 +2501,193 @@ apiRouter.delete('/backup/delete/:filename', requirePermission('configuration', 
     logger.error('❌ Error deleting backup:', error);
     res.status(500).json({
       error: 'Failed to delete backup',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// ========== System Backup Endpoints ==========
+
+// Create a system backup (exports all database tables to JSON)
+apiRouter.post('/system/backup', requirePermission('configuration', 'write'), async (_req, res) => {
+  try {
+    logger.info('📦 System backup requested...');
+
+    const dirname = await systemBackupService.createBackup('manual');
+
+    // TODO: Add audit logging
+    // auditLogger.log({
+    //   action: 'system_backup_created',
+    //   userId: _req.session?.user?.id,
+    //   details: JSON.stringify({ dirname, type: 'manual' })
+    // });
+
+    logger.info(`✅ System backup created: ${dirname}`);
+
+    res.json({
+      success: true,
+      dirname,
+      message: 'System backup created successfully'
+    });
+  } catch (error) {
+    logger.error('❌ Error creating system backup:', error);
+    res.status(500).json({
+      error: 'Failed to create system backup',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// List all system backups
+apiRouter.get('/system/backup/list', requirePermission('configuration', 'read'), async (_req, res) => {
+  try {
+    const backups = await systemBackupService.listBackups();
+    res.json(backups);
+  } catch (error) {
+    logger.error('❌ Error listing system backups:', error);
+    res.status(500).json({
+      error: 'Failed to list system backups',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Download a system backup as tar.gz
+apiRouter.get('/system/backup/download/:dirname', requirePermission('configuration', 'read'), async (req, res) => {
+  try {
+    const { dirname } = req.params;
+
+    // Validate dirname to prevent directory traversal - only allow date format YYYY-MM-DD_HHMMSS
+    if (!/^\d{4}-\d{2}-\d{2}_\d{6}$/.test(dirname)) {
+      return res.status(400).json({ error: 'Invalid backup directory name format' });
+    }
+
+    const backupPath = systemBackupService.getBackupPath(dirname);
+    const archiver = await import('archiver');
+    const fs = await import('fs');
+
+    // Check if backup exists
+    if (!fs.existsSync(backupPath)) {
+      return res.status(404).json({ error: 'Backup not found' });
+    }
+
+    // Create tar.gz archive on-the-fly
+    res.setHeader('Content-Type', 'application/gzip');
+    res.setHeader('Content-Disposition', `attachment; filename="${dirname}.tar.gz"`);
+
+    const archive = archiver.default('tar', {
+      gzip: true,
+      gzipOptions: { level: 9 }
+    });
+
+    archive.on('error', (err) => {
+      logger.error('❌ Error creating archive:', err);
+      res.status(500).json({ error: 'Failed to create archive' });
+    });
+
+    archive.pipe(res);
+    archive.directory(backupPath, dirname);
+    await archive.finalize();
+
+    // TODO: Add audit logging
+    // auditLogger.log({
+    //   action: 'system_backup_downloaded',
+    //   userId: req.session?.user?.id,
+    //   details: JSON.stringify({ dirname })
+    // });
+
+    logger.info(`📥 System backup downloaded: ${dirname}`);
+  } catch (error) {
+    logger.error('❌ Error downloading system backup:', error);
+    res.status(500).json({
+      error: 'Failed to download system backup',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Delete a system backup
+apiRouter.delete('/system/backup/delete/:dirname', requirePermission('configuration', 'write'), async (req, res) => {
+  try {
+    const { dirname } = req.params;
+
+    // Validate dirname to prevent directory traversal
+    if (!/^\d{4}-\d{2}-\d{2}_\d{6}$/.test(dirname)) {
+      return res.status(400).json({ error: 'Invalid backup directory name format' });
+    }
+
+    await systemBackupService.deleteBackup(dirname);
+
+    // TODO: Add audit logging
+    // auditLogger.log({
+    //   action: 'system_backup_deleted',
+    //   userId: req.session?.user?.id,
+    //   details: JSON.stringify({ dirname })
+    // });
+
+    logger.info(`🗑️  System backup deleted: ${dirname}`);
+
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('❌ Error deleting system backup:', error);
+    res.status(500).json({
+      error: 'Failed to delete system backup',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Get system backup settings
+apiRouter.get('/system/backup/settings', requirePermission('configuration', 'read'), async (_req, res) => {
+  try {
+    const enabled = databaseService.getSetting('system_backup_enabled') === 'true';
+    const maxBackups = parseInt(databaseService.getSetting('system_backup_maxBackups') || '7', 10);
+    const backupTime = databaseService.getSetting('system_backup_time') || '03:00';
+
+    res.json({
+      enabled,
+      maxBackups,
+      backupTime
+    });
+  } catch (error) {
+    logger.error('❌ Error getting system backup settings:', error);
+    res.status(500).json({
+      error: 'Failed to get system backup settings',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Save system backup settings
+apiRouter.post('/system/backup/settings', requirePermission('configuration', 'write'), async (req, res) => {
+  try {
+    const { enabled, maxBackups, backupTime } = req.body;
+
+    // Validate inputs
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ error: 'Invalid enabled value' });
+    }
+
+    if (typeof maxBackups !== 'number' || maxBackups < 1 || maxBackups > 365) {
+      return res.status(400).json({ error: 'Invalid maxBackups value (must be 1-365)' });
+    }
+
+    if (!backupTime || !/^\d{2}:\d{2}$/.test(backupTime)) {
+      return res.status(400).json({ error: 'Invalid backupTime format (must be HH:MM)' });
+    }
+
+    // Save settings
+    databaseService.setSetting('system_backup_enabled', enabled.toString());
+    databaseService.setSetting('system_backup_maxBackups', maxBackups.toString());
+    databaseService.setSetting('system_backup_time', backupTime);
+
+    logger.info(`⚙️  System backup settings updated: enabled=${enabled}, maxBackups=${maxBackups}, time=${backupTime}`);
+
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('❌ Error saving system backup settings:', error);
+    res.status(500).json({
+      error: 'Failed to save system backup settings',
       details: error instanceof Error ? error.message : 'Unknown error'
     });
   }
