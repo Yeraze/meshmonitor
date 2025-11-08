@@ -113,3 +113,125 @@ export function formatRelativeTime(
 
   return relative;
 }
+
+/**
+ * Smart datetime formatting for messages based on how recent they are
+ * - Today: just time (12:34 PM)
+ * - Yesterday: "Yesterday 12:34 PM"
+ * - This week: "Mon 12:34 PM"
+ * - This year: "Nov 8 12:34 PM"
+ * - Older: full date (11/08/2024 12:34 PM)
+ *
+ * @param date - Date object to format
+ * @param timeFormat - '12' for 12-hour format, '24' for 24-hour format
+ * @param dateFormat - 'MM/DD/YYYY' or 'DD/MM/YYYY' (used for older dates)
+ * @returns Smart formatted datetime string
+ */
+export function formatMessageTime(
+  date: Date,
+  timeFormat: TimeFormat = '24',
+  dateFormat: DateFormat = 'MM/DD/YYYY'
+): string {
+  const now = new Date();
+  const time = formatTime(date, timeFormat);
+
+  // Helper to check if two dates are on the same day
+  const isSameDay = (d1: Date, d2: Date) =>
+    d1.getFullYear() === d2.getFullYear() &&
+    d1.getMonth() === d2.getMonth() &&
+    d1.getDate() === d2.getDate();
+
+  // Today - just show time
+  if (isSameDay(date, now)) {
+    return time;
+  }
+
+  // Yesterday
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (isSameDay(date, yesterday)) {
+    return `Yesterday ${time}`;
+  }
+
+  // This week (within last 7 days)
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 7) {
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const dayName = dayNames[date.getDay()];
+    return `${dayName} ${time}`;
+  }
+
+  // This year - show month and day
+  if (date.getFullYear() === now.getFullYear()) {
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const monthName = monthNames[date.getMonth()];
+    const day = date.getDate();
+    return `${monthName} ${day} ${time}`;
+  }
+
+  // Older - show full date
+  return `${formatDate(date, dateFormat)} ${time}`;
+}
+
+/**
+ * Get the date string for a message (for date separators)
+ * @param date - Date object
+ * @param _dateFormat - 'MM/DD/YYYY' or 'DD/MM/YYYY' (reserved for future use)
+ * @returns Formatted date string for separator
+ */
+export function getMessageDateSeparator(
+  date: Date,
+  _dateFormat: DateFormat = 'MM/DD/YYYY'
+): string {
+  const now = new Date();
+
+  // Helper to check if two dates are on the same day
+  const isSameDay = (d1: Date, d2: Date) =>
+    d1.getFullYear() === d2.getFullYear() &&
+    d1.getMonth() === d2.getMonth() &&
+    d1.getDate() === d2.getDate();
+
+  // Today
+  if (isSameDay(date, now)) {
+    return 'Today';
+  }
+
+  // Yesterday
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (isSameDay(date, yesterday)) {
+    return 'Yesterday';
+  }
+
+  // This year - show full date without year
+  if (date.getFullYear() === now.getFullYear()) {
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                        'July', 'August', 'September', 'October', 'November', 'December'];
+    return `${monthNames[date.getMonth()]} ${date.getDate()}`;
+  }
+
+  // Older - show full date with year
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                      'July', 'August', 'September', 'October', 'November', 'December'];
+  return `${monthNames[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
+}
+
+/**
+ * Check if a date separator should be shown between two messages
+ * @param prevDate - Previous message date (or null if first message)
+ * @param currentDate - Current message date
+ * @returns true if a separator should be shown
+ */
+export function shouldShowDateSeparator(
+  prevDate: Date | null,
+  currentDate: Date
+): boolean {
+  if (!prevDate) return true;
+
+  return prevDate.getFullYear() !== currentDate.getFullYear() ||
+         prevDate.getMonth() !== currentDate.getMonth() ||
+         prevDate.getDate() !== currentDate.getDate();
+}
