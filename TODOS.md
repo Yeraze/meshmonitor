@@ -53,6 +53,23 @@
 - [ ] Regenerate package-lock.json
 - [ ] Create release
 
+#### DM Conversation Enhancements (#490)
+
+**Completed:**
+- [x] Add dmFilter state to UIContext (all/unread/recent)
+- [x] Implement automatic sorting by most recent message
+- [x] Calculate and display last message preview (50 char truncation)
+- [x] Add filter dropdown for All/Unread/Recent conversations
+- [x] Display relative time for last message
+- [x] Full-width single-line layout with message preview
+- [x] Red border indicator on time display for unread messages
+- [x] Remove inline unread badge in favor of time display indicator
+
+**Remaining:**
+- [ ] Run system tests
+- [ ] Create pull request
+- [ ] Merge PR
+
 ## Completed Tasks
 
 ### Version 2.15.3 (Current Release)
