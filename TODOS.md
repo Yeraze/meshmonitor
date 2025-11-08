@@ -64,11 +64,9 @@
 - [x] Full-width single-line layout with message preview
 - [x] Red border indicator on time display for unread messages
 - [x] Remove inline unread badge in favor of time display indicator
-
-**Remaining:**
 - [x] Run system tests (all 6 passed)
 - [x] Create pull request (PR #494)
-- [ ] Merge PR
+- [x] Merge PR #494 to main
 
 ## Completed Tasks
 
