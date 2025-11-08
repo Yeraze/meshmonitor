@@ -32,10 +32,13 @@
   - docs/operations/disaster-recovery.md - Step-by-step recovery procedures
   - Updated main README.md with new feature
 
+- [x] Run full system tests
+  - All 7 tests passed including new backup/restore test
+- [x] Create pull request
+  - PR #491: feat: Add system backup & restore functionality
+
 **Remaining:**
 - [ ] Update Device Configurator with system backup settings (optional)
-- [ ] Run full system tests
-- [ ] Create pull request
 - [ ] Update package.json to 2.16.0
 - [ ] Update Helm chart to 2.16.0
 - [ ] Regenerate package-lock.json
