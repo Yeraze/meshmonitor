@@ -265,16 +265,16 @@ const SystemBackupSection: React.FC = () => {
         <p style={{ color: 'var(--ctp-subtext0)', marginBottom: '1rem', fontSize: '0.9rem' }}>
           Create a system backup on demand. Backup will be saved to <code>/data/system-backups</code>.
         </p>
-        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+        <div className="settings-buttons">
           <button
-            className="settings-button primary"
+            className="save-button"
             onClick={handleManualBackup}
             disabled={isCreatingBackup}
           >
-            {isCreatingBackup ? 'Creating...' : '📦 Create System Backup'}
+            {isCreatingBackup ? 'Creating...' : '📦 Create Backup Now'}
           </button>
           <button
-            className="settings-button secondary"
+            className="reset-button"
             onClick={handleShowBackups}
             disabled={isLoadingBackups}
           >
@@ -349,13 +349,15 @@ const SystemBackupSection: React.FC = () => {
             </>
           )}
 
-          <button
-            className="settings-button primary"
-            onClick={handleSaveBackupSettings}
-            disabled={isSavingSettings}
-          >
-            {isSavingSettings ? 'Saving...' : '💾 Save Backup Settings'}
-          </button>
+          <div className="settings-buttons">
+            <button
+              className="save-button"
+              onClick={handleSaveBackupSettings}
+              disabled={isSavingSettings}
+            >
+              {isSavingSettings ? 'Saving...' : '💾 Save Backup Settings'}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -434,7 +436,7 @@ const SystemBackupSection: React.FC = () => {
 
             <div className="modal-footer">
               <button
-                className="settings-button secondary"
+                className="reset-button"
                 onClick={() => setIsBackupModalOpen(false)}
               >
                 Close
