@@ -1559,6 +1559,31 @@ body {
   justify-content: flex-start;
 }
 
+/* Date separator for message grouping */
+.date-separator {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  margin: 1.5rem 0 1rem 0;
+  position: relative;
+}
+
+.date-separator::before,
+.date-separator::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+}
+
+.date-separator-text {
+  padding: 0 1rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--ctp-subtext0);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 .sender-dot {
   width: 32px;
   height: 32px;

@@ -25,7 +25,7 @@ import { RebootModal } from './components/RebootModal'
 // import { version } from '../package.json' // Removed - footer no longer displayed
 import { type TemperatureUnit } from './utils/temperature'
 import { calculateDistance, formatDistance } from './utils/distance'
-import { formatTime, formatDateTime, formatRelativeTime } from './utils/datetime'
+import { formatDateTime, formatRelativeTime, formatMessageTime, getMessageDateSeparator, shouldShowDateSeparator } from './utils/datetime'
 import { formatTracerouteRoute } from './utils/traceroute'
 import { getUtf8ByteLength, formatByteCount } from './utils/text'
 import { DeviceInfo, Channel } from './types/device'
@@ -3121,7 +3121,7 @@ function App() {
                       );
 
                       return messagesForChannel && messagesForChannel.length > 0 ? (
-                      messagesForChannel.map(msg => {
+                      messagesForChannel.map((msg, index) => {
                         const isMine = isMyMessage(msg);
                         const repliedMessage = msg.replyId ? findMessageById(msg.replyId, messageChannel) : null;
                         const isReaction = msg.emoji === 1;
@@ -3138,8 +3138,22 @@ function App() {
                           m.emoji === 1 && m.replyId && m.replyId.toString() === msg.id.split('_')[1]
                         );
 
+                        // Check if we should show a date separator
+                        const currentDate = new Date(msg.timestamp);
+                        const prevMsg = index > 0 ? messagesForChannel[index - 1] : null;
+                        const prevDate = prevMsg ? new Date(prevMsg.timestamp) : null;
+                        const showSeparator = shouldShowDateSeparator(prevDate, currentDate);
+
                         return (
-                          <div key={msg.id} className={`message-bubble-container ${isMine ? 'mine' : 'theirs'}`}>
+                          <React.Fragment key={msg.id}>
+                            {showSeparator && (
+                              <div className="date-separator">
+                                <span className="date-separator-text">
+                                  {getMessageDateSeparator(currentDate, dateFormat)}
+                                </span>
+                              </div>
+                            )}
+                            <div className={`message-bubble-container ${isMine ? 'mine' : 'theirs'}`}>
                             {!isMine && (
                               <div
                                 className="sender-dot clickable"
@@ -3211,7 +3225,7 @@ function App() {
                                 )}
                                 <div className="message-meta">
                                   <span className="message-time">
-                                    {formatTime(msg.timestamp, timeFormat)}
+                                    {formatMessageTime(currentDate, timeFormat, dateFormat)}
                                     <HopCountDisplay hopStart={msg.hopStart} hopLimit={msg.hopLimit} />
                                   </span>
                                 </div>
@@ -3223,6 +3237,7 @@ function App() {
                               </div>
                             )}
                           </div>
+                          </React.Fragment>
                         );
                       })
                     ) : (
@@ -3795,7 +3810,7 @@ function App() {
                   );
 
                   return dmMessages.length > 0 ? (
-                    dmMessages.map(msg => {
+                    dmMessages.map((msg, index) => {
                       const isTraceroute = msg.portnum === 70;
                       const isMine = isMyMessage(msg);
                       const isReaction = msg.emoji === 1;
@@ -3816,25 +3831,48 @@ function App() {
                         m.id.split('_')[1] === msg.replyId?.toString()
                       ) : null;
 
+                      // Check if we should show a date separator
+                      const currentDate = new Date(msg.timestamp);
+                      const prevMsg = index > 0 ? dmMessages[index - 1] : null;
+                      const prevDate = prevMsg ? new Date(prevMsg.timestamp) : null;
+                      const showSeparator = shouldShowDateSeparator(prevDate, currentDate);
+
                       if (isTraceroute) {
                         // Keep traceroute messages in simple format
                         return (
-                          <div key={msg.id} className="message-item traceroute">
+                          <React.Fragment key={msg.id}>
+                            {showSeparator && (
+                              <div className="date-separator">
+                                <span className="date-separator-text">
+                                  {getMessageDateSeparator(currentDate, dateFormat)}
+                                </span>
+                              </div>
+                            )}
+                            <div className="message-item traceroute">
                             <div className="message-header">
                               <span className="message-from">{getNodeName(msg.from)}</span>
                               <span className="message-time">
-                                {formatTime(msg.timestamp, timeFormat)}
+                                {formatMessageTime(currentDate, timeFormat, dateFormat)}
                                 <HopCountDisplay hopStart={msg.hopStart} hopLimit={msg.hopLimit} />
                               </span>
                               <span className="traceroute-badge">TRACEROUTE</span>
                             </div>
                             <div className="message-text" style={{whiteSpace: 'pre-line', fontFamily: 'monospace'}}>{msg.text}</div>
                           </div>
+                          </React.Fragment>
                         );
                       }
 
                       return (
-                        <div key={msg.id} className={`message-bubble-container ${isMine ? 'mine' : 'theirs'}`}>
+                        <React.Fragment key={msg.id}>
+                          {showSeparator && (
+                            <div className="date-separator">
+                              <span className="date-separator-text">
+                                {getMessageDateSeparator(currentDate, dateFormat)}
+                              </span>
+                            </div>
+                          )}
+                          <div className={`message-bubble-container ${isMine ? 'mine' : 'theirs'}`}>
                           {!isMine && (
                             <div
                               className="sender-dot clickable"
@@ -3906,7 +3944,7 @@ function App() {
                               )}
                               <div className="message-meta">
                                 <span className="message-time">
-                                  {formatTime(msg.timestamp, timeFormat)}
+                                  {formatMessageTime(currentDate, timeFormat, dateFormat)}
                                   <HopCountDisplay hopStart={msg.hopStart} hopLimit={msg.hopLimit} />
                                 </span>
                               </div>
@@ -3918,6 +3956,7 @@ function App() {
                             </div>
                           )}
                         </div>
+                        </React.Fragment>
                       );
                     })
                   ) : (
