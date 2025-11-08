@@ -8,6 +8,7 @@ import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { getAllTilesets, type TilesetId } from '../config/tilesets';
 import PacketMonitorSettings from './PacketMonitorSettings';
+import SystemBackupSection from './configuration/SystemBackupSection';
 
 type DistanceUnit = 'km' | 'mi';
 type TimeFormat = '12' | '24';
@@ -873,6 +874,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             </>
           )}
         </div>
+
+        <SystemBackupSection />
 
         <div className="settings-section">
           <h3>Settings Management</h3>

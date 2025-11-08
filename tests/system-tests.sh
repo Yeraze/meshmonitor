@@ -33,17 +33,29 @@ cleanup() {
     docker compose -f docker-compose-config-import-test.yml down -v 2>/dev/null || true
     docker compose -f docker-compose.virtual-node-cli-test.yml down -v 2>/dev/null || true
 
+    # Cleanup backup/restore test artifacts
+    docker stop meshmonitor-backup-source-test 2>/dev/null || true
+    docker rm meshmonitor-backup-source-test 2>/dev/null || true
+    docker stop meshmonitor-restore-test 2>/dev/null || true
+    docker rm meshmonitor-restore-test 2>/dev/null || true
+    docker volume rm meshmonitor-backup-source-test-data 2>/dev/null || true
+    docker volume rm meshmonitor-restore-test-data 2>/dev/null || true
+
     # Remove any temporary compose files
     rm -f docker-compose.quick-start-test.yml 2>/dev/null || true
     rm -f docker-compose.reverse-proxy-test.yml 2>/dev/null || true
     rm -f docker-compose-config-import-test.yml 2>/dev/null || true
     rm -f docker-compose.virtual-node-cli-test.yml 2>/dev/null || true
+    rm -f docker-compose.backup-source-test.yml 2>/dev/null || true
+    rm -f docker-compose.restore-test.yml 2>/dev/null || true
 
     # Remove cookie files
     rm -f /tmp/meshmonitor-cookies.txt 2>/dev/null || true
     rm -f /tmp/meshmonitor-security-cookies.txt 2>/dev/null || true
     rm -f /tmp/meshmonitor-reverse-proxy-cookies.txt 2>/dev/null || true
     rm -f /tmp/meshmonitor-config-import-cookies.txt 2>/dev/null || true
+    rm -f /tmp/meshmonitor-backup-test-cookies.txt 2>/dev/null || true
+    rm -f /tmp/meshmonitor-restore-test-cookies.txt 2>/dev/null || true
     rm -f /tmp/vn-test-client.py 2>/dev/null || true
 
     echo -e "${GREEN}✓${NC} Cleanup complete"
@@ -76,6 +88,10 @@ docker volume rm meshmonitor_meshmonitor-quick-start-test-data 2>/dev/null || tr
 docker volume rm meshmonitor_meshmonitor-reverse-proxy-test-data 2>/dev/null || true
 docker volume rm meshmonitor_meshmonitor-config-import-test-data 2>/dev/null || true
 docker volume rm meshmonitor_meshmonitor-virtual-node-cli-test-data 2>/dev/null || true
+docker volume rm meshmonitor_meshmonitor-backup-source-test-data 2>/dev/null || true
+docker volume rm meshmonitor_meshmonitor-restore-test-data 2>/dev/null || true
+docker volume rm meshmonitor-backup-source-test-data 2>/dev/null || true
+docker volume rm meshmonitor-restore-test-data 2>/dev/null || true
 
 echo -e "${GREEN}✓ Test volumes cleaned${NC}"
 echo ""
@@ -175,6 +191,23 @@ else
 fi
 echo ""
 
+echo "=========================================="
+echo -e "${BLUE}Running System Backup & Restore Test${NC}"
+echo "=========================================="
+echo ""
+
+# Run System Backup & Restore test
+if bash "$SCRIPT_DIR/test-backup-restore.sh"; then
+    BACKUP_RESTORE_RESULT="PASSED"
+    echo ""
+    echo -e "${GREEN}✓ System Backup & Restore test PASSED${NC}"
+else
+    BACKUP_RESTORE_RESULT="FAILED"
+    echo ""
+    echo -e "${RED}✗ System Backup & Restore test FAILED${NC}"
+fi
+echo ""
+
 # Summary
 echo "=========================================="
 echo "System Test Results"
@@ -217,6 +250,12 @@ if [ "$VIRTUAL_NODE_CLI_RESULT" = "PASSED" ]; then
     echo -e "Virtual Node CLI Test:    ${GREEN}✓ PASSED${NC}"
 else
     echo -e "Virtual Node CLI Test:    ${RED}✗ FAILED${NC}"
+fi
+
+if [ "$BACKUP_RESTORE_RESULT" = "PASSED" ]; then
+    echo -e "Backup & Restore Test:    ${GREEN}✓ PASSED${NC}"
+else
+    echo -e "Backup & Restore Test:    ${RED}✗ FAILED${NC}"
 fi
 
 echo ""
@@ -270,11 +309,17 @@ else
     echo "| Virtual Node CLI Test | ❌ FAILED |" >> "$REPORT_FILE"
 fi
 
+if [ "$BACKUP_RESTORE_RESULT" = "PASSED" ]; then
+    echo "| Backup & Restore Test | ✅ PASSED |" >> "$REPORT_FILE"
+else
+    echo "| Backup & Restore Test | ❌ FAILED |" >> "$REPORT_FILE"
+fi
+
 echo "" >> "$REPORT_FILE"
 
 # Overall result (config import is optional, so only fail if it actually failed, not if skipped)
 REQUIRED_TESTS_PASSED=true
-if [ "$QUICKSTART_RESULT" != "PASSED" ] || [ "$SECURITY_RESULT" != "PASSED" ] || [ "$REVERSE_PROXY_RESULT" != "PASSED" ] || [ "$OIDC_RESULT" != "PASSED" ] || [ "$VIRTUAL_NODE_CLI_RESULT" != "PASSED" ]; then
+if [ "$QUICKSTART_RESULT" != "PASSED" ] || [ "$SECURITY_RESULT" != "PASSED" ] || [ "$REVERSE_PROXY_RESULT" != "PASSED" ] || [ "$OIDC_RESULT" != "PASSED" ] || [ "$VIRTUAL_NODE_CLI_RESULT" != "PASSED" ] || [ "$BACKUP_RESTORE_RESULT" != "PASSED" ]; then
     REQUIRED_TESTS_PASSED=false
 fi
 
@@ -329,6 +374,13 @@ if [ "$REQUIRED_TESTS_PASSED" = true ]; then
     echo "- Test message sent on gauntlet channel (index 3)" >> "$REPORT_FILE"
     echo "- Message delivery confirmed via Web UI API" >> "$REPORT_FILE"
     echo "- Virtual Node Server connection logging verified" >> "$REPORT_FILE"
+    echo "" >> "$REPORT_FILE"
+    echo "**Backup & Restore Test:**" >> "$REPORT_FILE"
+    echo "- System backup created from running dev container" >> "$REPORT_FILE"
+    echo "- New container spun up with RESTORE_FROM_BACKUP env var" >> "$REPORT_FILE"
+    echo "- Data integrity verified (node count, message count, settings)" >> "$REPORT_FILE"
+    echo "- Restore event logged in audit log" >> "$REPORT_FILE"
+    echo "- Dev container unaffected by restore test" >> "$REPORT_FILE"
 
     echo -e "${GREEN}=========================================="
     echo "✓ ALL SYSTEM TESTS PASSED"
@@ -364,6 +416,9 @@ else
     fi
     if [ "$VIRTUAL_NODE_CLI_RESULT" != "PASSED" ]; then
         echo "- **Virtual Node CLI Test:** Virtual Node Server CLI integration test failed" >> "$REPORT_FILE"
+    fi
+    if [ "$BACKUP_RESTORE_RESULT" != "PASSED" ]; then
+        echo "- **Backup & Restore Test:** System backup and restore verification test failed" >> "$REPORT_FILE"
     fi
 
     echo -e "${RED}=========================================="

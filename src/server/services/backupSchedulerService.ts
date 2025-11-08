@@ -1,17 +1,19 @@
 /**
  * Backup Scheduler Service
- * Handles automated backup scheduling and execution
+ * Handles automated backup scheduling and execution for both device and system backups
  */
 
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
 import { deviceBackupService } from './deviceBackupService.js';
 import { backupFileService } from './backupFileService.js';
+import { systemBackupService } from './systemBackupService.js';
 
 class BackupSchedulerService {
   private schedulerInterval: NodeJS.Timeout | null = null;
   private isRunning = false;
-  private isBackupInProgress = false;
+  private isDeviceBackupInProgress = false;
+  private isSystemBackupInProgress = false;
   private meshtasticManager: any = null;
 
   /**
@@ -20,13 +22,14 @@ class BackupSchedulerService {
   initialize(meshtasticManager: any): void {
     this.meshtasticManager = meshtasticManager;
 
-    // Initialize backup directory
+    // Initialize backup directories
     backupFileService.initializeBackupDirectory();
+    systemBackupService.initializeBackupDirectory();
 
     // Start the scheduler
     this.start();
 
-    logger.info('✅ Backup scheduler initialized');
+    logger.info('✅ Backup scheduler initialized (device + system backups)');
   }
 
   /**
@@ -68,16 +71,27 @@ class BackupSchedulerService {
    * Check if it's time to run a backup and execute if needed
    */
   private async checkAndRunBackup(): Promise<void> {
-    // Prevent multiple concurrent backup executions
-    if (this.isBackupInProgress) {
+    // Check and run device backups
+    await this.checkAndRunDeviceBackup();
+
+    // Check and run system backups
+    await this.checkAndRunSystemBackup();
+  }
+
+  /**
+   * Check if it's time to run a device backup and execute if needed
+   */
+  private async checkAndRunDeviceBackup(): Promise<void> {
+    // Prevent multiple concurrent device backup executions
+    if (this.isDeviceBackupInProgress) {
       return;
     }
 
     try {
-      // Check if automated backups are enabled
+      // Check if automated device backups are enabled
       const enabled = databaseService.getSetting('backup_enabled');
       if (enabled !== 'true') {
-        return; // Automated backups are disabled
+        return; // Automated device backups are disabled
       }
 
       // Get the configured backup time (HH:MM format)
@@ -94,42 +108,98 @@ class BackupSchedulerService {
         return; // Not time yet
       }
 
-      // Check if we already ran a backup today
+      // Check if we already ran a device backup today
       const lastBackupKey = 'backup_lastAutomaticBackup';
       const lastBackup = databaseService.getSetting(lastBackupKey);
       const today = now.toISOString().split('T')[0]; // YYYY-MM-DD
 
       if (lastBackup && lastBackup.startsWith(today)) {
-        return; // Already ran a backup today
+        return; // Already ran a device backup today
       }
 
       // Set flag to prevent race conditions
-      this.isBackupInProgress = true;
+      this.isDeviceBackupInProgress = true;
 
-      // Run the automated backup
-      logger.info('⏰ Time for automated backup...');
-      await this.runAutomatedBackup();
+      // Run the automated device backup
+      logger.info('⏰ Time for automated device backup...');
+      await this.runAutomatedDeviceBackup();
 
-      // Update last backup timestamp
+      // Update last device backup timestamp
       databaseService.setSetting(lastBackupKey, now.toISOString());
     } catch (error) {
-      logger.error('❌ Error in backup scheduler check:', error);
+      logger.error('❌ Error in device backup scheduler check:', error);
     } finally {
       // Always release the lock
-      this.isBackupInProgress = false;
+      this.isDeviceBackupInProgress = false;
     }
   }
 
   /**
-   * Run an automated backup
+   * Check if it's time to run a system backup and execute if needed
    */
-  private async runAutomatedBackup(): Promise<void> {
+  private async checkAndRunSystemBackup(): Promise<void> {
+    // Prevent multiple concurrent system backup executions
+    if (this.isSystemBackupInProgress) {
+      return;
+    }
+
+    try {
+      // Check if automated system backups are enabled
+      const enabled = databaseService.getSetting('system_backup_enabled');
+      if (enabled !== 'true') {
+        return; // Automated system backups are disabled
+      }
+
+      // Get the configured backup time (HH:MM format)
+      const backupTime = databaseService.getSetting('system_backup_time') || '03:00';
+      const [targetHour, targetMinute] = backupTime.split(':').map(Number);
+
+      // Get current time
+      const now = new Date();
+      const currentHour = now.getHours();
+      const currentMinute = now.getMinutes();
+
+      // Check if we're within the backup time window (same hour and minute)
+      if (currentHour !== targetHour || currentMinute !== targetMinute) {
+        return; // Not time yet
+      }
+
+      // Check if we already ran a system backup today
+      const lastBackupKey = 'system_backup_lastAutomaticBackup';
+      const lastBackup = databaseService.getSetting(lastBackupKey);
+      const today = now.toISOString().split('T')[0]; // YYYY-MM-DD
+
+      if (lastBackup && lastBackup.startsWith(today)) {
+        return; // Already ran a system backup today
+      }
+
+      // Set flag to prevent race conditions
+      this.isSystemBackupInProgress = true;
+
+      // Run the automated system backup
+      logger.info('⏰ Time for automated system backup...');
+      await this.runAutomatedSystemBackup();
+
+      // Update last system backup timestamp
+      databaseService.setSetting(lastBackupKey, now.toISOString());
+    } catch (error) {
+      logger.error('❌ Error in system backup scheduler check:', error);
+    } finally {
+      // Always release the lock
+      this.isSystemBackupInProgress = false;
+    }
+  }
+
+  /**
+   * Run an automated device backup
+   */
+  private async runAutomatedDeviceBackup(): Promise<void> {
     try {
       if (!this.meshtasticManager) {
         throw new Error('Meshtastic manager not initialized');
       }
 
-      logger.info('🤖 Running automated backup...');
+      logger.info('🤖 Running automated device backup...');
 
       // Generate the backup YAML
       const yamlBackup = await deviceBackupService.generateBackup(this.meshtasticManager);
@@ -141,9 +211,25 @@ class BackupSchedulerService {
       // Save to disk
       const filename = await backupFileService.saveBackup(yamlBackup, 'automatic', nodeId);
 
-      logger.info(`✅ Automated backup completed: ${filename}`);
+      logger.info(`✅ Automated device backup completed: ${filename}`);
     } catch (error) {
-      logger.error('❌ Failed to run automated backup:', error);
+      logger.error('❌ Failed to run automated device backup:', error);
+    }
+  }
+
+  /**
+   * Run an automated system backup
+   */
+  private async runAutomatedSystemBackup(): Promise<void> {
+    try {
+      logger.info('🤖 Running automated system backup...');
+
+      // Create system backup
+      const dirname = await systemBackupService.createBackup('automatic');
+
+      logger.info(`✅ Automated system backup completed: ${dirname}`);
+    } catch (error) {
+      logger.error('❌ Failed to run automated system backup:', error);
     }
   }
 
@@ -173,16 +259,43 @@ class BackupSchedulerService {
   }
 
   /**
+   * Manually trigger a system backup
+   */
+  async triggerManualSystemBackup(): Promise<string> {
+    logger.info('👤 Running manual system backup...');
+
+    // Create system backup
+    const dirname = await systemBackupService.createBackup('manual');
+
+    logger.info(`✅ Manual system backup completed: ${dirname}`);
+
+    return dirname;
+  }
+
+  /**
    * Get scheduler status
    */
-  getStatus(): { running: boolean; nextCheck: string | null; enabled: boolean; backupTime: string } {
-    const enabled = databaseService.getSetting('backup_enabled') === 'true';
-    const backupTime = databaseService.getSetting('backup_time') || '02:00';
+  getStatus(): {
+    running: boolean;
+    device: {
+      nextCheck: string | null;
+      enabled: boolean;
+      backupTime: string;
+    };
+    system: {
+      nextCheck: string | null;
+      enabled: boolean;
+      backupTime: string;
+    };
+  } {
+    // Device backup settings
+    const deviceEnabled = databaseService.getSetting('backup_enabled') === 'true';
+    const deviceBackupTime = databaseService.getSetting('backup_time') || '02:00';
 
-    let nextCheck: string | null = null;
-    if (this.isRunning && enabled) {
+    let deviceNextCheck: string | null = null;
+    if (this.isRunning && deviceEnabled) {
       const now = new Date();
-      const [targetHour, targetMinute] = backupTime.split(':').map(Number);
+      const [targetHour, targetMinute] = deviceBackupTime.split(':').map(Number);
 
       const next = new Date(now);
       next.setHours(targetHour, targetMinute, 0, 0);
@@ -192,14 +305,41 @@ class BackupSchedulerService {
         next.setDate(next.getDate() + 1);
       }
 
-      nextCheck = next.toISOString();
+      deviceNextCheck = next.toISOString();
+    }
+
+    // System backup settings
+    const systemEnabled = databaseService.getSetting('system_backup_enabled') === 'true';
+    const systemBackupTime = databaseService.getSetting('system_backup_time') || '03:00';
+
+    let systemNextCheck: string | null = null;
+    if (this.isRunning && systemEnabled) {
+      const now = new Date();
+      const [targetHour, targetMinute] = systemBackupTime.split(':').map(Number);
+
+      const next = new Date(now);
+      next.setHours(targetHour, targetMinute, 0, 0);
+
+      // If the time has passed today, schedule for tomorrow
+      if (next <= now) {
+        next.setDate(next.getDate() + 1);
+      }
+
+      systemNextCheck = next.toISOString();
     }
 
     return {
       running: this.isRunning,
-      nextCheck,
-      enabled,
-      backupTime
+      device: {
+        nextCheck: deviceNextCheck,
+        enabled: deviceEnabled,
+        backupTime: deviceBackupTime
+      },
+      system: {
+        nextCheck: systemNextCheck,
+        enabled: systemEnabled,
+        backupTime: systemBackupTime
+      }
     };
   }
 }
