@@ -36,6 +36,15 @@
   - All 7 tests passed including new backup/restore test
 - [x] Create pull request
   - PR #491: feat: Add system backup & restore functionality
+- [x] Merge PR #491 to main
+- [x] Complete audit logging integration
+  - Added audit logging for all backup/restore operations
+  - Added bootstrap audit log after restore completion
+- [x] Implement re-restore protection mechanism
+  - Marker file at /data/.restore-completed prevents accidental data loss
+  - Different backups can still be restored by changing env var
+- [x] Move System Backup UI to General Settings page
+- [x] Update button styling to match application standards
 
 **Remaining:**
 - [ ] Update Device Configurator with system backup settings (optional)
