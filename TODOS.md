@@ -66,8 +66,8 @@
 - [x] Remove inline unread badge in favor of time display indicator
 
 **Remaining:**
-- [ ] Run system tests
-- [ ] Create pull request
+- [x] Run system tests (all 6 passed)
+- [x] Create pull request (PR #494)
 - [ ] Merge PR
 
 ## Completed Tasks
