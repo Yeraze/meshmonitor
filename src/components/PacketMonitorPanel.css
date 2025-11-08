@@ -199,15 +199,13 @@
 }
 
 .packet-table .timestamp {
-  font-family: 'Courier New', monospace;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-secondary);
 }
 
 .packet-table .from-node,
 .packet-table .to-node {
-  font-family: 'Courier New', monospace;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .node-id-link {

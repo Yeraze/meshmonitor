@@ -2835,7 +2835,10 @@ function App() {
                     min="0"
                     max="10"
                     value={nodeFilters.maxHops}
-                    onChange={(e) => setNodeFilters({...nodeFilters, maxHops: parseInt(e.target.value) || 10})}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value);
+                      setNodeFilters({...nodeFilters, maxHops: isNaN(val) ? 10 : val});
+                    }}
                   />
                 </div>
               </div>
