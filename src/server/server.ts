@@ -2509,18 +2509,20 @@ apiRouter.delete('/backup/delete/:filename', requirePermission('configuration', 
 // ========== System Backup Endpoints ==========
 
 // Create a system backup (exports all database tables to JSON)
-apiRouter.post('/system/backup', requirePermission('configuration', 'write'), async (_req, res) => {
+apiRouter.post('/system/backup', requirePermission('configuration', 'write'), async (req, res) => {
   try {
     logger.info('📦 System backup requested...');
 
     const dirname = await systemBackupService.createBackup('manual');
 
-    // TODO: Add audit logging
-    // auditLogger.log({
-    //   action: 'system_backup_created',
-    //   userId: _req.session?.user?.id,
-    //   details: JSON.stringify({ dirname, type: 'manual' })
-    // });
+    // Audit log
+    databaseService.auditLog(
+      req.user!.id,
+      'system_backup_created',
+      'system_backup',
+      JSON.stringify({ dirname, type: 'manual' }),
+      req.ip || null
+    );
 
     logger.info(`✅ System backup created: ${dirname}`);
 
@@ -2585,16 +2587,18 @@ apiRouter.get('/system/backup/download/:dirname', requirePermission('configurati
       res.status(500).json({ error: 'Failed to create archive' });
     });
 
+    // Audit log before streaming
+    databaseService.auditLog(
+      req.user!.id,
+      'system_backup_downloaded',
+      'system_backup',
+      JSON.stringify({ dirname }),
+      req.ip || null
+    );
+
     archive.pipe(res);
     archive.directory(backupPath, dirname);
     await archive.finalize();
-
-    // TODO: Add audit logging
-    // auditLogger.log({
-    //   action: 'system_backup_downloaded',
-    //   userId: req.session?.user?.id,
-    //   details: JSON.stringify({ dirname })
-    // });
 
     logger.info(`📥 System backup downloaded: ${dirname}`);
   } catch (error) {
@@ -2618,12 +2622,14 @@ apiRouter.delete('/system/backup/delete/:dirname', requirePermission('configurat
 
     await systemBackupService.deleteBackup(dirname);
 
-    // TODO: Add audit logging
-    // auditLogger.log({
-    //   action: 'system_backup_deleted',
-    //   userId: req.session?.user?.id,
-    //   details: JSON.stringify({ dirname })
-    // });
+    // Audit log
+    databaseService.auditLog(
+      req.user!.id,
+      'system_backup_deleted',
+      'system_backup',
+      JSON.stringify({ dirname }),
+      req.ip || null
+    );
 
     logger.info(`🗑️  System backup deleted: ${dirname}`);
 

@@ -147,24 +147,22 @@ class SystemRestoreService {
       // This is implicit - on restart, all nodes will need to be re-queried
       // We could add an explicit flag if needed in the future
 
-      // TODO: Add audit logging
-      // db.prepare(`
-      //   INSERT INTO audit_log (action, userId, details, timestamp)
-      //   VALUES (?, ?, ?, ?)
-      // `).run(
-      //   'system_restore_completed',
-      //   null, // System action
-      //   JSON.stringify({
-      //     dirname,
-      //     tablesRestored,
-      //     rowsRestored: totalRowsRestored,
-      //     backupVersion: metadata.meshmonitorVersion,
-      //     backupSchemaVersion,
-      //     currentSchemaVersion,
-      //     migrationRequired
-      //   }),
-      //   Date.now()
-      // );
+      // Audit log (after schema migration is complete)
+      databaseService.auditLog(
+        null, // System action during restore
+        'system_restore_completed',
+        'system_backup',
+        JSON.stringify({
+          dirname,
+          tablesRestored,
+          rowsRestored: totalRowsRestored,
+          backupVersion: metadata.meshmonitorVersion,
+          backupSchemaVersion,
+          currentSchemaVersion,
+          migrationRequired
+        }),
+        null // No IP address during startup
+      );
 
       const duration = ((Date.now() - startTime) / 1000).toFixed(2);
       logger.info(`✅ System restore completed: ${tablesRestored} tables, ${totalRowsRestored} rows in ${duration}s`);
@@ -180,23 +178,21 @@ class SystemRestoreService {
     } catch (error) {
       logger.error('❌ System restore failed:', error);
 
-      // TODO: Add audit logging
-      // try {
-      //   databaseService.db.prepare(`
-      //     INSERT INTO audit_log (action, userId, details, timestamp)
-      //     VALUES (?, ?, ?, ?)
-      //   `).run(
-      //     'system_restore_failed',
-      //     null,
-      //     JSON.stringify({
-      //       dirname,
-      //       error: error instanceof Error ? error.message : String(error)
-      //     }),
-      //     Date.now()
-      //   );
-      // } catch (auditError) {
-      //   logger.error('Failed to log restore failure to audit log:', auditError);
-      // }
+      // Audit log failure
+      try {
+        databaseService.auditLog(
+          null, // System action during restore
+          'system_restore_failed',
+          'system_backup',
+          JSON.stringify({
+            dirname,
+            error: error instanceof Error ? error.message : String(error)
+          }),
+          null // No IP address during startup
+        );
+      } catch (auditError) {
+        logger.error('Failed to log restore failure to audit log:', auditError);
+      }
 
       return {
         success: false,
