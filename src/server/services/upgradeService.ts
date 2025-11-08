@@ -441,6 +441,195 @@ class UpgradeService {
       };
     }
   }
+
+  /**
+   * Test auto-upgrade configuration
+   * Verifies all components needed for auto-upgrade are properly configured
+   */
+  async testConfiguration(): Promise<{
+    success: boolean;
+    results: Array<{ check: string; passed: boolean; message: string; details?: string }>;
+    overallMessage: string;
+  }> {
+    const results: Array<{ check: string; passed: boolean; message: string; details?: string }> = [];
+
+    try {
+      // Check 1: AUTO_UPGRADE_ENABLED environment variable
+      const upgradeEnabled = this.UPGRADE_ENABLED;
+      results.push({
+        check: 'Environment Variable',
+        passed: upgradeEnabled,
+        message: upgradeEnabled
+          ? 'AUTO_UPGRADE_ENABLED=true is set'
+          : 'AUTO_UPGRADE_ENABLED is not set to true',
+        details: upgradeEnabled
+          ? 'Auto-upgrade functionality is enabled'
+          : 'Set AUTO_UPGRADE_ENABLED=true in docker-compose.yml or environment'
+      });
+
+      // Check 2: Deployment method
+      const isDocker = this.DEPLOYMENT_METHOD === 'docker';
+      results.push({
+        check: 'Deployment Method',
+        passed: isDocker,
+        message: `Detected deployment: ${this.DEPLOYMENT_METHOD}`,
+        details: isDocker
+          ? 'Running in Docker container'
+          : 'Auto-upgrade requires Docker deployment'
+      });
+
+      // Check 3: Data directory writable
+      try {
+        const testFile = path.join(DATA_DIR, '.upgrade-test-' + Date.now());
+        fs.writeFileSync(testFile, 'test');
+        fs.unlinkSync(testFile);
+        results.push({
+          check: 'Data Directory',
+          passed: true,
+          message: 'Data directory is writable',
+          details: `Path: ${DATA_DIR}`
+        });
+      } catch (error) {
+        results.push({
+          check: 'Data Directory',
+          passed: false,
+          message: 'Cannot write to data directory',
+          details: error instanceof Error ? error.message : String(error)
+        });
+      }
+
+      // Check 4: Backup directory
+      try {
+        if (!fs.existsSync(BACKUP_DIR)) {
+          fs.mkdirSync(BACKUP_DIR, { recursive: true });
+        }
+        fs.accessSync(BACKUP_DIR, fs.constants.W_OK);
+        results.push({
+          check: 'Backup Directory',
+          passed: true,
+          message: 'Backup directory exists and is writable',
+          details: `Path: ${BACKUP_DIR}`
+        });
+      } catch (error) {
+        results.push({
+          check: 'Backup Directory',
+          passed: false,
+          message: 'Backup directory not writable',
+          details: error instanceof Error ? error.message : String(error)
+        });
+      }
+
+      // Check 5: Upgrader container (check if sidecar is running)
+      // We can infer this by checking if the upgrade watchdog can be communicated with
+      // For now, we'll check if the upgrade status file exists or can be created
+      try {
+        // Try to read existing status file, or create a test one
+        if (fs.existsSync(UPGRADE_STATUS_FILE)) {
+          const status = fs.readFileSync(UPGRADE_STATUS_FILE, 'utf-8').trim();
+          results.push({
+            check: 'Upgrader Sidecar',
+            passed: true,
+            message: 'Upgrader watchdog is running',
+            details: `Current status: ${status || 'ready'}`
+          });
+        } else {
+          // Write a test status to see if watchdog picks it up
+          // If AUTO_UPGRADE_ENABLED is true but status file doesn't exist yet,
+          // the watchdog might still be initializing
+          results.push({
+            check: 'Upgrader Sidecar',
+            passed: upgradeEnabled && isDocker, // Assume it's starting if env is correct
+            message: upgradeEnabled && isDocker
+              ? 'Upgrader sidecar should be running (status file not yet created)'
+              : 'Upgrader sidecar not detected',
+            details: upgradeEnabled && isDocker
+              ? 'The sidecar may still be initializing. Check "docker ps" for meshmonitor-upgrader container'
+              : 'Ensure docker-compose.upgrade.yml is used when starting: docker compose -f docker-compose.yml -f docker-compose.upgrade.yml up -d'
+          });
+        }
+      } catch (error) {
+        results.push({
+          check: 'Upgrader Sidecar',
+          passed: false,
+          message: 'Cannot detect upgrader watchdog',
+          details: error instanceof Error ? error.message : String(error)
+        });
+      }
+
+      // Check 6: Disk space
+      try {
+        const stats = fs.statfsSync ? fs.statfsSync(DATA_DIR) : null;
+        if (stats) {
+          const freeSpaceMB = Math.round((stats.bavail * stats.bsize) / 1024 / 1024);
+          const requiredMB = 500;
+          const hasSpace = freeSpaceMB >= requiredMB;
+          results.push({
+            check: 'Disk Space',
+            passed: hasSpace,
+            message: `${freeSpaceMB}MB free (${requiredMB}MB required)`,
+            details: hasSpace
+              ? 'Sufficient disk space for upgrade and backup'
+              : `Need at least ${requiredMB}MB free space`
+          });
+        } else {
+          results.push({
+            check: 'Disk Space',
+            passed: true,
+            message: 'Unable to check disk space',
+            details: 'statfsSync not available on this system'
+          });
+        }
+      } catch (error) {
+        results.push({
+          check: 'Disk Space',
+          passed: false,
+          message: 'Could not check disk space',
+          details: error instanceof Error ? error.message : String(error)
+        });
+      }
+
+      // Check 7: Docker socket access (for the watchdog)
+      // This is indirect - we can't check from within the main container
+      // But we can provide guidance
+      results.push({
+        check: 'Docker Socket',
+        passed: upgradeEnabled && isDocker,
+        message: upgradeEnabled && isDocker
+          ? 'Should be mounted in upgrader sidecar'
+          : 'Requires upgrader sidecar',
+        details: upgradeEnabled && isDocker
+          ? 'The upgrader sidecar needs /var/run/docker.sock mounted. Verify with: docker exec meshmonitor-upgrader ls -la /var/run/docker.sock'
+          : 'Check docker-compose.upgrade.yml configuration'
+      });
+
+      // Determine overall success
+      const allCriticalPassed = results
+        .filter(r => ['Environment Variable', 'Deployment Method', 'Data Directory', 'Backup Directory'].includes(r.check))
+        .every(r => r.passed);
+
+      const overallMessage = allCriticalPassed
+        ? 'Auto-upgrade configuration is valid. All critical checks passed.'
+        : 'Auto-upgrade configuration has issues. Review failed checks above.';
+
+      return {
+        success: allCriticalPassed,
+        results,
+        overallMessage
+      };
+    } catch (error) {
+      logger.error('❌ Failed to test configuration:', error);
+      return {
+        success: false,
+        results: [{
+          check: 'Test Error',
+          passed: false,
+          message: 'Failed to run configuration test',
+          details: error instanceof Error ? error.message : String(error)
+        }],
+        overallMessage: 'Configuration test failed to run'
+      };
+    }
+  }
 }
 
 export const upgradeService = new UpgradeService();

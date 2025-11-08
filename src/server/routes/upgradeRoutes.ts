@@ -233,4 +233,23 @@ router.get('/latest-status', async (_req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /api/upgrade/test-configuration
+ * Test auto-upgrade configuration and verify all components are working
+ */
+router.get('/test-configuration', async (_req: Request, res: Response) => {
+  try {
+    const testResult = await upgradeService.testConfiguration();
+    return res.json(testResult);
+  } catch (error) {
+    logger.error('Error testing upgrade configuration:', error);
+    return res.status(500).json({
+      success: false,
+      results: [],
+      overallMessage: 'Failed to run configuration test',
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
 export default router;
