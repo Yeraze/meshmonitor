@@ -25,7 +25,7 @@ import { RebootModal } from './components/RebootModal'
 // import { version } from '../package.json' // Removed - footer no longer displayed
 import { type TemperatureUnit } from './utils/temperature'
 import { calculateDistance, formatDistance } from './utils/distance'
-import { formatTime, formatDateTime } from './utils/datetime'
+import { formatTime, formatDateTime, formatRelativeTime } from './utils/datetime'
 import { formatTracerouteRoute } from './utils/traceroute'
 import { getUtf8ByteLength, formatByteCount } from './utils/text'
 import { DeviceInfo, Channel } from './types/device'
@@ -383,10 +383,12 @@ function App() {
     securityFilter,
     setSecurityFilter,
     channelFilter,
+    dmFilter,
+    setDmFilter,
     sortField,
-    setSortField,
+    setSortField: _setSortField,
     sortDirection,
-    setSortDirection,
+    setSortDirection: _setSortDirection,
     showStatusModal,
     setShowStatusModal,
     systemStatus,
@@ -3402,23 +3404,55 @@ function App() {
           ...node,
           messageCount: 0,
           unreadCount: 0,
-          lastMessageTime: 0
+          lastMessageTime: 0,
+          lastMessageText: ''
         };
 
         const dmMessages = getDMMessages(nodeId);
         // Get unread count from database-backed tracking instead of counting all messages
         const unreadCount = unreadCountsData?.directMessages?.[nodeId] || 0;
 
+        // Get last message text (most recent message)
+        const lastMessage = dmMessages.length > 0
+          ? dmMessages.reduce((latest, msg) =>
+              msg.timestamp.getTime() > latest.timestamp.getTime() ? msg : latest
+            )
+          : null;
+
+        const lastMessageText = lastMessage
+          ? (lastMessage.text || '').substring(0, 50) + (lastMessage.text && lastMessage.text.length > 50 ? '...' : '')
+          : '';
+
         return {
           ...node,
           messageCount: dmMessages.length,
           unreadCount: unreadCount,
-          lastMessageTime: dmMessages.length > 0 ? Math.max(...dmMessages.map(m => m.timestamp.getTime())) : 0
+          lastMessageTime: dmMessages.length > 0 ? Math.max(...dmMessages.map(m => m.timestamp.getTime())) : 0,
+          lastMessageText
         };
       });
 
-    // processedNodes already has favorites first and correct sorting applied
-    const sortedNodesWithMessages = nodesWithMessages;
+    // Sort by most recent message first (feature request #490)
+    const sortedNodesWithMessages = [...nodesWithMessages].sort((a, b) => {
+      // Favorites first
+      if (a.isFavorite && !b.isFavorite) return -1;
+      if (!a.isFavorite && b.isFavorite) return 1;
+
+      // Then by last message time (most recent first)
+      return b.lastMessageTime - a.lastMessageTime;
+    })
+
+    // Apply DM filter
+    .filter(node => {
+      if (dmFilter === 'unread') {
+        return node.unreadCount > 0;
+      } else if (dmFilter === 'recent') {
+        // Show only nodes with messages in last 24 hours
+        const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
+        return node.lastMessageTime > oneDayAgo;
+      }
+      return true; // 'all' filter
+    });
 
     return (
       <div className="nodes-split-view messages-split-view">
@@ -3447,35 +3481,16 @@ function App() {
                 className="filter-input-small"
               />
               <div className="sort-controls">
-                <button
-                  className="filter-popup-btn"
-                  onClick={() => setShowNodeFilterPopup(!showNodeFilterPopup)}
-                  title="Filter nodes"
-                >
-                  Filter
-                </button>
                 <select
-                  value={sortField}
-                  onChange={(e) => setSortField(e.target.value as SortField)}
+                  value={dmFilter}
+                  onChange={(e) => setDmFilter(e.target.value as 'all' | 'unread' | 'recent')}
                   className="sort-dropdown"
-                  title="Sort nodes by"
+                  title="Filter conversations"
                 >
-                  <option value="longName">Sort: Name</option>
-                  <option value="shortName">Sort: Short Name</option>
-                  <option value="id">Sort: ID</option>
-                  <option value="lastHeard">Sort: Updated</option>
-                  <option value="snr">Sort: Signal</option>
-                  <option value="battery">Sort: Charge</option>
-                  <option value="hwModel">Sort: Hardware</option>
-                  <option value="hops">Sort: Hops</option>
+                  <option value="all">All Conversations</option>
+                  <option value="unread">Unread Only</option>
+                  <option value="recent">Recent (24h)</option>
                 </select>
-                <button
-                  className="sort-direction-btn"
-                  onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
-                  title={sortDirection === 'asc' ? 'Ascending' : 'Descending'}
-                >
-                  {sortDirection === 'asc' ? '↑' : '↓'}
-                </button>
               </div>
             </div>
             )}
@@ -3527,9 +3542,6 @@ function App() {
                             {node.isFavorite && <span className="favorite-indicator">⭐</span>}
                             <span className="node-name-text">
                               {node.user?.longName || `Node ${node.nodeNum}`}
-                              {node.unreadCount > 0 && (
-                                <span className="unread-badge-inline">{node.unreadCount}</span>
-                              )}
                             </span>
                           </div>
                           <div className="node-actions">
@@ -3553,34 +3565,54 @@ function App() {
                           </div>
                         </div>
 
-                        <div className="node-details">
-                          <div className="node-stats">
-                            <span className="stat" title="Total Messages">
-                              💬 {node.messageCount}
-                            </span>
-                            {node.snr != null && (
-                              <span className="stat" title="Signal-to-Noise Ratio">
-                                📶 {node.snr.toFixed(1)}dB
-                              </span>
-                            )}
-                            {node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null && (
-                              <span className="stat" title={node.deviceMetrics.batteryLevel === 101 ? "Plugged In" : "Battery Level"}>
-                                {node.deviceMetrics.batteryLevel === 101 ? '🔌' : `🔋 ${node.deviceMetrics.batteryLevel}%`}
-                              </span>
-                            )}
-                            {node.hopsAway != null && (
-                              <span className="stat" title="Hops Away">
-                                🔗 {node.hopsAway} hop{node.hopsAway !== 1 ? 's' : ''}
-                                {node.channel != null && node.channel !== 0 && ` (ch:${node.channel})`}
-                              </span>
-                            )}
-                          </div>
+                        <div className="node-details" style={{ width: '100%' }}>
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            width: '100%'
+                          }}>
+                            {/* Left: Message preview */}
+                            <div className="last-message-preview" style={{
+                              fontSize: '0.85rem',
+                              color: 'var(--ctp-subtext0)',
+                              fontStyle: 'italic',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              flex: '1',
+                              minWidth: 0
+                            }}>
+                              {node.lastMessageText || 'No messages'}
+                            </div>
 
-                          <div className="node-time">
-                            {node.lastMessageTime ?
-                              formatDateTime(new Date(node.lastMessageTime), timeFormat, dateFormat)
-                              : 'Never'
-                            }
+                            {/* Right: Message count and time */}
+                            <div style={{
+                              display: 'flex',
+                              gap: '0.5rem',
+                              alignItems: 'center',
+                              flexShrink: 0,
+                              fontSize: '0.85rem'
+                            }}>
+                              <span className="stat" title="Total Messages">
+                                💬 {node.messageCount}
+                              </span>
+                              {node.lastMessageTime > 0 && (
+                                <span
+                                  className="stat"
+                                  title={formatDateTime(new Date(node.lastMessageTime), timeFormat, dateFormat)}
+                                  style={node.unreadCount > 0 ? {
+                                    border: '2px solid var(--ctp-red)',
+                                    borderRadius: '12px',
+                                    padding: '2px 6px',
+                                    backgroundColor: 'var(--ctp-surface0)'
+                                  } : undefined}
+                                >
+                                  🕒 {formatRelativeTime(node.lastMessageTime)}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
 

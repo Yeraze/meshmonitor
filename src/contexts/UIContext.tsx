@@ -16,6 +16,8 @@ interface UIContextType {
   setSecurityFilter: React.Dispatch<React.SetStateAction<'all' | 'flaggedOnly' | 'hideFlagged'>>;
   channelFilter: number | 'all';
   setChannelFilter: React.Dispatch<React.SetStateAction<number | 'all'>>;
+  dmFilter: 'all' | 'unread' | 'recent';
+  setDmFilter: React.Dispatch<React.SetStateAction<'all' | 'unread' | 'recent'>>;
   sortField: SortField;
   setSortField: React.Dispatch<React.SetStateAction<SortField>>;
   sortDirection: SortDirection;
@@ -80,6 +82,7 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   const [nodeFilter, setNodeFilter] = useState<string>('');
   const [securityFilter, setSecurityFilter] = useState<'all' | 'flaggedOnly' | 'hideFlagged'>('all');
   const [channelFilter, setChannelFilter] = useState<number | 'all'>('all');
+  const [dmFilter, setDmFilter] = useState<'all' | 'unread' | 'recent'>('all');
   const [sortField, setSortField] = useState<SortField>(() => {
     const saved = localStorage.getItem('preferredSortField');
     return (saved as SortField) || 'longName';
@@ -132,6 +135,8 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
         setSecurityFilter,
         channelFilter,
         setChannelFilter,
+        dmFilter,
+        setDmFilter,
         sortField,
         setSortField,
         sortDirection,

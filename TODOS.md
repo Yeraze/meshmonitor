@@ -36,6 +36,15 @@
   - All 7 tests passed including new backup/restore test
 - [x] Create pull request
   - PR #491: feat: Add system backup & restore functionality
+- [x] Merge PR #491 to main
+- [x] Complete audit logging integration
+  - Added audit logging for all backup/restore operations
+  - Added bootstrap audit log after restore completion
+- [x] Implement re-restore protection mechanism
+  - Marker file at /data/.restore-completed prevents accidental data loss
+  - Different backups can still be restored by changing env var
+- [x] Move System Backup UI to General Settings page
+- [x] Update button styling to match application standards
 
 **Remaining:**
 - [ ] Update Device Configurator with system backup settings (optional)
@@ -43,6 +52,23 @@
 - [ ] Update Helm chart to 2.16.0
 - [ ] Regenerate package-lock.json
 - [ ] Create release
+
+#### DM Conversation Enhancements (#490)
+
+**Completed:**
+- [x] Add dmFilter state to UIContext (all/unread/recent)
+- [x] Implement automatic sorting by most recent message
+- [x] Calculate and display last message preview (50 char truncation)
+- [x] Add filter dropdown for All/Unread/Recent conversations
+- [x] Display relative time for last message
+- [x] Full-width single-line layout with message preview
+- [x] Red border indicator on time display for unread messages
+- [x] Remove inline unread badge in favor of time display indicator
+
+**Remaining:**
+- [x] Run system tests (all 6 passed)
+- [x] Create pull request (PR #494)
+- [ ] Merge PR
 
 ## Completed Tasks
 
