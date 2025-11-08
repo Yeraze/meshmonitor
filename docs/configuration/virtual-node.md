@@ -112,12 +112,12 @@ service:
 ### iOS (Official Meshtastic App)
 
 1. Open the Meshtastic iOS app
-2. Go to **Settings** > **Radio Configuration**
-3. Select **Network** as your connection type
+2. From the Connection screen, tap **Manual**
+3. Select **TCP** as the connection type
 4. Enter your MeshMonitor server details:
-   - **Host**: Your MeshMonitor server IP or hostname
+   - **Address**: Your MeshMonitor server IP or hostname
    - **Port**: `4404` (or your custom VIRTUAL_NODE_PORT)
-5. Save and connect
+5. Tap **Connect**
 
 The app will connect to MeshMonitor's Virtual Node Server instead of directly to your physical node.
 
