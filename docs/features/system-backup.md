@@ -154,6 +154,7 @@ The restore operation is **atomic** and **safe**:
 - ✅ **Schema Migration**: Automatic migration from older MeshMonitor versions
 - ✅ **Rollback Safety**: If restore fails, original database remains intact
 - ✅ **Node State Reset**: All node states marked as "unknown" (per best practices)
+- ✅ **Re-Restore Protection**: Automatically prevents re-restoring the same backup on subsequent restarts to protect against data loss
 
 ### Restore Status
 

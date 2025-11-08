@@ -81,13 +81,19 @@ Before disaster strikes, ensure you have:
    curl http://localhost:8080/api/health
    ```
 
-7. **Remove RESTORE_FROM_BACKUP**:
+7. **Remove RESTORE_FROM_BACKUP (optional)**:
+
+   **Automatic Protection**: MeshMonitor automatically prevents re-restoring the same backup on subsequent restarts. A marker file is created at `/data/.restore-completed` after successful restore.
+
+   However, it's best practice to remove the environment variable:
    ```bash
    # Edit docker-compose.yml and remove or comment out:
    # - RESTORE_FROM_BACKUP=2025-11-08_143026
 
    docker compose up -d
    ```
+
+   **Note**: If you restart without removing this variable, the restore will be safely skipped with a warning message in the logs.
 
 **Recovery Time**: 5-10 minutes
 
@@ -410,6 +416,28 @@ docker exec meshmonitor ls /data/system-backups
 2. Verify all required environment variables are set
 3. Check docker-compose.yml syntax
 4. Review container logs: `docker logs meshmonitor`
+
+### "Restore already completed" warning
+
+**Cause**: RESTORE_FROM_BACKUP is still set after a successful restore
+
+**Explanation**: MeshMonitor automatically prevents re-restoring the same backup to protect against data loss. A marker file tracks the last restored backup.
+
+**To restore again (same backup)**:
+```bash
+# Remove the marker file
+docker exec meshmonitor rm /data/.restore-completed
+
+# Restart container
+docker compose restart
+```
+
+**To restore a different backup**:
+```bash
+# Just change the environment variable to a different backup
+# in docker-compose.yml, then restart
+docker compose up -d
+```
 
 ---
 

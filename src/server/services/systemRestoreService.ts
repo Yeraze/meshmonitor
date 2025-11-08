@@ -20,6 +20,7 @@ import databaseService from '../../services/database.js';
 import { systemBackupService } from './systemBackupService.js';
 
 const SYSTEM_BACKUP_DIR = process.env.SYSTEM_BACKUP_DIR || '/data/system-backups';
+const RESTORE_MARKER_FILE = '/data/.restore-completed';
 
 interface RestoreResult {
   success: boolean;
@@ -167,6 +168,17 @@ class SystemRestoreService {
       const duration = ((Date.now() - startTime) / 1000).toFixed(2);
       logger.info(`✅ System restore completed: ${tablesRestored} tables, ${totalRowsRestored} rows in ${duration}s`);
 
+      // Write restore marker to prevent accidental re-restoration
+      try {
+        fs.writeFileSync(RESTORE_MARKER_FILE, dirname, 'utf8');
+        logger.info(`📝 Restore marker written to: ${RESTORE_MARKER_FILE}`);
+        logger.info('ℹ️  This prevents accidental re-restore on next restart');
+        logger.info('ℹ️  To restore again, remove RESTORE_FROM_BACKUP from environment or delete the marker file');
+      } catch (error) {
+        logger.warn('⚠️  Failed to write restore marker file:', error);
+        logger.warn('⚠️  Re-restore protection may not work properly');
+      }
+
       return {
         success: true,
         message: 'System restore completed successfully',
@@ -212,6 +224,36 @@ class SystemRestoreService {
     }
 
     logger.info(`🔍 RESTORE_FROM_BACKUP environment variable detected: ${restoreFrom}`);
+
+    // Check if this backup has already been restored (safety mechanism)
+    if (fs.existsSync(RESTORE_MARKER_FILE)) {
+      try {
+        const lastRestored = fs.readFileSync(RESTORE_MARKER_FILE, 'utf8').trim();
+        if (lastRestored === restoreFrom) {
+          logger.warn('⚠️  ========================================');
+          logger.warn('⚠️  RESTORE ALREADY COMPLETED');
+          logger.warn('⚠️  ========================================');
+          logger.warn(`⚠️  Backup '${restoreFrom}' was already restored on a previous startup.`);
+          logger.warn('⚠️  Skipping restore to prevent data loss.');
+          logger.warn('⚠️  ');
+          logger.warn('⚠️  To restore again:');
+          logger.warn('⚠️  1. Remove the file: /data/.restore-completed');
+          logger.warn('⚠️  2. Restart the container');
+          logger.warn('⚠️  ');
+          logger.warn('⚠️  Or to restore a different backup:');
+          logger.warn('⚠️  1. Change RESTORE_FROM_BACKUP to a different backup name');
+          logger.warn('⚠️  2. Restart the container');
+          logger.warn('⚠️  ========================================');
+          return null;
+        } else {
+          logger.info(`ℹ️  Previous restore was from: ${lastRestored}`);
+          logger.info(`ℹ️  Requested restore is from: ${restoreFrom}`);
+          logger.info('ℹ️  Different backup requested - proceeding with restore...');
+        }
+      } catch (error) {
+        logger.warn('⚠️  Could not read restore marker file, proceeding with restore...');
+      }
+    }
 
     // Check if backup exists
     const backupPath = path.join(SYSTEM_BACKUP_DIR, restoreFrom);
