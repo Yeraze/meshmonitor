@@ -279,6 +279,20 @@ meshtasticManager.registerConfigCaptureCompleteCallback(initializeVirtualNodeSer
           logger.info('⚠️  Schema migration was required and completed');
         }
 
+        // Audit log to mark restore completion point (after migrations)
+        databaseService.auditLog(
+          null, // System action during bootstrap
+          'system_restore_bootstrap_complete',
+          'system_backup',
+          JSON.stringify({
+            dirname: restoreFromBackup,
+            tablesRestored: result.tablesRestored,
+            rowsRestored: result.rowsRestored,
+            migrationRequired: result.migrationRequired || false
+          }),
+          null // No IP address during startup
+        );
+
         logger.info('🚀 Continuing with normal startup...');
       } else {
         logger.error('❌ System restore failed:', result.message);
