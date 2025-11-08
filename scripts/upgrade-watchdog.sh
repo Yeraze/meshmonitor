@@ -156,11 +156,11 @@ wait_for_health() {
       continue
     fi
 
-    # Try to check health endpoint
-    if wget -q -O /dev/null --timeout=5 http://localhost:3001/api/health 2>/dev/null || \
-       wget -q -O /dev/null --timeout=5 http://localhost:8080/api/health 2>/dev/null || \
-       curl -sf http://localhost:3001/api/health >/dev/null 2>&1 || \
-       curl -sf http://localhost:8080/api/health >/dev/null 2>&1; then
+    # Try to check health endpoint using container name
+    # The upgrader runs in a separate container, so localhost won't work
+    # Use the container name instead to reach the main meshmonitor container
+    if wget -q -O /dev/null --timeout=5 http://$CONTAINER_NAME:3001/api/health 2>/dev/null || \
+       curl -sf http://$CONTAINER_NAME:3001/api/health >/dev/null 2>&1; then
       log_success "Health check passed"
       return 0
     fi

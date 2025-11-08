@@ -9,6 +9,7 @@ import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { getAllTilesets, type TilesetId } from '../config/tilesets';
 import PacketMonitorSettings from './PacketMonitorSettings';
 import SystemBackupSection from './configuration/SystemBackupSection';
+import AutoUpgradeTestSection from './configuration/AutoUpgradeTestSection';
 
 type DistanceUnit = 'km' | 'mi';
 type TimeFormat = '12' | '24';
@@ -876,6 +877,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         </div>
 
         <SystemBackupSection />
+
+        <AutoUpgradeTestSection baseUrl={baseUrl} />
 
         <div className="settings-section">
           <h3>Settings Management</h3>
