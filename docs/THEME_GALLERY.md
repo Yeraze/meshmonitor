@@ -11,9 +11,24 @@ The classic Catppuccin palette in four beautiful variants:
 - **Best for**: Daytime use, outdoor viewing
 - **Colors**: Warm pastels on light backgrounds
 
-<div style="display: flex; gap: 10px; margin: 20px 0;">
-  <img src="/images/themes/latte-nodes-desktop.png" alt="Latte Desktop" style="width: 65%;" />
-  <img src="/images/themes/latte-nodes-mobile.png" alt="Latte Mobile" style="width: 33%;" />
+#### Nodes View
+<div style="display: flex; gap: 10px; margin: 10px 0; align-items: flex-start;">
+  <a href="/images/themes/latte-nodes-desktop.png" target="_blank" style="flex: 2;">
+    <img src="/images/themes/latte-nodes-desktop.png" alt="Latte Desktop - Nodes" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+  <a href="/images/themes/latte-nodes-mobile.png" target="_blank" style="flex: 1;">
+    <img src="/images/themes/latte-nodes-mobile.png" alt="Latte Mobile - Nodes" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+</div>
+
+#### Channels View
+<div style="display: flex; gap: 10px; margin: 10px 0 20px 0; align-items: flex-start;">
+  <a href="/images/themes/latte-channels-desktop.png" target="_blank" style="flex: 2;">
+    <img src="/images/themes/latte-channels-desktop.png" alt="Latte Desktop - Channels" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+  <a href="/images/themes/latte-channels-mobile.png" target="_blank" style="flex: 1;">
+    <img src="/images/themes/latte-channels-mobile.png" alt="Latte Mobile - Channels" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
 </div>
 
 ### Frappé (Medium)
@@ -21,9 +36,24 @@ The classic Catppuccin palette in four beautiful variants:
 - **Best for**: Reduced eye strain in normal lighting
 - **Colors**: Balanced mid-tones
 
-<div style="display: flex; gap: 10px; margin: 20px 0;">
-  <img src="/images/themes/frappe-nodes-desktop.png" alt="Frappé Desktop" style="width: 65%;" />
-  <img src="/images/themes/frappe-nodes-mobile.png" alt="Frappé Mobile" style="width: 33%;" />
+#### Nodes View
+<div style="display: flex; gap: 10px; margin: 10px 0; align-items: flex-start;">
+  <a href="/images/themes/frappe-nodes-desktop.png" target="_blank" style="flex: 2;">
+    <img src="/images/themes/frappe-nodes-desktop.png" alt="Frappé Desktop - Nodes" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+  <a href="/images/themes/frappe-nodes-mobile.png" target="_blank" style="flex: 1;">
+    <img src="/images/themes/frappe-nodes-mobile.png" alt="Frappé Mobile - Nodes" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+</div>
+
+#### Channels View
+<div style="display: flex; gap: 10px; margin: 10px 0 20px 0; align-items: flex-start;">
+  <a href="/images/themes/frappe-channels-desktop.png" target="_blank" style="flex: 2;">
+    <img src="/images/themes/frappe-channels-desktop.png" alt="Frappé Desktop - Channels" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+  <a href="/images/themes/frappe-channels-mobile.png" target="_blank" style="flex: 1;">
+    <img src="/images/themes/frappe-channels-mobile.png" alt="Frappé Mobile - Channels" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
 </div>
 
 ### Macchiato (Medium-Dark)
@@ -31,9 +61,24 @@ The classic Catppuccin palette in four beautiful variants:
 - **Best for**: Extended viewing sessions
 - **Colors**: Comfortable dark palette
 
-<div style="display: flex; gap: 10px; margin: 20px 0;">
-  <img src="/images/themes/macchiato-nodes-desktop.png" alt="Macchiato Desktop" style="width: 65%;" />
-  <img src="/images/themes/macchiato-nodes-mobile.png" alt="Macchiato Mobile" style="width: 33%;" />
+#### Nodes View
+<div style="display: flex; gap: 10px; margin: 10px 0; align-items: flex-start;">
+  <a href="/images/themes/macchiato-nodes-desktop.png" target="_blank" style="flex: 2;">
+    <img src="/images/themes/macchiato-nodes-desktop.png" alt="Macchiato Desktop - Nodes" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+  <a href="/images/themes/macchiato-nodes-mobile.png" target="_blank" style="flex: 1;">
+    <img src="/images/themes/macchiato-nodes-mobile.png" alt="Macchiato Mobile - Nodes" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+</div>
+
+#### Channels View
+<div style="display: flex; gap: 10px; margin: 10px 0 20px 0; align-items: flex-start;">
+  <a href="/images/themes/macchiato-channels-desktop.png" target="_blank" style="flex: 2;">
+    <img src="/images/themes/macchiato-channels-desktop.png" alt="Macchiato Desktop - Channels" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+  <a href="/images/themes/macchiato-channels-mobile.png" target="_blank" style="flex: 1;">
+    <img src="/images/themes/macchiato-channels-mobile.png" alt="Macchiato Mobile - Channels" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
 </div>
 
 ### Mocha (Dark) - Default
@@ -41,9 +86,24 @@ The classic Catppuccin palette in four beautiful variants:
 - **Best for**: Low-light environments, OLED displays
 - **Colors**: Rich dark backgrounds with vibrant accents
 
-<div style="display: flex; gap: 10px; margin: 20px 0;">
-  <img src="/images/themes/mocha-nodes-desktop.png" alt="Mocha Desktop" style="width: 65%;" />
-  <img src="/images/themes/mocha-nodes-mobile.png" alt="Mocha Mobile" style="width: 33%;" />
+#### Nodes View
+<div style="display: flex; gap: 10px; margin: 10px 0; align-items: flex-start;">
+  <a href="/images/themes/mocha-nodes-desktop.png" target="_blank" style="flex: 2;">
+    <img src="/images/themes/mocha-nodes-desktop.png" alt="Mocha Desktop - Nodes" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+  <a href="/images/themes/mocha-nodes-mobile.png" target="_blank" style="flex: 1;">
+    <img src="/images/themes/mocha-nodes-mobile.png" alt="Mocha Mobile - Nodes" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+</div>
+
+#### Channels View
+<div style="display: flex; gap: 10px; margin: 10px 0 20px 0; align-items: flex-start;">
+  <a href="/images/themes/mocha-channels-desktop.png" target="_blank" style="flex: 2;">
+    <img src="/images/themes/mocha-channels-desktop.png" alt="Mocha Desktop - Channels" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+  <a href="/images/themes/mocha-channels-mobile.png" target="_blank" style="flex: 1;">
+    <img src="/images/themes/mocha-channels-mobile.png" alt="Mocha Mobile - Channels" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
 </div>
 
 ## Popular Themes
@@ -54,9 +114,24 @@ The classic Catppuccin palette in four beautiful variants:
 - **Colors**: Cool blues and grays
 - **Origin**: Inspired by the Arctic
 
-<div style="display: flex; gap: 10px; margin: 20px 0;">
-  <img src="/images/themes/nord-nodes-desktop.png" alt="Nord Desktop" style="width: 65%;" />
-  <img src="/images/themes/nord-nodes-mobile.png" alt="Nord Mobile" style="width: 33%;" />
+#### Nodes View
+<div style="display: flex; gap: 10px; margin: 10px 0; align-items: flex-start;">
+  <a href="/images/themes/nord-nodes-desktop.png" target="_blank" style="flex: 2;">
+    <img src="/images/themes/nord-nodes-desktop.png" alt="Nord Desktop - Nodes" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+  <a href="/images/themes/nord-nodes-mobile.png" target="_blank" style="flex: 1;">
+    <img src="/images/themes/nord-nodes-mobile.png" alt="Nord Mobile - Nodes" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+</div>
+
+#### Channels View
+<div style="display: flex; gap: 10px; margin: 10px 0 20px 0; align-items: flex-start;">
+  <a href="/images/themes/nord-channels-desktop.png" target="_blank" style="flex: 2;">
+    <img src="/images/themes/nord-channels-desktop.png" alt="Nord Desktop - Channels" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+  <a href="/images/themes/nord-channels-mobile.png" target="_blank" style="flex: 1;">
+    <img src="/images/themes/nord-channels-mobile.png" alt="Nord Mobile - Channels" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
 </div>
 
 ### Dracula
@@ -65,9 +140,24 @@ The classic Catppuccin palette in four beautiful variants:
 - **Colors**: Deep purples, bright pinks, vibrant accents
 - **Origin**: One of the most popular dark themes
 
-<div style="display: flex; gap: 10px; margin: 20px 0;">
-  <img src="/images/themes/dracula-nodes-desktop.png" alt="Dracula Desktop" style="width: 65%;" />
-  <img src="/images/themes/dracula-nodes-mobile.png" alt="Dracula Mobile" style="width: 33%;" />
+#### Nodes View
+<div style="display: flex; gap: 10px; margin: 10px 0; align-items: flex-start;">
+  <a href="/images/themes/dracula-nodes-desktop.png" target="_blank" style="flex: 2;">
+    <img src="/images/themes/dracula-nodes-desktop.png" alt="Dracula Desktop - Nodes" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+  <a href="/images/themes/dracula-nodes-mobile.png" target="_blank" style="flex: 1;">
+    <img src="/images/themes/dracula-nodes-mobile.png" alt="Dracula Mobile - Nodes" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+</div>
+
+#### Channels View
+<div style="display: flex; gap: 10px; margin: 10px 0 20px 0; align-items: flex-start;">
+  <a href="/images/themes/dracula-channels-desktop.png" target="_blank" style="flex: 2;">
+    <img src="/images/themes/dracula-channels-desktop.png" alt="Dracula Desktop - Channels" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+  <a href="/images/themes/dracula-channels-mobile.png" target="_blank" style="flex: 1;">
+    <img src="/images/themes/dracula-channels-mobile.png" alt="Dracula Mobile - Channels" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
 </div>
 
 ### Solarized Dark
@@ -76,9 +166,24 @@ The classic Catppuccin palette in four beautiful variants:
 - **Colors**: Scientifically-balanced earth tones
 - **Origin**: Ethan Schoonover's classic theme
 
-<div style="display: flex; gap: 10px; margin: 20px 0;">
-  <img src="/images/themes/solarized-dark-nodes-desktop.png" alt="Solarized Dark Desktop" style="width: 65%;" />
-  <img src="/images/themes/solarized-dark-nodes-mobile.png" alt="Solarized Dark Mobile" style="width: 33%;" />
+#### Nodes View
+<div style="display: flex; gap: 10px; margin: 10px 0; align-items: flex-start;">
+  <a href="/images/themes/solarized-dark-nodes-desktop.png" target="_blank" style="flex: 2;">
+    <img src="/images/themes/solarized-dark-nodes-desktop.png" alt="Solarized Dark Desktop - Nodes" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+  <a href="/images/themes/solarized-dark-nodes-mobile.png" target="_blank" style="flex: 1;">
+    <img src="/images/themes/solarized-dark-nodes-mobile.png" alt="Solarized Dark Mobile - Nodes" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+</div>
+
+#### Channels View
+<div style="display: flex; gap: 10px; margin: 10px 0 20px 0; align-items: flex-start;">
+  <a href="/images/themes/solarized-dark-channels-desktop.png" target="_blank" style="flex: 2;">
+    <img src="/images/themes/solarized-dark-channels-desktop.png" alt="Solarized Dark Desktop - Channels" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+  <a href="/images/themes/solarized-dark-channels-mobile.png" target="_blank" style="flex: 1;">
+    <img src="/images/themes/solarized-dark-channels-mobile.png" alt="Solarized Dark Mobile - Channels" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
 </div>
 
 ### Solarized Light
@@ -87,9 +192,24 @@ The classic Catppuccin palette in four beautiful variants:
 - **Colors**: Warm light backgrounds with earth-tone accents
 - **Origin**: Ethan Schoonover's classic theme
 
-<div style="display: flex; gap: 10px; margin: 20px 0;">
-  <img src="/images/themes/solarized-light-nodes-desktop.png" alt="Solarized Light Desktop" style="width: 65%;" />
-  <img src="/images/themes/solarized-light-nodes-mobile.png" alt="Solarized Light Mobile" style="width: 33%;" />
+#### Nodes View
+<div style="display: flex; gap: 10px; margin: 10px 0; align-items: flex-start;">
+  <a href="/images/themes/solarized-light-nodes-desktop.png" target="_blank" style="flex: 2;">
+    <img src="/images/themes/solarized-light-nodes-desktop.png" alt="Solarized Light Desktop - Nodes" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+  <a href="/images/themes/solarized-light-nodes-mobile.png" target="_blank" style="flex: 1;">
+    <img src="/images/themes/solarized-light-nodes-mobile.png" alt="Solarized Light Mobile - Nodes" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+</div>
+
+#### Channels View
+<div style="display: flex; gap: 10px; margin: 10px 0 20px 0; align-items: flex-start;">
+  <a href="/images/themes/solarized-light-channels-desktop.png" target="_blank" style="flex: 2;">
+    <img src="/images/themes/solarized-light-channels-desktop.png" alt="Solarized Light Desktop - Channels" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+  <a href="/images/themes/solarized-light-channels-mobile.png" target="_blank" style="flex: 1;">
+    <img src="/images/themes/solarized-light-channels-mobile.png" alt="Solarized Light Mobile - Channels" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
 </div>
 
 ### Gruvbox Dark
@@ -98,9 +218,24 @@ The classic Catppuccin palette in four beautiful variants:
 - **Colors**: Warm retro palette
 - **Origin**: Inspired by vintage terminals
 
-<div style="display: flex; gap: 10px; margin: 20px 0;">
-  <img src="/images/themes/gruvbox-dark-nodes-desktop.png" alt="Gruvbox Dark Desktop" style="width: 65%;" />
-  <img src="/images/themes/gruvbox-dark-nodes-mobile.png" alt="Gruvbox Dark Mobile" style="width: 33%;" />
+#### Nodes View
+<div style="display: flex; gap: 10px; margin: 10px 0; align-items: flex-start;">
+  <a href="/images/themes/gruvbox-dark-nodes-desktop.png" target="_blank" style="flex: 2;">
+    <img src="/images/themes/gruvbox-dark-nodes-desktop.png" alt="Gruvbox Dark Desktop - Nodes" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+  <a href="/images/themes/gruvbox-dark-nodes-mobile.png" target="_blank" style="flex: 1;">
+    <img src="/images/themes/gruvbox-dark-nodes-mobile.png" alt="Gruvbox Dark Mobile - Nodes" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+</div>
+
+#### Channels View
+<div style="display: flex; gap: 10px; margin: 10px 0 20px 0; align-items: flex-start;">
+  <a href="/images/themes/gruvbox-dark-channels-desktop.png" target="_blank" style="flex: 2;">
+    <img src="/images/themes/gruvbox-dark-channels-desktop.png" alt="Gruvbox Dark Desktop - Channels" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+  <a href="/images/themes/gruvbox-dark-channels-mobile.png" target="_blank" style="flex: 1;">
+    <img src="/images/themes/gruvbox-dark-channels-mobile.png" alt="Gruvbox Dark Mobile - Channels" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
 </div>
 
 ### Gruvbox Light
@@ -109,9 +244,24 @@ The classic Catppuccin palette in four beautiful variants:
 - **Colors**: Warm light backgrounds with retro accents
 - **Origin**: Inspired by vintage terminals
 
-<div style="display: flex; gap: 10px; margin: 20px 0;">
-  <img src="/images/themes/gruvbox-light-nodes-desktop.png" alt="Gruvbox Light Desktop" style="width: 65%;" />
-  <img src="/images/themes/gruvbox-light-nodes-mobile.png" alt="Gruvbox Light Mobile" style="width: 33%;" />
+#### Nodes View
+<div style="display: flex; gap: 10px; margin: 10px 0; align-items: flex-start;">
+  <a href="/images/themes/gruvbox-light-nodes-desktop.png" target="_blank" style="flex: 2;">
+    <img src="/images/themes/gruvbox-light-nodes-desktop.png" alt="Gruvbox Light Desktop - Nodes" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+  <a href="/images/themes/gruvbox-light-nodes-mobile.png" target="_blank" style="flex: 1;">
+    <img src="/images/themes/gruvbox-light-nodes-mobile.png" alt="Gruvbox Light Mobile - Nodes" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+</div>
+
+#### Channels View
+<div style="display: flex; gap: 10px; margin: 10px 0 20px 0; align-items: flex-start;">
+  <a href="/images/themes/gruvbox-light-channels-desktop.png" target="_blank" style="flex: 2;">
+    <img src="/images/themes/gruvbox-light-channels-desktop.png" alt="Gruvbox Light Desktop - Channels" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+  <a href="/images/themes/gruvbox-light-channels-mobile.png" target="_blank" style="flex: 1;">
+    <img src="/images/themes/gruvbox-light-channels-mobile.png" alt="Gruvbox Light Mobile - Channels" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
 </div>
 
 ## High Contrast Themes (WCAG AAA Compliant)
@@ -123,9 +273,24 @@ The classic Catppuccin palette in four beautiful variants:
 - **Colors**: Pure blacks and whites with vibrant accents
 - **Contrast Ratio**: Exceeds 7:1 for all text
 
-<div style="display: flex; gap: 10px; margin: 20px 0;">
-  <img src="/images/themes/high-contrast-dark-nodes-desktop.png" alt="High Contrast Dark Desktop" style="width: 65%;" />
-  <img src="/images/themes/high-contrast-dark-nodes-mobile.png" alt="High Contrast Dark Mobile" style="width: 33%;" />
+#### Nodes View
+<div style="display: flex; gap: 10px; margin: 10px 0; align-items: flex-start;">
+  <a href="/images/themes/high-contrast-dark-nodes-desktop.png" target="_blank" style="flex: 2;">
+    <img src="/images/themes/high-contrast-dark-nodes-desktop.png" alt="High Contrast Dark Desktop - Nodes" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+  <a href="/images/themes/high-contrast-dark-nodes-mobile.png" target="_blank" style="flex: 1;">
+    <img src="/images/themes/high-contrast-dark-nodes-mobile.png" alt="High Contrast Dark Mobile - Nodes" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+</div>
+
+#### Channels View
+<div style="display: flex; gap: 10px; margin: 10px 0 20px 0; align-items: flex-start;">
+  <a href="/images/themes/high-contrast-dark-channels-desktop.png" target="_blank" style="flex: 2;">
+    <img src="/images/themes/high-contrast-dark-channels-desktop.png" alt="High Contrast Dark Desktop - Channels" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+  <a href="/images/themes/high-contrast-dark-channels-mobile.png" target="_blank" style="flex: 1;">
+    <img src="/images/themes/high-contrast-dark-channels-mobile.png" alt="High Contrast Dark Mobile - Channels" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
 </div>
 
 ### High Contrast Light
@@ -135,9 +300,24 @@ The classic Catppuccin palette in four beautiful variants:
 - **Colors**: Pure whites and blacks with strong accents
 - **Contrast Ratio**: Exceeds 7:1 for all text
 
-<div style="display: flex; gap: 10px; margin: 20px 0;">
-  <img src="/images/themes/high-contrast-light-nodes-desktop.png" alt="High Contrast Light Desktop" style="width: 65%;" />
-  <img src="/images/themes/high-contrast-light-nodes-mobile.png" alt="High Contrast Light Mobile" style="width: 33%;" />
+#### Nodes View
+<div style="display: flex; gap: 10px; margin: 10px 0; align-items: flex-start;">
+  <a href="/images/themes/high-contrast-light-nodes-desktop.png" target="_blank" style="flex: 2;">
+    <img src="/images/themes/high-contrast-light-nodes-desktop.png" alt="High Contrast Light Desktop - Nodes" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+  <a href="/images/themes/high-contrast-light-nodes-mobile.png" target="_blank" style="flex: 1;">
+    <img src="/images/themes/high-contrast-light-nodes-mobile.png" alt="High Contrast Light Mobile - Nodes" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+</div>
+
+#### Channels View
+<div style="display: flex; gap: 10px; margin: 10px 0 20px 0; align-items: flex-start;">
+  <a href="/images/themes/high-contrast-light-channels-desktop.png" target="_blank" style="flex: 2;">
+    <img src="/images/themes/high-contrast-light-channels-desktop.png" alt="High Contrast Light Desktop - Channels" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+  <a href="/images/themes/high-contrast-light-channels-mobile.png" target="_blank" style="flex: 1;">
+    <img src="/images/themes/high-contrast-light-channels-mobile.png" alt="High Contrast Light Mobile - Channels" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
 </div>
 
 ## Color Blind Friendly Themes
@@ -148,9 +328,24 @@ The classic Catppuccin palette in four beautiful variants:
 - **Colors**: Uses blue/yellow contrast instead of red/green
 - **Best for**: Users with red color blindness
 
-<div style="display: flex; gap: 10px; margin: 20px 0;">
-  <img src="/images/themes/protanopia-nodes-desktop.png" alt="Protanopia Desktop" style="width: 65%;" />
-  <img src="/images/themes/protanopia-nodes-mobile.png" alt="Protanopia Mobile" style="width: 33%;" />
+#### Nodes View
+<div style="display: flex; gap: 10px; margin: 10px 0; align-items: flex-start;">
+  <a href="/images/themes/protanopia-nodes-desktop.png" target="_blank" style="flex: 2;">
+    <img src="/images/themes/protanopia-nodes-desktop.png" alt="Protanopia Desktop - Nodes" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+  <a href="/images/themes/protanopia-nodes-mobile.png" target="_blank" style="flex: 1;">
+    <img src="/images/themes/protanopia-nodes-mobile.png" alt="Protanopia Mobile - Nodes" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+</div>
+
+#### Channels View
+<div style="display: flex; gap: 10px; margin: 10px 0 20px 0; align-items: flex-start;">
+  <a href="/images/themes/protanopia-channels-desktop.png" target="_blank" style="flex: 2;">
+    <img src="/images/themes/protanopia-channels-desktop.png" alt="Protanopia Desktop - Channels" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+  <a href="/images/themes/protanopia-channels-mobile.png" target="_blank" style="flex: 1;">
+    <img src="/images/themes/protanopia-channels-mobile.png" alt="Protanopia Mobile - Channels" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
 </div>
 
 ### Deuteranopia (Green-Blind Friendly)
@@ -159,9 +354,24 @@ The classic Catppuccin palette in four beautiful variants:
 - **Colors**: Uses blue/yellow contrast instead of red/green
 - **Best for**: Users with green color blindness
 
-<div style="display: flex; gap: 10px; margin: 20px 0;">
-  <img src="/images/themes/deuteranopia-nodes-desktop.png" alt="Deuteranopia Desktop" style="width: 65%;" />
-  <img src="/images/themes/deuteranopia-nodes-mobile.png" alt="Deuteranopia Mobile" style="width: 33%;" />
+#### Nodes View
+<div style="display: flex; gap: 10px; margin: 10px 0; align-items: flex-start;">
+  <a href="/images/themes/deuteranopia-nodes-desktop.png" target="_blank" style="flex: 2;">
+    <img src="/images/themes/deuteranopia-nodes-desktop.png" alt="Deuteranopia Desktop - Nodes" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+  <a href="/images/themes/deuteranopia-nodes-mobile.png" target="_blank" style="flex: 1;">
+    <img src="/images/themes/deuteranopia-nodes-mobile.png" alt="Deuteranopia Mobile - Nodes" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+</div>
+
+#### Channels View
+<div style="display: flex; gap: 10px; margin: 10px 0 20px 0; align-items: flex-start;">
+  <a href="/images/themes/deuteranopia-channels-desktop.png" target="_blank" style="flex: 2;">
+    <img src="/images/themes/deuteranopia-channels-desktop.png" alt="Deuteranopia Desktop - Channels" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+  <a href="/images/themes/deuteranopia-channels-mobile.png" target="_blank" style="flex: 1;">
+    <img src="/images/themes/deuteranopia-channels-mobile.png" alt="Deuteranopia Mobile - Channels" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
 </div>
 
 ### Tritanopia (Blue-Blind Friendly)
@@ -170,9 +380,24 @@ The classic Catppuccin palette in four beautiful variants:
 - **Colors**: Uses red/cyan contrast instead of blue/yellow
 - **Best for**: Users with blue color blindness
 
-<div style="display: flex; gap: 10px; margin: 20px 0;">
-  <img src="/images/themes/tritanopia-nodes-desktop.png" alt="Tritanopia Desktop" style="width: 65%;" />
-  <img src="/images/themes/tritanopia-nodes-mobile.png" alt="Tritanopia Mobile" style="width: 33%;" />
+#### Nodes View
+<div style="display: flex; gap: 10px; margin: 10px 0; align-items: flex-start;">
+  <a href="/images/themes/tritanopia-nodes-desktop.png" target="_blank" style="flex: 2;">
+    <img src="/images/themes/tritanopia-nodes-desktop.png" alt="Tritanopia Desktop - Nodes" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+  <a href="/images/themes/tritanopia-nodes-mobile.png" target="_blank" style="flex: 1;">
+    <img src="/images/themes/tritanopia-nodes-mobile.png" alt="Tritanopia Mobile - Nodes" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+</div>
+
+#### Channels View
+<div style="display: flex; gap: 10px; margin: 10px 0 20px 0; align-items: flex-start;">
+  <a href="/images/themes/tritanopia-channels-desktop.png" target="_blank" style="flex: 2;">
+    <img src="/images/themes/tritanopia-channels-desktop.png" alt="Tritanopia Desktop - Channels" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
+  <a href="/images/themes/tritanopia-channels-mobile.png" target="_blank" style="flex: 1;">
+    <img src="/images/themes/tritanopia-channels-mobile.png" alt="Tritanopia Mobile - Channels" style="width: 100%; height: auto; border: 1px solid #ccc;" />
+  </a>
 </div>
 
 ## How to Change Themes
