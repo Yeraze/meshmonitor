@@ -34,7 +34,12 @@ export class TcpTransport extends EventEmitter {
    */
   setStaleConnectionTimeout(timeoutMs: number): void {
     this.staleConnectionTimeout = timeoutMs;
-    logger.debug(`⏱️  Stale connection timeout set to ${timeoutMs}ms (${Math.floor(timeoutMs / 1000 / 60)} minutes)`);
+
+    if (timeoutMs > 0 && timeoutMs < 60000) {
+      logger.warn(`⚠️  MESHTASTIC_STALE_CONNECTION_TIMEOUT is very low: ${timeoutMs}ms (${Math.floor(timeoutMs / 1000)}s). Minimum recommended: 60000ms (1 minute). Connection may reconnect too frequently.`);
+    }
+
+    logger.debug(`⏱️  Stale connection timeout set to ${timeoutMs}ms (${Math.floor(timeoutMs / 1000 / 60)} minute(s))`);
   }
 
   async connect(host: string, port: number = 4403): Promise<void> {
@@ -344,7 +349,7 @@ export class TcpTransport extends EventEmitter {
       const minutesSinceLastData = Math.floor(timeSinceLastData / 1000 / 60);
       const timeoutMinutes = Math.floor(this.staleConnectionTimeout / 1000 / 60);
 
-      logger.warn(`⚠️  Stale connection detected: No data received for ${minutesSinceLastData} minutes (timeout: ${timeoutMinutes} minutes). Forcing reconnection...`);
+      logger.warn(`⚠️  Stale connection detected: No data received for ${minutesSinceLastData} minute(s) (timeout: ${timeoutMinutes} minute(s)). Forcing reconnection...`);
 
       // Emit a custom event for stale connection
       this.emit('stale-connection', { timeSinceLastData, timeout: this.staleConnectionTimeout });
