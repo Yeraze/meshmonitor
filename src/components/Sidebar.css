@@ -5,8 +5,8 @@
   bottom: 0;
   height: 100vh;
   width: 60px; /* Default to narrow/icon-only on desktop */
-  background: var(--color-bg-primary, #1a1a1a);
-  border-right: 1px solid var(--color-border, #333);
+  background: var(--ctp-base);
+  border-right: 1px solid var(--ctp-surface1);
   transition: width 0.3s ease, transform 0.3s ease;
   z-index: 10001; /* Above header (10000) so it overlays cleanly */
   display: flex;
@@ -28,11 +28,11 @@
 
 .sidebar-footer {
   padding: 12px 16px;
-  border-top: 1px solid var(--color-border, #333);
+  border-top: 1px solid var(--ctp-surface1);
   display: flex;
   align-items: center;
   gap: 12px;
-  background: var(--color-bg-secondary, #1a1a1a);
+  background: var(--ctp-mantle);
   margin-top: auto;
 }
 
@@ -43,13 +43,13 @@
 
 .version-text {
   font-size: 12px;
-  color: var(--color-text-secondary, #999);
+  color: var(--ctp-subtext0);
   font-weight: 500;
   font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
 }
 
 .github-link {
-  color: var(--color-text-secondary, #999);
+  color: var(--ctp-subtext0);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -58,7 +58,7 @@
 }
 
 .github-link:hover {
-  color: var(--color-text-primary, #e0e0e0);
+  color: var(--ctp-text);
 }
 
 .sidebar-toggle {
@@ -89,11 +89,11 @@
 
 .sidebar-header {
   padding: 12px;
-  border-bottom: 1px solid var(--color-border, #333);
+  border-bottom: 1px solid var(--ctp-surface1);
   display: flex;
   align-items: center;
   gap: 12px;
-  background: var(--color-bg-primary, #1a1a1a);
+  background: var(--ctp-base);
   flex-shrink: 0;
 }
 
@@ -121,7 +121,7 @@
 .sidebar-app-name {
   font-size: 16px;
   font-weight: 600;
-  color: var(--color-text-primary, #e0e0e0);
+  color: var(--ctp-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -129,7 +129,7 @@
 
 .sidebar-node-name {
   font-size: 11px;
-  color: var(--color-text-secondary, #999);
+  color: var(--ctp-subtext0);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -148,7 +148,7 @@
 .sidebar-section-header {
   font-size: 11px;
   font-weight: 600;
-  color: var(--color-text-secondary, #999);
+  color: var(--ctp-subtext0);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   padding: 12px 12px 4px 12px;
@@ -169,7 +169,7 @@
   background: transparent;
   border: none;
   border-radius: 6px;
-  color: var(--color-text-primary, #e0e0e0);
+  color: var(--ctp-text);
   cursor: pointer;
   transition: background-color 0.2s;
   text-align: left;
@@ -179,12 +179,12 @@
 }
 
 .sidebar-nav-item:hover {
-  background: var(--color-bg-secondary, #2a2a2a);
+  background: var(--ctp-surface0);
 }
 
 .sidebar-nav-item.active {
-  background: var(--color-primary, #2196F3);
-  color: white;
+  background: var(--ctp-blue);
+  color: var(--ctp-crust);
 }
 
 .sidebar-nav-item .nav-icon {
@@ -214,7 +214,7 @@
 .nav-notification-dot {
   width: 8px;
   height: 8px;
-  background: #ff4444;
+  background: var(--ctp-red);
   border-radius: 50%;
   flex-shrink: 0;
   margin-left: auto;
@@ -255,15 +255,15 @@
 
   /* Show toggle button prominently on mobile */
   .sidebar-toggle {
-    background: var(--color-primary, #2196F3);
-    color: white;
+    background: var(--ctp-blue);
+    color: var(--ctp-crust);
     right: 6px;
   }
 
   .sidebar.collapsed .sidebar-toggle {
     /* Make hamburger menu more visible when collapsed on mobile */
-    background: var(--color-primary, #2196F3);
-    color: white;
+    background: var(--ctp-blue);
+    color: var(--ctp-crust);
   }
 }
 
@@ -277,10 +277,10 @@
 }
 
 .sidebar-nav::-webkit-scrollbar-thumb {
-  background: var(--color-bg-tertiary, #3a3a3a);
+  background: var(--ctp-surface2);
   border-radius: 3px;
 }
 
 .sidebar-nav::-webkit-scrollbar-thumb:hover {
-  background: var(--color-border, #555);
+  background: var(--ctp-overlay0);
 }

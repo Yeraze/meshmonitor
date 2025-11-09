@@ -15,6 +15,7 @@ type DistanceUnit = 'km' | 'mi';
 type TimeFormat = '12' | '24';
 type DateFormat = 'MM/DD/YYYY' | 'DD/MM/YYYY';
 type MapPinStyle = 'meshmonitor' | 'official';
+type Theme = 'mocha' | 'macchiato' | 'frappe' | 'latte';
 
 interface SettingsTabProps {
   maxNodeAgeHours: number;
@@ -28,6 +29,7 @@ interface SettingsTabProps {
   dateFormat: DateFormat;
   mapTileset: TilesetId;
   mapPinStyle: MapPinStyle;
+  theme: Theme;
   solarMonitoringEnabled: boolean;
   solarMonitoringLatitude: number;
   solarMonitoringLongitude: number;
@@ -47,6 +49,7 @@ interface SettingsTabProps {
   onDateFormatChange: (format: DateFormat) => void;
   onMapTilesetChange: (tilesetId: TilesetId) => void;
   onMapPinStyleChange: (style: MapPinStyle) => void;
+  onThemeChange: (theme: Theme) => void;
   onSolarMonitoringEnabledChange: (enabled: boolean) => void;
   onSolarMonitoringLatitudeChange: (latitude: number) => void;
   onSolarMonitoringLongitudeChange: (longitude: number) => void;
@@ -66,6 +69,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   dateFormat,
   mapTileset,
   mapPinStyle,
+  theme,
   solarMonitoringEnabled,
   solarMonitoringLatitude,
   solarMonitoringLongitude,
@@ -85,6 +89,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   onDateFormatChange,
   onMapTilesetChange,
   onMapPinStyleChange,
+  onThemeChange,
   onSolarMonitoringEnabledChange,
   onSolarMonitoringLatitudeChange,
   onSolarMonitoringLongitudeChange,
@@ -105,6 +110,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [localDateFormat, setLocalDateFormat] = useState(dateFormat);
   const [localMapTileset, setLocalMapTileset] = useState(mapTileset);
   const [localMapPinStyle, setLocalMapPinStyle] = useState(mapPinStyle);
+  const [localTheme, setLocalTheme] = useState(theme);
   const [localPacketLogEnabled, setLocalPacketLogEnabled] = useState(false);
   const [localPacketLogMaxCount, setLocalPacketLogMaxCount] = useState(1000);
   const [localPacketLogMaxAgeHours, setLocalPacketLogMaxAgeHours] = useState(24);
@@ -176,6 +182,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLocalDateFormat(dateFormat);
     setLocalMapTileset(mapTileset);
     setLocalMapPinStyle(mapPinStyle);
+    setLocalTheme(theme);
     setLocalSolarMonitoringEnabled(solarMonitoringEnabled);
     setLocalSolarMonitoringLatitude(solarMonitoringLatitude);
     setLocalSolarMonitoringLongitude(solarMonitoringLongitude);
@@ -213,6 +220,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localDateFormat !== dateFormat ||
       localMapTileset !== mapTileset ||
       localMapPinStyle !== mapPinStyle ||
+      localTheme !== theme ||
       localPacketLogEnabled !== initialPacketMonitorSettings.enabled ||
       localPacketLogMaxCount !== initialPacketMonitorSettings.maxCount ||
       localPacketLogMaxAgeHours !== initialPacketMonitorSettings.maxAgeHours ||
@@ -222,8 +230,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localSolarMonitoringAzimuth !== solarMonitoringAzimuth ||
       localSolarMonitoringDeclination !== solarMonitoringDeclination;
     setHasChanges(changed);
-  }, [localMaxNodeAge, localTemperatureUnit, localDistanceUnit, localTelemetryHours, localFavoriteTelemetryStorageDays, localPreferredSortField, localPreferredSortDirection, localTimeFormat, localDateFormat, localMapTileset, localMapPinStyle,
-      maxNodeAgeHours, temperatureUnit, distanceUnit, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle,
+  }, [localMaxNodeAge, localTemperatureUnit, localDistanceUnit, localTelemetryHours, localFavoriteTelemetryStorageDays, localPreferredSortField, localPreferredSortDirection, localTimeFormat, localDateFormat, localMapTileset, localMapPinStyle, localTheme,
+      maxNodeAgeHours, temperatureUnit, distanceUnit, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle, theme,
       localPacketLogEnabled, localPacketLogMaxCount, localPacketLogMaxAgeHours, initialPacketMonitorSettings,
       localSolarMonitoringEnabled, localSolarMonitoringLatitude, localSolarMonitoringLongitude, localSolarMonitoringAzimuth, localSolarMonitoringDeclination,
       solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination]);
@@ -243,6 +251,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         dateFormat: localDateFormat,
         mapTileset: localMapTileset,
         mapPinStyle: localMapPinStyle,
+        theme: localTheme,
         packet_log_enabled: localPacketLogEnabled ? '1' : '0',
         packet_log_max_count: localPacketLogMaxCount.toString(),
         packet_log_max_age_hours: localPacketLogMaxAgeHours.toString(),
@@ -272,6 +281,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onDateFormatChange(localDateFormat);
       onMapTilesetChange(localMapTileset);
       onMapPinStyleChange(localMapPinStyle);
+      onThemeChange(localTheme);
       onSolarMonitoringEnabledChange(localSolarMonitoringEnabled);
       onSolarMonitoringLatitudeChange(localSolarMonitoringLatitude);
       onSolarMonitoringLongitudeChange(localSolarMonitoringLongitude);
@@ -353,6 +363,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       setLocalDateFormat('MM/DD/YYYY');
       setLocalMapTileset('osm');
       setLocalMapPinStyle('meshmonitor');
+      setLocalTheme('mocha');
       setLocalPacketLogEnabled(false);
       setLocalPacketLogMaxCount(1000);
       setLocalPacketLogMaxAgeHours(24);
@@ -374,6 +385,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onDateFormatChange('MM/DD/YYYY');
       onMapTilesetChange('osm');
       onMapPinStyleChange('meshmonitor');
+      onThemeChange('mocha');
       onSolarMonitoringEnabledChange(false);
       onSolarMonitoringLatitudeChange(0);
       onSolarMonitoringLongitudeChange(0);
@@ -743,6 +755,23 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             >
               <option value="meshmonitor">MeshMonitor - Pin markers with zoom-based labels</option>
               <option value="official">Official Meshtastic - Circle markers with always-visible labels</option>
+            </select>
+          </div>
+          <div className="setting-item">
+            <label htmlFor="theme">
+              Color Theme
+              <span className="setting-description">Choose your preferred Catppuccin color theme variant</span>
+            </label>
+            <select
+              id="theme"
+              value={localTheme}
+              onChange={(e) => setLocalTheme(e.target.value as Theme)}
+              className="setting-input"
+            >
+              <option value="mocha">Mocha (Dark)</option>
+              <option value="macchiato">Macchiato (Medium-Dark)</option>
+              <option value="frappe">Frappé (Medium)</option>
+              <option value="latte">Latte (Light)</option>
             </select>
           </div>
         </div>

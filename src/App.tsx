@@ -302,6 +302,7 @@ function App() {
     dateFormat,
     mapTileset,
     mapPinStyle,
+    theme,
     solarMonitoringEnabled,
     solarMonitoringLatitude,
     solarMonitoringLongitude,
@@ -319,6 +320,7 @@ function App() {
     setDateFormat,
     setMapTileset,
     setMapPinStyle,
+    setTheme,
     setSolarMonitoringEnabled,
     setSolarMonitoringLatitude,
     setSolarMonitoringLongitude,
@@ -368,6 +370,23 @@ function App() {
     nodesWithPKC,
     setNodesWithPKC
   } = useData();
+
+  // Get computed CSS color values for Leaflet Polyline components (which don't support CSS variables)
+  const [themeColors, setThemeColors] = useState({
+    mauve: '#cba6f7', // Default to Mocha theme colors
+    red: '#f38ba8'
+  });
+
+  // Update theme colors when theme changes
+  useEffect(() => {
+    const rootStyle = getComputedStyle(document.documentElement);
+    const mauve = rootStyle.getPropertyValue('--ctp-mauve').trim();
+    const red = rootStyle.getPropertyValue('--ctp-red').trim();
+
+    if (mauve && red) {
+      setThemeColors({ mauve, red });
+    }
+  }, [theme]);
 
   // Messaging context
   const {
@@ -1863,8 +1882,8 @@ function App() {
     const currentNodeNumStr = currentNodeId.replace('!', '');
     const currentNodeNum = parseInt(currentNodeNumStr, 16);
 
-    // Find most recent traceroute between current node and selected node within last 24 hours
-    const cutoff = Date.now() - (24 * 60 * 60 * 1000);
+    // Find most recent traceroute between current node and selected node using maxNodeAgeHours setting
+    const cutoff = Date.now() - (maxNodeAgeHours * 60 * 60 * 1000);
     const recentTraceroutes = traceroutes
       .filter(tr => {
         const isRelevant = (
@@ -4236,11 +4255,8 @@ function App() {
         const routeForward = JSON.parse(tr.route);
         const routeBack = JSON.parse(tr.routeBack);
 
-        // Skip if either route is empty array (no actual route hops - failed/incomplete traceroute)
-        // An empty route would create a direct line from source to destination which is misleading
-        if (routeForward.length === 0 || routeBack.length === 0) {
-          return; // Skip - at least one direction failed, don't show misleading direct lines
-        }
+        // Note: Empty arrays are valid (direct path with no intermediate hops)
+        // Actual failures are caught by the null/invalid check above or by insufficient positions below
 
         const snrForward = tr.snrTowards && tr.snrTowards !== 'null' && tr.snrTowards !== ''
           ? JSON.parse(tr.snrTowards)
@@ -4397,7 +4413,7 @@ function App() {
         <Polyline
           key={segment.key}
           positions={segment.positions}
-          color="#cba6f7"
+          color={themeColors.mauve}
           weight={weight}
           opacity={0.7}
         >
@@ -4595,17 +4611,16 @@ function App() {
           const routeForward = JSON.parse(selectedTrace.route);  // Forward: local -> remote
           const routeBack = JSON.parse(selectedTrace.routeBack);  // Return: remote -> local
 
-          // Skip if either route is empty array (no actual route hops - failed/incomplete traceroute)
-          if (routeForward.length === 0 || routeBack.length === 0) {
-            // Don't render - at least one direction failed
-          } else {
-            const fromNode = nodesForRender.find(n => n.nodeNum === selectedTrace.fromNodeNum);
-            const toNode = nodesForRender.find(n => n.nodeNum === selectedTrace.toNodeNum);
-            const fromName = fromNode?.user?.longName || fromNode?.user?.shortName || selectedTrace.fromNodeId;
-            const toName = toNode?.user?.longName || toNode?.user?.shortName || selectedTrace.toNodeId;
+          // Note: Empty arrays are valid (direct path with no intermediate hops)
+          // Actual failures are caught by the null/invalid check above or by insufficient positions below
 
-            // Forward path: responder -> requester (for correct visualization)
-            if (routeForward.length >= 0) {
+          const fromNode = nodesForRender.find(n => n.nodeNum === selectedTrace.fromNodeNum);
+          const toNode = nodesForRender.find(n => n.nodeNum === selectedTrace.toNodeNum);
+          const fromName = fromNode?.user?.longName || fromNode?.user?.shortName || selectedTrace.fromNodeId;
+          const toName = toNode?.user?.longName || toNode?.user?.shortName || selectedTrace.toNodeId;
+
+          // Forward path: responder -> requester (for correct visualization)
+          if (routeForward.length >= 0) {
               // Build path: fromNodeNum (responder) → route intermediates → toNodeNum (requester)
               const forwardSequence: number[] = [selectedTrace.fromNodeNum, ...routeForward, selectedTrace.toNodeNum];
               const forwardPositions: [number, number][] = [];
@@ -4636,7 +4651,7 @@ function App() {
                   <Polyline
                     key="selected-traceroute-forward"
                     positions={forwardPositions}
-                    color="#f38ba8"
+                    color={themeColors.red}
                     weight={4}
                     opacity={0.9}
                     dashArray="10, 5"
@@ -4667,7 +4682,7 @@ function App() {
                 const forwardArrows = generateArrowMarkers(
                   forwardPositions,
                   'forward',
-                  '#f38ba8',
+                  themeColors.red,
                   allElements.length
                 );
                 allElements.push(...forwardArrows);
@@ -4706,7 +4721,7 @@ function App() {
                   <Polyline
                     key="selected-traceroute-back"
                     positions={backPositions}
-                    color="#f38ba8"
+                    color={themeColors.red}
                     weight={4}
                     opacity={0.9}
                     dashArray="5, 10"
@@ -4737,13 +4752,12 @@ function App() {
                 const backArrows = generateArrowMarkers(
                   backPositions,
                   'back',
-                  '#f38ba8',
+                  themeColors.red,
                   allElements.length
                 );
                 allElements.push(...backArrows);
               }
             }
-          } // End of else block for non-empty arrays
         } catch (error) {
           logger.error('Error rendering selected node traceroute:', error);
         }
@@ -5131,6 +5145,7 @@ function App() {
             dateFormat={dateFormat}
             mapTileset={mapTileset}
             mapPinStyle={mapPinStyle}
+            theme={theme}
             solarMonitoringEnabled={solarMonitoringEnabled}
             solarMonitoringLatitude={solarMonitoringLatitude}
             solarMonitoringLongitude={solarMonitoringLongitude}
@@ -5150,6 +5165,7 @@ function App() {
             onDateFormatChange={setDateFormat}
             onMapTilesetChange={setMapTileset}
             onMapPinStyleChange={setMapPinStyle}
+            onThemeChange={setTheme}
             onSolarMonitoringEnabledChange={setSolarMonitoringEnabled}
             onSolarMonitoringLatitudeChange={setSolarMonitoringLatitude}
             onSolarMonitoringLongitudeChange={setSolarMonitoringLongitude}

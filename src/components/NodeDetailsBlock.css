@@ -3,7 +3,7 @@
   width: 100%;
   margin-bottom: 20px;
   padding: 20px;
-  background-color: #181825; /* var(--ctp-mantle) */
+  background-color: var(--ctp-mantle);
   border-radius: 8px;
 }
 
@@ -15,7 +15,7 @@
 }
 
 .node-details-title {
-  color: #cdd6f4; /* var(--ctp-text) */
+  color: var(--ctp-text);
   margin: 0;
   font-size: 1.2rem;
   font-weight: 600;
@@ -24,7 +24,7 @@
 .node-details-toggle {
   background: none;
   border: none;
-  color: #cdd6f4; /* var(--ctp-text) */
+  color: var(--ctp-text);
   font-size: 1rem;
   cursor: pointer;
   padding: 5px 10px;
@@ -33,12 +33,12 @@
 }
 
 .node-details-toggle:hover {
-  background-color: #313244; /* var(--ctp-surface0) */
-  color: #89b4fa; /* var(--ctp-blue) */
+  background-color: var(--ctp-surface0);
+  color: var(--ctp-blue);
 }
 
 .node-details-toggle:focus {
-  outline: 2px solid #89b4fa; /* var(--ctp-blue) */
+  outline: 2px solid var(--ctp-blue);
   outline-offset: 2px;
 }
 
@@ -49,19 +49,19 @@
 }
 
 .node-detail-card {
-  background-color: #1e1e2e; /* var(--ctp-base) */
-  border: 1px solid #45475a; /* var(--ctp-surface1) */
+  background-color: var(--ctp-base);
+  border: 1px solid var(--ctp-surface1);
   border-radius: 8px;
   padding: 12px 15px;
   transition: border-color 0.2s ease;
 }
 
 .node-detail-card:hover {
-  border-color: #585b70; /* var(--ctp-surface2) */
+  border-color: var(--ctp-surface2);
 }
 
 .node-detail-label {
-  color: #a6adc8; /* var(--ctp-subtext0) */
+  color: var(--ctp-subtext0);
   font-size: 0.85rem;
   font-weight: 500;
   margin-bottom: 6px;
@@ -70,55 +70,55 @@
 }
 
 .node-detail-value {
-  color: #cdd6f4; /* var(--ctp-text) */
+  color: var(--ctp-text);
   font-size: 1.1rem;
   font-weight: 600;
   transition: color 0.2s ease;
 }
 
 .node-detail-secondary {
-  color: #a6adc8; /* var(--ctp-subtext0) */
+  color: var(--ctp-subtext0);
   font-size: 0.9rem;
   font-weight: 400;
 }
 
 /* Battery Level Color Indicators */
 .battery-good {
-  color: #a6e3a1; /* var(--ctp-green) */
+  color: var(--ctp-green);
 }
 
 .battery-medium {
-  color: #f9e2af; /* var(--ctp-yellow) */
+  color: var(--ctp-yellow);
 }
 
 .battery-low {
-  color: #f38ba8; /* var(--ctp-red) */
+  color: var(--ctp-red);
 }
 
 /* Signal Quality Color Indicators */
 .signal-good {
-  color: #a6e3a1; /* var(--ctp-green) */
+  color: var(--ctp-green);
 }
 
 .signal-medium {
-  color: #f9e2af; /* var(--ctp-yellow) */
+  color: var(--ctp-yellow);
 }
 
 .signal-low {
-  color: #f38ba8; /* var(--ctp-red) */
+  color: var(--ctp-red);
 }
 
 /* Utilization Color Indicators */
 .utilization-good {
-  color: #a6e3a1; /* var(--ctp-green) */
+  color: var(--ctp-green);
 }
 
 .utilization-medium {
-  color: #f9e2af; /* var(--ctp-yellow) */
+  color: var(--ctp-yellow);
 }
 
 .utilization-high {
-  color: #f38ba8; /* var(--ctp-red) */
+  color: var(--ctp-red);
 }
 
 /* Hardware Image Styling */
@@ -140,13 +140,13 @@
   /* SVG inversion for dark theme - makes dark SVGs visible */
   filter: invert(1) hue-rotate(180deg);
   border-radius: 4px;
-  background-color: #1e1e2e; /* var(--ctp-base) */
+  background-color: var(--ctp-base);
   padding: 8px;
 }
 
 .hardware-name {
   flex: 1;
-  color: #cdd6f4; /* var(--ctp-text) */
+  color: var(--ctp-text);
 }
 
 /* Responsive Design */
