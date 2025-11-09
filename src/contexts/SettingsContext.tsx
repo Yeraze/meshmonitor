@@ -9,6 +9,7 @@ export type DistanceUnit = 'km' | 'mi';
 export type TimeFormat = '12' | '24';
 export type DateFormat = 'MM/DD/YYYY' | 'DD/MM/YYYY';
 export type MapPinStyle = 'meshmonitor' | 'official';
+export type Theme = 'mocha' | 'macchiato' | 'frappe' | 'latte';
 
 interface SettingsContextType {
   maxNodeAgeHours: number;
@@ -23,6 +24,7 @@ interface SettingsContextType {
   dateFormat: DateFormat;
   mapTileset: TilesetId;
   mapPinStyle: MapPinStyle;
+  theme: Theme;
   solarMonitoringEnabled: boolean;
   solarMonitoringLatitude: number;
   solarMonitoringLongitude: number;
@@ -43,6 +45,7 @@ interface SettingsContextType {
   setDateFormat: (format: DateFormat) => void;
   setMapTileset: (tilesetId: TilesetId) => void;
   setMapPinStyle: (style: MapPinStyle) => void;
+  setTheme: (theme: Theme) => void;
   setSolarMonitoringEnabled: (enabled: boolean) => void;
   setSolarMonitoringLatitude: (latitude: number) => void;
   setSolarMonitoringLongitude: (longitude: number) => void;
@@ -122,6 +125,12 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   const [mapPinStyle, setMapPinStyleState] = useState<MapPinStyle>(() => {
     const saved = localStorage.getItem('mapPinStyle');
     return (saved === 'official' ? 'official' : 'meshmonitor') as MapPinStyle;
+  });
+
+  const [theme, setThemeState] = useState<Theme>(() => {
+    const saved = localStorage.getItem('theme');
+    const validThemes: Theme[] = ['mocha', 'macchiato', 'frappe', 'latte'];
+    return (saved && validThemes.includes(saved as Theme) ? saved : 'mocha') as Theme;
   });
 
   const [solarMonitoringEnabled, setSolarMonitoringEnabledState] = useState<boolean>(() => {
@@ -231,6 +240,13 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     localStorage.setItem('mapPinStyle', style);
   };
 
+  const setTheme = (newTheme: Theme) => {
+    setThemeState(newTheme);
+    localStorage.setItem('theme', newTheme);
+    // Apply theme immediately by updating the data-theme attribute on the document root
+    document.documentElement.setAttribute('data-theme', newTheme);
+  };
+
   const setSolarMonitoringEnabled = (enabled: boolean) => {
     setSolarMonitoringEnabledState(enabled);
     localStorage.setItem('solarMonitoringEnabled', enabled.toString());
@@ -334,6 +350,15 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             localStorage.setItem('mapPinStyle', settings.mapPinStyle);
           }
 
+          if (settings.theme) {
+            const validThemes: Theme[] = ['mocha', 'macchiato', 'frappe', 'latte'];
+            if (validThemes.includes(settings.theme as Theme)) {
+              setThemeState(settings.theme as Theme);
+              localStorage.setItem('theme', settings.theme);
+              document.documentElement.setAttribute('data-theme', settings.theme);
+            }
+          }
+
           if (settings.solarMonitoringEnabled !== undefined) {
             const enabled = settings.solarMonitoringEnabled === '1' || settings.solarMonitoringEnabled === 'true';
             setSolarMonitoringEnabledState(enabled);
@@ -387,6 +412,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     loadServerSettings();
   }, [baseUrl]);
 
+  // Apply theme on mount
+  React.useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+  }, [theme]);
+
   const value: SettingsContextType = {
     maxNodeAgeHours,
     tracerouteIntervalMinutes,
@@ -400,6 +430,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     dateFormat,
     mapTileset,
     mapPinStyle,
+    theme,
     solarMonitoringEnabled,
     solarMonitoringLatitude,
     solarMonitoringLongitude,
@@ -420,6 +451,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setDateFormat,
     setMapTileset,
     setMapPinStyle,
+    setTheme,
     setSolarMonitoringEnabled,
     setSolarMonitoringLatitude,
     setSolarMonitoringLongitude,
