@@ -248,15 +248,15 @@ body {
 
 .warning-banner {
   top: var(--header-height);
-  background-color: #dc2626;
-  color: white;
-  border-bottom: 2px solid #991b1b;
+  background-color: var(--ctp-red);
+  color: var(--ctp-crust);
+  border-bottom: 2px solid var(--ctp-maroon);
 }
 
 .update-banner {
-  background-color: #3b82f6;
-  color: white;
-  border-bottom: 2px solid #1d4ed8;
+  background-color: var(--ctp-blue);
+  color: var(--ctp-crust);
+  border-bottom: 2px solid var(--ctp-sapphire);
   display: flex;
   align-items: center;
   gap: 8px;

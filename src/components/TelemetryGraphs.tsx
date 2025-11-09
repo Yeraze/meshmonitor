@@ -45,6 +45,42 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [solarEstimates, setSolarEstimates] = useState<Map<number, number>>(new Map());
 
+  // Get computed CSS color values for chart styling (Recharts doesn't support CSS variables in inline styles)
+  const [chartColors, setChartColors] = useState({
+    base: '#1e1e2e',
+    surface0: '#45475a',
+    text: '#cdd6f4'
+  });
+
+  // Update chart colors when theme changes
+  useEffect(() => {
+    const updateColors = () => {
+      const rootStyle = getComputedStyle(document.documentElement);
+      const base = rootStyle.getPropertyValue('--ctp-base').trim();
+      const surface0 = rootStyle.getPropertyValue('--ctp-surface0').trim();
+      const text = rootStyle.getPropertyValue('--ctp-text').trim();
+
+      if (base && surface0 && text) {
+        setChartColors({ base, surface0, text });
+      }
+    };
+
+    updateColors();
+
+    // Listen for theme changes
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'attributes' && mutation.attributeName === 'data-theme') {
+          updateColors();
+        }
+      });
+    });
+
+    observer.observe(document.documentElement, { attributes: true });
+
+    return () => observer.disconnect();
+  }, []);
+
   // Fetch favorites on component mount
   useEffect(() => {
     const fetchFavorites = async () => {
@@ -452,12 +488,12 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
                   />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: '#1e1e2e',
-                      border: '1px solid #45475a',
+                      backgroundColor: chartColors.base,
+                      border: `1px solid ${chartColors.surface0}`,
                       borderRadius: '4px',
-                      color: '#cdd6f4'
+                      color: chartColors.text
                     }}
-                    labelStyle={{ color: '#cdd6f4' }}
+                    labelStyle={{ color: chartColors.text }}
                     labelFormatter={(value) => {
                       const date = new Date(value);
                       return date.toLocaleString([], {

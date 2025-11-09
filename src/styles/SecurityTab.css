@@ -10,12 +10,12 @@
 
 .security-header h2 {
   margin: 0 0 10px 0;
-  color: #333;
+  color: var(--ctp-text);
 }
 
 .security-header p {
   margin: 0;
-  color: #666;
+  color: var(--ctp-subtext0);
   font-size: 14px;
 }
 
@@ -25,8 +25,8 @@
 }
 
 .status-card {
-  background: #f8f9fa;
-  border: 1px solid #dee2e6;
+  background: var(--ctp-base);
+  border: 1px solid var(--ctp-surface1);
   border-radius: 8px;
   padding: 20px;
 }
@@ -34,7 +34,7 @@
 .status-card h3 {
   margin: 0 0 15px 0;
   font-size: 18px;
-  color: #333;
+  color: var(--ctp-text);
 }
 
 .status-details {
@@ -44,7 +44,7 @@
 .status-row {
   display: flex;
   padding: 8px 0;
-  border-bottom: 1px solid #e9ecef;
+  border-bottom: 1px solid var(--ctp-surface0);
 }
 
 .status-row:last-child {
@@ -54,33 +54,33 @@
 .status-row .label {
   font-weight: 600;
   min-width: 140px;
-  color: #666;
+  color: var(--ctp-subtext0);
 }
 
 .status-row .value {
-  color: #495057;
+  color: var(--ctp-text);
   font-weight: 500;
 }
 
 .status-row .value.running {
-  color: #28a745;
+  color: var(--ctp-green);
   font-weight: 600;
 }
 
 .status-row .value.stopped {
-  color: #dc3545;
+  color: var(--ctp-red);
   font-weight: 600;
 }
 
 .status-row .timestamp {
-  color: #999;
+  color: var(--ctp-overlay0);
   font-size: 12px;
   margin-left: 5px;
 }
 
 .scan-button {
-  background: #007bff;
-  color: white;
+  background: var(--ctp-blue);
+  color: var(--ctp-crust);
   border: none;
   padding: 10px 20px;
   border-radius: 5px;
@@ -91,11 +91,11 @@
 }
 
 .scan-button:hover:not(:disabled) {
-  background: #0056b3;
+  background: var(--ctp-sapphire);
 }
 
 .scan-button:disabled {
-  background: #6c757d;
+  background: var(--ctp-surface2);
   cursor: not-allowed;
   opacity: 0.6;
 }
@@ -109,23 +109,23 @@
 }
 
 .stat-card {
-  background: white;
+  background: var(--ctp-base);
   border-radius: 8px;
   padding: 20px;
   text-align: center;
-  border: 2px solid #dee2e6;
+  border: 2px solid var(--ctp-surface1);
 }
 
 .stat-card.total {
-  border-color: #007bff;
+  border-color: var(--ctp-blue);
 }
 
 .stat-card.low-entropy {
-  border-color: #ffc107;
+  border-color: var(--ctp-yellow);
 }
 
 .stat-card.duplicate {
-  border-color: #dc3545;
+  border-color: var(--ctp-red);
 }
 
 .stat-value {
@@ -135,20 +135,20 @@
 }
 
 .stat-card.total .stat-value {
-  color: #007bff;
+  color: var(--ctp-blue);
 }
 
 .stat-card.low-entropy .stat-value {
-  color: #ffc107;
+  color: var(--ctp-yellow);
 }
 
 .stat-card.duplicate .stat-value {
-  color: #dc3545;
+  color: var(--ctp-red);
 }
 
 .stat-label {
   font-size: 14px;
-  color: #666;
+  color: var(--ctp-subtext0);
   font-weight: 500;
 }
 
@@ -163,27 +163,28 @@
 
 .issues-section h3 {
   margin-bottom: 20px;
-  color: #333;
+  color: var(--ctp-text);
   font-size: 20px;
 }
 
 .no-issues {
-  background: #d4edda;
-  border: 1px solid #c3e6cb;
+  background: var(--ctp-green);
+  border: 1px solid var(--ctp-green);
   border-radius: 8px;
   padding: 30px;
   text-align: center;
+  opacity: 0.2;
 }
 
 .no-issues p {
   margin: 10px 0;
-  color: #155724;
+  color: var(--ctp-text);
   font-size: 16px;
 }
 
 .no-issues .help-text {
   font-size: 14px;
-  color: #155724;
+  color: var(--ctp-text);
   opacity: 0.8;
 }
 
@@ -194,8 +195,8 @@
 }
 
 .issue-card {
-  background: white;
-  border: 1px solid #dee2e6;
+  background: var(--ctp-base);
+  border: 1px solid var(--ctp-surface1);
   border-radius: 8px;
   overflow: hidden;
   transition: box-shadow 0.2s;
@@ -215,7 +216,7 @@
 }
 
 .issue-header:hover {
-  background: #f8f9fa;
+  background: var(--ctp-mantle);
 }
 
 .node-info {
@@ -228,21 +229,21 @@
 }
 
 .node-name strong {
-  color: #333;
+  color: var(--ctp-text);
 }
 
 .node-name .long-name {
-  color: #666;
+  color: var(--ctp-subtext0);
   font-size: 14px;
 }
 
 .node-id {
   font-size: 12px;
-  color: #999;
+  color: var(--ctp-overlay0);
 }
 
 .node-id .hw-model {
-  color: #666;
+  color: var(--ctp-subtext0);
   font-weight: 500;
 }
 
@@ -260,26 +261,28 @@
 }
 
 .badge.low-entropy {
-  background: #fff3cd;
-  color: #856404;
-  border: 1px solid #ffc107;
+  background: var(--ctp-yellow);
+  color: var(--ctp-base);
+  border: 1px solid var(--ctp-yellow);
+  opacity: 0.8;
 }
 
 .badge.duplicate {
-  background: #f8d7da;
-  color: #721c24;
-  border: 1px solid #dc3545;
+  background: var(--ctp-red);
+  color: var(--ctp-base);
+  border: 1px solid var(--ctp-red);
+  opacity: 0.8;
 }
 
 .expand-icon {
-  color: #999;
+  color: var(--ctp-overlay0);
   font-size: 12px;
   margin-left: 10px;
 }
 
 .send-notification-btn {
-  background: #007bff;
-  color: white;
+  background: var(--ctp-blue);
+  color: var(--ctp-crust);
   border: none;
   padding: 6px 12px;
   border-radius: 4px;
@@ -292,7 +295,7 @@
 }
 
 .send-notification-btn:hover {
-  background: #0056b3;
+  background: var(--ctp-sapphire);
   transform: scale(1.05);
 }
 
@@ -302,8 +305,8 @@
 
 .issue-details {
   padding: 20px;
-  border-top: 1px solid #dee2e6;
-  background: #f8f9fa;
+  border-top: 1px solid var(--ctp-surface1);
+  background: var(--ctp-mantle);
 }
 
 .detail-row {
@@ -319,18 +322,18 @@
 .detail-label {
   font-weight: 600;
   min-width: 120px;
-  color: #666;
+  color: var(--ctp-subtext0);
 }
 
 .detail-value {
-  color: #333;
+  color: var(--ctp-text);
   flex: 1;
 }
 
 .detail-value.key-hash {
   font-family: monospace;
   font-size: 12px;
-  background: white;
+  background: var(--ctp-surface0);
   padding: 4px 8px;
   border-radius: 4px;
   word-break: break-all;
@@ -348,7 +351,7 @@
 
 .detail-row.recommendations li {
   margin-bottom: 8px;
-  color: #666;
+  color: var(--ctp-subtext0);
   line-height: 1.5;
 }
 
@@ -358,21 +361,21 @@
 
 /* Clickable Node Links */
 .node-link {
-  color: #007bff;
+  color: var(--ctp-blue);
   cursor: pointer;
   text-decoration: none;
   transition: color 0.2s;
 }
 
 .node-link:hover {
-  color: #0056b3;
+  color: var(--ctp-sapphire);
   text-decoration: underline;
 }
 
 /* Duplicate Key Groups */
 .duplicate-group {
-  background: white;
-  border: 1px solid #dee2e6;
+  background: var(--ctp-base);
+  border: 1px solid var(--ctp-surface1);
   border-radius: 8px;
   margin-bottom: 20px;
   overflow: hidden;
@@ -380,8 +383,9 @@
 
 .duplicate-group-header {
   padding: 15px 20px;
-  background: #f8d7da;
-  border-bottom: 1px solid #dc3545;
+  background: var(--ctp-red);
+  border-bottom: 1px solid var(--ctp-red);
+  opacity: 0.3;
 }
 
 .group-title {
@@ -394,8 +398,8 @@
 .group-title .key-hash {
   font-family: monospace;
   font-size: 12px;
-  color: #721c24;
-  background: white;
+  color: var(--ctp-text);
+  background: var(--ctp-surface0);
   padding: 4px 8px;
   border-radius: 4px;
   flex: 1;
@@ -403,13 +407,13 @@
 
 .node-count {
   font-size: 14px;
-  color: #721c24;
+  color: var(--ctp-text);
   font-weight: 500;
 }
 
 .duplicate-node-list {
   padding: 15px 20px;
-  background: #fff;
+  background: var(--ctp-base);
 }
 
 .duplicate-node-item {
@@ -418,14 +422,14 @@
   align-items: center;
   padding: 10px 15px;
   margin-bottom: 8px;
-  background: #f8f9fa;
-  border: 1px solid #dee2e6;
+  background: var(--ctp-mantle);
+  border: 1px solid var(--ctp-surface1);
   border-radius: 5px;
   transition: background 0.2s;
 }
 
 .duplicate-node-item:hover {
-  background: #e9ecef;
+  background: var(--ctp-surface0);
 }
 
 .duplicate-node-item:last-child {
@@ -434,7 +438,7 @@
 
 .duplicate-node-item .node-id {
   font-size: 12px;
-  color: #999;
+  color: var(--ctp-overlay0);
   font-family: monospace;
 }
 
@@ -446,15 +450,16 @@
 
 .group-recommendations {
   padding: 15px 20px;
-  background: #fff3cd;
-  border-top: 1px solid #ffc107;
-  color: #856404;
+  background: var(--ctp-yellow);
+  border-top: 1px solid var(--ctp-yellow);
+  color: var(--ctp-base);
   font-size: 14px;
   line-height: 1.6;
+  opacity: 0.3;
 }
 
 .group-recommendations strong {
-  color: #721c24;
+  color: var(--ctp-text);
 }
 
 /* Loading & Error States */
@@ -462,142 +467,25 @@
 .error {
   text-align: center;
   padding: 40px;
-  color: #666;
+  color: var(--ctp-subtext0);
 }
 
 .error {
-  color: #dc3545;
+  color: var(--ctp-red);
 }
 
 .error button {
   margin-top: 10px;
   padding: 8px 16px;
-  background: #007bff;
-  color: white;
+  background: var(--ctp-blue);
+  color: var(--ctp-crust);
   border: none;
   border-radius: 5px;
   cursor: pointer;
 }
 
 .error button:hover {
-  background: #0056b3;
-}
-
-/* Dark mode support */
-@media (prefers-color-scheme: dark) {
-  .security-tab {
-    color: #e9ecef;
-  }
-
-  .security-header h2,
-  .issues-section h3,
-  .status-card h3,
-  .node-name strong,
-  .detail-value {
-    color: #e9ecef;
-  }
-
-  .security-header p,
-  .status-row .label,
-  .status-row .value,
-  .stat-label,
-  .node-id,
-  .detail-label,
-  .detail-row.recommendations li {
-    color: #adb5bd;
-  }
-
-  .status-card {
-    background: #2b3035;
-    border-color: #495057;
-  }
-
-  .stat-card {
-    background: #2b3035;
-    border-color: #495057;
-  }
-
-  .issue-card {
-    background: #2b3035;
-    border-color: #495057;
-  }
-
-  .issue-header:hover {
-    background: #343a40;
-  }
-
-  .issue-details {
-    background: #212529;
-    border-top-color: #495057;
-  }
-
-  .detail-value.key-hash {
-    background: #343a40;
-  }
-
-  .no-issues {
-    background: #1e4620;
-    border-color: #2d5930;
-  }
-
-  .no-issues p,
-  .no-issues .help-text {
-    color: #7fd37f;
-  }
-
-  .node-link {
-    color: #6ea8fe;
-  }
-
-  .node-link:hover {
-    color: #9ec5fe;
-  }
-
-  .duplicate-group {
-    background: #2b3035;
-    border-color: #495057;
-  }
-
-  .duplicate-group-header {
-    background: #3a2428;
-    border-bottom-color: #dc3545;
-  }
-
-  .group-title .key-hash {
-    background: #212529;
-    color: #f8b9c0;
-  }
-
-  .node-count {
-    color: #f8b9c0;
-  }
-
-  .duplicate-node-list {
-    background: #2b3035;
-  }
-
-  .duplicate-node-item {
-    background: #343a40;
-    border-color: #495057;
-  }
-
-  .duplicate-node-item:hover {
-    background: #495057;
-  }
-
-  .group-recommendations {
-    background: #3a3420;
-    border-top-color: #ffc107;
-    color: #ffecb5;
-  }
-
-  .group-recommendations strong {
-    color: #f8b9c0;
-  }
-
-  .node-id .hw-model {
-    color: #adb5bd;
-  }
+  background: var(--ctp-sapphire);
 }
 
 /* Mobile responsiveness */
