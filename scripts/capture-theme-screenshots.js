@@ -6,7 +6,7 @@
  * Requirements:
  * - npm install puppeteer
  * - Emoji fonts (for proper icon rendering):
- *   Ubuntu/Debian: sudo apt-get install fonts-noto-color-emoji fonts-noto-emoji
+ *   Ubuntu/Debian: sudo apt-get install fonts-noto-color-emoji
  *   Fedora/RHEL: sudo dnf install google-noto-emoji-fonts
  *   macOS: Emoji fonts included by default
  *
