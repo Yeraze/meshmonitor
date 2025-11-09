@@ -141,6 +141,7 @@ function App() {
   const [configRefreshTrigger, setConfigRefreshTrigger] = useState(0);
   const [showTracerouteHistoryModal, setShowTracerouteHistoryModal] = useState(false);
   const [selectedRouteSegment, setSelectedRouteSegment] = useState<{nodeNum1: number; nodeNum2: number} | null>(null);
+  const [emojiPickerMessage, setEmojiPickerMessage] = useState<MeshMessage | null>(null);
 
   // Check if mobile viewport and default to collapsed on mobile
   const isMobileViewport = () => window.innerWidth <= 768;
@@ -217,13 +218,35 @@ function App() {
   // Constants for emoji tapbacks
   const EMOJI_FLAG = 1; // Protobuf flag indicating this is a tapback/reaction
   const TAPBACK_EMOJIS = [
+    // Common reactions (compatible with Meshtastic OLED displays)
     { emoji: '👍', title: 'Thumbs up' },
     { emoji: '👎', title: 'Thumbs down' },
-    { emoji: '❓', title: 'Question' },
-    { emoji: '❗', title: 'Exclamation' },
+    { emoji: '❤️', title: 'Heart' },
     { emoji: '😂', title: 'Laugh' },
     { emoji: '😢', title: 'Cry' },
-    { emoji: '💩', title: 'Poop' }
+    { emoji: '😮', title: 'Wow' },
+    { emoji: '😡', title: 'Angry' },
+    { emoji: '🎉', title: 'Celebrate' },
+    // Questions and alerts
+    { emoji: '❓', title: 'Question' },
+    { emoji: '❗', title: 'Exclamation' },
+    { emoji: '‼️', title: 'Double exclamation' },
+    // Fun emojis (OLED compatible)
+    { emoji: '💩', title: 'Poop' },
+    { emoji: '👋', title: 'Wave' },
+    { emoji: '🤠', title: 'Cowboy' },
+    { emoji: '🐭', title: 'Mouse' },
+    { emoji: '😈', title: 'Devil' },
+    // Weather (OLED compatible)
+    { emoji: '☀️', title: 'Sunny' },
+    { emoji: '☔', title: 'Rain' },
+    { emoji: '☁️', title: 'Cloudy' },
+    { emoji: '🌫️', title: 'Foggy' },
+    // Additional useful reactions
+    { emoji: '✅', title: 'Check' },
+    { emoji: '❌', title: 'X' },
+    { emoji: '🔥', title: 'Fire' },
+    { emoji: '💯', title: '100' }
   ] as const;
 
   // Meshtastic default PSK (base64 encoded single null byte = unencrypted)
@@ -3194,16 +3217,13 @@ function App() {
                                     >
                                       ↩
                                     </button>
-                                    {TAPBACK_EMOJIS.map(({ emoji, title }) => (
-                                      <button
-                                        key={emoji}
-                                        className="emoji-button"
-                                        onClick={() => handleSendTapback(emoji, msg)}
-                                        title={title}
-                                      >
-                                        {emoji}
-                                      </button>
-                                    ))}
+                                    <button
+                                      className="emoji-picker-button"
+                                      onClick={() => setEmojiPickerMessage(msg)}
+                                      title="React with emoji"
+                                    >
+                                      😄
+                                    </button>
                                   </div>
                                 )}
                                 <div className="message-text" style={{whiteSpace: 'pre-line'}}>
@@ -3913,16 +3933,13 @@ function App() {
                                   >
                                     ↩
                                   </button>
-                                  {TAPBACK_EMOJIS.map(({ emoji, title }) => (
-                                    <button
-                                      key={emoji}
-                                      className="emoji-button"
-                                      onClick={() => handleSendTapback(emoji, msg)}
-                                      title={title}
-                                    >
-                                      {emoji}
-                                    </button>
-                                  ))}
+                                  <button
+                                    className="emoji-picker-button"
+                                    onClick={() => setEmojiPickerMessage(msg)}
+                                    title="React with emoji"
+                                  >
+                                    😄
+                                  </button>
                                 </div>
                               )}
                               <div className="message-text" style={{whiteSpace: 'pre-line'}}>
@@ -4920,6 +4937,40 @@ function App() {
 
       <LoginModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />
       <RebootModal isOpen={showRebootModal} onClose={handleRebootModalClose} />
+
+      {/* Emoji Picker Modal */}
+      {emojiPickerMessage && (
+        <div className="modal-overlay" onClick={() => setEmojiPickerMessage(null)}>
+          <div className="emoji-picker-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="emoji-picker-header">
+              <h3>React with an emoji</h3>
+              <button
+                className="emoji-picker-close"
+                onClick={() => setEmojiPickerMessage(null)}
+                title="Close"
+              >
+                ×
+              </button>
+            </div>
+            <div className="emoji-picker-grid">
+              {TAPBACK_EMOJIS.map(({ emoji, title }) => (
+                <button
+                  key={emoji}
+                  className="emoji-picker-item"
+                  onClick={() => {
+                    handleSendTapback(emoji, emojiPickerMessage);
+                    setEmojiPickerMessage(null);
+                  }}
+                  title={title}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {showTracerouteHistoryModal && selectedDMNode && (
         <TracerouteHistoryModal
           fromNodeNum={parseNodeId(currentNodeId)}
