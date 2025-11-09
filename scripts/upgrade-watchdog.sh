@@ -112,6 +112,7 @@ recreate_container() {
     grep -v '^PATH=' | \
     grep -v '^HOME=' | \
     grep -v '^HOSTNAME=' | \
+    grep -v '^$' | \
     sed 's/^/-e /' | \
     tr '\n' ' ')
 
@@ -122,14 +123,18 @@ recreate_container() {
 
   # Start new container with same configuration
   log "Starting new container..."
-  docker run -d \
-    --name "$CONTAINER_NAME" \
-    --restart unless-stopped \
-    $ports \
-    $volumes \
-    $env_vars \
-    ${network:+--network "$network"} \
-    "${IMAGE_NAME}:latest"
+
+  # Build command incrementally to handle optional network parameter
+  set -- -d --name "$CONTAINER_NAME" --restart unless-stopped
+
+  # Add network if present (using positional parameters to avoid word-splitting issues)
+  if [ -n "$network" ]; then
+    set -- "$@" --network "$network"
+  fi
+
+  # Execute docker run with all parameters
+  # Note: $ports, $volumes, $env_vars are intentionally unquoted for word splitting
+  docker run "$@" $ports $volumes $env_vars ghcr.io/yeraze/meshmonitor:latest
 
   if [ $? -eq 0 ]; then
     log_success "Container recreated successfully"
