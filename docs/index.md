@@ -48,6 +48,10 @@ features:
     title: Responsive Design
     details: Works seamlessly on desktop, tablet, and mobile devices. Monitor your network from anywhere.
 
+  - icon: 🎨
+    title: Customizable Themes
+    details: Choose from 15 carefully crafted themes including color-blind friendly options and WCAG AAA compliant high-contrast themes for enhanced accessibility.
+
   - icon: 🔔
     title: Push Notifications
     details: Receive real-time alerts for new messages on iOS, Android, and desktop - even when the app is closed. Zero configuration, works with HTTPS.

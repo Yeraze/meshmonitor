@@ -39,7 +39,8 @@ export default defineConfig({
             { text: 'Settings', link: '/features/settings' },
             { text: 'Automation', link: '/features/automation' },
             { text: 'Device Configuration', link: '/features/device' },
-            { text: 'Push Notifications', link: '/features/notifications' }
+            { text: 'Push Notifications', link: '/features/notifications' },
+            { text: '🎨 Theme Gallery', link: '/THEME_GALLERY' }
           ]
         }
       ],
