@@ -1,7 +1,22 @@
-# Release Notes - v1.4.0
+# Release Notes - v2.16.1
 
 ## Overview
-This release includes major dependency updates to modernize the codebase and improve compatibility with current Node.js versions.
+This is a minor feature release that improves the emoji reaction picker with a modal UI to prevent accidental sends and expands the available emoji selection.
+
+For detailed release notes, see [RELEASE_NOTES_v2.16.1.md](./RELEASE_NOTES_v2.16.1.md)
+
+## Quick Summary
+- Improved emoji picker with modal UI (#500, #503)
+- Expanded from 7 to 24 emojis
+- Mobile-optimized to prevent accidental sends
+- Two-step selection process for better UX
+
+---
+
+# Previous Release - v1.4.0
+
+## Overview
+This release included major dependency updates to modernize the codebase and improve compatibility with current Node.js versions.
 
 ## Major Updates
 
