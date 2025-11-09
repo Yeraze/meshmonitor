@@ -2,7 +2,14 @@
 
 /**
  * Capture screenshots of MeshMonitor in all available themes
- * Requires: npm install puppeteer
+ *
+ * Requirements:
+ * - npm install puppeteer
+ * - Emoji fonts (for proper icon rendering):
+ *   Ubuntu/Debian: sudo apt-get install fonts-noto-color-emoji fonts-noto-emoji
+ *   Fedora/RHEL: sudo dnf install google-noto-emoji-fonts
+ *   macOS: Emoji fonts included by default
+ *
  * Usage: node scripts/capture-theme-screenshots.js
  */
 
@@ -58,7 +65,13 @@ async function captureThemeScreenshots() {
   console.log('Starting browser...');
   const browser = await puppeteer.launch({
     headless: 'new',
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--font-render-hinting=none',
+      '--enable-font-antialiasing',
+      '--disable-gpu'
+    ]
   });
 
   try {
