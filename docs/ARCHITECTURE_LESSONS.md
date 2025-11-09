@@ -117,8 +117,42 @@ if (pendingOp) {
 - Short operations (queries): 10-30 seconds
 - Config updates: 60-120 seconds
 - Long operations (traceroutes): 5-10 minutes
+- **Connection idle timeout**: 5 minutes (300 seconds)
 
 **Critical**: Clean up pending operations on timeout to prevent memory leaks.
+
+### Stale Connection Detection
+
+**Problem**: TCP connections can appear "alive" at the socket level but have stale/frozen application-level communication ("zombie connections").
+
+**Solution**: Application-level health monitoring with idle timeout.
+
+**Implementation** (`src/server/tcpTransport.ts`):
+- Track `lastDataReceived` timestamp
+- Periodic health check every 60 seconds
+- Configurable idle timeout (default: 5 minutes)
+- Force reconnection if no data received within timeout period
+
+**Configuration**:
+```bash
+# Set via environment variable (in milliseconds)
+MESHTASTIC_STALE_CONNECTION_TIMEOUT=300000  # 5 minutes (default)
+MESHTASTIC_STALE_CONNECTION_TIMEOUT=0       # Disable (not recommended)
+```
+
+**Why Needed**:
+- Serial ports can enter half-open states
+- USB disconnects may not trigger TCP errors
+- Meshtastic devices can freeze without closing socket
+- Docker serial passthrough adds failure points
+
+**Symptoms of Stale Connection**:
+- No incoming messages appear
+- Outbound sends succeed but device doesn't respond
+- Traceroute shows "no response"
+- Manual reconnect fixes the issue
+
+**Related**: Issue #492 - Serial-connected device stops responding after idle
 
 ---
 

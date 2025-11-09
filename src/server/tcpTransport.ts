@@ -17,10 +17,25 @@ export class TcpTransport extends EventEmitter {
   private shouldReconnect = true;
   private config: TcpTransportConfig | null = null;
 
+  // Stale connection detection
+  private lastDataReceived: number = 0;
+  private staleConnectionTimeout: number = 300000; // 5 minutes default (in milliseconds)
+  private healthCheckInterval: NodeJS.Timeout | null = null;
+  private readonly HEALTH_CHECK_INTERVAL_MS = 60000; // Check every minute
+
   // Protocol constants
   private readonly START1 = 0x94;
   private readonly START2 = 0xc3;
   private readonly MAX_PACKET_SIZE = 512;
+
+  /**
+   * Set the stale connection timeout in milliseconds
+   * @param timeoutMs Timeout in milliseconds (0 to disable)
+   */
+  setStaleConnectionTimeout(timeoutMs: number): void {
+    this.staleConnectionTimeout = timeoutMs;
+    logger.debug(`⏱️  Stale connection timeout set to ${timeoutMs}ms (${Math.floor(timeoutMs / 1000 / 60)} minutes)`);
+  }
 
   async connect(host: string, port: number = 4403): Promise<void> {
     if (this.isConnecting || this.isConnected) {
@@ -64,6 +79,12 @@ export class TcpTransport extends EventEmitter {
         this.isConnected = true;
         this.reconnectAttempts = 0;
         this.buffer = Buffer.alloc(0); // Reset buffer on new connection
+
+        // Initialize last data received timestamp
+        this.lastDataReceived = Date.now();
+
+        // Start stale connection monitoring
+        this.startHealthCheck();
 
         logger.debug(`✅ TCP connected to ${this.config?.host}:${this.config?.port}`);
         this.emit('connect');
@@ -132,6 +153,9 @@ export class TcpTransport extends EventEmitter {
       this.reconnectTimeout = null;
     }
 
+    // Stop stale connection monitoring
+    this.stopHealthCheck();
+
     if (this.socket) {
       this.socket.removeAllListeners();
       this.socket.destroy();
@@ -181,6 +205,9 @@ export class TcpTransport extends EventEmitter {
   }
 
   private handleIncomingData(data: Buffer): void {
+    // Update last data received timestamp
+    this.lastDataReceived = Date.now();
+
     // Append new data to buffer
     this.buffer = Buffer.concat([this.buffer, data]);
 
@@ -264,5 +291,72 @@ export class TcpTransport extends EventEmitter {
 
   getReconnectAttempts(): number {
     return this.reconnectAttempts;
+  }
+
+  /**
+   * Start periodic health check for stale connections
+   */
+  private startHealthCheck(): void {
+    // Don't start if timeout is disabled
+    if (this.staleConnectionTimeout === 0) {
+      logger.debug('⏱️  Stale connection detection disabled (timeout = 0)');
+      return;
+    }
+
+    // Stop any existing interval
+    this.stopHealthCheck();
+
+    // Start periodic check
+    this.healthCheckInterval = setInterval(() => {
+      this.checkConnection();
+    }, this.HEALTH_CHECK_INTERVAL_MS);
+
+    logger.debug(`⏱️  Stale connection monitoring started (timeout: ${Math.floor(this.staleConnectionTimeout / 1000 / 60)} minutes, check interval: ${this.HEALTH_CHECK_INTERVAL_MS / 1000}s)`);
+  }
+
+  /**
+   * Stop periodic health check
+   */
+  private stopHealthCheck(): void {
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+      this.healthCheckInterval = null;
+      logger.debug('⏱️  Stale connection monitoring stopped');
+    }
+  }
+
+  /**
+   * Check if connection has become stale (no data received for too long)
+   */
+  private checkConnection(): void {
+    if (!this.isConnected) {
+      return; // Not connected, nothing to check
+    }
+
+    if (this.staleConnectionTimeout === 0) {
+      return; // Timeout disabled
+    }
+
+    const now = Date.now();
+    const timeSinceLastData = now - this.lastDataReceived;
+
+    if (timeSinceLastData > this.staleConnectionTimeout) {
+      const minutesSinceLastData = Math.floor(timeSinceLastData / 1000 / 60);
+      const timeoutMinutes = Math.floor(this.staleConnectionTimeout / 1000 / 60);
+
+      logger.warn(`⚠️  Stale connection detected: No data received for ${minutesSinceLastData} minutes (timeout: ${timeoutMinutes} minutes). Forcing reconnection...`);
+
+      // Emit a custom event for stale connection
+      this.emit('stale-connection', { timeSinceLastData, timeout: this.staleConnectionTimeout });
+
+      // Force reconnection by destroying the socket
+      if (this.socket) {
+        this.socket.destroy();
+      }
+    } else {
+      // Log periodic health check status at debug level
+      const minutesSinceLastData = Math.floor(timeSinceLastData / 1000 / 60);
+      logger.debug(`💓 Connection health check: Last data received ${minutesSinceLastData} minute(s) ago`);
+    }
   }
 }

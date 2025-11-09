@@ -159,6 +159,8 @@ export interface EnvironmentConfig {
   meshtasticNodeIpProvided: boolean;
   meshtasticTcpPort: number;
   meshtasticTcpPortProvided: boolean;
+  meshtasticStaleConnectionTimeout: number;
+  meshtasticStaleConnectionTimeoutProvided: boolean;
   timezone: string;
   timezoneProvided: boolean;
 
@@ -361,6 +363,11 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     wasProvided: process.env.MESHTASTIC_NODE_IP !== undefined
   };
   const meshtasticTcpPort = parseInt32('MESHTASTIC_TCP_PORT', process.env.MESHTASTIC_TCP_PORT, 4403);
+  const meshtasticStaleConnectionTimeout = parseInt32(
+    'MESHTASTIC_STALE_CONNECTION_TIMEOUT',
+    process.env.MESHTASTIC_STALE_CONNECTION_TIMEOUT,
+    300000 // 5 minutes default (in milliseconds)
+  );
   const timezone = {
     value: process.env.TZ || 'America/New_York',
     wasProvided: process.env.TZ !== undefined
@@ -507,6 +514,8 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     meshtasticNodeIpProvided: meshtasticNodeIp.wasProvided,
     meshtasticTcpPort: meshtasticTcpPort.value,
     meshtasticTcpPortProvided: meshtasticTcpPort.wasProvided,
+    meshtasticStaleConnectionTimeout: meshtasticStaleConnectionTimeout.value,
+    meshtasticStaleConnectionTimeoutProvided: meshtasticStaleConnectionTimeout.wasProvided,
     timezone: timezone.value,
     timezoneProvided: timezone.wasProvided,
 
