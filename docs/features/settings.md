@@ -303,6 +303,34 @@ When information is unavailable, the block displays "N/A" for that metric. This 
 
 **Side Effects**: Only affects display - the actual position data remains unchanged.
 
+### Color Theme
+
+**Description**: Customize the visual appearance of MeshMonitor with 15 carefully crafted themes including accessibility-focused options.
+
+**Categories**:
+- **Catppuccin** (4 themes): Latte, Frappé, Macchiato, Mocha
+- **Popular Themes** (6 themes): Nord, Dracula, Solarized Dark/Light, Gruvbox Dark/Light
+- **High Contrast** (2 themes): WCAG AAA compliant themes for users with low vision
+- **Color Blind Friendly** (3 themes): Optimized for protanopia, deuteranopia, and tritanopia
+
+**Default**: Catppuccin Mocha (Dark)
+
+**Effect**: Changes the color scheme for all UI elements including:
+- Sidebar and navigation
+- Message containers and chat
+- Telemetry graphs and charts
+- Node information displays
+- Settings and configuration panels
+- Modals and popups
+
+**Accessibility Features**:
+- **WCAG AAA Compliance**: High Contrast themes meet the highest accessibility standards
+- **Color Blind Support**: Specialized themes for different types of color blindness
+- **Persistent Choice**: Your theme selection is saved and applies across all pages
+- **Instant Switching**: Themes update immediately without page reload
+
+**Learn More**: Browse all themes with color previews and detailed descriptions in the [Theme Gallery](/THEME_GALLERY).
+
 ### Telemetry Visualization Hours
 
 **Description**: Controls how much historical telemetry data is shown in graphs.

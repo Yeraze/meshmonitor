@@ -9,7 +9,13 @@ export type DistanceUnit = 'km' | 'mi';
 export type TimeFormat = '12' | '24';
 export type DateFormat = 'MM/DD/YYYY' | 'DD/MM/YYYY';
 export type MapPinStyle = 'meshmonitor' | 'official';
-export type Theme = 'mocha' | 'macchiato' | 'frappe' | 'latte';
+export type Theme =
+  | 'mocha' | 'macchiato' | 'frappe' | 'latte'
+  | 'nord' | 'dracula'
+  | 'solarized-dark' | 'solarized-light'
+  | 'gruvbox-dark' | 'gruvbox-light'
+  | 'high-contrast-dark' | 'high-contrast-light'
+  | 'protanopia' | 'deuteranopia' | 'tritanopia';
 
 interface SettingsContextType {
   maxNodeAgeHours: number;
@@ -129,7 +135,14 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
 
   const [theme, setThemeState] = useState<Theme>(() => {
     const saved = localStorage.getItem('theme');
-    const validThemes: Theme[] = ['mocha', 'macchiato', 'frappe', 'latte'];
+    const validThemes: Theme[] = [
+      'mocha', 'macchiato', 'frappe', 'latte',
+      'nord', 'dracula',
+      'solarized-dark', 'solarized-light',
+      'gruvbox-dark', 'gruvbox-light',
+      'high-contrast-dark', 'high-contrast-light',
+      'protanopia', 'deuteranopia', 'tritanopia'
+    ];
     return (saved && validThemes.includes(saved as Theme) ? saved : 'mocha') as Theme;
   });
 
@@ -351,7 +364,14 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
           }
 
           if (settings.theme) {
-            const validThemes: Theme[] = ['mocha', 'macchiato', 'frappe', 'latte'];
+            const validThemes: Theme[] = [
+              'mocha', 'macchiato', 'frappe', 'latte',
+              'nord', 'dracula',
+              'solarized-dark', 'solarized-light',
+              'gruvbox-dark', 'gruvbox-light',
+              'high-contrast-dark', 'high-contrast-light',
+              'protanopia', 'deuteranopia', 'tritanopia'
+            ];
             if (validThemes.includes(settings.theme as Theme)) {
               setThemeState(settings.theme as Theme);
               localStorage.setItem('theme', settings.theme);

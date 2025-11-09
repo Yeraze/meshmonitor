@@ -15,7 +15,13 @@ type DistanceUnit = 'km' | 'mi';
 type TimeFormat = '12' | '24';
 type DateFormat = 'MM/DD/YYYY' | 'DD/MM/YYYY';
 type MapPinStyle = 'meshmonitor' | 'official';
-type Theme = 'mocha' | 'macchiato' | 'frappe' | 'latte';
+type Theme =
+  | 'mocha' | 'macchiato' | 'frappe' | 'latte'
+  | 'nord' | 'dracula'
+  | 'solarized-dark' | 'solarized-light'
+  | 'gruvbox-dark' | 'gruvbox-light'
+  | 'high-contrast-dark' | 'high-contrast-light'
+  | 'protanopia' | 'deuteranopia' | 'tritanopia';
 
 interface SettingsTabProps {
   maxNodeAgeHours: number;
@@ -760,7 +766,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           <div className="setting-item">
             <label htmlFor="theme">
               Color Theme
-              <span className="setting-description">Choose your preferred Catppuccin color theme variant</span>
+              <span className="setting-description">Choose from 15 themes including accessibility-focused options</span>
             </label>
             <select
               id="theme"
@@ -768,10 +774,29 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               onChange={(e) => setLocalTheme(e.target.value as Theme)}
               className="setting-input"
             >
-              <option value="mocha">Mocha (Dark)</option>
-              <option value="macchiato">Macchiato (Medium-Dark)</option>
-              <option value="frappe">Frappé (Medium)</option>
-              <option value="latte">Latte (Light)</option>
+              <optgroup label="Catppuccin">
+                <option value="mocha">Mocha (Dark)</option>
+                <option value="macchiato">Macchiato (Medium-Dark)</option>
+                <option value="frappe">Frappé (Medium)</option>
+                <option value="latte">Latte (Light)</option>
+              </optgroup>
+              <optgroup label="Popular Themes">
+                <option value="nord">Nord</option>
+                <option value="dracula">Dracula</option>
+                <option value="solarized-dark">Solarized Dark</option>
+                <option value="solarized-light">Solarized Light</option>
+                <option value="gruvbox-dark">Gruvbox Dark</option>
+                <option value="gruvbox-light">Gruvbox Light</option>
+              </optgroup>
+              <optgroup label="High Contrast (WCAG AAA)">
+                <option value="high-contrast-dark">High Contrast Dark</option>
+                <option value="high-contrast-light">High Contrast Light</option>
+              </optgroup>
+              <optgroup label="Color Blind Friendly">
+                <option value="protanopia">Protanopia (Red-Blind)</option>
+                <option value="deuteranopia">Deuteranopia (Green-Blind)</option>
+                <option value="tritanopia">Tritanopia (Blue-Blind)</option>
+              </optgroup>
             </select>
           </div>
         </div>
