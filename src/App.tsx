@@ -214,6 +214,7 @@ function App() {
   const localNodeIdRef = useRef<string>('') // Track local node ID for immediate access (bypasses React state delay)
   const pendingMessagesRef = useRef<Map<string, MeshMessage>>(new Map()) // Track pending messages for interval access (bypasses closure stale state)
   const upgradePollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null) // Track upgrade polling interval for cleanup
+  const initialVersionRef = useRef<string | null>(null) // Track initial backend version to detect upgrades
 
   // Constants for emoji tapbacks
   const EMOJI_FLAG = 1; // Protobuf flag indicating this is a tapback/reaction
@@ -1645,6 +1646,30 @@ function App() {
       }
 
       const pollData = await pollResponse.json();
+
+      // Check for backend version change (e.g., after auto-upgrade) and reload if changed
+      // Use health endpoint since it always returns version and doesn't require auth
+      try {
+        const healthResponse = await fetch(`${baseUrl}/api/health`);
+        if (healthResponse.ok) {
+          const healthData = await healthResponse.json();
+          if (healthData.version) {
+            if (initialVersionRef.current === null) {
+              // First check - store the initial version
+              initialVersionRef.current = healthData.version;
+              logger.info(`Initial backend version: ${healthData.version}`);
+            } else if (initialVersionRef.current !== healthData.version) {
+              // Version changed - backend was upgraded
+              logger.info(`Backend version changed from ${initialVersionRef.current} to ${healthData.version} - reloading page`);
+              window.location.reload();
+              return; // Don't process rest of the response since we're reloading
+            }
+          }
+        }
+      } catch (error) {
+        // Ignore health check errors - don't want to break polling if health endpoint fails
+        logger.debug('Health check for version monitoring failed:', error);
+      }
 
       // Extract localNodeId early to use in message processing (don't wait for state update)
       const localNodeId = pollData.deviceConfig?.basic?.nodeId || pollData.config?.localNodeInfo?.nodeId || currentNodeId;

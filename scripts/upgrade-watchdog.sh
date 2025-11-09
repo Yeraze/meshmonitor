@@ -112,6 +112,7 @@ recreate_container() {
     grep -v '^PATH=' | \
     grep -v '^HOME=' | \
     grep -v '^HOSTNAME=' | \
+    grep -v '^$' | \
     sed 's/^/-e /' | \
     tr '\n' ' ')
 
