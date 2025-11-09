@@ -111,6 +111,10 @@ class MeshtasticManager {
       // Create TCP transport
       this.transport = new TcpTransport();
 
+      // Configure stale connection timeout from environment
+      const env = getEnvironmentConfig();
+      this.transport.setStaleConnectionTimeout(env.meshtasticStaleConnectionTimeout);
+
       // Setup event handlers
       this.transport.on('connect', () => {
         this.handleConnected();
