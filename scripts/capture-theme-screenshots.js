@@ -93,16 +93,15 @@ async function captureThemeScreenshots() {
 
             // Wait for React app to render
             await browserPage.waitForSelector('#root', { timeout: 10000 });
-            await new Promise(resolve => setTimeout(resolve, 2000)); // Extra time for content to load
 
-            // Set the theme via localStorage
+            // Set the theme via localStorage before data loads
             await browserPage.evaluate((themeId) => {
               localStorage.setItem('theme', themeId);
               document.documentElement.setAttribute('data-theme', themeId);
             }, theme.id);
 
-            // Wait for theme to apply
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            // Wait for data to load (nodes, messages, etc.)
+            await new Promise(resolve => setTimeout(resolve, 5000));
 
             // Generate filename: theme-page-viewport.png
             const filename = `${theme.id}-${pageInfo.name}-${viewport.name}.png`;
