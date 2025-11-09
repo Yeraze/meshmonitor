@@ -46,3 +46,8 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+# Volumes need to be defined in overlay files when referenced by services
+volumes:
+  meshmonitor-data:
+    driver: local
