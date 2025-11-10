@@ -286,12 +286,12 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
     return grouped;
   };
 
-  const prepareChartData = (data: TelemetryData[], isTemperature: boolean = false): ChartData[] => {
+  const prepareChartData = (data: TelemetryData[], isTemperature: boolean = false, globalMinTime?: number): ChartData[] => {
     // Create a map of all unique timestamps from both telemetry and solar data
     const allTimestamps = new Map<number, ChartData>();
 
-    // Calculate telemetry time bounds using helper function
-    const minTelemetryTime = getMinTimestamp(data);
+    // Use global minimum time if provided (for uniform axes), otherwise use chart-specific minimum
+    const minTelemetryTime = globalMinTime !== undefined ? globalMinTime : getMinTimestamp(data);
     const maxTelemetryTime = Date.now();
 
     // Add telemetry data points
@@ -307,13 +307,14 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
     });
 
     // Add solar data points (at their own timestamps)
-    // Only include solar data within the telemetry time range
+    // Only include solar data within the GLOBAL telemetry time range
+    // This prevents solar data from extending the time axis beyond actual telemetry data
     if (solarEstimates.size > 0 && minTelemetryTime !== Infinity) {
       // Use current time with a 5-minute buffer to account for minor clock differences
       const now = maxTelemetryTime + (5 * 60 * 1000);
 
       solarEstimates.forEach((wattHours, timestamp) => {
-        // Filter out data outside telemetry time bounds
+        // Filter out data outside GLOBAL telemetry time bounds
         // Solar data should never extend the graph range beyond actual telemetry
         if (timestamp < minTelemetryTime || timestamp > now) return;
 
@@ -443,8 +444,9 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
 
   const groupedData = groupByType(telemetryData);
 
-  // Calculate global time range across all telemetry data
-  // Min time: earliest datapoint, Max time: current time
+  // Calculate global time range across all telemetry data (excluding solar)
+  // Min time: earliest telemetry datapoint, Max time: current time
+  // Solar data should not extend the time range beyond actual telemetry data
   const getGlobalTimeRange = (): [number, number] | null => {
     if (telemetryData.length === 0) {
       return null;
@@ -467,6 +469,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
   };
 
   const globalTimeRange = getGlobalTimeRange();
+  const globalMinTime = globalTimeRange ? globalTimeRange[0] : undefined;
 
   // Filter out position telemetry (latitude, longitude)
   // Filter out altitude if it hasn't changed
@@ -493,7 +496,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
       <div className="graphs-grid">
         {filteredData.map(([type, data]) => {
           const isTemperature = type === 'temperature';
-          const chartData = prepareChartData(data, isTemperature);
+          const chartData = prepareChartData(data, isTemperature, globalMinTime);
           const unit = isTemperature ? getTemperatureUnit(temperatureUnit) : (data[0]?.unit || '');
           const label = getTelemetryLabel(type);
           const color = getColor(type);
