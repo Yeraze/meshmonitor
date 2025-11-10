@@ -50,6 +50,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [expandedNode, setExpandedNode] = useState<number | null>(null);
+  const [showExportMenu, setShowExportMenu] = useState(false);
 
   const canWrite = hasPermission('security', 'write');
 
@@ -153,6 +154,39 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
     }
   }, [onTabChange, onSelectDMNode, setNewMessage]);
 
+  const handleExport = useCallback(async (format: 'csv' | 'json') => {
+    try {
+      setShowExportMenu(false);
+
+      // Get runtime base path from window location
+      // If pathname is /meshmonitor, extract that; otherwise use /
+      const pathParts = window.location.pathname.split('/').filter(p => p);
+      const basePath = pathParts.length > 0 ? `/${pathParts[0]}/` : '/';
+      const exportUrl = `${basePath}api/security/export?format=${format}`;
+
+      const response = await fetch(exportUrl, {
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        throw new Error('Export failed');
+      }
+
+      // Create a blob from the response
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `security-scan-${Date.now()}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to export data');
+    }
+  }, []);
+
   if (loading) {
     return (
       <div className="security-tab">
@@ -173,8 +207,33 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
   return (
     <div className="security-tab">
       <div className="security-header">
-        <h2>Security Scanner</h2>
-        <p>Monitor encryption key security issues including low-entropy and duplicate keys</p>
+        <div className="header-content">
+          <div>
+            <h2>Security Scanner</h2>
+            <p>Monitor encryption key security issues including low-entropy and duplicate keys</p>
+          </div>
+          <div className="header-actions">
+            <div className="export-dropdown">
+              <button
+                onClick={() => setShowExportMenu(!showExportMenu)}
+                className="export-button"
+                title="Export security scan results"
+              >
+                Export ▼
+              </button>
+              {showExportMenu && (
+                <div className="export-menu">
+                  <button onClick={() => handleExport('csv')} className="export-menu-item">
+                    Export as CSV
+                  </button>
+                  <button onClick={() => handleExport('json')} className="export-menu-item">
+                    Export as JSON
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Scanner Status */}
