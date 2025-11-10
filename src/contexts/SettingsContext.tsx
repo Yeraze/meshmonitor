@@ -9,13 +9,30 @@ export type DistanceUnit = 'km' | 'mi';
 export type TimeFormat = '12' | '24';
 export type DateFormat = 'MM/DD/YYYY' | 'DD/MM/YYYY';
 export type MapPinStyle = 'meshmonitor' | 'official';
-export type Theme =
+
+// Built-in theme types
+export type BuiltInTheme =
   | 'mocha' | 'macchiato' | 'frappe' | 'latte'
   | 'nord' | 'dracula'
   | 'solarized-dark' | 'solarized-light'
   | 'gruvbox-dark' | 'gruvbox-light'
   | 'high-contrast-dark' | 'high-contrast-light'
   | 'protanopia' | 'deuteranopia' | 'tritanopia';
+
+// Theme can be a built-in theme or a custom theme slug
+export type Theme = BuiltInTheme | string;
+
+// Custom theme definition from the API
+export interface CustomTheme {
+  id: number;
+  name: string;
+  slug: string;
+  definition: string; // JSON string of color variables
+  is_builtin: number;
+  created_by?: number;
+  created_at: number;
+  updated_at: number;
+}
 
 interface SettingsContextType {
   maxNodeAgeHours: number;
@@ -31,6 +48,8 @@ interface SettingsContextType {
   mapTileset: TilesetId;
   mapPinStyle: MapPinStyle;
   theme: Theme;
+  customThemes: CustomTheme[];
+  isLoadingThemes: boolean;
   solarMonitoringEnabled: boolean;
   solarMonitoringLatitude: number;
   solarMonitoringLongitude: number;
@@ -52,6 +71,7 @@ interface SettingsContextType {
   setMapTileset: (tilesetId: TilesetId) => void;
   setMapPinStyle: (style: MapPinStyle) => void;
   setTheme: (theme: Theme) => void;
+  loadCustomThemes: () => Promise<void>;
   setSolarMonitoringEnabled: (enabled: boolean) => void;
   setSolarMonitoringLatitude: (latitude: number) => void;
   setSolarMonitoringLongitude: (longitude: number) => void;
@@ -173,6 +193,10 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
 
   const [temporaryTileset, setTemporaryTileset] = useState<TilesetId | null>(null);
 
+  // Custom themes state
+  const [customThemes, setCustomThemes] = useState<CustomTheme[]>([]);
+  const [isLoadingThemes, setIsLoadingThemes] = useState(false);
+
   const setMaxNodeAgeHours = (value: number) => {
     setMaxNodeAgeHoursState(value);
     localStorage.setItem('maxNodeAgeHours', value.toString());
@@ -253,11 +277,110 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     localStorage.setItem('mapPinStyle', style);
   };
 
+  /**
+   * Load custom themes from the API
+   */
+  const loadCustomThemes = React.useCallback(async () => {
+    setIsLoadingThemes(true);
+    try {
+      logger.debug('🎨 Loading custom themes from API...');
+      const response = await fetch(`${baseUrl}/api/themes`, {
+        credentials: 'include'
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setCustomThemes(data.themes || []);
+        logger.debug(`✅ Loaded ${data.themes?.length || 0} custom themes`);
+      } else {
+        logger.error(`❌ Failed to load custom themes: ${response.status}`);
+      }
+    } catch (error) {
+      logger.error('Failed to load custom themes:', error);
+    } finally {
+      setIsLoadingThemes(false);
+    }
+  }, [baseUrl]);
+
+  /**
+   * Apply CSS variables for a custom theme
+   */
+  const applyCustomThemeCSS = React.useCallback((themeSlug: string) => {
+    logger.debug(`🎨 applyCustomThemeCSS called with: ${themeSlug}`);
+    logger.debug(`📋 Available custom themes (${customThemes.length}):`, customThemes.map(t => t.slug));
+
+    const customTheme = customThemes.find(t => t.slug === themeSlug);
+
+    if (!customTheme) {
+      logger.warn(`⚠️  Custom theme not found: ${themeSlug}`);
+      logger.warn(`📋 Available slugs:`, customThemes.map(t => t.slug));
+      return;
+    }
+
+    logger.debug(`✅ Found custom theme:`, {
+      name: customTheme.name,
+      slug: customTheme.slug,
+      definitionLength: customTheme.definition.length
+    });
+
+    try {
+      const definition = JSON.parse(customTheme.definition);
+      logger.debug(`📦 Parsed definition:`, definition);
+
+      const root = document.documentElement;
+      logger.debug(`🎯 Applying ${Object.keys(definition).length} CSS variables to root element`);
+
+      // Apply each color variable to the root element with ctp- prefix
+      Object.entries(definition).forEach(([key, value]) => {
+        const cssVarName = `--ctp-${key}`;
+        logger.debug(`  Setting ${cssVarName} = ${value}`);
+        root.style.setProperty(cssVarName, value as string);
+      });
+
+      logger.debug(`✅ Applied custom theme: ${customTheme.name} (${themeSlug})`);
+      logger.debug(`🔍 Verification - checking a few variables:`);
+      logger.debug(`  --base: ${root.style.getPropertyValue('--base')}`);
+      logger.debug(`  --text: ${root.style.getPropertyValue('--text')}`);
+      logger.debug(`  --blue: ${root.style.getPropertyValue('--blue')}`);
+    } catch (error) {
+      logger.error(`Failed to apply custom theme ${themeSlug}:`, error);
+    }
+  }, [customThemes]);
+
+  /**
+   * Built-in theme names for validation
+   */
+  const builtInThemes: BuiltInTheme[] = [
+    'mocha', 'macchiato', 'frappe', 'latte',
+    'nord', 'dracula',
+    'solarized-dark', 'solarized-light',
+    'gruvbox-dark', 'gruvbox-light',
+    'high-contrast-dark', 'high-contrast-light',
+    'protanopia', 'deuteranopia', 'tritanopia'
+  ];
+
   const setTheme = (newTheme: Theme) => {
+    logger.debug(`🔄 setTheme called with: ${newTheme}`);
     setThemeState(newTheme);
     localStorage.setItem('theme', newTheme);
-    // Apply theme immediately by updating the data-theme attribute on the document root
-    document.documentElement.setAttribute('data-theme', newTheme);
+
+    // Check if this is a built-in or custom theme
+    const isBuiltIn = builtInThemes.includes(newTheme as BuiltInTheme);
+    logger.debug(`📝 Is built-in theme: ${isBuiltIn}`);
+
+    if (isBuiltIn) {
+      // Built-in theme: use data-theme attribute
+      document.documentElement.setAttribute('data-theme', newTheme);
+      logger.debug(`✅ Applied built-in theme: ${newTheme}`);
+    } else {
+      // Custom theme: apply CSS variables dynamically
+      // Set a generic data-theme attribute for base styles
+      logger.debug(`🎨 Setting data-theme="custom" and applying custom CSS`);
+      document.documentElement.setAttribute('data-theme', 'custom');
+      logger.debug(`📋 Current customThemes array length: ${customThemes.length}`);
+      // Apply the custom theme CSS
+      applyCustomThemeCSS(newTheme);
+    }
   };
 
   const setSolarMonitoringEnabled = (enabled: boolean) => {
@@ -364,18 +487,19 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
           }
 
           if (settings.theme) {
-            const validThemes: Theme[] = [
-              'mocha', 'macchiato', 'frappe', 'latte',
-              'nord', 'dracula',
-              'solarized-dark', 'solarized-light',
-              'gruvbox-dark', 'gruvbox-light',
-              'high-contrast-dark', 'high-contrast-light',
-              'protanopia', 'deuteranopia', 'tritanopia'
-            ];
-            if (validThemes.includes(settings.theme as Theme)) {
-              setThemeState(settings.theme as Theme);
-              localStorage.setItem('theme', settings.theme);
+            // Accept any theme (built-in or custom)
+            setThemeState(settings.theme as Theme);
+            localStorage.setItem('theme', settings.theme);
+
+            // Check if it's a built-in or custom theme
+            const isBuiltIn = builtInThemes.includes(settings.theme as BuiltInTheme);
+
+            if (isBuiltIn) {
               document.documentElement.setAttribute('data-theme', settings.theme);
+            } else {
+              // Custom theme will be applied after custom themes are loaded
+              document.documentElement.setAttribute('data-theme', 'custom');
+              logger.debug(`🎨 Custom theme '${settings.theme}' will be applied after themes load`);
             }
           }
 
@@ -432,10 +556,25 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     loadServerSettings();
   }, [baseUrl]);
 
-  // Apply theme on mount
+  // Load custom themes on mount
   React.useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-  }, [theme]);
+    loadCustomThemes();
+  }, [loadCustomThemes]);
+
+  // Apply custom theme CSS when themes are loaded or theme changes
+  React.useEffect(() => {
+    logger.debug(`🔄 useEffect triggered - customThemes: ${customThemes.length}, theme: ${theme}`);
+    if (customThemes.length > 0 && theme) {
+      const isBuiltIn = builtInThemes.includes(theme as BuiltInTheme);
+      logger.debug(`📝 useEffect - Is built-in: ${isBuiltIn}`);
+
+      if (!isBuiltIn) {
+        // Apply custom theme
+        logger.debug(`🎨 useEffect - Applying custom theme: ${theme}`);
+        applyCustomThemeCSS(theme);
+      }
+    }
+  }, [customThemes, theme, applyCustomThemeCSS]);
 
   const value: SettingsContextType = {
     maxNodeAgeHours,
@@ -451,6 +590,8 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     mapTileset,
     mapPinStyle,
     theme,
+    customThemes,
+    isLoadingThemes,
     solarMonitoringEnabled,
     solarMonitoringLatitude,
     solarMonitoringLongitude,
@@ -472,6 +613,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setMapTileset,
     setMapPinStyle,
     setTheme,
+    loadCustomThemes,
     setSolarMonitoringEnabled,
     setSolarMonitoringLatitude,
     setSolarMonitoringLongitude,

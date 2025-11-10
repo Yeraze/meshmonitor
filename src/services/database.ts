@@ -27,6 +27,8 @@ import { migration as mobileMigration } from '../server/migrations/018_add_mobil
 import { migration as solarEstimatesMigration } from '../server/migrations/019_add_solar_estimates.js';
 import { migration as positionPrecisionMigration } from '../server/migrations/020_add_position_precision_tracking.js';
 import { migration as systemBackupTableMigration } from '../server/migrations/021_add_system_backup_table.js';
+import { migration as customThemesMigration } from '../server/migrations/022_add_custom_themes.js';
+import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Configuration constants for traceroute history
 const TRACEROUTE_HISTORY_LIMIT = 50;
@@ -195,6 +197,46 @@ export interface DbPacketLog {
   created_at?: number;
 }
 
+export interface DbCustomTheme {
+  id?: number;
+  name: string;
+  slug: string;
+  definition: string; // JSON string of theme colors
+  is_builtin: number; // SQLite uses 0/1 for boolean
+  created_by?: number;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface ThemeDefinition {
+  base: string;
+  mantle: string;
+  crust: string;
+  text: string;
+  subtext1: string;
+  subtext0: string;
+  overlay2: string;
+  overlay1: string;
+  overlay0: string;
+  surface2: string;
+  surface1: string;
+  surface0: string;
+  lavender: string;
+  blue: string;
+  sapphire: string;
+  sky: string;
+  teal: string;
+  green: string;
+  yellow: string;
+  peach: string;
+  maroon: string;
+  red: string;
+  mauve: string;
+  pink: string;
+  flamingo: string;
+  rosewater: string;
+}
+
 class DatabaseService {
   public db: Database.Database;
   private isInitialized = false;
@@ -260,6 +302,7 @@ class DatabaseService {
     this.runSolarEstimatesMigration();
     this.runPositionPrecisionMigration();
     this.runSystemBackupTableMigration();
+    this.runCustomThemesMigration();
     this.runAutoWelcomeMigration();
     this.ensureAutomationDefaults();
     this.isInitialized = true;
@@ -730,6 +773,26 @@ class DatabaseService {
       logger.debug('✅ System backup table migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run system backup table migration:', error);
+      throw error;
+    }
+  }
+
+  private runCustomThemesMigration(): void {
+    try {
+      const migrationKey = 'migration_022_custom_themes';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Custom themes migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 022: Add custom_themes table...');
+      customThemesMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Custom themes migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run custom themes migration:', error);
       throw error;
     }
   }
@@ -3351,6 +3414,170 @@ class DatabaseService {
     const result = stmt.run(cutoffTimestamp);
     logger.debug(`🧹 Cleaned up ${result.changes} packet log entries older than ${maxAgeHours} hours`);
     return Number(result.changes);
+  }
+
+  // Custom Themes Methods
+
+  /**
+   * Get all themes (custom only - built-in themes are in CSS)
+   */
+  getAllCustomThemes(): DbCustomTheme[] {
+    try {
+      const stmt = this.db.prepare(`
+        SELECT id, name, slug, definition, is_builtin, created_by, created_at, updated_at
+        FROM custom_themes
+        ORDER BY name ASC
+      `);
+      const themes = stmt.all() as DbCustomTheme[];
+      logger.debug(`📚 Retrieved ${themes.length} custom themes`);
+      return themes;
+    } catch (error) {
+      logger.error('❌ Failed to get custom themes:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get a specific theme by slug
+   */
+  getCustomThemeBySlug(slug: string): DbCustomTheme | undefined {
+    try {
+      const stmt = this.db.prepare(`
+        SELECT id, name, slug, definition, is_builtin, created_by, created_at, updated_at
+        FROM custom_themes
+        WHERE slug = ?
+      `);
+      const theme = stmt.get(slug) as DbCustomTheme | undefined;
+      if (theme) {
+        logger.debug(`🎨 Retrieved custom theme: ${theme.name}`);
+      }
+      return theme;
+    } catch (error) {
+      logger.error(`❌ Failed to get custom theme ${slug}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a new custom theme
+   */
+  createCustomTheme(name: string, slug: string, definition: ThemeDefinition, userId?: number): DbCustomTheme {
+    try {
+      const now = Math.floor(Date.now() / 1000);
+      const definitionJson = JSON.stringify(definition);
+
+      const stmt = this.db.prepare(`
+        INSERT INTO custom_themes (name, slug, definition, is_builtin, created_by, created_at, updated_at)
+        VALUES (?, ?, ?, 0, ?, ?, ?)
+      `);
+
+      const result = stmt.run(name, slug, definitionJson, userId || null, now, now);
+      const id = Number(result.lastInsertRowid);
+
+      logger.debug(`✅ Created custom theme: ${name} (slug: ${slug})`);
+
+      return {
+        id,
+        name,
+        slug,
+        definition: definitionJson,
+        is_builtin: 0,
+        created_by: userId,
+        created_at: now,
+        updated_at: now
+      };
+    } catch (error) {
+      logger.error(`❌ Failed to create custom theme ${name}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update an existing custom theme
+   */
+  updateCustomTheme(slug: string, updates: Partial<{ name: string; definition: ThemeDefinition }>): boolean {
+    try {
+      const theme = this.getCustomThemeBySlug(slug);
+      if (!theme) {
+        logger.warn(`⚠️  Cannot update non-existent theme: ${slug}`);
+        return false;
+      }
+
+      const now = Math.floor(Date.now() / 1000);
+      const fieldsToUpdate: string[] = [];
+      const values: any[] = [];
+
+      if (updates.name !== undefined) {
+        fieldsToUpdate.push('name = ?');
+        values.push(updates.name);
+      }
+
+      if (updates.definition !== undefined) {
+        fieldsToUpdate.push('definition = ?');
+        values.push(JSON.stringify(updates.definition));
+      }
+
+      if (fieldsToUpdate.length === 0) {
+        logger.debug('⏭️  No fields to update');
+        return true;
+      }
+
+      fieldsToUpdate.push('updated_at = ?');
+      values.push(now);
+      values.push(slug);
+
+      const stmt = this.db.prepare(`
+        UPDATE custom_themes
+        SET ${fieldsToUpdate.join(', ')}
+        WHERE slug = ?
+      `);
+
+      stmt.run(...values);
+      logger.debug(`✅ Updated custom theme: ${slug}`);
+      return true;
+    } catch (error) {
+      logger.error(`❌ Failed to update custom theme ${slug}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a custom theme
+   */
+  deleteCustomTheme(slug: string): boolean {
+    try {
+      const theme = this.getCustomThemeBySlug(slug);
+      if (!theme) {
+        logger.warn(`⚠️  Cannot delete non-existent theme: ${slug}`);
+        return false;
+      }
+
+      if (theme.is_builtin) {
+        logger.error(`❌ Cannot delete built-in theme: ${slug}`);
+        throw new Error('Cannot delete built-in themes');
+      }
+
+      const stmt = this.db.prepare('DELETE FROM custom_themes WHERE slug = ?');
+      stmt.run(slug);
+      logger.debug(`🗑️  Deleted custom theme: ${slug}`);
+      return true;
+    } catch (error) {
+      logger.error(`❌ Failed to delete custom theme ${slug}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Validate that a theme definition has all required color variables
+   */
+  validateThemeDefinition(definition: any): definition is ThemeDefinition {
+    const validation = validateTheme(definition);
+
+    if (!validation.isValid) {
+      logger.warn(`⚠️  Theme validation failed:`, validation.errors);
+    }
+
+    return validation.isValid;
   }
 }
 

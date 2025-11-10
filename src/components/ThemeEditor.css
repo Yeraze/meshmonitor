@@ -1,0 +1,359 @@
+.theme-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 1.5rem;
+  background: var(--surface0);
+  border-radius: 8px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.theme-editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--surface2);
+  padding-bottom: 1rem;
+}
+
+.theme-editor-header h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 1.5rem;
+}
+
+.theme-editor-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.theme-editor-metadata {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.form-group label {
+  color: var(--text);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.form-control {
+  padding: 0.5rem;
+  background: var(--base);
+  color: var(--text);
+  border: 1px solid var(--surface2);
+  border-radius: 4px;
+  font-size: 1rem;
+}
+
+.form-control:focus {
+  outline: none;
+  border-color: var(--blue);
+}
+
+.form-text {
+  color: var(--subtext0);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.theme-editor-mode-switch {
+  display: flex;
+  gap: 0;
+  background: var(--surface1);
+  border-radius: 6px;
+  padding: 0.25rem;
+  width: fit-content;
+}
+
+.mode-btn {
+  padding: 0.5rem 1rem;
+  background: transparent;
+  color: var(--subtext0);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.mode-btn:hover {
+  background: var(--surface2);
+  color: var(--text);
+}
+
+.mode-btn.active {
+  background: var(--blue);
+  color: var(--crust);
+}
+
+.theme-editor-visual {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.color-group {
+  background: var(--base);
+  padding: 1.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--surface1);
+}
+
+.color-group h3 {
+  margin: 0 0 0.5rem 0;
+  color: var(--text);
+  font-size: 1.1rem;
+}
+
+.color-group-description {
+  margin: 0 0 1rem 0;
+  color: var(--subtext0);
+  font-size: 0.9rem;
+}
+
+.color-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.color-picker-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.color-picker-item label {
+  color: var(--text);
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-transform: capitalize;
+}
+
+.color-input-wrapper {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.color-picker {
+  width: 50px;
+  height: 40px;
+  border: 1px solid var(--surface2);
+  border-radius: 4px;
+  cursor: pointer;
+  background: none;
+}
+
+.color-picker::-webkit-color-swatch-wrapper {
+  padding: 2px;
+}
+
+.color-picker::-webkit-color-swatch {
+  border: none;
+  border-radius: 3px;
+}
+
+.color-hex-input {
+  flex: 1;
+  padding: 0.5rem;
+  background: var(--surface0);
+  color: var(--text);
+  border: 1px solid var(--surface2);
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9rem;
+}
+
+.color-hex-input:focus {
+  outline: none;
+  border-color: var(--blue);
+}
+
+.color-hex-input:invalid {
+  border-color: var(--red);
+}
+
+.theme-editor-json {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.json-editor-textarea {
+  min-height: 400px;
+  padding: 1rem;
+  background: var(--base);
+  color: var(--text);
+  border: 1px solid var(--surface2);
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.json-editor-textarea:focus {
+  outline: none;
+  border-color: var(--blue);
+}
+
+.json-error {
+  padding: 0.75rem;
+  background: var(--red);
+  color: var(--crust);
+  border-radius: 4px;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.theme-validation-errors {
+  padding: 1rem;
+  background: var(--maroon);
+  border-left: 4px solid var(--red);
+  border-radius: 4px;
+}
+
+.theme-validation-errors h4 {
+  margin: 0 0 0.5rem 0;
+  color: var(--crust);
+  font-size: 1rem;
+}
+
+.theme-validation-errors ul {
+  margin: 0;
+  padding-left: 1.5rem;
+  color: var(--crust);
+  font-size: 0.9rem;
+}
+
+.theme-accessibility-report {
+  padding: 1rem;
+  border-radius: 4px;
+  border-left: 4px solid;
+}
+
+.theme-accessibility-report.success {
+  background: var(--green);
+  border-color: var(--teal);
+}
+
+.theme-accessibility-report.warning {
+  background: var(--yellow);
+  border-color: var(--peach);
+}
+
+.theme-accessibility-report h4 {
+  margin: 0 0 0.75rem 0;
+  color: var(--crust);
+  font-size: 1rem;
+}
+
+.critical-issues,
+.warnings,
+.recommendations {
+  margin: 0.5rem 0;
+}
+
+.critical-issues strong,
+.warnings strong,
+.recommendations strong {
+  display: block;
+  margin-bottom: 0.25rem;
+  color: var(--crust);
+  font-size: 0.9rem;
+}
+
+.critical-issues ul,
+.warnings ul,
+.recommendations ul {
+  margin: 0;
+  padding-left: 1.5rem;
+  color: var(--crust);
+  font-size: 0.85rem;
+}
+
+.theme-editor-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--surface2);
+}
+
+.btn-primary,
+.btn-secondary {
+  padding: 0.625rem 1.25rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-primary {
+  background: var(--blue);
+  color: var(--crust);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--sapphire);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: var(--surface1);
+  color: var(--text);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--surface2);
+}
+
+.btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .theme-editor {
+    padding: 1rem;
+  }
+
+  .theme-editor-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .color-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .theme-editor-footer {
+    flex-direction: column-reverse;
+  }
+
+  .btn-primary,
+  .btn-secondary {
+    width: 100%;
+  }
+}

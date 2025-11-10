@@ -2849,7 +2849,7 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
     const currentSettings = databaseService.getAllSettings();
 
     // Validate settings
-    const validKeys = ['maxNodeAgeHours', 'tracerouteIntervalMinutes', 'temperatureUnit', 'distanceUnit', 'telemetryVisualizationHours', 'telemetryFavorites', 'autoAckEnabled', 'autoAckRegex', 'autoAckMessage', 'autoAckChannels', 'autoAckDirectMessages', 'autoAckUseDM', 'autoAnnounceEnabled', 'autoAnnounceIntervalHours', 'autoAnnounceMessage', 'autoAnnounceChannelIndex', 'autoAnnounceOnStart', 'autoAnnounceUseSchedule', 'autoAnnounceSchedule', 'autoWelcomeEnabled', 'autoWelcomeMessage', 'autoWelcomeTarget', 'autoWelcomeWaitForName', 'preferredSortField', 'preferredSortDirection', 'timeFormat', 'dateFormat', 'mapTileset', 'packet_log_enabled', 'packet_log_max_count', 'packet_log_max_age_hours', 'solarMonitoringEnabled', 'solarMonitoringLatitude', 'solarMonitoringLongitude', 'solarMonitoringAzimuth', 'solarMonitoringDeclination', 'mapPinStyle', 'favoriteTelemetryStorageDays'];
+    const validKeys = ['maxNodeAgeHours', 'tracerouteIntervalMinutes', 'temperatureUnit', 'distanceUnit', 'telemetryVisualizationHours', 'telemetryFavorites', 'autoAckEnabled', 'autoAckRegex', 'autoAckMessage', 'autoAckChannels', 'autoAckDirectMessages', 'autoAckUseDM', 'autoAnnounceEnabled', 'autoAnnounceIntervalHours', 'autoAnnounceMessage', 'autoAnnounceChannelIndex', 'autoAnnounceOnStart', 'autoAnnounceUseSchedule', 'autoAnnounceSchedule', 'autoWelcomeEnabled', 'autoWelcomeMessage', 'autoWelcomeTarget', 'autoWelcomeWaitForName', 'preferredSortField', 'preferredSortDirection', 'timeFormat', 'dateFormat', 'mapTileset', 'packet_log_enabled', 'packet_log_max_count', 'packet_log_max_age_hours', 'solarMonitoringEnabled', 'solarMonitoringLatitude', 'solarMonitoringLongitude', 'solarMonitoringAzimuth', 'solarMonitoringDeclination', 'mapPinStyle', 'favoriteTelemetryStorageDays', 'theme'];
     const filteredSettings: Record<string, string> = {};
 
     for (const key of validKeys) {
@@ -2963,6 +2963,182 @@ apiRouter.delete('/settings', requirePermission('settings', 'write'), (req, res)
   } catch (error) {
     logger.error('Error resetting settings:', error);
     res.status(500).json({ error: 'Failed to reset settings' });
+  }
+});
+
+// Custom Themes endpoints
+
+// Get all custom themes (available to all users for reading)
+apiRouter.get('/themes', optionalAuth(), (_req, res) => {
+  try {
+    const themes = databaseService.getAllCustomThemes();
+    res.json({ themes });
+  } catch (error) {
+    logger.error('Error fetching custom themes:', error);
+    res.status(500).json({ error: 'Failed to fetch custom themes' });
+  }
+});
+
+// Get a specific theme by slug
+apiRouter.get('/themes/:slug', optionalAuth(), (req, res) => {
+  try {
+    const { slug } = req.params;
+    const theme = databaseService.getCustomThemeBySlug(slug);
+
+    if (!theme) {
+      return res.status(404).json({ error: 'Theme not found' });
+    }
+
+    res.json({ theme });
+  } catch (error) {
+    logger.error(`Error fetching theme ${req.params.slug}:`, error);
+    res.status(500).json({ error: 'Failed to fetch theme' });
+  }
+});
+
+// Create a new custom theme
+apiRouter.post('/themes', requirePermission('themes', 'write'), (req, res) => {
+  try {
+    const { name, slug, definition } = req.body;
+
+    // Validation
+    if (!name || typeof name !== 'string' || name.length < 1 || name.length > 50) {
+      return res.status(400).json({ error: 'Theme name must be 1-50 characters' });
+    }
+
+    if (!slug || typeof slug !== 'string' || !slug.match(/^custom-[a-z0-9-]+$/)) {
+      return res.status(400).json({ error: 'Slug must start with "custom-" and contain only lowercase letters, numbers, and hyphens' });
+    }
+
+    // Check if theme already exists
+    const existingTheme = databaseService.getCustomThemeBySlug(slug);
+    if (existingTheme) {
+      return res.status(409).json({ error: 'Theme with this slug already exists' });
+    }
+
+    // Validate theme definition
+    if (!databaseService.validateThemeDefinition(definition)) {
+      return res.status(400).json({ error: 'Invalid theme definition. All 26 color variables must be valid hex codes' });
+    }
+
+    // Create the theme
+    const theme = databaseService.createCustomTheme(
+      name,
+      slug,
+      definition,
+      req.user!.id
+    );
+
+    // Audit log
+    databaseService.auditLog(
+      req.user!.id,
+      'theme_created',
+      'themes',
+      `Created custom theme: ${name} (${slug})`,
+      req.ip || null,
+      null,
+      JSON.stringify({ id: theme.id, name, slug })
+    );
+
+    res.status(201).json({ success: true, theme });
+  } catch (error) {
+    logger.error('Error creating custom theme:', error);
+    res.status(500).json({ error: 'Failed to create custom theme' });
+  }
+});
+
+// Update an existing custom theme
+apiRouter.put('/themes/:slug', requirePermission('themes', 'write'), (req, res) => {
+  try {
+    const { slug } = req.params;
+    const { name, definition } = req.body;
+
+    // Get existing theme for audit log
+    const existingTheme = databaseService.getCustomThemeBySlug(slug);
+    if (!existingTheme) {
+      return res.status(404).json({ error: 'Theme not found' });
+    }
+
+    if (existingTheme.is_builtin) {
+      return res.status(403).json({ error: 'Cannot modify built-in themes' });
+    }
+
+    const updates: any = {};
+
+    // Validate name if provided
+    if (name !== undefined) {
+      if (typeof name !== 'string' || name.length < 1 || name.length > 50) {
+        return res.status(400).json({ error: 'Theme name must be 1-50 characters' });
+      }
+      updates.name = name;
+    }
+
+    // Validate definition if provided
+    if (definition !== undefined) {
+      if (!databaseService.validateThemeDefinition(definition)) {
+        return res.status(400).json({ error: 'Invalid theme definition. All 26 color variables must be valid hex codes' });
+      }
+      updates.definition = definition;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: 'No updates provided' });
+    }
+
+    // Update the theme
+    databaseService.updateCustomTheme(slug, updates);
+
+    // Audit log
+    databaseService.auditLog(
+      req.user!.id,
+      'theme_updated',
+      'themes',
+      `Updated custom theme: ${existingTheme.name} (${slug})`,
+      req.ip || null,
+      JSON.stringify({ name: existingTheme.name }),
+      JSON.stringify(updates)
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    logger.error(`Error updating theme ${req.params.slug}:`, error);
+    res.status(500).json({ error: 'Failed to update theme' });
+  }
+});
+
+// Delete a custom theme
+apiRouter.delete('/themes/:slug', requirePermission('themes', 'write'), (req, res) => {
+  try {
+    const { slug } = req.params;
+
+    // Get theme for audit log before deletion
+    const theme = databaseService.getCustomThemeBySlug(slug);
+    if (!theme) {
+      return res.status(404).json({ error: 'Theme not found' });
+    }
+
+    if (theme.is_builtin) {
+      return res.status(403).json({ error: 'Cannot delete built-in themes' });
+    }
+
+    // Delete the theme
+    databaseService.deleteCustomTheme(slug);
+
+    // Audit log
+    databaseService.auditLog(
+      req.user!.id,
+      'theme_deleted',
+      'themes',
+      `Deleted custom theme: ${theme.name} (${slug})`,
+      req.ip || null,
+      JSON.stringify({ id: theme.id, name: theme.name, slug }),
+      null
+    );
+
+    res.json({ success: true, message: 'Theme deleted successfully' });
+  } catch (error) {
+    logger.error(`Error deleting theme ${req.params.slug}:`, error);
+    res.status(500).json({ error: 'Failed to delete theme' });
   }
 });
 
