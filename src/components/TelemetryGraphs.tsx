@@ -105,13 +105,35 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
     fetchFavorites();
   }, [nodeId]);
 
-  // Fetch solar estimates on component mount
+  // Fetch solar estimates only after telemetry data is available
+  // This ensures solar data is fetched for the correct time range
   useEffect(() => {
     let isMounted = true;
+    let interval: NodeJS.Timeout | null = null;
 
     const fetchSolarEstimates = async () => {
+      // Don't fetch solar data if we don't have telemetry yet
+      if (telemetryData.length === 0) {
+        return;
+      }
+
       try {
-        const response = await fetch(`${baseUrl}/api/solar/estimates?limit=500`);
+        // Calculate time bounds from telemetry data
+        let minTime = Infinity;
+        telemetryData.forEach((item) => {
+          if (item.timestamp < minTime) minTime = item.timestamp;
+        });
+
+        if (minTime === Infinity) {
+          return;
+        }
+
+        // Convert to Unix timestamps (seconds) for API
+        const startTimestamp = Math.floor(minTime / 1000);
+        const endTimestamp = Math.floor(Date.now() / 1000);
+
+        // Use the range endpoint to fetch only solar data within telemetry bounds
+        const response = await fetch(`${baseUrl}/api/solar/estimates/range?start=${startTimestamp}&end=${endTimestamp}`);
         if (!response.ok) {
           return; // Silently fail if solar monitoring not configured
         }
@@ -131,13 +153,13 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
     };
 
     fetchSolarEstimates();
-    const interval = setInterval(fetchSolarEstimates, 60000); // Refresh every minute
+    interval = setInterval(fetchSolarEstimates, 60000); // Refresh every minute
 
     return () => {
       isMounted = false;
-      clearInterval(interval);
+      if (interval) clearInterval(interval);
     };
-  }, [baseUrl]);
+  }, [baseUrl, telemetryData]); // Depend on telemetryData to recalculate range
 
   useEffect(() => {
     let isMounted = true;
@@ -250,6 +272,13 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
     // Create a map of all unique timestamps from both telemetry and solar data
     const allTimestamps = new Map<number, ChartData>();
 
+    // Calculate telemetry time bounds
+    let minTelemetryTime = Infinity;
+    data.forEach(item => {
+      if (item.timestamp < minTelemetryTime) minTelemetryTime = item.timestamp;
+    });
+    const maxTelemetryTime = Date.now();
+
     // Add telemetry data points
     data.forEach(item => {
       allTimestamps.set(item.timestamp, {
@@ -263,14 +292,15 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
     });
 
     // Add solar data points (at their own timestamps)
-    // Only include solar data up to the current time to avoid showing forecasts
-    if (solarEstimates.size > 0) {
+    // Only include solar data within the telemetry time range
+    if (solarEstimates.size > 0 && minTelemetryTime !== Infinity) {
       // Use current time with a 5-minute buffer to account for minor clock differences
-      const now = Date.now() + (5 * 60 * 1000);
+      const now = maxTelemetryTime + (5 * 60 * 1000);
 
       solarEstimates.forEach((wattHours, timestamp) => {
-        // Filter out future data (forecasts beyond current time)
-        if (timestamp > now) return;
+        // Filter out data outside telemetry time bounds
+        // Solar data should never extend the graph range beyond actual telemetry
+        if (timestamp < minTelemetryTime || timestamp > now) return;
 
         if (allTimestamps.has(timestamp)) {
           // If telemetry exists at this timestamp, add solar data to it
