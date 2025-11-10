@@ -1647,8 +1647,12 @@ apiRouter.post('/traceroute', requirePermission('traceroute', 'write'), async (r
 
     const destinationNum = typeof destination === 'string' ? parseInt(destination, 16) : destination;
 
-    await meshtasticManager.sendTraceroute(destinationNum, 0);
-    res.json({ success: true, message: `Traceroute request sent to ${destinationNum.toString(16)}` });
+    // Look up the node to get its channel
+    const node = databaseService.getNode(destinationNum);
+    const channel = node?.channel ?? 0; // Default to 0 if node not found or channel not set
+
+    await meshtasticManager.sendTraceroute(destinationNum, channel);
+    res.json({ success: true, message: `Traceroute request sent to ${destinationNum.toString(16)} on channel ${channel}` });
   } catch (error) {
     logger.error('Error sending traceroute:', error);
     res.status(500).json({ error: 'Failed to send traceroute' });

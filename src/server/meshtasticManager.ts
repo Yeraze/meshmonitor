@@ -323,8 +323,9 @@ class MeshtasticManager {
         try {
           const targetNode = databaseService.getNodeNeedingTraceroute(this.localNodeInfo.nodeNum);
           if (targetNode) {
-            logger.info(`🗺️ Auto-traceroute: Sending traceroute to ${targetNode.longName || targetNode.nodeId} (${targetNode.nodeId})`);
-            await this.sendTraceroute(targetNode.nodeNum, 0);
+            const channel = targetNode.channel ?? 0; // Use node's channel, default to 0
+            logger.info(`🗺️ Auto-traceroute: Sending traceroute to ${targetNode.longName || targetNode.nodeId} (${targetNode.nodeId}) on channel ${channel}`);
+            await this.sendTraceroute(targetNode.nodeNum, channel);
           } else {
             logger.info('🗺️ Auto-traceroute: No nodes available for traceroute');
           }

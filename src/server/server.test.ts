@@ -97,7 +97,10 @@ const databaseMock = {
   ]),
   getNode: vi.fn((nodeNum) => {
     if (nodeNum === 1) {
-      return { nodeNum: 1, nodeId: '!node1', longName: 'Test Node 1' };
+      return { nodeNum: 1, nodeId: '!node1', longName: 'Test Node 1', channel: 0 };
+    }
+    if (nodeNum === 2) {
+      return { nodeNum: 2, nodeId: '!node2', longName: 'Test Node 2', channel: 1 };
     }
     return null;
   }),
@@ -121,7 +124,7 @@ const meshtasticManagerMock = {
     { id: 1, name: 'Secondary' }
   ]),
   sendTextMessage: vi.fn(async (_text: string, _toNodeId: string, _channelIndex?: number) => 123456789), // Returns message ID
-  sendTraceroute: vi.fn(async (_toNodeNum: number) => true),
+  sendTraceroute: vi.fn(async (_toNodeNum: number, _channel?: number) => true),
   refreshNodeInfo: vi.fn(async () => ({ success: true })),
   getDeviceConfig: vi.fn(async () => ({
     lora: { region: 'US', hopLimit: 3 },
@@ -337,15 +340,21 @@ describe('Server API Endpoints', () => {
 
     // Traceroute endpoints
     app.post('/api/traceroute', async (req, res) => {
-      const { toNodeNum } = req.body;
+      const { destination } = req.body;
 
-      if (!toNodeNum) {
-        return res.status(400).json({ error: 'toNodeNum is required' });
+      if (!destination) {
+        return res.status(400).json({ error: 'Destination node number is required' });
       }
 
+      const destinationNum = typeof destination === 'string' ? parseInt(destination, 16) : destination;
+
+      // Look up the node to get its channel
+      const node = databaseMock.getNode(destinationNum);
+      const channel = node?.channel ?? 0; // Default to 0 if node not found or channel not set
+
       try {
-        const result = await meshtasticManagerMock.sendTraceroute(toNodeNum);
-        res.json({ success: result });
+        const result = await meshtasticManagerMock.sendTraceroute(destinationNum, channel);
+        res.json({ success: result, message: `Traceroute request sent to ${destinationNum.toString(16)} on channel ${channel}` });
       } catch (error) {
         res.status(500).json({ error: 'Failed to send traceroute' });
       }
@@ -638,23 +647,35 @@ describe('Server API Endpoints', () => {
   });
 
   describe('Traceroute Endpoints', () => {
-    it('POST /api/traceroute should send traceroute', async () => {
+    it('POST /api/traceroute should send traceroute with node channel', async () => {
       const response = await request(app)
         .post('/api/traceroute')
-        .send({ toNodeNum: 2 })
+        .send({ destination: 2 })
         .expect(200);
 
       expect(response.body.success).toBe(true);
-      expect(meshtasticManagerMock.sendTraceroute).toHaveBeenCalledWith(2);
+      // Node 2 has channel 1 in the mock
+      expect(meshtasticManagerMock.sendTraceroute).toHaveBeenCalledWith(2, 1);
     });
 
-    it('POST /api/traceroute should reject without toNodeNum', async () => {
+    it('POST /api/traceroute should default to channel 0 for unknown nodes', async () => {
+      const response = await request(app)
+        .post('/api/traceroute')
+        .send({ destination: 999 }) // Unknown node
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      // Unknown node should default to channel 0
+      expect(meshtasticManagerMock.sendTraceroute).toHaveBeenCalledWith(999, 0);
+    });
+
+    it('POST /api/traceroute should reject without destination', async () => {
       const response = await request(app)
         .post('/api/traceroute')
         .send({})
         .expect(400);
 
-      expect(response.body.error).toBe('toNodeNum is required');
+      expect(response.body.error).toBe('Destination node number is required');
     });
 
     it('GET /api/traceroutes/recent should return recent traceroutes', async () => {
