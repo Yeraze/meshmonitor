@@ -11,9 +11,13 @@ env:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    timeout-minutes: 45  # Prevent indefinite hangs
     permissions:
       contents: read
       packages: write
+    concurrency:
+      group: docker-build-${{ github.ref }}
+      cancel-in-progress: false  # Don't cancel, let it finish
 
     steps:
       - name: Checkout repository
@@ -67,3 +71,26 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          provenance: false  # Disable provenance attestation to reduce push time
+          sbom: false  # Disable SBOM to reduce push time
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: false  # Disable build record upload
+        # Add retry logic for transient network failures
+        continue-on-error: false
+        timeout-minutes: 40  # Individual step timeout
+
+      - name: Retry build on failure
+        if: failure()
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          provenance: false
+          sbom: false
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: false
+        timeout-minutes: 40

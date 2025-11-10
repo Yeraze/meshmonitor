@@ -9,7 +9,9 @@ COPY package*.json ./
 # Install dependencies
 # Use npm install instead of npm ci to avoid optional dependency bug
 # better-sqlite3 will download pre-built binaries for the target platform
-RUN npm install
+# Use cache mount to speed up repeated builds
+RUN --mount=type=cache,target=/root/.npm \
+    npm install
 
 # Copy source files
 COPY . .
