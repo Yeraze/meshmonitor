@@ -2349,6 +2349,35 @@ class MeshtasticManager {
           });
         }
       }
+
+      // Save SNR as telemetry if present in NodeInfo
+      if (nodeInfo.snr !== undefined && nodeInfo.snr !== null && nodeInfo.snr !== 0) {
+        const timestamp = nodeInfo.lastHeard ? Number(nodeInfo.lastHeard) * 1000 : Date.now();
+        const now = Date.now();
+
+        // Save SNR telemetry with same logic as packet processing:
+        // Save if it has changed OR if 10+ minutes have passed since last save
+        const latestSnrTelemetry = databaseService.getLatestTelemetryForType(nodeId, 'snr');
+        const tenMinutesMs = 10 * 60 * 1000;
+        const shouldSaveSnr = !latestSnrTelemetry ||
+                              latestSnrTelemetry.value !== nodeInfo.snr ||
+                              (now - latestSnrTelemetry.timestamp) >= tenMinutesMs;
+
+        if (shouldSaveSnr) {
+          databaseService.insertTelemetry({
+            nodeId,
+            nodeNum: Number(nodeInfo.num),
+            telemetryType: 'snr',
+            timestamp,
+            value: nodeInfo.snr,
+            unit: 'dB',
+            createdAt: now
+          });
+          const reason = !latestSnrTelemetry ? 'initial' :
+                        latestSnrTelemetry.value !== nodeInfo.snr ? 'changed' : 'periodic';
+          logger.debug(`📊 Saved SNR telemetry from NodeInfo: ${nodeInfo.snr} dB (${reason}, previous: ${latestSnrTelemetry?.value || 'N/A'})`);
+        }
+      }
     } catch (error) {
       logger.error('❌ Error processing NodeInfo protobuf:', error);
     }
