@@ -488,8 +488,90 @@
   background: var(--ctp-sapphire);
 }
 
+/* Export Button */
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+}
+
+.header-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.export-dropdown {
+  position: relative;
+}
+
+.export-button {
+  background: var(--ctp-blue);
+  color: var(--ctp-crust);
+  border: none;
+  padding: 10px 20px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background 0.2s;
+  white-space: nowrap;
+}
+
+.export-button:hover {
+  background: var(--ctp-sapphire);
+}
+
+.export-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 5px;
+  background: var(--ctp-base);
+  border: 1px solid var(--ctp-surface1);
+  border-radius: 5px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-width: 160px;
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.export-menu-item {
+  display: block;
+  width: 100%;
+  padding: 10px 15px;
+  background: transparent;
+  border: none;
+  color: var(--ctp-text);
+  cursor: pointer;
+  font-size: 14px;
+  text-align: left;
+  transition: background 0.2s;
+}
+
+.export-menu-item:hover {
+  background: var(--ctp-surface0);
+}
+
+.export-menu-item:not(:last-child) {
+  border-bottom: 1px solid var(--ctp-surface1);
+}
+
 /* Mobile responsiveness */
 @media (max-width: 768px) {
+  .header-content {
+    flex-direction: column;
+    gap: 15px;
+  }
+
+  .header-actions {
+    width: 100%;
+  }
+
+  .export-button {
+    width: 100%;
+  }
+
   .issue-header {
     flex-wrap: wrap;
   }
