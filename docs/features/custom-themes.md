@@ -406,9 +406,7 @@ DELETE /api/themes/:slug
 
 ## Related Documentation
 
-- [Settings Configuration](../configuration/settings.md)
-- [RBAC Permissions](../administration/permissions.md)
-- [Accessibility Guidelines](../accessibility/wcag-compliance.md)
+- [Settings](./settings.md) - Configure application settings including theme selection
 
 ## Support
 
