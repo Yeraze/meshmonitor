@@ -70,7 +70,31 @@
 
 ## Completed Tasks
 
-### Version 2.15.3 (Current Release)
+### Version 2.16.3
+
+#### Stale Connection Detection (#492, PR #510)
+- [x] Implement application-level stale connection monitoring
+  - Track `lastDataReceived` timestamp on all incoming data
+  - Periodic health check every 60 seconds
+  - Configurable timeout via `MESHTASTIC_STALE_CONNECTION_TIMEOUT` (default: 5 minutes)
+  - Automatic reconnection when no data received within timeout period
+  - Emit 'stale-connection' event before forcing reconnect
+  - Validation warning for timeout values < 60 seconds
+- [x] Fix "zombie connection" syndrome where TCP sockets appear alive but device stops sending data
+  - Addresses serial port half-open states
+  - Handles USB disconnects that don't trigger TCP errors
+  - Accounts for Meshtastic devices freezing without closing socket
+  - Mitigates Docker serial passthrough failure points
+- [x] Update documentation in ARCHITECTURE_LESSONS.md
+  - Added comprehensive "Stale Connection Detection" section
+  - Documented symptoms, configuration, and why it's needed
+- [x] Code review feedback addressed
+  - Fixed log message consistency ("minute(s)")
+  - Added validation for dangerously low timeout values
+  - Improved user feedback for misconfiguration
+- [x] PR #510 merged to main
+
+### Version 2.15.3
 
 - [x] Add audit logging for upgrade events (#486)
   - Upgrade trigger events with version information (who initiated, when, from/to versions)

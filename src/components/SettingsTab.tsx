@@ -10,18 +10,13 @@ import { getAllTilesets, type TilesetId } from '../config/tilesets';
 import PacketMonitorSettings from './PacketMonitorSettings';
 import SystemBackupSection from './configuration/SystemBackupSection';
 import AutoUpgradeTestSection from './configuration/AutoUpgradeTestSection';
+import { CustomThemeManagement } from './CustomThemeManagement';
+import { type Theme, useSettings } from '../contexts/SettingsContext';
 
 type DistanceUnit = 'km' | 'mi';
 type TimeFormat = '12' | '24';
 type DateFormat = 'MM/DD/YYYY' | 'DD/MM/YYYY';
 type MapPinStyle = 'meshmonitor' | 'official';
-type Theme =
-  | 'mocha' | 'macchiato' | 'frappe' | 'latte'
-  | 'nord' | 'dracula'
-  | 'solarized-dark' | 'solarized-light'
-  | 'gruvbox-dark' | 'gruvbox-light'
-  | 'high-contrast-dark' | 'high-contrast-light'
-  | 'protanopia' | 'deuteranopia' | 'tritanopia';
 
 interface SettingsTabProps {
   maxNodeAgeHours: number;
@@ -103,6 +98,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   onSolarMonitoringDeclinationChange
 }) => {
   const csrfFetch = useCsrfFetch();
+  const { customThemes } = useSettings();
 
   // Local state for editing
   const [localMaxNodeAge, setLocalMaxNodeAge] = useState(maxNodeAgeHours);
@@ -797,8 +793,21 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                 <option value="deuteranopia">Deuteranopia (Green-Blind)</option>
                 <option value="tritanopia">Tritanopia (Blue-Blind)</option>
               </optgroup>
+              {customThemes.length > 0 && (
+                <optgroup label="Custom Themes">
+                  {customThemes.map((customTheme) => (
+                    <option key={customTheme.id} value={customTheme.slug}>
+                      {customTheme.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           </div>
+        </div>
+
+        <div className="settings-section">
+          <CustomThemeManagement />
         </div>
 
         <div className="settings-section">
