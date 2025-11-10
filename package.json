@@ -81,7 +81,7 @@
     "@vitest/coverage-v8": "^4.0.6",
     "@vitest/ui": "^4.0.6",
     "concurrently": "^9.2.1",
-    "eslint": "^9.39.0",
+    "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
@@ -93,7 +93,7 @@
     "vite": "^7.1.12",
     "vite-plugin-pwa": "^1.1.0",
     "vitepress": "^1.5.0",
-    "vitest": "^4.0.6",
+    "vitest": "^4.0.8",
     "workbox-window": "^7.3.0"
   },
   "optionalDependencies": {
