@@ -158,20 +158,31 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
   };
 
   const pollForChannelUpdates = async (): Promise<void> => {
-    // Poll for channel updates from device for up to 30 seconds
-    const maxWaitTime = 30000; // 30 seconds
+    // Poll for configuration updates from device for up to 45 seconds
+    // IMPORTANT: Use /api/poll (not /api/channels) to get live device state including LoRa config
+    const maxWaitTime = 45000; // 45 seconds
     const pollInterval = 2000; // 2 seconds
     const startTime = Date.now();
 
     while (Date.now() - startTime < maxWaitTime) {
       try {
-        // Fetch channels to see if they've been updated
-        const channels = await apiService.getChannels();
+        // Fetch live device data from /api/poll (includes channels AND LoRa config)
+        const response = await fetch('/api/poll', { credentials: 'include' });
+        if (!response.ok) {
+          throw new Error('Poll failed');
+        }
+        const pollData = await response.json();
 
-        // Check if we have the expected number of channels
-        // (This is a simple check - could be more sophisticated)
-        if (channels && channels.length > 0) {
-          // Give it a bit more time to ensure all data is synced
+        // Check if we have channel data with PSKs (indicates channel sync)
+        const hasChannels = pollData?.channels && pollData.channels.length > 0;
+        const channelsWithPSKs = pollData?.channels?.filter((ch: any) => ch.psk && ch.psk !== '').length || 0;
+
+        // Check if LoRa config is synced (if we're importing LoRa config)
+        // LoRa config is nested in deviceConfig.lora (requires configuration:read permission)
+        const hasLoraConfig = includeLoraConfig ? pollData?.deviceConfig?.lora?.modemPreset !== undefined : true;
+
+        if (hasChannels && channelsWithPSKs > 0 && hasLoraConfig) {
+          // Give it a bit more time to ensure all data is fully synced
           await new Promise(resolve => setTimeout(resolve, 1000));
           return;
         }
