@@ -3468,59 +3468,82 @@ apiRouter.get('/status', optionalAuth(), (_req, res) => {
 // Helper function to check if Docker image exists in GHCR
 async function checkDockerImageExists(version: string, publishedAt?: string): Promise<boolean> {
   try {
-    // GHCR uses the format: ghcr.io/owner/repo:tag
-    // We can check if the tag exists by querying the GitHub Container Registry API
     const owner = 'yeraze';
     const repo = 'meshmonitor';
     const tag = `v${version}`;
 
-    // Try to fetch the manifest for the specific tag
-    // GHCR manifest URL format: https://ghcr.io/v2/{owner}/{repo}/manifests/{tag}
-    const manifestUrl = `https://ghcr.io/v2/${owner}/${repo}/manifests/${tag}`;
+    // STRATEGY 1: Use GHCR tags/list API with anonymous token (most reliable)
+    // This directly queries the container registry for available tags
+    try {
+      // Step 1: Get anonymous token from GHCR
+      const tokenUrl = `https://ghcr.io/token?scope=repository:${owner}/${repo}:pull`;
+      const tokenResponse = await fetch(tokenUrl);
 
-    const response = await fetch(manifestUrl, {
-      method: 'HEAD', // Just check if it exists
-      headers: {
-        'Accept': 'application/vnd.docker.distribution.manifest.v2+json'
+      if (tokenResponse.ok) {
+        const tokenData = await tokenResponse.json();
+        const token = tokenData.token;
+
+        // Step 2: Use token to list all available tags
+        const tagsUrl = `https://ghcr.io/v2/${owner}/${repo}/tags/list`;
+        const tagsResponse = await fetch(tagsUrl, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if (tagsResponse.ok) {
+          const tagsData = await tagsResponse.json();
+          const tags: string[] = tagsData.tags || [];
+
+          // Check if our tag exists in the list
+          // Note: GHCR tags are stored without 'v' prefix, but may have it
+          const imageExists = tags.includes(tag) || tags.includes(version);
+
+          if (imageExists) {
+            logger.info(`✓ Image for ${version} found in GitHub Container Registry`);
+            return true;
+          } else {
+            logger.info(`⏳ Image for ${version} not yet available in GitHub Container Registry (found ${tags.length} other tags)`);
+            // Image definitely doesn't exist yet - don't fall through to time-based heuristic
+            return false;
+          }
+        }
       }
-    });
-
-    // NOTE: GHCR returns 401 for ALL unauthenticated requests, even for non-existent images
-    // So we can only trust 200 OK as a definitive "exists" signal
-    // 200 = image definitely exists
-    // 404 = image definitely doesn't exist
-    // 401 = ambiguous (could exist or not exist)
-    if (response.status === 200) {
-      return true;
-    } else if (response.status === 404) {
-      return false;
+    } catch (apiError) {
+      logger.debug(`GHCR tags API check failed for ${version}:`, apiError);
+      // Continue to fallback strategy
     }
 
-    // For 401 or other responses, use time-based heuristic
-    // GitHub Actions typically takes 10-15 minutes to build and push container images
-    // If release was published more than 15 minutes ago, assume the build completed
+    // STRATEGY 2: Time-based heuristic fallback (only if API check failed)
+    // GitHub Actions typically takes 10-30 minutes to build and push container images
+    // If release was published more than 30 minutes ago, assume the build completed
     if (publishedAt) {
       const publishTime = new Date(publishedAt).getTime();
       const now = Date.now();
       const minutesSincePublish = (now - publishTime) / (60 * 1000);
 
-      if (minutesSincePublish >= 15) {
-        logger.info(`✓ Image for ${version} assumed ready (${Math.round(minutesSincePublish)} minutes since release)`);
+      if (minutesSincePublish >= 30) {
+        logger.info(`✓ Image for ${version} assumed ready (${Math.round(minutesSincePublish)} minutes since release, API check failed)`);
         return true;
       } else {
-        logger.info(`⏳ Image for ${version} still building (${Math.round(minutesSincePublish)}/15 minutes since release)`);
+        logger.info(`⏳ Image for ${version} still building (${Math.round(minutesSincePublish)}/30 minutes since release)`);
         return false;
       }
     }
 
-    // If no publish time provided, be conservative and return false
+    // If no publish time provided and API failed, be conservative and return false
+    logger.warn(`Cannot verify image availability for ${version} (no publish time and API failed)`);
     return false;
   } catch (error) {
     logger.warn(`Error checking Docker image existence for ${version}:`, error);
     // On error with known publish time, use time-based fallback
     if (publishedAt) {
       const minutesSincePublish = (Date.now() - new Date(publishedAt).getTime()) / (60 * 1000);
-      return minutesSincePublish >= 15;
+      const assumeReady = minutesSincePublish >= 30;
+      if (assumeReady) {
+        logger.info(`✓ Image for ${version} assumed ready (${Math.round(minutesSincePublish)} minutes since release, error during check)`);
+      }
+      return assumeReady;
     }
     // Otherwise fail closed to avoid false positives
     return false;
