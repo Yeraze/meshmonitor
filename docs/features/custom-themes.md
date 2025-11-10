@@ -415,4 +415,4 @@ For issues with custom themes:
 2. Review the accessibility report
 3. Try exporting and re-importing the theme
 4. Contact your administrator
-5. Report bugs at https://github.com/your-repo/issues
+5. Report bugs at https://github.com/Yeraze/meshmonitor/issues

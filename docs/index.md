@@ -50,7 +50,7 @@ features:
 
   - icon: 🎨
     title: Customizable Themes
-    details: Choose from 15 carefully crafted themes including color-blind friendly options and WCAG AAA compliant high-contrast themes for enhanced accessibility.
+    details: Choose from 15 built-in themes or create your own with the visual theme editor. Includes color-blind friendly options, WCAG AAA compliant high-contrast themes, and full import/export support for sharing custom themes.
 
   - icon: 🔔
     title: Push Notifications
