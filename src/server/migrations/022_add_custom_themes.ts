@@ -1,7 +1,7 @@
 /**
  * Migration 022: Add custom_themes table
  *
- * Creates a new table to store user-created custom themes with all 28
+ * Creates a new table to store user-created custom themes with all 26
  * CSS color variables. Enables system-wide custom themes that can be
  * created by admins and used by all users.
  *
@@ -97,7 +97,7 @@ export const migration = {
       logger.debug('✅ Created custom_themes indices');
 
       logger.debug('✅ Migration 022 completed successfully');
-      logger.debug('ℹ️  Custom themes will be stored as JSON in the definition column with all 28 color variables');
+      logger.debug('ℹ️  Custom themes will be stored as JSON in the definition column with all 26 color variables');
     } catch (error: any) {
       if (error.message && error.message.includes('already exists')) {
         logger.debug('⏭️  custom_themes table already exists, skipping');
