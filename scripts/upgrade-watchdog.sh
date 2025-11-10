@@ -100,21 +100,21 @@ recreate_container() {
 
   # Get current container configuration before stopping
   local network=$(docker inspect --format='{{range $net,$v := .NetworkSettings.Networks}}{{$net}}{{end}}' "$CONTAINER_NAME" 2>/dev/null | head -n1)
-  local volumes=$(docker inspect --format='{{range .Mounts}}{{if eq .Type "volume"}}-v {{.Name}}:{{.Destination}}{{if .RW}}{{else}}:ro{{end}} {{end}}{{end}}' "$CONTAINER_NAME" 2>/dev/null)
+  # Extract both volume and bind mounts
+  local volumes=$(docker inspect --format='{{range .Mounts}}{{if eq .Type "volume"}}-v {{.Name}}:{{.Destination}}{{if .RW}}{{else}}:ro{{end}} {{else if eq .Type "bind"}}-v {{.Source}}:{{.Destination}}{{if .RW}}{{else}}:ro{{end}} {{end}}{{end}}' "$CONTAINER_NAME" 2>/dev/null)
 
   # Extract ports - remove /tcp or /udp protocol suffix for docker run compatibility
   local ports=$(docker inspect --format='{{range $p, $conf := .NetworkSettings.Ports}}{{if $conf}}-p {{(index $conf 0).HostPort}}:{{$p}} {{end}}{{end}}' "$CONTAINER_NAME" 2>/dev/null | sed 's|/tcp||g; s|/udp||g')
 
-  # Extract env vars - filter out Docker Compose specific vars that can cause issues
-  local env_vars=$(docker inspect --format='{{range .Config.Env}}{{.}}{{"\n"}}{{end}}' "$CONTAINER_NAME" 2>/dev/null | \
+  # Extract env vars to a temporary file to handle values with spaces properly
+  local env_file="/tmp/.meshmonitor-upgrade-env-$$"
+  docker inspect --format='{{range .Config.Env}}{{.}}{{"\n"}}{{end}}' "$CONTAINER_NAME" 2>/dev/null | \
     grep -v '^COMPOSE_' | \
     grep -v '^DOCKER_' | \
     grep -v '^PATH=' | \
     grep -v '^HOME=' | \
     grep -v '^HOSTNAME=' | \
-    grep -v '^$' | \
-    sed 's/^/-e /' | \
-    tr '\n' ' ')
+    grep -v '^$' > "$env_file"
 
   # Stop and remove old container
   log "Stopping current container..."
@@ -133,10 +133,15 @@ recreate_container() {
   fi
 
   # Execute docker run with all parameters
-  # Note: $ports, $volumes, $env_vars are intentionally unquoted for word splitting
-  docker run "$@" $ports $volumes $env_vars ghcr.io/yeraze/meshmonitor:latest
+  # Note: $ports, $volumes are intentionally unquoted for word splitting
+  # Use --env-file to properly handle env vars with spaces in values
+  docker run "$@" $ports $volumes --env-file "$env_file" ghcr.io/yeraze/meshmonitor:latest
+  local exit_code=$?
 
-  if [ $? -eq 0 ]; then
+  # Clean up temp env file
+  rm -f "$env_file"
+
+  if [ $exit_code -eq 0 ]; then
     log_success "Container recreated successfully"
     return 0
   else
