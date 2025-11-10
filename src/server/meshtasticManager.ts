@@ -1407,9 +1407,15 @@ class MeshtasticManager {
       if (meshPacket.rxSnr && meshPacket.rxSnr !== 0) {
         nodeData.snr = meshPacket.rxSnr;
 
-        // Save SNR as telemetry if it has changed from the last value
+        // Save SNR as telemetry if it has changed OR if 10+ minutes have passed
+        // This ensures we have historical data for stable links
         const latestSnrTelemetry = databaseService.getLatestTelemetryForType(nodeId, 'snr');
-        if (!latestSnrTelemetry || latestSnrTelemetry.value !== meshPacket.rxSnr) {
+        const tenMinutesMs = 10 * 60 * 1000;
+        const shouldSaveSnr = !latestSnrTelemetry ||
+                              latestSnrTelemetry.value !== meshPacket.rxSnr ||
+                              (timestamp - latestSnrTelemetry.timestamp) >= tenMinutesMs;
+
+        if (shouldSaveSnr) {
           databaseService.insertTelemetry({
             nodeId,
             nodeNum: fromNum,
@@ -1419,11 +1425,36 @@ class MeshtasticManager {
             unit: 'dB',
             createdAt: timestamp
           });
-          logger.debug(`📊 Saved SNR telemetry: ${meshPacket.rxSnr} dB (changed from ${latestSnrTelemetry?.value || 'N/A'})`);
+          const reason = !latestSnrTelemetry ? 'initial' :
+                        latestSnrTelemetry.value !== meshPacket.rxSnr ? 'changed' : 'periodic';
+          logger.debug(`📊 Saved SNR telemetry: ${meshPacket.rxSnr} dB (${reason}, previous: ${latestSnrTelemetry?.value || 'N/A'})`);
         }
       }
       if (meshPacket.rxRssi && meshPacket.rxRssi !== 0) {
         nodeData.rssi = meshPacket.rxRssi;
+
+        // Save RSSI as telemetry if it has changed OR if 10+ minutes have passed
+        // This ensures we have historical data for stable links
+        const latestRssiTelemetry = databaseService.getLatestTelemetryForType(nodeId, 'rssi');
+        const tenMinutesMs = 10 * 60 * 1000;
+        const shouldSaveRssi = !latestRssiTelemetry ||
+                               latestRssiTelemetry.value !== meshPacket.rxRssi ||
+                               (timestamp - latestRssiTelemetry.timestamp) >= tenMinutesMs;
+
+        if (shouldSaveRssi) {
+          databaseService.insertTelemetry({
+            nodeId,
+            nodeNum: fromNum,
+            telemetryType: 'rssi',
+            timestamp,
+            value: meshPacket.rxRssi,
+            unit: 'dBm',
+            createdAt: timestamp
+          });
+          const reason = !latestRssiTelemetry ? 'initial' :
+                        latestRssiTelemetry.value !== meshPacket.rxRssi ? 'changed' : 'periodic';
+          logger.debug(`📊 Saved RSSI telemetry: ${meshPacket.rxRssi} dBm (${reason}, previous: ${latestRssiTelemetry?.value || 'N/A'})`);
+        }
       }
 
       logger.debug(`🔍 Saving node with role=${user.role}, hopsAway=${meshPacket.hopsAway}`);

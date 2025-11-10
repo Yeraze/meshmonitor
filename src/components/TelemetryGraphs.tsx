@@ -366,7 +366,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
   };
 
   const getTelemetryLabel = (type: string): string => {
-    const labels: { [key: string]: string } = {
+    const labels: { [key: string]: string} = {
       batteryLevel: 'Battery Level',
       voltage: 'Voltage',
       channelUtilization: 'Channel Utilization',
@@ -374,6 +374,8 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
       temperature: 'Temperature',
       humidity: 'Humidity',
       pressure: 'Barometric Pressure',
+      snr: 'Signal-to-Noise Ratio (SNR)',
+      rssi: 'Signal Strength (RSSI)',
       ch1Voltage: 'Channel 1 Voltage',
       ch1Current: 'Channel 1 Current',
       ch2Voltage: 'Channel 2 Voltage',
@@ -404,6 +406,8 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
       temperature: '#ff8042',
       humidity: '#00c4cc',
       pressure: '#a28dff',
+      snr: '#94e2d5',       // Catppuccin teal - for signal quality
+      rssi: '#f9e2af',      // Catppuccin yellow - for signal strength
       ch1Voltage: '#d084d8',
       ch1Current: '#ff6b9d',
       ch2Voltage: '#c084ff',
