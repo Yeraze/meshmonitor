@@ -83,10 +83,11 @@ interface SortableChartItemProps {
   node: NodeInfo | undefined;
   temperatureUnit: TemperatureUnit;
   globalTimeRange: [number, number] | null;
+  globalMinTime: number | undefined;
   onRemove: (nodeId: string, telemetryType: string) => void;
   getTelemetryLabel: (type: string) => string;
   getColor: (type: string) => string;
-  prepareChartData: (data: TelemetryData[], isTemperature: boolean) => ChartData[];
+  prepareChartData: (data: TelemetryData[], isTemperature: boolean, globalMinTime?: number) => ChartData[];
   solarEstimates: Map<number, number>;
 }
 
@@ -97,6 +98,7 @@ const SortableChartItem: React.FC<SortableChartItemProps> = React.memo(({
   node,
   temperatureUnit,
   globalTimeRange,
+  globalMinTime,
   onRemove,
   getTelemetryLabel,
   getColor,
@@ -162,7 +164,7 @@ const SortableChartItem: React.FC<SortableChartItemProps> = React.memo(({
   }
 
   const isTemperature = favorite.telemetryType === 'temperature';
-  const chartData = prepareChartData(data, isTemperature);
+  const chartData = prepareChartData(data, isTemperature, globalMinTime);
   const unit = isTemperature ? getTemperatureUnit(temperatureUnit) : (data[0]?.unit || '');
   const color = getColor(favorite.telemetryType);
 
@@ -473,9 +475,18 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C',
     return () => clearInterval(interval);
   }, [daysToView, baseUrl]);
 
-  const prepareChartData = (data: TelemetryData[], isTemperature: boolean = false): ChartData[] => {
+  const prepareChartData = (data: TelemetryData[], isTemperature: boolean = false, globalMinTime?: number): ChartData[] => {
     // Create a map of all unique timestamps from both telemetry and solar data
     const allTimestamps = new Map<number, ChartData>();
+
+    // Calculate minimum telemetry time for this specific data
+    let minTelemetryTime = Infinity;
+    data.forEach(item => {
+      if (item.timestamp < minTelemetryTime) minTelemetryTime = item.timestamp;
+    });
+
+    // Use global minimum time if provided (for uniform axes across charts)
+    const effectiveMinTime = globalMinTime !== undefined ? globalMinTime : minTelemetryTime;
 
     // Add telemetry data points
     data.forEach(item => {
@@ -490,14 +501,16 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C',
     });
 
     // Add solar data points (at their own timestamps)
-    // Only include solar data up to the current time to avoid showing forecasts
-    if (solarEstimates.size > 0) {
+    // Only include solar data within the GLOBAL telemetry time range
+    // This prevents solar data from extending the time axis beyond actual telemetry data
+    if (solarEstimates.size > 0 && effectiveMinTime !== Infinity) {
       // Use current time with a 5-minute buffer to account for minor clock differences
       const now = Date.now() + (5 * 60 * 1000);
 
       solarEstimates.forEach((wattHours, timestamp) => {
-        // Filter out future data (forecasts beyond current time)
-        if (timestamp > now) return;
+        // Filter out data outside GLOBAL telemetry time bounds
+        // Solar data should never extend the graph range beyond actual telemetry
+        if (timestamp < effectiveMinTime || timestamp > now) return;
 
         if (allTimestamps.has(timestamp)) {
           // If telemetry exists at this timestamp, add solar data to it
@@ -777,6 +790,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C',
 
   // Get global time range for all charts
   const globalTimeRange = getGlobalTimeRange();
+  const globalMinTime = globalTimeRange ? globalTimeRange[0] : undefined;
 
   return (
     <div className="dashboard">
@@ -924,6 +938,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({ temperatureUnit = 'C',
                   node={node}
                   temperatureUnit={temperatureUnit}
                   globalTimeRange={globalTimeRange}
+                  globalMinTime={globalMinTime}
                   onRemove={removeFavorite}
                   getTelemetryLabel={getTelemetryLabel}
                   getColor={getColor}
