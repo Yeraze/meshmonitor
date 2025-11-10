@@ -302,15 +302,30 @@ except:
     print('0')
 " 2>/dev/null || echo '0')
 
-        if [ "$CHANNEL_COUNT" -gt 0 ] && [ "$HAS_PSKS" -gt 0 ] && [ "$HAS_NAMES" -gt 0 ]; then
-            echo -e "${GREEN}✓${NC} Configuration fully synced (${CHANNEL_COUNT} channels with PSKs and ${HAS_NAMES} with names from /api/poll)"
+        # CRITICAL: Also check if LoRa config is present (if test expects it)
+        # LoRa config takes longer to sync than channels
+        # LoRa config is nested in deviceConfig.lora (requires configuration:read permission)
+        HAS_LORA=$(echo "$POLL_RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    device_config = data.get('deviceConfig', {})
+    lora = device_config.get('lora', {}) if device_config else {}
+    # Check if modemPreset is present (0 is valid, so check for None)
+    print('1' if lora.get('modemPreset') is not None else '0')
+except:
+    print('0')
+" 2>/dev/null || echo '0')
+
+        if [ "$CHANNEL_COUNT" -gt 0 ] && [ "$HAS_PSKS" -gt 0 ] && [ "$HAS_NAMES" -gt 0 ] && [ "$HAS_LORA" = "1" ]; then
+            echo -e "${GREEN}✓${NC} Configuration fully synced (${CHANNEL_COUNT} channels with PSKs, ${HAS_NAMES} with names, LoRa config present)"
             return 0
         fi
 
         sleep 2
         ELAPSED=$((ELAPSED + 2))
         if [ $((ELAPSED % 10)) -eq 0 ]; then
-            echo "  Still waiting... (channels: $CHANNEL_COUNT, PSKs: $HAS_PSKS, names: $HAS_NAMES)"
+            echo "  Still waiting... (channels: $CHANNEL_COUNT, PSKs: $HAS_PSKS, names: $HAS_NAMES, LoRa: $HAS_LORA)"
         fi
     done
 
