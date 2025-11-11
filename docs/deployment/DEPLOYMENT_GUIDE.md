@@ -454,6 +454,48 @@ services:
 
 ---
 
+## unRAID Deployment
+
+MeshMonitor provides a native unRAID template for easy deployment via Community Applications.
+
+### Installation via Community Applications
+
+1. **Install Community Applications Plugin** (if not already installed):
+   - Go to **Plugins** → **Apps** tab
+   - Search for "Community Applications"
+   - Install the plugin
+
+2. **Install MeshMonitor**:
+   - Click **Apps** in the unRAID toolbar
+   - Search for "MeshMonitor"
+   - Click **Install**
+
+3. **Configure Required Settings**:
+   - **Meshtastic Node IP**: Your Meshtastic device's IP address
+   - **Session Secret**: Generate with `openssl rand -hex 32`
+   - **Allowed Origins**: Your unRAID server URL (e.g., `http://192.168.1.50:8080`)
+   - **WebUI Port**: Default 8080 (change if needed)
+
+4. **Apply and Start**:
+   - Review settings and click **Apply**
+   - Access MeshMonitor at `http://[UNRAID-IP]:[PORT]`
+
+### Auto-Update Configuration
+
+MeshMonitor supports auto-updates on unRAID:
+
+- **Recommended**: Use the CA Auto Update Applications plugin
+- **Alternative**: Use unRAID's built-in Docker update checking
+- **Advanced**: Enable in-app auto-upgrade (requires Docker socket access)
+
+### Full Documentation
+
+For detailed configuration, reverse proxy setup, troubleshooting, and advanced features, see:
+- [UNRAID_DEPLOYMENT.md](UNRAID_DEPLOYMENT.md) - Complete unRAID deployment guide
+- Template location: [`unraid-template.xml`](../../unraid-template.xml)
+
+---
+
 ## Monitoring and Maintenance
 
 ### Health Checks

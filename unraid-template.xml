@@ -1,0 +1,61 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>MeshMonitor</Name>
+  <Repository>ghcr.io/yeraze/meshmonitor:latest</Repository>
+  <Registry>https://ghcr.io/</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/Yeraze/meshmonitor</Support>
+  <Project>https://github.com/Yeraze/meshmonitor</Project>
+  <Overview>MeshMonitor is a comprehensive monitoring and management platform for Meshtastic mesh networks. It provides real-time visualization, message history, telemetry tracking, and node management capabilities for your Meshtastic devices.&#xD;
+&#xD;
+Features:&#xD;
+- Real-time mesh network visualization&#xD;
+- Message history and search&#xD;
+- Node telemetry and health monitoring&#xD;
+- Multi-channel support&#xD;
+- Position tracking with map integration&#xD;
+- Notification system (100+ providers via Apprise)&#xD;
+- Auto-upgrade capability&#xD;
+- RESTful API access&#xD;
+- Web-based management interface&#xD;
+&#xD;
+IMPORTANT: You must have a Meshtastic node with WiFi/Ethernet and HTTP API enabled to use this application.</Overview>
+  <Category>Network:Management Status:Stable</Category>
+  <WebUI>http://[IP]:[PORT:8080]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/Yeraze/meshmonitor/main/unraid-template.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/Yeraze/meshmonitor/main/public/android-chrome-192x192.png</Icon>
+  <ExtraParams>--health-cmd="wget -q --spider http://localhost:3001/api/health || exit 1" --health-interval=30s --health-timeout=10s --health-retries=3 --health-start-period=40s</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>Requires a Meshtastic node with WiFi/Ethernet and HTTP API enabled. Network access to the node is required.</Requires>
+  <Config Name="WebUI Port" Target="3001" Default="8080" Mode="tcp" Description="Web interface port" Type="Port" Display="always" Required="true" Mask="false">8080</Config>
+  <Config Name="Data Directory" Target="/data" Default="/mnt/user/appdata/meshmonitor" Mode="rw" Description="Persistent data storage for database, logs, and configuration" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/meshmonitor</Config>
+  <Config Name="Meshtastic Node IP" Target="MESHTASTIC_NODE_IP" Default="192.168.1.100" Mode="" Description="IP address of your Meshtastic node (REQUIRED)" Type="Variable" Display="always" Required="true" Mask="false">192.168.1.100</Config>
+  <Config Name="Session Secret" Target="SESSION_SECRET" Default="" Mode="" Description="Random 32-byte hex string for session security. Generate with: openssl rand -hex 32 (REQUIRED for production)" Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="Allowed Origins" Target="ALLOWED_ORIGINS" Default="http://[IP]:[PORT:8080]" Mode="" Description="Comma-separated list of allowed origins for CORS. Set to your unRAID server URL (e.g., http://192.168.1.50:8080 or https://meshmonitor.yourdomain.com)" Type="Variable" Display="always" Required="true" Mask="false">http://[IP]:[PORT:8080]</Config>
+  <Config Name="Node Environment" Target="NODE_ENV" Default="production" Mode="" Description="Application environment (production recommended)" Type="Variable" Display="advanced" Required="false" Mask="false">production</Config>
+  <Config Name="Trust Proxy" Target="TRUST_PROXY" Default="true" Mode="" Description="Enable if using reverse proxy (nginx, swag, etc.)" Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+  <Config Name="Cookie Secure" Target="COOKIE_SECURE" Default="false" Mode="" Description="Set to true if using HTTPS (required for secure deployments)" Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+  <Config Name="Cookie SameSite" Target="COOKIE_SAMESITE" Default="lax" Mode="" Description="Cookie SameSite policy (lax recommended)" Type="Variable" Display="advanced" Required="false" Mask="false">lax</Config>
+  <Config Name="Meshtastic TCP Port" Target="MESHTASTIC_TCP_PORT" Default="4403" Mode="" Description="TCP port on your Meshtastic node (default: 4403)" Type="Variable" Display="advanced" Required="false" Mask="false">4403</Config>
+  <Config Name="Meshtastic Use TLS" Target="MESHTASTIC_USE_TLS" Default="false" Mode="" Description="Enable TLS for Meshtastic connection" Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+  <Config Name="Timezone" Target="TZ" Default="America/New_York" Mode="" Description="Container timezone (e.g., America/New_York, Europe/London)" Type="Variable" Display="advanced" Required="false" Mask="false">America/New_York</Config>
+  <Config Name="Database Path" Target="DATABASE_PATH" Default="/data/meshmonitor.db" Mode="" Description="SQLite database file path (default should not be changed)" Type="Variable" Display="advanced" Required="false" Mask="false">/data/meshmonitor.db</Config>
+  <Config Name="Disable Anonymous Access" Target="DISABLE_ANONYMOUS" Default="false" Mode="" Description="Set to true to require authentication for all access" Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+  <Config Name="Admin Username" Target="ADMIN_USERNAME" Default="admin" Mode="" Description="Username for the admin user" Type="Variable" Display="advanced" Required="false" Mask="false">admin</Config>
+  <Config Name="Base URL" Target="BASE_URL" Default="" Mode="" Description="Base URL path if deploying in subfolder (e.g., /meshmonitor). Leave empty for root deployment." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Session Max Age" Target="SESSION_MAX_AGE" Default="86400000" Mode="" Description="Session duration in milliseconds (default: 24 hours)" Type="Variable" Display="advanced" Required="false" Mask="false">86400000</Config>
+  <Config Name="Enable Access Logs" Target="ACCESS_LOG_ENABLED" Default="true" Mode="" Description="Enable HTTP access logging" Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+  <Config Name="Access Log Path" Target="ACCESS_LOG_PATH" Default="/data/logs/access.log" Mode="" Description="Path to access log file" Type="Variable" Display="advanced" Required="false" Mask="false">/data/logs/access.log</Config>
+  <Config Name="Apprise Config Directory" Target="APPRISE_CONFIG_DIR" Default="/data/apprise-config" Mode="" Description="Directory for Apprise notification configurations" Type="Variable" Display="advanced" Required="false" Mask="false">/data/apprise-config</Config>
+  <Config Name="Apprise Stateful Mode" Target="APPRISE_STATEFUL_MODE" Default="simple" Mode="" Description="Apprise stateful mode (simple or disabled)" Type="Variable" Display="advanced" Required="false" Mask="false">simple</Config>
+  <Config Name="Enable Virtual Node" Target="ENABLE_VIRTUAL_NODE" Default="false" Mode="" Description="Enable virtual node server for testing (requires additional port mapping)" Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+  <Config Name="PUID" Target="PUID" Default="1000" Mode="" Description="User ID for file permissions" Type="Variable" Display="advanced" Required="false" Mask="false">1000</Config>
+  <Config Name="PGID" Target="PGID" Default="1000" Mode="" Description="Group ID for file permissions" Type="Variable" Display="advanced" Required="false" Mask="false">1000</Config>
+</Container>
