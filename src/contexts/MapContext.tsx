@@ -35,6 +35,8 @@ interface MapContextType {
   triggerNodeAnimation: (nodeId: string) => void;
   mapCenterTarget: [number, number] | null;
   setMapCenterTarget: (target: [number, number] | null) => void;
+  mapCenter: [number, number] | null;
+  setMapCenter: (center: [number, number] | null) => void;
   mapZoom: number;
   setMapZoom: (zoom: number) => void;
   traceroutes: DbTraceroute[];
@@ -65,7 +67,27 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   });
   const [animatedNodes, setAnimatedNodes] = useState<Set<string>>(new Set());
   const [mapCenterTarget, setMapCenterTarget] = useState<[number, number] | null>(null);
-  const [mapZoom, setMapZoom] = useState<number>(10);
+  const [mapCenter, setMapCenter] = useState<[number, number] | null>(() => {
+    const saved = localStorage.getItem('mapCenter');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  });
+  const [mapZoom, setMapZoom] = useState<number>(() => {
+    const saved = localStorage.getItem('mapZoom');
+    if (saved) {
+      const zoom = parseFloat(saved);
+      if (!isNaN(zoom)) {
+        return zoom;
+      }
+    }
+    return 10;
+  });
   const [traceroutes, setTraceroutes] = useState<DbTraceroute[]>([]);
   const [neighborInfo, setNeighborInfo] = useState<EnrichedNeighborInfo[]>([]);
   const [positionHistory, setPositionHistory] = useState<PositionHistoryItem[]>([]);
@@ -75,6 +97,18 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   useEffect(() => {
     localStorage.setItem('showAnimations', showAnimations.toString());
   }, [showAnimations]);
+
+  // Persist map center to localStorage
+  useEffect(() => {
+    if (mapCenter) {
+      localStorage.setItem('mapCenter', JSON.stringify(mapCenter));
+    }
+  }, [mapCenter]);
+
+  // Persist map zoom to localStorage
+  useEffect(() => {
+    localStorage.setItem('mapZoom', mapZoom.toString());
+  }, [mapZoom]);
 
   // Trigger animation for a node (lasts 1 second)
   const triggerNodeAnimation = React.useCallback((nodeId: string) => {
@@ -111,6 +145,8 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
         triggerNodeAnimation,
         mapCenterTarget,
         setMapCenterTarget,
+        mapCenter,
+        setMapCenter,
         mapZoom,
         setMapZoom,
         traceroutes,
