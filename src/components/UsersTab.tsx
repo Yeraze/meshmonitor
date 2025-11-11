@@ -41,6 +41,7 @@ const UsersTab: React.FC = () => {
     confirmPassword: ''
   });
   const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [createForm, setCreateForm] = useState({
     username: '',
     password: '',
@@ -130,8 +131,17 @@ const UsersTab: React.FC = () => {
     try {
       await api.put(`/api/users/${user.id}/admin`, { isAdmin: !user.isAdmin });
       await fetchUsers();
+      // Update selected user to reflect the change
+      if (selectedUser && selectedUser.id === user.id) {
+        setSelectedUser({ ...selectedUser, isAdmin: !user.isAdmin });
+      }
+      showToast(
+        user.isAdmin ? 'Admin privileges removed' : 'Admin privileges granted',
+        'success'
+      );
     } catch (err) {
       logger.error('Failed to update admin status:', err);
+      showToast('Failed to update admin status', 'error');
       setError('Failed to update admin status');
     }
   };
@@ -246,13 +256,16 @@ const UsersTab: React.FC = () => {
 
   const handleCreateUser = async () => {
     try {
+      // Clear any previous errors
+      setCreateError(null);
+
       if (!createForm.username || !createForm.password) {
-        setError('Username and password are required');
+        setCreateError('Username and password are required');
         return;
       }
 
       if (createForm.password.length < 8) {
-        setError('Password must be at least 8 characters');
+        setCreateError('Password must be at least 8 characters');
         return;
       }
 
@@ -267,13 +280,14 @@ const UsersTab: React.FC = () => {
         isAdmin: false
       });
       setShowCreateModal(false);
-      setError(null);
+      setCreateError(null);
 
       // Refresh user list
       await fetchUsers();
+      showToast('User created successfully', 'success');
     } catch (err) {
       logger.error('Failed to create user:', err);
-      setError(err instanceof Error ? err.message : 'Failed to create user');
+      setCreateError(err instanceof Error ? err.message : 'Failed to create user');
     }
   };
 
@@ -302,7 +316,10 @@ const UsersTab: React.FC = () => {
             <h2>Users</h2>
             <button
               className="button button-primary"
-              onClick={() => setShowCreateModal(true)}
+              onClick={() => {
+                setShowCreateModal(true);
+                setCreateError(null);
+              }}
             >
               Add User
             </button>
@@ -473,11 +490,17 @@ const UsersTab: React.FC = () => {
 
       {/* Create User Modal */}
       {showCreateModal && (
-        <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
+        <div className="modal-overlay" onClick={() => {
+          setShowCreateModal(false);
+          setCreateError(null);
+        }}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Create New User</h2>
-              <button className="close-button" onClick={() => setShowCreateModal(false)}>×</button>
+              <button className="close-button" onClick={() => {
+                setShowCreateModal(false);
+                setCreateError(null);
+              }}>×</button>
             </div>
 
             <div className="modal-body">
@@ -532,10 +555,19 @@ const UsersTab: React.FC = () => {
                 </label>
               </div>
 
+              {createError && (
+                <div className="error-message" style={{ marginTop: '16px' }}>
+                  {createError}
+                </div>
+              )}
+
               <div className="modal-actions">
                 <button
                   className="button button-secondary"
-                  onClick={() => setShowCreateModal(false)}
+                  onClick={() => {
+                    setShowCreateModal(false);
+                    setCreateError(null);
+                  }}
                 >
                   Cancel
                 </button>
