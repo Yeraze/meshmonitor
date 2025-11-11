@@ -4874,40 +4874,7 @@ function App() {
         </div>
       )}
 
-      {/* New Release Coming Soon Banner - shown when release published but container images not ready yet */}
-      {latestVersion && !imageReady && !updateAvailable && (
-        <div className="update-banner" style={{
-          top: (isDefaultPassword && isTxDisabled) ? 'calc(var(--header-height) + var(--banner-height) + var(--banner-height))' : (isDefaultPassword || isTxDisabled) ? 'calc(var(--header-height) + var(--banner-height))' : 'var(--header-height)',
-          backgroundColor: '#3b82f6' // Blue color to differentiate from ready updates
-        }}>
-          <div style={{ flex: 1, textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem' }}>
-            <span>🎉 New Release: Version {latestVersion} has been published!</span>
-            <span style={{ fontSize: '0.9em', opacity: 0.9 }}>
-              Docker images are building... Upgrade will be available soon
-            </span>
-            <a
-              href={releaseUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                color: 'white',
-                textDecoration: 'underline',
-                fontWeight: '600'
-              }}
-            >
-              View Release Notes →
-            </a>
-          </div>
-          <button
-            className="banner-dismiss"
-            onClick={() => setLatestVersion('')}
-            aria-label="Dismiss notification"
-            title="Dismiss"
-          >
-            ×
-          </button>
-        </div>
-      )}
+      {/* Don't show banner until images are confirmed ready - no point notifying users about builds in progress */}
 
       {updateAvailable && (
         <div className="update-banner" style={{
