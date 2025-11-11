@@ -13,6 +13,13 @@ This guide provides instructions for deploying MeshMonitor on unRAID using the C
 - [Troubleshooting](#troubleshooting)
 - [Backup and Restore](#backup-and-restore)
 
+## Quick Tips for Success
+
+**Common First-Time Issues:**
+1. **Permission errors?** → Run `chown -R 1000:1000 /mnt/user/appdata/meshmonitor` from unRAID terminal
+2. **Blank page or CORS errors?** → Only set **Allowed Origins** if you get errors (leave empty otherwise)
+3. **Sessions reset on restart?** → Set **Session Secret** for persistent sessions
+
 ## Prerequisites
 
 ### Required
@@ -92,15 +99,20 @@ When installing MeshMonitor, you **must** configure these settings:
 #### 2. Data Directory (default: /mnt/user/appdata/meshmonitor)
 - This stores your database, logs, and configuration
 - Default location is recommended
-- Ensure the path has write permissions
+- The container runs as UID 1000 (see Troubleshooting section if you get permission errors)
 
 #### 3. Meshtastic Node IP (**REQUIRED**)
 - Enter the IP address of your Meshtastic node
 - Example: `192.168.1.100`
 - Must be accessible from unRAID server
 
-#### 4. Session Secret (**REQUIRED for production**)
-- Generate a secure random string:
+### Recommended Configuration
+
+These settings are optional but recommended:
+
+#### 4. Session Secret (Optional but recommended)
+- **Auto-generates if not provided** - sessions will be reset on container restart
+- For persistent sessions across restarts, generate a secure random string:
   ```bash
   # From unRAID terminal or SSH:
   openssl rand -hex 32
@@ -108,10 +120,11 @@ When installing MeshMonitor, you **must** configure these settings:
 - Copy the output and paste into the **Session Secret** field
 - **IMPORTANT**: Keep this secret safe and don't share it
 
-#### 5. Allowed Origins (**REQUIRED**)
-- Set to your access URL
-- Examples:
-  - Local access: `http://192.168.1.50:8080`
+#### 5. Allowed Origins (Optional - only needed for CORS issues)
+- **Leave EMPTY for most installations** - defaults to `http://localhost:8080` and `http://localhost:3001`
+- **Only set this if you get CORS errors or blank pages**
+- When needed, set to your access URL:
+  - Local access: `http://192.168.1.50:8080` (replace with your unRAID server IP and port)
   - With domain: `https://meshmonitor.yourdomain.com`
   - Multiple origins: `http://192.168.1.50:8080,https://meshmonitor.yourdomain.com`
 
@@ -325,6 +338,43 @@ To enable browser push notifications:
 
 ## Troubleshooting
 
+### Permission Errors (EACCES / Cannot Write to /data)
+
+**This is the most common issue on first install.**
+
+The MeshMonitor container runs as UID 1000 (user `node`). If your appdata directory has different ownership, you'll see permission errors in the logs.
+
+**Symptoms:**
+- Container fails to start or crashes immediately
+- Logs show: `EACCES: permission denied` or `cannot write to /data`
+- Health check shows unhealthy
+
+**Fix (Choose ONE method):**
+
+**Method 1: Quick Fix (From Container)**
+```bash
+# Stop the container first if it's running
+docker exec meshmonitor chown -R node:node /data
+```
+
+**Method 2: Fix from unRAID Terminal (Recommended)**
+```bash
+# From unRAID terminal or SSH:
+chown -R 1000:1000 /mnt/user/appdata/meshmonitor
+chmod -R 755 /mnt/user/appdata/meshmonitor
+```
+
+**Method 3: Fix from unRAID UI**
+1. Go to **Docker** tab → Stop MeshMonitor
+2. Open unRAID terminal (top right)
+3. Run:
+   ```bash
+   chown -R 1000:1000 /mnt/user/appdata/meshmonitor
+   ```
+4. Start MeshMonitor container
+
+After fixing permissions, restart the container and check the logs. You should see it start successfully.
+
 ### Container Won't Start
 
 1. **Check Logs**:
@@ -333,16 +383,9 @@ To enable browser push notifications:
    - Look for error messages
 
 2. **Common Issues**:
+   - **Permission errors**: See "Permission Errors" section above (most common)
    - **Port conflict**: Change WebUI port to unused port
-   - **Permission errors**: Ensure `/mnt/user/appdata/meshmonitor` has proper permissions
-   - **Missing SESSION_SECRET**: Add a session secret
-
-3. **Fix Permissions**:
-   ```bash
-   # From unRAID terminal:
-   chown -R 1000:1000 /mnt/user/appdata/meshmonitor
-   chmod -R 755 /mnt/user/appdata/meshmonitor
-   ```
+   - **Meshtastic node unreachable**: Verify node IP and network connectivity
 
 ### Can't Connect to Meshtastic Node
 
@@ -374,9 +417,10 @@ To enable browser push notifications:
    - Try accessing: `http://[UNRAID-IP]:[PORT]/api/health`
    - Should return: `{"status":"healthy"}`
 
-3. **CORS Errors**:
-   - Check **Allowed Origins** setting matches your access URL
-   - Update if you changed your access method
+3. **CORS Errors / Blank Page**:
+   - If you see CORS errors in browser console (F12), you may need to set **Allowed Origins**
+   - Set it to your exact access URL (e.g., `http://192.168.1.50:8080`)
+   - For most users, leaving it EMPTY works fine (uses default localhost)
 
 ### Database Issues
 

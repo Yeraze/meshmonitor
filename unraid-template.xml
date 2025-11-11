@@ -22,7 +22,10 @@ Features:&#xD;
 - RESTful API access&#xD;
 - Web-based management interface&#xD;
 &#xD;
-IMPORTANT: You must have a Meshtastic node with WiFi/Ethernet and HTTP API enabled to use this application.</Overview>
+IMPORTANT: You must have a Meshtastic node with WiFi/Ethernet and HTTP API enabled to use this application.&#xD;
+&#xD;
+NOTE: If you get permission errors on first start, run: docker exec meshmonitor chown -R node:node /data&#xD;
+Or from unRAID terminal: chown -R 1000:1000 /mnt/user/appdata/meshmonitor</Overview>
   <Category>Network:Management Status:Stable</Category>
   <WebUI>http://[IP]:[PORT:8080]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/Yeraze/meshmonitor/main/unraid-template.xml</TemplateURL>
@@ -37,8 +40,8 @@ IMPORTANT: You must have a Meshtastic node with WiFi/Ethernet and HTTP API enabl
   <Config Name="WebUI Port" Target="3001" Default="8080" Mode="tcp" Description="Web interface port" Type="Port" Display="always" Required="true" Mask="false">8080</Config>
   <Config Name="Data Directory" Target="/data" Default="/mnt/user/appdata/meshmonitor" Mode="rw" Description="Persistent data storage for database, logs, and configuration" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/meshmonitor</Config>
   <Config Name="Meshtastic Node IP" Target="MESHTASTIC_NODE_IP" Default="192.168.1.100" Mode="" Description="IP address of your Meshtastic node (REQUIRED)" Type="Variable" Display="always" Required="true" Mask="false">192.168.1.100</Config>
-  <Config Name="Session Secret" Target="SESSION_SECRET" Default="" Mode="" Description="Random 32-byte hex string for session security. Generate with: openssl rand -hex 32 (REQUIRED for production)" Type="Variable" Display="always" Required="true" Mask="true"></Config>
-  <Config Name="Allowed Origins" Target="ALLOWED_ORIGINS" Default="http://[IP]:[PORT:8080]" Mode="" Description="Comma-separated list of allowed origins for CORS. Set to your unRAID server URL (e.g., http://192.168.1.50:8080 or https://meshmonitor.yourdomain.com)" Type="Variable" Display="always" Required="true" Mask="false">http://[IP]:[PORT:8080]</Config>
+  <Config Name="Session Secret" Target="SESSION_SECRET" Default="" Mode="" Description="Random 32-byte hex string for session security. Generate with: openssl rand -hex 32. Optional - auto-generates if not provided (sessions reset on container restart)" Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="Allowed Origins" Target="ALLOWED_ORIGINS" Default="" Mode="" Description="CORS allowed origins. ONLY set this if you get CORS errors or blank pages. Examples: http://192.168.1.50:8080 or https://meshmonitor.yourdomain.com. Leave EMPTY for default (works for most cases)" Type="Variable" Display="always" Required="false" Mask="false"></Config>
   <Config Name="Node Environment" Target="NODE_ENV" Default="production" Mode="" Description="Application environment (production recommended)" Type="Variable" Display="advanced" Required="false" Mask="false">production</Config>
   <Config Name="Trust Proxy" Target="TRUST_PROXY" Default="true" Mode="" Description="Enable if using reverse proxy (nginx, swag, etc.)" Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
   <Config Name="Cookie Secure" Target="COOKIE_SECURE" Default="false" Mode="" Description="Set to true if using HTTPS (required for secure deployments)" Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
@@ -56,6 +59,4 @@ IMPORTANT: You must have a Meshtastic node with WiFi/Ethernet and HTTP API enabl
   <Config Name="Apprise Config Directory" Target="APPRISE_CONFIG_DIR" Default="/data/apprise-config" Mode="" Description="Directory for Apprise notification configurations" Type="Variable" Display="advanced" Required="false" Mask="false">/data/apprise-config</Config>
   <Config Name="Apprise Stateful Mode" Target="APPRISE_STATEFUL_MODE" Default="simple" Mode="" Description="Apprise stateful mode (simple or disabled)" Type="Variable" Display="advanced" Required="false" Mask="false">simple</Config>
   <Config Name="Enable Virtual Node" Target="ENABLE_VIRTUAL_NODE" Default="false" Mode="" Description="Enable virtual node server for testing (requires additional port mapping)" Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
-  <Config Name="PUID" Target="PUID" Default="1000" Mode="" Description="User ID for file permissions" Type="Variable" Display="advanced" Required="false" Mask="false">1000</Config>
-  <Config Name="PGID" Target="PGID" Default="1000" Mode="" Description="Group ID for file permissions" Type="Variable" Display="advanced" Required="false" Mask="false">1000</Config>
 </Container>
