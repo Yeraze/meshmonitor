@@ -15,8 +15,10 @@ This guide provides instructions for deploying MeshMonitor on unRAID using the C
 
 ## Quick Tips for Success
 
+**Good News:** The container automatically fixes permission issues on startup!
+
 **Common First-Time Issues:**
-1. **Permission errors?** → Run `chown -R 1000:1000 /mnt/user/appdata/meshmonitor` from unRAID terminal
+1. **Permission errors?** → The container auto-fixes these. Check logs if issues persist.
 2. **Blank page or CORS errors?** → Only set **Allowed Origins** if you get errors (leave empty otherwise)
 3. **Sessions reset on restart?** → Set **Session Secret** for persistent sessions
 
@@ -99,7 +101,7 @@ When installing MeshMonitor, you **must** configure these settings:
 #### 2. Data Directory (default: /mnt/user/appdata/meshmonitor)
 - This stores your database, logs, and configuration
 - Default location is recommended
-- The container runs as UID 1000 (see Troubleshooting section if you get permission errors)
+- The container automatically fixes permission issues on startup (runs as UID 1000)
 
 #### 3. Meshtastic Node IP (**REQUIRED**)
 - Enter the IP address of your Meshtastic node
@@ -340,40 +342,44 @@ To enable browser push notifications:
 
 ### Permission Errors (EACCES / Cannot Write to /data)
 
-**This is the most common issue on first install.**
+**Good News: The container now auto-fixes permission issues!**
 
-The MeshMonitor container runs as UID 1000 (user `node`). If your appdata directory has different ownership, you'll see permission errors in the logs.
+Starting with version 2.16.9+, the container automatically detects and fixes permission problems on startup. The container runs as UID 1000 (user `node`) and will automatically adjust /data ownership if needed.
 
-**Symptoms:**
-- Container fails to start or crashes immediately
-- Logs show: `EACCES: permission denied` or `cannot write to /data`
-- Health check shows unhealthy
+**What Happens:**
+1. Container checks if /data is writable by the node user (UID 1000)
+2. If not writable, it automatically runs: `chown -R node:node /data`
+3. If successful, the container continues starting normally
+4. If it can't fix permissions (rare), you'll see clear instructions in the logs
 
-**Fix (Choose ONE method):**
-
-**Method 1: Quick Fix (From Container)**
+**Check the Logs:**
 ```bash
-# Stop the container first if it's running
-docker exec meshmonitor chown -R node:node /data
+# View container logs to see permission check results:
+docker logs meshmonitor
 ```
 
-**Method 2: Fix from unRAID Terminal (Recommended)**
+You should see one of these messages:
+- ✓ `/data directory permissions are correct` - Everything is fine!
+- ✓ `Successfully fixed /data permissions` - Auto-fix worked!
+- ❌ `ERROR: Cannot fix /data directory permissions` - Manual fix needed (rare)
+
+**If Auto-Fix Fails (Rare):**
+
+Only if you see the error message above, you'll need to manually fix permissions:
+
+**Option 1: Fix from unRAID Terminal (Recommended)**
 ```bash
 # From unRAID terminal or SSH:
 chown -R 1000:1000 /mnt/user/appdata/meshmonitor
 chmod -R 755 /mnt/user/appdata/meshmonitor
 ```
 
-**Method 3: Fix from unRAID UI**
-1. Go to **Docker** tab → Stop MeshMonitor
-2. Open unRAID terminal (top right)
-3. Run:
-   ```bash
-   chown -R 1000:1000 /mnt/user/appdata/meshmonitor
-   ```
-4. Start MeshMonitor container
+**Option 2: Fix from Docker Exec**
+```bash
+docker exec meshmonitor chown -R node:node /data
+```
 
-After fixing permissions, restart the container and check the logs. You should see it start successfully.
+Then restart the container and check the logs again.
 
 ### Container Won't Start
 

@@ -24,8 +24,7 @@ Features:&#xD;
 &#xD;
 IMPORTANT: You must have a Meshtastic node with WiFi/Ethernet and HTTP API enabled to use this application.&#xD;
 &#xD;
-NOTE: If you get permission errors on first start, run: docker exec meshmonitor chown -R node:node /data&#xD;
-Or from unRAID terminal: chown -R 1000:1000 /mnt/user/appdata/meshmonitor</Overview>
+PERMISSIONS: The container automatically detects and fixes permission issues on startup. If permission errors occur, check the container logs for instructions.</Overview>
   <Category>Network:Management Status:Stable</Category>
   <WebUI>http://[IP]:[PORT:8080]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/Yeraze/meshmonitor/main/unraid-template.xml</TemplateURL>
