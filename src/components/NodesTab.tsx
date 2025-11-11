@@ -16,6 +16,7 @@ import { useAuth } from '../contexts/AuthContext';
 import MapLegend from './MapLegend';
 import ZoomHandler from './ZoomHandler';
 import MapResizeHandler from './MapResizeHandler';
+import MapPositionHandler from './MapPositionHandler';
 import { SpiderfierController, SpiderfierControllerRef } from './SpiderfierController';
 import { TilesetSelector } from './TilesetSelector';
 import { MapCenterController } from './MapCenterController';
@@ -96,6 +97,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     triggerNodeAnimation,
     mapCenterTarget,
     setMapCenterTarget,
+    mapCenter,
     mapZoom,
     setMapZoom,
     selectedNodeId,
@@ -439,7 +441,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   }, [nodesWithPosition.map(n => `${n.nodeNum}-${n.position!.latitude}-${n.position!.longitude}`).join(',')]);
 
   // Calculate center point of all nodes for initial map view
+  // Use saved map center from localStorage if available, otherwise calculate from nodes
   const getMapCenter = (): [number, number] => {
+    if (mapCenter) {
+      return mapCenter;
+    }
     if (nodesWithPosition.length === 0) {
       return [25.7617, -80.1918]; // Default to Miami area
     }
@@ -758,7 +764,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
             </div>
             <MapContainer
               center={getMapCenter()}
-              zoom={nodesWithPosition.length > 0 ? 10 : 8}
+              zoom={mapZoom}
               style={{ height: '100%', width: '100%' }}
             >
               <MapCenterController
@@ -771,6 +777,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 maxZoom={getTilesetById(activeTileset).maxZoom}
               />
               <ZoomHandler onZoomChange={setMapZoom} />
+              <MapPositionHandler />
               <MapResizeHandler trigger={showPacketMonitor} />
               <SpiderfierController ref={spiderfierRef} zoomLevel={mapZoom} />
               <MapLegend />
