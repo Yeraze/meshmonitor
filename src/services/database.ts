@@ -2191,9 +2191,29 @@ class DatabaseService {
     // Calculate points per hour based on the actual interval used
     if (maxHours !== undefined) {
       const pointsPerHour = 60 / actualIntervalMinutes;
-      // Add generous padding (2x) to ensure we don't cut off data
-      // This accounts for multiple telemetry types per node
-      const limit = Math.ceil((maxHours + 1) * pointsPerHour * 2);
+
+      // Query the actual number of distinct telemetry types for this node
+      // This is more efficient than using a blanket multiplier
+      let countQuery = `
+        SELECT COUNT(DISTINCT telemetryType) as typeCount
+        FROM telemetry
+        WHERE nodeId = ?
+      `;
+      const countParams: any[] = [nodeId];
+      if (sinceTimestamp !== undefined) {
+        countQuery += ` AND timestamp >= ?`;
+        countParams.push(sinceTimestamp);
+      }
+
+      const countStmt = this.db.prepare(countQuery);
+      const result = countStmt.get(...countParams) as { typeCount: number } | undefined;
+      const telemetryTypeCount = result?.typeCount || 1;
+
+      // Calculate limit: expected data points per type × number of types
+      // Add 50% padding to account for data density variations and ensure we don't cut off
+      const expectedPointsPerType = (maxHours + 1) * pointsPerHour;
+      const limit = Math.ceil(expectedPointsPerType * telemetryTypeCount * 1.5);
+
       query += ` LIMIT ?`;
       params.push(limit);
     }
