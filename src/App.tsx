@@ -129,7 +129,6 @@ function App() {
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [latestVersion, setLatestVersion] = useState('');
   const [releaseUrl, setReleaseUrl] = useState('');
-  const [imageReady, setImageReady] = useState(true);
   const [upgradeEnabled, setUpgradeEnabled] = useState(false);
   const [upgradeInProgress, setUpgradeInProgress] = useState(false);
   const [upgradeStatus, setUpgradeStatus] = useState('');
@@ -881,7 +880,6 @@ function App() {
           if (data.latestVersion && data.latestVersion !== data.currentVersion) {
             setLatestVersion(data.latestVersion);
             setReleaseUrl(data.releaseUrl);
-            setImageReady(data.imageReady !== false); // Default to true if not specified
           }
 
           // Only show update available if images are ready
