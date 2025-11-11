@@ -17,8 +17,8 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Use port 8080 for dev environment
-BASE_URL="${BASE_URL:-http://localhost:8080}"
+# Use port 8080 for dev environment with /meshmonitor prefix
+BASE_URL="${BASE_URL:-http://localhost:8080/meshmonitor}"
 COOKIE_FILE="/tmp/meshmonitor-deletion-test-cookies.txt"
 
 # Cleanup function
