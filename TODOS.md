@@ -48,10 +48,11 @@
 
 **Remaining:**
 - [ ] Update Device Configurator with system backup settings (optional)
-- [ ] Update package.json to 2.16.0
-- [ ] Update Helm chart to 2.16.0
-- [ ] Regenerate package-lock.json
-- [ ] Create release
+- [x] Update package.json to 2.17.0
+- [x] Update Helm chart to 2.17.0
+- [x] Regenerate package-lock.json
+- [ ] Run system tests
+- [ ] Create release (v2.17.0)
 
 #### DM Conversation Enhancements (#490)
 
