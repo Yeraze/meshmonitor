@@ -166,30 +166,12 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     return (saved && validThemes.includes(saved as Theme) ? saved : 'mocha') as Theme;
   });
 
-  const [solarMonitoringEnabled, setSolarMonitoringEnabledState] = useState<boolean>(() => {
-    const saved = localStorage.getItem('solarMonitoringEnabled');
-    return saved === 'true';
-  });
-
-  const [solarMonitoringLatitude, setSolarMonitoringLatitudeState] = useState<number>(() => {
-    const saved = localStorage.getItem('solarMonitoringLatitude');
-    return saved ? parseFloat(saved) : 0;
-  });
-
-  const [solarMonitoringLongitude, setSolarMonitoringLongitudeState] = useState<number>(() => {
-    const saved = localStorage.getItem('solarMonitoringLongitude');
-    return saved ? parseFloat(saved) : 0;
-  });
-
-  const [solarMonitoringAzimuth, setSolarMonitoringAzimuthState] = useState<number>(() => {
-    const saved = localStorage.getItem('solarMonitoringAzimuth');
-    return saved ? parseInt(saved) : 0;
-  });
-
-  const [solarMonitoringDeclination, setSolarMonitoringDeclinationState] = useState<number>(() => {
-    const saved = localStorage.getItem('solarMonitoringDeclination');
-    return saved ? parseInt(saved) : 30;
-  });
+  // Solar monitoring settings are database-only, not persisted in localStorage
+  const [solarMonitoringEnabled, setSolarMonitoringEnabledState] = useState<boolean>(false);
+  const [solarMonitoringLatitude, setSolarMonitoringLatitudeState] = useState<number>(0);
+  const [solarMonitoringLongitude, setSolarMonitoringLongitudeState] = useState<number>(0);
+  const [solarMonitoringAzimuth, setSolarMonitoringAzimuthState] = useState<number>(0);
+  const [solarMonitoringDeclination, setSolarMonitoringDeclinationState] = useState<number>(30);
 
   const [temporaryTileset, setTemporaryTileset] = useState<TilesetId | null>(null);
 
@@ -383,29 +365,25 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     }
   };
 
+  // Solar monitoring setters update state only - values are persisted server-side
   const setSolarMonitoringEnabled = (enabled: boolean) => {
     setSolarMonitoringEnabledState(enabled);
-    localStorage.setItem('solarMonitoringEnabled', enabled.toString());
   };
 
   const setSolarMonitoringLatitude = (latitude: number) => {
     setSolarMonitoringLatitudeState(latitude);
-    localStorage.setItem('solarMonitoringLatitude', latitude.toString());
   };
 
   const setSolarMonitoringLongitude = (longitude: number) => {
     setSolarMonitoringLongitudeState(longitude);
-    localStorage.setItem('solarMonitoringLongitude', longitude.toString());
   };
 
   const setSolarMonitoringAzimuth = (azimuth: number) => {
     setSolarMonitoringAzimuthState(azimuth);
-    localStorage.setItem('solarMonitoringAzimuth', azimuth.toString());
   };
 
   const setSolarMonitoringDeclination = (declination: number) => {
     setSolarMonitoringDeclinationState(declination);
-    localStorage.setItem('solarMonitoringDeclination', declination.toString());
   };
 
   // Load settings from server on mount
@@ -503,17 +481,16 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             }
           }
 
+          // Solar monitoring settings - database-only, no localStorage persistence
           if (settings.solarMonitoringEnabled !== undefined) {
             const enabled = settings.solarMonitoringEnabled === '1' || settings.solarMonitoringEnabled === 'true';
             setSolarMonitoringEnabledState(enabled);
-            localStorage.setItem('solarMonitoringEnabled', enabled.toString());
           }
 
           if (settings.solarMonitoringLatitude !== undefined) {
             const latitude = parseFloat(settings.solarMonitoringLatitude);
             if (!isNaN(latitude)) {
               setSolarMonitoringLatitudeState(latitude);
-              localStorage.setItem('solarMonitoringLatitude', latitude.toString());
             }
           }
 
@@ -521,7 +498,6 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             const longitude = parseFloat(settings.solarMonitoringLongitude);
             if (!isNaN(longitude)) {
               setSolarMonitoringLongitudeState(longitude);
-              localStorage.setItem('solarMonitoringLongitude', longitude.toString());
             }
           }
 
@@ -529,7 +505,6 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             const azimuth = parseInt(settings.solarMonitoringAzimuth);
             if (!isNaN(azimuth)) {
               setSolarMonitoringAzimuthState(azimuth);
-              localStorage.setItem('solarMonitoringAzimuth', azimuth.toString());
             }
           }
 
@@ -537,7 +512,6 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             const declination = parseInt(settings.solarMonitoringDeclination);
             if (!isNaN(declination)) {
               setSolarMonitoringDeclinationState(declination);
-              localStorage.setItem('solarMonitoringDeclination', declination.toString());
             }
           }
 
