@@ -3470,51 +3470,45 @@ async function checkDockerImageExists(version: string, publishedAt?: string): Pr
   try {
     const owner = 'yeraze';
     const repo = 'meshmonitor';
-    const tag = `v${version}`;
 
-    // STRATEGY 1: Use GHCR tags/list API with anonymous token (most reliable)
-    // This directly queries the container registry for available tags
-    try {
-      // Step 1: Get anonymous token from GHCR
-      const tokenUrl = `https://ghcr.io/token?scope=repository:${owner}/${repo}:pull`;
-      const tokenResponse = await fetch(tokenUrl);
+    // STRATEGY 1: Query manifest directly (most reliable, avoids pagination issues)
+    // Try both with and without 'v' prefix as GHCR may use either
+    const tagsToTry = [version, `v${version}`];
 
-      if (tokenResponse.ok) {
-        const tokenData = await tokenResponse.json();
-        const token = tokenData.token;
+    for (const tag of tagsToTry) {
+      try {
+        // Step 1: Get anonymous token from GHCR
+        const tokenUrl = `https://ghcr.io/token?scope=repository:${owner}/${repo}:pull`;
+        const tokenResponse = await fetch(tokenUrl);
 
-        // Step 2: Use token to list all available tags
-        const tagsUrl = `https://ghcr.io/v2/${owner}/${repo}/tags/list`;
-        const tagsResponse = await fetch(tagsUrl, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
+        if (tokenResponse.ok) {
+          const tokenData = await tokenResponse.json();
+          const token = tokenData.token;
 
-        if (tagsResponse.ok) {
-          const tagsData = await tagsResponse.json();
-          const tags: string[] = tagsData.tags || [];
+          // Step 2: Try to fetch the manifest for this specific tag
+          const manifestUrl = `https://ghcr.io/v2/${owner}/${repo}/manifests/${tag}`;
+          const manifestResponse = await fetch(manifestUrl, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Accept': 'application/vnd.docker.distribution.manifest.v2+json'
+            }
+          });
 
-          // Check if our tag exists in the list
-          // Note: GHCR tags are stored without 'v' prefix, but may have it
-          const imageExists = tags.includes(tag) || tags.includes(version);
-
-          if (imageExists) {
-            logger.info(`✓ Image for ${version} found in GitHub Container Registry`);
+          if (manifestResponse.ok) {
+            logger.info(`✓ Image for ${version} (tag: ${tag}) found in GitHub Container Registry`);
             return true;
-          } else {
-            logger.info(`⏳ Image for ${version} not yet available in GitHub Container Registry (found ${tags.length} other tags)`);
-            // Image definitely doesn't exist yet - don't fall through to time-based heuristic
-            return false;
           }
         }
+      } catch (manifestError) {
+        logger.debug(`Manifest check failed for tag ${tag}:`, manifestError);
+        // Try next tag variant
       }
-    } catch (apiError) {
-      logger.debug(`GHCR tags API check failed for ${version}:`, apiError);
-      // Continue to fallback strategy
     }
 
-    // STRATEGY 2: Time-based heuristic fallback (only if API check failed)
+    // If we reach here, manifest check failed for all tag variants
+    logger.info(`⏳ Image for ${version} not found via manifest check, falling back to time-based heuristic`);
+
+    // STRATEGY 2: Time-based heuristic fallback (only if manifest check failed)
     // GitHub Actions typically takes 10-30 minutes to build and push container images
     // If release was published more than 30 minutes ago, assume the build completed
     if (publishedAt) {
