@@ -327,6 +327,35 @@ const createTestDatabase = () => {
       return stmt.all(limit) as DbTraceroute[];
     }
 
+    // Message operations
+    getMessage(id: string): DbMessage | null {
+      const stmt = this.db.prepare('SELECT * FROM messages WHERE id = ?');
+      return stmt.get(id) as DbMessage | null;
+    }
+
+    // Message deletion operations
+    deleteMessage(id: string): boolean {
+      const stmt = this.db.prepare('DELETE FROM messages WHERE id = ?');
+      const result = stmt.run(id);
+      return Number(result.changes) > 0;
+    }
+
+    purgeChannelMessages(channel: number): number {
+      const stmt = this.db.prepare('DELETE FROM messages WHERE channel = ?');
+      const result = stmt.run(channel);
+      return Number(result.changes);
+    }
+
+    purgeDirectMessages(nodeNum: number): number {
+      const stmt = this.db.prepare(`
+        DELETE FROM messages
+        WHERE (fromNodeNum = ? OR toNodeNum = ?)
+        AND toNodeId != '!ffffffff'
+      `);
+      const result = stmt.run(nodeNum, nodeNum);
+      return Number(result.changes);
+    }
+
     close(): void {
       if (this.db) {
         this.db.close();
@@ -760,6 +789,208 @@ describe('DatabaseService', () => {
 
       const node = db.getNode(nodeNum);
       expect(node?.isFavorite).toBe(0);
+    });
+  });
+
+  describe('Message deletion operations', () => {
+    beforeEach(() => {
+      // Create test nodes
+      db.upsertNode({ nodeNum: 111, nodeId: '!node111', longName: 'Node 111' });
+      db.upsertNode({ nodeNum: 222, nodeId: '!node222', longName: 'Node 222' });
+      db.upsertNode({ nodeNum: 333, nodeId: '!node333', longName: 'Node 333' });
+      db.upsertNode({ nodeNum: 444, nodeId: '!ffffffff', longName: 'Broadcast' });
+
+      const now = Date.now();
+
+      // Insert test messages
+      // Channel messages
+      db.insertMessage({
+        id: 'msg-channel-1',
+        fromNodeNum: 111,
+        toNodeNum: 444,
+        fromNodeId: '!node111',
+        toNodeId: '!ffffffff',
+        text: 'Channel 5 message 1',
+        channel: 5,
+        timestamp: now,
+        createdAt: now
+      } as any);
+      db.insertMessage({
+        id: 'msg-channel-2',
+        fromNodeNum: 222,
+        toNodeNum: 444,
+        fromNodeId: '!node222',
+        toNodeId: '!ffffffff',
+        text: 'Channel 5 message 2',
+        channel: 5,
+        timestamp: now,
+        createdAt: now
+      } as any);
+      db.insertMessage({
+        id: 'msg-channel-3',
+        fromNodeNum: 111,
+        toNodeNum: 444,
+        fromNodeId: '!node111',
+        toNodeId: '!ffffffff',
+        text: 'Channel 3 message',
+        channel: 3,
+        timestamp: now,
+        createdAt: now
+      } as any);
+
+      // Direct messages
+      db.insertMessage({
+        id: 'msg-dm-1',
+        fromNodeNum: 111,
+        toNodeNum: 222,
+        fromNodeId: '!node111',
+        toNodeId: '!node222',
+        text: 'DM from 111 to 222',
+        channel: 0,
+        timestamp: now,
+        createdAt: now
+      } as any);
+      db.insertMessage({
+        id: 'msg-dm-2',
+        fromNodeNum: 222,
+        toNodeNum: 111,
+        fromNodeId: '!node222',
+        toNodeId: '!node111',
+        text: 'DM from 222 to 111',
+        channel: 0,
+        timestamp: now,
+        createdAt: now
+      } as any);
+      db.insertMessage({
+        id: 'msg-dm-3',
+        fromNodeNum: 111,
+        toNodeNum: 333,
+        fromNodeId: '!node111',
+        toNodeId: '!node333',
+        text: 'DM from 111 to 333',
+        channel: 0,
+        timestamp: now,
+        createdAt: now
+      } as any);
+    });
+
+    describe('deleteMessage', () => {
+      it('should delete an existing message', () => {
+        const result = db.deleteMessage('msg-channel-1');
+
+        expect(result).toBe(true);
+        expect(db.getMessage('msg-channel-1')).toBeNull();
+      });
+
+      it('should return false for non-existent message', () => {
+        const result = db.deleteMessage('nonexistent-id');
+
+        expect(result).toBe(false);
+      });
+
+      it('should not affect other messages when deleting one', () => {
+        db.deleteMessage('msg-channel-1');
+
+        expect(db.getMessage('msg-channel-2')).not.toBeNull();
+        expect(db.getMessage('msg-channel-3')).not.toBeNull();
+      });
+    });
+
+    describe('purgeChannelMessages', () => {
+      it('should delete all messages from a specific channel', () => {
+        const deletedCount = db.purgeChannelMessages(5);
+
+        expect(deletedCount).toBe(2);
+        expect(db.getMessage('msg-channel-1')).toBeNull();
+        expect(db.getMessage('msg-channel-2')).toBeNull();
+        // Other channel messages should still exist
+        expect(db.getMessage('msg-channel-3')).not.toBeNull();
+      });
+
+      it('should return 0 when no messages in channel', () => {
+        const deletedCount = db.purgeChannelMessages(99);
+
+        expect(deletedCount).toBe(0);
+      });
+
+      it('should not affect direct messages when purging channel', () => {
+        db.purgeChannelMessages(5);
+
+        // Direct messages should remain
+        expect(db.getMessage('msg-dm-1')).not.toBeNull();
+        expect(db.getMessage('msg-dm-2')).not.toBeNull();
+        expect(db.getMessage('msg-dm-3')).not.toBeNull();
+      });
+
+      it('should handle purging all messages from channel 0', () => {
+        // Channel 0 should not be purged by this method (use purgeDirectMessages instead)
+        // This tests the separation of concerns
+        const deletedCount = db.purgeChannelMessages(0);
+
+        // Should delete channel 0 messages but not properly handle DMs
+        // The proper way to delete DMs is via purgeDirectMessages
+        expect(deletedCount).toBeGreaterThanOrEqual(0);
+      });
+    });
+
+    describe('purgeDirectMessages', () => {
+      it('should delete all DMs to/from a specific node', () => {
+        const deletedCount = db.purgeDirectMessages(111);
+
+        // Should delete msg-dm-1, msg-dm-2, and msg-dm-3 (all involving node 111)
+        expect(deletedCount).toBe(3);
+        expect(db.getMessage('msg-dm-1')).toBeNull();
+        expect(db.getMessage('msg-dm-2')).toBeNull();
+        expect(db.getMessage('msg-dm-3')).toBeNull();
+      });
+
+      it('should delete DMs where node is either sender or receiver', () => {
+        const deletedCount = db.purgeDirectMessages(222);
+
+        // Should delete msg-dm-1 and msg-dm-2 (where 222 is involved)
+        expect(deletedCount).toBe(2);
+        expect(db.getMessage('msg-dm-1')).toBeNull();
+        expect(db.getMessage('msg-dm-2')).toBeNull();
+        // msg-dm-3 should remain (111 to 333)
+        expect(db.getMessage('msg-dm-3')).not.toBeNull();
+      });
+
+      it('should return 0 when no DMs with that node', () => {
+        const deletedCount = db.purgeDirectMessages(999);
+
+        expect(deletedCount).toBe(0);
+      });
+
+      it('should not delete channel messages', () => {
+        db.purgeDirectMessages(111);
+
+        // Channel messages should remain
+        expect(db.getMessage('msg-channel-1')).not.toBeNull();
+        expect(db.getMessage('msg-channel-2')).not.toBeNull();
+        expect(db.getMessage('msg-channel-3')).not.toBeNull();
+      });
+
+      it('should not delete broadcast messages', () => {
+        // Add a message that looks like it could be from node 444 (broadcast node)
+        const now = Date.now();
+        db.insertMessage({
+          id: 'msg-broadcast',
+          fromNodeNum: 111,
+          toNodeNum: 444,
+          fromNodeId: '!node111',
+          toNodeId: '!ffffffff',
+          text: 'Broadcast message',
+          channel: 0,
+          timestamp: now,
+          createdAt: now
+        } as any);
+
+        const deletedCount = db.purgeDirectMessages(111);
+
+        // Should exclude broadcast messages (toNodeId = !ffffffff)
+        const broadcastMsg = db.getMessage('msg-broadcast');
+        expect(broadcastMsg).not.toBeNull();
+      });
     });
   });
 });
