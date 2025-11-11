@@ -2133,9 +2133,28 @@ class DatabaseService {
     return telemetry.map(t => this.normalizeBigInts(t));
   }
 
-  getTelemetryByNodeAveraged(nodeId: string, sinceTimestamp?: number, intervalMinutes: number = 3, maxHours?: number): DbTelemetry[] {
+  getTelemetryByNodeAveraged(nodeId: string, sinceTimestamp?: number, intervalMinutes?: number, maxHours?: number): DbTelemetry[] {
+    // Dynamic bucketing: automatically choose interval based on time range
+    // This prevents data cutoff for long time periods or chatty nodes
+    let actualIntervalMinutes = intervalMinutes;
+    if (actualIntervalMinutes === undefined && maxHours !== undefined) {
+      if (maxHours <= 24) {
+        // Short period (0-24 hours): 3-minute intervals for high detail
+        actualIntervalMinutes = 3;
+      } else if (maxHours <= 168) {
+        // Medium period (1-7 days): 30-minute intervals to reduce data points
+        actualIntervalMinutes = 30;
+      } else {
+        // Long period (7+ days): 2-hour intervals for manageable data size
+        actualIntervalMinutes = 120;
+      }
+    } else if (actualIntervalMinutes === undefined) {
+      // Default to 3 minutes if no maxHours specified
+      actualIntervalMinutes = 3;
+    }
+
     // Calculate the interval in milliseconds
-    const intervalMs = intervalMinutes * 60 * 1000;
+    const intervalMs = actualIntervalMinutes * 60 * 1000;
 
     // Build the query to group and average telemetry data by time intervals
     let query = `
@@ -2169,9 +2188,12 @@ class DatabaseService {
     params.push(intervalMs);
 
     // Add limit based on max hours if specified
-    // With 3-minute intervals: 20 points per hour, add 1 hour padding
+    // Calculate points per hour based on the actual interval used
     if (maxHours !== undefined) {
-      const limit = (maxHours + 1) * 20;
+      const pointsPerHour = 60 / actualIntervalMinutes;
+      // Add generous padding (2x) to ensure we don't cut off data
+      // This accounts for multiple telemetry types per node
+      const limit = Math.ceil((maxHours + 1) * pointsPerHour * 2);
       query += ` LIMIT ?`;
       params.push(limit);
     }

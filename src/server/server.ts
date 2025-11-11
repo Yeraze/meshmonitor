@@ -1873,9 +1873,11 @@ apiRouter.get('/telemetry/:nodeId', optionalAuth(), (req, res) => {
     const cutoffTime = Date.now() - (hoursParam * 60 * 60 * 1000);
 
     // Use averaged query for graph data to reduce data points
-    // This ensures max 20 points per hour (60 minutes / 3 minute intervals = 20)
-    // Pass hours to apply LIMIT for performance
-    const recentTelemetry = databaseService.getTelemetryByNodeAveraged(nodeId, cutoffTime, 3, hoursParam);
+    // Dynamic bucketing automatically adjusts interval based on time range:
+    // - 0-24h: 3-minute intervals (high detail)
+    // - 1-7d: 30-minute intervals (medium detail)
+    // - 7d+: 2-hour intervals (low detail, full coverage)
+    const recentTelemetry = databaseService.getTelemetryByNodeAveraged(nodeId, cutoffTime, undefined, hoursParam);
     res.json(recentTelemetry);
   } catch (error) {
     logger.error('Error fetching telemetry:', error);
