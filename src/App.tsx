@@ -2237,7 +2237,11 @@ function App() {
       if (response.ok) {
         const data = await response.json();
         showToast(`Purged ${data.deletedCount} messages with ${nodeName}`, 'success');
-        // Refresh data from backend to reflect deletions
+        // Update local state to immediately reflect deletions
+        setMessages(prev => prev.filter(m =>
+          !(m.fromNodeNum === nodeNum || m.toNodeNum === nodeNum)
+        ));
+        // Also refresh from backend to ensure consistency
         updateDataFromBackend();
       } else {
         const errorData = await response.json();
