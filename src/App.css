@@ -2155,7 +2155,7 @@ body {
   opacity: 1;
 }
 
-.reply-button, .emoji-button, .emoji-picker-button {
+.reply-button, .emoji-button, .emoji-picker-button, .delete-button {
   background: var(--ctp-surface2);
   color: var(--ctp-text);
   border: 1px solid var(--ctp-overlay0);
@@ -2167,7 +2167,7 @@ body {
   white-space: nowrap;
 }
 
-.emoji-button, .emoji-picker-button {
+.emoji-button, .emoji-picker-button, .delete-button {
   padding: 0.25rem 0.4rem;
   font-size: 0.9rem;
   line-height: 1;
@@ -2178,10 +2178,16 @@ body {
   justify-content: center;
 }
 
-.reply-button:hover, .emoji-button:hover, .emoji-picker-button:hover {
+.reply-button:hover, .emoji-button:hover, .emoji-picker-button:hover, .delete-button:hover {
   background: var(--ctp-surface1);
   border-color: var(--ctp-overlay1);
   transform: scale(1.1);
+}
+
+.delete-button:hover {
+  background: var(--ctp-red);
+  border-color: var(--ctp-red);
+  color: var(--ctp-base);
 }
 
 .emoji-button:active, .emoji-picker-button:active {

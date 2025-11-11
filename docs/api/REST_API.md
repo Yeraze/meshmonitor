@@ -273,6 +273,122 @@ Same format as `/api/messages` but filtered for messages between the specified n
 curl -X GET http://localhost:8080/api/messages/direct/!075bcd15/!a1b2c3d4
 ```
 
+### Delete Single Message
+
+#### DELETE /api/messages/:id
+
+Deletes a single message by ID. Requires appropriate permissions based on message type.
+
+**Authentication:** Required
+
+**Permissions:**
+- `messages:write` - Required for deleting direct messages
+- `channels:write` - Required for deleting channel messages
+- Admin users can delete any message
+
+**Path Parameters:**
+- `id` (required, string): Message ID to delete
+
+**Response:**
+```json
+{
+  "message": "Message deleted successfully",
+  "id": "123456789-1640995200"
+}
+```
+
+**Error Responses:**
+- `403`: Insufficient permissions
+- `404`: Message not found
+- `500`: Internal server error
+
+**Example:**
+```bash
+curl -X DELETE http://localhost:8080/api/messages/msg_123456
+```
+
+**Notes:**
+- Permission check is based on whether the message is in a channel (channel > 0) or a direct message
+- Audit log entry is created for all deletions
+
+### Purge Channel Messages
+
+#### DELETE /api/messages/channels/:channelId
+
+Deletes all messages from a specific channel.
+
+**Authentication:** Required
+
+**Permissions:**
+- `channels:write` - Required for purging channel messages
+- Admin users bypass permission check
+
+**Path Parameters:**
+- `channelId` (required, integer): Channel ID (0-7)
+
+**Response:**
+```json
+{
+  "message": "Channel messages purged successfully",
+  "channelId": 0,
+  "deletedCount": 150
+}
+```
+
+**Error Responses:**
+- `400`: Invalid channel ID
+- `403`: Insufficient permissions (requires channels:write)
+- `500`: Internal server error
+
+**Example:**
+```bash
+curl -X DELETE http://localhost:8080/api/messages/channels/0
+```
+
+**Notes:**
+- This is a destructive operation that cannot be undone
+- Audit log entry is created with deletion count
+
+### Purge Direct Messages
+
+#### DELETE /api/messages/direct-messages/:nodeNum
+
+Deletes all direct messages with a specific node.
+
+**Authentication:** Required
+
+**Permissions:**
+- `messages:write` - Required for purging direct messages
+- Admin users bypass permission check
+
+**Path Parameters:**
+- `nodeNum` (required, integer): Node number to purge messages with
+
+**Response:**
+```json
+{
+  "message": "Direct messages purged successfully",
+  "nodeNum": 123456789,
+  "deletedCount": 45
+}
+```
+
+**Error Responses:**
+- `400`: Invalid node number
+- `403`: Insufficient permissions (requires messages:write)
+- `500`: Internal server error
+
+**Example:**
+```bash
+curl -X DELETE http://localhost:8080/api/messages/direct-messages/123456789
+```
+
+**Notes:**
+- Deletes all messages where the specified node is either sender or recipient
+- Excludes broadcast messages (toNodeId != '!ffffffff')
+- This is a destructive operation that cannot be undone
+- Audit log entry is created with deletion count
+
 ---
 
 ## Statistics
