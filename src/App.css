@@ -3469,6 +3469,13 @@ body {
     padding: 0.5rem;
   }
 
+  /* When collapsed on mobile, reset to compact button */
+  .map-controls.collapsed {
+    left: auto;
+    max-width: none;
+    width: auto;
+  }
+
   .map-control-item span {
     font-size: 0.8rem;
   }
@@ -4160,6 +4167,16 @@ body {
 .map-controls.collapsed {
   padding: 0.5rem;
   min-width: 40px;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Center the collapse button when collapsed */
+.map-controls.collapsed .map-controls-collapse-btn {
+  position: static;
+  margin: 0;
 }
 
 /* Node Pulse Animation */
