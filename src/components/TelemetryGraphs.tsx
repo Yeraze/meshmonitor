@@ -376,6 +376,8 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
       humidity: 'Humidity',
       pressure: 'Barometric Pressure',
       snr: 'Signal-to-Noise Ratio (SNR)',
+      snr_local: 'SNR - Local (Our Measurements)',
+      snr_remote: 'SNR - Remote (Node Reports)',
       rssi: 'Signal Strength (RSSI)',
       ch1Voltage: 'Channel 1 Voltage',
       ch1Current: 'Channel 1 Current',
@@ -407,7 +409,9 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
       temperature: '#ff8042',
       humidity: '#00c4cc',
       pressure: '#a28dff',
-      snr: '#94e2d5',       // Catppuccin teal - for signal quality
+      snr: '#94e2d5',       // Catppuccin teal - for signal quality (legacy)
+      snr_local: '#89dceb', // Catppuccin sky - for local SNR measurements
+      snr_remote: '#a6e3a1', // Catppuccin green - for remote SNR reports
       rssi: '#f9e2af',      // Catppuccin yellow - for signal strength
       ch1Voltage: '#d084d8',
       ch1Current: '#ff6b9d',
