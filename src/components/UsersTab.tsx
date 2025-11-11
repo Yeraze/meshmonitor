@@ -19,6 +19,7 @@ interface User {
   authProvider: 'local' | 'oidc';
   isAdmin: boolean;
   isActive: boolean;
+  passwordLocked: boolean;
   createdAt: number;
   lastLoginAt: number | null;
 }
@@ -132,6 +133,25 @@ const UsersTab: React.FC = () => {
     } catch (err) {
       logger.error('Failed to update admin status:', err);
       setError('Failed to update admin status');
+    }
+  };
+
+  const handleTogglePasswordLocked = async (user: User) => {
+    try {
+      await api.put(`/api/users/${user.id}`, { passwordLocked: !user.passwordLocked });
+      await fetchUsers();
+      // Update selected user to reflect the change
+      if (selectedUser && selectedUser.id === user.id) {
+        setSelectedUser({ ...selectedUser, passwordLocked: !user.passwordLocked });
+      }
+      showToast(
+        user.passwordLocked ? 'Password changes unlocked' : 'Password changes locked',
+        'success'
+      );
+    } catch (err) {
+      logger.error('Failed to toggle password lock:', err);
+      showToast('Failed to update password lock status', 'error');
+      setError('Failed to toggle password lock');
     }
   };
 
@@ -351,6 +371,19 @@ const UsersTab: React.FC = () => {
                 <label>Admin</label>
                 <div>{selectedUser.isAdmin ? 'Yes' : 'No'}</div>
               </div>
+              {selectedUser.authProvider === 'local' && (
+                <div className="info-item">
+                  <label>Password Locked</label>
+                  <div>
+                    <input
+                      type="checkbox"
+                      checked={selectedUser.passwordLocked}
+                      onChange={() => handleTogglePasswordLocked(selectedUser)}
+                    />
+                    {selectedUser.passwordLocked ? ' Yes (Password changes disabled)' : ' No'}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="user-actions">
@@ -365,6 +398,8 @@ const UsersTab: React.FC = () => {
                 <button
                   className="button button-secondary"
                   onClick={() => setShowSetPasswordModal(true)}
+                  disabled={selectedUser.passwordLocked}
+                  title={selectedUser.passwordLocked ? 'Password changes are locked for this account' : ''}
                 >
                   Set Password
                 </button>

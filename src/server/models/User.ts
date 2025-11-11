@@ -77,7 +77,7 @@ export class UserModel {
       SELECT
         id, username, password_hash as passwordHash, email, display_name as displayName,
         auth_provider as authProvider, oidc_subject as oidcSubject,
-        is_admin as isAdmin, is_active as isActive,
+        is_admin as isAdmin, is_active as isActive, password_locked as passwordLocked,
         created_at as createdAt, last_login_at as lastLoginAt, created_by as createdBy
       FROM users
       WHERE id = ?
@@ -97,7 +97,7 @@ export class UserModel {
       SELECT
         id, username, password_hash as passwordHash, email, display_name as displayName,
         auth_provider as authProvider, oidc_subject as oidcSubject,
-        is_admin as isAdmin, is_active as isActive,
+        is_admin as isAdmin, is_active as isActive, password_locked as passwordLocked,
         created_at as createdAt, last_login_at as lastLoginAt, created_by as createdBy
       FROM users
       WHERE username = ?
@@ -117,7 +117,7 @@ export class UserModel {
       SELECT
         id, username, password_hash as passwordHash, email, display_name as displayName,
         auth_provider as authProvider, oidc_subject as oidcSubject,
-        is_admin as isAdmin, is_active as isActive,
+        is_admin as isAdmin, is_active as isActive, password_locked as passwordLocked,
         created_at as createdAt, last_login_at as lastLoginAt, created_by as createdBy
       FROM users
       WHERE oidc_subject = ?
@@ -137,7 +137,7 @@ export class UserModel {
       SELECT
         id, username, password_hash as passwordHash, email, display_name as displayName,
         auth_provider as authProvider, oidc_subject as oidcSubject,
-        is_admin as isAdmin, is_active as isActive,
+        is_admin as isAdmin, is_active as isActive, password_locked as passwordLocked,
         created_at as createdAt, last_login_at as lastLoginAt, created_by as createdBy
       FROM users
       ORDER BY created_at DESC
@@ -167,6 +167,11 @@ export class UserModel {
     if (input.isActive !== undefined) {
       updates.push('is_active = ?');
       params.push(input.isActive ? 1 : 0);
+    }
+
+    if (input.passwordLocked !== undefined) {
+      updates.push('password_locked = ?');
+      params.push(input.passwordLocked ? 1 : 0);
     }
 
     if (updates.length === 0) {
@@ -280,7 +285,7 @@ export class UserModel {
       SELECT
         id, username, password_hash as passwordHash, email, display_name as displayName,
         auth_provider as authProvider, oidc_subject as oidcSubject,
-        is_admin as isAdmin, is_active as isActive,
+        is_admin as isAdmin, is_active as isActive, password_locked as passwordLocked,
         created_at as createdAt, last_login_at as lastLoginAt, created_by as createdBy
       FROM users
       WHERE LOWER(email) = LOWER(?)
@@ -380,6 +385,7 @@ export class UserModel {
       oidcSubject: row.oidcSubject || null,
       isAdmin: Boolean(row.isAdmin),
       isActive: Boolean(row.isActive),
+      passwordLocked: Boolean(row.passwordLocked),
       createdAt: row.createdAt,
       lastLoginAt: row.lastLoginAt || null,
       createdBy: row.createdBy || null

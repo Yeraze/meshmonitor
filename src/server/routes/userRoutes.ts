@@ -100,12 +100,13 @@ router.put('/:id', (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Invalid user ID' });
     }
 
-    const { email, displayName, isActive } = req.body;
+    const { email, displayName, isActive, passwordLocked } = req.body;
 
     const user = databaseService.userModel.update(userId, {
       email,
       displayName,
-      isActive
+      isActive,
+      passwordLocked
     });
 
     if (!user) {
@@ -117,7 +118,7 @@ router.put('/:id', (req: Request, res: Response) => {
       req.user!.id,
       'user_updated',
       'users',
-      JSON.stringify({ userId, updates: { email, displayName, isActive } }),
+      JSON.stringify({ userId, updates: { email, displayName, isActive, passwordLocked } }),
       req.ip || null
     );
 

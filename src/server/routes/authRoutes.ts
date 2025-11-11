@@ -237,6 +237,12 @@ router.post('/change-password', requireAuth(), async (req: Request, res: Respons
       });
     }
 
+    if (req.user.passwordLocked) {
+      return res.status(403).json({
+        error: 'Password changes are locked for this account'
+      });
+    }
+
     await changePassword(req.user.id, currentPassword, newPassword);
 
     return res.json({
