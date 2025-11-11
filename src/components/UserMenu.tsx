@@ -47,6 +47,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
   const displayName = authStatus.user.displayName || authStatus.user.username;
   const isAdmin = authStatus.user.isAdmin;
   const isLocalAuth = authStatus.user.authProvider === 'local';
+  const canChangePassword = isLocalAuth && !authStatus.user.passwordLocked;
 
   return (
     <div className="user-menu">
@@ -80,7 +81,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
 
             <div className="user-menu-divider" />
 
-            {isLocalAuth && (
+            {canChangePassword && (
               <button
                 className="user-menu-item"
                 onClick={handleChangePassword}

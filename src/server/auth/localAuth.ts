@@ -167,6 +167,10 @@ export async function resetUserPassword(
       throw new Error('Cannot reset password for non-local user');
     }
 
+    if (user.passwordLocked) {
+      throw new Error('Password changes are locked for this account');
+    }
+
     // Generate random password
     const newPassword = generateRandomPassword();
 
@@ -207,6 +211,10 @@ export async function setUserPassword(
 
     if (user.authProvider !== 'local') {
       throw new Error('Cannot set password for non-local user');
+    }
+
+    if (user.passwordLocked) {
+      throw new Error('Password changes are locked for this account');
     }
 
     // Validate password

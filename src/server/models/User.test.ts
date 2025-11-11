@@ -6,6 +6,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { UserModel } from './User.js';
 import { migration as authMigration } from '../migrations/001_add_auth_tables.js';
+import { migration as passwordLockedMigration } from '../migrations/023_add_password_locked_flag.js';
 
 describe('UserModel', () => {
   let db: Database.Database;
@@ -16,8 +17,9 @@ describe('UserModel', () => {
     db = new Database(':memory:');
     db.pragma('foreign_keys = ON');
 
-    // Run migration
+    // Run migrations
     authMigration.up(db);
+    passwordLockedMigration.up(db);
 
     // Create model instance
     userModel = new UserModel(db);

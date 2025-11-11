@@ -28,6 +28,7 @@ import { migration as solarEstimatesMigration } from '../server/migrations/019_a
 import { migration as positionPrecisionMigration } from '../server/migrations/020_add_position_precision_tracking.js';
 import { migration as systemBackupTableMigration } from '../server/migrations/021_add_system_backup_table.js';
 import { migration as customThemesMigration } from '../server/migrations/022_add_custom_themes.js';
+import { migration as passwordLockedMigration } from '../server/migrations/023_add_password_locked_flag.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Configuration constants for traceroute history
@@ -303,6 +304,7 @@ class DatabaseService {
     this.runPositionPrecisionMigration();
     this.runSystemBackupTableMigration();
     this.runCustomThemesMigration();
+    this.runPasswordLockedMigration();
     this.runAutoWelcomeMigration();
     this.ensureAutomationDefaults();
     this.isInitialized = true;
@@ -793,6 +795,26 @@ class DatabaseService {
       logger.debug('✅ Custom themes migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run custom themes migration:', error);
+      throw error;
+    }
+  }
+
+  private runPasswordLockedMigration(): void {
+    try {
+      const migrationKey = 'migration_023_password_locked';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Password locked migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 023: Add password_locked flag to users table...');
+      passwordLockedMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Password locked migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run password locked migration:', error);
       throw error;
     }
   }

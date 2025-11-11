@@ -18,6 +18,7 @@ import { migration as tracerouteMigration } from '../migrations/004_add_tracerou
 import { migration as auditPermissionMigration } from '../migrations/006_add_audit_permission.js';
 import { migration as securityPermissionMigration } from '../migrations/016_add_security_permission.js';
 import { migration as themesMigration } from '../migrations/022_add_custom_themes.js';
+import { migration as passwordLockedMigration } from '../migrations/023_add_password_locked_flag.js';
 import authRoutes from './authRoutes.js';
 
 // Mock the DatabaseService to prevent auto-initialization
@@ -59,6 +60,7 @@ describe('Authentication Routes', () => {
     auditPermissionMigration.up(db);
     securityPermissionMigration.up(db);
     themesMigration.up(db);
+    passwordLockedMigration.up(db);
 
     userModel = new UserModel(db);
     permissionModel = new PermissionModel(db);

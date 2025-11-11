@@ -14,6 +14,7 @@ export interface User {
   oidcSubject: string | null;   // OIDC sub claim
   isAdmin: boolean;
   isActive: boolean;
+  passwordLocked: boolean;       // Prevents password changes when true
   createdAt: number;             // Unix timestamp
   lastLoginAt: number | null;    // Unix timestamp
   createdBy: number | null;      // User ID who created this account
@@ -34,6 +35,7 @@ export interface UpdateUserInput {
   email?: string;
   displayName?: string;
   isActive?: boolean;
+  passwordLocked?: boolean;
 }
 
 export interface UserSession {

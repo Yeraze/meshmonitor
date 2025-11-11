@@ -17,6 +17,7 @@ export interface User {
   authProvider: 'local' | 'oidc';
   isAdmin: boolean;
   isActive: boolean;
+  passwordLocked: boolean;
   createdAt: number;
   lastLoginAt: number | null;
 }
