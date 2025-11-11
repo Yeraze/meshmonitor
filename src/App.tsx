@@ -2238,9 +2238,12 @@ function App() {
         const data = await response.json();
         showToast(`Purged ${data.deletedCount} messages with ${nodeName}`, 'success');
         // Update local state to immediately reflect deletions
-        setMessages(prev => prev.filter(m =>
-          !(m.fromNodeNum === nodeNum || m.toNodeNum === nodeNum)
-        ));
+        const nodeId = node?.user?.id;
+        if (nodeId) {
+          setMessages(prev => prev.filter(m =>
+            !(m.fromNodeId === nodeId || m.toNodeId === nodeId)
+          ));
+        }
         // Also refresh from backend to ensure consistency
         updateDataFromBackend();
       } else {
