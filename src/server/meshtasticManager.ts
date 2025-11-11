@@ -1409,7 +1409,7 @@ class MeshtasticManager {
 
         // Save SNR as telemetry if it has changed OR if 10+ minutes have passed
         // This ensures we have historical data for stable links
-        const latestSnrTelemetry = databaseService.getLatestTelemetryForType(nodeId, 'snr');
+        const latestSnrTelemetry = databaseService.getLatestTelemetryForType(nodeId, 'snr_local');
         const tenMinutesMs = 10 * 60 * 1000;
         const shouldSaveSnr = !latestSnrTelemetry ||
                               latestSnrTelemetry.value !== meshPacket.rxSnr ||
@@ -1419,7 +1419,7 @@ class MeshtasticManager {
           databaseService.insertTelemetry({
             nodeId,
             nodeNum: fromNum,
-            telemetryType: 'snr',
+            telemetryType: 'snr_local',
             timestamp,
             value: meshPacket.rxSnr,
             unit: 'dB',
@@ -1427,7 +1427,7 @@ class MeshtasticManager {
           });
           const reason = !latestSnrTelemetry ? 'initial' :
                         latestSnrTelemetry.value !== meshPacket.rxSnr ? 'changed' : 'periodic';
-          logger.debug(`📊 Saved SNR telemetry: ${meshPacket.rxSnr} dB (${reason}, previous: ${latestSnrTelemetry?.value || 'N/A'})`);
+          logger.debug(`📊 Saved local SNR telemetry: ${meshPacket.rxSnr} dB (${reason}, previous: ${latestSnrTelemetry?.value || 'N/A'})`);
         }
       }
       if (meshPacket.rxRssi && meshPacket.rxRssi !== 0) {
@@ -2357,7 +2357,7 @@ class MeshtasticManager {
 
         // Save SNR telemetry with same logic as packet processing:
         // Save if it has changed OR if 10+ minutes have passed since last save
-        const latestSnrTelemetry = databaseService.getLatestTelemetryForType(nodeId, 'snr');
+        const latestSnrTelemetry = databaseService.getLatestTelemetryForType(nodeId, 'snr_remote');
         const tenMinutesMs = 10 * 60 * 1000;
         const shouldSaveSnr = !latestSnrTelemetry ||
                               latestSnrTelemetry.value !== nodeInfo.snr ||
@@ -2367,7 +2367,7 @@ class MeshtasticManager {
           databaseService.insertTelemetry({
             nodeId,
             nodeNum: Number(nodeInfo.num),
-            telemetryType: 'snr',
+            telemetryType: 'snr_remote',
             timestamp,
             value: nodeInfo.snr,
             unit: 'dB',
@@ -2375,7 +2375,7 @@ class MeshtasticManager {
           });
           const reason = !latestSnrTelemetry ? 'initial' :
                         latestSnrTelemetry.value !== nodeInfo.snr ? 'changed' : 'periodic';
-          logger.debug(`📊 Saved SNR telemetry from NodeInfo: ${nodeInfo.snr} dB (${reason}, previous: ${latestSnrTelemetry?.value || 'N/A'})`);
+          logger.debug(`📊 Saved remote SNR telemetry from NodeInfo: ${nodeInfo.snr} dB (${reason}, previous: ${latestSnrTelemetry?.value || 'N/A'})`);
         }
       }
     } catch (error) {
