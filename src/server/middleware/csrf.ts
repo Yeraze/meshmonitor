@@ -43,8 +43,10 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction) 
     return next();
   }
 
-  // Skip CSRF check for /auth/status and GET requests
-  if (req.path === '/auth/status' || req.method === 'GET') {
+  // Skip CSRF check for endpoints that must be accessible without tokens
+  // /csrf-token: Users need this to get a token before they have one
+  // /auth/status: Public endpoint for checking auth state
+  if (req.path === '/csrf-token' || req.path === '/auth/status' || req.method === 'GET') {
     return next();
   }
 

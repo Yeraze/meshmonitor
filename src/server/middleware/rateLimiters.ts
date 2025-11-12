@@ -28,6 +28,12 @@ logger.info(`   - API: ${env.rateLimitApi} requests per 15 minutes${env.rateLimi
 logger.info(`   - Auth: ${env.rateLimitAuth} attempts per 15 minutes${env.rateLimitAuthProvided ? ' (custom)' : ' (default)'}`);
 logger.info(`   - Messages: ${env.rateLimitMessages} messages per minute${env.rateLimitMessagesProvided ? ' (custom)' : ' (default)'}`);
 
+// Log reverse proxy configuration warnings
+if (!env.trustProxyProvided && env.isProduction) {
+  logger.warn('⚠️  TRUST_PROXY not set - rate limiting will use proxy IP for all requests');
+  logger.warn('   If behind a reverse proxy (nginx, Traefik, etc.), set TRUST_PROXY=1');
+  logger.warn('   See: https://expressjs.com/en/guide/behind-proxies.html');
+}
 // General API rate limiting
 // Configurable via RATE_LIMIT_API environment variable
 // Default: 1000 requests per 15 minutes (~1 req/sec) in production, 10000 in development

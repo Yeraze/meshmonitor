@@ -408,6 +408,21 @@ apiRouter.get('/health', (_req, res) => {
   });
 });
 
+// Debug endpoint for IP detection (development only)
+// Helps diagnose reverse proxy and rate limiting issues
+if (!env.isProduction) {
+  apiRouter.get('/debug/ip', (req, res) => {
+    res.json({
+      'req.ip': req.ip,
+      'req.ips': req.ips,
+      'x-forwarded-for': req.headers['x-forwarded-for'],
+      'x-real-ip': req.headers['x-real-ip'],
+      'trust-proxy': app.get('trust proxy'),
+      note: 'The rate limiter uses req.ip to identify clients'
+    });
+  });
+}
+
 // Authentication routes
 apiRouter.use('/auth', authRoutes);
 
