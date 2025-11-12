@@ -20,6 +20,7 @@ export default defineConfig({
       { text: 'Home', link: '/' },
       { text: 'Getting Started', link: '/getting-started' },
       { text: 'FAQ', link: '/faq' },
+      { text: '🌐 Site Gallery', link: '/site-gallery' },
       {
         text: 'Docs',
         items: [
@@ -40,7 +41,8 @@ export default defineConfig({
             { text: 'Automation', link: '/features/automation' },
             { text: 'Device Configuration', link: '/features/device' },
             { text: 'Push Notifications', link: '/features/notifications' },
-            { text: '🎨 Theme Gallery', link: '/THEME_GALLERY' }
+            { text: '🎨 Theme Gallery', link: '/THEME_GALLERY' },
+            { text: '🌐 Site Gallery', link: '/site-gallery' }
           ]
         }
       ],
