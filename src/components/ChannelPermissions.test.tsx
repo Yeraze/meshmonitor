@@ -7,9 +7,7 @@
  * 3. Permission checks work correctly for different channel combinations
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
-import { AuthProvider } from '../contexts/AuthContext';
+import { describe, it, expect, vi } from 'vitest';
 import { PermissionSet } from '../types/permission';
 
 // Mock the API module
