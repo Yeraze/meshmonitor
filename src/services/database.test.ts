@@ -352,6 +352,39 @@ const createTestDatabase = () => {
       return Number(result.changes);
     }
 
+    purgeNodeTraceroutes(nodeNum: number): number {
+      const stmt = this.db.prepare(`
+        DELETE FROM traceroutes
+        WHERE fromNodeNum = ? OR toNodeNum = ?
+      `);
+      const result = stmt.run(nodeNum, nodeNum);
+      return Number(result.changes);
+    }
+
+    purgeNodeTelemetry(nodeNum: number): number {
+      const stmt = this.db.prepare('DELETE FROM telemetry WHERE nodeNum = ?');
+      const result = stmt.run(nodeNum);
+      return Number(result.changes);
+    }
+
+    getTelemetry(limit: number = 100): DbTelemetry[] {
+      const stmt = this.db.prepare(`
+        SELECT * FROM telemetry
+        ORDER BY timestamp DESC
+        LIMIT ?
+      `);
+      return stmt.all(limit) as DbTelemetry[];
+    }
+
+    getTraceroutes(limit: number = 100): DbTraceroute[] {
+      const stmt = this.db.prepare(`
+        SELECT * FROM traceroutes
+        ORDER BY timestamp DESC
+        LIMIT ?
+      `);
+      return stmt.all(limit) as DbTraceroute[];
+    }
+
     close(): void {
       if (this.db) {
         this.db.close();
@@ -989,6 +1022,182 @@ describe('DatabaseService', () => {
         // Should exclude broadcast messages (toNodeId = !ffffffff)
         const broadcastMsg = db.getMessage('msg-broadcast');
         expect(broadcastMsg).not.toBeNull();
+      });
+    });
+
+    describe('purgeNodeTraceroutes', () => {
+      beforeEach(() => {
+        // Add some traceroutes
+        const now = Date.now();
+        db.insertTraceroute({
+          id: 1,
+          fromNodeNum: 111,
+          toNodeNum: 222,
+          fromNodeId: '!node111',
+          toNodeId: '!node222',
+          route: JSON.stringify([111, 333, 222]),
+          routeBack: JSON.stringify([222, 333, 111]),
+          snrTowards: JSON.stringify([10.5, 11.2]),
+          snrBack: JSON.stringify([9.8, 10.1]),
+          timestamp: now,
+          createdAt: now
+        } as any);
+
+        db.insertTraceroute({
+          id: 2,
+          fromNodeNum: 222,
+          toNodeNum: 333,
+          fromNodeId: '!node222',
+          toNodeId: '!node333',
+          route: JSON.stringify([222, 333]),
+          routeBack: JSON.stringify([333, 222]),
+          snrTowards: JSON.stringify([12.5]),
+          snrBack: JSON.stringify([11.8]),
+          timestamp: now,
+          createdAt: now
+        } as any);
+
+        db.insertTraceroute({
+          id: 3,
+          fromNodeNum: 444,
+          toNodeNum: 111,
+          fromNodeId: '!node444',
+          toNodeId: '!node111',
+          route: JSON.stringify([444, 111]),
+          routeBack: JSON.stringify([111, 444]),
+          snrTowards: JSON.stringify([8.5]),
+          snrBack: JSON.stringify([9.1]),
+          timestamp: now,
+          createdAt: now
+        } as any);
+      });
+
+      it('should delete all traceroutes involving a specific node', () => {
+        const deletedCount = db.purgeNodeTraceroutes(111);
+
+        // Should delete traceroutes 1 and 3 (both involving node 111)
+        expect(deletedCount).toBe(2);
+
+        // Verify only traceroute 2 remains
+        const traceroutes = db.getTraceroutes(10);
+        expect(traceroutes).toHaveLength(1);
+        expect(traceroutes[0].fromNodeNum).toBe(222);
+        expect(traceroutes[0].toNodeNum).toBe(333);
+      });
+
+      it('should delete traceroutes where node is source', () => {
+        const deletedCount = db.purgeNodeTraceroutes(222);
+
+        // Should delete traceroutes 1 and 2 (where 222 is source or destination)
+        expect(deletedCount).toBe(2);
+
+        // Verify only traceroute 3 remains
+        const traceroutes = db.getTraceroutes(10);
+        expect(traceroutes).toHaveLength(1);
+        expect(traceroutes[0].fromNodeNum).toBe(444);
+        expect(traceroutes[0].toNodeNum).toBe(111);
+      });
+
+      it('should return 0 when no traceroutes for that node', () => {
+        const deletedCount = db.purgeNodeTraceroutes(999);
+
+        expect(deletedCount).toBe(0);
+
+        // All traceroutes should still exist
+        const traceroutes = db.getTraceroutes(10);
+        expect(traceroutes).toHaveLength(3);
+      });
+
+      it('should not affect messages or telemetry when purging traceroutes', () => {
+        db.purgeNodeTraceroutes(111);
+
+        // Messages should remain
+        expect(db.getMessage('msg-dm-1')).not.toBeNull();
+        expect(db.getMessage('msg-channel-1')).not.toBeNull();
+      });
+    });
+
+    describe('purgeNodeTelemetry', () => {
+      beforeEach(() => {
+        // Add some telemetry data
+        const now = Date.now();
+        db.insertTelemetry({
+          id: 1,
+          nodeId: '!node111',
+          nodeNum: 111,
+          telemetryType: 'device',
+          timestamp: now,
+          value: 3.7,
+          unit: 'V',
+          createdAt: now
+        } as any);
+
+        db.insertTelemetry({
+          id: 2,
+          nodeId: '!node111',
+          nodeNum: 111,
+          telemetryType: 'environment',
+          timestamp: now,
+          value: 25.5,
+          unit: '°C',
+          createdAt: now
+        } as any);
+
+        db.insertTelemetry({
+          id: 3,
+          nodeId: '!node222',
+          nodeNum: 222,
+          telemetryType: 'device',
+          timestamp: now,
+          value: 3.9,
+          unit: 'V',
+          createdAt: now
+        } as any);
+      });
+
+      it('should delete all telemetry for a specific node', () => {
+        const deletedCount = db.purgeNodeTelemetry(111);
+
+        // Should delete both telemetry records for node 111
+        expect(deletedCount).toBe(2);
+
+        // Verify node 222 telemetry remains
+        const telemetry = db.getTelemetry(10);
+        expect(telemetry).toHaveLength(1);
+        expect(telemetry[0].nodeNum).toBe(222);
+      });
+
+      it('should return 0 when no telemetry for that node', () => {
+        const deletedCount = db.purgeNodeTelemetry(999);
+
+        expect(deletedCount).toBe(0);
+
+        // All telemetry should still exist
+        const telemetry = db.getTelemetry(10);
+        expect(telemetry).toHaveLength(3);
+      });
+
+      it('should not affect messages or traceroutes when purging telemetry', () => {
+        db.purgeNodeTelemetry(111);
+
+        // Messages should remain
+        expect(db.getMessage('msg-dm-1')).not.toBeNull();
+        expect(db.getMessage('msg-channel-1')).not.toBeNull();
+
+        // Traceroutes should remain (if any were added)
+        const traceroutes = db.getTraceroutes(10);
+        expect(Array.isArray(traceroutes)).toBe(true);
+      });
+
+      it('should handle purging telemetry for node with multiple types', () => {
+        // Node 111 has both device and environment telemetry
+        const deletedCount = db.purgeNodeTelemetry(111);
+
+        expect(deletedCount).toBe(2);
+
+        // Verify all types were deleted
+        const telemetry = db.getTelemetry(10);
+        expect(telemetry.find((t: DbTelemetry) => t.nodeNum === 111)).toBeUndefined();
       });
     });
   });

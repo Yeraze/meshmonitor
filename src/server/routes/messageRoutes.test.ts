@@ -337,4 +337,134 @@ describe('Message Deletion Routes', () => {
       );
     });
   });
+
+  describe('DELETE /api/messages/nodes/:nodeNum/traceroutes - Node traceroutes purge', () => {
+    it('should return 403 for users without messages:write', async () => {
+      const app = createApp({ id: 2, username: 'user', isAdmin: false });
+      vi.spyOn(databaseService.permissionModel, 'getUserPermissionSet').mockReturnValue({
+        messages: { read: false, write: false }
+      });
+
+      const response = await request(app).delete('/api/messages/nodes/123456/traceroutes');
+
+      expect(response.status).toBe(403);
+      expect(response.body.message).toContain('messages:write');
+    });
+
+    it('should return 400 for invalid node number', async () => {
+      const app = createApp({ id: 1, username: 'admin', isAdmin: true });
+      const response = await request(app).delete('/api/messages/nodes/invalid/traceroutes');
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('message', 'Invalid node number');
+    });
+
+    it('should successfully purge traceroutes for admin user', async () => {
+      const app = createApp({ id: 1, username: 'admin', isAdmin: true });
+      vi.spyOn(databaseService, 'purgeNodeTraceroutes').mockReturnValue(15);
+      vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
+
+      const response = await request(app).delete('/api/messages/nodes/123456/traceroutes');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('deletedCount', 15);
+      expect(response.body).toHaveProperty('message', 'Node traceroutes purged successfully');
+      expect(databaseService.purgeNodeTraceroutes).toHaveBeenCalledWith(123456);
+    });
+
+    it('should successfully purge traceroutes for user with messages:write', async () => {
+      const app = createApp({ id: 2, username: 'user', isAdmin: false });
+      vi.spyOn(databaseService.permissionModel, 'getUserPermissionSet').mockReturnValue({
+        messages: { read: true, write: true }
+      });
+      vi.spyOn(databaseService, 'purgeNodeTraceroutes').mockReturnValue(8);
+      vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
+
+      const response = await request(app).delete('/api/messages/nodes/123456/traceroutes');
+
+      expect(response.status).toBe(200);
+      expect(databaseService.purgeNodeTraceroutes).toHaveBeenCalledWith(123456);
+    });
+
+    it('should log audit event for traceroutes purge', async () => {
+      const app = createApp({ id: 1, username: 'admin', isAdmin: true });
+      vi.spyOn(databaseService, 'purgeNodeTraceroutes').mockReturnValue(20);
+      const auditLogSpy = vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
+
+      await request(app).delete('/api/messages/nodes/123456/traceroutes');
+
+      expect(auditLogSpy).toHaveBeenCalledWith(
+        1,
+        'node_traceroutes_purged',
+        'traceroutes',
+        expect.stringContaining('20'),
+        expect.any(String)
+      );
+    });
+  });
+
+  describe('DELETE /api/messages/nodes/:nodeNum/telemetry - Node telemetry purge', () => {
+    it('should return 403 for users without messages:write', async () => {
+      const app = createApp({ id: 2, username: 'user', isAdmin: false });
+      vi.spyOn(databaseService.permissionModel, 'getUserPermissionSet').mockReturnValue({
+        messages: { read: false, write: false }
+      });
+
+      const response = await request(app).delete('/api/messages/nodes/123456/telemetry');
+
+      expect(response.status).toBe(403);
+      expect(response.body.message).toContain('messages:write');
+    });
+
+    it('should return 400 for invalid node number', async () => {
+      const app = createApp({ id: 1, username: 'admin', isAdmin: true });
+      const response = await request(app).delete('/api/messages/nodes/invalid/telemetry');
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('message', 'Invalid node number');
+    });
+
+    it('should successfully purge telemetry for admin user', async () => {
+      const app = createApp({ id: 1, username: 'admin', isAdmin: true });
+      vi.spyOn(databaseService, 'purgeNodeTelemetry').mockReturnValue(45);
+      vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
+
+      const response = await request(app).delete('/api/messages/nodes/123456/telemetry');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('deletedCount', 45);
+      expect(response.body).toHaveProperty('message', 'Node telemetry purged successfully');
+      expect(databaseService.purgeNodeTelemetry).toHaveBeenCalledWith(123456);
+    });
+
+    it('should successfully purge telemetry for user with messages:write', async () => {
+      const app = createApp({ id: 2, username: 'user', isAdmin: false });
+      vi.spyOn(databaseService.permissionModel, 'getUserPermissionSet').mockReturnValue({
+        messages: { read: true, write: true }
+      });
+      vi.spyOn(databaseService, 'purgeNodeTelemetry').mockReturnValue(12);
+      vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
+
+      const response = await request(app).delete('/api/messages/nodes/123456/telemetry');
+
+      expect(response.status).toBe(200);
+      expect(databaseService.purgeNodeTelemetry).toHaveBeenCalledWith(123456);
+    });
+
+    it('should log audit event for telemetry purge', async () => {
+      const app = createApp({ id: 1, username: 'admin', isAdmin: true });
+      vi.spyOn(databaseService, 'purgeNodeTelemetry').mockReturnValue(30);
+      const auditLogSpy = vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
+
+      await request(app).delete('/api/messages/nodes/123456/telemetry');
+
+      expect(auditLogSpy).toHaveBeenCalledWith(
+        1,
+        'node_telemetry_purged',
+        'telemetry',
+        expect.stringContaining('30'),
+        expect.any(String)
+      );
+    });
+  });
 });
