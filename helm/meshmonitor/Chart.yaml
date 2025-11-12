@@ -2,8 +2,8 @@ apiVersion: v2
 name: meshmonitor
 description: A Helm chart for MeshMonitor - Web application for monitoring Meshtastic mesh networks
 type: application
-version: 2.17.3
-appVersion: "2.17.3"
+version: 2.17.4
+appVersion: "2.17.4"
 home: https://github.com/Yeraze/meshmonitor
 sources:
   - https://github.com/Yeraze/meshmonitor
