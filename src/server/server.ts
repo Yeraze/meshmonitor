@@ -828,15 +828,15 @@ apiRouter.post('/nodes/scan-duplicate-keys', requirePermission('nodes', 'write')
 
 apiRouter.get('/messages', optionalAuth(), (req, res) => {
   try {
-    // Check if user has either channels or messages permission
-    const hasChannelsRead = req.user?.isAdmin || hasPermission(req.user!, 'channels', 'read');
+    // Check if user has either any channel permission or messages permission
+    const hasChannelsRead = req.user?.isAdmin || hasPermission(req.user!, 'channel_0', 'read');
     const hasMessagesRead = req.user?.isAdmin || hasPermission(req.user!, 'messages', 'read');
 
     if (!hasChannelsRead && !hasMessagesRead) {
       return res.status(403).json({
         error: 'Insufficient permissions',
         code: 'FORBIDDEN',
-        required: { resource: 'channels or messages', action: 'read' }
+        required: { resource: 'channel_0 or messages', action: 'read' }
       });
     }
 
@@ -862,7 +862,7 @@ apiRouter.get('/messages', optionalAuth(), (req, res) => {
   }
 });
 
-apiRouter.get('/messages/channel/:channel', requirePermission('channels', 'read'), (req, res) => {
+apiRouter.get('/messages/channel/:channel', optionalAuth(), (req, res) => {
   try {
     const requestedChannel = parseInt(req.params.channel);
     const limit = parseInt(req.query.limit as string) || 100;
@@ -873,6 +873,16 @@ apiRouter.get('/messages/channel/:channel', requirePermission('channels', 'read'
     // If the requested channel is 0, use it directly
     if (requestedChannel === 0) {
       messageChannel = 0;
+    }
+
+    // Check per-channel read permission
+    const channelResource = `channel_${messageChannel}` as import('../types/permission.js').ResourceType;
+    if (!req.user?.isAdmin && !hasPermission(req.user!, channelResource, 'read')) {
+      return res.status(403).json({
+        error: 'Insufficient permissions',
+        code: 'FORBIDDEN',
+        required: { resource: channelResource, action: 'read' }
+      });
     }
 
     const messages = databaseService.getMessagesByChannel(messageChannel, limit);
@@ -898,38 +908,23 @@ apiRouter.get('/messages/direct/:nodeId1/:nodeId2', requirePermission('messages'
 // Mark messages as read
 apiRouter.post('/messages/mark-read', optionalAuth(), (req, res) => {
   try {
-    // Check if user has either channels or messages permission
-    const hasChannelsRead = req.user?.isAdmin || hasPermission(req.user!, 'channels', 'read');
-    const hasMessagesRead = req.user?.isAdmin || hasPermission(req.user!, 'messages', 'read');
-
-    if (!hasChannelsRead && !hasMessagesRead) {
-      return res.status(403).json({
-        error: 'Insufficient permissions',
-        code: 'FORBIDDEN',
-        required: { resource: 'channels or messages', action: 'read' }
-      });
-    }
-
-    const userId = req.user?.id ?? null;
     const { messageIds, channelId, nodeId, beforeTimestamp } = req.body;
-    let markedCount = 0;
 
-    if (messageIds && Array.isArray(messageIds)) {
-      // Mark specific messages as read
-      databaseService.markMessagesAsRead(messageIds, userId);
-      markedCount = messageIds.length;
-    } else if (channelId !== undefined) {
-      // Mark all messages in a channel as read
-      if (!hasChannelsRead) {
+    // If marking by channelId, check per-channel read permission
+    if (channelId !== undefined && channelId !== null && channelId !== -1) {
+      const channelResource = `channel_${channelId}` as import('../types/permission.js').ResourceType;
+      if (!req.user?.isAdmin && !hasPermission(req.user!, channelResource, 'read')) {
         return res.status(403).json({
           error: 'Insufficient permissions',
           code: 'FORBIDDEN',
-          required: { resource: 'channels', action: 'read' }
+          required: { resource: channelResource, action: 'read' }
         });
       }
-      markedCount = databaseService.markChannelMessagesAsRead(channelId, userId, beforeTimestamp);
-    } else if (nodeId) {
-      // Mark all DMs with a node as read
+    }
+
+    // If marking by nodeId (DMs), check messages permission
+    if (nodeId && channelId === -1) {
+      const hasMessagesRead = req.user?.isAdmin || hasPermission(req.user!, 'messages', 'read');
       if (!hasMessagesRead) {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -937,6 +932,20 @@ apiRouter.post('/messages/mark-read', optionalAuth(), (req, res) => {
           required: { resource: 'messages', action: 'read' }
         });
       }
+    }
+
+    const userId = req.user?.id ?? null;
+    let markedCount = 0;
+
+    if (messageIds && Array.isArray(messageIds)) {
+      // Mark specific messages as read
+      databaseService.markMessagesAsRead(messageIds, userId);
+      markedCount = messageIds.length;
+    } else if (channelId !== undefined) {
+      // Mark all messages in a channel as read (specific channel permission already checked above)
+      markedCount = databaseService.markChannelMessagesAsRead(channelId, userId, beforeTimestamp);
+    } else if (nodeId) {
+      // Mark all DMs with a node as read (permission already checked above)
       const localNodeInfo = meshtasticManager.getLocalNodeInfo();
       if (!localNodeInfo) {
         return res.status(500).json({ error: 'Local node not connected' });
@@ -956,15 +965,15 @@ apiRouter.post('/messages/mark-read', optionalAuth(), (req, res) => {
 // Get unread message counts
 apiRouter.get('/messages/unread-counts', optionalAuth(), (req, res) => {
   try {
-    // Check if user has either channels or messages permission
-    const hasChannelsRead = req.user?.isAdmin || hasPermission(req.user!, 'channels', 'read');
+    // Check if user has either any channel permission or messages permission
+    const hasChannelsRead = req.user?.isAdmin || hasPermission(req.user!, 'channel_0', 'read');
     const hasMessagesRead = req.user?.isAdmin || hasPermission(req.user!, 'messages', 'read');
 
     if (!hasChannelsRead && !hasMessagesRead) {
       return res.status(403).json({
         error: 'Insufficient permissions',
         code: 'FORBIDDEN',
-        required: { resource: 'channels or messages', action: 'read' }
+        required: { resource: 'channel_0 or messages', action: 'read' }
       });
     }
 
@@ -1047,7 +1056,7 @@ apiRouter.get('/channels/debug', requirePermission('messages', 'read'), (_req, r
 });
 
 // Get all channels (unfiltered, for export/config purposes)
-apiRouter.get('/channels/all', requirePermission('channels', 'read'), (_req, res) => {
+apiRouter.get('/channels/all', requirePermission('channel_0', 'read'), (_req, res) => {
   try {
     const allChannels = databaseService.getAllChannels();
     logger.debug(`📡 Serving all ${allChannels.length} channels (unfiltered)`);
@@ -1058,7 +1067,7 @@ apiRouter.get('/channels/all', requirePermission('channels', 'read'), (_req, res
   }
 });
 
-apiRouter.get('/channels', requirePermission('channels', 'read'), (_req, res) => {
+apiRouter.get('/channels', requirePermission('channel_0', 'read'), (_req, res) => {
   try {
     const allChannels = databaseService.getAllChannels();
 
@@ -1109,7 +1118,7 @@ apiRouter.get('/channels', requirePermission('channels', 'read'), (_req, res) =>
 });
 
 // Export a specific channel configuration
-apiRouter.get('/channels/:id/export', requirePermission('channels', 'read'), (req, res) => {
+apiRouter.get('/channels/:id/export', requirePermission('channel_0', 'read'), (req, res) => {
   try {
     const channelId = parseInt(req.params.id);
     if (isNaN(channelId)) {
@@ -1155,7 +1164,7 @@ apiRouter.get('/channels/:id/export', requirePermission('channels', 'read'), (re
 });
 
 // Update a channel configuration
-apiRouter.put('/channels/:id', requirePermission('channels', 'write'), async (req, res) => {
+apiRouter.put('/channels/:id', requirePermission('channel_0', 'write'), async (req, res) => {
   try {
     const channelId = parseInt(req.params.id);
     if (isNaN(channelId) || channelId < 0 || channelId > 7) {
@@ -1235,7 +1244,7 @@ apiRouter.put('/channels/:id', requirePermission('channels', 'write'), async (re
 });
 
 // Import a channel configuration to a specific slot
-apiRouter.post('/channels/:slotId/import', requirePermission('channels', 'write'), async (req, res) => {
+apiRouter.post('/channels/:slotId/import', requirePermission('channel_0', 'write'), async (req, res) => {
   try {
     const slotId = parseInt(req.params.slotId);
     if (isNaN(slotId) || slotId < 0 || slotId > 7) {
@@ -1600,7 +1609,7 @@ apiRouter.post('/cleanup/channels', requireAdmin(), (_req, res) => {
 
 
 // Send message endpoint
-apiRouter.post('/messages/send', requirePermission('messages', 'write'), async (req, res) => {
+apiRouter.post('/messages/send', optionalAuth(), async (req, res) => {
   try {
     const { text, channel, destination, replyId, emoji } = req.body;
     if (!text || typeof text !== 'string') {
@@ -1628,6 +1637,28 @@ apiRouter.post('/messages/send', requirePermission('messages', 'write'), async (
     // Channel must be 0-7 for Meshtastic. If undefined or invalid, default to 0 (Primary)
     let meshChannel = (channel !== undefined && channel >= 0 && channel <= 7) ? channel : 0;
     logger.info(`📨 Sending message - Received channel: ${channel}, Using meshChannel: ${meshChannel}, Text: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
+
+    // Check permissions based on whether this is a DM or channel message
+    if (destinationNum) {
+      // Direct message - check 'messages' write permission
+      if (!req.user?.isAdmin && !hasPermission(req.user!, 'messages', 'write')) {
+        return res.status(403).json({
+          error: 'Insufficient permissions',
+          code: 'FORBIDDEN',
+          required: { resource: 'messages', action: 'write' }
+        });
+      }
+    } else {
+      // Channel message - check per-channel write permission
+      const channelResource = `channel_${meshChannel}` as import('../types/permission.js').ResourceType;
+      if (!req.user?.isAdmin && !hasPermission(req.user!, channelResource, 'write')) {
+        return res.status(403).json({
+          error: 'Insufficient permissions',
+          code: 'FORBIDDEN',
+          required: { resource: channelResource, action: 'write' }
+        });
+      }
+    }
 
     // Send the message to the mesh network (with optional destination for DMs, replyId, and emoji flag)
     // Note: sendTextMessage() now handles saving the message to the database
@@ -2040,9 +2071,9 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       result.nodes = [];
     }
 
-    // 3. Messages (requires channels OR messages permission)
+    // 3. Messages (requires any channel permission OR messages permission)
     try {
-      const hasChannelsRead = req.user?.isAdmin || hasPermission(req.user!, 'channels', 'read');
+      const hasChannelsRead = req.user?.isAdmin || hasPermission(req.user!, 'channel_0', 'read');
       const hasMessagesRead = req.user?.isAdmin || hasPermission(req.user!, 'messages', 'read');
 
       if (hasChannelsRead || hasMessagesRead) {
@@ -2063,75 +2094,88 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
 
     // 4. Unread counts (requires channels OR messages permission)
     try {
-      const hasChannelsRead = req.user?.isAdmin || hasPermission(req.user!, 'channels', 'read');
+      const userId = req.user?.id ?? null;
+      const localNodeInfo = meshtasticManager.getLocalNodeInfo();
       const hasMessagesRead = req.user?.isAdmin || hasPermission(req.user!, 'messages', 'read');
 
-      if (hasChannelsRead || hasMessagesRead) {
-        const userId = req.user?.id ?? null;
-        const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+      const unreadResult: {
+        channels?: {[channelId: number]: number},
+        directMessages?: {[nodeId: string]: number}
+      } = {};
 
-        const unreadResult: {
-          channels?: {[channelId: number]: number},
-          directMessages?: {[nodeId: string]: number}
-        } = {};
+      // Get unread counts for all channels first
+      const allUnreadChannels = databaseService.getUnreadCountsByChannel(userId);
 
-        if (hasChannelsRead) {
-          unreadResult.channels = databaseService.getUnreadCountsByChannel(userId);
+      // Filter channels based on per-channel read permission
+      const filteredUnreadChannels: {[channelId: number]: number} = {};
+      for (const [channelIdStr, count] of Object.entries(allUnreadChannels)) {
+        const channelId = parseInt(channelIdStr);
+        const channelResource = `channel_${channelId}` as import('../types/permission.js').ResourceType;
+        const hasChannelRead = req.user?.isAdmin || hasPermission(req.user!, channelResource, 'read');
+
+        if (hasChannelRead) {
+          filteredUnreadChannels[channelId] = count;
         }
+      }
+      unreadResult.channels = filteredUnreadChannels;
 
-        if (hasMessagesRead && localNodeInfo) {
-          const directMessages: {[nodeId: string]: number} = {};
-          const allNodes = meshtasticManager.getAllNodes();
-          for (const node of allNodes) {
-            if (node.user?.id) {
-              const count = databaseService.getUnreadDMCount(localNodeInfo.nodeId, node.user.id, userId);
-              if (count > 0) {
-                directMessages[node.user.id] = count;
-              }
+      if (hasMessagesRead && localNodeInfo) {
+        const directMessages: {[nodeId: string]: number} = {};
+        const allNodes = meshtasticManager.getAllNodes();
+        for (const node of allNodes) {
+          if (node.user?.id) {
+            const count = databaseService.getUnreadDMCount(localNodeInfo.nodeId, node.user.id, userId);
+            if (count > 0) {
+              directMessages[node.user.id] = count;
             }
           }
-          unreadResult.directMessages = directMessages;
         }
-
-        result.unreadCounts = unreadResult;
+        unreadResult.directMessages = directMessages;
       }
+
+      result.unreadCounts = unreadResult;
     } catch (error) {
       logger.error('Error fetching unread counts in poll:', error);
     }
 
-    // 5. Channels (requires channels:read permission)
+    // 5. Channels (filtered based on per-channel read permissions)
     try {
-      const hasChannelsRead = req.user?.isAdmin || hasPermission(req.user!, 'channels', 'read');
-      if (hasChannelsRead) {
-        const allChannels = databaseService.getAllChannels();
+      const allChannels = databaseService.getAllChannels();
 
-        const filteredChannels = allChannels.filter(channel => {
-          // Exclude disabled channels (role === 0)
-          if (channel.role === 0) {
-            return false;
-          }
-
-          // Always show channel 0 (Primary channel)
-          if (channel.id === 0) return true;
-
-          // Show channels 1-7 if they have a PSK configured (indicating they're in use)
-          if (channel.id >= 1 && channel.id <= 7 && channel.psk) return true;
-
-          // Show channels with a role defined (PRIMARY, SECONDARY)
-          if (channel.role !== null && channel.role !== undefined) return true;
-
+      const filteredChannels = allChannels.filter(channel => {
+        // Exclude disabled channels (role === 0)
+        if (channel.role === 0) {
           return false;
-        });
-
-        // Ensure Primary channel (ID 0) is first in the list
-        const primaryIndex = filteredChannels.findIndex(ch => ch.id === 0);
-        if (primaryIndex > 0) {
-          const primary = filteredChannels.splice(primaryIndex, 1)[0];
-          filteredChannels.unshift(primary);
         }
 
-        result.channels = filteredChannels;
+        // Check per-channel read permission
+        const channelResource = `channel_${channel.id}` as import('../types/permission.js').ResourceType;
+        const hasChannelRead = req.user?.isAdmin || hasPermission(req.user!, channelResource, 'read');
+
+        if (!hasChannelRead) {
+          return false;  // User doesn't have permission to see this channel
+        }
+
+        // Show channel 0 (Primary channel) if user has permission
+        if (channel.id === 0) return true;
+
+        // Show channels 1-7 if they have a PSK configured (indicating they're in use)
+        if (channel.id >= 1 && channel.id <= 7 && channel.psk) return true;
+
+        // Show channels with a role defined (PRIMARY, SECONDARY)
+        if (channel.role !== null && channel.role !== undefined) return true;
+
+        return false;
+      });
+
+      // Ensure Primary channel (ID 0) is first in the list
+      const primaryIndex = filteredChannels.findIndex(ch => ch.id === 0);
+      if (primaryIndex > 0) {
+        const primary = filteredChannels.splice(primaryIndex, 1)[0];
+        filteredChannels.unshift(primary);
       }
+
+      result.channels = filteredChannels;
     } catch (error) {
       logger.error('Error fetching channels in poll:', error);
     }

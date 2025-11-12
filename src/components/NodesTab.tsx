@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle } from 'react-
 import type { Marker as LeafletMarker } from 'leaflet';
 import { DeviceInfo } from '../types/device';
 import { TabType } from '../types/ui';
+import { ResourceType } from '../types/permission';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
 import { generateArrowMarkers } from '../utils/mapHelpers.tsx';
 import { getHardwareModelName, getRoleName } from '../utils/nodeHelpers';
@@ -170,8 +171,16 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     localStorage.setItem('isMapControlsCollapsed', isMapControlsCollapsed.toString());
   }, [isMapControlsCollapsed]);
 
-  // Check if user has permission to view packet monitor
-  const canViewPacketMonitor = hasPermission('channels', 'read') && hasPermission('messages', 'read');
+  // Check if user has permission to view packet monitor - needs at least one channel and messages permission
+  const hasAnyChannelPermission = () => {
+    for (let i = 0; i < 8; i++) {
+      if (hasPermission(`channel_${i}` as ResourceType, 'read')) {
+        return true;
+      }
+    }
+    return false;
+  };
+  const canViewPacketMonitor = hasAnyChannelPermission() && hasPermission('messages', 'read');
 
   // Fetch packet logging enabled status from server
   useEffect(() => {

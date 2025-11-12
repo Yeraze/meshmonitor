@@ -5,7 +5,14 @@
 export type ResourceType =
   | 'dashboard'
   | 'nodes'
-  | 'channels'
+  | 'channel_0'
+  | 'channel_1'
+  | 'channel_2'
+  | 'channel_3'
+  | 'channel_4'
+  | 'channel_5'
+  | 'channel_6'
+  | 'channel_7'
   | 'messages'
   | 'settings'
   | 'configuration'
@@ -53,7 +60,14 @@ export interface ResourceDefinition {
 export const RESOURCES: readonly ResourceDefinition[] = [
   { id: 'dashboard', name: 'Dashboard', description: 'View statistics and system info' },
   { id: 'nodes', name: 'Node List', description: 'View and manage mesh nodes' },
-  { id: 'channels', name: 'Channels', description: 'View and send messages to channels' },
+  { id: 'channel_0', name: 'Channel 0 (Primary)', description: 'View and send messages to channel 0' },
+  { id: 'channel_1', name: 'Channel 1', description: 'View and send messages to channel 1' },
+  { id: 'channel_2', name: 'Channel 2', description: 'View and send messages to channel 2' },
+  { id: 'channel_3', name: 'Channel 3', description: 'View and send messages to channel 3' },
+  { id: 'channel_4', name: 'Channel 4', description: 'View and send messages to channel 4' },
+  { id: 'channel_5', name: 'Channel 5', description: 'View and send messages to channel 5' },
+  { id: 'channel_6', name: 'Channel 6', description: 'View and send messages to channel 6' },
+  { id: 'channel_7', name: 'Channel 7', description: 'View and send messages to channel 7' },
   { id: 'messages', name: 'Direct Messages', description: 'Send and receive direct messages' },
   { id: 'settings', name: 'Settings', description: 'Application settings' },
   { id: 'configuration', name: 'Configuration', description: 'Device configuration' },
@@ -70,7 +84,14 @@ export const RESOURCES: readonly ResourceDefinition[] = [
 export const ADMIN_PERMISSIONS: PermissionSet = {
   dashboard: { read: true, write: true },
   nodes: { read: true, write: true },
-  channels: { read: true, write: true },
+  channel_0: { read: true, write: true },
+  channel_1: { read: true, write: true },
+  channel_2: { read: true, write: true },
+  channel_3: { read: true, write: true },
+  channel_4: { read: true, write: true },
+  channel_5: { read: true, write: true },
+  channel_6: { read: true, write: true },
+  channel_7: { read: true, write: true },
   messages: { read: true, write: true },
   settings: { read: true, write: true },
   configuration: { read: true, write: true },
@@ -86,7 +107,14 @@ export const ADMIN_PERMISSIONS: PermissionSet = {
 export const DEFAULT_USER_PERMISSIONS: PermissionSet = {
   dashboard: { read: true, write: false },
   nodes: { read: true, write: false },
-  channels: { read: true, write: false },
+  channel_0: { read: true, write: false },
+  channel_1: { read: true, write: false },
+  channel_2: { read: true, write: false },
+  channel_3: { read: true, write: false },
+  channel_4: { read: true, write: false },
+  channel_5: { read: true, write: false },
+  channel_6: { read: true, write: false },
+  channel_7: { read: true, write: false },
   messages: { read: true, write: false },
   settings: { read: false, write: false },
   configuration: { read: false, write: false },

@@ -31,6 +31,7 @@ import { getUtf8ByteLength, formatByteCount } from './utils/text'
 import { DeviceInfo, Channel } from './types/device'
 import { MeshMessage, MessageDeliveryState } from './types/message'
 import { SortField, SortDirection } from './types/ui'
+import { ResourceType } from './types/permission'
 import api from './services/api'
 import { logger } from './utils/logger'
 import { generateArrowMarkers } from './utils/mapHelpers.tsx'
@@ -3349,7 +3350,7 @@ function App() {
                                 </div>
                               )}
                               <div className={`message-bubble ${isMine ? 'mine' : 'theirs'}`}>
-                                {hasPermission('channels', 'write') && (
+                                {hasPermission(`channel_${selectedChannel}` as ResourceType, 'write') && (
                                   <div className="message-actions">
                                     <button
                                       className="reply-button"
@@ -3435,7 +3436,7 @@ function App() {
                           </button>
                         </div>
                       )}
-                      {hasPermission('channels', 'write') && (
+                      {hasPermission(`channel_${selectedChannel}` as ResourceType, 'write') && (
                         <div className="message-input-container">
                           <div className="input-with-counter">
                             <input
@@ -3466,7 +3467,7 @@ function App() {
                       )}
 
                       {/* Danger Zone */}
-                      {hasPermission('channels', 'write') && selectedChannel !== -1 && (
+                      {hasPermission(`channel_${selectedChannel}` as ResourceType, 'write') && selectedChannel !== -1 && (
                         <div className="danger-zone" style={{
                           marginTop: '2rem',
                           padding: '1rem',

@@ -29,6 +29,7 @@ import { migration as positionPrecisionMigration } from '../server/migrations/02
 import { migration as systemBackupTableMigration } from '../server/migrations/021_add_system_backup_table.js';
 import { migration as customThemesMigration } from '../server/migrations/022_add_custom_themes.js';
 import { migration as passwordLockedMigration } from '../server/migrations/023_add_password_locked_flag.js';
+import { migration as perChannelPermissionsMigration } from '../server/migrations/024_add_per_channel_permissions.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Configuration constants for traceroute history
@@ -305,6 +306,7 @@ class DatabaseService {
     this.runSystemBackupTableMigration();
     this.runCustomThemesMigration();
     this.runPasswordLockedMigration();
+    this.runPerChannelPermissionsMigration();
     this.runAutoWelcomeMigration();
     this.ensureAutomationDefaults();
     this.isInitialized = true;
@@ -815,6 +817,26 @@ class DatabaseService {
       logger.debug('✅ Password locked migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run password locked migration:', error);
+      throw error;
+    }
+  }
+
+  private runPerChannelPermissionsMigration(): void {
+    try {
+      const migrationKey = 'migration_024_per_channel_permissions';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Per-channel permissions migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 024: Add per-channel permissions...');
+      perChannelPermissionsMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Per-channel permissions migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run per-channel permissions migration:', error);
       throw error;
     }
   }

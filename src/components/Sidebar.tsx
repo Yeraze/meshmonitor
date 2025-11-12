@@ -38,6 +38,16 @@ const Sidebar: React.FC<SidebarProps> = ({
   // Start collapsed (narrow/icon-only) by default for cleaner desktop UI
   const [isCollapsed, setIsCollapsed] = useState(true);
 
+  // Check if user has permission to read ANY channel
+  const hasAnyChannelPermission = () => {
+    for (let i = 0; i < 8; i++) {
+      if (hasPermission(`channel_${i}` as ResourceType, 'read')) {
+        return true;
+      }
+    }
+    return false;
+  };
+
   // Update CSS custom property when sidebar collapse state changes
   React.useEffect(() => {
     document.documentElement.style.setProperty(
@@ -101,7 +111,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         <SectionHeader title="Main" />
         <div className="sidebar-section">
           <NavItem id="nodes" label="Nodes" icon="🗺️" />
-          {hasPermission('channels', 'read') && (
+          {hasAnyChannelPermission() && (
             <NavItem
               id="channels"
               label="Channels"
