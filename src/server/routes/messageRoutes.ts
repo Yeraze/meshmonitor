@@ -39,11 +39,12 @@ const requireMessagesWrite: RequestHandler = (req, res, next) => {
 };
 
 /**
- * Permission middleware - require channel_0:write for channel message deletions
+ * Permission middleware - require specific channel write permission for channel message deletions
  */
 const requireChannelsWrite: RequestHandler = (req, res, next) => {
   const user = (req as any).user;
   const userId = user?.id ?? null;
+  const channelId = parseInt(req.params.channelId, 10);
 
   // Get user permissions
   const permissions = userId !== null
@@ -57,14 +58,15 @@ const requireChannelsWrite: RequestHandler = (req, res, next) => {
     return next();
   }
 
-  // Check channel_0:write permission (minimum channel permission)
-  const hasChannelsWrite = permissions.channel_0?.write === true;
+  // Check specific channel write permission
+  const channelResource = `channel_${channelId}` as import('../../types/permission.js').ResourceType;
+  const hasChannelWrite = permissions[channelResource]?.write === true;
 
-  if (!hasChannelsWrite) {
-    logger.warn(`❌ Permission denied for channel message deletion - channel_0:write=${hasChannelsWrite}`);
+  if (!hasChannelWrite) {
+    logger.warn(`❌ Permission denied for channel message deletion - ${channelResource}:write=${hasChannelWrite}`);
     return res.status(403).json({
       error: 'Forbidden',
-      message: 'You need channel_0:write permission to delete channel messages'
+      message: `You need ${channelResource}:write permission to delete messages from this channel`
     });
   }
 
@@ -88,15 +90,17 @@ router.delete('/:id', (req, res) => {
       ? databaseService.permissionModel.getUserPermissionSet(userId)
       : {};
 
-    // Check if user has any write permission at all
-    const hasAnyWritePermission = isAdmin ||
-      permissions.messages?.write === true ||
-      permissions.channel_0?.write === true;
+    // Check if user has any write permission at all (messages or any channel)
+    const hasMessagesWrite = permissions.messages?.write === true;
+    const hasAnyChannelWrite = Object.keys(permissions).some(key =>
+      key.startsWith('channel_') && permissions[key as keyof typeof permissions]?.write === true
+    );
+    const hasAnyWritePermission = isAdmin || hasMessagesWrite || hasAnyChannelWrite;
 
     if (!hasAnyWritePermission) {
       return res.status(403).json({
         error: 'Forbidden',
-        message: 'You need either messages:write or channel_0:write permission to delete messages'
+        message: 'You need either messages:write or write permission for at least one channel to delete messages'
       });
     }
 
