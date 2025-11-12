@@ -59,13 +59,23 @@ MeshMonitor can be configured using environment variables. Here are the most imp
 | `NODE_ENV` | Environment mode (`development` or `production`) | `development` |
 | `DATABASE_PATH` | SQLite database file path | `/data/meshmonitor.db` |
 | `BASE_URL` | Base path if serving from subfolder (e.g., `/meshmonitor`) | `/` (root) |
+| `TZ` | Timezone for log timestamps and scheduled tasks | `America/New_York` |
+
+### Meshtastic Connection Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `MESHTASTIC_NODE_IP` | IP address of your Meshtastic node | `192.168.1.100` |
+| `MESHTASTIC_TCP_PORT` | TCP port for Meshtastic connection | `4403` |
+| `MESHTASTIC_STALE_CONNECTION_TIMEOUT` | Connection timeout in milliseconds before reconnecting | `30000` (30 seconds) |
 
 ### Virtual Node Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `ENABLE_VIRTUAL_NODE` | Enable Virtual Node Server for multiple mobile app connections | `true` |
+| `ENABLE_VIRTUAL_NODE` | Enable Virtual Node Server for multiple mobile app connections | `false` |
 | `VIRTUAL_NODE_PORT` | TCP port for Virtual Node Server (mobile apps connect to this) | `4404` |
+| `VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS` | Allow admin commands (position, waypoint, trace route) through Virtual Node | `false` |
 
 See the [Virtual Node Server guide](/configuration/virtual-node) for detailed configuration and usage.
 
@@ -110,14 +120,42 @@ See the [Virtual Node Server guide](/configuration/virtual-node) for detailed co
 
 ### SSO Variables (OIDC)
 
-| Variable | Description |
-|----------|-------------|
-| `OIDC_ISSUER` | OIDC issuer URL |
-| `OIDC_CLIENT_ID` | OIDC client ID |
-| `OIDC_CLIENT_SECRET` | OIDC client secret |
-| `OIDC_REDIRECT_URI` | Callback URL for OIDC |
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `OIDC_ISSUER` | OIDC issuer URL | None (required for SSO) |
+| `OIDC_CLIENT_ID` | OIDC client ID | None (required for SSO) |
+| `OIDC_CLIENT_SECRET` | OIDC client secret | None (required for SSO) |
+| `OIDC_REDIRECT_URI` | Callback URL for OIDC | None (required for SSO) |
+| `OIDC_SCOPES` | Space-separated OIDC scopes to request | `openid profile email` |
+| `OIDC_AUTO_CREATE_USERS` | Automatically create users on first SSO login | `true` |
+| `OIDC_ALLOW_HTTP` | Allow HTTP for OIDC (development only, not secure) | `false` |
 
 See the [SSO Setup guide](/configuration/sso) for detailed OIDC configuration.
+
+### Push Notification Variables (Web Push)
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `VAPID_PUBLIC_KEY` | VAPID public key for web push notifications | None (required for push) |
+| `VAPID_PRIVATE_KEY` | VAPID private key for web push notifications | None (required for push) |
+| `VAPID_SUBJECT` | VAPID subject (email or URL for contact) | None (required for push) |
+| `PUSH_NOTIFICATION_TTL` | Time-to-live for push notifications in seconds (300-86400) | `3600` (1 hour) |
+
+See the [Push Notifications guide](/features/notifications) for setup instructions and key generation.
+
+### System Management Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DATA_DIR` | Root directory for application data | `/data` |
+| `BACKUP_DIR` | Directory for database backups | `/data/backups` |
+| `SYSTEM_BACKUP_DIR` | Directory for full system backups | `/data/system-backups` |
+| `RESTORE_FROM_BACKUP` | Path to backup file to restore on startup | None |
+| `AUTO_UPGRADE_ENABLED` | Enable automatic upgrades in Kubernetes | `false` |
+| `APPRISE_CONFIG_DIR` | Directory for Apprise notification configuration | None |
+| `DUPLICATE_KEY_SCAN_INTERVAL_HOURS` | Hours between duplicate encryption key scans | `24` |
+
+See the [System Backup guide](/features/system-backup) for backup and restore procedures.
 
 ## Configuration Files
 
