@@ -258,7 +258,7 @@ describe('Packet Routes', () => {
     // Grant permissions
     permissionModel.grant({
       userId: regularUser.id,
-      resource: 'channels',
+      resource: 'channel_0',
       canRead: true,
       canWrite: false
     });

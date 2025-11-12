@@ -39,7 +39,7 @@ const requireMessagesWrite: RequestHandler = (req, res, next) => {
 };
 
 /**
- * Permission middleware - require channels:write for channel message deletions
+ * Permission middleware - require channel_0:write for channel message deletions
  */
 const requireChannelsWrite: RequestHandler = (req, res, next) => {
   const user = (req as any).user;
@@ -57,14 +57,14 @@ const requireChannelsWrite: RequestHandler = (req, res, next) => {
     return next();
   }
 
-  // Check channels:write permission
-  const hasChannelsWrite = permissions.channels?.write === true;
+  // Check channel_0:write permission (minimum channel permission)
+  const hasChannelsWrite = permissions.channel_0?.write === true;
 
   if (!hasChannelsWrite) {
-    logger.warn(`❌ Permission denied for channel message deletion - channels:write=${hasChannelsWrite}`);
+    logger.warn(`❌ Permission denied for channel message deletion - channel_0:write=${hasChannelsWrite}`);
     return res.status(403).json({
       error: 'Forbidden',
-      message: 'You need channels:write permission to delete channel messages'
+      message: 'You need channel_0:write permission to delete channel messages'
     });
   }
 
@@ -91,7 +91,7 @@ router.delete('/:id', (req, res) => {
     // Check if user has any write permission at all
     const hasAnyWritePermission = isAdmin ||
       permissions.messages?.write === true ||
-      permissions.channels?.write === true;
+      permissions.channel_0?.write === true;
 
     if (!hasAnyWritePermission) {
       return res.status(403).json({
@@ -115,11 +115,11 @@ router.delete('/:id', (req, res) => {
     // Check specific permission for this message type
     if (!isAdmin) {
       if (isChannelMessage) {
-        const hasChannelsWrite = permissions.channels?.write === true;
+        const hasChannelsWrite = permissions.channel_0?.write === true;
         if (!hasChannelsWrite) {
           return res.status(403).json({
             error: 'Forbidden',
-            message: 'You need channels:write permission to delete channel messages'
+            message: 'You need channel_0:write permission to delete channel messages'
           });
         }
       } else {

@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { useData } from '../contexts/DataContext';
 import { formatDateTime } from '../utils/datetime';
+import { ResourceType } from '../types/permission';
 import './PacketMonitorPanel.css';
 
 interface PacketMonitorPanelProps {
@@ -29,8 +30,16 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
   const tableRef = useRef<HTMLDivElement>(null);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Check permissions
-  const canView = hasPermission('channels', 'read') && hasPermission('messages', 'read');
+  // Check permissions - user needs to have at least one channel permission and messages permission
+  const hasAnyChannelPermission = () => {
+    for (let i = 0; i < 8; i++) {
+      if (hasPermission(`channel_${i}` as ResourceType, 'read')) {
+        return true;
+      }
+    }
+    return false;
+  };
+  const canView = hasAnyChannelPermission() && hasPermission('messages', 'read');
 
   // Get own node number for filtering
   // Convert nodeId (hex string like "!43588558") to number

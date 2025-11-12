@@ -78,7 +78,14 @@ const UsersTab: React.FC = () => {
         const allPermissions: PermissionSet = {
           dashboard: { read: true, write: true },
           nodes: { read: true, write: true },
-          channels: { read: true, write: true },
+          channel_0: { read: true, write: true },
+          channel_1: { read: true, write: true },
+          channel_2: { read: true, write: true },
+          channel_3: { read: true, write: true },
+          channel_4: { read: true, write: true },
+          channel_5: { read: true, write: true },
+          channel_6: { read: true, write: true },
+          channel_7: { read: true, write: true },
           messages: { read: true, write: true },
           settings: { read: true, write: true },
           configuration: { read: true, write: true },
@@ -86,7 +93,8 @@ const UsersTab: React.FC = () => {
           automation: { read: true, write: true },
           connection: { read: true, write: true },
           traceroute: { read: true, write: true },
-          audit: { read: true, write: true }
+          audit: { read: true, write: true },
+          security: { read: true, write: true }
         };
         setPermissions(allPermissions);
       } else {
@@ -104,7 +112,7 @@ const UsersTab: React.FC = () => {
     try {
       // Filter out empty/undefined permissions and ensure valid structure
       const validPermissions: PermissionSet = {};
-      (['dashboard', 'nodes', 'channels', 'messages', 'settings', 'configuration', 'info', 'automation', 'connection', 'traceroute', 'audit', 'security'] as const).forEach(resource => {
+      (['dashboard', 'nodes', 'channel_0', 'channel_1', 'channel_2', 'channel_3', 'channel_4', 'channel_5', 'channel_6', 'channel_7', 'messages', 'settings', 'configuration', 'info', 'automation', 'connection', 'traceroute', 'audit', 'security'] as const).forEach(resource => {
         if (permissions[resource]) {
           validPermissions[resource] = {
             read: permissions[resource]?.read || false,
@@ -434,51 +442,60 @@ const UsersTab: React.FC = () => {
 
             <h3>Permissions</h3>
             <div className="permissions-grid">
-              {(['dashboard', 'nodes', 'channels', 'messages', 'settings', 'configuration', 'info', 'automation', 'connection', 'traceroute', 'audit', 'security'] as const).map(resource => (
-                <div key={resource} className="permission-item">
-                  <div className="permission-label">{resource.charAt(0).toUpperCase() + resource.slice(1)}</div>
-                  <div className="permission-actions">
-                    {(resource === 'connection' || resource === 'traceroute') ? (
-                      // Connection and traceroute permissions use a single checkbox
-                      <label>
-                        <input
-                          type="checkbox"
-                          checked={permissions[resource]?.write || false}
-                          onChange={() => {
-                            // For these permissions, both read and write are set together
-                            const newValue = !permissions[resource]?.write;
-                            setPermissions({
-                              ...permissions,
-                              [resource]: { read: newValue, write: newValue }
-                            });
-                          }}
-                        />
-                        {resource === 'connection' ? 'Can Control Connection' : 'Can Initiate Traceroutes'}
-                      </label>
-                    ) : (
-                      // Other permissions use read/write checkboxes
-                      <>
-                        <label>
-                          <input
-                            type="checkbox"
-                            checked={permissions[resource]?.read || false}
-                            onChange={() => togglePermission(resource, 'read')}
-                          />
-                          Read
-                        </label>
+              {(['dashboard', 'nodes', 'channel_0', 'channel_1', 'channel_2', 'channel_3', 'channel_4', 'channel_5', 'channel_6', 'channel_7', 'messages', 'settings', 'configuration', 'info', 'automation', 'connection', 'traceroute', 'audit', 'security'] as const).map(resource => {
+                // Format the label for display
+                let label = resource.charAt(0).toUpperCase() + resource.slice(1);
+                if (resource.startsWith('channel_')) {
+                  const channelNum = resource.split('_')[1];
+                  label = channelNum === '0' ? 'Channel 0 (Primary)' : `Channel ${channelNum}`;
+                }
+
+                return (
+                  <div key={resource} className="permission-item">
+                    <div className="permission-label">{label}</div>
+                    <div className="permission-actions">
+                      {(resource === 'connection' || resource === 'traceroute') ? (
+                        // Connection and traceroute permissions use a single checkbox
                         <label>
                           <input
                             type="checkbox"
                             checked={permissions[resource]?.write || false}
-                            onChange={() => togglePermission(resource, 'write')}
+                            onChange={() => {
+                              // For these permissions, both read and write are set together
+                              const newValue = !permissions[resource]?.write;
+                              setPermissions({
+                                ...permissions,
+                                [resource]: { read: newValue, write: newValue }
+                              });
+                            }}
                           />
-                          Write
+                          {resource === 'connection' ? 'Can Control Connection' : 'Can Initiate Traceroutes'}
                         </label>
-                      </>
-                    )}
+                      ) : (
+                        // Other permissions use read/write checkboxes
+                        <>
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={permissions[resource]?.read || false}
+                              onChange={() => togglePermission(resource, 'read')}
+                            />
+                            Read
+                          </label>
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={permissions[resource]?.write || false}
+                              onChange={() => togglePermission(resource, 'write')}
+                            />
+                            Write
+                          </label>
+                        </>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             <button className="button button-primary" onClick={handleUpdatePermissions}>

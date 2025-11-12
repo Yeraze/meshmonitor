@@ -26,15 +26,15 @@ const requirePacketPermissions: RequestHandler = (req, res, next) => {
     return next();
   }
 
-  // Check both channels:read and messages:read
-  const hasChannelsRead = permissions.channels?.read === true;
+  // Check both channel_0:read and messages:read (minimum required)
+  const hasChannelsRead = permissions.channel_0?.read === true;
   const hasMessagesRead = permissions.messages?.read === true;
 
   if (!hasChannelsRead || !hasMessagesRead) {
-    logger.warn(`❌ Permission denied for packet access - channels:read=${hasChannelsRead}, messages:read=${hasMessagesRead}`);
+    logger.warn(`❌ Permission denied for packet access - channel_0:read=${hasChannelsRead}, messages:read=${hasMessagesRead}`);
     return res.status(403).json({
       error: 'Forbidden',
-      message: 'You need both channels:read and messages:read permissions to access packet logs'
+      message: 'You need both channel_0:read and messages:read permissions to access packet logs'
     });
   }
 
