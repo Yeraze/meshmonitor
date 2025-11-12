@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { DeviceInfo } from '../types/device';
-import { getHardwareModelShortName } from '../utils/hardwareModel';
+import { getHardwareModelName } from '../utils/nodeHelpers';
 import { getDeviceRoleName } from '../utils/deviceRole';
 import { getHardwareImageUrl } from '../utils/hardwareImages';
 import { formatRelativeTime } from '../utils/datetime';
@@ -150,11 +150,11 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
                 {hardwareImageUrl && (
                   <img
                     src={hardwareImageUrl}
-                    alt={getHardwareModelShortName(hwModel)}
+                    alt={getHardwareModelName(hwModel) || 'Unknown'}
                     className="hardware-image"
                   />
                 )}
-                <span className="hardware-name">{getHardwareModelShortName(hwModel)}</span>
+                <span className="hardware-name">{getHardwareModelName(hwModel)}</span>
               </div>
             </div>
           )}
