@@ -362,7 +362,7 @@ describe('Message Deletion Routes', () => {
     it('should successfully purge traceroutes for admin user', async () => {
       const app = createApp({ id: 1, username: 'admin', isAdmin: true });
       vi.spyOn(databaseService, 'purgeNodeTraceroutes').mockReturnValue(15);
-      const auditLogSpy = vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
+      vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
 
       const response = await request(app).delete('/api/messages/nodes/123456/traceroutes');
 
@@ -378,7 +378,7 @@ describe('Message Deletion Routes', () => {
         messages: { read: true, write: true }
       });
       vi.spyOn(databaseService, 'purgeNodeTraceroutes').mockReturnValue(8);
-      const auditLogSpy = vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
+      vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
 
       const response = await request(app).delete('/api/messages/nodes/123456/traceroutes');
 
@@ -427,7 +427,7 @@ describe('Message Deletion Routes', () => {
     it('should successfully purge telemetry for admin user', async () => {
       const app = createApp({ id: 1, username: 'admin', isAdmin: true });
       vi.spyOn(databaseService, 'purgeNodeTelemetry').mockReturnValue(45);
-      const auditLogSpy = vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
+      vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
 
       const response = await request(app).delete('/api/messages/nodes/123456/telemetry');
 
@@ -443,7 +443,7 @@ describe('Message Deletion Routes', () => {
         messages: { read: true, write: true }
       });
       vi.spyOn(databaseService, 'purgeNodeTelemetry').mockReturnValue(12);
-      const auditLogSpy = vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
+      vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
 
       const response = await request(app).delete('/api/messages/nodes/123456/telemetry');
 

@@ -367,6 +367,24 @@ const createTestDatabase = () => {
       return Number(result.changes);
     }
 
+    getTelemetry(limit: number = 100): DbTelemetry[] {
+      const stmt = this.db.prepare(`
+        SELECT * FROM telemetry
+        ORDER BY timestamp DESC
+        LIMIT ?
+      `);
+      return stmt.all(limit) as DbTelemetry[];
+    }
+
+    getTraceroutes(limit: number = 100): DbTraceroute[] {
+      const stmt = this.db.prepare(`
+        SELECT * FROM traceroutes
+        ORDER BY timestamp DESC
+        LIMIT ?
+      `);
+      return stmt.all(limit) as DbTraceroute[];
+    }
+
     close(): void {
       if (this.db) {
         this.db.close();
@@ -1179,7 +1197,7 @@ describe('DatabaseService', () => {
 
         // Verify all types were deleted
         const telemetry = db.getTelemetry(10);
-        expect(telemetry.find(t => t.nodeNum === 111)).toBeUndefined();
+        expect(telemetry.find((t: DbTelemetry) => t.nodeNum === 111)).toBeUndefined();
       });
     });
   });
