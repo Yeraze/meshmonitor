@@ -15,6 +15,13 @@ Running a public MeshMonitor instance? We'd love to feature it! **[File an issue
 
 ---
 
+### Tampa Bay Area Mesh
+- **URL**: [mesh.axiom-labs.dev](https://mesh.axiom-labs.dev)
+- **Network**: [Are You Meshing With Us?](https://areyoumeshingwith.us/)
+- **Description**: Monitoring the Tampa Bay Area and surrounding Meshtastic Network with real-time updates and comprehensive coverage.
+
+---
+
 ### Central Oregon Mesh
 - **URL**: [192.81.132.42:8080](http://192.81.132.42:8080/)
 - **Location**: Central Oregon, US
