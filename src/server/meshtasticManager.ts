@@ -1039,15 +1039,17 @@ class MeshtasticManager {
     // Process decoded payload if present
     if (meshPacket.decoded) {
       const portnum = meshPacket.decoded.portnum;
+      // Normalize portnum to handle both string and number enum values
+      const normalizedPortNum = meshtasticProtobufService.normalizePortNum(portnum);
       const payload = meshPacket.decoded.payload;
 
-      logger.debug(`📨 Processing payload: portnum=${portnum} (${meshtasticProtobufService.getPortNumName(portnum)}), payload size=${payload?.length || 0}`);
+      logger.debug(`📨 Processing payload: portnum=${normalizedPortNum} (${meshtasticProtobufService.getPortNumName(portnum)}), payload size=${payload?.length || 0}`);
 
-      if (payload && payload.length > 0) {
+      if (payload && payload.length > 0 && normalizedPortNum !== undefined) {
         // Use the unified protobuf service to process the payload
-        const processedPayload = meshtasticProtobufService.processPayload(portnum, payload);
+        const processedPayload = meshtasticProtobufService.processPayload(normalizedPortNum, payload);
 
-        switch (portnum) {
+        switch (normalizedPortNum) {
           case 1: // TEXT_MESSAGE_APP
             await this.processTextMessageProtobuf(meshPacket, processedPayload as string, context);
             break;
@@ -1073,7 +1075,7 @@ class MeshtasticManager {
             await this.processTracerouteMessage(meshPacket, processedPayload as any);
             break;
           default:
-            logger.debug(`🤷 Unhandled portnum: ${portnum} (${meshtasticProtobufService.getPortNumName(portnum)})`);
+            logger.debug(`🤷 Unhandled portnum: ${normalizedPortNum} (${meshtasticProtobufService.getPortNumName(portnum)})`);
         }
       }
     }

@@ -476,9 +476,79 @@ export class MeshtasticProtobufService {
   }
 
   /**
+   * Normalize portnum to a number, handling both numeric and string enum values
+   * protobufjs can return enums as either numbers or strings depending on configuration
+   */
+  normalizePortNum(portnum: number | string | undefined): number | undefined {
+    if (portnum === undefined || portnum === null) {
+      return undefined;
+    }
+
+    // If it's already a number, return it
+    if (typeof portnum === 'number') {
+      return portnum;
+    }
+
+    // If it's a string, map it to the numeric value
+    if (typeof portnum === 'string') {
+      const portNumMap: { [key: string]: number } = {
+        'UNKNOWN_APP': 0,
+        'TEXT_MESSAGE_APP': 1,
+        'REMOTE_HARDWARE_APP': 2,
+        'POSITION_APP': 3,
+        'NODEINFO_APP': 4,
+        'ROUTING_APP': 5,
+        'ADMIN_APP': 6,
+        'TEXT_MESSAGE_COMPRESSED_APP': 7,
+        'WAYPOINT_APP': 8,
+        'AUDIO_APP': 9,
+        'DETECTION_SENSOR_APP': 10,
+        'ALERT_APP': 11,
+        'KEY_VERIFICATION_APP': 12,
+        'REPLY_APP': 32,
+        'IP_TUNNEL_APP': 33,
+        'PAXCOUNTER_APP': 34,
+        'SERIAL_APP': 64,
+        'STORE_FORWARD_APP': 65,
+        'RANGE_TEST_APP': 66,
+        'TELEMETRY_APP': 67,
+        'ZPS_APP': 68,
+        'SIMULATOR_APP': 69,
+        'TRACEROUTE_APP': 70,
+        'NEIGHBORINFO_APP': 71,
+        'ATAK_PLUGIN': 72,
+        'MAP_REPORT_APP': 73,
+        'POWERSTRESS_APP': 74,
+        'RETICULUM_TUNNEL_APP': 76,
+        'CAYENNE_APP': 77,
+        'PRIVATE_APP': 256,
+        'ATAK_FORWARDER': 257,
+        'MAX': 511
+      };
+
+      const normalized = portNumMap[portnum];
+      if (normalized !== undefined) {
+        logger.debug(`🔄 Normalized portnum string "${portnum}" to number ${normalized}`);
+        return normalized;
+      }
+
+      logger.warn(`⚠️ Unknown portnum string value: "${portnum}"`);
+      return undefined;
+    }
+
+    logger.warn(`⚠️ Unexpected portnum type: ${typeof portnum}, value: ${portnum}`);
+    return undefined;
+  }
+
+  /**
    * Get human-readable port number name
    */
-  getPortNumName(portnum: number): string {
+  getPortNumName(portnum: number | string | undefined): string {
+    // Normalize the portnum first
+    const normalizedPortNum = this.normalizePortNum(portnum);
+    if (normalizedPortNum === undefined) {
+      return `UNKNOWN_${portnum}`;
+    }
     // Port numbers from official Meshtastic protobuf definitions
     // https://github.com/meshtastic/protobufs/blob/master/meshtastic/portnums.proto
     const portNames: { [key: number]: string } = {
@@ -516,7 +586,7 @@ export class MeshtasticProtobufService {
       511: 'MAX'
     };
 
-    return portNames[portnum] || `UNKNOWN_${portnum}`;
+    return portNames[normalizedPortNum] || `UNKNOWN_${normalizedPortNum}`;
   }
 
   /**

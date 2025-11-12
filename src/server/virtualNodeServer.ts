@@ -330,30 +330,34 @@ export class VirtualNodeServer extends EventEmitter {
       if (toRadio.packet) {
         // Check if this is a blocked portnum (admin commands)
         const portnum = toRadio.packet.decoded?.portnum;
+        // Normalize portnum to handle both string and number enum values
+        const normalizedPortNum = meshtasticProtobufService.normalizePortNum(portnum);
         const isSelfAddressed = toRadio.packet.from === toRadio.packet.to;
 
         // Only enforce blocking if allowAdminCommands is false (default)
-        if (!this.allowAdminCommands && portnum && this.BLOCKED_PORTNUMS.includes(portnum)) {
+        if (!this.allowAdminCommands && normalizedPortNum && this.BLOCKED_PORTNUMS.includes(normalizedPortNum)) {
           // Allow self-addressed admin commands (device querying itself)
           if (isSelfAddressed) {
-            logger.debug(`Virtual node: Allowing self-addressed admin command from ${clientId} (portnum ${portnum})`);
+            logger.debug(`Virtual node: Allowing self-addressed admin command from ${clientId} (portnum ${normalizedPortNum}/${meshtasticProtobufService.getPortNumName(normalizedPortNum)})`);
             // Allow this message to be queued and forwarded
           } else {
             // Block admin commands to other devices
-            logger.warn(`Virtual node: Blocked admin command from ${clientId} (portnum ${portnum})`);
+            logger.warn(`Virtual node: Blocked admin command from ${clientId} (portnum ${normalizedPortNum}/${meshtasticProtobufService.getPortNumName(normalizedPortNum)})`);
             logger.warn(`Virtual node: Blocked packet details:`, JSON.stringify({
               from: toRadio.packet.from,
               to: toRadio.packet.to,
               wantAck: toRadio.packet.wantAck,
-              portnum: portnum,
+              portnum: normalizedPortNum,
+              portnumName: meshtasticProtobufService.getPortNumName(normalizedPortNum),
+              originalPortnum: portnum,
               decoded: toRadio.packet.decoded,
             }, null, 2));
             // Silently drop the message
             return;
           }
-        } else if (this.allowAdminCommands && portnum && this.BLOCKED_PORTNUMS.includes(portnum)) {
+        } else if (this.allowAdminCommands && normalizedPortNum && this.BLOCKED_PORTNUMS.includes(normalizedPortNum)) {
           // Admin commands are explicitly allowed via configuration
-          logger.info(`Virtual node: Allowing admin command from ${clientId} (portnum ${portnum}) - VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS=true`);
+          logger.info(`Virtual node: Allowing admin command from ${clientId} (portnum ${normalizedPortNum}/${meshtasticProtobufService.getPortNumName(normalizedPortNum)}) - VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS=true`);
         }
 
         // Process the packet locally so it appears in the web UI
@@ -361,7 +365,7 @@ export class VirtualNodeServer extends EventEmitter {
         try {
           const fromRadioMessage = await meshtasticProtobufService.createFromRadioWithPacket(toRadio.packet);
           if (fromRadioMessage) {
-            logger.info(`Virtual node: Processing outgoing message locally from ${clientId} (portnum: ${portnum})`);
+            logger.info(`Virtual node: Processing outgoing message locally from ${clientId} (portnum: ${normalizedPortNum}/${meshtasticProtobufService.getPortNumName(normalizedPortNum)})`);
             // Process locally through MeshtasticManager to store in database
             // Pass context to prevent broadcast loop and preserve the packet ID as requestId for ACK matching
             // The packet.id is the client-generated message ID that will be returned in ACK packets
