@@ -4013,29 +4013,6 @@ function App() {
                       return null;
                     })()}
                   </h3>
-                  {hasPermission('traceroute', 'write') && (
-                    <>
-                      <button
-                        onClick={() => handleTraceroute(selectedDMNode)}
-                        disabled={connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode}
-                        className="traceroute-btn"
-                        title="Run traceroute to this node"
-                      >
-                        🗺️ Traceroute
-                        {tracerouteLoading === selectedDMNode && (
-                          <span className="spinner"></span>
-                        )}
-                      </button>
-                      <button
-                        onClick={() => setShowTracerouteHistoryModal(true)}
-                        className="traceroute-btn"
-                        style={{ marginLeft: '0.5rem' }}
-                        title="View traceroute history for this node"
-                      >
-                        📜 Show History
-                      </button>
-                    </>
-                  )}
                 </div>
               </div>
 
@@ -4229,6 +4206,52 @@ function App() {
                 })()}
               </div>
 
+              {/* Traceroute Buttons */}
+              {hasPermission('traceroute', 'write') && (
+                <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    onClick={() => handleTraceroute(selectedDMNode)}
+                    disabled={connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode}
+                    className="traceroute-btn"
+                    title="Run traceroute to this node"
+                  >
+                    🗺️ Traceroute
+                    {tracerouteLoading === selectedDMNode && (
+                      <span className="spinner"></span>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setShowTracerouteHistoryModal(true)}
+                    className="traceroute-btn"
+                    title="View traceroute history for this node"
+                  >
+                    📜 Show History
+                  </button>
+                </div>
+              )}
+
+              {/* Traceroute Display */}
+              {hasPermission('traceroute', 'write') && (() => {
+                const recentTrace = getRecentTraceroute(selectedDMNode);
+                if (recentTrace) {
+                  const age = Math.floor((Date.now() - recentTrace.timestamp) / (1000 * 60));
+                  const ageStr = age < 60 ? `${age}m ago` : `${Math.floor(age / 60)}h ago`;
+
+                  return (
+                    <div className="traceroute-info" style={{ marginTop: '1rem' }}>
+                      <div className="traceroute-route">
+                        <strong>→ Forward:</strong> {formatTracerouteRoute(recentTrace.route, recentTrace.snrTowards, recentTrace.fromNodeNum, recentTrace.toNodeNum, nodes, distanceUnit)}
+                      </div>
+                      <div className="traceroute-route">
+                        <strong>← Return:</strong> {formatTracerouteRoute(recentTrace.routeBack, recentTrace.snrBack, recentTrace.toNodeNum, recentTrace.fromNodeNum, nodes, distanceUnit)}
+                      </div>
+                      <div className="traceroute-age">Last traced {ageStr}</div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+
               {/* Send DM form */}
               {connectionStatus === 'connected' && (
                 <div className="send-message-form">
@@ -4278,28 +4301,6 @@ function App() {
                   )}
                 </div>
               )}
-
-              {/* Traceroute Display */}
-              {hasPermission('traceroute', 'write') && (() => {
-                const recentTrace = getRecentTraceroute(selectedDMNode);
-                if (recentTrace) {
-                  const age = Math.floor((Date.now() - recentTrace.timestamp) / (1000 * 60));
-                  const ageStr = age < 60 ? `${age}m ago` : `${Math.floor(age / 60)}h ago`;
-
-                  return (
-                    <div className="traceroute-info" style={{ marginTop: '1rem' }}>
-                      <div className="traceroute-route">
-                        <strong>→ Forward:</strong> {formatTracerouteRoute(recentTrace.route, recentTrace.snrTowards, recentTrace.fromNodeNum, recentTrace.toNodeNum, nodes, distanceUnit)}
-                      </div>
-                      <div className="traceroute-route">
-                        <strong>← Return:</strong> {formatTracerouteRoute(recentTrace.routeBack, recentTrace.snrBack, recentTrace.toNodeNum, recentTrace.fromNodeNum, nodes, distanceUnit)}
-                      </div>
-                      <div className="traceroute-age">Last traced {ageStr}</div>
-                    </div>
-                  );
-                }
-                return null;
-              })()}
 
               {/* Purge Data Button */}
               {hasPermission('messages', 'write') && selectedDMNode !== null && (
@@ -5246,7 +5247,7 @@ function App() {
               <p style={{ marginBottom: '1.5rem', color: '#dc3545', fontWeight: 'bold' }}>
                 These actions cannot be undone. All data for this node will be permanently deleted.
               </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'row', gap: '0.75rem', flexWrap: 'wrap' }}>
                 <button
                   onClick={() => {
                     const selectedNode = nodes.find(n => n.user?.id === selectedDMNode);
