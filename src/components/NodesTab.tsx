@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Tooltip, Polyline, Circle } from 'react-leaflet';
 import type { Marker as LeafletMarker } from 'leaflet';
 import { DeviceInfo } from '../types/device';
 import { TabType } from '../types/ui';
@@ -828,6 +828,18 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 zIndexOffset={shouldAnimate ? 10000 : 0}
                 ref={(ref) => handleMarkerRef(ref, node.user?.id)}
               >
+                <Tooltip direction="top" offset={[0, -20]} opacity={0.9} interactive>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontWeight: 'bold' }}>
+                      {node.user?.longName || node.user?.shortName || `!${node.nodeNum.toString(16)}`}
+                    </div>
+                    {node.hopsAway !== undefined && (
+                      <div style={{ fontSize: '0.85em', opacity: 0.8 }}>
+                        {node.hopsAway} hop{node.hopsAway !== 1 ? 's' : ''}
+                      </div>
+                    )}
+                  </div>
+                </Tooltip>
                 <Popup autoPan={false}>
                   <div className="node-popup">
                     <div className="node-popup-header">
