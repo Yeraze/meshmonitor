@@ -207,11 +207,6 @@ const createTestDatabase = () => {
       );
     }
 
-    getMessage(id: string): DbMessage | null {
-      const stmt = this.db.prepare('SELECT * FROM messages WHERE id = ?');
-      return stmt.get(id) as DbMessage | null;
-    }
-
     getMessages(limit: number = 100, offset: number = 0): DbMessage[] {
       const stmt = this.db.prepare(`
         SELECT * FROM messages
@@ -987,6 +982,9 @@ describe('DatabaseService', () => {
         } as any);
 
         const deletedCount = db.purgeDirectMessages(111);
+
+        // Should delete 3 DMs (msg-dm-1, msg-dm-2, msg-dm-3) but not the broadcast
+        expect(deletedCount).toBe(3);
 
         // Should exclude broadcast messages (toNodeId = !ffffffff)
         const broadcastMsg = db.getMessage('msg-broadcast');

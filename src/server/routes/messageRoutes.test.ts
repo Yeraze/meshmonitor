@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import express, { Express } from 'express';
+import express from 'express';
 import session from 'express-session';
 import request from 'supertest';
 import databaseService from '../../services/database.js';
@@ -98,8 +98,8 @@ describe('Message Deletion Routes', () => {
 
       vi.spyOn(databaseService, 'getMessage').mockReturnValue(mockChannelMessage as any);
       vi.spyOn(databaseService.permissionModel, 'getUserPermissionSet').mockReturnValue({
-        messages: { write: false },
-        channels: { write: false }
+        messages: { read: false, write: false },
+        channels: { read: false, write: false }
       });
 
       const response = await request(app).delete('/api/messages/msg-channel');
@@ -118,8 +118,8 @@ describe('Message Deletion Routes', () => {
 
       vi.spyOn(databaseService, 'getMessage').mockReturnValue(mockDMMessage as any);
       vi.spyOn(databaseService.permissionModel, 'getUserPermissionSet').mockReturnValue({
-        messages: { write: false },
-        channels: { write: false }
+        messages: { read: false, write: false },
+        channels: { read: false, write: false }
       });
 
       const response = await request(app).delete('/api/messages/msg-dm');
@@ -140,7 +140,7 @@ describe('Message Deletion Routes', () => {
       vi.spyOn(databaseService, 'deleteMessage').mockReturnValue(true);
       const auditLogSpy = vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
       vi.spyOn(databaseService.permissionModel, 'getUserPermissionSet').mockReturnValue({
-        channels: { write: true }
+        channels: { read: true, write: true }
       });
 
       const response = await request(app).delete('/api/messages/msg-channel');
@@ -184,7 +184,7 @@ describe('Message Deletion Routes', () => {
     it('should return 403 for users without channels:write', async () => {
       const app = createApp({ id: 2, username: 'user', isAdmin: false });
       vi.spyOn(databaseService.permissionModel, 'getUserPermissionSet').mockReturnValue({
-        channels: { write: false }
+        channels: { read: false, write: false }
       });
 
       const response = await request(app).delete('/api/messages/channels/5');
@@ -224,7 +224,7 @@ describe('Message Deletion Routes', () => {
     it('should allow user with channels:write to purge channel messages', async () => {
       const app = createApp({ id: 2, username: 'user', isAdmin: false });
       vi.spyOn(databaseService.permissionModel, 'getUserPermissionSet').mockReturnValue({
-        channels: { write: true }
+        channels: { read: true, write: true }
       });
       vi.spyOn(databaseService, 'purgeChannelMessages').mockReturnValue(10);
       const auditLogSpy = vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
@@ -263,7 +263,7 @@ describe('Message Deletion Routes', () => {
     it('should return 403 for users without messages:write', async () => {
       const app = createApp({ id: 2, username: 'user', isAdmin: false });
       vi.spyOn(databaseService.permissionModel, 'getUserPermissionSet').mockReturnValue({
-        messages: { write: false }
+        messages: { read: false, write: false }
       });
 
       const response = await request(app).delete('/api/messages/direct-messages/123456');
@@ -303,7 +303,7 @@ describe('Message Deletion Routes', () => {
     it('should allow user with messages:write to purge direct messages', async () => {
       const app = createApp({ id: 2, username: 'user', isAdmin: false });
       vi.spyOn(databaseService.permissionModel, 'getUserPermissionSet').mockReturnValue({
-        messages: { write: true }
+        messages: { read: true, write: true }
       });
       vi.spyOn(databaseService, 'purgeDirectMessages').mockReturnValue(12);
       const auditLogSpy = vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
