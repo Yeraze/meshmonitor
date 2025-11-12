@@ -2153,6 +2153,108 @@ function App() {
     }
   };
 
+  const handleDeleteMessage = async (message: MeshMessage) => {
+    if (!window.confirm('Are you sure you want to delete this message?')) {
+      return;
+    }
+
+    try {
+      const response = await authFetch(`${baseUrl}/api/messages/${message.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        showToast('Message deleted successfully', 'success');
+        // Update local state to remove the message
+        setMessages(prev => prev.filter(m => m.id !== message.id));
+        setChannelMessages(prev => ({
+          ...prev,
+          [message.channel]: (prev[message.channel] || []).filter(m => m.id !== message.id)
+        }));
+        updateDataFromBackend();
+      } else {
+        const errorData = await response.json();
+        showToast(`Failed to delete message: ${errorData.message || 'Unknown error'}`, 'error');
+      }
+    } catch (err) {
+      showToast(`Failed to delete message: ${err instanceof Error ? err.message : 'Network error'}`, 'error');
+    }
+  };
+
+  const handlePurgeChannelMessages = async (channelId: number) => {
+    const channel = channels.find(c => c.id === channelId);
+    const channelName = channel?.name || `Channel ${channelId}`;
+
+    if (!window.confirm(`Are you sure you want to purge ALL messages from ${channelName}? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const response = await authFetch(`${baseUrl}/api/messages/channels/${channelId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        showToast(`Purged ${data.deletedCount} messages from ${channelName}`, 'success');
+        // Update local state
+        setChannelMessages(prev => ({
+          ...prev,
+          [channelId]: []
+        }));
+        updateDataFromBackend();
+      } else {
+        const errorData = await response.json();
+        showToast(`Failed to purge messages: ${errorData.message || 'Unknown error'}`, 'error');
+      }
+    } catch (err) {
+      showToast(`Failed to purge messages: ${err instanceof Error ? err.message : 'Network error'}`, 'error');
+    }
+  };
+
+  const handlePurgeDirectMessages = async (nodeNum: number) => {
+    const node = nodes.find(n => n.nodeNum === nodeNum);
+    const nodeName = node?.user?.shortName || node?.user?.longName || `Node ${nodeNum}`;
+
+    if (!window.confirm(`Are you sure you want to purge ALL direct messages with ${nodeName}? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const response = await authFetch(`${baseUrl}/api/messages/direct-messages/${nodeNum}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        showToast(`Purged ${data.deletedCount} messages with ${nodeName}`, 'success');
+        // Update local state to immediately reflect deletions
+        const nodeId = node?.user?.id;
+        if (nodeId) {
+          setMessages(prev => prev.filter(m =>
+            !(m.fromNodeId === nodeId || m.toNodeId === nodeId)
+          ));
+        }
+        // Also refresh from backend to ensure consistency
+        updateDataFromBackend();
+      } else {
+        const errorData = await response.json();
+        showToast(`Failed to purge messages: ${errorData.message || 'Unknown error'}`, 'error');
+      }
+    } catch (err) {
+      showToast(`Failed to purge messages: ${err instanceof Error ? err.message : 'Network error'}`, 'error');
+    }
+  };
+
   const handleSendMessage = async (channel: number = 0) => {
     if (!newMessage.trim() || connectionStatus !== 'connected') {
       return;
@@ -3266,6 +3368,13 @@ function App() {
                                     >
                                       😄
                                     </button>
+                                    <button
+                                      className="delete-button"
+                                      onClick={() => handleDeleteMessage(msg)}
+                                      title="Delete this message"
+                                    >
+                                      🗑️
+                                    </button>
                                   </div>
                                 )}
                                 <div className="message-text" style={{whiteSpace: 'pre-line'}}>
@@ -3352,6 +3461,48 @@ function App() {
                             className="send-btn"
                           >
                             →
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Danger Zone */}
+                      {hasPermission('channels', 'write') && selectedChannel !== -1 && (
+                        <div className="danger-zone" style={{
+                          marginTop: '2rem',
+                          padding: '1rem',
+                          border: '2px solid #dc3545',
+                          borderRadius: '8px',
+                          backgroundColor: 'rgba(220, 53, 69, 0.1)'
+                        }}>
+                          <h3 style={{
+                            color: '#dc3545',
+                            marginTop: 0,
+                            marginBottom: '0.5rem',
+                            fontSize: '1.1rem'
+                          }}>
+                            Danger Zone
+                          </h3>
+                          <p style={{
+                            marginBottom: '1rem',
+                            fontSize: '0.9rem',
+                            opacity: 0.8
+                          }}>
+                            Purge all messages from this channel. This action cannot be undone.
+                          </p>
+                          <button
+                            onClick={() => handlePurgeChannelMessages(selectedChannel)}
+                            className="danger-btn"
+                            style={{
+                              backgroundColor: '#dc3545',
+                              color: 'white',
+                              border: 'none',
+                              padding: '0.5rem 1rem',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              fontWeight: 'bold'
+                            }}
+                          >
+                            Purge All Messages
                           </button>
                         </div>
                       )}
@@ -3982,6 +4133,13 @@ function App() {
                                   >
                                     😄
                                   </button>
+                                  <button
+                                    className="delete-button"
+                                    onClick={() => handleDeleteMessage(msg)}
+                                    title="Delete this message"
+                                  >
+                                    🗑️
+                                  </button>
                                 </div>
                               )}
                               <div className="message-text" style={{whiteSpace: 'pre-line'}}>
@@ -4071,6 +4229,53 @@ function App() {
                       </button>
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* Danger Zone */}
+              {hasPermission('messages', 'write') && selectedDMNode !== null && (
+                <div className="danger-zone" style={{
+                  marginTop: '2rem',
+                  padding: '1rem',
+                  border: '2px solid #dc3545',
+                  borderRadius: '8px',
+                  backgroundColor: 'rgba(220, 53, 69, 0.1)'
+                }}>
+                  <h3 style={{
+                    color: '#dc3545',
+                    marginTop: 0,
+                    marginBottom: '0.5rem',
+                    fontSize: '1.1rem'
+                  }}>
+                    Danger Zone
+                  </h3>
+                  <p style={{
+                    marginBottom: '1rem',
+                    fontSize: '0.9rem',
+                    opacity: 0.8
+                  }}>
+                    Purge all direct messages with {getNodeName(selectedDMNode)}. This action cannot be undone.
+                  </p>
+                  <button
+                    onClick={() => {
+                      const selectedNode = nodes.find(n => n.user?.id === selectedDMNode);
+                      if (selectedNode) {
+                        handlePurgeDirectMessages(selectedNode.nodeNum);
+                      }
+                    }}
+                    className="danger-btn"
+                    style={{
+                      backgroundColor: '#dc3545',
+                      color: 'white',
+                      border: 'none',
+                      padding: '0.5rem 1rem',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontWeight: 'bold'
+                    }}
+                  >
+                    Purge All Messages
+                  </button>
                 </div>
               )}
 

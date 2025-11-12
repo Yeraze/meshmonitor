@@ -1849,6 +1849,31 @@ class DatabaseService {
     return Number(result.changes);
   }
 
+  // Message deletion operations
+  deleteMessage(id: string): boolean {
+    const stmt = this.db.prepare('DELETE FROM messages WHERE id = ?');
+    const result = stmt.run(id);
+    return Number(result.changes) > 0;
+  }
+
+  purgeChannelMessages(channel: number): number {
+    const stmt = this.db.prepare('DELETE FROM messages WHERE channel = ?');
+    const result = stmt.run(channel);
+    return Number(result.changes);
+  }
+
+  purgeDirectMessages(nodeNum: number): number {
+    // Delete all DMs to/from this node
+    // DMs are identified by fromNodeNum/toNodeNum pairs, regardless of channel
+    const stmt = this.db.prepare(`
+      DELETE FROM messages
+      WHERE (fromNodeNum = ? OR toNodeNum = ?)
+      AND toNodeId != '!ffffffff'
+    `);
+    const result = stmt.run(nodeNum, nodeNum);
+    return Number(result.changes);
+  }
+
   // Database maintenance
   vacuum(): void {
     this.db.exec('VACUUM');
