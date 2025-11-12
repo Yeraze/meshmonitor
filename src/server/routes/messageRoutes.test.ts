@@ -105,7 +105,7 @@ describe('Message Deletion Routes', () => {
       const response = await request(app).delete('/api/messages/msg-channel');
 
       expect(response.status).toBe(403);
-      expect(response.body.message).toContain('channel_0:write');
+      expect(response.body.message).toContain('write permission');
     });
 
     it('should require messages:write for DM messages', async () => {
@@ -140,7 +140,7 @@ describe('Message Deletion Routes', () => {
       vi.spyOn(databaseService, 'deleteMessage').mockReturnValue(true);
       const auditLogSpy = vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
       vi.spyOn(databaseService.permissionModel, 'getUserPermissionSet').mockReturnValue({
-        channel_0: { read: true, write: true }
+        channel_5: { read: true, write: true }
       });
 
       const response = await request(app).delete('/api/messages/msg-channel');
@@ -181,7 +181,7 @@ describe('Message Deletion Routes', () => {
   });
 
   describe('DELETE /api/messages/channels/:channelId - Channel purge', () => {
-    it('should return 403 for users without channel_0:write', async () => {
+    it('should return 403 for users without channel_5:write', async () => {
       const app = createApp({ id: 2, username: 'user', isAdmin: false });
       vi.spyOn(databaseService.permissionModel, 'getUserPermissionSet').mockReturnValue({
         channel_0: { read: false, write: false }
@@ -190,7 +190,7 @@ describe('Message Deletion Routes', () => {
       const response = await request(app).delete('/api/messages/channels/5');
 
       expect(response.status).toBe(403);
-      expect(response.body.message).toContain('channel_0:write');
+      expect(response.body.message).toContain('channel_5:write');
     });
 
     it('should return 400 for invalid channel ID', async () => {
@@ -221,10 +221,10 @@ describe('Message Deletion Routes', () => {
       );
     });
 
-    it('should allow user with channel_0:write to purge channel messages', async () => {
+    it('should allow user with channel_3:write to purge channel messages', async () => {
       const app = createApp({ id: 2, username: 'user', isAdmin: false });
       vi.spyOn(databaseService.permissionModel, 'getUserPermissionSet').mockReturnValue({
-        channel_0: { read: true, write: true }
+        channel_3: { read: true, write: true }
       });
       vi.spyOn(databaseService, 'purgeChannelMessages').mockReturnValue(10);
       const auditLogSpy = vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
