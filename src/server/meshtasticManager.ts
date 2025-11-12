@@ -88,7 +88,7 @@ class MeshtasticManager {
   private cachedAutoAckRegex: { pattern: string; regex: RegExp } | null = null;  // Cached compiled regex
 
   // Virtual Node Server - Message capture for initialization sequence
-  private initConfigCache: Uint8Array[] = [];  // Store raw FromRadio messages during init
+  private initConfigCache: Array<{ type: string; data: Uint8Array }> = [];  // Store raw FromRadio messages with type metadata during init
   private isCapturingInitConfig = false;  // Flag to track when we're capturing messages
   private configCaptureComplete = false;  // Flag to track when capture is done
   private onConfigCaptureComplete: (() => void) | null = null;  // Callback for when config capture completes
@@ -493,14 +493,6 @@ class MeshtasticManager {
 
       logger.debug(`📦 Processing single FromRadio message (${data.length} bytes)...`);
 
-      // Capture raw message bytes if we're in capture mode
-      if (this.isCapturingInitConfig && !this.configCaptureComplete) {
-        // Store a copy of the raw message bytes
-        const messageCopy = new Uint8Array(data);
-        this.initConfigCache.push(messageCopy);
-        logger.debug(`📸 Captured init message #${this.initConfigCache.length} (${data.length} bytes)`);
-      }
-
       // Broadcast to virtual node clients if virtual node server is enabled (unless explicitly skipped)
       if (!context?.skipVirtualNodeBroadcast) {
         const virtualNodeServer = (global as any).virtualNodeServer;
@@ -523,6 +515,14 @@ class MeshtasticManager {
       }
 
       logger.debug(`📦 Parsed message type: ${parsed.type}`);
+
+      // Capture raw message bytes with type metadata if we're in capture mode (after parsing to get type)
+      if (this.isCapturingInitConfig && !this.configCaptureComplete) {
+        // Store a copy of the raw message bytes along with the message type
+        const messageCopy = new Uint8Array(data);
+        this.initConfigCache.push({ type: parsed.type, data: messageCopy });
+        logger.debug(`📸 Captured init message #${this.initConfigCache.length} (type: ${parsed.type}, ${data.length} bytes)`);
+      }
 
       // Process the message
       switch (parsed.type) {
@@ -3776,10 +3776,11 @@ class MeshtasticManager {
 
   /**
    * Get cached initialization config messages for virtual node server
-   * Returns the raw FromRadio messages captured during our connection to the physical node
+   * Returns the raw FromRadio messages with type metadata captured during our connection to the physical node
    * These can be replayed to virtual node clients for faster initialization
+   * Dynamic types (myInfo, nodeInfo) should be rebuilt from database for freshness
    */
-  getCachedInitConfig(): Uint8Array[] {
+  getCachedInitConfig(): Array<{ type: string; data: Uint8Array }> {
     if (!this.configCaptureComplete) {
       logger.warn('⚠️ Init config capture not yet complete, returning partial cache');
     }

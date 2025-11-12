@@ -56,7 +56,6 @@ export class VirtualNodeServer extends EventEmitter {
   private readonly QUEUE_MAX_SIZE = 100;
 
   // Config replay constants
-  private readonly CONFIG_COMPLETE_MAX_SIZE = 10; // ConfigComplete messages are typically small (< 10 bytes)
   private readonly LOG_EVERY_N_MESSAGES = 10; // Log progress every N messages during config replay
 
   // Client timeout and cleanup constants
@@ -449,12 +448,14 @@ export class VirtualNodeServer extends EventEmitter {
   }
 
   /**
-   * Send initial config data to a client
+   * Send initial config data to a client using hybrid approach:
+   * - Rebuild dynamic data (MyNodeInfo, NodeInfo) from database for freshness
+   * - Use cached static data (config, channels, metadata) for performance
    */
   private async sendInitialConfig(clientId: string, configId?: number): Promise<void> {
     logger.info(`Virtual node: Starting to send initial config to ${clientId}${configId ? ` (ID: ${configId})` : ''}`);
     try {
-      // Get cached init config from meshtasticManager
+      // Get cached init config with type metadata from meshtasticManager
       const cachedMessages = this.config.meshtasticManager.getCachedInitConfig();
 
       if (cachedMessages.length === 0) {
@@ -463,52 +464,121 @@ export class VirtualNodeServer extends EventEmitter {
         return;
       }
 
-      logger.info(`Virtual node: Replaying ${cachedMessages.length} cached init messages to ${clientId}`);
-
-      // Replay all cached messages EXCEPT the last ConfigComplete
-      // We'll create a fresh ConfigComplete with the client's requested ID
+      logger.info(`Virtual node: Using hybrid approach - rebuilding dynamic data from database`);
       let sentCount = 0;
 
-      for (let i = 0; i < cachedMessages.length; i++) {
-        const message = cachedMessages[i];
+      // === STEP 1: Rebuild and send MyNodeInfo from database ===
+      const localNodeInfo = this.config.meshtasticManager.getLocalNodeInfo();
+      if (localNodeInfo) {
+        logger.debug(`Virtual node: Rebuilding MyNodeInfo for local node ${localNodeInfo.nodeId}`);
+        const localNode = databaseService.getNode(localNodeInfo.nodeNum);
+        const myNodeInfoMessage = await meshtasticProtobufService.createMyNodeInfo({
+          myNodeNum: localNodeInfo.nodeNum,
+          numBands: 13,
+          firmwareVersion: (localNodeInfo as any).firmwareVersion || '2.0.0',
+          rebootCount: localNode?.rebootCount || 0,
+          bitrate: 17.24,
+          messageTimeoutMsec: 300000,
+          minAppVersion: 20200,
+          maxChannels: 8,
+        });
 
-        // Check if this is the last message and it's a ConfigComplete
-        // We identify ConfigComplete by checking if it's the last message and small
-        const isLikelyConfigComplete = (i === cachedMessages.length - 1) && (message.length < this.CONFIG_COMPLETE_MAX_SIZE);
+        if (myNodeInfoMessage) {
+          await this.sendToClient(clientId, myNodeInfoMessage);
+          sentCount++;
+          logger.debug(`Virtual node: ✓ Sent fresh MyNodeInfo from database`);
+        }
+      } else {
+        logger.warn(`Virtual node: No local node info available, skipping MyNodeInfo`);
+      }
 
-        if (isLikelyConfigComplete) {
-          logger.debug(`Virtual node: Skipping cached ConfigComplete, will send custom one`);
+      // === STEP 2: Rebuild and send all NodeInfo entries from database ===
+      const allNodes = databaseService.getAllNodes();
+      logger.debug(`Virtual node: Rebuilding ${allNodes.length} NodeInfo entries from database`);
+
+      for (const node of allNodes) {
+        // Check if client is still connected
+        const client = this.clients.get(clientId);
+        if (!client || client.socket.destroyed) {
+          logger.warn(`Virtual node: Client ${clientId} disconnected during config replay (sent ${sentCount} messages)`);
+          return;
+        }
+
+        const nodeInfoMessage = await meshtasticProtobufService.createNodeInfo({
+          nodeNum: node.nodeNum,
+          user: {
+            id: node.nodeId,
+            longName: node.longName || 'Unknown',
+            shortName: node.shortName || '????',
+            hwModel: node.hwModel || 0,
+          },
+          position: (node.latitude && node.longitude) ? {
+            latitude: node.latitude,
+            longitude: node.longitude,
+            altitude: node.altitude || 0,
+            time: node.lastHeard || Math.floor(Date.now() / 1000),
+          } : undefined,
+          snr: node.snr,
+          lastHeard: node.lastHeard,
+        });
+
+        if (nodeInfoMessage) {
+          await this.sendToClient(clientId, nodeInfoMessage);
+          sentCount++;
+
+          if (sentCount % this.LOG_EVERY_N_MESSAGES === 0) {
+            logger.debug(`Virtual node: Rebuilt NodeInfo ${sentCount - 1}/${allNodes.length} (${node.nodeId})`);
+          }
+        }
+      }
+
+      logger.info(`Virtual node: ✓ Sent ${allNodes.length} fresh NodeInfo entries from database`);
+
+      // === STEP 3: Send static config data from cache (channels, config, metadata) ===
+      let staticCount = 0;
+      for (const message of cachedMessages) {
+        // Skip dynamic message types (we already rebuilt those from DB)
+        if (message.type === 'myInfo' || message.type === 'nodeInfo') {
+          continue;
+        }
+
+        // Skip configComplete (we'll send a fresh one at the end)
+        if (message.type === 'configComplete') {
           continue;
         }
 
         // Check if client is still connected
         const client = this.clients.get(clientId);
         if (!client || client.socket.destroyed) {
-          logger.warn(`Virtual node: Client ${clientId} disconnected during config replay (sent ${sentCount}/${cachedMessages.length})`);
+          logger.warn(`Virtual node: Client ${clientId} disconnected during config replay (sent ${sentCount} total messages)`);
           return;
         }
 
-        // Send the cached message directly
-        await this.sendToClient(clientId, message);
+        // Send the cached static message
+        await this.sendToClient(clientId, message.data);
         sentCount++;
+        staticCount++;
 
-        if (sentCount % this.LOG_EVERY_N_MESSAGES === 0 || i < 5) {
-          logger.debug(`Virtual node: Replayed message ${sentCount}/${cachedMessages.length} (${message.length} bytes)`);
+        if (staticCount % this.LOG_EVERY_N_MESSAGES === 0) {
+          logger.debug(`Virtual node: Sent cached ${message.type} message (${staticCount} static messages)`);
         }
       }
 
-      logger.info(`Virtual node: Replayed ${sentCount} cached messages to ${clientId}`);
+      logger.info(`Virtual node: ✓ Sent ${staticCount} cached static messages (config, channels, metadata)`);
 
-      // Send custom ConfigComplete with client's requested ID
+      // === STEP 4: Send custom ConfigComplete with client's requested ID ===
       const useConfigId = configId || 1;
       logger.info(`Virtual node: Sending ConfigComplete to ${clientId} with ID ${useConfigId}...`);
       const configComplete = await meshtasticProtobufService.createConfigComplete(useConfigId);
       if (configComplete) {
         await this.sendToClient(clientId, configComplete);
-        logger.info(`Virtual node: ✓ ConfigComplete sent to ${clientId} (ID: ${useConfigId}) - Initial config fully sent!`);
+        sentCount++;
+        logger.info(`Virtual node: ✓ ConfigComplete sent to ${clientId} (ID: ${useConfigId})`);
       } else {
         logger.error(`Virtual node: Failed to create ConfigComplete message`);
       }
+
+      logger.info(`Virtual node: ✅ Initial config fully sent to ${clientId} (${sentCount} total messages - ${allNodes.length} fresh NodeInfo + ${staticCount} cached static)`);
     } catch (error) {
       logger.error(`Virtual node: Error sending initial config to ${clientId}:`, error);
     }
