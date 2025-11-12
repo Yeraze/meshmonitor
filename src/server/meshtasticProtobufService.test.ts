@@ -1,12 +1,9 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { MeshtasticProtobufService } from './meshtasticProtobufService';
 
 describe('MeshtasticProtobufService', () => {
-  let service: MeshtasticProtobufService;
-
-  beforeEach(() => {
-    service = new MeshtasticProtobufService();
-  });
+  // Use the singleton instance
+  const service = MeshtasticProtobufService.getInstance();
 
   describe('normalizePortNum', () => {
     describe('number inputs', () => {
