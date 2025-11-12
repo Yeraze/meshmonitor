@@ -71,7 +71,7 @@ describe('Message Deletion Routes', () => {
 
       vi.spyOn(databaseService, 'getMessage').mockReturnValue(mockMessage as any);
       vi.spyOn(databaseService, 'deleteMessage').mockReturnValue(true);
-      vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
+      const auditLogSpy = vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
 
       const response = await request(app).delete('/api/messages/msg-123');
 
@@ -79,6 +79,13 @@ describe('Message Deletion Routes', () => {
       expect(response.body).toHaveProperty('message', 'Message deleted successfully');
       expect(response.body).toHaveProperty('id', 'msg-123');
       expect(databaseService.deleteMessage).toHaveBeenCalledWith('msg-123');
+      expect(auditLogSpy).toHaveBeenCalledWith(
+        1,
+        'message_deleted',
+        'messages',
+        expect.stringContaining('msg-123'),
+        expect.any(String)
+      );
     });
 
     it('should require channels:write for channel messages', async () => {
@@ -131,7 +138,7 @@ describe('Message Deletion Routes', () => {
 
       vi.spyOn(databaseService, 'getMessage').mockReturnValue(mockChannelMessage as any);
       vi.spyOn(databaseService, 'deleteMessage').mockReturnValue(true);
-      vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
+      const auditLogSpy = vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
       vi.spyOn(databaseService.permissionModel, 'getUserPermissionSet').mockReturnValue({
         channels: { write: true }
       });
@@ -140,6 +147,13 @@ describe('Message Deletion Routes', () => {
 
       expect(response.status).toBe(200);
       expect(databaseService.deleteMessage).toHaveBeenCalledWith('msg-channel');
+      expect(auditLogSpy).toHaveBeenCalledWith(
+        2,
+        'message_deleted',
+        'messages',
+        expect.stringContaining('msg-channel'),
+        expect.any(String)
+      );
     });
 
     it('should log deletion to audit log', async () => {
@@ -161,7 +175,7 @@ describe('Message Deletion Routes', () => {
         'message_deleted',
         'messages',
         expect.stringContaining('msg-123'),
-        null
+        expect.any(String)
       );
     });
   });
@@ -190,7 +204,7 @@ describe('Message Deletion Routes', () => {
     it('should allow admin to purge channel messages', async () => {
       const app = createApp({ id: 1, username: 'admin', isAdmin: true });
       vi.spyOn(databaseService, 'purgeChannelMessages').mockReturnValue(15);
-      vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
+      const auditLogSpy = vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
 
       const response = await request(app).delete('/api/messages/channels/5');
 
@@ -198,6 +212,13 @@ describe('Message Deletion Routes', () => {
       expect(response.body).toHaveProperty('deletedCount', 15);
       expect(response.body).toHaveProperty('channelId', 5);
       expect(databaseService.purgeChannelMessages).toHaveBeenCalledWith(5);
+      expect(auditLogSpy).toHaveBeenCalledWith(
+        1,
+        'channel_messages_purged',
+        'messages',
+        expect.stringContaining('15'),
+        expect.any(String)
+      );
     });
 
     it('should allow user with channels:write to purge channel messages', async () => {
@@ -206,12 +227,19 @@ describe('Message Deletion Routes', () => {
         channels: { write: true }
       });
       vi.spyOn(databaseService, 'purgeChannelMessages').mockReturnValue(10);
-      vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
+      const auditLogSpy = vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
 
       const response = await request(app).delete('/api/messages/channels/3');
 
       expect(response.status).toBe(200);
       expect(databaseService.purgeChannelMessages).toHaveBeenCalledWith(3);
+      expect(auditLogSpy).toHaveBeenCalledWith(
+        2,
+        'channel_messages_purged',
+        'messages',
+        expect.stringContaining('10'),
+        expect.any(String)
+      );
     });
 
     it('should log purge to audit log', async () => {
@@ -226,7 +254,7 @@ describe('Message Deletion Routes', () => {
         'channel_messages_purged',
         'messages',
         expect.stringContaining('20'),
-        null
+        expect.any(String)
       );
     });
   });
@@ -255,7 +283,7 @@ describe('Message Deletion Routes', () => {
     it('should allow admin to purge direct messages', async () => {
       const app = createApp({ id: 1, username: 'admin', isAdmin: true });
       vi.spyOn(databaseService, 'purgeDirectMessages').mockReturnValue(25);
-      vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
+      const auditLogSpy = vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
 
       const response = await request(app).delete('/api/messages/direct-messages/999999999');
 
@@ -263,6 +291,13 @@ describe('Message Deletion Routes', () => {
       expect(response.body).toHaveProperty('deletedCount', 25);
       expect(response.body).toHaveProperty('nodeNum', 999999999);
       expect(databaseService.purgeDirectMessages).toHaveBeenCalledWith(999999999);
+      expect(auditLogSpy).toHaveBeenCalledWith(
+        1,
+        'dm_messages_purged',
+        'messages',
+        expect.stringContaining('25'),
+        expect.any(String)
+      );
     });
 
     it('should allow user with messages:write to purge direct messages', async () => {
@@ -271,12 +306,19 @@ describe('Message Deletion Routes', () => {
         messages: { write: true }
       });
       vi.spyOn(databaseService, 'purgeDirectMessages').mockReturnValue(12);
-      vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
+      const auditLogSpy = vi.spyOn(databaseService, 'auditLog').mockReturnValue(undefined);
 
       const response = await request(app).delete('/api/messages/direct-messages/123456');
 
       expect(response.status).toBe(200);
       expect(databaseService.purgeDirectMessages).toHaveBeenCalledWith(123456);
+      expect(auditLogSpy).toHaveBeenCalledWith(
+        2,
+        'dm_messages_purged',
+        'messages',
+        expect.stringContaining('12'),
+        expect.any(String)
+      );
     });
 
     it('should log purge to audit log', async () => {
@@ -291,7 +333,7 @@ describe('Message Deletion Routes', () => {
         'dm_messages_purged',
         'messages',
         expect.stringContaining('30'),
-        null
+        expect.any(String)
       );
     });
   });

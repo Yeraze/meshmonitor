@@ -330,7 +330,8 @@ const createTestDatabase = () => {
     // Message operations
     getMessage(id: string): DbMessage | null {
       const stmt = this.db.prepare('SELECT * FROM messages WHERE id = ?');
-      return stmt.get(id) as DbMessage | null;
+      const result = stmt.get(id) as DbMessage | undefined;
+      return result ?? null;
     }
 
     // Message deletion operations

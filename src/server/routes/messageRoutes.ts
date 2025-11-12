@@ -74,13 +74,33 @@ const requireChannelsWrite: RequestHandler = (req, res, next) => {
 /**
  * DELETE /api/messages/:id
  * Delete a single message by ID
+ * Note: Permission check is done inside the handler based on message type
  */
-router.delete('/:id', requireMessagesWrite, (req, res) => {
+router.delete('/:id', (req, res) => {
   try {
     const messageId = req.params.id;
     const user = (req as any).user;
+    const userId = user?.id ?? null;
+    const isAdmin = user?.isAdmin ?? false;
 
-    // Check if message exists first
+    // Get permissions first (before checking message existence for security)
+    const permissions = userId !== null
+      ? databaseService.permissionModel.getUserPermissionSet(userId)
+      : {};
+
+    // Check if user has any write permission at all
+    const hasAnyWritePermission = isAdmin ||
+      permissions.messages?.write === true ||
+      permissions.channels?.write === true;
+
+    if (!hasAnyWritePermission) {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'You need either messages:write or channels:write permission to delete messages'
+      });
+    }
+
+    // Now check if message exists
     const message = databaseService.getMessage(messageId);
     if (!message) {
       return res.status(404).json({
@@ -92,13 +112,7 @@ router.delete('/:id', requireMessagesWrite, (req, res) => {
     // Determine if this is a channel or DM message
     const isChannelMessage = message.channel !== 0;
 
-    // Check appropriate permission
-    const userId = user?.id ?? null;
-    const permissions = userId !== null
-      ? databaseService.permissionModel.getUserPermissionSet(userId)
-      : {};
-    const isAdmin = user?.isAdmin ?? false;
-
+    // Check specific permission for this message type
     if (!isAdmin) {
       if (isChannelMessage) {
         const hasChannelsWrite = permissions.channels?.write === true;
