@@ -140,6 +140,7 @@ function App() {
   const [showRebootModal, setShowRebootModal] = useState(false);
   const [configRefreshTrigger, setConfigRefreshTrigger] = useState(0);
   const [showTracerouteHistoryModal, setShowTracerouteHistoryModal] = useState(false);
+  const [showPurgeDataModal, setShowPurgeDataModal] = useState(false);
   const [selectedRouteSegment, setSelectedRouteSegment] = useState<{nodeNum1: number; nodeNum2: number} | null>(null);
   const [emojiPickerMessage, setEmojiPickerMessage] = useState<MeshMessage | null>(null);
 
@@ -4036,27 +4037,6 @@ function App() {
                     </>
                   )}
                 </div>
-
-                {(() => {
-                  const recentTrace = getRecentTraceroute(selectedDMNode);
-                  if (recentTrace) {
-                    const age = Math.floor((Date.now() - recentTrace.timestamp) / (1000 * 60));
-                    const ageStr = age < 60 ? `${age}m ago` : `${Math.floor(age / 60)}h ago`;
-
-                    return (
-                      <div className="traceroute-info">
-                        <div className="traceroute-route">
-                          <strong>→ Forward:</strong> {formatTracerouteRoute(recentTrace.route, recentTrace.snrTowards, recentTrace.fromNodeNum, recentTrace.toNodeNum, nodes, distanceUnit)}
-                        </div>
-                        <div className="traceroute-route">
-                          <strong>← Return:</strong> {formatTracerouteRoute(recentTrace.routeBack, recentTrace.snrBack, recentTrace.toNodeNum, recentTrace.fromNodeNum, nodes, distanceUnit)}
-                        </div>
-                        <div className="traceroute-age">Last traced {ageStr}</div>
-                      </div>
-                    );
-                  }
-                  return null;
-                })()}
               </div>
 
               {/* Security Warning Bar */}
@@ -4299,92 +4279,46 @@ function App() {
                 </div>
               )}
 
-              {/* Danger Zone */}
+              {/* Traceroute Display */}
+              {hasPermission('traceroute', 'write') && (() => {
+                const recentTrace = getRecentTraceroute(selectedDMNode);
+                if (recentTrace) {
+                  const age = Math.floor((Date.now() - recentTrace.timestamp) / (1000 * 60));
+                  const ageStr = age < 60 ? `${age}m ago` : `${Math.floor(age / 60)}h ago`;
+
+                  return (
+                    <div className="traceroute-info" style={{ marginTop: '1rem' }}>
+                      <div className="traceroute-route">
+                        <strong>→ Forward:</strong> {formatTracerouteRoute(recentTrace.route, recentTrace.snrTowards, recentTrace.fromNodeNum, recentTrace.toNodeNum, nodes, distanceUnit)}
+                      </div>
+                      <div className="traceroute-route">
+                        <strong>← Return:</strong> {formatTracerouteRoute(recentTrace.routeBack, recentTrace.snrBack, recentTrace.toNodeNum, recentTrace.fromNodeNum, nodes, distanceUnit)}
+                      </div>
+                      <div className="traceroute-age">Last traced {ageStr}</div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+
+              {/* Purge Data Button */}
               {hasPermission('messages', 'write') && selectedDMNode !== null && (
-                <div className="danger-zone" style={{
-                  marginTop: '2rem',
-                  padding: '1rem',
-                  border: '2px solid #dc3545',
-                  borderRadius: '8px',
-                  backgroundColor: 'rgba(220, 53, 69, 0.1)'
-                }}>
-                  <h3 style={{
-                    color: '#dc3545',
-                    marginTop: 0,
-                    marginBottom: '0.5rem',
-                    fontSize: '1.1rem'
-                  }}>
-                    Danger Zone
-                  </h3>
-                  <p style={{
-                    marginBottom: '1rem',
-                    fontSize: '0.9rem',
-                    opacity: 0.8
-                  }}>
-                    Purge data for {getNodeName(selectedDMNode)}. These actions cannot be undone.
-                  </p>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    <button
-                      onClick={() => {
-                        const selectedNode = nodes.find(n => n.user?.id === selectedDMNode);
-                        if (selectedNode) {
-                          handlePurgeDirectMessages(selectedNode.nodeNum);
-                        }
-                      }}
-                      className="danger-btn"
-                      style={{
-                        backgroundColor: '#dc3545',
-                        color: 'white',
-                        border: 'none',
-                        padding: '0.5rem 1rem',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        fontWeight: 'bold'
-                      }}
-                    >
-                      Purge All Messages
-                    </button>
-                    <button
-                      onClick={() => {
-                        const selectedNode = nodes.find(n => n.user?.id === selectedDMNode);
-                        if (selectedNode) {
-                          handlePurgeNodeTraceroutes(selectedNode.nodeNum);
-                        }
-                      }}
-                      className="danger-btn"
-                      style={{
-                        backgroundColor: '#dc3545',
-                        color: 'white',
-                        border: 'none',
-                        padding: '0.5rem 1rem',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        fontWeight: 'bold'
-                      }}
-                    >
-                      Purge Traceroutes
-                    </button>
-                    <button
-                      onClick={() => {
-                        const selectedNode = nodes.find(n => n.user?.id === selectedDMNode);
-                        if (selectedNode) {
-                          handlePurgeNodeTelemetry(selectedNode.nodeNum);
-                        }
-                      }}
-                      className="danger-btn"
-                      style={{
-                        backgroundColor: '#dc3545',
-                        color: 'white',
-                        border: 'none',
-                        padding: '0.5rem 1rem',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        fontWeight: 'bold'
-                      }}
-                    >
-                      Purge Telemetry
-                    </button>
-                  </div>
+                <div style={{ marginTop: '1rem' }}>
+                  <button
+                    onClick={() => setShowPurgeDataModal(true)}
+                    className="danger-btn"
+                    style={{
+                      backgroundColor: '#dc3545',
+                      color: 'white',
+                      border: 'none',
+                      padding: '0.5rem 1rem',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontWeight: 'bold'
+                    }}
+                  >
+                    🗑️ Purge Data
+                  </button>
                 </div>
               )}
 
@@ -5298,6 +5232,91 @@ function App() {
           nodes={nodes}
           onClose={() => setShowTracerouteHistoryModal(false)}
         />
+      )}
+
+      {/* Purge Data Modal */}
+      {showPurgeDataModal && selectedDMNode && (
+        <div className="modal-overlay" onClick={() => setShowPurgeDataModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+            <div className="modal-header">
+              <h2>⚠️ Purge Data for {getNodeName(selectedDMNode)}</h2>
+              <button className="modal-close" onClick={() => setShowPurgeDataModal(false)}>&times;</button>
+            </div>
+            <div className="modal-body">
+              <p style={{ marginBottom: '1.5rem', color: '#dc3545', fontWeight: 'bold' }}>
+                These actions cannot be undone. All data for this node will be permanently deleted.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <button
+                  onClick={() => {
+                    const selectedNode = nodes.find(n => n.user?.id === selectedDMNode);
+                    if (selectedNode) {
+                      handlePurgeDirectMessages(selectedNode.nodeNum);
+                      setShowPurgeDataModal(false);
+                    }
+                  }}
+                  className="danger-btn"
+                  style={{
+                    backgroundColor: '#dc3545',
+                    color: 'white',
+                    border: 'none',
+                    padding: '0.75rem 1rem',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontWeight: 'bold',
+                    fontSize: '1rem'
+                  }}
+                >
+                  🗑️ Purge All Messages
+                </button>
+                <button
+                  onClick={() => {
+                    const selectedNode = nodes.find(n => n.user?.id === selectedDMNode);
+                    if (selectedNode) {
+                      handlePurgeNodeTraceroutes(selectedNode.nodeNum);
+                      setShowPurgeDataModal(false);
+                    }
+                  }}
+                  className="danger-btn"
+                  style={{
+                    backgroundColor: '#dc3545',
+                    color: 'white',
+                    border: 'none',
+                    padding: '0.75rem 1rem',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontWeight: 'bold',
+                    fontSize: '1rem'
+                  }}
+                >
+                  🗺️ Purge Traceroutes
+                </button>
+                <button
+                  onClick={() => {
+                    const selectedNode = nodes.find(n => n.user?.id === selectedDMNode);
+                    if (selectedNode) {
+                      handlePurgeNodeTelemetry(selectedNode.nodeNum);
+                      setShowPurgeDataModal(false);
+                    }
+                  }}
+                  className="danger-btn"
+                  style={{
+                    backgroundColor: '#dc3545',
+                    color: 'white',
+                    border: 'none',
+                    padding: '0.75rem 1rem',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontWeight: 'bold',
+                    fontSize: '1rem'
+                  }}
+                >
+                  📊 Purge Telemetry
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {selectedRouteSegment && (
