@@ -254,4 +254,88 @@ router.delete('/direct-messages/:nodeNum', requireMessagesWrite, (req, res) => {
   }
 });
 
+/**
+ * DELETE /api/nodes/:nodeNum/traceroutes
+ * Purge all traceroutes for a specific node
+ */
+router.delete('/nodes/:nodeNum/traceroutes', requireMessagesWrite, (req, res) => {
+  try {
+    const nodeNum = parseInt(req.params.nodeNum, 10);
+    const user = (req as any).user;
+
+    if (isNaN(nodeNum)) {
+      return res.status(400).json({
+        error: 'Bad request',
+        message: 'Invalid node number'
+      });
+    }
+
+    const deletedCount = databaseService.purgeNodeTraceroutes(nodeNum);
+
+    logger.info(`🗑️ User ${user?.username || 'anonymous'} purged ${deletedCount} traceroutes for node ${nodeNum}`);
+
+    // Log to audit log
+    if (user?.id) {
+      databaseService.auditLog(
+        user.id,
+        'node_traceroutes_purged',
+        'traceroutes',
+        `Purged ${deletedCount} traceroutes for node ${nodeNum}`,
+        req.ip || null
+      );
+    }
+
+    res.json({
+      message: 'Node traceroutes purged successfully',
+      nodeNum,
+      deletedCount
+    });
+  } catch (error) {
+    logger.error('❌ Error purging node traceroutes:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * DELETE /api/nodes/:nodeNum/telemetry
+ * Purge all telemetry data for a specific node
+ */
+router.delete('/nodes/:nodeNum/telemetry', requireMessagesWrite, (req, res) => {
+  try {
+    const nodeNum = parseInt(req.params.nodeNum, 10);
+    const user = (req as any).user;
+
+    if (isNaN(nodeNum)) {
+      return res.status(400).json({
+        error: 'Bad request',
+        message: 'Invalid node number'
+      });
+    }
+
+    const deletedCount = databaseService.purgeNodeTelemetry(nodeNum);
+
+    logger.info(`🗑️ User ${user?.username || 'anonymous'} purged ${deletedCount} telemetry records for node ${nodeNum}`);
+
+    // Log to audit log
+    if (user?.id) {
+      databaseService.auditLog(
+        user.id,
+        'node_telemetry_purged',
+        'telemetry',
+        `Purged ${deletedCount} telemetry records for node ${nodeNum}`,
+        req.ip || null
+      );
+    }
+
+    res.json({
+      message: 'Node telemetry purged successfully',
+      nodeNum,
+      deletedCount
+    });
+  } catch (error) {
+    logger.error('❌ Error purging node telemetry:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

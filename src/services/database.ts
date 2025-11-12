@@ -1896,6 +1896,23 @@ class DatabaseService {
     return Number(result.changes);
   }
 
+  purgeNodeTraceroutes(nodeNum: number): number {
+    // Delete all traceroutes involving this node (either as source or destination)
+    const stmt = this.db.prepare(`
+      DELETE FROM traceroutes
+      WHERE fromNodeNum = ? OR toNodeNum = ?
+    `);
+    const result = stmt.run(nodeNum, nodeNum);
+    return Number(result.changes);
+  }
+
+  purgeNodeTelemetry(nodeNum: number): number {
+    // Delete all telemetry data for this node
+    const stmt = this.db.prepare('DELETE FROM telemetry WHERE nodeNum = ?');
+    const result = stmt.run(nodeNum);
+    return Number(result.changes);
+  }
+
   // Database maintenance
   vacuum(): void {
     this.db.exec('VACUUM');

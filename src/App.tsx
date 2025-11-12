@@ -2256,6 +2256,66 @@ function App() {
     }
   };
 
+  const handlePurgeNodeTraceroutes = async (nodeNum: number) => {
+    const node = nodes.find(n => n.nodeNum === nodeNum);
+    const nodeName = node?.user?.shortName || node?.user?.longName || `Node ${nodeNum}`;
+
+    if (!window.confirm(`Are you sure you want to purge ALL traceroutes for ${nodeName}? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const response = await authFetch(`${baseUrl}/api/messages/nodes/${nodeNum}/traceroutes`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        showToast(`Purged ${data.deletedCount} traceroutes for ${nodeName}`, 'success');
+        // Refresh data from backend to ensure consistency
+        updateDataFromBackend();
+      } else {
+        const errorData = await response.json();
+        showToast(`Failed to purge traceroutes: ${errorData.message || 'Unknown error'}`, 'error');
+      }
+    } catch (err) {
+      showToast(`Failed to purge traceroutes: ${err instanceof Error ? err.message : 'Network error'}`, 'error');
+    }
+  };
+
+  const handlePurgeNodeTelemetry = async (nodeNum: number) => {
+    const node = nodes.find(n => n.nodeNum === nodeNum);
+    const nodeName = node?.user?.shortName || node?.user?.longName || `Node ${nodeNum}`;
+
+    if (!window.confirm(`Are you sure you want to purge ALL telemetry data for ${nodeName}? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const response = await authFetch(`${baseUrl}/api/messages/nodes/${nodeNum}/telemetry`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        showToast(`Purged ${data.deletedCount} telemetry records for ${nodeName}`, 'success');
+        // Refresh data from backend to ensure consistency
+        updateDataFromBackend();
+      } else {
+        const errorData = await response.json();
+        showToast(`Failed to purge telemetry: ${errorData.message || 'Unknown error'}`, 'error');
+      }
+    } catch (err) {
+      showToast(`Failed to purge telemetry: ${err instanceof Error ? err.message : 'Network error'}`, 'error');
+    }
+  };
+
   const handleSendMessage = async (channel: number = 0) => {
     if (!newMessage.trim() || connectionStatus !== 'connected') {
       return;
@@ -4255,28 +4315,70 @@ function App() {
                     fontSize: '0.9rem',
                     opacity: 0.8
                   }}>
-                    Purge all direct messages with {getNodeName(selectedDMNode)}. This action cannot be undone.
+                    Purge data for {getNodeName(selectedDMNode)}. These actions cannot be undone.
                   </p>
-                  <button
-                    onClick={() => {
-                      const selectedNode = nodes.find(n => n.user?.id === selectedDMNode);
-                      if (selectedNode) {
-                        handlePurgeDirectMessages(selectedNode.nodeNum);
-                      }
-                    }}
-                    className="danger-btn"
-                    style={{
-                      backgroundColor: '#dc3545',
-                      color: 'white',
-                      border: 'none',
-                      padding: '0.5rem 1rem',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      fontWeight: 'bold'
-                    }}
-                  >
-                    Purge All Messages
-                  </button>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <button
+                      onClick={() => {
+                        const selectedNode = nodes.find(n => n.user?.id === selectedDMNode);
+                        if (selectedNode) {
+                          handlePurgeDirectMessages(selectedNode.nodeNum);
+                        }
+                      }}
+                      className="danger-btn"
+                      style={{
+                        backgroundColor: '#dc3545',
+                        color: 'white',
+                        border: 'none',
+                        padding: '0.5rem 1rem',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      Purge All Messages
+                    </button>
+                    <button
+                      onClick={() => {
+                        const selectedNode = nodes.find(n => n.user?.id === selectedDMNode);
+                        if (selectedNode) {
+                          handlePurgeNodeTraceroutes(selectedNode.nodeNum);
+                        }
+                      }}
+                      className="danger-btn"
+                      style={{
+                        backgroundColor: '#dc3545',
+                        color: 'white',
+                        border: 'none',
+                        padding: '0.5rem 1rem',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      Purge Traceroutes
+                    </button>
+                    <button
+                      onClick={() => {
+                        const selectedNode = nodes.find(n => n.user?.id === selectedDMNode);
+                        if (selectedNode) {
+                          handlePurgeNodeTelemetry(selectedNode.nodeNum);
+                        }
+                      }}
+                      className="danger-btn"
+                      style={{
+                        backgroundColor: '#dc3545',
+                        color: 'white',
+                        border: 'none',
+                        padding: '0.5rem 1rem',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      Purge Telemetry
+                    </button>
+                  </div>
                 </div>
               )}
 
