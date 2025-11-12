@@ -2476,7 +2476,8 @@ function App() {
       channelSet.add(msg.channel);
     });
 
-    // Filter out channel -1 (used for direct messages), disabled channels (role = 0), and sort
+    // Filter out channel -1 (used for direct messages), disabled channels (role = 0),
+    // and channels the user doesn't have permission to read
     return Array.from(channelSet)
       .filter(ch => {
         if (ch === -1) return false; // Exclude DM channel
@@ -2486,6 +2487,11 @@ function App() {
 
         // If channel has config and role is Disabled (0), exclude it
         if (channelConfig && channelConfig.role === 0) {
+          return false;
+        }
+
+        // Check if user has permission to read this channel
+        if (!hasPermission(`channel_${ch}` as ResourceType, 'read')) {
           return false;
         }
 
