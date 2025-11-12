@@ -11,6 +11,7 @@ import apiService from '../services/api';
 import { formatDistance } from '../utils/distance';
 import { logger } from '../utils/logger';
 import { useToast } from './ToastContainer';
+import { getDeviceRoleName } from '../utils/deviceRole';
 
 interface RouteSegment {
   id: number;
@@ -177,20 +178,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
               <h3>LoRa Radio Configuration</h3>
               {(() => {
                 const localNode = nodes.find(n => n.user?.id === currentNodeId);
-                const roleNames: { [key: string]: string } = {
-                  '0': 'CLIENT',
-                  '2': 'ROUTER',
-                  '12': 'CLIENT_BASE',
-                  '1': 'CLIENT_MUTE',
-                  '3': 'REPEATER',
-                  '4': 'TRACKER',
-                  '5': 'SENSOR',
-                  '6': 'TAK',
-                  '7': 'CLIENT_HIDDEN',
-                  '8': 'LOST_AND_FOUND',
-                  '9': 'TAK_TRACKER'
-                };
-                const roleName = localNode?.user?.role ? roleNames[localNode.user.role] || `Unknown (${localNode.user.role})` : 'Unknown';
+                const roleName = getDeviceRoleName(localNode?.user?.role);
                 return <p><strong>Device Role:</strong> {roleName}</p>;
               })()}
               <p><strong>Region:</strong> {deviceConfig.radio?.region || 'Unknown'}</p>
