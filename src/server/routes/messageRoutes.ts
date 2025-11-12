@@ -96,7 +96,7 @@ router.delete('/:id', (req, res) => {
     if (!hasAnyWritePermission) {
       return res.status(403).json({
         error: 'Forbidden',
-        message: 'You need either messages:write or channels:write permission to delete messages'
+        message: 'You need either messages:write or channel_0:write permission to delete messages'
       });
     }
 
@@ -115,11 +115,12 @@ router.delete('/:id', (req, res) => {
     // Check specific permission for this message type
     if (!isAdmin) {
       if (isChannelMessage) {
-        const hasChannelsWrite = permissions.channel_0?.write === true;
-        if (!hasChannelsWrite) {
+        const channelResource = `channel_${message.channel}` as import('../../types/permission.js').ResourceType;
+        const hasChannelWrite = permissions[channelResource]?.write === true;
+        if (!hasChannelWrite) {
           return res.status(403).json({
             error: 'Forbidden',
-            message: 'You need channel_0:write permission to delete channel messages'
+            message: `You need ${channelResource}:write permission to delete messages from this channel`
           });
         }
       } else {
