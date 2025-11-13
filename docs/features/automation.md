@@ -147,6 +147,20 @@ When enabled, MeshMonitor monitors for nodes that appear for the first time in t
 - **All Channels**: Monitor all channels for new nodes
 - Choose the channel where you expect new users to appear
 
+**Maximum Hops Filter**: Limit welcome messages to nodes within a specific hop range
+
+- **Range**: 0-7 hops
+- **Default**: 7 (all nodes)
+- **Purpose**: Prevents welcoming distant nodes that may not be regular network participants
+- **Use Cases**:
+  - Set to 0-1 for welcoming only direct neighbors
+  - Set to 2-3 for local network participants
+  - Set to 7 to welcome all nodes regardless of distance
+- **Benefits**:
+  - Reduces unnecessary mesh traffic for distant nodes
+  - Focuses welcomes on local/active participants
+  - Helps manage network congestion in large meshes
+
 **Custom Welcome Message**: Craft your welcome message using dynamic tokens:
 
 - **`{SENDER}`**: Long name of the new node joining (e.g., "Alice's Node")
