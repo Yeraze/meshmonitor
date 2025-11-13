@@ -48,7 +48,15 @@
   font-weight: 500;
 }
 
-.favorite-btn {
+.graph-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  position: relative;
+}
+
+.favorite-btn,
+.graph-menu-btn {
   background: none;
   border: none;
   font-size: 1.2rem;
@@ -63,12 +71,47 @@
   transition: color 0.2s ease;
 }
 
-.favorite-btn:hover {
+.favorite-btn:hover,
+.graph-menu-btn:hover {
   color: var(--ctp-yellow);
 }
 
 .favorite-btn.favorited {
   color: var(--ctp-yellow);
+}
+
+.graph-menu-btn {
+  font-size: 1.4rem;
+  font-weight: bold;
+  line-height: 1;
+}
+
+.telemetry-context-menu {
+  background-color: var(--ctp-base);
+  border: 1px solid var(--ctp-surface1);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  min-width: 150px;
+  padding: 4px 0;
+}
+
+.context-menu-item {
+  display: block;
+  width: 100%;
+  padding: 8px 16px;
+  background: none;
+  border: none;
+  color: var(--ctp-text);
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background-color 0.2s ease;
+}
+
+.context-menu-item:hover {
+  background-color: var(--ctp-surface0);
+  color: var(--ctp-red);
 }
 
 @media (max-width: 768px) {

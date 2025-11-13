@@ -70,8 +70,19 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction) 
     });
   }
 
+  // Ensure tokens are the same length before comparison (required for timingSafeEqual)
+  const sessionBuffer = Buffer.from(sessionToken);
+  const requestBuffer = Buffer.from(requestToken);
+
+  if (sessionBuffer.length !== requestBuffer.length) {
+    logger.warn(`CSRF validation failed: Token length mismatch for ${req.method} ${req.path} (session: ${sessionBuffer.length}, request: ${requestBuffer.length})`);
+    return res.status(403).json({
+      error: 'Invalid CSRF token. Please refresh the page and try again.'
+    });
+  }
+
   // Constant-time comparison to prevent timing attacks
-  if (!crypto.timingSafeEqual(Buffer.from(sessionToken), Buffer.from(requestToken))) {
+  if (!crypto.timingSafeEqual(sessionBuffer, requestBuffer)) {
     logger.warn(`CSRF validation failed: Token mismatch for ${req.method} ${req.path}`);
     return res.status(403).json({
       error: 'Invalid CSRF token. Please refresh the page and try again.'

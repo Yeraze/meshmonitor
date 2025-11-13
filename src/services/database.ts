@@ -1913,6 +1913,13 @@ class DatabaseService {
     return Number(result.changes);
   }
 
+  deleteTelemetryByNodeAndType(nodeId: string, telemetryType: string): boolean {
+    // Delete telemetry data for a specific node and type
+    const stmt = this.db.prepare('DELETE FROM telemetry WHERE nodeId = ? AND telemetryType = ?');
+    const result = stmt.run(nodeId, telemetryType);
+    return Number(result.changes) > 0;
+  }
+
   // Database maintenance
   vacuum(): void {
     this.db.exec('VACUUM');
