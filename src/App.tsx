@@ -1725,7 +1725,30 @@ function App() {
 
       // Process nodes data
       if (pollData.nodes) {
-        setNodes(pollData.nodes);
+        // Merge server data with local optimistic updates for nodes with pending favorite changes
+        // This prevents polling from overwriting optimistic UI updates
+        setNodes(prevNodes => {
+          const pendingNodeNums = pendingFavoriteRequests.current;
+
+          if (pendingNodeNums.size === 0) {
+            // No pending updates, safe to use server data as-is
+            return pollData.nodes;
+          }
+
+          // Merge: keep optimistic isFavorite for nodes with pending requests
+          return pollData.nodes.map((serverNode: DeviceInfo) => {
+            if (pendingNodeNums.has(serverNode.nodeNum)) {
+              // Find the current local state for this node
+              const localNode = prevNodes.find(n => n.nodeNum === serverNode.nodeNum);
+              if (localNode) {
+                // Preserve the local optimistic isFavorite value
+                return { ...serverNode, isFavorite: localNode.isFavorite };
+              }
+            }
+            // Use server data for nodes without pending updates
+            return serverNode;
+          });
+        });
       }
 
       // Process messages data
@@ -2802,6 +2825,9 @@ function App() {
     }
   }, []);
 
+  // Track pending favorite requests to prevent multiple rapid clicks
+  const pendingFavoriteRequests = useRef<Set<number>>(new Set());
+
   // Function to toggle node favorite status
   const toggleFavorite = async (node: DeviceInfo, event: React.MouseEvent) => {
     event.stopPropagation(); // Prevent node selection when clicking star
@@ -2811,8 +2837,18 @@ function App() {
       return;
     }
 
+    // Prevent multiple rapid clicks on the same node
+    if (pendingFavoriteRequests.current.has(node.nodeNum)) {
+      return;
+    }
+
+    // Store the original state before any updates
+    const originalFavoriteStatus = node.isFavorite;
+    const newFavoriteStatus = !originalFavoriteStatus;
+
     try {
-      const newFavoriteStatus = !node.isFavorite;
+      // Mark this request as pending
+      pendingFavoriteRequests.current.add(node.nodeNum);
 
       // Optimistically update the UI
       setNodes(prevNodes =>
@@ -2838,11 +2874,11 @@ function App() {
       if (!response.ok) {
         if (response.status === 403) {
           showToast('Insufficient permissions to update favorites', 'error');
-          // Revert optimistic update
+          // Revert to original state using the saved original value
           setNodes(prevNodes =>
             prevNodes.map(n =>
               n.nodeNum === node.nodeNum
-                ? { ...n, isFavorite: !node.isFavorite }
+                ? { ...n, isFavorite: originalFavoriteStatus }
                 : n
             )
           );
@@ -2867,15 +2903,18 @@ function App() {
       logger.debug(statusMessage);
     } catch (error) {
       logger.error('Error toggling favorite:', error);
-      // Revert optimistic update on error
+      // Revert to original state using the saved original value
       setNodes(prevNodes =>
         prevNodes.map(n =>
           n.nodeNum === node.nodeNum
-            ? { ...n, isFavorite: !node.isFavorite }
+            ? { ...n, isFavorite: originalFavoriteStatus }
             : n
         )
       );
       showToast('Failed to update favorite status. Please try again.', 'error');
+    } finally {
+      // Always remove the pending request marker
+      pendingFavoriteRequests.current.delete(node.nodeNum);
     }
   };
 
