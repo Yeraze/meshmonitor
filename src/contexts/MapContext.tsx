@@ -86,7 +86,7 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
         return zoom;
       }
     }
-    return 10;
+    return 13; // Default zoom level for initial view (city/neighborhood level)
   });
   const [traceroutes, setTraceroutes] = useState<DbTraceroute[]>([]);
   const [neighborInfo, setNeighborInfo] = useState<EnrichedNeighborInfo[]>([]);
