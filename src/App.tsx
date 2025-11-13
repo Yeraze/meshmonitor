@@ -1490,7 +1490,7 @@ function App() {
           return;
         }
 
-        logger.debug(`📡 Connection API response: connected=${status.connected}, userDisconnected=${status.userDisconnected}`);
+        logger.debug(`📡 Connection API response: connected=${status.connected}, nodeResponsive=${status.nodeResponsive}, configuring=${status.configuring}, userDisconnected=${status.userDisconnected}`);
 
         // Check if user has manually disconnected
         if (status.userDisconnected) {
@@ -1508,7 +1508,23 @@ function App() {
           return;
         }
 
-        if (status.connected) {
+        // Check if node is in initial config capture phase
+        if (status.connected && status.configuring) {
+          logger.debug('⚙️  Node is downloading initial configuration');
+          setConnectionStatus('configuring');
+          setError(`Downloading initial configuration from node. The interface will be available shortly.`);
+          return;
+        }
+
+        // Check if server connected but node is not responsive
+        if (status.connected && !status.nodeResponsive) {
+          logger.debug('⚠️  Server connected but node is not responsive');
+          setConnectionStatus('node-offline');
+          setError(`Connected to server, but Meshtastic node is not responding. Please check if the device is powered on and properly connected.`);
+          return;
+        }
+
+        if (status.connected && status.nodeResponsive) {
           // Use updater function to get current state and decide whether to initialize
           setConnectionStatus(currentStatus => {
             logger.debug(`🔍 Current connection status: ${currentStatus}`);
@@ -1874,6 +1890,10 @@ function App() {
       }
     } catch (error) {
       logger.error('Failed to update data from backend:', error);
+      // Server is offline - update status to disconnected
+      setConnectionStatus('disconnected');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setError(`Server connection lost: ${errorMessage}`);
     }
   };
 
@@ -5127,7 +5147,12 @@ function App() {
           <div className="connection-status-container" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <div className="connection-status" onClick={fetchSystemStatus} style={{ cursor: 'pointer' }} title="Click for system status">
               <span className={`status-indicator ${connectionStatus === 'user-disconnected' ? 'disconnected' : connectionStatus}`}></span>
-              <span>{connectionStatus === 'user-disconnected' ? 'Disconnected' : connectionStatus === 'configuring' ? 'initializing' : connectionStatus}</span>
+              <span>{
+                connectionStatus === 'user-disconnected' ? 'Disconnected' :
+                connectionStatus === 'configuring' ? 'initializing' :
+                connectionStatus === 'node-offline' ? 'Node Offline' :
+                connectionStatus
+              }</span>
             </div>
 
             {/* Show disconnect/reconnect buttons based on connection status and permissions */}
