@@ -3772,6 +3772,57 @@ class MeshtasticManager {
   }
 
   /**
+   * Send a position request to a specific node
+   * This will request the destination node to send back its position
+   */
+  async sendPositionRequest(destination: number, channel: number = 0): Promise<number> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    if (!this.localNodeInfo) {
+      throw new Error('Local node information not available');
+    }
+
+    try {
+      // Get local node's position from database for position exchange
+      const localNode = databaseService.getNode(this.localNodeInfo.nodeNum);
+      const localPosition = (localNode?.latitude && localNode?.longitude) ? {
+        latitude: localNode.latitude,
+        longitude: localNode.longitude,
+        altitude: localNode.altitude
+      } : undefined;
+
+      const { data: positionRequestData, packetId } = meshtasticProtobufService.createPositionRequestMessage(
+        destination,
+        channel,
+        localPosition
+      );
+
+      logger.info(`📍 Position exchange packet created: ${positionRequestData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, packetId=${packetId}, position=${localPosition ? `${localPosition.latitude},${localPosition.longitude}` : 'none'}`);
+
+      await this.transport.send(positionRequestData);
+
+      // Broadcast to virtual node clients (including packet monitor)
+      const virtualNodeServer = (global as any).virtualNodeServer;
+      if (virtualNodeServer) {
+        try {
+          await virtualNodeServer.broadcastToClients(positionRequestData);
+          logger.info(`📡 Broadcasted outgoing position exchange to virtual node clients (${positionRequestData.length} bytes)`);
+        } catch (error) {
+          logger.error('Virtual node: Failed to broadcast outgoing position exchange:', error);
+        }
+      }
+
+      logger.info(`📤 Position exchange sent from ${this.localNodeInfo.nodeId} to !${destination.toString(16).padStart(8, '0')}`);
+      return packetId;
+    } catch (error) {
+      logger.error('Error sending position exchange:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Send raw ToRadio message to the physical node
    * Used by virtual node server to forward messages from mobile clients
    */

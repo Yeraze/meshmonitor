@@ -1996,6 +1996,45 @@ function App() {
     }
   };
 
+  const handleExchangePosition = async (nodeId: string) => {
+    if (connectionStatus !== 'connected') {
+      return;
+    }
+
+    try {
+      // Set loading state (reuse traceroute loading state)
+      setTracerouteLoading(nodeId);
+
+      // Convert nodeId to node number
+      const nodeNumStr = nodeId.replace('!', '');
+      const nodeNum = parseInt(nodeNumStr, 16);
+
+      await authFetch(`${baseUrl}/api/position/request`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ destination: nodeNum })
+      });
+
+      logger.debug(`📍 Position request sent to ${nodeId}`);
+
+      // Trigger a poll to refresh messages immediately
+      setTimeout(() => {
+        // The poll will run and fetch the new system message
+        // We use a small delay to ensure the backend has finished writing to DB
+      }, 500);
+
+      // Clear loading state after 30 seconds (same as traceroute)
+      setTimeout(() => {
+        setTracerouteLoading(null);
+      }, 30000);
+    } catch (error) {
+      logger.error('Failed to send position request:', error);
+      setTracerouteLoading(null);
+    }
+  };
+
   const handleSendDirectMessage = async (destinationNodeId: string) => {
     if (!newMessage.trim() || connectionStatus !== 'connected') {
       return;
@@ -4275,6 +4314,19 @@ function App() {
                         📜 Show History
                       </button>
                     </>
+                  )}
+                  {hasPermission('messages', 'write') && (
+                    <button
+                      onClick={() => handleExchangePosition(selectedDMNode)}
+                      disabled={connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode}
+                      className="traceroute-btn"
+                      title="Request position exchange with this node"
+                    >
+                      📍 Exchange Position
+                      {tracerouteLoading === selectedDMNode && (
+                        <span className="spinner"></span>
+                      )}
+                    </button>
                   )}
                   {hasPermission('messages', 'write') && selectedDMNode !== null && (
                     <button
