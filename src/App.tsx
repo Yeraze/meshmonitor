@@ -3532,48 +3532,6 @@ function App() {
                           </button>
                         </div>
                       )}
-
-                      {/* Danger Zone */}
-                      {hasPermission(`channel_${selectedChannel}` as ResourceType, 'write') && selectedChannel !== -1 && (
-                        <div className="danger-zone" style={{
-                          marginTop: '2rem',
-                          padding: '1rem',
-                          border: '2px solid #dc3545',
-                          borderRadius: '8px',
-                          backgroundColor: 'rgba(220, 53, 69, 0.1)'
-                        }}>
-                          <h3 style={{
-                            color: '#dc3545',
-                            marginTop: 0,
-                            marginBottom: '0.5rem',
-                            fontSize: '1.1rem'
-                          }}>
-                            Danger Zone
-                          </h3>
-                          <p style={{
-                            marginBottom: '1rem',
-                            fontSize: '0.9rem',
-                            opacity: 0.8
-                          }}>
-                            Purge all messages from this channel. This action cannot be undone.
-                          </p>
-                          <button
-                            onClick={() => handlePurgeChannelMessages(selectedChannel)}
-                            className="danger-btn"
-                            style={{
-                              backgroundColor: '#dc3545',
-                              color: 'white',
-                              border: 'none',
-                              padding: '0.5rem 1rem',
-                              borderRadius: '4px',
-                              cursor: 'pointer',
-                              fontWeight: 'bold'
-                            }}
-                          >
-                            Purge All Messages
-                          </button>
-                        </div>
-                      )}
                     </div>
                   )}
                 </div>
@@ -3684,6 +3642,42 @@ function App() {
                     </div>
                   )}
                 </div>
+                {hasPermission(`channel_${channelInfoModal}` as ResourceType, 'write') && channelInfoModal !== -1 && (
+                  <div style={{
+                    marginTop: '1.5rem',
+                    paddingTop: '1rem',
+                    borderTop: '1px solid var(--ctp-surface2)'
+                  }}>
+                    <button
+                      onClick={() => {
+                        handleCloseModal();
+                        handlePurgeChannelMessages(channelInfoModal);
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem',
+                        backgroundColor: '#dc3545',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontWeight: 'bold',
+                        fontSize: '0.95rem'
+                      }}
+                      title="Purge all messages from this channel"
+                    >
+                      Purge All Messages
+                    </button>
+                    <p style={{
+                      marginTop: '0.5rem',
+                      fontSize: '0.85rem',
+                      color: 'var(--ctp-subtext0)',
+                      textAlign: 'center'
+                    }}>
+                      This action cannot be undone
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
