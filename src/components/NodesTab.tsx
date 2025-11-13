@@ -141,6 +141,21 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
   const { hasPermission } = useAuth();
 
+  // Detect touch device to disable hover tooltips on mobile
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
+
+  useEffect(() => {
+    // Check if the device supports touch
+    const checkTouch = () => {
+      return (
+        'ontouchstart' in window ||
+        navigator.maxTouchPoints > 0 ||
+        (navigator as any).msMaxTouchPoints > 0
+      );
+    };
+    setIsTouchDevice(checkTouch());
+  }, []);
+
   // Ref for spiderfier controller to manage overlapping markers
   const spiderfierRef = useRef<SpiderfierControllerRef>(null);
 
@@ -828,18 +843,20 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 zIndexOffset={shouldAnimate ? 10000 : 0}
                 ref={(ref) => handleMarkerRef(ref, node.user?.id)}
               >
-                <Tooltip direction="top" offset={[0, -20]} opacity={0.9} interactive>
-                  <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontWeight: 'bold' }}>
-                      {node.user?.longName || node.user?.shortName || `!${node.nodeNum.toString(16)}`}
-                    </div>
-                    {node.hopsAway !== undefined && (
-                      <div style={{ fontSize: '0.85em', opacity: 0.8 }}>
-                        {node.hopsAway} hop{node.hopsAway !== 1 ? 's' : ''}
+                {!isTouchDevice && (
+                  <Tooltip direction="top" offset={[0, -20]} opacity={0.9} interactive>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontWeight: 'bold' }}>
+                        {node.user?.longName || node.user?.shortName || `!${node.nodeNum.toString(16)}`}
                       </div>
-                    )}
-                  </div>
-                </Tooltip>
+                      {node.hopsAway !== undefined && (
+                        <div style={{ fontSize: '0.85em', opacity: 0.8 }}>
+                          {node.hopsAway} hop{node.hopsAway !== 1 ? 's' : ''}
+                        </div>
+                      )}
+                    </div>
+                  </Tooltip>
+                )}
                 <Popup autoPan={false}>
                   <div className="node-popup">
                     <div className="node-popup-header">
