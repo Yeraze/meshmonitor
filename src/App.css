@@ -1947,6 +1947,17 @@ body {
   color: var(--ctp-sky);
 }
 
+.channel-button.selected .channel-info-link {
+  color: var(--ctp-base);
+  background: rgba(17, 17, 27, 0.3);
+  font-weight: 600;
+}
+
+.channel-button.selected .channel-info-link:hover {
+  background: rgba(17, 17, 27, 0.5);
+  color: var(--ctp-text);
+}
+
 .channel-button-status {
   display: flex;
   gap: 0.25rem;
