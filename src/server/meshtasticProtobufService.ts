@@ -120,16 +120,17 @@ export class MeshtasticProtobufService {
     destination: number,
     channel?: number,
     position?: { latitude: number; longitude: number; altitude?: number | null }
-  ): { data: Uint8Array; packetId: number } {
+  ): { data: Uint8Array; packetId: number; requestId: number } {
     const root = getProtobufRoot();
     if (!root) {
       logger.error('❌ Protobuf definitions not loaded');
-      return { data: new Uint8Array(), packetId: 0 };
+      return { data: new Uint8Array(), packetId: 0, requestId: 0 };
     }
 
     try {
       // Generate a unique packet ID (Meshtastic uses 32-bit unsigned integers)
       const packetId = Math.floor(Math.random() * 0xffffffff);
+      const requestId = Math.floor(Math.random() * 0xffffffff);
 
       // Create Position message for position exchange
       // According to Meshtastic protocol: send your position with wantResponse=true to exchange positions
@@ -159,7 +160,7 @@ export class MeshtasticProtobufService {
         payload: payload,
         dest: destination,
         wantResponse: true, // Request position exchange from destination
-        requestId: Math.floor(Math.random() * 0xffffffff)
+        requestId: requestId
       });
 
       // Create the MeshPacket with explicit ID
@@ -179,10 +180,10 @@ export class MeshtasticProtobufService {
         packet: meshPacket
       });
 
-      return { data: ToRadio.encode(toRadio).finish(), packetId };
+      return { data: ToRadio.encode(toRadio).finish(), packetId, requestId };
     } catch (error) {
       logger.error('❌ Failed to create position exchange message:', error);
-      return { data: new Uint8Array(), packetId: 0 };
+      return { data: new Uint8Array(), packetId: 0, requestId: 0 };
     }
   }
 

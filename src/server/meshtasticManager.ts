@@ -1,4 +1,4 @@
-import databaseService from '../services/database.js';
+import databaseService, { type DbMessage } from '../services/database.js';
 import meshtasticProtobufService from './meshtasticProtobufService.js';
 import protobufService from './protobufService.js';
 import { TcpTransport } from './tcpTransport.js';
@@ -1261,6 +1261,27 @@ class MeshtasticManager {
         const precisionBits = position.precisionBits ?? position.precision_bits ?? undefined;
         const gpsAccuracy = position.gpsAccuracy ?? position.gps_accuracy ?? undefined;
         const hdop = position.HDOP ?? position.hdop ?? undefined;
+
+        // Check if this position is a response to a position exchange request
+        // Position exchange uses wantResponse=true, which means the position response IS the acknowledgment
+        // Look for a pending "Position exchange requested" message to this node
+        const localNodeInfo = this.getLocalNodeInfo();
+        if (localNodeInfo) {
+          const localNodeId = `!${localNodeInfo.nodeNum.toString(16).padStart(8, '0')}`;
+          const pendingMessages = databaseService.getDirectMessages(localNodeId, nodeId, 100);
+          const pendingExchangeRequest = pendingMessages.find((msg: DbMessage) =>
+            msg.text === 'Position exchange requested' &&
+            msg.fromNodeNum === localNodeInfo.nodeNum &&
+            msg.toNodeNum === fromNum &&
+            msg.requestId !== undefined // Must have a requestId
+          );
+
+          if (pendingExchangeRequest && pendingExchangeRequest.requestId !== undefined) {
+            // Mark the position exchange request as delivered
+            databaseService.updateMessageDeliveryState(pendingExchangeRequest.requestId, 'delivered');
+            logger.info(`📍 Position exchange acknowledged: Received position from ${nodeId}, marking request message as delivered`);
+          }
+        }
 
         // Track PKI encryption
         this.trackPKIEncryption(meshPacket, fromNum);
@@ -3775,7 +3796,7 @@ class MeshtasticManager {
    * Send a position request to a specific node
    * This will request the destination node to send back its position
    */
-  async sendPositionRequest(destination: number, channel: number = 0): Promise<number> {
+  async sendPositionRequest(destination: number, channel: number = 0): Promise<{ packetId: number; requestId: number }> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
     }
@@ -3793,13 +3814,13 @@ class MeshtasticManager {
         altitude: localNode.altitude
       } : undefined;
 
-      const { data: positionRequestData, packetId } = meshtasticProtobufService.createPositionRequestMessage(
+      const { data: positionRequestData, packetId, requestId } = meshtasticProtobufService.createPositionRequestMessage(
         destination,
         channel,
         localPosition
       );
 
-      logger.info(`📍 Position exchange packet created: ${positionRequestData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, packetId=${packetId}, position=${localPosition ? `${localPosition.latitude},${localPosition.longitude}` : 'none'}`);
+      logger.info(`📍 Position exchange packet created: ${positionRequestData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, packetId=${packetId}, requestId=${requestId}, position=${localPosition ? `${localPosition.latitude},${localPosition.longitude}` : 'none'}`);
 
       await this.transport.send(positionRequestData);
 
@@ -3815,7 +3836,7 @@ class MeshtasticManager {
       }
 
       logger.info(`📤 Position exchange sent from ${this.localNodeInfo.nodeId} to !${destination.toString(16).padStart(8, '0')}`);
-      return packetId;
+      return { packetId, requestId };
     } catch (error) {
       logger.error('Error sending position exchange:', error);
       throw error;

@@ -1723,21 +1723,21 @@ apiRouter.post('/position/request', requirePermission('messages', 'write'), asyn
     const node = databaseService.getNode(destinationNum);
     const channel = node?.channel ?? 0; // Default to 0 if node not found or channel not set
 
-    const packetId = await meshtasticManager.sendPositionRequest(destinationNum, channel);
+    const { packetId, requestId } = await meshtasticManager.sendPositionRequest(destinationNum, channel);
 
     // Get local node info to create system message
     const localNodeInfo = meshtasticManager.getLocalNodeInfo();
     logger.info(`📍 localNodeInfo for system message: ${localNodeInfo ? `nodeId=${localNodeInfo.nodeId}, nodeNum=${localNodeInfo.nodeNum}` : 'NULL'}`);
 
     if (localNodeInfo) {
-      // Create a system message to record the position request using the actual packet ID
+      // Create a system message to record the position request using the actual packet ID and requestId
       const messageId = `${packetId}`;
       const timestamp = Date.now();
 
       // For DMs (channel 0), store as channel -1 to show in DM conversation
       const messageChannel = (channel === 0) ? -1 : channel;
 
-      logger.info(`📍 Inserting position request system message to database: ${messageId} (channel: ${messageChannel}, packetId: ${packetId})`);
+      logger.info(`📍 Inserting position request system message to database: ${messageId} (channel: ${messageChannel}, packetId: ${packetId}, requestId: ${requestId})`);
       databaseService.insertMessage({
         id: messageId,
         fromNodeNum: localNodeInfo.nodeNum,
@@ -1747,6 +1747,7 @@ apiRouter.post('/position/request', requirePermission('messages', 'write'), asyn
         text: 'Position exchange requested',
         channel: messageChannel,
         portnum: 1, // TEXT_MESSAGE_APP so it shows in DM view (DM filter requires portnum === 1)
+        requestId: requestId, // Store requestId for ACK matching
         timestamp: timestamp,
         rxTime: timestamp,
         createdAt: timestamp

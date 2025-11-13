@@ -88,6 +88,7 @@ export interface DbMessage {
   text: string;
   channel: number;
   portnum?: number;
+  requestId?: number;
   timestamp: number;
   rxTime?: number;
   hopStart?: number;
