@@ -3748,7 +3748,20 @@ class MeshtasticManager {
     try {
       const tracerouteData = meshtasticProtobufService.createTracerouteMessage(destination, channel);
 
+      logger.info(`🔍 Traceroute packet created: ${tracerouteData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}`);
+
       await this.transport.send(tracerouteData);
+
+      // Broadcast the outgoing traceroute packet to virtual node clients (including packet monitor)
+      const virtualNodeServer = (global as any).virtualNodeServer;
+      if (virtualNodeServer) {
+        try {
+          await virtualNodeServer.broadcastToClients(tracerouteData);
+          logger.info(`📡 Broadcasted outgoing traceroute to virtual node clients (${tracerouteData.length} bytes)`);
+        } catch (error) {
+          logger.error('Virtual node: Failed to broadcast outgoing traceroute:', error);
+        }
+      }
 
       databaseService.recordTracerouteRequest(this.localNodeInfo.nodeNum, destination);
       logger.info(`📤 Traceroute request sent from ${this.localNodeInfo.nodeId} to !${destination.toString(16).padStart(8, '0')}`);

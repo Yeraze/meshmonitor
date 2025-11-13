@@ -2387,15 +2387,8 @@ class DatabaseService {
 
   getAllTraceroutes(limit: number = 100): DbTraceroute[] {
     const stmt = this.db.prepare(`
-      SELECT t.* FROM traceroutes t
-      INNER JOIN (
-        SELECT fromNodeNum, toNodeNum, MAX(timestamp) as maxTimestamp
-        FROM traceroutes
-        GROUP BY fromNodeNum, toNodeNum
-      ) latest ON t.fromNodeNum = latest.fromNodeNum
-        AND t.toNodeNum = latest.toNodeNum
-        AND t.timestamp = latest.maxTimestamp
-      ORDER BY t.timestamp DESC
+      SELECT * FROM traceroutes
+      ORDER BY timestamp DESC
       LIMIT ?
     `);
     const traceroutes = stmt.all(limit) as DbTraceroute[];
