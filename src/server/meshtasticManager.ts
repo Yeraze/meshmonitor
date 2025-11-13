@@ -4107,6 +4107,14 @@ class MeshtasticManager {
         }
       }
 
+      // Check if node exceeds maximum hop count
+      const autoWelcomeMaxHops = databaseService.getSetting('autoWelcomeMaxHops');
+      const maxHops = autoWelcomeMaxHops ? parseInt(autoWelcomeMaxHops) : 5; // Default to 5 hops
+      if (node.hopsAway !== undefined && node.hopsAway > maxHops) {
+        logger.debug(`⏭️  Skipping auto-welcome for ${nodeId} - too far away (${node.hopsAway} hops > ${maxHops} max)`);
+        return;
+      }
+
       // Get welcome message template
       const autoWelcomeMessage = databaseService.getSetting('autoWelcomeMessage') || 'Welcome {LONG_NAME} ({SHORT_NAME}) to the mesh!';
 

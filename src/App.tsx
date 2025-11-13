@@ -473,6 +473,8 @@ function App() {
     setAutoWelcomeTarget,
     autoWelcomeWaitForName,
     setAutoWelcomeWaitForName,
+    autoWelcomeMaxHops,
+    setAutoWelcomeMaxHops,
     showNodeFilterPopup,
     setShowNodeFilterPopup
   } = useUI();
@@ -822,6 +824,10 @@ function App() {
 
           if (settings.autoWelcomeWaitForName !== undefined) {
             setAutoWelcomeWaitForName(settings.autoWelcomeWaitForName === 'true');
+          }
+
+          if (settings.autoWelcomeMaxHops) {
+            setAutoWelcomeMaxHops(parseInt(settings.autoWelcomeMaxHops));
           }
         }
 
@@ -5562,12 +5568,14 @@ function App() {
                 message={autoWelcomeMessage}
                 target={autoWelcomeTarget}
                 waitForName={autoWelcomeWaitForName}
+                maxHops={autoWelcomeMaxHops}
                 channels={channels}
                 baseUrl={baseUrl}
                 onEnabledChange={setAutoWelcomeEnabled}
                 onMessageChange={setAutoWelcomeMessage}
                 onTargetChange={setAutoWelcomeTarget}
                 onWaitForNameChange={setAutoWelcomeWaitForName}
+                onMaxHopsChange={setAutoWelcomeMaxHops}
               />
               <AutoTracerouteSection
                 intervalMinutes={tracerouteIntervalMinutes}
