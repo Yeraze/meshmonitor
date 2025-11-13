@@ -56,6 +56,8 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
   const [error, setError] = useState<string | null>(null);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [solarEstimates, setSolarEstimates] = useState<Map<number, number>>(new Map());
+  const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
 
   // Get computed CSS color values for chart styling (Recharts doesn't support CSS variables in inline styles)
   const [chartColors, setChartColors] = useState({
@@ -274,6 +276,71 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
   const createToggleFavorite = useCallback((type: string) => {
     return () => toggleFavorite(type);
   }, [toggleFavorite]);
+
+  // Handle menu open/close
+  const handleMenuClick = (event: React.MouseEvent<HTMLButtonElement>, telemetryType: string) => {
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    setMenuPosition({ x: rect.left, y: rect.bottom });
+    setOpenMenu(openMenu === telemetryType ? null : telemetryType);
+  };
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => {
+      if (openMenu) {
+        setOpenMenu(null);
+        setMenuPosition(null);
+      }
+    };
+
+    if (openMenu) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [openMenu]);
+
+  // Handle purge data
+  const handlePurgeData = async (telemetryType: string) => {
+    const confirmed = window.confirm(
+      `Are you sure you want to purge all ${getTelemetryLabel(telemetryType)} data for this node? This action cannot be undone.`
+    );
+
+    if (!confirmed) {
+      setOpenMenu(null);
+      setMenuPosition(null);
+      return;
+    }
+
+    try {
+      const response = await csrfFetch(`${baseUrl}/api/telemetry/${nodeId}/${telemetryType}`, {
+        method: 'DELETE'
+      });
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          showToast('Insufficient permissions to purge telemetry data', 'error');
+          return;
+        }
+        throw new Error(`Server returned ${response.status}`);
+      }
+
+      showToast(`${getTelemetryLabel(telemetryType)} data purged successfully`, 'success');
+
+      // Refresh telemetry data
+      const fetchResponse = await fetch(`${baseUrl}/api/telemetry/${nodeId}?hours=${telemetryHours}`);
+      if (fetchResponse.ok) {
+        const data: TelemetryData[] = await fetchResponse.json();
+        setTelemetryData(data);
+      }
+    } catch (error) {
+      logger.error('Error purging telemetry data:', error);
+      showToast('Failed to purge telemetry data. Please try again.', 'error');
+    } finally {
+      setOpenMenu(null);
+      setMenuPosition(null);
+    }
+  };
 
   const groupByType = (data: TelemetryData[]): Map<string, TelemetryData[]> => {
     const grouped = new Map<string, TelemetryData[]>();
@@ -509,13 +576,40 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
             <div key={type} className="graph-container">
               <div className="graph-header">
                 <h4 className="graph-title">{label} {unit && `(${unit})`}</h4>
-                <button
-                  className={`favorite-btn ${favorites.has(type) ? 'favorited' : ''}`}
-                  onClick={createToggleFavorite(type)}
-                  aria-label={favorites.has(type) ? 'Remove from favorites' : 'Add to favorites'}
-                >
-                  {favorites.has(type) ? '★' : '☆'}
-                </button>
+                <div className="graph-actions">
+                  <button
+                    className={`favorite-btn ${favorites.has(type) ? 'favorited' : ''}`}
+                    onClick={createToggleFavorite(type)}
+                    aria-label={favorites.has(type) ? 'Remove from favorites' : 'Add to favorites'}
+                  >
+                    {favorites.has(type) ? '★' : '☆'}
+                  </button>
+                  <button
+                    className="graph-menu-btn"
+                    onClick={(e) => handleMenuClick(e, type)}
+                    aria-label="More options"
+                  >
+                    ⋯
+                  </button>
+                  {openMenu === type && menuPosition && (
+                    <div
+                      className="telemetry-context-menu"
+                      style={{
+                        position: 'fixed',
+                        top: `${menuPosition.y}px`,
+                        left: `${menuPosition.x}px`
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <button
+                        className="context-menu-item"
+                        onClick={() => handlePurgeData(type)}
+                      >
+                        Purge Data
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
               <ResponsiveContainer width="100%" height={200}>
                 <ComposedChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>

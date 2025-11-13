@@ -1935,6 +1935,27 @@ apiRouter.get('/telemetry/:nodeId', optionalAuth(), (req, res) => {
   }
 });
 
+// Delete telemetry data for a specific node and type
+apiRouter.delete('/telemetry/:nodeId/:telemetryType', requireAuth(), requirePermission('info', 'write'), (req, res) => {
+  try {
+    const { nodeId, telemetryType } = req.params;
+
+    logger.info(`Purging telemetry data for node ${nodeId}, type ${telemetryType}`);
+
+    const deleted = databaseService.deleteTelemetryByNodeAndType(nodeId, telemetryType);
+
+    if (deleted) {
+      logger.info(`Successfully purged ${telemetryType} telemetry for node ${nodeId}`);
+      res.json({ success: true, message: `Telemetry data purged successfully` });
+    } else {
+      res.status(404).json({ error: 'No telemetry data found to delete' });
+    }
+  } catch (error) {
+    logger.error('Error purging telemetry data:', error);
+    res.status(500).json({ error: 'Failed to purge telemetry data' });
+  }
+});
+
 // Check which nodes have telemetry data
 apiRouter.get('/telemetry/available/nodes', requirePermission('info', 'read'), (_req, res) => {
   try {
