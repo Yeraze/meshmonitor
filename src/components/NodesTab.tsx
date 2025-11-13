@@ -467,12 +467,25 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   // Calculate center point of all nodes for initial map view
   // Use saved map center from localStorage if available, otherwise calculate from nodes
   const getMapCenter = (): [number, number] => {
+    // Use saved map center from previous session if available
     if (mapCenter) {
       return mapCenter;
     }
+
+    // If no nodes with positions, use default location
     if (nodesWithPosition.length === 0) {
       return [25.7617, -80.1918]; // Default to Miami area
     }
+
+    // Prioritize the locally connected node's position for first-time visitors
+    if (currentNodeId) {
+      const localNode = nodesWithPosition.find(node => node.user?.id === currentNodeId);
+      if (localNode && localNode.position) {
+        return [localNode.position.latitude, localNode.position.longitude];
+      }
+    }
+
+    // Fall back to average position of all nodes
     const avgLat = nodesWithPosition.reduce((sum, node) => sum + node.position!.latitude, 0) / nodesWithPosition.length;
     const avgLng = nodesWithPosition.reduce((sum, node) => sum + node.position!.longitude, 0) / nodesWithPosition.length;
     return [avgLat, avgLng];
