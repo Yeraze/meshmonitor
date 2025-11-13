@@ -501,6 +501,9 @@ function App() {
   // Track the newest message ID to detect NEW messages (count-based tracking fails at the 100 message limit)
   const newestMessageId = useRef<string>('');
 
+  // Position exchange loading state (separate from traceroute loading)
+  const [positionLoading, setPositionLoading] = useState<string | null>(null);
+
   // Refs for message input fields (to focus on reply)
   const channelMessageInputRef = useRef<HTMLInputElement>(null);
   const dmMessageInputRef = useRef<HTMLInputElement>(null);
@@ -1993,6 +1996,52 @@ function App() {
     } catch (error) {
       logger.error('Failed to send traceroute:', error);
       setTracerouteLoading(null);
+    }
+  };
+
+  const handleExchangePosition = async (nodeId: string) => {
+    if (connectionStatus !== 'connected') {
+      return;
+    }
+
+    // Prevent duplicate requests (debounce logic)
+    if (positionLoading === nodeId) {
+      logger.debug(`📍 Position exchange already in progress for ${nodeId}`);
+      return;
+    }
+
+    try {
+      // Set loading state using dedicated position loading state
+      setPositionLoading(nodeId);
+
+      // Convert nodeId to node number for backend
+      const nodeNumStr = nodeId.replace('!', '');
+      const nodeNum = parseInt(nodeNumStr, 16);
+
+      // Use direct fetch with CSRF token (consistent with other message endpoints)
+      await authFetch(`${baseUrl}/api/position/request`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ destination: nodeNum })
+      });
+
+      logger.debug(`📍 Position request sent to ${nodeId}`);
+
+      // Trigger a poll to refresh messages immediately
+      setTimeout(() => {
+        // The poll will run and fetch the new system message
+        // We use a small delay to ensure the backend has finished writing to DB
+      }, 500);
+
+      // Clear loading state after 30 seconds
+      setTimeout(() => {
+        setPositionLoading(null);
+      }, 30000);
+    } catch (error) {
+      logger.error('Failed to send position request:', error);
+      setPositionLoading(null);
     }
   };
 
@@ -4275,6 +4324,19 @@ function App() {
                         📜 Show History
                       </button>
                     </>
+                  )}
+                  {hasPermission('messages', 'write') && (
+                    <button
+                      onClick={() => handleExchangePosition(selectedDMNode)}
+                      disabled={connectionStatus !== 'connected' || positionLoading === selectedDMNode}
+                      className="traceroute-btn"
+                      title="Request position exchange with this node"
+                    >
+                      📍 Exchange Position
+                      {positionLoading === selectedDMNode && (
+                        <span className="spinner"></span>
+                      )}
+                    </button>
                   )}
                   {hasPermission('messages', 'write') && selectedDMNode !== null && (
                     <button

@@ -1,4 +1,4 @@
-import databaseService from '../services/database.js';
+import databaseService, { type DbMessage } from '../services/database.js';
 import meshtasticProtobufService from './meshtasticProtobufService.js';
 import protobufService from './protobufService.js';
 import { TcpTransport } from './tcpTransport.js';
@@ -1261,6 +1261,27 @@ class MeshtasticManager {
         const precisionBits = position.precisionBits ?? position.precision_bits ?? undefined;
         const gpsAccuracy = position.gpsAccuracy ?? position.gps_accuracy ?? undefined;
         const hdop = position.HDOP ?? position.hdop ?? undefined;
+
+        // Check if this position is a response to a position exchange request
+        // Position exchange uses wantResponse=true, which means the position response IS the acknowledgment
+        // Look for a pending "Position exchange requested" message to this node
+        const localNodeInfo = this.getLocalNodeInfo();
+        if (localNodeInfo) {
+          const localNodeId = `!${localNodeInfo.nodeNum.toString(16).padStart(8, '0')}`;
+          const pendingMessages = databaseService.getDirectMessages(localNodeId, nodeId, 100);
+          const pendingExchangeRequest = pendingMessages.find((msg: DbMessage) =>
+            msg.text === 'Position exchange requested' &&
+            msg.fromNodeNum === localNodeInfo.nodeNum &&
+            msg.toNodeNum === fromNum &&
+            msg.requestId !== undefined // Must have a requestId
+          );
+
+          if (pendingExchangeRequest && pendingExchangeRequest.requestId !== undefined) {
+            // Mark the position exchange request as delivered
+            databaseService.updateMessageDeliveryState(pendingExchangeRequest.requestId, 'delivered');
+            logger.info(`📍 Position exchange acknowledged: Received position from ${nodeId}, marking request message as delivered`);
+          }
+        }
 
         // Track PKI encryption
         this.trackPKIEncryption(meshPacket, fromNum);
@@ -3767,6 +3788,57 @@ class MeshtasticManager {
       logger.info(`📤 Traceroute request sent from ${this.localNodeInfo.nodeId} to !${destination.toString(16).padStart(8, '0')}`);
     } catch (error) {
       logger.error('Error sending traceroute:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Send a position request to a specific node
+   * This will request the destination node to send back its position
+   */
+  async sendPositionRequest(destination: number, channel: number = 0): Promise<{ packetId: number; requestId: number }> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    if (!this.localNodeInfo) {
+      throw new Error('Local node information not available');
+    }
+
+    try {
+      // Get local node's position from database for position exchange
+      const localNode = databaseService.getNode(this.localNodeInfo.nodeNum);
+      const localPosition = (localNode?.latitude && localNode?.longitude) ? {
+        latitude: localNode.latitude,
+        longitude: localNode.longitude,
+        altitude: localNode.altitude
+      } : undefined;
+
+      const { data: positionRequestData, packetId, requestId } = meshtasticProtobufService.createPositionRequestMessage(
+        destination,
+        channel,
+        localPosition
+      );
+
+      logger.info(`📍 Position exchange packet created: ${positionRequestData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, packetId=${packetId}, requestId=${requestId}, position=${localPosition ? `${localPosition.latitude},${localPosition.longitude}` : 'none'}`);
+
+      await this.transport.send(positionRequestData);
+
+      // Broadcast to virtual node clients (including packet monitor)
+      const virtualNodeServer = (global as any).virtualNodeServer;
+      if (virtualNodeServer) {
+        try {
+          await virtualNodeServer.broadcastToClients(positionRequestData);
+          logger.info(`📡 Broadcasted outgoing position exchange to virtual node clients (${positionRequestData.length} bytes)`);
+        } catch (error) {
+          logger.error('Virtual node: Failed to broadcast outgoing position exchange:', error);
+        }
+      }
+
+      logger.info(`📤 Position exchange sent from ${this.localNodeInfo.nodeId} to !${destination.toString(16).padStart(8, '0')}`);
+      return { packetId, requestId };
+    } catch (error) {
+      logger.error('Error sending position exchange:', error);
       throw error;
     }
   }

@@ -113,6 +113,81 @@ export class MeshtasticProtobufService {
   }
 
   /**
+   * Create a position request ToRadio using proper protobuf encoding
+   * This sends a position packet with wantResponse=true to request the destination node's position
+   */
+  createPositionRequestMessage(
+    destination: number,
+    channel?: number,
+    position?: { latitude: number; longitude: number; altitude?: number | null }
+  ): { data: Uint8Array; packetId: number; requestId: number } {
+    const root = getProtobufRoot();
+    if (!root) {
+      logger.error('❌ Protobuf definitions not loaded');
+      return { data: new Uint8Array(), packetId: 0, requestId: 0 };
+    }
+
+    try {
+      // Generate a unique packet ID (Meshtastic uses 32-bit unsigned integers)
+      const packetId = Math.floor(Math.random() * 0xffffffff);
+      const requestId = Math.floor(Math.random() * 0xffffffff);
+
+      // Create Position message for position exchange
+      // According to Meshtastic protocol: send your position with wantResponse=true to exchange positions
+      const Position = root.lookupType('meshtastic.Position');
+      const positionData: any = {};
+
+      if (position) {
+        // Send actual position for position exchange
+        positionData.latitudeI = Math.round(position.latitude * 1e7);  // Convert to fixed-point
+        positionData.longitudeI = Math.round(position.longitude * 1e7); // Convert to fixed-point
+        if (position.altitude !== null && position.altitude !== undefined) {
+          positionData.altitude = Math.round(position.altitude);
+        }
+        positionData.time = Math.floor(Date.now() / 1000); // Unix timestamp
+      }
+      // If no position provided, send empty position (fallback behavior)
+
+      const positionMessage = Position.create(positionData);
+
+      // Encode the Position as payload
+      const payload = Position.encode(positionMessage).finish();
+
+      // Create the Data message with POSITION_APP portnum
+      const Data = root.lookupType('meshtastic.Data');
+      const dataMessage = Data.create({
+        portnum: 3, // POSITION_APP
+        payload: payload,
+        dest: destination,
+        wantResponse: true, // Request position exchange from destination
+        requestId: requestId
+      });
+
+      // Create the MeshPacket with explicit ID
+      const MeshPacket = root.lookupType('meshtastic.MeshPacket');
+      const meshPacket = MeshPacket.create({
+        id: packetId,
+        to: destination,
+        channel: channel || 0,
+        decoded: dataMessage,
+        wantAck: true, // We want to know if the message was delivered
+        hopLimit: 3 // Default hop limit for position exchange
+      });
+
+      // Create the ToRadio message
+      const ToRadio = root.lookupType('meshtastic.ToRadio');
+      const toRadio = ToRadio.create({
+        packet: meshPacket
+      });
+
+      return { data: ToRadio.encode(toRadio).finish(), packetId, requestId };
+    } catch (error) {
+      logger.error('❌ Failed to create position exchange message:', error);
+      return { data: new Uint8Array(), packetId: 0, requestId: 0 };
+    }
+  }
+
+  /**
    * Create a text message ToRadio using proper protobuf encoding
    */
   createTextMessage(text: string, destination?: number, channel?: number, replyId?: number, emoji?: number): { data: Uint8Array; messageId: number } {

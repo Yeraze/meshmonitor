@@ -543,6 +543,29 @@ class ApiService {
     return response.json();
   }
 
+  async requestPosition(nodeId: string) {
+    // Validate node ID format
+    const validatedNodeId = validateNodeId(nodeId);
+    if (!validatedNodeId) {
+      throw new Error('Invalid node ID provided for position request');
+    }
+
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/position/request`, {
+      method: 'POST',
+      headers: this.getHeadersWithCsrf(),
+      credentials: 'include',
+      body: JSON.stringify({ destination: validatedNodeId }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to request position');
+    }
+
+    return response.json();
+  }
+
   async getRecentTraceroutes() {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/traceroutes/recent`);
