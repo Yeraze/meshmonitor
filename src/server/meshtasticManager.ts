@@ -148,6 +148,8 @@ class MeshtasticManager {
   private async handleConnected(): Promise<void> {
     logger.debug('✅ TCP connection established, requesting configuration...');
     this.isConnected = true;
+    // Clear localNodeInfo so node will be marked as not responsive until it sends MyNodeInfo
+    this.localNodeInfo = null;
 
     try {
       // Enable message capture for virtual node server
@@ -213,6 +215,8 @@ class MeshtasticManager {
   private handleDisconnected(): void {
     logger.debug('🔌 TCP connection lost');
     this.isConnected = false;
+    // Clear localNodeInfo so node will be marked as not responsive
+    this.localNodeInfo = null;
     // Clear favorites support cache on disconnect
     this.favoritesSupportCache = null;
 
@@ -4960,10 +4964,16 @@ class MeshtasticManager {
     }
   }
 
-  getConnectionStatus(): { connected: boolean; nodeIp: string; userDisconnected?: boolean } {
-    logger.debug(`🔍 getConnectionStatus called: isConnected=${this.isConnected}, userDisconnected=${this.userDisconnectedState}`);
+  getConnectionStatus(): { connected: boolean; nodeResponsive: boolean; configuring: boolean; nodeIp: string; userDisconnected?: boolean } {
+    // Node is responsive if we have localNodeInfo (received MyNodeInfo from device)
+    const nodeResponsive = this.localNodeInfo !== null;
+    // Node is configuring if connected but initial config capture not complete
+    const configuring = this.isConnected && !this.configCaptureComplete;
+    logger.debug(`🔍 getConnectionStatus called: isConnected=${this.isConnected}, nodeResponsive=${nodeResponsive}, configuring=${configuring}, userDisconnected=${this.userDisconnectedState}`);
     return {
       connected: this.isConnected,
+      nodeResponsive,
+      configuring,
       nodeIp: this.config.nodeIp,
       userDisconnected: this.userDisconnectedState
     };

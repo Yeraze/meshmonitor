@@ -4,7 +4,7 @@ export type SortField = 'longName' | 'shortName' | 'id' | 'lastHeard' | 'snr' | 
 
 export type SortDirection = 'asc' | 'desc';
 
-export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'configuring' | 'rebooting' | 'user-disconnected';
+export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'configuring' | 'rebooting' | 'user-disconnected' | 'node-offline';
 
 export interface MapCenterControllerProps {
   centerTarget: [number, number] | null;
