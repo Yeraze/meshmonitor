@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { flushSync } from 'react-dom'
 import { Popup, Polyline } from 'react-leaflet'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import L from 'leaflet'
@@ -48,6 +49,10 @@ import { useCsrf } from './contexts/CsrfContext'
 import LoginModal from './components/LoginModal'
 import LoginPage from './components/LoginPage'
 import UserMenu from './components/UserMenu'
+
+// Track pending favorite requests outside component to persist across remounts
+// Maps nodeNum -> expected isFavorite state
+const pendingFavoriteRequests = new Map<number, boolean>()
 import TracerouteHistoryModal from './components/TracerouteHistoryModal'
 import RouteSegmentTraceroutesModal from './components/RouteSegmentTraceroutesModal'
 import { NodeFilterPopup } from './components/NodeFilterPopup'
@@ -1725,7 +1730,36 @@ function App() {
 
       // Process nodes data
       if (pollData.nodes) {
-        setNodes(pollData.nodes);
+        // Merge server data with local optimistic updates for nodes with pending favorite changes
+        // This prevents polling from overwriting optimistic UI updates
+        const pendingRequests = pendingFavoriteRequests;
+
+        console.log('[POLL] Received nodes:', pollData.nodes.length, 'Pending requests:', pendingRequests.size);
+
+        if (pendingRequests.size === 0) {
+          // No pending updates, safe to use server data as-is
+          setNodes(pollData.nodes);
+        } else {
+          console.log('[POLL] Merging with pending favorites:', Array.from(pendingRequests.entries()));
+          // Merge: keep optimistic isFavorite for nodes with pending requests
+          setNodes(pollData.nodes.map((serverNode: DeviceInfo) => {
+            const pendingState = pendingRequests.get(serverNode.nodeNum);
+            if (pendingState !== undefined) {
+              // Check if server data now matches our pending update
+              if (serverNode.isFavorite === pendingState) {
+                // Server has caught up, remove from pending
+                console.log('[POLL] Server caught up for node:', serverNode.nodeNum);
+                pendingRequests.delete(serverNode.nodeNum);
+                return serverNode;
+              }
+              // Server hasn't caught up yet, preserve the local optimistic value
+              console.log('[POLL] Preserving optimistic value for node:', serverNode.nodeNum, 'pending:', pendingState, 'server:', serverNode.isFavorite);
+              return { ...serverNode, isFavorite: pendingState };
+            }
+            // Use server data for nodes without pending updates
+            return serverNode;
+          }));
+        }
       }
 
       // Process messages data
@@ -2802,26 +2836,51 @@ function App() {
     }
   }, []);
 
+  // pendingFavoriteRequests is defined as a module-level variable to persist across remounts
+
   // Function to toggle node favorite status
   const toggleFavorite = async (node: DeviceInfo, event: React.MouseEvent) => {
     event.stopPropagation(); // Prevent node selection when clicking star
+
+    console.log('[FAVORITE] Toggle called for node:', node.nodeNum, 'current:', node.isFavorite);
 
     if (!node.user?.id) {
       logger.error('Cannot toggle favorite: node has no user ID');
       return;
     }
 
-    try {
-      const newFavoriteStatus = !node.isFavorite;
+    // Prevent multiple rapid clicks on the same node
+    if (pendingFavoriteRequests.has(node.nodeNum)) {
+      console.log('[FAVORITE] Already pending for node:', node.nodeNum);
+      return;
+    }
 
-      // Optimistically update the UI
-      setNodes(prevNodes =>
-        prevNodes.map(n =>
-          n.nodeNum === node.nodeNum
-            ? { ...n, isFavorite: newFavoriteStatus }
-            : n
-        )
-      );
+    // Store the original state before any updates
+    const originalFavoriteStatus = node.isFavorite;
+    const newFavoriteStatus = !originalFavoriteStatus;
+
+    console.log('[FAVORITE] Will update to:', newFavoriteStatus);
+
+    try {
+      // Mark this request as pending with the expected new state
+      pendingFavoriteRequests.set(node.nodeNum, newFavoriteStatus);
+      console.log('[FAVORITE] Set pending for node:', node.nodeNum, 'Map size:', pendingFavoriteRequests.size, 'Map contents:', Array.from(pendingFavoriteRequests.entries()));
+
+      console.log('[FAVORITE] About to call setNodes...');
+      // Optimistically update the UI - use flushSync to force immediate render
+      // This prevents the polling from overwriting the optimistic update before it renders
+      flushSync(() => {
+        setNodes(prevNodes => {
+          console.log('[FAVORITE] setNodes callback executing, prevNodes length:', prevNodes.length);
+          const updated = prevNodes.map(n =>
+            n.nodeNum === node.nodeNum
+              ? { ...n, isFavorite: newFavoriteStatus }
+              : n
+          );
+          console.log('[FAVORITE] setNodes callback complete');
+          return updated;
+        });
+      });
 
       // Send update to backend (with device sync enabled by default)
       const response = await authFetch(`${baseUrl}/api/nodes/${node.user.id}/favorite`, {
@@ -2838,11 +2897,11 @@ function App() {
       if (!response.ok) {
         if (response.status === 403) {
           showToast('Insufficient permissions to update favorites', 'error');
-          // Revert optimistic update
+          // Revert to original state using the saved original value
           setNodes(prevNodes =>
             prevNodes.map(n =>
               n.nodeNum === node.nodeNum
-                ? { ...n, isFavorite: !node.isFavorite }
+                ? { ...n, isFavorite: originalFavoriteStatus }
                 : n
             )
           );
@@ -2867,16 +2926,20 @@ function App() {
       logger.debug(statusMessage);
     } catch (error) {
       logger.error('Error toggling favorite:', error);
-      // Revert optimistic update on error
+      // Revert to original state using the saved original value
       setNodes(prevNodes =>
         prevNodes.map(n =>
           n.nodeNum === node.nodeNum
-            ? { ...n, isFavorite: !node.isFavorite }
+            ? { ...n, isFavorite: originalFavoriteStatus }
             : n
         )
       );
+      // Remove from pending on error since we reverted
+      pendingFavoriteRequests.delete(node.nodeNum);
       showToast('Failed to update favorite status. Please try again.', 'error');
     }
+    // Note: On success, the polling logic will remove from pendingFavoriteRequests
+    // when it detects the server has caught up
   };
 
   // Function to handle sender icon clicks

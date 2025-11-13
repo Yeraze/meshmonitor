@@ -1134,6 +1134,25 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 // Memoize NodesTab to prevent re-rendering when App.tsx updates for message status
 // Only re-render when actual node data or map-related props change
 const NodesTab = React.memo(NodesTabComponent, (prevProps, nextProps) => {
+  // Check if favorite status changed for any node
+  // Build sets of favorite node numbers for comparison
+  const prevFavorites = new Set(
+    prevProps.processedNodes.filter(n => n.isFavorite).map(n => n.nodeNum)
+  );
+  const nextFavorites = new Set(
+    nextProps.processedNodes.filter(n => n.isFavorite).map(n => n.nodeNum)
+  );
+
+  // If the sets differ in size or content, favorites changed - must re-render
+  if (prevFavorites.size !== nextFavorites.size) {
+    return false; // Allow re-render
+  }
+  for (const nodeNum of prevFavorites) {
+    if (!nextFavorites.has(nodeNum)) {
+      return false; // Allow re-render
+    }
+  }
+
   // Check if any node's position changed
   // If spiderfier is active (keepSpiderfied), avoid re-rendering to preserve fanout
   // Users can manually refresh the map if a mobile node moves while markers are fanned
