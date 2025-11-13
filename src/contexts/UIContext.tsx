@@ -62,6 +62,8 @@ interface UIContextType {
   setAutoWelcomeTarget: React.Dispatch<React.SetStateAction<string>>;
   autoWelcomeWaitForName: boolean;
   setAutoWelcomeWaitForName: React.Dispatch<React.SetStateAction<boolean>>;
+  autoWelcomeMaxHops: number;
+  setAutoWelcomeMaxHops: React.Dispatch<React.SetStateAction<number>>;
   showNodeFilterPopup: boolean;
   setShowNodeFilterPopup: React.Dispatch<React.SetStateAction<boolean>>;
   isNodeListCollapsed: boolean;
@@ -112,6 +114,7 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   const [autoWelcomeMessage, setAutoWelcomeMessage] = useState<string>('Welcome {LONG_NAME} ({SHORT_NAME}) to the mesh!');
   const [autoWelcomeTarget, setAutoWelcomeTarget] = useState<string>('0');
   const [autoWelcomeWaitForName, setAutoWelcomeWaitForName] = useState<boolean>(true);
+  const [autoWelcomeMaxHops, setAutoWelcomeMaxHops] = useState<number>(5);
   const [showNodeFilterPopup, setShowNodeFilterPopup] = useState<boolean>(false);
   // Start with node list collapsed on mobile devices (screens <= 768px)
   const [isNodeListCollapsed, setIsNodeListCollapsed] = useState<boolean>(() => {
@@ -181,6 +184,8 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
         setAutoWelcomeTarget,
         autoWelcomeWaitForName,
         setAutoWelcomeWaitForName,
+        autoWelcomeMaxHops,
+        setAutoWelcomeMaxHops,
         showNodeFilterPopup,
         setShowNodeFilterPopup,
         isNodeListCollapsed,

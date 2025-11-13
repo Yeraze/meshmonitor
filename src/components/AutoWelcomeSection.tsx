@@ -9,12 +9,14 @@ interface AutoWelcomeSectionProps {
   message: string;
   target: string;
   waitForName: boolean;
+  maxHops: number;
   channels: Channel[];
   baseUrl: string;
   onEnabledChange: (enabled: boolean) => void;
   onMessageChange: (message: string) => void;
   onTargetChange: (target: string) => void;
   onWaitForNameChange: (waitForName: boolean) => void;
+  onMaxHopsChange: (maxHops: number) => void;
 }
 
 const DEFAULT_MESSAGE = 'Welcome {LONG_NAME} ({SHORT_NAME}) to the mesh!';
@@ -24,12 +26,14 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
   message,
   target,
   waitForName,
+  maxHops,
   channels,
   baseUrl,
   onEnabledChange,
   onMessageChange,
   onTargetChange,
   onWaitForNameChange,
+  onMaxHopsChange,
 }) => {
   const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();
@@ -37,6 +41,7 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
   const [localMessage, setLocalMessage] = useState(message || DEFAULT_MESSAGE);
   const [localTarget, setLocalTarget] = useState(target || '0');
   const [localWaitForName, setLocalWaitForName] = useState(waitForName);
+  const [localMaxHops, setLocalMaxHops] = useState(maxHops || 5);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -47,7 +52,8 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
     setLocalMessage(message || DEFAULT_MESSAGE);
     setLocalTarget(target || '0');
     setLocalWaitForName(waitForName);
-  }, [enabled, message, target, waitForName]);
+    setLocalMaxHops(maxHops || 5);
+  }, [enabled, message, target, waitForName, maxHops]);
 
   // Check if any settings have changed
   useEffect(() => {
@@ -55,9 +61,10 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
       localEnabled !== enabled ||
       localMessage !== message ||
       localTarget !== target ||
-      localWaitForName !== waitForName;
+      localWaitForName !== waitForName ||
+      localMaxHops !== maxHops;
     setHasChanges(changed);
-  }, [localEnabled, localMessage, localTarget, localWaitForName, enabled, message, target, waitForName]);
+  }, [localEnabled, localMessage, localTarget, localWaitForName, localMaxHops, enabled, message, target, waitForName, maxHops]);
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -70,7 +77,8 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
           autoWelcomeEnabled: String(localEnabled),
           autoWelcomeMessage: localMessage,
           autoWelcomeTarget: localTarget,
-          autoWelcomeWaitForName: String(localWaitForName)
+          autoWelcomeWaitForName: String(localWaitForName),
+          autoWelcomeMaxHops: String(localMaxHops)
         })
       });
 
@@ -87,6 +95,7 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
       onMessageChange(localMessage);
       onTargetChange(localTarget);
       onWaitForNameChange(localWaitForName);
+      onMaxHopsChange(localMaxHops);
 
       setHasChanges(false);
       showToast('Settings saved successfully!', 'success');
@@ -210,6 +219,31 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
               If disabled, welcome messages will be sent immediately when a new node is discovered.
             </span>
           </label>
+        </div>
+
+        <div className="setting-item" style={{ marginTop: '1rem' }}>
+          <label htmlFor="maxHops">
+            Maximum Hops
+            <span className="setting-description">
+              Only welcome nodes within this many hops (1-10). Nodes further away will not receive a welcome message.
+            </span>
+          </label>
+          <input
+            id="maxHops"
+            type="number"
+            min="1"
+            max="10"
+            value={localMaxHops}
+            onChange={(e) => {
+              const value = parseInt(e.target.value);
+              if (value >= 1 && value <= 10) {
+                setLocalMaxHops(value);
+              }
+            }}
+            disabled={!localEnabled}
+            className="setting-input"
+            style={{ width: '100px' }}
+          />
         </div>
 
         <div className="setting-item" style={{ marginTop: '1rem' }}>
