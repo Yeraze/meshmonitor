@@ -19,6 +19,7 @@ export interface QueuedMessage {
   enqueuedAt: number;
   lastAttemptAt?: number;
   requestId?: number; // The message ID from the last send attempt
+  pendingAckSince?: number; // Timestamp when added to pendingAcks (for cleanup)
   onSuccess?: () => void;
   onFailure?: (reason: string) => void;
 }
@@ -30,9 +31,13 @@ class MessageQueueService {
   private readonly SEND_INTERVAL_MS = 30000; // 30 seconds between sends
   private readonly RETRY_INTERVAL_MS = 30000; // 30 seconds between retry attempts
   private readonly MAX_ATTEMPTS = 3;
+  private readonly PENDING_ACK_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes - cleanup orphaned ACKs
 
   // Track pending messages waiting for ACK
   private pendingAcks = new Map<number, QueuedMessage>();
+
+  // Cleanup interval for orphaned ACKs
+  private cleanupInterval?: NodeJS.Timeout;
 
   // Reference to meshtasticManager for sending messages
   private sendCallback?: (text: string, destination: number, replyId?: number) => Promise<number>;
@@ -85,6 +90,11 @@ class MessageQueueService {
     this.processing = true;
     logger.info('▶️  Started message queue processing');
 
+    // Start cleanup interval if not already running
+    if (!this.cleanupInterval) {
+      this.startCleanupInterval();
+    }
+
     // Process immediately, then continue with interval
     this.processQueue();
   }
@@ -95,12 +105,62 @@ class MessageQueueService {
   private stopProcessing() {
     this.processing = false;
     logger.info('⏸️  Stopped message queue processing');
+
+    // Stop cleanup interval when processing stops
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = undefined;
+    }
+  }
+
+  /**
+   * Start periodic cleanup of orphaned pending ACKs
+   */
+  private startCleanupInterval() {
+    // Run cleanup every minute
+    this.cleanupInterval = setInterval(() => {
+      this.cleanupOrphanedAcks();
+    }, 60000);
+  }
+
+  /**
+   * Clean up pending ACKs that have been waiting too long
+   */
+  private cleanupOrphanedAcks() {
+    const now = Date.now();
+    let cleanedCount = 0;
+
+    for (const [requestId, message] of this.pendingAcks.entries()) {
+      if (message.pendingAckSince) {
+        const age = now - message.pendingAckSince;
+        if (age > this.PENDING_ACK_TIMEOUT_MS) {
+          logger.warn(`🧹 Cleaning up orphaned ACK for message ${message.id} (requestId: ${requestId}, age: ${Math.round(age / 1000)}s)`);
+          this.pendingAcks.delete(requestId);
+
+          // Call failure callback if present with error handling
+          if (message.onFailure) {
+            try {
+              message.onFailure('ACK timeout - no response received');
+            } catch (error) {
+              logger.error(`Error calling onFailure during cleanup for message ${message.id}:`, error);
+            }
+          }
+
+          cleanedCount++;
+        }
+      }
+    }
+
+    if (cleanedCount > 0) {
+      logger.info(`🧹 Cleaned up ${cleanedCount} orphaned pending ACK(s)`);
+    }
   }
 
   /**
    * Process the queue - send next message if timing allows
    */
   private async processQueue() {
+    // Double-check processing flag to prevent race conditions
     if (!this.processing) {
       return;
     }
@@ -111,10 +171,14 @@ class MessageQueueService {
 
       // Check if we can send (rate limiting)
       if (timeSinceLastSend < this.SEND_INTERVAL_MS && this.lastSendTime > 0) {
-        // Wait until we can send
+        // Wait until we can send, but check processing flag before scheduling
         const waitTime = this.SEND_INTERVAL_MS - timeSinceLastSend;
         logger.debug(`⏳ Rate limit: waiting ${Math.round(waitTime / 1000)}s before next send`);
-        setTimeout(() => this.processQueue(), waitTime);
+        setTimeout(() => {
+          if (this.processing) {
+            this.processQueue();
+          }
+        }, waitTime);
         return;
       }
 
@@ -132,12 +196,20 @@ class MessageQueueService {
         return;
       }
 
-      // Schedule next processing cycle
-      setTimeout(() => this.processQueue(), this.SEND_INTERVAL_MS);
+      // Schedule next processing cycle, but check processing flag first
+      setTimeout(() => {
+        if (this.processing) {
+          this.processQueue();
+        }
+      }, this.SEND_INTERVAL_MS);
     } catch (error) {
       logger.error('❌ Error processing message queue:', error);
-      // Continue processing on error
-      setTimeout(() => this.processQueue(), this.SEND_INTERVAL_MS);
+      // Continue processing on error, but check processing flag first
+      setTimeout(() => {
+        if (this.processing) {
+          this.processQueue();
+        }
+      }, this.SEND_INTERVAL_MS);
     }
   }
 
@@ -175,6 +247,12 @@ class MessageQueueService {
 
       // Send the message
       const requestId = await this.sendCallback(message.text, message.destination, message.replyId);
+
+      // Validate requestId
+      if (requestId === undefined || requestId === null || requestId <= 0) {
+        throw new Error(`Invalid requestId returned: ${requestId}`);
+      }
+
       message.requestId = requestId;
 
       // Update last send time
@@ -182,6 +260,7 @@ class MessageQueueService {
 
       // Add to pending ACKs if not at max attempts
       if (message.attempts < message.maxAttempts) {
+        message.pendingAckSince = Date.now();
         this.pendingAcks.set(requestId, message);
         logger.debug(`⏳ Waiting for ACK for message ${message.id} (requestId: ${requestId})`);
       } else {
@@ -190,6 +269,7 @@ class MessageQueueService {
         this.removeFromQueue(message);
 
         // Add to pending ACKs to track success/failure
+        message.pendingAckSince = Date.now();
         this.pendingAcks.set(requestId, message);
       }
 
@@ -198,13 +278,22 @@ class MessageQueueService {
         this.removeFromQueue(message);
       }
     } catch (error) {
-      logger.error(`❌ Error sending message ${message.id}:`, error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error(`❌ Error sending message ${message.id}: ${errorMessage}`);
 
+      // Check if this was the final attempt
       if (message.attempts >= message.maxAttempts) {
-        this.failMessage(message, `Send error: ${error}`);
+        this.failMessage(message, `Send error after ${message.attempts} attempts: ${errorMessage}`);
       } else {
-        // Will retry in next cycle
-        logger.info(`🔄 Will retry message ${message.id} (${message.maxAttempts - message.attempts} attempts remaining)`);
+        // Will retry in next cycle - ensure message stays in pendingAcks for retry
+        const remainingAttempts = message.maxAttempts - message.attempts;
+        logger.info(`🔄 Will retry message ${message.id} (${remainingAttempts} attempt${remainingAttempts === 1 ? '' : 's'} remaining)`);
+
+        // If message has a requestId from a previous attempt, keep it in pendingAcks
+        if (message.requestId) {
+          message.pendingAckSince = Date.now();
+          this.pendingAcks.set(message.requestId, message);
+        }
       }
     }
   }
@@ -218,8 +307,13 @@ class MessageQueueService {
       logger.info(`✅ ACK received for message ${message.id} (requestId: ${requestId})`);
       this.pendingAcks.delete(requestId);
 
+      // Call success callback with error handling
       if (message.onSuccess) {
-        message.onSuccess();
+        try {
+          message.onSuccess();
+        } catch (error) {
+          logger.error(`Error calling onSuccess callback for message ${message.id}:`, error);
+        }
       }
     }
   }
@@ -247,8 +341,13 @@ class MessageQueueService {
       this.pendingAcks.delete(message.requestId);
     }
 
+    // Call failure callback with error handling
     if (message.onFailure) {
-      message.onFailure(reason);
+      try {
+        message.onFailure(reason);
+      } catch (error) {
+        logger.error(`Error calling onFailure callback for message ${message.id}:`, error);
+      }
     }
   }
 
@@ -294,10 +393,36 @@ class MessageQueueService {
    * Clear all pending messages (for testing/cleanup)
    */
   clear() {
+    const queueLength = this.queue.length;
+    const pendingAcksCount = this.pendingAcks.size;
+
+    // Call onFailure for all pending messages before clearing
+    for (const message of this.pendingAcks.values()) {
+      if (message.onFailure) {
+        try {
+          message.onFailure('Queue cleared');
+        } catch (error) {
+          logger.error(`Error calling onFailure for message ${message.id}:`, error);
+        }
+      }
+    }
+
+    // Call onFailure for all queued messages before clearing
+    for (const message of this.queue) {
+      if (message.onFailure) {
+        try {
+          message.onFailure('Queue cleared');
+        } catch (error) {
+          logger.error(`Error calling onFailure for message ${message.id}:`, error);
+        }
+      }
+    }
+
     this.queue = [];
     this.pendingAcks.clear();
     this.stopProcessing();
-    logger.info('🧹 Cleared message queue');
+
+    logger.info(`🧹 Cleared message queue (removed ${queueLength} queued and ${pendingAcksCount} pending messages)`);
   }
 }
 
