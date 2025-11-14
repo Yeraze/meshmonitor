@@ -1199,6 +1199,9 @@ class MeshtasticManager {
 
         // Auto-acknowledge matching messages
         await this.checkAutoAcknowledge(message, messageText, channelIndex, isDirectMessage, fromNum, meshPacket.id);
+
+        // Auto-respond to matching direct messages
+        await this.checkAutoResponder(message, messageText, isDirectMessage, fromNum, meshPacket.id);
       }
     } catch (error) {
       logger.error('❌ Error processing text message:', error);
@@ -4061,6 +4064,194 @@ class MeshtasticManager {
     } catch (error) {
       logger.error('❌ Error in auto-acknowledge:', error);
     }
+  }
+
+  /**
+   * Check if message matches auto-responder triggers and respond accordingly
+   */
+  private async checkAutoResponder(message: any, messageText: string, isDirectMessage: boolean, fromNum: number, packetId?: number): Promise<void> {
+    try {
+      // Get auto-responder settings from database
+      const autoResponderEnabled = databaseService.getSetting('autoResponderEnabled');
+
+      // Skip if auto-responder is disabled
+      if (autoResponderEnabled !== 'true') {
+        return;
+      }
+
+      // Only respond to direct messages
+      if (!isDirectMessage) {
+        logger.debug('⏭️  Skipping auto-responder for non-DM message');
+        return;
+      }
+
+      // Skip messages from our own locally connected node
+      const localNodeNum = databaseService.getSetting('localNodeNum');
+      if (localNodeNum && parseInt(localNodeNum) === fromNum) {
+        logger.debug('⏭️  Skipping auto-responder for message from local node');
+        return;
+      }
+
+      // Get triggers array
+      const autoResponderTriggersStr = databaseService.getSetting('autoResponderTriggers');
+      if (!autoResponderTriggersStr) {
+        logger.debug('⏭️  No auto-responder triggers configured');
+        return;
+      }
+
+      let triggers: any[];
+      try {
+        triggers = JSON.parse(autoResponderTriggersStr);
+      } catch (error) {
+        logger.error('❌ Failed to parse autoResponderTriggers:', error);
+        return;
+      }
+
+      if (!Array.isArray(triggers) || triggers.length === 0) {
+        return;
+      }
+
+      // Try to match message against triggers
+      for (const trigger of triggers) {
+        // Extract parameter names from trigger pattern
+        const paramNames: string[] = [];
+        const regex = /{([^}]+)}/g;
+        let match;
+        while ((match = regex.exec(trigger.trigger)) !== null) {
+          if (!paramNames.includes(match[1])) {
+            paramNames.push(match[1]);
+          }
+        }
+
+        // Build regex pattern from trigger
+        // Replace {param} with capture groups
+        let pattern = trigger.trigger.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // Escape regex chars
+        paramNames.forEach(param => {
+          pattern = pattern.replace(`\\{${param}\\}`, '([\\w\\d.-]+)');
+        });
+
+        const triggerRegex = new RegExp(`^${pattern}$`, 'i');
+        const triggerMatch = messageText.match(triggerRegex);
+
+        if (triggerMatch) {
+          // Extract parameters
+          const params: Record<string, string> = {};
+          paramNames.forEach((param, index) => {
+            params[param] = triggerMatch[index + 1];
+          });
+
+          logger.debug(`🤖 Auto-responder triggered by: "${messageText}" matching pattern: "${trigger.trigger}"`);
+
+          let responseText: string;
+
+          if (trigger.responseType === 'http') {
+            // HTTP URL trigger - fetch from URL
+            let url = trigger.response;
+
+            // Replace parameters in URL
+            Object.entries(params).forEach(([key, value]) => {
+              url = url.replace(new RegExp(`\\{${key}\\}`, 'g'), encodeURIComponent(value));
+            });
+
+            logger.debug(`🌐 Fetching HTTP response from: ${url}`);
+
+            try {
+              // Fetch with 5-second timeout
+              const controller = new AbortController();
+              const timeout = setTimeout(() => controller.abort(), 5000);
+
+              const response = await fetch(url, {
+                signal: controller.signal,
+                headers: {
+                  'User-Agent': 'MeshMonitor/2.0',
+                }
+              });
+
+              clearTimeout(timeout);
+
+              // Only respond if status is 200
+              if (response.status !== 200) {
+                logger.debug(`⏭️  HTTP response status ${response.status}, not responding`);
+                return;
+              }
+
+              responseText = await response.text();
+              logger.debug(`📥 HTTP response received: ${responseText.substring(0, 50)}...`);
+
+            } catch (error: any) {
+              if (error.name === 'AbortError') {
+                logger.debug('⏭️  HTTP request timed out after 5 seconds');
+              } else {
+                logger.debug('⏭️  HTTP request failed:', error.message);
+              }
+              return;
+            }
+
+          } else {
+            // Text trigger - use static response
+            responseText = trigger.response;
+
+            // Replace parameters in text
+            Object.entries(params).forEach(([key, value]) => {
+              responseText = responseText.replace(new RegExp(`\\{${key}\\}`, 'g'), value);
+            });
+          }
+
+          // Truncate response to 200 characters accounting for emoji byte expansion
+          // Meshtastic counts emoji as multiple characters based on UTF-8 byte length
+          const truncated = this.truncateMessageForMeshtastic(responseText, 200);
+
+          if (truncated !== responseText) {
+            logger.debug(`✂️  Response truncated from ${responseText.length} to ${truncated.length} characters`);
+          }
+
+          // Send response as DM
+          logger.debug(`🤖 Auto-responding to ${message.fromNodeId}: "${truncated}"`);
+          await this.sendTextMessage(truncated, 0, fromNum, packetId);
+
+          // Only respond to first matching trigger
+          return;
+        }
+      }
+
+    } catch (error) {
+      logger.error('❌ Error in auto-responder:', error);
+    }
+  }
+
+  /**
+   * Truncate message to fit within Meshtastic's character limit
+   * accounting for emoji which count as multiple bytes
+   */
+  private truncateMessageForMeshtastic(text: string, maxChars: number): string {
+    // Meshtastic counts UTF-8 bytes, not characters
+    // Most emoji are 4 bytes, some symbols are 3 bytes
+    // We need to count actual byte length
+
+    const encoder = new TextEncoder();
+    const bytes = encoder.encode(text);
+
+    if (bytes.length <= maxChars) {
+      return text;
+    }
+
+    // Truncate by removing characters until we're under the limit
+    let truncated = text;
+    while (encoder.encode(truncated).length > maxChars && truncated.length > 0) {
+      truncated = truncated.substring(0, truncated.length - 1);
+    }
+
+    // Add ellipsis if we truncated
+    if (truncated.length < text.length) {
+      // Make sure ellipsis fits
+      const ellipsis = '...';
+      while (encoder.encode(truncated + ellipsis).length > maxChars && truncated.length > 0) {
+        truncated = truncated.substring(0, truncated.length - 1);
+      }
+      truncated += ellipsis;
+    }
+
+    return truncated;
   }
 
   private async checkAutoWelcome(nodeNum: number, nodeId: string): Promise<void> {

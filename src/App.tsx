@@ -21,6 +21,7 @@ import AutoAcknowledgeSection from './components/AutoAcknowledgeSection'
 import AutoTracerouteSection from './components/AutoTracerouteSection'
 import AutoAnnounceSection from './components/AutoAnnounceSection'
 import AutoWelcomeSection from './components/AutoWelcomeSection'
+import AutoResponderSection from './components/AutoResponderSection'
 import { ToastProvider, useToast } from './components/ToastContainer'
 import { RebootModal } from './components/RebootModal'
 // import { version } from '../package.json' // Removed - footer no longer displayed
@@ -480,6 +481,10 @@ function App() {
     setAutoWelcomeWaitForName,
     autoWelcomeMaxHops,
     setAutoWelcomeMaxHops,
+    autoResponderEnabled,
+    setAutoResponderEnabled,
+    autoResponderTriggers,
+    setAutoResponderTriggers,
     showNodeFilterPopup,
     setShowNodeFilterPopup
   } = useUI();
@@ -833,6 +838,19 @@ function App() {
 
           if (settings.autoWelcomeMaxHops) {
             setAutoWelcomeMaxHops(parseInt(settings.autoWelcomeMaxHops));
+          }
+
+          if (settings.autoResponderEnabled !== undefined) {
+            setAutoResponderEnabled(settings.autoResponderEnabled === 'true');
+          }
+
+          if (settings.autoResponderTriggers) {
+            try {
+              const triggers = JSON.parse(settings.autoResponderTriggers);
+              setAutoResponderTriggers(triggers);
+            } catch (e) {
+              console.error('Failed to parse autoResponderTriggers:', e);
+            }
           }
         }
 
@@ -5678,6 +5696,13 @@ function App() {
                 onAnnounceOnStartChange={setAutoAnnounceOnStart}
                 onUseScheduleChange={setAutoAnnounceUseSchedule}
                 onScheduleChange={setAutoAnnounceSchedule}
+              />
+              <AutoResponderSection
+                enabled={autoResponderEnabled}
+                triggers={autoResponderTriggers}
+                baseUrl={baseUrl}
+                onEnabledChange={setAutoResponderEnabled}
+                onTriggersChange={setAutoResponderTriggers}
               />
             </div>
           </div>

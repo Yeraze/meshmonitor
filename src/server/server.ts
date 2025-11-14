@@ -2994,7 +2994,7 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
     const currentSettings = databaseService.getAllSettings();
 
     // Validate settings
-    const validKeys = ['maxNodeAgeHours', 'tracerouteIntervalMinutes', 'temperatureUnit', 'distanceUnit', 'telemetryVisualizationHours', 'telemetryFavorites', 'autoAckEnabled', 'autoAckRegex', 'autoAckMessage', 'autoAckChannels', 'autoAckDirectMessages', 'autoAckUseDM', 'autoAnnounceEnabled', 'autoAnnounceIntervalHours', 'autoAnnounceMessage', 'autoAnnounceChannelIndex', 'autoAnnounceOnStart', 'autoAnnounceUseSchedule', 'autoAnnounceSchedule', 'autoWelcomeEnabled', 'autoWelcomeMessage', 'autoWelcomeTarget', 'autoWelcomeWaitForName', 'autoWelcomeMaxHops', 'preferredSortField', 'preferredSortDirection', 'timeFormat', 'dateFormat', 'mapTileset', 'packet_log_enabled', 'packet_log_max_count', 'packet_log_max_age_hours', 'solarMonitoringEnabled', 'solarMonitoringLatitude', 'solarMonitoringLongitude', 'solarMonitoringAzimuth', 'solarMonitoringDeclination', 'mapPinStyle', 'favoriteTelemetryStorageDays', 'theme'];
+    const validKeys = ['maxNodeAgeHours', 'tracerouteIntervalMinutes', 'temperatureUnit', 'distanceUnit', 'telemetryVisualizationHours', 'telemetryFavorites', 'autoAckEnabled', 'autoAckRegex', 'autoAckMessage', 'autoAckChannels', 'autoAckDirectMessages', 'autoAckUseDM', 'autoAnnounceEnabled', 'autoAnnounceIntervalHours', 'autoAnnounceMessage', 'autoAnnounceChannelIndex', 'autoAnnounceOnStart', 'autoAnnounceUseSchedule', 'autoAnnounceSchedule', 'autoWelcomeEnabled', 'autoWelcomeMessage', 'autoWelcomeTarget', 'autoWelcomeWaitForName', 'autoWelcomeMaxHops', 'autoResponderEnabled', 'autoResponderTriggers', 'preferredSortField', 'preferredSortDirection', 'timeFormat', 'dateFormat', 'mapTileset', 'packet_log_enabled', 'packet_log_max_count', 'packet_log_max_age_hours', 'solarMonitoringEnabled', 'solarMonitoringLatitude', 'solarMonitoringLongitude', 'solarMonitoringAzimuth', 'solarMonitoringDeclination', 'mapPinStyle', 'favoriteTelemetryStorageDays', 'theme'];
     const filteredSettings: Record<string, string> = {};
 
     for (const key of validKeys) {
@@ -3033,6 +3033,31 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
         .filter(n => !isNaN(n) && n >= 0 && n < 8); // Max 8 channels in Meshtastic
 
       filteredSettings.autoAckChannels = validChannels.join(',');
+    }
+
+    // Validate autoResponderTriggers JSON
+    if ('autoResponderTriggers' in filteredSettings) {
+      try {
+        const triggers = JSON.parse(filteredSettings.autoResponderTriggers);
+
+        // Validate that it's an array
+        if (!Array.isArray(triggers)) {
+          return res.status(400).json({ error: 'autoResponderTriggers must be an array' });
+        }
+
+        // Validate each trigger
+        for (const trigger of triggers) {
+          if (!trigger.id || !trigger.trigger || !trigger.responseType || !trigger.response) {
+            return res.status(400).json({ error: 'Each trigger must have id, trigger, responseType, and response fields' });
+          }
+
+          if (trigger.responseType !== 'text' && trigger.responseType !== 'http') {
+            return res.status(400).json({ error: 'responseType must be either "text" or "http"' });
+          }
+        }
+      } catch (error) {
+        return res.status(400).json({ error: 'Invalid JSON format for autoResponderTriggers' });
+      }
     }
 
     // Save to database

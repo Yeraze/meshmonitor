@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { TabType, SortField, SortDirection } from '../types/ui';
+import { AutoResponderTrigger } from '../components/AutoResponderSection';
 
 interface UIContextType {
   activeTab: TabType;
@@ -64,6 +65,10 @@ interface UIContextType {
   setAutoWelcomeWaitForName: React.Dispatch<React.SetStateAction<boolean>>;
   autoWelcomeMaxHops: number;
   setAutoWelcomeMaxHops: React.Dispatch<React.SetStateAction<number>>;
+  autoResponderEnabled: boolean;
+  setAutoResponderEnabled: React.Dispatch<React.SetStateAction<boolean>>;
+  autoResponderTriggers: AutoResponderTrigger[];
+  setAutoResponderTriggers: React.Dispatch<React.SetStateAction<AutoResponderTrigger[]>>;
   showNodeFilterPopup: boolean;
   setShowNodeFilterPopup: React.Dispatch<React.SetStateAction<boolean>>;
   isNodeListCollapsed: boolean;
@@ -115,6 +120,8 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   const [autoWelcomeTarget, setAutoWelcomeTarget] = useState<string>('0');
   const [autoWelcomeWaitForName, setAutoWelcomeWaitForName] = useState<boolean>(true);
   const [autoWelcomeMaxHops, setAutoWelcomeMaxHops] = useState<number>(5);
+  const [autoResponderEnabled, setAutoResponderEnabled] = useState<boolean>(false);
+  const [autoResponderTriggers, setAutoResponderTriggers] = useState<AutoResponderTrigger[]>([]);
   const [showNodeFilterPopup, setShowNodeFilterPopup] = useState<boolean>(false);
   // Start with node list collapsed on mobile devices (screens <= 768px)
   const [isNodeListCollapsed, setIsNodeListCollapsed] = useState<boolean>(() => {
@@ -186,6 +193,10 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
         setAutoWelcomeWaitForName,
         autoWelcomeMaxHops,
         setAutoWelcomeMaxHops,
+        autoResponderEnabled,
+        setAutoResponderEnabled,
+        autoResponderTriggers,
+        setAutoResponderTriggers,
         showNodeFilterPopup,
         setShowNodeFilterPopup,
         isNodeListCollapsed,
