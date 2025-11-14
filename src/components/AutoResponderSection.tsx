@@ -36,6 +36,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
   const [newResponseType, setNewResponseType] = useState<ResponseType>('text');
   const [newResponse, setNewResponse] = useState('');
   const [testMessage, setTestMessage] = useState('w 33076');
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   // Update local state when props change
   useEffect(() => {
@@ -111,6 +112,38 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
 
   const removeTrigger = (id: string) => {
     setLocalTriggers(localTriggers.filter(t => t.id !== id));
+    if (editingId === id) {
+      setEditingId(null);
+    }
+  };
+
+  const startEditing = (id: string) => {
+    setEditingId(id);
+  };
+
+  const cancelEditing = () => {
+    setEditingId(null);
+  };
+
+  const saveEdit = (id: string, trigger: string, responseType: ResponseType, response: string) => {
+    const triggerValidation = validateTrigger(trigger);
+    if (!triggerValidation.valid) {
+      showToast(triggerValidation.error || 'Invalid trigger', 'error');
+      return;
+    }
+
+    const responseValidation = validateResponse(response, responseType);
+    if (!responseValidation.valid) {
+      showToast(responseValidation.error || 'Invalid response', 'error');
+      return;
+    }
+
+    setLocalTriggers(localTriggers.map(t =>
+      t.id === id
+        ? { ...t, trigger: trigger.trim(), responseType, response: response.trim() }
+        : t
+    ));
+    setEditingId(null);
   };
 
   const extractParameters = (trigger: string): string[] => {
@@ -134,7 +167,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
       // Replace {param} with capture groups
       let pattern = trigger.trigger.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // Escape regex chars
       paramNames.forEach(param => {
-        pattern = pattern.replace(`\\{${param}\\}`, '([\\w\\d.-]+)');
+        pattern = pattern.replace(`\\{${param}\\}`, '([^\\s]+)');
       });
 
       const regex = new RegExp(`^${pattern}$`, 'i');
@@ -281,15 +314,27 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
               <option value="text">Text</option>
               <option value="http">HTTP</option>
             </select>
-            <input
-              type="text"
-              value={newResponse}
-              onChange={(e) => setNewResponse(e.target.value)}
-              placeholder={newResponseType === 'text' ? 'e.g., Hello!' : 'e.g., https://wttr.in/{location}?format=4'}
-              disabled={!localEnabled}
-              className="setting-input"
-              style={{ flex: '2', fontFamily: 'monospace' }}
-            />
+            {newResponseType === 'text' ? (
+              <textarea
+                value={newResponse}
+                onChange={(e) => setNewResponse(e.target.value)}
+                placeholder="e.g., Hello!\nLine 2\nLine 3"
+                disabled={!localEnabled}
+                className="setting-input"
+                style={{ flex: '2', fontFamily: 'monospace', minHeight: '60px', resize: 'vertical' }}
+                rows={3}
+              />
+            ) : (
+              <input
+                type="text"
+                value={newResponse}
+                onChange={(e) => setNewResponse(e.target.value)}
+                placeholder="e.g., https://wttr.in/{location}?format=4"
+                disabled={!localEnabled}
+                className="setting-input"
+                style={{ flex: '2', fontFamily: 'monospace' }}
+              />
+            )}
             <button
               onClick={addTrigger}
               disabled={!localEnabled || !newTrigger.trim() || !newResponse.trim()}
@@ -315,56 +360,172 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
               </span>
             </label>
             <div style={{ marginTop: '0.5rem' }}>
-              {localTriggers.map((trigger) => (
-                <div
-                  key={trigger.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    padding: '0.75rem',
-                    marginBottom: '0.5rem',
-                    background: 'var(--ctp-surface0)',
-                    border: '1px solid var(--ctp-overlay0)',
-                    borderRadius: '4px'
-                  }}
-                >
-                  <div style={{ flex: '1', fontFamily: 'monospace', fontSize: '0.9rem' }}>
-                    <div style={{ fontWeight: 'bold', color: 'var(--ctp-blue)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      {trigger.trigger}
-                      <span style={{
-                        fontSize: '0.7rem',
-                        padding: '0.15rem 0.4rem',
-                        background: trigger.responseType === 'text' ? 'var(--ctp-green)' : 'var(--ctp-mauve)',
-                        color: 'var(--ctp-base)',
-                        borderRadius: '3px',
-                        fontWeight: 'bold'
-                      }}>
-                        {trigger.responseType.toUpperCase()}
-                      </span>
-                    </div>
-                    <div style={{ color: 'var(--ctp-subtext0)', fontSize: '0.85rem', marginTop: '0.25rem' }}>
-                      {trigger.response}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => removeTrigger(trigger.id)}
-                    disabled={!localEnabled}
+              {localTriggers.map((trigger) => {
+                const isEditing = editingId === trigger.id;
+                const [editTrigger, setEditTrigger] = React.useState(trigger.trigger);
+                const [editResponseType, setEditResponseType] = React.useState<ResponseType>(trigger.responseType);
+                const [editResponse, setEditResponse] = React.useState(trigger.response);
+
+                // Reset local edit state when editing mode changes
+                React.useEffect(() => {
+                  if (isEditing) {
+                    setEditTrigger(trigger.trigger);
+                    setEditResponseType(trigger.responseType);
+                    setEditResponse(trigger.response);
+                  }
+                }, [isEditing, trigger.trigger, trigger.responseType, trigger.response]);
+
+                return (
+                  <div
+                    key={trigger.id}
                     style={{
-                      padding: '0.25rem 0.5rem',
-                      fontSize: '12px',
-                      background: 'var(--ctp-red)',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: localEnabled ? 'pointer' : 'not-allowed',
-                      opacity: localEnabled ? 1 : 0.5
+                      display: 'flex',
+                      flexDirection: isEditing ? 'column' : 'row',
+                      alignItems: isEditing ? 'stretch' : 'center',
+                      gap: '0.5rem',
+                      padding: '0.75rem',
+                      marginBottom: '0.5rem',
+                      background: isEditing ? 'var(--ctp-surface1)' : 'var(--ctp-surface0)',
+                      border: isEditing ? '2px solid var(--ctp-blue)' : '1px solid var(--ctp-overlay0)',
+                      borderRadius: '4px'
                     }}
                   >
-                    Remove
-                  </button>
-                </div>
-              ))}
+                    {isEditing ? (
+                      <>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold' }}>Trigger:</label>
+                            <input
+                              type="text"
+                              value={editTrigger}
+                              onChange={(e) => setEditTrigger(e.target.value)}
+                              className="setting-input"
+                              style={{ flex: '1', fontFamily: 'monospace' }}
+                            />
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold' }}>Type:</label>
+                            <select
+                              value={editResponseType}
+                              onChange={(e) => setEditResponseType(e.target.value as ResponseType)}
+                              className="setting-input"
+                              style={{ flex: '1' }}
+                            >
+                              <option value="text">Text Response</option>
+                              <option value="http">HTTP Request</option>
+                            </select>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+                            <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold', paddingTop: '0.5rem' }}>Response:</label>
+                            {editResponseType === 'text' ? (
+                              <textarea
+                                value={editResponse}
+                                onChange={(e) => setEditResponse(e.target.value)}
+                                className="setting-input"
+                                style={{ flex: '1', fontFamily: 'monospace', minHeight: '60px', resize: 'vertical' }}
+                                rows={3}
+                              />
+                            ) : (
+                              <input
+                                type="text"
+                                value={editResponse}
+                                onChange={(e) => setEditResponse(e.target.value)}
+                                className="setting-input"
+                                style={{ flex: '1', fontFamily: 'monospace' }}
+                              />
+                            )}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                          <button
+                            onClick={() => saveEdit(trigger.id, editTrigger, editResponseType, editResponse)}
+                            style={{
+                              padding: '0.25rem 0.75rem',
+                              fontSize: '12px',
+                              background: 'var(--ctp-green)',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            Save
+                          </button>
+                          <button
+                            onClick={cancelEditing}
+                            style={{
+                              padding: '0.25rem 0.75rem',
+                              fontSize: '12px',
+                              background: 'var(--ctp-surface2)',
+                              color: 'var(--ctp-text)',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div style={{ flex: '1', fontFamily: 'monospace', fontSize: '0.9rem' }}>
+                          <div style={{ fontWeight: 'bold', color: 'var(--ctp-blue)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            {trigger.trigger}
+                            <span style={{
+                              fontSize: '0.7rem',
+                              padding: '0.15rem 0.4rem',
+                              background: trigger.responseType === 'text' ? 'var(--ctp-green)' : 'var(--ctp-mauve)',
+                              color: 'var(--ctp-base)',
+                              borderRadius: '3px',
+                              fontWeight: 'bold'
+                            }}>
+                              {trigger.responseType.toUpperCase()}
+                            </span>
+                          </div>
+                          <div style={{ color: 'var(--ctp-subtext0)', fontSize: '0.85rem', marginTop: '0.25rem', whiteSpace: 'pre-wrap' }}>
+                            {trigger.response}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button
+                            onClick={() => startEditing(trigger.id)}
+                            disabled={!localEnabled}
+                            style={{
+                              padding: '0.25rem 0.5rem',
+                              fontSize: '12px',
+                              background: 'var(--ctp-blue)',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: localEnabled ? 'pointer' : 'not-allowed',
+                              opacity: localEnabled ? 1 : 0.5
+                            }}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => removeTrigger(trigger.id)}
+                            disabled={!localEnabled}
+                            style={{
+                              padding: '0.25rem 0.5rem',
+                              fontSize: '12px',
+                              background: 'var(--ctp-red)',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: localEnabled ? 'pointer' : 'not-allowed',
+                              opacity: localEnabled ? 1 : 0.5
+                            }}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}

@@ -4127,7 +4127,7 @@ class MeshtasticManager {
         // Replace {param} with capture groups
         let pattern = trigger.trigger.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // Escape regex chars
         paramNames.forEach(param => {
-          pattern = pattern.replace(`\\{${param}\\}`, '([\\w\\d.-]+)');
+          pattern = pattern.replace(`\\{${param}\\}`, '([^\\s]+)');
         });
 
         const triggerRegex = new RegExp(`^${pattern}$`, 'i');
