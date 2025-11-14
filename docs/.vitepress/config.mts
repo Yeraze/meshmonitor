@@ -76,6 +76,12 @@ export default defineConfig({
             { text: 'Authentication', link: '/development/authentication' },
             { text: 'API Documentation', link: '/development/api' }
           ]
+        },
+        {
+          text: 'Advanced Topics',
+          items: [
+            { text: 'Auto Responder Scripting', link: '/developers/auto-responder-scripting' }
+          ]
         }
       ]
     },
