@@ -7,6 +7,7 @@ import { logger } from '../utils/logger.js';
 import { getEnvironmentConfig } from './config/environment.js';
 import { notificationService } from './services/notificationService.js';
 import packetLogService from './services/packetLogService.js';
+import { messageQueueService } from './messageQueueService.js';
 import { createRequire } from 'module';
 import * as cron from 'node-cron';
 const require = createRequire(import.meta.url);
@@ -99,6 +100,11 @@ class MeshtasticManager {
       nodeIp: env.meshtasticNodeIp,
       tcpPort: env.meshtasticTcpPort
     };
+
+    // Initialize message queue service with send callback
+    messageQueueService.setSendCallback(async (text: string, destination: number, replyId?: number) => {
+      return await this.sendTextMessage(text, 0, destination, replyId);
+    });
   }
 
   async connect(): Promise<boolean> {
@@ -2040,6 +2046,8 @@ class MeshtasticManager {
             if (updated) {
               logger.debug(`💾 Marked message ${requestId} as confirmed (received by target)`);
             }
+            // Notify message queue service of successful ACK
+            messageQueueService.handleAck(requestId);
           } else if (fromNodeId === targetNodeId && !isDM) {
             logger.debug(`📢 ACK from ${fromNodeId} for channel message ${requestId} (already marked as delivered)`);
           } else {
@@ -2065,6 +2073,8 @@ class MeshtasticManager {
       if (requestId) {
         logger.info(`❌ Marking message ${requestId} as failed due to routing error: ${errorName}`);
         databaseService.updateMessageDeliveryState(requestId, 'failed');
+        // Notify message queue service of failure
+        messageQueueService.handleFailure(requestId, errorName);
       }
     } catch (error) {
       logger.error('❌ Error processing routing error message:', error);
@@ -4297,9 +4307,19 @@ class MeshtasticManager {
             logger.debug(`✂️  Response truncated from ${responseText.length} to ${truncated.length} characters`);
           }
 
-          // Send response as DM
-          logger.debug(`🤖 Auto-responding to ${message.fromNodeId}: "${truncated}"`);
-          await this.sendTextMessage(truncated, 0, fromNum, packetId);
+          // Enqueue response for delivery with retry logic
+          logger.debug(`🤖 Enqueueing auto-response to ${message.fromNodeId}: "${truncated}"`);
+          messageQueueService.enqueue(
+            truncated,
+            fromNum,
+            packetId,
+            () => {
+              logger.info(`✅ Auto-response delivered successfully to !${fromNum.toString(16).padStart(8, '0')}`);
+            },
+            (reason: string) => {
+              logger.warn(`❌ Auto-response failed to !${fromNum.toString(16).padStart(8, '0')}: ${reason}`);
+            }
+          );
 
           // Only respond to first matching trigger
           return;
