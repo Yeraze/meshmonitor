@@ -212,6 +212,7 @@ jobs:
         id: notes
         run: |
           VERSION="${{ needs.validate-release.outputs.version }}"
+          VERSION_NO_V="${VERSION#v}"  # Remove 'v' prefix for Docker tag
           echo "## 🚀 MeshMonitor ${VERSION}" > release-notes.md
           echo "" >> release-notes.md
           echo "### 📦 Installation" >> release-notes.md
@@ -222,7 +223,7 @@ jobs:
           echo "  --name meshmonitor \\" >> release-notes.md
           echo "  -p 8080:3001 \\" >> release-notes.md
           echo "  -v meshmonitor-data:/data \\" >> release-notes.md
-          echo "  ghcr.io/${{ github.repository }}:${VERSION}" >> release-notes.md
+          echo "  ghcr.io/${{ github.repository }}:${VERSION_NO_V}" >> release-notes.md
           echo '```' >> release-notes.md
           echo "" >> release-notes.md
           echo "### 🧪 Testing" >> release-notes.md
