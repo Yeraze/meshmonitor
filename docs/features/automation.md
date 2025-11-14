@@ -313,6 +313,238 @@ Auto Announce uses Meshtastic's channel messaging. For more information:
 - [Meshtastic Channels Documentation](https://meshtastic.org/docs/configuration/radio/channels)
 - [Meshtastic Messaging Documentation](https://meshtastic.org/docs/overview/mesh-algo#messaging)
 
+## Auto Responder
+
+Automatically responds to messages matching custom trigger patterns with either text or HTTP requests. This powerful feature enables creating bot-like functionality such as weather information, node status, or custom commands.
+
+### How It Works
+
+When enabled, MeshMonitor monitors all incoming messages for patterns matching your configured triggers. When a message matches, it either sends a text response with extracted parameters or makes an HTTP request to an external service with the extracted data.
+
+### Configuration
+
+**Enable/Disable**: Toggle the checkbox next to "Auto Responder"
+
+**Triggers**: Create custom trigger patterns that match specific message formats
+
+Each trigger consists of:
+- **Trigger Pattern**: The message pattern to match (e.g., "weather {location}")
+- **Response Type**: Either "text" (send a message) or "http" (make an HTTP request)
+- **Response**: The action to take when triggered
+
+### Trigger Patterns
+
+Trigger patterns can include parameters using curly braces `{parameter}` that extract information from messages:
+
+**Examples**:
+- `weather {location}` - Matches "weather miami" or "weather new york"
+- `w {city},{state}` - Matches "w parkland,fl" or "w austin,tx"
+- `status {nodeid}` - Matches "status !a1b2c3d4"
+- `hello` - Simple pattern with no parameters
+
+**Pattern Matching**:
+- Case insensitive by default
+- Parameters match any non-whitespace characters
+- Parameters support commas and special characters (e.g., "parkland,fl")
+- Patterns are matched against the entire message
+
+### Response Types
+
+**Text Response**: Sends a message back to the sender
+
+- Supports multiline text (automatically converts to textarea for editing)
+- Can include extracted parameters using `{parameter}` syntax
+- Example trigger: `hello {name}`
+- Example response: `Hi {name}! Welcome to the mesh.`
+
+**HTTP Response**: Makes an HTTP GET request to an external service
+
+- URL can include extracted parameters using `{parameter}` syntax
+- Useful for triggering webhooks, APIs, or external automation
+- Example trigger: `alert {message}`
+- Example response: `https://api.example.com/alert?msg={message}`
+
+### Parameter Extraction
+
+Parameters are automatically extracted from the incoming message and can be used in responses:
+
+**Example 1 - Weather Bot**:
+```
+Trigger: weather {location}
+Response Type: http
+Response: https://api.weather.com/lookup?q={location}
+```
+
+When someone sends "weather miami", MeshMonitor makes a request to:
+`https://api.weather.com/lookup?q=miami`
+
+**Example 2 - Greeting Bot**:
+```
+Trigger: hello {name}
+Response Type: text
+Response: Hey {name}! Thanks for saying hello. Welcome to our mesh network!
+```
+
+When someone sends "hello Alice", MeshMonitor replies:
+`Hey Alice! Thanks for saying hello. Welcome to our mesh network!`
+
+**Example 3 - Multi-Parameter**:
+```
+Trigger: w {city},{state}
+Response Type: text
+Response: Looking up weather for {city}, {state}...
+```
+
+When someone sends "w parkland,fl", MeshMonitor replies:
+`Looking up weather for parkland, fl...`
+
+### Managing Triggers
+
+**Adding Triggers**:
+1. Enter your trigger pattern (e.g., "weather {location}")
+2. Select response type (text or http)
+3. Enter your response (text message or URL)
+4. Click "Add Trigger"
+
+**Editing Triggers**:
+1. Click the "Edit" button next to any trigger
+2. Modify the pattern, type, or response
+3. Click "Save" to apply changes or "Cancel" to discard
+4. Edited triggers show a blue border while in edit mode
+
+**Removing Triggers**:
+- Click the "Remove" button next to any trigger
+
+**Multiline Text Support**:
+- Text responses automatically use a multiline textarea
+- Supports 3+ lines with vertical resizing
+- Useful for longer responses or formatted text
+
+### Side Effects
+
+- **Network Traffic**: Each triggered response generates mesh traffic
+- **Response Time**: Text responses are sent immediately; HTTP requests depend on external service response time
+- **Privacy**: Be cautious with HTTP requests - parameters from messages are sent to external services
+- **Rate Limiting**: Consider implementing external rate limiting for HTTP webhooks
+- **Airtime Usage**: Text responses consume airtime on the LoRa radio
+
+### Use Cases
+
+**Information Bots**:
+- Weather lookup: `weather {location}` → HTTP request to weather API
+- Node status: `status {nodeid}` → Text response with node information
+- Help command: `help` → Text response with available commands
+
+**Automation Triggers**:
+- Alert forwarding: `alert {message}` → HTTP webhook to notification service
+- Data logging: `log {sensor},{value}` → HTTP POST to logging service
+- Integration: `trigger {action}` → HTTP request to home automation
+
+**Interactive Commands**:
+- Greetings: `hello {name}` → Personalized welcome message
+- Pings: `ping` → "pong!" response
+- Info requests: `info {topic}` → Detailed information response
+
+### Best Practices
+
+**Pattern Design**:
+- Use descriptive parameter names (e.g., `{location}` not `{x}`)
+- Keep patterns simple and memorable
+- Document your available commands somewhere accessible
+- Avoid overlapping patterns that might cause confusion
+
+**Text Responses**:
+- Keep responses concise to minimize airtime usage
+- Include parameter values to confirm what was matched
+- Use multiline text for structured information
+- Consider adding emojis for visual clarity
+
+**HTTP Requests**:
+- Validate external services are reliable and fast
+- Use HTTPS for secure external communications
+- Implement error handling on the receiving service
+- Consider rate limiting to prevent abuse
+- Test URLs before deploying to production
+
+**Security Considerations**:
+- Don't expose sensitive URLs or API keys in triggers
+- Be aware that parameters come from untrusted user input
+- Sanitize parameters on the receiving end for HTTP requests
+- Consider what information you're sharing with external services
+
+**Network Impact**:
+- Limit number of triggers to avoid complexity
+- Monitor for patterns that might match too frequently
+- Consider disabling during high network activity periods
+- Test thoroughly before enabling on production networks
+
+### Example Configurations
+
+**Simple Ping Bot**:
+```
+Trigger: ping
+Response Type: text
+Response: pong!
+```
+
+**Weather Lookup**:
+```
+Trigger: weather {city}
+Response Type: http
+Response: https://wttr.in/{city}?format=3
+```
+
+**Multi-Parameter Weather**:
+```
+Trigger: w {city},{state}
+Response Type: http
+Response: https://api.weather.example.com/v1/current?city={city}&state={state}
+```
+
+**Help Command**:
+```
+Trigger: help
+Response Type: text
+Response: Available commands:
+- weather {location}
+- w {city},{state}
+- status {nodeid}
+- ping
+```
+
+**Node Status**:
+```
+Trigger: status {nodeid}
+Response Type: text
+Response: Looking up status for node {nodeid}...
+```
+
+### Troubleshooting
+
+**Triggers Not Matching**:
+- Check that patterns are spelled correctly
+- Remember matching is case insensitive
+- Verify parameters use `{paramName}` format
+- Test with simple patterns first
+
+**Parameters Not Extracting**:
+- Ensure parameter names match between trigger and response
+- Parameters must be surrounded by `{` and `}`
+- Parameters cannot contain spaces
+- Check for typos in parameter names
+
+**HTTP Requests Failing**:
+- Verify the URL is correct and accessible
+- Check that parameters are properly URL-encoded
+- Test the URL manually in a browser first
+- Check external service logs for errors
+
+### Related Meshtastic Documentation
+
+Auto Responder uses Meshtastic's messaging system. For more information:
+- [Meshtastic Messaging Documentation](https://meshtastic.org/docs/overview/mesh-algo#messaging)
+- [Meshtastic Text Messages](https://meshtastic.org/docs/configuration/module/canned-message)
+
 ## Configuration Storage
 
 All automation settings are stored on the MeshMonitor server and persist across container restarts and browser sessions. Changes made by any user with appropriate permissions will affect all users accessing the system.
