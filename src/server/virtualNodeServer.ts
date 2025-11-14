@@ -476,10 +476,25 @@ export class VirtualNodeServer extends EventEmitter {
       if (localNodeInfo) {
         logger.debug(`Virtual node: Rebuilding MyNodeInfo for local node ${localNodeInfo.nodeId}`);
         const localNode = databaseService.getNode(localNodeInfo.nodeNum);
+
+        // Try to get firmware version from multiple sources (in order of preference):
+        // 1. localNodeInfo (populated from DeviceMetadata)
+        // 2. database (populated from DeviceMetadata via processDeviceMetadata)
+        // 3. fallback to 2.6.0 (more reasonable than 2.0.0)
+        let firmwareVersion = (localNodeInfo as any).firmwareVersion;
+        if (!firmwareVersion && localNode?.firmwareVersion) {
+          firmwareVersion = localNode.firmwareVersion;
+          logger.debug(`Virtual node: Using firmware version from database: ${firmwareVersion}`);
+        }
+        if (!firmwareVersion) {
+          firmwareVersion = '2.6.0';
+          logger.debug(`Virtual node: Using fallback firmware version: ${firmwareVersion}`);
+        }
+
         const myNodeInfoMessage = await meshtasticProtobufService.createMyNodeInfo({
           myNodeNum: localNodeInfo.nodeNum,
           numBands: 13,
-          firmwareVersion: (localNodeInfo as any).firmwareVersion || '2.0.0',
+          firmwareVersion,
           rebootCount: localNode?.rebootCount || 0,
           bitrate: 17.24,
           messageTimeoutMsec: 300000,
