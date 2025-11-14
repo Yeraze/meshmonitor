@@ -352,14 +352,16 @@ Trigger patterns can include parameters using curly braces `{parameter}` that ex
 
 **Text Response**: Sends a message back to the sender
 
-- Supports multiline text (automatically converts to textarea for editing)
+- Supports multiline text (automatically uses textarea for editing)
 - Can include extracted parameters using `{parameter}` syntax
+- **Multiline Support**: Enable to automatically split long responses into multiple messages
 - Example trigger: `hello {name}`
 - Example response: `Hi {name}! Welcome to the mesh.`
 
 **HTTP Response**: Makes an HTTP GET request to an external service
 
 - URL can include extracted parameters using `{parameter}` syntax
+- **Multiline Support**: Enable to automatically split long responses into multiple messages
 - Useful for triggering webhooks, APIs, or external automation
 - Example trigger: `alert {message}`
 - Example response: `https://api.example.com/alert?msg={message}`
@@ -369,10 +371,78 @@ Trigger patterns can include parameters using curly braces `{parameter}` that ex
 - Scripts must be placed in `/data/scripts/` directory
 - Supports Node.js (`.js`, `.mjs`), Python (`.py`), and Shell (`.sh`) scripts
 - Scripts receive message data and parameters via environment variables
-- Must output JSON with a `response` field
+- Can output single or multiple responses (see Script Response Details below)
 - 10-second execution timeout
 - Example trigger: `weather {location}`
 - Example response: `/data/scripts/weather.py`
+
+### Multiline Support
+
+For **Text** and **HTTP** response types, you can enable multiline support to automatically split long responses into multiple messages. This feature is useful when responses exceed the 200-character limit.
+
+**How It Works**:
+
+When multiline is enabled, responses are intelligently split using the following priority:
+
+1. **Line Breaks** (if using >50% of available space)
+   - Splits on `\n` characters
+   - Best for pre-formatted multi-paragraph responses
+
+2. **Sentence Endings** (if using >50% of space)
+   - Splits after `. `, `! `, or `? `
+   - Keeps complete sentences together
+
+3. **Punctuation** (if using >50% of space)
+   - Splits after `, `, `; `, `: `, or ` - `
+   - Preserves clause boundaries
+
+4. **Spaces** (if using >30% of space)
+   - Splits at word boundaries
+   - Avoids cutting words in half
+
+5. **Hyphens** (if using >30% of space)
+   - Splits at hyphenated words
+   - Last resort before character splitting
+
+6. **Character Split** (if no better option)
+   - Splits at exactly 200 characters
+   - Only used when absolutely necessary
+
+**Message Queue Behavior**:
+
+Each split message is:
+- Queued individually
+- Sent with 30-second intervals between messages
+- Retried up to 3 times on failure
+- Tracked for ACK delivery confirmation
+
+**Example**:
+
+```
+Trigger: help
+Response Type: text
+Multiline: ✓ Enabled
+Response:
+Welcome to our mesh bot! Available commands:
+- weather {location}: Get weather info
+- status {nodeid}: Check node status
+- ping: Test connectivity
+For more info visit meshmonitor.org
+```
+
+This would be split into approximately 3 messages, each sent 30 seconds apart.
+
+**When to Use Multiline**:
+- Help text with multiple commands
+- Long informational responses
+- Multi-paragraph announcements
+- Formatted lists or instructions
+
+**When NOT to Use Multiline**:
+- Simple acknowledgments
+- Short status updates
+- Time-sensitive responses
+- Single-line messages
 
 ### Parameter Extraction
 
@@ -439,12 +509,30 @@ All scripts receive these environment variables:
 
 **JSON Output Format**:
 
-Scripts must print JSON to stdout:
+Scripts can return single or multiple responses:
+
+**Single Response:**
 ```json
 {
   "response": "Your response text (max 200 chars)"
 }
 ```
+
+**Multiple Responses:**
+```json
+{
+  "responses": [
+    "First message (max 200 chars)",
+    "Second message (max 200 chars)",
+    "Third message (max 200 chars)"
+  ]
+}
+```
+
+When using multiple responses, each message is queued individually and sent with:
+- 30-second rate limiting between messages
+- Up to 3 retry attempts per message
+- Automatic ACK tracking for delivery confirmation
 
 **Example 1 - Node.js Weather Script**:
 ```javascript
@@ -549,9 +637,12 @@ echo "Debug: $VARIABLE" >&2  # Shell
 **Example Scripts**:
 
 The MeshMonitor repository includes example scripts in `examples/auto-responder-scripts/`:
-- `hello.js` - Simple Node.js greeting script
-- `weather.py` - Python weather lookup template
+- `hello.js` - Simple Node.js greeting script with parameter extraction
+- `weather.py` - Python weather lookup template with API call
 - `info.sh` - Shell script showing system info
+- `lorem.js/py/sh` - Multi-response examples that send 3 Lorem Ipsum messages
+
+The `lorem` examples demonstrate the **multiple responses** feature where a script returns an array of messages that are queued and sent individually with rate limiting.
 
 See the [examples/auto-responder-scripts/README.md](https://github.com/MeshAddicts/meshmonitor/tree/main/examples/auto-responder-scripts) for detailed documentation.
 

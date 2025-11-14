@@ -137,8 +137,8 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
               )}
             </div>
             {editResponseType !== 'script' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: '88px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem', cursor: 'pointer' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingLeft: '0.5rem', marginTop: '0.25rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', cursor: 'pointer', color: 'var(--ctp-subtext0)' }}>
                   <input
                     type="checkbox"
                     checked={editMultiline}
@@ -622,8 +622,8 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
             </button>
           </div>
           {newResponseType !== 'script' && (
-            <div style={{ marginTop: '0.5rem' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem', cursor: 'pointer' }}>
+            <div style={{ marginTop: '0.5rem', paddingLeft: '0.5rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', cursor: localEnabled ? 'pointer' : 'not-allowed', color: 'var(--ctp-subtext0)' }}>
                 <input
                   type="checkbox"
                   checked={newMultiline}
