@@ -2615,7 +2615,7 @@ function App() {
       (msg.from === nodeId || msg.to === nodeId) &&
       msg.to !== '!ffffffff' && // Exclude broadcasts
       msg.channel === -1 && // Only direct messages
-      msg.portnum === 1 // Only text messages, exclude traceroutes (portnum 70)
+      msg.portnum === 1 // Only text messages
     );
   };
 
