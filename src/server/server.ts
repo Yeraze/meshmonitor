@@ -3051,8 +3051,22 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
             return res.status(400).json({ error: 'Each trigger must have id, trigger, responseType, and response fields' });
           }
 
-          if (trigger.responseType !== 'text' && trigger.responseType !== 'http') {
-            return res.status(400).json({ error: 'responseType must be either "text" or "http"' });
+          if (trigger.responseType !== 'text' && trigger.responseType !== 'http' && trigger.responseType !== 'script') {
+            return res.status(400).json({ error: 'responseType must be "text", "http", or "script"' });
+          }
+
+          // Validate script paths
+          if (trigger.responseType === 'script') {
+            if (!trigger.response.startsWith('/data/scripts/')) {
+              return res.status(400).json({ error: 'Script path must start with /data/scripts/' });
+            }
+            if (trigger.response.includes('..')) {
+              return res.status(400).json({ error: 'Script path cannot contain ..' });
+            }
+            const ext = trigger.response.split('.').pop()?.toLowerCase();
+            if (!ext || !['js', 'mjs', 'py', 'sh'].includes(ext)) {
+              return res.status(400).json({ error: 'Script must have .js, .mjs, .py, or .sh extension' });
+            }
           }
         }
       } catch (error) {
@@ -4198,6 +4212,41 @@ apiRouter.put('/apprise/enabled', requireAdmin(), (req, res) => {
 
 // Serve static files from the React app build
 const buildPath = path.join(__dirname, '../../dist');
+
+// Public endpoint to list available scripts (no CSRF or auth required)
+const scriptsEndpoint = (_req: any, res: any) => {
+  try {
+    const scriptsDir = '/data/scripts';
+
+    // Check if directory exists
+    if (!fs.existsSync(scriptsDir)) {
+      return res.json({ scripts: [] });
+    }
+
+    // Read directory and filter for valid script extensions
+    const files = fs.readdirSync(scriptsDir);
+    const validExtensions = ['.js', '.mjs', '.py', '.sh'];
+
+    const scripts = files
+      .filter(file => {
+        const ext = path.extname(file).toLowerCase();
+        return validExtensions.includes(ext);
+      })
+      .filter(file => file !== 'upgrade-watchdog.sh') // Exclude system scripts
+      .map(file => `/data/scripts/${file}`)
+      .sort();
+
+    res.json({ scripts });
+  } catch (error) {
+    logger.error('❌ Error listing scripts:', error);
+    res.status(500).json({ error: 'Failed to list scripts', scripts: [] });
+  }
+};
+
+if (BASE_URL) {
+  app.get(`${BASE_URL}/api/scripts`, scriptsEndpoint);
+}
+app.get('/api/scripts', scriptsEndpoint);
 
 // Mount API router first - this must come before static file serving
 // Apply rate limiting and CSRF protection to all API routes (except csrf-token endpoint)

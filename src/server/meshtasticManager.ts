@@ -4187,6 +4187,98 @@ class MeshtasticManager {
               return;
             }
 
+          } else if (trigger.responseType === 'script') {
+            // Script execution
+            const scriptPath = trigger.response;
+
+            // Validate script path (security check)
+            if (!scriptPath.startsWith('/data/scripts/') || scriptPath.includes('..')) {
+              logger.error(`🚫 Invalid script path: ${scriptPath}`);
+              return;
+            }
+
+            // Determine interpreter based on file extension
+            const ext = scriptPath.split('.').pop()?.toLowerCase();
+            let interpreter: string;
+            switch (ext) {
+              case 'js':
+              case 'mjs':
+                interpreter = '/usr/local/bin/node';
+                break;
+              case 'py':
+                interpreter = '/usr/bin/python3';
+                break;
+              case 'sh':
+                interpreter = '/bin/sh';
+                break;
+              default:
+                logger.error(`🚫 Unsupported script extension: ${ext}`);
+                return;
+            }
+
+            logger.debug(`🔧 Executing script: ${scriptPath} with ${interpreter}`);
+
+            try {
+              const { execFile } = await import('child_process');
+              const { promisify } = await import('util');
+              const execFileAsync = promisify(execFile);
+
+              // Prepare environment variables
+              const env: Record<string, string> = {
+                ...process.env as Record<string, string>,
+                MESSAGE: messageText,
+                FROM_NODE: String(fromNum),
+                PACKET_ID: String(packetId),
+                TRIGGER: trigger.trigger,
+              };
+
+              // Add extracted parameters as PARAM_* environment variables
+              Object.entries(params).forEach(([key, value]) => {
+                env[`PARAM_${key}`] = value;
+              });
+
+              // Execute script with 10-second timeout
+              const { stdout, stderr } = await execFileAsync(interpreter, [scriptPath], {
+                timeout: 10000,
+                env,
+                maxBuffer: 1024 * 1024, // 1MB max output
+              });
+
+              if (stderr) {
+                logger.debug(`📋 Script stderr: ${stderr}`);
+              }
+
+              // Parse JSON output
+              let scriptOutput;
+              try {
+                scriptOutput = JSON.parse(stdout.trim());
+              } catch (parseError) {
+                logger.error(`❌ Script output is not valid JSON: ${stdout.substring(0, 100)}`);
+                return;
+              }
+
+              // Validate response field exists
+              if (!scriptOutput || typeof scriptOutput.response !== 'string') {
+                logger.error(`❌ Script output missing 'response' field`);
+                return;
+              }
+
+              responseText = scriptOutput.response;
+              logger.debug(`📥 Script response: ${responseText.substring(0, 50)}...`);
+
+              // TODO: Handle optional actions in scriptOutput.actions
+
+            } catch (error: any) {
+              if (error.killed && error.signal === 'SIGTERM') {
+                logger.error('⏭️  Script execution timed out after 10 seconds');
+              } else if (error.code === 'ENOENT') {
+                logger.error(`⏭️  Script not found: ${scriptPath}`);
+              } else {
+                logger.error('⏭️  Script execution failed:', error.message);
+              }
+              return;
+            }
+
           } else {
             // Text trigger - use static response
             responseText = trigger.response;

@@ -364,6 +364,16 @@ Trigger patterns can include parameters using curly braces `{parameter}` that ex
 - Example trigger: `alert {message}`
 - Example response: `https://api.example.com/alert?msg={message}`
 
+**Script Response**: Executes a custom script for advanced logic
+
+- Scripts must be placed in `/data/scripts/` directory
+- Supports Node.js (`.js`, `.mjs`), Python (`.py`), and Shell (`.sh`) scripts
+- Scripts receive message data and parameters via environment variables
+- Must output JSON with a `response` field
+- 10-second execution timeout
+- Example trigger: `weather {location}`
+- Example response: `/data/scripts/weather.py`
+
 ### Parameter Extraction
 
 Parameters are automatically extracted from the incoming message and can be used in responses:
@@ -398,12 +408,159 @@ Response: Looking up weather for {city}, {state}...
 When someone sends "w parkland,fl", MeshMonitor replies:
 `Looking up weather for parkland, fl...`
 
+### Script Response Details
+
+Scripts provide the most powerful and flexible response type, allowing you to execute custom logic, call external APIs, query databases, or perform complex calculations.
+
+**Setting Up Scripts**:
+
+1. **Create Your Script**: Write a script in Node.js, Python, or Shell
+2. **Copy to Container**: Place the script in `/data/scripts/` directory
+3. **Make Executable**: Ensure the script has execute permissions
+4. **Configure Trigger**: Set response type to "Script" and enter the full path
+
+**Script Requirements**:
+
+Scripts must:
+- Be located in `/data/scripts/` directory
+- Have a supported extension: `.js`, `.mjs`, `.py`, or `.sh`
+- Output valid JSON to stdout with a `response` field
+- Complete execution within 10 seconds (timeout)
+- Handle errors gracefully
+
+**Environment Variables**:
+
+All scripts receive these environment variables:
+- `MESSAGE`: Full message text received
+- `FROM_NODE`: Sender's node number
+- `PACKET_ID`: Message packet ID
+- `TRIGGER`: The trigger pattern that matched
+- `PARAM_*`: Extracted parameters (e.g., `PARAM_location`, `PARAM_name`)
+
+**JSON Output Format**:
+
+Scripts must print JSON to stdout:
+```json
+{
+  "response": "Your response text (max 200 chars)"
+}
+```
+
+**Example 1 - Node.js Weather Script**:
+```javascript
+#!/usr/bin/env node
+
+const location = process.env.PARAM_location || 'Unknown';
+
+// In production, call a real weather API
+const response = {
+  response: `Weather for ${location}: Sunny, 72°F`
+};
+
+console.log(JSON.stringify(response));
+```
+
+Trigger Configuration:
+```
+Trigger: weather {location}
+Response Type: script
+Response: /data/scripts/weather.js
+```
+
+**Example 2 - Python Script with API Call**:
+```python
+#!/usr/bin/env python3
+import os
+import json
+import urllib.request
+
+location = os.environ.get('PARAM_location', 'Unknown')
+
+try:
+    # Call weather API
+    url = f"https://wttr.in/{location}?format=3"
+    with urllib.request.urlopen(url, timeout=5) as response:
+        weather_data = response.read().decode('utf-8').strip()
+
+    output = {"response": weather_data}
+except Exception as e:
+    output = {"response": f"Weather lookup failed for {location}"}
+
+print(json.dumps(output))
+```
+
+**Example 3 - Shell Script**:
+```bash
+#!/bin/sh
+
+NAME="${PARAM_name:-stranger}"
+
+cat <<EOF
+{
+  "response": "Hello ${NAME}! From node ${FROM_NODE}"
+}
+EOF
+```
+
+**Copying Scripts to Container**:
+```bash
+# Copy a single script
+docker cp weather.py meshmonitor:/data/scripts/
+
+# Copy multiple scripts
+docker cp scripts/ meshmonitor:/data/
+
+# Make scripts executable
+docker exec meshmonitor chmod +x /data/scripts/*.py
+```
+
+**Debugging Scripts**:
+
+View execution logs:
+```bash
+docker logs -f meshmonitor
+```
+
+Scripts can write debug info to stderr (visible in logs):
+```javascript
+console.error('Debug info:', variable);  // Node.js
+```
+```python
+print(f'Debug: {variable}', file=sys.stderr)  # Python
+```
+```bash
+echo "Debug: $VARIABLE" >&2  # Shell
+```
+
+**Script Security**:
+- Scripts are sandboxed to `/data/scripts/` directory
+- Path traversal attempts (`..`) are blocked
+- Scripts run with container user permissions (not root)
+- 10-second execution timeout prevents runaway scripts
+- Output limited to 1MB to prevent memory issues
+
+**Performance Tips**:
+- Keep scripts fast (< 1 second preferred)
+- Cache external API results when possible
+- Use async I/O for network requests
+- Test scripts locally before deployment
+- Monitor container logs for errors
+
+**Example Scripts**:
+
+The MeshMonitor repository includes example scripts in `examples/auto-responder-scripts/`:
+- `hello.js` - Simple Node.js greeting script
+- `weather.py` - Python weather lookup template
+- `info.sh` - Shell script showing system info
+
+See the [examples/auto-responder-scripts/README.md](https://github.com/MeshAddicts/meshmonitor/tree/main/examples/auto-responder-scripts) for detailed documentation.
+
 ### Managing Triggers
 
 **Adding Triggers**:
 1. Enter your trigger pattern (e.g., "weather {location}")
-2. Select response type (text or http)
-3. Enter your response (text message or URL)
+2. Select response type (text, http, or script)
+3. Enter your response (text message, URL, or script path)
 4. Click "Add Trigger"
 
 **Editing Triggers**:
