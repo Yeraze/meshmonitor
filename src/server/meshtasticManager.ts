@@ -4267,16 +4267,47 @@ class MeshtasticManager {
                 return;
               }
 
-              // Validate response field exists
-              if (!scriptOutput || typeof scriptOutput.response !== 'string') {
-                logger.error(`❌ Script output missing 'response' field`);
+              // Support both single response and multiple responses
+              let scriptResponses: string[];
+              if (scriptOutput.responses && Array.isArray(scriptOutput.responses)) {
+                // Multiple responses format: { "responses": ["msg1", "msg2", "msg3"] }
+                scriptResponses = scriptOutput.responses.filter((r: any) => typeof r === 'string');
+                if (scriptResponses.length === 0) {
+                  logger.error(`❌ Script 'responses' array contains no valid strings`);
+                  return;
+                }
+                logger.debug(`📥 Script returned ${scriptResponses.length} responses`);
+              } else if (scriptOutput.response && typeof scriptOutput.response === 'string') {
+                // Single response format: { "response": "msg" }
+                scriptResponses = [scriptOutput.response];
+                logger.debug(`📥 Script response: ${scriptOutput.response.substring(0, 50)}...`);
+              } else {
+                logger.error(`❌ Script output missing valid 'response' or 'responses' field`);
                 return;
               }
 
-              responseText = scriptOutput.response;
-              logger.debug(`📥 Script response: ${responseText.substring(0, 50)}...`);
+              // For scripts with multiple responses, send each one
+              logger.debug(`🤖 Enqueueing ${scriptResponses.length} script response(s) to ${message.fromNodeId}`);
 
-              // TODO: Handle optional actions in scriptOutput.actions
+              scriptResponses.forEach((resp, index) => {
+                const truncated = this.truncateMessageForMeshtastic(resp, 200);
+                const isFirstMessage = index === 0;
+
+                messageQueueService.enqueue(
+                  truncated,
+                  fromNum,
+                  isFirstMessage ? packetId : undefined,
+                  () => {
+                    logger.info(`✅ Script response ${index + 1}/${scriptResponses.length} delivered to !${fromNum.toString(16).padStart(8, '0')}`);
+                  },
+                  (reason: string) => {
+                    logger.warn(`❌ Script response ${index + 1}/${scriptResponses.length} failed to !${fromNum.toString(16).padStart(8, '0')}: ${reason}`);
+                  }
+                );
+              });
+
+              // Script responses queued, return early
+              return;
 
             } catch (error: any) {
               if (error.killed && error.signal === 'SIGTERM') {
@@ -4299,27 +4330,42 @@ class MeshtasticManager {
             });
           }
 
-          // Truncate response to 200 characters accounting for emoji byte expansion
-          // Meshtastic counts emoji as multiple characters based on UTF-8 byte length
-          const truncated = this.truncateMessageForMeshtastic(responseText, 200);
+          // Handle multiline responses or truncate as needed
+          const multilineEnabled = trigger.multiline || false;
+          let messagesToSend: string[];
 
-          if (truncated !== responseText) {
-            logger.debug(`✂️  Response truncated from ${responseText.length} to ${truncated.length} characters`);
+          if (multilineEnabled) {
+            // Split into multiple messages if enabled
+            messagesToSend = this.splitMessageForMeshtastic(responseText, 200);
+            if (messagesToSend.length > 1) {
+              logger.debug(`📝 Split response into ${messagesToSend.length} messages`);
+            }
+          } else {
+            // Truncate to single message
+            const truncated = this.truncateMessageForMeshtastic(responseText, 200);
+            if (truncated !== responseText) {
+              logger.debug(`✂️  Response truncated from ${responseText.length} to ${truncated.length} characters`);
+            }
+            messagesToSend = [truncated];
           }
 
-          // Enqueue response for delivery with retry logic
-          logger.debug(`🤖 Enqueueing auto-response to ${message.fromNodeId}: "${truncated}"`);
-          messageQueueService.enqueue(
-            truncated,
-            fromNum,
-            packetId,
-            () => {
-              logger.info(`✅ Auto-response delivered successfully to !${fromNum.toString(16).padStart(8, '0')}`);
-            },
-            (reason: string) => {
-              logger.warn(`❌ Auto-response failed to !${fromNum.toString(16).padStart(8, '0')}: ${reason}`);
-            }
-          );
+          // Enqueue all messages for delivery with retry logic
+          logger.debug(`🤖 Enqueueing ${messagesToSend.length} auto-response message(s) to ${message.fromNodeId}`);
+
+          messagesToSend.forEach((msg, index) => {
+            const isFirstMessage = index === 0;
+            messageQueueService.enqueue(
+              msg,
+              fromNum,
+              isFirstMessage ? packetId : undefined, // Only reply to original for first message
+              () => {
+                logger.info(`✅ Auto-response ${index + 1}/${messagesToSend.length} delivered to !${fromNum.toString(16).padStart(8, '0')}`);
+              },
+              (reason: string) => {
+                logger.warn(`❌ Auto-response ${index + 1}/${messagesToSend.length} failed to !${fromNum.toString(16).padStart(8, '0')}: ${reason}`);
+              }
+            );
+          });
 
           // Only respond to first matching trigger
           return;
@@ -4329,6 +4375,102 @@ class MeshtasticManager {
     } catch (error) {
       logger.error('❌ Error in auto-responder:', error);
     }
+  }
+
+  /**
+   * Split message into chunks that fit within Meshtastic's character limit
+   * Tries to split on line breaks first, then spaces/punctuation, then anywhere
+   */
+  private splitMessageForMeshtastic(text: string, maxChars: number): string[] {
+    const encoder = new TextEncoder();
+    const messages: string[] = [];
+    let remaining = text;
+
+    while (remaining.length > 0) {
+      const bytes = encoder.encode(remaining);
+
+      if (bytes.length <= maxChars) {
+        // Remaining text fits in one message
+        messages.push(remaining);
+        break;
+      }
+
+      // Need to split - find best break point
+      let chunk = remaining;
+
+      // Binary search to find max length that fits
+      let low = 0;
+      let high = remaining.length;
+      while (low < high) {
+        const mid = Math.floor((low + high + 1) / 2);
+        if (encoder.encode(remaining.substring(0, mid)).length <= maxChars) {
+          low = mid;
+        } else {
+          high = mid - 1;
+        }
+      }
+
+      chunk = remaining.substring(0, low);
+
+      // Try to find a good break point
+      let breakPoint = -1;
+
+      // 1. Try to break on line break
+      const lastNewline = chunk.lastIndexOf('\n');
+      if (lastNewline > chunk.length * 0.5) { // Only if we're using at least 50% of the space
+        breakPoint = lastNewline + 1;
+      }
+
+      // 2. Try to break on sentence ending (., !, ?)
+      if (breakPoint === -1) {
+        const sentenceEnders = ['. ', '! ', '? '];
+        for (const ender of sentenceEnders) {
+          const lastEnder = chunk.lastIndexOf(ender);
+          if (lastEnder > chunk.length * 0.5) {
+            breakPoint = lastEnder + ender.length;
+            break;
+          }
+        }
+      }
+
+      // 3. Try to break on comma, semicolon, or colon
+      if (breakPoint === -1) {
+        const punctuation = [', ', '; ', ': ', ' - '];
+        for (const punct of punctuation) {
+          const lastPunct = chunk.lastIndexOf(punct);
+          if (lastPunct > chunk.length * 0.5) {
+            breakPoint = lastPunct + punct.length;
+            break;
+          }
+        }
+      }
+
+      // 4. Try to break on space
+      if (breakPoint === -1) {
+        const lastSpace = chunk.lastIndexOf(' ');
+        if (lastSpace > chunk.length * 0.3) { // Only if we're using at least 30% of the space
+          breakPoint = lastSpace + 1;
+        }
+      }
+
+      // 5. Try to break on hyphen
+      if (breakPoint === -1) {
+        const lastHyphen = chunk.lastIndexOf('-');
+        if (lastHyphen > chunk.length * 0.3) {
+          breakPoint = lastHyphen + 1;
+        }
+      }
+
+      // 6. If no good break point, just split at max length
+      if (breakPoint === -1 || breakPoint === 0) {
+        breakPoint = chunk.length;
+      }
+
+      messages.push(remaining.substring(0, breakPoint).trimEnd());
+      remaining = remaining.substring(breakPoint).trimStart();
+    }
+
+    return messages;
   }
 
   /**

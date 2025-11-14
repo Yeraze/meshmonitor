@@ -11,7 +11,7 @@ interface TriggerItemProps {
   availableScripts: string[];
   onStartEdit: () => void;
   onCancelEdit: () => void;
-  onSaveEdit: (trigger: string, responseType: ResponseType, response: string) => void;
+  onSaveEdit: (trigger: string, responseType: ResponseType, response: string, multiline: boolean) => void;
   onRemove: () => void;
 }
 
@@ -20,6 +20,7 @@ export interface AutoResponderTrigger {
   trigger: string;
   responseType: ResponseType;
   response: string; // Either text content, HTTP URL, or script path
+  multiline?: boolean; // Enable multiline support for text/http responses
 }
 
 interface AutoResponderSectionProps {
@@ -43,6 +44,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
   const [editTrigger, setEditTrigger] = useState(trigger.trigger);
   const [editResponseType, setEditResponseType] = useState<ResponseType>(trigger.responseType);
   const [editResponse, setEditResponse] = useState(trigger.response);
+  const [editMultiline, setEditMultiline] = useState(trigger.multiline || false);
 
   // Reset local edit state when editing mode changes
   useEffect(() => {
@@ -50,11 +52,12 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
       setEditTrigger(trigger.trigger);
       setEditResponseType(trigger.responseType);
       setEditResponse(trigger.response);
+      setEditMultiline(trigger.multiline || false);
     }
-  }, [isEditing, trigger.trigger, trigger.responseType, trigger.response]);
+  }, [isEditing, trigger.trigger, trigger.responseType, trigger.response, trigger.multiline]);
 
   const handleSave = () => {
-    onSaveEdit(editTrigger, editResponseType, editResponse);
+    onSaveEdit(editTrigger, editResponseType, editResponse, editMultiline);
   };
 
   return (
@@ -133,6 +136,19 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                 />
               )}
             </div>
+            {editResponseType !== 'script' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: '88px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={editMultiline}
+                    onChange={(e) => setEditMultiline(e.target.checked)}
+                    style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
+                  />
+                  <span>Enable Multiline (split long responses into multiple messages)</span>
+                </label>
+              </div>
+            )}
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
             <button
@@ -241,6 +257,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
   const [newTrigger, setNewTrigger] = useState('');
   const [newResponseType, setNewResponseType] = useState<ResponseType>('text');
   const [newResponse, setNewResponse] = useState('');
+  const [newMultiline, setNewMultiline] = useState(false);
   const [testMessage, setTestMessage] = useState('w 33076');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [availableScripts, setAvailableScripts] = useState<string[]>([]);
@@ -338,11 +355,13 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
       trigger: newTrigger.trim(),
       responseType: newResponseType,
       response: newResponse.trim(),
+      multiline: newResponseType !== 'script' ? newMultiline : undefined,
     };
 
     setLocalTriggers([...localTriggers, trigger]);
     setNewTrigger('');
     setNewResponse('');
+    setNewMultiline(false);
   };
 
   const removeTrigger = (id: string) => {
@@ -360,7 +379,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
     setEditingId(null);
   };
 
-  const saveEdit = (id: string, trigger: string, responseType: ResponseType, response: string) => {
+  const saveEdit = (id: string, trigger: string, responseType: ResponseType, response: string, multiline: boolean) => {
     const triggerValidation = validateTrigger(trigger);
     if (!triggerValidation.valid) {
       showToast(triggerValidation.error || 'Invalid trigger', 'error');
@@ -375,7 +394,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
 
     setLocalTriggers(localTriggers.map(t =>
       t.id === id
-        ? { ...t, trigger: trigger.trim(), responseType, response: response.trim() }
+        ? { ...t, trigger: trigger.trim(), responseType, response: response.trim(), multiline: responseType !== 'script' ? multiline : undefined }
         : t
     ));
     setEditingId(null);
@@ -602,6 +621,20 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
               Add
             </button>
           </div>
+          {newResponseType !== 'script' && (
+            <div style={{ marginTop: '0.5rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={newMultiline}
+                  onChange={(e) => setNewMultiline(e.target.checked)}
+                  disabled={!localEnabled}
+                  style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
+                />
+                <span>Enable Multiline (split long responses into multiple messages)</span>
+              </label>
+            </div>
+          )}
         </div>
 
         {localTriggers.length > 0 && (
@@ -622,7 +655,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                   availableScripts={availableScripts}
                   onStartEdit={() => startEditing(trigger.id)}
                   onCancelEdit={cancelEditing}
-                  onSaveEdit={(t, rt, r) => saveEdit(trigger.id, t, rt, r)}
+                  onSaveEdit={(t, rt, r, m) => saveEdit(trigger.id, t, rt, r, m)}
                   onRemove={() => removeTrigger(trigger.id)}
                 />
               ))}
