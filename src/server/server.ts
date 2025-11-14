@@ -1764,10 +1764,12 @@ apiRouter.post('/position/request', requirePermission('messages', 'write'), asyn
   }
 });
 
-// Get recent traceroutes (last 24 hours)
+// Get recent traceroutes (respects maxNodeAgeHours setting)
 apiRouter.get('/traceroutes/recent', (req, res) => {
   try {
-    const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 24;
+    // Use maxNodeAgeHours setting from database, fallback to 24 if not set
+    const maxNodeAgeHours = parseInt(databaseService.getSetting('maxNodeAgeHours') || '24');
+    const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : maxNodeAgeHours;
     const limit = req.query.limit ? parseInt(req.query.limit as string) : 100;
 
     const allTraceroutes = databaseService.getAllTraceroutes(limit);
