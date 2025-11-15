@@ -30,6 +30,7 @@ import { calculateDistance, formatDistance } from './utils/distance'
 import { formatDateTime, formatRelativeTime, formatMessageTime, getMessageDateSeparator, shouldShowDateSeparator } from './utils/datetime'
 import { formatTracerouteRoute } from './utils/traceroute'
 import { getUtf8ByteLength, formatByteCount } from './utils/text'
+import { renderMessageWithLinks } from './utils/linkRenderer'
 import { DeviceInfo, Channel } from './types/device'
 import { MeshMessage, MessageDeliveryState } from './types/message'
 import { SortField, SortDirection } from './types/ui'
@@ -40,6 +41,7 @@ import { generateArrowMarkers } from './utils/mapHelpers.tsx'
 import { ROLE_NAMES } from './constants'
 import { getHardwareModelName, getRoleName } from './utils/nodeHelpers'
 import Sidebar from './components/Sidebar'
+import LinkPreview from './components/LinkPreview'
 import { SettingsProvider, useSettings } from './contexts/SettingsContext'
 import { MapProvider, useMapContext } from './contexts/MapContext'
 import { DataProvider, useData } from './contexts/DataContext'
@@ -3602,8 +3604,9 @@ function App() {
                                   </div>
                                 )}
                                 <div className="message-text" style={{whiteSpace: 'pre-line'}}>
-                                  {msg.text}
+                                  {renderMessageWithLinks(msg.text)}
                                 </div>
+                                <LinkPreview text={msg.text} />
                                 {reactions.length > 0 && (
                                   <div className="message-reactions">
                                     {reactions.map(reaction => (
@@ -4244,7 +4247,7 @@ function App() {
                               </span>
                               <span className="traceroute-badge">TRACEROUTE</span>
                             </div>
-                            <div className="message-text" style={{whiteSpace: 'pre-line', fontFamily: 'monospace'}}>{msg.text}</div>
+                            <div className="message-text" style={{whiteSpace: 'pre-line', fontFamily: 'monospace'}}>{renderMessageWithLinks(msg.text)}</div>
                           </div>
                           </React.Fragment>
                         );
@@ -4317,8 +4320,9 @@ function App() {
                                 </div>
                               )}
                               <div className="message-text" style={{whiteSpace: 'pre-line'}}>
-                                {msg.text}
+                                {renderMessageWithLinks(msg.text)}
                               </div>
+                              <LinkPreview text={msg.text} />
                               {reactions.length > 0 && (
                                 <div className="message-reactions">
                                   {reactions.map(reaction => (
