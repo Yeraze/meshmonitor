@@ -6,6 +6,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [2.18.1] - 2025-11-15
+
+### Added
+- **Clickable URL Rendering in Messages** ([#614](https://github.com/Yeraze/meshmonitor/pull/614)): Automatic URL detection with rich link previews
+  - **Automatic URL Detection**: Detects HTTP/HTTPS URLs in all message text using regex pattern
+  - **Clickable Links**: URLs converted to clickable links that open in new tabs with security (`rel="noopener noreferrer"`)
+  - **Rich Link Previews**: Display preview cards with metadata (title, description, image, site name)
+    - Fetches Open Graph, Twitter Card, and standard meta tags from target URLs
+    - Beautiful card-based layout with responsive design (max-width 400px)
+    - Displays website favicons, titles, descriptions, and preview images
+    - Styled with Catppuccin theme variables for consistency
+  - **Lazy Loading with Intersection Observer**: Performance-optimized preview fetching
+    - Only fetches previews for messages in or near the viewport (100px margin)
+    - Prevents excessive API calls on initial page load
+    - One-time fetch per message with URL
+    - Smooth UX with loading states and animations
+  - **Backend Link Preview Endpoint**: New `/api/link-preview` endpoint
+    - Fetches and parses HTML metadata from URLs
+    - 5-second timeout to prevent hanging requests
+    - Protocol validation (only HTTP/HTTPS allowed)
+    - HTML entity decoding for safe text display
+    - Resolves relative URLs to absolute
+  - **BASE_URL Support**: Properly respects BASE_URL configuration via ApiService
+  - **Security Features**:
+    - Links open in new tabs with security attributes
+    - URL protocol validation
+    - Request timeouts
+    - Safe HTML entity handling
+  - **Works in All Message Types**: Channel messages, direct messages, and traceroute messages
+
 ## [2.12.2] - 2025-10-31
 
 ### Added
