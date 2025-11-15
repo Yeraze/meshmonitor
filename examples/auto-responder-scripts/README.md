@@ -45,24 +45,27 @@ All scripts receive these environment variables:
 
 ## Output Format
 
-Scripts must print JSON to stdout:
+Scripts can output single or multiple responses:
 
+**Single Response:**
 ```json
 {
   "response": "Your response text here (max 200 chars)"
 }
 ```
 
-Optional (for future use):
+**Multiple Responses:**
 ```json
 {
-  "response": "Your response text",
-  "actions": {
-    "notify": false,
-    "log": true
-  }
+  "responses": [
+    "First message (max 200 chars)",
+    "Second message (max 200 chars)",
+    "Third message (max 200 chars)"
+  ]
 }
 ```
+
+When using multiple responses, each message will be queued individually and sent with rate limiting (30 seconds between messages) and retry logic (up to 3 attempts).
 
 ## Example Scripts
 
@@ -86,6 +89,13 @@ System information script showing uptime.
 **Trigger:** `info`
 **Example message:** `info`
 **Response:** `System uptime: 3:45. From node: 123456789`
+
+### lorem.js / lorem.py / lorem.sh
+Multi-message example scripts that demonstrate returning multiple responses.
+
+**Trigger:** `lorem`
+**Example message:** `lorem`
+**Responses:** Three sequential messages containing Lorem Ipsum text, sent 30 seconds apart with retry logic.
 
 ## Creating Custom Scripts
 
