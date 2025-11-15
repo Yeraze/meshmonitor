@@ -396,6 +396,7 @@ import packetRoutes from './routes/packetRoutes.js';
 import solarRoutes from './routes/solarRoutes.js';
 import upgradeRoutes from './routes/upgradeRoutes.js';
 import messageRoutes from './routes/messageRoutes.js';
+import linkPreviewRoutes from './routes/linkPreviewRoutes.js';
 
 // CSRF token endpoint (must be before CSRF protection middleware)
 apiRouter.get('/csrf-token', csrfTokenEndpoint);
@@ -447,6 +448,9 @@ apiRouter.use('/upgrade', upgradeRoutes);
 
 // Message routes (requires appropriate write permissions)
 apiRouter.use('/messages', optionalAuth(), messageRoutes);
+
+// Link preview routes
+apiRouter.use('/', linkPreviewRoutes);
 
 // API Routes
 apiRouter.get('/nodes', optionalAuth(), (_req, res) => {

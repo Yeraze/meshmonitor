@@ -953,6 +953,19 @@ class ApiService {
 
     return response.json();
   }
+
+  async fetchLinkPreview(url: string) {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/link-preview?url=${encodeURIComponent(url)}`, {
+      credentials: 'include'
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch link preview');
+    }
+
+    return response.json();
+  }
 }
 
 export default new ApiService();
