@@ -530,12 +530,21 @@ export class VirtualNodeServer extends EventEmitter {
             longName: node.longName || 'Unknown',
             shortName: node.shortName || '????',
             hwModel: node.hwModel || 0,
+            role: node.role,
+            publicKey: node.publicKey,
           },
           position: (node.latitude && node.longitude) ? {
             latitude: node.latitude,
             longitude: node.longitude,
             altitude: node.altitude || 0,
             time: node.lastHeard || Math.floor(Date.now() / 1000),
+          } : undefined,
+          deviceMetrics: (node.batteryLevel !== undefined || node.voltage !== undefined ||
+                         node.channelUtilization !== undefined || node.airUtilTx !== undefined) ? {
+            batteryLevel: node.batteryLevel,
+            voltage: node.voltage,
+            channelUtilization: node.channelUtilization,
+            airUtilTx: node.airUtilTx,
           } : undefined,
           snr: node.snr,
           lastHeard: node.lastHeard,
