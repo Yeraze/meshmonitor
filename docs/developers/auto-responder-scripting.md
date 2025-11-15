@@ -119,6 +119,29 @@ Parameters are extracted from trigger patterns using `{paramName}` syntax:
 - `PARAM_city="austin"`
 - `PARAM_state="tx"`
 
+### Custom Regex Patterns (Advanced)
+
+You can specify custom regex patterns for parameters using `{paramName:regex}` syntax. This allows for more precise matching and validation:
+
+**Trigger:** `w {zip:\d{5}}`
+**Message:** `w 33076`
+**Environment:** `PARAM_zip="33076"`
+**Note:** Only matches 5-digit zip codes
+
+**Trigger:** `temp {value:\d+}`
+**Message:** `temp 72`
+**Environment:** `PARAM_value="72"`
+**Note:** Only matches numeric values
+
+**Trigger:** `coords {lat:-?\d+\.?\d*},{lon:-?\d+\.?\d*}`
+**Message:** `coords 40.7128,-74.0060`
+**Environment:**
+- `PARAM_lat="40.7128"`
+- `PARAM_lon="-74.0060"`
+**Note:** Matches decimal coordinates (positive or negative)
+
+**Default Behavior:** If no regex pattern is specified, parameters default to matching non-whitespace characters (`[^\s]+`)
+
 ## Language-Specific Examples
 
 ### Node.js
@@ -608,9 +631,11 @@ getWeather().then(result => console.log(JSON.stringify(result)));
 - Verify file ownership is correct
 
 **Parameters not extracted:**
-- Verify trigger pattern uses `{paramName}` syntax
+- Verify trigger pattern uses `{paramName}` syntax (or `{paramName:regex}` for custom patterns)
 - Check environment variable names match (case-sensitive)
-- Parameters can't contain spaces
+- Ensure custom regex patterns are valid and match the expected input
+- Test trigger patterns using the "Test Trigger Matching" feature in the UI
+- Remember: default pattern matches non-whitespace `[^\s]+`, custom patterns override this
 
 ## Example Scripts Repository
 
