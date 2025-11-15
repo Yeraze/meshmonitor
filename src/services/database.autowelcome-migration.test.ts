@@ -251,4 +251,97 @@ describe('DatabaseService - Auto Welcome Migration', () => {
       expect(node.welcomedAt).toBe(now);
     });
   });
+
+  describe('markAllNodesAsWelcomed', () => {
+    it('should mark all nodes without welcomedAt', () => {
+      // Insert some test nodes without welcomedAt
+      const insertStmt = dbService.db.prepare(`
+        INSERT INTO nodes (nodeNum, nodeId, longName, shortName, hwModel, createdAt, updatedAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      const now = Date.now();
+      insertStmt.run(111111, '!0001b207', 'Node One', 'ONE', 0, now, now);
+      insertStmt.run(222222, '!000363de', 'Node Two', 'TWO', 0, now, now);
+      insertStmt.run(333333, '!000516f5', 'Node Three', 'THR', 0, now, now);
+
+      // Verify nodes don't have welcomedAt (excluding broadcast node)
+      const beforeStmt = dbService.db.prepare('SELECT COUNT(*) as count FROM nodes WHERE welcomedAt IS NULL AND nodeNum IN (111111, 222222, 333333)');
+      const before = beforeStmt.get() as { count: number };
+      expect(before.count).toBe(3);
+
+      // Mark all nodes as welcomed
+      const markedCount = dbService.markAllNodesAsWelcomed();
+      // Should mark our 3 test nodes (broadcast node may or may not have welcomedAt already)
+      expect(markedCount).toBeGreaterThanOrEqual(3);
+
+      // Verify all our test nodes now have welcomedAt
+      const afterStmt = dbService.db.prepare('SELECT COUNT(*) as count FROM nodes WHERE welcomedAt IS NOT NULL AND nodeNum IN (111111, 222222, 333333)');
+      const after = afterStmt.get() as { count: number };
+      expect(after.count).toBe(3);
+    });
+
+    it('should not modify nodes that already have welcomedAt', () => {
+      const originalWelcomedAt = Date.now() - (10 * 24 * 60 * 60 * 1000); // 10 days ago
+
+      // Insert a node with welcomedAt already set
+      dbService.db.exec(`
+        INSERT INTO nodes (nodeNum, nodeId, longName, shortName, hwModel, welcomedAt, createdAt, updatedAt)
+        VALUES (444444, '!0006c9c0', 'Node Four', 'FOR', 0, ${originalWelcomedAt}, ${Date.now()}, ${Date.now()})
+      `);
+
+      // Mark all nodes
+      dbService.markAllNodesAsWelcomed();
+
+      // Verify the original welcomedAt wasn't changed
+      const stmt = dbService.db.prepare('SELECT welcomedAt FROM nodes WHERE nodeNum = ?');
+      const node = stmt.get(444444) as { welcomedAt: number };
+      expect(node.welcomedAt).toBe(originalWelcomedAt);
+    });
+
+    it('should return 0 when no nodes need to be marked', () => {
+      // Mark all existing nodes first
+      dbService.markAllNodesAsWelcomed();
+
+      // Now calling again should return 0
+      const markedCount = dbService.markAllNodesAsWelcomed();
+      expect(markedCount).toBe(0);
+    });
+
+    it('should handle mixed scenarios correctly', () => {
+      const now = Date.now();
+      const oldWelcomedAt = now - (5 * 24 * 60 * 60 * 1000); // 5 days ago
+
+      // Insert mix of nodes - some with welcomedAt, some without
+      dbService.db.exec(`
+        INSERT INTO nodes (nodeNum, nodeId, longName, shortName, hwModel, welcomedAt, createdAt, updatedAt)
+        VALUES (555555, '!00087a63', 'Node Five', 'FIV', 0, ${oldWelcomedAt}, ${now}, ${now})
+      `);
+
+      dbService.db.exec(`
+        INSERT INTO nodes (nodeNum, nodeId, longName, shortName, hwModel, createdAt, updatedAt)
+        VALUES (666666, '!000a2d26', 'Node Six', 'SIX', 0, ${now}, ${now})
+      `);
+
+      dbService.db.exec(`
+        INSERT INTO nodes (nodeNum, nodeId, longName, shortName, hwModel, createdAt, updatedAt)
+        VALUES (777777, '!000bdc89', 'Node Seven', 'SEV', 0, ${now}, ${now})
+      `);
+
+      // Should only mark the 2 nodes without welcomedAt (666666 and 777777)
+      const markedCount = dbService.markAllNodesAsWelcomed();
+      expect(markedCount).toBeGreaterThanOrEqual(2);
+
+      // Verify node 555555 kept its original timestamp
+      const stmt1 = dbService.db.prepare('SELECT welcomedAt FROM nodes WHERE nodeNum = ?');
+      const node1 = stmt1.get(555555) as { welcomedAt: number };
+      expect(node1.welcomedAt).toBe(oldWelcomedAt);
+
+      // Verify nodes 666666 and 777777 now have welcomedAt
+      const node2 = stmt1.get(666666) as { welcomedAt: number };
+      const node3 = stmt1.get(777777) as { welcomedAt: number };
+      expect(node2.welcomedAt).toBeDefined();
+      expect(node3.welcomedAt).toBeDefined();
+    });
+  });
 });
