@@ -37,7 +37,7 @@ class MessageQueueService {
   private pendingAcks = new Map<number, QueuedMessage>();
 
   // Cleanup interval for orphaned ACKs
-  private cleanupInterval?: NodeJS.Timeout;
+  private cleanupInterval?: ReturnType<typeof setInterval>;
 
   // Reference to meshtasticManager for sending messages
   private sendCallback?: (text: string, destination: number, replyId?: number) => Promise<number>;
