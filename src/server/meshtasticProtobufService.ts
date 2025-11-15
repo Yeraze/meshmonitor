@@ -759,12 +759,19 @@ export class MeshtasticProtobufService {
       longName: string;
       shortName: string;
       hwModel?: number;
+      role?: number;
     };
     position?: {
       latitude: number;
       longitude: number;
       altitude: number;
       time: number;
+    };
+    deviceMetrics?: {
+      batteryLevel?: number;
+      voltage?: number;
+      channelUtilization?: number;
+      airUtilTx?: number;
     };
     snr?: number;
     lastHeard?: number;
@@ -779,6 +786,7 @@ export class MeshtasticProtobufService {
       const NodeInfo = root.lookupType('meshtastic.NodeInfo');
       const User = root.lookupType('meshtastic.User');
       const Position = root.lookupType('meshtastic.Position');
+      const DeviceMetrics = root.lookupType('meshtastic.DeviceMetrics');
       const FromRadio = root.lookupType('meshtastic.FromRadio');
 
       const user = User.create({
@@ -786,6 +794,7 @@ export class MeshtasticProtobufService {
         longName: info.user.longName,
         shortName: info.user.shortName,
         hwModel: info.user.hwModel || 0,
+        role: info.user.role !== undefined ? info.user.role : 0,
       });
 
       let position = undefined;
@@ -799,10 +808,26 @@ export class MeshtasticProtobufService {
         });
       }
 
+      let deviceMetrics = undefined;
+      if (info.deviceMetrics && (
+        info.deviceMetrics.batteryLevel !== undefined ||
+        info.deviceMetrics.voltage !== undefined ||
+        info.deviceMetrics.channelUtilization !== undefined ||
+        info.deviceMetrics.airUtilTx !== undefined
+      )) {
+        deviceMetrics = DeviceMetrics.create({
+          batteryLevel: info.deviceMetrics.batteryLevel,
+          voltage: info.deviceMetrics.voltage,
+          channelUtilization: info.deviceMetrics.channelUtilization,
+          airUtilTx: info.deviceMetrics.airUtilTx,
+        });
+      }
+
       const nodeInfo = NodeInfo.create({
         num: info.nodeNum,
         user: user,
         position: position,
+        deviceMetrics: deviceMetrics,
         snr: info.snr,
         lastHeard: info.lastHeard,
       });
