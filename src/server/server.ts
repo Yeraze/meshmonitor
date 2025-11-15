@@ -321,10 +321,8 @@ setTimeout(async () => {
       }
     }
 
-    await meshtasticManager.connect();
-    logger.debug('Meshtastic manager connected successfully');
-
-    // Mark all existing nodes as welcomed to prevent thundering herd on startup
+    // Mark all existing nodes as welcomed BEFORE connecting to prevent thundering herd
+    // This must run before connect() so nodes in the DB are marked before new packets arrive
     const autoWelcomeEnabled = databaseService.getSetting('autoWelcomeEnabled');
     if (autoWelcomeEnabled === 'true') {
       const markedCount = databaseService.markAllNodesAsWelcomed();
@@ -332,6 +330,9 @@ setTimeout(async () => {
         logger.info(`👋 Marked ${markedCount} existing node(s) as welcomed to prevent spam on startup`);
       }
     }
+
+    await meshtasticManager.connect();
+    logger.debug('Meshtastic manager connected successfully');
 
     // Initialize backup scheduler
     backupSchedulerService.initialize(meshtasticManager);
