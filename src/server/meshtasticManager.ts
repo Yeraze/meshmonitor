@@ -4123,31 +4123,123 @@ class MeshtasticManager {
 
       // Try to match message against triggers
       for (const trigger of triggers) {
-        // Extract parameter names from trigger pattern
-        const paramNames: string[] = [];
-        const regex = /{([^}]+)}/g;
-        let match;
-        while ((match = regex.exec(trigger.trigger)) !== null) {
-          if (!paramNames.includes(match[1])) {
-            paramNames.push(match[1]);
+        // Extract parameters with optional regex patterns from trigger pattern
+        interface ParamSpec {
+          name: string;
+          pattern?: string;
+        }
+        const params: ParamSpec[] = [];
+        let i = 0;
+
+        while (i < trigger.trigger.length) {
+          if (trigger.trigger[i] === '{') {
+            const startPos = i + 1;
+            let depth = 1;
+            let colonPos = -1;
+            let endPos = -1;
+
+            // Find the matching closing brace, accounting for nested braces in regex patterns
+            for (let j = startPos; j < trigger.trigger.length && depth > 0; j++) {
+              if (trigger.trigger[j] === '{') {
+                depth++;
+              } else if (trigger.trigger[j] === '}') {
+                depth--;
+                if (depth === 0) {
+                  endPos = j;
+                }
+              } else if (trigger.trigger[j] === ':' && depth === 1 && colonPos === -1) {
+                colonPos = j;
+              }
+            }
+
+            if (endPos !== -1) {
+              const paramName = colonPos !== -1
+                ? trigger.trigger.substring(startPos, colonPos)
+                : trigger.trigger.substring(startPos, endPos);
+              const paramPattern = colonPos !== -1
+                ? trigger.trigger.substring(colonPos + 1, endPos)
+                : undefined;
+
+              if (!params.find(p => p.name === paramName)) {
+                params.push({ name: paramName, pattern: paramPattern });
+              }
+
+              i = endPos + 1;
+            } else {
+              i++;
+            }
+          } else {
+            i++;
           }
         }
 
-        // Build regex pattern from trigger
-        // Replace {param} with capture groups
-        let pattern = trigger.trigger.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // Escape regex chars
-        paramNames.forEach(param => {
-          pattern = pattern.replace(`\\{${param}\\}`, '([^\\s]+)');
-        });
+        // Build regex pattern from trigger by processing it character by character
+        let pattern = '';
+        const replacements: Array<{ start: number; end: number; replacement: string }> = [];
+        i = 0;
+
+        while (i < trigger.trigger.length) {
+          if (trigger.trigger[i] === '{') {
+            const startPos = i;
+            let depth = 1;
+            let endPos = -1;
+
+            // Find the matching closing brace
+            for (let j = i + 1; j < trigger.trigger.length && depth > 0; j++) {
+              if (trigger.trigger[j] === '{') {
+                depth++;
+              } else if (trigger.trigger[j] === '}') {
+                depth--;
+                if (depth === 0) {
+                  endPos = j;
+                }
+              }
+            }
+
+            if (endPos !== -1) {
+              const paramIndex = replacements.length;
+              if (paramIndex < params.length) {
+                const paramRegex = params[paramIndex].pattern || '[^\\s]+';
+                replacements.push({
+                  start: startPos,
+                  end: endPos + 1,
+                  replacement: `(${paramRegex})`
+                });
+              }
+              i = endPos + 1;
+            } else {
+              i++;
+            }
+          } else {
+            i++;
+          }
+        }
+
+        // Build the final pattern by replacing placeholders
+        for (let i = 0; i < trigger.trigger.length; i++) {
+          const replacement = replacements.find(r => r.start === i);
+          if (replacement) {
+            pattern += replacement.replacement;
+            i = replacement.end - 1; // -1 because loop will increment
+          } else {
+            // Escape special regex characters in literal parts
+            const char = trigger.trigger[i];
+            if (/[.*+?^${}()|[\]\\]/.test(char)) {
+              pattern += '\\' + char;
+            } else {
+              pattern += char;
+            }
+          }
+        }
 
         const triggerRegex = new RegExp(`^${pattern}$`, 'i');
         const triggerMatch = messageText.match(triggerRegex);
 
         if (triggerMatch) {
           // Extract parameters
-          const params: Record<string, string> = {};
-          paramNames.forEach((param, index) => {
-            params[param] = triggerMatch[index + 1];
+          const extractedParams: Record<string, string> = {};
+          params.forEach((param, index) => {
+            extractedParams[param.name] = triggerMatch[index + 1];
           });
 
           logger.debug(`🤖 Auto-responder triggered by: "${messageText}" matching pattern: "${trigger.trigger}"`);
@@ -4159,7 +4251,7 @@ class MeshtasticManager {
             let url = trigger.response;
 
             // Replace parameters in URL
-            Object.entries(params).forEach(([key, value]) => {
+            Object.entries(extractedParams).forEach(([key, value]) => {
               url = url.replace(new RegExp(`\\{${key}\\}`, 'g'), encodeURIComponent(value));
             });
 
@@ -4243,7 +4335,7 @@ class MeshtasticManager {
               };
 
               // Add extracted parameters as PARAM_* environment variables
-              Object.entries(params).forEach(([key, value]) => {
+              Object.entries(extractedParams).forEach(([key, value]) => {
                 env[`PARAM_${key}`] = value;
               });
 
@@ -4325,7 +4417,7 @@ class MeshtasticManager {
             responseText = trigger.response;
 
             // Replace parameters in text
-            Object.entries(params).forEach(([key, value]) => {
+            Object.entries(extractedParams).forEach(([key, value]) => {
               responseText = responseText.replace(new RegExp(`\\{${key}\\}`, 'g'), value);
             });
           }

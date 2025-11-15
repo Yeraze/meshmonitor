@@ -258,9 +258,10 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
   const [newResponseType, setNewResponseType] = useState<ResponseType>('text');
   const [newResponse, setNewResponse] = useState('');
   const [newMultiline, setNewMultiline] = useState(false);
-  const [testMessage, setTestMessage] = useState('w 33076');
+  const [testMessages, setTestMessages] = useState('w 33076\ntemp 72\nmsg hello world\nset temperature to 72');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [availableScripts, setAvailableScripts] = useState<string[]>([]);
+  const [showExamples, setShowExamples] = useState(false);
 
   // Update local state when props change
   useEffect(() => {
@@ -400,39 +401,128 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
     setEditingId(null);
   };
 
-  const extractParameters = (trigger: string): string[] => {
-    const params: string[] = [];
-    const regex = /{([^}]+)}/g;
-    let match;
-    while ((match = regex.exec(trigger)) !== null) {
-      if (!params.includes(match[1])) {
-        params.push(match[1]);
+  const extractParameters = (trigger: string): Array<{ name: string; pattern?: string }> => {
+    const params: Array<{ name: string; pattern?: string }> = [];
+    let i = 0;
+
+    while (i < trigger.length) {
+      if (trigger[i] === '{') {
+        const startPos = i + 1;
+        let depth = 1;
+        let colonPos = -1;
+        let endPos = -1;
+
+        // Find the matching closing brace, accounting for nested braces in regex patterns
+        for (let j = startPos; j < trigger.length && depth > 0; j++) {
+          if (trigger[j] === '{') {
+            depth++;
+          } else if (trigger[j] === '}') {
+            depth--;
+            if (depth === 0) {
+              endPos = j;
+            }
+          } else if (trigger[j] === ':' && depth === 1 && colonPos === -1) {
+            colonPos = j;
+          }
+        }
+
+        if (endPos !== -1) {
+          const paramName = colonPos !== -1
+            ? trigger.substring(startPos, colonPos)
+            : trigger.substring(startPos, endPos);
+          const paramPattern = colonPos !== -1
+            ? trigger.substring(colonPos + 1, endPos)
+            : undefined;
+
+          if (!params.find(p => p.name === paramName)) {
+            params.push({ name: paramName, pattern: paramPattern });
+          }
+
+          i = endPos + 1;
+        } else {
+          i++;
+        }
+      } else {
+        i++;
       }
     }
+
     return params;
   };
 
   const testTriggerMatch = (message: string): { trigger?: AutoResponderTrigger; params?: Record<string, string> } | null => {
     for (const trigger of localTriggers) {
-      // Extract parameter names from trigger pattern
-      const paramNames = extractParameters(trigger.trigger);
+      // Extract parameters with optional regex patterns
+      const params = extractParameters(trigger.trigger);
 
-      // Build regex pattern from trigger
-      // Replace {param} with capture groups
-      let pattern = trigger.trigger.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // Escape regex chars
-      paramNames.forEach(param => {
-        pattern = pattern.replace(`\\{${param}\\}`, '([^\\s]+)');
-      });
+      // Build regex pattern from trigger by processing it character by character
+      let pattern = '';
+      const replacements: Array<{ start: number; end: number; replacement: string }> = [];
+      let i = 0;
+
+      while (i < trigger.trigger.length) {
+        if (trigger.trigger[i] === '{') {
+          const startPos = i;
+          let depth = 1;
+          let endPos = -1;
+
+          // Find the matching closing brace
+          for (let j = i + 1; j < trigger.trigger.length && depth > 0; j++) {
+            if (trigger.trigger[j] === '{') {
+              depth++;
+            } else if (trigger.trigger[j] === '}') {
+              depth--;
+              if (depth === 0) {
+                endPos = j;
+              }
+            }
+          }
+
+          if (endPos !== -1) {
+            const paramIndex = replacements.length;
+            if (paramIndex < params.length) {
+              const paramRegex = params[paramIndex].pattern || '[^\\s]+';
+              replacements.push({
+                start: startPos,
+                end: endPos + 1,
+                replacement: `(${paramRegex})`
+              });
+            }
+            i = endPos + 1;
+          } else {
+            i++;
+          }
+        } else {
+          i++;
+        }
+      }
+
+      // Build the final pattern by replacing placeholders
+      for (let i = 0; i < trigger.trigger.length; i++) {
+        const replacement = replacements.find(r => r.start === i);
+        if (replacement) {
+          pattern += replacement.replacement;
+          i = replacement.end - 1; // -1 because loop will increment
+        } else {
+          // Escape special regex characters in literal parts
+          const char = trigger.trigger[i];
+          if (/[.*+?^${}()|[\]\\]/.test(char)) {
+            pattern += '\\' + char;
+          } else {
+            pattern += char;
+          }
+        }
+      }
 
       const regex = new RegExp(`^${pattern}$`, 'i');
       const match = message.match(regex);
 
       if (match) {
-        const params: Record<string, string> = {};
-        paramNames.forEach((param, index) => {
-          params[param] = match[index + 1];
+        const extractedParams: Record<string, string> = {};
+        params.forEach((param, index) => {
+          extractedParams[param.name] = match[index + 1];
         });
-        return { trigger, params };
+        return { trigger, params: extractedParams };
       }
     }
     return null;
@@ -541,11 +631,96 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
           Scripts must be placed in /data/scripts and can be Node.js (.js, .mjs), Python (.py), or Shell (.sh). Responses are truncated to 200 characters (including emoji expansions).
         </p>
 
+        {/* Regex Examples Section */}
+        <div style={{
+          marginBottom: '1.5rem',
+          marginLeft: '1.75rem',
+          marginRight: '1.75rem',
+          background: 'var(--ctp-surface0)',
+          border: '1px solid var(--ctp-overlay0)',
+          borderRadius: '6px',
+          overflow: 'hidden'
+        }}>
+          <button
+            onClick={() => setShowExamples(!showExamples)}
+            style={{
+              width: '100%',
+              padding: '0.75rem 1rem',
+              background: 'var(--ctp-surface1)',
+              border: 'none',
+              borderBottom: showExamples ? '1px solid var(--ctp-overlay0)' : 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              fontSize: '0.9rem',
+              fontWeight: 'bold',
+              color: 'var(--ctp-blue)'
+            }}
+          >
+            <span>💡 Regex Pattern Examples</span>
+            <span style={{ fontSize: '1.2rem' }}>{showExamples ? '▼' : '▶'}</span>
+          </button>
+          {showExamples && (
+            <div style={{ padding: '1rem', fontSize: '0.85rem', fontFamily: 'monospace' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div>
+                  <div style={{ fontWeight: 'bold', color: 'var(--ctp-mauve)', marginBottom: '0.5rem' }}>Numeric Patterns</div>
+                  <div style={{ lineHeight: '1.8' }}>
+                    <div><code style={{ background: 'var(--ctp-surface2)', padding: '2px 6px', borderRadius: '3px' }}>{'w {zip:\\d{5}}'}</code> - 5-digit zip code</div>
+                    <div><code style={{ background: 'var(--ctp-surface2)', padding: '2px 6px', borderRadius: '3px' }}>{'temp {value:\\d+}'}</code> - Integer only</div>
+                    <div><code style={{ background: 'var(--ctp-surface2)', padding: '2px 6px', borderRadius: '3px' }}>{'set {num:-?\\d+}'}</code> - Positive/negative int</div>
+                    <div><code style={{ background: 'var(--ctp-surface2)', padding: '2px 6px', borderRadius: '3px' }}>{'price {amount:\\d+\\.\\d{2}}'}</code> - Dollar amount</div>
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontWeight: 'bold', color: 'var(--ctp-mauve)', marginBottom: '0.5rem' }}>Text Patterns</div>
+                  <div style={{ lineHeight: '1.8' }}>
+                    <div><code style={{ background: 'var(--ctp-surface2)', padding: '2px 6px', borderRadius: '3px' }}>{'msg {text:[\\w\\s]+}'}</code> - Multiple words</div>
+                    <div><code style={{ background: 'var(--ctp-surface2)', padding: '2px 6px', borderRadius: '3px' }}>{'say {text:.+}'}</code> - Any text (greedy)</div>
+                    <div><code style={{ background: 'var(--ctp-surface2)', padding: '2px 6px', borderRadius: '3px' }}>{'node {id:[a-zA-Z0-9]+}'}</code> - Alphanumeric</div>
+                    <div><code style={{ background: 'var(--ctp-surface2)', padding: '2px 6px', borderRadius: '3px' }}>{'color {hex:[0-9a-fA-F]{6}}'}</code> - Hex color</div>
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontWeight: 'bold', color: 'var(--ctp-mauve)', marginBottom: '0.5rem' }}>Coordinates & Locations</div>
+                  <div style={{ lineHeight: '1.8' }}>
+                    <div><code style={{ background: 'var(--ctp-surface2)', padding: '2px 6px', borderRadius: '3px' }}>{'loc {lat:-?\\d+\\.?\\d*},{lon:-?\\d+\\.?\\d*}'}</code> - Lat/lon</div>
+                    <div><code style={{ background: 'var(--ctp-surface2)', padding: '2px 6px', borderRadius: '3px' }}>{'grid {square:[A-R]{2}\\d{2}[a-x]{2}}'}</code> - Maidenhead</div>
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontWeight: 'bold', color: 'var(--ctp-mauve)', marginBottom: '0.5rem' }}>Date & Time</div>
+                  <div style={{ lineHeight: '1.8' }}>
+                    <div><code style={{ background: 'var(--ctp-surface2)', padding: '2px 6px', borderRadius: '3px' }}>{'at {time:\\d{1,2}:\\d{2}}'}</code> - HH:MM time</div>
+                    <div><code style={{ background: 'var(--ctp-surface2)', padding: '2px 6px', borderRadius: '3px' }}>{'date {val:\\d{4}-\\d{2}-\\d{2}}'}</code> - YYYY-MM-DD</div>
+                  </div>
+                </div>
+              </div>
+              <div style={{
+                marginTop: '1rem',
+                paddingTop: '1rem',
+                borderTop: '1px solid var(--ctp-overlay0)',
+                color: 'var(--ctp-subtext0)',
+                fontSize: '0.8rem',
+                lineHeight: '1.6'
+              }}>
+                <strong>💡 Tips:</strong><br/>
+                • Use <code style={{ background: 'var(--ctp-surface2)', padding: '2px 4px', borderRadius: '2px' }}>[^\\s]+</code> (default) for single words<br/>
+                • Use <code style={{ background: 'var(--ctp-surface2)', padding: '2px 4px', borderRadius: '2px' }}>[\\w\\s]+</code> for multiple words<br/>
+                • Use <code style={{ background: 'var(--ctp-surface2)', padding: '2px 4px', borderRadius: '2px' }}>.+</code> to match everything (including punctuation)<br/>
+                • Remember to escape special regex chars: <code style={{ background: 'var(--ctp-surface2)', padding: '2px 4px', borderRadius: '2px' }}>\ . + * ? ^ $ {'{ }'} [ ] ( ) |</code>
+              </div>
+            </div>
+          )}
+        </div>
+
         <div className="setting-item" style={{ marginTop: '1.5rem' }}>
           <label>
             Add Trigger
             <span className="setting-description">
-              Define a trigger pattern, response type, and response. Use braces for parameters (e.g., {'{location}'}, {'{zipcode}'})
+              Define a trigger pattern, response type, and response. Use braces for parameters (e.g., {'{location}'}, {'{zipcode}'}).
+              Optionally specify custom regex patterns: {'{param:regex}'} (e.g., {'{zip:\\d{5}}'}, {'{temp:\\d+}'})
             </span>
           </label>
           <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', alignItems: 'flex-start' }}>
@@ -553,7 +728,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
               type="text"
               value={newTrigger}
               onChange={(e) => setNewTrigger(e.target.value)}
-              placeholder="e.g., w {location}"
+              placeholder="e.g., w {location} or w {zip:\d{5}}"
               disabled={!localEnabled}
               className="setting-input"
               style={{ flex: '1', fontFamily: 'monospace' }}
@@ -665,75 +840,99 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
 
         {localTriggers.length > 0 && (
           <div className="setting-item" style={{ marginTop: '1.5rem' }}>
-            <label htmlFor="testMessage">
+            <label htmlFor="testMessages">
               Test Trigger Matching
               <span className="setting-description">
-                Enter a sample message to test which trigger would match and what response would be generated
+                Enter sample messages (one per line) to test which triggers match.
+                Green = matches trigger, Red = no match
               </span>
             </label>
-            <input
-              id="testMessage"
-              type="text"
-              value={testMessage}
-              onChange={(e) => setTestMessage(e.target.value)}
-              placeholder="e.g., w 33076"
-              disabled={!localEnabled}
-              className="setting-input"
-              style={{ fontFamily: 'monospace', marginTop: '0.5rem' }}
-            />
-            {(() => {
-              const match = testTriggerMatch(testMessage);
-              if (!match) {
-                return (
-                  <div style={{
-                    marginTop: '0.5rem',
-                    padding: '0.75rem',
-                    background: 'rgba(243, 139, 168, 0.1)',
-                    border: '1px solid var(--ctp-red)',
-                    borderRadius: '4px',
-                    color: 'var(--ctp-red)',
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '0.5rem' }}>
+              <div>
+                <textarea
+                  id="testMessages"
+                  value={testMessages}
+                  onChange={(e) => setTestMessages(e.target.value)}
+                  placeholder="Enter test messages, one per line..."
+                  disabled={!localEnabled}
+                  className="setting-input"
+                  rows={6}
+                  style={{
                     fontFamily: 'monospace',
-                    fontSize: '0.9rem'
-                  }}>
-                    No matching trigger
-                  </div>
-                );
-              }
-              const responseText = generateSampleResponse(match.trigger!, testMessage);
-              return (
-                <div style={{
-                  marginTop: '0.5rem',
-                  padding: '0.75rem',
-                  background: 'rgba(166, 227, 161, 0.1)',
-                  border: '1px solid var(--ctp-green)',
-                  borderRadius: '4px',
-                  fontFamily: 'monospace',
-                  fontSize: '0.9rem'
-                }}>
-                  <div style={{ color: 'var(--ctp-green)', fontWeight: 'bold', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    ✓ Matches: {match.trigger?.trigger}
-                    <span style={{
-                      fontSize: '0.7rem',
-                      padding: '0.15rem 0.4rem',
-                      background: match.trigger?.responseType === 'text' ? 'var(--ctp-green)' : match.trigger?.responseType === 'script' ? 'var(--ctp-yellow)' : 'var(--ctp-mauve)',
-                      color: 'var(--ctp-base)',
-                      borderRadius: '3px',
-                      fontWeight: 'bold'
-                    }}>
-                      {match.trigger?.responseType.toUpperCase()}
-                    </span>
-                  </div>
-                  {match.params && Object.keys(match.params).length > 0 && (
-                    <div style={{ color: 'var(--ctp-text)', marginBottom: '0.5rem' }}>
-                      Parameters: {Object.entries(match.params).map(([k, v]) => `${k}=${v}`).join(', ')}
+                    resize: 'vertical',
+                    minHeight: '140px',
+                    width: '100%'
+                  }}
+                />
+              </div>
+              <div>
+                {testMessages.split('\n').filter(line => line.trim()).map((message, index) => {
+                  const match = testTriggerMatch(message);
+                  return (
+                    <div
+                      key={index}
+                      style={{
+                        padding: '0.5rem',
+                        marginBottom: '0.25rem',
+                        backgroundColor: match ? 'rgba(166, 227, 161, 0.1)' : 'rgba(243, 139, 168, 0.1)',
+                        border: `1px solid ${match ? 'var(--ctp-green)' : 'var(--ctp-red)'}`,
+                        borderRadius: '4px',
+                        fontFamily: 'monospace',
+                        fontSize: '0.85rem',
+                        lineHeight: '1.4'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.25rem' }}>
+                        <span
+                          style={{
+                            display: 'inline-block',
+                            width: '12px',
+                            height: '12px',
+                            borderRadius: '50%',
+                            backgroundColor: match ? 'var(--ctp-green)' : 'var(--ctp-red)',
+                            marginRight: '0.5rem',
+                            flexShrink: 0
+                          }}
+                        />
+                        <span style={{ color: 'var(--ctp-text)', fontWeight: 'bold', wordBreak: 'break-word' }}>
+                          {message}
+                        </span>
+                      </div>
+                      {match ? (
+                        <div style={{ marginLeft: '1.25rem', fontSize: '0.8rem' }}>
+                          <div style={{ color: 'var(--ctp-blue)', marginBottom: '0.15rem' }}>
+                            ▸ {match.trigger?.trigger}
+                            <span style={{
+                              fontSize: '0.65rem',
+                              padding: '0.1rem 0.3rem',
+                              background: match.trigger?.responseType === 'text' ? 'var(--ctp-green)' : match.trigger?.responseType === 'script' ? 'var(--ctp-yellow)' : 'var(--ctp-mauve)',
+                              color: 'var(--ctp-base)',
+                              borderRadius: '2px',
+                              fontWeight: 'bold',
+                              marginLeft: '0.5rem'
+                            }}>
+                              {match.trigger?.responseType.toUpperCase()}
+                            </span>
+                          </div>
+                          {match.params && Object.keys(match.params).length > 0 && (
+                            <div style={{ color: 'var(--ctp-subtext0)', marginBottom: '0.15rem' }}>
+                              📋 {Object.entries(match.params).map(([k, v]) => `${k}="${v}"`).join(', ')}
+                            </div>
+                          )}
+                          <div style={{ color: 'var(--ctp-subtext1)' }}>
+                            💬 {generateSampleResponse(match.trigger!, message)}
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ marginLeft: '1.25rem', color: 'var(--ctp-subtext0)', fontSize: '0.75rem' }}>
+                          No matching trigger
+                        </div>
+                      )}
                     </div>
-                  )}
-                  <div style={{ color: 'var(--ctp-subtext0)', fontSize: '0.85rem' }}>
-                    {match.trigger?.responseType === 'text' ? 'Response: ' : match.trigger?.responseType === 'script' ? 'Script: ' : 'URL: '}{responseText}
-                  </div>
-                </div>
-              );
-            })()}
+                  );
+                })}
+              </div>
+            </div>
           </div>
         )}
 
