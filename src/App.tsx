@@ -5700,6 +5700,7 @@ function App() {
               <AutoResponderSection
                 enabled={autoResponderEnabled}
                 triggers={autoResponderTriggers}
+                channels={channels}
                 baseUrl={baseUrl}
                 onEnabledChange={setAutoResponderEnabled}
                 onTriggersChange={setAutoResponderTriggers}

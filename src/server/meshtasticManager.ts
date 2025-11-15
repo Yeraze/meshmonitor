@@ -102,8 +102,16 @@ class MeshtasticManager {
     };
 
     // Initialize message queue service with send callback
-    messageQueueService.setSendCallback(async (text: string, destination: number, replyId?: number) => {
-      return await this.sendTextMessage(text, 0, destination, replyId);
+    messageQueueService.setSendCallback(async (text: string, destination: number, replyId?: number, channel?: number) => {
+      // For channel messages: channel is specified, destination is 0 (undefined in sendTextMessage)
+      // For DMs: channel is undefined, destination is the node number
+      if (channel !== undefined) {
+        // Channel message - send to channel, no specific destination
+        return await this.sendTextMessage(text, channel, undefined, replyId);
+      } else {
+        // DM - send to specific node (channel 0)
+        return await this.sendTextMessage(text, 0, destination, replyId);
+      }
     });
   }
 
@@ -1206,8 +1214,8 @@ class MeshtasticManager {
         // Auto-acknowledge matching messages
         await this.checkAutoAcknowledge(message, messageText, channelIndex, isDirectMessage, fromNum, meshPacket.id);
 
-        // Auto-respond to matching direct messages
-        await this.checkAutoResponder(message, messageText, isDirectMessage, fromNum, meshPacket.id);
+        // Auto-respond to matching messages
+        await this.checkAutoResponder(messageText, channelIndex, isDirectMessage, fromNum, meshPacket.id);
       }
     } catch (error) {
       logger.error('❌ Error processing text message:', error);
@@ -4079,19 +4087,13 @@ class MeshtasticManager {
   /**
    * Check if message matches auto-responder triggers and respond accordingly
    */
-  private async checkAutoResponder(message: any, messageText: string, isDirectMessage: boolean, fromNum: number, packetId?: number): Promise<void> {
+  private async checkAutoResponder(messageText: string, channelIndex: number, isDirectMessage: boolean, fromNum: number, packetId?: number): Promise<void> {
     try {
       // Get auto-responder settings from database
       const autoResponderEnabled = databaseService.getSetting('autoResponderEnabled');
 
       // Skip if auto-responder is disabled
       if (autoResponderEnabled !== 'true') {
-        return;
-      }
-
-      // Only respond to direct messages
-      if (!isDirectMessage) {
-        logger.debug('⏭️  Skipping auto-responder for non-DM message');
         return;
       }
 
@@ -4121,8 +4123,30 @@ class MeshtasticManager {
         return;
       }
 
+      logger.info(`🤖 Auto-responder checking message on ${isDirectMessage ? 'DM' : `channel ${channelIndex}`}: "${messageText}"`);
+
       // Try to match message against triggers
       for (const trigger of triggers) {
+        // Filter trigger by channel - default to 'dm' if not specified for backward compatibility
+        const triggerChannel = trigger.channel ?? 'dm';
+
+        logger.info(`🤖 Checking trigger "${trigger.trigger}" (channel: ${triggerChannel}) against message on ${isDirectMessage ? 'DM' : `channel ${channelIndex}`}`);
+
+        // Check if this trigger applies to the current message
+        if (isDirectMessage) {
+          // For DMs, only match triggers configured for DM
+          if (triggerChannel !== 'dm') {
+            logger.info(`⏭️  Skipping trigger "${trigger.trigger}" - configured for channel ${triggerChannel}, but message is DM`);
+            continue;
+          }
+        } else {
+          // For channel messages, only match triggers configured for this specific channel
+          if (triggerChannel !== channelIndex) {
+            logger.info(`⏭️  Skipping trigger "${trigger.trigger}" - configured for ${triggerChannel === 'dm' ? 'DM' : `channel ${triggerChannel}`}, but message is on channel ${channelIndex}`);
+            continue;
+          }
+        }
+
         // Extract parameters with optional regex patterns from trigger pattern
         interface ParamSpec {
           name: string;
@@ -4379,7 +4403,9 @@ class MeshtasticManager {
               }
 
               // For scripts with multiple responses, send each one
-              logger.debug(`🤖 Enqueueing ${scriptResponses.length} script response(s) to ${message.fromNodeId}`);
+              const triggerChannel = trigger.channel ?? 'dm';
+              const target = triggerChannel === 'dm' ? `!${fromNum.toString(16).padStart(8, '0')}` : `channel ${triggerChannel}`;
+              logger.debug(`🤖 Enqueueing ${scriptResponses.length} script response(s) to ${target}`);
 
               scriptResponses.forEach((resp, index) => {
                 const truncated = this.truncateMessageForMeshtastic(resp, 200);
@@ -4387,14 +4413,15 @@ class MeshtasticManager {
 
                 messageQueueService.enqueue(
                   truncated,
-                  fromNum,
-                  isFirstMessage ? packetId : undefined,
+                  triggerChannel === 'dm' ? fromNum : 0, // destination: node number for DM, 0 for channel
+                  (trigger.verifyResponse && isFirstMessage) ? packetId : undefined,
                   () => {
-                    logger.info(`✅ Script response ${index + 1}/${scriptResponses.length} delivered to !${fromNum.toString(16).padStart(8, '0')}`);
+                    logger.info(`✅ Script response ${index + 1}/${scriptResponses.length} delivered to ${target}`);
                   },
                   (reason: string) => {
-                    logger.warn(`❌ Script response ${index + 1}/${scriptResponses.length} failed to !${fromNum.toString(16).padStart(8, '0')}: ${reason}`);
-                  }
+                    logger.warn(`❌ Script response ${index + 1}/${scriptResponses.length} failed to ${target}: ${reason}`);
+                  },
+                  triggerChannel === 'dm' ? undefined : triggerChannel as number // channel: undefined for DM, channel number for channel
                 );
               });
 
@@ -4442,20 +4469,23 @@ class MeshtasticManager {
           }
 
           // Enqueue all messages for delivery with retry logic
-          logger.debug(`🤖 Enqueueing ${messagesToSend.length} auto-response message(s) to ${message.fromNodeId}`);
+          const triggerChannel = trigger.channel ?? 'dm';
+          const target = triggerChannel === 'dm' ? `!${fromNum.toString(16).padStart(8, '0')}` : `channel ${triggerChannel}`;
+          logger.debug(`🤖 Enqueueing ${messagesToSend.length} auto-response message(s) to ${target}`);
 
           messagesToSend.forEach((msg, index) => {
             const isFirstMessage = index === 0;
             messageQueueService.enqueue(
               msg,
-              fromNum,
-              isFirstMessage ? packetId : undefined, // Only reply to original for first message
+              triggerChannel === 'dm' ? fromNum : 0, // destination: node number for DM, 0 for channel
+              (trigger.verifyResponse && isFirstMessage) ? packetId : undefined, // Only reply to original for first message if verifyResponse is enabled
               () => {
-                logger.info(`✅ Auto-response ${index + 1}/${messagesToSend.length} delivered to !${fromNum.toString(16).padStart(8, '0')}`);
+                logger.info(`✅ Auto-response ${index + 1}/${messagesToSend.length} delivered to ${target}`);
               },
               (reason: string) => {
-                logger.warn(`❌ Auto-response ${index + 1}/${messagesToSend.length} failed to !${fromNum.toString(16).padStart(8, '0')}: ${reason}`);
-              }
+                logger.warn(`❌ Auto-response ${index + 1}/${messagesToSend.length} failed to ${target}: ${reason}`);
+              },
+              triggerChannel === 'dm' ? undefined : triggerChannel as number // channel: undefined for DM, channel number for channel
             );
           });
 
