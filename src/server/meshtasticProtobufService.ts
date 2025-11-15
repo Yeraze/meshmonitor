@@ -760,6 +760,7 @@ export class MeshtasticProtobufService {
       shortName: string;
       hwModel?: number;
       role?: number;
+      publicKey?: string;
     };
     position?: {
       latitude: number;
@@ -789,12 +790,25 @@ export class MeshtasticProtobufService {
       const DeviceMetrics = root.lookupType('meshtastic.DeviceMetrics');
       const FromRadio = root.lookupType('meshtastic.FromRadio');
 
+      // Convert hex string publicKey to Uint8Array if present
+      let publicKeyBytes: Uint8Array | undefined;
+      if (info.user.publicKey && info.user.publicKey.length > 0) {
+        try {
+          // Remove any whitespace and convert hex string to bytes
+          const hexStr = info.user.publicKey.replace(/\s/g, '');
+          publicKeyBytes = new Uint8Array(hexStr.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []);
+        } catch (error) {
+          logger.warn(`Failed to convert publicKey to bytes for node ${info.user.id}:`, error);
+        }
+      }
+
       const user = User.create({
         id: info.user.id,
         longName: info.user.longName,
         shortName: info.user.shortName,
         hwModel: info.user.hwModel || 0,
         role: info.user.role !== undefined ? info.user.role : 0,
+        publicKey: publicKeyBytes,
       });
 
       let position = undefined;

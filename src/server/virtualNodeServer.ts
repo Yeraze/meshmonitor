@@ -531,6 +531,7 @@ export class VirtualNodeServer extends EventEmitter {
             shortName: node.shortName || '????',
             hwModel: node.hwModel || 0,
             role: node.role,
+            publicKey: node.publicKey,
           },
           position: (node.latitude && node.longitude) ? {
             latitude: node.latitude,
