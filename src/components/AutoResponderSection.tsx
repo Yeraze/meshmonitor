@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
+import { Channel } from '../types/device';
 
 export type ResponseType = 'text' | 'http' | 'script';
 
@@ -9,9 +10,10 @@ interface TriggerItemProps {
   isEditing: boolean;
   localEnabled: boolean;
   availableScripts: string[];
+  channels: Channel[];
   onStartEdit: () => void;
   onCancelEdit: () => void;
-  onSaveEdit: (trigger: string, responseType: ResponseType, response: string, multiline: boolean) => void;
+  onSaveEdit: (trigger: string, responseType: ResponseType, response: string, multiline: boolean, verifyResponse: boolean, channel: number | 'dm') => void;
   onRemove: () => void;
 }
 
@@ -21,11 +23,14 @@ export interface AutoResponderTrigger {
   responseType: ResponseType;
   response: string; // Either text content, HTTP URL, or script path
   multiline?: boolean; // Enable multiline support for text/http responses
+  verifyResponse?: boolean; // Enable retry logic (3 attempts) for this trigger (DM only)
+  channel?: number | 'dm'; // Channel index (0-7) or 'dm' for direct messages (default: 'dm')
 }
 
 interface AutoResponderSectionProps {
   enabled: boolean;
   triggers: AutoResponderTrigger[];
+  channels: Channel[];
   baseUrl: string;
   onEnabledChange: (enabled: boolean) => void;
   onTriggersChange: (triggers: AutoResponderTrigger[]) => void;
@@ -36,6 +41,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
   isEditing,
   localEnabled,
   availableScripts,
+  channels,
   onStartEdit,
   onCancelEdit,
   onSaveEdit,
@@ -45,6 +51,8 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
   const [editResponseType, setEditResponseType] = useState<ResponseType>(trigger.responseType);
   const [editResponse, setEditResponse] = useState(trigger.response);
   const [editMultiline, setEditMultiline] = useState(trigger.multiline || false);
+  const [editVerifyResponse, setEditVerifyResponse] = useState(trigger.verifyResponse || false);
+  const [editChannel, setEditChannel] = useState<number | 'dm'>(trigger.channel || 'dm');
 
   // Reset local edit state when editing mode changes
   useEffect(() => {
@@ -53,11 +61,15 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
       setEditResponseType(trigger.responseType);
       setEditResponse(trigger.response);
       setEditMultiline(trigger.multiline || false);
+      setEditVerifyResponse(trigger.verifyResponse || false);
+      setEditChannel(trigger.channel || 'dm');
     }
-  }, [isEditing, trigger.trigger, trigger.responseType, trigger.response, trigger.multiline]);
+  }, [isEditing, trigger.trigger, trigger.responseType, trigger.response, trigger.multiline, trigger.verifyResponse, trigger.channel]);
 
   const handleSave = () => {
-    onSaveEdit(editTrigger, editResponseType, editResponse, editMultiline);
+    // Automatically disable verifyResponse when channel is not DM
+    const finalVerifyResponse = editChannel === 'dm' ? editVerifyResponse : false;
+    onSaveEdit(editTrigger, editResponseType, editResponse, editMultiline, finalVerifyResponse, editChannel);
   };
 
   return (
@@ -136,6 +148,29 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                 />
               )}
             </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
+              <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold' }}>Channel:</label>
+              <select
+                value={editChannel}
+                onChange={(e) => {
+                  const value = e.target.value === 'dm' ? 'dm' : parseInt(e.target.value);
+                  setEditChannel(value);
+                  // Auto-disable verifyResponse when switching to a channel
+                  if (value !== 'dm') {
+                    setEditVerifyResponse(false);
+                  }
+                }}
+                className="setting-input"
+                style={{ flex: '1' }}
+              >
+                <option value="dm">Direct Messages</option>
+                {channels.map((channel) => (
+                  <option key={channel.id} value={channel.id}>
+                    Channel {channel.id}: {channel.name}
+                  </option>
+                ))}
+              </select>
+            </div>
             {editResponseType !== 'script' && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingLeft: '0.5rem', marginTop: '0.25rem' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', cursor: 'pointer', color: 'var(--ctp-subtext0)' }}>
@@ -149,6 +184,18 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                 </label>
               </div>
             )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingLeft: '0.5rem', marginTop: '0.25rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', cursor: editChannel === 'dm' ? 'pointer' : 'not-allowed', color: 'var(--ctp-subtext0)', opacity: editChannel === 'dm' ? 1 : 0.5 }}>
+                <input
+                  type="checkbox"
+                  checked={editVerifyResponse}
+                  onChange={(e) => setEditVerifyResponse(e.target.checked)}
+                  disabled={editChannel !== 'dm'}
+                  style={{ width: 'auto', margin: 0, cursor: editChannel === 'dm' ? 'pointer' : 'not-allowed' }}
+                />
+                <span>Verify Response (enable 3-retry delivery confirmation - DM only)</span>
+              </label>
+            </div>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
             <button
@@ -184,7 +231,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
       ) : (
         <>
           <div style={{ flex: '1', fontFamily: 'monospace', fontSize: '0.9rem' }}>
-            <div style={{ fontWeight: 'bold', color: 'var(--ctp-blue)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div style={{ fontWeight: 'bold', color: 'var(--ctp-blue)', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
               {trigger.trigger}
               <span style={{
                 fontSize: '0.7rem',
@@ -195,6 +242,42 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                 fontWeight: 'bold'
               }}>
                 {trigger.responseType.toUpperCase()}
+              </span>
+              {trigger.multiline && (
+                <span style={{
+                  fontSize: '0.7rem',
+                  padding: '0.15rem 0.4rem',
+                  background: 'var(--ctp-teal)',
+                  color: 'var(--ctp-base)',
+                  borderRadius: '3px',
+                  fontWeight: 'bold'
+                }}>
+                  MULTILINE
+                </span>
+              )}
+              {trigger.verifyResponse && (
+                <span style={{
+                  fontSize: '0.7rem',
+                  padding: '0.15rem 0.4rem',
+                  background: 'var(--ctp-peach)',
+                  color: 'var(--ctp-base)',
+                  borderRadius: '3px',
+                  fontWeight: 'bold'
+                }}>
+                  VERIFY
+                </span>
+              )}
+              <span style={{
+                fontSize: '0.7rem',
+                padding: '0.15rem 0.4rem',
+                background: (trigger.channel === 'dm' || !trigger.channel) ? 'var(--ctp-sky)' : 'var(--ctp-lavender)',
+                color: 'var(--ctp-base)',
+                borderRadius: '3px',
+                fontWeight: 'bold'
+              }}>
+                {(trigger.channel === 'dm' || !trigger.channel)
+                  ? 'DM'
+                  : `CH ${trigger.channel}: ${channels.find(c => c.id === trigger.channel)?.name || 'Unknown'}`}
               </span>
             </div>
             <div style={{ color: 'var(--ctp-subtext0)', fontSize: '0.85rem', marginTop: '0.25rem', whiteSpace: 'pre-wrap' }}>
@@ -244,6 +327,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
 const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
   enabled,
   triggers,
+  channels,
   baseUrl,
   onEnabledChange,
   onTriggersChange,
@@ -258,6 +342,8 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
   const [newResponseType, setNewResponseType] = useState<ResponseType>('text');
   const [newResponse, setNewResponse] = useState('');
   const [newMultiline, setNewMultiline] = useState(false);
+  const [newVerifyResponse, setNewVerifyResponse] = useState(false);
+  const [newChannel, setNewChannel] = useState<number | 'dm'>('dm');
   const [testMessages, setTestMessages] = useState('w 33076\ntemp 72\nmsg hello world\nset temperature to 72');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [availableScripts, setAvailableScripts] = useState<string[]>([]);
@@ -357,12 +443,16 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
       responseType: newResponseType,
       response: newResponse.trim(),
       multiline: newResponseType !== 'script' ? newMultiline : undefined,
+      verifyResponse: newChannel === 'dm' ? newVerifyResponse : false, // Only allow verify for DM
+      channel: newChannel,
     };
 
     setLocalTriggers([...localTriggers, trigger]);
     setNewTrigger('');
     setNewResponse('');
     setNewMultiline(false);
+    setNewVerifyResponse(false);
+    setNewChannel('dm');
   };
 
   const removeTrigger = (id: string) => {
@@ -380,7 +470,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
     setEditingId(null);
   };
 
-  const saveEdit = (id: string, trigger: string, responseType: ResponseType, response: string, multiline: boolean) => {
+  const saveEdit = (id: string, trigger: string, responseType: ResponseType, response: string, multiline: boolean, verifyResponse: boolean, channel: number | 'dm') => {
     const triggerValidation = validateTrigger(trigger);
     if (!triggerValidation.valid) {
       showToast(triggerValidation.error || 'Invalid trigger', 'error');
@@ -395,7 +485,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
 
     setLocalTriggers(localTriggers.map(t =>
       t.id === id
-        ? { ...t, trigger: trigger.trim(), responseType, response: response.trim(), multiline: responseType !== 'script' ? multiline : undefined }
+        ? { ...t, trigger: trigger.trim(), responseType, response: response.trim(), multiline: responseType !== 'script' ? multiline : undefined, verifyResponse, channel }
         : t
     ));
     setEditingId(null);
@@ -796,6 +886,32 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
               Add
             </button>
           </div>
+          <div style={{ marginTop: '0.5rem', paddingLeft: '0.5rem' }}>
+            <label style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem', display: 'block' }}>
+              Channel:
+            </label>
+            <select
+              value={newChannel}
+              onChange={(e) => {
+                const value = e.target.value === 'dm' ? 'dm' : parseInt(e.target.value);
+                setNewChannel(value);
+                // Auto-disable verifyResponse when switching to a channel
+                if (value !== 'dm') {
+                  setNewVerifyResponse(false);
+                }
+              }}
+              disabled={!localEnabled}
+              className="setting-input"
+              style={{ width: '100%', maxWidth: '400px' }}
+            >
+              <option value="dm">Direct Messages</option>
+              {channels.map((channel) => (
+                <option key={channel.id} value={channel.id}>
+                  Channel {channel.id}: {channel.name}
+                </option>
+              ))}
+            </select>
+          </div>
           {newResponseType !== 'script' && (
             <div style={{ marginTop: '0.5rem', paddingLeft: '0.5rem' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', cursor: localEnabled ? 'pointer' : 'not-allowed', color: 'var(--ctp-subtext0)' }}>
@@ -810,6 +926,18 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
               </label>
             </div>
           )}
+          <div style={{ marginTop: '0.5rem', paddingLeft: '0.5rem' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', cursor: (localEnabled && newChannel === 'dm') ? 'pointer' : 'not-allowed', color: 'var(--ctp-subtext0)', opacity: newChannel === 'dm' ? 1 : 0.5 }}>
+              <input
+                type="checkbox"
+                checked={newVerifyResponse}
+                onChange={(e) => setNewVerifyResponse(e.target.checked)}
+                disabled={!localEnabled || newChannel !== 'dm'}
+                style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
+              />
+              <span>Verify Response (enable 3-retry delivery confirmation)</span>
+            </label>
+          </div>
         </div>
 
         {localTriggers.length > 0 && (
@@ -828,9 +956,10 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                   isEditing={editingId === trigger.id}
                   localEnabled={localEnabled}
                   availableScripts={availableScripts}
+                  channels={channels}
                   onStartEdit={() => startEditing(trigger.id)}
                   onCancelEdit={cancelEditing}
-                  onSaveEdit={(t, rt, r, m) => saveEdit(trigger.id, t, rt, r, m)}
+                  onSaveEdit={(t, rt, r, m, v, c) => saveEdit(trigger.id, t, rt, r, m, v, c)}
                   onRemove={() => removeTrigger(trigger.id)}
                 />
               ))}

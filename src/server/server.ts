@@ -4440,6 +4440,40 @@ process.on('SIGTERM', () => {
   gracefulShutdown('SIGTERM received');
 });
 
+// Data migration: Set channel field to 'dm' for existing auto-responder triggers without channel
+function migrateAutoResponderTriggers() {
+  try {
+    const triggersStr = databaseService.getSetting('autoResponderTriggers');
+    if (!triggersStr) {
+      return; // No triggers to migrate
+    }
+
+    const triggers = JSON.parse(triggersStr);
+    if (!Array.isArray(triggers)) {
+      return;
+    }
+
+    let migrationCount = 0;
+    const migratedTriggers = triggers.map((trigger: any) => {
+      if (trigger.channel === undefined || trigger.channel === null) {
+        migrationCount++;
+        return { ...trigger, channel: 'dm' };
+      }
+      return trigger;
+    });
+
+    if (migrationCount > 0) {
+      databaseService.setSetting('autoResponderTriggers', JSON.stringify(migratedTriggers));
+      logger.info(`✅ Migrated ${migrationCount} auto-responder trigger(s) to default channel 'dm'`);
+    }
+  } catch (error) {
+    logger.error('❌ Failed to migrate auto-responder triggers:', error);
+  }
+}
+
+// Run migration on startup
+migrateAutoResponderTriggers();
+
 const server = app.listen(PORT, () => {
   logger.debug(`MeshMonitor server running on port ${PORT}`);
   logger.debug(`Environment: ${env.nodeEnv}`);

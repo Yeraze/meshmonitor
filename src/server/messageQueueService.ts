@@ -12,7 +12,8 @@ import { logger } from '../utils/logger.js';
 export interface QueuedMessage {
   id: string;
   text: string;
-  destination: number;
+  destination: number; // Node number for DMs, or 0 for channel messages
+  channel?: number; // Channel index (0-7) for channel messages, undefined for DMs
   replyId?: number;
   attempts: number;
   maxAttempts: number;
@@ -40,36 +41,43 @@ class MessageQueueService {
   private cleanupInterval?: ReturnType<typeof setInterval>;
 
   // Reference to meshtasticManager for sending messages
-  private sendCallback?: (text: string, destination: number, replyId?: number) => Promise<number>;
+  private sendCallback?: (text: string, destination: number, replyId?: number, channel?: number) => Promise<number>;
 
   /**
    * Set the callback function for sending messages
    * This should be MeshtasticManager.sendTextMessage
    */
-  setSendCallback(callback: (text: string, destination: number, replyId?: number) => Promise<number>) {
+  setSendCallback(callback: (text: string, destination: number, replyId?: number, channel?: number) => Promise<number>) {
     this.sendCallback = callback;
   }
 
   /**
    * Add a message to the queue
+   * For DMs: destination = node number, channel = undefined
+   * For channels: destination = 0, channel = channel index (0-7)
    */
-  enqueue(text: string, destination: number, replyId?: number, onSuccess?: () => void, onFailure?: (reason: string) => void): string {
+  enqueue(text: string, destination: number, replyId?: number, onSuccess?: () => void, onFailure?: (reason: string) => void, channel?: number): string {
     const messageId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    // Channel messages don't support ACKs, so only attempt once
+    const maxAttempts = channel !== undefined ? 1 : this.MAX_ATTEMPTS;
 
     const queuedMessage: QueuedMessage = {
       id: messageId,
       text,
       destination,
+      channel,
       replyId,
       attempts: 0,
-      maxAttempts: this.MAX_ATTEMPTS,
+      maxAttempts,
       enqueuedAt: Date.now(),
       onSuccess,
       onFailure
     };
 
     this.queue.push(queuedMessage);
-    logger.info(`📬 Enqueued auto-responder message ${messageId} (queue length: ${this.queue.length})`);
+    const target = channel !== undefined ? `channel ${channel}` : `node !${destination.toString(16).padStart(8, '0')}`;
+    logger.info(`📬 Enqueued auto-responder message ${messageId} to ${target} (queue length: ${this.queue.length})`);
 
     // Start processing if not already running
     if (!this.processing) {
@@ -243,10 +251,11 @@ class MessageQueueService {
       message.lastAttemptAt = Date.now();
 
       const attemptInfo = message.attempts > 1 ? ` (attempt ${message.attempts}/${message.maxAttempts})` : '';
-      logger.info(`📤 Sending queued message ${message.id} to !${message.destination.toString(16).padStart(8, '0')}${attemptInfo}`);
+      const target = message.channel !== undefined ? `channel ${message.channel}` : `!${message.destination.toString(16).padStart(8, '0')}`;
+      logger.info(`📤 Sending queued message ${message.id} to ${target}${attemptInfo}`);
 
       // Send the message
-      const requestId = await this.sendCallback(message.text, message.destination, message.replyId);
+      const requestId = await this.sendCallback(message.text, message.destination, message.replyId, message.channel);
 
       // Validate requestId
       if (requestId === undefined || requestId === null || requestId <= 0) {
