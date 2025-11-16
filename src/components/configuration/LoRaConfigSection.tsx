@@ -4,12 +4,20 @@ import { MODEM_PRESET_OPTIONS, REGION_OPTIONS } from './constants';
 interface LoRaConfigSectionProps {
   usePreset: boolean;
   modemPreset: number;
+  bandwidth: number;
+  spreadFactor: number;
+  codingRate: number;
+  frequencyOffset: number;
   region: number;
   hopLimit: number;
   channelNum: number;
   sx126xRxBoostedGain: boolean;
   setUsePreset: (value: boolean) => void;
   setModemPreset: (value: number) => void;
+  setBandwidth: (value: number) => void;
+  setSpreadFactor: (value: number) => void;
+  setCodingRate: (value: number) => void;
+  setFrequencyOffset: (value: number) => void;
   setRegion: (value: number) => void;
   setHopLimit: (value: number) => void;
   setChannelNum: (value: number) => void;
@@ -21,12 +29,20 @@ interface LoRaConfigSectionProps {
 const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
   usePreset,
   modemPreset,
+  bandwidth,
+  spreadFactor,
+  codingRate,
+  frequencyOffset,
   region,
   hopLimit,
   channelNum,
   sx126xRxBoostedGain,
   setUsePreset,
   setModemPreset,
+  setBandwidth,
+  setSpreadFactor,
+  setCodingRate,
+  setFrequencyOffset,
   setRegion,
   setHopLimit,
   setChannelNum,
@@ -159,6 +175,69 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
             )}
           </div>
         </div>
+      )}
+      {!usePreset && (
+        <>
+          <div className="setting-item">
+            <label htmlFor="bandwidth">
+              Bandwidth (kHz)
+              <span className="setting-description">Channel bandwidth in kHz. Common values: 125, 250, 500 (31 = 31.25)</span>
+            </label>
+            <input
+              id="bandwidth"
+              type="number"
+              min="1"
+              max="500"
+              value={bandwidth}
+              onChange={(e) => setBandwidth(parseInt(e.target.value))}
+              className="setting-input"
+            />
+          </div>
+          <div className="setting-item">
+            <label htmlFor="spreadFactor">
+              Spreading Factor
+              <span className="setting-description">Number of chirps per symbol (7-12). Higher = longer range, slower speed</span>
+            </label>
+            <input
+              id="spreadFactor"
+              type="number"
+              min="7"
+              max="12"
+              value={spreadFactor}
+              onChange={(e) => setSpreadFactor(parseInt(e.target.value))}
+              className="setting-input"
+            />
+          </div>
+          <div className="setting-item">
+            <label htmlFor="codingRate">
+              Coding Rate Denominator
+              <span className="setting-description">Denominator of coding rate (5-8). For 4/5 use 5, for 4/8 use 8</span>
+            </label>
+            <input
+              id="codingRate"
+              type="number"
+              min="5"
+              max="8"
+              value={codingRate}
+              onChange={(e) => setCodingRate(parseInt(e.target.value))}
+              className="setting-input"
+            />
+          </div>
+          <div className="setting-item">
+            <label htmlFor="frequencyOffset">
+              Frequency Offset (MHz)
+              <span className="setting-description">Advanced: Frequency offset for crystal calibration (default: 0)</span>
+            </label>
+            <input
+              id="frequencyOffset"
+              type="number"
+              step="0.001"
+              value={frequencyOffset}
+              onChange={(e) => setFrequencyOffset(parseFloat(e.target.value))}
+              className="setting-input"
+            />
+          </div>
+        </>
       )}
       <div className="setting-item">
         <label htmlFor="region">
