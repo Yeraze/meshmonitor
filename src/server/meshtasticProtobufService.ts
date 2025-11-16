@@ -932,8 +932,11 @@ export class MeshtasticProtobufService {
   /**
    * Create FromRadio message wrapping a MeshPacket
    * Used for processing outgoing messages locally so they appear in the web UI
+   *
+   * @param meshPacket - The MeshPacket to wrap
+   * @param overrideFrom - Optional node number to use for 'from' field (fixes Android client issue #626)
    */
-  async createFromRadioWithPacket(meshPacket: MeshPacket): Promise<Uint8Array | null> {
+  async createFromRadioWithPacket(meshPacket: MeshPacket, overrideFrom?: number): Promise<Uint8Array | null> {
     const root = getProtobufRoot();
     if (!root) {
       logger.error('❌ Protobuf definitions not loaded');
@@ -942,9 +945,21 @@ export class MeshtasticProtobufService {
 
     try {
       const FromRadio = root.lookupType('meshtastic.FromRadio');
+      const MeshPacket = root.lookupType('meshtastic.MeshPacket');
+
+      let packetToEncode: any = meshPacket;
+
+      // If overrideFrom is provided, create a modified copy of the packet
+      // This is used to fix issue #626 where Android clients send from=0
+      if (overrideFrom !== undefined) {
+        const packetObj: any = MeshPacket.toObject(meshPacket as any);
+        packetObj.from = overrideFrom;
+        packetToEncode = MeshPacket.create(packetObj);
+        logger.debug(`📦 Created MeshPacket copy with from=${overrideFrom} for local storage`);
+      }
 
       const fromRadio = FromRadio.create({
-        packet: meshPacket,
+        packet: packetToEncode,
       });
 
       return FromRadio.encode(fromRadio).finish();
