@@ -135,6 +135,12 @@ function App() {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [isDefaultPassword, setIsDefaultPassword] = useState(false);
   const [isTxDisabled, setIsTxDisabled] = useState(false);
+  const [configIssues, setConfigIssues] = useState<Array<{
+    type: 'cookie_secure' | 'allowed_origins';
+    severity: 'error' | 'warning';
+    message: string;
+    docsUrl: string;
+  }>>([]);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [latestVersion, setLatestVersion] = useState('');
   const [releaseUrl, setReleaseUrl] = useState('');
@@ -882,6 +888,23 @@ function App() {
     };
 
     checkDefaultPassword();
+  }, [baseUrl]);
+
+  // Check for configuration issues
+  useEffect(() => {
+    const checkConfigIssues = async () => {
+      try {
+        const response = await authFetch(`${baseUrl}/api/auth/check-config-issues`);
+        if (response.ok) {
+          const data = await response.json();
+          setConfigIssues(data.issues || []);
+        }
+      } catch (error) {
+        logger.error('Error checking config issues:', error);
+      }
+    };
+
+    checkConfigIssues();
   }, [baseUrl]);
 
   // Check if TX is disabled
@@ -5294,12 +5317,40 @@ function App() {
         </div>
       )}
 
+      {/* Configuration Issue Warning Banners */}
+      {configIssues.map((issue, index) => {
+        // Calculate how many banners are above this one
+        const bannersAbove = [isDefaultPassword, isTxDisabled].filter(Boolean).length + index;
+        const topOffset = bannersAbove === 0
+          ? 'var(--header-height)'
+          : `calc(var(--header-height) + (var(--banner-height) * ${bannersAbove}))`;
+
+        return (
+          <div key={issue.type} className="warning-banner" style={{ top: topOffset }}>
+            ⚠️ Configuration Error: {issue.message}{' '}
+            <a
+              href={issue.docsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: 'inherit', textDecoration: 'underline' }}
+            >
+              Learn more →
+            </a>
+          </div>
+        );
+      })}
+
       {/* Don't show banner until images are confirmed ready - no point notifying users about builds in progress */}
 
-      {updateAvailable && (
-        <div className="update-banner" style={{
-          top: (isDefaultPassword && isTxDisabled) ? 'calc(var(--header-height) + var(--banner-height) + var(--banner-height))' : (isDefaultPassword || isTxDisabled) ? 'calc(var(--header-height) + var(--banner-height))' : 'var(--header-height)'
-        }}>
+      {updateAvailable && (() => {
+        // Calculate total warning banners above the update banner
+        const warningBannersCount = [isDefaultPassword, isTxDisabled].filter(Boolean).length + configIssues.length;
+        const topOffset = warningBannersCount === 0
+          ? 'var(--header-height)'
+          : `calc(var(--header-height) + (var(--banner-height) * ${warningBannersCount}))`;
+
+        return (
+        <div className="update-banner" style={{ top: topOffset }}>
           <div style={{ flex: 1, textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem' }}>
             {upgradeInProgress ? (
               <>
@@ -5359,7 +5410,8 @@ function App() {
             </button>
           )}
         </div>
-      )}
+        );
+      })()}
 
       <LoginModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />
       <RebootModal isOpen={showRebootModal} onClose={handleRebootModalClose} />

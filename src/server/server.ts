@@ -166,23 +166,54 @@ const getAllowedOrigins = () => {
   return origins.length > 0 ? origins : ['http://localhost:3000'];
 };
 
-app.use(cors({
-  origin: (origin, callback) => {
-    const allowedOrigins = getAllowedOrigins();
+// Custom CORS middleware that exempts diagnostic endpoints and static assets
+app.use((req, res, next) => {
+  const allowedOrigins = getAllowedOrigins();
+  const origin = req.get('origin');
+  const fullPath = req.originalUrl || req.url;
 
-    // Allow requests with no origin (mobile apps, Postman, same-origin)
-    if (!origin) return callback(null, true);
-
-    if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
-      callback(null, true);
-    } else {
-      logger.warn(`CORS request blocked from origin: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
+  // Always allow config-issues endpoint from any origin (diagnostic endpoint)
+  if (fullPath.includes('/api/auth/check-config-issues')) {
+    logger.debug(`🔍 check-config-issues request from origin: ${origin}, path: ${fullPath}`);
+    res.header('Access-Control-Allow-Origin', origin || '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(200);
     }
-  },
-  credentials: true,
-  optionsSuccessStatus: 200
-}));
+    return next();
+  }
+
+  // Allow static assets (CSS, JS, images) from any origin
+  // This is safe because static assets don't require authentication
+  if (fullPath.match(/\.(css|js|map|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|webmanifest)$/)) {
+    res.header('Access-Control-Allow-Origin', origin || '*');
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(200);
+    }
+    return next();
+  }
+
+  // Apply standard CORS for all other endpoints (API calls)
+  const corsMiddleware = cors({
+    origin: (reqOrigin, callback) => {
+      // Allow requests with no origin (mobile apps, Postman, same-origin)
+      if (!reqOrigin) return callback(null, true);
+
+      if (allowedOrigins.includes(reqOrigin) || allowedOrigins.includes('*')) {
+        callback(null, true);
+      } else {
+        logger.warn(`CORS request blocked from origin: ${reqOrigin}`);
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    credentials: true,
+    optionsSuccessStatus: 200
+  });
+
+  corsMiddleware(req, res, next);
+});
 
 // Access logging for fail2ban (optional, configured via ACCESS_LOG_ENABLED)
 const accessLogger = setupAccessLogger();
