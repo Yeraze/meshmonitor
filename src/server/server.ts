@@ -4307,6 +4307,20 @@ if (BASE_URL) {
 }
 app.get('/api/scripts', scriptsEndpoint);
 
+// Server info endpoint
+const serverInfoEndpoint = (_req: express.Request, res: express.Response) => {
+  const env = getEnvironmentConfig();
+  res.json({
+    timezone: env.timezone,
+    timezoneProvided: env.timezoneProvided
+  });
+};
+
+if (BASE_URL) {
+  app.get(`${BASE_URL}/api/server-info`, serverInfoEndpoint);
+}
+app.get('/api/server-info', serverInfoEndpoint);
+
 // Mount API router first - this must come before static file serving
 // Apply rate limiting and CSRF protection to all API routes (except csrf-token endpoint)
 if (BASE_URL) {

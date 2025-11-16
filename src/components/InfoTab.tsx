@@ -69,6 +69,8 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [virtualNodeStatus, setVirtualNodeStatus] = useState<any>(null);
   const [loadingVirtualNode, setLoadingVirtualNode] = useState(false);
+  const [serverInfo, setServerInfo] = useState<any>(null);
+  const [loadingServerInfo, setLoadingServerInfo] = useState(false);
 
   const fetchVirtualNodeStatus = async () => {
     if (connectionStatus !== 'connected') return;
@@ -81,6 +83,20 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
       logger.error('Error fetching virtual node status:', error);
     } finally {
       setLoadingVirtualNode(false);
+    }
+  };
+
+  const fetchServerInfo = async () => {
+    if (connectionStatus !== 'connected') return;
+
+    setLoadingServerInfo(true);
+    try {
+      const info = await apiService.getServerInfo();
+      setServerInfo(info);
+    } catch (error) {
+      logger.error('Error fetching server info:', error);
+    } finally {
+      setLoadingServerInfo(false);
     }
   };
 
@@ -131,6 +147,12 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
   useEffect(() => {
     fetchVirtualNodeStatus();
     const interval = setInterval(fetchVirtualNodeStatus, 60000); // Refresh every minute
+    return () => clearInterval(interval);
+  }, [connectionStatus]);
+
+  useEffect(() => {
+    fetchServerInfo();
+    const interval = setInterval(fetchServerInfo, 60000); // Refresh every minute
     return () => clearInterval(interval);
   }, [connectionStatus]);
 
@@ -209,6 +231,17 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
         <div className="info-section">
           <h3>Application Information</h3>
           <p><strong>Version:</strong> {version}</p>
+          {loadingServerInfo && <p>Loading...</p>}
+          {!loadingServerInfo && serverInfo && (
+            <p>
+              <strong>Timezone:</strong> {serverInfo.timezone}
+              {!serverInfo.timezoneProvided && (
+                <span style={{ fontSize: '0.85em', color: '#888', marginLeft: '0.5rem' }}>
+                  (default)
+                </span>
+              )}
+            </p>
+          )}
         </div>
 
         <div className="info-section">
