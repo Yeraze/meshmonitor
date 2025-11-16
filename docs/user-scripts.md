@@ -32,13 +32,14 @@ User Scripts are custom scripts that integrate with MeshMonitor's Auto Responder
 When submitting a script for the gallery, please provide:
 
 1. **Script Name**: A clear, descriptive name
-2. **Description**: What the script does and its use case
-3. **Language**: Python, JavaScript, or Shell
-4. **Tags**: Relevant categories (e.g., "Weather", "API", "System", "Example")
-5. **Example Trigger**: The trigger pattern(s) used with the script
-6. **Requirements**: Any dependencies, API keys, or environment variables needed
-7. **Code**: The complete script code (via GitHub link, Gist, or paste)
-8. **Source Location**: 
+2. **Icon** (optional): An emoji or Unicode character to represent your script (e.g., 🌤️, 🤖, 📋)
+3. **Description**: What the script does and its use case
+4. **Language**: Python, JavaScript, or Shell
+5. **Tags**: Relevant categories (e.g., "Weather", "API", "System", "Example")
+6. **Example Trigger**: The trigger pattern(s) used with the script
+7. **Requirements**: Any dependencies, API keys, or environment variables needed (can be a list)
+8. **Code**: The complete script code (via GitHub link, Gist, or paste)
+9. **Source Location**: 
    - If in main repo: Script will be added to `examples/auto-responder-scripts/`
    - If in external repo: Provide GitHub path in format `USERNAME/repo/path/to/script.py` or `USERNAME/repo/branch/path/to/script.py`
 

@@ -92,7 +92,10 @@
               >
                 <div class="card-header-compact">
                   <div class="header-left">
-                    <h3 class="script-name-compact">{{ script.name }}</h3>
+                    <h3 class="script-name-compact">
+                      <span v-if="script.icon" class="script-icon">{{ script.icon }}</span>
+                      {{ script.name }}
+                    </h3>
                     <span class="script-author">by {{ script.author }}</span>
                   </div>
                   <span :class="['language-badge', `lang-${script.language.toLowerCase()}`]">
@@ -119,20 +122,14 @@
                   >
                     📋 View Details
                   </button>
-                  <a
-                    :href="getSourceUrl(script)"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="action-btn-compact view-source"
-                  >
-                    📄 View Source
-                  </a>
                 </div>
               </div>
             </div>
 
             <div v-if="paginatedScripts.length === 0" class="no-results">
-              <p>No scripts match your search and filters.</p>
+              <div class="no-results-icon">🔍</div>
+              <h3 class="no-results-title">No scripts found</h3>
+              <p class="no-results-message">Try adjusting your search or filters to find what you're looking for.</p>
             </div>
 
             <!-- Pagination -->
@@ -189,7 +186,10 @@
         <div class="modal-content" @click.stop>
           <div class="modal-header">
             <div class="modal-header-left">
-              <h2 class="modal-title">{{ selectedScript.name }}</h2>
+              <h2 class="modal-title">
+                <span v-if="selectedScript.icon" class="script-icon">{{ selectedScript.icon }}</span>
+                {{ selectedScript.name }}
+              </h2>
               <span :class="['language-badge', `lang-${selectedScript.language.toLowerCase()}`]">
                 {{ selectedScript.language }}
               </span>
@@ -255,7 +255,7 @@
                       @click="copyScriptCode(selectedScript)"
                       :disabled="loadingCode"
                     >
-                      {{ loadingCode ? 'Loading...' : (codeCopied ? '✓ Copied!' : '📋 Copy Code') }}
+                      {{ loadingCode ? 'Loading...' : (codeCopied ? '✓ Copied!' : '📋 Copy Script') }}
                     </button>
                     <button
                       class="download-code-btn"
@@ -268,8 +268,13 @@
                   </div>
                 </div>
                 <div class="code-viewer">
-                  <pre v-if="loadingCode" class="code-loading">Loading code...</pre>
-                  <pre v-else-if="codeError" class="code-error">{{ codeError }}</pre>
+                  <div v-if="loadingCode" class="code-loading-skeleton">
+                    <div class="skeleton-line" v-for="n in 15" :key="n" :style="{ width: n % 3 === 0 ? '90%' : n % 3 === 1 ? '75%' : '100%' }"></div>
+                  </div>
+                  <pre v-else-if="codeError" class="code-error">
+                    <div class="code-error-icon">⚠️</div>
+                    <div class="code-error-message">{{ codeError }}</div>
+                  </pre>
                   <pre v-else ref="codeElement" class="code-block"><code :class="`language-${getLanguageAlias(selectedScript.language)}`" class="code-content">{{ scriptCode }}</code></pre>
                 </div>
               </div>
@@ -301,6 +306,7 @@
 <script setup>
 import { ref, computed, watch, onUnmounted, onMounted, nextTick } from 'vue'
 import scriptsData from '../data/user-scripts.json'
+import { validateGitHubPath } from '../utils/githubUrlValidation'
 
 const scripts = ref(scriptsData)
 const showScriptsModal = ref(false)
@@ -342,7 +348,9 @@ const allTags = computed(() => {
   
   // Apply search filter
   if (searchQuery.value.trim()) {
-    const query = searchQuery.value.toLowerCase().trim()
+    // Security: Sanitize search query
+    const sanitizedQuery = sanitizeSearchQuery(searchQuery.value)
+    const query = sanitizedQuery.toLowerCase()
     filteredScripts = filteredScripts.filter(script => {
       return (
         script.name.toLowerCase().includes(query) ||
@@ -369,13 +377,33 @@ const allTags = computed(() => {
   return Array.from(tags).sort()
 })
 
+// Security: Sanitize search input to prevent ReDoS and DoS
+const sanitizeSearchQuery = (query) => {
+  if (!query || typeof query !== 'string') {
+    return ''
+  }
+  
+  // Remove null bytes and control characters
+  let sanitized = query.replace(/[\x00-\x1F\x7F]/g, '')
+  
+  // Limit length to prevent DoS (100 chars max)
+  const MAX_SEARCH_LENGTH = 100
+  if (sanitized.length > MAX_SEARCH_LENGTH) {
+    sanitized = sanitized.substring(0, MAX_SEARCH_LENGTH)
+  }
+  
+  return sanitized.trim()
+}
+
 // Search and filter scripts
 const searchedAndFilteredScripts = computed(() => {
   let result = scripts.value
 
   // Search filter
   if (searchQuery.value.trim()) {
-    const query = searchQuery.value.toLowerCase().trim()
+    // Security: Sanitize search query
+    const sanitizedQuery = sanitizeSearchQuery(searchQuery.value)
+    const query = sanitizedQuery.toLowerCase()
     result = result.filter(script => {
       return (
         script.name.toLowerCase().includes(query) ||
@@ -574,22 +602,27 @@ const getSourceUrl = (script) => {
 }
 
 /**
- * Get raw source URL for fetching code content
- * Supports both main repo (examples/) and external user repos
+ * Get GitHub API URL for fetching file contents (supports CORS for public repos)
+ * Uses GitHub Contents API instead of raw URLs to avoid CORS issues
  * 
- * Note: If file is in examples/ directory, we can render it directly from the main repo.
- * For external repos, we fetch from the external URL.
+ * Security: Validates path to prevent SSRF attacks before constructing URL.
  * 
  * @param {Object} script - Script object with githubPath property
- * @returns {string|null} Raw GitHub URL for fetching file content, or null if invalid
+ * @returns {string|null} GitHub API URL for fetching file content, or null if invalid
  */
-const getRawSourceUrl = (script) => {
+const getGitHubApiUrl = (script) => {
   if (!script.githubPath) return null
   
+  // Security: Validate path to prevent SSRF attacks
+  if (!validateGitHubPath(script.githubPath)) {
+    console.warn('Invalid GitHub path detected, rejecting:', script.githubPath)
+    return null
+  }
+  
   // If path starts with "examples/", it's in the main meshmonitor repo
-  // We can render directly from the main repo
   if (script.githubPath.startsWith('examples/')) {
-    return `https://raw.githubusercontent.com/yeraze/meshmonitor/main/${script.githubPath}`
+    const filePath = script.githubPath.substring('examples/'.length)
+    return `https://api.github.com/repos/yeraze/meshmonitor/contents/${filePath}?ref=main`
   }
   
   // Otherwise, parse as external repo: "USERNAME/repo/branch/path" or "USERNAME/repo/path"
@@ -597,7 +630,6 @@ const getRawSourceUrl = (script) => {
   
   // Minimum: USERNAME/repo/path (3 parts) - defaults to main branch
   if (parts.length >= 3) {
-    // Check if 3rd part looks like a branch name
     const commonBranches = ['main', 'master', 'develop', 'dev']
     const possibleBranch = parts[2]
     
@@ -608,19 +640,20 @@ const getRawSourceUrl = (script) => {
       const repo = parts[1]
       const branch = parts[2]
       const filePath = parts.slice(3).join('/')
-      return `https://raw.githubusercontent.com/${username}/${repo}/${branch}/${filePath}`
+      return `https://api.github.com/repos/${username}/${repo}/contents/${filePath}?ref=${branch}`
     } else {
       // Format: USERNAME/repo/path/to/file (defaults to main branch)
       const username = parts[0]
       const repo = parts[1]
       const filePath = parts.slice(2).join('/')
-      return `https://raw.githubusercontent.com/${username}/${repo}/main/${filePath}`
+      return `https://api.github.com/repos/${username}/${repo}/contents/${filePath}?ref=main`
     }
   }
   
   // Fallback: treat entire path as relative to main repo
-  return `https://raw.githubusercontent.com/yeraze/meshmonitor/main/${script.githubPath}`
+  return `https://api.github.com/repos/yeraze/meshmonitor/contents/${script.githubPath}?ref=main`
 }
+
 
 // Highlight code using Prism.js
 const highlightCode = async () => {
@@ -658,24 +691,99 @@ watch([scriptCode, selectedScript], async () => {
 }, { flush: 'post' })
 
 // Fetch script code from GitHub
+// Docs are a separate static site (GitHub Pages), so we always use GitHub API directly
+// GitHub's api.github.com supports CORS for public repositories
 const fetchScriptCode = async (script) => {
   if (!script || scriptCode.value || loadingCode.value) return
   
   loadingCode.value = true
   codeError.value = null
   
+  // Security: Maximum file size (500KB)
+  const MAX_FILE_SIZE = 500 * 1024 // 500KB in bytes
+  
   try {
-    const rawUrl = getRawSourceUrl(script)
-    if (!rawUrl) {
-      throw new Error('No source URL available')
+    const apiUrl = getGitHubApiUrl(script)
+    if (!apiUrl) {
+      throw new Error('Unable to construct GitHub API URL')
     }
-    const response = await fetch(rawUrl)
+    
+    // Security: Add timeout using AbortController (10 seconds)
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 10000)
+    
+    let response
+    try {
+      response = await fetch(apiUrl, {
+        signal: controller.signal,
+        headers: {
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'MeshMonitor-UserScripts/1.0'
+        }
+      })
+      clearTimeout(timeoutId)
+    } catch (fetchErr) {
+      clearTimeout(timeoutId)
+      
+      if ((fetchErr instanceof DOMException && fetchErr.name === 'AbortError') ||
+          (fetchErr instanceof Error && fetchErr.name === 'AbortError')) {
+        throw new Error('Request timeout after 10 seconds')
+      }
+      
+      // If fetch fails (CORS, network error, etc.), provide helpful error
+      if (fetchErr.message.includes('CORS') || 
+          fetchErr.message.includes('Failed to fetch') ||
+          fetchErr.message.includes('NetworkError')) {
+        throw new Error('Unable to fetch script content. Please view source on GitHub directly.')
+      }
+      throw fetchErr
+    }
     
     if (!response.ok) {
-      throw new Error(`Failed to fetch code: ${response.statusText}`)
+      if (response.status === 404) {
+        throw new Error('File not found. The file may not exist or the repository may be private.')
+      }
+      if (response.status === 403) {
+        throw new Error('Rate limit exceeded or repository is private. Please view source on GitHub directly.')
+      }
+      throw new Error(`Failed to fetch code: ${response.status} ${response.statusText}`)
     }
     
-    scriptCode.value = await response.text()
+    // GitHub API returns JSON with base64-encoded content
+    const data = await response.json()
+    
+    // Security: Validate response structure
+    if (!data || typeof data !== 'object' || !data.content) {
+      throw new Error('Invalid response format from GitHub API')
+    }
+    
+    // Security: Check file size (GitHub API provides size in bytes)
+    if (data.size && data.size > MAX_FILE_SIZE) {
+      throw new Error(`File too large: ${data.size} bytes. Maximum size is ${MAX_FILE_SIZE} bytes (500KB)`)
+    }
+    
+    // Decode base64 content
+    let text
+    try {
+      // GitHub API returns base64-encoded content with newlines, remove them
+      const base64Content = data.content.replace(/\n/g, '')
+      text = atob(base64Content)
+    } catch (decodeErr) {
+      throw new Error('Failed to decode file content from GitHub API')
+    }
+    
+    // Security: Double-check size after decoding
+    if (text.length > MAX_FILE_SIZE) {
+      throw new Error(`File too large: ${text.length} bytes. Maximum size is ${MAX_FILE_SIZE} bytes (500KB)`)
+    }
+    
+    // Security: Detect HTML content
+    const trimmedText = text.trim()
+    if (trimmedText.startsWith('<!DOCTYPE') || trimmedText.startsWith('<html') || trimmedText.startsWith('<?xml')) {
+      throw new Error('Received HTML content instead of code. The file may not exist or the URL may be incorrect.')
+    }
+    
+    scriptCode.value = text
     // Highlight will be triggered by watch
   } catch (err) {
     codeError.value = `Error loading code: ${err.message}. Please view source.`
@@ -714,6 +822,37 @@ const copyScriptCode = async (script) => {
   }
 }
 
+// Security: Sanitize filename to prevent path traversal
+const sanitizeFilename = (filename) => {
+  if (!filename || typeof filename !== 'string') {
+    return 'script.txt'
+  }
+  
+  // Remove path traversal sequences
+  let sanitized = filename.replace(/\.\./g, '').replace(/\.\.\//g, '').replace(/\.\.\\/g, '')
+  
+  // Remove path separators (prevent directory traversal)
+  sanitized = sanitized.replace(/[\/\\]/g, '_')
+  
+  // Remove special characters except dots, hyphens, underscores
+  sanitized = sanitized.replace(/[^a-zA-Z0-9._-]/g, '_')
+  
+  // Limit filename length (100 chars max)
+  const MAX_FILENAME_LENGTH = 100
+  if (sanitized.length > MAX_FILENAME_LENGTH) {
+    const ext = sanitized.substring(sanitized.lastIndexOf('.'))
+    const name = sanitized.substring(0, sanitized.lastIndexOf('.'))
+    sanitized = name.substring(0, MAX_FILENAME_LENGTH - ext.length) + ext
+  }
+  
+  // Ensure filename has valid extension or add .txt
+  if (!sanitized.includes('.')) {
+    sanitized += '.txt'
+  }
+  
+  return sanitized || 'script.txt'
+}
+
 // Download script file
 const downloadScript = async (script) => {
   if (!scriptCode.value && !loadingCode.value) {
@@ -732,6 +871,9 @@ const downloadScript = async (script) => {
   
   if (scriptCode.value) {
     try {
+      // Security: Sanitize filename before download
+      const safeFilename = sanitizeFilename(script.filename)
+      
       // Create blob with script content
       const blob = new Blob([scriptCode.value], { type: 'text/plain' })
       const url = URL.createObjectURL(blob)
@@ -739,7 +881,7 @@ const downloadScript = async (script) => {
       // Create temporary download link
       const link = document.createElement('a')
       link.href = url
-      link.download = script.filename
+      link.download = safeFilename
       document.body.appendChild(link)
       link.click()
       
@@ -752,7 +894,7 @@ const downloadScript = async (script) => {
   }
 }
 
-// Copy script (fetch and copy)
+// Copy script (uses already loaded code or fetches if needed)
 const copyScript = async (script, event) => {
   if (event) {
     const btn = event.target.closest('.copy-script, .copy-script-btn')
@@ -762,19 +904,8 @@ const copyScript = async (script, event) => {
       btn.disabled = true
       
       try {
-        const rawUrl = getRawSourceUrl(script)
-        if (!rawUrl) {
-          throw new Error('No source URL available')
-        }
-        const response = await fetch(rawUrl)
-        
-        if (!response.ok) {
-          throw new Error(`Failed to fetch: ${response.statusText}`)
-        }
-        
-        const code = await response.text()
-        await navigator.clipboard.writeText(code)
-        
+        // Use copyScriptCode which handles fetching and copying
+        await copyScriptCode(script)
         btn.textContent = '✓ Copied!'
         setTimeout(() => {
           btn.textContent = originalText
@@ -806,6 +937,7 @@ const copyScript = async (script, event) => {
   right: 0;
   bottom: 0;
   background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(4px);
   z-index: 9999;
   display: flex;
   align-items: stretch;
@@ -820,6 +952,7 @@ const copyScript = async (script, event) => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
 }
 
 .scripts-modal-header {
@@ -845,18 +978,26 @@ const copyScript = async (script, event) => {
   font-size: 0.9rem;
   cursor: pointer;
   border-radius: 6px;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
   white-space: nowrap;
+  font-weight: 500;
 }
 
 .close-modal-btn:hover {
   background: var(--vp-c-bg-soft);
   color: var(--vp-c-text-1);
   border-color: var(--vp-c-brand);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.close-modal-btn:focus-visible {
+  outline: 2px solid var(--vp-c-brand);
+  outline-offset: 2px;
 }
 
 .close-x {
@@ -947,22 +1088,32 @@ const copyScript = async (script, event) => {
   padding: 0.5rem 1rem;
   background: var(--vp-c-bg);
   border: 1px solid var(--vp-c-divider);
-  border-radius: 6px;
+  border-radius: 8px;
   color: var(--vp-c-text-2);
   cursor: pointer;
   font-size: 0.875rem;
-  transition: all 0.2s;
+  font-weight: 500;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .filter-btn:hover {
   border-color: var(--vp-c-brand);
   color: var(--vp-c-text-1);
+  background: var(--vp-c-bg-soft);
+  transform: translateY(-1px);
+}
+
+.filter-btn:focus-visible {
+  outline: 2px solid var(--vp-c-brand);
+  outline-offset: 2px;
 }
 
 .filter-btn.active {
   background: var(--vp-c-brand);
   color: var(--vp-c-bg);
   border-color: var(--vp-c-brand);
+  font-weight: 600;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .tag-btn {
@@ -1068,12 +1219,20 @@ const copyScript = async (script, event) => {
 }
 
 .tag-chip {
-  padding: 0.25rem 0.75rem;
+  padding: 0.3rem 0.75rem;
   background: var(--vp-c-bg);
   border: 1px solid var(--vp-c-divider);
   border-radius: 12px;
   font-size: 0.75rem;
+  font-weight: 500;
   color: var(--vp-c-text-2);
+  transition: all 0.2s ease;
+}
+
+.tag-chip:hover {
+  background: var(--vp-c-bg-soft);
+  border-color: var(--vp-c-brand);
+  transform: translateY(-1px);
 }
 
 .script-details {
@@ -1159,14 +1318,34 @@ const copyScript = async (script, event) => {
   border-color: var(--vp-c-brand);
 }
 
-.view-source {
-  text-decoration: none;
-}
-
 .no-results {
   text-align: center;
-  padding: 3rem 1rem;
+  padding: 4rem 2rem;
   color: var(--vp-c-text-2);
+}
+
+.no-results-icon {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+  opacity: 0.5;
+}
+
+.no-results-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--vp-c-text-1);
+  margin: 0 0 0.5rem 0;
+  letter-spacing: -0.02em;
+}
+
+.no-results-message {
+  font-size: 1rem;
+  color: var(--vp-c-text-2);
+  margin: 0;
+  line-height: 1.6;
+  max-width: 500px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .view-scripts-cta {
@@ -1263,19 +1442,27 @@ const copyScript = async (script, event) => {
 
 .search-input {
   width: 100%;
-  padding: 0.75rem;
+  padding: 0.75rem 1rem;
   background: var(--vp-c-bg);
   border: 1px solid var(--vp-c-divider);
-  border-radius: 6px;
+  border-radius: 8px;
   color: var(--vp-c-text-1);
   font-size: 0.9rem;
-  transition: all 0.2s;
+  font-weight: 400;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .search-input:focus {
   outline: none;
   border-color: var(--vp-c-brand);
-  box-shadow: 0 0 0 3px rgba(var(--vp-c-brand-rgb, 0, 0, 0), 0.1);
+  box-shadow: 0 0 0 3px rgba(var(--vp-c-brand-rgb, 0, 0, 0), 0.1), 0 2px 4px rgba(0, 0, 0, 0.05);
+  transform: translateY(-1px);
+}
+
+.search-input::placeholder {
+  color: var(--vp-c-text-3);
+  opacity: 0.6;
 }
 
 .filter-buttons-vertical {
@@ -1315,18 +1502,24 @@ const copyScript = async (script, event) => {
 .script-card-compact {
   background: var(--vp-c-bg-soft);
   border: 1px solid var(--vp-c-divider);
-  border-radius: 8px;
-  padding: 1.25rem;
-  transition: all 0.2s;
+  border-radius: 12px;
+  padding: 1.5rem;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
   flex-direction: column;
   height: 100%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .script-card-compact:hover {
   border-color: var(--vp-c-brand);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.script-card-compact:focus-within {
+  outline: 2px solid var(--vp-c-brand);
+  outline-offset: 2px;
 }
 
 .card-header-compact {
@@ -1344,21 +1537,34 @@ const copyScript = async (script, event) => {
 
 .script-name-compact {
   margin: 0 0 0.25rem 0;
-  font-size: 1.1rem;
-  font-weight: 600;
+  font-size: 1.15rem;
+  font-weight: 700;
   color: var(--vp-c-text-1);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  letter-spacing: -0.01em;
+}
+
+.script-icon {
+  font-size: 1.25rem;
+  line-height: 1;
+  flex-shrink: 0;
 }
 
 .script-author {
   font-size: 0.8rem;
   color: var(--vp-c-text-2);
+  font-weight: 500;
+  opacity: 0.8;
 }
 
 .script-description-compact {
   color: var(--vp-c-text-2);
   margin: 0 0 0.75rem 0;
-  line-height: 1.5;
+  line-height: 1.6;
   font-size: 0.875rem;
+  font-weight: 400;
 }
 
 .script-tags-compact {
@@ -1378,31 +1584,46 @@ const copyScript = async (script, event) => {
 }
 
 .action-btn-compact {
-  padding: 0.5rem 0.75rem;
+  padding: 0.625rem 1rem;
   background: var(--vp-c-bg);
   border: 1px solid var(--vp-c-divider);
-  border-radius: 6px;
+  border-radius: 8px;
   color: var(--vp-c-text-1);
   cursor: pointer;
-  font-size: 0.85rem;
+  font-size: 0.875rem;
+  font-weight: 600;
   text-decoration: none;
   text-align: center;
-  transition: all 0.2s;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.25rem;
+  gap: 0.375rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .action-btn-compact:hover {
   background: var(--vp-c-brand);
   color: var(--vp-c-bg);
   border-color: var(--vp-c-brand);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.action-btn-compact:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.action-btn-compact:focus-visible {
+  outline: 2px solid var(--vp-c-brand);
+  outline-offset: 2px;
 }
 
 .action-btn-compact:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: not-allowed;
+  transform: none;
 }
 
 /* Pagination */
@@ -1541,7 +1762,12 @@ const copyScript = async (script, event) => {
 .modal-title {
   margin: 0;
   font-size: 1.5rem;
+  font-weight: 700;
   color: var(--vp-c-text-1);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  letter-spacing: -0.02em;
 }
 
 .modal-close {
@@ -1693,44 +1919,74 @@ const copyScript = async (script, event) => {
   background: var(--vp-c-brand);
   color: var(--vp-c-bg);
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 0.85rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .copy-code-btn:hover:not(:disabled) {
   background: var(--vp-c-brand-dark, var(--vp-c-brand));
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.copy-code-btn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.copy-code-btn:focus-visible {
+  outline: 2px solid var(--vp-c-brand);
+  outline-offset: 2px;
 }
 
 .copy-code-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+  transform: none;
 }
 
 .download-code-btn {
   padding: 0.5rem 1rem;
   background: var(--vp-c-bg);
   border: 1px solid var(--vp-c-divider);
-  border-radius: 6px;
+  border-radius: 8px;
   color: var(--vp-c-text-1);
   font-size: 0.85rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.375rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .download-code-btn:hover:not(:disabled) {
   background: var(--vp-c-brand);
   color: var(--vp-c-bg);
   border-color: var(--vp-c-brand);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.download-code-btn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.download-code-btn:focus-visible {
+  outline: 2px solid var(--vp-c-brand);
+  outline-offset: 2px;
 }
 
 .download-code-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+  transform: none;
 }
 
 .code-viewer {
@@ -1747,12 +2003,12 @@ const copyScript = async (script, event) => {
 
 .code-viewer pre {
   margin: 0;
-  padding: 1rem;
+  padding: 1.5rem;
   overflow-x: auto;
   overflow-y: auto;
-  font-family: 'Courier New', 'Monaco', 'Menlo', 'Consolas', monospace;
+  font-family: 'Courier New', 'Monaco', 'Menlo', 'Consolas', 'Fira Code', monospace;
   font-size: 0.875rem;
-  line-height: 1.6;
+  line-height: 1.7;
   flex: 1;
   background: #1e1e1e;
   color: #d4d4d4;
@@ -1827,15 +2083,51 @@ const copyScript = async (script, event) => {
   color: #d16969;
 }
 
-.code-loading,
-.code-error {
-  color: var(--vp-c-text-2);
-  text-align: center;
-  padding: 2rem;
+.code-loading-skeleton {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.skeleton-line {
+  height: 1.2em;
+  background: linear-gradient(90deg, #2d2d2d 25%, #3a3a3a 50%, #2d2d2d 75%);
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+@keyframes skeleton-loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 .code-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 2rem;
+  text-align: center;
+  min-height: 200px;
+}
+
+.code-error-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+  opacity: 0.7;
+}
+
+.code-error-message {
   color: var(--vp-c-red, #f87171);
+  font-size: 1rem;
+  line-height: 1.6;
+  max-width: 500px;
 }
 
 .modal-footer {

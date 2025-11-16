@@ -397,6 +397,7 @@ import solarRoutes from './routes/solarRoutes.js';
 import upgradeRoutes from './routes/upgradeRoutes.js';
 import messageRoutes from './routes/messageRoutes.js';
 import linkPreviewRoutes from './routes/linkPreviewRoutes.js';
+import scriptContentRoutes from './routes/scriptContentRoutes.js';
 
 // CSRF token endpoint (must be before CSRF protection middleware)
 apiRouter.get('/csrf-token', csrfTokenEndpoint);
@@ -451,6 +452,9 @@ apiRouter.use('/messages', optionalAuth(), messageRoutes);
 
 // Link preview routes
 apiRouter.use('/', linkPreviewRoutes);
+
+// Script content proxy routes (for User Scripts Gallery)
+apiRouter.use('/', scriptContentRoutes);
 
 // API Routes
 apiRouter.get('/nodes', optionalAuth(), (_req, res) => {

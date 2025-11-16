@@ -35,16 +35,19 @@ Scripts are defined in `docs/.vitepress/data/user-scripts.json`:
 {
   "name": "Script Name",
   "filename": "script.py",
+  "icon": "🎯",
   "description": "What the script does",
   "language": "Python",
   "tags": ["Tag1", "Tag2"],
   "githubPath": "examples/auto-responder-scripts/script.py",
   "exampleTrigger": "trigger, trigger {param}",
-  "requirements": "Any requirements",
+  "requirements": ["Requirement 1", "Requirement 2"],
   "author": "Author Name",
   "features": ["Feature 1", "Feature 2"]
 }
 ```
+
+**Note:** The `icon` field is optional and accepts emoji or Unicode characters. The `requirements` field can be either a string or an array of strings.
 
 ### githubPath Format
 
@@ -72,10 +75,13 @@ Scripts are defined in `docs/.vitepress/data/user-scripts.json`:
 ### Key Functions
 
 - `getSourceUrl(script)` - Builds GitHub URL for viewing source
-- `getRawSourceUrl(script)` - Builds raw GitHub URL for fetching code
-- `fetchScriptCode(script)` - Fetches and loads script code
+- `getGitHubApiUrl(script)` - Builds GitHub API URL for fetching code (supports CORS)
+- `fetchScriptCode(script)` - Fetches and loads script code from GitHub API
 - `highlightCode()` - Applies Prism.js syntax highlighting
 - `getLanguageAlias(language)` - Maps language names to Prism.js aliases
+- `validateGitHubPath(path)` - Validates GitHub paths to prevent SSRF attacks
+- `sanitizeSearchQuery(query)` - Sanitizes search input to prevent ReDoS
+- `sanitizeFilename(filename)` - Sanitizes filenames to prevent path traversal
 
 ### State Management
 
@@ -98,8 +104,11 @@ Scripts are defined in `docs/.vitepress/data/user-scripts.json`:
 
 ## Notes
 
-- Scripts are fetched from GitHub on-demand when viewing details
+- Scripts are fetched from GitHub API (`api.github.com`) on-demand when viewing details
+- Uses GitHub Contents API which supports CORS for public repositories
 - Code highlighting is applied after code is loaded
 - External repos must be publicly accessible for fetching
 - The component handles both main repo and external repo URLs automatically
+- All security validations (SSRF prevention, content validation, size limits) are applied
+- Cards display only "View Details" button - source link is available in the details modal
 
