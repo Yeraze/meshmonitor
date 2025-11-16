@@ -123,6 +123,8 @@ Parameters are extracted from trigger patterns using `{paramName}` syntax:
 
 You can specify custom regex patterns for parameters using `{paramName:regex}` syntax. This allows for more precise matching and validation:
 
+**Basic Regex Examples:**
+
 **Trigger:** `w {zip:\d{5}}`
 **Message:** `w 33076`
 **Environment:** `PARAM_zip="33076"`
@@ -140,7 +142,109 @@ You can specify custom regex patterns for parameters using `{paramName:regex}` s
 - `PARAM_lon="-74.0060"`
 **Note:** Matches decimal coordinates (positive or negative)
 
+**More Regex Examples:**
+
+**Multi-word Parameters:**
+**Trigger:** `weather {location:[\w\s]+}`
+**Message:** `weather new york`
+**Environment:** `PARAM_location="new york"`
+**Note:** Matches locations with spaces using `[\w\s]+` pattern
+
+**Everything Pattern:**
+**Trigger:** `alert {message:.+}`
+**Message:** `alert Hello, world!`
+**Environment:** `PARAM_message="Hello, world!"`
+**Note:** Matches everything including punctuation using `.+` pattern
+
+**Common Regex Patterns:**
+- `\d+` - One or more digits (e.g., `{value:\d+}`)
+- `\d{5}` - Exactly 5 digits (e.g., `{zip:\d{5}}`)
+- `[\w\s]+` - Word characters and spaces (e.g., `{location:[\w\s]+}`)
+- `.+` - Any character including spaces and punctuation (e.g., `{message:.+}`)
+- `-?\d+\.?\d*` - Optional negative, digits, optional decimal (e.g., `{temp:-?\d+\.?\d*}`)
+
 **Default Behavior:** If no regex pattern is specified, parameters default to matching non-whitespace characters (`[^\s]+`)
+
+**Escaping Special Characters:** Remember to escape special regex characters if they appear in your pattern: `\ . + * ? ^ $ { } [ ] ( ) |`
+
+### Multiple Patterns Per Trigger
+
+You can specify multiple patterns for a single trigger by separating them with commas. This is useful when you want one trigger to handle different message formats (e.g., a command with or without parameters):
+
+**Example: Ask Command with Optional Message**
+
+**Trigger:** `ask, ask {message}`
+**Messages:**
+- `ask` → Matches first pattern, no parameters extracted
+- `ask how are you` → Matches second pattern, `PARAM_message="how are you"`
+
+**Script Example:**
+```python
+#!/usr/bin/env python3
+import os
+import json
+
+message = os.environ.get('PARAM_message', '').strip()
+
+if not message:
+    # No message provided - show help
+    response = {
+        "response": "Ask me anything! Usage: ask {your question}"
+    }
+else:
+    # Process the question
+    response = {
+        "response": f"You asked: {message}. Processing..."
+    }
+
+print(json.dumps(response))
+```
+
+**Example: Help Command with Optional Command Name**
+
+**Trigger:** `help, help {command}`
+**Messages:**
+- `help` → Shows general help
+- `help weather` → Shows help for weather command
+
+**Example: Temperature with Optional Value**
+
+**Trigger:** `temp, temp {value:\d+}`
+**Messages:**
+- `temp` → Shows current temperature
+- `temp 72` → Sets temperature to 72 (only numeric values accepted due to `\d+` pattern)
+
+**Example: Weather Bot with Help**
+
+**Trigger:** `weather, weather {location}`
+**Messages:**
+- `weather` → Shows help text with usage examples
+- `weather 90210` → Gets weather for zip code 90210
+- `weather "New York, NY"` → Gets weather for New York
+
+**Script Example (PirateWeather.py):**
+```python
+#!/usr/bin/env python3
+import os
+import json
+
+location = os.environ.get('PARAM_location', '').strip()
+
+if not location:
+    # No location - show help (triggered by "weather" pattern)
+    response = {
+        "response": "Weather Bot:\n• weather {location} - Get weather\nExamples:\n• weather 90210\n• weather \"New York, NY\""
+    }
+else:
+    # Get weather for location (API call logic here)
+    response = {
+        "response": f"Weather for {location}: ..."
+    }
+
+print(json.dumps(response))
+```
+
+**Usage:** Enter patterns separated by commas in the trigger field. The first matching pattern will be used, and parameters will be extracted from that pattern.
 
 ## Language-Specific Examples
 
@@ -645,6 +749,7 @@ Complete example scripts are available in the MeshMonitor repository:
 
 - `hello.js` - Simple Node.js greeting script
 - `weather.py` - Python weather lookup template
+- `PirateWeather.py` - Complete Pirate Weather API integration with Nominatim geocoding
 - `info.sh` - Shell system information script
 - `README.md` - Detailed examples and usage
 

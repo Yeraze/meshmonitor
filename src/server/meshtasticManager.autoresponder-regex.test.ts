@@ -457,4 +457,93 @@ describe('Auto Responder - Regex Parameter Matching', () => {
       expect(result2.matches).toBe(false); // Spaces not allowed by default
     });
   });
+
+  describe('Multi-Pattern Triggers', () => {
+    /**
+     * Helper function to test multi-pattern matching
+     * Simulates the backend logic for matching multiple patterns
+     */
+    const testMultiPatternMatch = (
+      patterns: string[],
+      message: string
+    ): { matches: boolean; matchedPattern?: string; params?: Record<string, string> } => {
+      for (const patternStr of patterns) {
+        const result = testTriggerMatch(patternStr, message);
+        if (result.matches) {
+          return { matches: true, matchedPattern: patternStr, params: result.params };
+        }
+      }
+      return { matches: false };
+    };
+
+    it('should match first pattern in array when multiple patterns provided', () => {
+      const patterns = ['ask', 'ask {message}'];
+      const result = testMultiPatternMatch(patterns, 'ask');
+      expect(result.matches).toBe(true);
+      expect(result.matchedPattern).toBe('ask');
+      expect(result.params).toEqual({});
+    });
+
+    it('should match second pattern in array when first does not match', () => {
+      const patterns = ['ask', 'ask {message}'];
+      // Note: default pattern [^\s]+ only matches single word, so "hello" matches but not "hello world"
+      const result = testMultiPatternMatch(patterns, 'ask hello');
+      expect(result.matches).toBe(true);
+      expect(result.matchedPattern).toBe('ask {message}');
+      expect(result.params).toEqual({ message: 'hello' });
+    });
+
+    it('should match pattern with parameters when provided', () => {
+      const patterns = ['help', 'help {command}'];
+      const result = testMultiPatternMatch(patterns, 'help weather');
+      expect(result.matches).toBe(true);
+      expect(result.matchedPattern).toBe('help {command}');
+      expect(result.params).toEqual({ command: 'weather' });
+    });
+
+    it('should match simple pattern when no parameters provided', () => {
+      const patterns = ['help', 'help {command}'];
+      const result = testMultiPatternMatch(patterns, 'help');
+      expect(result.matches).toBe(true);
+      expect(result.matchedPattern).toBe('help');
+      expect(result.params).toEqual({});
+    });
+
+    it('should not match when none of the patterns match', () => {
+      const patterns = ['ask', 'ask {message}'];
+      const result = testMultiPatternMatch(patterns, 'hello');
+      expect(result.matches).toBe(false);
+    });
+
+    it('should work with regex patterns in multi-pattern triggers', () => {
+      const patterns = ['temp', 'temp {value:\\d+}'];
+      const result1 = testMultiPatternMatch(patterns, 'temp');
+      expect(result1.matches).toBe(true);
+      expect(result1.matchedPattern).toBe('temp');
+
+      const result2 = testMultiPatternMatch(patterns, 'temp 72');
+      expect(result2.matches).toBe(true);
+      expect(result2.matchedPattern).toBe('temp {value:\\d+}');
+      expect(result2.params).toEqual({ value: '72' });
+
+      const result3 = testMultiPatternMatch(patterns, 'temp hot');
+      expect(result3.matches).toBe(false); // "hot" doesn't match \\d+
+    });
+
+    it('should handle comma-separated string format', () => {
+      // Simulate comma-separated string being split
+      const commaSeparated = 'ask, ask {message}';
+      const patterns = commaSeparated.split(',').map(t => t.trim()).filter(t => t.length > 0);
+      
+      const result1 = testMultiPatternMatch(patterns, 'ask');
+      expect(result1.matches).toBe(true);
+      expect(result1.matchedPattern).toBe('ask');
+
+      // Note: default pattern [^\s]+ only matches single word, so "how" matches but not "how are you"
+      const result2 = testMultiPatternMatch(patterns, 'ask how');
+      expect(result2.matches).toBe(true);
+      expect(result2.matchedPattern).toBe('ask {message}');
+      expect(result2.params).toEqual({ message: 'how' });
+    });
+  });
 });

@@ -13,13 +13,13 @@ interface TriggerItemProps {
   channels: Channel[];
   onStartEdit: () => void;
   onCancelEdit: () => void;
-  onSaveEdit: (trigger: string, responseType: ResponseType, response: string, multiline: boolean, verifyResponse: boolean, channel: number | 'dm') => void;
+  onSaveEdit: (trigger: string | string[], responseType: ResponseType, response: string, multiline: boolean, verifyResponse: boolean, channel: number | 'dm') => void;
   onRemove: () => void;
 }
 
 export interface AutoResponderTrigger {
   id: string;
-  trigger: string;
+  trigger: string | string[]; // Single pattern or array of patterns (e.g., "ask" or ["ask", "ask {message}"])
   responseType: ResponseType;
   response: string; // Either text content, HTTP URL, or script path
   multiline?: boolean; // Enable multiline support for text/http responses
@@ -47,7 +47,23 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
   onSaveEdit,
   onRemove,
 }) => {
-  const [editTrigger, setEditTrigger] = useState(trigger.trigger);
+  // Format trigger for editing (convert array to comma-separated string)
+  const formatTriggerForEdit = (trigger: string | string[]): string => {
+    if (Array.isArray(trigger)) {
+      return trigger.join(', ');
+    }
+    return trigger;
+  };
+
+  // Format trigger for display
+  const formatTriggerForDisplay = (trigger: string | string[]): string => {
+    if (Array.isArray(trigger)) {
+      return trigger.join(', ');
+    }
+    return trigger;
+  };
+
+  const [editTrigger, setEditTrigger] = useState(formatTriggerForEdit(trigger.trigger));
   const [editResponseType, setEditResponseType] = useState<ResponseType>(trigger.responseType);
   const [editResponse, setEditResponse] = useState(trigger.response);
   const [editMultiline, setEditMultiline] = useState(trigger.multiline || false);
@@ -57,7 +73,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
   // Reset local edit state when editing mode changes
   useEffect(() => {
     if (isEditing) {
-      setEditTrigger(trigger.trigger);
+      setEditTrigger(formatTriggerForEdit(trigger.trigger));
       setEditResponseType(trigger.responseType);
       setEditResponse(trigger.response);
       setEditMultiline(trigger.multiline || false);
@@ -69,7 +85,18 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
   const handleSave = () => {
     // Automatically disable verifyResponse when channel is not DM
     const finalVerifyResponse = editChannel === 'dm' ? editVerifyResponse : false;
-    onSaveEdit(editTrigger, editResponseType, editResponse, editMultiline, finalVerifyResponse, editChannel);
+    // Normalize trigger: convert comma-separated string to array if needed
+    let normalizedTrigger: string | string[];
+    if (editTrigger.includes(',')) {
+      normalizedTrigger = editTrigger.split(',').map(t => t.trim()).filter(t => t.length > 0);
+      // If only one pattern after splitting, use string format for backward compatibility
+      if (normalizedTrigger.length === 1) {
+        normalizedTrigger = normalizedTrigger[0];
+      }
+    } else {
+      normalizedTrigger = editTrigger.trim();
+    }
+    onSaveEdit(normalizedTrigger, editResponseType, editResponse, editMultiline, finalVerifyResponse, editChannel);
   };
 
   return (
@@ -232,7 +259,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
         <>
           <div style={{ flex: '1', fontFamily: 'monospace', fontSize: '0.9rem' }}>
             <div style={{ fontWeight: 'bold', color: 'var(--ctp-blue)', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-              {trigger.trigger}
+              {formatTriggerForDisplay(trigger.trigger)}
               <span style={{
                 fontSize: '0.7rem',
                 padding: '0.15rem 0.4rem',
@@ -437,9 +464,21 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
       return;
     }
 
+    // Normalize trigger: convert comma-separated string to array if needed
+    let normalizedTrigger: string | string[];
+    if (newTrigger.includes(',')) {
+      normalizedTrigger = newTrigger.split(',').map(t => t.trim()).filter(t => t.length > 0);
+      // If only one pattern after splitting, use string format for backward compatibility
+      if (normalizedTrigger.length === 1) {
+        normalizedTrigger = normalizedTrigger[0];
+      }
+    } else {
+      normalizedTrigger = newTrigger.trim();
+    }
+
     const trigger: AutoResponderTrigger = {
       id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      trigger: newTrigger.trim(),
+      trigger: normalizedTrigger,
       responseType: newResponseType,
       response: newResponse.trim(),
       multiline: newResponseType !== 'script' ? newMultiline : undefined,
@@ -470,8 +509,10 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
     setEditingId(null);
   };
 
-  const saveEdit = (id: string, trigger: string, responseType: ResponseType, response: string, multiline: boolean, verifyResponse: boolean, channel: number | 'dm') => {
-    const triggerValidation = validateTrigger(trigger);
+  const saveEdit = (id: string, trigger: string | string[], responseType: ResponseType, response: string, multiline: boolean, verifyResponse: boolean, channel: number | 'dm') => {
+    // Normalize trigger for validation (convert to string if array)
+    const triggerStr = Array.isArray(trigger) ? trigger.join(', ') : trigger;
+    const triggerValidation = validateTrigger(triggerStr);
     if (!triggerValidation.valid) {
       showToast(triggerValidation.error || 'Invalid trigger', 'error');
       return;
@@ -483,12 +524,44 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
       return;
     }
 
+    // Normalize trigger: if it's a comma-separated string, convert to array
+    let normalizedTrigger: string | string[];
+    if (typeof trigger === 'string' && trigger.includes(',')) {
+      normalizedTrigger = trigger.split(',').map(t => t.trim()).filter(t => t.length > 0);
+      // If only one pattern after splitting, use string format for backward compatibility
+      if (normalizedTrigger.length === 1) {
+        normalizedTrigger = normalizedTrigger[0];
+      }
+    } else {
+      normalizedTrigger = typeof trigger === 'string' ? trigger.trim() : trigger;
+    }
+
     setLocalTriggers(localTriggers.map(t =>
       t.id === id
-        ? { ...t, trigger: trigger.trim(), responseType, response: response.trim(), multiline: responseType !== 'script' ? multiline : undefined, verifyResponse, channel }
+        ? { ...t, trigger: normalizedTrigger, responseType, response: response.trim(), multiline: responseType !== 'script' ? multiline : undefined, verifyResponse, channel }
         : t
     ));
     setEditingId(null);
+  };
+
+  // Helper function to normalize trigger patterns (handle comma-separated strings)
+  const normalizeTriggerPattern = (trigger: string | string[]): string[] => {
+    if (Array.isArray(trigger)) {
+      return trigger;
+    }
+    // Check if it's a comma-separated string (e.g., "ask, ask {message}")
+    if (trigger.includes(',')) {
+      return trigger.split(',').map(t => t.trim()).filter(t => t.length > 0);
+    }
+    return [trigger];
+  };
+
+  // Helper function to format trigger for display
+  const formatTriggerForDisplay = (trigger: string | string[]): string => {
+    if (Array.isArray(trigger)) {
+      return trigger.join(', ');
+    }
+    return trigger;
   };
 
   const extractParameters = (trigger: string): Array<{ name: string; pattern?: string }> => {
@@ -540,79 +613,93 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
     return params;
   };
 
-  const testTriggerMatch = (message: string): { trigger?: AutoResponderTrigger; params?: Record<string, string> } | null => {
-    for (const trigger of localTriggers) {
-      // Extract parameters with optional regex patterns
-      const params = extractParameters(trigger.trigger);
+  // Helper function to match a single pattern against a message
+  const matchSinglePattern = (patternStr: string, message: string): { matches: boolean; params?: Record<string, string> } => {
+    const params = extractParameters(patternStr);
 
-      // Build regex pattern from trigger by processing it character by character
-      let pattern = '';
-      const replacements: Array<{ start: number; end: number; replacement: string }> = [];
-      let i = 0;
+    // Build regex pattern from trigger by processing it character by character
+    let pattern = '';
+    const replacements: Array<{ start: number; end: number; replacement: string }> = [];
+    let i = 0;
 
-      while (i < trigger.trigger.length) {
-        if (trigger.trigger[i] === '{') {
-          const startPos = i;
-          let depth = 1;
-          let endPos = -1;
+    while (i < patternStr.length) {
+      if (patternStr[i] === '{') {
+        const startPos = i;
+        let depth = 1;
+        let endPos = -1;
 
-          // Find the matching closing brace
-          for (let j = i + 1; j < trigger.trigger.length && depth > 0; j++) {
-            if (trigger.trigger[j] === '{') {
-              depth++;
-            } else if (trigger.trigger[j] === '}') {
-              depth--;
-              if (depth === 0) {
-                endPos = j;
-              }
+        // Find the matching closing brace
+        for (let j = i + 1; j < patternStr.length && depth > 0; j++) {
+          if (patternStr[j] === '{') {
+            depth++;
+          } else if (patternStr[j] === '}') {
+            depth--;
+            if (depth === 0) {
+              endPos = j;
             }
           }
+        }
 
-          if (endPos !== -1) {
-            const paramIndex = replacements.length;
-            if (paramIndex < params.length) {
-              const paramRegex = params[paramIndex].pattern || '[^\\s]+';
-              replacements.push({
-                start: startPos,
-                end: endPos + 1,
-                replacement: `(${paramRegex})`
-              });
-            }
-            i = endPos + 1;
-          } else {
-            i++;
+        if (endPos !== -1) {
+          const paramIndex = replacements.length;
+          if (paramIndex < params.length) {
+            const paramRegex = params[paramIndex].pattern || '[^\\s]+';
+            replacements.push({
+              start: startPos,
+              end: endPos + 1,
+              replacement: `(${paramRegex})`
+            });
           }
+          i = endPos + 1;
         } else {
           i++;
         }
+      } else {
+        i++;
       }
+    }
 
-      // Build the final pattern by replacing placeholders
-      for (let i = 0; i < trigger.trigger.length; i++) {
-        const replacement = replacements.find(r => r.start === i);
-        if (replacement) {
-          pattern += replacement.replacement;
-          i = replacement.end - 1; // -1 because loop will increment
+    // Build the final pattern by replacing placeholders
+    for (let i = 0; i < patternStr.length; i++) {
+      const replacement = replacements.find(r => r.start === i);
+      if (replacement) {
+        pattern += replacement.replacement;
+        i = replacement.end - 1; // -1 because loop will increment
+      } else {
+        // Escape special regex characters in literal parts
+        const char = patternStr[i];
+        if (/[.*+?^${}()|[\]\\]/.test(char)) {
+          pattern += '\\' + char;
         } else {
-          // Escape special regex characters in literal parts
-          const char = trigger.trigger[i];
-          if (/[.*+?^${}()|[\]\\]/.test(char)) {
-            pattern += '\\' + char;
-          } else {
-            pattern += char;
-          }
+          pattern += char;
         }
       }
+    }
 
-      const regex = new RegExp(`^${pattern}$`, 'i');
-      const match = message.match(regex);
+    const regex = new RegExp(`^${pattern}$`, 'i');
+    const match = message.match(regex);
 
-      if (match) {
-        const extractedParams: Record<string, string> = {};
-        params.forEach((param, index) => {
-          extractedParams[param.name] = match[index + 1];
-        });
-        return { trigger, params: extractedParams };
+    if (match) {
+      const extractedParams: Record<string, string> = {};
+      params.forEach((param, index) => {
+        extractedParams[param.name] = match[index + 1];
+      });
+      return { matches: true, params: extractedParams };
+    }
+
+    return { matches: false };
+  };
+
+  const testTriggerMatch = (message: string): { trigger?: AutoResponderTrigger; params?: Record<string, string> } | null => {
+    for (const trigger of localTriggers) {
+      const patterns = normalizeTriggerPattern(trigger.trigger);
+      
+      // Try each pattern until one matches
+      for (const patternStr of patterns) {
+        const matchResult = matchSinglePattern(patternStr, message);
+        if (matchResult.matches) {
+          return { trigger, params: matchResult.params };
+        }
       }
     }
     return null;
@@ -810,7 +897,8 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
             Add Trigger
             <span className="setting-description">
               Define a trigger pattern, response type, and response. Use braces for parameters (e.g., {'{location}'}, {'{zipcode}'}).
-              Optionally specify custom regex patterns: {'{param:regex}'} (e.g., {'{zip:\\d{5}}'}, {'{temp:\\d+}'})
+              Optionally specify custom regex patterns: {'{param:regex}'} (e.g., {'{zip:\\d{5}}'}, {'{temp:\\d+}'}).
+              For multiple patterns, separate with commas: "ask, ask {message}" matches both "ask" and "ask {message}"
             </span>
           </label>
           <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', alignItems: 'flex-start' }}>
@@ -818,7 +906,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
               type="text"
               value={newTrigger}
               onChange={(e) => setNewTrigger(e.target.value)}
-              placeholder="e.g., w {location} or w {zip:\d{5}}"
+              placeholder="e.g., ask, ask {message} or w {location} or w {zip:\d{5}}"
               disabled={!localEnabled}
               className="setting-input"
               style={{ flex: '1', fontFamily: 'monospace' }}
