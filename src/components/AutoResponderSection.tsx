@@ -556,13 +556,6 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
     return [trigger];
   };
 
-  // Helper function to format trigger for display
-  const formatTriggerForDisplay = (trigger: string | string[]): string => {
-    if (Array.isArray(trigger)) {
-      return trigger.join(', ');
-    }
-    return trigger;
-  };
 
   const extractParameters = (trigger: string): Array<{ name: string; pattern?: string }> => {
     const params: Array<{ name: string; pattern?: string }> = [];
@@ -898,7 +891,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
             <span className="setting-description">
               Define a trigger pattern, response type, and response. Use braces for parameters (e.g., {'{location}'}, {'{zipcode}'}).
               Optionally specify custom regex patterns: {'{param:regex}'} (e.g., {'{zip:\\d{5}}'}, {'{temp:\\d+}'}).
-              For multiple patterns, separate with commas: "ask, ask {message}" matches both "ask" and "ask {message}"
+              For multiple patterns, separate with commas: "ask, ask {'{'} message{'}'}" matches both "ask" and "ask {'{'} message{'}'}"
             </span>
           </label>
           <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', alignItems: 'flex-start' }}>
