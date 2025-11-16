@@ -363,7 +363,23 @@ export class VirtualNodeServer extends EventEmitter {
         // Process the packet locally so it appears in the web UI
         // Create a FromRadio message wrapping this MeshPacket
         try {
-          const fromRadioMessage = await meshtasticProtobufService.createFromRadioWithPacket(toRadio.packet);
+          // Fix for issue #626: Android clients send packets with from=0
+          // We need to populate the from field for local storage so messages
+          // are correctly attributed in the UI (otherwise shows as !00000000)
+
+          let overrideFrom: number | undefined = undefined;
+
+          if (!toRadio.packet.from || toRadio.packet.from === 0 || toRadio.packet.from === '0') {
+            const localNodeInfo = this.config.meshtasticManager.getLocalNodeInfo();
+            if (localNodeInfo) {
+              logger.info(`Virtual node: Populating missing 'from' field for local storage with ${localNodeInfo.nodeId} (${localNodeInfo.nodeNum})`);
+              overrideFrom = localNodeInfo.nodeNum;
+            } else {
+              logger.warn(`Virtual node: Cannot populate 'from' field - local node info not available yet`);
+            }
+          }
+
+          const fromRadioMessage = await meshtasticProtobufService.createFromRadioWithPacket(toRadio.packet, overrideFrom);
           if (fromRadioMessage) {
             logger.info(`Virtual node: Processing outgoing message locally from ${clientId} (portnum: ${normalizedPortNum}/${meshtasticProtobufService.getPortNumName(normalizedPortNum)})`);
             // Process locally through MeshtasticManager to store in database
@@ -381,8 +397,13 @@ export class VirtualNodeServer extends EventEmitter {
         }
 
         // Queue the message to be sent to the physical node
+        // Fix for issue #626: Strip PKI encryption from packets with from=0
+        // Android clients send PKI-encrypted packets with from=0, which fail validation
+        // at the physical node when relayed through the Virtual Node Server proxy.
+        // We strip the PKI encryption so these packets can be processed as non-encrypted messages.
+        const strippedPayload = await meshtasticProtobufService.stripPKIEncryption(payload);
         logger.info(`Virtual node: Queueing message from ${clientId} (portnum: ${portnum})`);
-        this.queueMessage(clientId, payload);
+        this.queueMessage(clientId, strippedPayload);
       } else if (toRadio.wantConfigId) {
         // Client is requesting config with a specific ID
         logger.info(`Virtual node: Client ${clientId} requesting config with ID ${toRadio.wantConfigId}`);

@@ -2274,24 +2274,6 @@ class MeshtasticManager {
         nodeData.shortName = nodeInfo.user.shortName;
         nodeData.hwModel = nodeInfo.user.hwModel;
         nodeData.role = nodeInfo.user.role;
-
-        // Capture public key if present (important for local node)
-        if (nodeInfo.user.publicKey && nodeInfo.user.publicKey.length > 0) {
-          // Convert Uint8Array to base64 for storage
-          nodeData.publicKey = Buffer.from(nodeInfo.user.publicKey).toString('base64');
-          nodeData.hasPKC = true;
-          logger.debug(`🔐 Captured public key for ${nodeId}: ${nodeData.publicKey.substring(0, 16)}...`);
-
-          // Check for key security issues
-          const { checkLowEntropyKey } = await import('../services/lowEntropyKeyService.js');
-          const isLowEntropy = checkLowEntropyKey(nodeData.publicKey, 'base64');
-
-          if (isLowEntropy) {
-            nodeData.keyIsLowEntropy = true;
-            nodeData.keySecurityIssueDetails = 'Known low-entropy key detected - this key is compromised and should be regenerated';
-            logger.warn(`⚠️ Low-entropy key detected for node ${nodeId}!`);
-          }
-        }
       }
 
       // viaMqtt is at the top level of NodeInfo, not inside user

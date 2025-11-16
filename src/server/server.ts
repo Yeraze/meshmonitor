@@ -2051,19 +2051,8 @@ apiRouter.get('/telemetry/available/nodes', requirePermission('info', 'read'), (
 
     // Check for PKC-enabled nodes
     const nodesWithPKC: string[] = [];
-
-    // Get the local node ID to ensure it's always marked as secure
-    const localNodeNumStr = databaseService.getSetting('localNodeNum');
-    let localNodeId: string | null = null;
-    if (localNodeNumStr) {
-      const localNodeNum = parseInt(localNodeNumStr, 10);
-      localNodeId = `!${localNodeNum.toString(16).padStart(8, '0')}`;
-    }
-
     nodes.forEach(node => {
-      // Local node is always secure (direct TCP/serial connection, no mesh encryption needed)
-      // OR node has PKC enabled
-      if (node.nodeId === localNodeId || node.hasPKC || node.publicKey) {
+      if (node.hasPKC || node.publicKey) {
         nodesWithPKC.push(node.nodeId);
       }
     });
