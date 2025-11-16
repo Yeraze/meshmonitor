@@ -575,7 +575,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(({ nodeId, te
           return (
             <div key={type} className="graph-container">
               <div className="graph-header">
-                <h4 className="graph-title">{label} {unit && `(${unit})`}</h4>
+                <h4 className="graph-title" title={`${label} ${unit ? `(${unit})` : ''}`}>{label} {unit && `(${unit})`}</h4>
                 <div className="graph-actions">
                   <button
                     className={`favorite-btn ${favorites.has(type) ? 'favorited' : ''}`}
