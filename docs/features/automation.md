@@ -336,7 +336,7 @@ Each trigger consists of:
 
 Trigger patterns can include parameters using curly braces `{parameter}` that extract information from messages:
 
-**Examples**:
+**Basic Examples**:
 - `weather {location}` - Matches "weather miami" or "weather new york"
 - `w {city},{state}` - Matches "w parkland,fl" or "w austin,tx"
 - `status {nodeid}` - Matches "status !a1b2c3d4"
@@ -344,9 +344,45 @@ Trigger patterns can include parameters using curly braces `{parameter}` that ex
 
 **Pattern Matching**:
 - Case insensitive by default
-- Parameters match any non-whitespace characters
+- Parameters match any non-whitespace characters by default
 - Parameters support commas and special characters (e.g., "parkland,fl")
 - Patterns are matched against the entire message
+
+#### Multiple Patterns Per Trigger
+
+You can specify multiple patterns for a single trigger by separating them with commas. This allows one trigger to match different message formats:
+
+**Examples**:
+- `ask, ask {message}` - Matches both "ask" (shows help) and "ask {message}" (processes the message)
+- `help, help {command}` - Matches "help" (general help) and "help weather" (command-specific help)
+- `temp, temp {value:\d+}` - Matches "temp" (current temp) and "temp 72" (set temp to 72)
+
+**Usage**: Enter patterns separated by commas in the trigger field: `ask, ask {message}`
+
+#### Regex Pattern Examples
+
+You can specify custom regex patterns for parameters using `{paramName:regex}` syntax for more precise matching:
+
+**Numeric Patterns**:
+- `w {zip:\d{5}}` - Matches only 5-digit zip codes (e.g., "w 33076")
+- `temp {value:\d+}` - Matches only numeric values (e.g., "temp 72", but not "temp hot")
+- `set {num:-?\d+}` - Matches positive or negative integers (e.g., "set 42" or "set -42")
+
+**Decimal Patterns**:
+- `coords {lat:-?\d+\.?\d*},{lon:-?\d+\.?\d*}` - Matches decimal coordinates (e.g., "coords 40.7128,-74.0060")
+
+**Multi-word Patterns**:
+- `weather {location:[\w\s]+}` - Matches locations with spaces (e.g., "weather new york")
+- `alert {message:.+}` - Matches everything including punctuation (e.g., "alert Hello, world!")
+
+**Common Regex Patterns**:
+- `\d+` - One or more digits
+- `\d{5}` - Exactly 5 digits
+- `[\w\s]+` - Word characters and spaces
+- `.+` - Any character (including spaces and punctuation)
+- `-?\d+\.?\d*` - Optional negative sign, digits, optional decimal point and digits
+
+**Note**: Remember to escape special regex characters if they appear in your pattern: `\ . + * ? ^ $ { } [ ] ( ) |`
 
 ### Response Types
 
@@ -639,6 +675,7 @@ echo "Debug: $VARIABLE" >&2  # Shell
 The MeshMonitor repository includes example scripts in `examples/auto-responder-scripts/`:
 - `hello.js` - Simple Node.js greeting script with parameter extraction
 - `weather.py` - Python weather lookup template with API call
+- `PirateWeather.py` - Complete Pirate Weather API integration with Nominatim geocoding support
 - `info.sh` - Shell script showing system info
 - `lorem.js/py/sh` - Multi-response examples that send 3 Lorem Ipsum messages
 
