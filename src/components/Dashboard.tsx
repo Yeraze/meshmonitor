@@ -147,7 +147,7 @@ const SortableChartItem: React.FC<SortableChartItemProps> = React.memo(({
           <div className="dashboard-drag-handle" {...attributes} {...listeners}>
             ⋮⋮
           </div>
-          <h3 className="dashboard-chart-title">
+          <h3 className="dashboard-chart-title" title={`${nodeName} - ${getTelemetryLabel(favorite.telemetryType)}`}>
             {nodeName} - {getTelemetryLabel(favorite.telemetryType)}
           </h3>
           <button
@@ -174,7 +174,7 @@ const SortableChartItem: React.FC<SortableChartItemProps> = React.memo(({
         <div className="dashboard-drag-handle" {...attributes} {...listeners}>
           ⋮⋮
         </div>
-        <h3 className="dashboard-chart-title">
+        <h3 className="dashboard-chart-title" title={`${nodeName} - ${getTelemetryLabel(favorite.telemetryType)} ${unit ? `(${unit})` : ''}`}>
           {nodeName} - {getTelemetryLabel(favorite.telemetryType)} {unit && `(${unit})`}
         </h3>
         <button
