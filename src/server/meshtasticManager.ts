@@ -5312,6 +5312,30 @@ class MeshtasticManager {
   }
 
   /**
+   * Purge the node database on the connected Meshtastic device
+   * @param seconds Number of seconds to wait before purging (typically 0 for immediate)
+   */
+  async purgeNodeDb(seconds: number = 0): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    try {
+      logger.debug(`⚙️ Sending purge node database command: will purge in ${seconds} seconds`);
+      // NOTE: Session passkeys are only required for REMOTE admin operations (admin messages sent to other nodes via mesh).
+      // For local TCP connections to the device itself, no session passkey is needed.
+      const purgeMsg = protobufService.createPurgeNodeDbMessage(seconds);
+      const adminPacket = protobufService.createAdminPacket(purgeMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+
+      await this.transport.send(adminPacket);
+      logger.debug('⚙️ Sent purge node database admin message (local operation, no session passkey required)');
+    } catch (error) {
+      logger.error('❌ Error sending purge node database command:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Set device configuration (role, broadcast intervals, etc.)
    */
   async setDeviceConfig(config: any): Promise<void> {

@@ -430,6 +430,34 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
     }
   };
 
+  const handlePurgeNodeDb = async () => {
+    const confirmed = window.confirm(
+      'Are you sure you want to purge the node database?\n\n' +
+      'This will PERMANENTLY DELETE all stored node information from the device.\n' +
+      'This action CANNOT be undone!\n\n' +
+      'The device will automatically rebuild the database as it hears from nodes on the mesh.'
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setIsSaving(true);
+    setStatusMessage('');
+    try {
+      await apiService.purgeNodeDb(0);
+      setStatusMessage('Node database purged successfully!');
+      showToast('Node database purged successfully!', 'success');
+    } catch (error) {
+      logger.error('Error purging node database:', error);
+      const errorMsg = error instanceof Error ? error.message : 'Failed to purge node database';
+      setStatusMessage(`Error: ${errorMsg}`);
+      showToast(`Failed to purge node database: ${errorMsg}`, 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="tab-content">
@@ -452,7 +480,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           Incorrect settings may cause communication issues, network problems, or require a factory reset.
           Only modify these settings if you understand what you are doing.
         </p>
-        <div style={{ marginTop: '1.5rem' }}>
+        <div style={{ marginTop: '1.5rem', display: 'flex', gap: '1rem' }}>
           <button
             onClick={handleRebootDevice}
             disabled={isSaving}
@@ -469,6 +497,23 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
             }}
           >
             🔄 Reboot Device
+          </button>
+          <button
+            onClick={handlePurgeNodeDb}
+            disabled={isSaving}
+            style={{
+              backgroundColor: '#d32f2f',
+              color: '#fff',
+              padding: '0.75rem 1.5rem',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: isSaving ? 'not-allowed' : 'pointer',
+              fontSize: '1rem',
+              fontWeight: 'bold',
+              opacity: isSaving ? 0.6 : 1
+            }}
+          >
+            🗑️ Purge Node Database
           </button>
         </div>
       </div>

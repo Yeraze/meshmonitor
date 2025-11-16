@@ -1122,6 +1122,39 @@ class ProtobufService {
   }
 
   /**
+   * Create an AdminMessage to purge the node database
+   * @param seconds Number of seconds to wait before purging (typically 0 for immediate)
+   * @param sessionPasskey Optional session passkey for authentication
+   */
+  createPurgeNodeDbMessage(seconds: number = 0, sessionPasskey?: Uint8Array): Uint8Array {
+    try {
+      const root = getProtobufRoot();
+      const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
+      if (!AdminMessage) {
+        throw new Error('AdminMessage type not found in loaded proto files');
+      }
+
+      const adminMsgData: any = {
+        nodedbReset: seconds
+      };
+
+      // Only include sessionPasskey if provided
+      if (sessionPasskey && sessionPasskey.length > 0) {
+        adminMsgData.sessionPasskey = sessionPasskey;
+      }
+
+      const adminMsg = AdminMessage.create(adminMsgData);
+
+      const encoded = AdminMessage.encode(adminMsg).finish();
+      logger.debug(`⚙️ Created NodeDB Reset admin message (nodedbReset=${seconds})`);
+      return encoded;
+    } catch (error) {
+      logger.error('Failed to create NodeDB Reset message:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Create an AdminMessage to begin settings edit transaction
    * @param sessionPasskey Optional session passkey for authentication
    */

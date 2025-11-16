@@ -3573,6 +3573,25 @@ apiRouter.post('/device/reboot', requirePermission('configuration', 'write'), as
   }
 });
 
+apiRouter.post('/device/purge-nodedb', requirePermission('configuration', 'write'), async (req, res) => {
+  try {
+    const seconds = req.body?.seconds || 0;
+
+    // Purge the device's node database
+    await meshtasticManager.purgeNodeDb(seconds);
+
+    // Also purge the local database
+    logger.info('🗑️ Purging local node database');
+    databaseService.purgeAllNodes();
+    logger.info('✅ Local node database purged successfully');
+
+    res.json({ success: true, message: `Node database purged (both device and local)${seconds > 0 ? ` in ${seconds} seconds` : ''}` });
+  } catch (error) {
+    logger.error('Error purging node database:', error);
+    res.status(500).json({ error: 'Failed to purge node database' });
+  }
+});
+
 // Helper to detect if running in Docker
 function isRunningInDocker(): boolean {
   try {

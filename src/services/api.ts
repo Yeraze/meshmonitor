@@ -892,6 +892,23 @@ class ApiService {
     return response.json();
   }
 
+  async purgeNodeDb(seconds: number = 0) {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/device/purge-nodedb`, {
+      method: 'POST',
+      headers: this.getHeadersWithCsrf(),
+      credentials: 'include',
+      body: JSON.stringify({ seconds }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to purge node database');
+    }
+
+    return response.json();
+  }
+
   async restartContainer() {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/system/restart`, {
