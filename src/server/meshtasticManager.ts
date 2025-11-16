@@ -4056,8 +4056,19 @@ class MeshtasticManager {
       // Format timestamp in local timezone (from TZ environment variable)
       const env = getEnvironmentConfig();
       const timestamp = new Date(message.timestamp);
-      const receivedDate = timestamp.toLocaleDateString('en-US', { timeZone: env.timezone });
-      const receivedTime = timestamp.toLocaleTimeString('en-US', { timeZone: env.timezone });
+
+      // Safely format date/time with timezone support and fallback to UTC
+      let receivedDate: string;
+      let receivedTime: string;
+      try {
+        receivedDate = timestamp.toLocaleDateString('en-US', { timeZone: env.timezone });
+        receivedTime = timestamp.toLocaleTimeString('en-US', { timeZone: env.timezone });
+      } catch (error) {
+        // If timezone is invalid or not supported, fall back to UTC
+        logger.warn(`⚠️  Invalid timezone '${env.timezone}', falling back to UTC for auto-acknowledge`, error);
+        receivedDate = timestamp.toLocaleDateString('en-US', { timeZone: 'UTC' });
+        receivedTime = timestamp.toLocaleTimeString('en-US', { timeZone: 'UTC' });
+      }
 
       // Replace tokens in the message template
       let ackText = await this.replaceAcknowledgementTokens(autoAckMessage, message.fromNodeId, fromNum, hopsTraveled, receivedDate, receivedTime);

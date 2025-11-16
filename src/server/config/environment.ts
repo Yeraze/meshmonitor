@@ -368,10 +368,20 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     process.env.MESHTASTIC_STALE_CONNECTION_TIMEOUT,
     300000 // 5 minutes default (in milliseconds)
   );
-  const timezone = {
-    value: process.env.TZ || 'America/New_York',
-    wasProvided: process.env.TZ !== undefined
-  };
+  const timezoneRaw = process.env.TZ || 'UTC';
+  let timezone = { value: timezoneRaw, wasProvided: process.env.TZ !== undefined };
+
+  // Validate timezone is supported by Intl
+  if (timezone.wasProvided) {
+    try {
+      // Test if timezone is valid by attempting to format a date with it
+      new Date().toLocaleString('en-US', { timeZone: timezone.value });
+    } catch (error) {
+      logger.warn(`⚠️  Invalid timezone '${timezone.value}' provided in TZ environment variable.`);
+      logger.warn(`   Falling back to UTC. Use standard IANA timezone names (e.g., 'Europe/London', 'America/New_York').`);
+      timezone = { value: 'UTC', wasProvided: false };
+    }
+  }
 
   // Virtual Node
   const enableVirtualNode = parseBoolean('ENABLE_VIRTUAL_NODE', process.env.ENABLE_VIRTUAL_NODE, false);
