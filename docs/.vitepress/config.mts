@@ -21,6 +21,7 @@ export default defineConfig({
       { text: 'Getting Started', link: '/getting-started' },
       { text: 'FAQ', link: '/faq' },
       { text: '🌐 Site Gallery', link: '/site-gallery' },
+      { text: '📜 User Scripts', link: '/user-scripts' },
       {
         text: 'Docs',
         items: [
@@ -42,7 +43,8 @@ export default defineConfig({
             { text: 'Device Configuration', link: '/features/device' },
             { text: 'Push Notifications', link: '/features/notifications' },
             { text: '🎨 Theme Gallery', link: '/THEME_GALLERY' },
-            { text: '🌐 Site Gallery', link: '/site-gallery' }
+            { text: '🌐 Site Gallery', link: '/site-gallery' },
+            { text: '📜 User Scripts', link: '/user-scripts' }
           ]
         }
       ],
