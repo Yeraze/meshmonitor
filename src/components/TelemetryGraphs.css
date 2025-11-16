@@ -46,6 +46,10 @@
   margin: 0;
   font-size: 1rem;
   font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: calc(100% - 60px); /* Reserve space for favorite and menu buttons */
 }
 
 .graph-actions {
