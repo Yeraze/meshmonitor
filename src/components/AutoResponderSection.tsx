@@ -172,28 +172,28 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
               </select>
             </div>
             {editResponseType !== 'script' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingLeft: '0.5rem', marginTop: '0.25rem' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', cursor: 'pointer', color: 'var(--ctp-subtext0)' }}>
+              <div style={{ paddingLeft: '0.5rem', marginTop: '0.25rem' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', cursor: 'pointer', color: 'var(--ctp-subtext0)' }}>
                   <input
                     type="checkbox"
                     checked={editMultiline}
                     onChange={(e) => setEditMultiline(e.target.checked)}
-                    style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
+                    style={{ marginRight: '0.5rem', cursor: 'pointer', verticalAlign: 'middle' }}
                   />
-                  <span>Enable Multiline (split long responses into multiple messages)</span>
+                  <span style={{ verticalAlign: 'middle' }}>Enable Multiline (split long responses into multiple messages)</span>
                 </label>
               </div>
             )}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingLeft: '0.5rem', marginTop: '0.25rem' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', cursor: editChannel === 'dm' ? 'pointer' : 'not-allowed', color: 'var(--ctp-subtext0)', opacity: editChannel === 'dm' ? 1 : 0.5 }}>
+            <div style={{ paddingLeft: '0.5rem', marginTop: '0.25rem' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', cursor: editChannel === 'dm' ? 'pointer' : 'not-allowed', color: 'var(--ctp-subtext0)', opacity: editChannel === 'dm' ? 1 : 0.5 }}>
                 <input
                   type="checkbox"
                   checked={editVerifyResponse}
                   onChange={(e) => setEditVerifyResponse(e.target.checked)}
                   disabled={editChannel !== 'dm'}
-                  style={{ width: 'auto', margin: 0, cursor: editChannel === 'dm' ? 'pointer' : 'not-allowed' }}
+                  style={{ marginRight: '0.5rem', cursor: editChannel === 'dm' ? 'pointer' : 'not-allowed', verticalAlign: 'middle' }}
                 />
-                <span>Verify Response (enable 3-retry delivery confirmation - DM only)</span>
+                <span style={{ verticalAlign: 'middle' }}>Verify Response (enable 3-retry delivery confirmation - DM only)</span>
               </label>
             </div>
           </div>
@@ -914,28 +914,28 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
           </div>
           {newResponseType !== 'script' && (
             <div style={{ marginTop: '0.5rem', paddingLeft: '0.5rem' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', cursor: localEnabled ? 'pointer' : 'not-allowed', color: 'var(--ctp-subtext0)' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', cursor: localEnabled ? 'pointer' : 'not-allowed', color: 'var(--ctp-subtext0)' }}>
                 <input
                   type="checkbox"
                   checked={newMultiline}
                   onChange={(e) => setNewMultiline(e.target.checked)}
                   disabled={!localEnabled}
-                  style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
+                  style={{ marginRight: '0.5rem', cursor: localEnabled ? 'pointer' : 'not-allowed', verticalAlign: 'middle' }}
                 />
-                <span>Enable Multiline (split long responses into multiple messages)</span>
+                <span style={{ verticalAlign: 'middle' }}>Enable Multiline (split long responses into multiple messages)</span>
               </label>
             </div>
           )}
           <div style={{ marginTop: '0.5rem', paddingLeft: '0.5rem' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', cursor: (localEnabled && newChannel === 'dm') ? 'pointer' : 'not-allowed', color: 'var(--ctp-subtext0)', opacity: newChannel === 'dm' ? 1 : 0.5 }}>
+            <label style={{ display: 'block', fontSize: '0.85rem', cursor: (localEnabled && newChannel === 'dm') ? 'pointer' : 'not-allowed', color: 'var(--ctp-subtext0)', opacity: newChannel === 'dm' ? 1 : 0.5 }}>
               <input
                 type="checkbox"
                 checked={newVerifyResponse}
                 onChange={(e) => setNewVerifyResponse(e.target.checked)}
                 disabled={!localEnabled || newChannel !== 'dm'}
-                style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
+                style={{ marginRight: '0.5rem', cursor: localEnabled ? 'pointer' : 'not-allowed', verticalAlign: 'middle' }}
               />
-              <span>Verify Response (enable 3-retry delivery confirmation)</span>
+              <span style={{ verticalAlign: 'middle' }}>Verify Response (enable 3-retry delivery confirmation)</span>
             </label>
           </div>
         </div>
