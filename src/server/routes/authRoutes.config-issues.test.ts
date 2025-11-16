@@ -5,27 +5,18 @@
  * COOKIE_SECURE and ALLOWED_ORIGINS misconfigurations
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import type { Request, Response } from 'express';
+import { describe, it, expect, beforeEach, afterEach, vi, type MockedFunction } from 'vitest';
+import type { Request } from 'express';
 
 describe('Configuration Issues Detection', () => {
   let mockRequest: Partial<Request>;
-  let mockResponse: Partial<Response>;
-  let mockJson: ReturnType<typeof vi.fn>;
-  let mockStatus: ReturnType<typeof vi.fn>;
+  let mockGet: MockedFunction<(name: string) => string | undefined>;
 
   beforeEach(() => {
-    mockJson = vi.fn();
-    mockStatus = vi.fn().mockReturnValue({ json: mockJson });
+    mockGet = vi.fn() as MockedFunction<(name: string) => string | undefined>;
 
     mockRequest = {
-      protocol: 'http',
-      get: vi.fn(),
-    };
-
-    mockResponse = {
-      json: mockJson,
-      status: mockStatus,
+      get: mockGet as any,
     };
   });
 
@@ -42,20 +33,13 @@ describe('Configuration Issues Detection', () => {
         allowedOriginsProvided: true
       };
 
-      mockRequest.protocol = 'http';
-      (mockRequest.get as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
-
-      // Expected issue
-      const expectedIssue = {
-        type: 'cookie_secure',
-        severity: 'error',
-        message: 'Secure cookies are enabled but you are accessing via HTTP. Session cookies will not work. Set COOKIE_SECURE=false or access via HTTPS.',
-        docsUrl: 'https://meshmonitor.org/faq.html#i-see-a-blank-white-screen-when-accessing-meshmonitor'
-      };
+      // Set protocol via object assignment (not direct property assignment)
+      mockRequest = { ...mockRequest, protocol: 'http' };
+      mockGet.mockReturnValue(undefined);
 
       // Verify the logic would detect this issue
       const isHttps = mockRequest.protocol === 'https' ||
-                     (mockRequest.get as ReturnType<typeof vi.fn>)('x-forwarded-proto') === 'https';
+                     mockGet('x-forwarded-proto') === 'https';
 
       expect(config.cookieSecure && !isHttps).toBe(true);
     });
@@ -68,15 +52,7 @@ describe('Configuration Issues Detection', () => {
         allowedOriginsProvided: true
       };
 
-      mockRequest.protocol = 'https';
-
-      // Expected issue
-      const expectedIssue = {
-        type: 'cookie_secure',
-        severity: 'warning',
-        message: 'You are accessing via HTTPS but secure cookies are disabled (COOKIE_SECURE=false). For better security, set COOKIE_SECURE=true.',
-        docsUrl: 'https://meshmonitor.org/faq.html#i-see-a-blank-white-screen-when-accessing-meshmonitor'
-      };
+      mockRequest = { ...mockRequest, protocol: 'https' };
 
       // Verify the logic would detect this issue
       const isHttps = mockRequest.protocol === 'https';
@@ -86,14 +62,14 @@ describe('Configuration Issues Detection', () => {
 
     it('should detect HTTPS via x-forwarded-proto header', () => {
       // Simulate HTTP request with x-forwarded-proto header (behind proxy)
-      mockRequest.protocol = 'http';
-      (mockRequest.get as ReturnType<typeof vi.fn>).mockImplementation((header: string) => {
+      mockRequest = { ...mockRequest, protocol: 'http' };
+      mockGet.mockImplementation((header: string) => {
         if (header === 'x-forwarded-proto') return 'https';
         return undefined;
       });
 
       const isHttps = mockRequest.protocol === 'https' ||
-                     (mockRequest.get as ReturnType<typeof vi.fn>)('x-forwarded-proto') === 'https';
+                     mockGet('x-forwarded-proto') === 'https';
 
       expect(isHttps).toBe(true);
     });
@@ -106,14 +82,14 @@ describe('Configuration Issues Detection', () => {
       ];
 
       scenarios.forEach(scenario => {
-        mockRequest.protocol = scenario.protocol;
-        (mockRequest.get as ReturnType<typeof vi.fn>).mockImplementation((header: string) => {
+        mockRequest = { ...mockRequest, protocol: scenario.protocol };
+        mockGet.mockImplementation((header: string) => {
           if (header === 'x-forwarded-proto') return scenario.forwardedProto;
           return undefined;
         });
 
         const isHttps = mockRequest.protocol === 'https' ||
-                       (mockRequest.get as ReturnType<typeof vi.fn>)('x-forwarded-proto') === 'https';
+                       mockGet('x-forwarded-proto') === 'https';
 
         // Should not have mismatches
         if (scenario.cookieSecure) {
@@ -134,7 +110,7 @@ describe('Configuration Issues Detection', () => {
       };
 
       const currentOrigin = 'http://unauthorized.example.com';
-      (mockRequest.get as ReturnType<typeof vi.fn>).mockImplementation((header: string) => {
+      mockGet.mockImplementation((header: string) => {
         if (header === 'origin') return currentOrigin;
         return undefined;
       });
@@ -155,7 +131,7 @@ describe('Configuration Issues Detection', () => {
       };
 
       const currentOrigin = 'https://example.com';
-      (mockRequest.get as ReturnType<typeof vi.fn>).mockImplementation((header: string) => {
+      mockGet.mockImplementation((header: string) => {
         if (header === 'origin') return currentOrigin;
         return undefined;
       });
@@ -167,14 +143,13 @@ describe('Configuration Issues Detection', () => {
 
     it('should fall back to referer header if origin is not present', () => {
       const refererUrl = 'https://example.com/some/path';
-      (mockRequest.get as ReturnType<typeof vi.fn>).mockImplementation((header: string) => {
+      mockGet.mockImplementation((header: string) => {
         if (header === 'origin') return undefined;
         if (header === 'referer') return refererUrl;
         return undefined;
       });
 
-      const currentOrigin = (mockRequest.get as ReturnType<typeof vi.fn>)('origin') ||
-                           (mockRequest.get as ReturnType<typeof vi.fn>)('referer');
+      const currentOrigin = mockGet('origin') || mockGet('referer');
 
       expect(currentOrigin).toBe(refererUrl);
 
@@ -186,15 +161,15 @@ describe('Configuration Issues Detection', () => {
 
     it('should handle invalid URLs gracefully', () => {
       const invalidUrl = 'not-a-valid-url';
-      (mockRequest.get as ReturnType<typeof vi.fn>).mockImplementation((header: string) => {
+      mockGet.mockImplementation((header: string) => {
         if (header === 'origin') return invalidUrl;
         return undefined;
       });
 
-      const currentOrigin = (mockRequest.get as ReturnType<typeof vi.fn>)('origin');
+      const currentOrigin = mockGet('origin');
 
       // Should throw when trying to parse invalid URL
-      expect(() => new URL(currentOrigin)).toThrow();
+      expect(() => new URL(currentOrigin as string)).toThrow();
     });
 
     it('should not check ALLOWED_ORIGINS if none provided', () => {
@@ -217,17 +192,17 @@ describe('Configuration Issues Detection', () => {
         allowedOriginsProvided: true
       };
 
-      mockRequest.protocol = 'http';  // HTTP with COOKIE_SECURE=true
+      mockRequest = { ...mockRequest, protocol: 'http' };  // HTTP with COOKIE_SECURE=true
       const currentOrigin = 'http://unauthorized.com';  // Not in allowed list
 
-      (mockRequest.get as ReturnType<typeof vi.fn>).mockImplementation((header: string) => {
+      mockGet.mockImplementation((header: string) => {
         if (header === 'origin') return currentOrigin;
         if (header === 'x-forwarded-proto') return undefined;
         return undefined;
       });
 
       const isHttps = mockRequest.protocol === 'https' ||
-                     (mockRequest.get as ReturnType<typeof vi.fn>)('x-forwarded-proto') === 'https';
+                     mockGet('x-forwarded-proto') === 'https';
       const origin = new URL(currentOrigin).origin;
 
       // Both issues should be detected
@@ -242,10 +217,10 @@ describe('Configuration Issues Detection', () => {
         allowedOriginsProvided: true
       };
 
-      mockRequest.protocol = 'https';
+      mockRequest = { ...mockRequest, protocol: 'https' };
       const currentOrigin = 'https://example.com';
 
-      (mockRequest.get as ReturnType<typeof vi.fn>).mockImplementation((header: string) => {
+      mockGet.mockImplementation((header: string) => {
         if (header === 'origin') return currentOrigin;
         return undefined;
       });
@@ -262,13 +237,6 @@ describe('Configuration Issues Detection', () => {
 
   describe('Response Format', () => {
     it('should return issues array in correct format', () => {
-      const expectedFormat = {
-        type: 'cookie_secure' as const,
-        severity: 'error' as const,
-        message: expect.any(String),
-        docsUrl: expect.stringContaining('meshmonitor.org')
-      };
-
       // Verify type constraints
       type IssueType = 'cookie_secure' | 'allowed_origins';
       type IssueSeverity = 'error' | 'warning';
