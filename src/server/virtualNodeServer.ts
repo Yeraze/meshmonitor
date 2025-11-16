@@ -533,8 +533,11 @@ export class VirtualNodeServer extends EventEmitter {
       }
 
       // === STEP 2: Rebuild and send all NodeInfo entries from database ===
-      const allNodes = databaseService.getAllNodes();
-      logger.debug(`Virtual node: Rebuilding ${allNodes.length} NodeInfo entries from database`);
+      // Apply activity filtering based on maxNodeAgeHours setting
+      const maxNodeAgeHours = parseInt(databaseService.getSetting('maxNodeAgeHours') || '24');
+      const maxNodeAgeDays = maxNodeAgeHours / 24;
+      const allNodes = databaseService.getActiveNodes(maxNodeAgeDays);
+      logger.debug(`Virtual node: Rebuilding ${allNodes.length} active NodeInfo entries from database (maxNodeAgeHours: ${maxNodeAgeHours})`);
 
       for (const node of allNodes) {
         // Check if client is still connected
