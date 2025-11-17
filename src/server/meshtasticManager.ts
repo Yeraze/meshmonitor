@@ -4709,7 +4709,8 @@ class MeshtasticManager {
       }
 
       // Skip if node has already been welcomed (nodes should only be welcomed once)
-      if (node.welcomedAt) {
+      // Use explicit null/undefined check to handle edge case where welcomedAt might be 0
+      if (node.welcomedAt !== null && node.welcomedAt !== undefined) {
         logger.debug(`⏭️  Skipping auto-welcome for ${nodeId} - already welcomed previously`);
         return;
       }
