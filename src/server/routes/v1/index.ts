@@ -1,0 +1,48 @@
+/**
+ * v1 API Router
+ *
+ * Main router for the versioned v1 REST API
+ * All v1 routes require API token authentication
+ */
+
+import express from 'express';
+import { requireAPIToken } from '../../auth/authMiddleware.js';
+import nodesRouter from './nodes.js';
+import telemetryRouter from './telemetry.js';
+import traceroutesRouter from './traceroutes.js';
+import messagesRouter from './messages.js';
+import networkRouter from './network.js';
+import docsRouter from './docs.js';
+
+const router = express.Router();
+
+// Documentation route (public access, no token required)
+router.use('/docs', docsRouter);
+
+// All other v1 API routes require API token authentication
+router.use(requireAPIToken());
+
+// API version info endpoint
+router.get('/', (_req, res) => {
+  res.json({
+    version: 'v1',
+    description: 'MeshMonitor REST API v1',
+    documentation: '/api/v1/docs',
+    endpoints: {
+      nodes: '/api/v1/nodes',
+      telemetry: '/api/v1/telemetry',
+      traceroutes: '/api/v1/traceroutes',
+      messages: '/api/v1/messages',
+      network: '/api/v1/network'
+    }
+  });
+});
+
+// Mount resource routers
+router.use('/nodes', nodesRouter);
+router.use('/telemetry', telemetryRouter);
+router.use('/traceroutes', traceroutesRouter);
+router.use('/messages', messagesRouter);
+router.use('/network', networkRouter);
+
+export default router;

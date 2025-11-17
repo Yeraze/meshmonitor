@@ -429,6 +429,8 @@ import upgradeRoutes from './routes/upgradeRoutes.js';
 import messageRoutes from './routes/messageRoutes.js';
 import linkPreviewRoutes from './routes/linkPreviewRoutes.js';
 import scriptContentRoutes from './routes/scriptContentRoutes.js';
+import apiTokenRoutes from './routes/apiTokenRoutes.js';
+import v1Router from './routes/v1/index.js';
 
 // CSRF token endpoint (must be before CSRF protection middleware)
 apiRouter.get('/csrf-token', csrfTokenEndpoint);
@@ -459,6 +461,12 @@ if (!env.isProduction) {
 
 // Authentication routes
 apiRouter.use('/auth', authRoutes);
+
+// API Token management routes (requires auth)
+apiRouter.use('/token', apiTokenRoutes);
+
+// v1 API routes (requires API token)
+apiRouter.use('/v1', v1Router);
 
 // User management routes (admin only)
 apiRouter.use('/users', userRoutes);

@@ -50,6 +50,32 @@ export interface AuthStatus {
   permissions: Record<string, { read: boolean; write: boolean }>;
 }
 
+export interface APIToken {
+  id: number;
+  userId: number;
+  tokenHash: string;
+  prefix: string;              // First 8 chars for display (e.g., "mm_v1_ab")
+  isActive: boolean;
+  createdAt: number;           // Unix timestamp
+  lastUsedAt: number | null;   // Unix timestamp
+  createdBy: number;           // User ID who created the token
+  revokedAt: number | null;    // Unix timestamp
+  revokedBy: number | null;    // User ID who revoked the token
+}
+
+export interface CreateAPITokenInput {
+  userId: number;
+  createdBy: number;
+}
+
+export interface APITokenInfo {
+  id: number;
+  prefix: string;
+  isActive: boolean;
+  createdAt: number;
+  lastUsedAt: number | null;
+}
+
 // Extend Express Request to include user
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace

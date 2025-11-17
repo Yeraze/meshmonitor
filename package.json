@@ -10,7 +10,7 @@
     "dev:server": "tsx --watch src/server/server.ts",
     "dev:full": "concurrently \"npm run dev\" \"npm run dev:server\"",
     "build": "tsc && vite build",
-    "build:server": "tsc --project tsconfig.server.json",
+    "build:server": "tsc --project tsconfig.server.json && mkdir -p dist/server/routes/v1 && cp src/server/routes/v1/openapi.yaml dist/server/routes/v1/",
     "start": "node dist/server/server.js",
     "preview": "vite preview",
     "lint": "eslint .",
@@ -54,9 +54,11 @@
     "react-leaflet": "^5.0.0",
     "recharts": "^3.3.0",
     "rotating-file-stream": "^3.2.7",
+    "swagger-ui-express": "^5.0.1",
     "ts-overlapping-marker-spiderfier-leaflet": "^1.0.5",
     "uuid": "^13.0.0",
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "yamljs": "^0.3.0"
   },
   "devDependencies": {
     "@eslint/compat": "^1.4.1",
@@ -75,7 +77,9 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.2.2",
     "@types/supertest": "^6.0.3",
+    "@types/swagger-ui-express": "^4.1.8",
     "@types/web-push": "^3.6.4",
+    "@types/yamljs": "^0.2.34",
     "@typescript-eslint/eslint-plugin": "^8.46.3",
     "@typescript-eslint/parser": "^8.46.0",
     "@vitejs/plugin-react": "^5.1.0",

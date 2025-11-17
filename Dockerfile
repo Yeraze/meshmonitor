@@ -55,6 +55,9 @@ COPY --from=builder /app/dist ./dist
 # Copy protobuf definitions needed by the server
 COPY --from=builder /app/protobufs ./protobufs
 
+# Fix ownership of dist directory for node user
+RUN chown -R node:node ./dist
+
 # Copy upgrade watchdog script into container
 COPY scripts/upgrade-watchdog.sh /app/scripts/upgrade-watchdog.sh
 RUN chmod +x /app/scripts/upgrade-watchdog.sh
