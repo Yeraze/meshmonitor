@@ -275,6 +275,115 @@ MeshMonitor will warn you before setting ROUTER mode. Only use this for powered,
 
 **Side Effects**: Disabling requires manual configuration of advanced LoRa parameters
 
+::: warning Advanced Configuration
+When "Use Preset" is disabled, you must manually configure bandwidth, spreading factor, and coding rate. Incorrect settings can prevent communication with other nodes or violate regulatory requirements. Only disable presets if you have specific technical requirements and understand LoRa modulation parameters.
+:::
+
+### Manual LoRa Parameters
+
+These parameters are only available when "Use Preset" is disabled. They provide fine-grained control over radio modulation for advanced users.
+
+#### Bandwidth
+
+**Description**: Channel bandwidth in kHz, which determines the frequency range used for transmission.
+
+**Range**: 31-500 kHz
+
+**Common Values**:
+- 31 (31.25 kHz) - Narrowest, best interference resistance
+- 125 kHz - Good balance
+- 250 kHz - Most common, used by all standard presets
+- 500 kHz - Widest, highest data rate
+
+**Effect**: Wider bandwidth = faster data rate but more susceptible to interference. Narrower bandwidth = slower data rate but better sensitivity and interference resistance.
+
+**Side Effects**:
+- All nodes must use the same bandwidth to communicate
+- Wider bandwidths may violate duty cycle regulations in some regions
+- Affects battery life (wider = more power)
+
+**Best Practices**:
+- Use 250 kHz for most deployments (matches all standard presets)
+- Only change if you have specific range or speed requirements
+- Verify regulatory compliance for your region
+
+#### Spreading Factor
+
+**Description**: Number of chirps per symbol, which determines how the signal is spread across time.
+
+**Range**: 7-12
+
+**Effect**: Higher spreading factor = longer range but slower data rate. Each increment doubles range but halves speed.
+
+**Common Configurations**:
+- SF7: Shortest range, fastest speed (5.47 kbps @ 125kHz)
+- SF9: Medium range (SHORT presets)
+- SF10: Good range (MEDIUM presets)
+- SF11: Long range (LONG presets)
+- SF12: Maximum range, slowest speed (293 bps @ 125kHz)
+
+**Side Effects**:
+- Higher SF = longer airtime = more battery usage
+- Higher SF = more susceptible to frequency drift
+- All nodes must use the same SF to communicate
+- Different SFs are orthogonal (can coexist without interference)
+
+**Best Practices**:
+- Start with SF11 (LONG_FAST default) for most deployments
+- Increase to SF12 only for extreme range requirements
+- Lower to SF7-9 for dense local networks
+
+#### Coding Rate
+
+**Description**: Denominator of the forward error correction (FEC) coding rate.
+
+**Range**: 5-8
+
+**Format**: Coding rate is 4/N where N is the value you set (5-8)
+
+**Common Values**:
+- 5 (4/5): Lightest error correction, fastest speed
+- 6 (4/6): Light error correction
+- 7 (4/7): Moderate error correction
+- 8 (4/8): Heaviest error correction, most robust
+
+**Effect**: Higher coding rate (larger denominator) = more error correction overhead but better resistance to interference.
+
+**Side Effects**:
+- Higher coding rate = longer airtime = more battery usage
+- Higher coding rate = slower effective data rate
+- All nodes must use the same coding rate to communicate
+
+**Best Practices**:
+- Use 8 (4/8) for long-range or noisy environments (LONG_FAST default)
+- Use 5 (4/5) for clean, short-range links (SHORT_FAST)
+- Most presets use 8 for maximum reliability
+
+#### Frequency Offset
+
+**Description**: Fine-tuning frequency offset in MHz for crystal calibration and drift compensation.
+
+**Range**: Typically ±0.5 MHz
+
+**Default**: 0
+
+**Effect**: Adjusts the transmission frequency by a small amount to compensate for crystal oscillator inaccuracies.
+
+**Use Cases**:
+- Compensating for temperature drift
+- Correcting known crystal frequency errors
+- Fine-tuning for optimal performance with specific hardware
+
+**Side Effects**:
+- Incorrect offset can prevent communication
+- Should only be changed if you've measured a frequency error
+- Most devices do not require adjustment
+
+**Best Practices**:
+- Leave at 0 unless you have a specific reason to change it
+- Only adjust if you've used test equipment to measure frequency error
+- Very rarely needed with modern hardware
+
 ### Modem Preset
 
 Predefined radio settings that balance range, speed, and reliability. All nodes on a mesh must use compatible settings to communicate.
