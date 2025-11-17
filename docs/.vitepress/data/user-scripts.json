@@ -1,1 +1,110 @@
-[]
+[
+{
+    "name": "Weather Bot",
+    "filename": "PirateWeather.py",
+    "icon": "🌤️",
+    "description": "Get weather information for any location using Pirate Weather API with OpenStreetMap geocoding. Supports any location format (city, zip, address, etc.) with multi-pattern trigger support.",
+    "language": "Python",
+    "tags": ["Weather", "API", "Geocoding", "Pirate Weather"],
+    "githubPath": "Codename-11/meshmonitor_user-scripts/PirateWeather.py",
+    "exampleTrigger": "weather, weather {location:.+}",
+    "requirements": [
+        "Python 3.6+",
+        "PIRATE_WEATHER_API_KEY environment variable (get free key from https://pirateweather.net/)"
+    ],
+    "author": "Codename-11",
+    "features": [
+        "Free geocoding via Nominatim (OpenStreetMap)",
+        "Pirate Weather API integration",
+        "Supports any location format",
+        "Multi-pattern trigger support"
+    ]
+    },
+  {
+    "name": "AI Assistant",
+    "filename": "ai.py",
+    "icon": "🤖",
+    "description": "AI-powered assistant supporting local Ollama (offline) and cloud APIs (OpenAI, Anthropic). Features automatic fallback between providers and multi-pattern trigger support.",
+    "language": "Python",
+    "tags": ["AI", "Ollama", "OpenAI", "Anthropic", "Assistant"],
+    "githubPath": "Codename-11/meshmonitor_user-scripts/ai.py",
+    "exampleTrigger": "ask, ask {question:.+}",
+    "requirements": [
+      "Python 3.6+",
+      "For Ollama: Ollama service running",
+      "For OpenAI: OPENAI_API_KEY environment variable (optional)",
+      "For Anthropic: ANTHROPIC_API_KEY environment variable (optional)"
+    ],
+    "author": "Codename-11",
+    "features": [
+      "Offline AI support via Ollama",
+      "Cloud AI support (OpenAI, Anthropic)",
+      "Automatic fallback between providers",
+      "Multi-pattern trigger support"
+    ]
+  },
+  {
+    "name": "Sunrise/Sunset Calculator",
+    "filename": "sunrise.py",
+    "icon": "☀️",
+    "description": "Calculate sunrise, sunset, and daylight times for any location using free APIs. Features automatic timezone detection and local time formatting with multi-pattern trigger support.",
+    "language": "Python",
+    "tags": ["Sunrise", "Sunset", "Time", "Geocoding", "Free API"],
+    "githubPath": "Codename-11/meshmonitor_user-scripts/sunrise.py",
+    "exampleTrigger": "sunrise, sunrise {location:.+}",
+    "requirements": [
+      "Python 3.6+",
+      "No API keys required (uses free services)"
+    ],
+    "author": "Codename-11",
+    "features": [
+      "Free sunrise-sunset.org API (no API key required)",
+      "Free geocoding via Nominatim (OpenStreetMap)",
+      "Automatic timezone detection",
+      "Local time formatting",
+      "Multi-pattern trigger support"
+    ]
+  },
+  {
+    "name": "Fun Bot",
+    "filename": "fun.py",
+    "icon": "🎲",
+    "description": "Entertainment bot providing trivia, facts, jokes, and quotes - all content stored locally. Features daily variety (seeded by date) and mesh/radio/tech themed content.",
+    "language": "Python",
+    "tags": ["Entertainment", "Trivia", "Facts", "Jokes", "Quotes", "Local"],
+    "githubPath": "Codename-11/meshmonitor_user-scripts/fun.py",
+    "exampleTrigger": "trivia, fact, joke, quote",
+    "requirements": [
+      "Python 3.6+",
+      "No external dependencies or API keys required"
+    ],
+    "author": "Codename-11",
+    "features": [
+      "No external dependencies",
+      "Daily variety (seeded by date)",
+      "Mesh/radio/tech themed content",
+      "Multiple command support"
+    ]
+  },
+  {
+    "name": "Commands Directory",
+    "filename": "commands.py",
+    "icon": "📋",
+    "description": "Lists all available Auto Responder commands/triggers configured in your MeshMonitor instance. Features dynamic command listing and multi-message support for long lists.",
+    "language": "Python",
+    "tags": ["Commands", "Directory", "Help", "List"],
+    "githubPath": "Codename-11/meshmonitor_user-scripts/commands.py",
+    "exampleTrigger": "commands, command",
+    "requirements": [
+      "Python 3.6+",
+      "No external dependencies or API keys required"
+    ],
+    "author": "Codename-11",
+    "features": [
+      "Dynamic command listing",
+      "Multi-message support for long lists",
+      "Easy to update when adding new scripts",
+      "Multi-pattern trigger support"
+    ]
+  }
+]
