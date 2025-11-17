@@ -21,7 +21,7 @@ import {
 } from './auth/authMiddleware.js';
 import { apiLimiter } from './middleware/rateLimiters.js';
 import { setupAccessLogger } from './middleware/accessLogger.js';
-import { getEnvironmentConfig } from './config/environment.js';
+import { getEnvironmentConfig, resetEnvironmentConfig } from './config/environment.js';
 import { pushNotificationService } from './services/pushNotificationService.js';
 import { appriseNotificationService } from './services/appriseNotificationService.js';
 import { deviceBackupService } from './services/deviceBackupService.js';
@@ -39,8 +39,70 @@ const packageJson = require('../../package.json');
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load environment configuration
+// Load .env file in development mode
+// dotenv/config automatically loads .env from project root
+// This must run before getEnvironmentConfig() is called
+if (process.env.NODE_ENV !== 'production') {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require('dotenv/config');
+  // Reset cached environment config to ensure .env values are loaded
+  resetEnvironmentConfig();
+  logger.info('📄 Loaded .env file from project root (if present)');
+}
+
+// Load environment configuration (after .env is loaded)
 const env = getEnvironmentConfig();
+
+/**
+ * Gets the scripts directory path.
+ * In development, uses relative path from project root (data/scripts).
+ * In production, uses absolute path (/data/scripts).
+ */
+const getScriptsDirectory = (): string => {
+  if (env.isDevelopment) {
+    // In development, use relative path from project root
+    const projectRoot = path.resolve(__dirname, '../../');
+    const devScriptsDir = path.join(projectRoot, 'data', 'scripts');
+    
+    // Ensure directory exists
+    if (!fs.existsSync(devScriptsDir)) {
+      fs.mkdirSync(devScriptsDir, { recursive: true });
+      logger.info(`📁 Created scripts directory: ${devScriptsDir}`);
+    }
+    
+    return devScriptsDir;
+  }
+  
+  // In production, use absolute path
+  return '/data/scripts';
+};
+
+/**
+ * Converts a script path to the actual file system path.
+ * Handles both /data/scripts/... (stored format) and actual file paths.
+ */
+const resolveScriptPath = (scriptPath: string): string | null => {
+  // Validate script path (security check)
+  if (!scriptPath.startsWith('/data/scripts/') || scriptPath.includes('..')) {
+    logger.error(`🚫 Invalid script path: ${scriptPath}`);
+    return null;
+  }
+  
+  const scriptsDir = getScriptsDirectory();
+  const filename = path.basename(scriptPath);
+  const resolvedPath = path.join(scriptsDir, filename);
+  
+  // Additional security: ensure resolved path is within scripts directory
+  const normalizedResolved = path.normalize(resolvedPath);
+  const normalizedScriptsDir = path.normalize(scriptsDir);
+  
+  if (!normalizedResolved.startsWith(normalizedScriptsDir)) {
+    logger.error(`🚫 Script path resolves outside scripts directory: ${scriptPath}`);
+    return null;
+  }
+  
+  return normalizedResolved;
+};
 
 const app = express();
 const PORT = env.port;
@@ -166,54 +228,23 @@ const getAllowedOrigins = () => {
   return origins.length > 0 ? origins : ['http://localhost:3000'];
 };
 
-// Custom CORS middleware that exempts diagnostic endpoints and static assets
-app.use((req, res, next) => {
-  const allowedOrigins = getAllowedOrigins();
-  const origin = req.get('origin');
-  const fullPath = req.originalUrl || req.url;
+app.use(cors({
+  origin: (origin, callback) => {
+    const allowedOrigins = getAllowedOrigins();
 
-  // Always allow config-issues endpoint from any origin (diagnostic endpoint)
-  if (fullPath.includes('/api/auth/check-config-issues')) {
-    logger.debug(`🔍 check-config-issues request from origin: ${origin}, path: ${fullPath}`);
-    res.header('Access-Control-Allow-Origin', origin || '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type');
-    res.header('Access-Control-Allow-Credentials', 'true');
-    if (req.method === 'OPTIONS') {
-      return res.sendStatus(200);
+    // Allow requests with no origin (mobile apps, Postman, same-origin)
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+      callback(null, true);
+    } else {
+      logger.warn(`CORS request blocked from origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
     }
-    return next();
-  }
-
-  // Allow static assets (CSS, JS, images) from any origin
-  // This is safe because static assets don't require authentication
-  if (fullPath.match(/\.(css|js|map|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|webmanifest)$/)) {
-    res.header('Access-Control-Allow-Origin', origin || '*');
-    if (req.method === 'OPTIONS') {
-      return res.sendStatus(200);
-    }
-    return next();
-  }
-
-  // Apply standard CORS for all other endpoints (API calls)
-  const corsMiddleware = cors({
-    origin: (reqOrigin, callback) => {
-      // Allow requests with no origin (mobile apps, Postman, same-origin)
-      if (!reqOrigin) return callback(null, true);
-
-      if (allowedOrigins.includes(reqOrigin) || allowedOrigins.includes('*')) {
-        callback(null, true);
-      } else {
-        logger.warn(`CORS request blocked from origin: ${reqOrigin}`);
-        callback(new Error('Not allowed by CORS'));
-      }
-    },
-    credentials: true,
-    optionsSuccessStatus: 200
-  });
-
-  corsMiddleware(req, res, next);
-});
+  },
+  credentials: true,
+  optionsSuccessStatus: 200
+}));
 
 // Access logging for fail2ban (optional, configured via ACCESS_LOG_ENABLED)
 const accessLogger = setupAccessLogger();
@@ -2086,8 +2117,19 @@ apiRouter.get('/telemetry/available/nodes', requirePermission('info', 'read'), (
 
     // Check for PKC-enabled nodes
     const nodesWithPKC: string[] = [];
+
+    // Get the local node ID to ensure it's always marked as secure
+    const localNodeNumStr = databaseService.getSetting('localNodeNum');
+    let localNodeId: string | null = null;
+    if (localNodeNumStr) {
+      const localNodeNum = parseInt(localNodeNumStr, 10);
+      localNodeId = `!${localNodeNum.toString(16).padStart(8, '0')}`;
+    }
+
     nodes.forEach(node => {
-      if (node.hasPKC || node.publicKey) {
+      // Local node is always secure (direct TCP/serial connection, no mesh encryption needed)
+      // OR node has PKC enabled
+      if (node.nodeId === localNodeId || node.hasPKC || node.publicKey) {
         nodesWithPKC.push(node.nodeId);
       }
     });
@@ -4275,10 +4317,11 @@ const buildPath = path.join(__dirname, '../../dist');
 // Public endpoint to list available scripts (no CSRF or auth required)
 const scriptsEndpoint = (_req: any, res: any) => {
   try {
-    const scriptsDir = '/data/scripts';
+    const scriptsDir = getScriptsDirectory();
 
     // Check if directory exists
     if (!fs.existsSync(scriptsDir)) {
+      logger.debug(`📁 Scripts directory does not exist: ${scriptsDir}`);
       return res.json({ scripts: [] });
     }
 
@@ -4292,8 +4335,12 @@ const scriptsEndpoint = (_req: any, res: any) => {
         return validExtensions.includes(ext);
       })
       .filter(file => file !== 'upgrade-watchdog.sh') // Exclude system scripts
-      .map(file => `/data/scripts/${file}`)
+      .map(file => `/data/scripts/${file}`) // Always return /data/scripts/... format for API consistency
       .sort();
+
+    if (env.isDevelopment && scripts.length > 0) {
+      logger.debug(`📜 Found ${scripts.length} script(s) in ${scriptsDir}`);
+    }
 
     res.json({ scripts });
   } catch (error) {
@@ -4307,19 +4354,410 @@ if (BASE_URL) {
 }
 app.get('/api/scripts', scriptsEndpoint);
 
-// Server info endpoint
-const serverInfoEndpoint = (_req: express.Request, res: express.Response) => {
-  const env = getEnvironmentConfig();
-  res.json({
-    timezone: env.timezone,
-    timezoneProvided: env.timezoneProvided
-  });
-};
+// Script test endpoint - allows testing script execution with sample parameters
+apiRouter.post('/scripts/test', requirePermission('settings', 'read'), async (req, res) => {
+  try {
+    const { script, trigger, testMessage } = req.body;
 
-if (BASE_URL) {
-  app.get(`${BASE_URL}/api/server-info`, serverInfoEndpoint);
-}
-app.get('/api/server-info', serverInfoEndpoint);
+    if (!script || !trigger || !testMessage) {
+      return res.status(400).json({ error: 'Missing required fields: script, trigger, testMessage' });
+    }
+
+    // Validate script path (security check)
+    if (!script.startsWith('/data/scripts/') || script.includes('..')) {
+      return res.status(400).json({ error: 'Invalid script path' });
+    }
+
+    // Resolve script path
+    const resolvedPath = resolveScriptPath(script);
+    if (!resolvedPath) {
+      return res.status(400).json({ error: 'Failed to resolve script path' });
+    }
+
+    // Check if file exists
+    if (!fs.existsSync(resolvedPath)) {
+      return res.status(404).json({ error: 'Script file not found' });
+    }
+
+    // Extract parameters from test message using trigger pattern
+    // (Reuse pattern matching logic from meshtasticManager)
+    const splitTriggerPatterns = (triggerStr: string): string[] => {
+      if (!triggerStr.trim()) {
+        return [];
+      }
+      
+      const patterns: string[] = [];
+      let currentPattern = '';
+      let braceDepth = 0;
+      
+      for (let i = 0; i < triggerStr.length; i++) {
+        const char = triggerStr[i];
+        
+        if (char === '{') {
+          braceDepth++;
+          currentPattern += char;
+        } else if (char === '}') {
+          braceDepth--;
+          currentPattern += char;
+        } else if (char === ',' && braceDepth === 0) {
+          const trimmed = currentPattern.trim();
+          if (trimmed) {
+            patterns.push(trimmed);
+          }
+          currentPattern = '';
+        } else {
+          currentPattern += char;
+        }
+      }
+      
+      const trimmed = currentPattern.trim();
+      if (trimmed) {
+        patterns.push(trimmed);
+      }
+      
+      return patterns;
+    };
+
+    const patterns = splitTriggerPatterns(trigger);
+    let matchedPattern: string | null = null;
+    let extractedParams: Record<string, string> = {};
+
+    // Try each pattern until one matches
+    for (const patternStr of patterns) {
+      interface ParamSpec {
+        name: string;
+        pattern?: string;
+      }
+      const params: ParamSpec[] = [];
+      let i = 0;
+
+      // Extract parameter specifications
+      while (i < patternStr.length) {
+        if (patternStr[i] === '{') {
+          const startPos = i + 1;
+          let depth = 1;
+          let colonPos = -1;
+          let endPos = -1;
+
+          for (let j = startPos; j < patternStr.length && depth > 0; j++) {
+            if (patternStr[j] === '{') {
+              depth++;
+            } else if (patternStr[j] === '}') {
+              depth--;
+              if (depth === 0) {
+                endPos = j;
+              }
+            } else if (patternStr[j] === ':' && depth === 1 && colonPos === -1) {
+              colonPos = j;
+            }
+          }
+
+          if (endPos !== -1) {
+            const paramName = colonPos !== -1
+              ? patternStr.substring(startPos, colonPos)
+              : patternStr.substring(startPos, endPos);
+            const paramPattern = colonPos !== -1
+              ? patternStr.substring(colonPos + 1, endPos)
+              : undefined;
+
+            if (!params.find(p => p.name === paramName)) {
+              params.push({ name: paramName, pattern: paramPattern });
+            }
+
+            i = endPos + 1;
+          } else {
+            i++;
+          }
+        } else {
+          i++;
+        }
+      }
+
+      // Build regex pattern
+      let regexPattern = '';
+      const replacements: Array<{ start: number; end: number; replacement: string }> = [];
+      i = 0;
+
+      while (i < patternStr.length) {
+        if (patternStr[i] === '{') {
+          const startPos = i;
+          let depth = 1;
+          let endPos = -1;
+
+          for (let j = i + 1; j < patternStr.length && depth > 0; j++) {
+            if (patternStr[j] === '{') {
+              depth++;
+            } else if (patternStr[j] === '}') {
+              depth--;
+              if (depth === 0) {
+                endPos = j;
+              }
+            }
+          }
+
+          if (endPos !== -1) {
+            const paramIndex = replacements.length;
+            if (paramIndex < params.length) {
+              const paramRegex = params[paramIndex].pattern || '[^\\s]+';
+              replacements.push({
+                start: startPos,
+                end: endPos + 1,
+                replacement: `(${paramRegex})`
+              });
+            }
+            i = endPos + 1;
+          } else {
+            i++;
+          }
+        } else {
+          i++;
+        }
+      }
+
+      // Build the final pattern by replacing placeholders
+      for (let i = 0; i < patternStr.length; i++) {
+        const replacement = replacements.find(r => r.start === i);
+        if (replacement) {
+          regexPattern += replacement.replacement;
+          i = replacement.end - 1;
+        } else {
+          const char = patternStr[i];
+          if (/[.*+?^${}()|[\]\\]/.test(char)) {
+            regexPattern += '\\' + char;
+          } else {
+            regexPattern += char;
+          }
+        }
+      }
+
+      const triggerRegex = new RegExp(`^${regexPattern}$`, 'i');
+      const triggerMatch = testMessage.match(triggerRegex);
+
+      if (triggerMatch) {
+        extractedParams = {};
+        params.forEach((param, index) => {
+          extractedParams[param.name] = triggerMatch[index + 1];
+        });
+        matchedPattern = patternStr;
+        break;
+      }
+    }
+
+    if (!matchedPattern) {
+      return res.status(400).json({ error: `Test message does not match trigger pattern: "${trigger}"` });
+    }
+
+    // Determine interpreter based on file extension
+    const ext = script.split('.').pop()?.toLowerCase();
+    let interpreter: string;
+    
+    const isDev = process.env.NODE_ENV !== 'production';
+    
+    switch (ext) {
+      case 'js':
+      case 'mjs':
+        interpreter = isDev ? 'node' : '/usr/local/bin/node';
+        break;
+      case 'py':
+        interpreter = isDev ? 'python' : '/usr/bin/python';
+        break;
+      case 'sh':
+        interpreter = isDev ? 'sh' : '/bin/sh';
+        break;
+      default:
+        return res.status(400).json({ error: `Unsupported script extension: ${ext}` });
+    }
+
+    // Execute script
+    const { execFile } = await import('child_process');
+    const { promisify } = await import('util');
+    const execFileAsync = promisify(execFile);
+
+    // Prepare environment variables (same as in meshtasticManager)
+    const scriptEnv: Record<string, string> = {
+      ...process.env as Record<string, string>,
+      MESSAGE: testMessage,
+      FROM_NODE: '12345', // Test node number
+      PACKET_ID: '99999', // Test packet ID
+      TRIGGER: trigger,
+    };
+
+    // Add extracted parameters as PARAM_* environment variables
+    Object.entries(extractedParams).forEach(([key, value]) => {
+      scriptEnv[`PARAM_${key}`] = value;
+    });
+
+    try {
+      const { stdout, stderr } = await execFileAsync(interpreter, [resolvedPath], {
+        timeout: 10000,
+        env: scriptEnv,
+        maxBuffer: 1024 * 1024, // 1MB max output
+      });
+
+      // Return both stdout and stderr
+      const output = stdout.trim();
+      const errorOutput = stderr.trim();
+      
+      return res.json({
+        output: output || '(no output)',
+        stderr: errorOutput || undefined,
+        params: extractedParams,
+        matchedPattern: matchedPattern
+      });
+    } catch (error: any) {
+      // Handle execution errors
+      if (error.code === 'ETIMEDOUT' || error.signal === 'SIGTERM') {
+        return res.status(408).json({ error: 'Script execution timed out after 10 seconds' });
+      }
+      
+      // Handle Windows EPERM errors gracefully (process may have already terminated)
+      if (error.code === 'EPERM' && process.platform === 'win32') {
+        // On Windows, EPERM can occur when trying to kill a process that's already dead
+        // If we got stdout/stderr before the error, return that
+        if (error.stdout || error.stderr) {
+          return res.json({
+            output: error.stdout?.toString().trim() || '(no output)',
+            stderr: error.stderr?.toString().trim() || undefined,
+            params: extractedParams,
+            matchedPattern: matchedPattern
+          });
+        }
+        // Otherwise, return a more user-friendly error
+        return res.status(500).json({ 
+          error: 'Script execution completed but encountered a cleanup error (this is usually harmless)',
+          stderr: error.stderr?.toString() || undefined
+        });
+      }
+      
+      return res.status(500).json({ 
+        error: error.message || 'Script execution failed',
+        stderr: error.stderr?.toString() || undefined
+      });
+    }
+  } catch (error: any) {
+    logger.error('❌ Error testing script:', error);
+    return res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+// Script import endpoint - upload a script file
+apiRouter.post('/scripts/import', requirePermission('settings', 'write'), express.raw({ type: '*/*', limit: '5mb' }), async (req, res) => {
+  try {
+    const filename = req.headers['x-filename'] as string;
+
+    if (!filename) {
+      return res.status(400).json({ error: 'Filename header (x-filename) is required' });
+    }
+
+    // Security: Validate filename
+    const sanitizedFilename = path.basename(filename); // Remove any path components
+    const ext = path.extname(sanitizedFilename).toLowerCase();
+    const validExtensions = ['.js', '.mjs', '.py', '.sh'];
+    
+    if (!validExtensions.includes(ext)) {
+      return res.status(400).json({ error: `Invalid file extension. Allowed: ${validExtensions.join(', ')}` });
+    }
+
+    // Prevent system script overwrite
+    if (sanitizedFilename === 'upgrade-watchdog.sh') {
+      return res.status(400).json({ error: 'Cannot overwrite system script' });
+    }
+
+    const scriptsDir = getScriptsDirectory();
+    const filePath = path.join(scriptsDir, sanitizedFilename);
+
+    // Ensure scripts directory exists
+    if (!fs.existsSync(scriptsDir)) {
+      fs.mkdirSync(scriptsDir, { recursive: true });
+    }
+
+    // Write file
+    fs.writeFileSync(filePath, req.body);
+    
+    // Set executable permissions (Unix-like systems)
+    if (process.platform !== 'win32') {
+      fs.chmodSync(filePath, 0o755);
+    }
+
+    logger.info(`✅ Script imported: ${sanitizedFilename}`);
+    res.json({ success: true, filename: sanitizedFilename, path: `/data/scripts/${sanitizedFilename}` });
+  } catch (error: any) {
+    logger.error('❌ Error importing script:', error);
+    res.status(500).json({ error: error.message || 'Failed to import script' });
+  }
+});
+
+// Script export endpoint - download selected scripts as zip
+apiRouter.post('/scripts/export', requirePermission('settings', 'read'), async (req, res) => {
+  try {
+    const { scripts } = req.body;
+
+    if (!Array.isArray(scripts) || scripts.length === 0) {
+      return res.status(400).json({ error: 'Scripts array is required' });
+    }
+
+    const scriptsDir = getScriptsDirectory();
+    const archiver = (await import('archiver')).default;
+    const archive = archiver('zip', { zlib: { level: 9 } });
+
+    res.attachment('scripts-export.zip');
+    archive.pipe(res);
+
+    for (const scriptPath of scripts) {
+      // Validate script path
+      if (!scriptPath.startsWith('/data/scripts/') || scriptPath.includes('..')) {
+        logger.warn(`⚠️  Skipping invalid script path: ${scriptPath}`);
+        continue;
+      }
+
+      const filename = path.basename(scriptPath);
+      const filePath = path.join(scriptsDir, filename);
+
+      if (fs.existsSync(filePath)) {
+        archive.file(filePath, { name: filename });
+      } else {
+        logger.warn(`⚠️  Script not found: ${filename}`);
+      }
+    }
+
+    await archive.finalize();
+    logger.info(`✅ Exported ${scripts.length} script(s) as zip`);
+  } catch (error: any) {
+    logger.error('❌ Error exporting scripts:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message || 'Failed to export scripts' });
+    }
+  }
+});
+
+// Script delete endpoint
+apiRouter.delete('/scripts/:filename', requirePermission('settings', 'write'), async (req, res) => {
+  try {
+    const filename = req.params.filename;
+
+    // Security: Validate filename
+    const sanitizedFilename = path.basename(filename);
+    
+    // Prevent deletion of system scripts
+    if (sanitizedFilename === 'upgrade-watchdog.sh') {
+      return res.status(400).json({ error: 'Cannot delete system script' });
+    }
+
+    const scriptsDir = getScriptsDirectory();
+    const filePath = path.join(scriptsDir, sanitizedFilename);
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Script not found' });
+    }
+
+    fs.unlinkSync(filePath);
+    logger.info(`✅ Script deleted: ${sanitizedFilename}`);
+    res.json({ success: true, filename: sanitizedFilename });
+  } catch (error: any) {
+    logger.error('❌ Error deleting script:', error);
+    res.status(500).json({ error: error.message || 'Failed to delete script' });
+  }
+});
 
 // Mount API router first - this must come before static file serving
 // Apply rate limiting and CSRF protection to all API routes (except csrf-token endpoint)
@@ -4549,6 +4987,17 @@ migrateAutoResponderTriggers();
 const server = app.listen(PORT, () => {
   logger.debug(`MeshMonitor server running on port ${PORT}`);
   logger.debug(`Environment: ${env.nodeEnv}`);
+  
+  // Log environment variable sources in development
+  if (env.isDevelopment) {
+    logger.info(`🔧 Meshtastic Node IP: ${env.meshtasticNodeIp} ${env.meshtasticNodeIpProvided ? '📄 (from .env)' : '⚙️ (default)'}`);
+    logger.info(`🔧 Meshtastic TCP Port: ${env.meshtasticTcpPort} ${env.meshtasticTcpPortProvided ? '📄 (from .env)' : '⚙️ (default)'}`);
+    
+    // Log scripts directory location in development
+    const scriptsDir = getScriptsDirectory();
+    logger.info(`📜 Auto-responder scripts directory: ${scriptsDir}`);
+    logger.info(`   Place your test scripts (.js, .mjs, .py, .sh) in this directory`);
+  }
 });
 
 // Configure server timeouts to prevent hanging requests
