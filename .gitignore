@@ -50,7 +50,8 @@ test-results.md
 *.db
 *.db-shm
 *.db-wal
-data/
+/data/
+!docs/.vitepress/data/
 
 # Log directories
 meshmonitor-logs/
