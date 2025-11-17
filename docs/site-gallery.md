@@ -29,6 +29,13 @@ Running a public MeshMonitor instance? We'd love to feature it! **[File an issue
 
 ---
 
+### Kansas City Mesh
+- **URL**: [map.kansascitymesh.live](https://map.kansascitymesh.live/)
+- **Network**: Kansas City Mesh
+- **Description**: Monitoring the Kansas City Meshtastic network with real-time updates and comprehensive coverage.
+
+---
+
 ## About the Site Gallery
 
 The Site Gallery showcases MeshMonitor instances that are publicly accessible. These sites demonstrate:
