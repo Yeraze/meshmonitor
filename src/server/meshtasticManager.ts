@@ -562,12 +562,33 @@ class MeshtasticManager {
         case 'config':
           logger.info('⚙️ Received Config with keys:', Object.keys(parsed.data));
           logger.debug('⚙️ Received Config:', JSON.stringify(parsed.data, null, 2));
+
+          // Proto3 omits fields with default values (false for bool, 0 for numeric)
+          // We need to ensure these fields exist with proper defaults
+          if (parsed.data.lora) {
+            logger.info(`📊 Raw LoRa config from device:`, JSON.stringify(parsed.data.lora, null, 2));
+            logger.info(`📊 usePreset in message: ${parsed.data.lora.usePreset}, typeof: ${typeof parsed.data.lora.usePreset}`);
+            logger.info(`📊 frequencyOffset in message: ${parsed.data.lora.frequencyOffset}, typeof: ${typeof parsed.data.lora.frequencyOffset}`);
+
+            // Ensure boolean fields have explicit values (Proto3 omits false)
+            if (parsed.data.lora.usePreset === undefined) {
+              parsed.data.lora.usePreset = false;
+              logger.info('📊 Set usePreset to false (was undefined - Proto3 default)');
+            }
+
+            // Ensure numeric fields have explicit values (Proto3 omits 0)
+            if (parsed.data.lora.frequencyOffset === undefined) {
+              parsed.data.lora.frequencyOffset = 0;
+              logger.info('📊 Set frequencyOffset to 0 (was undefined - Proto3 default)');
+            }
+          }
+
           // Merge the actual device configuration (don't overwrite)
           this.actualDeviceConfig = { ...this.actualDeviceConfig, ...parsed.data };
           logger.info('📊 Merged actualDeviceConfig now has keys:', Object.keys(this.actualDeviceConfig));
           logger.info('📊 actualDeviceConfig.lora present:', !!this.actualDeviceConfig?.lora);
           if (parsed.data.lora) {
-            logger.info(`📊 Received LoRa config - hopLimit=${parsed.data.lora.hopLimit}`);
+            logger.info(`📊 Received LoRa config - hopLimit=${parsed.data.lora.hopLimit}, usePreset=${this.actualDeviceConfig.lora.usePreset}, frequencyOffset=${this.actualDeviceConfig.lora.frequencyOffset}`);
           }
           logger.info(`📊 Current actualDeviceConfig.lora.hopLimit=${this.actualDeviceConfig?.lora?.hopLimit}`);
           logger.debug('📊 Merged actualDeviceConfig now has:', Object.keys(this.actualDeviceConfig));
@@ -775,8 +796,28 @@ class MeshtasticManager {
    */
   getCurrentConfig(): { deviceConfig: any; moduleConfig: any; localNodeInfo: any } {
     logger.info(`[CONFIG] getCurrentConfig called - hopLimit=${this.actualDeviceConfig?.lora?.hopLimit}`);
+
+    // Apply Proto3 defaults to lora config if it exists
+    let deviceConfig = this.actualDeviceConfig || {};
+    if (deviceConfig.lora) {
+      const loraConfigWithDefaults = {
+        ...deviceConfig.lora,
+        // IMPORTANT: Proto3 omits boolean false and numeric 0 values from JSON serialization
+        // but they're still accessible as properties. Explicitly include them.
+        usePreset: deviceConfig.lora.usePreset !== undefined ? deviceConfig.lora.usePreset : false,
+        frequencyOffset: deviceConfig.lora.frequencyOffset !== undefined ? deviceConfig.lora.frequencyOffset : 0
+      };
+
+      deviceConfig = {
+        ...deviceConfig,
+        lora: loraConfigWithDefaults
+      };
+
+      logger.info(`[CONFIG] Returning lora config with usePreset=${loraConfigWithDefaults.usePreset}, spreadFactor=${loraConfigWithDefaults.spreadFactor}, frequencyOffset=${loraConfigWithDefaults.frequencyOffset}`);
+    }
+
     return {
-      deviceConfig: this.actualDeviceConfig || {},
+      deviceConfig,
       moduleConfig: this.actualModuleConfig || {},
       localNodeInfo: this.localNodeInfo
     };
@@ -3630,7 +3671,17 @@ class MeshtasticManager {
     const loraConfig = this.actualDeviceConfig?.lora || {};
     const mqttConfig = this.actualModuleConfig?.mqtt || {};
 
-    logger.debug('🔍 loraConfig being used:', JSON.stringify(loraConfig, null, 2));
+    // IMPORTANT: Proto3 may omit boolean false and numeric 0 values from JSON serialization
+    // but they're still accessible as properties. We need to explicitly include them.
+    const loraConfigWithDefaults = {
+      ...loraConfig,
+      // Ensure usePreset is explicitly set (Proto3 default is false)
+      usePreset: loraConfig.usePreset !== undefined ? loraConfig.usePreset : false,
+      // Ensure frequencyOffset is explicitly set (Proto3 default is 0)
+      frequencyOffset: loraConfig.frequencyOffset !== undefined ? loraConfig.frequencyOffset : 0
+    };
+
+    logger.debug('🔍 loraConfig being used:', JSON.stringify(loraConfigWithDefaults, null, 2));
     logger.debug('🔍 mqttConfig being used:', JSON.stringify(mqttConfig, null, 2));
 
     // Map region enum values to strings
@@ -3667,8 +3718,8 @@ class MeshtasticManager {
     };
 
     // Convert enum values to human-readable strings
-    const regionValue = typeof loraConfig.region === 'number' ? regionMap[loraConfig.region] || `Unknown (${loraConfig.region})` : loraConfig.region || 'Unknown';
-    const modemPresetValue = typeof loraConfig.modemPreset === 'number' ? modemPresetMap[loraConfig.modemPreset] || `Unknown (${loraConfig.modemPreset})` : loraConfig.modemPreset || 'Unknown';
+    const regionValue = typeof loraConfigWithDefaults.region === 'number' ? regionMap[loraConfigWithDefaults.region] || `Unknown (${loraConfigWithDefaults.region})` : loraConfigWithDefaults.region || 'Unknown';
+    const modemPresetValue = typeof loraConfigWithDefaults.modemPreset === 'number' ? modemPresetMap[loraConfigWithDefaults.modemPreset] || `Unknown (${loraConfigWithDefaults.modemPreset})` : loraConfigWithDefaults.modemPreset || 'Unknown';
 
     return {
       basic: {
@@ -3682,16 +3733,16 @@ class MeshtasticManager {
       radio: {
         region: regionValue,
         modemPreset: modemPresetValue,
-        hopLimit: loraConfig.hopLimit !== undefined ? loraConfig.hopLimit : 'Unknown',
-        txPower: loraConfig.txPower !== undefined ? loraConfig.txPower : 'Unknown',
-        bandwidth: loraConfig.bandwidth || 'Unknown',
-        spreadFactor: loraConfig.spreadFactor || 'Unknown',
-        codingRate: loraConfig.codingRate || 'Unknown',
-        channelNum: loraConfig.channelNum !== undefined ? loraConfig.channelNum : 'Unknown',
+        hopLimit: loraConfigWithDefaults.hopLimit !== undefined ? loraConfigWithDefaults.hopLimit : 'Unknown',
+        txPower: loraConfigWithDefaults.txPower !== undefined ? loraConfigWithDefaults.txPower : 'Unknown',
+        bandwidth: loraConfigWithDefaults.bandwidth || 'Unknown',
+        spreadFactor: loraConfigWithDefaults.spreadFactor || 'Unknown',
+        codingRate: loraConfigWithDefaults.codingRate || 'Unknown',
+        channelNum: loraConfigWithDefaults.channelNum !== undefined ? loraConfigWithDefaults.channelNum : 'Unknown',
         frequency: 'Unknown',
-        txEnabled: loraConfig.txEnabled !== undefined ? loraConfig.txEnabled : 'Unknown',
-        sx126xRxBoostedGain: loraConfig.sx126xRxBoostedGain !== undefined ? loraConfig.sx126xRxBoostedGain : 'Unknown',
-        configOkToMqtt: loraConfig.configOkToMqtt !== undefined ? loraConfig.configOkToMqtt : 'Unknown'
+        txEnabled: loraConfigWithDefaults.txEnabled !== undefined ? loraConfigWithDefaults.txEnabled : 'Unknown',
+        sx126xRxBoostedGain: loraConfigWithDefaults.sx126xRxBoostedGain !== undefined ? loraConfigWithDefaults.sx126xRxBoostedGain : 'Unknown',
+        configOkToMqtt: loraConfigWithDefaults.configOkToMqtt !== undefined ? loraConfigWithDefaults.configOkToMqtt : 'Unknown'
       },
       mqtt: {
         enabled: mqttConfig.enabled || false,
@@ -3705,11 +3756,10 @@ class MeshtasticManager {
       channels: channels.length > 0 ? channels : [
         { index: 0, name: 'Primary', psk: 'None', uplinkEnabled: true, downlinkEnabled: true }
       ],
-      // Raw LoRa config for export/import functionality
-      lora: Object.keys(loraConfig).length > 0 ? loraConfig : undefined
+      // Raw LoRa config for export/import functionality - now includes Proto3 defaults
+      lora: Object.keys(loraConfigWithDefaults).length > 0 ? loraConfigWithDefaults : undefined
     };
   }
-
 
   async sendTextMessage(text: string, channel: number = 0, destination?: number, replyId?: number, emoji?: number, userId?: number): Promise<number> {
     if (!this.isConnected || !this.transport) {
