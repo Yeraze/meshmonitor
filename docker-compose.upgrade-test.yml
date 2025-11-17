@@ -1,0 +1,48 @@
+# Test configuration for upgrade testing
+# Tests upgrading from 2.18.3-1 (with fix) to 2.18.4
+
+services:
+  meshmonitor:
+    image: ghcr.io/yeraze/meshmonitor:2.18.3-1
+    container_name: meshmonitor
+    ports:
+      - "8080:3001"
+    volumes:
+      - meshmonitor-upgrade-test-data:/data
+      - .:/compose:ro
+    environment:
+      - AUTO_UPGRADE_ENABLED=true
+      - MESHTASTIC_NODE_IP=127.0.0.1
+    restart: unless-stopped
+    networks:
+      - default
+
+  # Upgrade watchdog sidecar
+  meshmonitor-upgrader:
+    image: docker:latest
+    container_name: meshmonitor-upgrader
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - meshmonitor-upgrade-test-data:/data
+      - .:/compose:ro
+    environment:
+      - CONTAINER_NAME=meshmonitor
+      - IMAGE_NAME=ghcr.io/yeraze/meshmonitor
+      - TRIGGER_FILE=/data/.upgrade-trigger
+      - STATUS_FILE=/data/.upgrade-status
+      - CHECK_INTERVAL=5
+      - COMPOSE_PROJECT_DIR=/compose
+    command: /data/scripts/upgrade-watchdog.sh
+    depends_on:
+      - meshmonitor
+    networks:
+      - default
+
+volumes:
+  meshmonitor-upgrade-test-data:
+    driver: local
+
+networks:
+  default:
+    name: meshmonitor-upgrade-test

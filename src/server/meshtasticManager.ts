@@ -805,7 +805,9 @@ class MeshtasticManager {
         // IMPORTANT: Proto3 omits boolean false and numeric 0 values from JSON serialization
         // but they're still accessible as properties. Explicitly include them.
         usePreset: deviceConfig.lora.usePreset !== undefined ? deviceConfig.lora.usePreset : false,
-        frequencyOffset: deviceConfig.lora.frequencyOffset !== undefined ? deviceConfig.lora.frequencyOffset : 0
+        frequencyOffset: deviceConfig.lora.frequencyOffset !== undefined ? deviceConfig.lora.frequencyOffset : 0,
+        modemPreset: deviceConfig.lora.modemPreset !== undefined ? deviceConfig.lora.modemPreset : 0,
+        channelNum: deviceConfig.lora.channelNum !== undefined ? deviceConfig.lora.channelNum : 0
       };
 
       deviceConfig = {
@@ -3678,7 +3680,11 @@ class MeshtasticManager {
       // Ensure usePreset is explicitly set (Proto3 default is false)
       usePreset: loraConfig.usePreset !== undefined ? loraConfig.usePreset : false,
       // Ensure frequencyOffset is explicitly set (Proto3 default is 0)
-      frequencyOffset: loraConfig.frequencyOffset !== undefined ? loraConfig.frequencyOffset : 0
+      frequencyOffset: loraConfig.frequencyOffset !== undefined ? loraConfig.frequencyOffset : 0,
+      // Ensure modemPreset is explicitly set (Proto3 default is 0 = LONG_FAST)
+      modemPreset: loraConfig.modemPreset !== undefined ? loraConfig.modemPreset : 0,
+      // Ensure channelNum is explicitly set (Proto3 default is 0)
+      channelNum: loraConfig.channelNum !== undefined ? loraConfig.channelNum : 0
     };
 
     logger.debug('🔍 loraConfig being used:', JSON.stringify(loraConfigWithDefaults, null, 2));
