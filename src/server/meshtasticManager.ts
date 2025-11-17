@@ -2274,24 +2274,6 @@ class MeshtasticManager {
         nodeData.shortName = nodeInfo.user.shortName;
         nodeData.hwModel = nodeInfo.user.hwModel;
         nodeData.role = nodeInfo.user.role;
-
-        // Capture public key if present (important for local node)
-        if (nodeInfo.user.publicKey && nodeInfo.user.publicKey.length > 0) {
-          // Convert Uint8Array to base64 for storage
-          nodeData.publicKey = Buffer.from(nodeInfo.user.publicKey).toString('base64');
-          nodeData.hasPKC = true;
-          logger.debug(`🔐 Captured public key for ${nodeId}: ${nodeData.publicKey.substring(0, 16)}...`);
-
-          // Check for key security issues
-          const { checkLowEntropyKey } = await import('../services/lowEntropyKeyService.js');
-          const isLowEntropy = checkLowEntropyKey(nodeData.publicKey, 'base64');
-
-          if (isLowEntropy) {
-            nodeData.keyIsLowEntropy = true;
-            nodeData.keySecurityIssueDetails = 'Known low-entropy key detected - this key is compromised and should be regenerated';
-            logger.warn(`⚠️ Low-entropy key detected for node ${nodeId}!`);
-          }
-        }
       }
 
       // viaMqtt is at the top level of NodeInfo, not inside user
@@ -4074,8 +4056,19 @@ class MeshtasticManager {
       // Format timestamp in local timezone (from TZ environment variable)
       const env = getEnvironmentConfig();
       const timestamp = new Date(message.timestamp);
-      const receivedDate = timestamp.toLocaleDateString('en-US', { timeZone: env.timezone });
-      const receivedTime = timestamp.toLocaleTimeString('en-US', { timeZone: env.timezone });
+
+      // Safely format date/time with timezone support and fallback to UTC
+      let receivedDate: string;
+      let receivedTime: string;
+      try {
+        receivedDate = timestamp.toLocaleDateString('en-US', { timeZone: env.timezone });
+        receivedTime = timestamp.toLocaleTimeString('en-US', { timeZone: env.timezone });
+      } catch (error) {
+        // If timezone is invalid or not supported, fall back to UTC
+        logger.warn(`⚠️  Invalid timezone '${env.timezone}', falling back to UTC for auto-acknowledge`, error);
+        receivedDate = timestamp.toLocaleDateString('en-US', { timeZone: 'UTC' });
+        receivedTime = timestamp.toLocaleTimeString('en-US', { timeZone: 'UTC' });
+      }
 
       // Replace tokens in the message template
       let ackText = await this.replaceAcknowledgementTokens(autoAckMessage, message.fromNodeId, fromNum, hopsTraveled, receivedDate, receivedTime);
@@ -4143,29 +4136,20 @@ class MeshtasticManager {
 
       logger.info(`🤖 Auto-responder checking message on ${isDirectMessage ? 'DM' : `channel ${channelIndex}`}: "${messageText}"`);
 
-      // Try to match message against triggers
-      for (const trigger of triggers) {
-        // Filter trigger by channel - default to 'dm' if not specified for backward compatibility
-        const triggerChannel = trigger.channel ?? 'dm';
-
-        logger.info(`🤖 Checking trigger "${trigger.trigger}" (channel: ${triggerChannel}) against message on ${isDirectMessage ? 'DM' : `channel ${channelIndex}`}`);
-
-        // Check if this trigger applies to the current message
-        if (isDirectMessage) {
-          // For DMs, only match triggers configured for DM
-          if (triggerChannel !== 'dm') {
-            logger.info(`⏭️  Skipping trigger "${trigger.trigger}" - configured for channel ${triggerChannel}, but message is DM`);
-            continue;
-          }
-        } else {
-          // For channel messages, only match triggers configured for this specific channel
-          if (triggerChannel !== channelIndex) {
-            logger.info(`⏭️  Skipping trigger "${trigger.trigger}" - configured for ${triggerChannel === 'dm' ? 'DM' : `channel ${triggerChannel}`}, but message is on channel ${channelIndex}`);
-            continue;
-          }
+      // Helper function to normalize trigger patterns (handle both string and array)
+      const normalizeTriggerPattern = (triggerPattern: string | string[]): string[] => {
+        if (Array.isArray(triggerPattern)) {
+          return triggerPattern;
         }
+        // Check if it's a comma-separated string (e.g., "ask, ask {message}")
+        if (triggerPattern.includes(',')) {
+          return triggerPattern.split(',').map(t => t.trim()).filter(t => t.length > 0);
+        }
+        return [triggerPattern];
+      };
 
-        // Extract parameters with optional regex patterns from trigger pattern
+      // Helper function to extract parameters from a pattern string
+      const extractParameters = (patternStr: string): Array<{ name: string; pattern?: string }> => {
         interface ParamSpec {
           name: string;
           pattern?: string;
@@ -4173,33 +4157,33 @@ class MeshtasticManager {
         const params: ParamSpec[] = [];
         let i = 0;
 
-        while (i < trigger.trigger.length) {
-          if (trigger.trigger[i] === '{') {
+        while (i < patternStr.length) {
+          if (patternStr[i] === '{') {
             const startPos = i + 1;
             let depth = 1;
             let colonPos = -1;
             let endPos = -1;
 
             // Find the matching closing brace, accounting for nested braces in regex patterns
-            for (let j = startPos; j < trigger.trigger.length && depth > 0; j++) {
-              if (trigger.trigger[j] === '{') {
+            for (let j = startPos; j < patternStr.length && depth > 0; j++) {
+              if (patternStr[j] === '{') {
                 depth++;
-              } else if (trigger.trigger[j] === '}') {
+              } else if (patternStr[j] === '}') {
                 depth--;
                 if (depth === 0) {
                   endPos = j;
                 }
-              } else if (trigger.trigger[j] === ':' && depth === 1 && colonPos === -1) {
+              } else if (patternStr[j] === ':' && depth === 1 && colonPos === -1) {
                 colonPos = j;
               }
             }
 
             if (endPos !== -1) {
               const paramName = colonPos !== -1
-                ? trigger.trigger.substring(startPos, colonPos)
-                : trigger.trigger.substring(startPos, endPos);
+                ? patternStr.substring(startPos, colonPos)
+                : patternStr.substring(startPos, endPos);
               const paramPattern = colonPos !== -1
-                ? trigger.trigger.substring(colonPos + 1, endPos)
+                ? patternStr.substring(colonPos + 1, endPos)
                 : undefined;
 
               if (!params.find(p => p.name === paramName)) {
@@ -4215,22 +4199,29 @@ class MeshtasticManager {
           }
         }
 
+        return params;
+      };
+
+      // Helper function to match a single pattern against a message
+      const matchSinglePattern = (patternStr: string, message: string): { matches: boolean; params?: Record<string, string> } => {
+        const params = extractParameters(patternStr);
+
         // Build regex pattern from trigger by processing it character by character
         let pattern = '';
         const replacements: Array<{ start: number; end: number; replacement: string }> = [];
-        i = 0;
+        let i = 0;
 
-        while (i < trigger.trigger.length) {
-          if (trigger.trigger[i] === '{') {
+        while (i < patternStr.length) {
+          if (patternStr[i] === '{') {
             const startPos = i;
             let depth = 1;
             let endPos = -1;
 
             // Find the matching closing brace
-            for (let j = i + 1; j < trigger.trigger.length && depth > 0; j++) {
-              if (trigger.trigger[j] === '{') {
+            for (let j = i + 1; j < patternStr.length && depth > 0; j++) {
+              if (patternStr[j] === '{') {
                 depth++;
-              } else if (trigger.trigger[j] === '}') {
+              } else if (patternStr[j] === '}') {
                 depth--;
                 if (depth === 0) {
                   endPos = j;
@@ -4258,14 +4249,14 @@ class MeshtasticManager {
         }
 
         // Build the final pattern by replacing placeholders
-        for (let i = 0; i < trigger.trigger.length; i++) {
+        for (let i = 0; i < patternStr.length; i++) {
           const replacement = replacements.find(r => r.start === i);
           if (replacement) {
             pattern += replacement.replacement;
             i = replacement.end - 1; // -1 because loop will increment
           } else {
             // Escape special regex characters in literal parts
-            const char = trigger.trigger[i];
+            const char = patternStr[i];
             if (/[.*+?^${}()|[\]\\]/.test(char)) {
               pattern += '\\' + char;
             } else {
@@ -4275,7 +4266,7 @@ class MeshtasticManager {
         }
 
         const triggerRegex = new RegExp(`^${pattern}$`, 'i');
-        const triggerMatch = messageText.match(triggerRegex);
+        const triggerMatch = message.match(triggerRegex);
 
         if (triggerMatch) {
           // Extract parameters
@@ -4283,8 +4274,53 @@ class MeshtasticManager {
           params.forEach((param, index) => {
             extractedParams[param.name] = triggerMatch[index + 1];
           });
+          return { matches: true, params: extractedParams };
+        }
 
-          logger.debug(`🤖 Auto-responder triggered by: "${messageText}" matching pattern: "${trigger.trigger}"`);
+        return { matches: false };
+      };
+
+      // Try to match message against triggers
+      for (const trigger of triggers) {
+        // Filter trigger by channel - default to 'dm' if not specified for backward compatibility
+        const triggerChannel = trigger.channel ?? 'dm';
+
+        // Normalize trigger pattern (handle both string and array)
+        const patterns = normalizeTriggerPattern(trigger.trigger);
+        const triggerDisplay = Array.isArray(trigger.trigger) ? trigger.trigger.join(', ') : trigger.trigger;
+
+        logger.info(`🤖 Checking trigger "${triggerDisplay}" (channel: ${triggerChannel}) against message on ${isDirectMessage ? 'DM' : `channel ${channelIndex}`}`);
+
+        // Check if this trigger applies to the current message
+        if (isDirectMessage) {
+          // For DMs, only match triggers configured for DM
+          if (triggerChannel !== 'dm') {
+            logger.info(`⏭️  Skipping trigger "${triggerDisplay}" - configured for channel ${triggerChannel}, but message is DM`);
+            continue;
+          }
+        } else {
+          // For channel messages, only match triggers configured for this specific channel
+          if (triggerChannel !== channelIndex) {
+            logger.info(`⏭️  Skipping trigger "${triggerDisplay}" - configured for ${triggerChannel === 'dm' ? 'DM' : `channel ${triggerChannel}`}, but message is on channel ${channelIndex}`);
+            continue;
+          }
+        }
+
+        // Try each pattern until one matches
+        let matchedPattern: string | null = null;
+        let extractedParams: Record<string, string> = {};
+
+        for (const patternStr of patterns) {
+          const matchResult = matchSinglePattern(patternStr, messageText);
+          if (matchResult.matches) {
+            matchedPattern = patternStr;
+            extractedParams = matchResult.params || {};
+            break;
+          }
+        }
+
+        if (matchedPattern) {
+          logger.debug(`🤖 Auto-responder triggered by: "${messageText}" matching pattern: "${matchedPattern}" (from trigger: "${triggerDisplay}")`);
 
           let responseText: string;
 

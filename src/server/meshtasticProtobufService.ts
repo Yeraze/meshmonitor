@@ -932,8 +932,11 @@ export class MeshtasticProtobufService {
   /**
    * Create FromRadio message wrapping a MeshPacket
    * Used for processing outgoing messages locally so they appear in the web UI
+   *
+   * @param meshPacket - The MeshPacket to wrap
+   * @param overrideFrom - Optional node number to use for 'from' field (fixes Android client issue #626)
    */
-  async createFromRadioWithPacket(meshPacket: MeshPacket): Promise<Uint8Array | null> {
+  async createFromRadioWithPacket(meshPacket: MeshPacket, overrideFrom?: number): Promise<Uint8Array | null> {
     const root = getProtobufRoot();
     if (!root) {
       logger.error('❌ Protobuf definitions not loaded');
@@ -942,9 +945,21 @@ export class MeshtasticProtobufService {
 
     try {
       const FromRadio = root.lookupType('meshtastic.FromRadio');
+      const MeshPacket = root.lookupType('meshtastic.MeshPacket');
+
+      let packetToEncode: any = meshPacket;
+
+      // If overrideFrom is provided, create a modified copy of the packet
+      // This is used to fix issue #626 where Android clients send from=0
+      if (overrideFrom !== undefined) {
+        const packetObj: any = MeshPacket.toObject(meshPacket as any);
+        packetObj.from = overrideFrom;
+        packetToEncode = MeshPacket.create(packetObj);
+        logger.debug(`📦 Created MeshPacket copy with from=${overrideFrom} for local storage`);
+      }
 
       const fromRadio = FromRadio.create({
-        packet: meshPacket,
+        packet: packetToEncode,
       });
 
       return FromRadio.encode(fromRadio).finish();
@@ -953,6 +968,62 @@ export class MeshtasticProtobufService {
       return null;
     }
   }
+
+  /**
+   * Strip PKI encryption from a ToRadio packet with from=0
+   * This is needed because Android clients send PKI-encrypted packets with from=0,
+   * which fail validation at the physical node when relayed through Virtual Node Server
+   *
+   * @param toRadioBytes - The original ToRadio packet bytes
+   * @returns Modified ToRadio packet bytes without PKI encryption, or original bytes if stripping fails
+   */
+  async stripPKIEncryption(toRadioBytes: Uint8Array): Promise<Uint8Array> {
+    const root = getProtobufRoot();
+    if (!root) {
+      logger.error('❌ Protobuf definitions not loaded');
+      return toRadioBytes;
+    }
+
+    try {
+      const ToRadio = root.lookupType('meshtastic.ToRadio');
+      const MeshPacket = root.lookupType('meshtastic.MeshPacket');
+
+      // Decode the ToRadio message
+      const toRadio: any = ToRadio.decode(toRadioBytes);
+
+      if (!toRadio.packet) {
+        return toRadioBytes; // Not a packet message, return unchanged
+      }
+
+      // Convert packet to object to modify it
+      const packetObj: any = MeshPacket.toObject(toRadio.packet);
+
+      // Only strip PKI if from=0 and pkiEncrypted=true
+      if ((packetObj.from === 0 || !packetObj.from) && packetObj.pkiEncrypted) {
+        logger.info(`🔓 Stripping PKI encryption from packet with from=0 (pkiEncrypted=${packetObj.pkiEncrypted})`);
+
+        // Remove PKI-related fields
+        delete packetObj.pkiEncrypted;
+        delete packetObj.publicKey;
+
+        // Recreate the packet without PKI encryption
+        const newPacket = MeshPacket.create(packetObj);
+        const newToRadio = ToRadio.create({
+          packet: newPacket,
+        });
+
+        logger.info(`✅ Successfully stripped PKI encryption from packet`);
+        return ToRadio.encode(newToRadio).finish();
+      }
+
+      // No modification needed
+      return toRadioBytes;
+    } catch (error) {
+      logger.error('❌ Failed to strip PKI encryption:', error);
+      return toRadioBytes; // Return original on error
+    }
+  }
+
 }
 
 // Export singleton instance

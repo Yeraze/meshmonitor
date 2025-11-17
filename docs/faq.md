@@ -250,6 +250,41 @@ docker compose up -d
 docker compose logs meshmonitor | grep "Version:"
 ```
 
+---
+
+### I get "container name is already in use" error after auto-upgrade
+
+**Problem:** After using the built-in auto-upgrade feature, manual `docker compose pull && docker compose up` commands fail with:
+
+```
+Error response from daemon: Conflict. The container name "/meshmonitor" is already in use by container "xxxxx".
+You have to remove (or rename) that container to be able to reuse that name.
+```
+
+**Cause:** This happens when the auto-upgrade watchdog successfully upgraded your container, but the container wasn't properly managed by Docker Compose afterward.
+
+**Solution:** Remove the existing container and recreate it with Docker Compose:
+
+```bash
+# Stop and remove the existing container
+docker stop meshmonitor
+docker rm meshmonitor
+
+# Restart using Docker Compose (this properly manages the container)
+docker compose up -d
+
+# Verify it's running
+docker compose ps
+```
+
+**Prevention:** This issue is fixed in MeshMonitor v2.18.5 and later. The upgrade watchdog now uses Docker Compose to recreate containers, ensuring compatibility with manual `docker compose` commands.
+
+**How it works:**
+- **Before v2.18.5:** The watchdog used `docker run` commands, creating containers outside Docker Compose management
+- **After v2.18.5:** The watchdog uses `docker compose up -d --force-recreate`, maintaining Docker Compose compatibility
+
+**If you see this frequently:** Upgrade to the latest version of MeshMonitor to get the improved upgrade process.
+
 #### For Bare Metal Deployments:
 
 ```bash

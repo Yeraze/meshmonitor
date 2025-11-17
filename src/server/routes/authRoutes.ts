@@ -125,6 +125,70 @@ router.get('/check-default-password', (_req: Request, res: Response) => {
   }
 });
 
+// Check for common configuration issues that prevent login
+router.get('/check-config-issues', (req: Request, res: Response) => {
+  try {
+    const config = getEnvironmentConfig();
+    const issues: Array<{
+      type: 'cookie_secure' | 'allowed_origins';
+      severity: 'error' | 'warning';
+      message: string;
+      docsUrl: string;
+    }> = [];
+
+    // Detect the protocol from the request
+    const protocol = req.protocol; // 'http' or 'https'
+    const isHttps = protocol === 'https' || req.get('x-forwarded-proto') === 'https';
+
+    // Check for COOKIE_SECURE misconfiguration
+    // Issue 1: COOKIE_SECURE=true but accessing via HTTP
+    if (config.cookieSecure && !isHttps) {
+      issues.push({
+        type: 'cookie_secure',
+        severity: 'error',
+        message: 'Secure cookies are enabled but you are accessing via HTTP. Session cookies will not work. Set COOKIE_SECURE=false or access via HTTPS.',
+        docsUrl: 'https://meshmonitor.org/faq.html#i-see-a-blank-white-screen-when-accessing-meshmonitor'
+      });
+    }
+
+    // Issue 2: COOKIE_SECURE=false but accessing via HTTPS
+    if (!config.cookieSecure && isHttps) {
+      issues.push({
+        type: 'cookie_secure',
+        severity: 'warning',
+        message: 'You are accessing via HTTPS but secure cookies are disabled (COOKIE_SECURE=false). For better security, set COOKIE_SECURE=true.',
+        docsUrl: 'https://meshmonitor.org/faq.html#i-see-a-blank-white-screen-when-accessing-meshmonitor'
+      });
+    }
+
+    // Get the current origin from the request
+    const currentOrigin = req.get('origin') || req.get('referer');
+
+    // Check for ALLOWED_ORIGINS misconfiguration
+    // Issue: Current origin is not in ALLOWED_ORIGINS list
+    if (currentOrigin && config.allowedOriginsProvided) {
+      try {
+        const origin = new URL(currentOrigin).origin;
+        if (!config.allowedOrigins.includes(origin)) {
+          issues.push({
+            type: 'allowed_origins',
+            severity: 'error',
+            message: `Your current origin (${origin}) is not in ALLOWED_ORIGINS. CORS will block authentication. Add ${origin} to ALLOWED_ORIGINS.`,
+            docsUrl: 'https://meshmonitor.org/faq.html#i-see-a-blank-white-screen-when-accessing-meshmonitor'
+          });
+        }
+      } catch (error) {
+        // Invalid URL, skip check
+      }
+    }
+
+    return res.json({ issues });
+  } catch (error) {
+    logger.error('Error checking config issues:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Local authentication login
 // Apply strict rate limiting to prevent brute force attacks
 router.post('/login', authLimiter, async (req: Request, res: Response) => {

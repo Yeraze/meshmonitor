@@ -971,6 +971,19 @@ class ApiService {
     return response.json();
   }
 
+  async getServerInfo() {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/server-info`, {
+      credentials: 'include'
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch server info');
+    }
+
+    return response.json();
+  }
+
   async fetchLinkPreview(url: string) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/link-preview?url=${encodeURIComponent(url)}`, {

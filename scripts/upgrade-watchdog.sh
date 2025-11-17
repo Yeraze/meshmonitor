@@ -89,64 +89,92 @@ pull_image() {
 recreate_container() {
   log "Recreating container: $CONTAINER_NAME"
 
-  # Use direct Docker commands to recreate the container
-  # This works regardless of which compose files were originally used
-  log "Recreating container using Docker commands"
+  # Use Docker Compose if available, otherwise fall back to Docker commands
+  # Docker Compose ensures proper container management and avoids conflicts
 
-  # Pull the new image
-  if docker pull "${IMAGE_NAME}:latest" 2>/dev/null; then
-    log_success "Image pulled: ${IMAGE_NAME}:latest"
-  fi
+  if [ -d "$COMPOSE_PROJECT_DIR" ] && [ -f "$COMPOSE_PROJECT_DIR/docker-compose.yml" ]; then
+    log "Using Docker Compose to recreate container"
 
-  # Get current container configuration before stopping
-  local network=$(docker inspect --format='{{range $net,$v := .NetworkSettings.Networks}}{{$net}}{{end}}' "$CONTAINER_NAME" 2>/dev/null | head -n1)
-  # Extract both volume and bind mounts
-  local volumes=$(docker inspect --format='{{range .Mounts}}{{if eq .Type "volume"}}-v {{.Name}}:{{.Destination}}{{if .RW}}{{else}}:ro{{end}} {{else if eq .Type "bind"}}-v {{.Source}}:{{.Destination}}{{if .RW}}{{else}}:ro{{end}} {{end}}{{end}}' "$CONTAINER_NAME" 2>/dev/null)
+    # Detect which compose files are in use
+    local compose_files="-f docker-compose.yml"
+    if [ -f "$COMPOSE_PROJECT_DIR/docker-compose.upgrade.yml" ]; then
+      compose_files="$compose_files -f docker-compose.upgrade.yml"
+      log "Detected upgrade overlay: docker-compose.upgrade.yml"
+    fi
 
-  # Extract ports - remove /tcp or /udp protocol suffix for docker run compatibility
-  local ports=$(docker inspect --format='{{range $p, $conf := .NetworkSettings.Ports}}{{if $conf}}-p {{(index $conf 0).HostPort}}:{{$p}} {{end}}{{end}}' "$CONTAINER_NAME" 2>/dev/null | sed 's|/tcp||g; s|/udp||g')
+    # Pull latest image
+    if docker pull "${IMAGE_NAME}:latest" 2>/dev/null; then
+      log_success "Image pulled: ${IMAGE_NAME}:latest"
+    fi
 
-  # Extract env vars to a temporary file to handle values with spaces properly
-  local env_file="/tmp/.meshmonitor-upgrade-env-$$"
-  docker inspect --format='{{range .Config.Env}}{{.}}{{"\n"}}{{end}}' "$CONTAINER_NAME" 2>/dev/null | \
-    grep -v '^COMPOSE_' | \
-    grep -v '^DOCKER_' | \
-    grep -v '^PATH=' | \
-    grep -v '^HOME=' | \
-    grep -v '^HOSTNAME=' | \
-    grep -v '^$' > "$env_file"
-
-  # Stop and remove old container
-  log "Stopping current container..."
-  docker stop "$CONTAINER_NAME" || true
-  docker rm "$CONTAINER_NAME" || true
-
-  # Start new container with same configuration
-  log "Starting new container..."
-
-  # Build command incrementally to handle optional network parameter
-  set -- -d --name "$CONTAINER_NAME" --restart unless-stopped
-
-  # Add network if present (using positional parameters to avoid word-splitting issues)
-  if [ -n "$network" ]; then
-    set -- "$@" --network "$network"
-  fi
-
-  # Execute docker run with all parameters
-  # Note: $ports, $volumes are intentionally unquoted for word splitting
-  # Use --env-file to properly handle env vars with spaces in values
-  docker run "$@" $ports $volumes --env-file "$env_file" ghcr.io/yeraze/meshmonitor:latest
-  local exit_code=$?
-
-  # Clean up temp env file
-  rm -f "$env_file"
-
-  if [ $exit_code -eq 0 ]; then
-    log_success "Container recreated successfully"
-    return 0
+    # Recreate using docker compose (this properly handles all configuration)
+    cd "$COMPOSE_PROJECT_DIR" || return 1
+    if docker compose $compose_files up -d --force-recreate --no-deps meshmonitor; then
+      log_success "Container recreated successfully via Docker Compose"
+      return 0
+    else
+      log_error "Failed to recreate container via Docker Compose"
+      return 1
+    fi
   else
-    log_error "Failed to recreate container"
-    return 1
+    # Fallback to direct Docker commands (legacy compatibility)
+    log "Docker Compose files not found, using direct Docker commands"
+
+    # Pull the new image
+    if docker pull "${IMAGE_NAME}:latest" 2>/dev/null; then
+      log_success "Image pulled: ${IMAGE_NAME}:latest"
+    fi
+
+    # Get current container configuration before stopping
+    local network=$(docker inspect --format='{{range $net,$v := .NetworkSettings.Networks}}{{$net}}{{end}}' "$CONTAINER_NAME" 2>/dev/null | head -n1)
+    # Extract both volume and bind mounts
+    local volumes=$(docker inspect --format='{{range .Mounts}}{{if eq .Type "volume"}}-v {{.Name}}:{{.Destination}}{{if .RW}}{{else}}:ro{{end}} {{else if eq .Type "bind"}}-v {{.Source}}:{{.Destination}}{{if .RW}}{{else}}:ro{{end}} {{end}}{{end}}' "$CONTAINER_NAME" 2>/dev/null)
+
+    # Extract ports - remove /tcp or /udp protocol suffix for docker run compatibility
+    local ports=$(docker inspect --format='{{range $p, $conf := .NetworkSettings.Ports}}{{if $conf}}-p {{(index $conf 0).HostPort}}:{{$p}} {{end}}{{end}}' "$CONTAINER_NAME" 2>/dev/null | sed 's|/tcp||g; s|/udp||g')
+
+    # Extract env vars to a temporary file to handle values with spaces properly
+    local env_file="/tmp/.meshmonitor-upgrade-env-$$"
+    docker inspect --format='{{range .Config.Env}}{{.}}{{"\n"}}{{end}}' "$CONTAINER_NAME" 2>/dev/null | \
+      grep -v '^COMPOSE_' | \
+      grep -v '^DOCKER_' | \
+      grep -v '^PATH=' | \
+      grep -v '^HOME=' | \
+      grep -v '^HOSTNAME=' | \
+      grep -v '^$' > "$env_file"
+
+    # Stop and remove old container
+    log "Stopping current container..."
+    docker stop "$CONTAINER_NAME" || true
+    docker rm "$CONTAINER_NAME" || true
+
+    # Start new container with same configuration
+    log "Starting new container..."
+
+    # Build command incrementally to handle optional network parameter
+    set -- -d --name "$CONTAINER_NAME" --restart unless-stopped
+
+    # Add network if present (using positional parameters to avoid word-splitting issues)
+    if [ -n "$network" ]; then
+      set -- "$@" --network "$network"
+    fi
+
+    # Execute docker run with all parameters
+    # Note: $ports, $volumes are intentionally unquoted for word splitting
+    # Use --env-file to properly handle env vars with spaces in values
+    docker run "$@" $ports $volumes --env-file "$env_file" ghcr.io/yeraze/meshmonitor:latest
+    local exit_code=$?
+
+    # Clean up temp env file
+    rm -f "$env_file"
+
+    if [ $exit_code -eq 0 ]; then
+      log_success "Container recreated successfully"
+      return 0
+    else
+      log_error "Failed to recreate container"
+      return 1
+    fi
   fi
 }
 
