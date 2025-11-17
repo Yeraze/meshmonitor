@@ -410,6 +410,49 @@ Always select the correct region for your location. Using incorrect frequency ba
 - Increase (4-5) only for very large geographic coverage
 - Decrease (1-2) for dense local networks to reduce congestion
 
+### Channel Number
+
+**Description**: LoRa channel number used for frequency hopping within the selected frequency band.
+
+**Range**: 0-255
+
+**Default**: 0
+
+**Effect**: Determines the specific frequency offset within your region's frequency band. All nodes on the same mesh network must use the same channel number to communicate.
+
+**Side Effects**:
+- Changing channel number will disconnect you from nodes using different channel numbers
+- Can be used to create isolated networks within the same physical area
+- Does not affect regulatory region compliance (region setting controls legal frequencies)
+
+**Best Practices**:
+- Use default (0) unless you need network isolation
+- Change only if you need to avoid interference with another nearby mesh network
+- Ensure all nodes in your network use the same channel number
+
+### RX Boosted Gain (SX126x)
+
+**Description**: Enable boosted receive gain mode for devices using SX126x radio chips (e.g., RAK4631, LilyGo T-Beam with SX1262).
+
+**Default**: Disabled
+
+**Effect**: Improves receiver sensitivity, allowing the radio to receive weaker signals and potentially extending range.
+
+**Side Effects**:
+- **Increased power consumption**: Boosted gain mode uses more power, reducing battery life
+- **May increase noise**: Higher sensitivity can also pick up more background RF noise
+- **Only works on SX126x radios**: Has no effect on SX127x or other radio types
+
+**Best Practices**:
+- Enable for fixed, powered installations where power consumption isn't a concern
+- Consider enabling for routers or infrastructure nodes to improve network coverage
+- Disable for battery-powered mobile nodes to maximize battery life
+- Test range improvement in your specific environment (results vary)
+
+**Hardware Compatibility**:
+- ✅ Works: Devices with SX1262, SX1268 radios (RAK4631, some T-Beam models, Heltec V3)
+- ❌ No effect: Devices with SX1276, SX1278 radios (older T-Beam, some Heltec models)
+
 ### Related Meshtastic Documentation
 
 - [Meshtastic LoRa Configuration](https://meshtastic.org/docs/configuration/radio/lora/)
