@@ -1,4 +1,124 @@
 [
+  {
+    "name": "Hello World",
+    "filename": "hello.js",
+    "icon": "👋",
+    "description": "Simple greeting script demonstrating parameter extraction and basic script structure. Perfect starting point for learning Auto Responder scripting.",
+    "language": "JavaScript",
+    "tags": ["Example", "Getting Started", "Node.js", "Tutorial"],
+    "githubPath": "Yeraze/meshmonitor/examples/auto-responder-scripts/hello.js",
+    "exampleTrigger": "hello {name}",
+    "requirements": [
+      "Node.js 22+ (included in MeshMonitor)"
+    ],
+    "author": "MeshMonitor",
+    "features": [
+      "Parameter extraction example",
+      "Environment variable usage",
+      "JSON response format",
+      "No external dependencies"
+    ]
+  },
+  {
+    "name": "System Info",
+    "filename": "info.sh",
+    "icon": "ℹ️",
+    "description": "Shell script example showing system uptime and node information. Demonstrates shell scripting with Auto Responder.",
+    "language": "Shell",
+    "tags": ["Example", "System", "Shell", "Info"],
+    "githubPath": "Yeraze/meshmonitor/examples/auto-responder-scripts/info.sh",
+    "exampleTrigger": "info",
+    "requirements": [
+      "BusyBox sh (included in MeshMonitor)"
+    ],
+    "author": "MeshMonitor",
+    "features": [
+      "Shell script example",
+      "System information retrieval",
+      "Simple trigger pattern",
+      "No parameters required"
+    ]
+  },
+  {
+    "name": "Weather Template",
+    "filename": "weather.py",
+    "icon": "🌡️",
+    "description": "Python weather script template with error handling. Shows stub implementation ready for your API integration.",
+    "language": "Python",
+    "tags": ["Example", "Weather", "Python", "Template"],
+    "githubPath": "Yeraze/meshmonitor/examples/auto-responder-scripts/weather.py",
+    "exampleTrigger": "weather {location}",
+    "requirements": [
+      "Python 3.12+ (included in MeshMonitor)"
+    ],
+    "author": "MeshMonitor",
+    "features": [
+      "Python script example",
+      "Error handling pattern",
+      "Parameter extraction",
+      "API integration template"
+    ]
+  },
+  {
+    "name": "Multi-Message Demo (JavaScript)",
+    "filename": "lorem.js",
+    "icon": "📜",
+    "description": "Demonstrates returning multiple responses that are queued and sent sequentially with rate limiting. JavaScript implementation.",
+    "language": "JavaScript",
+    "tags": ["Example", "Multi-Message", "Node.js", "Advanced"],
+    "githubPath": "Yeraze/meshmonitor/examples/auto-responder-scripts/lorem.js",
+    "exampleTrigger": "lorem",
+    "requirements": [
+      "Node.js 22+ (included in MeshMonitor)"
+    ],
+    "author": "MeshMonitor",
+    "features": [
+      "Multiple response messages",
+      "Rate limiting (30s between messages)",
+      "Retry logic (up to 3 attempts)",
+      "Advanced scripting pattern"
+    ]
+  },
+  {
+    "name": "Multi-Message Demo (Python)",
+    "filename": "lorem.py",
+    "icon": "📜",
+    "description": "Demonstrates returning multiple responses that are queued and sent sequentially with rate limiting. Python implementation.",
+    "language": "Python",
+    "tags": ["Example", "Multi-Message", "Python", "Advanced"],
+    "githubPath": "Yeraze/meshmonitor/examples/auto-responder-scripts/lorem.py",
+    "exampleTrigger": "lorem",
+    "requirements": [
+      "Python 3.12+ (included in MeshMonitor)"
+    ],
+    "author": "MeshMonitor",
+    "features": [
+      "Multiple response messages",
+      "Rate limiting (30s between messages)",
+      "Retry logic (up to 3 attempts)",
+      "Advanced scripting pattern"
+    ]
+  },
+  {
+    "name": "Multi-Message Demo (Shell)",
+    "filename": "lorem.sh",
+    "icon": "📜",
+    "description": "Demonstrates returning multiple responses that are queued and sent sequentially with rate limiting. Shell implementation.",
+    "language": "Shell",
+    "tags": ["Example", "Multi-Message", "Shell", "Advanced"],
+    "githubPath": "Yeraze/meshmonitor/examples/auto-responder-scripts/lorem.sh",
+    "exampleTrigger": "lorem",
+    "requirements": [
+      "BusyBox sh (included in MeshMonitor)"
+    ],
+    "author": "MeshMonitor",
+    "features": [
+      "Multiple response messages",
+      "Rate limiting (30s between messages)",
+      "Retry logic (up to 3 attempts)",
+      "Advanced scripting pattern"
+    ]
+  },
 {
     "name": "Weather Bot",
     "filename": "PirateWeather.py",
