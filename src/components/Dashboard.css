@@ -244,14 +244,14 @@
   border: 1px solid var(--ctp-surface1);
   border-radius: 8px;
   padding: 15px;
+  min-width: 0;
 }
 
 .dashboard-chart-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   margin-bottom: 10px;
-  gap: 8px;
+  min-width: 0;
 }
 
 .dashboard-drag-handle {
@@ -259,6 +259,7 @@
   font-size: 1.2rem;
   cursor: grab;
   padding: 0 4px;
+  margin-right: 4px;
   user-select: none;
   transition: color 0.2s ease;
   flex-shrink: 0;
@@ -279,12 +280,11 @@
   margin: 0;
   font-size: 0.95rem;
   font-weight: 500;
-  flex: 1;
-  min-width: 0; /* Critical for flexbox text truncation */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding-right: 10px;
+  flex: 1;
+  min-width: 0;
 }
 
 .dashboard-remove-btn {
@@ -294,6 +294,7 @@
   font-size: 1.2rem;
   cursor: pointer;
   padding: 0;
+  margin-left: 8px;
   width: 24px;
   height: 24px;
   display: flex;
