@@ -37,6 +37,10 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   // LoRa Config State
   const [usePreset, setUsePreset] = useState(true);
   const [modemPreset, setModemPreset] = useState<number>(0);
+  const [bandwidth, setBandwidth] = useState<number>(250);
+  const [spreadFactor, setSpreadFactor] = useState<number>(11);
+  const [codingRate, setCodingRate] = useState<number>(8);
+  const [frequencyOffset, setFrequencyOffset] = useState<number>(0);
   const [region, setRegion] = useState<number>(0);
   const [hopLimit, setHopLimit] = useState<number>(3);
   const [channelNum, setChannelNum] = useState<number>(0);
@@ -111,6 +115,18 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
               ? PRESET_MAP[config.deviceConfig.lora.modemPreset] || 0
               : config.deviceConfig.lora.modemPreset;
             setModemPreset(presetValue);
+          }
+          if (config.deviceConfig.lora.bandwidth !== undefined) {
+            setBandwidth(config.deviceConfig.lora.bandwidth);
+          }
+          if (config.deviceConfig.lora.spreadFactor !== undefined) {
+            setSpreadFactor(config.deviceConfig.lora.spreadFactor);
+          }
+          if (config.deviceConfig.lora.codingRate !== undefined) {
+            setCodingRate(config.deviceConfig.lora.codingRate);
+          }
+          if (config.deviceConfig.lora.frequencyOffset !== undefined) {
+            setFrequencyOffset(config.deviceConfig.lora.frequencyOffset);
           }
           if (config.deviceConfig.lora.region !== undefined) {
             const regionValue = typeof config.deviceConfig.lora.region === 'string'
@@ -269,6 +285,10 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
       await apiService.setLoRaConfig({
         usePreset,
         modemPreset,
+        bandwidth,
+        spreadFactor,
+        codingRate,
+        frequencyOffset,
         region,
         hopLimit: validHopLimit,
         channelNum,
@@ -600,6 +620,14 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           setUsePreset={setUsePreset}
           modemPreset={modemPreset}
           setModemPreset={setModemPreset}
+          bandwidth={bandwidth}
+          setBandwidth={setBandwidth}
+          spreadFactor={spreadFactor}
+          setSpreadFactor={setSpreadFactor}
+          codingRate={codingRate}
+          setCodingRate={setCodingRate}
+          frequencyOffset={frequencyOffset}
+          setFrequencyOffset={setFrequencyOffset}
           region={region}
           setRegion={setRegion}
           hopLimit={hopLimit}
