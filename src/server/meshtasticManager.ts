@@ -10,6 +10,8 @@ import packetLogService from './services/packetLogService.js';
 import { messageQueueService } from './messageQueueService.js';
 import { createRequire } from 'module';
 import * as cron from 'node-cron';
+import fs from 'fs';
+import path from 'path';
 const require = createRequire(import.meta.url);
 const packageJson = require('../../package.json');
 
@@ -63,7 +65,6 @@ export interface MeshMessage {
 }
 
 class MeshtasticManager {
-  private config: MeshtasticConfig;
   private transport: TcpTransport | null = null;
   private isConnected = false;
   private userDisconnectedState = false;  // Track user-initiated disconnect
@@ -95,12 +96,6 @@ class MeshtasticManager {
   private onConfigCaptureComplete: (() => void) | null = null;  // Callback for when config capture completes
 
   constructor() {
-    const env = getEnvironmentConfig();
-    this.config = {
-      nodeIp: env.meshtasticNodeIp,
-      tcpPort: env.meshtasticTcpPort
-    };
-
     // Initialize message queue service with send callback
     messageQueueService.setSendCallback(async (text: string, destination: number, replyId?: number, channel?: number) => {
       // For channel messages: channel is specified, destination is 0 (undefined in sendTextMessage)
@@ -115,9 +110,22 @@ class MeshtasticManager {
     });
   }
 
+  /**
+   * Get environment configuration (always uses fresh values from getEnvironmentConfig)
+   * This ensures .env values are respected even if the manager is instantiated before dotenv loads
+   */
+  private getConfig(): MeshtasticConfig {
+    const env = getEnvironmentConfig();
+    return {
+      nodeIp: env.meshtasticNodeIp,
+      tcpPort: env.meshtasticTcpPort
+    };
+  }
+
   async connect(): Promise<boolean> {
     try {
-      logger.debug(`Connecting to Meshtastic node at ${this.config.nodeIp}:${this.config.tcpPort}...`);
+      const config = this.getConfig();
+      logger.debug(`Connecting to Meshtastic node at ${config.nodeIp}:${config.tcpPort}...`);
 
       // Initialize protobuf service first
       await meshtasticProtobufService.initialize();
@@ -149,7 +157,7 @@ class MeshtasticManager {
       // Connect to node
       // Note: isConnected will be set to true in handleConnected() callback
       // when the connection is actually established
-      await this.transport.connect(this.config.nodeIp, this.config.tcpPort);
+      await this.transport.connect(config.nodeIp, config.tcpPort);
 
       return true;
     } catch (error) {
@@ -2323,6 +2331,24 @@ class MeshtasticManager {
         nodeData.shortName = nodeInfo.user.shortName;
         nodeData.hwModel = nodeInfo.user.hwModel;
         nodeData.role = nodeInfo.user.role;
+
+        // Capture public key if present (important for local node)
+        if (nodeInfo.user.publicKey && nodeInfo.user.publicKey.length > 0) {
+          // Convert Uint8Array to base64 for storage
+          nodeData.publicKey = Buffer.from(nodeInfo.user.publicKey).toString('base64');
+          nodeData.hasPKC = true;
+          logger.debug(`🔐 Captured public key for ${nodeId}: ${nodeData.publicKey.substring(0, 16)}...`);
+
+          // Check for key security issues
+          const { checkLowEntropyKey } = await import('../services/lowEntropyKeyService.js');
+          const isLowEntropy = checkLowEntropyKey(nodeData.publicKey, 'base64');
+
+          if (isLowEntropy) {
+            nodeData.keyIsLowEntropy = true;
+            nodeData.keySecurityIssueDetails = 'Known low-entropy key detected - this key is compromised and should be regenerated';
+            logger.warn(`⚠️ Low-entropy key detected for node ${nodeId}!`);
+          }
+        }
       }
 
       // viaMqtt is at the top level of NodeInfo, not inside user
@@ -3735,8 +3761,8 @@ class MeshtasticManager {
 
     return {
       basic: {
-        nodeAddress: this.config.nodeIp,
-        tcpPort: this.config.tcpPort,
+        nodeAddress: this.getConfig().nodeIp,
+        tcpPort: this.getConfig().tcpPort,
         connected: this.isConnected,
         nodeId: localNode?.nodeId || null,
         nodeName: localNode?.longName || null,
@@ -4118,19 +4144,8 @@ class MeshtasticManager {
       // Format timestamp in local timezone (from TZ environment variable)
       const env = getEnvironmentConfig();
       const timestamp = new Date(message.timestamp);
-
-      // Safely format date/time with timezone support and fallback to UTC
-      let receivedDate: string;
-      let receivedTime: string;
-      try {
-        receivedDate = timestamp.toLocaleDateString('en-US', { timeZone: env.timezone });
-        receivedTime = timestamp.toLocaleTimeString('en-US', { timeZone: env.timezone });
-      } catch (error) {
-        // If timezone is invalid or not supported, fall back to UTC
-        logger.warn(`⚠️  Invalid timezone '${env.timezone}', falling back to UTC for auto-acknowledge`, error);
-        receivedDate = timestamp.toLocaleDateString('en-US', { timeZone: 'UTC' });
-        receivedTime = timestamp.toLocaleTimeString('en-US', { timeZone: 'UTC' });
-      }
+      const receivedDate = timestamp.toLocaleDateString('en-US', { timeZone: env.timezone });
+      const receivedTime = timestamp.toLocaleTimeString('en-US', { timeZone: env.timezone });
 
       // Replace tokens in the message template
       let ackText = await this.replaceAcknowledgementTokens(autoAckMessage, message.fromNodeId, fromNum, hopsTraveled, receivedDate, receivedTime);
@@ -4160,6 +4175,51 @@ class MeshtasticManager {
   /**
    * Check if message matches auto-responder triggers and respond accordingly
    */
+  /**
+   * Resolves a script path from the stored format (/data/scripts/...) to the actual file system path.
+   * Handles both development (relative path) and production (absolute path) environments.
+   */
+  private resolveScriptPath(scriptPath: string): string | null {
+    // Validate script path (security check)
+    if (!scriptPath.startsWith('/data/scripts/') || scriptPath.includes('..')) {
+      logger.error(`🚫 Invalid script path: ${scriptPath}`);
+      return null;
+    }
+    
+    const env = getEnvironmentConfig();
+    
+    let scriptsDir: string;
+    
+    if (env.isDevelopment) {
+      // In development, use relative path from project root
+      const projectRoot = path.resolve(process.cwd());
+      scriptsDir = path.join(projectRoot, 'data', 'scripts');
+      
+      // Ensure directory exists
+      if (!fs.existsSync(scriptsDir)) {
+        fs.mkdirSync(scriptsDir, { recursive: true });
+        logger.debug(`📁 Created scripts directory: ${scriptsDir}`);
+      }
+    } else {
+      // In production, use absolute path
+      scriptsDir = '/data/scripts';
+    }
+    
+    const filename = path.basename(scriptPath);
+    const resolvedPath = path.join(scriptsDir, filename);
+    
+    // Additional security: ensure resolved path is within scripts directory
+    const normalizedResolved = path.normalize(resolvedPath);
+    const normalizedScriptsDir = path.normalize(scriptsDir);
+    
+    if (!normalizedResolved.startsWith(normalizedScriptsDir)) {
+      logger.error(`🚫 Script path resolves outside scripts directory: ${scriptPath}`);
+      return null;
+    }
+    
+    return normalizedResolved;
+  }
+
   private async checkAutoResponder(messageText: string, channelIndex: number, isDirectMessage: boolean, fromNum: number, packetId?: number): Promise<void> {
     try {
       // Get auto-responder settings from database
@@ -4198,191 +4258,199 @@ class MeshtasticManager {
 
       logger.info(`🤖 Auto-responder checking message on ${isDirectMessage ? 'DM' : `channel ${channelIndex}`}: "${messageText}"`);
 
-      // Helper function to normalize trigger patterns (handle both string and array)
-      const normalizeTriggerPattern = (triggerPattern: string | string[]): string[] => {
-        if (Array.isArray(triggerPattern)) {
-          return triggerPattern;
-        }
-        // Check if it's a comma-separated string (e.g., "ask, ask {message}")
-        if (triggerPattern.includes(',')) {
-          return triggerPattern.split(',').map(t => t.trim()).filter(t => t.length > 0);
-        }
-        return [triggerPattern];
-      };
-
-      // Helper function to extract parameters from a pattern string
-      const extractParameters = (patternStr: string): Array<{ name: string; pattern?: string }> => {
-        interface ParamSpec {
-          name: string;
-          pattern?: string;
-        }
-        const params: ParamSpec[] = [];
-        let i = 0;
-
-        while (i < patternStr.length) {
-          if (patternStr[i] === '{') {
-            const startPos = i + 1;
-            let depth = 1;
-            let colonPos = -1;
-            let endPos = -1;
-
-            // Find the matching closing brace, accounting for nested braces in regex patterns
-            for (let j = startPos; j < patternStr.length && depth > 0; j++) {
-              if (patternStr[j] === '{') {
-                depth++;
-              } else if (patternStr[j] === '}') {
-                depth--;
-                if (depth === 0) {
-                  endPos = j;
-                }
-              } else if (patternStr[j] === ':' && depth === 1 && colonPos === -1) {
-                colonPos = j;
-              }
-            }
-
-            if (endPos !== -1) {
-              const paramName = colonPos !== -1
-                ? patternStr.substring(startPos, colonPos)
-                : patternStr.substring(startPos, endPos);
-              const paramPattern = colonPos !== -1
-                ? patternStr.substring(colonPos + 1, endPos)
-                : undefined;
-
-              if (!params.find(p => p.name === paramName)) {
-                params.push({ name: paramName, pattern: paramPattern });
-              }
-
-              i = endPos + 1;
-            } else {
-              i++;
-            }
-          } else {
-            i++;
-          }
-        }
-
-        return params;
-      };
-
-      // Helper function to match a single pattern against a message
-      const matchSinglePattern = (patternStr: string, message: string): { matches: boolean; params?: Record<string, string> } => {
-        const params = extractParameters(patternStr);
-
-        // Build regex pattern from trigger by processing it character by character
-        let pattern = '';
-        const replacements: Array<{ start: number; end: number; replacement: string }> = [];
-        let i = 0;
-
-        while (i < patternStr.length) {
-          if (patternStr[i] === '{') {
-            const startPos = i;
-            let depth = 1;
-            let endPos = -1;
-
-            // Find the matching closing brace
-            for (let j = i + 1; j < patternStr.length && depth > 0; j++) {
-              if (patternStr[j] === '{') {
-                depth++;
-              } else if (patternStr[j] === '}') {
-                depth--;
-                if (depth === 0) {
-                  endPos = j;
-                }
-              }
-            }
-
-            if (endPos !== -1) {
-              const paramIndex = replacements.length;
-              if (paramIndex < params.length) {
-                const paramRegex = params[paramIndex].pattern || '[^\\s]+';
-                replacements.push({
-                  start: startPos,
-                  end: endPos + 1,
-                  replacement: `(${paramRegex})`
-                });
-              }
-              i = endPos + 1;
-            } else {
-              i++;
-            }
-          } else {
-            i++;
-          }
-        }
-
-        // Build the final pattern by replacing placeholders
-        for (let i = 0; i < patternStr.length; i++) {
-          const replacement = replacements.find(r => r.start === i);
-          if (replacement) {
-            pattern += replacement.replacement;
-            i = replacement.end - 1; // -1 because loop will increment
-          } else {
-            // Escape special regex characters in literal parts
-            const char = patternStr[i];
-            if (/[.*+?^${}()|[\]\\]/.test(char)) {
-              pattern += '\\' + char;
-            } else {
-              pattern += char;
-            }
-          }
-        }
-
-        const triggerRegex = new RegExp(`^${pattern}$`, 'i');
-        const triggerMatch = message.match(triggerRegex);
-
-        if (triggerMatch) {
-          // Extract parameters
-          const extractedParams: Record<string, string> = {};
-          params.forEach((param, index) => {
-            extractedParams[param.name] = triggerMatch[index + 1];
-          });
-          return { matches: true, params: extractedParams };
-        }
-
-        return { matches: false };
-      };
-
       // Try to match message against triggers
       for (const trigger of triggers) {
         // Filter trigger by channel - default to 'dm' if not specified for backward compatibility
         const triggerChannel = trigger.channel ?? 'dm';
 
-        // Normalize trigger pattern (handle both string and array)
-        const patterns = normalizeTriggerPattern(trigger.trigger);
-        const triggerDisplay = Array.isArray(trigger.trigger) ? trigger.trigger.join(', ') : trigger.trigger;
-
-        logger.info(`🤖 Checking trigger "${triggerDisplay}" (channel: ${triggerChannel}) against message on ${isDirectMessage ? 'DM' : `channel ${channelIndex}`}`);
+        logger.info(`🤖 Checking trigger "${trigger.trigger}" (channel: ${triggerChannel}) against message on ${isDirectMessage ? 'DM' : `channel ${channelIndex}`}`);
 
         // Check if this trigger applies to the current message
         if (isDirectMessage) {
           // For DMs, only match triggers configured for DM
           if (triggerChannel !== 'dm') {
-            logger.info(`⏭️  Skipping trigger "${triggerDisplay}" - configured for channel ${triggerChannel}, but message is DM`);
+            logger.info(`⏭️  Skipping trigger "${trigger.trigger}" - configured for channel ${triggerChannel}, but message is DM`);
             continue;
           }
         } else {
           // For channel messages, only match triggers configured for this specific channel
           if (triggerChannel !== channelIndex) {
-            logger.info(`⏭️  Skipping trigger "${triggerDisplay}" - configured for ${triggerChannel === 'dm' ? 'DM' : `channel ${triggerChannel}`}, but message is on channel ${channelIndex}`);
+            logger.info(`⏭️  Skipping trigger "${trigger.trigger}" - configured for ${triggerChannel === 'dm' ? 'DM' : `channel ${triggerChannel}`}, but message is on channel ${channelIndex}`);
             continue;
           }
         }
 
-        // Try each pattern until one matches
+        // Split trigger into individual patterns (comma-separated, but not inside braces)
+        const splitTriggerPatterns = (triggerStr: string): string[] => {
+          if (!triggerStr.trim()) {
+            return [];
+          }
+          
+          const patterns: string[] = [];
+          let currentPattern = '';
+          let braceDepth = 0;
+          
+          for (let i = 0; i < triggerStr.length; i++) {
+            const char = triggerStr[i];
+            
+            if (char === '{') {
+              braceDepth++;
+              currentPattern += char;
+            } else if (char === '}') {
+              braceDepth--;
+              currentPattern += char;
+            } else if (char === ',' && braceDepth === 0) {
+              // Only split on commas that are outside braces
+              const trimmed = currentPattern.trim();
+              if (trimmed) {
+                patterns.push(trimmed);
+              }
+              currentPattern = '';
+            } else {
+              currentPattern += char;
+            }
+          }
+          
+          // Add the last pattern
+          const trimmed = currentPattern.trim();
+          if (trimmed) {
+            patterns.push(trimmed);
+          }
+          
+          return patterns;
+        };
+
+        const patterns = splitTriggerPatterns(trigger.trigger);
         let matchedPattern: string | null = null;
         let extractedParams: Record<string, string> = {};
 
+        // Try each pattern until one matches
         for (const patternStr of patterns) {
-          const matchResult = matchSinglePattern(patternStr, messageText);
-          if (matchResult.matches) {
+          // Extract parameters with optional regex patterns from trigger pattern
+          interface ParamSpec {
+            name: string;
+            pattern?: string;
+          }
+          const params: ParamSpec[] = [];
+          let i = 0;
+
+          while (i < patternStr.length) {
+            if (patternStr[i] === '{') {
+              const startPos = i + 1;
+              let depth = 1;
+              let colonPos = -1;
+              let endPos = -1;
+
+              // Find the matching closing brace, accounting for nested braces in regex patterns
+              for (let j = startPos; j < patternStr.length && depth > 0; j++) {
+                if (patternStr[j] === '{') {
+                  depth++;
+                } else if (patternStr[j] === '}') {
+                  depth--;
+                  if (depth === 0) {
+                    endPos = j;
+                  }
+                } else if (patternStr[j] === ':' && depth === 1 && colonPos === -1) {
+                  colonPos = j;
+                }
+              }
+
+              if (endPos !== -1) {
+                const paramName = colonPos !== -1
+                  ? patternStr.substring(startPos, colonPos)
+                  : patternStr.substring(startPos, endPos);
+                const paramPattern = colonPos !== -1
+                  ? patternStr.substring(colonPos + 1, endPos)
+                  : undefined;
+
+                if (!params.find(p => p.name === paramName)) {
+                  params.push({ name: paramName, pattern: paramPattern });
+                }
+
+                i = endPos + 1;
+              } else {
+                i++;
+              }
+            } else {
+              i++;
+            }
+          }
+
+          // Build regex pattern from trigger by processing it character by character
+          let pattern = '';
+          const replacements: Array<{ start: number; end: number; replacement: string }> = [];
+          i = 0;
+
+          while (i < patternStr.length) {
+            if (patternStr[i] === '{') {
+              const startPos = i;
+              let depth = 1;
+              let endPos = -1;
+
+              // Find the matching closing brace
+              for (let j = i + 1; j < patternStr.length && depth > 0; j++) {
+                if (patternStr[j] === '{') {
+                  depth++;
+                } else if (patternStr[j] === '}') {
+                  depth--;
+                  if (depth === 0) {
+                    endPos = j;
+                  }
+                }
+              }
+
+              if (endPos !== -1) {
+                const paramIndex = replacements.length;
+                if (paramIndex < params.length) {
+                  const paramRegex = params[paramIndex].pattern || '[^\\s]+';
+                  replacements.push({
+                    start: startPos,
+                    end: endPos + 1,
+                    replacement: `(${paramRegex})`
+                  });
+                }
+                i = endPos + 1;
+              } else {
+                i++;
+              }
+            } else {
+              i++;
+            }
+          }
+
+          // Build the final pattern by replacing placeholders
+          for (let i = 0; i < patternStr.length; i++) {
+            const replacement = replacements.find(r => r.start === i);
+            if (replacement) {
+              pattern += replacement.replacement;
+              i = replacement.end - 1; // -1 because loop will increment
+            } else {
+              // Escape special regex characters in literal parts
+              const char = patternStr[i];
+              if (/[.*+?^${}()|[\]\\]/.test(char)) {
+                pattern += '\\' + char;
+              } else {
+                pattern += char;
+              }
+            }
+          }
+
+          const triggerRegex = new RegExp(`^${pattern}$`, 'i');
+          const triggerMatch = messageText.match(triggerRegex);
+
+          if (triggerMatch) {
+            // Extract parameters
+            extractedParams = {};
+            params.forEach((param, index) => {
+              extractedParams[param.name] = triggerMatch[index + 1];
+            });
             matchedPattern = patternStr;
-            extractedParams = matchResult.params || {};
-            break;
+            break; // Found a match, stop trying other patterns
           }
         }
 
         if (matchedPattern) {
-          logger.debug(`🤖 Auto-responder triggered by: "${messageText}" matching pattern: "${matchedPattern}" (from trigger: "${triggerDisplay}")`);
+          logger.debug(`🤖 Auto-responder triggered by: "${messageText}" matching pattern: "${matchedPattern}" (from trigger: "${trigger.trigger}")`);
 
           let responseText: string;
 
@@ -4439,26 +4507,44 @@ class MeshtasticManager {
               return;
             }
 
+            // Resolve script path (handles dev vs production)
+            const resolvedPath = this.resolveScriptPath(scriptPath);
+            if (!resolvedPath) {
+              logger.error(`🚫 Failed to resolve script path: ${scriptPath}`);
+              return;
+            }
+
+            // Check if file exists
+            if (!fs.existsSync(resolvedPath)) {
+              logger.error(`🚫 Script file not found: ${resolvedPath}`);
+              return;
+            }
+
             // Determine interpreter based on file extension
             const ext = scriptPath.split('.').pop()?.toLowerCase();
             let interpreter: string;
+            
+            // In development, use system interpreters (node, python, sh)
+            // In production, use absolute paths
+            const isDev = process.env.NODE_ENV !== 'production';
+            
             switch (ext) {
               case 'js':
               case 'mjs':
-                interpreter = '/usr/local/bin/node';
+                interpreter = isDev ? 'node' : '/usr/local/bin/node';
                 break;
               case 'py':
-                interpreter = '/usr/bin/python3';
+                interpreter = isDev ? 'python' : '/usr/bin/python';
                 break;
               case 'sh':
-                interpreter = '/bin/sh';
+                interpreter = isDev ? 'sh' : '/bin/sh';
                 break;
               default:
                 logger.error(`🚫 Unsupported script extension: ${ext}`);
                 return;
             }
 
-            logger.debug(`🔧 Executing script: ${scriptPath} with ${interpreter}`);
+            logger.debug(`🔧 Executing script: ${resolvedPath} with ${interpreter}`);
 
             try {
               const { execFile } = await import('child_process');
@@ -4466,7 +4552,7 @@ class MeshtasticManager {
               const execFileAsync = promisify(execFile);
 
               // Prepare environment variables
-              const env: Record<string, string> = {
+              const scriptEnv: Record<string, string> = {
                 ...process.env as Record<string, string>,
                 MESSAGE: messageText,
                 FROM_NODE: String(fromNum),
@@ -4476,13 +4562,14 @@ class MeshtasticManager {
 
               // Add extracted parameters as PARAM_* environment variables
               Object.entries(extractedParams).forEach(([key, value]) => {
-                env[`PARAM_${key}`] = value;
+                scriptEnv[`PARAM_${key}`] = value;
               });
 
               // Execute script with 10-second timeout
-              const { stdout, stderr } = await execFileAsync(interpreter, [scriptPath], {
+              // Use resolvedPath (actual file path) instead of scriptPath (API format)
+              const { stdout, stderr } = await execFileAsync(interpreter, [resolvedPath], {
                 timeout: 10000,
-                env,
+                env: scriptEnv,
                 maxBuffer: 1024 * 1024, // 1MB max output
               });
 
@@ -5690,7 +5777,7 @@ class MeshtasticManager {
       connected: this.isConnected,
       nodeResponsive,
       configuring,
-      nodeIp: this.config.nodeIp,
+      nodeIp: this.getConfig().nodeIp,
       userDisconnected: this.userDisconnectedState
     };
   }

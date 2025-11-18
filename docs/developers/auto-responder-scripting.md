@@ -32,6 +32,16 @@ console.log(JSON.stringify(response));
 
 ### 2. Deploy to Container
 
+**Option A: Using the UI (Recommended)**
+
+1. Navigate to **Settings → Automation → Auto Responder**
+2. Scroll down to **Script Management** section
+3. Click **Import Script**
+4. Select your script file (`.js`, `.mjs`, `.py`, or `.sh`)
+5. The script will be automatically uploaded and made executable
+
+**Option B: Manual Deployment**
+
 ```bash
 # Copy script to container
 docker cp hello.js meshmonitor:/data/scripts/
@@ -39,6 +49,40 @@ docker cp hello.js meshmonitor:/data/scripts/
 # Make executable
 docker exec meshmonitor chmod +x /data/scripts/hello.js
 ```
+
+**Option C: Docker Compose (for scripts requiring environment variables)**
+
+For scripts that need environment variables (e.g., API keys) or easier script management:
+
+```yaml
+services:
+  meshmonitor:
+    image: yeraze/meshmonitor:latest
+    container_name: meshmonitor
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    volumes:
+      # Mount scripts directory for easy script management
+      - ./scripts:/data/scripts
+      # Mount data directory for persistence
+      - ./data:/data
+    environment:
+      # Timezone configuration (for timezone-aware scripts)
+      - TZ=America/New_York
+      
+      # Example: API keys for scripts (e.g., Pirate Weather)
+      - PIRATE_WEATHER_API_KEY=your_api_key_here
+      
+      # Other MeshMonitor environment variables
+      - MESHTASTIC_NODE_IP=192.168.1.100
+      - MESHTASTIC_TCP_PORT=4403
+```
+
+**Benefits:**
+- **Volume Mapping:** `./scripts:/data/scripts` allows editing scripts locally without copying into container
+- **Environment Variables:** Scripts can access all environment variables via `process.env` (Node.js) or `os.environ` (Python)
+- **Timezone:** Set `TZ` for timezone-aware scripts (see [Timezone Support](#timezone-support))
 
 ### 3. Configure Auto Responder
 
@@ -104,6 +148,66 @@ All scripts receive these environment variables:
 | `PACKET_ID` | Message packet ID | `"987654321"` |
 | `TRIGGER` | Trigger pattern that matched | `"weather {location}"` |
 | `PARAM_*` | Extracted parameters | `PARAM_location="miami"` |
+| `TZ` | Server timezone (IANA timezone name) | `"America/New_York"` |
+
+### Timezone Support
+
+Scripts receive the `TZ` environment variable containing the server's configured timezone (IANA timezone name). This allows scripts to perform timezone-aware time operations.
+
+**Configuration:**
+
+The timezone is configured via the `TZ` environment variable in your `docker-compose.yaml`:
+
+```yaml
+environment:
+  - TZ=America/New_York
+```
+
+**Example: Python Script**
+
+```python
+#!/usr/bin/env python3
+import os
+import json
+from datetime import datetime
+
+tz = os.environ.get('TZ', 'UTC')
+now = datetime.now()
+print(json.dumps({
+    "response": f"Current time in {tz}: {now.strftime('%Y-%m-%d %H:%M:%S %Z')}"
+}))
+```
+
+**Example: JavaScript Script**
+
+```javascript
+#!/usr/bin/env node
+const tz = process.env.TZ || 'UTC';
+const now = new Date();
+console.log(JSON.stringify({
+    response: `Current time in ${tz}: ${now.toLocaleString('en-US', { timeZone: tz })}`
+}));
+```
+
+**Example: Shell Script**
+
+```bash
+#!/bin/sh
+TZ="${TZ:-UTC}"
+NOW=$(TZ="$TZ" date '+%Y-%m-%d %H:%M:%S %Z')
+echo "{\"response\": \"Current time in $TZ: $NOW\"}"
+```
+
+**Common IANA Timezone Names:**
+
+- `America/New_York` - Eastern Time
+- `America/Chicago` - Central Time
+- `America/Denver` - Mountain Time
+- `America/Los_Angeles` - Pacific Time
+- `Europe/London` - UK Time
+- `UTC` - Coordinated Universal Time
+
+For a complete list, see [IANA Time Zone Database](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones).
 
 ### Parameter Extraction
 

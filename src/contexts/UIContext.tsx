@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { TabType, SortField, SortDirection } from '../types/ui';
-import { AutoResponderTrigger } from '../components/AutoResponderSection';
+import { AutoResponderTrigger } from '../components/auto-responder/types';
 
 interface UIContextType {
   activeTab: TabType;
