@@ -41,6 +41,7 @@ export function getSessionConfig(): session.SessionOptions {
 
   // Log configuration summary for troubleshooting
   logger.info('🔐 Session configuration:');
+  logger.info(`   - Cookie name: ${env.sessionCookieName}`);
   logger.info(`   - Session maxAge: ${env.sessionMaxAge}ms (${Math.round(env.sessionMaxAge / 3600000)}h)`);
   logger.info(`   - Session rolling: ${env.sessionRolling}`);
   logger.info(`   - Cookie secure: ${env.cookieSecure}`);
@@ -65,6 +66,6 @@ export function getSessionConfig(): session.SessionOptions {
       sameSite: env.cookieSameSite,
       maxAge: env.sessionMaxAge
     },
-    name: 'meshmonitor.sid' // Custom session cookie name
+    name: env.sessionCookieName // Custom session cookie name
   };
 }

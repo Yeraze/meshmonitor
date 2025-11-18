@@ -141,6 +141,8 @@ export interface EnvironmentConfig {
   // Session/Security
   sessionSecret: string;
   sessionSecretProvided: boolean;
+  sessionCookieName: string;
+  sessionCookieNameProvided: boolean;
   sessionMaxAge: number;
   sessionMaxAgeProvided: boolean;
   sessionRolling: boolean;
@@ -321,6 +323,10 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     }
   }
 
+  const sessionCookieName = {
+    value: process.env.SESSION_COOKIE_NAME || 'meshmonitor.sid',
+    wasProvided: process.env.SESSION_COOKIE_NAME !== undefined
+  };
   const sessionMaxAge = parseInt32('SESSION_MAX_AGE', process.env.SESSION_MAX_AGE, 86400000); // 24 hours
   const sessionRolling = parseBoolean('SESSION_ROLLING', process.env.SESSION_ROLLING, true); // Reset session expiry on activity
   const cookieSecure = parseBoolean('COOKIE_SECURE', process.env.COOKIE_SECURE, false);
@@ -506,6 +512,8 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     // Session/Security
     sessionSecret,
     sessionSecretProvided,
+    sessionCookieName: sessionCookieName.value,
+    sessionCookieNameProvided: sessionCookieName.wasProvided,
     sessionMaxAge: sessionMaxAge.value,
     sessionMaxAgeProvided: sessionMaxAge.wasProvided,
     sessionRolling: sessionRolling.value,
