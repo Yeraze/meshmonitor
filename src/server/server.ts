@@ -1989,23 +1989,39 @@ apiRouter.get('/neighbor-info', requirePermission('info', 'read'), (_req, res) =
   try {
     const neighborInfo = databaseService.getLatestNeighborInfoPerNode();
 
-    // Enrich with node names
-    const enrichedNeighborInfo = neighborInfo.map(ni => {
-      const node = databaseService.getNode(ni.nodeNum);
-      const neighbor = databaseService.getNode(ni.neighborNodeNum);
+    // Get max node age setting (default 24 hours)
+    const maxNodeAgeStr = databaseService.getSetting('maxNodeAge');
+    const maxNodeAgeHours = maxNodeAgeStr ? parseInt(maxNodeAgeStr, 10) : 24;
+    const cutoffTime = Math.floor(Date.now() / 1000) - (maxNodeAgeHours * 60 * 60);
 
-      return {
-        ...ni,
-        nodeId: node?.nodeId || `!${ni.nodeNum.toString(16).padStart(8, '0')}`,
-        nodeName: node?.longName || `Node !${ni.nodeNum.toString(16).padStart(8, '0')}`,
-        neighborNodeId: neighbor?.nodeId || `!${ni.neighborNodeNum.toString(16).padStart(8, '0')}`,
-        neighborName: neighbor?.longName || `Node !${ni.neighborNodeNum.toString(16).padStart(8, '0')}`,
-        nodeLatitude: node?.latitude,
-        nodeLongitude: node?.longitude,
-        neighborLatitude: neighbor?.latitude,
-        neighborLongitude: neighbor?.longitude
-      };
-    });
+    // Enrich with node names and filter by node age
+    const enrichedNeighborInfo = neighborInfo
+      .map(ni => {
+        const node = databaseService.getNode(ni.nodeNum);
+        const neighbor = databaseService.getNode(ni.neighborNodeNum);
+
+        return {
+          ...ni,
+          nodeId: node?.nodeId || `!${ni.nodeNum.toString(16).padStart(8, '0')}`,
+          nodeName: node?.longName || `Node !${ni.nodeNum.toString(16).padStart(8, '0')}`,
+          neighborNodeId: neighbor?.nodeId || `!${ni.neighborNodeNum.toString(16).padStart(8, '0')}`,
+          neighborName: neighbor?.longName || `Node !${ni.neighborNodeNum.toString(16).padStart(8, '0')}`,
+          nodeLatitude: node?.latitude,
+          nodeLongitude: node?.longitude,
+          neighborLatitude: neighbor?.latitude,
+          neighborLongitude: neighbor?.longitude,
+          node,
+          neighbor
+        };
+      })
+      .filter(ni => {
+        // Filter out connections where either node is too old or missing lastHeard
+        if (!ni.node?.lastHeard || !ni.neighbor?.lastHeard) {
+          return false;
+        }
+        return ni.node.lastHeard >= cutoffTime && ni.neighbor.lastHeard >= cutoffTime;
+      })
+      .map(({ node, neighbor, ...rest }) => rest); // Remove the temporary node/neighbor fields
 
     res.json(enrichedNeighborInfo);
   } catch (error) {
