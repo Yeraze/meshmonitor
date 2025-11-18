@@ -8,6 +8,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { logger } from '../utils/logger';
 import ChangePasswordModal from './ChangePasswordModal';
+import APITokenManagement from './APITokenManagement';
 
 interface UserMenuProps {
   onLogout?: () => void;
@@ -17,6 +18,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
   const { authStatus, logout } = useAuth();
   const [showMenu, setShowMenu] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
+  const [showAPIToken, setShowAPIToken] = useState(false);
   const [loading, setLoading] = useState(false);
 
   if (!authStatus?.authenticated || !authStatus.user) {
@@ -42,6 +44,11 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
   const handleChangePassword = () => {
     setShowMenu(false);
     setShowChangePassword(true);
+  };
+
+  const handleAPIToken = () => {
+    setShowMenu(false);
+    setShowAPIToken(true);
   };
 
   const displayName = authStatus.user.displayName || authStatus.user.username;
@@ -93,6 +100,14 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
 
             <button
               className="user-menu-item"
+              onClick={handleAPIToken}
+              disabled={loading}
+            >
+              API Token
+            </button>
+
+            <button
+              className="user-menu-item"
               onClick={handleLogout}
               disabled={loading}
             >
@@ -106,6 +121,20 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
         isOpen={showChangePassword}
         onClose={() => setShowChangePassword(false)}
       />
+
+      {showAPIToken && (
+        <div className="modal-overlay" onClick={() => setShowAPIToken(false)}>
+          <div className="modal-content api-token-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>API Token Management</h2>
+              <button className="modal-close" onClick={() => setShowAPIToken(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              <APITokenManagement />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

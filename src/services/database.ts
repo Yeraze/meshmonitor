@@ -6,6 +6,7 @@ import { logger } from '../utils/logger.js';
 import { getEnvironmentConfig } from '../server/config/environment.js';
 import { UserModel } from '../server/models/User.js';
 import { PermissionModel } from '../server/models/Permission.js';
+import { APITokenModel } from '../server/models/APIToken.js';
 import { migration as authMigration } from '../server/migrations/001_add_auth_tables.js';
 import { migration as channelsMigration } from '../server/migrations/002_add_channels_permission.js';
 import { migration as connectionMigration } from '../server/migrations/003_add_connection_permission.js';
@@ -30,6 +31,7 @@ import { migration as systemBackupTableMigration } from '../server/migrations/02
 import { migration as customThemesMigration } from '../server/migrations/022_add_custom_themes.js';
 import { migration as passwordLockedMigration } from '../server/migrations/023_add_password_locked_flag.js';
 import { migration as perChannelPermissionsMigration } from '../server/migrations/024_add_per_channel_permissions.js';
+import { migration as apiTokensMigration } from '../server/migrations/025_add_api_tokens.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Configuration constants for traceroute history
@@ -245,6 +247,7 @@ class DatabaseService {
   private isInitialized = false;
   public userModel: UserModel;
   public permissionModel: PermissionModel;
+  public apiTokenModel: APITokenModel;
 
   constructor() {
     logger.debug('🔧🔧🔧 DatabaseService constructor called');
@@ -268,6 +271,7 @@ class DatabaseService {
     // Initialize models
     this.userModel = new UserModel(this.db);
     this.permissionModel = new PermissionModel(this.db);
+    this.apiTokenModel = new APITokenModel(this.db);
 
     this.initialize();
     // Channel 0 will be created automatically when the device syncs its configuration
@@ -308,6 +312,7 @@ class DatabaseService {
     this.runCustomThemesMigration();
     this.runPasswordLockedMigration();
     this.runPerChannelPermissionsMigration();
+    this.runAPITokensMigration();
     this.runAutoWelcomeMigration();
     this.ensureAutomationDefaults();
     this.isInitialized = true;
@@ -838,6 +843,26 @@ class DatabaseService {
       logger.debug('✅ Per-channel permissions migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run per-channel permissions migration:', error);
+      throw error;
+    }
+  }
+
+  private runAPITokensMigration(): void {
+    const migrationKey = 'migration_025_api_tokens';
+
+    try {
+      const currentStatus = this.getSetting(migrationKey);
+      if (currentStatus === 'completed') {
+        logger.debug('✅ API tokens migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 025: Add API tokens table...');
+      apiTokensMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ API tokens migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run API tokens migration:', error);
       throw error;
     }
   }

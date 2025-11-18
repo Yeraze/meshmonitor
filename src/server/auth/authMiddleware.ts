@@ -230,3 +230,71 @@ export function hasPermission(user: User, resource: ResourceType, action: Permis
   // Check permission via database
   return databaseService.permissionModel.check(user.id, resource, action);
 }
+
+/**
+ * Require API token authentication (for v1 API)
+ * Extracts token from Authorization header: "Bearer mm_v1_..."
+ */
+export function requireAPIToken() {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      // Extract token from Authorization header
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({
+          error: 'Unauthorized',
+          message: 'API token required. Use Authorization: Bearer <token>'
+        });
+      }
+
+      const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+
+      // Validate token and get user ID
+      const userId = await databaseService.apiTokenModel.validate(token);
+      if (!userId) {
+        // Log failed attempt for security monitoring
+        databaseService.auditLog(
+          null,
+          'api_token_invalid',
+          null,
+          JSON.stringify({ path: req.path }),
+          req.ip || req.socket.remoteAddress || 'unknown'
+        );
+
+        return res.status(401).json({
+          error: 'Unauthorized',
+          message: 'Invalid or expired API token'
+        });
+      }
+
+      // Get user details
+      const user = databaseService.userModel.findById(userId);
+      if (!user || !user.isActive) {
+        return res.status(401).json({
+          error: 'Unauthorized',
+          message: 'User account is inactive'
+        });
+      }
+
+      // Attach user to request (same pattern as session auth)
+      req.user = user;
+
+      // Log successful API access (for audit trail)
+      databaseService.auditLog(
+        user.id,
+        'api_token_used',
+        req.path,
+        JSON.stringify({ method: req.method }),
+        req.ip || req.socket.remoteAddress || 'unknown'
+      );
+
+      next();
+    } catch (error) {
+      logger.error('Error in requireAPIToken middleware:', error);
+      return res.status(500).json({
+        error: 'Internal Server Error',
+        message: 'Failed to authenticate API token'
+      });
+    }
+  };
+}
