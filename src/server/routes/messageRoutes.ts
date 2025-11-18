@@ -1,5 +1,5 @@
 import express from 'express';
-import databaseService from '../../services/database.js';
+import databaseService, { DbNode } from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { RequestHandler } from 'express';
 
@@ -355,7 +355,7 @@ router.delete('/nodes/:nodeNum', requireMessagesWrite, (req, res) => {
     }
 
     // Get node name for logging
-    const node = databaseService.getAllNodes().find((n: any) => n.nodeNum === nodeNum);
+    const node = databaseService.getAllNodes().find((n: DbNode) => n.nodeNum === nodeNum);
     const nodeName = node?.shortName || node?.longName || `Node ${nodeNum}`;
 
     const result = databaseService.deleteNode(nodeNum);

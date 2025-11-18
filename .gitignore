@@ -55,3 +55,7 @@ test-results.md
 
 # Log directories
 meshmonitor-logs/
+
+# PMTiles files (can be large, exclude from git)
+public/pmtiles/*.pmtiles
+!public/pmtiles/.gitkeep

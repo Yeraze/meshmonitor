@@ -3,7 +3,9 @@
  */
 
 // Type-safe tileset IDs using string literal union
-export type TilesetId = 'osm' | 'osmHot' | 'cartoDark' | 'cartoLight' | 'openTopo' | 'esriSatellite';
+export type TilesetId = 'osm' | 'osmHot' | 'cartoDark' | 'cartoLight' | 'openTopo' | 'esriSatellite' | 'pmtilesLocal';
+
+export type TileSourceType = 'url' | 'pmtiles';
 
 export interface TilesetConfig {
   readonly id: TilesetId;
@@ -12,6 +14,8 @@ export interface TilesetConfig {
   readonly attribution: string;
   readonly maxZoom: number;
   readonly description: string;
+  readonly sourceType?: TileSourceType; // Optional, defaults to 'url'
+  readonly offline?: boolean; // Indicates if tiles work offline
 }
 
 export const TILESETS: Readonly<Record<TilesetId, TilesetConfig>> = {
@@ -62,6 +66,16 @@ export const TILESETS: Readonly<Record<TilesetId, TilesetConfig>> = {
     attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
     maxZoom: 18,
     description: 'Satellite imagery'
+  },
+  pmtilesLocal: {
+    id: 'pmtilesLocal',
+    name: 'Offline Map (PMTiles)',
+    url: '/pmtiles/basemap.pmtiles',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom: 14,
+    description: 'Locally hosted offline map tiles',
+    sourceType: 'pmtiles',
+    offline: true
   }
 } as const;
 

@@ -47,6 +47,7 @@
     "morgan": "^1.10.1",
     "node-cron": "^4.2.1",
     "openid-client": "^6.8.1",
+    "pmtiles": "^4.3.0",
     "prismjs": "^1.30.0",
     "protobufjs": "^7.5.4",
     "qrcode": "^1.5.4",

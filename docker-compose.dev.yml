@@ -11,6 +11,7 @@ services:
     volumes:
       - meshmonitor-data:/data
       - ./meshmonitor-logs:/data/logs:rw
+      - ./public/pmtiles:/app/public/pmtiles:ro  # Mount PMTiles directory (read-only)
     env_file: .env
     environment:
       - NODE_ENV=production

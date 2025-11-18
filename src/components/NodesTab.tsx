@@ -24,6 +24,7 @@ import { MapCenterController } from './MapCenterController';
 import PacketMonitorPanel from './PacketMonitorPanel';
 import { getPacketStats } from '../services/packetApi';
 import { NodeFilterPopup } from './NodeFilterPopup';
+import { PMTilesLayer } from './PMTilesLayer';
 
 /**
  * Spiderfier initialization constants
@@ -808,11 +809,19 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 centerTarget={mapCenterTarget}
                 onCenterComplete={handleCenterComplete}
               />
-              <TileLayer
-                attribution={getTilesetById(activeTileset).attribution}
-                url={getTilesetById(activeTileset).url}
-                maxZoom={getTilesetById(activeTileset).maxZoom}
-              />
+              {getTilesetById(activeTileset).sourceType === 'pmtiles' ? (
+                <PMTilesLayer
+                  url={getTilesetById(activeTileset).url}
+                  attribution={getTilesetById(activeTileset).attribution}
+                  maxZoom={getTilesetById(activeTileset).maxZoom}
+                />
+              ) : (
+                <TileLayer
+                  attribution={getTilesetById(activeTileset).attribution}
+                  url={getTilesetById(activeTileset).url}
+                  maxZoom={getTilesetById(activeTileset).maxZoom}
+                />
+              )}
               <ZoomHandler onZoomChange={setMapZoom} />
               <MapPositionHandler />
               <MapResizeHandler trigger={showPacketMonitor} />

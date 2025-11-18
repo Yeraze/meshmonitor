@@ -54,6 +54,33 @@
 - [ ] Run system tests
 - [ ] Create release (v2.17.0)
 
+#### PMTiles Support (#custom_maps branch)
+
+**Completed:**
+- [x] Extend TilesetConfig interface to support PMTiles source type
+- [x] Add pmtiles dependency to package.json (v4.3.1)
+- [x] Create PMTilesLayer React component for Leaflet integration
+- [x] Add example PMTiles tileset configuration (pmtilesLocal)
+- [x] Update NodesTab to conditionally render PMTilesLayer vs TileLayer
+- [x] Create public/pmtiles directory structure with .gitkeep
+- [x] Add .gitignore entries for PMTiles files
+- [x] Update Docker configuration for PMTiles volume mounts
+  - docker-compose.yml: Mount ./public/pmtiles:/app/public/pmtiles:ro
+  - docker-compose.dev.yml: Same mount configuration
+- [x] Create comprehensive user documentation (PMTILES.md)
+  - Download sources (Protomaps, OpenMapTiles, Planetiler, Tippecanoe)
+  - Installation instructions for local and Docker deployments
+  - File organization and best practices
+  - Advanced configuration (multiple tilesets, MBTiles conversion)
+  - Troubleshooting guide
+  - File size reference table
+
+**Remaining:**
+- [ ] Run npm install to install pmtiles dependency
+- [ ] Test PMTiles integration locally
+- [ ] Run system tests
+- [ ] Create pull request
+
 #### Delete Node Functionality (#666)
 
 **Completed:**

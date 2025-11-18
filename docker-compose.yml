@@ -18,6 +18,7 @@ services:
     restart: unless-stopped
     volumes:
       - meshmonitor-data:/data
+      - ./public/pmtiles:/app/public/pmtiles:ro  # Mount PMTiles directory (read-only)
     env_file: .env
     environment:
       # Minimal configuration for http://localhost:8080
