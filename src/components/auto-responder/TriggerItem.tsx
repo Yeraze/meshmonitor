@@ -186,49 +186,51 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
             </div>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
               <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold', paddingTop: '0.5rem' }}>Response:</label>
-              {editResponseType === 'text' ? (
-                <textarea
-                  value={editResponse}
-                  onChange={(e) => setEditResponse(e.target.value)}
-                  className="setting-input"
-                  style={{ flex: '1', fontFamily: 'monospace', minHeight: '60px', resize: 'vertical' }}
-                  rows={3}
-                />
-              ) : editResponseType === 'script' ? (
-                <select
-                  value={editResponse}
-                  onChange={(e) => setEditResponse(e.target.value)}
-                  className="setting-input"
-                  style={{ 
-                    flex: '1', 
-                    minWidth: '200px',
-                    fontFamily: 'monospace',
-                    backgroundImage: 'none',
-                    paddingLeft: '2.5rem'
-                  }}
-                >
-                  <option value="">
-                    {availableScripts.length === 0 ? 'No scripts found in /data/scripts/' : 'Select a script...'}
-                  </option>
-                  {availableScripts.map((script) => {
-                    const filename = script.split('/').pop() || script;
-                    const icon = getFileIcon(filename);
-                    return (
-                      <option key={script} value={script}>
-                        {icon} {filename}
-                      </option>
-                    );
-                  })}
-                </select>
-              ) : (
-                <input
-                  type="text"
-                  value={editResponse}
-                  onChange={(e) => setEditResponse(e.target.value)}
-                  className="setting-input"
-                  style={{ flex: '1', fontFamily: 'monospace' }}
-                />
-              )}
+              <div style={{ flex: '1' }}>
+                {editResponseType === 'text' ? (
+                  <textarea
+                    value={editResponse}
+                    onChange={(e) => setEditResponse(e.target.value)}
+                    className="setting-input"
+                    style={{ width: '100%', fontFamily: 'monospace', minHeight: '60px', resize: 'vertical' }}
+                    rows={3}
+                  />
+                ) : editResponseType === 'script' ? (
+                  <select
+                    value={editResponse}
+                    onChange={(e) => setEditResponse(e.target.value)}
+                    className="setting-input"
+                    style={{
+                      width: '100%',
+                      minWidth: '200px',
+                      fontFamily: 'monospace',
+                      backgroundImage: 'none',
+                      paddingLeft: '2.5rem'
+                    }}
+                  >
+                    <option value="">
+                      {availableScripts.length === 0 ? 'No scripts found in /data/scripts/' : 'Select a script...'}
+                    </option>
+                    {availableScripts.map((script) => {
+                      const filename = script.split('/').pop() || script;
+                      const icon = getFileIcon(filename);
+                      return (
+                        <option key={script} value={script}>
+                          {icon} {filename}
+                        </option>
+                      );
+                    })}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={editResponse}
+                    onChange={(e) => setEditResponse(e.target.value)}
+                    className="setting-input"
+                    style={{ width: '100%', fontFamily: 'monospace' }}
+                  />
+                )}
+              </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
               <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold' }}>Channel:</label>
@@ -282,12 +284,28 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
               
               return (
                 <div style={{ marginTop: '0.5rem', padding: '0.5rem', background: 'var(--ctp-surface1)', borderRadius: '4px' }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem', fontWeight: 'bold' }}>
-                    Response Preview:
+                  <div style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>Response Preview:</span>
+                    <button
+                      onClick={() => setEditResponse('')}
+                      style={{
+                        background: 'var(--ctp-red)',
+                        border: 'none',
+                        borderRadius: '3px',
+                        color: 'white',
+                        cursor: 'pointer',
+                        padding: '0.15rem 0.4rem',
+                        fontSize: '0.7rem',
+                        fontWeight: 'bold'
+                      }}
+                      title="Clear response"
+                    >
+                      Clear
+                    </button>
                   </div>
-                  <div style={{ 
-                    fontFamily: 'monospace', 
-                    fontSize: '0.85rem', 
+                  <div style={{
+                    fontFamily: 'monospace',
+                    fontSize: '0.85rem',
                     color: 'var(--ctp-text)',
                     padding: '0.5rem',
                     background: 'var(--ctp-surface2)',
@@ -372,8 +390,8 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                     )}
                     {patterns.map((pattern, patternIdx) => {
                       // Parse pattern into segments for highlighting
-                      const segments: Array<{ text: string; type: 'literal' | 'parameter'; paramName?: string }> = [];
-                      
+                      const segments: Array<{ text: string; type: 'literal' | 'parameter'; paramName?: string; startPos: number; endPos: number }> = [];
+
                       let i = 0;
                       while (i < pattern.length) {
                         if (pattern[i] === '{') {
@@ -388,7 +406,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                           const paramMatch = pattern.substring(start, end - 1);
                           const colonPos = paramMatch.indexOf(':');
                           const paramName = colonPos >= 0 ? paramMatch.substring(0, colonPos) : paramMatch;
-                          segments.push({ text: pattern.substring(i, end), type: 'parameter', paramName });
+                          segments.push({ text: pattern.substring(i, end), type: 'parameter', paramName, startPos: i, endPos: end });
                           i = end;
                         } else {
                           const literalStart = i;
@@ -397,41 +415,123 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                           }
                           const literalText = pattern.substring(literalStart, i);
                           if (literalText.trim()) {
-                            segments.push({ text: literalText, type: 'literal' });
+                            // Keep the original text (including whitespace) for accurate boundary detection
+                            segments.push({ text: literalText, type: 'literal', startPos: literalStart, endPos: i });
                           }
+                        }
+                      }
+
+                      // Merge adjacent segments (no whitespace between them)
+                      const mergedSegments: Array<Array<{ text: string; type: 'literal' | 'parameter'; paramName?: string }>> = [];
+                      let currentGroup: Array<{ text: string; type: 'literal' | 'parameter'; paramName?: string }> = [];
+
+                      for (let j = 0; j < segments.length; j++) {
+                        currentGroup.push(segments[j]);
+
+                        // Check if next segment is adjacent (starts immediately after current ends, with no whitespace)
+                        const isLastSegment = j === segments.length - 1;
+                        let nextSegmentIsAdjacent = false;
+
+                        if (!isLastSegment) {
+                          const current = segments[j];
+                          const next = segments[j + 1];
+
+                          // Check if positions are adjacent
+                          const positionsAdjacent = next.startPos === current.endPos;
+
+                          // Check if there's whitespace at the boundary
+                          const currentEndsWithSpace = current.type === 'literal' && current.text.endsWith(' ');
+                          const nextStartsWithSpace = next.type === 'literal' && next.text.startsWith(' ');
+
+                          // Only merge if positions are adjacent AND no whitespace at boundary
+                          nextSegmentIsAdjacent = positionsAdjacent && !currentEndsWithSpace && !nextStartsWithSpace;
+                        }
+
+                        if (!nextSegmentIsAdjacent) {
+                          // End of group, push and start new group
+                          mergedSegments.push(currentGroup);
+                          currentGroup = [];
                         }
                       }
                       
                       return (
                         <React.Fragment key={patternIdx}>
-                          <div style={{ 
-                            display: 'inline-flex', 
-                            flexWrap: 'wrap', 
-                            alignItems: 'center', 
+                          <div style={{
+                            display: 'inline-flex',
+                            flexWrap: 'wrap',
+                            alignItems: 'center',
                             gap: '0.2rem'
                           }}>
-                            {segments.map((segment, segIdx) => (
-                              <span
-                                key={segIdx}
-                                style={{
-                                  backgroundColor: segment.type === 'parameter' 
-                                    ? 'rgba(166, 227, 161, 0.3)' 
-                                    : 'rgba(137, 180, 250, 0.2)',
-                                  padding: '0.2rem 0.4rem',
-                                  borderRadius: '4px',
-                                  fontWeight: segment.type === 'parameter' ? 'bold' : 'normal',
-                                  color: segment.type === 'parameter' ? 'var(--ctp-green)' : 'var(--ctp-blue)',
-                                  fontFamily: 'monospace',
-                                  fontSize: '0.85rem',
-                                  border: segment.type === 'parameter' 
-                                    ? '1px solid rgba(166, 227, 161, 0.5)' 
-                                    : '1px solid rgba(137, 180, 250, 0.3)'
-                                }}
-                                title={segment.type === 'parameter' ? `Parameter: ${segment.paramName}` : 'Literal text'}
-                              >
-                                {segment.text}
-                              </span>
-                            ))}
+                            {mergedSegments.map((group, groupIdx) => {
+                              if (group.length === 1) {
+                                // Single segment - render normally
+                                const segment = group[0];
+                                return (
+                                  <span
+                                    key={groupIdx}
+                                    style={{
+                                      backgroundColor: segment.type === 'parameter'
+                                        ? 'rgba(166, 227, 161, 0.3)'
+                                        : 'rgba(137, 180, 250, 0.2)',
+                                      padding: '0.2rem 0.4rem',
+                                      borderRadius: '4px',
+                                      fontWeight: segment.type === 'parameter' ? 'bold' : 'normal',
+                                      color: segment.type === 'parameter' ? 'var(--ctp-green)' : 'var(--ctp-blue)',
+                                      fontFamily: 'monospace',
+                                      fontSize: '0.85rem',
+                                      border: segment.type === 'parameter'
+                                        ? '1px solid rgba(166, 227, 161, 0.5)'
+                                        : '1px solid rgba(137, 180, 250, 0.3)'
+                                    }}
+                                    title={segment.type === 'parameter' ? `Parameter: ${segment.paramName}` : 'Literal text'}
+                                  >
+                                    {segment.type === 'literal' ? segment.text.trim() : segment.text}
+                                  </span>
+                                );
+                              } else {
+                                // Multiple adjacent segments - render as merged badge with dual-color split
+                                return (
+                                  <span
+                                    key={groupIdx}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      borderRadius: '4px',
+                                      overflow: 'hidden',
+                                      border: '1px solid rgba(166, 227, 161, 0.5)',
+                                      fontFamily: 'monospace',
+                                      fontSize: '0.85rem'
+                                    }}
+                                    title={group.map(s => s.type === 'parameter' ? `{${s.paramName}}` : s.text).join('')}
+                                  >
+                                    {group.map((segment, segIdx) => (
+                                      <React.Fragment key={segIdx}>
+                                        <span
+                                          style={{
+                                            backgroundColor: segment.type === 'parameter'
+                                              ? 'rgba(166, 227, 161, 0.3)'
+                                              : 'rgba(137, 180, 250, 0.2)',
+                                            padding: '0.2rem 0.4rem',
+                                            fontWeight: segment.type === 'parameter' ? 'bold' : 'normal',
+                                            color: segment.type === 'parameter' ? 'var(--ctp-green)' : 'var(--ctp-blue)'
+                                          }}
+                                        >
+                                          {segment.type === 'literal' ? segment.text.trim() : segment.text}
+                                        </span>
+                                        {segIdx < group.length - 1 && (
+                                          <span style={{
+                                            width: '1px',
+                                            height: '100%',
+                                            backgroundColor: 'rgba(205, 214, 244, 0.3)',
+                                            margin: '0'
+                                          }} />
+                                        )}
+                                      </React.Fragment>
+                                    ))}
+                                  </span>
+                                );
+                              }
+                            })}
                           </div>
                           {patternIdx < patterns.length - 1 && (
                             <span style={{ 
