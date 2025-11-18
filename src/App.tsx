@@ -2491,8 +2491,9 @@ function App() {
         // Close the purge data modal if open
         setShowPurgeDataModal(false);
         // Clear the selected DM node if it's the one being deleted
-        if (selectedDMNode === nodeNum) {
-          setSelectedDMNode(null);
+        const deletedNode = nodes.find(n => n.nodeNum === nodeNum);
+        if (deletedNode && selectedDMNode === deletedNode.user?.id) {
+          setSelectedDMNode('');
         }
         // Refresh data from backend to ensure consistency
         updateDataFromBackend();
@@ -2527,8 +2528,9 @@ function App() {
         // Close the purge data modal if open
         setShowPurgeDataModal(false);
         // Clear the selected DM node if it's the one being deleted
-        if (selectedDMNode === nodeNum) {
-          setSelectedDMNode(null);
+        const purgedNode = nodes.find(n => n.nodeNum === nodeNum);
+        if (purgedNode && selectedDMNode === purgedNode.user?.id) {
+          setSelectedDMNode('');
         }
         // Refresh data from backend to ensure consistency
         updateDataFromBackend();

@@ -355,8 +355,8 @@ router.delete('/nodes/:nodeNum', requireMessagesWrite, (req, res) => {
     }
 
     // Get node name for logging
-    const node = databaseService.getNodes().find(n => n.nodeNum === nodeNum);
-    const nodeName = node?.user?.shortName || node?.user?.longName || `Node ${nodeNum}`;
+    const node = databaseService.getAllNodes().find((n: any) => n.nodeNum === nodeNum);
+    const nodeName = node?.shortName || node?.longName || `Node ${nodeNum}`;
 
     const result = databaseService.deleteNode(nodeNum);
 
@@ -411,8 +411,8 @@ router.post('/nodes/:nodeNum/purge-from-device', requireMessagesWrite, async (re
     }
 
     // Get node name for logging
-    const node = databaseService.getNodes().find(n => n.nodeNum === nodeNum);
-    const nodeName = node?.user?.shortName || node?.user?.longName || `Node ${nodeNum}`;
+    const node = databaseService.getAllNodes().find((n: any) => n.nodeNum === nodeNum);
+    const nodeName = node?.shortName || node?.longName || `Node ${nodeNum}`;
 
     // Get the meshtasticManager instance
     const meshtasticManager = (global as any).meshtasticManager;
