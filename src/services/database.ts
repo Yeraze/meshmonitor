@@ -2031,12 +2031,12 @@ class DatabaseService {
     const traceroutesDeleted = this.purgeNodeTraceroutes(nodeNum);
     const telemetryDeleted = this.purgeNodeTelemetry(nodeNum);
 
-    // Delete traceroute routes where this node is involved
-    const tracerouteRoutesStmt = this.db.prepare(`
-      DELETE FROM traceroute_routes
+    // Delete route segments where this node is involved
+    const routeSegmentsStmt = this.db.prepare(`
+      DELETE FROM route_segments
       WHERE fromNodeNum = ? OR toNodeNum = ?
     `);
-    tracerouteRoutesStmt.run(nodeNum, nodeNum);
+    routeSegmentsStmt.run(nodeNum, nodeNum);
 
     // Delete neighbor_info records where this node is involved (either as source or neighbor)
     const neighborInfoStmt = this.db.prepare(`
