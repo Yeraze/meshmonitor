@@ -8,6 +8,9 @@ import { fileURLToPath } from 'url';
 import databaseService from '../services/database.js';
 import meshtasticManager from './meshtasticManager.js';
 import { VirtualNodeServer } from './virtualNodeServer.js';
+
+// Make meshtasticManager available globally for routes that need it
+(global as any).meshtasticManager = meshtasticManager;
 import { createRequire } from 'module';
 import { logger } from '../utils/logger.js';
 import { getSessionConfig } from './auth/sessionConfig.js';
