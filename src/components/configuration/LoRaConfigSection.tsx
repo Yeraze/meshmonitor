@@ -8,6 +8,7 @@ interface LoRaConfigSectionProps {
   spreadFactor: number;
   codingRate: number;
   frequencyOffset: number;
+  overrideFrequency: number;
   region: number;
   hopLimit: number;
   channelNum: number;
@@ -18,6 +19,7 @@ interface LoRaConfigSectionProps {
   setSpreadFactor: (value: number) => void;
   setCodingRate: (value: number) => void;
   setFrequencyOffset: (value: number) => void;
+  setOverrideFrequency: (value: number) => void;
   setRegion: (value: number) => void;
   setHopLimit: (value: number) => void;
   setChannelNum: (value: number) => void;
@@ -33,6 +35,7 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
   spreadFactor,
   codingRate,
   frequencyOffset,
+  overrideFrequency,
   region,
   hopLimit,
   channelNum,
@@ -43,6 +46,7 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
   setSpreadFactor,
   setCodingRate,
   setFrequencyOffset,
+  setOverrideFrequency,
   setRegion,
   setHopLimit,
   setChannelNum,
@@ -239,6 +243,20 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
           </div>
         </>
       )}
+      <div className="setting-item">
+        <label htmlFor="overrideFrequency">
+          Override Frequency (MHz)
+          <span className="setting-description">HAM/Advanced: Override channel calculation and use this frequency. Frequency offset still applies. Value of 0 = disabled</span>
+        </label>
+        <input
+          id="overrideFrequency"
+          type="number"
+          step="0.001"
+          value={overrideFrequency}
+          onChange={(e) => setOverrideFrequency(parseFloat(e.target.value))}
+          className="setting-input"
+        />
+      </div>
       <div className="setting-item">
         <label htmlFor="region">
           Region Code

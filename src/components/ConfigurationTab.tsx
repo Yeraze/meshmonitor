@@ -41,6 +41,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   const [spreadFactor, setSpreadFactor] = useState<number>(11);
   const [codingRate, setCodingRate] = useState<number>(8);
   const [frequencyOffset, setFrequencyOffset] = useState<number>(0);
+  const [overrideFrequency, setOverrideFrequency] = useState<number>(0);
   const [region, setRegion] = useState<number>(0);
   const [hopLimit, setHopLimit] = useState<number>(3);
   const [channelNum, setChannelNum] = useState<number>(0);
@@ -127,6 +128,9 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           }
           if (config.deviceConfig.lora.frequencyOffset !== undefined) {
             setFrequencyOffset(config.deviceConfig.lora.frequencyOffset);
+          }
+          if (config.deviceConfig.lora.overrideFrequency !== undefined) {
+            setOverrideFrequency(config.deviceConfig.lora.overrideFrequency);
           }
           if (config.deviceConfig.lora.region !== undefined) {
             const regionValue = typeof config.deviceConfig.lora.region === 'string'
@@ -289,6 +293,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         spreadFactor,
         codingRate,
         frequencyOffset,
+        overrideFrequency,
         region,
         hopLimit: validHopLimit,
         channelNum,
@@ -628,6 +633,8 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           setCodingRate={setCodingRate}
           frequencyOffset={frequencyOffset}
           setFrequencyOffset={setFrequencyOffset}
+          overrideFrequency={overrideFrequency}
+          setOverrideFrequency={setOverrideFrequency}
           region={region}
           setRegion={setRegion}
           hopLimit={hopLimit}
