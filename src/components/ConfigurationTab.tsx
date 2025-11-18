@@ -31,6 +31,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   // Device Config State
   const [longName, setLongName] = useState('');
   const [shortName, setShortName] = useState('');
+  const [isUnmessagable, setIsUnmessagable] = useState(false);
   const [role, setRole] = useState<number>(0);
   const [nodeInfoBroadcastSecs, setNodeInfoBroadcastSecs] = useState(3600);
 
@@ -91,6 +92,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         if (config.localNodeInfo) {
           setLongName(config.localNodeInfo.longName || '');
           setShortName(config.localNodeInfo.shortName || '');
+          setIsUnmessagable(config.localNodeInfo.isUnmessagable || false);
         }
 
         // Populate device config
@@ -259,7 +261,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
     setIsSaving(true);
     setStatusMessage('');
     try {
-      await apiService.setNodeOwner(longName, shortName);
+      await apiService.setNodeOwner(longName, shortName, isUnmessagable);
       setStatusMessage('Node names saved successfully! Device will reboot...');
       showToast('Node names saved! Device will reboot...', 'success');
       onConfigChangeTriggeringReboot?.();
@@ -605,8 +607,10 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         <NodeIdentitySection
           longName={longName}
           shortName={shortName}
+          isUnmessagable={isUnmessagable}
           setLongName={setLongName}
           setShortName={setShortName}
+          setIsUnmessagable={setIsUnmessagable}
           isSaving={isSaving}
           onSave={handleSaveNodeOwner}
         />

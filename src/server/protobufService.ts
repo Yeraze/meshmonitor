@@ -1052,9 +1052,10 @@ class ProtobufService {
    * Create an AdminMessage to set node owner (long name and short name)
    * @param longName Node long name
    * @param shortName Node short name
+   * @param isUnmessagable Optional flag to prevent others from sending direct messages
    * @param sessionPasskey Optional session passkey for authentication
    */
-  createSetOwnerMessage(longName: string, shortName: string, sessionPasskey?: Uint8Array): Uint8Array {
+  createSetOwnerMessage(longName: string, shortName: string, isUnmessagable?: boolean, sessionPasskey?: Uint8Array): Uint8Array {
     try {
       const root = getProtobufRoot();
       const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
@@ -1065,7 +1066,8 @@ class ProtobufService {
 
       const userMsg = User.create({
         longName: longName,
-        shortName: shortName
+        shortName: shortName,
+        isUnmessagable: isUnmessagable
       });
 
       const adminMsgData: any = {
@@ -1080,7 +1082,7 @@ class ProtobufService {
       const adminMsg = AdminMessage.create(adminMsgData);
 
       const encoded = AdminMessage.encode(adminMsg).finish();
-      logger.debug(`⚙️ Created SetOwner admin message: "${longName}" (${shortName})`);
+      logger.debug(`⚙️ Created SetOwner admin message: "${longName}" (${shortName}), isUnmessagable: ${isUnmessagable}`);
       return encoded;
     } catch (error) {
       logger.error('Failed to create SetOwner message:', error);

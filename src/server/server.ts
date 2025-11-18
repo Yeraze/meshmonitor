@@ -3604,12 +3604,12 @@ apiRouter.post('/config/neighborinfo', requirePermission('configuration', 'write
 
 apiRouter.post('/config/owner', requirePermission('configuration', 'write'), async (req, res) => {
   try {
-    const { longName, shortName } = req.body;
+    const { longName, shortName, isUnmessagable } = req.body;
     if (!longName || !shortName) {
       res.status(400).json({ error: 'longName and shortName are required' });
       return;
     }
-    await meshtasticManager.setNodeOwner(longName, shortName);
+    await meshtasticManager.setNodeOwner(longName, shortName, isUnmessagable);
     res.json({ success: true, message: 'Node owner updated' });
   } catch (error) {
     logger.error('Error setting node owner:', error);

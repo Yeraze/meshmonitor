@@ -3,8 +3,10 @@ import React from 'react';
 interface NodeIdentitySectionProps {
   longName: string;
   shortName: string;
+  isUnmessagable: boolean;
   setLongName: (value: string) => void;
   setShortName: (value: string) => void;
+  setIsUnmessagable: (value: boolean) => void;
   isSaving: boolean;
   onSave: () => Promise<void>;
 }
@@ -12,8 +14,10 @@ interface NodeIdentitySectionProps {
 const NodeIdentitySection: React.FC<NodeIdentitySectionProps> = ({
   longName,
   shortName,
+  isUnmessagable,
   setLongName,
   setShortName,
+  setIsUnmessagable,
   isSaving,
   onSave
 }) => {
@@ -64,6 +68,21 @@ const NodeIdentitySection: React.FC<NodeIdentitySectionProps> = ({
           className="setting-input"
           placeholder="MESH"
         />
+      </div>
+      <div className="setting-item">
+        <label htmlFor="isUnmessagable" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+          <input
+            id="isUnmessagable"
+            type="checkbox"
+            checked={isUnmessagable}
+            onChange={(e) => setIsUnmessagable(e.target.checked)}
+            style={{ marginTop: '0.2rem', flexShrink: 0 }}
+          />
+          <div style={{ flex: 1 }}>
+            <div>Unmessageable</div>
+            <span className="setting-description">Prevent others from sending direct messages to this node</span>
+          </div>
+        </label>
       </div>
       <button
         className="save-button"
