@@ -4154,19 +4154,29 @@ class MeshtasticManager {
       const autoAckUseDM = databaseService.getSetting('autoAckUseDM');
       const alwaysUseDM = autoAckUseDM === 'true';
 
-      // Send reply on same channel or as direct message
-      // If alwaysUseDM is enabled, always send as DM (destination = fromNum, channel = 0)
-      // If the original message was a DM, reply as DM
-      // Otherwise, reply on the same channel
-      const destination = (alwaysUseDM || isDirectMessage) ? fromNum : undefined;
-      const channel = (alwaysUseDM || isDirectMessage) ? 0 : channelIndex;
-
       // Don't make it a reply if we're changing channels (DM when triggered by channel message)
       const replyId = (alwaysUseDM && !isDirectMessage) ? undefined : packetId;
 
+      // Format target for logging
+      const target = (alwaysUseDM || isDirectMessage)
+        ? `!${fromNum.toString(16).padStart(8, '0')}`
+        : `channel ${channelIndex}`;
+
       logger.debug(`🤖 Auto-acknowledging message from ${message.fromNodeId}: "${messageText}" with "${ackText}" ${alwaysUseDM ? '(via DM)' : ''}`);
 
-      await this.sendTextMessage(ackText, channel, destination, replyId);
+      // Use message queue to send auto-acknowledge with rate limiting and retry logic
+      messageQueueService.enqueue(
+        ackText,
+        (alwaysUseDM || isDirectMessage) ? fromNum : 0, // destination: node number for DM, 0 for channel
+        replyId, // replyId
+        () => {
+          logger.info(`✅ Auto-acknowledge delivered to ${target}`);
+        },
+        (reason: string) => {
+          logger.warn(`❌ Auto-acknowledge failed to ${target}: ${reason}`);
+        },
+        (alwaysUseDM || isDirectMessage) ? undefined : channelIndex // channel: undefined for DM, channel number for channel
+      );
     } catch (error) {
       logger.error('❌ Error in auto-acknowledge:', error);
     }

@@ -1,7 +1,7 @@
 /**
  * Message Queue Service
  *
- * Manages outgoing auto-responder messages with:
+ * Manages outgoing automated messages (Auto-Responder and Auto-Acknowledge) with:
  * - Rate limiting (max 1 message per 30 seconds)
  * - Retry logic (up to 3 attempts until ACK received)
  * - Queue processing with proper timing
@@ -77,7 +77,7 @@ class MessageQueueService {
 
     this.queue.push(queuedMessage);
     const target = channel !== undefined ? `channel ${channel}` : `node !${destination.toString(16).padStart(8, '0')}`;
-    logger.info(`📬 Enqueued auto-responder message ${messageId} to ${target} (queue length: ${this.queue.length})`);
+    logger.info(`📬 Enqueued automated message ${messageId} to ${target} (queue length: ${this.queue.length})`);
 
     // Start processing if not already running
     if (!this.processing) {
