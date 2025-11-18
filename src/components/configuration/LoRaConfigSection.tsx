@@ -11,6 +11,7 @@ interface LoRaConfigSectionProps {
   overrideFrequency: number;
   region: number;
   hopLimit: number;
+  txPower: number;
   channelNum: number;
   sx126xRxBoostedGain: boolean;
   setUsePreset: (value: boolean) => void;
@@ -22,6 +23,7 @@ interface LoRaConfigSectionProps {
   setOverrideFrequency: (value: number) => void;
   setRegion: (value: number) => void;
   setHopLimit: (value: number) => void;
+  setTxPower: (value: number) => void;
   setChannelNum: (value: number) => void;
   setSx126xRxBoostedGain: (value: boolean) => void;
   isSaving: boolean;
@@ -38,6 +40,7 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
   overrideFrequency,
   region,
   hopLimit,
+  txPower,
   channelNum,
   sx126xRxBoostedGain,
   setUsePreset,
@@ -49,6 +52,7 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
   setOverrideFrequency,
   setRegion,
   setHopLimit,
+  setTxPower,
   setChannelNum,
   setSx126xRxBoostedGain,
   isSaving,
@@ -287,6 +291,19 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
           max="7"
           value={hopLimit}
           onChange={(e) => setHopLimit(parseInt(e.target.value))}
+          className="setting-input"
+        />
+      </div>
+      <div className="setting-item">
+        <label htmlFor="txPower">
+          Transmit Power (dBm)
+          <span className="setting-description">LoRa transmit power in dBm. Value of 0 uses the default maximum safe power for your hardware. Units are in dBm.</span>
+        </label>
+        <input
+          id="txPower"
+          type="number"
+          value={txPower}
+          onChange={(e) => setTxPower(parseInt(e.target.value))}
           className="setting-input"
         />
       </div>
