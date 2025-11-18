@@ -1,0 +1,980 @@
+openapi: 3.0.3
+info:
+  title: MeshMonitor API
+  description: |
+    MeshMonitor REST API v1 provides programmatic access to mesh network data.
+
+    ## Authentication
+    All v1 API endpoints require API token authentication using Bearer tokens in the Authorization header.
+
+    ```
+    Authorization: Bearer mm_v1_<your_token_here>
+    ```
+
+    ## Generating API Tokens
+    API tokens can be generated from your User Settings page. Each user account can have one active token at a time.
+    Generating a new token automatically revokes the previous token.
+
+    ## Rate Limiting
+    API token requests are subject to more restrictive rate limiting than session-based authentication.
+
+    ## API Versioning
+    This API uses URL-based versioning. All endpoints are prefixed with `/api/v1/`.
+  version: 1.0.0
+  contact:
+    name: MeshMonitor Support
+    url: https://github.com/aerospaceresearch/meshmonitor
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Development server
+  - url: https://your-meshmonitor-instance.com/api/v1
+    description: Production server
+
+tags:
+  - name: API Info
+    description: API version and endpoint information
+  - name: Nodes
+    description: Mesh network node information
+  - name: Telemetry
+    description: Telemetry data from mesh nodes
+  - name: Messages
+    description: Mesh network messages
+  - name: Traceroutes
+    description: Network path traceroute data
+  - name: Network
+    description: Network-wide statistics and topology
+
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API Token
+      description: |
+        API token authentication. Use format: `Bearer mm_v1_<token>`
+
+        Generate tokens from your User Settings page.
+
+  schemas:
+    Error:
+      type: object
+      required:
+        - success
+        - error
+        - message
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+          example: "Unauthorized"
+        message:
+          type: string
+          example: "API token required"
+
+    APIInfo:
+      type: object
+      properties:
+        version:
+          type: string
+          example: "v1"
+        description:
+          type: string
+          example: "MeshMonitor REST API v1"
+        documentation:
+          type: string
+          example: "/api/v1/docs"
+        endpoints:
+          type: object
+          properties:
+            nodes:
+              type: string
+              example: "/api/v1/nodes"
+            telemetry:
+              type: string
+              example: "/api/v1/telemetry"
+            traceroutes:
+              type: string
+              example: "/api/v1/traceroutes"
+            messages:
+              type: string
+              example: "/api/v1/messages"
+            network:
+              type: string
+              example: "/api/v1/network"
+
+    Node:
+      type: object
+      properties:
+        nodeId:
+          type: string
+          description: Unique node identifier (hex format)
+          example: "!a1b2c3d4"
+        nodeNum:
+          type: integer
+          description: Node number
+          example: 2715451348
+        longName:
+          type: string
+          description: Long name of the node
+          example: "My Mesh Node"
+        shortName:
+          type: string
+          description: Short name (4 characters)
+          example: "MESH"
+        role:
+          type: string
+          description: Node role in the mesh network
+          enum: [CLIENT, ROUTER, ROUTER_CLIENT]
+          example: "CLIENT"
+        hwModel:
+          type: string
+          description: Hardware model
+          example: "TBEAM"
+        latitude:
+          type: number
+          format: double
+          description: Node latitude
+          example: 37.7749
+        longitude:
+          type: number
+          format: double
+          description: Node longitude
+          example: -122.4194
+        altitude:
+          type: integer
+          description: Node altitude in meters
+          example: 50
+        hopsAway:
+          type: integer
+          description: Number of hops from primary node
+          example: 1
+        lastHeard:
+          type: integer
+          description: Unix timestamp of last contact
+          example: 1699564800
+        snr:
+          type: number
+          format: float
+          description: Signal-to-noise ratio
+          example: 8.5
+
+    NodeListResponse:
+      type: object
+      required:
+        - success
+        - count
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        count:
+          type: integer
+          description: Number of nodes returned
+          example: 25
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Node'
+
+    NodeResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/Node'
+
+    Telemetry:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 12345
+        nodeId:
+          type: string
+          description: Node identifier
+          example: "!a1b2c3d4"
+        timestamp:
+          type: integer
+          description: Unix timestamp
+          example: 1699564800
+        telemetryType:
+          type: string
+          description: Type of telemetry data
+          enum: [device_metrics, environment_metrics, power_metrics, air_quality_metrics]
+          example: "device_metrics"
+        batteryLevel:
+          type: integer
+          description: Battery percentage (0-100)
+          example: 85
+        voltage:
+          type: number
+          format: float
+          description: Voltage in volts
+          example: 4.2
+        channelUtilization:
+          type: number
+          format: float
+          description: Channel utilization percentage
+          example: 12.5
+        airUtilTx:
+          type: number
+          format: float
+          description: Air utilization for transmission
+          example: 5.2
+        temperature:
+          type: number
+          format: float
+          description: Temperature in Celsius
+          example: 25.5
+        relativeHumidity:
+          type: number
+          format: float
+          description: Relative humidity percentage
+          example: 65.0
+        barometricPressure:
+          type: number
+          format: float
+          description: Barometric pressure in hPa
+          example: 1013.25
+
+    TelemetryListResponse:
+      type: object
+      required:
+        - success
+        - count
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        count:
+          type: integer
+          description: Number of telemetry records returned
+          example: 100
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Telemetry'
+
+    Message:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique message identifier
+          example: "msg_123456"
+        fromNodeId:
+          type: string
+          description: Sender node ID
+          example: "!a1b2c3d4"
+        toNodeId:
+          type: string
+          description: Recipient node ID
+          example: "!e5f6g7h8"
+        channel:
+          type: integer
+          description: Channel number
+          example: 0
+        messageType:
+          type: string
+          description: Type of message
+          example: "text"
+        text:
+          type: string
+          description: Message text content
+          example: "Hello from the mesh!"
+        timestamp:
+          type: integer
+          description: Unix timestamp
+          example: 1699564800
+        rxTime:
+          type: integer
+          description: Receive timestamp
+          example: 1699564802
+        rxSnr:
+          type: number
+          format: float
+          description: Receive SNR
+          example: 9.5
+        rxRssi:
+          type: integer
+          description: Receive RSSI in dBm
+          example: -95
+        hopLimit:
+          type: integer
+          description: Hop limit
+          example: 3
+
+    MessageListResponse:
+      type: object
+      required:
+        - success
+        - count
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        count:
+          type: integer
+          description: Number of messages returned
+          example: 50
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Message'
+
+    MessageResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/Message'
+
+    Traceroute:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 789
+        fromNodeId:
+          type: string
+          description: Source node ID
+          example: "!a1b2c3d4"
+        toNodeId:
+          type: string
+          description: Destination node ID
+          example: "!e5f6g7h8"
+        route:
+          type: string
+          description: JSON array of node IDs in the route
+          example: '["!a1b2c3d4", "!i9j0k1l2", "!e5f6g7h8"]'
+        snrTowards:
+          type: string
+          description: JSON array of SNR values for each hop
+          example: '[8.5, 7.2, 9.1]'
+        timestamp:
+          type: integer
+          description: Unix timestamp
+          example: 1699564800
+
+    TracerouteListResponse:
+      type: object
+      required:
+        - success
+        - count
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        count:
+          type: integer
+          description: Number of traceroutes returned
+          example: 10
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Traceroute'
+
+    TracerouteResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/Traceroute'
+
+    NetworkStats:
+      type: object
+      properties:
+        totalNodes:
+          type: integer
+          description: Total number of nodes in the network
+          example: 150
+        activeNodes:
+          type: integer
+          description: Number of active nodes (last 7 days)
+          example: 85
+        tracerouteCount:
+          type: integer
+          description: Total number of traceroutes
+          example: 245
+        lastUpdated:
+          type: integer
+          description: Unix timestamp of last update
+          example: 1699564800
+
+    NetworkStatsResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/NetworkStats'
+
+    TopologyNode:
+      type: object
+      properties:
+        nodeId:
+          type: string
+          example: "!a1b2c3d4"
+        nodeNum:
+          type: integer
+          example: 2715451348
+        longName:
+          type: string
+          example: "My Mesh Node"
+        shortName:
+          type: string
+          example: "MESH"
+        role:
+          type: string
+          example: "CLIENT"
+        hopsAway:
+          type: integer
+          example: 1
+        latitude:
+          type: number
+          format: double
+          example: 37.7749
+        longitude:
+          type: number
+          format: double
+          example: -122.4194
+        lastHeard:
+          type: integer
+          example: 1699564800
+
+    TopologyEdge:
+      type: object
+      properties:
+        from:
+          type: string
+          description: Source node ID
+          example: "!a1b2c3d4"
+        to:
+          type: string
+          description: Destination node ID
+          example: "!e5f6g7h8"
+        route:
+          type: array
+          items:
+            type: string
+          description: Array of node IDs in the route
+          example: ["!a1b2c3d4", "!i9j0k1l2", "!e5f6g7h8"]
+        snr:
+          type: array
+          items:
+            type: number
+          description: Array of SNR values for each hop
+          example: [8.5, 7.2, 9.1]
+
+    Topology:
+      type: object
+      properties:
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/TopologyNode'
+        edges:
+          type: array
+          items:
+            $ref: '#/components/schemas/TopologyEdge'
+
+    TopologyResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/Topology'
+
+paths:
+  /:
+    get:
+      tags:
+        - API Info
+      summary: Get API version information
+      description: Returns version information and available endpoints
+      responses:
+        '200':
+          description: API information retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIInfo'
+        '401':
+          description: Unauthorized - invalid or missing API token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /nodes:
+    get:
+      tags:
+        - Nodes
+      summary: Get all nodes
+      description: Retrieve all nodes in the mesh network
+      parameters:
+        - name: active
+          in: query
+          description: Filter to only active nodes (within last N days)
+          required: false
+          schema:
+            type: boolean
+            default: false
+        - name: sinceDays
+          in: query
+          description: Number of days to consider for active nodes filter
+          required: false
+          schema:
+            type: integer
+            default: 7
+            minimum: 1
+      responses:
+        '200':
+          description: Nodes retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeListResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /nodes/{nodeId}:
+    get:
+      tags:
+        - Nodes
+      summary: Get a specific node
+      description: Retrieve detailed information about a specific node
+      parameters:
+        - name: nodeId
+          in: path
+          description: Node ID (hex format, e.g., !a1b2c3d4)
+          required: true
+          schema:
+            type: string
+            pattern: '^![0-9a-fA-F]{8}$'
+      responses:
+        '200':
+          description: Node retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeResponse'
+        '404':
+          description: Node not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /telemetry:
+    get:
+      tags:
+        - Telemetry
+      summary: Get telemetry data
+      description: Retrieve telemetry data with optional filters
+      parameters:
+        - name: nodeId
+          in: query
+          description: Filter by specific node ID
+          required: false
+          schema:
+            type: string
+        - name: type
+          in: query
+          description: Filter by telemetry type
+          required: false
+          schema:
+            type: string
+            enum: [device_metrics, environment_metrics, power_metrics, air_quality_metrics]
+        - name: since
+          in: query
+          description: Unix timestamp to filter data after this time
+          required: false
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          description: Maximum number of records to return
+          required: false
+          schema:
+            type: integer
+            default: 1000
+            minimum: 1
+            maximum: 10000
+      responses:
+        '200':
+          description: Telemetry data retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TelemetryListResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /telemetry/{nodeId}:
+    get:
+      tags:
+        - Telemetry
+      summary: Get telemetry for a specific node
+      description: Retrieve all telemetry data for a specific node
+      parameters:
+        - name: nodeId
+          in: path
+          description: Node ID
+          required: true
+          schema:
+            type: string
+        - name: type
+          in: query
+          description: Filter by telemetry type
+          required: false
+          schema:
+            type: string
+            enum: [device_metrics, environment_metrics, power_metrics, air_quality_metrics]
+        - name: since
+          in: query
+          description: Unix timestamp to filter data after this time
+          required: false
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          description: Maximum number of records to return
+          required: false
+          schema:
+            type: integer
+            default: 1000
+            minimum: 1
+            maximum: 10000
+      responses:
+        '200':
+          description: Telemetry data retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TelemetryListResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /messages:
+    get:
+      tags:
+        - Messages
+      summary: Get messages
+      description: Retrieve mesh network messages with optional filters
+      parameters:
+        - name: channel
+          in: query
+          description: Filter by channel number
+          required: false
+          schema:
+            type: integer
+        - name: fromNodeId
+          in: query
+          description: Filter by sender node ID
+          required: false
+          schema:
+            type: string
+        - name: toNodeId
+          in: query
+          description: Filter by recipient node ID
+          required: false
+          schema:
+            type: string
+        - name: since
+          in: query
+          description: Unix timestamp to filter messages after this time
+          required: false
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          description: Maximum number of records to return
+          required: false
+          schema:
+            type: integer
+            default: 100
+            minimum: 1
+            maximum: 1000
+      responses:
+        '200':
+          description: Messages retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageListResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /messages/{messageId}:
+    get:
+      tags:
+        - Messages
+      summary: Get a specific message
+      description: Retrieve a specific message by ID
+      parameters:
+        - name: messageId
+          in: path
+          description: Message ID
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Message retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '404':
+          description: Message not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /traceroutes:
+    get:
+      tags:
+        - Traceroutes
+      summary: Get all traceroutes
+      description: Retrieve traceroute records
+      parameters:
+        - name: fromNodeId
+          in: query
+          description: Filter by source node ID
+          required: false
+          schema:
+            type: string
+        - name: toNodeId
+          in: query
+          description: Filter by destination node ID
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum number of records to return
+          required: false
+          schema:
+            type: integer
+            default: 100
+            minimum: 1
+            maximum: 1000
+      responses:
+        '200':
+          description: Traceroutes retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TracerouteListResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /traceroutes/{fromNodeId}/{toNodeId}:
+    get:
+      tags:
+        - Traceroutes
+      summary: Get traceroute between two nodes
+      description: Retrieve the traceroute between two specific nodes
+      parameters:
+        - name: fromNodeId
+          in: path
+          description: Source node ID
+          required: true
+          schema:
+            type: string
+        - name: toNodeId
+          in: path
+          description: Destination node ID
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Traceroute retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TracerouteResponse'
+        '404':
+          description: Traceroute not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /network:
+    get:
+      tags:
+        - Network
+      summary: Get network statistics
+      description: Retrieve network-wide statistics
+      responses:
+        '200':
+          description: Network statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NetworkStatsResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /network/topology:
+    get:
+      tags:
+        - Network
+      summary: Get network topology
+      description: Retrieve the complete network topology including nodes and edges
+      responses:
+        '200':
+          description: Network topology retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TopologyResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
