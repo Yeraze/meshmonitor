@@ -86,9 +86,20 @@ See the [Virtual Node Server guide](/configuration/virtual-node) for detailed co
 | `TRUST_PROXY` | Trust reverse proxy headers (required for HTTPS behind proxy) | `1` in production |
 | `COOKIE_SECURE` | Require HTTPS for cookies | `true` in production |
 | `COOKIE_SAMESITE` | Cookie SameSite policy (`strict`, `lax`, or `none`) | `strict` in production |
+| `SESSION_COOKIE_NAME` | Custom session cookie name (useful for multiple instances on same host) | `meshmonitor.sid` |
 | `SESSION_MAX_AGE` | Session cookie lifetime in milliseconds | `86400000` (24 hours) |
 | `SESSION_ROLLING` | Reset session expiry on each request (keeps active users logged in) | `true` |
 | `ALLOWED_ORIGINS` | **REQUIRED for HTTPS/reverse proxy**: Comma-separated list of allowed CORS origins | `http://localhost:8080, http://localhost:3001` |
+
+::: tip Running Multiple Instances
+If you're running multiple MeshMonitor instances on the same host (different ports), set `SESSION_COOKIE_NAME` to a unique value for each instance to avoid session cookie conflicts:
+```yaml
+# First instance
+- SESSION_COOKIE_NAME=meshmonitor-mf.sid
+# Second instance
+- SESSION_COOKIE_NAME=meshmonitor-lf.sid
+```
+:::
 
 ### Authentication Variables
 

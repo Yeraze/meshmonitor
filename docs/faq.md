@@ -160,6 +160,69 @@ Access them at:
 
 ---
 
+### I get CSRF errors when running multiple MeshMonitor instances on the same host
+
+**Problem:** When running multiple MeshMonitor instances on the same host (same IP/domain, different ports), you experience random logouts, CSRF validation failures, or session conflicts.
+
+**Cause:** This is a **session cookie conflict**. Browsers identify cookies by domain/hostname, not by port. When multiple instances use the same default session cookie name (`meshmonitor.sid`), they share and overwrite each other's session cookies, causing authentication conflicts.
+
+**Solution:** Set a unique `SESSION_COOKIE_NAME` for each instance:
+
+```yaml
+services:
+  meshmonitor-node1:
+    image: ghcr.io/yeraze/meshmonitor:latest
+    container_name: meshmonitor-node1
+    ports:
+      - "8080:3001"
+    volumes:
+      - meshmonitor-node1-data:/data
+    environment:
+      - MESHTASTIC_NODE_IP=192.168.1.100
+      - ALLOWED_ORIGINS=http://192.168.1.50:8080
+      - SESSION_COOKIE_NAME=meshmonitor-node1.sid  # Unique name!
+    restart: unless-stopped
+
+  meshmonitor-node2:
+    image: ghcr.io/yeraze/meshmonitor:latest
+    container_name: meshmonitor-node2
+    ports:
+      - "8081:3001"
+    volumes:
+      - meshmonitor-node2-data:/data
+    environment:
+      - MESHTASTIC_NODE_IP=192.168.1.101
+      - ALLOWED_ORIGINS=http://192.168.1.50:8081
+      - SESSION_COOKIE_NAME=meshmonitor-node2.sid  # Different name!
+    restart: unless-stopped
+
+volumes:
+  meshmonitor-node1-data:
+  meshmonitor-node2-data:
+```
+
+**Why this works:**
+- Each instance now uses a different cookie name
+- Browser stores separate cookies for each instance
+- Sessions no longer conflict or overwrite each other
+- Each instance maintains independent authentication state
+
+**How to diagnose:**
+1. Open browser Developer Tools (F12)
+2. Go to Application tab → Cookies
+3. Check if you see only one `meshmonitor.sid` cookie (indicates conflict)
+4. After fix, you should see multiple cookies with unique names (e.g., `meshmonitor-node1.sid`, `meshmonitor-node2.sid`)
+
+**After fixing:**
+```bash
+docker compose down
+docker compose up -d
+```
+
+**Note:** This issue only occurs when running multiple instances on the **same hostname** (e.g., `192.168.1.50:8080` and `192.168.1.50:8081`). If instances use different hostnames (e.g., `meshmonitor1.local` and `meshmonitor2.local`), they automatically have separate cookies and don't need custom names.
+
+---
+
 ## 🔐 User Management
 
 ### How do I reset a user's password as an admin?
