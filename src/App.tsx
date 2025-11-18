@@ -2469,6 +2469,80 @@ function App() {
     }
   };
 
+  const handleDeleteNode = async (nodeNum: number) => {
+    const node = nodes.find(n => n.nodeNum === nodeNum);
+    const nodeName = node?.user?.shortName || node?.user?.longName || `Node ${nodeNum}`;
+
+    if (!window.confirm(`Are you sure you want to DELETE ${nodeName} from the local database?\n\nThis will remove:\n- The node from the map and node list\n- All messages with this node\n- All traceroutes for this node\n- All telemetry data for this node\n\nThis action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const response = await authFetch(`${baseUrl}/api/messages/nodes/${nodeNum}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        showToast(`Deleted ${nodeName} - ${data.messagesDeleted} messages, ${data.traceroutesDeleted} traceroutes, ${data.telemetryDeleted} telemetry records`, 'success');
+        // Close the purge data modal if open
+        setShowPurgeDataModal(false);
+        // Clear the selected DM node if it's the one being deleted
+        const deletedNode = nodes.find(n => n.nodeNum === nodeNum);
+        if (deletedNode && selectedDMNode === deletedNode.user?.id) {
+          setSelectedDMNode('');
+        }
+        // Refresh data from backend to ensure consistency
+        updateDataFromBackend();
+      } else {
+        const errorData = await response.json();
+        showToast(`Failed to delete node: ${errorData.message || 'Unknown error'}`, 'error');
+      }
+    } catch (err) {
+      showToast(`Failed to delete node: ${err instanceof Error ? err.message : 'Network error'}`, 'error');
+    }
+  };
+
+  const handlePurgeNodeFromDevice = async (nodeNum: number) => {
+    const node = nodes.find(n => n.nodeNum === nodeNum);
+    const nodeName = node?.user?.shortName || node?.user?.longName || `Node ${nodeNum}`;
+
+    if (!window.confirm(`Are you sure you want to PURGE ${nodeName} from BOTH the connected device AND the local database?\n\nThis will:\n- Send an admin command to remove the node from the device NodeDB\n- Remove the node from the map and node list\n- Delete all messages with this node\n- Delete all traceroutes for this node\n- Delete all telemetry data for this node\n\nThis action cannot be undone and affects both the device and local database.`)) {
+      return;
+    }
+
+    try {
+      const response = await authFetch(`${baseUrl}/api/messages/nodes/${nodeNum}/purge-from-device`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        showToast(`Purged ${nodeName} from device and database - ${data.messagesDeleted} messages, ${data.traceroutesDeleted} traceroutes, ${data.telemetryDeleted} telemetry records`, 'success');
+        // Close the purge data modal if open
+        setShowPurgeDataModal(false);
+        // Clear the selected DM node if it's the one being deleted
+        const purgedNode = nodes.find(n => n.nodeNum === nodeNum);
+        if (purgedNode && selectedDMNode === purgedNode.user?.id) {
+          setSelectedDMNode('');
+        }
+        // Refresh data from backend to ensure consistency
+        updateDataFromBackend();
+      } else {
+        const errorData = await response.json();
+        showToast(`Failed to purge node from device: ${errorData.message || 'Unknown error'}`, 'error');
+      }
+    } catch (err) {
+      showToast(`Failed to purge node from device: ${err instanceof Error ? err.message : 'Network error'}`, 'error');
+    }
+  };
+
   const handleSendMessage = async (channel: number = 0) => {
     if (!newMessage.trim() || connectionStatus !== 'connected') {
       return;
@@ -5538,6 +5612,59 @@ function App() {
                   }}
                 >
                   📊 Purge Telemetry
+                </button>
+              </div>
+              <hr style={{ margin: '1.5rem 0', borderColor: '#dee2e6' }} />
+              <p style={{ marginBottom: '1rem', fontWeight: 'bold' }}>
+                Delete Node Completely:
+              </p>
+              <p style={{ marginBottom: '1rem', fontSize: '0.9rem', color: '#6c757d' }}>
+                Choose how to delete the node - from local database only, or from both the device and database.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <button
+                  onClick={() => {
+                    const selectedNode = nodes.find(n => n.user?.id === selectedDMNode);
+                    if (selectedNode) {
+                      handleDeleteNode(selectedNode.nodeNum);
+                    }
+                  }}
+                  className="danger-btn"
+                  style={{
+                    backgroundColor: '#721c24',
+                    color: 'white',
+                    border: 'none',
+                    padding: '0.75rem 1rem',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontWeight: 'bold',
+                    fontSize: '1rem',
+                    width: '100%'
+                  }}
+                >
+                  ❌ Delete Node (Local Database Only)
+                </button>
+                <button
+                  onClick={() => {
+                    const selectedNode = nodes.find(n => n.user?.id === selectedDMNode);
+                    if (selectedNode) {
+                      handlePurgeNodeFromDevice(selectedNode.nodeNum);
+                    }
+                  }}
+                  className="danger-btn"
+                  style={{
+                    backgroundColor: '#5a0a0a',
+                    color: 'white',
+                    border: 'none',
+                    padding: '0.75rem 1rem',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontWeight: 'bold',
+                    fontSize: '1rem',
+                    width: '100%'
+                  }}
+                >
+                  🗑️ Purge from Device AND Database
                 </button>
               </div>
             </div>

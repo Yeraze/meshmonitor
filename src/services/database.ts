@@ -2020,6 +2020,44 @@ class DatabaseService {
     return Number(result.changes);
   }
 
+  deleteNode(nodeNum: number): {
+    messagesDeleted: number;
+    traceroutesDeleted: number;
+    telemetryDeleted: number;
+    nodeDeleted: boolean;
+  } {
+    // Delete all data associated with the node and then the node itself
+    const messagesDeleted = this.purgeDirectMessages(nodeNum);
+    const traceroutesDeleted = this.purgeNodeTraceroutes(nodeNum);
+    const telemetryDeleted = this.purgeNodeTelemetry(nodeNum);
+
+    // Delete route segments where this node is involved
+    const routeSegmentsStmt = this.db.prepare(`
+      DELETE FROM route_segments
+      WHERE fromNodeNum = ? OR toNodeNum = ?
+    `);
+    routeSegmentsStmt.run(nodeNum, nodeNum);
+
+    // Delete neighbor_info records where this node is involved (either as source or neighbor)
+    const neighborInfoStmt = this.db.prepare(`
+      DELETE FROM neighbor_info
+      WHERE nodeNum = ? OR neighborNodeNum = ?
+    `);
+    neighborInfoStmt.run(nodeNum, nodeNum);
+
+    // Delete the node from the nodes table
+    const nodeStmt = this.db.prepare('DELETE FROM nodes WHERE nodeNum = ?');
+    const nodeResult = nodeStmt.run(nodeNum);
+    const nodeDeleted = Number(nodeResult.changes) > 0;
+
+    return {
+      messagesDeleted,
+      traceroutesDeleted,
+      telemetryDeleted,
+      nodeDeleted
+    };
+  }
+
   deleteTelemetryByNodeAndType(nodeId: string, telemetryType: string): boolean {
     // Delete telemetry data for a specific node and type
     const stmt = this.db.prepare('DELETE FROM telemetry WHERE nodeId = ? AND telemetryType = ?');

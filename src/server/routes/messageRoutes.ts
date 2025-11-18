@@ -338,4 +338,135 @@ router.delete('/nodes/:nodeNum/telemetry', requireMessagesWrite, (req, res) => {
   }
 });
 
+/**
+ * DELETE /api/nodes/:nodeNum
+ * Delete a node and all associated data from the local database
+ */
+router.delete('/nodes/:nodeNum', requireMessagesWrite, (req, res) => {
+  try {
+    const nodeNum = parseInt(req.params.nodeNum, 10);
+    const user = (req as any).user;
+
+    if (isNaN(nodeNum)) {
+      return res.status(400).json({
+        error: 'Bad request',
+        message: 'Invalid node number'
+      });
+    }
+
+    // Get node name for logging
+    const node = databaseService.getAllNodes().find((n: any) => n.nodeNum === nodeNum);
+    const nodeName = node?.shortName || node?.longName || `Node ${nodeNum}`;
+
+    const result = databaseService.deleteNode(nodeNum);
+
+    if (!result.nodeDeleted) {
+      return res.status(404).json({
+        error: 'Not found',
+        message: 'Node not found'
+      });
+    }
+
+    logger.info(`🗑️ User ${user?.username || 'anonymous'} deleted ${nodeName} (${nodeNum}) and all associated data`);
+
+    // Log to audit log
+    if (user?.id) {
+      databaseService.auditLog(
+        user.id,
+        'node_deleted',
+        'nodes',
+        `Deleted ${nodeName} (${nodeNum}) - ${result.messagesDeleted} messages, ${result.traceroutesDeleted} traceroutes, ${result.telemetryDeleted} telemetry records`,
+        req.ip || null
+      );
+    }
+
+    res.json({
+      message: 'Node deleted successfully',
+      nodeNum,
+      nodeName,
+      messagesDeleted: result.messagesDeleted,
+      traceroutesDeleted: result.traceroutesDeleted,
+      telemetryDeleted: result.telemetryDeleted
+    });
+  } catch (error) {
+    logger.error('❌ Error deleting node:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/nodes/:nodeNum/purge-from-device
+ * Purge a node from the connected Meshtastic device NodeDB AND from local database
+ */
+router.post('/nodes/:nodeNum/purge-from-device', requireMessagesWrite, async (req, res) => {
+  try {
+    const nodeNum = parseInt(req.params.nodeNum, 10);
+    const user = (req as any).user;
+
+    if (isNaN(nodeNum)) {
+      return res.status(400).json({
+        error: 'Bad request',
+        message: 'Invalid node number'
+      });
+    }
+
+    // Get node name for logging
+    const node = databaseService.getAllNodes().find((n: any) => n.nodeNum === nodeNum);
+    const nodeName = node?.shortName || node?.longName || `Node ${nodeNum}`;
+
+    // Get the meshtasticManager instance
+    const meshtasticManager = (global as any).meshtasticManager;
+    if (!meshtasticManager) {
+      return res.status(500).json({
+        error: 'Internal server error',
+        message: 'Meshtastic manager not available'
+      });
+    }
+
+    try {
+      // Send admin message to remove node from device
+      await meshtasticManager.sendRemoveNode(nodeNum);
+      logger.info(`✅ Sent remove_by_nodenum admin command for ${nodeName} (${nodeNum})`);
+    } catch (adminError: any) {
+      logger.error('❌ Failed to send remove node admin command:', adminError);
+      return res.status(500).json({
+        error: 'Device communication error',
+        message: `Failed to remove node from device: ${adminError.message || 'Unknown error'}`
+      });
+    }
+
+    // Also delete from local database
+    const result = databaseService.deleteNode(nodeNum);
+
+    if (!result.nodeDeleted) {
+      logger.warn(`⚠️ Node ${nodeNum} was removed from device but not found in local database`);
+    }
+
+    logger.info(`🗑️ User ${user?.username || 'anonymous'} purged ${nodeName} (${nodeNum}) from device and local database`);
+
+    // Log to audit log
+    if (user?.id) {
+      databaseService.auditLog(
+        user.id,
+        'node_purged_from_device',
+        'nodes',
+        `Purged ${nodeName} (${nodeNum}) from device NodeDB and local database - ${result.messagesDeleted} messages, ${result.traceroutesDeleted} traceroutes, ${result.telemetryDeleted} telemetry records`,
+        req.ip || null
+      );
+    }
+
+    res.json({
+      message: 'Node purged from device and local database successfully',
+      nodeNum,
+      nodeName,
+      messagesDeleted: result.messagesDeleted,
+      traceroutesDeleted: result.traceroutesDeleted,
+      telemetryDeleted: result.telemetryDeleted
+    });
+  } catch (error) {
+    logger.error('❌ Error purging node from device:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;
