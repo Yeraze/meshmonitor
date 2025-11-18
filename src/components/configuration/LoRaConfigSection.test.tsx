@@ -119,6 +119,7 @@ describe('LoRaConfigSection', () => {
         spreadFactor: 11,
         codingRate: 8,
         frequencyOffset: 0,
+        overrideFrequency: 0,
         region: 1,
         hopLimit: 3,
         channelNum: 0,
@@ -130,6 +131,7 @@ describe('LoRaConfigSection', () => {
       expect(config).toHaveProperty('spreadFactor');
       expect(config).toHaveProperty('codingRate');
       expect(config).toHaveProperty('frequencyOffset');
+      expect(config).toHaveProperty('overrideFrequency');
     });
 
     it('should include modemPreset when usePreset is true', () => {

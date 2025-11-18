@@ -569,6 +569,7 @@ class MeshtasticManager {
             logger.info(`📊 Raw LoRa config from device:`, JSON.stringify(parsed.data.lora, null, 2));
             logger.info(`📊 usePreset in message: ${parsed.data.lora.usePreset}, typeof: ${typeof parsed.data.lora.usePreset}`);
             logger.info(`📊 frequencyOffset in message: ${parsed.data.lora.frequencyOffset}, typeof: ${typeof parsed.data.lora.frequencyOffset}`);
+            logger.info(`📊 overrideFrequency in message: ${parsed.data.lora.overrideFrequency}, typeof: ${typeof parsed.data.lora.overrideFrequency}`);
 
             // Ensure boolean fields have explicit values (Proto3 omits false)
             if (parsed.data.lora.usePreset === undefined) {
@@ -580,6 +581,11 @@ class MeshtasticManager {
             if (parsed.data.lora.frequencyOffset === undefined) {
               parsed.data.lora.frequencyOffset = 0;
               logger.info('📊 Set frequencyOffset to 0 (was undefined - Proto3 default)');
+            }
+
+            if (parsed.data.lora.overrideFrequency === undefined) {
+              parsed.data.lora.overrideFrequency = 0;
+              logger.info('📊 Set overrideFrequency to 0 (was undefined - Proto3 default)');
             }
           }
 
