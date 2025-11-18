@@ -20,10 +20,6 @@ The Swagger documentation provides:
 - **Authentication details** - API token authentication requirements
 - **Schema definitions** - Detailed data models for all API objects
 
-## Authentication
-
-Most API endpoints require authentication using an API token. See the [API Authentication](/development/api-auth.html) documentation for details on generating and using API tokens.
-
 ## Quick Start
 
 1. Start MeshMonitor (locally or access your deployment)

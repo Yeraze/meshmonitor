@@ -10,10 +10,6 @@ import SwaggerUI from '../.vitepress/components/SwaggerUI.vue'
 
 Interactive API documentation powered by Swagger UI. You can explore all available endpoints, view request/response examples, and even test API calls directly from this page.
 
-## Authentication
-
-Most API endpoints require authentication using an API token. See the [API Authentication](/development/api-auth.html) guide for details on generating and using API tokens.
-
 ## Interactive Documentation
 
 <ClientOnly>
