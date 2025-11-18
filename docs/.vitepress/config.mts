@@ -5,7 +5,8 @@ export default defineConfig({
   vite: {
     server: {
       host: '0.0.0.0',
-      allowedHosts: ['localhost', 'meshmonitor.org', 'www.meshmonitor.org', 'sentry.yeraze.online']
+      allowedHosts: ['localhost', 'meshmonitor.org', 'www.meshmonitor.org', 'sentry.yeraze.online'],
+      cors: true
     }
   },
   title: "MeshMonitor",
@@ -76,7 +77,8 @@ export default defineConfig({
             { text: 'Architecture', link: '/development/architecture' },
             { text: 'Database', link: '/development/database' },
             { text: 'Authentication', link: '/development/authentication' },
-            { text: 'API Documentation', link: '/development/api' }
+            { text: 'API Documentation', link: '/development/api' },
+            { text: 'API Reference', link: '/development/api-reference' }
           ]
         },
         {
