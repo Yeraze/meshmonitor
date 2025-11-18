@@ -824,13 +824,13 @@ class ApiService {
     return response.json();
   }
 
-  async setNodeOwner(longName: string, shortName: string) {
+  async setNodeOwner(longName: string, shortName: string, isUnmessagable?: boolean) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/owner`, {
       method: 'POST',
       headers: this.getHeadersWithCsrf(),
       credentials: 'include',
-      body: JSON.stringify({ longName, shortName }),
+      body: JSON.stringify({ longName, shortName, isUnmessagable }),
     });
 
     if (!response.ok) {

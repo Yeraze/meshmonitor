@@ -5704,14 +5704,14 @@ class MeshtasticManager {
   /**
    * Set node owner (long name and short name)
    */
-  async setNodeOwner(longName: string, shortName: string): Promise<void> {
+  async setNodeOwner(longName: string, shortName: string, isUnmessagable?: boolean): Promise<void> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
     }
 
     try {
-      logger.debug(`⚙️ Setting node owner: "${longName}" (${shortName})`);
-      const setOwnerMsg = protobufService.createSetOwnerMessage(longName, shortName, new Uint8Array());
+      logger.debug(`⚙️ Setting node owner: "${longName}" (${shortName}), isUnmessagable: ${isUnmessagable}`);
+      const setOwnerMsg = protobufService.createSetOwnerMessage(longName, shortName, isUnmessagable, new Uint8Array());
       const adminPacket = protobufService.createAdminPacket(setOwnerMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
 
       await this.transport.send(adminPacket);
