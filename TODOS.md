@@ -60,17 +60,33 @@
 - [x] Database service deleteNode method (src/services/database.ts:2023-2045)
 - [x] Backend DELETE /api/messages/nodes/:nodeNum endpoint (src/server/routes/messageRoutes.ts:341-395)
 - [x] Frontend handleDeleteNode handler (src/App.tsx:2472-2506)
-- [x] Delete Node button in Purge Data modal (src/App.tsx:5579-5609)
+- [x] Delete Node button in Purge Data modal (src/App.tsx:5623-5644)
 - [x] Deletes node from local database with all associated data (messages, traceroutes, telemetry)
 - [x] Removes node from map and node lists
 - [x] Audit logging for node deletion events
 
-**Future Enhancements:**
-- [ ] Implement "Purge from Node" button using admin message infrastructure
-  - Requires implementing admin message sending capability
-  - Use proto field 38 (remove_by_nodenum) from admin.proto
-  - Should delete node from connected Meshtastic device NodeDB
-  - Combines local deletion with device deletion
+**Admin Message Infrastructure - "Purge from Device" Feature:**
+- [x] createRemoveNodeMessage in protobufService (src/server/protobufService.ts:624-650)
+  - Creates AdminMessage with remove_by_nodenum field (proto field 38)
+  - Supports optional session passkey for authentication
+- [x] sendRemoveNode method in meshtasticManager (src/server/meshtasticManager.ts:5412-5434)
+  - Sends admin message to connected Meshtastic device
+  - Uses empty passkey for local TCP connections (known session key bug workaround)
+  - Comprehensive logging for tracking admin command execution
+- [x] Backend POST /api/messages/nodes/:nodeNum/purge-from-device endpoint (src/server/routes/messageRoutes.ts:397-470)
+  - Sends remove_by_nodenum admin command to device
+  - Also deletes node from local database
+  - Requires messages:write permission
+  - Audit logging for device purge events
+- [x] Frontend handlePurgeNodeFromDevice handler (src/App.tsx:2508-2542)
+  - Confirmation dialog with clear warning about device AND database deletion
+  - Calls device purge endpoint
+  - Error handling and user feedback
+  - Refreshes UI after successful purge
+- [x] "Purge from Device AND Database" button in UI (src/App.tsx:5645-5666)
+  - Darker red color (#5a0a0a) to distinguish from local-only deletion
+  - Clear labeling: "🗑️ Purge from Device AND Database"
+  - Full-width button for better mobile experience
 
 #### DM Conversation Enhancements (#490)
 

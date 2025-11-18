@@ -617,6 +617,39 @@ class ProtobufService {
   }
 
   /**
+   * Create an AdminMessage to remove a node from the device NodeDB
+   * @param nodeNum The node number to remove from the device
+   * @param sessionPasskey Optional session passkey for authentication
+   */
+  createRemoveNodeMessage(nodeNum: number, sessionPasskey?: Uint8Array): Uint8Array {
+    try {
+      const root = getProtobufRoot();
+      const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
+      if (!AdminMessage) {
+        throw new Error('AdminMessage type not found in loaded proto files');
+      }
+
+      const adminMsgData: any = {
+        removeByNodenum: nodeNum
+      };
+
+      // Only include sessionPasskey if provided
+      if (sessionPasskey && sessionPasskey.length > 0) {
+        adminMsgData.sessionPasskey = sessionPasskey;
+      }
+
+      const adminMsg = AdminMessage.create(adminMsgData);
+
+      const encoded = AdminMessage.encode(adminMsg).finish();
+      logger.debug(`⚙️ Created RemoveNode admin message for node ${nodeNum}`);
+      return encoded;
+    } catch (error) {
+      logger.error('Failed to create RemoveNode message:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Decode an AdminMessage response
    */
   decodeAdminMessage(data: Uint8Array): any {

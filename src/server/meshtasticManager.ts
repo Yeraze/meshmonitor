@@ -5406,6 +5406,34 @@ class MeshtasticManager {
   }
 
   /**
+   * Send admin message to remove a node from the device NodeDB
+   * This sends the remove_by_nodenum admin command to completely delete a node from the device
+   */
+  async sendRemoveNode(nodeNum: number): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    if (!this.localNodeInfo) {
+      throw new Error('Local node information not available');
+    }
+
+    try {
+      // For local TCP connections, try sending without session passkey first
+      // (there's a known bug where session keys don't work properly over TCP)
+      logger.info(`🗑️ Attempting to remove node ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')}) from device NodeDB`);
+      const removeNodeMsg = protobufService.createRemoveNodeMessage(nodeNum, new Uint8Array()); // empty passkey
+      const adminPacket = protobufService.createAdminPacket(removeNodeMsg, this.localNodeInfo.nodeNum, this.localNodeInfo.nodeNum); // send to local node
+
+      await this.transport.send(adminPacket);
+      logger.info(`✅ Sent remove_by_nodenum admin command for node ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')})`);
+    } catch (error) {
+      logger.error('❌ Error sending remove node admin message:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Request specific config from the device
    * @param configType Config type to request (0=DEVICE_CONFIG, 5=LORA_CONFIG, etc.)
    */
