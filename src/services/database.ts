@@ -256,17 +256,98 @@ class DatabaseService {
 
     logger.debug('Initializing database at:', dbPath);
 
-    // Ensure the directory exists
+    // Validate database directory access
     const dbDir = path.dirname(dbPath);
-    if (!fs.existsSync(dbDir)) {
-      logger.debug(`Creating database directory: ${dbDir}`);
-      fs.mkdirSync(dbDir, { recursive: true });
+    try {
+      // Ensure the directory exists
+      if (!fs.existsSync(dbDir)) {
+        logger.debug(`Creating database directory: ${dbDir}`);
+        fs.mkdirSync(dbDir, { recursive: true });
+      }
+
+      // Verify directory is writable
+      fs.accessSync(dbDir, fs.constants.W_OK | fs.constants.R_OK);
+
+      // If database file exists, verify it's readable and writable
+      if (fs.existsSync(dbPath)) {
+        fs.accessSync(dbPath, fs.constants.W_OK | fs.constants.R_OK);
+      }
+    } catch (error: unknown) {
+      const err = error as NodeJS.ErrnoException;
+      logger.error('❌ DATABASE STARTUP ERROR ❌');
+      logger.error('═══════════════════════════════════════════════════════════');
+      logger.error('Failed to access database directory or file');
+      logger.error('');
+      logger.error(`Database path: ${dbPath}`);
+      logger.error(`Database directory: ${dbDir}`);
+      logger.error('');
+
+      if (err.code === 'EACCES' || err.code === 'EPERM') {
+        logger.error('PERMISSION DENIED - The database directory or file is not writable.');
+        logger.error('');
+        logger.error('For Docker deployments:');
+        logger.error('  1. Check that your volume mount exists and is writable');
+        logger.error('  2. Verify permissions on the host directory:');
+        logger.error(`     chmod -R 755 /path/to/your/data/directory`);
+        logger.error('  3. Example volume mount in docker-compose.yml:');
+        logger.error('     volumes:');
+        logger.error('       - ./meshmonitor-data:/data');
+        logger.error('');
+        logger.error('For bare metal deployments:');
+        logger.error('  1. Ensure the data directory exists and is writable:');
+        logger.error(`     mkdir -p ${dbDir}`);
+        logger.error(`     chmod 755 ${dbDir}`);
+      } else if (err.code === 'ENOENT') {
+        logger.error('DIRECTORY NOT FOUND - Failed to create database directory.');
+        logger.error('');
+        logger.error('This usually means the parent directory does not exist or is not writable.');
+        logger.error(`Check that the parent directory exists: ${path.dirname(dbDir)}`);
+      } else {
+        logger.error(`Error: ${err.message}`);
+        logger.error(`Error code: ${err.code || 'unknown'}`);
+      }
+
+      logger.error('═══════════════════════════════════════════════════════════');
+      throw new Error(`Database directory access check failed: ${err.message}`);
     }
 
-    this.db = new Database(dbPath);
-    this.db.pragma('journal_mode = WAL');
-    this.db.pragma('foreign_keys = ON');
-    this.db.pragma('busy_timeout = 5000'); // 5 second timeout for locked database
+    // Now attempt to open the database with better error handling
+    try {
+      this.db = new Database(dbPath);
+      this.db.pragma('journal_mode = WAL');
+      this.db.pragma('foreign_keys = ON');
+      this.db.pragma('busy_timeout = 5000'); // 5 second timeout for locked database
+    } catch (error: unknown) {
+      const err = error as Error & { code?: string };
+      logger.error('❌ DATABASE OPEN ERROR ❌');
+      logger.error('═══════════════════════════════════════════════════════════');
+      logger.error(`Failed to open SQLite database at: ${dbPath}`);
+      logger.error('');
+
+      if (err.code === 'SQLITE_CANTOPEN') {
+        logger.error('SQLITE_CANTOPEN - Unable to open database file.');
+        logger.error('');
+        logger.error('Common causes:');
+        logger.error('  1. Directory permissions - the database directory is not writable');
+        logger.error('  2. Missing volume mount - check your docker-compose.yml');
+        logger.error('  3. Disk space - ensure the filesystem is not full');
+        logger.error('  4. File locked by another process');
+        logger.error('');
+        logger.error('Troubleshooting steps:');
+        logger.error('  1. Check directory permissions:');
+        logger.error(`     ls -la ${dbDir}`);
+        logger.error('  2. Check disk space:');
+        logger.error('     df -h');
+        logger.error('  3. Verify Docker volume mount (if using Docker):');
+        logger.error('     docker compose config | grep volumes -A 5');
+      } else {
+        logger.error(`Error: ${err.message}`);
+        logger.error(`Error code: ${err.code || 'unknown'}`);
+      }
+
+      logger.error('═══════════════════════════════════════════════════════════');
+      throw new Error(`Database initialization failed: ${err.message}`);
+    }
 
     // Initialize models
     this.userModel = new UserModel(this.db);
