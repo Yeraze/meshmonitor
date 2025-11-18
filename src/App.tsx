@@ -2469,6 +2469,42 @@ function App() {
     }
   };
 
+  const handleDeleteNode = async (nodeNum: number) => {
+    const node = nodes.find(n => n.nodeNum === nodeNum);
+    const nodeName = node?.user?.shortName || node?.user?.longName || `Node ${nodeNum}`;
+
+    if (!window.confirm(`Are you sure you want to DELETE ${nodeName} from the local database?\n\nThis will remove:\n- The node from the map and node list\n- All messages with this node\n- All traceroutes for this node\n- All telemetry data for this node\n\nThis action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const response = await authFetch(`${baseUrl}/api/messages/nodes/${nodeNum}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        showToast(`Deleted ${nodeName} - ${data.messagesDeleted} messages, ${data.traceroutesDeleted} traceroutes, ${data.telemetryDeleted} telemetry records`, 'success');
+        // Close the purge data modal if open
+        setShowPurgeDataModal(false);
+        // Clear the selected DM node if it's the one being deleted
+        if (selectedDMNode === nodeNum) {
+          setSelectedDMNode(null);
+        }
+        // Refresh data from backend to ensure consistency
+        updateDataFromBackend();
+      } else {
+        const errorData = await response.json();
+        showToast(`Failed to delete node: ${errorData.message || 'Unknown error'}`, 'error');
+      }
+    } catch (err) {
+      showToast(`Failed to delete node: ${err instanceof Error ? err.message : 'Network error'}`, 'error');
+    }
+  };
+
   const handleSendMessage = async (channel: number = 0) => {
     if (!newMessage.trim() || connectionStatus !== 'connected') {
       return;
@@ -5538,6 +5574,37 @@ function App() {
                   }}
                 >
                   📊 Purge Telemetry
+                </button>
+              </div>
+              <hr style={{ margin: '1.5rem 0', borderColor: '#dee2e6' }} />
+              <p style={{ marginBottom: '1rem', fontWeight: 'bold' }}>
+                Delete Node Completely:
+              </p>
+              <p style={{ marginBottom: '1rem', fontSize: '0.9rem', color: '#6c757d' }}>
+                This will delete the node from your local database, removing it from the map and node list.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <button
+                  onClick={() => {
+                    const selectedNode = nodes.find(n => n.user?.id === selectedDMNode);
+                    if (selectedNode) {
+                      handleDeleteNode(selectedNode.nodeNum);
+                    }
+                  }}
+                  className="danger-btn"
+                  style={{
+                    backgroundColor: '#721c24',
+                    color: 'white',
+                    border: 'none',
+                    padding: '0.75rem 1rem',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontWeight: 'bold',
+                    fontSize: '1rem',
+                    width: '100%'
+                  }}
+                >
+                  ❌ Delete Node (Local Database Only)
                 </button>
               </div>
             </div>

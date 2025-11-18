@@ -54,6 +54,24 @@
 - [ ] Run system tests
 - [ ] Create release (v2.17.0)
 
+#### Delete Node Functionality (#666)
+
+**Completed:**
+- [x] Database service deleteNode method (src/services/database.ts:2023-2045)
+- [x] Backend DELETE /api/messages/nodes/:nodeNum endpoint (src/server/routes/messageRoutes.ts:341-395)
+- [x] Frontend handleDeleteNode handler (src/App.tsx:2472-2506)
+- [x] Delete Node button in Purge Data modal (src/App.tsx:5579-5609)
+- [x] Deletes node from local database with all associated data (messages, traceroutes, telemetry)
+- [x] Removes node from map and node lists
+- [x] Audit logging for node deletion events
+
+**Future Enhancements:**
+- [ ] Implement "Purge from Node" button using admin message infrastructure
+  - Requires implementing admin message sending capability
+  - Use proto field 38 (remove_by_nodenum) from admin.proto
+  - Should delete node from connected Meshtastic device NodeDB
+  - Combines local deletion with device deletion
+
 #### DM Conversation Enhancements (#490)
 
 **Completed:**
