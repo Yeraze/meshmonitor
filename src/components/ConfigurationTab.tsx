@@ -45,6 +45,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   const [overrideFrequency, setOverrideFrequency] = useState<number>(0);
   const [region, setRegion] = useState<number>(0);
   const [hopLimit, setHopLimit] = useState<number>(3);
+  const [txPower, setTxPower] = useState<number>(0);
   const [channelNum, setChannelNum] = useState<number>(0);
   const [sx126xRxBoostedGain, setSx126xRxBoostedGain] = useState<boolean>(false);
 
@@ -143,6 +144,9 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           if (config.deviceConfig.lora.hopLimit !== undefined) {
             console.log(`[ConfigurationTab] Setting hopLimit to: ${config.deviceConfig.lora.hopLimit}`);
             setHopLimit(config.deviceConfig.lora.hopLimit);
+          }
+          if (config.deviceConfig.lora.txPower !== undefined) {
+            setTxPower(config.deviceConfig.lora.txPower);
           }
           if (config.deviceConfig.lora.channelNum !== undefined) {
             setChannelNum(config.deviceConfig.lora.channelNum);
@@ -298,6 +302,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         overrideFrequency,
         region,
         hopLimit: validHopLimit,
+        txPower,
         channelNum,
         sx126xRxBoostedGain
       });
@@ -643,6 +648,8 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           setRegion={setRegion}
           hopLimit={hopLimit}
           setHopLimit={setHopLimit}
+          txPower={txPower}
+          setTxPower={setTxPower}
           channelNum={channelNum}
           setChannelNum={setChannelNum}
           sx126xRxBoostedGain={sx126xRxBoostedGain}
