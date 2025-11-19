@@ -45,6 +45,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
   const [availableScripts, setAvailableScripts] = useState<string[]>([]);
   const [newTriggerValidation, setNewTriggerValidation] = useState<{ valid: boolean; error?: string }>({ valid: true });
   const [currentTestLine, setCurrentTestLine] = useState<string>('');
+  const [quickTestResult, setQuickTestResult] = useState<{ loading: boolean; result: string | null; error?: string } | null>(null);
   const [showMatchDetails, setShowMatchDetails] = useState<Record<number, boolean>>({});
   const [showDebugInfo, setShowDebugInfo] = useState<Record<number, boolean>>({});
   const [triggerSearch, setTriggerSearch] = useState('');
@@ -630,50 +631,52 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
               <option value="http">HTTP</option>
               <option value="script">Script</option>
             </select>
-            {newResponseType === 'text' ? (
-              <textarea
-                value={newResponse}
-                onChange={(e) => setNewResponse(e.target.value)}
-                placeholder="Enter response text...\nUse {parameter} to include matched values\nSupports multi-line responses"
-                disabled={!localEnabled}
-                className="setting-input"
-                style={{ flex: '2', fontFamily: 'monospace', minHeight: '60px', resize: 'vertical' }}
-                rows={3}
-                title="Text response: Use {parameter} to include values extracted from the trigger pattern"
-              />
-            ) : newResponseType === 'script' ? (
-              <select
-                value={newResponse}
-                onChange={(e) => setNewResponse(e.target.value)}
-                disabled={!localEnabled || availableScripts.length === 0}
-                className="setting-input"
-                style={{ flex: '2', minWidth: '200px', fontFamily: 'monospace' }}
-                title="Select a script from data/scripts/ to execute. Scripts receive parameters as environment variables (PARAM_*)."
-              >
-                <option value="">
-                  {availableScripts.length === 0 ? 'No scripts found in data/scripts/' : 'Select a script...'}
-                </option>
-                {availableScripts.map((script) => {
-                  const filename = script.replace('/data/scripts/', '');
-                  return (
-                  <option key={script} value={script}>
-                      {getFileIcon(filename)} {filename}
+            <div style={{ flex: '2' }}>
+              {newResponseType === 'text' ? (
+                <textarea
+                  value={newResponse}
+                  onChange={(e) => setNewResponse(e.target.value)}
+                  placeholder="Enter response text...\nUse {parameter} to include matched values\nSupports multi-line responses"
+                  disabled={!localEnabled}
+                  className="setting-input"
+                  style={{ width: '100%', fontFamily: 'monospace', minHeight: '60px', resize: 'vertical' }}
+                  rows={3}
+                  title="Text response: Use {parameter} to include values extracted from the trigger pattern"
+                />
+              ) : newResponseType === 'script' ? (
+                <select
+                  value={newResponse}
+                  onChange={(e) => setNewResponse(e.target.value)}
+                  disabled={!localEnabled || availableScripts.length === 0}
+                  className="setting-input"
+                  style={{ width: '100%', minWidth: '200px', fontFamily: 'monospace' }}
+                  title="Select a script from data/scripts/ to execute. Scripts receive parameters as environment variables (PARAM_*)."
+                >
+                  <option value="">
+                    {availableScripts.length === 0 ? 'No scripts found in data/scripts/' : 'Select a script...'}
                   </option>
-                  );
-                })}
-              </select>
-            ) : (
-              <input
-                type="text"
-                value={newResponse}
-                onChange={(e) => setNewResponse(e.target.value)}
-                placeholder="e.g., https://wttr.in/{location}?format=4"
-                disabled={!localEnabled}
-                className="setting-input"
-                style={{ flex: '2', fontFamily: 'monospace' }}
-                title="HTTP URL: Use {parameter} to substitute matched values. The response body will be sent as the message."
-              />
-            )}
+                  {availableScripts.map((script) => {
+                    const filename = script.replace('/data/scripts/', '');
+                    return (
+                    <option key={script} value={script}>
+                        {getFileIcon(filename)} {filename}
+                    </option>
+                    );
+                  })}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={newResponse}
+                  onChange={(e) => setNewResponse(e.target.value)}
+                  placeholder="e.g., https://wttr.in/{location}?format=4"
+                  disabled={!localEnabled}
+                  className="setting-input"
+                  style={{ width: '100%', fontFamily: 'monospace' }}
+                  title="HTTP URL: Use {parameter} to substitute matched values. The response body will be sent as the message."
+                />
+              )}
+            </div>
             <button
               onClick={addTrigger}
               disabled={!localEnabled || !newTrigger.trim() || !newResponse.trim() || !newTriggerValidation.valid}
@@ -686,6 +689,31 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
               }}
             >
               Add
+            </button>
+            <button
+              onClick={() => {
+                setNewTrigger('');
+                setNewResponse('');
+                setNewResponseType('text');
+                setNewMultiline(false);
+                setNewVerifyResponse(false);
+                setNewChannel('dm');
+                setNewTriggerTestInput('');
+              }}
+              disabled={!localEnabled}
+              style={{
+                padding: '0.5rem 1rem',
+                fontSize: '14px',
+                background: 'var(--ctp-red)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                opacity: localEnabled ? 1 : 0.5,
+                cursor: localEnabled ? 'pointer' : 'not-allowed'
+              }}
+              title="Clear all fields in Add Trigger section"
+            >
+              Clear
             </button>
             </div>
             {!newTriggerValidation.valid && newTriggerValidation.error && (
@@ -765,8 +793,8 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                       alignItems: 'center'
                     }}>
                       {patterns.map((pattern, patternIdx) => {
-                        const segments: Array<{ text: string; type: 'literal' | 'parameter'; paramName?: string }> = [];
-                        
+                        const segments: Array<{ text: string; type: 'literal' | 'parameter'; paramName?: string; startPos: number; endPos: number }> = [];
+
                         // Parse pattern into segments
                         let i = 0;
                         while (i < pattern.length) {
@@ -782,7 +810,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                             const paramMatch = pattern.substring(start, end - 1);
                             const colonPos = paramMatch.indexOf(':');
                             const paramName = colonPos >= 0 ? paramMatch.substring(0, colonPos) : paramMatch;
-                            segments.push({ text: pattern.substring(i, end), type: 'parameter', paramName });
+                            segments.push({ text: pattern.substring(i, end), type: 'parameter', paramName, startPos: i, endPos: end });
                             i = end;
                           } else {
                             const literalStart = i;
@@ -791,28 +819,95 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                             }
                             const literalText = pattern.substring(literalStart, i);
                             if (literalText.trim()) {
-                              segments.push({ text: literalText, type: 'literal' });
+                              segments.push({ text: literalText, type: 'literal', startPos: literalStart, endPos: i });
                             }
                           }
                         }
-                        
+
+                        // Merge adjacent segments (no whitespace between them)
+                        const mergedSegments: Array<Array<{ text: string; type: 'literal' | 'parameter'; paramName?: string }>> = [];
+                        let currentGroup: Array<{ text: string; type: 'literal' | 'parameter'; paramName?: string }> = [];
+
+                        for (let j = 0; j < segments.length; j++) {
+                          currentGroup.push(segments[j]);
+
+                          const isLastSegment = j === segments.length - 1;
+                          let nextSegmentIsAdjacent = false;
+
+                          if (!isLastSegment) {
+                            const current = segments[j];
+                            const next = segments[j + 1];
+                            const positionsAdjacent = next.startPos === current.endPos;
+                            const currentEndsWithSpace = current.type === 'literal' && current.text.endsWith(' ');
+                            const nextStartsWithSpace = next.type === 'literal' && next.text.startsWith(' ');
+                            nextSegmentIsAdjacent = positionsAdjacent && !currentEndsWithSpace && !nextStartsWithSpace;
+                          }
+
+                          if (!nextSegmentIsAdjacent) {
+                            mergedSegments.push(currentGroup);
+                            currentGroup = [];
+                          }
+                        }
+
                         return (
                           <div key={patternIdx} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.1rem' }}>
-                            {segments.map((segment, segIdx) => (
-                              <span
-                                key={segIdx}
-                                style={{
-                                  backgroundColor: segment.type === 'parameter' ? 'rgba(166, 227, 161, 0.4)' : 'rgba(137, 180, 250, 0.4)',
-                                  padding: '2px 4px',
-                                  borderRadius: '2px',
-                                  fontWeight: segment.type === 'parameter' ? 'bold' : 'normal',
-                                  color: 'var(--ctp-text)'
-                                }}
-                                title={segment.type === 'parameter' ? `Parameter: ${segment.paramName}` : 'Literal text'}
-                              >
-                                {segment.text}
-                              </span>
-                            ))}
+                            {mergedSegments.map((group, groupIdx) => {
+                              if (group.length === 1) {
+                                const segment = group[0];
+                                return (
+                                  <span
+                                    key={groupIdx}
+                                    style={{
+                                      backgroundColor: segment.type === 'parameter' ? 'rgba(166, 227, 161, 0.4)' : 'rgba(137, 180, 250, 0.4)',
+                                      padding: '2px 4px',
+                                      borderRadius: '2px',
+                                      fontWeight: segment.type === 'parameter' ? 'bold' : 'normal',
+                                      color: 'var(--ctp-text)'
+                                    }}
+                                    title={segment.type === 'parameter' ? `Parameter: ${segment.paramName}` : 'Literal text'}
+                                  >
+                                    {segment.type === 'literal' ? segment.text.trim() : segment.text}
+                                  </span>
+                                );
+                              } else {
+                                return (
+                                  <span
+                                    key={groupIdx}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      borderRadius: '2px',
+                                      overflow: 'hidden',
+                                      border: '1px solid rgba(166, 227, 161, 0.5)'
+                                    }}
+                                    title={group.map(s => s.type === 'parameter' ? `{${s.paramName}}` : s.text).join('')}
+                                  >
+                                    {group.map((segment, segIdx) => (
+                                      <React.Fragment key={segIdx}>
+                                        <span
+                                          style={{
+                                            backgroundColor: segment.type === 'parameter' ? 'rgba(166, 227, 161, 0.4)' : 'rgba(137, 180, 250, 0.4)',
+                                            padding: '2px 4px',
+                                            fontWeight: segment.type === 'parameter' ? 'bold' : 'normal',
+                                            color: 'var(--ctp-text)'
+                                          }}
+                                        >
+                                          {segment.type === 'literal' ? segment.text.trim() : segment.text}
+                                        </span>
+                                        {segIdx < group.length - 1 && (
+                                          <span style={{
+                                            width: '1px',
+                                            height: '100%',
+                                            backgroundColor: 'rgba(205, 214, 244, 0.3)',
+                                            margin: '0'
+                                          }} />
+                                        )}
+                                      </React.Fragment>
+                                    ))}
+                                  </span>
+                                );
+                              }
+                            })}
                             {patternIdx < patterns.length - 1 && (
                               <span style={{ color: 'var(--ctp-subtext0)', margin: '0 0.25rem' }}>,</span>
                             )}
@@ -899,29 +994,30 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                     url = url.replace(new RegExp(`\\{${paramName}\\}`, 'g'), paramValue);
                                   });
                                 }
-                                const controller = new AbortController();
-                                const timeoutId = setTimeout(() => controller.abort(), 10000);
-                                try {
-                                  const response = await fetch(url, {
-                                    method: 'GET',
-                                    headers: { 'Accept': 'text/plain, text/*, application/json' },
-                                    signal: controller.signal
-                                  });
-                                  clearTimeout(timeoutId);
-                                  if (!response.ok) {
-                                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                                const response = await csrfFetch(`${baseUrl}/api/http/test`, {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ url })
+                                });
+                                if (!response.ok) {
+                                  let errorMessage = `HTTP ${response.status}`;
+                                  try {
+                                    const errorData = await response.json();
+                                    errorMessage = errorData.error || errorMessage;
+                                  } catch {
+                                    try {
+                                      const errorText = await response.text();
+                                      errorMessage = errorText || errorMessage;
+                                    } catch {
+                                      // Use default error message
+                                    }
                                   }
-                                  const text = await response.text();
-                                  setNewTriggerLiveTestResult({ loading: false, result: text.substring(0, 500) + (text.length > 500 ? '...' : '') });
-                                } catch (fetchError: any) {
-                                  clearTimeout(timeoutId);
-                                  if (fetchError.name === 'AbortError') {
-                                    throw new Error('Request timed out after 10 seconds');
-                                  }
-                                  throw fetchError;
+                                  throw new Error(errorMessage);
                                 }
+                                const result = await response.json();
+                                setNewTriggerLiveTestResult({ loading: false, result: result.result || '(no output)' });
                               } else if (newResponseType === 'script') {
-                                const response = await csrfFetch('/api/scripts/test', {
+                                const response = await csrfFetch(`${baseUrl}/api/scripts/test`, {
                                   method: 'POST',
                                   headers: { 'Content-Type': 'application/json' },
                                   body: JSON.stringify({
@@ -1057,12 +1153,32 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                             
                             {newResponse.trim() && newResponseType === 'text' && (
                               <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--ctp-overlay0)' }}>
-                                <div style={{ fontSize: '0.7rem', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem', fontWeight: 'bold' }}>Response Preview:</div>
-                                <div style={{ 
-                                  padding: '0.5rem', 
-                                  background: 'var(--ctp-surface2)', 
-                                  borderRadius: '4px', 
-                                  fontFamily: 'monospace', 
+                                <div style={{ fontSize: '0.7rem', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span>Response Preview:</span>
+                                  <button
+                                    onClick={() => setNewResponse('')}
+                                    disabled={!localEnabled}
+                                    style={{
+                                      background: 'var(--ctp-red)',
+                                      border: 'none',
+                                      borderRadius: '3px',
+                                      color: 'white',
+                                      cursor: localEnabled ? 'pointer' : 'not-allowed',
+                                      padding: '0.15rem 0.4rem',
+                                      fontSize: '0.65rem',
+                                      fontWeight: 'bold',
+                                      opacity: localEnabled ? 1 : 0.5
+                                    }}
+                                    title="Clear response"
+                                  >
+                                    Clear
+                                  </button>
+                                </div>
+                                <div style={{
+                                  padding: '0.5rem',
+                                  background: 'var(--ctp-surface2)',
+                                  borderRadius: '4px',
+                                  fontFamily: 'monospace',
                                   fontSize: '0.85rem',
                                   color: 'var(--ctp-text)'
                                 }}>
@@ -1074,7 +1190,27 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                             {/* Test Results */}
                             {newTriggerLiveTestResult && !newTriggerLiveTestResult.loading && (
                               <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--ctp-overlay0)' }}>
-                                <div style={{ fontSize: '0.7rem', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem', fontWeight: 'bold' }}>Test Result:</div>
+                                <div style={{ fontSize: '0.7rem', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span>Test Result:</span>
+                                  <button
+                                    onClick={() => setNewTriggerLiveTestResult(null)}
+                                    disabled={!localEnabled}
+                                    style={{
+                                      background: 'var(--ctp-red)',
+                                      border: 'none',
+                                      borderRadius: '3px',
+                                      color: 'white',
+                                      cursor: localEnabled ? 'pointer' : 'not-allowed',
+                                      padding: '0.15rem 0.4rem',
+                                      fontSize: '0.65rem',
+                                      fontWeight: 'bold',
+                                      opacity: localEnabled ? 1 : 0.5
+                                    }}
+                                    title="Clear test result"
+                                  >
+                                    Clear
+                                  </button>
+                                </div>
                                 {newTriggerLiveTestResult.error ? (
                                   <div style={{ 
                                     padding: '0.5rem', 
@@ -1138,93 +1274,6 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                             ✗ No match - This message does not match your trigger pattern
                           </div>
                         )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })()}
-            {/* Response Preview for New Trigger */}
-            {newResponse.trim() && newTrigger.trim() && (() => {
-              const getPreview = () => {
-                if (newResponseType === 'text') {
-                  let preview = newResponse;
-                  const paramMatches = newTrigger.match(/\{([^}:]+)(?::[^}]+)?\}/g) || [];
-                  paramMatches.forEach((match) => {
-                    const paramName = match.replace(/[{}]/g, '').split(':')[0];
-                    const exampleValues: Record<string, string> = {
-                      zip: '33076', postal: '33076',
-                      temp: '72', temperature: '72',
-                      city: 'Miami', location: 'Miami',
-                      state: 'FL',
-                      id: '!a1b2c3d4', node: '!a1b2c3d4',
-                      name: 'John',
-                      message: 'Hello World', text: 'Hello World', msg: 'Hello World'
-                    };
-                    const lowerName = paramName.toLowerCase();
-                    const example = Object.keys(exampleValues).find(k => lowerName.includes(k)) 
-                      ? exampleValues[Object.keys(exampleValues).find(k => lowerName.includes(k))!]
-                      : 'example';
-                    preview = preview.replace(new RegExp(`\\{${paramName}\\}`, 'g'), example);
-                  });
-                  return preview;
-                } else if (newResponseType === 'http') {
-                  let url = newResponse;
-                  const paramMatches = newTrigger.match(/\{([^}:]+)(?::[^}]+)?\}/g) || [];
-                  paramMatches.forEach((match) => {
-                    const paramName = match.replace(/[{}]/g, '').split(':')[0];
-                    const exampleValues: Record<string, string> = {
-                      zip: '33076', postal: '33076',
-                      temp: '72', temperature: '72',
-                      city: 'Miami', location: 'Miami',
-                      state: 'FL',
-                      id: '!a1b2c3d4', node: '!a1b2c3d4',
-                      name: 'John',
-                      message: 'Hello World', text: 'Hello World', msg: 'Hello World'
-                    };
-                    const lowerName = paramName.toLowerCase();
-                    const example = Object.keys(exampleValues).find(k => lowerName.includes(k)) 
-                      ? exampleValues[Object.keys(exampleValues).find(k => lowerName.includes(k))!]
-                      : 'example';
-                    url = url.replace(new RegExp(`\\{${paramName}\\}`, 'g'), example);
-                  });
-                  return url;
-                } else {
-                  return newResponse;
-                }
-              };
-
-              return (
-                <div style={{ marginTop: '0.5rem', padding: '1rem', background: 'var(--ctp-surface0)', border: '1px solid var(--ctp-overlay0)', borderRadius: '6px' }}>
-                  <div style={{ marginBottom: '0.75rem' }}>
-                    <div style={{ fontSize: '0.875rem', color: 'var(--ctp-text)', fontWeight: 'bold', marginBottom: '0.5rem' }}>
-                      Response Preview
-                    </div>
-                    {newResponseType === 'text' && (
-                      <div style={{ 
-                        fontFamily: 'monospace', 
-                        fontSize: '0.85rem', 
-                        color: 'var(--ctp-text)',
-                        padding: '0.5rem',
-                        background: 'var(--ctp-surface2)',
-                        borderRadius: '3px',
-                        whiteSpace: newMultiline ? 'pre-wrap' : 'nowrap',
-                        overflowX: newMultiline ? 'visible' : 'auto'
-                      }}>
-                        {getPreview()}
-                      </div>
-                    )}
-                    {(newResponseType === 'http' || newResponseType === 'script') && (
-                      <div style={{ 
-                        fontFamily: 'monospace', 
-                        fontSize: '0.85rem', 
-                        color: 'var(--ctp-subtext0)',
-                        padding: '0.5rem',
-                        background: 'var(--ctp-surface2)',
-                        borderRadius: '3px',
-                        fontStyle: 'italic'
-                      }}>
-                        {newResponseType === 'http' ? 'Use the Test section above to test HTTP requests' : 'Use the Test section above to test script execution'}
                       </div>
                     )}
                   </div>
@@ -1448,26 +1497,137 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
               <label style={{ fontSize: '0.85rem', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem', display: 'block' }}>
                 Quick Test (real-time matching):
               </label>
-              <input
-                type="text"
-                value={currentTestLine}
-                onChange={(e) => setCurrentTestLine(e.target.value)}
-                placeholder="Type a message to test in real-time..."
-                className="setting-input"
-                style={{
-                  fontFamily: 'monospace',
-                  width: '100%',
-                  borderColor: currentTestLine.trim() ? (testTriggerMatch(currentTestLine.trim()) ? 'var(--ctp-green)' : 'var(--ctp-red)') : undefined,
-                  borderWidth: currentTestLine.trim() ? '2px' : undefined
-                }}
-              />
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'stretch' }}>
+                <input
+                  type="text"
+                  value={currentTestLine}
+                  onChange={(e) => {
+                    setCurrentTestLine(e.target.value);
+                    setQuickTestResult(null);
+                  }}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      const match = testTriggerMatch(currentTestLine.trim());
+                      if (match?.trigger && match.trigger.responseType === 'text') {
+                        // For text responses, Enter key just triggers the preview (which is already shown)
+                        // No additional action needed as preview is live
+                      }
+                    }
+                  }}
+                  placeholder="Type a message to test in real-time... (Press Enter for text responses)"
+                  className="setting-input"
+                  style={{
+                    fontFamily: 'monospace',
+                    flex: '1',
+                    borderColor: currentTestLine.trim() ? (testTriggerMatch(currentTestLine.trim()) ? 'var(--ctp-green)' : 'var(--ctp-red)') : undefined,
+                    borderWidth: currentTestLine.trim() ? '2px' : undefined
+                  }}
+                />
+                {(() => {
+                  const match = testTriggerMatch(currentTestLine.trim());
+                  return match?.trigger && (match.trigger.responseType === 'http' || match.trigger.responseType === 'script') && (
+                    <button
+                      onClick={async () => {
+                        if (!currentTestLine.trim() || !match || !match.trigger) return;
+                        setQuickTestResult({ loading: true, result: null });
+                        try {
+                          if (match.trigger.responseType === 'http') {
+                            let url = match.trigger.response;
+                            if (match.params) {
+                              Object.entries(match.params).forEach(([paramName, paramValue]) => {
+                                url = url.replace(new RegExp(`\\{${paramName}\\}`, 'g'), paramValue);
+                              });
+                            }
+                            const response = await csrfFetch(`${baseUrl}/api/http/test`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ url })
+                            });
+                            if (!response.ok) {
+                              let errorMessage = `HTTP ${response.status}`;
+                              try {
+                                const errorData = await response.json();
+                                errorMessage = errorData.error || errorMessage;
+                              } catch {
+                                try {
+                                  const errorText = await response.text();
+                                  errorMessage = errorText || errorMessage;
+                                } catch {
+                                  // Use default error message
+                                }
+                              }
+                              throw new Error(errorMessage);
+                            }
+                            const result = await response.json();
+                            setQuickTestResult({ loading: false, result: result.result || '(no output)' });
+                          } else if (match.trigger.responseType === 'script') {
+                            const triggerStr = Array.isArray(match.trigger.trigger)
+                              ? match.trigger.trigger.join(', ')
+                              : match.trigger.trigger;
+                            const response = await csrfFetch(`${baseUrl}/api/scripts/test`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                script: match.trigger.response,
+                                trigger: triggerStr,
+                                testMessage: currentTestLine.trim()
+                              })
+                            });
+                            if (!response.ok) {
+                              let errorMessage = `HTTP ${response.status}`;
+                              try {
+                                const errorData = await response.json();
+                                errorMessage = errorData.error || errorMessage;
+                              } catch {
+                                try {
+                                  const errorText = await response.text();
+                                  errorMessage = errorText || errorMessage;
+                                } catch {
+                                  // Use default error message
+                                }
+                              }
+                              throw new Error(errorMessage);
+                            }
+                            const result = await response.json();
+                            let output = result.output || '(no output)';
+                            if (result.stderr) {
+                              output += `\n\n[stderr]\n${result.stderr}`;
+                            }
+                            if (result.params && Object.keys(result.params).length > 0) {
+                              output += `\n\n[Parameters: ${JSON.stringify(result.params)}]`;
+                            }
+                            setQuickTestResult({ loading: false, result: output });
+                          }
+                        } catch (error: any) {
+                          let errorMessage = error.message || error.toString();
+                          if (errorMessage.includes('NetworkError') || errorMessage.includes('Failed to fetch')) {
+                            errorMessage = 'Network error: Unable to connect. Check your URL or network connection.';
+                          }
+                          setQuickTestResult({ loading: false, result: null, error: errorMessage });
+                        }
+                      }}
+                      className="btn-primary"
+                      disabled={quickTestResult?.loading}
+                      style={{
+                        padding: '0.5rem 1rem',
+                        fontSize: '14px',
+                        minWidth: '80px',
+                        opacity: quickTestResult?.loading ? 0.6 : 1,
+                        cursor: quickTestResult?.loading ? 'wait' : 'pointer'
+                      }}
+                    >
+                      {quickTestResult?.loading ? '⏳ Testing...' : '🧪 Test'}
+                    </button>
+                  );
+                })()}
+              </div>
               {currentTestLine.trim() && (() => {
                 const realtimeMatch = testTriggerMatch(currentTestLine.trim());
                 const allMatches = testAllTriggerMatches(currentTestLine.trim());
                 return (
-                  <div style={{ 
-                    marginTop: '0.5rem', 
-                    padding: '0.5rem', 
+                  <div style={{
+                    marginTop: '0.5rem',
+                    padding: '0.5rem',
                     background: realtimeMatch ? 'rgba(166, 227, 161, 0.1)' : 'rgba(243, 139, 168, 0.1)',
                     border: `1px solid ${realtimeMatch ? 'var(--ctp-green)' : 'var(--ctp-red)'}`,
                     borderRadius: '4px',
@@ -1475,12 +1635,239 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                   }}>
                     {realtimeMatch ? (
                       <div>
-                        <div style={{ color: 'var(--ctp-green)', fontWeight: 'bold', marginBottom: '0.25rem' }}>
-                          ✓ Matches: {realtimeMatch.matchedPattern}
+                        <div style={{ marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                          <span style={{ color: 'var(--ctp-green)', fontWeight: 'bold' }}>✓ Matches:</span>
+                          {(() => {
+                            const pattern = realtimeMatch.matchedPattern || '';
+                            const segments: Array<{ text: string; type: 'literal' | 'parameter'; paramName?: string; startPos: number; endPos: number }> = [];
+
+                            let i = 0;
+                            while (i < pattern.length) {
+                              if (pattern[i] === '{') {
+                                const start = i + 1;
+                                let depth = 1;
+                                let end = start;
+                                while (end < pattern.length && depth > 0) {
+                                  if (pattern[end] === '{') depth++;
+                                  else if (pattern[end] === '}') depth--;
+                                  end++;
+                                }
+                                const paramMatch = pattern.substring(start, end - 1);
+                                const colonPos = paramMatch.indexOf(':');
+                                const paramName = colonPos >= 0 ? paramMatch.substring(0, colonPos) : paramMatch;
+                                segments.push({ text: pattern.substring(i, end), type: 'parameter', paramName, startPos: i, endPos: end });
+                                i = end;
+                              } else {
+                                const literalStart = i;
+                                while (i < pattern.length && pattern[i] !== '{') {
+                                  i++;
+                                }
+                                const literalText = pattern.substring(literalStart, i);
+                                if (literalText.trim()) {
+                                  segments.push({ text: literalText, type: 'literal', startPos: literalStart, endPos: i });
+                                }
+                              }
+                            }
+
+                            // Merge adjacent segments
+                            const mergedSegments: Array<Array<{ text: string; type: 'literal' | 'parameter'; paramName?: string }>> = [];
+                            let currentGroup: Array<{ text: string; type: 'literal' | 'parameter'; paramName?: string }> = [];
+
+                            for (let j = 0; j < segments.length; j++) {
+                              currentGroup.push(segments[j]);
+                              const isLastSegment = j === segments.length - 1;
+                              let nextSegmentIsAdjacent = false;
+
+                              if (!isLastSegment) {
+                                const current = segments[j];
+                                const next = segments[j + 1];
+                                const positionsAdjacent = next.startPos === current.endPos;
+                                const currentEndsWithSpace = current.type === 'literal' && current.text.endsWith(' ');
+                                const nextStartsWithSpace = next.type === 'literal' && next.text.startsWith(' ');
+                                nextSegmentIsAdjacent = positionsAdjacent && !currentEndsWithSpace && !nextStartsWithSpace;
+                              }
+
+                              if (!nextSegmentIsAdjacent) {
+                                mergedSegments.push(currentGroup);
+                                currentGroup = [];
+                              }
+                            }
+
+                            return mergedSegments.map((group, groupIdx) => {
+                              if (group.length === 1) {
+                                const segment = group[0];
+                                return (
+                                  <span
+                                    key={groupIdx}
+                                    style={{
+                                      backgroundColor: segment.type === 'parameter' ? 'rgba(166, 227, 161, 0.3)' : 'rgba(137, 180, 250, 0.2)',
+                                      padding: '0.2rem 0.4rem',
+                                      borderRadius: '4px',
+                                      fontWeight: segment.type === 'parameter' ? 'bold' : 'normal',
+                                      color: segment.type === 'parameter' ? 'var(--ctp-green)' : 'var(--ctp-blue)',
+                                      fontFamily: 'monospace',
+                                      fontSize: '0.85rem',
+                                      border: segment.type === 'parameter' ? '1px solid rgba(166, 227, 161, 0.5)' : '1px solid rgba(137, 180, 250, 0.3)'
+                                    }}
+                                  >
+                                    {segment.type === 'literal' ? segment.text.trim() : segment.text}
+                                  </span>
+                                );
+                              } else {
+                                return (
+                                  <span
+                                    key={groupIdx}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      borderRadius: '4px',
+                                      overflow: 'hidden',
+                                      border: '1px solid rgba(166, 227, 161, 0.5)',
+                                      fontFamily: 'monospace',
+                                      fontSize: '0.85rem'
+                                    }}
+                                  >
+                                    {group.map((segment, segIdx) => (
+                                      <React.Fragment key={segIdx}>
+                                        <span
+                                          style={{
+                                            backgroundColor: segment.type === 'parameter' ? 'rgba(166, 227, 161, 0.3)' : 'rgba(137, 180, 250, 0.2)',
+                                            padding: '0.2rem 0.4rem',
+                                            fontWeight: segment.type === 'parameter' ? 'bold' : 'normal',
+                                            color: segment.type === 'parameter' ? 'var(--ctp-green)' : 'var(--ctp-blue)'
+                                          }}
+                                        >
+                                          {segment.type === 'literal' ? segment.text.trim() : segment.text}
+                                        </span>
+                                        {segIdx < group.length - 1 && (
+                                          <span style={{
+                                            width: '1px',
+                                            height: '100%',
+                                            backgroundColor: 'rgba(205, 214, 244, 0.3)',
+                                            margin: '0'
+                                          }} />
+                                        )}
+                                      </React.Fragment>
+                                    ))}
+                                  </span>
+                                );
+                              }
+                            });
+                          })()}
                         </div>
                         {allMatches.length > 1 && (
                           <div style={{ color: 'var(--ctp-peach)', marginTop: '0.25rem', fontSize: '0.75rem' }}>
                             ⚠️ Warning: {allMatches.length} triggers match this message (conflict!)
+                          </div>
+                        )}
+
+                        {/* Response Preview for text responses */}
+                        {realtimeMatch.trigger && realtimeMatch.trigger.responseType === 'text' && (
+                          <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--ctp-overlay0)' }}>
+                            <div style={{ fontSize: '0.7rem', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span>Response Preview:</span>
+                              <button
+                                onClick={() => setCurrentTestLine('')}
+                                disabled={!localEnabled}
+                                style={{
+                                  background: 'var(--ctp-red)',
+                                  border: 'none',
+                                  borderRadius: '3px',
+                                  color: 'white',
+                                  cursor: localEnabled ? 'pointer' : 'not-allowed',
+                                  padding: '0.15rem 0.4rem',
+                                  fontSize: '0.65rem',
+                                  fontWeight: 'bold',
+                                  opacity: localEnabled ? 1 : 0.5
+                                }}
+                                title="Clear test input"
+                              >
+                                Clear
+                              </button>
+                            </div>
+                            <div style={{
+                              padding: '0.5rem',
+                              background: 'var(--ctp-surface2)',
+                              borderRadius: '4px',
+                              fontFamily: 'monospace',
+                              fontSize: '0.85rem',
+                              color: 'var(--ctp-text)',
+                              whiteSpace: realtimeMatch.trigger.multiline ? 'pre-wrap' : 'nowrap',
+                              overflowX: 'auto'
+                            }}>
+                              {generateSampleResponse(realtimeMatch.trigger, currentTestLine.trim())}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Test Results for HTTP/script */}
+                        {quickTestResult && !quickTestResult.loading && (
+                          <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--ctp-overlay0)' }}>
+                            <div style={{ fontSize: '0.7rem', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span>Test Result:</span>
+                              <button
+                                onClick={() => setQuickTestResult(null)}
+                                disabled={!localEnabled}
+                                style={{
+                                  background: 'var(--ctp-red)',
+                                  border: 'none',
+                                  borderRadius: '3px',
+                                  color: 'white',
+                                  cursor: localEnabled ? 'pointer' : 'not-allowed',
+                                  padding: '0.15rem 0.4rem',
+                                  fontSize: '0.65rem',
+                                  fontWeight: 'bold',
+                                  opacity: localEnabled ? 1 : 0.5
+                                }}
+                                title="Clear test result"
+                              >
+                                Clear
+                              </button>
+                            </div>
+                            {quickTestResult.error ? (
+                              <div style={{
+                                padding: '0.5rem',
+                                background: 'rgba(243, 139, 168, 0.1)',
+                                border: '1px solid var(--ctp-red)',
+                                borderRadius: '4px',
+                                color: 'var(--ctp-red)',
+                                fontSize: '0.85rem'
+                              }}>
+                                Error: {quickTestResult.error}
+                              </div>
+                            ) : quickTestResult.result ? (
+                              <div>
+                                <div style={{
+                                  padding: '0.5rem',
+                                  background: 'var(--ctp-surface2)',
+                                  borderRadius: '4px',
+                                  fontFamily: 'monospace',
+                                  fontSize: '0.85rem',
+                                  color: 'var(--ctp-text)',
+                                  whiteSpace: 'pre-wrap',
+                                  maxHeight: '200px',
+                                  overflowY: 'auto'
+                                }}>
+                                  {quickTestResult.result}
+                                </div>
+                                <button
+                                  onClick={() => {
+                                    if (quickTestResult?.result) {
+                                      navigator.clipboard.writeText(quickTestResult.result);
+                                      showToast('Copied to clipboard', 'success');
+                                    }
+                                  }}
+                                  className="btn-secondary"
+                                  style={{
+                                    padding: '0.25rem 0.5rem',
+                                    fontSize: '0.75rem',
+                                    marginTop: '0.25rem'
+                                  }}
+                                >
+                                  📋 Copy
+                                </button>
+                              </div>
+                            ) : null}
                           </div>
                         )}
                       </div>
@@ -1629,18 +2016,30 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                           url = url.replace(new RegExp(`\\{${paramName}\\}`, 'g'), paramValue);
                                         });
                                       }
-                                      const response = await fetch(url, {
-                                        method: 'GET',
-                                        headers: { 'Accept': 'text/plain, text/*, application/json' },
-                                        signal: AbortSignal.timeout(10000)
+                                      const response = await csrfFetch(`${baseUrl}/api/http/test`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ url })
                                       });
                                       if (!response.ok) {
-                                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                                        let errorMessage = `HTTP ${response.status}`;
+                                        try {
+                                          const errorData = await response.json();
+                                          errorMessage = errorData.error || errorMessage;
+                                        } catch {
+                                          try {
+                                            const errorText = await response.text();
+                                            errorMessage = errorText || errorMessage;
+                                          } catch {
+                                            // Use default error message
+                                          }
+                                        }
+                                        throw new Error(errorMessage);
                                       }
-                                      const text = await response.text();
-                                      setLiveTestResults({ ...liveTestResults, [index]: { loading: false, result: text.substring(0, 500) + (text.length > 500 ? '...' : '') } });
+                                      const result = await response.json();
+                                      setLiveTestResults({ ...liveTestResults, [index]: { loading: false, result: result.result || '(no output)' } });
                                     } else if (match.trigger?.responseType === 'script') {
-                                      const response = await csrfFetch('/api/scripts/test', {
+                                      const response = await csrfFetch(`${baseUrl}/api/scripts/test`, {
                                         method: 'POST',
                                         headers: { 'Content-Type': 'application/json' },
                                         body: JSON.stringify({
