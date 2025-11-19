@@ -252,6 +252,78 @@
           <a href="/configuration/auto-upgrade" target="_blank">Learn more</a>
         </p>
       </div>
+
+      <div class="form-group">
+        <label class="checkbox-label">
+          <input type="checkbox" v-model="config.enableOfflineMaps" />
+          Enable Offline Map Tiles (TileServer GL Light)
+        </label>
+        <p class="field-help">
+          Adds a TileServer GL Light container for serving offline map tiles. Supports both vector (.pbf) and raster (.png) tiles for full offline operation.
+        </p>
+      </div>
+
+      <div v-if="config.enableOfflineMaps" class="form-group">
+        <label for="tileServerPort">Tile Server Port</label>
+        <input
+          id="tileServerPort"
+          v-model="config.tileServerPort"
+          type="number"
+          placeholder="8081"
+          class="text-input"
+        />
+        <p class="field-help">Port for accessing the tile server (default: 8081)</p>
+
+        <div class="info-box">
+          <strong>📦 Setup Instructions:</strong>
+          <ol>
+            <li>Create a <code>./tiles</code> directory next to docker-compose.yml</li>
+            <li>Download MBTiles:
+              <ul>
+                <li><a href="https://openmaptiles.org/downloads/" target="_blank">OpenMapTiles</a> - Pre-made .mbtiles files (easiest)</li>
+                <li><a href="https://www.maptiler.com/on-prem-datasets/" target="_blank">MapTiler OSM</a> - Vector tiles for flexible styling</li>
+                <li><a href="https://openmaptiles.com/docs/generate/generate-openmaptiles/" target="_blank">Generate custom MBTiles</a> - From OpenStreetMap data</li>
+              </ul>
+            </li>
+            <li>Place <code>.mbtiles</code> files in the <code>./tiles</code> directory</li>
+            <li>After starting, access tile server at <code>http://localhost:{{ config.tileServerPort }}</code></li>
+            <li>In MeshMonitor Settings → Map Settings, add custom tileset:
+              <ul>
+                <li><strong>For raster tiles (PNG):</strong> <code>http://localhost:{{ config.tileServerPort }}/styles/basic/{z}/{x}/{y}.png</code></li>
+                <li><strong>For vector tiles (PBF):</strong> <code>http://localhost:{{ config.tileServerPort }}/data/v3/{z}/{x}/{y}.pbf</code></li>
+              </ul>
+            </li>
+          </ol>
+          <p style="margin-top: 1rem; font-size: 0.9rem;">
+            ✨ <strong>TileServer GL Light</strong> supports both vector (.pbf) and raster (.png) tiles with no native dependencies. Runs on all platforms!
+          </p>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="checkbox-label">
+          <input type="checkbox" v-model="config.enableAutoResponderScripts" />
+          Mount Auto Responder Scripts Directory
+        </label>
+        <p class="field-help">
+          Mounts <code>./scripts</code> to <code>/data/scripts</code> for easy management of Auto Responder scripts.
+          <a href="/developers/auto-responder-scripting" target="_blank">Learn more</a>
+        </p>
+      </div>
+
+      <div v-if="config.enableAutoResponderScripts" class="info-box">
+        <strong>🤖 Auto Responder Scripts Setup:</strong>
+        <ol>
+          <li>Create a <code>./scripts</code> directory next to docker-compose.yml</li>
+          <li>Place your Auto Responder scripts (<code>.js</code>, <code>.py</code>, <code>.sh</code>) in <code>./scripts</code></li>
+          <li>Make scripts executable: <code>chmod +x ./scripts/YourScript.py</code></li>
+          <li>In MeshMonitor, go to <strong>Settings → Automation → Auto Responder</strong></li>
+          <li>Add a trigger and select your script from the dropdown</li>
+        </ol>
+        <p style="margin-top: 1rem; font-size: 0.9rem;">
+          💡 <strong>Tip:</strong> You can edit scripts locally in <code>./scripts/</code> and changes are immediately available in the container.
+        </p>
+      </div>
     </section>
 
     <!-- Generated Files -->
@@ -313,7 +385,10 @@ const config = ref({
   allowVirtualNodeAdminCommands: false,
   disableAnonymous: false,
   timezone: 'America/New_York',
-  enableAutoUpgrade: false
+  enableAutoUpgrade: false,
+  enableOfflineMaps: false,
+  tileServerPort: 8081,
+  enableAutoResponderScripts: false
 })
 
 const copiedDockerCompose = ref(false)
@@ -379,6 +454,10 @@ const dockerComposeYaml = computed(() => {
   lines.push('    restart: unless-stopped')
   lines.push('    volumes:')
   lines.push('      - meshmonitor-data:/data')
+  if (config.value.enableAutoResponderScripts) {
+    lines.push('      # Mount local scripts directory for Auto Responder scripts')
+    lines.push('      - ./scripts:/data/scripts')
+  }
   lines.push('    env_file: .env')
   lines.push('    environment:')
 
@@ -477,6 +556,24 @@ const dockerComposeYaml = computed(() => {
     lines.push('      options:')
     lines.push('        max-size: "10m"')
     lines.push('        max-file: "3"')
+  }
+
+  // Add TileServer GL if offline maps are enabled
+  if (config.value.enableOfflineMaps) {
+    lines.push('')
+    lines.push('  # Offline map tile server')
+    lines.push('  tileserver:')
+    lines.push('    image: maptiler/tileserver-gl-light:latest')
+    lines.push('    container_name: meshmonitor-tileserver')
+    lines.push('    ports:')
+    lines.push(`      - "${config.value.tileServerPort}:8080"`)
+    lines.push('    restart: unless-stopped')
+    lines.push('    volumes:')
+    lines.push('      # Mount local tiles directory (create ./tiles and place .mbtiles files here)')
+    lines.push('      - ./tiles:/data')
+    lines.push('    environment:')
+    lines.push('      - VERBOSE=true')
+    lines.push('    command: --verbose')
   }
 
   lines.push('')
@@ -777,5 +874,42 @@ async function copyToClipboard(text) {
   padding: 0.1rem 0.4rem;
   background-color: var(--vp-code-bg);
   border-radius: 3px;
+}
+
+.info-box {
+  margin-top: 1rem;
+  padding: 1rem;
+  background-color: var(--vp-c-bg);
+  border-radius: 6px;
+  border-left: 4px solid var(--vp-c-brand);
+}
+
+.info-box strong {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: var(--vp-c-brand);
+}
+
+.info-box ol {
+  margin: 0.5rem 0 0 0;
+  padding-left: 1.5rem;
+}
+
+.info-box li {
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.info-box code {
+  font-size: 0.85rem;
+  padding: 0.1rem 0.3rem;
+  background-color: var(--vp-code-bg);
+  border-radius: 3px;
+}
+
+.info-box a {
+  color: var(--vp-c-brand);
+  text-decoration: underline;
 }
 </style>

@@ -11,6 +11,7 @@ import PacketMonitorSettings from './PacketMonitorSettings';
 import SystemBackupSection from './configuration/SystemBackupSection';
 import AutoUpgradeTestSection from './configuration/AutoUpgradeTestSection';
 import { CustomThemeManagement } from './CustomThemeManagement';
+import { CustomTilesetManager } from './CustomTilesetManager';
 import { type Theme, useSettings } from '../contexts/SettingsContext';
 
 type DistanceUnit = 'km' | 'mi';
@@ -98,7 +99,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   onSolarMonitoringDeclinationChange
 }) => {
   const csrfFetch = useCsrfFetch();
-  const { customThemes } = useSettings();
+  const { customThemes, customTilesets } = useSettings();
 
   // Local state for editing
   const [localMaxNodeAge, setLocalMaxNodeAge] = useState(maxNodeAgeHours);
@@ -737,13 +738,15 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               onChange={(e) => setLocalMapTileset(e.target.value as TilesetId)}
               className="setting-input"
             >
-              {getAllTilesets().map((tileset) => (
+              {getAllTilesets(customTilesets).map((tileset) => (
                 <option key={tileset.id} value={tileset.id}>
                   {tileset.name} {tileset.description && `- ${tileset.description}`}
+                  {tileset.isCustom && ' [Custom]'}
                 </option>
               ))}
             </select>
           </div>
+          <CustomTilesetManager />
           <div className="setting-item">
             <label htmlFor="mapPinStyle">
               Map Pin Style

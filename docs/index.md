@@ -48,6 +48,10 @@ features:
     title: Responsive Design
     details: Works seamlessly on desktop, tablet, and mobile devices. Monitor your network from anywhere.
 
+  - icon: 🗺️
+    title: Custom Tile Servers
+    details: Configure custom map tile servers for offline operation or custom styling. Supports local tile servers like TileServer GL for complete offline functionality with no internet dependency. Privacy-focused and high-availability.
+
   - icon: 🎨
     title: Customizable Themes
     details: Choose from 15 built-in themes or create your own with the visual theme editor. Includes color-blind friendly options, WCAG AAA compliant high-contrast themes, and full import/export support for sharing custom themes.

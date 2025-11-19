@@ -3082,6 +3082,79 @@ apiRouter.post('/settings/traceroute-nodes', requirePermission('settings', 'writ
   }
 });
 
+// Helper functions for tile URL validation
+function validateTileUrl(url: string): boolean {
+  // Must contain {z}, {x}, {y} placeholders
+  if (!url.includes('{z}') || !url.includes('{x}') || !url.includes('{y}')) {
+    return false;
+  }
+
+  // Basic URL validation - replace placeholders with test values
+  try {
+    const testUrl = url
+      .replace(/{z}/g, '0')
+      .replace(/{x}/g, '0')
+      .replace(/{y}/g, '0')
+      .replace(/{s}/g, 'a');
+
+    const parsedUrl = new URL(testUrl);
+
+    // Only allow http and https protocols
+    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+      return false;
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function validateCustomTilesets(tilesets: any[]): boolean {
+  if (!Array.isArray(tilesets)) {
+    return false;
+  }
+
+  for (const tileset of tilesets) {
+    // Check required fields exist and have correct types
+    if (typeof tileset.id !== 'string' ||
+        typeof tileset.name !== 'string' ||
+        typeof tileset.url !== 'string' ||
+        typeof tileset.attribution !== 'string' ||
+        typeof tileset.maxZoom !== 'number' ||
+        typeof tileset.description !== 'string' ||
+        typeof tileset.createdAt !== 'number' ||
+        typeof tileset.updatedAt !== 'number') {
+      return false;
+    }
+
+    // Validate ID format (must start with 'custom-')
+    if (!tileset.id.startsWith('custom-')) {
+      return false;
+    }
+
+    // Validate string lengths
+    if (tileset.name.length > 100 ||
+        tileset.url.length > 500 ||
+        tileset.attribution.length > 200 ||
+        tileset.description.length > 200) {
+      return false;
+    }
+
+    // Validate maxZoom range
+    if (tileset.maxZoom < 1 || tileset.maxZoom > 22) {
+      return false;
+    }
+
+    // Validate tile URL format
+    if (!validateTileUrl(tileset.url)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 // Get all settings
 apiRouter.get('/settings', optionalAuth(), (_req, res) => {
   try {
@@ -3104,7 +3177,7 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
     const currentSettings = databaseService.getAllSettings();
 
     // Validate settings
-    const validKeys = ['maxNodeAgeHours', 'tracerouteIntervalMinutes', 'temperatureUnit', 'distanceUnit', 'telemetryVisualizationHours', 'telemetryFavorites', 'autoAckEnabled', 'autoAckRegex', 'autoAckMessage', 'autoAckChannels', 'autoAckDirectMessages', 'autoAckUseDM', 'autoAnnounceEnabled', 'autoAnnounceIntervalHours', 'autoAnnounceMessage', 'autoAnnounceChannelIndex', 'autoAnnounceOnStart', 'autoAnnounceUseSchedule', 'autoAnnounceSchedule', 'autoWelcomeEnabled', 'autoWelcomeMessage', 'autoWelcomeTarget', 'autoWelcomeWaitForName', 'autoWelcomeMaxHops', 'autoResponderEnabled', 'autoResponderTriggers', 'preferredSortField', 'preferredSortDirection', 'timeFormat', 'dateFormat', 'mapTileset', 'packet_log_enabled', 'packet_log_max_count', 'packet_log_max_age_hours', 'solarMonitoringEnabled', 'solarMonitoringLatitude', 'solarMonitoringLongitude', 'solarMonitoringAzimuth', 'solarMonitoringDeclination', 'mapPinStyle', 'favoriteTelemetryStorageDays', 'theme'];
+    const validKeys = ['maxNodeAgeHours', 'tracerouteIntervalMinutes', 'temperatureUnit', 'distanceUnit', 'telemetryVisualizationHours', 'telemetryFavorites', 'autoAckEnabled', 'autoAckRegex', 'autoAckMessage', 'autoAckChannels', 'autoAckDirectMessages', 'autoAckUseDM', 'autoAnnounceEnabled', 'autoAnnounceIntervalHours', 'autoAnnounceMessage', 'autoAnnounceChannelIndex', 'autoAnnounceOnStart', 'autoAnnounceUseSchedule', 'autoAnnounceSchedule', 'autoWelcomeEnabled', 'autoWelcomeMessage', 'autoWelcomeTarget', 'autoWelcomeWaitForName', 'autoWelcomeMaxHops', 'autoResponderEnabled', 'autoResponderTriggers', 'preferredSortField', 'preferredSortDirection', 'timeFormat', 'dateFormat', 'mapTileset', 'packet_log_enabled', 'packet_log_max_count', 'packet_log_max_age_hours', 'solarMonitoringEnabled', 'solarMonitoringLatitude', 'solarMonitoringLongitude', 'solarMonitoringAzimuth', 'solarMonitoringDeclination', 'mapPinStyle', 'favoriteTelemetryStorageDays', 'theme', 'customTilesets'];
     const filteredSettings: Record<string, string> = {};
 
     for (const key of validKeys) {
@@ -3181,6 +3254,30 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
         }
       } catch (error) {
         return res.status(400).json({ error: 'Invalid JSON format for autoResponderTriggers' });
+      }
+    }
+
+    // Validate customTilesets JSON
+    if ('customTilesets' in filteredSettings) {
+      try {
+        const tilesets = JSON.parse(filteredSettings.customTilesets);
+
+        // Validate that it's an array
+        if (!Array.isArray(tilesets)) {
+          return res.status(400).json({ error: 'customTilesets must be an array' });
+        }
+
+        // Validate array length (max 50 custom tilesets)
+        if (tilesets.length > 50) {
+          return res.status(400).json({ error: 'Maximum 50 custom tilesets allowed' });
+        }
+
+        // Validate each tileset
+        if (!validateCustomTilesets(tilesets)) {
+          return res.status(400).json({ error: 'Invalid custom tileset configuration. Check field types, lengths, and URL format.' });
+        }
+      } catch (error) {
+        return res.status(400).json({ error: 'Invalid JSON format for customTilesets' });
       }
     }
 

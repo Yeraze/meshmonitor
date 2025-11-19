@@ -38,7 +38,7 @@ The Settings tab allows you to customize MeshMonitor's behavior and manage your 
 
 **Effect**: When combined with other filters, this helps manage large mesh networks by focusing on nodes with meaningful identification or highlighting those that need configuration.
 
-### Device Role Filter *(New in v2.12)*
+### Device Role Filter
 
 **Description**: Filter nodes based on their assigned Meshtastic device role, allowing you to focus on specific types of nodes in your network.
 
@@ -70,7 +70,7 @@ The Settings tab allows you to customize MeshMonitor's behavior and manage your 
 
 **Effect**: Helps organize and analyze large networks by grouping nodes by their functional role in the mesh.
 
-### Security Filter *(New in v2.12.1)*
+### Security Filter
 
 **Description**: Filter nodes based on detected security issues, allowing you to focus on nodes with security problems or hide them from view.
 
@@ -192,7 +192,7 @@ When information is unavailable, the block displays "N/A" for that metric. This 
 - Information isn't available from the device type
 - Connection was lost before all data was received
 
-## Solar Monitoring *(New in v2.13)*
+## Solar Monitoring
 
 **Description**: Configure solar production monitoring to visualize expected solar power generation on telemetry graphs.
 
@@ -254,6 +254,91 @@ When information is unavailable, the block displays "N/A" for that metric. This 
 - Predicting when nodes may go offline due to insufficient power
 
 **Learn More**: See [Solar Monitoring](/features/solar-monitoring) for detailed documentation, API endpoints, and troubleshooting.
+
+## Map Settings
+
+### Map Tileset Selection
+
+**Description**: Choose which map tile server to use for displaying your mesh network on the interactive map.
+
+**Default Tilesets**:
+- **OpenStreetMap** (default) - Standard OSM map style
+- **OpenStreetMap HOT** - Humanitarian OpenStreetMap Team style
+- **CartoDB Dark** - Dark mode map style
+- **CartoDB Light** - Light mode map style
+- **OpenTopoMap** - Topographic map with terrain details
+- **ESRI Satellite** - Satellite imagery
+
+**Location**:
+- **Settings Tab**: Map Settings section
+- **Nodes Tab**: Bottom-center tileset selector (visual picker)
+
+**Effect**: Changes the base map layer displayed on the interactive map. Different tilesets offer different visual styles, levels of detail, and use cases.
+
+**Use Cases**:
+- **OpenStreetMap**: General-purpose mapping with street and place names
+- **Satellite**: Identify terrain features and physical landmarks
+- **Topographic**: Outdoor deployments needing elevation and terrain data
+- **Dark/Light**: Match your application theme for visual consistency
+
+### Custom Tile Servers
+
+**Description**: Configure custom map tile servers for offline operation, custom styling, or organizational branding.
+
+**Features**:
+- **Offline Operation** - Use locally hosted tiles without internet access
+- **Privacy** - No third-party requests that could leak node locations
+- **Custom Branding** - Organization-specific map styles
+- **High Availability** - Independence from external tile services
+
+**Configuration**:
+1. Navigate to **Settings → Map Settings → Custom Tile Servers**
+2. Click **+ Add Custom Tile Server**
+3. Configure:
+   - **Name**: Friendly name (e.g., "Local Tiles")
+   - **Tile URL**: URL template with `{z}/{x}/{y}` placeholders
+   - **Attribution**: Attribution text for the map source
+   - **Max Zoom**: Maximum zoom level (1-22)
+   - **Description**: Optional description
+4. Click **Save**
+5. Select your custom tileset from the map tileset dropdown
+
+**URL Format**: Custom tile servers must use the standard XYZ tile format:
+```
+https://example.com/{z}/{x}/{y}.png
+```
+
+**Required Placeholders**: `{z}` (zoom), `{x}` (tile X), `{y}` (tile Y)
+
+**Optional Placeholders**: `{s}` (subdomain for load balancing)
+
+**Supported Formats**:
+- PNG (`.png`) - Best quality, larger file size
+- JPEG (`.jpg`, `.jpeg`) - Good for satellite imagery
+- WebP (`.webp`) - Smaller file size, modern browsers
+
+**Validation**:
+- Max 50 custom tilesets per instance
+- URL length limit: 500 characters
+- Name length limit: 100 characters
+- Attribution length limit: 200 characters
+- Zoom range: 1-22
+
+**Security**:
+- HTTPS recommended for production
+- HTTP allowed for localhost/127.0.0.1 only
+- Custom tile servers must allow CORS (Cross-Origin Resource Sharing)
+
+**Example Configuration**:
+```
+Name: Local OSM
+URL: http://localhost:8080/styles/osm-bright/{z}/{x}/{y}.png
+Attribution: © OpenStreetMap contributors
+Max Zoom: 18
+Description: Offline OpenStreetMap tiles via TileServer GL
+```
+
+**Learn More**: See [Custom Tile Servers](/configuration/custom-tile-servers) for detailed setup instructions, TileServer GL integration, and troubleshooting.
 
 ## Display Preferences
 

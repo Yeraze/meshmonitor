@@ -155,3 +155,15 @@
     max-width: 70px;
   }
 }
+
+.custom-badge {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 1px 4px;
+  background-color: #007bff;
+  color: white;
+  font-size: 9px;
+  font-weight: 600;
+  border-radius: 3px;
+  text-transform: uppercase;
+}
