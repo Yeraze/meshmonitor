@@ -994,29 +994,30 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                     url = url.replace(new RegExp(`\\{${paramName}\\}`, 'g'), paramValue);
                                   });
                                 }
-                                const controller = new AbortController();
-                                const timeoutId = setTimeout(() => controller.abort(), 10000);
-                                try {
-                                  const response = await fetch(url, {
-                                    method: 'GET',
-                                    headers: { 'Accept': 'text/plain, text/*, application/json' },
-                                    signal: controller.signal
-                                  });
-                                  clearTimeout(timeoutId);
-                                  if (!response.ok) {
-                                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                                const response = await csrfFetch(`${baseUrl}/api/http/test`, {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ url })
+                                });
+                                if (!response.ok) {
+                                  let errorMessage = `HTTP ${response.status}`;
+                                  try {
+                                    const errorData = await response.json();
+                                    errorMessage = errorData.error || errorMessage;
+                                  } catch {
+                                    try {
+                                      const errorText = await response.text();
+                                      errorMessage = errorText || errorMessage;
+                                    } catch {
+                                      // Use default error message
+                                    }
                                   }
-                                  const text = await response.text();
-                                  setNewTriggerLiveTestResult({ loading: false, result: text.substring(0, 500) + (text.length > 500 ? '...' : '') });
-                                } catch (fetchError: any) {
-                                  clearTimeout(timeoutId);
-                                  if (fetchError.name === 'AbortError') {
-                                    throw new Error('Request timed out after 10 seconds');
-                                  }
-                                  throw fetchError;
+                                  throw new Error(errorMessage);
                                 }
+                                const result = await response.json();
+                                setNewTriggerLiveTestResult({ loading: false, result: result.result || '(no output)' });
                               } else if (newResponseType === 'script') {
-                                const response = await csrfFetch('/api/scripts/test', {
+                                const response = await csrfFetch(`${baseUrl}/api/scripts/test`, {
                                   method: 'POST',
                                   headers: { 'Content-Type': 'application/json' },
                                   body: JSON.stringify({
@@ -1537,32 +1538,33 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                 url = url.replace(new RegExp(`\\{${paramName}\\}`, 'g'), paramValue);
                               });
                             }
-                            const controller = new AbortController();
-                            const timeoutId = setTimeout(() => controller.abort(), 10000);
-                            try {
-                              const response = await fetch(url, {
-                                method: 'GET',
-                                headers: { 'Accept': 'text/plain, text/*, application/json' },
-                                signal: controller.signal
-                              });
-                              clearTimeout(timeoutId);
-                              if (!response.ok) {
-                                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                            const response = await csrfFetch(`${baseUrl}/api/http/test`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ url })
+                            });
+                            if (!response.ok) {
+                              let errorMessage = `HTTP ${response.status}`;
+                              try {
+                                const errorData = await response.json();
+                                errorMessage = errorData.error || errorMessage;
+                              } catch {
+                                try {
+                                  const errorText = await response.text();
+                                  errorMessage = errorText || errorMessage;
+                                } catch {
+                                  // Use default error message
+                                }
                               }
-                              const text = await response.text();
-                              setQuickTestResult({ loading: false, result: text.substring(0, 500) + (text.length > 500 ? '...' : '') });
-                            } catch (fetchError: any) {
-                              clearTimeout(timeoutId);
-                              if (fetchError.name === 'AbortError') {
-                                throw new Error('Request timed out after 10 seconds');
-                              }
-                              throw fetchError;
+                              throw new Error(errorMessage);
                             }
+                            const result = await response.json();
+                            setQuickTestResult({ loading: false, result: result.result || '(no output)' });
                           } else if (match.trigger.responseType === 'script') {
                             const triggerStr = Array.isArray(match.trigger.trigger)
                               ? match.trigger.trigger.join(', ')
                               : match.trigger.trigger;
-                            const response = await csrfFetch('/api/scripts/test', {
+                            const response = await csrfFetch(`${baseUrl}/api/scripts/test`, {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({
@@ -2014,18 +2016,30 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                           url = url.replace(new RegExp(`\\{${paramName}\\}`, 'g'), paramValue);
                                         });
                                       }
-                                      const response = await fetch(url, {
-                                        method: 'GET',
-                                        headers: { 'Accept': 'text/plain, text/*, application/json' },
-                                        signal: AbortSignal.timeout(10000)
+                                      const response = await csrfFetch(`${baseUrl}/api/http/test`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ url })
                                       });
                                       if (!response.ok) {
-                                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                                        let errorMessage = `HTTP ${response.status}`;
+                                        try {
+                                          const errorData = await response.json();
+                                          errorMessage = errorData.error || errorMessage;
+                                        } catch {
+                                          try {
+                                            const errorText = await response.text();
+                                            errorMessage = errorText || errorMessage;
+                                          } catch {
+                                            // Use default error message
+                                          }
+                                        }
+                                        throw new Error(errorMessage);
                                       }
-                                      const text = await response.text();
-                                      setLiveTestResults({ ...liveTestResults, [index]: { loading: false, result: text.substring(0, 500) + (text.length > 500 ? '...' : '') } });
+                                      const result = await response.json();
+                                      setLiveTestResults({ ...liveTestResults, [index]: { loading: false, result: result.result || '(no output)' } });
                                     } else if (match.trigger?.responseType === 'script') {
-                                      const response = await csrfFetch('/api/scripts/test', {
+                                      const response = await csrfFetch(`${baseUrl}/api/scripts/test`, {
                                         method: 'POST',
                                         headers: { 'Content-Type': 'application/json' },
                                         body: JSON.stringify({

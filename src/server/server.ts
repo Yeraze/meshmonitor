@@ -4664,6 +4664,74 @@ apiRouter.post('/scripts/test', requirePermission('settings', 'read'), async (re
   }
 });
 
+// HTTP trigger test endpoint - allows testing HTTP triggers safely through backend proxy
+apiRouter.post('/http/test', requirePermission('settings', 'read'), async (req, res) => {
+  try {
+    const { url } = req.body;
+
+    if (!url) {
+      return res.status(400).json({ error: 'Missing required field: url' });
+    }
+
+    // Validate URL
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(url);
+    } catch (error) {
+      return res.status(400).json({ error: 'Invalid URL format' });
+    }
+
+    // Security: Only allow HTTP and HTTPS protocols
+    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+      return res.status(400).json({ error: 'Only HTTP and HTTPS URLs are allowed' });
+    }
+
+    // Make the HTTP request with timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Accept': 'text/plain, text/*, application/json',
+          'User-Agent': 'MeshMonitor/AutoResponder-Test'
+        },
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        return res.status(response.status).json({
+          error: `HTTP ${response.status}: ${response.statusText}`
+        });
+      }
+
+      const text = await response.text();
+
+      return res.json({
+        result: text.substring(0, 500) + (text.length > 500 ? '...' : ''),
+        status: response.status,
+        statusText: response.statusText
+      });
+    } catch (fetchError: any) {
+      clearTimeout(timeoutId);
+
+      if (fetchError.name === 'AbortError') {
+        return res.status(408).json({ error: 'Request timed out after 10 seconds' });
+      }
+
+      return res.status(500).json({
+        error: fetchError.message || 'Failed to fetch URL'
+      });
+    }
+  } catch (error: any) {
+    logger.error('❌ Error testing HTTP trigger:', error);
+    return res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
 // Script import endpoint - upload a script file
 apiRouter.post('/scripts/import', requirePermission('settings', 'write'), express.raw({ type: '*/*', limit: '5mb' }), async (req, res) => {
   try {
