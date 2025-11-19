@@ -459,6 +459,7 @@ import auditRoutes from './routes/auditRoutes.js';
 import securityRoutes from './routes/securityRoutes.js';
 import packetRoutes from './routes/packetRoutes.js';
 import solarRoutes from './routes/solarRoutes.js';
+import pmtilesRoutes from './routes/pmtilesRoutes.js';
 import upgradeRoutes from './routes/upgradeRoutes.js';
 import messageRoutes from './routes/messageRoutes.js';
 import linkPreviewRoutes from './routes/linkPreviewRoutes.js';
@@ -516,6 +517,9 @@ apiRouter.use('/packets', optionalAuth(), packetRoutes);
 
 // Solar monitoring routes
 apiRouter.use('/solar', optionalAuth(), solarRoutes);
+
+// PMTiles routes (public access - no auth required)
+apiRouter.use('/pmtiles', pmtilesRoutes);
 
 // Upgrade routes (requires authentication)
 apiRouter.use('/upgrade', upgradeRoutes);

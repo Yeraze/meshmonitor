@@ -12,6 +12,7 @@ import SystemBackupSection from './configuration/SystemBackupSection';
 import AutoUpgradeTestSection from './configuration/AutoUpgradeTestSection';
 import { CustomThemeManagement } from './CustomThemeManagement';
 import { type Theme, useSettings } from '../contexts/SettingsContext';
+import { PMTilesModal } from './PMTilesModal';
 
 type DistanceUnit = 'km' | 'mi';
 type TimeFormat = '12' | '24';
@@ -126,6 +127,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [isDocker, setIsDocker] = useState<boolean | null>(null);
   const [isRestarting, setIsRestarting] = useState(false);
+  const [isPMTilesModalOpen, setIsPMTilesModalOpen] = useState(false);
   const { showToast } = useToast();
 
   // Fetch system status to determine if running in Docker
@@ -744,6 +746,22 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               ))}
             </select>
           </div>
+
+          {/* PMTiles Offline Map Setup Button */}
+          <div className="setting-item">
+            <label>
+              Offline Map Setup
+              <span className="setting-description">Download and install PMTiles for offline mapping</span>
+            </label>
+            <button
+              type="button"
+              onClick={() => setIsPMTilesModalOpen(true)}
+              className="btn btn-secondary"
+            >
+              Setup Offline Maps
+            </button>
+          </div>
+
           <div className="setting-item">
             <label htmlFor="mapPinStyle">
               Map Pin Style
@@ -1041,6 +1059,12 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           )}
         </div>
       </div>
+
+      {/* PMTiles Modal */}
+      <PMTilesModal
+        isOpen={isPMTilesModalOpen}
+        onClose={() => setIsPMTilesModalOpen(false)}
+      />
     </div>
   );
 };
