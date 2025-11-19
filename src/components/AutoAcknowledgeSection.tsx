@@ -304,19 +304,19 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
                 <input
                   type="checkbox"
                   id={`autoAckChannel${idx}`}
-                  checked={localEnabledChannels.includes(idx)}
+                  checked={localEnabledChannels.includes(channel.id)}
                   onChange={(e) => {
                     if (e.target.checked) {
-                      setLocalEnabledChannels([...localEnabledChannels, idx]);
+                      setLocalEnabledChannels([...localEnabledChannels, channel.id]);
                     } else {
-                      setLocalEnabledChannels(localEnabledChannels.filter(c => c !== idx));
+                      setLocalEnabledChannels(localEnabledChannels.filter(c => c !== channel.id));
                     }
                   }}
                   disabled={!localEnabled}
                   style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
                 />
                 <label htmlFor={`autoAckChannel${idx}`} style={{ margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}>
-                  {channel.name || `Channel ${idx}`}
+                  {channel.name || `Channel ${channel.id}`}
                 </label>
               </div>
             ))}
