@@ -100,6 +100,21 @@ class DuplicateKeySchedulerService {
         }
       }
 
+      // CRITICAL: Also check nodes that previously had security flags but no longer have keys
+      // This ensures flags are cleared when nodes go offline or clear their keys
+      const allNodes = databaseService.getAllNodes();
+      for (const node of allNodes) {
+        // Skip nodes we already processed above (nodes with keys)
+        const hasKey = nodesWithKeys.some(n => n.nodeNum === node.nodeNum);
+        if (hasKey) continue;
+
+        // If this node has no key but has the low-entropy flag set, clear it
+        if (node.keyIsLowEntropy) {
+          logger.info(`🔐 Clearing low-entropy flag from node ${node.nodeNum} (no longer has a public key)`);
+          databaseService.updateNodeLowEntropyFlag(node.nodeNum, false, undefined);
+        }
+      }
+
       if (lowEntropyCount > 0) {
         logger.info(`🔐 Found ${lowEntropyCount} nodes with low-entropy keys`);
       }
@@ -133,11 +148,11 @@ class DuplicateKeySchedulerService {
       }
 
       // Clear duplicate flags from nodes that are no longer duplicates
-      const allNodes = databaseService.getAllNodes();
       let clearedCount = 0;
       for (const node of allNodes) {
         if (node.duplicateKeyDetected && !currentDuplicateNodes.has(node.nodeNum)) {
           // This node was previously flagged but no longer has duplicates
+          // This includes nodes that no longer have public keys
           const details = node.keyIsLowEntropy ? 'Known low-entropy key detected' : undefined;
           databaseService.updateNodeSecurityFlags(node.nodeNum, false, details);
           clearedCount++;
