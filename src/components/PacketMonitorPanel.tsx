@@ -14,6 +14,21 @@ interface PacketMonitorPanelProps {
   onNodeClick?: (nodeId: string) => void;
 }
 
+// Constants
+const PACKET_FETCH_LIMIT = 10000;
+const POLL_INTERVAL_MS = 5000;
+
+// Safe JSON parse helper
+const safeJsonParse = <T,>(value: string | null, fallback: T): T => {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value) as T;
+  } catch (error) {
+    console.warn('Failed to parse JSON from localStorage:', error);
+    return fallback;
+  }
+};
+
 const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNodeClick }) => {
   const { hasPermission, authStatus } = useAuth();
   const { timeFormat, dateFormat } = useSettings();
@@ -22,23 +37,19 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
   const [total, setTotal] = useState(0);
   const [maxCount, setMaxCount] = useState(1000);
   const [loading, setLoading] = useState(true);
-  const [autoScroll, setAutoScroll] = useState(() => {
-    const saved = localStorage.getItem('packetMonitor.autoScroll');
-    return saved !== null ? JSON.parse(saved) : true;
-  });
+  const [autoScroll, setAutoScroll] = useState(() =>
+    safeJsonParse(localStorage.getItem('packetMonitor.autoScroll'), true)
+  );
   const [selectedPacket, setSelectedPacket] = useState<PacketLog | null>(null);
-  const [filters, setFilters] = useState<PacketFilters>(() => {
-    const saved = localStorage.getItem('packetMonitor.filters');
-    return saved ? JSON.parse(saved) : {};
-  });
-  const [showFilters, setShowFilters] = useState(() => {
-    const saved = localStorage.getItem('packetMonitor.showFilters');
-    return saved !== null ? JSON.parse(saved) : false;
-  });
-  const [hideOwnPackets, setHideOwnPackets] = useState(() => {
-    const saved = localStorage.getItem('packetMonitor.hideOwnPackets');
-    return saved !== null ? JSON.parse(saved) : true;
-  });
+  const [filters, setFilters] = useState<PacketFilters>(() =>
+    safeJsonParse<PacketFilters>(localStorage.getItem('packetMonitor.filters'), {})
+  );
+  const [showFilters, setShowFilters] = useState(() =>
+    safeJsonParse(localStorage.getItem('packetMonitor.showFilters'), false)
+  );
+  const [hideOwnPackets, setHideOwnPackets] = useState(() =>
+    safeJsonParse(localStorage.getItem('packetMonitor.hideOwnPackets'), true)
+  );
   const tableRef = useRef<HTMLDivElement>(null);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -97,8 +108,8 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     if (!canView) return;
 
     try {
-      // Fetch all packets by using a very large limit (10000 is the max from backend)
-      const response = await getPackets(0, 10000, filters);
+      // Fetch all packets by using the maximum limit from backend
+      const response = await getPackets(0, PACKET_FETCH_LIMIT, filters);
 
       setRawPackets(response.packets);
       setTotal(response.total);
@@ -121,8 +132,8 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
 
     fetchPackets();
 
-    // Poll for new packets every 5 seconds
-    pollIntervalRef.current = setInterval(fetchPackets, 5000);
+    // Poll for new packets
+    pollIntervalRef.current = setInterval(fetchPackets, POLL_INTERVAL_MS);
 
     return () => {
       if (pollIntervalRef.current) {
@@ -215,10 +226,10 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     try {
       // Convert each packet to a JSON line (JSONL format)
       const jsonlContent = packets.map(packet => {
-        // Parse metadata if it's a string
+        // Safely parse metadata if it's a string
         const packetWithParsedMetadata = {
           ...packet,
-          metadata: packet.metadata ? JSON.parse(packet.metadata) : undefined
+          metadata: packet.metadata ? safeJsonParse(packet.metadata, {}) : undefined
         };
         return JSON.stringify(packetWithParsedMetadata);
       }).join('\n');
@@ -231,7 +242,10 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
 
       // Generate filename with timestamp
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
-      const filterInfo = filters.portnum || filters.encrypted !== undefined || hideOwnPackets ? '-filtered' : '';
+      const hasActiveFilters = Boolean(filters.portnum) ||
+                              filters.encrypted !== undefined ||
+                              hideOwnPackets !== true;
+      const filterInfo = hasActiveFilters ? '-filtered' : '';
       link.download = `packet-monitor${filterInfo}-${timestamp}.jsonl`;
 
       document.body.appendChild(link);
