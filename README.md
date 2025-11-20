@@ -23,6 +23,7 @@ For complete documentation, visit **[meshmonitor.org](https://meshmonitor.org/)*
 
 ## Quick Start
 
+<!-- Test comment for Claude Code Review workflow validation -->
 Get MeshMonitor running in **60 seconds**:
 
 ```bash
