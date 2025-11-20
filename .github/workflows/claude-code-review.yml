@@ -56,8 +56,11 @@ jobs:
           # claude_args: "--model claude-opus-4-1-20250805"
 
           # Prompt for automated review (replaces direct_prompt in v1.0)
+          # IMPORTANT: Must include repository and PR context for v1.0
           prompt: |
-            Please review this pull request and provide feedback on:
+            Please review pull request #${{ github.event.pull_request.number }} in repository ${{ github.repository }}.
+
+            Provide feedback on:
             - Code quality and best practices
             - Potential bugs or issues
             - Performance considerations
