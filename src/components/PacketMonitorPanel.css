@@ -58,9 +58,14 @@
   transition: all 0.2s;
 }
 
-.control-btn:hover {
+.control-btn:hover:not(:disabled) {
   background: var(--bg-tertiary);
   border-color: var(--primary-color);
+}
+
+.control-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .close-btn {
@@ -326,7 +331,8 @@
 }
 
 .payload-content,
-.metadata-json {
+.metadata-json,
+.packet-json {
   background: var(--bg-secondary);
   padding: 12px;
   border-radius: 4px;
@@ -341,11 +347,17 @@
   word-break: break-word;
 }
 
+.packet-json {
+  max-height: 60vh;
+  font-size: 11px;
+}
+
 /* Scrollbar styling */
 .packet-table-container::-webkit-scrollbar,
 .packet-detail-content::-webkit-scrollbar,
 .payload-content::-webkit-scrollbar,
-.metadata-json::-webkit-scrollbar {
+.metadata-json::-webkit-scrollbar,
+.packet-json::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
@@ -353,14 +365,16 @@
 .packet-table-container::-webkit-scrollbar-track,
 .packet-detail-content::-webkit-scrollbar-track,
 .payload-content::-webkit-scrollbar-track,
-.metadata-json::-webkit-scrollbar-track {
+.metadata-json::-webkit-scrollbar-track,
+.packet-json::-webkit-scrollbar-track {
   background: var(--bg-tertiary);
 }
 
 .packet-table-container::-webkit-scrollbar-thumb,
 .packet-detail-content::-webkit-scrollbar-thumb,
 .payload-content::-webkit-scrollbar-thumb,
-.metadata-json::-webkit-scrollbar-thumb {
+.metadata-json::-webkit-scrollbar-thumb,
+.packet-json::-webkit-scrollbar-thumb {
   background: var(--border-color);
   border-radius: 4px;
 }
@@ -368,6 +382,7 @@
 .packet-table-container::-webkit-scrollbar-thumb:hover,
 .packet-detail-content::-webkit-scrollbar-thumb:hover,
 .payload-content::-webkit-scrollbar-thumb:hover,
-.metadata-json::-webkit-scrollbar-thumb::-webkit-scrollbar-thumb:hover {
+.metadata-json::-webkit-scrollbar-thumb:hover,
+.packet-json::-webkit-scrollbar-thumb:hover {
   background: var(--text-secondary);
 }

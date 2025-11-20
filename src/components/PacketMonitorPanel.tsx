@@ -14,6 +14,21 @@ interface PacketMonitorPanelProps {
   onNodeClick?: (nodeId: string) => void;
 }
 
+// Constants
+const PACKET_FETCH_LIMIT = 10000;
+const POLL_INTERVAL_MS = 5000;
+
+// Safe JSON parse helper
+const safeJsonParse = <T,>(value: string | null, fallback: T): T => {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value) as T;
+  } catch (error) {
+    console.warn('Failed to parse JSON from localStorage:', error);
+    return fallback;
+  }
+};
+
 const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNodeClick }) => {
   const { hasPermission, authStatus } = useAuth();
   const { timeFormat, dateFormat } = useSettings();
@@ -22,11 +37,19 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
   const [total, setTotal] = useState(0);
   const [maxCount, setMaxCount] = useState(1000);
   const [loading, setLoading] = useState(true);
-  const [autoScroll, setAutoScroll] = useState(true);
+  const [autoScroll, setAutoScroll] = useState(() =>
+    safeJsonParse(localStorage.getItem('packetMonitor.autoScroll'), true)
+  );
   const [selectedPacket, setSelectedPacket] = useState<PacketLog | null>(null);
-  const [filters, setFilters] = useState<PacketFilters>({});
-  const [showFilters, setShowFilters] = useState(false);
-  const [hideOwnPackets, setHideOwnPackets] = useState(true);
+  const [filters, setFilters] = useState<PacketFilters>(() =>
+    safeJsonParse<PacketFilters>(localStorage.getItem('packetMonitor.filters'), {})
+  );
+  const [showFilters, setShowFilters] = useState(() =>
+    safeJsonParse(localStorage.getItem('packetMonitor.showFilters'), false)
+  );
+  const [hideOwnPackets, setHideOwnPackets] = useState(() =>
+    safeJsonParse(localStorage.getItem('packetMonitor.hideOwnPackets'), true)
+  );
   const tableRef = useRef<HTMLDivElement>(null);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -57,6 +80,23 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     return rawPackets;
   }, [rawPackets, hideOwnPackets, ownNodeNum]);
 
+  // Persist filter settings to localStorage
+  useEffect(() => {
+    localStorage.setItem('packetMonitor.filters', JSON.stringify(filters));
+  }, [filters]);
+
+  useEffect(() => {
+    localStorage.setItem('packetMonitor.hideOwnPackets', JSON.stringify(hideOwnPackets));
+  }, [hideOwnPackets]);
+
+  useEffect(() => {
+    localStorage.setItem('packetMonitor.showFilters', JSON.stringify(showFilters));
+  }, [showFilters]);
+
+  useEffect(() => {
+    localStorage.setItem('packetMonitor.autoScroll', JSON.stringify(autoScroll));
+  }, [autoScroll]);
+
   // Helper function to truncate long names
   const truncateLongName = (longName: string | undefined, maxLength: number = 20): string | undefined => {
     if (!longName) return undefined;
@@ -68,7 +108,8 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     if (!canView) return;
 
     try {
-      const response = await getPackets(0, 100, filters);
+      // Fetch all packets by using the maximum limit from backend
+      const response = await getPackets(0, PACKET_FETCH_LIMIT, filters);
 
       setRawPackets(response.packets);
       setTotal(response.total);
@@ -91,8 +132,8 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
 
     fetchPackets();
 
-    // Poll for new packets every 5 seconds
-    pollIntervalRef.current = setInterval(fetchPackets, 5000);
+    // Poll for new packets
+    pollIntervalRef.current = setInterval(fetchPackets, POLL_INTERVAL_MS);
 
     return () => {
       if (pollIntervalRef.current) {
@@ -175,6 +216,48 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     return null;
   };
 
+  // Export packets to JSONL
+  const handleExport = () => {
+    if (packets.length === 0) {
+      alert('No packets to export');
+      return;
+    }
+
+    try {
+      // Convert each packet to a JSON line (JSONL format)
+      const jsonlContent = packets.map(packet => {
+        // Safely parse metadata if it's a string
+        const packetWithParsedMetadata = {
+          ...packet,
+          metadata: packet.metadata ? safeJsonParse(packet.metadata, {}) : undefined
+        };
+        return JSON.stringify(packetWithParsedMetadata);
+      }).join('\n');
+
+      // Create blob and download
+      const blob = new Blob([jsonlContent], { type: 'application/x-ndjson' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+
+      // Generate filename with timestamp
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
+      const hasActiveFilters = Boolean(filters.portnum) ||
+                              filters.encrypted !== undefined ||
+                              hideOwnPackets !== true;
+      const filterInfo = hasActiveFilters ? '-filtered' : '';
+      link.download = `packet-monitor${filterInfo}-${timestamp}.jsonl`;
+
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to export packets:', error);
+      alert('Failed to export packets');
+    }
+  };
+
   if (!canView) {
     return (
       <div className="packet-monitor-panel">
@@ -209,6 +292,14 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
             title="Toggle filters"
           >
             🔍
+          </button>
+          <button
+            className="control-btn"
+            onClick={handleExport}
+            title="Export packets to JSONL"
+            disabled={packets.length === 0}
+          >
+            📥
           </button>
           {authStatus?.user?.isAdmin && (
             <button className="control-btn" onClick={handleClear} title="Clear all packets">
@@ -354,84 +445,11 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
       <div className="packet-detail-modal" onClick={() => setSelectedPacket(null)}>
         <div className="packet-detail-content" onClick={(e) => e.stopPropagation()}>
           <div className="packet-detail-header">
-            <h4>Packet Details</h4>
+            <h4>Packet Details (Full JSON)</h4>
             <button className="close-btn" onClick={() => setSelectedPacket(null)}>×</button>
           </div>
           <div className="packet-detail-body">
-            <div className="detail-row">
-              <span className="detail-label">ID:</span>
-              <span className="detail-value">{selectedPacket.packet_id ?? 'N/A'}</span>
-            </div>
-            <div className="detail-row">
-              <span className="detail-label">Timestamp:</span>
-              <span className="detail-value">{formatDateTime(new Date(selectedPacket.timestamp * 1000), timeFormat, dateFormat)}</span>
-            </div>
-            <div className="detail-row">
-              <span className="detail-label">From:</span>
-              <span className="detail-value">
-                {selectedPacket.from_node_longName || selectedPacket.from_node_id} ({selectedPacket.from_node})
-              </span>
-            </div>
-            <div className="detail-row">
-              <span className="detail-label">To:</span>
-              <span className="detail-value">
-                {selectedPacket.to_node_id === '!ffffffff'
-                  ? 'Broadcast'
-                  : `${selectedPacket.to_node_longName || selectedPacket.to_node_id || 'N/A'} (${selectedPacket.to_node ?? 'N/A'})`}
-              </span>
-            </div>
-            <div className="detail-row">
-              <span className="detail-label">Port:</span>
-              <span className="detail-value">{selectedPacket.portnum_name} ({selectedPacket.portnum})</span>
-            </div>
-            <div className="detail-row">
-              <span className="detail-label">Channel:</span>
-              <span className="detail-value">{selectedPacket.channel ?? 'N/A'}</span>
-            </div>
-            <div className="detail-row">
-              <span className="detail-label">Encrypted:</span>
-              <span className="detail-value">{selectedPacket.encrypted ? 'Yes 🔒' : 'No'}</span>
-            </div>
-            {selectedPacket.snr !== null && selectedPacket.snr !== undefined && (
-              <div className="detail-row">
-                <span className="detail-label">SNR:</span>
-                <span className="detail-value">{selectedPacket.snr.toFixed(1)} dB</span>
-              </div>
-            )}
-            {selectedPacket.rssi !== null && selectedPacket.rssi !== undefined && (
-              <div className="detail-row">
-                <span className="detail-label">RSSI:</span>
-                <span className="detail-value">{selectedPacket.rssi} dBm</span>
-              </div>
-            )}
-            {calculateHops(selectedPacket) !== null && (
-              <div className="detail-row">
-                <span className="detail-label">Hops:</span>
-                <span className="detail-value">{calculateHops(selectedPacket)}</span>
-              </div>
-            )}
-            {selectedPacket.payload_size !== null && selectedPacket.payload_size !== undefined && (
-              <div className="detail-row">
-                <span className="detail-label">Payload Size:</span>
-                <span className="detail-value">{selectedPacket.payload_size} bytes</span>
-              </div>
-            )}
-            <div className="detail-row">
-              <span className="detail-label">Content:</span>
-              <span className="detail-value">
-                {selectedPacket.encrypted ? (
-                  <span className="encrypted-indicator">🔒 &lt;ENCRYPTED&gt;</span>
-                ) : (
-                  <pre className="payload-content">{selectedPacket.payload_preview || '[No preview]'}</pre>
-                )}
-              </span>
-            </div>
-            {selectedPacket.metadata && (
-              <div className="detail-row">
-                <span className="detail-label">Metadata:</span>
-                <pre className="metadata-json">{JSON.stringify(JSON.parse(selectedPacket.metadata), null, 2)}</pre>
-              </div>
-            )}
+            <pre className="packet-json">{JSON.stringify(selectedPacket, null, 2)}</pre>
           </div>
         </div>
       </div>,

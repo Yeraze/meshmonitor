@@ -1041,7 +1041,7 @@ class MeshtasticManager {
         }
 
         // Build metadata JSON
-        const metadata = {
+        const metadata: any = {
           id: meshPacket.id,
           rx_time: meshPacket.rxTime,
           rx_snr: meshPacket.rxSnr,
@@ -1052,6 +1052,12 @@ class MeshtasticManager {
           priority: meshPacket.priority,
           via_mqtt: meshPacket.viaMqtt
         };
+
+        // Include encrypted payload bytes if packet is encrypted
+        if (isEncrypted && meshPacket.encrypted) {
+          // Convert Uint8Array to hex string for storage
+          metadata.encrypted_payload = Buffer.from(meshPacket.encrypted).toString('hex');
+        }
 
         packetLogService.logPacket({
           packet_id: meshPacket.id ?? undefined,
