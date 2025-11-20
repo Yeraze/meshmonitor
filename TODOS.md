@@ -54,6 +54,35 @@
 - [ ] Run system tests
 - [ ] Create release (v2.17.0)
 
+#### Packet Monitor Improvements (#661)
+
+**Completed:**
+- [x] Fix filter settings persisting across reloads and page swaps
+  - Added localStorage persistence for portnum, encrypted, hideOwnPackets, showFilters filters
+  - Filter settings now saved automatically and restored on page load
+  - Fixes issue where filters would revert to defaults when navigating away
+- [x] Ensure all packets are shown without restriction
+  - Changed packet fetch limit from 100 to 10000 (backend max)
+  - All available packets now displayed in monitor
+- [x] Update popup to show entire packet as pretty JSON
+  - Replaced detailed field-by-field view with complete JSON dump
+  - Shows full packet object with all fields and metadata
+  - Better for debugging and understanding packet structure
+  - Modal title changed to "Packet Details (Full JSON)"
+- [x] Show encrypted payload bytes in JSON popup
+  - Added encrypted_payload field to metadata (hex string of encrypted bytes)
+  - List view still shows padlock and <ENCRYPTED> text
+  - JSON popup displays the actual encrypted payload bytes for inspection
+  - Enables debugging and analysis of encrypted packets
+- [x] Add JSONL export functionality
+  - Added export button (📥) to Packet Monitor header
+  - Exports currently displayed packets (respects active filters)
+  - JSONL format: one JSON object per line
+  - Filename includes timestamp and filter status
+  - Metadata is automatically parsed from string to object in export
+  - Button disabled when no packets available
+  - Example: packet-monitor-filtered-2025-11-20T15-30-45.jsonl
+
 #### Delete Node Functionality (#666)
 
 **Completed:**
