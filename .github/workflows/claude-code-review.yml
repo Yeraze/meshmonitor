@@ -52,22 +52,12 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
 
-          # Optional: Specify model using claude_args (defaults to Claude Sonnet 4)
-          # claude_args: "--model claude-opus-4-1-20250805"
+          # Prompt for automated review using /review-pr slash command
+          # This matches the working configuration from anthropics/claude-code-action
+          prompt: /review-pr REPO: ${{ github.repository }} PR_NUMBER: ${{ github.event.pull_request.number }}
 
-          # Prompt for automated review (replaces direct_prompt in v1.0)
-          # IMPORTANT: Must include repository and PR context for v1.0
-          prompt: |
-            Please review pull request #${{ github.event.pull_request.number }} in repository ${{ github.repository }}.
-
-            Provide feedback on:
-            - Code quality and best practices
-            - Potential bugs or issues
-            - Performance considerations
-            - Security concerns
-            - Test coverage
-
-            Be constructive and helpful in your feedback.
+          # Restrict Claude to only inline comments for PR reviews
+          claude_args: '--allowedTools "mcp__github_inline_comment__create_inline_comment"'
 
           # Optional: Use sticky comments to make Claude reuse the same comment on subsequent pushes to the same PR
           # use_sticky_comment: true
