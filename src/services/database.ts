@@ -1594,6 +1594,9 @@ class DatabaseService {
           hasPKC = COALESCE(?, hasPKC),
           lastPKIPacket = COALESCE(?, lastPKIPacket),
           welcomedAt = COALESCE(?, welcomedAt),
+          keyIsLowEntropy = COALESCE(?, keyIsLowEntropy),
+          duplicateKeyDetected = COALESCE(?, duplicateKeyDetected),
+          keySecurityIssueDetails = COALESCE(?, keySecurityIssueDetails),
           updatedAt = ?
         WHERE nodeNum = ?
       `);
@@ -1625,6 +1628,9 @@ class DatabaseService {
         nodeData.hasPKC !== undefined ? (nodeData.hasPKC ? 1 : 0) : null,
         nodeData.lastPKIPacket !== undefined ? nodeData.lastPKIPacket : null,
         nodeData.welcomedAt !== undefined ? nodeData.welcomedAt : null,
+        nodeData.keyIsLowEntropy !== undefined ? (nodeData.keyIsLowEntropy ? 1 : 0) : null,
+        nodeData.duplicateKeyDetected !== undefined ? (nodeData.duplicateKeyDetected ? 1 : 0) : null,
+        nodeData.keySecurityIssueDetails || null,
         now,
         nodeData.nodeNum
       );
@@ -1634,8 +1640,10 @@ class DatabaseService {
           nodeNum, nodeId, longName, shortName, hwModel, role, hopsAway, viaMqtt, macaddr,
           latitude, longitude, altitude, batteryLevel, voltage,
           channelUtilization, airUtilTx, lastHeard, snr, rssi, firmwareVersion, channel,
-          isFavorite, rebootCount, publicKey, hasPKC, lastPKIPacket, welcomedAt, createdAt, updatedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          isFavorite, rebootCount, publicKey, hasPKC, lastPKIPacket, welcomedAt,
+          keyIsLowEntropy, duplicateKeyDetected, keySecurityIssueDetails,
+          createdAt, updatedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       stmt.run(
@@ -1666,6 +1674,9 @@ class DatabaseService {
         nodeData.hasPKC ? 1 : 0,
         nodeData.lastPKIPacket || null,
         nodeData.welcomedAt || null,
+        nodeData.keyIsLowEntropy ? 1 : 0,
+        nodeData.duplicateKeyDetected ? 1 : 0,
+        nodeData.keySecurityIssueDetails || null,
         now,
         now
       );
@@ -1761,18 +1772,31 @@ class DatabaseService {
 
     // Combine low-entropy details with existing duplicate details if needed
     let combinedDetails = details || '';
-    if (node.duplicateKeyDetected && node.keySecurityIssueDetails) {
-      const existingDetails = node.keySecurityIssueDetails;
-      if (keyIsLowEntropy && details) {
-        // Add low-entropy info to existing duplicate info
+
+    if (keyIsLowEntropy && details) {
+      // Setting low-entropy flag: combine with any existing duplicate info
+      if (node.duplicateKeyDetected && node.keySecurityIssueDetails) {
+        const existingDetails = node.keySecurityIssueDetails;
         if (existingDetails.includes('Key shared with')) {
           combinedDetails = `${details}; ${existingDetails}`;
         } else {
           combinedDetails = details;
         }
+      }
+    } else if (!keyIsLowEntropy) {
+      // Clearing low-entropy flag: preserve only duplicate-related info
+      if (node.duplicateKeyDetected && node.keySecurityIssueDetails) {
+        const existingDetails = node.keySecurityIssueDetails;
+        // Only keep details if they're about key sharing (duplicate detection)
+        if (existingDetails.includes('Key shared with')) {
+          combinedDetails = existingDetails.replace(/Known low-entropy key[;,]?\s*/gi, '').trim();
+        } else {
+          // If no duplicate info, clear details entirely
+          combinedDetails = '';
+        }
       } else {
-        // Keep existing duplicate info
-        combinedDetails = existingDetails;
+        // No duplicate flag, clear details entirely
+        combinedDetails = '';
       }
     }
 
