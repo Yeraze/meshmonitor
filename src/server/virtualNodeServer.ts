@@ -572,6 +572,7 @@ export class VirtualNodeServer extends EventEmitter {
           } : undefined,
           snr: node.snr,
           lastHeard: node.lastHeard,
+          hopsAway: node.hopsAway,
         });
 
         if (nodeInfoMessage) {
