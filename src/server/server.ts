@@ -212,6 +212,7 @@ const helmetConfig = env.isProduction && env.cookieSecure
         },
       },
       hsts: false, // Disable HSTS when not using secure cookies or in development
+      crossOriginOpenerPolicy: false, // Disable COOP for HTTP - browser ignores it on non-HTTPS anyway
       frameguard: {
         action: 'deny' as const
       },
@@ -4883,6 +4884,8 @@ const rewriteHtml = (htmlContent: string, baseUrl: string): string => {
     .replace(/href="\/favicon-16x16\.png"/g, `href="${baseUrl}/favicon-16x16.png"`)
     .replace(/href="\/favicon-32x32\.png"/g, `href="${baseUrl}/favicon-32x32.png"`)
     .replace(/href="\/logo\.png"/g, `href="${baseUrl}/logo.png"`)
+    // CORS detection script
+    .replace(/src="\/cors-detection\.js"/g, `src="${baseUrl}/cors-detection.js"`)
     // PWA-related paths
     .replace(/href="\/manifest\.webmanifest"/g, `href="${baseUrl}/manifest.webmanifest"`)
     .replace(/src="\/registerSW\.js"/g, `src="${baseUrl}/registerSW.js"`);
