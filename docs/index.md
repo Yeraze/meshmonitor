@@ -49,8 +49,8 @@ features:
     details: Works seamlessly on desktop, tablet, and mobile devices. Monitor your network from anywhere.
 
   - icon: 🗺️
-    title: Custom Tile Servers
-    details: Configure custom map tile servers for offline operation or custom styling. Supports local tile servers like TileServer GL for complete offline functionality with no internet dependency. Privacy-focused and high-availability.
+    title: Custom Map Tile Servers
+    details: Configure custom map tile servers with support for both vector (.pbf) and raster (.png) tiles. Enable offline operation, custom styling, and privacy-focused mapping. Works with TileServer GL, nginx caching proxy, and standard XYZ tile servers for complete independence from external services.
 
   - icon: 🎨
     title: Customizable Themes

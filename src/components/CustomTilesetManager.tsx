@@ -116,7 +116,19 @@ export function CustomTilesetManager() {
       <div className="manager-header">
         <h3>Custom Tile Servers</h3>
         <span className="manager-description">
-          Add custom tile servers for offline maps or custom styling
+          Add custom tile servers for offline maps or custom styling.{' '}
+          <a
+            href="https://meshmonitor.org/features/maps"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              color: 'var(--ctp-blue)',
+              textDecoration: 'underline',
+              fontWeight: '500'
+            }}
+          >
+            View setup guide →
+          </a>
         </span>
       </div>
 
@@ -256,7 +268,17 @@ export function CustomTilesetManager() {
                   <strong>Supports both vector (.pbf) and raster (.png) tiles.</strong> Light version has no native dependencies and runs on all platforms.
                 </div>
                 <div style={{ marginTop: '0.5rem', fontSize: '0.8rem' }}>
-                  See documentation for complete setup with Docker Compose configurator.
+                  <a
+                    href="https://meshmonitor.org/features/maps"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      color: 'var(--ctp-blue)',
+                      textDecoration: 'underline'
+                    }}
+                  >
+                    View complete setup guide with Docker Compose configurator →
+                  </a>
                 </div>
               </div>
             </div>

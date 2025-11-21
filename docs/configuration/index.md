@@ -40,6 +40,9 @@ Protect your instance from brute-force attacks using fail2ban. Includes setup gu
 ### [Push Notifications](/features/notifications)
 Configure push notifications for iOS, Android, and desktop browsers. Learn about HTTPS requirements, VAPID keys, and step-by-step setup guides for all platforms.
 
+### [Custom Tile Servers](/configuration/custom-tile-servers)
+Configure custom map tile servers for offline operation, custom styling, or organizational branding. Supports both vector (.pbf) and raster (.png) tiles with TileServer GL, nginx caching proxy, or any standard XYZ tile server.
+
 ## Environment Variables
 
 MeshMonitor can be configured using environment variables. Here are the most important ones:
