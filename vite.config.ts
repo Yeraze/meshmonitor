@@ -34,7 +34,9 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,ico,png,svg}'],
         // Exclude HTML and API routes from precaching
         // HTML must be fetched from server to get runtime BASE_URL path rewriting
-        globIgnores: ['**/api/**', '**/*.html']
+        globIgnores: ['**/api/**', '**/*.html'],
+        // Increase size limit to accommodate maplibre-gl (vector tile library)
+        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024 // 3 MB
       },
       devOptions: {
         enabled: true,

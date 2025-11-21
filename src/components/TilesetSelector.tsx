@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { getAllTilesets, type TilesetId } from '../config/tilesets';
+import { useSettings } from '../contexts/SettingsContext';
 import './TilesetSelector.css';
 
 interface TilesetSelectorProps {
@@ -11,7 +12,8 @@ export const TilesetSelector: React.FC<TilesetSelectorProps> = ({
   selectedTilesetId,
   onTilesetChange
 }) => {
-  const tilesets = getAllTilesets();
+  const { customTilesets } = useSettings();
+  const tilesets = getAllTilesets(customTilesets);
   const [isCollapsed, setIsCollapsed] = useState(true);
 
   return (
@@ -33,7 +35,10 @@ export const TilesetSelector: React.FC<TilesetSelectorProps> = ({
                     backgroundImage: `url(${getTilePreviewUrl(tileset.url)})`
                   }}
                 />
-                <div className="tileset-name">{tileset.name}</div>
+                <div className="tileset-name">
+                  {tileset.name}
+                  {tileset.isCustom && <span className="custom-badge">Custom</span>}
+                </div>
               </button>
             ))}
           </div>

@@ -3,7 +3,7 @@ import { type TemperatureUnit } from '../utils/temperature';
 import { type SortField, type SortDirection } from '../types/ui';
 import { logger } from '../utils/logger';
 import { useCsrf } from './CsrfContext';
-import { DEFAULT_TILESET_ID, type TilesetId, isTilesetId } from '../config/tilesets';
+import { DEFAULT_TILESET_ID, type TilesetId, type CustomTileset } from '../config/tilesets';
 
 export type DistanceUnit = 'km' | 'mi';
 export type TimeFormat = '12' | '24';
@@ -49,6 +49,7 @@ interface SettingsContextType {
   mapPinStyle: MapPinStyle;
   theme: Theme;
   customThemes: CustomTheme[];
+  customTilesets: CustomTileset[];
   isLoadingThemes: boolean;
   solarMonitoringEnabled: boolean;
   solarMonitoringLatitude: number;
@@ -72,6 +73,9 @@ interface SettingsContextType {
   setMapPinStyle: (style: MapPinStyle) => void;
   setTheme: (theme: Theme) => void;
   loadCustomThemes: () => Promise<void>;
+  addCustomTileset: (tileset: Omit<CustomTileset, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
+  updateCustomTileset: (id: string, updates: Partial<Omit<CustomTileset, 'id' | 'createdAt' | 'updatedAt'>>) => Promise<void>;
+  deleteCustomTileset: (id: string) => Promise<void>;
   setSolarMonitoringEnabled: (enabled: boolean) => void;
   setSolarMonitoringLatitude: (latitude: number) => void;
   setSolarMonitoringLongitude: (longitude: number) => void;
@@ -142,7 +146,9 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
 
   const [mapTileset, setMapTilesetState] = useState<TilesetId>(() => {
     const saved = localStorage.getItem('mapTileset');
-    if (saved && isTilesetId(saved)) {
+    // Return saved value if exists (could be predefined or custom tileset ID)
+    // Validation happens later when customTilesets are loaded
+    if (saved) {
       return saved;
     }
     return DEFAULT_TILESET_ID;
@@ -178,6 +184,9 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   // Custom themes state
   const [customThemes, setCustomThemes] = useState<CustomTheme[]>([]);
   const [isLoadingThemes, setIsLoadingThemes] = useState(false);
+
+  // Custom tilesets state (database-only, not persisted in localStorage)
+  const [customTilesets, setCustomTilesets] = useState<CustomTileset[]>([]);
 
   const setMaxNodeAgeHours = (value: number) => {
     setMaxNodeAgeHoursState(value);
@@ -386,6 +395,112 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setSolarMonitoringDeclinationState(declination);
   };
 
+  /**
+   * Add a new custom tileset
+   */
+  const addCustomTileset = React.useCallback(async (tileset: Omit<CustomTileset, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const now = Date.now();
+    const newTileset: CustomTileset = {
+      ...tileset,
+      id: `custom-${crypto.randomUUID()}`,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    const updated = [...customTilesets, newTileset];
+    setCustomTilesets(updated);
+
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      const csrfToken = getCsrfToken();
+      if (csrfToken) {
+        headers['X-CSRF-Token'] = csrfToken;
+      }
+
+      await fetch(`${baseUrl}/api/settings`, {
+        method: 'POST',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify({
+          customTilesets: JSON.stringify(updated)
+        })
+      });
+
+      logger.debug('✅ Custom tileset added:', newTileset.name);
+    } catch (error) {
+      logger.error('Failed to save custom tileset:', error);
+      // Revert on error
+      setCustomTilesets(customTilesets);
+      throw error;
+    }
+  }, [customTilesets, baseUrl, getCsrfToken]);
+
+  /**
+   * Update an existing custom tileset
+   */
+  const updateCustomTileset = React.useCallback(async (id: string, updates: Partial<Omit<CustomTileset, 'id' | 'createdAt' | 'updatedAt'>>) => {
+    const updated = customTilesets.map(ct =>
+      ct.id === id ? { ...ct, ...updates, updatedAt: Date.now() } : ct
+    );
+    setCustomTilesets(updated);
+
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      const csrfToken = getCsrfToken();
+      if (csrfToken) {
+        headers['X-CSRF-Token'] = csrfToken;
+      }
+
+      await fetch(`${baseUrl}/api/settings`, {
+        method: 'POST',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify({
+          customTilesets: JSON.stringify(updated)
+        })
+      });
+
+      logger.debug('✅ Custom tileset updated:', id);
+    } catch (error) {
+      logger.error('Failed to update custom tileset:', error);
+      // Revert on error
+      setCustomTilesets(customTilesets);
+      throw error;
+    }
+  }, [customTilesets, baseUrl, getCsrfToken]);
+
+  /**
+   * Delete a custom tileset
+   */
+  const deleteCustomTileset = React.useCallback(async (id: string) => {
+    const updated = customTilesets.filter(ct => ct.id !== id);
+    setCustomTilesets(updated);
+
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      const csrfToken = getCsrfToken();
+      if (csrfToken) {
+        headers['X-CSRF-Token'] = csrfToken;
+      }
+
+      await fetch(`${baseUrl}/api/settings`, {
+        method: 'POST',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify({
+          customTilesets: JSON.stringify(updated)
+        })
+      });
+
+      logger.debug('✅ Custom tileset deleted:', id);
+    } catch (error) {
+      logger.error('Failed to delete custom tileset:', error);
+      // Revert on error
+      setCustomTilesets(customTilesets);
+      throw error;
+    }
+  }, [customTilesets, baseUrl, getCsrfToken]);
+
   // Load settings from server on mount
   React.useEffect(() => {
     const loadServerSettings = async () => {
@@ -454,7 +569,8 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             localStorage.setItem('dateFormat', settings.dateFormat);
           }
 
-          if (settings.mapTileset && isTilesetId(settings.mapTileset)) {
+          if (settings.mapTileset) {
+            // Accept both predefined and custom tileset IDs
             setMapTilesetState(settings.mapTileset);
             localStorage.setItem('mapTileset', settings.mapTileset);
           }
@@ -515,6 +631,19 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             }
           }
 
+          // Load custom tilesets (database-only, no localStorage)
+          if (settings.customTilesets) {
+            try {
+              const tilesets = JSON.parse(settings.customTilesets);
+              if (Array.isArray(tilesets)) {
+                setCustomTilesets(tilesets);
+                logger.debug(`✅ Loaded ${tilesets.length} custom tilesets`);
+              }
+            } catch (error) {
+              logger.error('Failed to parse custom tilesets:', error);
+            }
+          }
+
           logger.debug('✅ Settings loaded from server and applied to state');
         } else {
           logger.error(`❌ Failed to fetch settings: ${response.status} ${response.statusText}`);
@@ -565,6 +694,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     mapPinStyle,
     theme,
     customThemes,
+    customTilesets,
     isLoadingThemes,
     solarMonitoringEnabled,
     solarMonitoringLatitude,
@@ -588,6 +718,9 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setMapPinStyle,
     setTheme,
     loadCustomThemes,
+    addCustomTileset,
+    updateCustomTileset,
+    deleteCustomTileset,
     setSolarMonitoringEnabled,
     setSolarMonitoringLatitude,
     setSolarMonitoringLongitude,

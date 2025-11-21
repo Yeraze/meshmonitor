@@ -52,6 +52,10 @@ docker exec meshmonitor chmod +x /data/scripts/hello.js
 
 **Option C: Docker Compose (for scripts requiring environment variables)**
 
+::: tip Use the Configurator
+The easiest way to set up scripts volume mounting is using the **[Docker Compose Configurator](/configurator)** - just check "Mount Auto Responder Scripts Directory" under Additional Settings!
+:::
+
 For scripts that need environment variables (e.g., API keys) or easier script management:
 
 ```yaml
@@ -70,10 +74,10 @@ services:
     environment:
       # Timezone configuration (for timezone-aware scripts)
       - TZ=America/New_York
-      
+
       # Example: API keys for scripts (e.g., Pirate Weather)
       - PIRATE_WEATHER_API_KEY=your_api_key_here
-      
+
       # Other MeshMonitor environment variables
       - MESHTASTIC_NODE_IP=192.168.1.100
       - MESHTASTIC_TCP_PORT=4403

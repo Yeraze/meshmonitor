@@ -1,0 +1,322 @@
+.custom-tileset-manager {
+  margin-top: 1rem;
+  padding: 1rem;
+  background-color: var(--ctp-surface0);
+  border-radius: 8px;
+  border: 1px solid var(--ctp-overlay0);
+}
+
+.manager-header {
+  margin-bottom: 1rem;
+}
+
+.manager-header h3 {
+  margin: 0 0 0.25rem 0;
+  color: var(--ctp-text);
+  font-size: 1.1rem;
+}
+
+.manager-description {
+  font-size: 0.9rem;
+  color: var(--ctp-subtext0);
+}
+
+.no-custom-tilesets {
+  text-align: center;
+  padding: 2rem 1rem;
+  color: var(--ctp-subtext0);
+}
+
+.no-custom-tilesets p {
+  margin: 0.5rem 0;
+}
+
+.no-custom-tilesets .hint {
+  font-size: 0.85rem;
+  color: var(--ctp-subtext1);
+}
+
+.tileset-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.tileset-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 1rem;
+  background-color: var(--ctp-base);
+  border: 1px solid var(--ctp-overlay0);
+  border-radius: 6px;
+  transition: border-color 0.2s;
+}
+
+.tileset-item:hover {
+  border-color: var(--ctp-blue);
+}
+
+.tileset-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.tileset-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.tileset-name {
+  font-weight: 600;
+  color: var(--ctp-text);
+  font-size: 1rem;
+}
+
+.tileset-badge {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.tileset-badge.vector {
+  background-color: rgba(var(--ctp-mauve-rgb, 203, 166, 247), 0.2);
+  color: var(--ctp-mauve);
+  border: 1px solid var(--ctp-mauve);
+}
+
+.tileset-badge.raster {
+  background-color: rgba(var(--ctp-teal-rgb, 148, 226, 213), 0.2);
+  color: var(--ctp-teal);
+  border: 1px solid var(--ctp-teal);
+}
+
+.tileset-url {
+  font-family: 'Courier New', monospace;
+  font-size: 0.85rem;
+  color: var(--ctp-blue);
+  word-break: break-all;
+  margin-bottom: 0.25rem;
+}
+
+.tileset-description {
+  font-size: 0.9rem;
+  color: var(--ctp-subtext0);
+  margin-bottom: 0.25rem;
+}
+
+.tileset-meta {
+  font-size: 0.8rem;
+  color: var(--ctp-subtext1);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.tileset-meta .meta-separator {
+  color: var(--ctp-overlay0);
+}
+
+.tileset-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: 1rem;
+  flex-shrink: 0;
+}
+
+.tileset-actions button {
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--ctp-overlay0);
+  border-radius: 4px;
+  background-color: var(--ctp-surface0);
+  color: var(--ctp-text);
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.tileset-actions button:hover:not(:disabled) {
+  background-color: var(--ctp-overlay0);
+}
+
+.btn-edit:hover:not(:disabled) {
+  background-color: var(--ctp-blue);
+  color: var(--ctp-base);
+  border-color: var(--ctp-blue);
+}
+
+.btn-delete:hover:not(:disabled) {
+  background-color: var(--ctp-red);
+  color: var(--ctp-base);
+  border-color: var(--ctp-red);
+}
+
+.tileset-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tileset-form {
+  background-color: var(--ctp-base);
+  padding: 1.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--ctp-blue);
+  margin-bottom: 1rem;
+}
+
+.form-header h4 {
+  margin: 0 0 1rem 0;
+  color: var(--ctp-text);
+  font-size: 1rem;
+}
+
+.form-field {
+  margin-bottom: 1.25rem;
+}
+
+.form-field label {
+  display: block;
+  margin-bottom: 0.4rem;
+  color: var(--ctp-text);
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.form-field .required {
+  color: var(--ctp-red);
+}
+
+.form-field input {
+  width: 100%;
+  padding: 0.6rem;
+  background-color: var(--ctp-surface0);
+  border: 1px solid var(--ctp-overlay0);
+  border-radius: 4px;
+  color: var(--ctp-text);
+  font-size: 0.9rem;
+  font-family: inherit;
+  transition: border-color 0.2s;
+}
+
+.form-field input:focus {
+  outline: none;
+  border-color: var(--ctp-blue);
+}
+
+.form-field input.error {
+  border-color: var(--ctp-red);
+}
+
+.form-field input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.form-field small {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 0.8rem;
+  color: var(--ctp-subtext1);
+}
+
+.form-field small.example {
+  font-family: 'Courier New', monospace;
+  color: var(--ctp-overlay2);
+}
+
+.validation-message {
+  margin-top: 0.4rem;
+  padding: 0.5rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.validation-message.error {
+  background-color: rgba(var(--ctp-red-rgb, 243, 139, 168), 0.15);
+  color: var(--ctp-red);
+  border-left: 3px solid var(--ctp-red);
+}
+
+.validation-message.warning {
+  background-color: rgba(var(--ctp-yellow-rgb, 249, 226, 175), 0.15);
+  color: var(--ctp-yellow);
+  border-left: 3px solid var(--ctp-yellow);
+}
+
+.form-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--ctp-overlay0);
+}
+
+.form-actions button {
+  padding: 0.6rem 1.2rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-save {
+  background-color: var(--ctp-blue);
+  color: var(--ctp-base);
+}
+
+.btn-save:hover:not(:disabled) {
+  background-color: var(--ctp-sapphire);
+}
+
+.btn-save:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-cancel {
+  background-color: var(--ctp-surface0);
+  color: var(--ctp-text);
+  border: 1px solid var(--ctp-overlay0);
+}
+
+.btn-cancel:hover:not(:disabled) {
+  background-color: var(--ctp-overlay0);
+}
+
+.btn-cancel:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-add-tileset {
+  width: 100%;
+  padding: 0.75rem;
+  background-color: var(--ctp-surface0);
+  border: 2px dashed var(--ctp-overlay0);
+  border-radius: 6px;
+  color: var(--ctp-blue);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-add-tileset:hover:not(:disabled) {
+  border-color: var(--ctp-blue);
+  background-color: rgba(var(--ctp-blue-rgb, 137, 180, 250), 0.1);
+}
+
+.btn-add-tileset:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

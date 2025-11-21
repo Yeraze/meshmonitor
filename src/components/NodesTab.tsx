@@ -24,6 +24,7 @@ import { MapCenterController } from './MapCenterController';
 import PacketMonitorPanel from './PacketMonitorPanel';
 import { getPacketStats } from '../services/packetApi';
 import { NodeFilterPopup } from './NodeFilterPopup';
+import { VectorTileLayer } from './VectorTileLayer';
 
 /**
  * Spiderfier initialization constants
@@ -137,6 +138,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setTemporaryTileset,
     mapTileset,
     mapPinStyle,
+    customTilesets,
   } = useSettings();
 
   const { hasPermission } = useAuth();
@@ -808,11 +810,19 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 centerTarget={mapCenterTarget}
                 onCenterComplete={handleCenterComplete}
               />
-              <TileLayer
-                attribution={getTilesetById(activeTileset).attribution}
-                url={getTilesetById(activeTileset).url}
-                maxZoom={getTilesetById(activeTileset).maxZoom}
-              />
+              {getTilesetById(activeTileset, customTilesets).isVector ? (
+                <VectorTileLayer
+                  url={getTilesetById(activeTileset, customTilesets).url}
+                  attribution={getTilesetById(activeTileset, customTilesets).attribution}
+                  maxZoom={getTilesetById(activeTileset, customTilesets).maxZoom}
+                />
+              ) : (
+                <TileLayer
+                  attribution={getTilesetById(activeTileset, customTilesets).attribution}
+                  url={getTilesetById(activeTileset, customTilesets).url}
+                  maxZoom={getTilesetById(activeTileset, customTilesets).maxZoom}
+                />
+              )}
               <ZoomHandler onZoomChange={setMapZoom} />
               <MapPositionHandler />
               <MapResizeHandler trigger={showPacketMonitor} />
