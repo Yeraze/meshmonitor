@@ -107,9 +107,14 @@ recreate_container() {
       log_success "Image pulled: ${IMAGE_NAME}:latest"
     fi
 
-    # Recreate using docker compose (this properly handles all configuration)
+    # Stop and remove existing container first to avoid name conflicts
+    log "Stopping existing container..."
     cd "$COMPOSE_PROJECT_DIR" || return 1
-    if docker compose $compose_files up -d --force-recreate --no-deps meshmonitor; then
+    docker compose $compose_files stop meshmonitor 2>/dev/null || true
+    docker compose $compose_files rm -f meshmonitor 2>/dev/null || true
+
+    # Recreate using docker compose (this properly handles all configuration)
+    if docker compose $compose_files up -d --no-deps meshmonitor; then
       log_success "Container recreated successfully via Docker Compose"
       return 0
     else
