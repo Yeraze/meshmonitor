@@ -118,7 +118,7 @@ export function CustomTilesetManager() {
         <span className="manager-description">
           Add custom tile servers for offline maps or custom styling.{' '}
           <a
-            href="https://yeraze.github.io/meshmonitor/features/maps"
+            href="https://meshmonitor.org/features/maps"
             target="_blank"
             rel="noopener noreferrer"
             style={{
@@ -269,7 +269,7 @@ export function CustomTilesetManager() {
                 </div>
                 <div style={{ marginTop: '0.5rem', fontSize: '0.8rem' }}>
                   <a
-                    href="https://yeraze.github.io/meshmonitor/features/maps"
+                    href="https://meshmonitor.org/features/maps"
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{
