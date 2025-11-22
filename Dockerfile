@@ -58,9 +58,10 @@ COPY --from=builder /app/protobufs ./protobufs
 # Fix ownership of dist directory for node user
 RUN chown -R node:node ./dist
 
-# Copy upgrade watchdog script into container
+# Copy upgrade-related scripts into container
 COPY scripts/upgrade-watchdog.sh /app/scripts/upgrade-watchdog.sh
-RUN chmod +x /app/scripts/upgrade-watchdog.sh
+COPY scripts/test-docker-socket.sh /app/scripts/test-docker-socket.sh
+RUN chmod +x /app/scripts/upgrade-watchdog.sh /app/scripts/test-docker-socket.sh
 
 # Create data directory for SQLite database and Apprise configs
 RUN mkdir -p /data/apprise-config /data/scripts && chown -R node:node /data
