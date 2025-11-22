@@ -2551,13 +2551,16 @@ class DatabaseService {
   }
 
   getTraceroutesByNodes(fromNodeNum: number, toNodeNum: number, limit: number = 10): DbTraceroute[] {
+    // Search bidirectionally to capture traceroutes initiated from either direction
+    // This is especially important for 3rd party traceroutes (e.g., via Virtual Node)
+    // where the stored direction might be reversed from what's being queried
     const stmt = this.db.prepare(`
       SELECT * FROM traceroutes
-      WHERE fromNodeNum = ? AND toNodeNum = ?
+      WHERE (fromNodeNum = ? AND toNodeNum = ?) OR (fromNodeNum = ? AND toNodeNum = ?)
       ORDER BY timestamp DESC
       LIMIT ?
     `);
-    const traceroutes = stmt.all(fromNodeNum, toNodeNum, limit) as DbTraceroute[];
+    const traceroutes = stmt.all(fromNodeNum, toNodeNum, toNodeNum, fromNodeNum, limit) as DbTraceroute[];
     return traceroutes.map(t => this.normalizeBigInts(t));
   }
 
