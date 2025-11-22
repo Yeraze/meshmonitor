@@ -97,11 +97,34 @@ recreate_container() {
   if [ -d "$COMPOSE_PROJECT_DIR" ] && [ -f "$COMPOSE_PROJECT_DIR/docker-compose.yml" ]; then
     log "Using Docker Compose to recreate container"
 
-    # Detect which compose files are in use
-    local compose_files="-f docker-compose.yml"
-    if [ -f "$COMPOSE_PROJECT_DIR/docker-compose.upgrade.yml" ]; then
-      compose_files="$compose_files -f docker-compose.upgrade.yml"
-      log "Detected upgrade overlay: docker-compose.upgrade.yml"
+    # Detect which compose files were originally used by inspecting the container
+    local original_config_files=$(docker inspect --format='{{index .Config.Labels "com.docker.compose.project.config_files"}}' "$CONTAINER_NAME" 2>/dev/null || echo "")
+
+    local compose_files=""
+    if [ -n "$original_config_files" ]; then
+      log "Original compose files: $original_config_files"
+      # Parse comma-separated list and convert /compose/ paths to -f flags
+      # Example: /compose/docker-compose.yml,/compose/docker-compose.dev.yml
+      for config_file in $(echo "$original_config_files" | tr ',' ' '); do
+        # Extract just the filename (remove /compose/ prefix)
+        local filename=$(basename "$config_file")
+        if [ -f "$COMPOSE_PROJECT_DIR/$filename" ]; then
+          compose_files="$compose_files -f $filename"
+          log "Using compose file: $filename"
+        else
+          log_warn "Compose file not found: $filename (skipping)"
+        fi
+      done
+    fi
+
+    # Fallback if no compose files detected from labels
+    if [ -z "$compose_files" ]; then
+      log_warn "Could not detect original compose files, using defaults"
+      compose_files="-f docker-compose.yml"
+      if [ -f "$COMPOSE_PROJECT_DIR/docker-compose.upgrade.yml" ]; then
+        compose_files="$compose_files -f docker-compose.upgrade.yml"
+        log "Detected upgrade overlay: docker-compose.upgrade.yml"
+      fi
     fi
 
     # Pull latest image
