@@ -3,6 +3,7 @@ import meshtasticProtobufService from './meshtasticProtobufService.js';
 import protobufService from './protobufService.js';
 import { TcpTransport } from './tcpTransport.js';
 import { calculateDistance } from '../utils/distance.js';
+import { formatTime } from '../utils/datetime.js';
 import { logger } from '../utils/logger.js';
 import { getEnvironmentConfig } from './config/environment.js';
 import { notificationService } from './services/notificationService.js';
@@ -4151,7 +4152,10 @@ class MeshtasticManager {
       const env = getEnvironmentConfig();
       const timestamp = new Date(message.timestamp);
       const receivedDate = timestamp.toLocaleDateString('en-US', { timeZone: env.timezone });
-      const receivedTime = timestamp.toLocaleTimeString('en-US', { timeZone: env.timezone });
+
+      // Get time format preference from settings and use formatTime utility
+      const timeFormat = databaseService.getSetting('timeFormat') || '24';
+      const receivedTime = formatTime(timestamp, timeFormat as '12' | '24');
 
       // Replace tokens in the message template
       let ackText = await this.replaceAcknowledgementTokens(autoAckMessage, message.fromNodeId, fromNum, hopsTraveled, receivedDate, receivedTime, rxSnr, rxRssi);
