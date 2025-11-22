@@ -112,11 +112,19 @@ recreate_container() {
     # Stop and remove existing container first to avoid name conflicts
     log "Stopping existing container..."
     cd "$COMPOSE_PROJECT_DIR" || return 1
-    docker compose $compose_files stop meshmonitor 2>/dev/null || true
-    docker compose $compose_files rm -f meshmonitor 2>/dev/null || true
+
+    # Use project name if provided to ensure we target the correct compose project
+    local project_flag=""
+    if [ -n "$COMPOSE_PROJECT_NAME" ]; then
+      project_flag="-p $COMPOSE_PROJECT_NAME"
+      log "Using project name: $COMPOSE_PROJECT_NAME"
+    fi
+
+    docker compose $project_flag $compose_files stop meshmonitor 2>/dev/null || true
+    docker compose $project_flag $compose_files rm -f meshmonitor 2>/dev/null || true
 
     # Recreate using docker compose (this properly handles all configuration)
-    if docker compose $compose_files up -d --no-deps meshmonitor; then
+    if docker compose $project_flag $compose_files up -d --no-deps meshmonitor; then
       log_success "Container recreated successfully via Docker Compose"
       return 0
     else
