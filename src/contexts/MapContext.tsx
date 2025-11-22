@@ -56,11 +56,26 @@ interface MapProviderProps {
 }
 
 export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
-  const [showPaths, setShowPaths] = useState<boolean>(false);
-  const [showNeighborInfo, setShowNeighborInfo] = useState<boolean>(false);
-  const [showRoute, setShowRoute] = useState<boolean>(true);
-  const [showMotion, setShowMotion] = useState<boolean>(true);
-  const [showMqttNodes, setShowMqttNodes] = useState<boolean>(true);
+  const [showPaths, setShowPaths] = useState<boolean>(() => {
+    const saved = localStorage.getItem('showPaths');
+    return saved === 'true';
+  });
+  const [showNeighborInfo, setShowNeighborInfo] = useState<boolean>(() => {
+    const saved = localStorage.getItem('showNeighborInfo');
+    return saved === 'true';
+  });
+  const [showRoute, setShowRoute] = useState<boolean>(() => {
+    const saved = localStorage.getItem('showRoute');
+    return saved !== null ? saved === 'true' : true; // default: true
+  });
+  const [showMotion, setShowMotion] = useState<boolean>(() => {
+    const saved = localStorage.getItem('showMotion');
+    return saved !== null ? saved === 'true' : true; // default: true
+  });
+  const [showMqttNodes, setShowMqttNodes] = useState<boolean>(() => {
+    const saved = localStorage.getItem('showMqttNodes');
+    return saved !== null ? saved === 'true' : true; // default: true
+  });
   const [showAnimations, setShowAnimations] = useState<boolean>(() => {
     const saved = localStorage.getItem('showAnimations');
     return saved === 'true';
@@ -93,7 +108,27 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const [positionHistory, setPositionHistory] = useState<PositionHistoryItem[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
-  // Persist showAnimations to localStorage
+  // Persist feature toggles to localStorage
+  useEffect(() => {
+    localStorage.setItem('showPaths', showPaths.toString());
+  }, [showPaths]);
+
+  useEffect(() => {
+    localStorage.setItem('showNeighborInfo', showNeighborInfo.toString());
+  }, [showNeighborInfo]);
+
+  useEffect(() => {
+    localStorage.setItem('showRoute', showRoute.toString());
+  }, [showRoute]);
+
+  useEffect(() => {
+    localStorage.setItem('showMotion', showMotion.toString());
+  }, [showMotion]);
+
+  useEffect(() => {
+    localStorage.setItem('showMqttNodes', showMqttNodes.toString());
+  }, [showMqttNodes]);
+
   useEffect(() => {
     localStorage.setItem('showAnimations', showAnimations.toString());
   }, [showAnimations]);
