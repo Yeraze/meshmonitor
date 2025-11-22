@@ -12,6 +12,8 @@ CHECK_INTERVAL="${CHECK_INTERVAL:-5}"
 CONTAINER_NAME="${CONTAINER_NAME:-meshmonitor}"
 IMAGE_NAME="${IMAGE_NAME:-ghcr.io/yeraze/meshmonitor}"
 COMPOSE_PROJECT_DIR="${COMPOSE_PROJECT_DIR:-/compose}"
+DOCKER_SOCKET_TEST_REQUEST="${DOCKER_SOCKET_TEST_REQUEST:-/data/.docker-socket-test-request}"
+DOCKER_SOCKET_TEST_SCRIPT="${DOCKER_SOCKET_TEST_SCRIPT:-/data/scripts/test-docker-socket.sh}"
 
 # Colors for output
 RED='\033[0;31m'
@@ -95,11 +97,34 @@ recreate_container() {
   if [ -d "$COMPOSE_PROJECT_DIR" ] && [ -f "$COMPOSE_PROJECT_DIR/docker-compose.yml" ]; then
     log "Using Docker Compose to recreate container"
 
-    # Detect which compose files are in use
-    local compose_files="-f docker-compose.yml"
-    if [ -f "$COMPOSE_PROJECT_DIR/docker-compose.upgrade.yml" ]; then
-      compose_files="$compose_files -f docker-compose.upgrade.yml"
-      log "Detected upgrade overlay: docker-compose.upgrade.yml"
+    # Detect which compose files were originally used by inspecting the container
+    local original_config_files=$(docker inspect --format='{{index .Config.Labels "com.docker.compose.project.config_files"}}' "$CONTAINER_NAME" 2>/dev/null || echo "")
+
+    local compose_files=""
+    if [ -n "$original_config_files" ]; then
+      log "Original compose files: $original_config_files"
+      # Parse comma-separated list and convert /compose/ paths to -f flags
+      # Example: /compose/docker-compose.yml,/compose/docker-compose.dev.yml
+      for config_file in $(echo "$original_config_files" | tr ',' ' '); do
+        # Extract just the filename (remove /compose/ prefix)
+        local filename=$(basename "$config_file")
+        if [ -f "$COMPOSE_PROJECT_DIR/$filename" ]; then
+          compose_files="$compose_files -f $filename"
+          log "Using compose file: $filename"
+        else
+          log_warn "Compose file not found: $filename (skipping)"
+        fi
+      done
+    fi
+
+    # Fallback if no compose files detected from labels
+    if [ -z "$compose_files" ]; then
+      log_warn "Could not detect original compose files, using defaults"
+      compose_files="-f docker-compose.yml"
+      if [ -f "$COMPOSE_PROJECT_DIR/docker-compose.upgrade.yml" ]; then
+        compose_files="$compose_files -f docker-compose.upgrade.yml"
+        log "Detected upgrade overlay: docker-compose.upgrade.yml"
+      fi
     fi
 
     # Pull latest image
@@ -110,11 +135,19 @@ recreate_container() {
     # Stop and remove existing container first to avoid name conflicts
     log "Stopping existing container..."
     cd "$COMPOSE_PROJECT_DIR" || return 1
-    docker compose $compose_files stop meshmonitor 2>/dev/null || true
-    docker compose $compose_files rm -f meshmonitor 2>/dev/null || true
+
+    # Use project name if provided to ensure we target the correct compose project
+    local project_flag=""
+    if [ -n "$COMPOSE_PROJECT_NAME" ]; then
+      project_flag="-p $COMPOSE_PROJECT_NAME"
+      log "Using project name: $COMPOSE_PROJECT_NAME"
+    fi
+
+    docker compose $project_flag $compose_files stop meshmonitor 2>/dev/null || true
+    docker compose $project_flag $compose_files rm -f meshmonitor 2>/dev/null || true
 
     # Recreate using docker compose (this properly handles all configuration)
-    if docker compose $compose_files up -d --no-deps meshmonitor; then
+    if docker compose $project_flag $compose_files up -d --no-deps meshmonitor; then
       log_success "Container recreated successfully via Docker Compose"
       return 0
     else
@@ -324,6 +357,28 @@ main() {
   write_status "ready"
 
   while true; do
+    # Check for Docker socket test request
+    if [ -f "$DOCKER_SOCKET_TEST_REQUEST" ]; then
+      log "Docker socket test request detected"
+
+      if [ -f "$DOCKER_SOCKET_TEST_SCRIPT" ]; then
+        # Make script executable and run it
+        chmod +x "$DOCKER_SOCKET_TEST_SCRIPT"
+        if sh "$DOCKER_SOCKET_TEST_SCRIPT"; then
+          log_success "Docker socket test completed"
+        else
+          log_warn "Docker socket test completed with warnings/errors"
+        fi
+      else
+        log_error "Docker socket test script not found: $DOCKER_SOCKET_TEST_SCRIPT"
+        echo "FAIL: Test script not found at $DOCKER_SOCKET_TEST_SCRIPT" > /data/.docker-socket-test
+      fi
+
+      # Clean up test request
+      rm -f "$DOCKER_SOCKET_TEST_REQUEST"
+    fi
+
+    # Check for upgrade trigger
     if [ -f "$TRIGGER_FILE" ]; then
       log "Upgrade trigger detected!"
 
