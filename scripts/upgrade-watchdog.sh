@@ -12,6 +12,8 @@ CHECK_INTERVAL="${CHECK_INTERVAL:-5}"
 CONTAINER_NAME="${CONTAINER_NAME:-meshmonitor}"
 IMAGE_NAME="${IMAGE_NAME:-ghcr.io/yeraze/meshmonitor}"
 COMPOSE_PROJECT_DIR="${COMPOSE_PROJECT_DIR:-/compose}"
+DOCKER_SOCKET_TEST_REQUEST="${DOCKER_SOCKET_TEST_REQUEST:-/data/.docker-socket-test-request}"
+DOCKER_SOCKET_TEST_SCRIPT="${DOCKER_SOCKET_TEST_SCRIPT:-/data/scripts/test-docker-socket.sh}"
 
 # Colors for output
 RED='\033[0;31m'
@@ -324,6 +326,28 @@ main() {
   write_status "ready"
 
   while true; do
+    # Check for Docker socket test request
+    if [ -f "$DOCKER_SOCKET_TEST_REQUEST" ]; then
+      log "Docker socket test request detected"
+
+      if [ -f "$DOCKER_SOCKET_TEST_SCRIPT" ]; then
+        # Make script executable and run it
+        chmod +x "$DOCKER_SOCKET_TEST_SCRIPT"
+        if sh "$DOCKER_SOCKET_TEST_SCRIPT"; then
+          log_success "Docker socket test completed"
+        else
+          log_warn "Docker socket test completed with warnings/errors"
+        fi
+      else
+        log_error "Docker socket test script not found: $DOCKER_SOCKET_TEST_SCRIPT"
+        echo "FAIL: Test script not found at $DOCKER_SOCKET_TEST_SCRIPT" > /data/.docker-socket-test
+      fi
+
+      # Clean up test request
+      rm -f "$DOCKER_SOCKET_TEST_REQUEST"
+    fi
+
+    # Check for upgrade trigger
     if [ -f "$TRIGGER_FILE" ]; then
       log "Upgrade trigger detected!"
 

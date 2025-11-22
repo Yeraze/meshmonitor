@@ -589,18 +589,78 @@ class UpgradeService {
       }
 
       // Check 7: Docker socket access (for the watchdog)
-      // This is indirect - we can't check from within the main container
-      // But we can provide guidance
-      results.push({
-        check: 'Docker Socket',
-        passed: upgradeEnabled && isDocker,
-        message: upgradeEnabled && isDocker
-          ? 'Should be mounted in upgrader sidecar'
-          : 'Requires upgrader sidecar',
-        details: upgradeEnabled && isDocker
-          ? 'The upgrader sidecar needs /var/run/docker.sock mounted. Verify with: docker exec meshmonitor-upgrader ls -la /var/run/docker.sock'
-          : 'Check docker-compose.upgrade.yml configuration'
-      });
+      // Test by executing the test script in the upgrader container
+      if (upgradeEnabled && isDocker) {
+        try {
+          // Create a test request file
+          const testRequestFile = path.join(DATA_DIR, '.docker-socket-test-request');
+          const testResultFile = path.join(DATA_DIR, '.docker-socket-test');
+
+          // Remove any previous test results
+          if (fs.existsSync(testResultFile)) {
+            fs.unlinkSync(testResultFile);
+          }
+
+          // Create test request (signals the upgrader to run the test)
+          fs.writeFileSync(testRequestFile, Date.now().toString());
+
+          // Wait for test result (upgrader will create the result file)
+          let waited = 0;
+          const maxWait = 10000; // 10 seconds
+          let testResult = null;
+
+          while (waited < maxWait) {
+            if (fs.existsSync(testResultFile)) {
+              testResult = fs.readFileSync(testResultFile, 'utf-8').trim();
+              break;
+            }
+            // Wait 100ms between checks
+            await new Promise(resolve => setTimeout(resolve, 100));
+            waited += 100;
+          }
+
+          // Clean up test request file
+          if (fs.existsSync(testRequestFile)) {
+            fs.unlinkSync(testRequestFile);
+          }
+
+          if (testResult) {
+            const isPassed = testResult.startsWith('PASS');
+            const isWarn = testResult.startsWith('WARN');
+
+            results.push({
+              check: 'Docker Socket Permissions',
+              passed: isPassed || isWarn,
+              message: isPassed ? 'Upgrader can access Docker socket' :
+                       isWarn ? 'Docker socket accessible (with warnings)' :
+                       'Upgrader cannot access Docker socket',
+              details: testResult
+            });
+          } else {
+            // Timeout - upgrader may not be running or test script not available
+            results.push({
+              check: 'Docker Socket Permissions',
+              passed: false,
+              message: 'Cannot verify Docker socket access',
+              details: 'Test timed out. Ensure meshmonitor-upgrader container is running with docker-compose.upgrade.yml'
+            });
+          }
+        } catch (error) {
+          results.push({
+            check: 'Docker Socket Permissions',
+            passed: false,
+            message: 'Failed to test Docker socket access',
+            details: error instanceof Error ? error.message : String(error)
+          });
+        }
+      } else {
+        results.push({
+          check: 'Docker Socket Permissions',
+          passed: false,
+          message: 'Requires upgrader sidecar',
+          details: 'Auto-upgrade must be enabled and running in Docker to test socket permissions'
+        });
+      }
 
       // Determine overall success
       const allCriticalPassed = results
