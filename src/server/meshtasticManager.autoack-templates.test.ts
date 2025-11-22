@@ -536,4 +536,94 @@ describe('MeshtasticManager - Auto-Acknowledge Message Template Token Replacemen
       expect(result1).toBe('!12345678 2 1/15/2025 10:30 AM');
     });
   });
+
+  describe('{SNR} and {RSSI} token replacement', () => {
+    it('should replace {SNR} with signal-to-noise ratio', () => {
+      const template = 'SNR: {SNR} dB';
+      const rxSnr = 7.5;
+      const snrValue = rxSnr.toFixed(1);
+
+      const result = template.replace(/{SNR}/g, snrValue);
+
+      expect(result).toBe('SNR: 7.5 dB');
+    });
+
+    it('should replace {RSSI} with received signal strength', () => {
+      const template = 'RSSI: {RSSI} dBm';
+      const rxRssi = -95;
+      const rssiValue = rxRssi.toString();
+
+      const result = template.replace(/{RSSI}/g, rssiValue);
+
+      expect(result).toBe('RSSI: -95 dBm');
+    });
+
+    it('should replace both {SNR} and {RSSI} in template', () => {
+      const template = 'Signal quality: {SNR} dB SNR, {RSSI} dBm RSSI';
+      const rxSnr = 7.5;
+      const rxRssi = -95;
+      const snrValue = rxSnr.toFixed(1);
+      const rssiValue = rxRssi.toString();
+
+      let result = template;
+      result = result.replace(/{SNR}/g, snrValue);
+      result = result.replace(/{RSSI}/g, rssiValue);
+
+      expect(result).toBe('Signal quality: 7.5 dB SNR, -95 dBm RSSI');
+    });
+
+    it('should handle {SNR} with N/A when value is not available', () => {
+      const template = 'SNR: {SNR}';
+      const snrValue = 'N/A';
+
+      const result = template.replace(/{SNR}/g, snrValue);
+
+      expect(result).toBe('SNR: N/A');
+    });
+
+    it('should handle {RSSI} with N/A when value is not available', () => {
+      const template = 'RSSI: {RSSI}';
+      const rssiValue = 'N/A';
+
+      const result = template.replace(/{RSSI}/g, rssiValue);
+
+      expect(result).toBe('RSSI: N/A');
+    });
+
+    it('should handle negative SNR values', () => {
+      const template = '{SNR}';
+      const rxSnr = -5.2;
+      const snrValue = rxSnr.toFixed(1);
+
+      const result = template.replace(/{SNR}/g, snrValue);
+
+      expect(result).toBe('-5.2');
+    });
+
+    it('should handle strong signal (high RSSI)', () => {
+      const template = '{RSSI}';
+      const rxRssi = -30;
+      const rssiValue = rxRssi.toString();
+
+      const result = template.replace(/{RSSI}/g, rssiValue);
+
+      expect(result).toBe('-30');
+    });
+
+    it('should integrate SNR and RSSI with other tokens', () => {
+      const template = 'From {NODE_ID}, {NUMBER_HOPS} hops, SNR: {SNR}, RSSI: {RSSI}';
+      const nodeId = '!a1b2c3d4';
+      const numberHops = 3;
+      const rxSnr = 7.5;
+      const rxRssi = -95;
+
+      let result = template;
+      result = result.replace(/{NODE_ID}/g, nodeId);
+      result = result.replace(/{NUMBER_HOPS}/g, numberHops.toString());
+      result = result.replace(/{SNR}/g, rxSnr.toFixed(1));
+      result = result.replace(/{RSSI}/g, rxRssi.toString());
+
+      expect(result).toBe('From !a1b2c3d4, 3 hops, SNR: 7.5, RSSI: -95');
+    });
+  });
 });
