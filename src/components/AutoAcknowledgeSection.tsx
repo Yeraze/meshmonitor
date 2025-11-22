@@ -150,6 +150,8 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
 
     sample = sample.replace(/{NODECOUNT}/g, '42');
     sample = sample.replace(/{DIRECTCOUNT}/g, '8');
+    sample = sample.replace(/{SNR}/g, '7.5');
+    sample = sample.replace(/{RSSI}/g, '-95');
 
     return sample;
   };
@@ -255,7 +257,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
       <div className="settings-section" style={{ opacity: localEnabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>
         <p style={{ marginBottom: '1rem', color: '#666', lineHeight: '1.5', marginLeft: '1.75rem' }}>
           When enabled, automatically reply to any message matching the RegEx pattern with a customizable template.
-          Use tokens like <code>{'{NODE_ID}'}</code>, <code>{'{NUMBER_HOPS}'}</code>, <code>{'{DATE}'}</code>, and <code>{'{TIME}'}</code> for dynamic content.
+          Use tokens like <code>{'{NODE_ID}'}</code>, <code>{'{NUMBER_HOPS}'}</code>, <code>{'{DATE}'}</code>, <code>{'{TIME}'}</code>, <code>{'{SNR}'}</code>, and <code>{'{RSSI}'}</code> for dynamic content.
         </p>
 
         <div className="setting-item" style={{ marginTop: '1rem' }}>
@@ -352,7 +354,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
           <label htmlFor="autoAckMessage">
             Acknowledgment Message Template
             <span className="setting-description">
-              Message to send in response. Available tokens: {'{NODE_ID}'} (sender node ID), {'{NUMBER_HOPS}'} (hop count), {'{RABBIT_HOPS}'} (rabbit emojis equal to hop count, 🎯 for direct/0 hops), {'{DATE}'} (current date), {'{TIME}'} (current time), {'{VERSION}'}, {'{DURATION}'}, {'{FEATURES}'}, {'{NODECOUNT}'}, {'{DIRECTCOUNT}'}, {'{LONG_NAME}'} (sender's long name), {'{SHORT_NAME}'} (sender's short name)
+              Message to send in response. Available tokens: {'{NODE_ID}'} (sender node ID), {'{NUMBER_HOPS}'} (hop count), {'{RABBIT_HOPS}'} (rabbit emojis equal to hop count, 🎯 for direct/0 hops), {'{DATE}'} (current date), {'{TIME}'} (current time), {'{VERSION}'}, {'{DURATION}'}, {'{FEATURES}'}, {'{NODECOUNT}'}, {'{DIRECTCOUNT}'}, {'{LONG_NAME}'} (sender's long name), {'{SHORT_NAME}'} (sender's short name), {'{SNR}'} (Signal-to-Noise Ratio in dB), {'{RSSI}'} (Received Signal Strength Indicator in dBm)
             </span>
           </label>
           <textarea
@@ -561,6 +563,38 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
               }}
             >
               + {'{SHORT_NAME}'}
+            </button>
+            <button
+              type="button"
+              onClick={() => insertToken('{SNR}')}
+              disabled={!localEnabled}
+              style={{
+                padding: '0.25rem 0.5rem',
+                fontSize: '12px',
+                background: 'var(--ctp-surface2)',
+                border: '1px solid var(--ctp-overlay0)',
+                borderRadius: '4px',
+                cursor: localEnabled ? 'pointer' : 'not-allowed',
+                opacity: localEnabled ? 1 : 0.5
+              }}
+            >
+              + {'{SNR}'}
+            </button>
+            <button
+              type="button"
+              onClick={() => insertToken('{RSSI}')}
+              disabled={!localEnabled}
+              style={{
+                padding: '0.25rem 0.5rem',
+                fontSize: '12px',
+                background: 'var(--ctp-surface2)',
+                border: '1px solid var(--ctp-overlay0)',
+                borderRadius: '4px',
+                cursor: localEnabled ? 'pointer' : 'not-allowed',
+                opacity: localEnabled ? 1 : 0.5
+              }}
+            >
+              + {'{RSSI}'}
             </button>
           </div>
         </div>

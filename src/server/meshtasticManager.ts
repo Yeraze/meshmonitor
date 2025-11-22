@@ -1275,7 +1275,7 @@ class MeshtasticManager {
         await this.sendMessagePushNotification(message, messageText, isDirectMessage);
 
         // Auto-acknowledge matching messages
-        await this.checkAutoAcknowledge(message, messageText, channelIndex, isDirectMessage, fromNum, meshPacket.id);
+        await this.checkAutoAcknowledge(message, messageText, channelIndex, isDirectMessage, fromNum, meshPacket.id, meshPacket.rxSnr, meshPacket.rxRssi);
 
         // Auto-respond to matching messages
         await this.checkAutoResponder(messageText, channelIndex, isDirectMessage, fromNum, meshPacket.id);
@@ -4066,7 +4066,7 @@ class MeshtasticManager {
     }
   }
 
-  private async checkAutoAcknowledge(message: any, messageText: string, channelIndex: number, isDirectMessage: boolean, fromNum: number, packetId?: number): Promise<void> {
+  private async checkAutoAcknowledge(message: any, messageText: string, channelIndex: number, isDirectMessage: boolean, fromNum: number, packetId?: number, rxSnr?: number, rxRssi?: number): Promise<void> {
     try {
       // Get auto-acknowledge settings from database
       const autoAckEnabled = databaseService.getSetting('autoAckEnabled');
@@ -4154,7 +4154,7 @@ class MeshtasticManager {
       const receivedTime = timestamp.toLocaleTimeString('en-US', { timeZone: env.timezone });
 
       // Replace tokens in the message template
-      let ackText = await this.replaceAcknowledgementTokens(autoAckMessage, message.fromNodeId, fromNum, hopsTraveled, receivedDate, receivedTime);
+      let ackText = await this.replaceAcknowledgementTokens(autoAckMessage, message.fromNodeId, fromNum, hopsTraveled, receivedDate, receivedTime, rxSnr, rxRssi);
 
       // Check if we should always use DM
       const autoAckUseDM = databaseService.getSetting('autoAckUseDM');
@@ -5114,7 +5114,7 @@ class MeshtasticManager {
     return result;
   }
 
-  private async replaceAcknowledgementTokens(message: string, nodeId: string, fromNum: number, numberHops: number, date: string, time: string): Promise<string> {
+  private async replaceAcknowledgementTokens(message: string, nodeId: string, fromNum: number, numberHops: number, date: string, time: string, rxSnr?: number, rxRssi?: number): Promise<string> {
     let result = message;
 
     // {NODE_ID} - Sender node ID
@@ -5217,6 +5217,22 @@ class MeshtasticManager {
       const nodes = databaseService.getActiveNodes(maxNodeAgeDays);
       const directCount = nodes.filter((n: any) => n.hopsAway === 0).length;
       result = result.replace(/{DIRECTCOUNT}/g, directCount.toString());
+    }
+
+    // {SNR} - Signal-to-Noise Ratio
+    if (result.includes('{SNR}')) {
+      const snrValue = (rxSnr !== undefined && rxSnr !== null && rxSnr !== 0)
+        ? rxSnr.toFixed(1)
+        : 'N/A';
+      result = result.replace(/{SNR}/g, snrValue);
+    }
+
+    // {RSSI} - Received Signal Strength Indicator
+    if (result.includes('{RSSI}')) {
+      const rssiValue = (rxRssi !== undefined && rxRssi !== null && rxRssi !== 0)
+        ? rxRssi.toString()
+        : 'N/A';
+      result = result.replace(/{RSSI}/g, rssiValue);
     }
 
     return result;
