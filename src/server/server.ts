@@ -3234,6 +3234,14 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
             return res.status(400).json({ error: 'Each trigger must have id, trigger, responseType, and response fields' });
           }
 
+          // Validate trigger is string or non-empty array
+          if (Array.isArray(trigger.trigger) && trigger.trigger.length === 0) {
+            return res.status(400).json({ error: 'Trigger array cannot be empty' });
+          }
+          if (!Array.isArray(trigger.trigger) && typeof trigger.trigger !== 'string') {
+            return res.status(400).json({ error: 'Trigger must be a string or array of strings' });
+          }
+
           if (trigger.responseType !== 'text' && trigger.responseType !== 'http' && trigger.responseType !== 'script') {
             return res.status(400).json({ error: 'responseType must be "text", "http", or "script"' });
           }
@@ -5191,7 +5199,23 @@ const server = app.listen(PORT, () => {
     // Log scripts directory location in development
     const scriptsDir = getScriptsDirectory();
     logger.info(`📜 Auto-responder scripts directory: ${scriptsDir}`);
-    logger.info(`   Place your test scripts (.js, .mjs, .py, .sh) in this directory`);
+
+    // Check if directory has any scripts
+    try {
+      const files = fs.readdirSync(scriptsDir);
+      const scriptFiles = files.filter(file => {
+        const ext = path.extname(file).toLowerCase();
+        return ['.js', '.mjs', '.py', '.sh'].includes(ext);
+      });
+
+      if (scriptFiles.length > 0) {
+        logger.info(`   Found ${scriptFiles.length} script(s): ${scriptFiles.join(', ')}`);
+      } else {
+        logger.info(`   No scripts found. Place your test scripts (.js, .mjs, .py, .sh) in this directory`);
+      }
+    } catch (error) {
+      logger.warn(`   Could not read scripts directory: ${error}`);
+    }
   }
 });
 
