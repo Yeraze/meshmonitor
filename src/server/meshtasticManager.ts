@@ -3,7 +3,7 @@ import meshtasticProtobufService from './meshtasticProtobufService.js';
 import protobufService from './protobufService.js';
 import { TcpTransport } from './tcpTransport.js';
 import { calculateDistance } from '../utils/distance.js';
-import { formatTime } from '../utils/datetime.js';
+import { formatTime, formatDate } from '../utils/datetime.js';
 import { logger } from '../utils/logger.js';
 import { getEnvironmentConfig } from './config/environment.js';
 import { notificationService } from './services/notificationService.js';
@@ -4148,13 +4148,15 @@ class MeshtasticManager {
           ? message.hopStart - message.hopLimit
           : 0;
 
-      // Format timestamp in local timezone (from TZ environment variable)
-      const env = getEnvironmentConfig();
+      // Format timestamp according to user preferences
       const timestamp = new Date(message.timestamp);
-      const receivedDate = timestamp.toLocaleDateString('en-US', { timeZone: env.timezone });
 
-      // Get time format preference from settings and use formatTime utility
+      // Get date and time format preferences from settings
+      const dateFormat = databaseService.getSetting('dateFormat') || 'MM/DD/YYYY';
       const timeFormat = databaseService.getSetting('timeFormat') || '24';
+
+      // Use formatDate and formatTime utilities to respect user preferences
+      const receivedDate = formatDate(timestamp, dateFormat as 'MM/DD/YYYY' | 'DD/MM/YYYY');
       const receivedTime = formatTime(timestamp, timeFormat as '12' | '24');
 
       // Replace tokens in the message template
