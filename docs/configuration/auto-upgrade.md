@@ -83,6 +83,8 @@ services:
       - CHECK_INTERVAL=5            # Check for triggers every 5 seconds
       - CONTAINER_NAME=meshmonitor  # Name of container to upgrade
       - IMAGE_NAME=ghcr.io/yeraze/meshmonitor  # Image to pull
+      - COMPOSE_PROJECT_NAME=meshmonitor  # Docker Compose project name (optional)
+      - COMPOSE_PROJECT_DIR=/compose  # Path to docker-compose files
 ```
 
 ## Using the Upgrade Feature
@@ -161,25 +163,23 @@ docker tag ghcr.io/yeraze/meshmonitor:2.14.0 ghcr.io/yeraze/meshmonitor:latest
 
 ### 4. Container Recreation
 
-The watchdog recreates the container using direct Docker commands (this works regardless of how the container was originally started - via docker-compose, docker run, or any overlay files):
+The watchdog detects which Docker Compose files were used to originally start the container and uses those same files to recreate it, preserving all configuration:
 
 ```bash
-# Capture current container configuration
-docker inspect meshmonitor
+# Detect original compose files from container labels
+docker inspect meshmonitor --format='{{index .Config.Labels "com.docker.compose.project.config_files"}}'
+# Example: /compose/docker-compose.yml,/compose/docker-compose.dev.yml
 
-# Stop and remove old container
-docker stop meshmonitor
-docker rm meshmonitor
-
-# Create new container with same configuration
-docker run -d --name meshmonitor ...
+# Recreate using the same compose files
+docker compose -p meshmonitor -f docker-compose.yml -f docker-compose.dev.yml up -d --no-deps meshmonitor
 ```
 
 This preserves:
-- All environment variables
+- All environment variables (including those from overlay files)
 - Volume mounts
 - Network configuration
 - Port mappings
+- All Docker Compose overlay configurations
 
 ### 5. Health Checks
 
