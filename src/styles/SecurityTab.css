@@ -168,12 +168,12 @@
 }
 
 .no-issues {
-  background: var(--ctp-green);
-  border: 1px solid var(--ctp-green);
+  background: var(--ctp-surface0);
+  border: 1px solid var(--ctp-surface1);
+  border-left: 4px solid var(--ctp-green);
   border-radius: 8px;
   padding: 30px;
   text-align: center;
-  opacity: 0.2;
 }
 
 .no-issues p {
@@ -184,8 +184,7 @@
 
 .no-issues .help-text {
   font-size: 14px;
-  color: var(--ctp-text);
-  opacity: 0.8;
+  color: var(--ctp-subtext0);
 }
 
 .issues-list {
@@ -245,6 +244,13 @@
 .node-id .hw-model {
   color: var(--ctp-subtext0);
   font-weight: 500;
+}
+
+.node-last-seen {
+  font-size: 12px;
+  color: var(--ctp-overlay1);
+  font-style: italic;
+  margin-top: 3px;
 }
 
 .issue-types {
@@ -383,9 +389,9 @@
 
 .duplicate-group-header {
   padding: 15px 20px;
-  background: var(--ctp-red);
-  border-bottom: 1px solid var(--ctp-red);
-  opacity: 0.3;
+  background: var(--ctp-surface2);
+  border-bottom: 1px solid var(--ctp-surface1);
+  border-left: 4px solid var(--ctp-red);
 }
 
 .group-title {
@@ -428,6 +434,12 @@
   transition: background 0.2s;
 }
 
+.duplicate-node-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
 .duplicate-node-item:hover {
   background: var(--ctp-surface0);
 }
@@ -450,12 +462,12 @@
 
 .group-recommendations {
   padding: 15px 20px;
-  background: var(--ctp-yellow);
-  border-top: 1px solid var(--ctp-yellow);
-  color: var(--ctp-base);
+  background: var(--ctp-surface2);
+  border-top: 1px solid var(--ctp-surface1);
+  border-left: 4px solid var(--ctp-yellow);
+  color: var(--ctp-text);
   font-size: 14px;
   line-height: 1.6;
-  opacity: 0.3;
 }
 
 .group-recommendations strong {
