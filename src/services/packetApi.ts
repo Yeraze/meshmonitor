@@ -75,10 +75,38 @@ export const exportPackets = async (filters?: PacketFilters): Promise<void> => {
     params.append('since', filters.since.toString());
   }
 
-  // Get base URL and trigger browser download
+  // Fetch export from backend with credentials
   const baseUrl = await api.getBaseUrl();
   const url = `${baseUrl}/api/packets/export?${params.toString()}`;
-  window.location.href = url;
+
+  const response = await fetch(url, {
+    credentials: 'same-origin'
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to export packets');
+  }
+
+  // Get filename from Content-Disposition header or generate one
+  const contentDisposition = response.headers.get('Content-Disposition');
+  let filename = 'packet-monitor.jsonl';
+  if (contentDisposition) {
+    const matches = /filename="(.+)"/.exec(contentDisposition);
+    if (matches && matches[1]) {
+      filename = matches[1];
+    }
+  }
+
+  // Create blob and trigger download
+  const blob = await response.blob();
+  const blobUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = blobUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(blobUrl);
 };
 
 /**
