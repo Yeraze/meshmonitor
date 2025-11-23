@@ -75,8 +75,9 @@ export const exportPackets = async (filters?: PacketFilters): Promise<void> => {
     params.append('since', filters.since.toString());
   }
 
-  // Trigger browser download by navigating to the export URL
-  const url = `/api/packets/export?${params.toString()}`;
+  // Get base URL and trigger browser download
+  const baseUrl = await api.getBaseUrl();
+  const url = `${baseUrl}/api/packets/export?${params.toString()}`;
   window.location.href = url;
 };
 
