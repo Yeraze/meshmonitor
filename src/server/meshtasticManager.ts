@@ -988,6 +988,25 @@ class MeshtasticManager {
       logger.info(`[CONFIG] Returning NeighborInfo config with enabled=${neighborInfoConfigWithDefaults.enabled}, updateInterval=${neighborInfoConfigWithDefaults.updateInterval}`);
     }
 
+    // Apply Proto3 defaults to position config if it exists
+    if (deviceConfig.position) {
+      const positionConfigWithDefaults = {
+        ...deviceConfig.position,
+        // IMPORTANT: Proto3 omits boolean false and numeric 0 values from JSON serialization
+        // Explicitly include them to ensure frontend receives all values
+        positionBroadcastSecs: deviceConfig.position.positionBroadcastSecs !== undefined ? deviceConfig.position.positionBroadcastSecs : 0,
+        positionBroadcastSmartEnabled: deviceConfig.position.positionBroadcastSmartEnabled !== undefined ? deviceConfig.position.positionBroadcastSmartEnabled : false,
+        fixedPosition: deviceConfig.position.fixedPosition !== undefined ? deviceConfig.position.fixedPosition : false
+      };
+
+      deviceConfig = {
+        ...deviceConfig,
+        position: positionConfigWithDefaults
+      };
+
+      logger.info(`[CONFIG] Returning position config with positionBroadcastSecs=${positionConfigWithDefaults.positionBroadcastSecs}, positionBroadcastSmartEnabled=${positionConfigWithDefaults.positionBroadcastSmartEnabled}, fixedPosition=${positionConfigWithDefaults.fixedPosition}`);
+    }
+
     return {
       deviceConfig,
       moduleConfig,
