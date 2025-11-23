@@ -480,6 +480,14 @@ apiRouter.get('/health', (_req, res) => {
   });
 });
 
+// Server info endpoint (returns timezone and other server configuration)
+apiRouter.get('/server-info', (_req, res) => {
+  res.json({
+    timezone: env.timezone,
+    timezoneProvided: env.timezoneProvided
+  });
+});
+
 // Debug endpoint for IP detection (development only)
 // Helps diagnose reverse proxy and rate limiting issues
 if (!env.isProduction) {
