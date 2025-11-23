@@ -169,10 +169,17 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
       if (isInitialLoad || response.packets[0]?.id !== rawPackets[0]?.id) {
         // Preserve existing packets beyond the first batch when polling
         if (!isInitialLoad && currentPacketCount > PACKET_FETCH_LIMIT) {
-          // Merge new packets with existing ones, avoiding duplicates
-          const existingPacketIds = new Set(response.packets.map(p => p.id));
-          const preservedPackets = rawPackets.slice(PACKET_FETCH_LIMIT).filter(p => !existingPacketIds.has(p.id));
-          setRawPackets([...response.packets, ...preservedPackets]);
+          // The new response contains positions 0-99 (most recent packets)
+          // We want to keep our existing packets from position 100+ that aren't in the new batch
+
+          // Remove duplicates: filter out any of our existing packets that appear in the new batch
+          const newPacketIds = new Set(response.packets.map(p => p.id));
+          const oldPacketsWithoutDuplicates = rawPackets.filter(p => !newPacketIds.has(p.id));
+
+          // We already have positions 0-99 from the server (response.packets)
+          // So we want to keep old packets starting from what would be position 100
+          // Since we removed duplicates, we take everything from the old list
+          setRawPackets([...response.packets, ...oldPacketsWithoutDuplicates]);
         } else {
           setRawPackets(response.packets);
           setHasMore(response.packets.length >= PACKET_FETCH_LIMIT);
