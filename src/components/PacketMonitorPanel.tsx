@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { PacketLog, PacketFilters } from '../types/packet';
 import { getPackets, clearPackets, exportPackets } from '../services/packetApi';
 import { useAuth } from '../contexts/AuthContext';
@@ -12,6 +13,7 @@ import './PacketMonitorPanel.css';
 interface PacketMonitorPanelProps {
   onClose: () => void;
   onNodeClick?: (nodeId: string) => void;
+  isPopout?: boolean;
 }
 
 // Constants
@@ -29,7 +31,7 @@ const safeJsonParse = <T,>(value: string | null, fallback: T): T => {
   }
 };
 
-const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNodeClick }) => {
+const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNodeClick, isPopout = false }) => {
   const { hasPermission, authStatus } = useAuth();
   const { timeFormat, dateFormat } = useSettings();
   const { deviceInfo } = useData();
@@ -51,6 +53,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
   );
   const tableRef = useRef<HTMLDivElement>(null);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const parentRef = useRef<HTMLDivElement>(null);
 
   // Check permissions - user needs to have at least one channel permission and messages permission
   const hasAnyChannelPermission = () => {
@@ -78,6 +81,14 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     }
     return rawPackets;
   }, [rawPackets, hideOwnPackets, ownNodeNum]);
+
+  // Virtual scrolling setup
+  const rowVirtualizer = useVirtualizer({
+    count: packets.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 36, // Estimated row height in pixels
+    overscan: 10, // Number of items to render outside of visible area
+  });
 
   // Persist filter settings to localStorage
   useEffect(() => {
@@ -227,6 +238,27 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     }
   };
 
+  // Pop-out window handler
+  const handlePopout = () => {
+    // Open same URL in new window with packet monitor open
+    const currentUrl = new URL(window.location.href);
+    currentUrl.searchParams.set('packetMonitor', 'popout');
+
+    const popoutWindow = window.open(
+      currentUrl.toString(),
+      'PacketMonitor',
+      'width=1200,height=800,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes'
+    );
+
+    if (!popoutWindow) {
+      alert('Pop-up blocked! Please allow pop-ups for this site.');
+      return;
+    }
+
+    // Close the panel in main window
+    onClose();
+  };
+
   if (!canView) {
     return (
       <div className="packet-monitor-panel">
@@ -272,6 +304,15 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
           >
             📥
           </button>
+          {!isPopout && (
+            <button
+              className="control-btn"
+              onClick={handlePopout}
+              title="Open in new window"
+            >
+              ⧉
+            </button>
+          )}
           {authStatus?.user?.isAdmin && (
             <button className="control-btn" onClick={handleClear} title="Clear all packets">
               🗑️
@@ -326,87 +367,119 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
         </div>
       )}
 
-      <div className="packet-table-container" ref={tableRef}>
+      <div className="packet-table-container" ref={parentRef}>
         {loading ? (
           <div className="loading">Loading packets...</div>
         ) : packets.length === 0 ? (
           <div className="no-packets">No packets logged yet</div>
         ) : (
-          <table className="packet-table">
-            <thead>
-              <tr>
-                <th>Time</th>
-                <th>From</th>
-                <th>To</th>
-                <th>Type</th>
-                <th>Ch</th>
-                <th>SNR</th>
-                <th>Hops</th>
-                <th>Size</th>
-                <th>Content</th>
-              </tr>
-            </thead>
-            <tbody>
-              {packets.map((packet) => {
-                const hops = calculateHops(packet);
-                return (
-                  <tr
-                    key={packet.id}
-                    onClick={() => setSelectedPacket(packet)}
-                    className={selectedPacket?.id === packet.id ? 'selected' : ''}
-                  >
-                    <td className="timestamp" title={formatDateTime(new Date(packet.timestamp * 1000), timeFormat, dateFormat)}>
-                      {formatTimestamp(packet.timestamp)}
-                    </td>
-                    <td className="from-node" title={packet.from_node_longName || packet.from_node_id || ''}>
-                      {packet.from_node_id && onNodeClick ? (
-                        <span
-                          className="node-id-link"
-                          onClick={(e) => handleNodeClick(packet.from_node_id!, e)}
+          <div style={{ width: '100%' }}>
+            <table className="packet-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>From</th>
+                  <th>To</th>
+                  <th>Type</th>
+                  <th>Ch</th>
+                  <th>SNR</th>
+                  <th>Hops</th>
+                  <th>Size</th>
+                  <th>Content</th>
+                </tr>
+              </thead>
+            </table>
+            <div
+              style={{
+                height: `${rowVirtualizer.getTotalSize()}px`,
+                width: '100%',
+                position: 'relative',
+              }}
+            >
+              <table className="packet-table">
+                <colgroup>
+                  <col />
+                  <col />
+                  <col />
+                  <col />
+                  <col />
+                  <col />
+                  <col />
+                  <col />
+                  <col />
+                </colgroup>
+                <tbody>
+                  {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                    const packet = packets[virtualRow.index];
+                    const hops = calculateHops(packet);
+                    return (
+                      <tr
+                        key={packet.id}
+                        onClick={() => setSelectedPacket(packet)}
+                        className={selectedPacket?.id === packet.id ? 'selected' : ''}
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          width: '100%',
+                          height: `${virtualRow.size}px`,
+                          transform: `translateY(${virtualRow.start}px)`,
+                        }}
+                      >
+                        <td className="timestamp" title={formatDateTime(new Date(packet.timestamp * 1000), timeFormat, dateFormat)}>
+                          {formatTimestamp(packet.timestamp)}
+                        </td>
+                        <td className="from-node" title={packet.from_node_longName || packet.from_node_id || ''}>
+                          {packet.from_node_id && onNodeClick ? (
+                            <span
+                              className="node-id-link"
+                              onClick={(e) => handleNodeClick(packet.from_node_id!, e)}
+                            >
+                              {truncateLongName(packet.from_node_longName) || packet.from_node_id}
+                            </span>
+                          ) : (
+                            truncateLongName(packet.from_node_longName) || packet.from_node_id || packet.from_node
+                          )}
+                        </td>
+                        <td className="to-node" title={packet.to_node_longName || packet.to_node_id || ''}>
+                          {packet.to_node_id === '!ffffffff' ? (
+                            'Broadcast'
+                          ) : packet.to_node_id && onNodeClick ? (
+                            <span
+                              className="node-id-link"
+                              onClick={(e) => handleNodeClick(packet.to_node_id!, e)}
+                            >
+                              {truncateLongName(packet.to_node_longName) || packet.to_node_id}
+                            </span>
+                          ) : (
+                            truncateLongName(packet.to_node_longName) || packet.to_node_id || packet.to_node || 'N/A'
+                          )}
+                        </td>
+                        <td
+                          className="portnum"
+                          style={{ color: getPortnumColor(packet.portnum) }}
+                          title={packet.portnum_name || ''}
                         >
-                          {truncateLongName(packet.from_node_longName) || packet.from_node_id}
-                        </span>
-                      ) : (
-                        truncateLongName(packet.from_node_longName) || packet.from_node_id || packet.from_node
-                      )}
-                    </td>
-                    <td className="to-node" title={packet.to_node_longName || packet.to_node_id || ''}>
-                      {packet.to_node_id === '!ffffffff' ? (
-                        'Broadcast'
-                      ) : packet.to_node_id && onNodeClick ? (
-                        <span
-                          className="node-id-link"
-                          onClick={(e) => handleNodeClick(packet.to_node_id!, e)}
-                        >
-                          {truncateLongName(packet.to_node_longName) || packet.to_node_id}
-                        </span>
-                      ) : (
-                        truncateLongName(packet.to_node_longName) || packet.to_node_id || packet.to_node || 'N/A'
-                      )}
-                    </td>
-                    <td
-                      className="portnum"
-                      style={{ color: getPortnumColor(packet.portnum) }}
-                      title={packet.portnum_name || ''}
-                    >
-                      {packet.portnum_name || packet.portnum}
-                    </td>
-                    <td className="channel">{packet.channel ?? 'N/A'}</td>
-                    <td className="snr">{packet.snr !== null && packet.snr !== undefined ? `${packet.snr.toFixed(1)}` : 'N/A'}</td>
-                    <td className="hops">{hops !== null ? hops : 'N/A'}</td>
-                    <td className="size">{packet.payload_size ?? 'N/A'}</td>
-                    <td className="content">
-                      {packet.encrypted ? (
-                        <span className="encrypted-indicator">🔒 &lt;ENCRYPTED&gt;</span>
-                      ) : (
-                        <span className="content-preview">{packet.payload_preview || '[No preview]'}</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                          {packet.portnum_name || packet.portnum}
+                        </td>
+                        <td className="channel">{packet.channel ?? 'N/A'}</td>
+                        <td className="snr">{packet.snr !== null && packet.snr !== undefined ? `${packet.snr.toFixed(1)}` : 'N/A'}</td>
+                        <td className="hops">{hops !== null ? hops : 'N/A'}</td>
+                        <td className="size">{packet.payload_size ?? 'N/A'}</td>
+                        <td className="content">
+                          {packet.encrypted ? (
+                            <span className="encrypted-indicator">🔒 &lt;ENCRYPTED&gt;</span>
+                          ) : (
+                            <span className="content-preview">{packet.payload_preview || '[No preview]'}</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
         )}
       </div>
 
