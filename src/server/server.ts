@@ -13,6 +13,7 @@ import { VirtualNodeServer } from './virtualNodeServer.js';
 (global as any).meshtasticManager = meshtasticManager;
 import { createRequire } from 'module';
 import { logger } from '../utils/logger.js';
+import { normalizeTriggerPatterns } from '../utils/autoResponderUtils.js';
 import { getSessionConfig } from './auth/sessionConfig.js';
 import { initializeOIDC } from './auth/oidcAuth.js';
 import {
@@ -3234,6 +3235,14 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
             return res.status(400).json({ error: 'Each trigger must have id, trigger, responseType, and response fields' });
           }
 
+          // Validate trigger is string or non-empty array
+          if (Array.isArray(trigger.trigger) && trigger.trigger.length === 0) {
+            return res.status(400).json({ error: 'Trigger array cannot be empty' });
+          }
+          if (!Array.isArray(trigger.trigger) && typeof trigger.trigger !== 'string') {
+            return res.status(400).json({ error: 'Trigger must be a string or array of strings' });
+          }
+
           if (trigger.responseType !== 'text' && trigger.responseType !== 'http' && trigger.responseType !== 'script') {
             return res.status(400).json({ error: 'responseType must be "text", "http", or "script"' });
           }
@@ -4505,45 +4514,8 @@ apiRouter.post('/scripts/test', requirePermission('settings', 'read'), async (re
     }
 
     // Extract parameters from test message using trigger pattern
-    // (Reuse pattern matching logic from meshtasticManager)
-    const splitTriggerPatterns = (triggerStr: string): string[] => {
-      if (!triggerStr.trim()) {
-        return [];
-      }
-      
-      const patterns: string[] = [];
-      let currentPattern = '';
-      let braceDepth = 0;
-      
-      for (let i = 0; i < triggerStr.length; i++) {
-        const char = triggerStr[i];
-        
-        if (char === '{') {
-          braceDepth++;
-          currentPattern += char;
-        } else if (char === '}') {
-          braceDepth--;
-          currentPattern += char;
-        } else if (char === ',' && braceDepth === 0) {
-          const trimmed = currentPattern.trim();
-          if (trimmed) {
-            patterns.push(trimmed);
-          }
-          currentPattern = '';
-        } else {
-          currentPattern += char;
-        }
-      }
-      
-      const trimmed = currentPattern.trim();
-      if (trimmed) {
-        patterns.push(trimmed);
-      }
-      
-      return patterns;
-    };
-
-    const patterns = splitTriggerPatterns(trigger);
+    // Handle both string and array types for trigger
+    const patterns = normalizeTriggerPatterns(trigger);
     let matchedPattern: string | null = null;
     let extractedParams: Record<string, string> = {};
 
@@ -5191,7 +5163,23 @@ const server = app.listen(PORT, () => {
     // Log scripts directory location in development
     const scriptsDir = getScriptsDirectory();
     logger.info(`📜 Auto-responder scripts directory: ${scriptsDir}`);
-    logger.info(`   Place your test scripts (.js, .mjs, .py, .sh) in this directory`);
+
+    // Check if directory has any scripts
+    try {
+      const files = fs.readdirSync(scriptsDir);
+      const scriptFiles = files.filter(file => {
+        const ext = path.extname(file).toLowerCase();
+        return ['.js', '.mjs', '.py', '.sh'].includes(ext);
+      });
+
+      if (scriptFiles.length > 0) {
+        logger.info(`   Found ${scriptFiles.length} script(s): ${scriptFiles.join(', ')}`);
+      } else {
+        logger.info(`   No scripts found. Place your test scripts (.js, .mjs, .py, .sh) in this directory`);
+      }
+    } catch (error) {
+      logger.warn(`   Could not read scripts directory: ${error}`);
+    }
   }
 });
 

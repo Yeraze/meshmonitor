@@ -9,6 +9,7 @@ import { getEnvironmentConfig } from './config/environment.js';
 import { notificationService } from './services/notificationService.js';
 import packetLogService from './services/packetLogService.js';
 import { messageQueueService } from './messageQueueService.js';
+import { normalizeTriggerPatterns } from '../utils/autoResponderUtils.js';
 import { createRequire } from 'module';
 import * as cron from 'node-cron';
 import fs from 'fs';
@@ -4239,6 +4240,8 @@ class MeshtasticManager {
       return null;
     }
     
+    logger.debug(`📂 Resolved script path: ${scriptPath} -> ${normalizedResolved} (exists: ${fs.existsSync(normalizedResolved)})`);
+    
     return normalizedResolved;
   }
 
@@ -4302,47 +4305,8 @@ class MeshtasticManager {
           }
         }
 
-        // Split trigger into individual patterns (comma-separated, but not inside braces)
-        const splitTriggerPatterns = (triggerStr: string): string[] => {
-          if (!triggerStr.trim()) {
-            return [];
-          }
-          
-          const patterns: string[] = [];
-          let currentPattern = '';
-          let braceDepth = 0;
-          
-          for (let i = 0; i < triggerStr.length; i++) {
-            const char = triggerStr[i];
-            
-            if (char === '{') {
-              braceDepth++;
-              currentPattern += char;
-            } else if (char === '}') {
-              braceDepth--;
-              currentPattern += char;
-            } else if (char === ',' && braceDepth === 0) {
-              // Only split on commas that are outside braces
-              const trimmed = currentPattern.trim();
-              if (trimmed) {
-                patterns.push(trimmed);
-              }
-              currentPattern = '';
-            } else {
-              currentPattern += char;
-            }
-          }
-          
-          // Add the last pattern
-          const trimmed = currentPattern.trim();
-          if (trimmed) {
-            patterns.push(trimmed);
-          }
-          
-          return patterns;
-        };
-
-        const patterns = splitTriggerPatterns(trigger.trigger);
+        // Handle both string and array types for trigger.trigger
+        const patterns = normalizeTriggerPatterns(trigger.trigger);
         let matchedPattern: string | null = null;
         let extractedParams: Record<string, string> = {};
 
@@ -4539,8 +4503,12 @@ class MeshtasticManager {
             // Check if file exists
             if (!fs.existsSync(resolvedPath)) {
               logger.error(`🚫 Script file not found: ${resolvedPath}`);
+              logger.error(`   Working directory: ${process.cwd()}`);
+              logger.error(`   Scripts should be in: ${path.dirname(resolvedPath)}`);
               return;
             }
+
+            logger.info(`🔧 Executing script: ${scriptPath} -> ${resolvedPath}`);
 
             // Determine interpreter based on file extension
             const ext = scriptPath.split('.').pop()?.toLowerCase();
@@ -4566,8 +4534,6 @@ class MeshtasticManager {
                 return;
             }
 
-            logger.debug(`🔧 Executing script: ${resolvedPath} with ${interpreter}`);
-
             try {
               const { execFile } = await import('child_process');
               const { promisify } = await import('util');
@@ -4579,7 +4545,8 @@ class MeshtasticManager {
                 MESSAGE: messageText,
                 FROM_NODE: String(fromNum),
                 PACKET_ID: String(packetId),
-                TRIGGER: trigger.trigger,
+                TRIGGER: Array.isArray(trigger.trigger) ? trigger.trigger.join(', ') : trigger.trigger,
+                MATCHED_PATTERN: matchedPattern || '',
               };
 
               // Add extracted parameters as PARAM_* environment variables
