@@ -165,6 +165,10 @@
   font-size: 12px;
 }
 
+.packet-table-fixed {
+  table-layout: fixed;
+}
+
 .packet-table thead {
   position: sticky;
   top: 0;

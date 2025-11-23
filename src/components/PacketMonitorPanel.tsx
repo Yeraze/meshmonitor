@@ -13,7 +13,6 @@ import './PacketMonitorPanel.css';
 interface PacketMonitorPanelProps {
   onClose: () => void;
   onNodeClick?: (nodeId: string) => void;
-  isPopout?: boolean;
 }
 
 // Constants
@@ -31,7 +30,7 @@ const safeJsonParse = <T,>(value: string | null, fallback: T): T => {
   }
 };
 
-const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNodeClick, isPopout = false }) => {
+const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNodeClick }) => {
   const { hasPermission, authStatus } = useAuth();
   const { timeFormat, dateFormat } = useSettings();
   const { deviceInfo } = useData();
@@ -238,27 +237,6 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     }
   };
 
-  // Pop-out window handler
-  const handlePopout = () => {
-    // Open same URL in new window with packet monitor open
-    const currentUrl = new URL(window.location.href);
-    currentUrl.searchParams.set('packetMonitor', 'popout');
-
-    const popoutWindow = window.open(
-      currentUrl.toString(),
-      'PacketMonitor',
-      'width=1200,height=800,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes'
-    );
-
-    if (!popoutWindow) {
-      alert('Pop-up blocked! Please allow pop-ups for this site.');
-      return;
-    }
-
-    // Close the panel in main window
-    onClose();
-  };
-
   if (!canView) {
     return (
       <div className="packet-monitor-panel">
@@ -304,15 +282,6 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
           >
             📥
           </button>
-          {!isPopout && (
-            <button
-              className="control-btn"
-              onClick={handlePopout}
-              title="Open in new window"
-            >
-              ⧉
-            </button>
-          )}
           {authStatus?.user?.isAdmin && (
             <button className="control-btn" onClick={handleClear} title="Clear all packets">
               🗑️
@@ -374,7 +343,18 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
           <div className="no-packets">No packets logged yet</div>
         ) : (
           <div style={{ width: '100%' }}>
-            <table className="packet-table">
+            <table className="packet-table packet-table-fixed">
+              <colgroup>
+                <col style={{ width: '110px' }} />
+                <col style={{ width: '140px' }} />
+                <col style={{ width: '140px' }} />
+                <col style={{ width: '120px' }} />
+                <col style={{ width: '50px' }} />
+                <col style={{ width: '60px' }} />
+                <col style={{ width: '60px' }} />
+                <col style={{ width: '60px' }} />
+                <col style={{ minWidth: '200px' }} />
+              </colgroup>
               <thead>
                 <tr>
                   <th>Time</th>
@@ -396,17 +376,17 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                 position: 'relative',
               }}
             >
-              <table className="packet-table">
+              <table className="packet-table packet-table-fixed">
                 <colgroup>
-                  <col />
-                  <col />
-                  <col />
-                  <col />
-                  <col />
-                  <col />
-                  <col />
-                  <col />
-                  <col />
+                  <col style={{ width: '110px' }} />
+                  <col style={{ width: '140px' }} />
+                  <col style={{ width: '140px' }} />
+                  <col style={{ width: '120px' }} />
+                  <col style={{ width: '50px' }} />
+                  <col style={{ width: '60px' }} />
+                  <col style={{ width: '60px' }} />
+                  <col style={{ width: '60px' }} />
+                  <col style={{ minWidth: '200px' }} />
                 </colgroup>
                 <tbody>
                   {rowVirtualizer.getVirtualItems().map((virtualRow) => {
