@@ -640,6 +640,30 @@ class MeshtasticManager {
             }
           }
 
+          // Apply Proto3 defaults to position config
+          if (parsed.data.position) {
+            logger.info(`📊 Raw Position config from device:`, JSON.stringify(parsed.data.position, null, 2));
+
+            // Ensure boolean fields have explicit values (Proto3 omits false)
+            if (parsed.data.position.positionBroadcastSmartEnabled === undefined) {
+              parsed.data.position.positionBroadcastSmartEnabled = false;
+              logger.info('📊 Set positionBroadcastSmartEnabled to false (was undefined - Proto3 default)');
+            }
+
+            if (parsed.data.position.fixedPosition === undefined) {
+              parsed.data.position.fixedPosition = false;
+              logger.info('📊 Set fixedPosition to false (was undefined - Proto3 default)');
+            }
+
+            // Ensure numeric fields have explicit values (Proto3 omits 0)
+            if (parsed.data.position.positionBroadcastSecs === undefined) {
+              parsed.data.position.positionBroadcastSecs = 0;
+              logger.info('📊 Set positionBroadcastSecs to 0 (was undefined - Proto3 default)');
+            }
+
+            logger.info(`📊 Position config after Proto3 defaults: positionBroadcastSecs=${parsed.data.position.positionBroadcastSecs}, positionBroadcastSmartEnabled=${parsed.data.position.positionBroadcastSmartEnabled}, fixedPosition=${parsed.data.position.fixedPosition}`);
+          }
+
           // Merge the actual device configuration (don't overwrite)
           this.actualDeviceConfig = { ...this.actualDeviceConfig, ...parsed.data };
           logger.info('📊 Merged actualDeviceConfig now has keys:', Object.keys(this.actualDeviceConfig));
