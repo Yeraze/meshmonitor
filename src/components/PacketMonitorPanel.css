@@ -165,6 +165,10 @@
   font-size: 12px;
 }
 
+.packet-table-fixed {
+  table-layout: fixed;
+}
+
 .packet-table thead {
   position: sticky;
   top: 0;
@@ -201,6 +205,14 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.packet-table .packet-number {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-family: 'Courier New', monospace;
+  font-weight: 600;
+  padding-right: 12px;
 }
 
 .packet-table .timestamp {

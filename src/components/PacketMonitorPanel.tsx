@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { PacketLog, PacketFilters } from '../types/packet';
 import { getPackets, clearPackets, exportPackets } from '../services/packetApi';
 import { useAuth } from '../contexts/AuthContext';
@@ -36,6 +37,8 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
   const [rawPackets, setRawPackets] = useState<PacketLog[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [autoScroll, setAutoScroll] = useState(() =>
     safeJsonParse(localStorage.getItem('packetMonitor.autoScroll'), true)
   );
@@ -51,6 +54,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
   );
   const tableRef = useRef<HTMLDivElement>(null);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const parentRef = useRef<HTMLDivElement>(null);
 
   // Check permissions - user needs to have at least one channel permission and messages permission
   const hasAnyChannelPermission = () => {
@@ -79,6 +83,51 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     return rawPackets;
   }, [rawPackets, hideOwnPackets, ownNodeNum]);
 
+  // Virtual scrolling setup with infinite loading
+  const rowVirtualizer = useVirtualizer({
+    count: hasMore ? packets.length + 1 : packets.length, // Add 1 for loading indicator
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 36, // Estimated row height in pixels
+    overscan: 10, // Number of items to render outside of visible area
+  });
+
+  // Load more packets when scrolling near the end
+  useEffect(() => {
+    const [lastItem] = [...rowVirtualizer.getVirtualItems()].reverse();
+
+    if (!lastItem) return;
+
+    if (
+      lastItem.index >= packets.length - 1 &&
+      hasMore &&
+      !loadingMore &&
+      canView
+    ) {
+      loadMore();
+    }
+  }, [rowVirtualizer.getVirtualItems(), hasMore, loadingMore, packets.length, canView]);
+
+  // Load more packets function
+  const loadMore = async () => {
+    if (loadingMore || !hasMore) return;
+
+    setLoadingMore(true);
+    try {
+      const response = await getPackets(rawPackets.length, PACKET_FETCH_LIMIT, filters);
+
+      if (response.packets.length === 0) {
+        setHasMore(false);
+      } else {
+        setRawPackets(prev => [...prev, ...response.packets]);
+        setTotal(response.total);
+      }
+    } catch (error) {
+      console.error('Failed to load more packets:', error);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
   // Persist filter settings to localStorage
   useEffect(() => {
     localStorage.setItem('packetMonitor.filters', JSON.stringify(filters));
@@ -102,28 +151,53 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     return longName.length > maxLength ? `${longName.substring(0, maxLength)}...` : longName;
   };
 
-  // Fetch packets
+  // Fetch packets (initial load or refresh from polling)
   const fetchPackets = useCallback(async () => {
     if (!canView) return;
 
     try {
-      // Fetch most recent packets for display (limit to PACKET_FETCH_LIMIT)
-      // Full export is handled server-side via /api/packets/export endpoint
+      // When polling updates, only fetch the first batch to check for new packets
+      // This prevents resetting the scroll position
+      const currentPacketCount = rawPackets.length;
+      const isInitialLoad = currentPacketCount === 0;
+
+      // Fetch most recent packets
       const response = await getPackets(0, PACKET_FETCH_LIMIT, filters);
 
-      setRawPackets(response.packets);
-      setTotal(response.total);
+      // Only update if this is initial load OR if there are new packets
+      // This prevents unnecessary state updates that could reset scroll position
+      if (isInitialLoad || response.packets[0]?.id !== rawPackets[0]?.id) {
+        // Preserve existing packets beyond the first batch when polling
+        if (!isInitialLoad && currentPacketCount > PACKET_FETCH_LIMIT) {
+          // The new response contains positions 0-99 (most recent packets)
+          // We want to keep our existing packets from position 100+ that aren't in the new batch
+
+          // Remove duplicates: filter out any of our existing packets that appear in the new batch
+          const newPacketIds = new Set(response.packets.map(p => p.id));
+          const oldPacketsWithoutDuplicates = rawPackets.filter(p => !newPacketIds.has(p.id));
+
+          // We already have positions 0-99 from the server (response.packets)
+          // So we want to keep old packets starting from what would be position 100
+          // Since we removed duplicates, we take everything from the old list
+          setRawPackets([...response.packets, ...oldPacketsWithoutDuplicates]);
+        } else {
+          setRawPackets(response.packets);
+          setHasMore(response.packets.length >= PACKET_FETCH_LIMIT);
+        }
+        setTotal(response.total);
+      }
+
       setLoading(false);
 
-      // Auto-scroll to bottom if enabled
-      if (autoScroll && tableRef.current) {
-        tableRef.current.scrollTop = 0; // Scroll to top since newest packets are first
+      // Auto-scroll to top only on initial load if enabled
+      if (autoScroll && tableRef.current && isInitialLoad) {
+        tableRef.current.scrollTop = 0;
       }
     } catch (error) {
       console.error('Failed to fetch packets:', error);
       setLoading(false);
     }
-  }, [canView, filters, autoScroll]);
+  }, [canView, filters, autoScroll, rawPackets]);
 
   // Initial fetch and polling
   useEffect(() => {
@@ -227,6 +301,21 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     }
   };
 
+  // Pop-out to new window
+  const handlePopout = () => {
+    try {
+      // Get base URL from <base> tag
+      const baseElement = document.querySelector('base');
+      const baseHref = baseElement?.getAttribute('href') || '/';
+      const basename = baseHref === '/' ? '' : baseHref.replace(/\/$/, '');
+
+      const popoutUrl = `${basename}/packet-monitor`;
+      window.open(popoutUrl, '_blank', 'width=1200,height=800');
+    } catch (error) {
+      console.error('Failed to open pop-out window:', error);
+    }
+  };
+
   if (!canView) {
     return (
       <div className="packet-monitor-panel">
@@ -277,6 +366,13 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
               🗑️
             </button>
           )}
+          <button
+            className="control-btn"
+            onClick={handlePopout}
+            title="Pop out to new window"
+          >
+            ⧉
+          </button>
           <button className="close-btn" onClick={onClose}>×</button>
         </div>
       </div>
@@ -326,87 +422,162 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
         </div>
       )}
 
-      <div className="packet-table-container" ref={tableRef}>
+      <div className="packet-table-container" ref={parentRef}>
         {loading ? (
           <div className="loading">Loading packets...</div>
         ) : packets.length === 0 ? (
           <div className="no-packets">No packets logged yet</div>
         ) : (
-          <table className="packet-table">
-            <thead>
-              <tr>
-                <th>Time</th>
-                <th>From</th>
-                <th>To</th>
-                <th>Type</th>
-                <th>Ch</th>
-                <th>SNR</th>
-                <th>Hops</th>
-                <th>Size</th>
-                <th>Content</th>
-              </tr>
-            </thead>
-            <tbody>
-              {packets.map((packet) => {
-                const hops = calculateHops(packet);
-                return (
-                  <tr
-                    key={packet.id}
-                    onClick={() => setSelectedPacket(packet)}
-                    className={selectedPacket?.id === packet.id ? 'selected' : ''}
-                  >
-                    <td className="timestamp" title={formatDateTime(new Date(packet.timestamp * 1000), timeFormat, dateFormat)}>
-                      {formatTimestamp(packet.timestamp)}
-                    </td>
-                    <td className="from-node" title={packet.from_node_longName || packet.from_node_id || ''}>
-                      {packet.from_node_id && onNodeClick ? (
-                        <span
-                          className="node-id-link"
-                          onClick={(e) => handleNodeClick(packet.from_node_id!, e)}
+          <div style={{ width: '100%' }}>
+            <table className="packet-table packet-table-fixed">
+              <colgroup>
+                <col style={{ width: '60px' }} />
+                <col style={{ width: '110px' }} />
+                <col style={{ width: '140px' }} />
+                <col style={{ width: '140px' }} />
+                <col style={{ width: '120px' }} />
+                <col style={{ width: '50px' }} />
+                <col style={{ width: '60px' }} />
+                <col style={{ width: '60px' }} />
+                <col style={{ width: '60px' }} />
+                <col style={{ minWidth: '200px' }} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th style={{ width: '60px' }}>#</th>
+                  <th style={{ width: '110px' }}>Time</th>
+                  <th style={{ width: '140px' }}>From</th>
+                  <th style={{ width: '140px' }}>To</th>
+                  <th style={{ width: '120px' }}>Type</th>
+                  <th style={{ width: '50px' }}>Ch</th>
+                  <th style={{ width: '60px' }}>SNR</th>
+                  <th style={{ width: '60px' }}>Hops</th>
+                  <th style={{ width: '60px' }}>Size</th>
+                  <th style={{ minWidth: '200px' }}>Content</th>
+                </tr>
+              </thead>
+            </table>
+            <div
+              style={{
+                height: `${rowVirtualizer.getTotalSize()}px`,
+                width: '100%',
+                position: 'relative',
+              }}
+            >
+              <table className="packet-table packet-table-fixed">
+                <colgroup>
+                  <col style={{ width: '60px' }} />
+                  <col style={{ width: '110px' }} />
+                  <col style={{ width: '140px' }} />
+                  <col style={{ width: '140px' }} />
+                  <col style={{ width: '120px' }} />
+                  <col style={{ width: '50px' }} />
+                  <col style={{ width: '60px' }} />
+                  <col style={{ width: '60px' }} />
+                  <col style={{ width: '60px' }} />
+                  <col style={{ minWidth: '200px' }} />
+                </colgroup>
+                <tbody>
+                  {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                    const isLoaderRow = virtualRow.index > packets.length - 1;
+                    const packet = packets[virtualRow.index];
+
+                    if (isLoaderRow) {
+                      return (
+                        <tr
+                          key="loader"
+                          style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            width: '100%',
+                            height: `${virtualRow.size}px`,
+                            transform: `translateY(${virtualRow.start}px)`,
+                            display: 'table',
+                            tableLayout: 'fixed',
+                          }}
                         >
-                          {truncateLongName(packet.from_node_longName) || packet.from_node_id}
-                        </span>
-                      ) : (
-                        truncateLongName(packet.from_node_longName) || packet.from_node_id || packet.from_node
-                      )}
-                    </td>
-                    <td className="to-node" title={packet.to_node_longName || packet.to_node_id || ''}>
-                      {packet.to_node_id === '!ffffffff' ? (
-                        'Broadcast'
-                      ) : packet.to_node_id && onNodeClick ? (
-                        <span
-                          className="node-id-link"
-                          onClick={(e) => handleNodeClick(packet.to_node_id!, e)}
+                          <td colSpan={10} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+                            Loading more packets...
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    const hops = calculateHops(packet);
+                    return (
+                      <tr
+                        key={packet.id}
+                        onClick={() => setSelectedPacket(packet)}
+                        className={selectedPacket?.id === packet.id ? 'selected' : ''}
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          width: '100%',
+                          height: `${virtualRow.size}px`,
+                          transform: `translateY(${virtualRow.start}px)`,
+                          display: 'table',
+                          tableLayout: 'fixed',
+                        }}
+                      >
+                        <td className="packet-number" style={{ width: '60px', textAlign: 'right' }}>
+                          {virtualRow.index + 1}
+                        </td>
+                        <td className="timestamp" style={{ width: '110px' }} title={formatDateTime(new Date(packet.timestamp * 1000), timeFormat, dateFormat)}>
+                          {formatTimestamp(packet.timestamp)}
+                        </td>
+                        <td className="from-node" style={{ width: '140px' }} title={packet.from_node_longName || packet.from_node_id || ''}>
+                          {packet.from_node_id && onNodeClick ? (
+                            <span
+                              className="node-id-link"
+                              onClick={(e) => handleNodeClick(packet.from_node_id!, e)}
+                            >
+                              {truncateLongName(packet.from_node_longName) || packet.from_node_id}
+                            </span>
+                          ) : (
+                            truncateLongName(packet.from_node_longName) || packet.from_node_id || packet.from_node
+                          )}
+                        </td>
+                        <td className="to-node" style={{ width: '140px' }} title={packet.to_node_longName || packet.to_node_id || ''}>
+                          {packet.to_node_id === '!ffffffff' ? (
+                            'Broadcast'
+                          ) : packet.to_node_id && onNodeClick ? (
+                            <span
+                              className="node-id-link"
+                              onClick={(e) => handleNodeClick(packet.to_node_id!, e)}
+                            >
+                              {truncateLongName(packet.to_node_longName) || packet.to_node_id}
+                            </span>
+                          ) : (
+                            truncateLongName(packet.to_node_longName) || packet.to_node_id || packet.to_node || 'N/A'
+                          )}
+                        </td>
+                        <td
+                          className="portnum"
+                          style={{ width: '120px', color: getPortnumColor(packet.portnum) }}
+                          title={packet.portnum_name || ''}
                         >
-                          {truncateLongName(packet.to_node_longName) || packet.to_node_id}
-                        </span>
-                      ) : (
-                        truncateLongName(packet.to_node_longName) || packet.to_node_id || packet.to_node || 'N/A'
-                      )}
-                    </td>
-                    <td
-                      className="portnum"
-                      style={{ color: getPortnumColor(packet.portnum) }}
-                      title={packet.portnum_name || ''}
-                    >
-                      {packet.portnum_name || packet.portnum}
-                    </td>
-                    <td className="channel">{packet.channel ?? 'N/A'}</td>
-                    <td className="snr">{packet.snr !== null && packet.snr !== undefined ? `${packet.snr.toFixed(1)}` : 'N/A'}</td>
-                    <td className="hops">{hops !== null ? hops : 'N/A'}</td>
-                    <td className="size">{packet.payload_size ?? 'N/A'}</td>
-                    <td className="content">
-                      {packet.encrypted ? (
-                        <span className="encrypted-indicator">🔒 &lt;ENCRYPTED&gt;</span>
-                      ) : (
-                        <span className="content-preview">{packet.payload_preview || '[No preview]'}</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                          {packet.portnum_name || packet.portnum}
+                        </td>
+                        <td className="channel" style={{ width: '50px' }}>{packet.channel ?? 'N/A'}</td>
+                        <td className="snr" style={{ width: '60px' }}>{packet.snr !== null && packet.snr !== undefined ? `${packet.snr.toFixed(1)}` : 'N/A'}</td>
+                        <td className="hops" style={{ width: '60px' }}>{hops !== null ? hops : 'N/A'}</td>
+                        <td className="size" style={{ width: '60px' }}>{packet.payload_size ?? 'N/A'}</td>
+                        <td className="content" style={{ minWidth: '200px' }}>
+                          {packet.encrypted ? (
+                            <span className="encrypted-indicator">🔒 &lt;ENCRYPTED&gt;</span>
+                          ) : (
+                            <span className="content-preview">{packet.payload_preview || '[No preview]'}</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
         )}
       </div>
 
