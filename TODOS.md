@@ -54,6 +54,15 @@
 - [ ] Run system tests
 - [ ] Create release (v2.17.0)
 
+#### Bug Fixes
+
+**In Progress:**
+- [ ] Investigate missing /api/server-info endpoint
+  - Frontend expects this endpoint but it returns 404
+  - Error logged in browser console: "GET /meshmonitor/api/server-info 404 (Not Found)"
+  - May be unimplemented or incorrectly routed
+  - Does not affect core functionality but should be resolved
+
 #### Packet Monitor Improvements (#661)
 
 **Completed:**
