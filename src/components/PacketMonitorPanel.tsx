@@ -301,6 +301,21 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     }
   };
 
+  // Pop-out to new window
+  const handlePopout = () => {
+    try {
+      // Get base URL from <base> tag
+      const baseElement = document.querySelector('base');
+      const baseHref = baseElement?.getAttribute('href') || '/';
+      const basename = baseHref === '/' ? '' : baseHref.replace(/\/$/, '');
+
+      const popoutUrl = `${basename}/packet-monitor`;
+      window.open(popoutUrl, '_blank', 'width=1200,height=800');
+    } catch (error) {
+      console.error('Failed to open pop-out window:', error);
+    }
+  };
+
   if (!canView) {
     return (
       <div className="packet-monitor-panel">
@@ -351,6 +366,13 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
               🗑️
             </button>
           )}
+          <button
+            className="control-btn"
+            onClick={handlePopout}
+            title="Pop out to new window"
+          >
+            ⧉
+          </button>
           <button className="close-btn" onClick={onClose}>×</button>
         </div>
       </div>
