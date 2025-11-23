@@ -82,6 +82,7 @@ class MeshtasticManager {
     shortName: string;
     hwModel?: number;
     firmwareVersion?: string;
+    rebootCount?: number;
     isLocked?: boolean;  // Flag to prevent overwrites after initial setup
   } | null = null;
   private actualDeviceConfig: any = null;  // Store actual device config
@@ -577,14 +578,15 @@ class MeshtasticManager {
           // We need to ensure these fields exist with proper defaults
           if (parsed.data.lora) {
             logger.info(`📊 Raw LoRa config from device:`, JSON.stringify(parsed.data.lora, null, 2));
-            logger.info(`📊 usePreset in message: ${parsed.data.lora.usePreset}, typeof: ${typeof parsed.data.lora.usePreset}`);
-            logger.info(`📊 frequencyOffset in message: ${parsed.data.lora.frequencyOffset}, typeof: ${typeof parsed.data.lora.frequencyOffset}`);
-            logger.info(`📊 overrideFrequency in message: ${parsed.data.lora.overrideFrequency}, typeof: ${typeof parsed.data.lora.overrideFrequency}`);
 
             // Ensure boolean fields have explicit values (Proto3 omits false)
             if (parsed.data.lora.usePreset === undefined) {
               parsed.data.lora.usePreset = false;
               logger.info('📊 Set usePreset to false (was undefined - Proto3 default)');
+            }
+            if (parsed.data.lora.sx126xRxBoostedGain === undefined) {
+              parsed.data.lora.sx126xRxBoostedGain = false;
+              logger.info('📊 Set sx126xRxBoostedGain to false (was undefined - Proto3 default)');
             }
 
             // Ensure numeric fields have explicit values (Proto3 omits 0)
@@ -592,10 +594,49 @@ class MeshtasticManager {
               parsed.data.lora.frequencyOffset = 0;
               logger.info('📊 Set frequencyOffset to 0 (was undefined - Proto3 default)');
             }
-
             if (parsed.data.lora.overrideFrequency === undefined) {
               parsed.data.lora.overrideFrequency = 0;
               logger.info('📊 Set overrideFrequency to 0 (was undefined - Proto3 default)');
+            }
+            if (parsed.data.lora.modemPreset === undefined) {
+              parsed.data.lora.modemPreset = 0;
+              logger.info('📊 Set modemPreset to 0 (was undefined - Proto3 default)');
+            }
+            if (parsed.data.lora.channelNum === undefined) {
+              parsed.data.lora.channelNum = 0;
+              logger.info('📊 Set channelNum to 0 (was undefined - Proto3 default)');
+            }
+          }
+
+          // Apply Proto3 defaults to device config
+          if (parsed.data.device) {
+            logger.info(`📊 Raw Device config from device:`, JSON.stringify(parsed.data.device, null, 2));
+
+            // Ensure numeric fields have explicit values (Proto3 omits 0)
+            if (parsed.data.device.nodeInfoBroadcastSecs === undefined) {
+              parsed.data.device.nodeInfoBroadcastSecs = 0;
+              logger.info('📊 Set nodeInfoBroadcastSecs to 0 (was undefined - Proto3 default)');
+            }
+          }
+
+          // Apply Proto3 defaults to position config
+          if (parsed.data.position) {
+            logger.info(`📊 Raw Position config from device:`, JSON.stringify(parsed.data.position, null, 2));
+
+            // Ensure boolean fields have explicit values (Proto3 omits false)
+            if (parsed.data.position.positionBroadcastSmartEnabled === undefined) {
+              parsed.data.position.positionBroadcastSmartEnabled = false;
+              logger.info('📊 Set positionBroadcastSmartEnabled to false (was undefined - Proto3 default)');
+            }
+            if (parsed.data.position.fixedPosition === undefined) {
+              parsed.data.position.fixedPosition = false;
+              logger.info('📊 Set fixedPosition to false (was undefined - Proto3 default)');
+            }
+
+            // Ensure numeric fields have explicit values (Proto3 omits 0)
+            if (parsed.data.position.positionBroadcastSecs === undefined) {
+              parsed.data.position.positionBroadcastSecs = 0;
+              logger.info('📊 Set positionBroadcastSecs to 0 (was undefined - Proto3 default)');
             }
           }
 
@@ -612,6 +653,43 @@ class MeshtasticManager {
         case 'moduleConfig':
           logger.info('⚙️ Received Module Config with keys:', Object.keys(parsed.data));
           logger.debug('⚙️ Received Module Config:', JSON.stringify(parsed.data, null, 2));
+
+          // Apply Proto3 defaults to MQTT config
+          if (parsed.data.mqtt) {
+            logger.info(`📊 Raw MQTT config from device:`, JSON.stringify(parsed.data.mqtt, null, 2));
+
+            // Ensure boolean fields have explicit values (Proto3 omits false)
+            if (parsed.data.mqtt.enabled === undefined) {
+              parsed.data.mqtt.enabled = false;
+              logger.info('📊 Set mqtt.enabled to false (was undefined - Proto3 default)');
+            }
+            if (parsed.data.mqtt.encryptionEnabled === undefined) {
+              parsed.data.mqtt.encryptionEnabled = false;
+              logger.info('📊 Set mqtt.encryptionEnabled to false (was undefined - Proto3 default)');
+            }
+            if (parsed.data.mqtt.jsonEnabled === undefined) {
+              parsed.data.mqtt.jsonEnabled = false;
+              logger.info('📊 Set mqtt.jsonEnabled to false (was undefined - Proto3 default)');
+            }
+          }
+
+          // Apply Proto3 defaults to NeighborInfo config
+          if (parsed.data.neighborInfo) {
+            logger.info(`📊 Raw NeighborInfo config from device:`, JSON.stringify(parsed.data.neighborInfo, null, 2));
+
+            // Ensure boolean fields have explicit values (Proto3 omits false)
+            if (parsed.data.neighborInfo.enabled === undefined) {
+              parsed.data.neighborInfo.enabled = false;
+              logger.info('📊 Set neighborInfo.enabled to false (was undefined - Proto3 default)');
+            }
+
+            // Ensure numeric fields have explicit values (Proto3 omits 0)
+            if (parsed.data.neighborInfo.updateInterval === undefined) {
+              parsed.data.neighborInfo.updateInterval = 0;
+              logger.info('📊 Set neighborInfo.updateInterval to 0 (was undefined - Proto3 default)');
+            }
+          }
+
           // Merge the actual module configuration (don't overwrite)
           this.actualModuleConfig = { ...this.actualModuleConfig, ...parsed.data };
           logger.info('📊 Merged actualModuleConfig now has keys:', Object.keys(this.actualModuleConfig));
@@ -687,9 +765,10 @@ class MeshtasticManager {
             longName: node.longName || 'Unknown',
             shortName: node.shortName || 'UNK',
             hwModel: node.hwModel || undefined,
+            rebootCount: (node as any).rebootCount !== undefined ? (node as any).rebootCount : undefined,
             isLocked: false // Allow updates if MyNodeInfo arrives later
           } as any;
-          logger.debug(`✅ Restored local node info from settings: ${savedNodeId}`);
+          logger.debug(`✅ Restored local node info from settings: ${savedNodeId}, rebootCount: ${(node as any).rebootCount}`);
         } else {
           // Create minimal local node info
           this.localNodeInfo = {
@@ -745,6 +824,7 @@ class MeshtasticManager {
         shortName: existingNode.shortName || 'LOCAL',
         hwModel: existingNode.hwModel || undefined,
         firmwareVersion: (existingNode as any).firmwareVersion || null,
+        rebootCount: myNodeInfo.rebootCount !== undefined ? myNodeInfo.rebootCount : undefined,
         isLocked: true  // Lock it to prevent overwrites
       } as any;
 
@@ -758,7 +838,7 @@ class MeshtasticManager {
         logger.debug(`📱 Updated rebootCount to ${myNodeInfo.rebootCount} for local device: ${existingNode.longName} (${nodeId})`);
       }
 
-      logger.debug(`📱 Using existing node info for local device: ${existingNode.longName} (${nodeId}) - LOCKED`);
+      logger.debug(`📱 Using existing node info for local device: ${existingNode.longName} (${nodeId}) - LOCKED, rebootCount: ${myNodeInfo.rebootCount}`);
     } else {
       // We don't have real node info yet, store basic info and wait for NodeInfo
       const nodeData = {
@@ -779,6 +859,7 @@ class MeshtasticManager {
         shortName: null,  // Will be set when NodeInfo is received
         hwModel: myNodeInfo.hwModel || undefined,
         firmwareVersion: null, // Will be set when DeviceMetadata is received
+        rebootCount: myNodeInfo.rebootCount !== undefined ? myNodeInfo.rebootCount : undefined,
         isLocked: false  // Not locked yet, waiting for complete info
       } as any;
 
@@ -813,15 +894,31 @@ class MeshtasticManager {
   getCurrentConfig(): { deviceConfig: any; moduleConfig: any; localNodeInfo: any } {
     logger.info(`[CONFIG] getCurrentConfig called - hopLimit=${this.actualDeviceConfig?.lora?.hopLimit}`);
 
-    // Apply Proto3 defaults to lora config if it exists
+    // Apply Proto3 defaults to device config if it exists
     let deviceConfig = this.actualDeviceConfig || {};
+    if (deviceConfig.device) {
+      const deviceConfigWithDefaults = {
+        ...deviceConfig.device,
+        // IMPORTANT: Proto3 omits numeric 0 values from JSON serialization
+        nodeInfoBroadcastSecs: deviceConfig.device.nodeInfoBroadcastSecs !== undefined ? deviceConfig.device.nodeInfoBroadcastSecs : 0
+      };
+
+      deviceConfig = {
+        ...deviceConfig,
+        device: deviceConfigWithDefaults
+      };
+    }
+
+    // Apply Proto3 defaults to lora config if it exists
     if (deviceConfig.lora) {
       const loraConfigWithDefaults = {
         ...deviceConfig.lora,
         // IMPORTANT: Proto3 omits boolean false and numeric 0 values from JSON serialization
         // but they're still accessible as properties. Explicitly include them.
         usePreset: deviceConfig.lora.usePreset !== undefined ? deviceConfig.lora.usePreset : false,
+        sx126xRxBoostedGain: deviceConfig.lora.sx126xRxBoostedGain !== undefined ? deviceConfig.lora.sx126xRxBoostedGain : false,
         frequencyOffset: deviceConfig.lora.frequencyOffset !== undefined ? deviceConfig.lora.frequencyOffset : 0,
+        overrideFrequency: deviceConfig.lora.overrideFrequency !== undefined ? deviceConfig.lora.overrideFrequency : 0,
         modemPreset: deviceConfig.lora.modemPreset !== undefined ? deviceConfig.lora.modemPreset : 0,
         channelNum: deviceConfig.lora.channelNum !== undefined ? deviceConfig.lora.channelNum : 0
       };
@@ -831,12 +928,69 @@ class MeshtasticManager {
         lora: loraConfigWithDefaults
       };
 
-      logger.info(`[CONFIG] Returning lora config with usePreset=${loraConfigWithDefaults.usePreset}, spreadFactor=${loraConfigWithDefaults.spreadFactor}, frequencyOffset=${loraConfigWithDefaults.frequencyOffset}`);
+      logger.info(`[CONFIG] Returning lora config with usePreset=${loraConfigWithDefaults.usePreset}, sx126xRxBoostedGain=${loraConfigWithDefaults.sx126xRxBoostedGain}, frequencyOffset=${loraConfigWithDefaults.frequencyOffset}`);
+    }
+
+    // Apply Proto3 defaults to position config if it exists
+    if (deviceConfig.position) {
+      const positionConfigWithDefaults = {
+        ...deviceConfig.position,
+        // IMPORTANT: Proto3 omits boolean false and numeric 0 values from JSON serialization
+        // Explicitly include them to ensure frontend receives all values
+        positionBroadcastSecs: deviceConfig.position.positionBroadcastSecs !== undefined ? deviceConfig.position.positionBroadcastSecs : 0,
+        positionBroadcastSmartEnabled: deviceConfig.position.positionBroadcastSmartEnabled !== undefined ? deviceConfig.position.positionBroadcastSmartEnabled : false,
+        fixedPosition: deviceConfig.position.fixedPosition !== undefined ? deviceConfig.position.fixedPosition : false
+      };
+
+      deviceConfig = {
+        ...deviceConfig,
+        position: positionConfigWithDefaults
+      };
+
+      logger.info(`[CONFIG] Returning position config with positionBroadcastSecs=${positionConfigWithDefaults.positionBroadcastSecs}, positionBroadcastSmartEnabled=${positionConfigWithDefaults.positionBroadcastSmartEnabled}, fixedPosition=${positionConfigWithDefaults.fixedPosition}`);
+    }
+
+    // Apply Proto3 defaults to module config if it exists
+    let moduleConfig = this.actualModuleConfig || {};
+
+    // Apply Proto3 defaults to MQTT module config
+    if (moduleConfig.mqtt) {
+      const mqttConfigWithDefaults = {
+        ...moduleConfig.mqtt,
+        // IMPORTANT: Proto3 omits boolean false values from JSON serialization
+        enabled: moduleConfig.mqtt.enabled !== undefined ? moduleConfig.mqtt.enabled : false,
+        encryptionEnabled: moduleConfig.mqtt.encryptionEnabled !== undefined ? moduleConfig.mqtt.encryptionEnabled : false,
+        jsonEnabled: moduleConfig.mqtt.jsonEnabled !== undefined ? moduleConfig.mqtt.jsonEnabled : false
+      };
+
+      moduleConfig = {
+        ...moduleConfig,
+        mqtt: mqttConfigWithDefaults
+      };
+
+      logger.info(`[CONFIG] Returning MQTT config with enabled=${mqttConfigWithDefaults.enabled}, encryptionEnabled=${mqttConfigWithDefaults.encryptionEnabled}, jsonEnabled=${mqttConfigWithDefaults.jsonEnabled}`);
+    }
+
+    // Apply Proto3 defaults to NeighborInfo module config
+    if (moduleConfig.neighborInfo) {
+      const neighborInfoConfigWithDefaults = {
+        ...moduleConfig.neighborInfo,
+        // IMPORTANT: Proto3 omits boolean false and numeric 0 values from JSON serialization
+        enabled: moduleConfig.neighborInfo.enabled !== undefined ? moduleConfig.neighborInfo.enabled : false,
+        updateInterval: moduleConfig.neighborInfo.updateInterval !== undefined ? moduleConfig.neighborInfo.updateInterval : 0
+      };
+
+      moduleConfig = {
+        ...moduleConfig,
+        neighborInfo: neighborInfoConfigWithDefaults
+      };
+
+      logger.info(`[CONFIG] Returning NeighborInfo config with enabled=${neighborInfoConfigWithDefaults.enabled}, updateInterval=${neighborInfoConfigWithDefaults.updateInterval}`);
     }
 
     return {
       deviceConfig,
-      moduleConfig: this.actualModuleConfig || {},
+      moduleConfig,
       localNodeInfo: this.localNodeInfo
     };
   }

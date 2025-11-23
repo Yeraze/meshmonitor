@@ -98,11 +98,12 @@ export const RebootModal: React.FC<RebootModalProps> = ({ isOpen, onClose }) => 
       setStatus('Waiting for device to apply configuration...');
       console.log('[RebootModal] Device connected, starting configuration polling...');
 
-      // Get initial config to compare against
-      let initialConfig: any = null;
+      // Get initial reboot count to compare against
+      let initialRebootCount: number | undefined;
       try {
-        initialConfig = await apiService.getCurrentConfig();
-        console.log('[RebootModal] Initial config after reboot:', initialConfig?.deviceConfig?.lora?.hopLimit);
+        const initialConfig = await apiService.getCurrentConfig();
+        initialRebootCount = initialConfig?.localNodeInfo?.rebootCount;
+        console.log('[RebootModal] Initial rebootCount:', initialRebootCount);
       } catch (err) {
         console.warn('[RebootModal] Failed to get initial config:', err);
       }
@@ -124,16 +125,15 @@ export const RebootModal: React.FC<RebootModalProps> = ({ isOpen, onClose }) => 
 
           if (aborted) return;
 
-          // Check if config has been updated
+          // Check if reboot count has been updated (increments on each reboot)
           const currentConfig = await apiService.getCurrentConfig();
-          const currentHopLimit = currentConfig?.deviceConfig?.lora?.hopLimit;
-          const initialHopLimit = initialConfig?.deviceConfig?.lora?.hopLimit;
+          const currentRebootCount = currentConfig?.localNodeInfo?.rebootCount;
 
-          console.log(`[RebootModal] Poll ${pollAttempt}: hopLimit=${currentHopLimit} (initial was ${initialHopLimit})`);
+          console.log(`[RebootModal] Poll ${pollAttempt}: rebootCount=${currentRebootCount} (initial was ${initialRebootCount})`);
 
-          // If config changed, we're done
-          if (currentHopLimit !== initialHopLimit && currentHopLimit !== undefined) {
-            console.log(`[RebootModal] ✅ Configuration updated! ${initialHopLimit} → ${currentHopLimit}`);
+          // If reboot count increased, the device has rebooted and config is updated
+          if (currentRebootCount !== undefined && initialRebootCount !== undefined && currentRebootCount > initialRebootCount) {
+            console.log(`[RebootModal] ✅ Device rebooted! rebootCount: ${initialRebootCount} → ${currentRebootCount}`);
             setStatus('Configuration verified!');
             await new Promise(resolve => setTimeout(resolve, 1000));
             configUpdated = true;
