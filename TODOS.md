@@ -56,12 +56,12 @@
 
 #### Bug Fixes
 
-**In Progress:**
-- [ ] Investigate missing /api/server-info endpoint
-  - Frontend expects this endpoint but it returns 404
-  - Error logged in browser console: "GET /meshmonitor/api/server-info 404 (Not Found)"
-  - May be unimplemented or incorrectly routed
-  - Does not affect core functionality but should be resolved
+**Completed:**
+- [x] Implement missing /api/server-info endpoint
+  - Added endpoint to return timezone configuration
+  - Returns { timezone, timezoneProvided } from environment config
+  - Used by InfoTab to display server timezone information
+  - Placed after /api/health endpoint in server.ts
 
 #### Packet Monitor Improvements (#661)
 
