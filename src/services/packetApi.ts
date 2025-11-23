@@ -51,6 +51,36 @@ export const getPacketById = async (id: number): Promise<PacketLog> => {
 };
 
 /**
+ * Export packet logs as JSONL file (server-side generation)
+ */
+export const exportPackets = async (filters?: PacketFilters): Promise<void> => {
+  const params = new URLSearchParams();
+
+  if (filters?.portnum !== undefined) {
+    params.append('portnum', filters.portnum.toString());
+  }
+  if (filters?.from_node !== undefined) {
+    params.append('from_node', filters.from_node.toString());
+  }
+  if (filters?.to_node !== undefined) {
+    params.append('to_node', filters.to_node.toString());
+  }
+  if (filters?.channel !== undefined) {
+    params.append('channel', filters.channel.toString());
+  }
+  if (filters?.encrypted !== undefined) {
+    params.append('encrypted', filters.encrypted.toString());
+  }
+  if (filters?.since !== undefined) {
+    params.append('since', filters.since.toString());
+  }
+
+  // Trigger browser download by navigating to the export URL
+  const url = `/api/packets/export?${params.toString()}`;
+  window.location.href = url;
+};
+
+/**
  * Clear all packet logs (admin only)
  */
 export const clearPackets = async (): Promise<{ message: string; deletedCount: number }> => {

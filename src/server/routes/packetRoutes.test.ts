@@ -358,7 +358,7 @@ describe('Packet Routes', () => {
         .set('Authorization', 'Bearer regular')
         .expect(200);
 
-      // Limit should be capped at 1000
+      // Limit should be capped at the configured max (defaults to 1000)
       expect(response.body.limit).toBe(1000);
     });
 
@@ -395,6 +395,48 @@ describe('Packet Routes', () => {
     it('should deny access without permissions', async () => {
       await request(app)
         .get('/api/packets/stats')
+        .set('Authorization', 'Bearer noperm')
+        .expect(403);
+    });
+  });
+
+  describe('GET /api/packets/export', () => {
+    it('should export packets as JSONL with correct headers', async () => {
+      const response = await request(app)
+        .get('/api/packets/export')
+        .set('Authorization', 'Bearer regular')
+        .expect(200);
+
+      expect(response.headers['content-type']).toBe('application/x-ndjson');
+      expect(response.headers['content-disposition']).toMatch(/^attachment; filename="packet-monitor-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.jsonl"$/);
+
+      // Parse JSONL response
+      const lines = response.text.trim().split('\n');
+      expect(lines.length).toBe(2); // Should have 2 packets
+
+      // Verify each line is valid JSON
+      lines.forEach(line => {
+        const packet = JSON.parse(line);
+        expect(packet).toHaveProperty('id');
+        expect(packet).toHaveProperty('packet_id');
+      });
+    });
+
+    it('should export filtered packets', async () => {
+      const response = await request(app)
+        .get('/api/packets/export?encrypted=true')
+        .set('Authorization', 'Bearer regular')
+        .expect(200);
+
+      expect(response.headers['content-disposition']).toMatch(/packet-monitor-filtered-/);
+
+      const lines = response.text.trim().split('\n');
+      expect(lines.length).toBe(1); // Only 1 encrypted packet
+    });
+
+    it('should deny access without permissions', async () => {
+      await request(app)
+        .get('/api/packets/export')
         .set('Authorization', 'Bearer noperm')
         .expect(403);
     });
