@@ -9,6 +9,7 @@ import { getEnvironmentConfig } from './config/environment.js';
 import { notificationService } from './services/notificationService.js';
 import packetLogService from './services/packetLogService.js';
 import { messageQueueService } from './messageQueueService.js';
+import { normalizeTriggerPatterns } from '../utils/autoResponderUtils.js';
 import { createRequire } from 'module';
 import * as cron from 'node-cron';
 import fs from 'fs';
@@ -4304,50 +4305,8 @@ class MeshtasticManager {
           }
         }
 
-        // Split trigger into individual patterns (comma-separated, but not inside braces)
-        const splitTriggerPatterns = (triggerStr: string): string[] => {
-          if (!triggerStr.trim()) {
-            return [];
-          }
-          
-          const patterns: string[] = [];
-          let currentPattern = '';
-          let braceDepth = 0;
-          
-          for (let i = 0; i < triggerStr.length; i++) {
-            const char = triggerStr[i];
-            
-            if (char === '{') {
-              braceDepth++;
-              currentPattern += char;
-            } else if (char === '}') {
-              braceDepth--;
-              currentPattern += char;
-            } else if (char === ',' && braceDepth === 0) {
-              // Only split on commas that are outside braces
-              const trimmed = currentPattern.trim();
-              if (trimmed) {
-                patterns.push(trimmed);
-              }
-              currentPattern = '';
-            } else {
-              currentPattern += char;
-            }
-          }
-          
-          // Add the last pattern
-          const trimmed = currentPattern.trim();
-          if (trimmed) {
-            patterns.push(trimmed);
-          }
-          
-          return patterns;
-        };
-
         // Handle both string and array types for trigger.trigger
-        const patterns = Array.isArray(trigger.trigger)
-          ? trigger.trigger
-          : splitTriggerPatterns(trigger.trigger);
+        const patterns = normalizeTriggerPatterns(trigger.trigger);
         let matchedPattern: string | null = null;
         let extractedParams: Record<string, string> = {};
 

@@ -13,6 +13,7 @@ import { VirtualNodeServer } from './virtualNodeServer.js';
 (global as any).meshtasticManager = meshtasticManager;
 import { createRequire } from 'module';
 import { logger } from '../utils/logger.js';
+import { normalizeTriggerPatterns } from '../utils/autoResponderUtils.js';
 import { getSessionConfig } from './auth/sessionConfig.js';
 import { initializeOIDC } from './auth/oidcAuth.js';
 import {
@@ -4513,45 +4514,8 @@ apiRouter.post('/scripts/test', requirePermission('settings', 'read'), async (re
     }
 
     // Extract parameters from test message using trigger pattern
-    // (Reuse pattern matching logic from meshtasticManager)
-    const splitTriggerPatterns = (triggerStr: string): string[] => {
-      if (!triggerStr.trim()) {
-        return [];
-      }
-      
-      const patterns: string[] = [];
-      let currentPattern = '';
-      let braceDepth = 0;
-      
-      for (let i = 0; i < triggerStr.length; i++) {
-        const char = triggerStr[i];
-        
-        if (char === '{') {
-          braceDepth++;
-          currentPattern += char;
-        } else if (char === '}') {
-          braceDepth--;
-          currentPattern += char;
-        } else if (char === ',' && braceDepth === 0) {
-          const trimmed = currentPattern.trim();
-          if (trimmed) {
-            patterns.push(trimmed);
-          }
-          currentPattern = '';
-        } else {
-          currentPattern += char;
-        }
-      }
-      
-      const trimmed = currentPattern.trim();
-      if (trimmed) {
-        patterns.push(trimmed);
-      }
-      
-      return patterns;
-    };
-
-    const patterns = splitTriggerPatterns(trigger);
+    // Handle both string and array types for trigger
+    const patterns = normalizeTriggerPatterns(trigger);
     let matchedPattern: string | null = null;
     let extractedParams: Record<string, string> = {};
 
