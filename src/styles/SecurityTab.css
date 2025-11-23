@@ -247,6 +247,13 @@
   font-weight: 500;
 }
 
+.node-last-seen {
+  font-size: 12px;
+  color: var(--ctp-overlay1);
+  font-style: italic;
+  margin-top: 3px;
+}
+
 .issue-types {
   display: flex;
   gap: 8px;
@@ -426,6 +433,12 @@
   border: 1px solid var(--ctp-surface1);
   border-radius: 5px;
   transition: background 0.2s;
+}
+
+.duplicate-node-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
 }
 
 .duplicate-node-item:hover {

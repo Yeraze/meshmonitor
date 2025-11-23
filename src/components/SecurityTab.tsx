@@ -334,6 +334,9 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
                         <span className="hw-model"> - {getHardwareModelName(node.hwModel)}</span>
                       )}
                     </div>
+                    <div className="node-last-seen">
+                      Last seen {formatRelativeTime(node.lastHeard)}
+                    </div>
                   </div>
                   <div className="issue-types">
                     {node.keyIsLowEntropy && (
@@ -415,12 +418,17 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
                     <div className="duplicate-node-list">
                       {group.nodes.map((node) => (
                         <div key={node.nodeNum} className="duplicate-node-item">
-                          <span
-                            className="node-link"
-                            onClick={() => handleNodeClick(node.nodeNum)}
-                          >
-                            {node.longName || node.shortName} ({node.shortName})
-                          </span>
+                          <div className="duplicate-node-info">
+                            <span
+                              className="node-link"
+                              onClick={() => handleNodeClick(node.nodeNum)}
+                            >
+                              {node.longName || node.shortName} ({node.shortName})
+                            </span>
+                            <div className="node-last-seen">
+                              Last seen {formatRelativeTime(node.lastHeard)}
+                            </div>
+                          </div>
                           <div className="duplicate-node-actions">
                             <span className="node-id">
                               #{node.nodeNum.toString(16).toUpperCase()}
