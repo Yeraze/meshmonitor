@@ -51,7 +51,8 @@ router.get('/', requirePacketPermissions, (req, res) => {
     let limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 100;
 
     // Enforce maximum limit to prevent unbounded queries
-    const MAX_LIMIT = 1000;
+    // Use the configured max count from settings (defaults to 1000)
+    const MAX_LIMIT = packetLogService.getMaxCount();
     if (limit > MAX_LIMIT) {
       limit = MAX_LIMIT;
     }
@@ -127,8 +128,64 @@ router.get('/stats', requirePacketPermissions, (_req, res) => {
 });
 
 /**
+ * GET /api/packets/export
+ * Export packet logs as JSONL with optional filtering
+ * IMPORTANT: Must be registered before /:id route to avoid route matching conflicts
+ */
+router.get('/export', requirePacketPermissions, (req, res) => {
+  try {
+    const portnum = req.query.portnum ? parseInt(req.query.portnum as string, 10) : undefined;
+    const from_node = req.query.from_node ? parseInt(req.query.from_node as string, 10) : undefined;
+    const to_node = req.query.to_node ? parseInt(req.query.to_node as string, 10) : undefined;
+    const channel = req.query.channel ? parseInt(req.query.channel as string, 10) : undefined;
+    const encrypted = req.query.encrypted === 'true' ? true : req.query.encrypted === 'false' ? false : undefined;
+    const since = req.query.since ? parseInt(req.query.since as string, 10) : undefined;
+
+    // Fetch all matching packets (up to configured max)
+    const maxCount = packetLogService.getMaxCount();
+    const packets = packetLogService.getPackets({
+      offset: 0,
+      limit: maxCount,
+      portnum,
+      from_node,
+      to_node,
+      channel,
+      encrypted,
+      since
+    });
+
+    // Generate filename with timestamp
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
+    const hasActiveFilters = portnum !== undefined ||
+                            from_node !== undefined ||
+                            to_node !== undefined ||
+                            channel !== undefined ||
+                            encrypted !== undefined ||
+                            since !== undefined;
+    const filterInfo = hasActiveFilters ? '-filtered' : '';
+    const filename = `packet-monitor${filterInfo}-${timestamp}.jsonl`;
+
+    // Set headers for file download
+    res.setHeader('Content-Type', 'application/x-ndjson');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+    // Stream packets as JSONL
+    for (const packet of packets) {
+      res.write(JSON.stringify(packet) + '\n');
+    }
+
+    res.end();
+    logger.debug(`📥 Exported ${packets.length} packets to ${filename}`);
+  } catch (error) {
+    logger.error('❌ Error exporting packets:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
  * GET /api/packets/:id
  * Get single packet by ID
+ * IMPORTANT: Must be registered after more specific routes like /stats and /export
  */
 router.get('/:id', requirePacketPermissions, (req, res) => {
   try {

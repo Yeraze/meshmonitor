@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { PacketLog, PacketFilters } from '../types/packet';
-import { getPackets, clearPackets } from '../services/packetApi';
+import { getPackets, clearPackets, exportPackets } from '../services/packetApi';
 import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { useData } from '../contexts/DataContext';
@@ -15,7 +15,7 @@ interface PacketMonitorPanelProps {
 }
 
 // Constants
-const PACKET_FETCH_LIMIT = 10000;
+const PACKET_FETCH_LIMIT = 100; // Fetch most recent 100 packets for display
 const POLL_INTERVAL_MS = 5000;
 
 // Safe JSON parse helper
@@ -35,7 +35,6 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
   const { deviceInfo } = useData();
   const [rawPackets, setRawPackets] = useState<PacketLog[]>([]);
   const [total, setTotal] = useState(0);
-  const [maxCount, setMaxCount] = useState(1000);
   const [loading, setLoading] = useState(true);
   const [autoScroll, setAutoScroll] = useState(() =>
     safeJsonParse(localStorage.getItem('packetMonitor.autoScroll'), true)
@@ -108,12 +107,12 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     if (!canView) return;
 
     try {
-      // Fetch all packets by using the maximum limit from backend
+      // Fetch most recent packets for display (limit to PACKET_FETCH_LIMIT)
+      // Full export is handled server-side via /api/packets/export endpoint
       const response = await getPackets(0, PACKET_FETCH_LIMIT, filters);
 
       setRawPackets(response.packets);
       setTotal(response.total);
-      setMaxCount(response.maxCount);
       setLoading(false);
 
       // Auto-scroll to bottom if enabled
@@ -216,42 +215,12 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     return null;
   };
 
-  // Export packets to JSONL
+  // Export packets to JSONL (server-side)
   const handleExport = () => {
-    if (packets.length === 0) {
-      alert('No packets to export');
-      return;
-    }
-
     try {
-      // Convert each packet to a JSON line (JSONL format)
-      const jsonlContent = packets.map(packet => {
-        // Safely parse metadata if it's a string
-        const packetWithParsedMetadata = {
-          ...packet,
-          metadata: packet.metadata ? safeJsonParse(packet.metadata, {}) : undefined
-        };
-        return JSON.stringify(packetWithParsedMetadata);
-      }).join('\n');
-
-      // Create blob and download
-      const blob = new Blob([jsonlContent], { type: 'application/x-ndjson' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-
-      // Generate filename with timestamp
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
-      const hasActiveFilters = Boolean(filters.portnum) ||
-                              filters.encrypted !== undefined ||
-                              hideOwnPackets !== true;
-      const filterInfo = hasActiveFilters ? '-filtered' : '';
-      link.download = `packet-monitor${filterInfo}-${timestamp}.jsonl`;
-
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      // Use backend export endpoint with current filters
+      // Note: hideOwnPackets is a client-side filter and not passed to backend
+      exportPackets(filters);
     } catch (error) {
       console.error('Failed to export packets:', error);
       alert('Failed to export packets');
@@ -277,7 +246,9 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     <div className="packet-monitor-panel">
       <div className="packet-monitor-header">
         <h3>Mesh Traffic Monitor</h3>
-        <div className="packet-count">{total} / {maxCount} packets</div>
+        <div className="packet-count" title={`Showing ${packets.length} most recent packets. Export will include all ${total} packets.`}>
+          {packets.length} shown / {total} total
+        </div>
         <div className="header-controls">
           <button
             className="control-btn"
@@ -297,7 +268,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
             className="control-btn"
             onClick={handleExport}
             title="Export packets to JSONL"
-            disabled={packets.length === 0}
+            disabled={total === 0}
           >
             📥
           </button>
