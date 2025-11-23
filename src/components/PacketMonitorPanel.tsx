@@ -37,6 +37,8 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
   const [rawPackets, setRawPackets] = useState<PacketLog[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [autoScroll, setAutoScroll] = useState(() =>
     safeJsonParse(localStorage.getItem('packetMonitor.autoScroll'), true)
   );
@@ -81,13 +83,50 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     return rawPackets;
   }, [rawPackets, hideOwnPackets, ownNodeNum]);
 
-  // Virtual scrolling setup
+  // Virtual scrolling setup with infinite loading
   const rowVirtualizer = useVirtualizer({
-    count: packets.length,
+    count: hasMore ? packets.length + 1 : packets.length, // Add 1 for loading indicator
     getScrollElement: () => parentRef.current,
     estimateSize: () => 36, // Estimated row height in pixels
     overscan: 10, // Number of items to render outside of visible area
   });
+
+  // Load more packets when scrolling near the end
+  useEffect(() => {
+    const [lastItem] = [...rowVirtualizer.getVirtualItems()].reverse();
+
+    if (!lastItem) return;
+
+    if (
+      lastItem.index >= packets.length - 1 &&
+      hasMore &&
+      !loadingMore &&
+      canView
+    ) {
+      loadMore();
+    }
+  }, [rowVirtualizer.getVirtualItems(), hasMore, loadingMore, packets.length, canView]);
+
+  // Load more packets function
+  const loadMore = async () => {
+    if (loadingMore || !hasMore) return;
+
+    setLoadingMore(true);
+    try {
+      const response = await getPackets(rawPackets.length, PACKET_FETCH_LIMIT, filters);
+
+      if (response.packets.length === 0) {
+        setHasMore(false);
+      } else {
+        setRawPackets(prev => [...prev, ...response.packets]);
+        setTotal(response.total);
+      }
+    } catch (error) {
+      console.error('Failed to load more packets:', error);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   // Persist filter settings to localStorage
   useEffect(() => {
@@ -112,28 +151,46 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     return longName.length > maxLength ? `${longName.substring(0, maxLength)}...` : longName;
   };
 
-  // Fetch packets
+  // Fetch packets (initial load or refresh from polling)
   const fetchPackets = useCallback(async () => {
     if (!canView) return;
 
     try {
-      // Fetch most recent packets for display (limit to PACKET_FETCH_LIMIT)
-      // Full export is handled server-side via /api/packets/export endpoint
+      // When polling updates, only fetch the first batch to check for new packets
+      // This prevents resetting the scroll position
+      const currentPacketCount = rawPackets.length;
+      const isInitialLoad = currentPacketCount === 0;
+
+      // Fetch most recent packets
       const response = await getPackets(0, PACKET_FETCH_LIMIT, filters);
 
-      setRawPackets(response.packets);
-      setTotal(response.total);
+      // Only update if this is initial load OR if there are new packets
+      // This prevents unnecessary state updates that could reset scroll position
+      if (isInitialLoad || response.packets[0]?.id !== rawPackets[0]?.id) {
+        // Preserve existing packets beyond the first batch when polling
+        if (!isInitialLoad && currentPacketCount > PACKET_FETCH_LIMIT) {
+          // Merge new packets with existing ones, avoiding duplicates
+          const existingPacketIds = new Set(response.packets.map(p => p.id));
+          const preservedPackets = rawPackets.slice(PACKET_FETCH_LIMIT).filter(p => !existingPacketIds.has(p.id));
+          setRawPackets([...response.packets, ...preservedPackets]);
+        } else {
+          setRawPackets(response.packets);
+          setHasMore(response.packets.length >= PACKET_FETCH_LIMIT);
+        }
+        setTotal(response.total);
+      }
+
       setLoading(false);
 
-      // Auto-scroll to bottom if enabled
-      if (autoScroll && tableRef.current) {
-        tableRef.current.scrollTop = 0; // Scroll to top since newest packets are first
+      // Auto-scroll to top only on initial load if enabled
+      if (autoScroll && tableRef.current && isInitialLoad) {
+        tableRef.current.scrollTop = 0;
       }
     } catch (error) {
       console.error('Failed to fetch packets:', error);
       setLoading(false);
     }
-  }, [canView, filters, autoScroll]);
+  }, [canView, filters, autoScroll, rawPackets]);
 
   // Initial fetch and polling
   useEffect(() => {
@@ -345,6 +402,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
           <div style={{ width: '100%' }}>
             <table className="packet-table packet-table-fixed">
               <colgroup>
+                <col style={{ width: '60px' }} />
                 <col style={{ width: '110px' }} />
                 <col style={{ width: '140px' }} />
                 <col style={{ width: '140px' }} />
@@ -357,15 +415,16 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
               </colgroup>
               <thead>
                 <tr>
-                  <th>Time</th>
-                  <th>From</th>
-                  <th>To</th>
-                  <th>Type</th>
-                  <th>Ch</th>
-                  <th>SNR</th>
-                  <th>Hops</th>
-                  <th>Size</th>
-                  <th>Content</th>
+                  <th style={{ width: '60px' }}>#</th>
+                  <th style={{ width: '110px' }}>Time</th>
+                  <th style={{ width: '140px' }}>From</th>
+                  <th style={{ width: '140px' }}>To</th>
+                  <th style={{ width: '120px' }}>Type</th>
+                  <th style={{ width: '50px' }}>Ch</th>
+                  <th style={{ width: '60px' }}>SNR</th>
+                  <th style={{ width: '60px' }}>Hops</th>
+                  <th style={{ width: '60px' }}>Size</th>
+                  <th style={{ minWidth: '200px' }}>Content</th>
                 </tr>
               </thead>
             </table>
@@ -378,6 +437,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
             >
               <table className="packet-table packet-table-fixed">
                 <colgroup>
+                  <col style={{ width: '60px' }} />
                   <col style={{ width: '110px' }} />
                   <col style={{ width: '140px' }} />
                   <col style={{ width: '140px' }} />
@@ -390,7 +450,31 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                 </colgroup>
                 <tbody>
                   {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                    const isLoaderRow = virtualRow.index > packets.length - 1;
                     const packet = packets[virtualRow.index];
+
+                    if (isLoaderRow) {
+                      return (
+                        <tr
+                          key="loader"
+                          style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            width: '100%',
+                            height: `${virtualRow.size}px`,
+                            transform: `translateY(${virtualRow.start}px)`,
+                            display: 'table',
+                            tableLayout: 'fixed',
+                          }}
+                        >
+                          <td colSpan={10} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+                            Loading more packets...
+                          </td>
+                        </tr>
+                      );
+                    }
+
                     const hops = calculateHops(packet);
                     return (
                       <tr
@@ -404,12 +488,17 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                           width: '100%',
                           height: `${virtualRow.size}px`,
                           transform: `translateY(${virtualRow.start}px)`,
+                          display: 'table',
+                          tableLayout: 'fixed',
                         }}
                       >
-                        <td className="timestamp" title={formatDateTime(new Date(packet.timestamp * 1000), timeFormat, dateFormat)}>
+                        <td className="packet-number" style={{ width: '60px', textAlign: 'right' }}>
+                          {virtualRow.index + 1}
+                        </td>
+                        <td className="timestamp" style={{ width: '110px' }} title={formatDateTime(new Date(packet.timestamp * 1000), timeFormat, dateFormat)}>
                           {formatTimestamp(packet.timestamp)}
                         </td>
-                        <td className="from-node" title={packet.from_node_longName || packet.from_node_id || ''}>
+                        <td className="from-node" style={{ width: '140px' }} title={packet.from_node_longName || packet.from_node_id || ''}>
                           {packet.from_node_id && onNodeClick ? (
                             <span
                               className="node-id-link"
@@ -421,7 +510,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                             truncateLongName(packet.from_node_longName) || packet.from_node_id || packet.from_node
                           )}
                         </td>
-                        <td className="to-node" title={packet.to_node_longName || packet.to_node_id || ''}>
+                        <td className="to-node" style={{ width: '140px' }} title={packet.to_node_longName || packet.to_node_id || ''}>
                           {packet.to_node_id === '!ffffffff' ? (
                             'Broadcast'
                           ) : packet.to_node_id && onNodeClick ? (
@@ -437,16 +526,16 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                         </td>
                         <td
                           className="portnum"
-                          style={{ color: getPortnumColor(packet.portnum) }}
+                          style={{ width: '120px', color: getPortnumColor(packet.portnum) }}
                           title={packet.portnum_name || ''}
                         >
                           {packet.portnum_name || packet.portnum}
                         </td>
-                        <td className="channel">{packet.channel ?? 'N/A'}</td>
-                        <td className="snr">{packet.snr !== null && packet.snr !== undefined ? `${packet.snr.toFixed(1)}` : 'N/A'}</td>
-                        <td className="hops">{hops !== null ? hops : 'N/A'}</td>
-                        <td className="size">{packet.payload_size ?? 'N/A'}</td>
-                        <td className="content">
+                        <td className="channel" style={{ width: '50px' }}>{packet.channel ?? 'N/A'}</td>
+                        <td className="snr" style={{ width: '60px' }}>{packet.snr !== null && packet.snr !== undefined ? `${packet.snr.toFixed(1)}` : 'N/A'}</td>
+                        <td className="hops" style={{ width: '60px' }}>{hops !== null ? hops : 'N/A'}</td>
+                        <td className="size" style={{ width: '60px' }}>{packet.payload_size ?? 'N/A'}</td>
+                        <td className="content" style={{ minWidth: '200px' }}>
                           {packet.encrypted ? (
                             <span className="encrypted-indicator">🔒 &lt;ENCRYPTED&gt;</span>
                           ) : (
