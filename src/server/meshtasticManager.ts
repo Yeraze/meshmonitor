@@ -3727,8 +3727,18 @@ class MeshtasticManager {
       channelNum: loraConfig.channelNum !== undefined ? loraConfig.channelNum : 0
     };
 
+    // Apply same Proto3 handling to MQTT config
+    const mqttConfigWithDefaults = {
+      ...mqttConfig,
+      // Ensure boolean fields are explicitly set (Proto3 default is false)
+      enabled: mqttConfig.enabled !== undefined ? mqttConfig.enabled : false,
+      encryptionEnabled: mqttConfig.encryptionEnabled !== undefined ? mqttConfig.encryptionEnabled : false,
+      jsonEnabled: mqttConfig.jsonEnabled !== undefined ? mqttConfig.jsonEnabled : false,
+      tlsEnabled: mqttConfig.tlsEnabled !== undefined ? mqttConfig.tlsEnabled : false
+    };
+
     logger.debug('🔍 loraConfig being used:', JSON.stringify(loraConfigWithDefaults, null, 2));
-    logger.debug('🔍 mqttConfig being used:', JSON.stringify(mqttConfig, null, 2));
+    logger.debug('🔍 mqttConfig being used:', JSON.stringify(mqttConfigWithDefaults, null, 2));
 
     // Map region enum values to strings
     const regionMap: { [key: number]: string } = {
@@ -3791,13 +3801,13 @@ class MeshtasticManager {
         configOkToMqtt: loraConfigWithDefaults.configOkToMqtt !== undefined ? loraConfigWithDefaults.configOkToMqtt : 'Unknown'
       },
       mqtt: {
-        enabled: mqttConfig.enabled || false,
-        server: mqttConfig.address || 'Not configured',
-        username: mqttConfig.username || 'Not set',
-        encryption: mqttConfig.encryptionEnabled || false,
-        json: mqttConfig.jsonEnabled || false,
-        tls: mqttConfig.tlsEnabled || false,
-        rootTopic: mqttConfig.root || 'msh'
+        enabled: mqttConfigWithDefaults.enabled,
+        server: mqttConfigWithDefaults.address || 'Not configured',
+        username: mqttConfigWithDefaults.username || 'Not set',
+        encryption: mqttConfigWithDefaults.encryptionEnabled,
+        json: mqttConfigWithDefaults.jsonEnabled,
+        tls: mqttConfigWithDefaults.tlsEnabled,
+        rootTopic: mqttConfigWithDefaults.root || 'msh'
       },
       channels: channels.length > 0 ? channels : [
         { index: 0, name: 'Primary', psk: 'None', uplinkEnabled: true, downlinkEnabled: true }
