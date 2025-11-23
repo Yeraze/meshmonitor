@@ -82,6 +82,7 @@ class MeshtasticManager {
     shortName: string;
     hwModel?: number;
     firmwareVersion?: string;
+    rebootCount?: number;
     isLocked?: boolean;  // Flag to prevent overwrites after initial setup
   } | null = null;
   private actualDeviceConfig: any = null;  // Store actual device config
@@ -711,9 +712,10 @@ class MeshtasticManager {
             longName: node.longName || 'Unknown',
             shortName: node.shortName || 'UNK',
             hwModel: node.hwModel || undefined,
+            rebootCount: (node as any).rebootCount !== undefined ? (node as any).rebootCount : undefined,
             isLocked: false // Allow updates if MyNodeInfo arrives later
           } as any;
-          logger.debug(`✅ Restored local node info from settings: ${savedNodeId}`);
+          logger.debug(`✅ Restored local node info from settings: ${savedNodeId}, rebootCount: ${(node as any).rebootCount}`);
         } else {
           // Create minimal local node info
           this.localNodeInfo = {
@@ -769,6 +771,7 @@ class MeshtasticManager {
         shortName: existingNode.shortName || 'LOCAL',
         hwModel: existingNode.hwModel || undefined,
         firmwareVersion: (existingNode as any).firmwareVersion || null,
+        rebootCount: myNodeInfo.rebootCount !== undefined ? myNodeInfo.rebootCount : undefined,
         isLocked: true  // Lock it to prevent overwrites
       } as any;
 
@@ -782,7 +785,7 @@ class MeshtasticManager {
         logger.debug(`📱 Updated rebootCount to ${myNodeInfo.rebootCount} for local device: ${existingNode.longName} (${nodeId})`);
       }
 
-      logger.debug(`📱 Using existing node info for local device: ${existingNode.longName} (${nodeId}) - LOCKED`);
+      logger.debug(`📱 Using existing node info for local device: ${existingNode.longName} (${nodeId}) - LOCKED, rebootCount: ${myNodeInfo.rebootCount}`);
     } else {
       // We don't have real node info yet, store basic info and wait for NodeInfo
       const nodeData = {
@@ -803,6 +806,7 @@ class MeshtasticManager {
         shortName: null,  // Will be set when NodeInfo is received
         hwModel: myNodeInfo.hwModel || undefined,
         firmwareVersion: null, // Will be set when DeviceMetadata is received
+        rebootCount: myNodeInfo.rebootCount !== undefined ? myNodeInfo.rebootCount : undefined,
         isLocked: false  // Not locked yet, waiting for complete info
       } as any;
 
