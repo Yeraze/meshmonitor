@@ -35,7 +35,6 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
   const { deviceInfo } = useData();
   const [rawPackets, setRawPackets] = useState<PacketLog[]>([]);
   const [total, setTotal] = useState(0);
-  const [maxCount, setMaxCount] = useState(1000);
   const [loading, setLoading] = useState(true);
   const [autoScroll, setAutoScroll] = useState(() =>
     safeJsonParse(localStorage.getItem('packetMonitor.autoScroll'), true)
@@ -114,7 +113,6 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
 
       setRawPackets(response.packets);
       setTotal(response.total);
-      setMaxCount(response.maxCount);
       setLoading(false);
 
       // Auto-scroll to bottom if enabled
