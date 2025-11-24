@@ -302,11 +302,11 @@ run_test "GET /api/v1/traceroutes - List traceroutes" \
     '${BASE_URL}/api/v1/traceroutes' \
     | jq -e '.success == true and (.data | type) == \"array\"'"
 
-# Test 9: Network topology endpoint
-run_test "GET /api/v1/network - Get network topology" \
+# Test 6: Network stats endpoint
+run_test "GET /api/v1/network - Get network stats" \
     "curl -sS -H 'Authorization: Bearer $API_TOKEN' \
     '${BASE_URL}/api/v1/network' \
-    | jq -e '.success == true and (.data.nodes | type) == \"array\" and (.data.links | type) == \"array\"'"
+    | jq -e '.success == true and .data.totalNodes != null'"
 
 # Test 10: Packets endpoint
 run_test "GET /api/v1/packets - List packet logs" \
