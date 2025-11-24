@@ -51,6 +51,26 @@ Tests the minimal zero-config deployment:
 - Port: 8083
 - Protocol: HTTP
 
+**Environment Variables:**
+
+You can customize test behavior with these environment variables:
+
+- `TEST_NODE_IP` - IP address of Meshtastic node for testing  
+  Default: `192.168.5.106`  
+  Example: `TEST_NODE_IP=192.168.1.100 ./tests/test-quick-start.sh`
+
+- `TEST_EXTERNAL_APP_URL` - Test against an already-running deployment instead of creating test containers  
+  Default: (none - runs in container mode)  
+  Example: `TEST_EXTERNAL_APP_URL=http://localhost:8080 ./tests/test-quick-start.sh`  
+  Use case: Test against existing infrastructure or dev environment
+
+- `KEEP_ALIVE` - Keep test containers running after tests complete (for debugging)  
+  Default: `false`  
+  Example: `KEEP_ALIVE=true ./tests/test-quick-start.sh`  
+  Use case: Inspect logs or database state after test completion
+
+
+
 ### Reverse Proxy Test
 
 Tests production deployment behind HTTPS reverse proxy:

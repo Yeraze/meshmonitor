@@ -11,7 +11,7 @@ For the easiest setup, we recommend using the **DevContainer**. This provides a 
 2. Press `Ctrl+Shift+P` and select **"Dev Containers: Reopen in Container"**.
 3. Wait for it to build, then run `npm run dev:full`.
 
-See [.devcontainer/README.md](/.devcontainer/README.md) for full details.
+See [.devcontainer/README.md](https://github.com/yeraze/meshmonitor/blob/main/.devcontainer/README.md) for full details.
 
 ---
 

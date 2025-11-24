@@ -107,6 +107,9 @@ fi
 echo ""
 echo "6. Installing Claude Code CLI..."
 echo "   Installing @anthropic-ai/claude-code globally..."
+# Install globally for convenience (npx requires network on each run)
+# Safe because this is a containerized environment, no system conflicts
+# Alternative: Use 'npx @anthropic-ai/claude-code' if preferred
 if npm install -g @anthropic-ai/claude-code 2>/dev/null; then
     echo "   ✓ Claude Code CLI installed: $(claude --version 2>/dev/null || echo 'installed')"
     echo "   ℹ Run 'claude' to start - you'll be prompted to authenticate"

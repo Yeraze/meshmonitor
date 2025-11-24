@@ -275,6 +275,7 @@ echo "Waiting up to 30 seconds for channels (>=3) and nodes (>100)..."
 MAX_WAIT=30
 ELAPSED=0
 NODE_CONNECTED=false
+SLEEP_INTERVAL=1  # Start with 1 second
 
 while [ $ELAPSED -lt $MAX_WAIT ]; do
     # Check channels
@@ -293,8 +294,15 @@ while [ $ELAPSED -lt $MAX_WAIT ]; do
         break
     fi
 
-    sleep 2
-    ELAPSED=$((ELAPSED + 2))
+    # Exponential backoff: 1s, 2s, 4s, 8s (capped at 8s)
+    sleep $SLEEP_INTERVAL
+    ELAPSED=$((ELAPSED + SLEEP_INTERVAL))
+    
+    # Double interval for next iteration, cap at 8 seconds
+    if [ $SLEEP_INTERVAL -lt 8 ]; then
+        SLEEP_INTERVAL=$((SLEEP_INTERVAL * 2))
+    fi
+    
     echo -n "."
 done
 echo ""
@@ -612,6 +620,7 @@ for ATTEMPT in $(seq 1 $MAX_ATTEMPTS); do
         echo "Waiting up to 10 seconds for response from Yeraze Station G2..."
         MAX_WAIT=10
         ELAPSED=0
+        SLEEP_INTERVAL=1  # Start with 1 second
 
         while [ $ELAPSED -lt $MAX_WAIT ]; do
             # Check for messages from the target node
@@ -625,8 +634,15 @@ for ATTEMPT in $(seq 1 $MAX_ATTEMPTS); do
                 break 2  # Break out of both loops
             fi
 
-            sleep 2
-            ELAPSED=$((ELAPSED + 2))
+            # Exponential backoff: 1s, 2s, 4s (capped at 4s for faster response detection)
+            sleep $SLEEP_INTERVAL
+            ELAPSED=$((ELAPSED + SLEEP_INTERVAL))
+            
+            # Double interval for next iteration, cap at 4 seconds
+            if [ $SLEEP_INTERVAL -lt 4 ]; then
+                SLEEP_INTERVAL=$((SLEEP_INTERVAL * 2))
+            fi
+            
             echo -n "."
         done
         echo ""

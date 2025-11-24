@@ -18,7 +18,9 @@ services:
       # Mount SSH keys for git operations
       - ~/.ssh:/home/node/.ssh:ro
 
-      # Mount Docker socket for Docker-from-Docker (faster than DinD)
+      # Mount Docker socket for Docker-from-Docker (required for testing docker-compose.dev.yml)
+      # Security: Provides full Docker host access to container (standard for DevContainers)
+      # See .devcontainer/README.md "Security Model" section for details
       - /var/run/docker.sock:/var/run/docker.sock
 
       # Named volumes for better performance

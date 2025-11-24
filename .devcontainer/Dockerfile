@@ -10,10 +10,9 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
         python3-pip \
         python3-venv \
         sqlite3 \
+    && pip3 install --break-system-packages apprise \
     && apt-get clean -y && rm -rf /var/lib/apt/lists/*
 
-# Install Apprise for notification testing (optional)
-RUN pip3 install --break-system-packages apprise || true
 
 # Set up workspace
 WORKDIR /workspace

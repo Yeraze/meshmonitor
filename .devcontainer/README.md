@@ -67,6 +67,52 @@ This devcontainer mounts the **host's Docker socket** (`/var/run/docker.sock`) r
 | 4404 | Virtual Node (Testing) | Silent |
 | 8080 | Docker Testing | Silent |
 
+## Security Model
+
+### Docker Socket Access
+
+This devcontainer mounts the **host's Docker socket** (`/var/run/docker.sock`) to enable Docker-from-Docker functionality. This is required for:
+
+- Testing `docker-compose.dev.yml` from inside the devcontainer
+- Building and running containerized apps during development
+- Running helper scripts that manage Docker resources
+
+**Security Implications:**
+
+⚠️ **Full Docker Host Access**: The container has complete access to the Docker daemon on your host machine. This means code running inside the devcontainer can:
+- Create, stop, and delete any containers on your host
+- Access volumes and networks from other containers
+- Build and run new images
+- Potentially access the host filesystem through volume mounts
+
+**Trust Assumptions:**
+
+This security model assumes you are working in a **trusted development environment**:
+
+✅ **Local Workstation**: DevContainer is designed for local development on your personal machine  
+✅ **Trusted Code**: You control what code runs in the devcontainer  
+✅ **Private Network**: Your development machine is on a trusted network  
+✅ **No Shared Access**: The devcontainer is not accessible to other users
+
+**Not Recommended For:**
+
+❌ Running untrusted code or third-party scripts  
+❌ Shared development servers with multiple users  
+❌ Production or staging environments  
+❌ Public cloud instances without proper security hardening
+
+**Why This Approach:**
+
+This is the **standard practice** for DevContainers that need Docker access:
+- ✅ Faster than Docker-in-Docker (shares host cache)
+- ✅ Less resource usage (no duplicate Docker daemon)
+- ✅ Simpler configuration
+- ✅ Better performance for building and testing
+
+**Alternative:** If you need stricter isolation, consider using Docker-in-Docker (DinD) instead, though this comes with performance trade-offs.
+
+
+
 ## DevContainer vs Main Docker Setup
 
 **This devcontainer (`.devcontainer/`):**
@@ -142,6 +188,13 @@ Update:
 - [ ] `post-create.sh` - If `.env` setup needs customization
 - [ ] `.env.example` - Main project file (primary source)
 - [ ] `.claude/instructions.md` - Environment variables section
+
+**Test-Specific Environment Variables** (for `tests/` scripts):
+- `TEST_NODE_IP` - IP address of Meshtastic node for testing (default: 192.168.5.106)
+- `TEST_EXTERNAL_APP_URL` - URL for testing against external deployment (optional, enables external app mode)
+- `KEEP_ALIVE` - Keep test containers running after tests complete (default: false, set to `true` for debugging)
+
+
 
 ## Troubleshooting
 

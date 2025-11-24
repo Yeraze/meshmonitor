@@ -39,13 +39,26 @@ REMOVED_VOLUMES=0
 # Method 1: By compose label
 COMPOSE_VOLUMES=$(docker volume ls -q --filter "label=com.docker.compose.project=meshmonitor_devcontainer")
 if [ -n "$COMPOSE_VOLUMES" ]; then
-    echo "$COMPOSE_VOLUMES" | xargs docker volume rm 2>/dev/null && REMOVED_VOLUMES=$((REMOVED_VOLUMES + $(echo "$COMPOSE_VOLUMES" | wc -l)))
+    # Remove volumes individually to avoid pipeline failures
+    while IFS= read -r vol; do
+        if docker volume rm "$vol" 2>/dev/null; then
+            REMOVED_VOLUMES=$((REMOVED_VOLUMES + 1))
+        else
+            echo "Warning: Failed to remove volume $vol (may be in use)"
+        fi
+    done <<< "$COMPOSE_VOLUMES"
 fi
 
 # Method 2: By name pattern
 NAME_VOLUMES=$(docker volume ls -q --filter "name=meshmonitor_devcontainer")
 if [ -n "$NAME_VOLUMES" ]; then
-    echo "$NAME_VOLUMES" | xargs docker volume rm 2>/dev/null && REMOVED_VOLUMES=$((REMOVED_VOLUMES + $(echo "$NAME_VOLUMES" | wc -l)))
+    while IFS= read -r vol; do
+        if docker volume rm "$vol" 2>/dev/null; then
+            REMOVED_VOLUMES=$((REMOVED_VOLUMES + 1))
+        else
+            echo "Warning: Failed to remove volume $vol (may be in use)"
+        fi
+    done <<< "$NAME_VOLUMES"
 fi
 
 if [ $REMOVED_VOLUMES -gt 0 ]; then
