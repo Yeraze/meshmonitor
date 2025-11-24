@@ -164,8 +164,18 @@ router.delete('/:id', (req, res) => {
       message: 'Message deleted successfully',
       id: messageId
     });
-  } catch (error) {
+  } catch (error: any) {
     logger.error('❌ Error deleting message:', error);
+
+    // Check for foreign key constraint errors
+    if (error?.message?.includes('FOREIGN KEY constraint failed')) {
+      logger.error('Foreign key constraint violation - this may indicate orphaned message references');
+      return res.status(500).json({
+        error: 'Database constraint error',
+        message: 'Unable to delete message due to database constraints. Please contact support.'
+      });
+    }
+
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -206,8 +216,18 @@ router.delete('/channels/:channelId', requireChannelsWrite, (req, res) => {
       channelId,
       deletedCount
     });
-  } catch (error) {
+  } catch (error: any) {
     logger.error('❌ Error purging channel messages:', error);
+
+    // Check for foreign key constraint errors
+    if (error?.message?.includes('FOREIGN KEY constraint failed')) {
+      logger.error('Foreign key constraint violation during channel purge');
+      return res.status(500).json({
+        error: 'Database constraint error',
+        message: 'Unable to purge channel messages due to database constraints. Please contact support.'
+      });
+    }
+
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -248,8 +268,18 @@ router.delete('/direct-messages/:nodeNum', requireMessagesWrite, (req, res) => {
       nodeNum,
       deletedCount
     });
-  } catch (error) {
+  } catch (error: any) {
     logger.error('❌ Error purging direct messages:', error);
+
+    // Check for foreign key constraint errors
+    if (error?.message?.includes('FOREIGN KEY constraint failed')) {
+      logger.error('Foreign key constraint violation during DM purge');
+      return res.status(500).json({
+        error: 'Database constraint error',
+        message: 'Unable to purge direct messages due to database constraints. Please contact support.'
+      });
+    }
+
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -290,8 +320,18 @@ router.delete('/nodes/:nodeNum/traceroutes', requireMessagesWrite, (req, res) =>
       nodeNum,
       deletedCount
     });
-  } catch (error) {
+  } catch (error: any) {
     logger.error('❌ Error purging node traceroutes:', error);
+
+    // Check for foreign key constraint errors
+    if (error?.message?.includes('FOREIGN KEY constraint failed')) {
+      logger.error('Foreign key constraint violation during traceroute purge');
+      return res.status(500).json({
+        error: 'Database constraint error',
+        message: 'Unable to purge traceroutes due to database constraints. Please contact support.'
+      });
+    }
+
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -332,8 +372,18 @@ router.delete('/nodes/:nodeNum/telemetry', requireMessagesWrite, (req, res) => {
       nodeNum,
       deletedCount
     });
-  } catch (error) {
+  } catch (error: any) {
     logger.error('❌ Error purging node telemetry:', error);
+
+    // Check for foreign key constraint errors
+    if (error?.message?.includes('FOREIGN KEY constraint failed')) {
+      logger.error('Foreign key constraint violation during telemetry purge');
+      return res.status(500).json({
+        error: 'Database constraint error',
+        message: 'Unable to purge telemetry due to database constraints. Please contact support.'
+      });
+    }
+
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -388,8 +438,18 @@ router.delete('/nodes/:nodeNum', requireMessagesWrite, (req, res) => {
       traceroutesDeleted: result.traceroutesDeleted,
       telemetryDeleted: result.telemetryDeleted
     });
-  } catch (error) {
+  } catch (error: any) {
     logger.error('❌ Error deleting node:', error);
+
+    // Check for foreign key constraint errors
+    if (error?.message?.includes('FOREIGN KEY constraint failed')) {
+      logger.error('Foreign key constraint violation during node deletion');
+      return res.status(500).json({
+        error: 'Database constraint error',
+        message: 'Unable to delete node due to database constraints. Please contact support.'
+      });
+    }
+
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -463,8 +523,18 @@ router.post('/nodes/:nodeNum/purge-from-device', requireMessagesWrite, async (re
       traceroutesDeleted: result.traceroutesDeleted,
       telemetryDeleted: result.telemetryDeleted
     });
-  } catch (error) {
+  } catch (error: any) {
     logger.error('❌ Error purging node from device:', error);
+
+    // Check for foreign key constraint errors
+    if (error?.message?.includes('FOREIGN KEY constraint failed')) {
+      logger.error('Foreign key constraint violation during node purge from device');
+      return res.status(500).json({
+        error: 'Database constraint error',
+        message: 'Unable to purge node due to database constraints. Please contact support.'
+      });
+    }
+
     res.status(500).json({ error: 'Internal server error' });
   }
 });
