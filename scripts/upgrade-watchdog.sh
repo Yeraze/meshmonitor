@@ -223,6 +223,17 @@ wait_for_health() {
 
   log "Waiting for container health check..."
 
+  # Get BASE_URL from container env vars, default to empty if not set
+  local base_url=$(docker inspect --format='{{range .Config.Env}}{{println .}}{{end}}' "$CONTAINER_NAME" 2>/dev/null | grep '^BASE_URL=' | cut -d'=' -f2 | tr -d '\r\n')
+
+  # Construct health endpoint URL with BASE_URL if present
+  local health_path="/api/health"
+  if [ -n "$base_url" ] && [ "$base_url" != "/" ]; then
+    health_path="${base_url}/api/health"
+  fi
+
+  log "Health endpoint: http://$CONTAINER_NAME:3001${health_path}"
+
   while [ $elapsed -lt $max_wait ]; do
     # Check if container is running
     if ! docker ps --filter "name=$CONTAINER_NAME" --filter "status=running" | grep -q "$CONTAINER_NAME"; then
@@ -235,8 +246,8 @@ wait_for_health() {
     # Try to check health endpoint using container name
     # The upgrader runs in a separate container, so localhost won't work
     # Use the container name instead to reach the main meshmonitor container
-    if wget -q -O /dev/null --timeout=5 http://$CONTAINER_NAME:3001/api/health 2>/dev/null || \
-       curl -sf http://$CONTAINER_NAME:3001/api/health >/dev/null 2>&1; then
+    if wget -q -O /dev/null --timeout=5 "http://$CONTAINER_NAME:3001${health_path}" 2>/dev/null || \
+       curl -sf "http://$CONTAINER_NAME:3001${health_path}" >/dev/null 2>&1; then
       log_success "Health check passed"
       return 0
     fi
