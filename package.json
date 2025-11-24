@@ -77,10 +77,10 @@
     "@types/express": "^5.0.5",
     "@types/leaflet": "^1.9.21",
     "@types/morgan": "^1.9.10",
-    "@types/node": "^24.10.0",
+    "@types/node": "^24.10.1",
     "@types/node-cron": "^3.0.11",
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.2.2",
+    "@types/react": "^19.2.6",
+    "@types/react-dom": "^19.2.3",
     "@types/supertest": "^6.0.3",
     "@types/swagger-ui-express": "^4.1.8",
     "@types/web-push": "^3.6.4",
@@ -103,7 +103,7 @@
     "vite": "^7.2.2",
     "vite-plugin-pwa": "^1.1.0",
     "vitepress": "^1.5.0",
-    "vitest": "^4.0.6",
+    "vitest": "^4.0.13",
     "workbox-window": "^7.3.0"
   },
   "optionalDependencies": {
