@@ -149,9 +149,31 @@ EOF
         exit 1
     fi
 
-    # Wait additional time for application to fully initialize
-    echo "Waiting for application to fully initialize (120 seconds)..."
-    sleep 120
+    # Wait for container to be ready (following pattern from test-quick-start.sh)
+    echo "Waiting for container to initialize..."
+    sleep 5
+
+    # Poll for admin user creation (check docker logs instead of trying to login)
+    echo "Waiting for admin user creation..."
+    max_wait_attempts=30  # 30 attempts * 2 seconds = 60 seconds max
+    wait_attempt=0
+
+    while [ $wait_attempt -lt $max_wait_attempts ]; do
+        if docker logs "$CONTAINER_NAME" 2>&1 | grep -q "FIRST RUN: Admin user created"; then
+            echo -e "${GREEN}✓ Admin user created${NC}"
+            # Give password hashing and DB commits a moment to complete
+            sleep 5
+            break
+        fi
+        wait_attempt=$((wait_attempt + 1))
+        sleep 2
+    done
+
+    if [ $wait_attempt -eq $max_wait_attempts ]; then
+        echo -e "${RED}✗ Admin user creation not detected in logs${NC}"
+        docker logs "$CONTAINER_NAME"
+        exit 1
+    fi
 fi
 
 echo ""
