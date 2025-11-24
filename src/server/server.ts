@@ -7,6 +7,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import databaseService from '../services/database.js';
 import meshtasticManager from './meshtasticManager.js';
+import meshtasticProtobufService from './meshtasticProtobufService.js';
 import { VirtualNodeServer } from './virtualNodeServer.js';
 
 // Make meshtasticManager available globally for routes that need it
@@ -734,6 +735,54 @@ apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write'), a
 
     // Update favorite status in database
     databaseService.setNodeFavorite(nodeNum, isFavorite);
+
+    // Broadcast updated NodeInfo to virtual node clients
+    const virtualNodeServer = (global as any).virtualNodeServer;
+    if (virtualNodeServer) {
+      try {
+        // Fetch the updated node from database
+        const node = databaseService.getNode(nodeNum);
+        if (node) {
+          // Create NodeInfo message with updated favorite status
+          const nodeInfoMessage = await meshtasticProtobufService.createNodeInfo({
+            nodeNum: node.nodeNum,
+            user: {
+              id: node.nodeId,
+              longName: node.longName || 'Unknown',
+              shortName: node.shortName || '????',
+              hwModel: node.hwModel || 0,
+              role: node.role,
+              publicKey: node.publicKey,
+            },
+            position: (node.latitude && node.longitude) ? {
+              latitude: node.latitude,
+              longitude: node.longitude,
+              altitude: node.altitude || 0,
+              time: node.lastHeard || Math.floor(Date.now() / 1000),
+            } : undefined,
+            deviceMetrics: (node.batteryLevel !== undefined || node.voltage !== undefined ||
+                           node.channelUtilization !== undefined || node.airUtilTx !== undefined) ? {
+              batteryLevel: node.batteryLevel,
+              voltage: node.voltage,
+              channelUtilization: node.channelUtilization,
+              airUtilTx: node.airUtilTx,
+            } : undefined,
+            snr: node.snr,
+            lastHeard: node.lastHeard,
+            hopsAway: node.hopsAway,
+            isFavorite: isFavorite,
+          });
+
+          if (nodeInfoMessage) {
+            await virtualNodeServer.broadcastToClients(nodeInfoMessage);
+            logger.debug(`✅ Broadcasted favorite status update to virtual node clients for node ${nodeNum}`);
+          }
+        }
+      } catch (error) {
+        logger.error(`⚠️ Failed to broadcast favorite update to virtual node clients for node ${nodeNum}:`, error);
+        // Don't fail the request if broadcast fails
+      }
+    }
 
     // Sync to device if requested
     let deviceSyncStatus: 'success' | 'failed' | 'skipped' = 'skipped';
