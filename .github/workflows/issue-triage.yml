@@ -103,7 +103,7 @@ jobs:
 
       - name: Checkout repository
         if: steps.check-permissions.outputs.has_write_access == 'true'
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
 
@@ -259,7 +259,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
 
@@ -458,7 +458,7 @@ jobs:
 
       - name: Checkout repository
         if: steps.check-permissions.outputs.has_write_access == 'true'
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
 
