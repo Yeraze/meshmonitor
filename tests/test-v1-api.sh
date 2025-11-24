@@ -43,6 +43,7 @@ cleanup() {
     if [ -n "$TEST_EXTERNAL_APP_URL" ]; then
         echo "Cleaning up temp files..."
         rm -f /tmp/meshmonitor-api-test-*.json
+        rm -f /tmp/meshmonitor-api-test-cookies-*.txt
         return 0
     fi
 
@@ -51,6 +52,7 @@ cleanup() {
     docker compose -f "$COMPOSE_FILE" down -v 2>/dev/null || true
     rm -f "$COMPOSE_FILE"
     rm -f /tmp/meshmonitor-api-test-*.json
+    rm -f /tmp/meshmonitor-api-test-cookies-*.txt
 
     if docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
         echo "Warning: Container ${CONTAINER_NAME} still running, forcing stop..."
@@ -100,10 +102,19 @@ check_json_field() {
 # Setup container if not using external URL
 if [ -z "$TEST_EXTERNAL_APP_URL" ]; then
     echo "Setting up test container..."
+    # Use meshmonitor:test if available (from system test build), otherwise pull latest
+    if docker image inspect meshmonitor:test >/dev/null 2>&1; then
+        IMAGE="meshmonitor:test"
+        echo "Using locally built image: meshmonitor:test"
+    else
+        IMAGE="ghcr.io/yeraze/meshmonitor:latest"
+        echo "Using published image: ghcr.io/yeraze/meshmonitor:latest"
+    fi
+
     cat > "$COMPOSE_FILE" << EOF
 services:
   meshmonitor:
-    image: ghcr.io/yeraze/meshmonitor:latest
+    image: ${IMAGE}
     container_name: ${CONTAINER_NAME}
     ports:
       - "8086:3001"
@@ -139,8 +150,8 @@ EOF
     fi
 
     # Wait additional time for application to fully initialize
-    echo "Waiting for application to fully initialize (90 seconds)..."
-    sleep 90
+    echo "Waiting for application to fully initialize (120 seconds)..."
+    sleep 120
 fi
 
 echo ""
@@ -148,33 +159,50 @@ echo "=========================================="
 echo "Step 1: Generate API Token"
 echo "=========================================="
 
+# Get CSRF token first
+echo "Getting CSRF token..."
+COOKIE_FILE="/tmp/meshmonitor-api-test-cookies-$$.txt"
+CSRF_TOKEN=$(curl -sS -c "$COOKIE_FILE" -b "$COOKIE_FILE" \
+    "${BASE_URL}/api/csrf-token" \
+    | jq -r '.csrfToken // empty')
+
+if [ -z "$CSRF_TOKEN" ] || [ "$CSRF_TOKEN" = "null" ]; then
+    echo -e "${RED}✗ Failed to get CSRF token${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}✓ CSRF token obtained${NC}"
+
 # Login to web interface with retry logic
 echo "Logging in to web interface..."
-SESSION_COOKIE=""
 max_login_attempts=10
 login_attempt=0
+LOGIN_SUCCESS=false
 
 while [ $login_attempt -lt $max_login_attempts ]; do
-    SESSION_COOKIE=$(curl -sS -c - -b - \
+    LOGIN_RESPONSE=$(curl -sS -c "$COOKIE_FILE" -b "$COOKIE_FILE" \
         -X POST "${BASE_URL}/api/auth/login" \
         -H "Content-Type: application/json" \
-        -d '{"username":"admin","password":"admin"}' \
-        2>/dev/null \
-        | grep -o 'mm.session[[:space:]]*[^[:space:]]*' | awk '{print $2}')
+        -H "x-csrf-token: $CSRF_TOKEN" \
+        -d '{"username":"admin","password":"admin"}')
 
-    if [ -n "$SESSION_COOKIE" ]; then
+    # Check if login was successful (no error field in response)
+    if echo "$LOGIN_RESPONSE" | jq -e '.error' >/dev/null 2>&1; then
+        ERROR_MSG=$(echo "$LOGIN_RESPONSE" | jq -r '.error')
+        login_attempt=$((login_attempt + 1))
+        if [ $login_attempt -lt $max_login_attempts ]; then
+            echo "Login attempt $login_attempt failed ($ERROR_MSG), retrying in 5 seconds..."
+            sleep 5
+        fi
+    else
+        LOGIN_SUCCESS=true
         break
-    fi
-
-    login_attempt=$((login_attempt + 1))
-    if [ $login_attempt -lt $max_login_attempts ]; then
-        echo "Login attempt $login_attempt failed, retrying in 5 seconds..."
-        sleep 5
     fi
 done
 
-if [ -z "$SESSION_COOKIE" ]; then
+if [ "$LOGIN_SUCCESS" != "true" ]; then
     echo -e "${RED}✗ Failed to login after $max_login_attempts attempts${NC}"
+    echo "Last error: $ERROR_MSG"
     echo "Container may not be fully ready. Try increasing wait time or check container logs."
     exit 1
 fi
@@ -183,9 +211,10 @@ echo -e "${GREEN}✓ Logged in successfully${NC}"
 
 # Generate API token
 echo "Generating API token..."
-API_RESPONSE=$(curl -sS -b "mm.session=$SESSION_COOKIE" \
+API_RESPONSE=$(curl -sS -c "$COOKIE_FILE" -b "$COOKIE_FILE" \
     -X POST "${BASE_URL}/api/tokens/generate" \
-    -H "Content-Type: application/json")
+    -H "Content-Type: application/json" \
+    -H "x-csrf-token: $CSRF_TOKEN")
 
 API_TOKEN=$(echo "$API_RESPONSE" | jq -r '.token // empty')
 
