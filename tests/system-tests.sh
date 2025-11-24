@@ -24,6 +24,17 @@ cd "$PROJECT_ROOT"
 
 # Cleanup function
 cleanup() {
+    if [ "$KEEP_ALIVE" = "true" ]; then
+        echo ""
+        echo -e "${YELLOW}⚠ KEEP_ALIVE set to true - Skipping cleanup of test containers...${NC}"
+        echo "You will need to manually clean up containers when finished:"
+        echo "  docker compose -f docker-compose.quick-start-test.yml down -v"
+        echo "  docker compose -f docker-compose.reverse-proxy-test.yml down -v"
+        echo "  docker compose -f docker-compose-config-import-test.yml down -v"
+        echo "  docker compose -f docker-compose.virtual-node-cli-test.yml down -v"
+        return 0
+    fi
+
     echo ""
     echo -e "${BLUE}Cleaning up test artifacts...${NC}"
 

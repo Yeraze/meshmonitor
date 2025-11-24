@@ -170,6 +170,21 @@ npm run test:coverage
 npm run test:ui
 ```
 
+### System Tests (End-to-End)
+
+We also have a comprehensive system test suite that verifies the full deployment using Docker.
+
+```bash
+# Run the full system test suite (builds fresh Docker image)
+./tests/system-tests.sh
+
+# Run tests against your running dev environment (Fast!)
+./tests/dev-test.sh
+
+# Run tests against a specific Meshtastic node
+TEST_NODE_IP=192.168.1.50 ./tests/system-tests.sh
+```
+
 ### Writing Tests
 
 ```typescript

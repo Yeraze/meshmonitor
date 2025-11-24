@@ -1,0 +1,54 @@
+# DevContainer Docker Compose Configuration
+# This is SEPARATE from the main docker-compose.dev.yml
+# Use this for VS Code/Cursor devcontainer development
+# Use docker-compose.dev.yml for testing the full containerized app
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    volumes:
+      # Mount the workspace
+      - ..:/workspace:cached
+
+      # DON'T mount .gitconfig - we'll configure Git in post-create.sh instead
+      # This avoids "Device or resource busy" errors on Windows
+
+      # Mount SSH keys for git operations
+      - ~/.ssh:/home/node/.ssh:ro
+
+      # Mount Docker socket for Docker-from-Docker (faster than DinD)
+      - /var/run/docker.sock:/var/run/docker.sock
+
+      # Named volumes for better performance
+      - node_modules-cache:/workspace/node_modules
+      - vscode-extensions:/home/node/.vscode-server/extensions
+      - vscode-extensions-insiders:/home/node/.vscode-server-insiders/extensions
+
+    # Forward ports for development
+    ports:
+      - "5173:5173"  # Vite dev server (React)
+      - "3001:3001"  # Express API server
+      - "4404:4404"  # Virtual Node (testing)
+      - "8080:8080"  # Docker deployment testing
+
+    # Environment variables
+    environment:
+      - NODE_ENV=development
+
+    # Keep container running
+    command: sleep infinity
+
+    # Network mode for accessing host services if needed
+    network_mode: bridge
+
+    # Add docker group to allow docker commands
+    user: node
+    group_add:
+      - docker
+
+volumes:
+  node_modules-cache:
+  vscode-extensions:
+  vscode-extensions-insiders:
