@@ -47,6 +47,8 @@ tags:
     description: Network path traceroute data
   - name: Network
     description: Network-wide statistics and topology
+  - name: Packets
+    description: Raw packet log data from the mesh network
 
 security:
   - BearerAuth: []
@@ -522,6 +524,137 @@ components:
         data:
           $ref: '#/components/schemas/Topology'
 
+    Packet:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Unique packet log ID
+          example: 12345
+        packet_id:
+          type: integer
+          description: Packet identifier
+          example: 987654
+        timestamp:
+          type: integer
+          description: Unix timestamp
+          example: 1699564800
+        from_node:
+          type: integer
+          description: Source node number
+          example: 2715451348
+        from_node_id:
+          type: string
+          description: Source node ID (hex format)
+          example: "!a1b2c3d4"
+        from_node_longName:
+          type: string
+          description: Source node long name
+          example: "My Mesh Node"
+        to_node:
+          type: integer
+          description: Destination node number
+          example: 2820214276
+        to_node_id:
+          type: string
+          description: Destination node ID (hex format)
+          example: "!e5f6g7h8"
+        to_node_longName:
+          type: string
+          description: Destination node long name
+          example: "Remote Node"
+        channel:
+          type: integer
+          description: Channel number
+          example: 0
+        portnum:
+          type: integer
+          description: Port number (message type)
+          example: 1
+        portnum_name:
+          type: string
+          description: Port name
+          example: "TEXT_MESSAGE_APP"
+        encrypted:
+          type: boolean
+          description: Whether packet was encrypted
+          example: false
+        snr:
+          type: number
+          format: float
+          description: Signal-to-noise ratio
+          example: 8.5
+        rssi:
+          type: integer
+          description: Received signal strength in dBm
+          example: -95
+        hop_limit:
+          type: integer
+          description: Hop limit
+          example: 3
+        hop_start:
+          type: integer
+          description: Starting hop count
+          example: 3
+        payload_size:
+          type: integer
+          description: Size of payload in bytes
+          example: 128
+        want_ack:
+          type: boolean
+          description: Whether acknowledgment was requested
+          example: false
+        priority:
+          type: integer
+          description: Packet priority
+          example: 64
+
+    PacketListResponse:
+      type: object
+      required:
+        - success
+        - count
+        - total
+        - offset
+        - limit
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        count:
+          type: integer
+          description: Number of packets returned in this response
+          example: 100
+        total:
+          type: integer
+          description: Total number of packets matching the filters
+          example: 5432
+        offset:
+          type: integer
+          description: Offset used for pagination
+          example: 0
+        limit:
+          type: integer
+          description: Limit used for pagination
+          example: 100
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Packet'
+
+    PacketResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/Packet'
+
 paths:
   /:
     get:
@@ -966,6 +1099,138 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TopologyResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /packets:
+    get:
+      tags:
+        - Packets
+      summary: Get packet logs
+      description: |
+        Retrieve raw packet log data from the mesh network with optional filters.
+        This endpoint provides access to all packets received by the node, including both encrypted and decrypted packets.
+      parameters:
+        - name: offset
+          in: query
+          description: Number of packets to skip for pagination
+          required: false
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+        - name: limit
+          in: query
+          description: Maximum number of packets to return
+          required: false
+          schema:
+            type: integer
+            default: 100
+            minimum: 1
+        - name: portnum
+          in: query
+          description: Filter by port number (message type)
+          required: false
+          schema:
+            type: integer
+        - name: from_node
+          in: query
+          description: Filter by source node number
+          required: false
+          schema:
+            type: integer
+        - name: to_node
+          in: query
+          description: Filter by destination node number
+          required: false
+          schema:
+            type: integer
+        - name: channel
+          in: query
+          description: Filter by channel number
+          required: false
+          schema:
+            type: integer
+        - name: encrypted
+          in: query
+          description: Filter by encryption status (true for encrypted only, false for decrypted only)
+          required: false
+          schema:
+            type: boolean
+        - name: since
+          in: query
+          description: Unix timestamp to filter packets after this time
+          required: false
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Packet logs retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PacketListResponse'
+        '400':
+          description: Bad request (invalid parameters)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /packets/{id}:
+    get:
+      tags:
+        - Packets
+      summary: Get a specific packet
+      description: Retrieve a specific packet log entry by its ID
+      parameters:
+        - name: id
+          in: path
+          description: Packet log ID
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Packet retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PacketResponse'
+        '400':
+          description: Bad request (invalid ID)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Packet not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Unauthorized
           content:

@@ -12,6 +12,7 @@ import telemetryRouter from './telemetry.js';
 import traceroutesRouter from './traceroutes.js';
 import messagesRouter from './messages.js';
 import networkRouter from './network.js';
+import packetsRouter from './packets.js';
 import docsRouter from './docs.js';
 
 const router = express.Router();
@@ -33,7 +34,8 @@ router.get('/', (_req, res) => {
       telemetry: '/api/v1/telemetry',
       traceroutes: '/api/v1/traceroutes',
       messages: '/api/v1/messages',
-      network: '/api/v1/network'
+      network: '/api/v1/network',
+      packets: '/api/v1/packets'
     }
   });
 });
@@ -44,5 +46,6 @@ router.use('/telemetry', telemetryRouter);
 router.use('/traceroutes', traceroutesRouter);
 router.use('/messages', messagesRouter);
 router.use('/network', networkRouter);
+router.use('/packets', packetsRouter);
 
 export default router;
