@@ -32,6 +32,7 @@ import { migration as customThemesMigration } from '../server/migrations/022_add
 import { migration as passwordLockedMigration } from '../server/migrations/023_add_password_locked_flag.js';
 import { migration as perChannelPermissionsMigration } from '../server/migrations/024_add_per_channel_permissions.js';
 import { migration as apiTokensMigration } from '../server/migrations/025_add_api_tokens.js';
+import { migration as cascadeForeignKeysMigration } from '../server/migrations/028_add_cascade_to_foreign_keys.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Configuration constants for traceroute history
@@ -394,6 +395,7 @@ class DatabaseService {
     this.runPasswordLockedMigration();
     this.runPerChannelPermissionsMigration();
     this.runAPITokensMigration();
+    this.runCascadeForeignKeysMigration();
     this.runAutoWelcomeMigration();
     this.ensureAutomationDefaults();
     this.isInitialized = true;
@@ -944,6 +946,26 @@ class DatabaseService {
       logger.debug('✅ API tokens migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run API tokens migration:', error);
+      throw error;
+    }
+  }
+
+  private runCascadeForeignKeysMigration(): void {
+    const migrationKey = 'migration_028_cascade_foreign_keys';
+
+    try {
+      const currentStatus = this.getSetting(migrationKey);
+      if (currentStatus === 'completed') {
+        logger.debug('✅ CASCADE foreign keys migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 028: Add CASCADE to foreign keys...');
+      cascadeForeignKeysMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ CASCADE foreign keys migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run CASCADE foreign keys migration:', error);
       throw error;
     }
   }
