@@ -1,0 +1,120 @@
+{
+  "name": "MeshMonitor Development",
+  // Use docker-compose for better volume management and Docker socket mounting
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspace",
+
+  // Additional features required for the development environment
+  "features": {
+    // Docker-outside-of-docker: Mount host Docker socket for testing docker-compose.dev.yml
+    // Faster than Docker-in-Docker and shares host's Docker images/cache
+    // Note: moby=false required for Debian trixie (Node 22 base image)
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {
+      "version": "latest",
+      "moby": false
+    },
+    // Git: Ensure latest git for submodule support (protobufs submodule is critical)
+    "ghcr.io/devcontainers/features/git:1": {
+      "version": "latest"
+    }
+    // Note: Playwright installed manually in post-create.sh (no official devcontainer feature exists)
+  },
+
+  // IDE customizations for optimal development experience
+  "customizations": {
+    "vscode": {
+      // Essential extensions for TypeScript/React development and testing
+      "extensions": [
+        "dbaeumer.vscode-eslint",                    // ESLint linting (project uses ESLint 9)
+        "esbenp.prettier-vscode",                    // Code formatting
+        "bradlc.vscode-tailwindcss",                 // Tailwind CSS IntelliSense (used in styles)
+        "ms-vscode.vscode-typescript-next",          // TypeScript support
+        "vitest.explorer",                           // Vitest test runner integration
+        "usernamehw.errorlens",                      // Inline error display
+        "eamodio.gitlens",                           // Git history and blame
+        "ms-azuretools.vscode-docker",               // Docker support for testing docker-compose
+        "streetsidesoftware.code-spell-checker"      // Catch typos in comments/strings
+      ],
+      "settings": {
+        // Auto-format on save and auto-fix ESLint issues
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.codeActionsOnSave": {
+          "source.fixAll.eslint": "explicit"
+        },
+        // Enable ESLint for all JS/TS file types
+        "eslint.validate": [
+          "javascript",
+          "javascriptreact",
+          "typescript",
+          "typescriptreact"
+        ],
+        // Use bash as default terminal (scripts expect bash)
+        "terminal.integrated.defaultProfile.linux": "bash",
+        // Exclude build artifacts and git internals from file watcher (performance)
+        "files.watcherExclude": {
+          "**/node_modules/**": true,
+          "**/dist/**": true,
+          "**/.git/objects/**": true,
+          "**/.git/subtree-cache/**": true
+        },
+        // Use workspace TypeScript version for consistency
+        "typescript.tsdk": "node_modules/typescript/lib",
+        // Enable Vitest test explorer
+        "vitest.enable": true
+      }
+    }
+  },
+
+  // Forward development ports to host
+  "forwardPorts": [5173, 3001, 4404, 8080],
+  "portsAttributes": {
+    "5173": {
+      "label": "Vite Dev Server (React)",
+      "onAutoForward": "notify"                      // Notify when React dev server starts
+    },
+    "3001": {
+      "label": "Express API Server",
+      "onAutoForward": "notify"                      // Notify when Express API starts
+    },
+    "4404": {
+      "label": "Virtual Node (Testing)",
+      "onAutoForward": "silent"                      // Virtual node for Meshtastic testing
+    },
+    "8080": {
+      "label": "Docker Testing Port",
+      "onAutoForward": "silent"                      // For testing docker-compose.dev.yml
+    }
+  },
+
+  // Recommended resources for GitHub Codespaces
+  // Ensures smooth performance for Node.js dev + Docker
+  "hostRequirements": {
+    "cpus": 4,
+    "memory": "8gb",
+    "storage": "32gb"
+  },
+
+  // Wait for setup to complete before opening editor (better UX)
+  "waitFor": "postCreateCommand",
+
+  // Run once when container is first created
+  // Initializes git submodules, installs npm dependencies, sets up .env
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+
+  // Run when attaching to container (includes first open and reconnects)
+  // Displays welcome message with helpful commands and reminders
+  "postAttachCommand": "bash .devcontainer/welcome.sh",
+
+  // Use non-root 'node' user for security and proper file permissions
+  "remoteUser": "node",
+
+  // Set development environment variables
+  "remoteEnv": {
+    "NODE_ENV": "development",
+    // Skip Puppeteer browser downloads (not needed for development)
+    "PUPPETEER_SKIP_DOWNLOAD": "true",
+    "PUPPETEER_SKIP_CHROMIUM_DOWNLOAD": "true"
+  }
+}

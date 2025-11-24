@@ -18,8 +18,25 @@ NC='\033[0m' # No Color
 COMPOSE_FILE="docker-compose.quick-start-test.yml"
 CONTAINER_NAME="meshmonitor-quick-start-test"
 
+# Configuration
+TEST_NODE_IP="${TEST_NODE_IP:-192.168.5.106}"
+
 # Cleanup function
 cleanup() {
+    if [ "$KEEP_ALIVE" = "true" ]; then
+        echo ""
+        echo -e "${YELLOW}⚠ KEEP_ALIVE set to true - Skipping cleanup...${NC}"
+        return 0
+    fi
+
+    # If we didn't create the container (External App Mode), we don't need to clean it up
+    if [ -n "$TEST_EXTERNAL_APP_URL" ]; then
+        echo ""
+        echo "Cleaning up temp files..."
+        rm -f /tmp/meshmonitor-cookies.txt
+        return 0
+    fi
+
     echo ""
     echo "Cleaning up..."
     docker compose -f "$COMPOSE_FILE" down -v 2>/dev/null || true
@@ -40,9 +57,20 @@ cleanup() {
 # Set trap to cleanup on exit
 trap cleanup EXIT
 
-# Create minimal test docker-compose file (matches documentation)
-echo "Creating test docker-compose.yml (matches Quick Start documentation)..."
-cat > "$COMPOSE_FILE" <<'EOF'
+# Determine mode
+if [ -n "$TEST_EXTERNAL_APP_URL" ]; then
+    echo -e "${YELLOW}Running in EXTERNAL APP MODE${NC}"
+    echo "Target URL: $TEST_EXTERNAL_APP_URL"
+    BASE_URL="$TEST_EXTERNAL_APP_URL"
+    # Remove trailing slash if present
+    BASE_URL=${BASE_URL%/}
+else
+    echo -e "${GREEN}Running in CONTAINER MODE${NC}"
+    echo "Target Node IP: $TEST_NODE_IP"
+    
+    # Create minimal test docker-compose file (matches documentation)
+    echo "Creating test docker-compose.yml (matches Quick Start documentation)..."
+    cat > "$COMPOSE_FILE" <<EOF
 services:
   meshmonitor:
     build:
@@ -54,93 +82,102 @@ services:
     volumes:
       - meshmonitor-quick-start-test-data:/data
     environment:
-      - MESHTASTIC_NODE_IP=192.168.5.106
+      - MESHTASTIC_NODE_IP=$TEST_NODE_IP
     restart: unless-stopped
 
 volumes:
   meshmonitor-quick-start-test-data:
 EOF
 
-echo -e "${GREEN}✓${NC} Test config created"
-echo ""
+    echo -e "${GREEN}✓${NC} Test config created"
+    echo ""
 
-# Build and start
-echo "Building container..."
-docker compose -f "$COMPOSE_FILE" build --no-cache --quiet
+    # Build and start
+    echo "Building container..."
+    docker compose -f "$COMPOSE_FILE" build --no-cache --quiet
 
-echo -e "${GREEN}✓${NC} Build complete"
-echo ""
+    echo -e "${GREEN}✓${NC} Build complete"
+    echo ""
 
-echo "Starting container..."
-docker compose -f "$COMPOSE_FILE" up -d
+    echo "Starting container..."
+    docker compose -f "$COMPOSE_FILE" up -d
 
-echo -e "${GREEN}✓${NC} Container started"
-echo ""
+    echo -e "${GREEN}✓${NC} Container started"
+    echo ""
 
-# Wait for container to be ready
-echo "Waiting for container to be ready..."
-sleep 5
-
-# Test 1: Check container is running
-echo "Test 1: Container is running"
-if docker ps | grep -q "$CONTAINER_NAME"; then
-    echo -e "${GREEN}✓ PASS${NC}: Container is running"
-else
-    echo -e "${RED}✗ FAIL${NC}: Container is not running"
-    docker logs "$CONTAINER_NAME"
-    exit 1
+    # Wait for container to be ready
+    echo "Waiting for container to be ready..."
+    sleep 5
+    
+    BASE_URL="http://localhost:8083"
 fi
-echo ""
 
-# Test 2: Check logs for SESSION_SECRET warning
-echo "Test 2: SESSION_SECRET auto-generated (warning present)"
-if docker logs "$CONTAINER_NAME" 2>&1 | grep -q "SESSION_SECRET NOT SET - USING AUTO-GENERATED SECRET"; then
-    echo -e "${GREEN}✓ PASS${NC}: SESSION_SECRET warning found"
-else
-    echo -e "${RED}✗ FAIL${NC}: SESSION_SECRET warning not found"
-    docker logs "$CONTAINER_NAME"
-    exit 1
-fi
-echo ""
+# Only run container checks if we are in Container Mode
+if [ -z "$TEST_EXTERNAL_APP_URL" ]; then
+    # Test 1: Check container is running
+    echo "Test 1: Container is running"
+    if docker ps | grep -q "$CONTAINER_NAME"; then
+        echo -e "${GREEN}✓ PASS${NC}: Container is running"
+    else
+        echo -e "${RED}✗ FAIL${NC}: Container is not running"
+        docker logs "$CONTAINER_NAME"
+        exit 1
+    fi
+    echo ""
 
-# Test 3: Check logs for COOKIE_SECURE warning
-echo "Test 3: COOKIE_SECURE defaults to false (warning present)"
-if docker logs "$CONTAINER_NAME" 2>&1 | grep -q "COOKIE_SECURE not set - defaulting to false"; then
-    echo -e "${GREEN}✓ PASS${NC}: COOKIE_SECURE warning found"
-else
-    echo -e "${RED}✗ FAIL${NC}: COOKIE_SECURE warning not found"
-    docker logs "$CONTAINER_NAME"
-    exit 1
-fi
-echo ""
+    # Test 2: Check logs for SESSION_SECRET warning
+    echo "Test 2: SESSION_SECRET auto-generated (warning present)"
+    if docker logs "$CONTAINER_NAME" 2>&1 | grep -q "SESSION_SECRET NOT SET - USING AUTO-GENERATED SECRET"; then
+        echo -e "${GREEN}✓ PASS${NC}: SESSION_SECRET warning found"
+    else
+        echo -e "${RED}✗ FAIL${NC}: SESSION_SECRET warning not found"
+        docker logs "$CONTAINER_NAME"
+        exit 1
+    fi
+    echo ""
 
-# Test 4: Check logs for admin user creation
-echo "Test 4: Admin user created on first run"
-if docker logs "$CONTAINER_NAME" 2>&1 | grep -q "FIRST RUN: Admin user created"; then
-    echo -e "${GREEN}✓ PASS${NC}: Admin user created"
-else
-    echo -e "${RED}✗ FAIL${NC}: Admin user creation message not found"
-    docker logs "$CONTAINER_NAME"
-    exit 1
-fi
-echo ""
+    # Test 3: Check logs for COOKIE_SECURE warning
+    echo "Test 3: COOKIE_SECURE defaults to false (warning present)"
+    if docker logs "$CONTAINER_NAME" 2>&1 | grep -q "COOKIE_SECURE not set - defaulting to false"; then
+        echo -e "${GREEN}✓ PASS${NC}: COOKIE_SECURE warning found"
+    else
+        echo -e "${RED}✗ FAIL${NC}: COOKIE_SECURE warning not found"
+        docker logs "$CONTAINER_NAME"
+        exit 1
+    fi
+    echo ""
 
-# Test 5: Check session config shows Cookie secure: false
-echo "Test 5: Cookie secure set to false"
-if docker logs "$CONTAINER_NAME" 2>&1 | grep -q "Cookie secure: false"; then
-    echo -e "${GREEN}✓ PASS${NC}: Cookie secure is false"
+    # Test 4: Check logs for admin user creation
+    echo "Test 4: Admin user created on first run"
+    if docker logs "$CONTAINER_NAME" 2>&1 | grep -q "FIRST RUN: Admin user created"; then
+        echo -e "${GREEN}✓ PASS${NC}: Admin user created"
+    else
+        echo -e "${RED}✗ FAIL${NC}: Admin user creation message not found"
+        docker logs "$CONTAINER_NAME"
+        exit 1
+    fi
+    echo ""
+
+    # Test 5: Check session config shows Cookie secure: false
+    echo "Test 5: Cookie secure set to false"
+    if docker logs "$CONTAINER_NAME" 2>&1 | grep -q "Cookie secure: false"; then
+        echo -e "${GREEN}✓ PASS${NC}: Cookie secure is false"
+    else
+        echo -e "${RED}✗ FAIL${NC}: Cookie secure not set to false"
+        docker logs "$CONTAINER_NAME"
+        exit 1
+    fi
+    echo ""
 else
-    echo -e "${RED}✗ FAIL${NC}: Cookie secure not set to false"
-    docker logs "$CONTAINER_NAME"
-    exit 1
+    echo "Skipping container log checks (External App Mode)"
+    echo ""
 fi
-echo ""
 
 # Test 6: Check HTTP headers (no HSTS)
 echo "Test 6: No HSTS header in HTTP response"
-if curl -s -I http://localhost:8083/ | grep -q "Strict-Transport-Security"; then
+if curl -s -I $BASE_URL/ | grep -q "Strict-Transport-Security"; then
     echo -e "${RED}✗ FAIL${NC}: HSTS header found (should not be present)"
-    curl -I http://localhost:8083/ | grep "Strict-Transport-Security"
+    curl -I $BASE_URL/ | grep "Strict-Transport-Security"
     exit 1
 else
     echo -e "${GREEN}✓ PASS${NC}: No HSTS header (HTTP-friendly)"
@@ -149,7 +186,7 @@ echo ""
 
 # Test 7: Check session cookie is set (without Secure flag)
 echo "Test 7: Session cookie works over HTTP"
-COOKIE_HEADER=$(curl -s -I http://localhost:8083/ | grep -i "Set-Cookie: meshmonitor.sid")
+COOKIE_HEADER=$(curl -s -I $BASE_URL/ | grep -i "Set-Cookie: meshmonitor.sid")
 if [ -n "$COOKIE_HEADER" ]; then
     if echo "$COOKIE_HEADER" | grep -q "; Secure"; then
         echo -e "${RED}✗ FAIL${NC}: Cookie has Secure flag (won't work over HTTP)"
@@ -166,7 +203,7 @@ echo ""
 
 # Test 8: Get CSRF token
 echo "Test 8: Fetch CSRF token"
-CSRF_RESPONSE=$(curl -s -w "\n%{http_code}" http://localhost:8083/api/csrf-token \
+CSRF_RESPONSE=$(curl -s -w "\n%{http_code}" $BASE_URL/api/csrf-token \
     -c /tmp/meshmonitor-cookies.txt)
 
 HTTP_CODE=$(echo "$CSRF_RESPONSE" | tail -n1)
@@ -183,7 +220,7 @@ echo ""
 
 # Test 9: Check login works with default credentials
 echo "Test 9: Login with default admin credentials"
-LOGIN_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://localhost:8083/api/auth/login \
+LOGIN_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST $BASE_URL/api/auth/login \
     -H "Content-Type: application/json" \
     -H "X-CSRF-Token: $CSRF_TOKEN" \
     -d '{"username":"admin","password":"changeme"}' \
@@ -202,7 +239,7 @@ echo ""
 
 # Test 10: Check authenticated request works
 echo "Test 10: Authenticated request with session cookie"
-AUTH_RESPONSE=$(curl -s -w "\n%{http_code}" http://localhost:8083/api/auth/status \
+AUTH_RESPONSE=$(curl -s -w "\n%{http_code}" $BASE_URL/api/auth/status \
     -b /tmp/meshmonitor-cookies.txt)
 
 HTTP_CODE=$(echo "$AUTH_RESPONSE" | tail -n1)
@@ -218,14 +255,19 @@ else
 fi
 echo ""
 
-# Test 11: Environment check
-echo "Test 11: Running in production mode"
-if docker logs "$CONTAINER_NAME" 2>&1 | grep -q "Environment: production"; then
-    echo -e "${GREEN}✓ PASS${NC}: Running in production mode (better security defaults)"
+# Test 11: Environment check (Container Mode only)
+if [ -z "$TEST_EXTERNAL_APP_URL" ]; then
+    echo "Test 11: Running in production mode"
+    if docker logs "$CONTAINER_NAME" 2>&1 | grep -q "Environment: production"; then
+        echo -e "${GREEN}✓ PASS${NC}: Running in production mode (better security defaults)"
+    else
+        echo -e "${YELLOW}⚠ WARN${NC}: Not running in production mode"
+    fi
+    echo ""
 else
-    echo -e "${YELLOW}⚠ WARN${NC}: Not running in production mode"
+    echo "Skipping environment check (External App Mode)"
+    echo ""
 fi
-echo ""
 
 # Test 12: Wait for node connection and data sync
 echo "Test 12: Wait for Meshtastic node connection and data sync"
@@ -233,15 +275,16 @@ echo "Waiting up to 30 seconds for channels (>=3) and nodes (>100)..."
 MAX_WAIT=30
 ELAPSED=0
 NODE_CONNECTED=false
+SLEEP_INTERVAL=1  # Start with 1 second
 
 while [ $ELAPSED -lt $MAX_WAIT ]; do
     # Check channels
-    CHANNELS_RESPONSE=$(curl -s http://localhost:8083/api/channels \
+    CHANNELS_RESPONSE=$(curl -s $BASE_URL/api/channels \
         -b /tmp/meshmonitor-cookies.txt)
     CHANNEL_COUNT=$(echo "$CHANNELS_RESPONSE" | grep -o '"id"' | wc -l)
 
     # Check nodes
-    NODES_RESPONSE=$(curl -s http://localhost:8083/api/nodes \
+    NODES_RESPONSE=$(curl -s $BASE_URL/api/nodes \
         -b /tmp/meshmonitor-cookies.txt)
     NODE_COUNT=$(echo "$NODES_RESPONSE" | grep -o '"id"' | wc -l)
 
@@ -251,8 +294,15 @@ while [ $ELAPSED -lt $MAX_WAIT ]; do
         break
     fi
 
-    sleep 2
-    ELAPSED=$((ELAPSED + 2))
+    # Exponential backoff: 1s, 2s, 4s, 8s (capped at 8s)
+    sleep $SLEEP_INTERVAL
+    ELAPSED=$((ELAPSED + SLEEP_INTERVAL))
+    
+    # Double interval for next iteration, cap at 8 seconds
+    if [ $SLEEP_INTERVAL -lt 8 ]; then
+        SLEEP_INTERVAL=$((SLEEP_INTERVAL * 2))
+    fi
+    
     echo -n "."
 done
 echo ""
@@ -267,7 +317,7 @@ echo ""
 echo "Test 13: Verify Meshtastic device configuration (CRITICAL)"
 
 # Get device config
-DEVICE_CONFIG=$(curl -s http://localhost:8083/api/device-config \
+DEVICE_CONFIG=$(curl -s $BASE_URL/api/device-config \
     -b /tmp/meshmonitor-cookies.txt)
 
 # Verify modem preset is Medium Fast
@@ -350,7 +400,7 @@ echo ""
 echo "Test 13.1: Verify fresh container has no Apprise URLs (API and file)"
 
 # Check API returns empty array
-APPRISE_URLS_RESPONSE=$(curl -s -w "\n%{http_code}" http://localhost:8083/api/apprise/urls \
+APPRISE_URLS_RESPONSE=$(curl -s -w "\n%{http_code}" $BASE_URL/api/apprise/urls \
     -b /tmp/meshmonitor-cookies.txt)
 
 HTTP_CODE=$(echo "$APPRISE_URLS_RESPONSE" | tail -n1)
@@ -370,17 +420,21 @@ else
     exit 1
 fi
 
-# Check file doesn't exist or is empty
-CONFIG_FILE_CHECK=$(docker exec "$CONTAINER_NAME" sh -c 'if [ -f /data/apprise-config/urls.txt ]; then cat /data/apprise-config/urls.txt; else echo "__FILE_NOT_FOUND__"; fi' 2>&1)
+# Check file doesn't exist or is empty (Only in Container Mode)
+if [ -z "$TEST_EXTERNAL_APP_URL" ]; then
+    CONFIG_FILE_CHECK=$(docker exec "$CONTAINER_NAME" sh -c 'if [ -f /data/apprise-config/urls.txt ]; then cat /data/apprise-config/urls.txt; else echo "__FILE_NOT_FOUND__"; fi' 2>&1)
 
-if echo "$CONFIG_FILE_CHECK" | grep -q "__FILE_NOT_FOUND__"; then
-    echo -e "${GREEN}✓ PASS${NC}: Config file does not exist (fresh start)"
-elif [ -z "$CONFIG_FILE_CHECK" ] || ! echo "$CONFIG_FILE_CHECK" | grep -v '^[[:space:]]*$' | grep -q .; then
-    echo -e "${GREEN}✓ PASS${NC}: Config file exists but is empty (fresh start)"
+    if echo "$CONFIG_FILE_CHECK" | grep -q "__FILE_NOT_FOUND__"; then
+        echo -e "${GREEN}✓ PASS${NC}: Config file does not exist (fresh start)"
+    elif [ -z "$CONFIG_FILE_CHECK" ] || ! echo "$CONFIG_FILE_CHECK" | grep -v '^[[:space:]]*$' | grep -q .; then
+        echo -e "${GREEN}✓ PASS${NC}: Config file exists but is empty (fresh start)"
+    else
+        echo -e "${RED}✗ FAIL${NC}: Config file should not exist or be empty on fresh start"
+        echo "   File contents: $CONFIG_FILE_CHECK"
+        exit 1
+    fi
 else
-    echo -e "${RED}✗ FAIL${NC}: Config file should not exist or be empty on fresh start"
-    echo "   File contents: $CONFIG_FILE_CHECK"
-    exit 1
+    echo "Skipping config file check (External App Mode)"
 fi
 echo ""
 
@@ -400,7 +454,7 @@ SAMPLE_URLS='{"urls": [
   "gotify://hostname/token"
 ]}'
 
-CONFIGURE_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://localhost:8083/api/apprise/configure \
+CONFIGURE_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST $BASE_URL/api/apprise/configure \
     -H "Content-Type: application/json" \
     -H "X-CSRF-Token: $CSRF_TOKEN" \
     -d "$SAMPLE_URLS" \
@@ -419,39 +473,43 @@ else
 fi
 echo ""
 
-# Test 13.3: Verify URLs persisted to config file
+# Test 13.3: Verify URLs persisted to config file (Only in Container Mode)
 echo "Test 13.3: Verify URLs persisted to /data/apprise-config/urls.txt in container"
-CONFIG_FILE_CONTENT=$(docker exec "$CONTAINER_NAME" cat /data/apprise-config/urls.txt 2>/dev/null)
+if [ -z "$TEST_EXTERNAL_APP_URL" ]; then
+    CONFIG_FILE_CONTENT=$(docker exec "$CONTAINER_NAME" cat /data/apprise-config/urls.txt 2>/dev/null)
 
-if [ -n "$CONFIG_FILE_CONTENT" ]; then
-    LINE_COUNT=$(echo "$CONFIG_FILE_CONTENT" | wc -l)
-    echo -e "${GREEN}✓ PASS${NC}: Config file exists with $LINE_COUNT lines"
-    echo "   First 3 URLs from file:"
-    echo "$CONFIG_FILE_CONTENT" | head -3 | sed 's/^/     /'
+    if [ -n "$CONFIG_FILE_CONTENT" ]; then
+        LINE_COUNT=$(echo "$CONFIG_FILE_CONTENT" | wc -l)
+        echo -e "${GREEN}✓ PASS${NC}: Config file exists with $LINE_COUNT lines"
+        echo "   First 3 URLs from file:"
+        echo "$CONFIG_FILE_CONTENT" | head -3 | sed 's/^/     /'
 
-    # Verify key URLs are present
-    if echo "$CONFIG_FILE_CONTENT" | grep -q "tgram://"; then
-        echo -e "${GREEN}✓${NC} Telegram URL found"
+        # Verify key URLs are present
+        if echo "$CONFIG_FILE_CONTENT" | grep -q "tgram://"; then
+            echo -e "${GREEN}✓${NC} Telegram URL found"
+        else
+            echo -e "${RED}✗ FAIL${NC}: Telegram URL not found in config file"
+            exit 1
+        fi
+
+        if echo "$CONFIG_FILE_CONTENT" | grep -q "discord://"; then
+            echo -e "${GREEN}✓${NC} Discord URL found"
+        else
+            echo -e "${RED}✗ FAIL${NC}: Discord URL not found in config file"
+            exit 1
+        fi
     else
-        echo -e "${RED}✗ FAIL${NC}: Telegram URL not found in config file"
-        exit 1
-    fi
-
-    if echo "$CONFIG_FILE_CONTENT" | grep -q "discord://"; then
-        echo -e "${GREEN}✓${NC} Discord URL found"
-    else
-        echo -e "${RED}✗ FAIL${NC}: Discord URL not found in config file"
+        echo -e "${RED}✗ FAIL${NC}: Config file does not exist or is empty"
         exit 1
     fi
 else
-    echo -e "${RED}✗ FAIL${NC}: Config file does not exist or is empty"
-    exit 1
+    echo "Skipping config file persistence check (External App Mode)"
 fi
 echo ""
 
 # Test 13.4: Read URLs back from API to confirm persistence
 echo "Test 13.4: Read URLs back from API to confirm they persisted"
-VERIFY_URLS_RESPONSE=$(curl -s -w "\n%{http_code}" http://localhost:8083/api/apprise/urls \
+VERIFY_URLS_RESPONSE=$(curl -s -w "\n%{http_code}" $BASE_URL/api/apprise/urls \
     -b /tmp/meshmonitor-cookies.txt)
 
 HTTP_CODE=$(echo "$VERIFY_URLS_RESPONSE" | tail -n1)
@@ -473,23 +531,27 @@ else
 fi
 echo ""
 
-# Test 13.5: Check Apprise logs for diagnostic output
+# Test 13.5: Check Apprise logs for diagnostic output (Only in Container Mode)
 echo "Test 13.5: Verify Apprise diagnostic logging is working"
-APPRISE_LOGS=$(docker logs "$CONTAINER_NAME" 2>&1 | grep -A 10 "Apprise API server" || true)
+if [ -z "$TEST_EXTERNAL_APP_URL" ]; then
+    APPRISE_LOGS=$(docker logs "$CONTAINER_NAME" 2>&1 | grep -A 10 "Apprise API server" || true)
 
-if echo "$APPRISE_LOGS" | grep -q "Loaded.*notification URLs from config"; then
-    echo -e "${GREEN}✓ PASS${NC}: Apprise diagnostic logging is working"
-    # Show the load summary line
-    LOAD_LINE=$(docker logs "$CONTAINER_NAME" 2>&1 | grep "Loaded.*notification URLs from config" | tail -1)
-    echo "   $LOAD_LINE"
+    if echo "$APPRISE_LOGS" | grep -q "Loaded.*notification URLs from config"; then
+        echo -e "${GREEN}✓ PASS${NC}: Apprise diagnostic logging is working"
+        # Show the load summary line
+        LOAD_LINE=$(docker logs "$CONTAINER_NAME" 2>&1 | grep "Loaded.*notification URLs from config" | tail -1)
+        echo "   $LOAD_LINE"
+    else
+        echo -e "${YELLOW}⚠ WARN${NC}: Apprise diagnostic logging not found (may need container restart)"
+    fi
 else
-    echo -e "${YELLOW}⚠ WARN${NC}: Apprise diagnostic logging not found (may need container restart)"
+    echo "Skipping log check (External App Mode)"
 fi
 echo ""
 
 # Test 13.6: Test send notification (expect it to fail with fake URLs, but test the flow)
 echo "Test 13.6: Test notification send flow (will fail with fake URLs)"
-TEST_NOTIFY_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://localhost:8083/api/apprise/test \
+TEST_NOTIFY_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST $BASE_URL/api/apprise/test \
     -H "X-CSRF-Token: $CSRF_TOKEN" \
     -b /tmp/meshmonitor-cookies.txt)
 
@@ -544,7 +606,7 @@ for ATTEMPT in $(seq 1 $MAX_ATTEMPTS); do
     echo "Attempt $ATTEMPT of $MAX_ATTEMPTS..."
 
     # Send message
-    SEND_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://localhost:8083/api/messages/send \
+    SEND_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST $BASE_URL/api/messages/send \
         -H "Content-Type: application/json" \
         -H "X-CSRF-Token: $CSRF_TOKEN" \
         -d "{\"destination\":\"!$TARGET_NODE_ID\",\"text\":\"$TEST_MESSAGE (attempt $ATTEMPT)\"}" \
@@ -558,10 +620,11 @@ for ATTEMPT in $(seq 1 $MAX_ATTEMPTS); do
         echo "Waiting up to 10 seconds for response from Yeraze Station G2..."
         MAX_WAIT=10
         ELAPSED=0
+        SLEEP_INTERVAL=1  # Start with 1 second
 
         while [ $ELAPSED -lt $MAX_WAIT ]; do
             # Check for messages from the target node
-            MESSAGES_RESPONSE=$(curl -s http://localhost:8083/api/messages \
+            MESSAGES_RESPONSE=$(curl -s $BASE_URL/api/messages \
                 -b /tmp/meshmonitor-cookies.txt)
 
             # Look for a recent message from our target node
@@ -571,8 +634,15 @@ for ATTEMPT in $(seq 1 $MAX_ATTEMPTS); do
                 break 2  # Break out of both loops
             fi
 
-            sleep 2
-            ELAPSED=$((ELAPSED + 2))
+            # Exponential backoff: 1s, 2s, 4s (capped at 4s for faster response detection)
+            sleep $SLEEP_INTERVAL
+            ELAPSED=$((ELAPSED + SLEEP_INTERVAL))
+            
+            # Double interval for next iteration, cap at 4 seconds
+            if [ $SLEEP_INTERVAL -lt 4 ]; then
+                SLEEP_INTERVAL=$((SLEEP_INTERVAL * 2))
+            fi
+            
             echo -n "."
         done
         echo ""
@@ -602,6 +672,8 @@ echo ""
 # Test 15: Security Test - Run before cleanup while container is still running
 echo "Test 15: Security verification (API endpoint protection)"
 if [ -f "$(dirname "$0")/test-security.sh" ]; then
+    # Pass BASE_URL to security test
+    export BASE_URL
     if bash "$(dirname "$0")/test-security.sh"; then
         echo -e "${GREEN}✓ PASS${NC}: Security test passed"
     else

@@ -4,48 +4,25 @@ Thank you for your interest in contributing to MeshMonitor! This guide will help
 
 ## 🚀 Getting Started
 
-### Prerequisites
-- Node.js 20+ or 22+ (Node.js 18 is deprecated and will lose support April 2025)
-- npm 9.x or later
-- Docker (optional, for container testing)
-- A Meshtastic node with HTTP API enabled (for full testing)
 
-### Development Setup
 
-1. **Fork and clone the repository:**
-   ```bash
-   git clone https://github.com/YOUR_USERNAME/meshmonitor.git
-   cd meshmonitor
-   ```
+### System Tests (End-to-End)
 
-2. **Install dependencies:**
-   ```bash
-   npm install
-   ```
+We also have a comprehensive system test suite that verifies the full deployment using Docker.
 
-3. **Set up your development environment:**
-   ```bash
-   # Copy environment template
-   cp .env.example .env
+```bash
+# Run the full system test suite (builds fresh Docker image)
+./tests/system-tests.sh
 
-   # Edit .env with your Meshtastic node details
-   ```
+# Run tests against your running dev environment (Fast!)
+./tests/dev-test.sh
 
-4. **Start development servers:**
-   ```bash
-   # Start both frontend and backend in development mode
-   npm run dev:full
-
-   # Or start them separately:
-   npm run dev        # Frontend only (Vite)
-   npm run dev:server # Backend only (Express)
-   ```
-
-## 🧪 Testing Requirements
-
-All pull requests must pass our automated test suite. We maintain high standards for code quality and test coverage.
+# Run tests against a specific Meshtastic node
+TEST_NODE_IP=192.168.1.50 ./tests/system-tests.sh
+```
 
 ### Running Tests Locally
+
 
 Before submitting a PR, ensure all tests pass:
 
@@ -133,28 +110,6 @@ describe('YourFeature', () => {
    # or
    git checkout -b fix/issue-description
    ```
-
-2. **Write clear commit messages:**
-   ```
-   feat: add telemetry export feature
-   fix: resolve database connection timeout
-   docs: update API documentation
-   test: add tests for message service
-   ```
-
-3. **Keep PRs focused**: One feature or fix per PR
-
-4. **Update tests**: Add or update tests for your changes
-
-5. **Document your changes**: Update relevant documentation
-
-### PR Title Format
-
-Use conventional commit format for PR titles:
-- `feat:` New feature
-- `fix:` Bug fix
-- `docs:` Documentation changes
-- `style:` Code style changes (formatting, etc.)
 - `refactor:` Code refactoring
 - `test:` Test additions or changes
 - `chore:` Maintenance tasks

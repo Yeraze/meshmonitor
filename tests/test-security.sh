@@ -16,8 +16,8 @@ RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# Use port 8083 which is what quick-start test uses
-BASE_URL="http://localhost:8083"
+# Use port 8083 which is what quick-start test uses, or override with env var
+BASE_URL="${BASE_URL:-http://localhost:8083}"
 SENSITIVE_IP="192.168.5.106"
 SENSITIVE_MQTT="mqtt.areyoumeshingwith.us"
 

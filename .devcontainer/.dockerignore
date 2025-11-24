@@ -1,0 +1,39 @@
+# Ignore git directory
+.git
+.gitignore
+
+# Ignore documentation
+*.md
+docs/
+
+# Ignore test and CI files
+tests/
+.github/
+
+# Ignore development files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Ignore build artifacts
+node_modules/
+npm-debug.log
+dist/
+build/
+.cache/
+
+# Ignore environment files
+.env
+.env.*
+
+# Ignore data and logs
+data/
+logs/
+*.log
+
+# Ignore temporary files
+tmp/
+temp/
+*.tmp

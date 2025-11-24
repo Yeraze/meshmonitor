@@ -18,11 +18,33 @@ NC='\033[0m' # No Color
 COMPOSE_FILE="docker-compose.reverse-proxy-test.yml"
 CONTAINER_NAME="meshmonitor-reverse-proxy-test"
 TEST_PORT="8081"
-TEST_DOMAIN="https://meshdev.yeraze.online"
-TEST_URL="$TEST_DOMAIN"  # Use HTTPS domain for all tests
+
+# Configuration
+if [ -n "$TEST_EXTERNAL_PROXY_URL" ]; then
+    TEST_URL="$TEST_EXTERNAL_PROXY_URL"
+    # Remove trailing slash
+    TEST_URL=${TEST_URL%/}
+else
+    TEST_DOMAIN="https://meshdev.yeraze.online"
+    TEST_URL="$TEST_DOMAIN"
+fi
 
 # Cleanup function
 cleanup() {
+    if [ "$KEEP_ALIVE" = "true" ]; then
+        echo ""
+        echo -e "${YELLOW}⚠ KEEP_ALIVE set to true - Skipping cleanup...${NC}"
+        return 0
+    fi
+
+    # If we didn't create the container (External Proxy Mode), we don't need to clean it up
+    if [ -n "$TEST_EXTERNAL_PROXY_URL" ]; then
+        echo ""
+        echo "Cleaning up temp files..."
+        rm -f /tmp/meshmonitor-reverse-proxy-cookies.txt
+        return 0
+    fi
+
     echo ""
     echo "Cleaning up..."
     docker compose -f "$COMPOSE_FILE" down -v 2>/dev/null || true
@@ -43,9 +65,17 @@ cleanup() {
 # Set trap to cleanup on exit
 trap cleanup EXIT
 
-# Create production reverse proxy test docker-compose file
-echo "Creating test docker-compose.yml (reverse proxy production configuration)..."
-cat > "$COMPOSE_FILE" <<'EOF'
+# Determine mode
+if [ -n "$TEST_EXTERNAL_PROXY_URL" ]; then
+    echo -e "${YELLOW}Running in EXTERNAL PROXY MODE${NC}"
+    echo "Target URL: $TEST_URL"
+else
+    echo -e "${GREEN}Running in CONTAINER MODE${NC}"
+    echo "Target URL: $TEST_URL"
+
+    # Create production reverse proxy test docker-compose file
+    echo "Creating test docker-compose.yml (reverse proxy production configuration)..."
+    cat > "$COMPOSE_FILE" <<'EOF'
 services:
   meshmonitor:
     build:
@@ -71,80 +101,96 @@ volumes:
   meshmonitor-reverse-proxy-test-data:
 EOF
 
-echo -e "${GREEN}✓${NC} Test config created"
-echo ""
+    echo -e "${GREEN}✓${NC} Test config created"
+    echo ""
 
-# Build and start
-echo "Building container..."
-docker compose -f "$COMPOSE_FILE" build --quiet
+    # Build and start
+    echo "Building container..."
+    docker compose -f "$COMPOSE_FILE" build --quiet
 
-echo -e "${GREEN}✓${NC} Build complete"
-echo ""
+    echo -e "${GREEN}✓${NC} Build complete"
+    echo ""
 
-echo "Starting container..."
-docker compose -f "$COMPOSE_FILE" up -d
+    echo "Starting container..."
+    docker compose -f "$COMPOSE_FILE" up -d
 
-echo -e "${GREEN}✓${NC} Container started"
-echo ""
+    echo -e "${GREEN}✓${NC} Container started"
+    echo ""
 
-# Wait for container to be ready
-echo "Waiting for container to be ready..."
-sleep 5
-
-# Test 1: Check container is running
-echo "Test 1: Container is running"
-if docker ps | grep -q "$CONTAINER_NAME"; then
-    echo -e "${GREEN}✓ PASS${NC}: Container is running"
-else
-    echo -e "${RED}✗ FAIL${NC}: Container is not running"
-    docker logs "$CONTAINER_NAME"
-    exit 1
+    # Wait for container to be ready
+    echo "Waiting for container to be ready..."
+    sleep 5
 fi
-echo ""
 
-# Test 2: Check logs for production mode
-echo "Test 2: Running in production mode"
-if docker logs "$CONTAINER_NAME" 2>&1 | grep -q "Environment: production"; then
-    echo -e "${GREEN}✓ PASS${NC}: Running in production mode"
-else
-    echo -e "${RED}✗ FAIL${NC}: Not running in production mode"
-    docker logs "$CONTAINER_NAME"
-    exit 1
-fi
-echo ""
+# Only run container checks if we are in Container Mode
+if [ -z "$TEST_EXTERNAL_PROXY_URL" ]; then
+    # Test 1: Check container is running
+    echo "Test 1: Container is running"
+    if docker ps | grep -q "$CONTAINER_NAME"; then
+        echo -e "${GREEN}✓ PASS${NC}: Container is running"
+    else
+        echo -e "${RED}✗ FAIL${NC}: Container is not running"
+        docker logs "$CONTAINER_NAME"
+        exit 1
+    fi
+    echo ""
 
-# Test 3: Check logs for SESSION_SECRET warning
-echo "Test 3: SESSION_SECRET auto-generated (production warning present)"
-if docker logs "$CONTAINER_NAME" 2>&1 | grep -q "SESSION_SECRET NOT SET - USING AUTO-GENERATED SECRET"; then
-    echo -e "${GREEN}✓ PASS${NC}: SESSION_SECRET production warning found"
-else
-    echo -e "${RED}✗ FAIL${NC}: SESSION_SECRET warning not found"
-    docker logs "$CONTAINER_NAME"
-    exit 1
-fi
-echo ""
+    # Test 2: Check logs for production mode
+    echo "Test 2: Running in production mode"
+    if docker logs "$CONTAINER_NAME" 2>&1 | grep -q "Environment: production"; then
+        echo -e "${GREEN}✓ PASS${NC}: Running in production mode"
+    else
+        echo -e "${RED}✗ FAIL${NC}: Not running in production mode"
+        docker logs "$CONTAINER_NAME"
+        exit 1
+    fi
+    echo ""
 
-# Test 4: Check logs for COOKIE_SECURE explicitly set
-echo "Test 4: COOKIE_SECURE explicitly set to true"
-if docker logs "$CONTAINER_NAME" 2>&1 | grep -q "Cookie secure: true"; then
-    echo -e "${GREEN}✓ PASS${NC}: Cookie secure is true (HTTPS-ready)"
-else
-    echo -e "${RED}✗ FAIL${NC}: Cookie secure not set to true"
-    docker logs "$CONTAINER_NAME"
-    exit 1
-fi
-echo ""
+    # Test 3: Check logs for SESSION_SECRET warning
+    echo "Test 3: SESSION_SECRET auto-generated (production warning present)"
+    if docker logs "$CONTAINER_NAME" 2>&1 | grep -q "SESSION_SECRET NOT SET - USING AUTO-GENERATED SECRET"; then
+        echo -e "${GREEN}✓ PASS${NC}: SESSION_SECRET production warning found"
+    else
+        echo -e "${RED}✗ FAIL${NC}: SESSION_SECRET warning not found"
+        docker logs "$CONTAINER_NAME"
+        exit 1
+    fi
+    echo ""
 
-# Test 5: Check logs for admin user creation
-echo "Test 5: Admin user created on first run"
-if docker logs "$CONTAINER_NAME" 2>&1 | grep -q "FIRST RUN: Admin user created"; then
-    echo -e "${GREEN}✓ PASS${NC}: Admin user created"
+    # Test 4: Check logs for COOKIE_SECURE explicitly set
+    echo "Test 4: COOKIE_SECURE explicitly set to true"
+    if docker logs "$CONTAINER_NAME" 2>&1 | grep -q "Cookie secure: true"; then
+        echo -e "${GREEN}✓ PASS${NC}: Cookie secure is true (HTTPS-ready)"
+    else
+        echo -e "${RED}✗ FAIL${NC}: Cookie secure not set to true"
+        docker logs "$CONTAINER_NAME"
+        exit 1
+    fi
+    echo ""
+
+    # Test 5: Check logs for admin user creation
+    echo "Test 5: Admin user created on first run"
+    if docker logs "$CONTAINER_NAME" 2>&1 | grep -q "FIRST RUN: Admin user created"; then
+        echo -e "${GREEN}✓ PASS${NC}: Admin user created"
+    else
+        echo -e "${RED}✗ FAIL${NC}: Admin user creation message not found"
+        docker logs "$CONTAINER_NAME"
+        exit 1
+    fi
+    echo ""
+    
+    # Test 7: Check trust proxy is working
+    echo "Test 7: Trust proxy configuration"
+    if docker logs "$CONTAINER_NAME" 2>&1 | grep -qi "trust proxy"; then
+        echo -e "${GREEN}✓ PASS${NC}: Trust proxy mentioned in logs"
+    else
+        echo -e "${YELLOW}⚠ INFO${NC}: Trust proxy not explicitly logged (may be default)"
+    fi
+    echo ""
 else
-    echo -e "${RED}✗ FAIL${NC}: Admin user creation message not found"
-    docker logs "$CONTAINER_NAME"
-    exit 1
+    echo "Skipping container log checks (External Proxy Mode)"
+    echo ""
 fi
-echo ""
 
 # Test 6: Check HSTS header is present (production mode)
 echo "Test 6: HSTS header present in production"
@@ -152,15 +198,6 @@ if curl -s -I -k $TEST_URL/ | grep -q "Strict-Transport-Security"; then
     echo -e "${GREEN}✓ PASS${NC}: HSTS header present (production security)"
 else
     echo -e "${YELLOW}⚠ WARN${NC}: HSTS header not found (expected in production with secure cookies)"
-fi
-echo ""
-
-# Test 7: Check trust proxy is working
-echo "Test 7: Trust proxy configuration"
-if docker logs "$CONTAINER_NAME" 2>&1 | grep -qi "trust proxy"; then
-    echo -e "${GREEN}✓ PASS${NC}: Trust proxy mentioned in logs"
-else
-    echo -e "${YELLOW}⚠ INFO${NC}: Trust proxy not explicitly logged (may be default)"
 fi
 echo ""
 
@@ -373,5 +410,5 @@ echo "  • Set SESSION_SECRET for persistent sessions across restarts"
 echo "  • Configure reverse proxy (nginx/Caddy/Traefik) for HTTPS"
 echo "  • Ensure X-Forwarded-Proto and X-Forwarded-Host headers are set"
 echo "  • Container accessible at: http://localhost:$TEST_PORT (behind proxy)"
-echo "  • Public URL: $TEST_DOMAIN (via reverse proxy)"
+echo "  • Public URL: $TEST_URL (via reverse proxy)"
 echo ""

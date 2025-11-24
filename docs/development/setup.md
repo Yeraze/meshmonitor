@@ -2,7 +2,20 @@
 
 This guide covers setting up a local development environment for contributing to MeshMonitor.
 
-## Prerequisites
+## 🐳 DevContainer (Recommended)
+
+For the easiest setup, we recommend using the **DevContainer**. This provides a pre-configured environment with all dependencies (Node.js, Python, Git, Docker) ready to go.
+
+**Quick Start:**
+1. Open the project in **VS Code** or **Cursor**.
+2. Press `Ctrl+Shift+P` and select **"Dev Containers: Reopen in Container"**.
+3. Wait for it to build, then run `npm run dev:full`.
+
+See [.devcontainer/README.md](https://github.com/yeraze/meshmonitor/blob/main/.devcontainer/README.md) for full details.
+
+---
+
+## Manual Setup Prerequisites
 
 Before you begin, ensure you have:
 
@@ -266,6 +279,16 @@ MeshMonitor behaves differently in development vs production:
 - Secure cookies enabled (requires HTTPS)
 - Optimized build
 - Static file serving
+
+### Helper Scripts
+
+To simplify managing the dev container lifecycle, we provide helper scripts in the `.devcontainer/` directory:
+
+| Task | Bash (Linux/Mac/WSL) | PowerShell (Windows) | Description |
+|------|----------------------|----------------------|-------------|
+| **Stop** | `./.devcontainer/scripts/stop.sh` | `.\.devcontainer\scripts\stop.ps1` | Stops the running container. |
+| **Clean** | `./.devcontainer/scripts/clean.sh` | `.\.devcontainer\scripts\clean.ps1` | Stops container and **removes volumes** (fixes corruption). |
+| **Reset** | `./.devcontainer/scripts/reset.sh` | `.\.devcontainer\scripts\reset.ps1` | Runs clean, then rebuilds the container image (fresh start). |
 
 ## Troubleshooting Development Issues
 
