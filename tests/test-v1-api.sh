@@ -139,8 +139,8 @@ EOF
     fi
 
     # Wait additional time for application to fully initialize
-    echo "Waiting for application to fully initialize (45 seconds)..."
-    sleep 45
+    echo "Waiting for application to fully initialize (60 seconds)..."
+    sleep 60
 fi
 
 echo ""
