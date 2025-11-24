@@ -57,7 +57,7 @@
     "react-dom": "^19.2.0",
     "react-leaflet": "^5.0.0",
     "react-router-dom": "^7.9.6",
-    "recharts": "^3.3.0",
+    "recharts": "^3.5.0",
     "rotating-file-stream": "^3.2.7",
     "swagger-ui-express": "^5.0.1",
     "ts-overlapping-marker-spiderfier-leaflet": "^1.0.5",
