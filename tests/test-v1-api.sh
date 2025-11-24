@@ -139,8 +139,8 @@ EOF
     fi
 
     # Wait additional time for application to fully initialize
-    echo "Waiting for application to fully initialize (60 seconds)..."
-    sleep 60
+    echo "Waiting for application to fully initialize (90 seconds)..."
+    sleep 90
 fi
 
 echo ""
@@ -151,7 +151,7 @@ echo "=========================================="
 # Login to web interface with retry logic
 echo "Logging in to web interface..."
 SESSION_COOKIE=""
-max_login_attempts=5
+max_login_attempts=10
 login_attempt=0
 
 while [ $login_attempt -lt $max_login_attempts ]; do
