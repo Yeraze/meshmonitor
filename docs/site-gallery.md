@@ -36,6 +36,14 @@ Running a public MeshMonitor instance? We'd love to feature it! **[File an issue
 
 ---
 
+### Southern China Greater Bay Area
+- **URL**: [meshmonitor.meshcn.net](https://meshmonitor.meshcn.net/)
+- **Network**: [MeshCN](https://meshcn.net/)
+- **Location**: Greater Bay Area (Guangzhou and Shenzhen), China
+- **Description**: Public MeshMonitor instance operated by the MeshCN community, visualising Meshtastic/LoRa mesh nodes and traffic across the Greater Bay Area.
+
+---
+
 ## About the Site Gallery
 
 The Site Gallery showcases MeshMonitor instances that are publicly accessible. These sites demonstrate:
