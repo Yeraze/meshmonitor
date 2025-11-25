@@ -1163,20 +1163,37 @@ const NodesTab = React.memo(NodesTabComponent, (prevProps, nextProps) => {
     }
   }
 
-  // Check if any node's position changed
-  // If spiderfier is active (keepSpiderfied), avoid re-rendering to preserve fanout
-  // Users can manually refresh the map if a mobile node moves while markers are fanned
+  // Check if any node's position or lastHeard changed
+  // If spiderfier is active (keepSpiderfied), avoid re-rendering to preserve fanout ONLY if just position changed
+  // But always allow re-render if lastHeard changed (to update timestamps in node list)
   if (prevProps.processedNodes.length === nextProps.processedNodes.length) {
-    const hasPositionChanges = prevProps.processedNodes.some((prev, i) => {
-      const next = nextProps.processedNodes[i];
-      return (
-        prev.position?.latitude !== next.position?.latitude ||
-        prev.position?.longitude !== next.position?.longitude
-      );
-    });
+    let hasPositionChanges = false;
+    let hasLastHeardChanges = false;
 
-    if (hasPositionChanges) {
-      // Position changed, but skip re-render to preserve spiderfier state
+    for (let i = 0; i < prevProps.processedNodes.length; i++) {
+      const prev = prevProps.processedNodes[i];
+      const next = nextProps.processedNodes[i];
+
+      if (prev.position?.latitude !== next.position?.latitude ||
+          prev.position?.longitude !== next.position?.longitude) {
+        hasPositionChanges = true;
+      }
+
+      if (prev.lastHeard !== next.lastHeard) {
+        hasLastHeardChanges = true;
+      }
+
+      // Early exit if both detected
+      if (hasPositionChanges && hasLastHeardChanges) break;
+    }
+
+    // If lastHeard changed, always re-render to update timestamps in node list
+    if (hasLastHeardChanges) {
+      return false; // Allow re-render
+    }
+
+    // If only position changed (no lastHeard changes), skip re-render to preserve spiderfier
+    if (hasPositionChanges && !hasLastHeardChanges) {
       return true; // Skip re-render to keep markers stable
     }
   }
