@@ -1569,8 +1569,32 @@ body {
   .channels-tab-content {
     margin-left: -0.25rem;
     margin-right: -0.25rem;
+    /* Create flexbox layout for mobile to prevent scrolling */
+    display: flex;
+    flex-direction: column;
+    /* Account for header + top padding + bottom padding + safe area */
+    height: calc(100vh - var(--header-height) - 0.5rem - max(0.5rem, env(safe-area-inset-bottom)));
+    overflow: hidden;
   }
 
+  /* Fixed header section */
+  .channels-header {
+    flex-shrink: 0;
+    padding: 0.25rem 0;
+  }
+
+  .channels-header h2 {
+    font-size: 1.1rem;
+    margin: 0.25rem 0;
+  }
+
+  .channels-controls {
+    margin-top: 0.25rem;
+  }
+
+  .mqtt-toggle {
+    font-size: 0.85rem;
+  }
 
   /* Hide channel grid buttons on mobile, show dropdown instead */
   .channels-grid {
@@ -1579,7 +1603,127 @@ body {
 
   .channel-dropdown-mobile {
     display: block !important;
-    margin-bottom: 1rem;
+    margin-bottom: 0.5rem;
+    flex-shrink: 0;
+  }
+
+  /* Make channel conversation section fill remaining space */
+  .channel-conversation-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0; /* Important for flexbox scrolling */
+  }
+
+  .channel-conversation-section h3 {
+    flex-shrink: 0;
+    margin-bottom: 0.5rem;
+  }
+
+  /* Make channel conversation flex container */
+  .channel-conversation {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  /* Messages container fills available space and scrolls */
+  .messages-container {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+    max-height: none; /* Remove max-height on mobile */
+  }
+
+  /* Send form sticks to bottom */
+  .send-message-form {
+    flex-shrink: 0;
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* Reduce padding on mobile for more space */
+  .channel-conversation-section {
+    padding: 0.25rem;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .channel-conversation {
+    padding: 0.5rem;
+    border-radius: 6px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .channel-conversation-section h3 {
+    font-size: 1rem;
+    margin-bottom: 0.25rem;
+    padding: 0 0.25rem;
+  }
+
+  .messages-container {
+    padding: 0.5rem;
+  }
+
+  /* Make entire page non-scrollable on mobile */
+  .tab-content {
+    overflow: hidden;
+  }
+
+  /* Fix send button going off screen */
+  .message-input-container {
+    gap: 0.5rem;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .input-with-counter {
+    flex: 1;
+    min-width: 0; /* Allow flex item to shrink below content size */
+    max-width: 100%;
+  }
+
+  .message-input {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.95rem;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .input-with-counter .message-input {
+    padding-right: 50px; /* Smaller counter area on mobile */
+  }
+
+  .byte-counter {
+    font-size: 0.65rem;
+    right: 4px;
+    padding: 2px 4px;
+  }
+
+  .send-btn {
+    min-width: 40px;
+    width: 40px;
+    padding: 0.6rem 0.3rem;
+    font-size: 1.2rem;
+    flex-shrink: 0;
+  }
+
+  /* Reduce message bubble padding */
+  .message-bubble {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.95rem;
+  }
+
+  .message-bubble-container {
+    margin-bottom: 0.5rem;
+    gap: 0.25rem;
   }
 
   .channel-dropdown-select {
@@ -3473,6 +3617,8 @@ body {
   .nodes-split-view {
     top: 48px; /* Mobile header is 48px */
     left: 48px; /* Mobile collapsed sidebar is 48px */
+    /* Account for iPhone safe area at bottom */
+    bottom: env(safe-area-inset-bottom, 0);
   }
 
   /* Make filter popup narrower on mobile */
@@ -3515,29 +3661,88 @@ body {
     display: none !important;
   }
 
+  /* Make messages split view fill available height on mobile */
+  .messages-split-view {
+    height: 100%;
+  }
+
   /* Adjust main content for Messages tab */
   .messages-split-view .nodes-main-content {
-    padding-left: 0.5rem;
-    padding-right: 0.5rem;
+    padding-left: 0.25rem;
+    padding-right: 0.25rem;
     padding-top: 0;
+    /* Make it a flex container for proper layout */
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
   }
 
   /* Move dm-header title and button above dropdown */
   .messages-split-view .dm-header {
     display: flex;
     flex-direction: column;
+    flex-shrink: 0;
+    margin-bottom: 0.25rem; /* Reduced from 1rem */
+  }
+
+  /* Make DM conversation panel fill remaining space */
+  .messages-split-view .dm-conversation-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto; /* Allow the entire panel to scroll */
+    min-height: 0;
+    height: 100%;
+  }
+
+  /* Ensure dm-header doesn't take too much space */
+  .messages-split-view .dm-conversation-panel .dm-header {
+    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    background: var(--ctp-base);
+    z-index: 10;
+  }
+
+  /* Messages container should have minimum height and allow scrolling */
+  .messages-split-view .dm-conversation-panel .messages-container {
+    flex: 1;
+    min-height: 200px; /* Ensure messages get reasonable space */
+    overflow-y: auto;
+    max-height: none;
+  }
+
+  /* Send form should be sticky at bottom of viewport */
+  .messages-split-view .dm-conversation-panel .send-message-form {
+    flex-shrink: 0;
+    position: sticky;
+    bottom: 0;
+    background: var(--ctp-base);
+    z-index: 10;
+    padding-bottom: env(safe-area-inset-bottom, 0.5rem);
+  }
+
+  .messages-split-view .send-message-form {
+    flex-shrink: 0;
+    padding-bottom: env(safe-area-inset-bottom, 0.5rem);
+  }
+
+  /* Add bottom padding to nodes-main-content to prevent cutoff */
+  .messages-split-view .nodes-main-content {
+    padding-bottom: 0.25rem;
   }
 
   .messages-split-view .dm-header-top {
     order: -2; /* Show first */
-    margin-bottom: 0.75rem;
+    margin-bottom: 0.25rem; /* Reduced from 0.75rem */
   }
 
   /* Dropdown gets inserted here via JSX order */
 
   .messages-split-view .traceroute-info {
     order: -1; /* Show after dropdown */
-    margin-bottom: 0.75rem;
+    margin-bottom: 0.25rem; /* Reduced from 0.75rem */
   }
 
   .nodes-sidebar {
