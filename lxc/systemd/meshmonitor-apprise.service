@@ -1,0 +1,31 @@
+[Unit]
+Description=MeshMonitor Apprise Notification Service
+Documentation=https://github.com/jeremiah-k/meshmonitor
+After=network.target
+PartOf=meshmonitor.service
+
+[Service]
+Type=simple
+User=meshmonitor
+Group=meshmonitor
+WorkingDirectory=/opt/meshmonitor
+Environment=APPRISE_CONFIG_DIR=/data/apprise-config
+Environment=APPRISE_STATEFUL_MODE=simple
+EnvironmentFile=-/etc/meshmonitor/meshmonitor.env
+ExecStart=/opt/apprise-venv/bin/python /opt/meshmonitor/docker/apprise-api.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=meshmonitor-apprise
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/data
+ReadOnlyPaths=/opt/meshmonitor /opt/apprise-venv
+
+[Install]
+WantedBy=multi-user.target

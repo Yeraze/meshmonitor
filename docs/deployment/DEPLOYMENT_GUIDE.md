@@ -4,6 +4,15 @@
 
 This guide covers various deployment scenarios for MeshMonitor, from development setups to production environments. Choose the method that best fits your needs and infrastructure.
 
+## Deployment Methods
+
+MeshMonitor supports several deployment options:
+
+- **🐳 Docker Compose** (Recommended) - Easiest setup with auto-upgrade support
+- **☸️ Kubernetes/Helm** - Production-grade orchestration
+- **📦 Proxmox LXC** - Lightweight containers for Proxmox VE ([separate guide](PROXMOX_LXC_GUIDE.md))
+- **🔧 Manual Node.js** - Direct deployment for development or custom setups
+
 ## Prerequisites
 
 ### Hardware Requirements

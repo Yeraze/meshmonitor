@@ -1,0 +1,33 @@
+[Unit]
+Description=MeshMonitor Application
+Documentation=https://github.com/jeremiah-k/meshmonitor
+After=network.target
+
+[Service]
+Type=simple
+User=meshmonitor
+Group=meshmonitor
+WorkingDirectory=/opt/meshmonitor
+Environment=NODE_ENV=production
+Environment=PORT=3001
+Environment=DATABASE_PATH=/data/meshmonitor.db
+Environment=APPRISE_CONFIG_DIR=/data/apprise-config
+Environment=APPRISE_STATEFUL_MODE=simple
+EnvironmentFile=-/etc/meshmonitor/meshmonitor.env
+ExecStart=/usr/bin/node /opt/meshmonitor/dist/server/server.js
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=meshmonitor
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/data
+ReadOnlyPaths=/opt/meshmonitor
+
+[Install]
+WantedBy=multi-user.target

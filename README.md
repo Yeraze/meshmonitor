@@ -53,6 +53,27 @@ docker compose up -d
 
 For detailed installation instructions, configuration options, and deployment scenarios, see the **[Getting Started Guide](https://meshmonitor.org/getting-started.html)**.
 
+## Deployment Options
+
+MeshMonitor supports multiple deployment methods:
+
+- **🐳 Docker** (Recommended) - Pre-built multi-architecture images with auto-upgrade support
+  - [Docker Compose Guide](docs/deployment/DEPLOYMENT_GUIDE.md)
+  - Platforms: amd64, arm64, armv7
+
+- **☸️ Kubernetes** - Helm charts for production clusters
+  - [Helm Chart](helm/meshmonitor/)
+  - GitOps-ready with ArgoCD/Flux support
+
+- **📦 Proxmox LXC** - Lightweight containers for Proxmox VE
+  - [Proxmox LXC Guide](docs/deployment/PROXMOX_LXC_GUIDE.md)
+  - Pre-built templates available
+  - Community-supported alternative
+
+- **🔧 Manual** - Direct Node.js deployment
+  - [Manual Installation Guide](docs/deployment/DEPLOYMENT_GUIDE.md#manual-nodejs-deployment)
+  - For development or custom setups
+
 ## Key Features
 
 - **Real-time Mesh Monitoring** - Live node discovery, telemetry, and message tracking
