@@ -20,3 +20,35 @@ data
 coverage
 .nyc_output
 *.log
+
+# Test files and directories
+tests/
+__tests__/
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+vitest.config.ts
+.vitest/
+
+# Documentation
+docs/
+*.md
+README.md
+CHANGELOG.md
+
+# Development files
+.claude/
+TODOS.md
+meshmonitor-logs/
+.vitepress/
+
+# CI/CD
+.github/
+
+# IDE
+.vscode/
+.idea/
+
+# Helm charts (not needed in container)
+helm/

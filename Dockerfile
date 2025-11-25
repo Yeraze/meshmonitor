@@ -13,21 +13,29 @@ COPY package*.json ./
 RUN --mount=type=cache,target=/root/.npm \
     npm install
 
-# Copy source files
-COPY . .
-
 # Verify protobufs are present (fail fast if git submodule wasn't initialized)
+# Copy protobufs first as they rarely change
+COPY protobufs ./protobufs
 RUN if [ ! -f "protobufs/meshtastic/mesh.proto" ]; then \
       echo "ERROR: Protobuf files not found! Git submodule may not be initialized."; \
       echo "Run: git submodule update --init --recursive"; \
       exit 1; \
     fi
 
-# Build the React application (always for root, will be rewritten at runtime)
-RUN npm run build
+# Copy config files and source needed for builds
+COPY tsconfig.json tsconfig.server.json tsconfig.node.json vite.config.ts index.html ./
+COPY src ./src
+COPY public ./public
 
-# Build the server
-RUN npm run build:server
+# Build the React application first (always for root, will be rewritten at runtime)
+# Vite clears dist directory, so this must come before server build
+RUN --mount=type=cache,target=/app/node_modules/.vite \
+    npm run build
+
+# Build the server last so it doesn't get overwritten by Vite
+# TypeScript server build will add to dist directory without clearing it
+RUN --mount=type=cache,target=/app/.tsc-cache \
+    npm run build:server
 
 # Production stage
 FROM node:22-alpine
