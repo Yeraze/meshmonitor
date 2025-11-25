@@ -3093,8 +3093,15 @@ class DatabaseService {
         updatedAt = ?
       WHERE nodeNum = ?
     `);
-    stmt.run(isFavorite ? 1 : 0, now, nodeNum);
-    logger.debug(`${isFavorite ? '⭐' : '☆'} Node ${nodeNum} favorite status set to: ${isFavorite}`);
+    const result = stmt.run(isFavorite ? 1 : 0, now, nodeNum);
+
+    if (result.changes === 0) {
+      const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
+      logger.warn(`⚠️ Failed to update favorite for node ${nodeId} (${nodeNum}): node not found in database`);
+      throw new Error(`Node ${nodeId} not found`);
+    }
+
+    logger.debug(`${isFavorite ? '⭐' : '☆'} Node ${nodeNum} favorite status set to: ${isFavorite} (${result.changes} row updated)`);
   }
 
   // Authentication and Authorization
