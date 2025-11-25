@@ -81,15 +81,29 @@ class UpgradeService {
    * Detect the deployment method
    */
   private detectDeploymentMethod(): string {
+    // Check if running in Kubernetes
+    if (process.env.KUBERNETES_SERVICE_HOST) {
+      return 'kubernetes';
+    }
+
     // Check if running in Docker
     if (fs.existsSync('/.dockerenv')) {
-      // Check if running in Kubernetes
-      if (process.env.KUBERNETES_SERVICE_HOST) {
-        return 'kubernetes';
-      }
-      // Check if managed by Docker Compose
       return 'docker';
     }
+
+    // Check if running in LXC container
+    // LXC containers can be detected by checking /proc/1/environ for container=lxc
+    try {
+      if (fs.existsSync('/proc/1/environ')) {
+        const environ = fs.readFileSync('/proc/1/environ', 'utf8');
+        if (environ.includes('container=lxc')) {
+          return 'lxc';
+        }
+      }
+    } catch (error) {
+      // Ignore errors reading /proc/1/environ
+    }
+
     return 'manual';
   }
 
@@ -119,9 +133,15 @@ class UpgradeService {
 
       // Check if Docker deployment
       if (this.DEPLOYMENT_METHOD !== 'docker') {
+        const messages: Record<string, string> = {
+          'lxc': 'Auto-upgrade is not supported in LXC deployments. Please update manually by downloading a new template from GitHub Releases.',
+          'kubernetes': 'Auto-upgrade is not supported in Kubernetes deployments. Please update via Helm chart or kubectl apply.',
+          'manual': 'Auto-upgrade is only available for Docker deployments. Current deployment method: manual'
+        };
+
         return {
           success: false,
-          message: `Auto-upgrade is only supported for Docker deployments. Current: ${this.DEPLOYMENT_METHOD}`
+          message: messages[this.DEPLOYMENT_METHOD] || `Auto-upgrade is only supported for Docker deployments. Current: ${this.DEPLOYMENT_METHOD}`
         };
       }
 
