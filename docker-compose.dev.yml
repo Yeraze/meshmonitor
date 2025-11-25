@@ -3,6 +3,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # Enable BuildKit cache for faster rebuilds
+      cache_from:
+        - meshmonitor:latest
+      # Use inline cache to persist across builds
+      args:
+        BUILDKIT_INLINE_CACHE: 1
     container_name: meshmonitor
     ports:
       - "8080:3001"
