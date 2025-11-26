@@ -7,6 +7,7 @@ interface AutoAcknowledgeSectionProps {
   enabled: boolean;
   regex: string;
   message: string;
+  messageDirect: string;
   channels: Channel[];
   enabledChannels: number[];
   directMessagesEnabled: boolean;
@@ -15,17 +16,20 @@ interface AutoAcknowledgeSectionProps {
   onEnabledChange: (enabled: boolean) => void;
   onRegexChange: (regex: string) => void;
   onMessageChange: (message: string) => void;
+  onMessageDirectChange: (message: string) => void;
   onChannelsChange: (channels: number[]) => void;
   onDirectMessagesChange: (enabled: boolean) => void;
   onUseDMChange: (enabled: boolean) => void;
 }
 
 const DEFAULT_MESSAGE = '🤖 Copy, {NUMBER_HOPS} hops at {TIME}';
+const DEFAULT_MESSAGE_DIRECT = '🤖 Copy, direct connection! SNR: {SNR}dB RSSI: {RSSI}dBm at {TIME}';
 
 const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   enabled,
   regex,
   message,
+  messageDirect,
   channels,
   enabledChannels,
   directMessagesEnabled,
@@ -34,6 +38,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   onEnabledChange,
   onRegexChange,
   onMessageChange,
+  onMessageDirectChange,
   onChannelsChange,
   onDirectMessagesChange,
   onUseDMChange,
@@ -43,6 +48,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   const [localEnabled, setLocalEnabled] = useState(enabled);
   const [localRegex, setLocalRegex] = useState(regex || '^(test|ping)');
   const [localMessage, setLocalMessage] = useState(message || DEFAULT_MESSAGE);
+  const [localMessageDirect, setLocalMessageDirect] = useState(messageDirect || DEFAULT_MESSAGE_DIRECT);
   const [localEnabledChannels, setLocalEnabledChannels] = useState<number[]>(enabledChannels);
   const [localDirectMessagesEnabled, setLocalDirectMessagesEnabled] = useState(directMessagesEnabled);
   const [localUseDM, setLocalUseDM] = useState(useDM);
@@ -50,23 +56,25 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [testMessages, setTestMessages] = useState('test\nTest message\nping\nPING\nHello world\nTESTING 123');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const textareaDirectRef = useRef<HTMLTextAreaElement>(null);
 
   // Update local state when props change
   useEffect(() => {
     setLocalEnabled(enabled);
     setLocalRegex(regex || '^(test|ping)');
     setLocalMessage(message || DEFAULT_MESSAGE);
+    setLocalMessageDirect(messageDirect || DEFAULT_MESSAGE_DIRECT);
     setLocalEnabledChannels(enabledChannels);
     setLocalDirectMessagesEnabled(directMessagesEnabled);
     setLocalUseDM(useDM);
-  }, [enabled, regex, message, enabledChannels, directMessagesEnabled, useDM]);
+  }, [enabled, regex, message, messageDirect, enabledChannels, directMessagesEnabled, useDM]);
 
   // Check if any settings have changed
   useEffect(() => {
     const channelsChanged = JSON.stringify(localEnabledChannels.sort()) !== JSON.stringify(enabledChannels.sort());
-    const changed = localEnabled !== enabled || localRegex !== regex || localMessage !== message || channelsChanged || localDirectMessagesEnabled !== directMessagesEnabled || localUseDM !== useDM;
+    const changed = localEnabled !== enabled || localRegex !== regex || localMessage !== message || localMessageDirect !== messageDirect || channelsChanged || localDirectMessagesEnabled !== directMessagesEnabled || localUseDM !== useDM;
     setHasChanges(changed);
-  }, [localEnabled, localRegex, localMessage, localEnabledChannels, localDirectMessagesEnabled, localUseDM, enabled, regex, message, enabledChannels, directMessagesEnabled, useDM]);
+  }, [localEnabled, localRegex, localMessage, localMessageDirect, localEnabledChannels, localDirectMessagesEnabled, localUseDM, enabled, regex, message, messageDirect, enabledChannels, directMessagesEnabled, useDM]);
 
   // Validate regex pattern for safety
   const validateRegex = (pattern: string): { valid: boolean; error?: string } => {
@@ -104,19 +112,22 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     }
   };
 
-  const insertToken = (token: string) => {
-    const textarea = textareaRef.current;
+  const insertToken = (token: string, isDirect: boolean = false) => {
+    const textarea = isDirect ? textareaDirectRef.current : textareaRef.current;
+    const currentMessage = isDirect ? localMessageDirect : localMessage;
+    const setMessage = isDirect ? setLocalMessageDirect : setLocalMessage;
+
     if (!textarea) {
       // Fallback: append to end if textarea ref not available
-      setLocalMessage(localMessage + token);
+      setMessage(currentMessage + token);
       return;
     }
 
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
-    const newMessage = localMessage.substring(0, start) + token + localMessage.substring(end);
+    const newMessage = currentMessage.substring(0, start) + token + currentMessage.substring(end);
 
-    setLocalMessage(newMessage);
+    setMessage(newMessage);
 
     // Set cursor position after the inserted token
     setTimeout(() => {
@@ -126,14 +137,15 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   };
 
   // Generate sample message with example token values
-  const generateSampleMessage = (): string => {
-    let sample = localMessage;
+  const generateSampleMessage = (isDirect: boolean = false): string => {
+    let sample = isDirect ? localMessageDirect : localMessage;
 
     // Replace with sample values
     const now = new Date();
     sample = sample.replace(/{NODE_ID}/g, '!a1b2c3d4');
-    sample = sample.replace(/{NUMBER_HOPS}/g, '3');
-    sample = sample.replace(/{RABBIT_HOPS}/g, '🐇🐇🐇'); // 3 rabbits for 3 hops
+    sample = sample.replace(/{NUMBER_HOPS}/g, isDirect ? '0' : '3');
+    sample = sample.replace(/{HOPS}/g, isDirect ? '0' : '3');
+    sample = sample.replace(/{RABBIT_HOPS}/g, isDirect ? '🎯' : '🐇🐇🐇'); // 🎯 for direct, 3 rabbits for 3 hops
     sample = sample.replace(/{DATE}/g, now.toLocaleDateString());
     sample = sample.replace(/{TIME}/g, now.toLocaleTimeString());
     sample = sample.replace(/{VERSION}/g, '2.9.1');
@@ -174,6 +186,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
           autoAckEnabled: String(localEnabled),
           autoAckRegex: localRegex,
           autoAckMessage: localMessage,
+          autoAckMessageDirect: localMessageDirect,
           autoAckChannels: localEnabledChannels.join(','),
           autoAckDirectMessages: String(localDirectMessagesEnabled),
           autoAckUseDM: String(localUseDM)
@@ -192,6 +205,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
       onEnabledChange(localEnabled);
       onRegexChange(localRegex);
       onMessageChange(localMessage);
+      onMessageDirectChange(localMessageDirect);
       onChannelsChange(localEnabledChannels);
       onDirectMessagesChange(localDirectMessagesEnabled);
       onUseDMChange(localUseDM);
@@ -352,9 +366,9 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
 
         <div className="setting-item" style={{ marginTop: '1.5rem' }}>
           <label htmlFor="autoAckMessage">
-            Acknowledgment Message Template
+            Acknowledgment Message Template (Multi-hop Messages)
             <span className="setting-description">
-              Message to send in response. Available tokens: {'{NODE_ID}'} (sender node ID), {'{NUMBER_HOPS}'} (hop count), {'{RABBIT_HOPS}'} (rabbit emojis equal to hop count, 🎯 for direct/0 hops), {'{DATE}'} (current date), {'{TIME}'} (current time), {'{VERSION}'}, {'{DURATION}'}, {'{FEATURES}'}, {'{NODECOUNT}'}, {'{DIRECTCOUNT}'}, {'{LONG_NAME}'} (sender's long name), {'{SHORT_NAME}'} (sender's short name), {'{SNR}'} (Signal-to-Noise Ratio in dB), {'{RSSI}'} (Received Signal Strength Indicator in dBm)
+              Message to send for multi-hop messages (hop count &gt; 0). Available tokens: {'{NODE_ID}'} (sender node ID), {'{NUMBER_HOPS}'} or {'{HOPS}'} (hop count), {'{RABBIT_HOPS}'} (rabbit emojis equal to hop count), {'{DATE}'} (current date), {'{TIME}'} (current time), {'{VERSION}'}, {'{DURATION}'}, {'{FEATURES}'}, {'{NODECOUNT}'}, {'{DIRECTCOUNT}'}, {'{LONG_NAME}'} (sender's long name), {'{SHORT_NAME}'} (sender's short name), {'{SNR}'} (Signal-to-Noise Ratio in dB), {'{RSSI}'} (Received Signal Strength Indicator in dBm)
             </span>
           </label>
           <textarea
@@ -601,9 +615,9 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
 
         <div className="setting-item" style={{ marginTop: '1rem' }}>
           <label>
-            Sample Message Preview
+            Sample Message Preview (Multi-hop)
             <span className="setting-description">
-              Shows how your acknowledgment will appear after token substitution (using example values)
+              Shows how your acknowledgment will appear after token substitution (using example values for 3 hops)
             </span>
           </label>
           <div style={{
@@ -617,7 +631,52 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
             lineHeight: '1.5',
             minHeight: '50px'
           }}>
-            {generateSampleMessage()}
+            {generateSampleMessage(false)}
+          </div>
+        </div>
+
+        <div className="setting-item" style={{ marginTop: '1.5rem' }}>
+          <label htmlFor="autoAckMessageDirect">
+            Acknowledgment Message Template (Direct Connections - 0 Hops)
+            <span className="setting-description">
+              Message to send for direct connections (hop count = 0). Available tokens: {'{NODE_ID}'}, {'{HOPS}'} or {'{NUMBER_HOPS}'} (will be 0), {'{RABBIT_HOPS}'} (will be 🎯), {'{DATE}'}, {'{TIME}'}, {'{VERSION}'}, {'{DURATION}'}, {'{FEATURES}'}, {'{NODECOUNT}'}, {'{DIRECTCOUNT}'}, {'{LONG_NAME}'}, {'{SHORT_NAME}'}, {'{SNR}'} (Signal-to-Noise Ratio), {'{RSSI}'} (Received Signal Strength). Leave empty to use the multi-hop template for all messages.
+            </span>
+          </label>
+          <textarea
+            id="autoAckMessageDirect"
+            ref={textareaDirectRef}
+            value={localMessageDirect}
+            onChange={(e) => setLocalMessageDirect(e.target.value)}
+            disabled={!localEnabled}
+            className="setting-input"
+            rows={3}
+            style={{
+              fontFamily: 'monospace',
+              resize: 'vertical',
+              minHeight: '60px'
+            }}
+          />
+        </div>
+
+        <div className="setting-item" style={{ marginTop: '1rem' }}>
+          <label>
+            Sample Message Preview (Direct Connection)
+            <span className="setting-description">
+              Shows how your direct connection acknowledgment will appear (using example values for 0 hops)
+            </span>
+          </label>
+          <div style={{
+            padding: '0.75rem',
+            background: 'var(--ctp-surface0)',
+            border: '2px solid var(--ctp-green)',
+            borderRadius: '4px',
+            fontFamily: 'monospace',
+            fontSize: '0.95rem',
+            color: 'var(--ctp-text)',
+            lineHeight: '1.5',
+            minHeight: '50px'
+          }}>
+            {generateSampleMessage(true)}
           </div>
         </div>
 

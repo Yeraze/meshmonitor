@@ -35,6 +35,8 @@ interface UIContextType {
   setAutoAckRegex: React.Dispatch<React.SetStateAction<string>>;
   autoAckMessage: string;
   setAutoAckMessage: React.Dispatch<React.SetStateAction<string>>;
+  autoAckMessageDirect: string;
+  setAutoAckMessageDirect: React.Dispatch<React.SetStateAction<string>>;
   autoAckChannels: number[];
   setAutoAckChannels: React.Dispatch<React.SetStateAction<number[]>>;
   autoAckDirectMessages: boolean;
@@ -105,6 +107,7 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   const [autoAckEnabled, setAutoAckEnabled] = useState<boolean>(false);
   const [autoAckRegex, setAutoAckRegex] = useState<string>('^(test|ping)');
   const [autoAckMessage, setAutoAckMessage] = useState<string>('🤖 Copy, {NUMBER_HOPS} hops at {TIME}');
+  const [autoAckMessageDirect, setAutoAckMessageDirect] = useState<string>('🤖 Copy, direct connection! SNR: {SNR}dB RSSI: {RSSI}dBm at {TIME}');
   const [autoAckChannels, setAutoAckChannels] = useState<number[]>([]);
   const [autoAckDirectMessages, setAutoAckDirectMessages] = useState<boolean>(false);
   const [autoAckUseDM, setAutoAckUseDM] = useState<boolean>(false);
@@ -163,6 +166,8 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
         setAutoAckRegex,
         autoAckMessage,
         setAutoAckMessage,
+        autoAckMessageDirect,
+        setAutoAckMessageDirect,
         autoAckChannels,
         setAutoAckChannels,
         autoAckDirectMessages,

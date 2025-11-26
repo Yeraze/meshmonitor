@@ -42,6 +42,24 @@ describe('MeshtasticManager - Auto-Acknowledge Message Template Token Replacemen
       expect(result).toBe('Received in 3 hops');
     });
 
+    it('should replace {HOPS} with hop count (alias for {NUMBER_HOPS})', () => {
+      const template = 'Received in {HOPS} hops';
+      const numberHops = 3;
+
+      const result = template.replace(/{HOPS}/g, numberHops.toString());
+
+      expect(result).toBe('Received in 3 hops');
+    });
+
+    it('should replace {HOPS} with 0 for direct connections', () => {
+      const template = 'Direct: {HOPS} hops';
+      const numberHops = 0;
+
+      const result = template.replace(/{HOPS}/g, numberHops.toString());
+
+      expect(result).toBe('Direct: 0 hops');
+    });
+
     it('should replace {DATE} with formatted date', () => {
       const template = 'On {DATE}';
       const timestamp = new Date('2025-01-15T10:30:00Z');
