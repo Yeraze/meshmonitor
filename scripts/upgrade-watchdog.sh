@@ -51,15 +51,60 @@ create_backup() {
 
   log "Creating backup: $backup_path"
 
-  mkdir -p "$BACKUP_DIR"
+  # Verify /data directory exists and is accessible
+  if [ ! -d "/data" ]; then
+    log_error "/data directory does not exist"
+    return 1
+  fi
+
+  # Create backup directory with error checking
+  if ! mkdir -p "$BACKUP_DIR" 2>/tmp/backup-error.log; then
+    log_error "Failed to create backup directory: $BACKUP_DIR"
+    if [ -f /tmp/backup-error.log ]; then
+      log_error "Error: $(cat /tmp/backup-error.log)"
+      rm -f /tmp/backup-error.log
+    fi
+    return 1
+  fi
+
+  # Verify backup directory was created
+  if [ ! -d "$BACKUP_DIR" ]; then
+    log_error "Backup directory does not exist after mkdir: $BACKUP_DIR"
+    return 1
+  fi
+
+  # Log directory info for debugging
+  log "Backup directory info: $(ls -ld "$BACKUP_DIR" 2>&1 || echo 'unable to stat')"
 
   # Create backup (exclude backups directory itself)
-  if tar -czf "$backup_path.tar.gz" -C /data --exclude='backups' --exclude='.upgrade-*' . 2>/dev/null; then
-    log_success "Backup created: $backup_path.tar.gz"
+  # Capture stderr to a temp file for better error reporting
+  if tar -czf "$backup_path.tar.gz" -C /data --exclude='backups' --exclude='.upgrade-*' . 2>/tmp/tar-error.log; then
+    # Verify the backup file was created and has content
+    if [ ! -f "$backup_path.tar.gz" ]; then
+      log_error "Backup file was not created: $backup_path.tar.gz"
+      return 1
+    fi
+
+    local backup_size=$(stat -c%s "$backup_path.tar.gz" 2>/dev/null || echo "0")
+    log_success "Backup created: $backup_path.tar.gz (${backup_size} bytes)"
+
+    # Clean up error log if successful
+    rm -f /tmp/tar-error.log
+
     echo "$backup_path.tar.gz"
     return 0
   else
-    log_error "Failed to create backup"
+    log_error "Failed to create backup (tar command failed)"
+
+    # Show the actual tar error
+    if [ -f /tmp/tar-error.log ]; then
+      log_error "tar error output:"
+      while IFS= read -r line; do
+        log_error "  $line"
+      done < /tmp/tar-error.log
+      rm -f /tmp/tar-error.log
+    fi
+
     return 1
   fi
 }
