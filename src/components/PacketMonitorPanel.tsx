@@ -97,6 +97,12 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
 
     if (!lastItem) return;
 
+    // Prevent infinite loop when filters result in empty packet list
+    // If we have raw packets but no filtered packets, don't keep trying to load more
+    if (packets.length === 0 && rawPackets.length > 0) {
+      return;
+    }
+
     if (
       lastItem.index >= packets.length - 1 &&
       hasMore &&
@@ -105,7 +111,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     ) {
       loadMore();
     }
-  }, [rowVirtualizer.getVirtualItems(), hasMore, loadingMore, packets.length, canView]);
+  }, [rowVirtualizer.getVirtualItems(), hasMore, loadingMore, packets.length, rawPackets.length, canView]);
 
   // Load more packets function
   const loadMore = async () => {
@@ -197,7 +203,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
       console.error('Failed to fetch packets:', error);
       setLoading(false);
     }
-  }, [canView, filters, autoScroll, rawPackets]);
+  }, [canView, filters, autoScroll]);
 
   // Initial fetch and polling
   useEffect(() => {
