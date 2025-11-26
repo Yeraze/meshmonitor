@@ -31,7 +31,7 @@ When enabled, MeshMonitor monitors all incoming messages for patterns matching t
 - **`{HOPS}`**: Number of hops from the original message (e.g., "3")
 - **`{DATE}`**: Date when the message was received (e.g., "1/15/2025")
 - **`{TIME}`**: Time when the message was received (e.g., "2:30:00 PM")
-- **`{SENDER}`**: Long name of the sender (e.g., "Alice's Node")
+- **`{LONG_NAME}`**: Long name of the sender (e.g., "Alice's Node")
 - **`{MESSAGE}`**: The original message text
 
 **Default Template**:
@@ -41,13 +41,13 @@ When enabled, MeshMonitor monitors all incoming messages for patterns matching t
 
 **Example Custom Templates**:
 ```
-✅ Received from {SENDER} on {DATE} at {TIME}
+✅ Received from {LONG_NAME} on {DATE} at {TIME}
 ```
 ```
 📡 Signal test: {HOPS} hop(s) | Date: {DATE} | Time: {TIME}
 ```
 ```
-👋 Hey {SENDER}! Got your message: "{MESSAGE}"
+👋 Hey {LONG_NAME}! Got your message: "{MESSAGE}"
 ```
 
 **Token Insertion**: Click on any token button to insert it at your cursor position, making it easy to build complex templates.
@@ -163,7 +163,7 @@ When enabled, MeshMonitor monitors for nodes that appear for the first time in t
 
 **Custom Welcome Message**: Craft your welcome message using dynamic tokens:
 
-- **`{SENDER}`**: Long name of the new node joining (e.g., "Alice's Node")
+- **`{LONG_NAME}`**: Long name of the new node joining (e.g., "Alice's Node")
 - **`{NODEID}`**: Hex ID of the new node (e.g., "!a2b3c4d5")
 - **`{DATE}`**: Date when the node was first seen (e.g., "1/15/2025")
 - **`{TIME}`**: Time when the node was first seen (e.g., "2:30:00 PM")
@@ -171,18 +171,18 @@ When enabled, MeshMonitor monitors for nodes that appear for the first time in t
 
 **Default Template**:
 ```
-👋 Welcome {SENDER}! Thanks for joining the mesh.
+👋 Welcome {LONG_NAME}! Thanks for joining the mesh.
 ```
 
 **Example Custom Templates**:
 ```
-🎉 Hey {SENDER}! Welcome to our mesh network on {DATE} at {TIME}
+🎉 Hey {LONG_NAME}! Welcome to our mesh network on {DATE} at {TIME}
 ```
 ```
-👋 Welcome aboard {SENDER} ({NODEID})! Check meshmonitor.org for network stats.
+👋 Welcome aboard {LONG_NAME} ({NODEID})! Check meshmonitor.org for network stats.
 ```
 ```
-🌐 New node detected: {SENDER}. MeshMonitor {VERSION} is watching!
+🌐 New node detected: {LONG_NAME}. MeshMonitor {VERSION} is watching!
 ```
 
 **Token Insertion**: Click on any token button to insert it at your cursor position for easy template creation.
