@@ -762,12 +762,23 @@ const fetchScriptCode = async (script) => {
       throw new Error(`File too large: ${data.size} bytes. Maximum size is ${MAX_FILE_SIZE} bytes (500KB)`)
     }
     
-    // Decode base64 content
+    // Decode base64 content with proper UTF-8 handling
     let text
     try {
       // GitHub API returns base64-encoded content with newlines, remove them
       const base64Content = data.content.replace(/\n/g, '')
-      text = atob(base64Content)
+
+      // Decode base64 to binary string
+      const binaryString = atob(base64Content)
+
+      // Convert binary string to UTF-8
+      // Use TextDecoder for proper UTF-8 decoding
+      const bytes = new Uint8Array(binaryString.length)
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i)
+      }
+      const decoder = new TextDecoder('utf-8')
+      text = decoder.decode(bytes)
     } catch (decodeErr) {
       throw new Error('Failed to decode file content from GitHub API')
     }
@@ -873,9 +884,9 @@ const downloadScript = async (script) => {
     try {
       // Security: Sanitize filename before download
       const safeFilename = sanitizeFilename(script.filename)
-      
-      // Create blob with script content
-      const blob = new Blob([scriptCode.value], { type: 'text/plain' })
+
+      // Create blob with script content (UTF-8 encoding)
+      const blob = new Blob([scriptCode.value], { type: 'text/plain;charset=utf-8' })
       const url = URL.createObjectURL(blob)
       
       // Create temporary download link
