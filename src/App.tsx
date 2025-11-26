@@ -459,6 +459,8 @@ function App() {
     setAutoAckRegex,
     autoAckMessage,
     setAutoAckMessage,
+    autoAckMessageDirect,
+    setAutoAckMessageDirect,
     autoAckChannels,
     setAutoAckChannels,
     autoAckDirectMessages,
@@ -783,6 +785,10 @@ function App() {
 
           if (settings.autoAckMessage) {
             setAutoAckMessage(settings.autoAckMessage);
+          }
+
+          if (settings.autoAckMessageDirect) {
+            setAutoAckMessageDirect(settings.autoAckMessageDirect);
           }
 
           if (settings.autoAckChannels) {
@@ -5850,6 +5856,7 @@ function App() {
                 enabled={autoAckEnabled}
                 regex={autoAckRegex}
                 message={autoAckMessage}
+                messageDirect={autoAckMessageDirect}
                 channels={channels}
                 enabledChannels={autoAckChannels}
                 directMessagesEnabled={autoAckDirectMessages}
@@ -5858,6 +5865,7 @@ function App() {
                 onEnabledChange={setAutoAckEnabled}
                 onRegexChange={setAutoAckRegex}
                 onMessageChange={setAutoAckMessage}
+                onMessageDirectChange={setAutoAckMessageDirect}
                 onChannelsChange={setAutoAckChannels}
                 onDirectMessagesChange={setAutoAckDirectMessages}
                 onUseDMChange={setAutoAckUseDM}

@@ -4342,9 +4342,6 @@ class MeshtasticManager {
         return;
       }
 
-      // Get auto-acknowledge message template
-      const autoAckMessage = databaseService.getSetting('autoAckMessage') || '🤖 Copy, {NUMBER_HOPS} hops at {TIME}';
-
       // Calculate hop count (hopStart - hopLimit gives hops traveled)
       // Only calculate if both values are valid and hopStart >= hopLimit
       const hopsTraveled =
@@ -4355,6 +4352,14 @@ class MeshtasticManager {
         message.hopStart >= message.hopLimit
           ? message.hopStart - message.hopLimit
           : 0;
+
+      // Get auto-acknowledge message template
+      // Use the direct message template for 0 hops if available, otherwise fall back to standard template
+      const autoAckMessageDirect = databaseService.getSetting('autoAckMessageDirect') || '';
+      const autoAckMessageStandard = databaseService.getSetting('autoAckMessage') || '🤖 Copy, {NUMBER_HOPS} hops at {TIME}';
+      const autoAckMessage = (hopsTraveled === 0 && autoAckMessageDirect)
+        ? autoAckMessageDirect
+        : autoAckMessageStandard;
 
       // Format timestamp according to user preferences
       const timestamp = new Date(message.timestamp);
@@ -5316,9 +5321,12 @@ class MeshtasticManager {
       result = result.replace(/{SHORT_NAME}/g, shortName);
     }
 
-    // {NUMBER_HOPS} - Number of hops
+    // {NUMBER_HOPS} and {HOPS} - Number of hops
     if (result.includes('{NUMBER_HOPS}')) {
       result = result.replace(/{NUMBER_HOPS}/g, numberHops.toString());
+    }
+    if (result.includes('{HOPS}')) {
+      result = result.replace(/{HOPS}/g, numberHops.toString());
     }
 
     // {RABBIT_HOPS} - Rabbit emojis equal to hop count (or 🎯 for direct/0 hops)

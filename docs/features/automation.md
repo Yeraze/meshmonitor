@@ -28,16 +28,32 @@ When enabled, MeshMonitor monitors all incoming messages for patterns matching t
 
 **Custom Message Template**: Craft your auto-acknowledge response using dynamic tokens:
 
-- **`{HOPS}`**: Number of hops from the original message (e.g., "3")
+- **`{HOPS}`** or **`{NUMBER_HOPS}`**: Number of hops from the original message (e.g., "3" for multi-hop or "0" for direct)
+- **`{RABBIT_HOPS}`**: Visual hop indicator (🎯 for direct/0 hops, 🐇 emojis for multi-hop, e.g., "🐇🐇🐇" for 3 hops)
 - **`{DATE}`**: Date when the message was received (e.g., "1/15/2025")
 - **`{TIME}`**: Time when the message was received (e.g., "2:30:00 PM")
 - **`{LONG_NAME}`**: Long name of the sender (e.g., "Alice's Node")
-- **`{MESSAGE}`**: The original message text
+- **`{SHORT_NAME}`**: Short name of the sender (e.g., "ALI")
+- **`{NODE_ID}`**: Sender's node ID (e.g., "!a1b2c3d4")
+- **`{SNR}`**: Signal-to-Noise Ratio in dB (e.g., "7.5")
+- **`{RSSI}`**: Received Signal Strength Indicator in dBm (e.g., "-95")
+- **`{VERSION}`**: MeshMonitor version
+- **`{DURATION}`**: System uptime
+- **`{FEATURES}`**: Enabled automation features
+- **`{NODECOUNT}`**: Number of active nodes
+- **`{DIRECTCOUNT}`**: Number of direct nodes (0 hops)
 
-**Default Template**:
+**Default Template (Multi-hop)**:
 ```
-🤖 Copy, {HOPS} hops on {DATE} at {TIME}
+🤖 Copy, {NUMBER_HOPS} hops at {TIME}
 ```
+
+**Default Template (Direct Connection)**:
+```
+🤖 Copy, direct connection! SNR: {SNR}dB RSSI: {RSSI}dBm at {TIME}
+```
+
+**Separate Templates for Direct vs. Multi-hop**: You can configure different acknowledgment messages for direct connections (0 hops) versus multi-hop messages. This allows you to include signal quality metrics like SNR and RSSI for direct connections while showing hop count for relayed messages.
 
 **Example Custom Templates**:
 ```
