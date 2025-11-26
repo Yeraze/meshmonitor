@@ -194,6 +194,8 @@ Create `/etc/apache2/sites-available/meshmonitor.conf`:
 
     # Proxy Configuration
     ProxyPreserveHost On
+    RequestHeader set X-Forwarded-Proto "https"
+    RequestHeader set X-Forwarded-Port "443"
     ProxyPass / http://localhost:8080/
     ProxyPassReverse / http://localhost:8080/
 
