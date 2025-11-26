@@ -16,7 +16,7 @@ import { type Theme, useSettings } from '../contexts/SettingsContext';
 
 type DistanceUnit = 'km' | 'mi';
 type TimeFormat = '12' | '24';
-type DateFormat = 'MM/DD/YYYY' | 'DD/MM/YYYY';
+type DateFormat = 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD';
 type MapPinStyle = 'meshmonitor' | 'official';
 
 interface SettingsTabProps {
@@ -665,6 +665,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             >
               <option value="MM/DD/YYYY">MM/DD/YYYY (e.g., 12/31/2024)</option>
               <option value="DD/MM/YYYY">DD/MM/YYYY (e.g., 31/12/2024)</option>
+              <option value="YYYY-MM-DD">YYYY-MM-DD (e.g., 2024-12-31) - ISO 8601</option>
             </select>
           </div>
           <div className="setting-item">
