@@ -25,7 +25,7 @@ export function formatTime(date: Date, format: TimeFormat = '24'): string {
 /**
  * Formats a date according to the user's preferred date format
  * @param date - Date object to format
- * @param format - 'MM/DD/YYYY' or 'DD/MM/YYYY'
+ * @param format - 'MM/DD/YYYY', 'DD/MM/YYYY', or 'YYYY-MM-DD' (ISO 8601)
  * @returns Formatted date string
  */
 export function formatDate(date: Date, format: DateFormat = 'MM/DD/YYYY'): string {
@@ -35,6 +35,8 @@ export function formatDate(date: Date, format: DateFormat = 'MM/DD/YYYY'): strin
 
   if (format === 'DD/MM/YYYY') {
     return `${day}/${month}/${year}`;
+  } else if (format === 'YYYY-MM-DD') {
+    return `${year}-${month}-${day}`;
   } else {
     return `${month}/${day}/${year}`;
   }
@@ -44,7 +46,7 @@ export function formatDate(date: Date, format: DateFormat = 'MM/DD/YYYY'): strin
  * Formats a complete date and time according to user preferences
  * @param date - Date object to format
  * @param timeFormat - '12' for 12-hour format, '24' for 24-hour format
- * @param dateFormat - 'MM/DD/YYYY' or 'DD/MM/YYYY'
+ * @param dateFormat - 'MM/DD/YYYY', 'DD/MM/YYYY', or 'YYYY-MM-DD' (ISO 8601)
  * @returns Formatted date and time string
  */
 export function formatDateTime(
@@ -59,7 +61,7 @@ export function formatDateTime(
  * Formats a timestamp (milliseconds since epoch) according to user preferences
  * @param timestamp - Timestamp in milliseconds
  * @param timeFormat - '12' for 12-hour format, '24' for 24-hour format
- * @param dateFormat - 'MM/DD/YYYY' or 'DD/MM/YYYY'
+ * @param dateFormat - 'MM/DD/YYYY', 'DD/MM/YYYY', or 'YYYY-MM-DD' (ISO 8601)
  * @returns Formatted date and time string
  */
 function formatTimestamp(
@@ -75,7 +77,7 @@ function formatTimestamp(
  * Formats a relative time (e.g., "5 minutes ago") with optional absolute time
  * @param timestamp - Timestamp in milliseconds
  * @param timeFormat - '12' for 12-hour format, '24' for 24-hour format
- * @param dateFormat - 'MM/DD/YYYY' or 'DD/MM/YYYY'
+ * @param dateFormat - 'MM/DD/YYYY', 'DD/MM/YYYY', or 'YYYY-MM-DD' (ISO 8601)
  * @param showAbsolute - Whether to include absolute time in parentheses
  * @returns Formatted relative time string
  */
@@ -124,7 +126,7 @@ export function formatRelativeTime(
  *
  * @param date - Date object to format
  * @param timeFormat - '12' for 12-hour format, '24' for 24-hour format
- * @param dateFormat - 'MM/DD/YYYY' or 'DD/MM/YYYY' (used for older dates)
+ * @param dateFormat - 'MM/DD/YYYY', 'DD/MM/YYYY', or 'YYYY-MM-DD' (ISO 8601) (used for older dates)
  * @returns Smart formatted datetime string
  */
 export function formatMessageTime(
@@ -179,7 +181,7 @@ export function formatMessageTime(
 /**
  * Get the date string for a message (for date separators)
  * @param date - Date object
- * @param _dateFormat - 'MM/DD/YYYY' or 'DD/MM/YYYY' (reserved for future use)
+ * @param _dateFormat - 'MM/DD/YYYY', 'DD/MM/YYYY', or 'YYYY-MM-DD' (ISO 8601) (reserved for future use)
  * @returns Formatted date string for separator
  */
 export function getMessageDateSeparator(

@@ -362,7 +362,10 @@ Description: Offline OpenStreetMap tiles via TileServer GL
 
 ### Date Format
 
-**Options**: MM/DD/YYYY (e.g., 12/31/2024) or DD/MM/YYYY (e.g., 31/12/2024)
+**Options**:
+- MM/DD/YYYY (e.g., 12/31/2024)
+- DD/MM/YYYY (e.g., 31/12/2024)
+- YYYY-MM-DD (e.g., 2024-12-31) - ISO 8601 standard
 
 **Default**: MM/DD/YYYY
 

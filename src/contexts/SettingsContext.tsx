@@ -7,7 +7,7 @@ import { DEFAULT_TILESET_ID, type TilesetId, type CustomTileset } from '../confi
 
 export type DistanceUnit = 'km' | 'mi';
 export type TimeFormat = '12' | '24';
-export type DateFormat = 'MM/DD/YYYY' | 'DD/MM/YYYY';
+export type DateFormat = 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD';
 export type MapPinStyle = 'meshmonitor' | 'official';
 
 // Built-in theme types
@@ -141,7 +141,10 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
 
   const [dateFormat, setDateFormatState] = useState<DateFormat>(() => {
     const saved = localStorage.getItem('dateFormat');
-    return (saved === 'DD/MM/YYYY' ? 'DD/MM/YYYY' : 'MM/DD/YYYY') as DateFormat;
+    if (saved === 'DD/MM/YYYY' || saved === 'YYYY-MM-DD') {
+      return saved as DateFormat;
+    }
+    return 'MM/DD/YYYY';
   });
 
   const [mapTileset, setMapTilesetState] = useState<TilesetId>(() => {
