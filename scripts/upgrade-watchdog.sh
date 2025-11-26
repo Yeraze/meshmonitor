@@ -78,23 +78,53 @@ create_backup() {
 
   # Create backup (exclude backups directory itself)
   # Capture stderr to a temp file for better error reporting
-  if tar -czf "$backup_path.tar.gz" -C /data --exclude='backups' --exclude='.upgrade-*' . 2>/tmp/tar-error.log; then
-    # Verify the backup file was created and has content
-    if [ ! -f "$backup_path.tar.gz" ]; then
-      log_error "Backup file was not created: $backup_path.tar.gz"
-      return 1
+  # Note: tar may report warnings about files disappearing (e.g., SQLite journal files)
+  # which can be safely ignored as long as the backup file is created successfully
+  tar -czf "$backup_path.tar.gz" -C /data --exclude='backups' --exclude='.upgrade-*' . 2>/tmp/tar-error.log
+  local tar_exit=$?
+
+  # Check if backup file was created and has content
+  if [ ! -f "$backup_path.tar.gz" ]; then
+    log_error "Backup file was not created: $backup_path.tar.gz"
+
+    # Show tar errors
+    if [ -f /tmp/tar-error.log ]; then
+      log_error "tar error output:"
+      while IFS= read -r line; do
+        log_error "  $line"
+      done < /tmp/tar-error.log
     fi
 
-    local backup_size=$(stat -c%s "$backup_path.tar.gz" 2>/dev/null || echo "0")
-    log_success "Backup created: $backup_path.tar.gz (${backup_size} bytes)"
-
-    # Clean up error log if successful
     rm -f /tmp/tar-error.log
+    return 1
+  fi
 
+  local backup_size=$(stat -c%s "$backup_path.tar.gz" 2>/dev/null || echo "0")
+
+  # Check if backup is too small (likely corrupt)
+  if [ "$backup_size" -lt 100 ]; then
+    log_error "Backup file is suspiciously small (${backup_size} bytes)"
+    rm -f /tmp/tar-error.log
+    return 1
+  fi
+
+  # Exit code 0 = success, 1 = warnings (e.g., file changed during read)
+  # Both are acceptable as long as the backup file exists and has reasonable size
+  if [ $tar_exit -eq 0 ] || [ $tar_exit -eq 1 ]; then
+    if [ $tar_exit -eq 1 ] && [ -f /tmp/tar-error.log ]; then
+      # Log warnings but don't fail
+      log_warn "tar reported warnings (likely ephemeral files like SQLite journals):"
+      while IFS= read -r line; do
+        log_warn "  $line"
+      done < /tmp/tar-error.log
+    fi
+
+    log_success "Backup created: $backup_path.tar.gz (${backup_size} bytes)"
+    rm -f /tmp/tar-error.log
     echo "$backup_path.tar.gz"
     return 0
   else
-    log_error "Failed to create backup (tar command failed)"
+    log_error "Failed to create backup (tar exit code: $tar_exit)"
 
     # Show the actual tar error
     if [ -f /tmp/tar-error.log ]; then
@@ -102,9 +132,9 @@ create_backup() {
       while IFS= read -r line; do
         log_error "  $line"
       done < /tmp/tar-error.log
-      rm -f /tmp/tar-error.log
     fi
 
+    rm -f /tmp/tar-error.log
     return 1
   fi
 }
