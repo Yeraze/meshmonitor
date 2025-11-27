@@ -3952,6 +3952,15 @@ function App() {
   };
 
   const renderMessagesTab = () => {
+    // Check if user has permission to view messages
+    if (!hasPermission('messages', 'read')) {
+      return (
+        <div className="no-permission-message">
+          <p>You need <strong>messages:read</strong> permission to view direct messages.</p>
+        </div>
+      );
+    }
+
     // Use processedNodes which already has sorting applied from the Map page logic
     const nodesWithMessages = processedNodes
       .filter(node => node.user?.id !== currentNodeId) // Exclude local node
