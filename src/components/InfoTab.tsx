@@ -71,6 +71,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
   const [loadingVirtualNode, setLoadingVirtualNode] = useState(false);
   const [serverInfo, setServerInfo] = useState<any>(null);
   const [loadingServerInfo, setLoadingServerInfo] = useState(false);
+  const [localStats, setLocalStats] = useState<any>(null);
 
   const fetchVirtualNodeStatus = async () => {
     if (connectionStatus !== 'connected') return;
@@ -97,6 +98,41 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
       logger.error('Error fetching server info:', error);
     } finally {
       setLoadingServerInfo(false);
+    }
+  };
+
+  const fetchLocalStats = async () => {
+    if (connectionStatus !== 'connected' || !currentNodeId) return;
+
+    try {
+      const response = await fetch(`${baseUrl}/api/telemetry/${currentNodeId}?hours=1`);
+      if (!response.ok) throw new Error('Failed to fetch local stats');
+      const data = await response.json();
+
+      // Extract the latest value for each LocalStats metric
+      const stats: any = {};
+      const metrics = [
+        'uptimeSeconds', 'channelUtilization', 'airUtilTx',
+        'numPacketsTx', 'numPacketsRx', 'numPacketsRxBad',
+        'numOnlineNodes', 'numTotalNodes', 'numRxDupe',
+        'numTxRelay', 'numTxRelayCanceled', 'heapTotalBytes',
+        'heapFreeBytes', 'numTxDropped'
+      ];
+
+      metrics.forEach(metric => {
+        const entries = data.filter((item: any) => item.telemetryType === metric);
+        if (entries.length > 0) {
+          // Get the most recent value
+          const latest = entries.reduce((prev: any, current: any) =>
+            current.timestamp > prev.timestamp ? current : prev
+          );
+          stats[metric] = latest.value;
+        }
+      });
+
+      setLocalStats(stats);
+    } catch (error) {
+      logger.error('Error fetching local stats:', error);
     }
   };
 
@@ -156,6 +192,28 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
     return () => clearInterval(interval);
   }, [connectionStatus]);
 
+  useEffect(() => {
+    fetchLocalStats();
+    const interval = setInterval(fetchLocalStats, 60000); // Refresh every minute
+    return () => clearInterval(interval);
+  }, [connectionStatus, currentNodeId]);
+
+  // Helper function to format uptime
+  const formatUptime = (uptimeSeconds: number): string => {
+    const days = Math.floor(uptimeSeconds / 86400);
+    const hours = Math.floor((uptimeSeconds % 86400) / 3600);
+    const minutes = Math.floor((uptimeSeconds % 3600) / 60);
+    const seconds = Math.floor(uptimeSeconds % 60);
+
+    const parts = [];
+    if (days > 0) parts.push(`${days}d`);
+    if (hours > 0) parts.push(`${hours}h`);
+    if (minutes > 0) parts.push(`${minutes}m`);
+    if (seconds > 0 || parts.length === 0) parts.push(`${seconds}s`);
+
+    return parts.join(' ');
+  };
+
   // Stable callbacks
   const handleClearRecordClick = useCallback(() => {
     handleClearRecordHolder();
@@ -188,6 +246,9 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
             <p><strong>Firmware Version:</strong> {deviceConfig.basic.firmwareVersion || 'Not available'}</p>
           )}
           <p><strong>Connection Status:</strong> <span className={`status-text ${connectionStatus}`}>{connectionStatus}</span></p>
+          {localStats?.uptimeSeconds !== undefined && (
+            <p><strong>Uptime:</strong> {formatUptime(localStats.uptimeSeconds)}</p>
+          )}
           <p><strong>Uses TLS:</strong> {deviceInfo?.meshtasticUseTls ? 'Yes' : 'No'}</p>
           {deviceInfo?.deviceMetadata?.rebootCount !== undefined && (
             <p><strong>Reboot Count:</strong> {deviceInfo.deviceMetadata.rebootCount}</p>
@@ -295,6 +356,15 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
           <p><strong>Total Channels:</strong> {channels.length}</p>
           <p><strong>Total Messages:</strong> {messages.length}</p>
           <p><strong>Active Message Channels:</strong> {getAvailableChannels().length}</p>
+          {localStats?.numPacketsTx !== undefined && (
+            <>
+              <p><strong>Packets TX:</strong> {localStats.numPacketsTx.toLocaleString()}</p>
+              <p><strong>Packets RX:</strong> {localStats.numPacketsRx?.toLocaleString() || 'N/A'}</p>
+              <p><strong>RX Bad:</strong> {localStats.numPacketsRxBad?.toLocaleString() || '0'}</p>
+              <p><strong>RX Duplicate:</strong> {localStats.numRxDupe?.toLocaleString() || '0'}</p>
+              <p><strong>TX Dropped:</strong> {localStats.numTxDropped?.toLocaleString() || '0'}</p>
+            </>
+          )}
         </div>
 
         <div className="info-section">
