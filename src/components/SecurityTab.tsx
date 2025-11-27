@@ -126,15 +126,27 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
   };
 
   const handleNodeClick = useCallback((nodeNum: number) => {
+    // Check if user has permission to view messages before navigating
+    if (!hasPermission('messages', 'read')) {
+      setError('You need messages:read permission to view direct messages');
+      return;
+    }
+
     if (onTabChange && onSelectDMNode) {
       // Convert nodeNum to hex string with leading ! for DM node ID
       const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
       onSelectDMNode(nodeId);
       onTabChange('messages');
     }
-  }, [onTabChange, onSelectDMNode]);
+  }, [onTabChange, onSelectDMNode, hasPermission]);
 
   const handleSendNotification = useCallback((node: SecurityNode, duplicateCount?: number) => {
+    // Check if user has permission to send messages before navigating
+    if (!hasPermission('messages', 'read')) {
+      setError('You need messages:read permission to send notifications');
+      return;
+    }
+
     if (onTabChange && onSelectDMNode && setNewMessage) {
       // Convert nodeNum to hex string with leading ! for DM node ID
       const nodeId = `!${node.nodeNum.toString(16).padStart(8, '0')}`;
@@ -152,7 +164,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
       setNewMessage(message);
       onTabChange('messages');
     }
-  }, [onTabChange, onSelectDMNode, setNewMessage]);
+  }, [onTabChange, onSelectDMNode, setNewMessage, hasPermission]);
 
   const handleExport = useCallback(async (format: 'csv' | 'json') => {
     try {
