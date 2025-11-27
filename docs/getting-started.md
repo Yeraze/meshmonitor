@@ -30,8 +30,8 @@ The following deployment methods are contributed and supported by the community:
   - See [Proxmox LXC Deployment Guide](/deployment/PROXMOX_LXC_GUIDE)
 
 - **❄️ NixOS Flake** - Declarative deployment for NixOS
-  - Community contribution by [@benjajaja](https://github.com/benjajaja)
-  - See [NixOS flake example](https://github.com/benjajaja/nixos-rk3588/blob/main/meshmonitor/flake.nix)
+  - `github:benjajaja/nixos-rk3588?dir=meshmonitor`
+  - See [NixOS configuration example](https://github.com/benjajaja/nixos-rk3588/blob/main/configuration.nix#L580)
   - Discussed in [Issue #781](https://github.com/yeraze/meshmonitor/issues/781)
 
 - **🔧 Bare Metal** - Direct installation with Node.js
