@@ -4,7 +4,7 @@
  * Provides login interface for both local and OIDC authentication
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { logger } from '../utils/logger';
 
@@ -19,11 +19,19 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-
-  if (!isOpen) return null;
+  const usernameInputRef = useRef<HTMLInputElement>(null);
 
   const localAuthDisabled = authStatus?.localAuthDisabled ?? false;
   const oidcEnabled = authStatus?.oidcEnabled ?? false;
+
+  // Auto-focus username field when modal opens
+  useEffect(() => {
+    if (isOpen && !localAuthDisabled && usernameInputRef.current) {
+      usernameInputRef.current.focus();
+    }
+  }, [isOpen, localAuthDisabled]);
+
+  if (!isOpen) return null;
 
   const handleLocalLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,6 +85,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
               <div className="form-group">
                 <label htmlFor="username">Username</label>
                 <input
+                  ref={usernameInputRef}
                   id="username"
                   type="text"
                   value={username}
