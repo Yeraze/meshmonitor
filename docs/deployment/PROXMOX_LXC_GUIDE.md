@@ -47,7 +47,7 @@ MeshMonitor can be deployed in Proxmox VE using LXC (Linux Containers) as an alt
 
 ```bash
 # 1. Download template on your computer
-wget https://github.com/jeremiah-k/meshmonitor/releases/latest/download/meshmonitor-latest-amd64.tar.gz
+wget https://github.com/yeraze/meshmonitor/releases/latest/download/meshmonitor-latest-amd64.tar.gz
 
 # 2. Upload to Proxmox server
 scp meshmonitor-latest-amd64.tar.gz root@YOUR-PROXMOX-IP:/var/lib/vz/template/cache/
@@ -74,7 +74,7 @@ systemctl start meshmonitor-apprise
 
 ### Step 1: Download the LXC Template
 
-1. Go to the [MeshMonitor Releases](https://github.com/jeremiah-k/meshmonitor/releases) page
+1. Go to the [MeshMonitor Releases](https://github.com/yeraze/meshmonitor/releases) page
 2. Download the latest `meshmonitor-*-amd64.tar.gz` file
 3. Optionally download the `.sha256` file to verify integrity
 
@@ -529,7 +529,7 @@ LXC deployments do not support auto-upgrade. To update:
 
 2. **Download new template**:
    ```bash
-   wget https://github.com/jeremiah-k/meshmonitor/releases/download/v2.19.5/meshmonitor-2.19.5-amd64.tar.gz
+   wget https://github.com/yeraze/meshmonitor/releases/download/v2.19.5/meshmonitor-2.19.5-amd64.tar.gz
    ```
 
 3. **Upload to Proxmox**:
@@ -588,21 +588,21 @@ LXC deployments do not support auto-upgrade. To update:
 
 ## Additional Resources
 
-- **Main Documentation**: [Getting Started Guide](../getting-started.md)
-- **Configuration Guide**: [Production Deployment](../configuration/production.md)
-- **Docker Deployment**: [Deployment Guide](./DEPLOYMENT_GUIDE.md)
-- **GitHub**: [MeshMonitor Repository](https://github.com/jeremiah-k/meshmonitor)
-- **Issues**: [Report Problems](https://github.com/jeremiah-k/meshmonitor/issues)
+- **Main Documentation**: [Getting Started Guide](/getting-started)
+- **Configuration Guide**: [Production Deployment](/configuration/production)
+- **Docker Deployment**: [Deployment Guide](/deployment/DEPLOYMENT_GUIDE)
+- **GitHub**: [MeshMonitor Repository](https://github.com/yeraze/meshmonitor)
+- **Issues**: [Report Problems](https://github.com/yeraze/meshmonitor/issues)
 
 ## Getting Help
 
 If you encounter issues:
 
 1. Check this troubleshooting guide
-2. Review the [main documentation](../getting-started.md)
-3. Search [existing issues](https://github.com/jeremiah-k/meshmonitor/issues)
-4. Ask in [Discussions](https://github.com/jeremiah-k/meshmonitor/discussions)
-5. Create a [new issue](https://github.com/jeremiah-k/meshmonitor/issues/new) with:
+2. Review the [main documentation](/getting-started)
+3. Search [existing issues](https://github.com/yeraze/meshmonitor/issues)
+4. Ask in [Discussions](https://github.com/yeraze/meshmonitor/discussions)
+5. Create a [new issue](https://github.com/yeraze/meshmonitor/issues/new) with:
    - LXC container configuration
    - Service logs (`journalctl -u meshmonitor`)
    - Environment configuration (redact sensitive data)

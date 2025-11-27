@@ -67,6 +67,13 @@ export default defineConfig({
             { text: '🔄 Automatic Self-Upgrade', link: '/configuration/auto-upgrade' },
             { text: 'Push Notifications', link: '/features/notifications' }
           ]
+        },
+        {
+          text: 'Deployment',
+          items: [
+            { text: 'Deployment Guide', link: '/deployment/DEPLOYMENT_GUIDE' },
+            { text: '📦 Proxmox LXC', link: '/deployment/PROXMOX_LXC_GUIDE' }
+          ]
         }
       ],
       '/development/': [
@@ -122,5 +129,5 @@ export default defineConfig({
   ],
 
   // Exclude old documentation directories from VitePress processing
-  srcExclude: ['**/deployment/**', '**/architecture/**', '**/database/**', '**/api/**']
+  srcExclude: ['**/architecture/**', '**/database/**', '**/api/**']
 })
