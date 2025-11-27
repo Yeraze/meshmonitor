@@ -2,20 +2,59 @@
 
 This guide will help you get MeshMonitor up and running quickly.
 
-::: tip Interactive Configurator
+::: tip Interactive Docker Compose Configurator
 Want a custom configuration generated for you? Try our **[Docker Compose Configurator](/configurator)** - it generates a ready-to-use `docker-compose.yml` and `.env` file based on your specific setup (TCP, BLE, Serial, with or without reverse proxy, etc.).
 :::
+
+## Deployment Methods
+
+MeshMonitor supports multiple deployment options to fit your infrastructure:
+
+### Officially Supported
+
+- **🐳 Docker Compose** (recommended) - Works on any platform with Docker
+  - Easiest setup with auto-upgrade support
+  - Full feature support
+  - See [Quick Start](#quick-start-with-docker-compose) below
+
+- **☸️ Kubernetes/Helm** - Production-grade orchestration
+  - Available in our [GitHub repository](https://github.com/yeraze/meshmonitor)
+  - See [Deployment Guide](/deployment/DEPLOYMENT_GUIDE) for details
+
+### Community Supported
+
+The following deployment methods are contributed and supported by the community:
+
+- **📦 Proxmox LXC** - Lightweight containers for Proxmox VE users
+  - Pre-built templates available
+  - See [Proxmox LXC Deployment Guide](/deployment/PROXMOX_LXC_GUIDE)
+
+- **❄️ NixOS Flake** - Declarative deployment for NixOS
+  - Community contribution by [@benjajaja](https://github.com/benjajaja)
+  - See [NixOS flake example](https://github.com/benjajaja/nixos-rk3588/blob/main/meshmonitor/flake.nix)
+  - Discussed in [Issue #781](https://github.com/yeraze/meshmonitor/issues/781)
+
+- **🔧 Bare Metal** - Direct installation with Node.js
+  - For development or custom setups
+  - See [Deployment Guide](/deployment/DEPLOYMENT_GUIDE)
 
 ## Prerequisites
 
 Before you begin, ensure you have:
 
+### Meshtastic Device
 - A Meshtastic device connected to your network via IP (WiFi or Ethernet)
 - **OR** A Serial/USB device with the [Serial Bridge](/configuration/serial-bridge)
 - **OR** A Bluetooth device with the [BLE Bridge](/configuration/ble-bridge)
 - **OR** `meshtasticd` running as a virtual node
-- Docker and Docker Compose installed (for Docker deployment)
-- **OR** Node.js 20+ and npm (for bare metal deployment)
+
+### Deployment Platform
+Choose one based on your deployment method:
+- **Docker Compose**: Docker and Docker Compose installed
+- **Proxmox LXC**: Proxmox VE 7.0+
+- **Kubernetes**: Kubernetes cluster with Helm 3+
+- **NixOS**: NixOS system
+- **Bare Metal**: Node.js 20+ and npm
 
 ## Quick Start with Docker Compose
 

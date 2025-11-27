@@ -74,7 +74,7 @@ See the [Proxmox LXC Deployment Guide](../docs/deployment/PROXMOX_LXC_GUIDE.md) 
 
 ### Quick Start
 
-1. Download template from [GitHub Releases](https://github.com/jeremiah-k/meshmonitor/releases)
+1. Download template from [GitHub Releases](https://github.com/yeraze/meshmonitor/releases)
 2. Upload to Proxmox: `scp meshmonitor-*.tar.gz root@proxmox:/var/lib/vz/template/cache/`
 3. Create LXC container from template via Proxmox web UI
 4. Configure `/etc/meshmonitor/meshmonitor.env` with your node IP
@@ -140,5 +140,5 @@ To modify the build process:
 ## Support
 
 - **Documentation**: [Proxmox LXC Guide](../docs/deployment/PROXMOX_LXC_GUIDE.md)
-- **Issues**: [GitHub Issues](https://github.com/jeremiah-k/meshmonitor/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/jeremiah-k/meshmonitor/discussions)
+- **Issues**: [GitHub Issues](https://github.com/yeraze/meshmonitor/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/yeraze/meshmonitor/discussions)
