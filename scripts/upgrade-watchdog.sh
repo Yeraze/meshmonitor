@@ -218,11 +218,11 @@ recreate_container() {
       log "Using project name: $COMPOSE_PROJECT_NAME"
     fi
 
-    docker compose $project_flag $compose_files stop meshmonitor 2>/dev/null || true
-    docker compose $project_flag $compose_files rm -f meshmonitor 2>/dev/null || true
+    docker compose $project_flag $compose_files stop "$CONTAINER_NAME" 2>/dev/null || true
+    docker compose $project_flag $compose_files rm -f "$CONTAINER_NAME" 2>/dev/null || true
 
     # Recreate using docker compose (this properly handles all configuration)
-    if docker compose $project_flag $compose_files up -d --no-deps meshmonitor; then
+    if docker compose $project_flag $compose_files up -d --no-deps "$CONTAINER_NAME"; then
       log_success "Container recreated successfully via Docker Compose"
       return 0
     else
