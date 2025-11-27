@@ -1994,8 +1994,10 @@ function App() {
     const currentNodeNumStr = currentNodeId.replace('!', '');
     const currentNodeNum = parseInt(currentNodeNumStr, 16);
 
-    // Find most recent traceroute between current node and selected node using maxNodeAgeHours setting
-    const cutoff = Date.now() - (maxNodeAgeHours * 60 * 60 * 1000);
+    // Find most recent traceroute between current node and selected node
+    // Use 7 days for traceroute visibility (traceroutes are less frequent than node updates)
+    const TRACEROUTE_DISPLAY_HOURS = 7 * 24; // 7 days
+    const cutoff = Date.now() - (TRACEROUTE_DISPLAY_HOURS * 60 * 60 * 1000);
     const recentTraceroutes = traceroutes
       .filter(tr => {
         const isRelevant = (
