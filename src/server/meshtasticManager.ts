@@ -72,6 +72,8 @@ class MeshtasticManager {
   private userDisconnectedState = false;  // Track user-initiated disconnect
   private tracerouteInterval: NodeJS.Timeout | null = null;
   private tracerouteIntervalMinutes: number = 0;
+  private localStatsInterval: NodeJS.Timeout | null = null;
+  private localStatsIntervalMinutes: number = 5;  // Default 5 minutes
   private announceInterval: NodeJS.Timeout | null = null;
   private announceCronJob: cron.ScheduledTask | null = null;
   private serverStartTime: number = Date.now();
@@ -225,6 +227,9 @@ class MeshtasticManager {
         // Start automatic traceroute scheduler
         this.startTracerouteScheduler();
 
+        // Start automatic LocalStats collection
+        this.startLocalStatsScheduler();
+
         // Start automatic announcement scheduler
         this.startAnnounceScheduler();
 
@@ -321,6 +326,9 @@ class MeshtasticManager {
       this.tracerouteInterval = null;
     }
 
+    // Stop LocalStats collection
+    this.stopLocalStatsScheduler();
+
     logger.debug('Disconnected from Meshtastic node');
   }
 
@@ -381,6 +389,77 @@ class MeshtasticManager {
 
     if (this.isConnected) {
       this.startTracerouteScheduler();
+    }
+  }
+
+  /**
+   * Start periodic LocalStats collection from the local node
+   * Requests LocalStats every 5 minutes to track mesh health metrics
+   */
+  private startLocalStatsScheduler(): void {
+    if (this.localStatsInterval) {
+      clearInterval(this.localStatsInterval);
+      this.localStatsInterval = null;
+    }
+
+    // If interval is 0, collection is disabled
+    if (this.localStatsIntervalMinutes === 0) {
+      logger.debug('📊 LocalStats collection is disabled');
+      return;
+    }
+
+    const intervalMs = this.localStatsIntervalMinutes * 60 * 1000;
+    logger.debug(`📊 Starting LocalStats scheduler with ${this.localStatsIntervalMinutes} minute interval`);
+
+    // Request immediately on start
+    if (this.isConnected && this.localNodeInfo) {
+      this.requestLocalStats().catch(error => {
+        logger.error('❌ Error requesting initial LocalStats:', error);
+      });
+    }
+
+    this.localStatsInterval = setInterval(async () => {
+      if (this.isConnected && this.localNodeInfo) {
+        try {
+          await this.requestLocalStats();
+        } catch (error) {
+          logger.error('❌ Error in auto-LocalStats collection:', error);
+        }
+      } else {
+        logger.debug('📊 Auto-LocalStats: Skipping - not connected or no local node info');
+      }
+    }, intervalMs);
+  }
+
+  /**
+   * Stop LocalStats collection scheduler
+   */
+  private stopLocalStatsScheduler(): void {
+    if (this.localStatsInterval) {
+      clearInterval(this.localStatsInterval);
+      this.localStatsInterval = null;
+      logger.debug('📊 LocalStats scheduler stopped');
+    }
+  }
+
+  /**
+   * Set LocalStats collection interval
+   */
+  setLocalStatsInterval(minutes: number): void {
+    if (minutes < 0 || minutes > 60) {
+      throw new Error('LocalStats interval must be between 0 and 60 minutes (0 = disabled)');
+    }
+    this.localStatsIntervalMinutes = minutes;
+
+    if (minutes === 0) {
+      logger.debug('📊 LocalStats interval set to 0 (disabled)');
+    } else {
+      logger.debug(`📊 LocalStats interval updated to ${minutes} minutes`);
+    }
+
+    // Restart scheduler with new interval if connected
+    if (this.isConnected) {
+      this.startLocalStatsScheduler();
     }
   }
 
@@ -1902,6 +1981,42 @@ class MeshtasticManager {
             databaseService.insertTelemetry({
               nodeId, nodeNum: fromNum, telemetryType: String(currentKey),
               timestamp, value: Number(current), unit: 'mA', createdAt: now, packetTimestamp
+            });
+          }
+        }
+      } else if (telemetry.localStats) {
+        const localStats = telemetry.localStats;
+        logger.debug(`📊 LocalStats telemetry: uptime=${localStats.uptimeSeconds}s, heap_free=${localStats.heapFreeBytes}B`);
+
+        // Save all LocalStats metrics to telemetry table
+        const metricsToSave = [
+          { type: 'uptimeSeconds', value: localStats.uptimeSeconds, unit: 's' },
+          { type: 'channelUtilization', value: localStats.channelUtilization, unit: '%' },
+          { type: 'airUtilTx', value: localStats.airUtilTx, unit: '%' },
+          { type: 'numPacketsTx', value: localStats.numPacketsTx, unit: 'packets' },
+          { type: 'numPacketsRx', value: localStats.numPacketsRx, unit: 'packets' },
+          { type: 'numPacketsRxBad', value: localStats.numPacketsRxBad, unit: 'packets' },
+          { type: 'numOnlineNodes', value: localStats.numOnlineNodes, unit: 'nodes' },
+          { type: 'numTotalNodes', value: localStats.numTotalNodes, unit: 'nodes' },
+          { type: 'numRxDupe', value: localStats.numRxDupe, unit: 'packets' },
+          { type: 'numTxRelay', value: localStats.numTxRelay, unit: 'packets' },
+          { type: 'numTxRelayCanceled', value: localStats.numTxRelayCanceled, unit: 'packets' },
+          { type: 'heapTotalBytes', value: localStats.heapTotalBytes, unit: 'bytes' },
+          { type: 'heapFreeBytes', value: localStats.heapFreeBytes, unit: 'bytes' },
+          { type: 'numTxDropped', value: localStats.numTxDropped, unit: 'packets' }
+        ];
+
+        for (const metric of metricsToSave) {
+          if (metric.value !== undefined && metric.value !== null && !isNaN(Number(metric.value))) {
+            databaseService.insertTelemetry({
+              nodeId,
+              nodeNum: fromNum,
+              telemetryType: metric.type,
+              timestamp,
+              value: Number(metric.value),
+              unit: metric.unit,
+              createdAt: now,
+              packetTimestamp
             });
           }
         }
@@ -4167,6 +4282,49 @@ class MeshtasticManager {
       return { packetId, requestId };
     } catch (error) {
       logger.error('Error sending position exchange:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Request LocalStats from the local node
+   * This requests mesh statistics from the directly connected device
+   */
+  async requestLocalStats(): Promise<{ packetId: number; requestId: number }> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    if (!this.localNodeInfo) {
+      throw new Error('Local node information not available');
+    }
+
+    try {
+      const { data: telemetryRequestData, packetId, requestId } =
+        meshtasticProtobufService.createTelemetryRequestMessage(
+          this.localNodeInfo.nodeNum,
+          0 // Channel 0 for local node communication
+        );
+
+      logger.info(`📊 LocalStats request packet created: ${telemetryRequestData.length} bytes for local node ${this.localNodeInfo.nodeId}, packetId=${packetId}, requestId=${requestId}`);
+
+      await this.transport.send(telemetryRequestData);
+
+      // Broadcast to virtual node clients (including packet monitor)
+      const virtualNodeServer = (global as any).virtualNodeServer;
+      if (virtualNodeServer) {
+        try {
+          await virtualNodeServer.broadcastToClients(telemetryRequestData);
+          logger.info(`📡 Broadcasted outgoing LocalStats request to virtual node clients (${telemetryRequestData.length} bytes)`);
+        } catch (error) {
+          logger.error('Virtual node: Failed to broadcast outgoing LocalStats request:', error);
+        }
+      }
+
+      logger.info(`📤 LocalStats request sent to local node ${this.localNodeInfo.nodeId}`);
+      return { packetId, requestId };
+    } catch (error) {
+      logger.error('Error requesting LocalStats:', error);
       throw error;
     }
   }

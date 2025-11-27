@@ -188,6 +188,66 @@ export class MeshtasticProtobufService {
   }
 
   /**
+   * Create a telemetry request ToRadio to request LocalStats from a node
+   * This sends an empty telemetry packet with wantResponse=true to request stats
+   */
+  createTelemetryRequestMessage(
+    destination: number,
+    channel?: number
+  ): { data: Uint8Array; packetId: number; requestId: number } {
+    const root = getProtobufRoot();
+    if (!root) {
+      logger.error('❌ Protobuf definitions not loaded');
+      return { data: new Uint8Array(), packetId: 0, requestId: 0 };
+    }
+
+    try {
+      // Generate unique IDs
+      const packetId = Math.floor(Math.random() * 0xffffffff);
+      const requestId = Math.floor(Math.random() * 0xffffffff);
+
+      // Create empty Telemetry message (request format)
+      const Telemetry = root.lookupType('meshtastic.Telemetry');
+      const telemetryMessage = Telemetry.create({});
+
+      // Encode the Telemetry as payload
+      const payload = Telemetry.encode(telemetryMessage).finish();
+
+      // Create Data message with TELEMETRY_APP portnum
+      const Data = root.lookupType('meshtastic.Data');
+      const dataMessage = Data.create({
+        portnum: 67, // TELEMETRY_APP
+        payload: payload,
+        dest: destination,
+        wantResponse: true, // Request telemetry from destination
+        requestId: requestId
+      });
+
+      // Create MeshPacket with explicit ID
+      const MeshPacket = root.lookupType('meshtastic.MeshPacket');
+      const meshPacket = MeshPacket.create({
+        id: packetId,
+        to: destination,
+        channel: channel || 0,
+        decoded: dataMessage,
+        wantAck: true, // Want delivery confirmation
+        hopLimit: 0 // Direct connection only (local node)
+      });
+
+      // Create ToRadio message
+      const ToRadio = root.lookupType('meshtastic.ToRadio');
+      const toRadio = ToRadio.create({
+        packet: meshPacket
+      });
+
+      return { data: ToRadio.encode(toRadio).finish(), packetId, requestId };
+    } catch (error) {
+      logger.error('❌ Failed to create telemetry request message:', error);
+      return { data: new Uint8Array(), packetId: 0, requestId: 0 };
+    }
+  }
+
+  /**
    * Create a text message ToRadio using proper protobuf encoding
    */
   createTextMessage(text: string, destination?: number, channel?: number, replyId?: number, emoji?: number): { data: Uint8Array; messageId: number } {
