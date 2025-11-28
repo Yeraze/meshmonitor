@@ -372,6 +372,125 @@ export class UserModel {
   }
 
   /**
+   * Get user's map preferences
+   */
+  getMapPreferences(userId: number): Record<string, any> | null {
+    const stmt = this.db.prepare(`
+      SELECT
+        map_tileset as mapTileset,
+        show_paths as showPaths,
+        show_neighbor_info as showNeighborInfo,
+        show_route as showRoute,
+        show_motion as showMotion,
+        show_mqtt_nodes as showMqttNodes,
+        show_animations as showAnimations
+      FROM user_map_preferences
+      WHERE user_id = ?
+    `);
+
+    const row = stmt.get(userId) as any;
+    if (!row) return null;
+
+    return {
+      mapTileset: row.mapTileset || null,
+      showPaths: Boolean(row.showPaths),
+      showNeighborInfo: Boolean(row.showNeighborInfo),
+      showRoute: Boolean(row.showRoute),
+      showMotion: Boolean(row.showMotion),
+      showMqttNodes: Boolean(row.showMqttNodes),
+      showAnimations: Boolean(row.showAnimations)
+    };
+  }
+
+  /**
+   * Save user's map preferences
+   */
+  saveMapPreferences(userId: number, preferences: {
+    mapTileset?: string;
+    showPaths?: boolean;
+    showNeighborInfo?: boolean;
+    showRoute?: boolean;
+    showMotion?: boolean;
+    showMqttNodes?: boolean;
+    showAnimations?: boolean;
+  }): void {
+    const now = Date.now();
+
+    // Check if preferences exist
+    const existing = this.db.prepare('SELECT user_id FROM user_map_preferences WHERE user_id = ?').get(userId);
+
+    if (existing) {
+      // Update existing preferences
+      const updates: string[] = [];
+      const params: any[] = [];
+
+      if (preferences.mapTileset !== undefined) {
+        updates.push('map_tileset = ?');
+        params.push(preferences.mapTileset);
+      }
+      if (preferences.showPaths !== undefined) {
+        updates.push('show_paths = ?');
+        params.push(preferences.showPaths ? 1 : 0);
+      }
+      if (preferences.showNeighborInfo !== undefined) {
+        updates.push('show_neighbor_info = ?');
+        params.push(preferences.showNeighborInfo ? 1 : 0);
+      }
+      if (preferences.showRoute !== undefined) {
+        updates.push('show_route = ?');
+        params.push(preferences.showRoute ? 1 : 0);
+      }
+      if (preferences.showMotion !== undefined) {
+        updates.push('show_motion = ?');
+        params.push(preferences.showMotion ? 1 : 0);
+      }
+      if (preferences.showMqttNodes !== undefined) {
+        updates.push('show_mqtt_nodes = ?');
+        params.push(preferences.showMqttNodes ? 1 : 0);
+      }
+      if (preferences.showAnimations !== undefined) {
+        updates.push('show_animations = ?');
+        params.push(preferences.showAnimations ? 1 : 0);
+      }
+
+      if (updates.length > 0) {
+        updates.push('updated_at = ?');
+        params.push(now);
+        params.push(userId);
+
+        const stmt = this.db.prepare(`
+          UPDATE user_map_preferences
+          SET ${updates.join(', ')}
+          WHERE user_id = ?
+        `);
+        stmt.run(...params);
+      }
+    } else {
+      // Insert new preferences
+      const stmt = this.db.prepare(`
+        INSERT INTO user_map_preferences (
+          user_id, map_tileset, show_paths, show_neighbor_info,
+          show_route, show_motion, show_mqtt_nodes, show_animations,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      stmt.run(
+        userId,
+        preferences.mapTileset || null,
+        preferences.showPaths ? 1 : 0,
+        preferences.showNeighborInfo ? 1 : 0,
+        preferences.showRoute !== undefined ? (preferences.showRoute ? 1 : 0) : 1, // default true
+        preferences.showMotion !== undefined ? (preferences.showMotion ? 1 : 0) : 1, // default true
+        preferences.showMqttNodes !== undefined ? (preferences.showMqttNodes ? 1 : 0) : 1, // default true
+        preferences.showAnimations ? 1 : 0,
+        now,
+        now
+      );
+    }
+  }
+
+  /**
    * Map database row to User object
    */
   private mapRowToUser(row: any): User {

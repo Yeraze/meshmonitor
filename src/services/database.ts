@@ -33,6 +33,7 @@ import { migration as passwordLockedMigration } from '../server/migrations/023_a
 import { migration as perChannelPermissionsMigration } from '../server/migrations/024_add_per_channel_permissions.js';
 import { migration as apiTokensMigration } from '../server/migrations/025_add_api_tokens.js';
 import { migration as cascadeForeignKeysMigration } from '../server/migrations/028_add_cascade_to_foreign_keys.js';
+import { migration as userMapPreferencesMigration } from '../server/migrations/030_add_user_map_preferences.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Configuration constants for traceroute history
@@ -397,6 +398,7 @@ class DatabaseService {
     this.runAPITokensMigration();
     this.runCascadeForeignKeysMigration();
     this.runAutoWelcomeMigration();
+    this.runUserMapPreferencesMigration();
     this.ensureAutomationDefaults();
     this.isInitialized = true;
   }
@@ -1011,6 +1013,26 @@ class DatabaseService {
       logger.debug('✅ Auto-welcome existing nodes migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run auto-welcome existing nodes migration:', error);
+      throw error;
+    }
+  }
+
+  private runUserMapPreferencesMigration(): void {
+    const migrationKey = 'migration_030_user_map_preferences';
+
+    try {
+      const currentStatus = this.getSetting(migrationKey);
+      if (currentStatus === 'completed') {
+        logger.debug('✅ User map preferences migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 030: Add user_map_preferences table...');
+      userMapPreferencesMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ User map preferences migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run user map preferences migration:', error);
       throw error;
     }
   }

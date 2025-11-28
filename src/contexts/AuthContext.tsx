@@ -99,7 +99,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             'Check browser console and server logs for details.');
         }
 
-        logger.debug('Login successful');
+        logger.debug('Login successful - reloading page to apply user preferences');
+
+        // Reload the page to apply user-specific preferences
+        window.location.reload();
       }
     } catch (error) {
       logger.error('Login failed:', error);
@@ -129,7 +132,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Refresh auth status to get anonymous user permissions
       await refreshAuth();
 
-      logger.debug('Logout successful');
+      logger.debug('Logout successful - reloading page to clear user preferences');
+
+      // Reload the page to clear user-specific preferences
+      window.location.reload();
     } catch (error) {
       logger.error('Logout failed:', error);
       throw error;

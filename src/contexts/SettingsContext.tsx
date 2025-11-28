@@ -261,9 +261,38 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     localStorage.setItem('dateFormat', format);
   };
 
-  const setMapTileset = (tilesetId: TilesetId) => {
+  const setMapTileset = async (tilesetId: TilesetId) => {
     setMapTilesetState(tilesetId);
-    localStorage.setItem('mapTileset', tilesetId);
+
+    // Save to server (fire and forget, no localStorage)
+    try {
+      const csrfToken = getCsrfToken();
+      console.log('[SettingsContext] Saving map tileset to server:', tilesetId);
+      console.log('[SettingsContext] CSRF token:', csrfToken ? 'present' : 'MISSING');
+      console.log('[SettingsContext] Base URL:', baseUrl);
+
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+
+      if (csrfToken) {
+        headers['X-CSRF-Token'] = csrfToken;
+      }
+
+      const response = await fetch(`${baseUrl}/api/user/map-preferences`, {
+        method: 'POST',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify({ mapTileset: tilesetId })
+      });
+
+      console.log('[SettingsContext] Save response status:', response.status);
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[SettingsContext] Save failed:', errorText);
+      }
+    } catch (error) {
+      console.error('[SettingsContext] Failed to save map tileset preference to server:', error);
+      logger.debug('Failed to save map tileset preference to server:', error);
+    }
   };
 
   const setMapPinStyle = (style: MapPinStyle) => {
@@ -648,6 +677,27 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
           }
 
           logger.debug('✅ Settings loaded from server and applied to state');
+
+          // Load user-specific map preferences (overrides global settings)
+          try {
+            const prefsResponse = await fetch(`${baseUrl}/api/user/map-preferences`, {
+              credentials: 'include'
+            });
+
+            if (prefsResponse.ok) {
+              const { preferences } = await prefsResponse.json();
+
+              // If user has saved map tileset preference, use it (overrides global setting)
+              if (preferences && preferences.mapTileset) {
+                setMapTilesetState(preferences.mapTileset);
+                logger.debug(`✅ Loaded user map tileset preference: ${preferences.mapTileset}`);
+              }
+              // If preferences is null (anonymous user), global setting is already loaded
+            }
+          } catch (error) {
+            logger.debug('Failed to load user map preferences:', error);
+            // Fall back to global setting (already loaded above)
+          }
         } else {
           logger.error(`❌ Failed to fetch settings: ${response.status} ${response.statusText}`);
         }
