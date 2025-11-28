@@ -17,7 +17,7 @@ describe('LoRaConfigSection', () => {
         value: 0,
         name: 'LONG_FAST',
         description: 'Long Range - Fast (Default)',
-        params: 'BW: 250kHz, SF: 11, CR: 4/8'
+        params: 'BW: 250kHz, SF: 11, CR: 4/5'
       });
     });
 
