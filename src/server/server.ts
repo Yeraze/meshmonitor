@@ -3423,6 +3423,65 @@ apiRouter.delete('/settings', requirePermission('settings', 'write'), (req, res)
   }
 });
 
+// User Map Preferences endpoints
+
+// Get user's map preferences
+apiRouter.get('/user/map-preferences', optionalAuth(), (req, res) => {
+  try {
+    // Anonymous users get null (will fall back to defaults in frontend)
+    if (!req.user || req.user.username === 'anonymous') {
+      return res.json({ preferences: null });
+    }
+
+    const preferences = databaseService.userModel.getMapPreferences(req.user.id);
+    res.json({ preferences });
+  } catch (error) {
+    logger.error('Error fetching user map preferences:', error);
+    res.status(500).json({ error: 'Failed to fetch map preferences' });
+  }
+});
+
+// Save user's map preferences
+apiRouter.post('/user/map-preferences', requireAuth(), (req, res) => {
+  try {
+    // Prevent saving preferences for anonymous user
+    if (req.user!.username === 'anonymous') {
+      return res.status(403).json({ error: 'Cannot save preferences for anonymous user' });
+    }
+
+    const { mapTileset, showPaths, showNeighborInfo, showRoute, showMotion, showMqttNodes, showAnimations } = req.body;
+
+    // Validate boolean values
+    const booleanFields = { showPaths, showNeighborInfo, showRoute, showMotion, showMqttNodes, showAnimations };
+    for (const [key, value] of Object.entries(booleanFields)) {
+      if (value !== undefined && typeof value !== 'boolean') {
+        return res.status(400).json({ error: `${key} must be a boolean` });
+      }
+    }
+
+    // Validate mapTileset (optional string)
+    if (mapTileset !== undefined && mapTileset !== null && typeof mapTileset !== 'string') {
+      return res.status(400).json({ error: 'mapTileset must be a string or null' });
+    }
+
+    // Save preferences
+    databaseService.userModel.saveMapPreferences(req.user!.id, {
+      mapTileset,
+      showPaths,
+      showNeighborInfo,
+      showRoute,
+      showMotion,
+      showMqttNodes,
+      showAnimations
+    });
+
+    res.json({ success: true, message: 'Map preferences saved successfully' });
+  } catch (error) {
+    logger.error('Error saving user map preferences:', error);
+    res.status(500).json({ error: 'Failed to save map preferences' });
+  }
+});
+
 // Custom Themes endpoints
 
 // Get all custom themes (available to all users for reading)

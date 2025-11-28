@@ -134,9 +134,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   const {
     timeFormat,
     dateFormat,
-    temporaryTileset,
-    setTemporaryTileset,
     mapTileset,
+    setMapTileset,
     mapPinStyle,
     customTilesets,
   } = useSettings();
@@ -376,8 +375,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     prevNodesRef.current = currentNodes;
   }, [processedNodes, showAnimations, triggerNodeAnimation]);
 
-  // Calculate active tileset
-  const activeTileset = temporaryTileset || mapTileset;
+  // Use the map tileset from settings
+  const activeTileset = mapTileset;
 
   // Handle center complete
   const handleCenterComplete = () => {
@@ -1100,7 +1099,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
           </MapContainer>
           <TilesetSelector
             selectedTilesetId={activeTileset}
-            onTilesetChange={setTemporaryTileset}
+            onTilesetChange={setMapTileset}
           />
           {nodesWithPosition.length === 0 && (
             <div className="map-overlay">

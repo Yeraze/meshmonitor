@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { DbTraceroute, DbNeighborInfo } from '../services/database';
+import api from '../services/api';
+import { useCsrf } from './CsrfContext';
 
 export interface PositionHistoryItem {
   latitude: number;
@@ -56,30 +58,15 @@ interface MapProviderProps {
 }
 
 export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
-  const [showPaths, setShowPaths] = useState<boolean>(() => {
-    const saved = localStorage.getItem('showPaths');
-    return saved === 'true';
-  });
-  const [showNeighborInfo, setShowNeighborInfo] = useState<boolean>(() => {
-    const saved = localStorage.getItem('showNeighborInfo');
-    return saved === 'true';
-  });
-  const [showRoute, setShowRoute] = useState<boolean>(() => {
-    const saved = localStorage.getItem('showRoute');
-    return saved !== null ? saved === 'true' : true; // default: true
-  });
-  const [showMotion, setShowMotion] = useState<boolean>(() => {
-    const saved = localStorage.getItem('showMotion');
-    return saved !== null ? saved === 'true' : true; // default: true
-  });
-  const [showMqttNodes, setShowMqttNodes] = useState<boolean>(() => {
-    const saved = localStorage.getItem('showMqttNodes');
-    return saved !== null ? saved === 'true' : true; // default: true
-  });
-  const [showAnimations, setShowAnimations] = useState<boolean>(() => {
-    const saved = localStorage.getItem('showAnimations');
-    return saved === 'true';
-  });
+  const { getToken: getCsrfToken } = useCsrf();
+
+  // Initialize with defaults (will be overridden by server preferences when loaded)
+  const [showPaths, setShowPathsState] = useState<boolean>(false);
+  const [showNeighborInfo, setShowNeighborInfoState] = useState<boolean>(false);
+  const [showRoute, setShowRouteState] = useState<boolean>(true);
+  const [showMotion, setShowMotionState] = useState<boolean>(true);
+  const [showMqttNodes, setShowMqttNodesState] = useState<boolean>(true);
+  const [showAnimations, setShowAnimationsState] = useState<boolean>(false);
   const [animatedNodes, setAnimatedNodes] = useState<Set<string>>(new Set());
   const [mapCenterTarget, setMapCenterTarget] = useState<[number, number] | null>(null);
   const [mapCenter, setMapCenter] = useState<[number, number] | null>(() => {
@@ -108,30 +95,114 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const [positionHistory, setPositionHistory] = useState<PositionHistoryItem[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
-  // Persist feature toggles to localStorage
-  useEffect(() => {
-    localStorage.setItem('showPaths', showPaths.toString());
-  }, [showPaths]);
+  // Create wrapper setters that persist to server (no localStorage)
+  const setShowPaths = React.useCallback((value: boolean) => {
+    setShowPathsState(value);
+    // Save to server (fire and forget)
+    savePreferenceToServer({ showPaths: value });
+  }, []);
 
-  useEffect(() => {
-    localStorage.setItem('showNeighborInfo', showNeighborInfo.toString());
-  }, [showNeighborInfo]);
+  const setShowNeighborInfo = React.useCallback((value: boolean) => {
+    setShowNeighborInfoState(value);
+    savePreferenceToServer({ showNeighborInfo: value });
+  }, []);
 
-  useEffect(() => {
-    localStorage.setItem('showRoute', showRoute.toString());
-  }, [showRoute]);
+  const setShowRoute = React.useCallback((value: boolean) => {
+    setShowRouteState(value);
+    savePreferenceToServer({ showRoute: value });
+  }, []);
 
-  useEffect(() => {
-    localStorage.setItem('showMotion', showMotion.toString());
-  }, [showMotion]);
+  const setShowMotion = React.useCallback((value: boolean) => {
+    setShowMotionState(value);
+    savePreferenceToServer({ showMotion: value });
+  }, []);
 
-  useEffect(() => {
-    localStorage.setItem('showMqttNodes', showMqttNodes.toString());
-  }, [showMqttNodes]);
+  const setShowMqttNodes = React.useCallback((value: boolean) => {
+    setShowMqttNodesState(value);
+    savePreferenceToServer({ showMqttNodes: value });
+  }, []);
 
+  const setShowAnimations = React.useCallback((value: boolean) => {
+    setShowAnimationsState(value);
+    savePreferenceToServer({ showAnimations: value });
+  }, []);
+
+  // Helper function to save preference to server
+  const savePreferenceToServer = React.useCallback(async (preference: Record<string, boolean>) => {
+    try {
+      const baseUrl = await api.getBaseUrl();
+      const csrfToken = getCsrfToken();
+      console.log('[MapContext] Saving preference to server:', preference);
+      console.log('[MapContext] CSRF token:', csrfToken ? 'present' : 'MISSING');
+      console.log('[MapContext] Base URL:', baseUrl);
+
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+
+      if (csrfToken) {
+        headers['X-CSRF-Token'] = csrfToken;
+      }
+
+      const response = await fetch(`${baseUrl}/api/user/map-preferences`, {
+        method: 'POST',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify(preference)
+      });
+
+      console.log('[MapContext] Save response status:', response.status);
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[MapContext] Save failed:', errorText);
+      }
+    } catch (error) {
+      // Silently fail - localStorage will still work
+      console.error('[MapContext] Failed to save map preference to server:', error);
+    }
+  }, [getCsrfToken]);
+
+  // Load preferences from server on mount
   useEffect(() => {
-    localStorage.setItem('showAnimations', showAnimations.toString());
-  }, [showAnimations]);
+    const loadServerPreferences = async () => {
+      try {
+        const baseUrl = await api.getBaseUrl();
+        const response = await fetch(`${baseUrl}/api/user/map-preferences`, {
+          credentials: 'include'
+        });
+
+        if (response.ok) {
+          const { preferences } = await response.json();
+
+          // If user has saved preferences, use them; otherwise use defaults
+          if (preferences) {
+            if (preferences.showPaths !== undefined) {
+              setShowPathsState(preferences.showPaths);
+            }
+            if (preferences.showNeighborInfo !== undefined) {
+              setShowNeighborInfoState(preferences.showNeighborInfo);
+            }
+            if (preferences.showRoute !== undefined) {
+              setShowRouteState(preferences.showRoute);
+            }
+            if (preferences.showMotion !== undefined) {
+              setShowMotionState(preferences.showMotion);
+            }
+            if (preferences.showMqttNodes !== undefined) {
+              setShowMqttNodesState(preferences.showMqttNodes);
+            }
+            if (preferences.showAnimations !== undefined) {
+              setShowAnimationsState(preferences.showAnimations);
+            }
+          }
+          // If preferences is null (anonymous user), initial defaults are already set
+        }
+      } catch (error) {
+        console.debug('Failed to load map preferences from server:', error);
+        // Fall back to localStorage values (already loaded in initial state)
+      }
+    };
+
+    loadServerPreferences();
+  }, []); // Run once on mount
 
   // Persist map center to localStorage
   useEffect(() => {
