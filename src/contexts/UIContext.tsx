@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { TabType, SortField, SortDirection } from '../types/ui';
 import { AutoResponderTrigger } from '../components/auto-responder/types';
 
@@ -83,8 +83,25 @@ interface UIProviderProps {
   children: ReactNode;
 }
 
+// Valid tab types for hash validation
+const VALID_TABS: TabType[] = ['nodes', 'channels', 'messages', 'info', 'settings', 'automation', 'dashboard', 'configuration', 'notifications', 'users', 'audit', 'security', 'themes'];
+
+// Helper to get tab from URL hash
+const getTabFromHash = (): TabType => {
+  const hash = window.location.hash.slice(1); // Remove the '#'
+  return VALID_TABS.includes(hash as TabType) ? (hash as TabType) : 'nodes';
+};
+
+// Helper to update URL hash
+const updateHash = (tab: TabType) => {
+  if (window.location.hash.slice(1) !== tab) {
+    window.location.hash = tab;
+  }
+};
+
 export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
-  const [activeTab, setActiveTab] = useState<TabType>('nodes');
+  // Initialize activeTab from URL hash, or default to 'nodes'
+  const [activeTab, setActiveTab] = useState<TabType>(() => getTabFromHash());
   const [showMqttMessages, setShowMqttMessages] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [tracerouteLoading, setTracerouteLoading] = useState<string | null>(null);
@@ -130,6 +147,22 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   const [isNodeListCollapsed, setIsNodeListCollapsed] = useState<boolean>(() => {
     return window.innerWidth <= 768;
   });
+
+  // Sync activeTab to URL hash when activeTab changes
+  useEffect(() => {
+    updateHash(activeTab);
+  }, [activeTab]);
+
+  // Listen for hash changes (back/forward button navigation)
+  useEffect(() => {
+    const handleHashChange = () => {
+      const tabFromHash = getTabFromHash();
+      setActiveTab(tabFromHash);
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
 
   return (
     <UIContext.Provider
