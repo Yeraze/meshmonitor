@@ -6,17 +6,39 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { act } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import TelemetryGraphs from './TelemetryGraphs';
 import { ToastProvider } from './ToastContainer';
 import { CsrfProvider } from '../contexts/CsrfContext';
 
-// Helper to render with ToastProvider and CsrfProvider
-const renderWithProviders = (component: React.ReactElement) => {
-  return render(
+// Create a new QueryClient for each test
+const createTestQueryClient = () =>
+  new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+        gcTime: 0,
+        staleTime: 0,
+      },
+    },
+  });
+
+// Shared QueryClient instance for tests that need rerender
+let testQueryClient: QueryClient;
+
+// Wrapper component for rerender support
+const TestWrapper = ({ children }: { children: React.ReactNode }) => (
+  <QueryClientProvider client={testQueryClient}>
     <CsrfProvider>
-      <ToastProvider>{component}</ToastProvider>
+      <ToastProvider>{children}</ToastProvider>
     </CsrfProvider>
-  );
+  </QueryClientProvider>
+);
+
+// Helper to render with all required providers
+const renderWithProviders = (component: React.ReactElement) => {
+  testQueryClient = createTestQueryClient();
+  return render(component, { wrapper: TestWrapper });
 };
 
 // Mock Recharts components to avoid rendering issues in tests
@@ -30,7 +52,7 @@ vi.mock('recharts', () => ({
   CartesianGrid: () => null,
   Tooltip: () => null,
   Legend: () => null,
-  ResponsiveContainer: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>
+  ResponsiveContainer: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
 }));
 
 // Mock fetch API
@@ -45,36 +67,36 @@ describe('TelemetryGraphs Component', () => {
       nodeId: mockNodeId,
       telemetryType: 'batteryLevel',
       timestamp: Date.now() - 3600000,
-      value: 85
+      value: 85,
     },
     {
       id: 2,
       nodeId: mockNodeId,
       telemetryType: 'batteryLevel',
       timestamp: Date.now() - 1800000,
-      value: 80
+      value: 80,
     },
     {
       id: 3,
       nodeId: mockNodeId,
       telemetryType: 'voltage',
       timestamp: Date.now() - 3600000,
-      value: 3.7
+      value: 3.7,
     },
     {
       id: 4,
       nodeId: mockNodeId,
       telemetryType: 'channelUtilization',
       timestamp: Date.now() - 3600000,
-      value: 15.5
+      value: 15.5,
     },
     {
       id: 5,
       nodeId: mockNodeId,
       telemetryType: 'airUtilTx',
       timestamp: Date.now() - 3600000,
-      value: 5.2
-    }
+      value: 5.2,
+    },
   ];
 
   beforeEach(() => {
@@ -84,7 +106,7 @@ describe('TelemetryGraphs Component', () => {
       if (url.includes('/api/settings')) {
         return Promise.resolve({
           ok: true,
-          json: async () => ({})  // No favorites by default
+          json: async () => ({}), // No favorites by default
         });
       }
       if (url.includes('/api/solar/estimates')) {
@@ -92,20 +114,20 @@ describe('TelemetryGraphs Component', () => {
           ok: true,
           json: async () => ({
             count: 0,
-            estimates: []
-          })
+            estimates: [],
+          }),
         });
       }
       if (url.includes('/api/csrf-token')) {
         return Promise.resolve({
           ok: true,
-          json: async () => ({ token: 'test-csrf-token' })
+          json: async () => ({ token: 'test-csrf-token' }),
         });
       }
       // Default to telemetry data
       return Promise.resolve({
         ok: true,
-        json: async () => mockTelemetryData
+        json: async () => mockTelemetryData,
       });
     });
   });
@@ -116,22 +138,24 @@ describe('TelemetryGraphs Component', () => {
       if (url.includes('/api/csrf-token')) {
         return Promise.resolve({
           ok: true,
-          json: async () => ({ token: 'test-csrf-token' })
+          json: async () => ({ token: 'test-csrf-token' }),
         });
       }
-      return new Promise(resolve => setTimeout(() => {
-        if (url.includes('/api/settings')) {
-          resolve({
-            ok: true,
-            json: async () => ({})
-          });
-        } else {
-          resolve({
-            ok: true,
-            json: async () => mockTelemetryData
-          });
-        }
-      }, 100));
+      return new Promise(resolve =>
+        setTimeout(() => {
+          if (url.includes('/api/settings')) {
+            resolve({
+              ok: true,
+              json: async () => ({}),
+            });
+          } else {
+            resolve({
+              ok: true,
+              json: async () => mockTelemetryData,
+            });
+          }
+        }, 100)
+      );
     });
 
     await act(async () => {
@@ -162,7 +186,7 @@ describe('TelemetryGraphs Component', () => {
       if (url.includes('/api/settings')) {
         return Promise.resolve({
           ok: true,
-          json: async () => ({})  // No favorites
+          json: async () => ({}), // No favorites
         });
       }
       if (url.includes('/api/solar/estimates')) {
@@ -170,14 +194,14 @@ describe('TelemetryGraphs Component', () => {
           ok: true,
           json: async () => ({
             count: 0,
-            estimates: []
-          })
+            estimates: [],
+          }),
         });
       }
       if (url.includes('/api/csrf-token')) {
         return Promise.resolve({
           ok: true,
-          json: async () => ({ token: 'test-csrf-token' })
+          json: async () => ({ token: 'test-csrf-token' }),
         });
       }
       // Telemetry fetch fails
@@ -196,7 +220,7 @@ describe('TelemetryGraphs Component', () => {
       if (url.includes('/api/settings')) {
         return Promise.resolve({
           ok: true,
-          json: async () => ({})  // No favorites
+          json: async () => ({}), // No favorites
         });
       }
       if (url.includes('/api/solar/estimates')) {
@@ -204,20 +228,20 @@ describe('TelemetryGraphs Component', () => {
           ok: true,
           json: async () => ({
             count: 0,
-            estimates: []
-          })
+            estimates: [],
+          }),
         });
       }
       // Return empty telemetry
       if (url.includes('/api/csrf-token')) {
         return Promise.resolve({
           ok: true,
-          json: async () => ({ token: 'test-csrf-token' })
+          json: async () => ({ token: 'test-csrf-token' }),
         });
       }
       return Promise.resolve({
         ok: true,
-        json: async () => []
+        json: async () => [],
       });
     });
 
@@ -258,9 +282,7 @@ describe('TelemetryGraphs Component', () => {
   });
 
   it('should refresh data when node changes', async () => {
-    const { rerender } = renderWithProviders(
-      <TelemetryGraphs nodeId={mockNodeId} />
-    );
+    const { rerender } = renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} />);
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(`/api/telemetry/${mockNodeId}?hours=24`);
@@ -268,13 +290,7 @@ describe('TelemetryGraphs Component', () => {
 
     const newNodeId = '!newNode';
 
-    rerender(
-      <CsrfProvider>
-        <ToastProvider>
-          <TelemetryGraphs nodeId={newNodeId} />
-        </ToastProvider>
-      </CsrfProvider>
-    );
+    rerender(<TelemetryGraphs nodeId={newNodeId} />);
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(`/api/telemetry/${newNodeId}?hours=24`);
@@ -286,7 +302,7 @@ describe('TelemetryGraphs Component', () => {
       if (url.includes('/api/settings')) {
         return Promise.resolve({
           ok: true,
-          json: async () => ({})
+          json: async () => ({}),
         });
       }
       if (url.includes('/api/solar/estimates')) {
@@ -294,21 +310,21 @@ describe('TelemetryGraphs Component', () => {
           ok: true,
           json: async () => ({
             count: 0,
-            estimates: []
-          })
+            estimates: [],
+          }),
         });
       }
       // Telemetry fetch returns non-ok
       if (url.includes('/api/csrf-token')) {
         return Promise.resolve({
           ok: true,
-          json: async () => ({ token: 'test-csrf-token' })
+          json: async () => ({ token: 'test-csrf-token' }),
         });
       }
       return Promise.resolve({
         ok: false,
         status: 404,
-        statusText: 'Not Found'
+        statusText: 'Not Found',
       });
     });
 
@@ -324,14 +340,14 @@ describe('TelemetryGraphs Component', () => {
     const mockData = [
       { nodeId: mockNodeId, telemetryType: 'batteryLevel', value: 85, timestamp: Date.now() - 3600000 },
       { nodeId: mockNodeId, telemetryType: 'batteryLevel', value: 80, timestamp: Date.now() - 1800000 },
-      { nodeId: mockNodeId, telemetryType: 'batteryLevel', value: 75, timestamp: Date.now() }
+      { nodeId: mockNodeId, telemetryType: 'batteryLevel', value: 75, timestamp: Date.now() },
     ];
 
     (global.fetch as Mock).mockImplementation((url: string) => {
       if (url.includes('/api/settings')) {
         return Promise.resolve({
           ok: true,
-          json: async () => ({})
+          json: async () => ({}),
         });
       }
       if (url.includes('/api/solar/estimates')) {
@@ -339,19 +355,19 @@ describe('TelemetryGraphs Component', () => {
           ok: true,
           json: async () => ({
             count: 0,
-            estimates: []
-          })
+            estimates: [],
+          }),
         });
       }
       if (url.includes('/api/csrf-token')) {
         return Promise.resolve({
           ok: true,
-          json: async () => ({ token: 'test-csrf-token' })
+          json: async () => ({ token: 'test-csrf-token' }),
         });
       }
       return Promise.resolve({
         ok: true,
-        json: async () => mockData
+        json: async () => mockData,
       });
     });
 
@@ -372,15 +388,15 @@ describe('TelemetryGraphs Component', () => {
         nodeId: mockNodeId,
         telemetryType: 'batteryLevel',
         timestamp: Date.now(),
-        value: 0 // Use 0 instead of null for now
-      }
+        value: 0, // Use 0 instead of null for now
+      },
     ];
 
     (global.fetch as Mock).mockImplementation((url: string) => {
       if (url.includes('/api/settings')) {
         return Promise.resolve({
           ok: true,
-          json: async () => ({})
+          json: async () => ({}),
         });
       }
       if (url.includes('/api/solar/estimates')) {
@@ -388,19 +404,19 @@ describe('TelemetryGraphs Component', () => {
           ok: true,
           json: async () => ({
             count: 0,
-            estimates: []
-          })
+            estimates: [],
+          }),
         });
       }
       if (url.includes('/api/csrf-token')) {
         return Promise.resolve({
           ok: true,
-          json: async () => ({ token: 'test-csrf-token' })
+          json: async () => ({ token: 'test-csrf-token' }),
         });
       }
       return Promise.resolve({
         ok: true,
-        json: async () => incompleteData
+        json: async () => incompleteData,
       });
     });
 
@@ -417,14 +433,14 @@ describe('TelemetryGraphs Component', () => {
       { nodeId: mockNodeId, telemetryType: 'batteryLevel', value: 85, timestamp: Date.now() },
       { nodeId: mockNodeId, telemetryType: 'voltage', value: 3.7, timestamp: Date.now() },
       { nodeId: mockNodeId, telemetryType: 'channelUtilization', value: 15, timestamp: Date.now() },
-      { nodeId: mockNodeId, telemetryType: 'airUtilTx', value: 5, timestamp: Date.now() }
+      { nodeId: mockNodeId, telemetryType: 'airUtilTx', value: 5, timestamp: Date.now() },
     ];
 
     (global.fetch as Mock).mockImplementation((url: string) => {
       if (url.includes('/api/settings')) {
         return Promise.resolve({
           ok: true,
-          json: async () => ({})
+          json: async () => ({}),
         });
       }
       if (url.includes('/api/solar/estimates')) {
@@ -432,19 +448,19 @@ describe('TelemetryGraphs Component', () => {
           ok: true,
           json: async () => ({
             count: 0,
-            estimates: []
-          })
+            estimates: [],
+          }),
         });
       }
       if (url.includes('/api/csrf-token')) {
         return Promise.resolve({
           ok: true,
-          json: async () => ({ token: 'test-csrf-token' })
+          json: async () => ({ token: 'test-csrf-token' }),
         });
       }
       return Promise.resolve({
         ok: true,
-        json: async () => mockData
+        json: async () => mockData,
       });
     });
 
@@ -462,14 +478,14 @@ describe('TelemetryGraphs Component', () => {
     // Mock data with units
     const mockDataWithUnits = [
       { nodeId: mockNodeId, telemetryType: 'batteryLevel', value: 85, timestamp: Date.now(), unit: '%' },
-      { nodeId: mockNodeId, telemetryType: 'voltage', value: 3.7, timestamp: Date.now(), unit: 'V' }
+      { nodeId: mockNodeId, telemetryType: 'voltage', value: 3.7, timestamp: Date.now(), unit: 'V' },
     ];
 
     (global.fetch as Mock).mockImplementation((url: string) => {
       if (url.includes('/api/settings')) {
         return Promise.resolve({
           ok: true,
-          json: async () => ({})
+          json: async () => ({}),
         });
       }
       if (url.includes('/api/solar/estimates')) {
@@ -477,19 +493,19 @@ describe('TelemetryGraphs Component', () => {
           ok: true,
           json: async () => ({
             count: 0,
-            estimates: []
-          })
+            estimates: [],
+          }),
         });
       }
       if (url.includes('/api/csrf-token')) {
         return Promise.resolve({
           ok: true,
-          json: async () => ({ token: 'test-csrf-token' })
+          json: async () => ({ token: 'test-csrf-token' }),
         });
       }
       return Promise.resolve({
         ok: true,
-        json: async () => mockDataWithUnits
+        json: async () => mockDataWithUnits,
       });
     });
 
@@ -524,15 +540,15 @@ describe('TelemetryGraphs Component', () => {
           value: 25,
           unit: '°C',
           timestamp: Date.now(),
-          createdAt: Date.now()
-        }
+          createdAt: Date.now(),
+        },
       ];
 
       (global.fetch as Mock).mockImplementation((url: string) => {
         if (url.includes('/api/settings')) {
           return Promise.resolve({
             ok: true,
-            json: async () => ({})
+            json: async () => ({}),
           });
         }
         if (url.includes('/api/solar/estimates')) {
@@ -540,19 +556,19 @@ describe('TelemetryGraphs Component', () => {
             ok: true,
             json: async () => ({
               count: 0,
-              estimates: []
-            })
+              estimates: [],
+            }),
           });
         }
         if (url.includes('/api/csrf-token')) {
           return Promise.resolve({
             ok: true,
-            json: async () => ({ token: 'test-csrf-token' })
+            json: async () => ({ token: 'test-csrf-token' }),
           });
         }
         return Promise.resolve({
           ok: true,
-          json: async () => mockData
+          json: async () => mockData,
         });
       });
 
@@ -572,15 +588,15 @@ describe('TelemetryGraphs Component', () => {
           value: 25, // Celsius value from API
           unit: '°C',
           timestamp: Date.now(),
-          createdAt: Date.now()
-        }
+          createdAt: Date.now(),
+        },
       ];
 
       (global.fetch as Mock).mockImplementation((url: string) => {
         if (url.includes('/api/settings')) {
           return Promise.resolve({
             ok: true,
-            json: async () => ({})
+            json: async () => ({}),
           });
         }
         if (url.includes('/api/solar/estimates')) {
@@ -588,19 +604,19 @@ describe('TelemetryGraphs Component', () => {
             ok: true,
             json: async () => ({
               count: 0,
-              estimates: []
-            })
+              estimates: [],
+            }),
           });
         }
         if (url.includes('/api/csrf-token')) {
           return Promise.resolve({
             ok: true,
-            json: async () => ({ token: 'test-csrf-token' })
+            json: async () => ({ token: 'test-csrf-token' }),
           });
         }
         return Promise.resolve({
           ok: true,
-          json: async () => mockData
+          json: async () => mockData,
         });
       });
 
@@ -620,7 +636,7 @@ describe('TelemetryGraphs Component', () => {
           value: 0, // 0°C = 32°F
           unit: '°C',
           timestamp: Date.now(),
-          createdAt: Date.now()
+          createdAt: Date.now(),
         },
         {
           nodeId: mockNodeId,
@@ -629,7 +645,7 @@ describe('TelemetryGraphs Component', () => {
           value: 65,
           unit: '%',
           timestamp: Date.now(),
-          createdAt: Date.now()
+          createdAt: Date.now(),
         },
         {
           nodeId: mockNodeId,
@@ -638,15 +654,15 @@ describe('TelemetryGraphs Component', () => {
           value: 85,
           unit: '%',
           timestamp: Date.now(),
-          createdAt: Date.now()
-        }
+          createdAt: Date.now(),
+        },
       ];
 
       (global.fetch as Mock).mockImplementation((url: string) => {
         if (url.includes('/api/settings')) {
           return Promise.resolve({
             ok: true,
-            json: async () => ({})
+            json: async () => ({}),
           });
         }
         if (url.includes('/api/solar/estimates')) {
@@ -654,19 +670,19 @@ describe('TelemetryGraphs Component', () => {
             ok: true,
             json: async () => ({
               count: 0,
-              estimates: []
-            })
+              estimates: [],
+            }),
           });
         }
         if (url.includes('/api/csrf-token')) {
           return Promise.resolve({
             ok: true,
-            json: async () => ({ token: 'test-csrf-token' })
+            json: async () => ({ token: 'test-csrf-token' }),
           });
         }
         return Promise.resolve({
           ok: true,
-          json: async () => mockData
+          json: async () => mockData,
         });
       });
 
@@ -690,15 +706,15 @@ describe('TelemetryGraphs Component', () => {
           value: 20,
           unit: '°C',
           timestamp: Date.now(),
-          createdAt: Date.now()
-        }
+          createdAt: Date.now(),
+        },
       ];
 
       (global.fetch as Mock).mockImplementation((url: string) => {
         if (url.includes('/api/settings')) {
           return Promise.resolve({
             ok: true,
-            json: async () => ({})
+            json: async () => ({}),
           });
         }
         if (url.includes('/api/solar/estimates')) {
@@ -706,20 +722,20 @@ describe('TelemetryGraphs Component', () => {
             ok: true,
             json: async () => ({
               count: 0,
-              estimates: []
-            })
+              estimates: [],
+            }),
           });
         }
         if (url.includes('/api/csrf-token')) {
           return Promise.resolve({
             ok: true,
-            json: async () => ({ token: 'test-csrf-token' })
+            json: async () => ({ token: 'test-csrf-token' }),
           });
         }
         // Return telemetry data
         return Promise.resolve({
           ok: true,
-          json: async () => initialData
+          json: async () => initialData,
         });
       });
 
@@ -730,13 +746,7 @@ describe('TelemetryGraphs Component', () => {
       });
 
       // Trigger a re-render (simulating a refresh)
-      rerender(
-        <CsrfProvider>
-          <ToastProvider>
-            <TelemetryGraphs nodeId={mockNodeId} temperatureUnit="F" />
-          </ToastProvider>
-        </CsrfProvider>
-      );
+      rerender(<TelemetryGraphs nodeId={mockNodeId} temperatureUnit="F" />);
 
       await waitFor(() => {
         // Should still be in Fahrenheit after refresh
