@@ -13,3 +13,4 @@ tools to resolve library id and get library docs without me having to explicitly
 - Official meshtastic protobuf definitions can be found at https://github.com/meshtastic/protobufs/
 - When updating the version, make sure you get both the package.json and Helm chart.. and regenerate the package-lock
 - Prior to creating a PR, make sure to run the tests/system-tests.sh to ensure success and post the output report
+- When testing, our webserver has BASE_URL configured for /meshmonitor
