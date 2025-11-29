@@ -935,7 +935,7 @@ function App() {
 
   // Check for version updates
   useEffect(() => {
-    const checkForUpdates = async () => {
+    const checkForUpdates = async (interval: number) => {
       try {
         const response = await fetch(`${baseUrl}/api/version/check`);
         if (response.ok) {
@@ -953,16 +953,18 @@ function App() {
           } else {
             setUpdateAvailable(false);
           }
+        } else if (response.status == 404) {
+          clearInterval(interval);
         }
       } catch (error) {
         logger.error('Error checking for updates:', error);
       }
     };
 
-    checkForUpdates();
-
     // Check for updates every 4 hours
     const interval = setInterval(checkForUpdates, 4 * 60 * 60 * 1000);
+
+    checkForUpdates(interval);
 
     return () => clearInterval(interval);
   }, [baseUrl]);
