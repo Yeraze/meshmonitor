@@ -137,6 +137,7 @@ export interface EnvironmentConfig {
   allowedOriginsProvided: boolean;
   trustProxy: boolean | number | string;
   trustProxyProvided: boolean;
+  versionCheckDisabled: boolean;
 
   // Session/Security
   sessionSecret: string;
@@ -363,6 +364,8 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     wasProvided: process.env.DATABASE_PATH !== undefined
   };
 
+  const versionCheckDisabled = process.env.VERSION_CHECK_DISABLED == "true";
+
   // Meshtastic
   const meshtasticNodeIp = {
     value: process.env.MESHTASTIC_NODE_IP || '192.168.1.100',
@@ -508,6 +511,7 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     allowedOriginsProvided: allowedOrigins.wasProvided,
     trustProxy: trustProxy.value,
     trustProxyProvided: trustProxy.wasProvided,
+    versionCheckDisabled: versionCheckDisabled,
 
     // Session/Security
     sessionSecret,

@@ -4080,6 +4080,9 @@ let versionCheckCache: { data: any; timestamp: number } | null = null;
 const VERSION_CHECK_CACHE_MS = 5 * 60 * 1000; // 5 minute cache (reduced to detect image availability sooner)
 
 apiRouter.get('/version/check', optionalAuth(), async (_req, res) => {
+  if (env.versionCheckDisabled) {
+    return res.status(404).send();
+  }
   try {
     // Check cache first
     if (versionCheckCache && (Date.now() - versionCheckCache.timestamp) < VERSION_CHECK_CACHE_MS) {
