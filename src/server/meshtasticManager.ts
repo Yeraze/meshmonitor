@@ -2020,6 +2020,36 @@ class MeshtasticManager {
             });
           }
         }
+      } else if (telemetry.hostMetrics) {
+        const hostMetrics = telemetry.hostMetrics;
+        logger.debug(`🖥️ HostMetrics telemetry: uptime=${hostMetrics.uptimeSeconds}s, freemem=${hostMetrics.freememBytes}B`);
+
+        // Save all HostMetrics metrics to telemetry table
+        const metricsToSave = [
+          { type: 'hostUptimeSeconds', value: hostMetrics.uptimeSeconds, unit: 's' },
+          { type: 'hostFreememBytes', value: hostMetrics.freememBytes, unit: 'bytes' },
+          { type: 'hostDiskfree1Bytes', value: hostMetrics.diskfree1Bytes, unit: 'bytes' },
+          { type: 'hostDiskfree2Bytes', value: hostMetrics.diskfree2Bytes, unit: 'bytes' },
+          { type: 'hostDiskfree3Bytes', value: hostMetrics.diskfree3Bytes, unit: 'bytes' },
+          { type: 'hostLoad1', value: hostMetrics.load1, unit: 'load' },
+          { type: 'hostLoad5', value: hostMetrics.load5, unit: 'load' },
+          { type: 'hostLoad15', value: hostMetrics.load15, unit: 'load' }
+        ];
+
+        for (const metric of metricsToSave) {
+          if (metric.value !== undefined && metric.value !== null && !isNaN(Number(metric.value))) {
+            databaseService.insertTelemetry({
+              nodeId,
+              nodeNum: fromNum,
+              telemetryType: metric.type,
+              timestamp,
+              value: Number(metric.value),
+              unit: metric.unit,
+              createdAt: now,
+              packetTimestamp
+            });
+          }
+        }
       }
 
       databaseService.upsertNode(nodeData);

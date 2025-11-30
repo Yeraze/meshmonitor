@@ -109,14 +109,19 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
       if (!response.ok) throw new Error('Failed to fetch local stats');
       const data = await response.json();
 
-      // Extract the latest value for each LocalStats metric
+      // Extract the latest value for each LocalStats and HostMetrics metric
       const stats: any = {};
       const metrics = [
+        // LocalStats metrics
         'uptimeSeconds', 'channelUtilization', 'airUtilTx',
         'numPacketsTx', 'numPacketsRx', 'numPacketsRxBad',
         'numOnlineNodes', 'numTotalNodes', 'numRxDupe',
         'numTxRelay', 'numTxRelayCanceled', 'heapTotalBytes',
-        'heapFreeBytes', 'numTxDropped'
+        'heapFreeBytes', 'numTxDropped',
+        // HostMetrics metrics (for Linux devices)
+        'hostUptimeSeconds', 'hostFreememBytes', 'hostDiskfree1Bytes',
+        'hostDiskfree2Bytes', 'hostDiskfree3Bytes', 'hostLoad1',
+        'hostLoad5', 'hostLoad15'
       ];
 
       metrics.forEach(metric => {
@@ -246,8 +251,8 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
             <p><strong>Firmware Version:</strong> {deviceConfig.basic.firmwareVersion || 'Not available'}</p>
           )}
           <p><strong>Connection Status:</strong> <span className={`status-text ${connectionStatus}`}>{connectionStatus}</span></p>
-          {localStats?.uptimeSeconds !== undefined && (
-            <p><strong>Uptime:</strong> {formatUptime(localStats.uptimeSeconds)}</p>
+          {(localStats?.uptimeSeconds !== undefined || localStats?.hostUptimeSeconds !== undefined) && (
+            <p><strong>Uptime:</strong> {formatUptime(localStats.hostUptimeSeconds ?? localStats.uptimeSeconds)}</p>
           )}
           <p><strong>Uses TLS:</strong> {deviceInfo?.meshtasticUseTls ? 'Yes' : 'No'}</p>
           {deviceInfo?.deviceMetadata?.rebootCount !== undefined && (
@@ -356,7 +361,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
           <p><strong>Total Channels:</strong> {channels.length}</p>
           <p><strong>Total Messages:</strong> {messages.length}</p>
           <p><strong>Active Message Channels:</strong> {getAvailableChannels().length}</p>
-          {localStats?.numPacketsTx !== undefined && (
+          {localStats?.numPacketsTx !== undefined ? (
             <>
               <p><strong>Packets TX:</strong> {localStats.numPacketsTx.toLocaleString()}</p>
               <p><strong>Packets RX:</strong> {localStats.numPacketsRx?.toLocaleString() || 'N/A'}</p>
@@ -364,8 +369,39 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
               <p><strong>RX Duplicate:</strong> {localStats.numRxDupe?.toLocaleString() || '0'}</p>
               <p><strong>TX Dropped:</strong> {localStats.numTxDropped?.toLocaleString() || '0'}</p>
             </>
-          )}
+          ) : localStats?.hostUptimeSeconds !== undefined ? (
+            <p style={{ fontSize: '0.9em', color: '#888', marginTop: '0.5rem' }}>
+              Packet statistics not available. This device is sending HostMetrics (Linux-based device) instead of LocalStats.
+            </p>
+          ) : null}
         </div>
+
+        {localStats?.hostUptimeSeconds !== undefined && (
+          <div className="info-section">
+            <h3>Host System Metrics</h3>
+            <p style={{ fontSize: '0.9em', color: '#888', fontStyle: 'italic', marginBottom: '0.5rem' }}>
+              Linux-based device telemetry
+            </p>
+            {localStats.hostUptimeSeconds !== undefined && (
+              <p><strong>Host Uptime:</strong> {formatUptime(localStats.hostUptimeSeconds)}</p>
+            )}
+            {localStats.hostFreememBytes !== undefined && (
+              <p><strong>Free Memory:</strong> {(localStats.hostFreememBytes / 1024 / 1024).toFixed(0)} MB</p>
+            )}
+            {localStats.hostDiskfree1Bytes !== undefined && (
+              <p><strong>Disk Free (/):</strong> {(localStats.hostDiskfree1Bytes / 1024 / 1024 / 1024).toFixed(2)} GB</p>
+            )}
+            {localStats.hostDiskfree2Bytes !== undefined && (
+              <p><strong>Disk Free (2):</strong> {(localStats.hostDiskfree2Bytes / 1024 / 1024 / 1024).toFixed(2)} GB</p>
+            )}
+            {localStats.hostDiskfree3Bytes !== undefined && (
+              <p><strong>Disk Free (3):</strong> {(localStats.hostDiskfree3Bytes / 1024 / 1024 / 1024).toFixed(2)} GB</p>
+            )}
+            {localStats.hostLoad1 !== undefined && (
+              <p><strong>Load Average:</strong> {(localStats.hostLoad1 / 100).toFixed(2)} / {(localStats.hostLoad5 / 100).toFixed(2)} / {(localStats.hostLoad15 / 100).toFixed(2)}</p>
+            )}
+          </div>
+        )}
 
         <div className="info-section">
           <h3>Recent Activity</h3>
