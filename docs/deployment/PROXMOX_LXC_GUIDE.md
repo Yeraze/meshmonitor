@@ -45,12 +45,14 @@ MeshMonitor can be deployed in Proxmox VE using LXC (Linux Containers) as an alt
 
 ## Quick Start
 
+**Note**: Replace `VERSION` with the actual version number from the [releases page](https://github.com/yeraze/meshmonitor/releases) (e.g., `2.19.10`). The generic "latest" URL does not work due to GitHub's asset naming requirements.
+
 ```bash
-# 1. Download template on your computer
-wget https://github.com/yeraze/meshmonitor/releases/latest/download/meshmonitor-latest-amd64.tar.gz
+# 1. Download template on your computer (replace VERSION with actual version like 2.19.10)
+wget https://github.com/yeraze/meshmonitor/releases/download/vVERSION/meshmonitor-VERSION-amd64.tar.gz
 
 # 2. Upload to Proxmox server
-scp meshmonitor-latest-amd64.tar.gz root@YOUR-PROXMOX-IP:/var/lib/vz/template/cache/
+scp meshmonitor-VERSION-amd64.tar.gz root@YOUR-PROXMOX-IP:/var/lib/vz/template/cache/
 
 # 3. Create container via Proxmox web UI (see Detailed Installation below)
 
@@ -75,20 +77,27 @@ systemctl start meshmonitor-apprise
 ### Step 1: Download the LXC Template
 
 1. Go to the [MeshMonitor Releases](https://github.com/yeraze/meshmonitor/releases) page
-2. Download the latest `meshmonitor-*-amd64.tar.gz` file
-3. Optionally download the `.sha256` file to verify integrity
+2. Find the latest release version number (e.g., `v2.19.10`)
+3. Download the `meshmonitor-VERSION-amd64.tar.gz` file for that version
+4. Optionally download the `.sha256` file to verify integrity
+
+**Example download** (replace `2.19.10` with the current version):
+```bash
+wget https://github.com/yeraze/meshmonitor/releases/download/v2.19.10/meshmonitor-2.19.10-amd64.tar.gz
+wget https://github.com/yeraze/meshmonitor/releases/download/v2.19.10/meshmonitor-2.19.10-amd64.tar.gz.sha256
+```
 
 **Verify checksum (optional)**:
 ```bash
-sha256sum -c meshmonitor-latest-amd64.tar.gz.sha256
+sha256sum -c meshmonitor-2.19.10-amd64.tar.gz.sha256
 ```
 
 ### Step 2: Upload Template to Proxmox
 
-Upload the template to your Proxmox server's template storage:
+Upload the template to your Proxmox server's template storage (replace version number):
 
 ```bash
-scp meshmonitor-latest-amd64.tar.gz root@YOUR-PROXMOX-IP:/var/lib/vz/template/cache/
+scp meshmonitor-2.19.10-amd64.tar.gz root@YOUR-PROXMOX-IP:/var/lib/vz/template/cache/
 ```
 
 ### Step 3: Create Container from Template
@@ -106,7 +115,7 @@ scp meshmonitor-latest-amd64.tar.gz root@YOUR-PROXMOX-IP:/var/lib/vz/template/ca
 
 3. **Template Tab**:
    - **Storage**: `local`
-   - **Template**: Select `meshmonitor-latest-amd64.tar.gz`
+   - **Template**: Select `meshmonitor-VERSION-amd64.tar.gz` (e.g., `meshmonitor-2.19.10-amd64.tar.gz`)
 
 4. **Disks Tab**:
    - **Storage**: Choose your storage (e.g., `local-lxc`)
@@ -137,8 +146,8 @@ scp meshmonitor-latest-amd64.tar.gz root@YOUR-PROXMOX-IP:/var/lib/vz/template/ca
 #### Via Command Line:
 
 ```bash
-# Create container
-pct create 100 local:vztmpl/meshmonitor-latest-amd64.tar.gz \
+# Create container (replace VERSION with actual version like 2.19.10)
+pct create 100 local:vztmpl/meshmonitor-VERSION-amd64.tar.gz \
   --hostname meshmonitor \
   --cores 2 \
   --memory 2048 \
@@ -522,12 +531,14 @@ pct set 100 --memory 4096
 
 LXC deployments do not support auto-upgrade. To update:
 
-1. **Create snapshot** before updating:
+**Important**: Check the [releases page](https://github.com/yeraze/meshmonitor/releases) for the latest version number and replace `2.19.5` in the examples below with the actual version you want to install.
+
+1. **Create snapshot** before updating (replace version in snapshot name):
    ```bash
    pct snapshot 100 before-update-v2.19.5
    ```
 
-2. **Download new template**:
+2. **Download new template** (replace `2.19.5` with desired version):
    ```bash
    wget https://github.com/yeraze/meshmonitor/releases/download/v2.19.5/meshmonitor-2.19.5-amd64.tar.gz
    ```
