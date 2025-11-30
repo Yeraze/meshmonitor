@@ -1782,6 +1782,11 @@ class MeshtasticManager {
           nodeData.keyIsLowEntropy = true;
           nodeData.keySecurityIssueDetails = 'Known low-entropy key detected - this key is compromised and should be regenerated';
           logger.warn(`⚠️ Low-entropy key detected for node ${nodeId} (${user.longName})!`);
+        } else {
+          // Explicitly clear the flag when key is NOT low-entropy
+          // This ensures that if a node regenerates their key, the flag is cleared immediately
+          nodeData.keyIsLowEntropy = false;
+          nodeData.keySecurityIssueDetails = undefined;
         }
       }
 
@@ -2697,6 +2702,11 @@ class MeshtasticManager {
             nodeData.keyIsLowEntropy = true;
             nodeData.keySecurityIssueDetails = 'Known low-entropy key detected - this key is compromised and should be regenerated';
             logger.warn(`⚠️ Low-entropy key detected for node ${nodeId}!`);
+          } else {
+            // Explicitly clear the flag when key is NOT low-entropy
+            // This ensures that if a node regenerates their key, the flag is cleared immediately
+            nodeData.keyIsLowEntropy = false;
+            nodeData.keySecurityIssueDetails = undefined;
           }
         }
       }
