@@ -47,6 +47,7 @@ export interface DeviceInfo {
     voltage?: number;
     channelUtilization?: number;
     airUtilTx?: number;
+    uptimeSeconds?: number;
   };
   hopsAway?: number;
   lastHeard?: number;
@@ -1931,6 +1932,12 @@ class MeshtasticManager {
             timestamp, value: deviceMetrics.airUtilTx, unit: '%', createdAt: now, packetTimestamp
           });
         }
+        if (deviceMetrics.uptimeSeconds !== undefined && deviceMetrics.uptimeSeconds !== null && !isNaN(deviceMetrics.uptimeSeconds)) {
+          databaseService.insertTelemetry({
+            nodeId, nodeNum: fromNum, telemetryType: 'uptimeSeconds',
+            timestamp, value: deviceMetrics.uptimeSeconds, unit: 's', createdAt: now, packetTimestamp
+          });
+        }
       } else if (telemetry.environmentMetrics) {
         const envMetrics = telemetry.environmentMetrics;
         logger.debug(`🌡️ Environment telemetry: temp=${envMetrics.temperature}°C, humidity=${envMetrics.relativeHumidity}%`);
@@ -2760,7 +2767,8 @@ class MeshtasticManager {
           batteryLevel: deviceMetrics.batteryLevel,
           voltage: deviceMetrics.voltage,
           channelUtilization: deviceMetrics.channelUtilization,
-          airUtilTx: deviceMetrics.airUtilTx
+          airUtilTx: deviceMetrics.airUtilTx,
+          uptimeSeconds: deviceMetrics.uptimeSeconds
         };
       }
 
@@ -2830,6 +2838,13 @@ class MeshtasticManager {
           databaseService.insertTelemetry({
             nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'airUtilTx',
             timestamp: deviceMetricsTelemetryData.timestamp, value: deviceMetricsTelemetryData.airUtilTx, unit: '%', createdAt: now
+          });
+        }
+
+        if (deviceMetricsTelemetryData.uptimeSeconds !== undefined && deviceMetricsTelemetryData.uptimeSeconds !== null && !isNaN(deviceMetricsTelemetryData.uptimeSeconds)) {
+          databaseService.insertTelemetry({
+            nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'uptimeSeconds',
+            timestamp: deviceMetricsTelemetryData.timestamp, value: deviceMetricsTelemetryData.uptimeSeconds, unit: 's', createdAt: now
           });
         }
       }
@@ -6263,6 +6278,9 @@ class MeshtasticManager {
       });
     }
     return dbNodes.map(node => {
+      // Get latest uptime from telemetry
+      const uptimeTelemetry = databaseService.getLatestTelemetryForType(node.nodeId, 'uptimeSeconds');
+
       const deviceInfo: any = {
         nodeNum: node.nodeNum,
         user: {
@@ -6275,7 +6293,8 @@ class MeshtasticManager {
           batteryLevel: node.batteryLevel,
           voltage: node.voltage,
           channelUtilization: node.channelUtilization,
-          airUtilTx: node.airUtilTx
+          airUtilTx: node.airUtilTx,
+          uptimeSeconds: uptimeTelemetry?.value
         },
         lastHeard: node.lastHeard,
         snr: node.snr,

@@ -17,6 +17,7 @@ export interface DeviceInfo {
     voltage?: number
     channelUtilization?: number
     airUtilTx?: number
+    uptimeSeconds?: number
   }
   hopsAway?: number
   viaMqtt?: boolean
