@@ -57,6 +57,7 @@ import { useAuth } from './contexts/AuthContext';
 import { useCsrf } from './contexts/CsrfContext';
 import { useHealth } from './hooks/useHealth';
 import { useTxStatus } from './hooks/useTxStatus';
+import { usePoll, type PollData } from './hooks/usePoll';
 import LoginModal from './components/LoginModal';
 import LoginPage from './components/LoginPage';
 import UserMenu from './components/UserMenu';
@@ -402,6 +403,15 @@ function App() {
     nodesWithPKC,
     setNodesWithPKC,
   } = useData();
+
+  // Consolidated polling for nodes, messages, channels, config
+  // Enabled only when connected and not in reboot/user-disconnected state
+  const shouldPoll = connectionStatus === 'connected' && !showRebootModal;
+  const { data: pollData, refetch: refetchPoll } = usePoll({
+    baseUrl,
+    pollInterval: 5000,
+    enabled: shouldPoll,
+  });
 
   // Get computed CSS color values for Leaflet Polyline components (which don't support CSS variables)
   const [themeColors, setThemeColors] = useState({
@@ -1389,26 +1399,27 @@ function App() {
     previousUnreadTotal.current = totalUnread;
   }, [unreadCountsData, updateFavicon]);
 
-  // Regular data updates (every 5 seconds)
+  // Connection status check (every 5 seconds when not connected)
+  // Note: Data polling is now handled by usePoll hook when connected
   useEffect(() => {
     const updateInterval = setInterval(() => {
       // Use refs to get current values without adding to deps (prevents interval multiplication)
       const currentConnectionStatus = connectionStatusRef.current;
       const currentShowRebootModal = showRebootModalRef.current;
 
-      // Skip polling when user has manually disconnected or device is rebooting
+      // Skip when user has manually disconnected or device is rebooting
       if (currentConnectionStatus === 'user-disconnected' || currentConnectionStatus === 'rebooting') {
         return;
       }
 
-      // Skip polling when RebootModal is active
+      // Skip when RebootModal is active
       if (currentShowRebootModal) {
         return;
       }
 
-      if (currentConnectionStatus === 'connected') {
-        updateDataFromBackend();
-      } else {
+      // Only check connection status when not connected
+      // Data polling when connected is handled by usePoll hook
+      if (currentConnectionStatus !== 'connected') {
         checkConnectionStatus();
       }
     }, 5000);
@@ -1462,7 +1473,7 @@ function App() {
       if (response.ok) {
         logger.debug('✅ Node database refresh initiated');
         // Immediately update local data after refresh
-        setTimeout(() => updateDataFromBackend(), 2000);
+        setTimeout(() => refetchPoll(), 2000);
       } else {
         logger.warn('⚠️ Node database refresh request failed');
       }
@@ -1590,7 +1601,7 @@ function App() {
           // This ensures we show cached data even after refresh
           try {
             await fetchChannels(urlBase);
-            await updateDataFromBackend();
+            await refetchPoll();
           } catch (error) {
             logger.error('Failed to fetch cached data while disconnected:', error);
           }
@@ -1629,7 +1640,7 @@ function App() {
                 // Improved initialization sequence
                 try {
                   await fetchChannels(urlBase);
-                  await updateDataFromBackend();
+                  await refetchPoll();
                   setConnectionStatus('connected');
                   logger.debug('✅ Initialization complete, status set to connected');
                 } catch (initError) {
@@ -1767,22 +1778,13 @@ function App() {
     }
   };
 
-  const updateDataFromBackend = async () => {
-    try {
-      // Use consolidated polling endpoint to reduce API calls from 8 to 1
-      const pollResponse = await authFetch(`${baseUrl}/api/poll`);
-      if (!pollResponse.ok) {
-        logger.error('Failed to fetch consolidated poll data:', pollResponse.status);
-        return;
-      }
-
-      const pollData = await pollResponse.json();
-
-      // Version change detection is now handled by useHealth hook
+  // Process poll data from usePoll hook - handles all data processing from consolidated /api/poll endpoint
+  const processPollData = useCallback(
+    (data: PollData) => {
+      if (!data) return;
 
       // Extract localNodeId early to use in message processing (don't wait for state update)
-      const localNodeId =
-        pollData.deviceConfig?.basic?.nodeId || pollData.config?.localNodeInfo?.nodeId || currentNodeId;
+      const localNodeId = data.deviceConfig?.basic?.nodeId || data.config?.localNodeInfo?.nodeId || currentNodeId;
 
       // Store in ref for immediate access across functions (bypasses React state delay)
       if (localNodeId) {
@@ -1790,42 +1792,22 @@ function App() {
       }
 
       // Process nodes data
-      if (pollData.nodes) {
-        // Merge server data with local optimistic updates for nodes with pending favorite changes
-        // This prevents polling from overwriting optimistic UI updates
+      if (data.nodes) {
         const pendingRequests = pendingFavoriteRequests;
 
-        console.log('[POLL] Received nodes:', pollData.nodes.length, 'Pending requests:', pendingRequests.size);
-
         if (pendingRequests.size === 0) {
-          // No pending updates, safe to use server data as-is
-          setNodes(pollData.nodes);
+          setNodes(data.nodes as DeviceInfo[]);
         } else {
-          console.log('[POLL] Merging with pending favorites:', Array.from(pendingRequests.entries()));
-          // Merge: keep optimistic isFavorite for nodes with pending requests
           setNodes(
-            pollData.nodes.map((serverNode: DeviceInfo) => {
+            (data.nodes as DeviceInfo[]).map((serverNode: DeviceInfo) => {
               const pendingState = pendingRequests.get(serverNode.nodeNum);
               if (pendingState !== undefined) {
-                // Check if server data now matches our pending update
                 if (serverNode.isFavorite === pendingState) {
-                  // Server has caught up, remove from pending
-                  console.log('[POLL] Server caught up for node:', serverNode.nodeNum);
                   pendingRequests.delete(serverNode.nodeNum);
                   return serverNode;
                 }
-                // Server hasn't caught up yet, preserve the local optimistic value
-                console.log(
-                  '[POLL] Preserving optimistic value for node:',
-                  serverNode.nodeNum,
-                  'pending:',
-                  pendingState,
-                  'server:',
-                  serverNode.isFavorite
-                );
                 return { ...serverNode, isFavorite: pendingState };
               }
-              // Use server data for nodes without pending updates
               return serverNode;
             })
           );
@@ -1833,25 +1815,21 @@ function App() {
       }
 
       // Process messages data
-      if (pollData.messages) {
-        const messagesData = pollData.messages;
-        // Convert timestamp strings back to Date objects
+      if (data.messages) {
+        const messagesData = data.messages;
         const processedMessages = messagesData.map((msg: any) => ({
           ...msg,
           timestamp: new Date(msg.timestamp),
         }));
 
-        // Play notification sound if new messages arrived from OTHER users (not your own messages)
-        // Track by newest message ID instead of count (count stays at 100 due to API limit)
+        // Play notification sound if new messages arrived from OTHER users
         if (processedMessages.length > 0) {
-          const currentNewestMessage = processedMessages[0]; // Messages are sorted newest first
+          const currentNewestMessage = processedMessages[0];
           const currentNewestId = currentNewestMessage.id;
 
-          // Check if this is a new message (different ID than before)
           if (newestMessageId.current && currentNewestId !== newestMessageId.current) {
-            // New message detected! Check if it's from someone else and is a text message
             const isFromOther = currentNewestMessage.fromNodeId !== localNodeId;
-            const isTextMessage = currentNewestMessage.portnum === 1; // Only TEXT_MESSAGE_APP
+            const isTextMessage = currentNewestMessage.portnum === 1;
 
             if (isFromOther && isTextMessage) {
               logger.debug('New message arrived from other user:', currentNewestMessage.fromNodeId);
@@ -1859,7 +1837,6 @@ function App() {
             }
           }
 
-          // Update the tracked newest message ID
           newestMessageId.current = currentNewestId;
         }
 
@@ -1869,14 +1846,12 @@ function App() {
         let pendingChanged = false;
 
         if (currentPending.size > 0) {
-          // For each pending message, check if a matching message appears in backend response
           currentPending.forEach((pendingMsg, tempId) => {
             const isDM = pendingMsg.channel === -1;
 
             const matchingMessage = processedMessages.find((msg: MeshMessage) => {
               if (msg.text !== pendingMsg.text) return false;
 
-              // Match by sender
               const senderMatches =
                 (localNodeId && msg.from === localNodeId) ||
                 msg.from === pendingMsg.from ||
@@ -1896,117 +1871,94 @@ function App() {
             });
 
             if (matchingMessage) {
-              // Remove from pending - backend now has this message
               updatedPending.delete(tempId);
               pendingChanged = true;
             }
           });
 
-          // Only update state once after all deletions
           if (pendingChanged) {
             pendingMessagesRef.current = updatedPending;
             setPendingMessages(updatedPending);
           }
         }
 
-        // Compute merged messages BEFORE updating state (so we can use the same array for channelGroups)
+        // Compute merged messages using setMessages callback to access current state
         const pendingIds = new Set(Array.from(pendingMessagesRef.current.keys()));
 
-        // Build merged messages from current messages state
-        const currentMessages = messages || [];
-        const pendingToKeep = currentMessages.filter(m => pendingIds.has(m.id));
+        setMessages(currentMessages => {
+          const pendingToKeep = (currentMessages || []).filter(m => pendingIds.has(m.id));
+          return [...processedMessages, ...pendingToKeep];
+        });
 
-        // Trust the backend's acknowledged field - no frontend override
-        const mergedMessages = [...processedMessages, ...pendingToKeep];
-
-        // Update messages state
-        setMessages(mergedMessages);
-
-        // Group messages by channel using the SAME mergedMessages array (not processedMessages)
+        // Group messages by channel (use processedMessages since we don't need pending for channel groups)
         const channelGroups: { [key: number]: MeshMessage[] } = {};
-
-        // Process merged messages (which already have acknowledged status preserved)
-        mergedMessages.forEach((msg: MeshMessage) => {
-          if (msg.channel === -1) return; // Skip DMs for channel grouping
-
+        processedMessages.forEach((msg: MeshMessage) => {
+          if (msg.channel === -1) return;
           if (!channelGroups[msg.channel]) {
             channelGroups[msg.channel] = [];
           }
-
           channelGroups[msg.channel].push(msg);
         });
 
-        // Use database-backed unread counts instead of time-based client-side calculation
-        // The backend now tracks read status persistently in the database
+        // Update unread counts from backend
         const currentSelected = selectedChannelRef.current;
+        const newUnreadCounts: { [key: number]: number } = {};
 
-        // Fetch the latest unread counts from the backend
-        // This is done periodically via useEffect, but we also use the current state
-        let newUnreadCounts: { [key: number]: number };
-
-        if (unreadCountsData?.channels) {
-          // Use database-backed counts
-          newUnreadCounts = { ...unreadCountsData.channels };
-        } else {
-          // Fallback to empty counts if data not yet loaded
-          newUnreadCounts = { ...unreadCounts };
+        if (data.unreadCounts?.channels) {
+          Object.entries(data.unreadCounts.channels).forEach(([channelId, count]) => {
+            const chId = parseInt(channelId, 10);
+            if (chId === currentSelected) {
+              newUnreadCounts[chId] = 0;
+            } else {
+              newUnreadCounts[chId] = count as number;
+            }
+          });
         }
 
-        // Currently selected channel should always show 0 unread
-        newUnreadCounts[currentSelected] = 0;
-
-        logger.debug('📊 Updating unread counts:', {
-          currentSelected,
-          newUnreadCounts,
-        });
-
         setUnreadCounts(newUnreadCounts);
-
         setChannelMessages(channelGroups);
       }
 
       // Process config data
-      if (pollData.config) {
-        setDeviceInfo(pollData.config);
+      if (data.config) {
+        setDeviceInfo(data.config);
       }
 
       // Process device configuration data
-      if (pollData.deviceConfig) {
-        setDeviceConfig(pollData.deviceConfig);
-
-        // Extract current node ID from device config
-        if (pollData.deviceConfig.basic?.nodeId) {
-          setCurrentNodeId(pollData.deviceConfig.basic.nodeId);
+      if (data.deviceConfig) {
+        setDeviceConfig(data.deviceConfig);
+        if (data.deviceConfig.basic?.nodeId) {
+          setCurrentNodeId(data.deviceConfig.basic.nodeId as string);
         }
       }
 
-      // Fallback: Get currentNodeId from config.localNodeInfo if deviceConfig isn't available
-      // (deviceConfig requires configuration:read permission, but localNodeInfo doesn't)
-      if (!currentNodeId && pollData.config?.localNodeInfo?.nodeId) {
-        console.log('🔧 Setting currentNodeId from config.localNodeInfo:', pollData.config.localNodeInfo.nodeId);
-        setCurrentNodeId(pollData.config.localNodeInfo.nodeId);
+      // Fallback: Get currentNodeId from config.localNodeInfo
+      if (!currentNodeId && data.config?.localNodeInfo?.nodeId) {
+        setCurrentNodeId(data.config.localNodeInfo.nodeId);
       }
 
       // Process telemetry availability data
-      if (pollData.telemetryNodes) {
-        setNodesWithTelemetry(new Set(pollData.telemetryNodes.nodes || []));
-        setNodesWithWeatherTelemetry(new Set(pollData.telemetryNodes.weather || []));
-        setNodesWithEstimatedPosition(new Set(pollData.telemetryNodes.estimatedPosition || []));
-        setNodesWithPKC(new Set(pollData.telemetryNodes.pkc || []));
+      if (data.telemetryNodes) {
+        setNodesWithTelemetry(new Set(data.telemetryNodes.nodes || []));
+        setNodesWithWeatherTelemetry(new Set(data.telemetryNodes.weather || []));
+        setNodesWithEstimatedPosition(new Set(data.telemetryNodes.estimatedPosition || []));
+        setNodesWithPKC(new Set(data.telemetryNodes.pkc || []));
       }
 
-      // Process channels data (if available)
-      if (pollData.channels) {
-        setChannels(pollData.channels);
+      // Process channels data
+      if (data.channels) {
+        setChannels(data.channels as Channel[]);
       }
-    } catch (error) {
-      logger.error('Failed to update data from backend:', error);
-      // Server is offline - update status to disconnected
-      setConnectionStatus('disconnected');
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      setError(`Server connection lost: ${errorMessage}`);
+    },
+    [currentNodeId, playNotificationSound]
+  );
+
+  // Process poll data when it changes (from usePoll hook)
+  useEffect(() => {
+    if (pollData) {
+      processPollData(pollData);
     }
-  };
+  }, [pollData, processPollData]);
 
   const getRecentTraceroute = (nodeId: string) => {
     const nodeNumStr = nodeId.replace('!', '');
@@ -2324,7 +2276,7 @@ function App() {
 
       if (response.ok) {
         // Refresh messages to show the new tapback
-        setTimeout(() => updateDataFromBackend(), 500);
+        setTimeout(() => refetchPoll(), 500);
       } else {
         const errorData = await response.json();
         setError(`Failed to send reaction: ${errorData.error || 'Unknown error'}`);
@@ -2355,7 +2307,7 @@ function App() {
           ...prev,
           [message.channel]: (prev[message.channel] || []).filter(m => m.id !== message.id),
         }));
-        updateDataFromBackend();
+        refetchPoll();
       } else {
         const errorData = await response.json();
         showToast(`Failed to delete message: ${errorData.message || 'Unknown error'}`, 'error');
@@ -2391,7 +2343,7 @@ function App() {
           ...prev,
           [channelId]: [],
         }));
-        updateDataFromBackend();
+        refetchPoll();
       } else {
         const errorData = await response.json();
         showToast(`Failed to purge messages: ${errorData.message || 'Unknown error'}`, 'error');
@@ -2430,7 +2382,7 @@ function App() {
           setMessages(prev => prev.filter(m => !(m.fromNodeId === nodeId || m.toNodeId === nodeId)));
         }
         // Also refresh from backend to ensure consistency
-        updateDataFromBackend();
+        refetchPoll();
       } else {
         const errorData = await response.json();
         showToast(`Failed to purge messages: ${errorData.message || 'Unknown error'}`, 'error');
@@ -2462,7 +2414,7 @@ function App() {
         const data = await response.json();
         showToast(`Purged ${data.deletedCount} traceroutes for ${nodeName}`, 'success');
         // Refresh data from backend to ensure consistency
-        updateDataFromBackend();
+        refetchPoll();
       } else {
         const errorData = await response.json();
         showToast(`Failed to purge traceroutes: ${errorData.message || 'Unknown error'}`, 'error');
@@ -2496,7 +2448,7 @@ function App() {
         const data = await response.json();
         showToast(`Purged ${data.deletedCount} telemetry records for ${nodeName}`, 'success');
         // Refresh data from backend to ensure consistency
-        updateDataFromBackend();
+        refetchPoll();
       } else {
         const errorData = await response.json();
         showToast(`Failed to purge telemetry: ${errorData.message || 'Unknown error'}`, 'error');
@@ -2540,7 +2492,7 @@ function App() {
           setSelectedDMNode('');
         }
         // Refresh data from backend to ensure consistency
-        updateDataFromBackend();
+        refetchPoll();
       } else {
         const errorData = await response.json();
         showToast(`Failed to delete node: ${errorData.message || 'Unknown error'}`, 'error');
@@ -2584,7 +2536,7 @@ function App() {
           setSelectedDMNode('');
         }
         // Refresh data from backend to ensure consistency
-        updateDataFromBackend();
+        refetchPoll();
       } else {
         const errorData = await response.json();
         showToast(`Failed to purge node from device: ${errorData.message || 'Unknown error'}`, 'error');
@@ -2680,7 +2632,7 @@ function App() {
       if (response.ok) {
         // The message was sent successfully
         // We'll wait for it to appear in the backend data to confirm acknowledgment
-        setTimeout(() => updateDataFromBackend(), 1000);
+        setTimeout(() => refetchPoll(), 1000);
       } else {
         const errorData = await response.json();
         setError(`Failed to send message: ${errorData.error}`);
