@@ -52,9 +52,11 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
   const [hideOwnPackets, setHideOwnPackets] = useState(() =>
     safeJsonParse(localStorage.getItem('packetMonitor.hideOwnPackets'), true)
   );
+  const [rateLimitError, setRateLimitError] = useState(false);
   const tableRef = useRef<HTMLDivElement>(null);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
+  const rateLimitResetTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Check permissions - user needs to have at least one channel permission and messages permission
   const hasAnyChannelPermission = () => {
@@ -91,6 +93,44 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     overscan: 10, // Number of items to render outside of visible area
   });
 
+  // Load more packets function
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore || rateLimitError) return;
+
+    setLoadingMore(true);
+    try {
+      const response = await getPackets(rawPackets.length, PACKET_FETCH_LIMIT, filters);
+
+      if (response.packets.length === 0) {
+        setHasMore(false);
+      } else {
+        setRawPackets(prev => [...prev, ...response.packets]);
+        setTotal(response.total);
+      }
+    } catch (error) {
+      console.error('Failed to load more packets:', error);
+
+      // Check if this is a rate limit error
+      if (error instanceof Error && error.message.includes('Too many requests')) {
+        setRateLimitError(true);
+        setHasMore(false); // Prevent further load attempts
+
+        // Clear any existing reset timer
+        if (rateLimitResetTimerRef.current) {
+          clearTimeout(rateLimitResetTimerRef.current);
+        }
+
+        // Reset after 15 minutes (matches rate limit window)
+        rateLimitResetTimerRef.current = setTimeout(() => {
+          setRateLimitError(false);
+          setHasMore(true);
+        }, 15 * 60 * 1000);
+      }
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, hasMore, rateLimitError, rawPackets.length, filters]);
+
   // Load more packets when scrolling near the end
   useEffect(() => {
     const [lastItem] = [...rowVirtualizer.getVirtualItems()].reverse();
@@ -111,28 +151,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     ) {
       loadMore();
     }
-  }, [rowVirtualizer.getVirtualItems(), hasMore, loadingMore, packets.length, rawPackets.length, canView]);
-
-  // Load more packets function
-  const loadMore = async () => {
-    if (loadingMore || !hasMore) return;
-
-    setLoadingMore(true);
-    try {
-      const response = await getPackets(rawPackets.length, PACKET_FETCH_LIMIT, filters);
-
-      if (response.packets.length === 0) {
-        setHasMore(false);
-      } else {
-        setRawPackets(prev => [...prev, ...response.packets]);
-        setTotal(response.total);
-      }
-    } catch (error) {
-      console.error('Failed to load more packets:', error);
-    } finally {
-      setLoadingMore(false);
-    }
-  };
+  }, [rowVirtualizer.getVirtualItems(), hasMore, loadingMore, packets.length, rawPackets.length, canView, loadMore]);
 
   // Persist filter settings to localStorage
   useEffect(() => {
@@ -217,6 +236,9 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     return () => {
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
+      }
+      if (rateLimitResetTimerRef.current) {
+        clearTimeout(rateLimitResetTimerRef.current);
       }
     };
   }, [fetchPackets, canView]);
@@ -429,6 +451,18 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
       )}
 
       <div className="packet-table-container" ref={parentRef}>
+        {rateLimitError && (
+          <div className="rate-limit-warning" style={{
+            padding: '1rem',
+            margin: '1rem',
+            backgroundColor: 'var(--warning-bg, #fff3cd)',
+            color: 'var(--warning-text, #856404)',
+            borderRadius: '4px',
+            border: '1px solid var(--warning-border, #ffeaa7)'
+          }}>
+            ⚠️ Rate limit reached. Infinite scrolling paused for 15 minutes. Current packets will continue to update.
+          </div>
+        )}
         {loading ? (
           <div className="loading">Loading packets...</div>
         ) : packets.length === 0 ? (
