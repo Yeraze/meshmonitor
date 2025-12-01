@@ -10,6 +10,7 @@ import { notificationService } from './services/notificationService.js';
 import packetLogService from './services/packetLogService.js';
 import { messageQueueService } from './messageQueueService.js';
 import { normalizeTriggerPatterns } from '../utils/autoResponderUtils.js';
+import { isNodeComplete } from '../utils/nodeHelpers.js';
 import { createRequire } from 'module';
 import * as cron from 'node-cron';
 import fs from 'fs';
@@ -4521,16 +4522,9 @@ class MeshtasticManager {
       const autoAckSkipIncompleteNodes = databaseService.getSetting('autoAckSkipIncompleteNodes');
       if (autoAckSkipIncompleteNodes === 'true') {
         const fromNode = databaseService.getNode(fromNum);
-        if (fromNode) {
-          const nodeId = fromNode.nodeId;
-          const hasDefaultName = !fromNode.longName || fromNode.longName.startsWith('Node !');
-          const hasDefaultShortName = nodeId && nodeId.startsWith('!') && fromNode.shortName === nodeId.substring(1, 5);
-          const missingHwModel = fromNode.hwModel === undefined || fromNode.hwModel === null;
-
-          if (hasDefaultName || hasDefaultShortName || missingHwModel) {
-            logger.debug(`⏭️  Skipping auto-acknowledge for incomplete node ${nodeId || fromNum} (missing proper name or hwModel)`);
-            return;
-          }
+        if (fromNode && !isNodeComplete(fromNode)) {
+          logger.debug(`⏭️  Skipping auto-acknowledge for incomplete node ${fromNode.nodeId || fromNum} (missing proper name or hwModel)`);
+          return;
         }
       }
 
@@ -4695,16 +4689,9 @@ class MeshtasticManager {
       const autoResponderSkipIncompleteNodes = databaseService.getSetting('autoResponderSkipIncompleteNodes');
       if (autoResponderSkipIncompleteNodes === 'true') {
         const fromNode = databaseService.getNode(fromNum);
-        if (fromNode) {
-          const nodeId = fromNode.nodeId;
-          const hasDefaultName = !fromNode.longName || fromNode.longName.startsWith('Node !');
-          const hasDefaultShortName = nodeId && nodeId.startsWith('!') && fromNode.shortName === nodeId.substring(1, 5);
-          const missingHwModel = fromNode.hwModel === undefined || fromNode.hwModel === null;
-
-          if (hasDefaultName || hasDefaultShortName || missingHwModel) {
-            logger.debug(`⏭️  Skipping auto-responder for incomplete node ${nodeId || fromNum} (missing proper name or hwModel)`);
-            return;
-          }
+        if (fromNode && !isNodeComplete(fromNode)) {
+          logger.debug(`⏭️  Skipping auto-responder for incomplete node ${fromNode.nodeId || fromNum} (missing proper name or hwModel)`);
+          return;
         }
       }
 

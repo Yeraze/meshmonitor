@@ -173,6 +173,17 @@ export const getNodeShortName = (nodes: DeviceInfo[], nodeId: string): string =>
 };
 
 /**
+ * Database node object shape for isNodeComplete checks.
+ * This matches the DbNode interface from database.ts for type safety.
+ */
+interface DbNodeLike {
+  nodeId?: string;
+  longName?: string;
+  shortName?: string;
+  hwModel?: number | null;
+}
+
+/**
  * Determines if a node has complete information (verified on mesh).
  * A node is considered complete when we've received a NODEINFO packet from it,
  * which provides the longName, shortName, and hwModel fields.
@@ -185,16 +196,19 @@ export const getNodeShortName = (nodes: DeviceInfo[], nodeId: string): string =>
  * @param node - The node to check, can be DeviceInfo or a database node object
  * @returns true if the node has complete information, false otherwise
  */
-export const isNodeComplete = (node: DeviceInfo | { longName?: string; shortName?: string; hwModel?: number; nodeId?: string }): boolean => {
+export const isNodeComplete = (node: DeviceInfo | DbNodeLike): boolean => {
   if (!node) return false;
 
+  // Determine if this is a DeviceInfo (has 'user' property) or DbNodeLike
+  const isDeviceInfo = 'user' in node;
+
   // Get node ID for checking default names
-  const nodeId = 'user' in node ? node.user?.id : (node as any).nodeId;
+  const nodeId = isDeviceInfo ? node.user?.id : (node as DbNodeLike).nodeId;
 
   // Get fields - handle both DeviceInfo (user.field) and database node (field) formats
-  const longName = 'user' in node ? node.user?.longName : (node as any).longName;
-  const shortName = 'user' in node ? node.user?.shortName : (node as any).shortName;
-  const hwModel = 'user' in node ? node.user?.hwModel : (node as any).hwModel;
+  const longName = isDeviceInfo ? node.user?.longName : (node as DbNodeLike).longName;
+  const shortName = isDeviceInfo ? node.user?.shortName : (node as DbNodeLike).shortName;
+  const hwModel = isDeviceInfo ? node.user?.hwModel : (node as DbNodeLike).hwModel;
 
   // Check if longName exists and is not the default "Node !xxxxxxxx" format
   if (!longName || longName.startsWith('Node !')) {

@@ -124,6 +124,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [localSolarMonitoringLongitude, setLocalSolarMonitoringLongitude] = useState(solarMonitoringLongitude);
   const [localSolarMonitoringAzimuth, setLocalSolarMonitoringAzimuth] = useState(solarMonitoringAzimuth);
   const [localSolarMonitoringDeclination, setLocalSolarMonitoringDeclination] = useState(solarMonitoringDeclination);
+  // Note: localHideIncompleteNodes is inverted from showIncompleteNodes because
+  // the UI checkbox says "Hide" while the context uses "show" semantics
   const [localHideIncompleteNodes, setLocalHideIncompleteNodes] = useState(!showIncompleteNodes);
   const [isFetchingSolarEstimates, setIsFetchingSolarEstimates] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
