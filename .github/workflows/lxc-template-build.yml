@@ -70,7 +70,7 @@ jobs:
           cat lxc/build/*.sha256
 
       - name: Upload template as artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: meshmonitor-lxc-template-${{ steps.get_version.outputs.version }}
           path: |
