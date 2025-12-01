@@ -100,6 +100,24 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
   };
 
   /**
+   * Format uptime display
+   */
+  const formatUptime = (uptimeSeconds: number | undefined): string => {
+    if (uptimeSeconds === undefined || uptimeSeconds === null) return 'N/A';
+    const days = Math.floor(uptimeSeconds / 86400);
+    const hours = Math.floor((uptimeSeconds % 86400) / 3600);
+    const minutes = Math.floor((uptimeSeconds % 3600) / 60);
+
+    if (days > 0) {
+      return `${days}d ${hours}h ${minutes}m`;
+    } else if (hours > 0) {
+      return `${hours}h ${minutes}m`;
+    } else {
+      return `${minutes}m`;
+    }
+  };
+
+  /**
    * Format last heard timestamp
    */
   const formatLastHeard = (lastHeard: number | undefined): string => {
@@ -208,6 +226,16 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
               <div className="node-detail-label">Air Utilization TX</div>
               <div className={`node-detail-value ${getUtilizationClass(deviceMetrics.airUtilTx)}`}>
                 {formatUtilization(deviceMetrics.airUtilTx)}
+              </div>
+            </div>
+          )}
+
+          {/* Uptime */}
+          {deviceMetrics?.uptimeSeconds !== undefined && (
+            <div className="node-detail-card">
+              <div className="node-detail-label">Uptime</div>
+              <div className="node-detail-value">
+                {formatUptime(deviceMetrics.uptimeSeconds)}
               </div>
             </div>
           )}
