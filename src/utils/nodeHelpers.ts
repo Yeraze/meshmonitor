@@ -171,3 +171,53 @@ export const getNodeShortName = (nodes: DeviceInfo[], nodeId: string): string =>
   // Fallback to full nodeId if it's too short or doesn't match expected format
   return nodeId;
 };
+
+/**
+ * Determines if a node has complete information (verified on mesh).
+ * A node is considered complete when we've received a NODEINFO packet from it,
+ * which provides the longName, shortName, and hwModel fields.
+ *
+ * Incomplete nodes are typically created when we see a packet from a node
+ * but haven't received its NODEINFO yet. On secure/private channels,
+ * incomplete nodes should be filtered out as they haven't been verified
+ * as being on the same encrypted channel.
+ *
+ * @param node - The node to check, can be DeviceInfo or a database node object
+ * @returns true if the node has complete information, false otherwise
+ */
+export const isNodeComplete = (node: DeviceInfo | { longName?: string; shortName?: string; hwModel?: number; nodeId?: string }): boolean => {
+  if (!node) return false;
+
+  // Get node ID for checking default names
+  const nodeId = 'user' in node ? node.user?.id : (node as any).nodeId;
+
+  // Get fields - handle both DeviceInfo (user.field) and database node (field) formats
+  const longName = 'user' in node ? node.user?.longName : (node as any).longName;
+  const shortName = 'user' in node ? node.user?.shortName : (node as any).shortName;
+  const hwModel = 'user' in node ? node.user?.hwModel : (node as any).hwModel;
+
+  // Check if longName exists and is not the default "Node !xxxxxxxx" format
+  if (!longName || longName.startsWith('Node !')) {
+    return false;
+  }
+
+  // Check if shortName exists and is not just the first 4 chars of nodeId
+  if (!shortName) {
+    return false;
+  }
+
+  // If we have a nodeId, verify shortName isn't just derived from it
+  if (nodeId && nodeId.startsWith('!')) {
+    const defaultShortName = nodeId.substring(1, 5);
+    if (shortName === defaultShortName) {
+      return false;
+    }
+  }
+
+  // Check if hwModel exists (proves we received NODEINFO_APP packet)
+  if (hwModel === undefined || hwModel === null) {
+    return false;
+  }
+
+  return true;
+};

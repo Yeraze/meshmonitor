@@ -12,6 +12,7 @@ interface AutoAcknowledgeSectionProps {
   enabledChannels: number[];
   directMessagesEnabled: boolean;
   useDM: boolean;
+  skipIncompleteNodes: boolean;
   baseUrl: string;
   onEnabledChange: (enabled: boolean) => void;
   onRegexChange: (regex: string) => void;
@@ -20,6 +21,7 @@ interface AutoAcknowledgeSectionProps {
   onChannelsChange: (channels: number[]) => void;
   onDirectMessagesChange: (enabled: boolean) => void;
   onUseDMChange: (enabled: boolean) => void;
+  onSkipIncompleteNodesChange: (enabled: boolean) => void;
 }
 
 const DEFAULT_MESSAGE = '🤖 Copy, {NUMBER_HOPS} hops at {TIME}';
@@ -34,6 +36,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   enabledChannels,
   directMessagesEnabled,
   useDM,
+  skipIncompleteNodes,
   baseUrl,
   onEnabledChange,
   onRegexChange,
@@ -42,6 +45,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   onChannelsChange,
   onDirectMessagesChange,
   onUseDMChange,
+  onSkipIncompleteNodesChange,
 }) => {
   const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();
@@ -52,6 +56,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   const [localEnabledChannels, setLocalEnabledChannels] = useState<number[]>(enabledChannels);
   const [localDirectMessagesEnabled, setLocalDirectMessagesEnabled] = useState(directMessagesEnabled);
   const [localUseDM, setLocalUseDM] = useState(useDM);
+  const [localSkipIncompleteNodes, setLocalSkipIncompleteNodes] = useState(skipIncompleteNodes);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [testMessages, setTestMessages] = useState('test\nTest message\nping\nPING\nHello world\nTESTING 123');
@@ -67,14 +72,15 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     setLocalEnabledChannels(enabledChannels);
     setLocalDirectMessagesEnabled(directMessagesEnabled);
     setLocalUseDM(useDM);
-  }, [enabled, regex, message, messageDirect, enabledChannels, directMessagesEnabled, useDM]);
+    setLocalSkipIncompleteNodes(skipIncompleteNodes);
+  }, [enabled, regex, message, messageDirect, enabledChannels, directMessagesEnabled, useDM, skipIncompleteNodes]);
 
   // Check if any settings have changed
   useEffect(() => {
     const channelsChanged = JSON.stringify(localEnabledChannels.sort()) !== JSON.stringify(enabledChannels.sort());
-    const changed = localEnabled !== enabled || localRegex !== regex || localMessage !== message || localMessageDirect !== messageDirect || channelsChanged || localDirectMessagesEnabled !== directMessagesEnabled || localUseDM !== useDM;
+    const changed = localEnabled !== enabled || localRegex !== regex || localMessage !== message || localMessageDirect !== messageDirect || channelsChanged || localDirectMessagesEnabled !== directMessagesEnabled || localUseDM !== useDM || localSkipIncompleteNodes !== skipIncompleteNodes;
     setHasChanges(changed);
-  }, [localEnabled, localRegex, localMessage, localMessageDirect, localEnabledChannels, localDirectMessagesEnabled, localUseDM, enabled, regex, message, messageDirect, enabledChannels, directMessagesEnabled, useDM]);
+  }, [localEnabled, localRegex, localMessage, localMessageDirect, localEnabledChannels, localDirectMessagesEnabled, localUseDM, localSkipIncompleteNodes, enabled, regex, message, messageDirect, enabledChannels, directMessagesEnabled, useDM, skipIncompleteNodes]);
 
   // Validate regex pattern for safety
   const validateRegex = (pattern: string): { valid: boolean; error?: string } => {
@@ -189,7 +195,8 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
           autoAckMessageDirect: localMessageDirect,
           autoAckChannels: localEnabledChannels.join(','),
           autoAckDirectMessages: String(localDirectMessagesEnabled),
-          autoAckUseDM: String(localUseDM)
+          autoAckUseDM: String(localUseDM),
+          autoAckSkipIncompleteNodes: String(localSkipIncompleteNodes)
         })
       });
 
@@ -209,6 +216,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
       onChannelsChange(localEnabledChannels);
       onDirectMessagesChange(localDirectMessagesEnabled);
       onUseDMChange(localUseDM);
+      onSkipIncompleteNodesChange(localSkipIncompleteNodes);
 
       setHasChanges(false);
       showToast('Settings saved successfully!', 'success');
@@ -361,6 +369,31 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
           </div>
           <div style={{ marginTop: '0.5rem', marginLeft: '1.75rem', fontSize: '0.9rem', color: 'var(--ctp-subtext0)' }}>
             When enabled, acknowledgments will be sent as DMs regardless of which channel triggered them
+          </div>
+        </div>
+
+        <div className="setting-item" style={{ marginTop: '1.5rem' }}>
+          <label>
+            Security
+            <span className="setting-description">
+              Protect against sending messages to nodes that may not be on your channel
+            </span>
+          </label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
+            <input
+              type="checkbox"
+              id="autoAckSkipIncomplete"
+              checked={localSkipIncompleteNodes}
+              onChange={(e) => setLocalSkipIncompleteNodes(e.target.checked)}
+              disabled={!localEnabled}
+              style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
+            />
+            <label htmlFor="autoAckSkipIncomplete" style={{ margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed', fontWeight: 'bold' }}>
+              Skip incomplete nodes
+            </label>
+          </div>
+          <div style={{ marginTop: '0.5rem', marginLeft: '1.75rem', fontSize: '0.9rem', color: 'var(--ctp-subtext0)' }}>
+            Don't auto-acknowledge messages from nodes that are missing name or hardware info. Recommended for secure channels to avoid responding to nodes that may have overheard your encrypted traffic.
           </div>
         </div>
 

@@ -39,7 +39,7 @@ import api from './services/api'
 import { logger } from './utils/logger'
 import { generateArrowMarkers } from './utils/mapHelpers.tsx'
 import { ROLE_NAMES } from './constants'
-import { getHardwareModelName, getRoleName } from './utils/nodeHelpers'
+import { getHardwareModelName, getRoleName, isNodeComplete } from './utils/nodeHelpers'
 import Sidebar from './components/Sidebar'
 import LinkPreview from './components/LinkPreview'
 import { SettingsProvider, useSettings } from './contexts/SettingsContext'
@@ -467,6 +467,8 @@ function App() {
     setAutoAckDirectMessages,
     autoAckUseDM,
     setAutoAckUseDM,
+    autoAckSkipIncompleteNodes,
+    setAutoAckSkipIncompleteNodes,
     autoAnnounceEnabled,
     setAutoAnnounceEnabled,
     autoAnnounceIntervalHours,
@@ -495,8 +497,12 @@ function App() {
     setAutoResponderEnabled,
     autoResponderTriggers,
     setAutoResponderTriggers,
+    autoResponderSkipIncompleteNodes,
+    setAutoResponderSkipIncompleteNodes,
     showNodeFilterPopup,
-    setShowNodeFilterPopup
+    setShowNodeFilterPopup,
+    showIncompleteNodes,
+    setShowIncompleteNodes
   } = useUI();
 
   // Helper function to safely parse node IDs to node numbers
@@ -804,6 +810,10 @@ function App() {
             setAutoAckUseDM(settings.autoAckUseDM === 'true');
           }
 
+          if (settings.autoAckSkipIncompleteNodes !== undefined) {
+            setAutoAckSkipIncompleteNodes(settings.autoAckSkipIncompleteNodes === 'true');
+          }
+
           if (settings.autoAnnounceEnabled !== undefined) {
             setAutoAnnounceEnabled(settings.autoAnnounceEnabled === 'true');
           }
@@ -865,6 +875,18 @@ function App() {
             } catch (e) {
               console.error('Failed to parse autoResponderTriggers:', e);
             }
+          }
+
+          if (settings.autoResponderSkipIncompleteNodes !== undefined) {
+            setAutoResponderSkipIncompleteNodes(settings.autoResponderSkipIncompleteNodes === 'true');
+          }
+
+          // Hide incomplete nodes setting
+          if (settings.hideIncompleteNodes !== undefined) {
+            logger.debug(`📋 Loading hideIncompleteNodes setting: ${settings.hideIncompleteNodes}`);
+            setShowIncompleteNodes(settings.hideIncompleteNodes !== '1');
+          } else {
+            logger.debug('📋 hideIncompleteNodes setting not found in database');
           }
         }
 
@@ -4082,6 +4104,10 @@ function App() {
                       } else if (securityFilter === 'hideFlagged') {
                         if (node.keyIsLowEntropy || node.duplicateKeyDetected) return false;
                       }
+                      // Apply incomplete nodes filter
+                      if (!showIncompleteNodes && !isNodeComplete(node)) {
+                        return false;
+                      }
                       // Apply channel filter
                       if (channelFilter !== 'all') {
                         const nodeChannel = node.channel ?? 0;
@@ -4238,6 +4264,10 @@ function App() {
               <option value="">Select a conversation...</option>
               {sortedNodesWithMessages
                 .filter(node => {
+                  // Apply incomplete nodes filter
+                  if (!showIncompleteNodes && !isNodeComplete(node)) {
+                    return false;
+                  }
                   if (!nodeFilter) return true;
                   const searchTerm = nodeFilter.toLowerCase();
                   return (
@@ -5874,6 +5904,7 @@ function App() {
                 enabledChannels={autoAckChannels}
                 directMessagesEnabled={autoAckDirectMessages}
                 useDM={autoAckUseDM}
+                skipIncompleteNodes={autoAckSkipIncompleteNodes}
                 baseUrl={baseUrl}
                 onEnabledChange={setAutoAckEnabled}
                 onRegexChange={setAutoAckRegex}
@@ -5882,6 +5913,7 @@ function App() {
                 onChannelsChange={setAutoAckChannels}
                 onDirectMessagesChange={setAutoAckDirectMessages}
                 onUseDMChange={setAutoAckUseDM}
+                onSkipIncompleteNodesChange={setAutoAckSkipIncompleteNodes}
               />
               <AutoAnnounceSection
                 enabled={autoAnnounceEnabled}
@@ -5905,9 +5937,11 @@ function App() {
                 enabled={autoResponderEnabled}
                 triggers={autoResponderTriggers}
                 channels={channels}
+                skipIncompleteNodes={autoResponderSkipIncompleteNodes}
                 baseUrl={baseUrl}
                 onEnabledChange={setAutoResponderEnabled}
                 onTriggersChange={setAutoResponderTriggers}
+                onSkipIncompleteNodesChange={setAutoResponderSkipIncompleteNodes}
               />
             </div>
           </div>

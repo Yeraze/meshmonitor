@@ -13,6 +13,7 @@ import AutoUpgradeTestSection from './configuration/AutoUpgradeTestSection';
 import { CustomThemeManagement } from './CustomThemeManagement';
 import { CustomTilesetManager } from './CustomTilesetManager';
 import { type Theme, useSettings } from '../contexts/SettingsContext';
+import { useUI } from '../contexts/UIContext';
 
 type DistanceUnit = 'km' | 'mi';
 type TimeFormat = '12' | '24';
@@ -100,6 +101,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
 }) => {
   const csrfFetch = useCsrfFetch();
   const { customThemes, customTilesets } = useSettings();
+  const { showIncompleteNodes, setShowIncompleteNodes } = useUI();
 
   // Local state for editing
   const [localMaxNodeAge, setLocalMaxNodeAge] = useState(maxNodeAgeHours);
@@ -122,6 +124,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [localSolarMonitoringLongitude, setLocalSolarMonitoringLongitude] = useState(solarMonitoringLongitude);
   const [localSolarMonitoringAzimuth, setLocalSolarMonitoringAzimuth] = useState(solarMonitoringAzimuth);
   const [localSolarMonitoringDeclination, setLocalSolarMonitoringDeclination] = useState(solarMonitoringDeclination);
+  const [localHideIncompleteNodes, setLocalHideIncompleteNodes] = useState(!showIncompleteNodes);
   const [isFetchingSolarEstimates, setIsFetchingSolarEstimates] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -147,9 +150,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     fetchSystemStatus();
   }, [baseUrl]);
 
-  // Fetch packet monitor settings
+  // Fetch packet monitor and other server-stored settings
   useEffect(() => {
-    const fetchPacketMonitorSettings = async () => {
+    const fetchServerSettings = async () => {
       try {
         const response = await fetch(`${baseUrl}/api/settings`, {
           credentials: 'include'
@@ -159,18 +162,23 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           const enabled = settings.packet_log_enabled === '1';
           const maxCount = parseInt(settings.packet_log_max_count || '1000', 10);
           const maxAgeHours = parseInt(settings.packet_log_max_age_hours || '24', 10);
+          const hideIncomplete = settings.hideIncompleteNodes === '1';
 
           setLocalPacketLogEnabled(enabled);
           setLocalPacketLogMaxCount(maxCount);
           setLocalPacketLogMaxAgeHours(maxAgeHours);
           setInitialPacketMonitorSettings({ enabled, maxCount, maxAgeHours });
+
+          // Load hide incomplete nodes setting
+          setLocalHideIncompleteNodes(hideIncomplete);
+          setShowIncompleteNodes(!hideIncomplete);
         }
       } catch (error) {
-        logger.error('Failed to fetch packet monitor settings:', error);
+        logger.error('Failed to fetch server settings:', error);
       }
     };
-    fetchPacketMonitorSettings();
-  }, [baseUrl]);
+    fetchServerSettings();
+  }, [baseUrl, setShowIncompleteNodes]);
 
   // Update local state when props change
   useEffect(() => {
@@ -191,7 +199,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLocalSolarMonitoringLongitude(solarMonitoringLongitude);
     setLocalSolarMonitoringAzimuth(solarMonitoringAzimuth);
     setLocalSolarMonitoringDeclination(solarMonitoringDeclination);
-  }, [maxNodeAgeHours, temperatureUnit, distanceUnit, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle, solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination]);
+    setLocalHideIncompleteNodes(!showIncompleteNodes);
+  }, [maxNodeAgeHours, temperatureUnit, distanceUnit, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle, solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination, showIncompleteNodes]);
 
   // Default solar monitoring lat/long to device position if still at 0
   useEffect(() => {
@@ -231,13 +240,15 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localSolarMonitoringLatitude !== solarMonitoringLatitude ||
       localSolarMonitoringLongitude !== solarMonitoringLongitude ||
       localSolarMonitoringAzimuth !== solarMonitoringAzimuth ||
-      localSolarMonitoringDeclination !== solarMonitoringDeclination;
+      localSolarMonitoringDeclination !== solarMonitoringDeclination ||
+      localHideIncompleteNodes !== !showIncompleteNodes;
     setHasChanges(changed);
   }, [localMaxNodeAge, localTemperatureUnit, localDistanceUnit, localTelemetryHours, localFavoriteTelemetryStorageDays, localPreferredSortField, localPreferredSortDirection, localTimeFormat, localDateFormat, localMapTileset, localMapPinStyle, localTheme,
       maxNodeAgeHours, temperatureUnit, distanceUnit, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle, theme,
       localPacketLogEnabled, localPacketLogMaxCount, localPacketLogMaxAgeHours, initialPacketMonitorSettings,
       localSolarMonitoringEnabled, localSolarMonitoringLatitude, localSolarMonitoringLongitude, localSolarMonitoringAzimuth, localSolarMonitoringDeclination,
-      solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination]);
+      solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination,
+      localHideIncompleteNodes, showIncompleteNodes]);
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -262,7 +273,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         solarMonitoringLatitude: localSolarMonitoringLatitude.toString(),
         solarMonitoringLongitude: localSolarMonitoringLongitude.toString(),
         solarMonitoringAzimuth: localSolarMonitoringAzimuth.toString(),
-        solarMonitoringDeclination: localSolarMonitoringDeclination.toString()
+        solarMonitoringDeclination: localSolarMonitoringDeclination.toString(),
+        hideIncompleteNodes: localHideIncompleteNodes ? '1' : '0'
       };
 
       // Save to server
@@ -290,6 +302,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onSolarMonitoringLongitudeChange(localSolarMonitoringLongitude);
       onSolarMonitoringAzimuthChange(localSolarMonitoringAzimuth);
       onSolarMonitoringDeclinationChange(localSolarMonitoringDeclination);
+      setShowIncompleteNodes(!localHideIncompleteNodes);
 
       // Update initial packet monitor settings after successful save
       setInitialPacketMonitorSettings({ enabled: localPacketLogEnabled, maxCount: localPacketLogMaxCount, maxAgeHours: localPacketLogMaxAgeHours });
@@ -837,6 +850,23 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               onMaxAgeHoursChange={setLocalPacketLogMaxAgeHours}
             />
           </div>
+        </div>
+
+        <div className="settings-section">
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={localHideIncompleteNodes}
+                onChange={(e) => setLocalHideIncompleteNodes(e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              <span>Hide Incomplete Nodes</span>
+            </label>
+          </h3>
+          <p className="setting-description">
+            Hide nodes missing name or hardware info. On secure channels (custom PSK), incomplete nodes haven't been verified as being on your channel.
+          </p>
         </div>
 
         <div className="settings-section">

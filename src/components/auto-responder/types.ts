@@ -16,9 +16,11 @@ export interface AutoResponderSectionProps {
   enabled: boolean;
   triggers: AutoResponderTrigger[];
   channels: Channel[];
+  skipIncompleteNodes: boolean;
   baseUrl: string;
   onEnabledChange: (enabled: boolean) => void;
   onTriggersChange: (triggers: AutoResponderTrigger[]) => void;
+  onSkipIncompleteNodesChange: (enabled: boolean) => void;
 }
 
 export interface TriggerItemProps {

@@ -6,7 +6,7 @@ import { TabType } from '../types/ui';
 import { ResourceType } from '../types/permission';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
 import { generateArrowMarkers } from '../utils/mapHelpers.tsx';
-import { getHardwareModelName, getRoleName } from '../utils/nodeHelpers';
+import { getHardwareModelName, getRoleName, isNodeComplete } from '../utils/nodeHelpers';
 import { formatTime, formatDateTime } from '../utils/datetime';
 import { getTilesetById } from '../config/tilesets';
 import { useMapContext } from '../contexts/MapContext';
@@ -121,6 +121,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setNodeFilter,
     securityFilter,
     channelFilter,
+    showIncompleteNodes,
     sortField,
     setSortField,
     sortDirection,
@@ -567,7 +568,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         {!isNodeListCollapsed && (
         <div className="nodes-list">
           {shouldShowData() ? (() => {
-            // Apply security and channel filters
+            // Apply security, channel, and incomplete node filters
             const filteredNodes = processedNodes.filter(node => {
               // Security filter
               if (securityFilter === 'flaggedOnly') {
@@ -581,6 +582,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               if (channelFilter !== 'all') {
                 const nodeChannel = node.channel ?? 0;
                 if (nodeChannel !== channelFilter) return false;
+              }
+
+              // Incomplete nodes filter - hide nodes missing name/hwModel info
+              if (!showIncompleteNodes && !isNodeComplete(node)) {
+                return false;
               }
 
               return true;

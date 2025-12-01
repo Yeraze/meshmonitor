@@ -4516,6 +4516,24 @@ class MeshtasticManager {
         return;
       }
 
+      // Skip auto-acknowledge for incomplete nodes (nodes we haven't received full NODEINFO from)
+      // This prevents sending automated messages to nodes that may not be on the same secure channel
+      const autoAckSkipIncompleteNodes = databaseService.getSetting('autoAckSkipIncompleteNodes');
+      if (autoAckSkipIncompleteNodes === 'true') {
+        const fromNode = databaseService.getNode(fromNum);
+        if (fromNode) {
+          const nodeId = fromNode.nodeId;
+          const hasDefaultName = !fromNode.longName || fromNode.longName.startsWith('Node !');
+          const hasDefaultShortName = nodeId && nodeId.startsWith('!') && fromNode.shortName === nodeId.substring(1, 5);
+          const missingHwModel = fromNode.hwModel === undefined || fromNode.hwModel === null;
+
+          if (hasDefaultName || hasDefaultShortName || missingHwModel) {
+            logger.debug(`⏭️  Skipping auto-acknowledge for incomplete node ${nodeId || fromNum} (missing proper name or hwModel)`);
+            return;
+          }
+        }
+      }
+
       // Use default regex if not set
       const regexPattern = autoAckRegex || '^(test|ping)';
 
@@ -4670,6 +4688,24 @@ class MeshtasticManager {
       if (localNodeNum && parseInt(localNodeNum) === fromNum) {
         logger.debug('⏭️  Skipping auto-responder for message from local node');
         return;
+      }
+
+      // Skip auto-responder for incomplete nodes (nodes we haven't received full NODEINFO from)
+      // This prevents sending automated messages to nodes that may not be on the same secure channel
+      const autoResponderSkipIncompleteNodes = databaseService.getSetting('autoResponderSkipIncompleteNodes');
+      if (autoResponderSkipIncompleteNodes === 'true') {
+        const fromNode = databaseService.getNode(fromNum);
+        if (fromNode) {
+          const nodeId = fromNode.nodeId;
+          const hasDefaultName = !fromNode.longName || fromNode.longName.startsWith('Node !');
+          const hasDefaultShortName = nodeId && nodeId.startsWith('!') && fromNode.shortName === nodeId.substring(1, 5);
+          const missingHwModel = fromNode.hwModel === undefined || fromNode.hwModel === null;
+
+          if (hasDefaultName || hasDefaultShortName || missingHwModel) {
+            logger.debug(`⏭️  Skipping auto-responder for incomplete node ${nodeId || fromNum} (missing proper name or hwModel)`);
+            return;
+          }
+        }
       }
 
       // Get triggers array
