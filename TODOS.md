@@ -51,8 +51,31 @@
 - [x] Update package.json to 2.17.0
 - [x] Update Helm chart to 2.17.0
 - [x] Regenerate package-lock.json
-- [ ] Run system tests
+- [x] Run system tests
 - [ ] Create release (v2.17.0)
+
+#### Packet Monitor Infinite Loop Fix (#820)
+
+**Completed:**
+- [x] Investigate packet monitor infinite loop bug
+  - Root cause: Missing `useCallback` wrapper on `loadMore` function
+  - Caused infinite re-renders when virtualizer state changed
+  - Effect at line 115-135 depended on `loadMore` but didn't include it in deps
+  - React created new `loadMore` function on every render
+  - Triggered after ~8 hours when packet list grew large enough
+- [x] Fix infinite re-render loop
+  - Wrapped `loadMore` in `useCallback` with proper dependencies
+  - Added `loadMore` to effect dependency array
+  - Prevents function from being recreated unnecessarily
+- [x] Add circuit breaker for rate limit errors
+  - Added `rateLimitError` state and `rateLimitResetTimerRef`
+  - `loadMore` now checks for rate limit errors and stops loading
+  - Automatically resets after 15 minutes (matches rate limit window)
+  - Shows user-friendly warning message when rate limited
+  - Prevents infinite loop from continuing if rate limits are hit
+- [x] Build and test changes
+  - All builds successful (server and frontend)
+  - All system tests passed (7/7)
 
 #### Bug Fixes
 
