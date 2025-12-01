@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { getRoleName, getHardwareModelName, getNodeName, getNodeShortName, isNodeComplete } from './nodeHelpers';
-import { ROLE_NAMES, HARDWARE_MODELS } from '../constants';
+import { ROLE_NAMES, HARDWARE_MODELS } from '../constants/index.js';
 import type { DeviceInfo } from '../types/device';
 
 describe('Node Helpers', () => {

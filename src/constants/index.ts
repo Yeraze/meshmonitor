@@ -16,4 +16,4 @@ export const ROLE_NAMES: Record<number, string> = {
 };
 
 // Re-export HARDWARE_MODELS from the specialized utility file
-export { HARDWARE_MODELS } from '../utils/hardwareModel';
+export { HARDWARE_MODELS } from '../utils/hardwareModel.js';
