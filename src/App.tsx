@@ -50,6 +50,7 @@ import { UIProvider, useUI } from './contexts/UIContext'
 import { useAuth } from './contexts/AuthContext'
 import { useCsrf } from './contexts/CsrfContext'
 import { useHealth } from './hooks/useHealth'
+import { useTxStatus } from './hooks/useTxStatus'
 import LoginModal from './components/LoginModal'
 import LoginPage from './components/LoginPage'
 import UserMenu from './components/UserMenu'
@@ -135,7 +136,6 @@ function App() {
   const { showToast } = useToast();
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [isDefaultPassword, setIsDefaultPassword] = useState(false);
-  const [isTxDisabled, setIsTxDisabled] = useState(false);
   const [configIssues, setConfigIssues] = useState<Array<{
     type: 'cookie_secure' | 'allowed_origins';
     severity: 'error' | 'warning';
@@ -305,6 +305,9 @@ function App() {
 
   // Monitor server health and auto-reload on version change (e.g., after auto-upgrade)
   useHealth({ baseUrl, reloadOnVersionChange: true });
+
+  // Monitor device TX status to show warning banner when TX is disabled
+  const { isTxDisabled } = useTxStatus({ baseUrl });
 
   // Settings from context
   const {
@@ -916,25 +919,7 @@ function App() {
     checkConfigIssues();
   }, [baseUrl]);
 
-  // Check if TX is disabled
-  useEffect(() => {
-    const checkTxStatus = async () => {
-      try {
-        const response = await authFetch(`${baseUrl}/api/device/tx-status`);
-        if (response.ok) {
-          const data = await response.json();
-          setIsTxDisabled(!data.txEnabled);
-        }
-      } catch (error) {
-        logger.error('Error checking TX status:', error);
-      }
-    };
-
-    checkTxStatus();
-    // Recheck TX status periodically (every 30 seconds)
-    const interval = setInterval(checkTxStatus, 30000);
-    return () => clearInterval(interval);
-  }, [baseUrl]);
+  // TX status is now handled by useTxStatus hook
 
   // Check for version updates
   useEffect(() => {
