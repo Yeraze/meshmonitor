@@ -91,6 +91,17 @@ interface MeshMessage {
 - `POST /api/export` - Export all data
 - `GET /api/health` - Health check
 
+## Adding New Settings
+
+Settings use a key-value pattern stored in SQLite. To add a new setting:
+
+1. **Backend (server.ts)**: Add key to `validKeys` array in POST `/api/settings` handler (~line 3238)
+2. **Frontend State**: Add to UIContext or SettingsContext as needed
+3. **Settings UI**: Add to SettingsTab.tsx with local state for change tracking
+4. **Load on Startup**: Add loading in App.tsx `initializeApp()` if needed globally
+
+**Critical**: New settings MUST be in `validKeys` or they're silently dropped on save.
+
 ## Environment Variables
 
 ```bash

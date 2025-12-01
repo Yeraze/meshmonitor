@@ -1,6 +1,9 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useUI } from '../contexts/UIContext';
 import { useData } from '../contexts/DataContext';
+
+// Meshtastic default PSK (base64 encoded single byte 0x01 = default/unencrypted)
+const DEFAULT_UNENCRYPTED_PSK = 'AQ==';
 
 interface NodeFilterPopupProps {
   isOpen: boolean;
@@ -8,13 +11,38 @@ interface NodeFilterPopupProps {
 }
 
 export const NodeFilterPopup: React.FC<NodeFilterPopupProps> = ({ isOpen, onClose }) => {
-  const { securityFilter, setSecurityFilter, channelFilter, setChannelFilter } = useUI();
+  const {
+    securityFilter,
+    setSecurityFilter,
+    channelFilter,
+    setChannelFilter,
+    showIncompleteNodes,
+    setShowIncompleteNodes,
+  } = useUI();
   const { channels } = useData();
-
-  if (!isOpen) return null;
 
   // Get unique channel numbers from available channels
   const availableChannels = (channels || []).map(ch => ch.id).sort((a, b) => a - b);
+
+  // Check if the selected channel has a custom PSK (is secure/encrypted)
+  const isSecureChannel = (channelId: number | 'all'): boolean => {
+    if (channelId === 'all') return false;
+    const channel = channels.find(ch => ch.id === channelId);
+    // A channel is secure if it has a PSK that's not the default unencrypted one
+    return !!(channel?.psk && channel.psk !== DEFAULT_UNENCRYPTED_PSK);
+  };
+
+  // Auto-hide incomplete nodes when switching to a secure channel
+  useEffect(() => {
+    if (channelFilter !== 'all' && isSecureChannel(channelFilter)) {
+      // Automatically hide incomplete nodes on secure channels
+      setShowIncompleteNodes(false);
+    }
+  }, [channelFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!isOpen) return null;
+
+  const selectedChannelIsSecure = isSecureChannel(channelFilter);
 
   return (
     <div className="filter-popup-overlay" onClick={onClose}>
@@ -52,13 +80,34 @@ export const NodeFilterPopup: React.FC<NodeFilterPopupProps> = ({ isOpen, onClos
               <option value="all">All Channels</option>
               {availableChannels.map(channelId => {
                 const channel = channels.find(ch => ch.id === channelId);
+                const isSecure = isSecureChannel(channelId);
                 return (
                   <option key={channelId} value={channelId}>
-                    Channel {channelId}{channel?.name ? ` (${channel.name})` : ''}
+                    Channel {channelId}{channel?.name ? ` (${channel.name})` : ''}{isSecure ? ' 🔒' : ''}
                   </option>
                 );
               })}
             </select>
+          </div>
+
+          {/* Incomplete Nodes Filter */}
+          <div className="filter-section">
+            <label className="filter-checkbox-label">
+              <input
+                type="checkbox"
+                checked={!showIncompleteNodes}
+                onChange={(e) => setShowIncompleteNodes(!e.target.checked)}
+              />
+              <span>Hide incomplete nodes</span>
+            </label>
+            <div className="filter-help-text">
+              Incomplete nodes are missing name or hardware info.
+              {selectedChannelIsSecure && (
+                <span className="filter-warning">
+                  {' '}Recommended for secure channels.
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </div>

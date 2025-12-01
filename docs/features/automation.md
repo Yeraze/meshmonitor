@@ -68,6 +68,21 @@ When enabled, MeshMonitor monitors all incoming messages for patterns matching t
 
 **Token Insertion**: Click on any token button to insert it at your cursor position, making it easy to build complex templates.
 
+### Skip Incomplete Nodes {#skip-incomplete-nodes-ack}
+
+**Description**: When enabled, Auto Acknowledge will not respond to messages from incomplete nodes.
+
+**Default**: Disabled
+
+**What are incomplete nodes?**: Nodes missing proper `longName`, `shortName`, or `hwModel`. On secure channels (custom PSK), this typically means we haven't received their encrypted NODEINFO packet - they may have just overheard traffic but aren't verified channel members.
+
+**When to enable**:
+- Using secure/encrypted channels with custom PSK
+- Want to only acknowledge messages from verified nodes
+- Prevent responding to nodes that may be eavesdropping
+
+**Related**: See [Hide Incomplete Nodes](/features/settings#hide-incomplete-nodes) for UI filtering.
+
 ### Side Effects
 
 - Generates additional mesh traffic for each matched message
@@ -720,6 +735,21 @@ See the [examples/auto-responder-scripts/README.md](https://github.com/MeshAddic
 - Text responses automatically use a multiline textarea
 - Supports 3+ lines with vertical resizing
 - Useful for longer responses or formatted text
+
+### Skip Incomplete Nodes {#skip-incomplete-nodes-responder}
+
+**Description**: When enabled, Auto Responder will not process or respond to messages from incomplete nodes.
+
+**Default**: Disabled
+
+**What are incomplete nodes?**: Nodes missing proper `longName`, `shortName`, or `hwModel`. On secure channels (custom PSK), this typically means we haven't received their encrypted NODEINFO packet - they may have just overheard traffic but aren't verified channel members.
+
+**When to enable**:
+- Using secure/encrypted channels with custom PSK
+- Want bot functionality to only serve verified nodes
+- Prevent external HTTP requests or script execution from unverified sources
+
+**Related**: See [Hide Incomplete Nodes](/features/settings#hide-incomplete-nodes) for UI filtering, or [Skip Incomplete Nodes for Auto Acknowledge](#skip-incomplete-nodes-ack).
 
 ### Side Effects
 

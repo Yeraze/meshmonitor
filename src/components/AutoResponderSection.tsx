@@ -24,14 +24,17 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
   enabled,
   triggers,
   channels,
+  skipIncompleteNodes,
   baseUrl,
   onEnabledChange,
   onTriggersChange,
+  onSkipIncompleteNodesChange,
 }) => {
   const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();
   const [localEnabled, setLocalEnabled] = useState(enabled);
   const [localTriggers, setLocalTriggers] = useState<AutoResponderTrigger[]>(triggers);
+  const [localSkipIncompleteNodes, setLocalSkipIncompleteNodes] = useState(skipIncompleteNodes);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [newTrigger, setNewTrigger] = useState('');
@@ -66,13 +69,14 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
   useEffect(() => {
     setLocalEnabled(enabled);
     setLocalTriggers(triggers);
-  }, [enabled, triggers]);
+    setLocalSkipIncompleteNodes(skipIncompleteNodes);
+  }, [enabled, triggers, skipIncompleteNodes]);
 
   // Check if any settings have changed
   useEffect(() => {
-    const changed = localEnabled !== enabled || JSON.stringify(localTriggers) !== JSON.stringify(triggers);
+    const changed = localEnabled !== enabled || JSON.stringify(localTriggers) !== JSON.stringify(triggers) || localSkipIncompleteNodes !== skipIncompleteNodes;
     setHasChanges(changed);
-  }, [localEnabled, localTriggers, enabled, triggers]);
+  }, [localEnabled, localTriggers, localSkipIncompleteNodes, enabled, triggers, skipIncompleteNodes]);
 
   // Validate new trigger in realtime
   useEffect(() => {
@@ -471,7 +475,8 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           autoResponderEnabled: String(localEnabled),
-          autoResponderTriggers: JSON.stringify(localTriggers)
+          autoResponderTriggers: JSON.stringify(localTriggers),
+          autoResponderSkipIncompleteNodes: String(localSkipIncompleteNodes)
         })
       });
 
@@ -486,6 +491,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
       // Update parent state after successful API call
       onEnabledChange(localEnabled);
       onTriggersChange(localTriggers);
+      onSkipIncompleteNodesChange(localSkipIncompleteNodes);
 
       setHasChanges(false);
       showToast('Settings saved successfully!', 'success');
@@ -551,6 +557,31 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
           Automatically respond to messages matching your trigger patterns. Supports text responses, HTTP webhooks, and custom script execution.
           Scripts must be placed in <code style={{ background: 'var(--ctp-surface1)', padding: '2px 4px', borderRadius: '2px' }}>/data/scripts/</code> (production) and can be Node.js (.js, .mjs), Python (.py), or Shell (.sh). Responses are truncated to 200 characters.
         </p>
+
+        <div className="setting-item" style={{ marginTop: '1rem', marginBottom: '1.5rem' }}>
+          <label>
+            Security
+            <span className="setting-description">
+              Protect against sending messages to nodes that may not be on your channel
+            </span>
+          </label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
+            <input
+              type="checkbox"
+              id="autoResponderSkipIncomplete"
+              checked={localSkipIncompleteNodes}
+              onChange={(e) => setLocalSkipIncompleteNodes(e.target.checked)}
+              disabled={!localEnabled}
+              style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
+            />
+            <label htmlFor="autoResponderSkipIncomplete" style={{ margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed', fontWeight: 'bold' }}>
+              Skip incomplete nodes
+            </label>
+          </div>
+          <div style={{ marginTop: '0.5rem', marginLeft: '1.75rem', fontSize: '0.9rem', color: 'var(--ctp-subtext0)' }}>
+            Don't auto-respond to messages from nodes that are missing name or hardware info. Recommended for secure channels to avoid responding to nodes that may have overheard your encrypted traffic.
+          </div>
+        </div>
 
         {/* Pattern Examples Section */}
         <PatternExamples onSelectPattern={setNewTrigger} />

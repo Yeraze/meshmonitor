@@ -1,8 +1,5 @@
-/**
- * @vitest-environment jsdom
- */
 import { describe, it, expect } from 'vitest';
-import { getRoleName, getHardwareModelName, getNodeName, getNodeShortName } from './nodeHelpers';
+import { getRoleName, getHardwareModelName, getNodeName, getNodeShortName, isNodeComplete } from './nodeHelpers';
 import { ROLE_NAMES, HARDWARE_MODELS } from '../constants';
 import type { DeviceInfo } from '../types/device';
 
@@ -238,6 +235,219 @@ describe('Node Helpers', () => {
       for (let i = 0; i < roleNumbers.length; i++) {
         expect(roleNumbers[i]).toBe(i);
       }
+    });
+  });
+
+  describe('isNodeComplete', () => {
+    describe('DeviceInfo format (frontend)', () => {
+      it('should return true for a complete node with all fields', () => {
+        const completeNode: DeviceInfo = {
+          nodeNum: 123456789,
+          user: {
+            id: '!abc12345',
+            longName: 'Test Node Alpha',
+            shortName: 'TNA',
+            hwModel: 9
+          }
+        };
+        expect(isNodeComplete(completeNode)).toBe(true);
+      });
+
+      it('should return false for node with default longName format', () => {
+        const node: DeviceInfo = {
+          nodeNum: 123456789,
+          user: {
+            id: '!abc12345',
+            longName: 'Node !abc12345',
+            shortName: 'TNA',
+            hwModel: 9
+          }
+        };
+        expect(isNodeComplete(node)).toBe(false);
+      });
+
+      it('should return false for node without longName', () => {
+        const node: DeviceInfo = {
+          nodeNum: 123456789,
+          user: {
+            id: '!abc12345',
+            shortName: 'TNA',
+            hwModel: 9
+          }
+        };
+        expect(isNodeComplete(node)).toBe(false);
+      });
+
+      it('should return false for node without shortName', () => {
+        const node: DeviceInfo = {
+          nodeNum: 123456789,
+          user: {
+            id: '!abc12345',
+            longName: 'Test Node',
+            hwModel: 9
+          }
+        };
+        expect(isNodeComplete(node)).toBe(false);
+      });
+
+      it('should return false for node with default shortName (first 4 chars of nodeId)', () => {
+        const node: DeviceInfo = {
+          nodeNum: 123456789,
+          user: {
+            id: '!abc12345',
+            longName: 'Test Node',
+            shortName: 'abc1', // First 4 chars of node ID without !
+            hwModel: 9
+          }
+        };
+        expect(isNodeComplete(node)).toBe(false);
+      });
+
+      it('should return false for node without hwModel', () => {
+        const node: DeviceInfo = {
+          nodeNum: 123456789,
+          user: {
+            id: '!abc12345',
+            longName: 'Test Node',
+            shortName: 'TNA'
+          }
+        };
+        expect(isNodeComplete(node)).toBe(false);
+      });
+
+      it('should return false for node with null hwModel', () => {
+        const node: DeviceInfo = {
+          nodeNum: 123456789,
+          user: {
+            id: '!abc12345',
+            longName: 'Test Node',
+            shortName: 'TNA',
+            hwModel: null as any
+          }
+        };
+        expect(isNodeComplete(node)).toBe(false);
+      });
+
+      it('should return false for node without user object', () => {
+        const node: DeviceInfo = {
+          nodeNum: 123456789
+        };
+        expect(isNodeComplete(node)).toBe(false);
+      });
+
+      it('should return false for null/undefined node', () => {
+        expect(isNodeComplete(null as any)).toBe(false);
+        expect(isNodeComplete(undefined as any)).toBe(false);
+      });
+
+      it('should return true for hwModel 0 (Unset is still a valid response)', () => {
+        const node: DeviceInfo = {
+          nodeNum: 123456789,
+          user: {
+            id: '!abc12345',
+            longName: 'Test Node',
+            shortName: 'TEST',
+            hwModel: 0
+          }
+        };
+        expect(isNodeComplete(node)).toBe(true);
+      });
+    });
+
+    describe('Database node format (backend)', () => {
+      it('should return true for a complete database node', () => {
+        const dbNode = {
+          nodeId: '!abc12345',
+          longName: 'Test Node',
+          shortName: 'TEST',
+          hwModel: 9
+        };
+        expect(isNodeComplete(dbNode)).toBe(true);
+      });
+
+      it('should return false for database node with default longName', () => {
+        const dbNode = {
+          nodeId: '!abc12345',
+          longName: 'Node !abc12345',
+          shortName: 'TEST',
+          hwModel: 9
+        };
+        expect(isNodeComplete(dbNode)).toBe(false);
+      });
+
+      it('should return false for database node with default shortName', () => {
+        const dbNode = {
+          nodeId: '!abc12345',
+          longName: 'Test Node',
+          shortName: 'abc1', // Default derived from nodeId
+          hwModel: 9
+        };
+        expect(isNodeComplete(dbNode)).toBe(false);
+      });
+
+      it('should return false for database node without hwModel', () => {
+        const dbNode = {
+          nodeId: '!abc12345',
+          longName: 'Test Node',
+          shortName: 'TEST'
+        };
+        expect(isNodeComplete(dbNode)).toBe(false);
+      });
+    });
+
+    describe('edge cases', () => {
+      it('should handle node with empty string longName', () => {
+        const node: DeviceInfo = {
+          nodeNum: 123456789,
+          user: {
+            id: '!abc12345',
+            longName: '',
+            shortName: 'TEST',
+            hwModel: 9
+          }
+        };
+        expect(isNodeComplete(node)).toBe(false);
+      });
+
+      it('should handle node with empty string shortName', () => {
+        const node: DeviceInfo = {
+          nodeNum: 123456789,
+          user: {
+            id: '!abc12345',
+            longName: 'Test Node',
+            shortName: '',
+            hwModel: 9
+          }
+        };
+        expect(isNodeComplete(node)).toBe(false);
+      });
+
+      it('should handle node without nodeId when checking shortName default', () => {
+        // If there's no nodeId to compare against, shortName is considered valid
+        const node: DeviceInfo = {
+          nodeNum: 123456789,
+          user: {
+            longName: 'Test Node',
+            shortName: 'abc1',
+            hwModel: 9
+          } as any
+        };
+        expect(isNodeComplete(node)).toBe(true);
+      });
+
+      it('should handle broadcast node (special case)', () => {
+        // Broadcast node is technically complete if it has proper fields
+        const broadcastNode: DeviceInfo = {
+          nodeNum: 4294967295,
+          user: {
+            id: '!ffffffff',
+            longName: 'Broadcast',
+            shortName: 'BCAST',
+            hwModel: 0
+          }
+        };
+        expect(isNodeComplete(broadcastNode)).toBe(true);
+      });
     });
   });
 });

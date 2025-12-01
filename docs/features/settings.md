@@ -16,6 +16,37 @@ The Settings tab allows you to customize MeshMonitor's behavior and manage your 
 
 **Side Effects**: Setting this too low may cause frequently-active nodes to disappear from the list temporarily. Setting it too high may clutter the list with offline nodes.
 
+### Hide Incomplete Nodes
+
+**Description**: Filters out nodes that haven't been fully verified on secure channels. Incomplete nodes are missing proper name or hardware information, which on encrypted channels indicates we haven't received their NODEINFO packet.
+
+**Location**: Settings → Node Display, and Filter popup in Nodes/Messages tabs
+
+**Default**: Disabled (show all nodes)
+
+**How it works**: A node is considered "incomplete" when it's missing:
+- A valid `longName` (not just "Node !abc1234" format)
+- A valid `shortName`
+- A valid `hwModel` (hardware model)
+
+**Why this matters for secure channels**: On channels with custom PSK encryption, NODEINFO packets (containing name and hardware info) are encrypted. If MeshMonitor can't decrypt a node's NODEINFO, we only see default values like "Node !abc1234". This means:
+- **Complete node** = Successfully decrypted NODEINFO = Verified on the same channel
+- **Incomplete node** = No NODEINFO received = May have just overheard encrypted traffic
+
+**Effect**: When enabled, incomplete nodes are hidden from:
+- Node List (Nodes tab)
+- Messages tab node list and recipient dropdown
+- Filter popup shows checkbox with secure channel recommendation
+
+**Auto-behavior**: When filtering by a secure channel (custom PSK), the filter popup automatically enables "Hide incomplete nodes" as a recommended default.
+
+**Use Cases**:
+- Secure mesh deployments where you only want to see verified channel members
+- Filtering out nodes that may have overheard traffic but aren't on your encrypted channel
+- Reducing clutter from unconfigured or unknown devices
+
+**Related Settings**: See [Skip Incomplete Nodes for Automation](/features/automation#skip-incomplete-nodes) to prevent auto-ack and auto-responder from responding to incomplete nodes.
+
 ### Unknown Nodes Filter
 
 **Description**: Allows you to filter nodes that have no identifying name information. Unknown nodes are those without both a long name and short name, typically displayed as "Node 12345678" in the interface.

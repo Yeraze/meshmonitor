@@ -17,6 +17,8 @@ interface UIContextType {
   setSecurityFilter: React.Dispatch<React.SetStateAction<'all' | 'flaggedOnly' | 'hideFlagged'>>;
   channelFilter: number | 'all';
   setChannelFilter: React.Dispatch<React.SetStateAction<number | 'all'>>;
+  showIncompleteNodes: boolean;
+  setShowIncompleteNodes: React.Dispatch<React.SetStateAction<boolean>>;
   dmFilter: 'all' | 'unread' | 'recent';
   setDmFilter: React.Dispatch<React.SetStateAction<'all' | 'unread' | 'recent'>>;
   sortField: SortField;
@@ -43,6 +45,8 @@ interface UIContextType {
   setAutoAckDirectMessages: React.Dispatch<React.SetStateAction<boolean>>;
   autoAckUseDM: boolean;
   setAutoAckUseDM: React.Dispatch<React.SetStateAction<boolean>>;
+  autoAckSkipIncompleteNodes: boolean;
+  setAutoAckSkipIncompleteNodes: React.Dispatch<React.SetStateAction<boolean>>;
   autoAnnounceEnabled: boolean;
   setAutoAnnounceEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   autoAnnounceIntervalHours: number;
@@ -71,6 +75,8 @@ interface UIContextType {
   setAutoResponderEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   autoResponderTriggers: AutoResponderTrigger[];
   setAutoResponderTriggers: React.Dispatch<React.SetStateAction<AutoResponderTrigger[]>>;
+  autoResponderSkipIncompleteNodes: boolean;
+  setAutoResponderSkipIncompleteNodes: React.Dispatch<React.SetStateAction<boolean>>;
   showNodeFilterPopup: boolean;
   setShowNodeFilterPopup: React.Dispatch<React.SetStateAction<boolean>>;
   isNodeListCollapsed: boolean;
@@ -108,6 +114,9 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   const [nodeFilter, setNodeFilter] = useState<string>('');
   const [securityFilter, setSecurityFilter] = useState<'all' | 'flaggedOnly' | 'hideFlagged'>('all');
   const [channelFilter, setChannelFilter] = useState<number | 'all'>('all');
+  // Default to showing incomplete nodes (true), but can be toggled to hide them
+  // On secure channels (custom PSK), users may want to hide incomplete nodes
+  const [showIncompleteNodes, setShowIncompleteNodes] = useState<boolean>(true);
   const [dmFilter, setDmFilter] = useState<'all' | 'unread' | 'recent'>('all');
   const [sortField, setSortField] = useState<SortField>(() => {
     const saved = localStorage.getItem('preferredSortField');
@@ -128,6 +137,7 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   const [autoAckChannels, setAutoAckChannels] = useState<number[]>([]);
   const [autoAckDirectMessages, setAutoAckDirectMessages] = useState<boolean>(false);
   const [autoAckUseDM, setAutoAckUseDM] = useState<boolean>(false);
+  const [autoAckSkipIncompleteNodes, setAutoAckSkipIncompleteNodes] = useState<boolean>(false);
   const [autoAnnounceEnabled, setAutoAnnounceEnabled] = useState<boolean>(false);
   const [autoAnnounceIntervalHours, setAutoAnnounceIntervalHours] = useState<number>(6);
   const [autoAnnounceMessage, setAutoAnnounceMessage] = useState<string>('MeshMonitor {VERSION} online for {DURATION} {FEATURES}');
@@ -142,6 +152,7 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   const [autoWelcomeMaxHops, setAutoWelcomeMaxHops] = useState<number>(5);
   const [autoResponderEnabled, setAutoResponderEnabled] = useState<boolean>(false);
   const [autoResponderTriggers, setAutoResponderTriggers] = useState<AutoResponderTrigger[]>([]);
+  const [autoResponderSkipIncompleteNodes, setAutoResponderSkipIncompleteNodes] = useState<boolean>(false);
   const [showNodeFilterPopup, setShowNodeFilterPopup] = useState<boolean>(false);
   // Start with node list collapsed on mobile devices (screens <= 768px)
   const [isNodeListCollapsed, setIsNodeListCollapsed] = useState<boolean>(() => {
@@ -181,6 +192,8 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
         setSecurityFilter,
         channelFilter,
         setChannelFilter,
+        showIncompleteNodes,
+        setShowIncompleteNodes,
         dmFilter,
         setDmFilter,
         sortField,
@@ -207,6 +220,8 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
         setAutoAckDirectMessages,
         autoAckUseDM,
         setAutoAckUseDM,
+        autoAckSkipIncompleteNodes,
+        setAutoAckSkipIncompleteNodes,
         autoAnnounceEnabled,
         setAutoAnnounceEnabled,
         autoAnnounceIntervalHours,
@@ -235,6 +250,8 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
         setAutoResponderEnabled,
         autoResponderTriggers,
         setAutoResponderTriggers,
+        autoResponderSkipIncompleteNodes,
+        setAutoResponderSkipIncompleteNodes,
         showNodeFilterPopup,
         setShowNodeFilterPopup,
         isNodeListCollapsed,

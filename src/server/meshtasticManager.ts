@@ -10,6 +10,7 @@ import { notificationService } from './services/notificationService.js';
 import packetLogService from './services/packetLogService.js';
 import { messageQueueService } from './messageQueueService.js';
 import { normalizeTriggerPatterns } from '../utils/autoResponderUtils.js';
+import { isNodeComplete } from '../utils/nodeHelpers.js';
 import { createRequire } from 'module';
 import * as cron from 'node-cron';
 import fs from 'fs';
@@ -4516,6 +4517,17 @@ class MeshtasticManager {
         return;
       }
 
+      // Skip auto-acknowledge for incomplete nodes (nodes we haven't received full NODEINFO from)
+      // This prevents sending automated messages to nodes that may not be on the same secure channel
+      const autoAckSkipIncompleteNodes = databaseService.getSetting('autoAckSkipIncompleteNodes');
+      if (autoAckSkipIncompleteNodes === 'true') {
+        const fromNode = databaseService.getNode(fromNum);
+        if (fromNode && !isNodeComplete(fromNode)) {
+          logger.debug(`⏭️  Skipping auto-acknowledge for incomplete node ${fromNode.nodeId || fromNum} (missing proper name or hwModel)`);
+          return;
+        }
+      }
+
       // Use default regex if not set
       const regexPattern = autoAckRegex || '^(test|ping)';
 
@@ -4670,6 +4682,17 @@ class MeshtasticManager {
       if (localNodeNum && parseInt(localNodeNum) === fromNum) {
         logger.debug('⏭️  Skipping auto-responder for message from local node');
         return;
+      }
+
+      // Skip auto-responder for incomplete nodes (nodes we haven't received full NODEINFO from)
+      // This prevents sending automated messages to nodes that may not be on the same secure channel
+      const autoResponderSkipIncompleteNodes = databaseService.getSetting('autoResponderSkipIncompleteNodes');
+      if (autoResponderSkipIncompleteNodes === 'true') {
+        const fromNode = databaseService.getNode(fromNum);
+        if (fromNode && !isNodeComplete(fromNode)) {
+          logger.debug(`⏭️  Skipping auto-responder for incomplete node ${fromNode.nodeId || fromNum} (missing proper name or hwModel)`);
+          return;
+        }
       }
 
       // Get triggers array
