@@ -3451,6 +3451,7 @@ class DatabaseService {
       INSERT OR IGNORE INTO read_messages (message_id, user_id, read_at)
       SELECT id, ?, ? FROM messages
       WHERE channel = ?
+        AND portnum = 1
     `;
     const params: any[] = [userId, Date.now(), channelId];
 
@@ -3469,6 +3470,7 @@ class DatabaseService {
       INSERT OR IGNORE INTO read_messages (message_id, user_id, read_at)
       SELECT id, ?, ? FROM messages
       WHERE ((fromNodeId = ? AND toNodeId = ?) OR (fromNodeId = ? AND toNodeId = ?))
+        AND portnum = 1
     `;
     const params: any[] = [userId, Date.now(), localNodeId, remoteNodeId, remoteNodeId, localNodeId];
 

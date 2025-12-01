@@ -1,5 +1,5 @@
 import { DeviceInfo } from '../types/device';
-import { ROLE_NAMES, HARDWARE_MODELS } from '../constants';
+import { ROLE_NAMES, HARDWARE_MODELS } from '../constants/index.js';
 
 export const getRoleName = (role: number | string | undefined): string | null => {
   if (role === undefined || role === null) return null;

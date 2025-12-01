@@ -3,7 +3,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { getRoleName } from './nodeHelpers';
-import { ROLE_NAMES } from '../constants';
+import { ROLE_NAMES } from '../constants/index.js';
 
 describe('mapHelpers', () => {
   describe('getRoleName', () => {

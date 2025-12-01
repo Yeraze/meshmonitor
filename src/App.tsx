@@ -3569,10 +3569,26 @@ function App() {
             {/* Selected Channel Messaging */}
             {selectedChannel !== -1 && (
               <div className="channel-conversation-section">
-                <h3>
-                  {getChannelName(selectedChannel)}
-                  <span className="channel-id-label">#{selectedChannel}</span>
-                </h3>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <h3 style={{ margin: 0 }}>
+                    {getChannelName(selectedChannel)}
+                    <span className="channel-id-label">#{selectedChannel}</span>
+                  </h3>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      markMessagesAsRead(undefined, selectedChannel);
+                    }}
+                    title="Mark all messages in this channel as read"
+                    style={{
+                      padding: '0.5rem 1rem',
+                      fontSize: '0.9rem',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    Mark all as Read
+                  </button>
+                </div>
 
                 <div className="channel-conversation">
                   <div className="messages-container" ref={channelMessagesContainerRef}>
@@ -4266,6 +4282,20 @@ function App() {
                       return null;
                     })()}
                   </h3>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      markMessagesAsRead(undefined, undefined, selectedDMNode);
+                    }}
+                    title="Mark all messages in this conversation as read"
+                    style={{
+                      padding: '0.5rem 1rem',
+                      fontSize: '0.9rem',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    Mark all as Read
+                  </button>
                 </div>
               </div>
 
