@@ -1540,9 +1540,8 @@ function App() {
     setShowRebootModal(false);
     setConnectionStatus('connected');
 
-    // Refresh data after reboot
-    fetchNodesWithTelemetry();
-    fetchChannels();
+    // Refresh all data after reboot - usePoll fetches nodes, messages, channels, config, telemetry
+    refetchPoll();
 
     // Trigger config refresh in ConfigurationTab
     setConfigRefreshTrigger(prev => {
@@ -1697,21 +1696,6 @@ function App() {
       }
     } catch (error) {
       logger.error('Error fetching neighbor info:', error);
-    }
-  };
-
-  const fetchNodesWithTelemetry = async () => {
-    try {
-      const response = await authFetch(`${baseUrl}/api/telemetry/available/nodes`);
-      if (response.ok) {
-        const data = await response.json();
-        setNodesWithTelemetry(new Set(data.nodes));
-        setNodesWithWeatherTelemetry(new Set(data.weather || []));
-        setNodesWithEstimatedPosition(new Set(data.estimatedPosition || []));
-        setNodesWithPKC(new Set(data.pkc || []));
-      }
-    } catch (error) {
-      logger.error('Error fetching telemetry availability:', error);
     }
   };
 
