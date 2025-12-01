@@ -428,7 +428,6 @@ function App() {
     isDMScrolledToBottom,
     setIsDMScrolledToBottom,
     markMessagesAsRead,
-    fetchUnreadCounts,
     unreadCountsData
   } = useMessaging();
 
@@ -1284,18 +1283,7 @@ function App() {
     }
   }, [selectedDMNode, activeTab]);
 
-  // Fetch unread counts on initial load and periodically
-  useEffect(() => {
-    // Initial fetch
-    fetchUnreadCounts();
-
-    // Set up periodic refresh (every 10 seconds)
-    const unreadInterval = setInterval(() => {
-      fetchUnreadCounts();
-    }, 10000);
-
-    return () => clearInterval(unreadInterval);
-  }, [fetchUnreadCounts]);
+  // Unread counts polling is now handled by useUnreadCounts hook in MessagingContext
 
   // Mark messages as read when viewing a channel
   useEffect(() => {
