@@ -1,76 +1,85 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { flushSync } from 'react-dom'
-import { Popup, Polyline } from 'react-leaflet'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
-import './App.css'
-import TelemetryGraphs from './components/TelemetryGraphs'
-import NodeDetailsBlock from './components/NodeDetailsBlock'
-import InfoTab from './components/InfoTab'
-import SettingsTab from './components/SettingsTab'
-import ConfigurationTab from './components/ConfigurationTab'
-import NotificationsTab from './components/NotificationsTab'
-import UsersTab from './components/UsersTab'
-import AuditLogTab from './components/AuditLogTab'
-import { SecurityTab } from './components/SecurityTab'
-import Dashboard from './components/Dashboard'
-import NodesTab from './components/NodesTab'
-import HopCountDisplay from './components/HopCountDisplay'
-import AutoAcknowledgeSection from './components/AutoAcknowledgeSection'
-import AutoTracerouteSection from './components/AutoTracerouteSection'
-import AutoAnnounceSection from './components/AutoAnnounceSection'
-import AutoWelcomeSection from './components/AutoWelcomeSection'
-import AutoResponderSection from './components/AutoResponderSection'
-import { ToastProvider, useToast } from './components/ToastContainer'
-import { RebootModal } from './components/RebootModal'
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { flushSync } from 'react-dom';
+import { Popup, Polyline } from 'react-leaflet';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import './App.css';
+import TelemetryGraphs from './components/TelemetryGraphs';
+import NodeDetailsBlock from './components/NodeDetailsBlock';
+import InfoTab from './components/InfoTab';
+import SettingsTab from './components/SettingsTab';
+import ConfigurationTab from './components/ConfigurationTab';
+import NotificationsTab from './components/NotificationsTab';
+import UsersTab from './components/UsersTab';
+import AuditLogTab from './components/AuditLogTab';
+import { SecurityTab } from './components/SecurityTab';
+import Dashboard from './components/Dashboard';
+import NodesTab from './components/NodesTab';
+import HopCountDisplay from './components/HopCountDisplay';
+import AutoAcknowledgeSection from './components/AutoAcknowledgeSection';
+import AutoTracerouteSection from './components/AutoTracerouteSection';
+import AutoAnnounceSection from './components/AutoAnnounceSection';
+import AutoWelcomeSection from './components/AutoWelcomeSection';
+import AutoResponderSection from './components/AutoResponderSection';
+import { ToastProvider, useToast } from './components/ToastContainer';
+import { RebootModal } from './components/RebootModal';
 // import { version } from '../package.json' // Removed - footer no longer displayed
-import { type TemperatureUnit } from './utils/temperature'
-import { calculateDistance, formatDistance } from './utils/distance'
-import { formatDateTime, formatRelativeTime, formatMessageTime, getMessageDateSeparator, shouldShowDateSeparator } from './utils/datetime'
-import { formatTracerouteRoute } from './utils/traceroute'
-import { getUtf8ByteLength, formatByteCount } from './utils/text'
-import { renderMessageWithLinks } from './utils/linkRenderer'
-import { DeviceInfo, Channel } from './types/device'
-import { MeshMessage, MessageDeliveryState } from './types/message'
-import { SortField, SortDirection } from './types/ui'
-import { ResourceType } from './types/permission'
-import api from './services/api'
-import { logger } from './utils/logger'
-import { generateArrowMarkers } from './utils/mapHelpers.tsx'
-import { ROLE_NAMES } from './constants'
-import { getHardwareModelName, getRoleName, isNodeComplete } from './utils/nodeHelpers'
-import Sidebar from './components/Sidebar'
-import LinkPreview from './components/LinkPreview'
-import { SettingsProvider, useSettings } from './contexts/SettingsContext'
-import { MapProvider, useMapContext } from './contexts/MapContext'
-import { DataProvider, useData } from './contexts/DataContext'
-import { MessagingProvider, useMessaging } from './contexts/MessagingContext'
-import { UIProvider, useUI } from './contexts/UIContext'
-import { useAuth } from './contexts/AuthContext'
-import { useCsrf } from './contexts/CsrfContext'
-import { useHealth } from './hooks/useHealth'
-import { useTxStatus } from './hooks/useTxStatus'
-import LoginModal from './components/LoginModal'
-import LoginPage from './components/LoginPage'
-import UserMenu from './components/UserMenu'
+import { type TemperatureUnit } from './utils/temperature';
+import { calculateDistance, formatDistance } from './utils/distance';
+import {
+  formatDateTime,
+  formatRelativeTime,
+  formatMessageTime,
+  getMessageDateSeparator,
+  shouldShowDateSeparator,
+} from './utils/datetime';
+import { formatTracerouteRoute } from './utils/traceroute';
+import { getUtf8ByteLength, formatByteCount } from './utils/text';
+import { renderMessageWithLinks } from './utils/linkRenderer';
+import { DeviceInfo, Channel } from './types/device';
+import { MeshMessage, MessageDeliveryState } from './types/message';
+import { SortField, SortDirection } from './types/ui';
+import { ResourceType } from './types/permission';
+import api from './services/api';
+import { logger } from './utils/logger';
+import { generateArrowMarkers } from './utils/mapHelpers.tsx';
+import { ROLE_NAMES } from './constants';
+import { getHardwareModelName, getRoleName, isNodeComplete } from './utils/nodeHelpers';
+import Sidebar from './components/Sidebar';
+import LinkPreview from './components/LinkPreview';
+import { SettingsProvider, useSettings } from './contexts/SettingsContext';
+import { MapProvider, useMapContext } from './contexts/MapContext';
+import { DataProvider, useData } from './contexts/DataContext';
+import { MessagingProvider, useMessaging } from './contexts/MessagingContext';
+import { UIProvider, useUI } from './contexts/UIContext';
+import { useAuth } from './contexts/AuthContext';
+import { useCsrf } from './contexts/CsrfContext';
+import { useHealth } from './hooks/useHealth';
+import { useTxStatus } from './hooks/useTxStatus';
+import LoginModal from './components/LoginModal';
+import LoginPage from './components/LoginPage';
+import UserMenu from './components/UserMenu';
 
 // Track pending favorite requests outside component to persist across remounts
 // Maps nodeNum -> expected isFavorite state
-const pendingFavoriteRequests = new Map<number, boolean>()
-import TracerouteHistoryModal from './components/TracerouteHistoryModal'
-import RouteSegmentTraceroutesModal from './components/RouteSegmentTraceroutesModal'
-import { NodeFilterPopup } from './components/NodeFilterPopup'
+const pendingFavoriteRequests = new Map<number, boolean>();
+import TracerouteHistoryModal from './components/TracerouteHistoryModal';
+import RouteSegmentTraceroutesModal from './components/RouteSegmentTraceroutesModal';
+import { NodeFilterPopup } from './components/NodeFilterPopup';
 
 // Fix for default markers in React-Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJDOS4yNCAyIDcgNC4yNCA3IDdDNyAxMy40NyAxMiAyMiAxMiAyMkMxMiAyMiAxNyAxMy40NyAxNyA3QzE3IDQuMjQgMTQuNzYgMiAxMiAyWk0xMiA5LjVDMTAuNjIgOS41IDkuNSA4LjM4IDkuNSA3UzkuNTEgNC41IDExIDQuNVMxNS41IDUuNjIgMTUuNSA3UzE0LjM4IDkuNSAxMiA5LjVaIiBmaWxsPSIjZmY2NjY2Ii8+Cjwvc3ZnPg==',
-  iconUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJDOS4yNCAyIDcgNC4yNCA3IDdDNyAxMy40NyAxMiAyMiAxMiAyMkMxMiAyMiAxNyAxMy40NyAxNyA3QzE3IDQuMjQgMTQuNzYgMiAxMiAyWk0xMiA5LjVDMTAuNjIgOS41IDkuNSA4LjM4IDkuNSA3UzkuNTEgNC41IDExIDQuNVMxNS41IDUuNjIgMTUuNSA7UzE0LjM4IDkuNSAxMiA5LjVaIiBmaWxsPSIjNjY5OGY1Ii8+Cjwvc3ZnPg==',
-  shadowUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJDOS4yNCAyIDcgNC4yNCA3IDdDNyAxMy40NyAxMiAyMiAxMiAyMkMxMiAyMiAxNyAxMy40NyAxNyA3QzE3IDQuMjQgMTQuNzYgMiAxMiAyWk0xMiA5LjVDMTAuNjIgOS41IDkuNSA4LjM4IDkuNSA3UzkuNTEgNC41IDExIDQuNVMxNS41IDUuNjIgMTUuNSA3UzE0LjM4IDkuNSAxMiA5LjVaIiBmaWxsPSIjMDAwIiBmaWxsLW9wYWNpdHk9IjAuMyIvPgo8L3N2Zz4K',
+  iconRetinaUrl:
+    'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJDOS4yNCAyIDcgNC4yNCA3IDdDNyAxMy40NyAxMiAyMiAxMiAyMkMxMiAyMiAxNyAxMy40NyAxNyA3QzE3IDQuMjQgMTQuNzYgMiAxMiAyWk0xMiA5LjVDMTAuNjIgOS41IDkuNSA4LjM4IDkuNSA3UzkuNTEgNC41IDExIDQuNVMxNS41IDUuNjIgMTUuNSA3UzE0LjM4IDkuNSAxMiA5LjVaIiBmaWxsPSIjZmY2NjY2Ii8+Cjwvc3ZnPg==',
+  iconUrl:
+    'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJDOS4yNCAyIDcgNC4yNCA3IDdDNyAxMy40NyAxMiAyMiAxMiAyMkMxMiAyMiAxNyAxMy40NyAxNyA3QzE3IDQuMjQgMTQuNzYgMiAxMiAyWk0xMiA5LjVDMTAuNjIgOS41IDkuNSA4LjM4IDkuNSA3UzkuNTEgNC41IDExIDQuNVMxNS41IDUuNjIgMTUuNSA7UzE0LjM4IDkuNSAxMiA5LjVaIiBmaWxsPSIjNjY5OGY1Ii8+Cjwvc3ZnPg==',
+  shadowUrl:
+    'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJDOS4yNCAyIDcgNC4yNCA3IDdDNyAxMy40NyAxMiAyMiAxMiAyMkMxMiAyMiAxNyAxMy40NyAxNyA3QzE3IDQuMjQgMTQuNzYgMiAxMiAyWk0xMiA5LjVDMTAuNjIgOS41IDkuNSA4LjM4IDkuNSA3UzkuNTEgNC41IDExIDQuNVMxNS41IDUuNjIgMTUuNSA3UzE0LjM4IDkuNSAxMiA5LjVaIiBmaWxsPSIjMDAwIiBmaWxsLW9wYWNpdHk9IjAuMyIvPgo8L3N2Zz4K',
   iconSize: [24, 24],
   iconAnchor: [12, 24],
-  popupAnchor: [0, -24]
+  popupAnchor: [0, -24],
 });
 
 // Icons and helpers are now imported from utils/
@@ -136,12 +145,14 @@ function App() {
   const { showToast } = useToast();
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [isDefaultPassword, setIsDefaultPassword] = useState(false);
-  const [configIssues, setConfigIssues] = useState<Array<{
-    type: 'cookie_secure' | 'allowed_origins';
-    severity: 'error' | 'warning';
-    message: string;
-    docsUrl: string;
-  }>>([]);
+  const [configIssues, setConfigIssues] = useState<
+    Array<{
+      type: 'cookie_secure' | 'allowed_origins';
+      severity: 'error' | 'warning';
+      message: string;
+      docsUrl: string;
+    }>
+  >([]);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [latestVersion, setLatestVersion] = useState('');
   const [releaseUrl, setReleaseUrl] = useState('');
@@ -156,7 +167,7 @@ function App() {
   const [configRefreshTrigger, setConfigRefreshTrigger] = useState(0);
   const [showTracerouteHistoryModal, setShowTracerouteHistoryModal] = useState(false);
   const [showPurgeDataModal, setShowPurgeDataModal] = useState(false);
-  const [selectedRouteSegment, setSelectedRouteSegment] = useState<{nodeNum1: number; nodeNum2: number} | null>(null);
+  const [selectedRouteSegment, setSelectedRouteSegment] = useState<{ nodeNum1: number; nodeNum2: number } | null>(null);
   const [emojiPickerMessage, setEmojiPickerMessage] = useState<MeshMessage | null>(null);
 
   // Check if mobile viewport and default to collapsed on mobile
@@ -218,18 +229,18 @@ function App() {
       showPKI: false,
       showUnknown: false,
       deviceRoles: [] as number[], // Empty array means show all roles
-      channels: [] as number[]
+      channels: [] as number[],
     };
   });
 
-  const hasSelectedInitialChannelRef = useRef<boolean>(false)
-  const selectedChannelRef = useRef<number>(-1)
-  const lastChannelSelectionRef = useRef<number>(-1) // Track last selected channel before switching to Messages tab
-  const showRebootModalRef = useRef<boolean>(false) // Track reboot modal state for interval closure
-  const connectionStatusRef = useRef<string>('disconnected') // Track connection status for interval closure
-  const localNodeIdRef = useRef<string>('') // Track local node ID for immediate access (bypasses React state delay)
-  const pendingMessagesRef = useRef<Map<string, MeshMessage>>(new Map()) // Track pending messages for interval access (bypasses closure stale state)
-  const upgradePollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null) // Track upgrade polling interval for cleanup
+  const hasSelectedInitialChannelRef = useRef<boolean>(false);
+  const selectedChannelRef = useRef<number>(-1);
+  const lastChannelSelectionRef = useRef<number>(-1); // Track last selected channel before switching to Messages tab
+  const showRebootModalRef = useRef<boolean>(false); // Track reboot modal state for interval closure
+  const connectionStatusRef = useRef<string>('disconnected'); // Track connection status for interval closure
+  const localNodeIdRef = useRef<string>(''); // Track local node ID for immediate access (bypasses React state delay)
+  const pendingMessagesRef = useRef<Map<string, MeshMessage>>(new Map()); // Track pending messages for interval access (bypasses closure stale state)
+  const upgradePollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null); // Track upgrade polling interval for cleanup
 
   // Constants for emoji tapbacks
   const EMOJI_FLAG = 1; // Protobuf flag indicating this is a tapback/reaction
@@ -262,14 +273,14 @@ function App() {
     { emoji: '✅', title: 'Check' },
     { emoji: '❌', title: 'X' },
     { emoji: '🔥', title: 'Fire' },
-    { emoji: '💯', title: '100' }
+    { emoji: '💯', title: '100' },
   ] as const;
 
   // Meshtastic default PSK (base64 encoded single null byte = unencrypted)
   const DEFAULT_UNENCRYPTED_PSK = 'AQ==';
 
-  const channelMessagesContainerRef = useRef<HTMLDivElement>(null)
-  const dmMessagesContainerRef = useRef<HTMLDivElement>(null)
+  const channelMessagesContainerRef = useRef<HTMLDivElement>(null);
+  const dmMessagesContainerRef = useRef<HTMLDivElement>(null);
   // const lastNotificationTime = useRef<number>(0) // Disabled for now
   // Detect base URL from pathname
   const detectBaseUrl = () => {
@@ -346,7 +357,7 @@ function App() {
     setSolarMonitoringLatitude,
     setSolarMonitoringLongitude,
     setSolarMonitoringAzimuth,
-    setSolarMonitoringDeclination
+    setSolarMonitoringDeclination,
   } = useSettings();
 
   // Map context
@@ -360,7 +371,7 @@ function App() {
     setNeighborInfo,
     setPositionHistory,
     selectedNodeId,
-    setSelectedNodeId
+    setSelectedNodeId,
   } = useMapContext();
 
   // Data context
@@ -389,13 +400,13 @@ function App() {
     setNodesWithWeatherTelemetry,
     setNodesWithEstimatedPosition,
     nodesWithPKC,
-    setNodesWithPKC
+    setNodesWithPKC,
   } = useData();
 
   // Get computed CSS color values for Leaflet Polyline components (which don't support CSS variables)
   const [themeColors, setThemeColors] = useState({
     mauve: '#cba6f7', // Default to Mocha theme colors
-    red: '#f38ba8'
+    red: '#f38ba8',
   });
 
   // Update theme colors when theme changes
@@ -428,7 +439,7 @@ function App() {
     isDMScrolledToBottom,
     setIsDMScrolledToBottom,
     markMessagesAsRead,
-    unreadCountsData
+    unreadCountsData,
   } = useMessaging();
 
   // UI context
@@ -507,7 +518,7 @@ function App() {
     showNodeFilterPopup,
     setShowNodeFilterPopup,
     showIncompleteNodes,
-    setShowIncompleteNodes
+    setShowIncompleteNodes,
   } = useUI();
 
   // Helper function to safely parse node IDs to node numbers
@@ -585,39 +596,42 @@ function App() {
   }, []);
 
   // Update favicon with red dot when there are unread messages
-  const updateFavicon = useCallback((hasUnread: boolean) => {
-    const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
-    if (!favicon) return;
+  const updateFavicon = useCallback(
+    (hasUnread: boolean) => {
+      const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+      if (!favicon) return;
 
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = 32;
-      canvas.height = 32;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 32;
+        canvas.height = 32;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
 
-      // Draw the original favicon
-      ctx.drawImage(img, 0, 0, 32, 32);
+        // Draw the original favicon
+        ctx.drawImage(img, 0, 0, 32, 32);
 
-      // Draw red dot if there are unread messages
-      if (hasUnread) {
-        ctx.fillStyle = '#ff4444';
-        ctx.beginPath();
-        ctx.arc(24, 8, 6, 0, 2 * Math.PI);
-        ctx.fill();
-        // Add white border for visibility
-        ctx.strokeStyle = 'white';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-      }
+        // Draw red dot if there are unread messages
+        if (hasUnread) {
+          ctx.fillStyle = '#ff4444';
+          ctx.beginPath();
+          ctx.arc(24, 8, 6, 0, 2 * Math.PI);
+          ctx.fill();
+          // Add white border for visibility
+          ctx.strokeStyle = 'white';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
 
-      // Update favicon
-      favicon.href = canvas.toDataURL('image/png');
-    };
-    img.src = `${baseUrl}/favicon-32x32.png`;
-  }, [baseUrl]);
+        // Update favicon
+        favicon.href = canvas.toDataURL('image/png');
+      };
+      img.src = `${baseUrl}/favicon-32x32.png`;
+    },
+    [baseUrl]
+  );
 
   // Compute connected node name for sidebar and page title
   const connectedNodeName = useMemo(() => {
@@ -647,66 +661,71 @@ function App() {
 
   // Helper to fetch with credentials and automatic CSRF token retry
   // Memoized to prevent unnecessary re-renders of components that depend on it
-  const authFetch = useCallback(async (url: string, options?: RequestInit, retryCount = 0, timeoutMs = 10000): Promise<Response> => {
-    const headers = new Headers(options?.headers);
+  const authFetch = useCallback(
+    async (url: string, options?: RequestInit, retryCount = 0, timeoutMs = 10000): Promise<Response> => {
+      const headers = new Headers(options?.headers);
 
-    // Add CSRF token for mutation requests
-    const method = options?.method?.toUpperCase() || 'GET';
-    if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
-      const csrfToken = getCsrfToken();
-      if (csrfToken) {
-        headers.set('X-CSRF-Token', csrfToken);
-        console.log('[App] ✓ CSRF token added to request');
-      } else {
-        console.error('[App] ✗ NO CSRF TOKEN - Request may fail!');
-      }
-    }
-
-    // Create AbortController for timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-    try {
-      const response = await fetch(url, {
-        ...options,
-        headers,
-        credentials: 'include',
-        signal: controller.signal,
-      });
-
-      // Handle 403 CSRF errors with automatic token refresh and retry
-      if (response.status === 403 && retryCount < 1) {
-        if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
-          // Clone response to check if it's a CSRF error without consuming the body
-          const clonedResponse = response.clone();
-          const error = await clonedResponse.json().catch(() => ({ error: '' }));
-          if (error.error && error.error.toLowerCase().includes('csrf')) {
-            console.warn('[App] 403 CSRF error - Refreshing token and retrying...');
-            sessionStorage.removeItem('csrfToken');
-            await refreshCsrfToken();
-            return authFetch(url, options, retryCount + 1, timeoutMs);
-          }
+      // Add CSRF token for mutation requests
+      const method = options?.method?.toUpperCase() || 'GET';
+      if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+        const csrfToken = getCsrfToken();
+        if (csrfToken) {
+          headers.set('X-CSRF-Token', csrfToken);
+          console.log('[App] ✓ CSRF token added to request');
+        } else {
+          console.error('[App] ✗ NO CSRF TOKEN - Request may fail!');
         }
       }
 
-      // Silently handle auth errors to prevent console spam
-      if (response.status === 401 || response.status === 403) {
-        return response;
-      }
+      // Create AbortController for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-      return response;
-    } catch (error) {
-      // Check for AbortError from both Error and DOMException for browser compatibility
-      if ((error instanceof DOMException && error.name === 'AbortError') ||
-          (error instanceof Error && error.name === 'AbortError')) {
-        throw new Error(`Request timeout after ${timeoutMs}ms`);
+      try {
+        const response = await fetch(url, {
+          ...options,
+          headers,
+          credentials: 'include',
+          signal: controller.signal,
+        });
+
+        // Handle 403 CSRF errors with automatic token refresh and retry
+        if (response.status === 403 && retryCount < 1) {
+          if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+            // Clone response to check if it's a CSRF error without consuming the body
+            const clonedResponse = response.clone();
+            const error = await clonedResponse.json().catch(() => ({ error: '' }));
+            if (error.error && error.error.toLowerCase().includes('csrf')) {
+              console.warn('[App] 403 CSRF error - Refreshing token and retrying...');
+              sessionStorage.removeItem('csrfToken');
+              await refreshCsrfToken();
+              return authFetch(url, options, retryCount + 1, timeoutMs);
+            }
+          }
+        }
+
+        // Silently handle auth errors to prevent console spam
+        if (response.status === 401 || response.status === 403) {
+          return response;
+        }
+
+        return response;
+      } catch (error) {
+        // Check for AbortError from both Error and DOMException for browser compatibility
+        if (
+          (error instanceof DOMException && error.name === 'AbortError') ||
+          (error instanceof Error && error.name === 'AbortError')
+        ) {
+          throw new Error(`Request timeout after ${timeoutMs}ms`);
+        }
+        throw error;
+      } finally {
+        // Always clear timeout to prevent memory leaks
+        clearTimeout(timeoutId);
       }
-      throw error;
-    } finally {
-      // Always clear timeout to prevent memory leaks
-      clearTimeout(timeoutId);
-    }
-  }, [getCsrfToken, refreshCsrfToken]);
+    },
+    [getCsrfToken, refreshCsrfToken]
+  );
 
   // Function to detect MQTT/bridge messages that should be filtered
   const isMqttBridgeMessage = (msg: MeshMessage): boolean => {
@@ -732,7 +751,7 @@ function App() {
       }
     });
   };
-  const markerRefs = useRef<Map<string, L.Marker>>(new Map())
+  const markerRefs = useRef<Map<string, L.Marker>>(new Map());
 
   // Load configuration and check connection status on startup
   useEffect(() => {
@@ -803,7 +822,10 @@ function App() {
           }
 
           if (settings.autoAckChannels) {
-            const channels = settings.autoAckChannels.split(',').map((c: string) => parseInt(c.trim())).filter((n: number) => !isNaN(n));
+            const channels = settings.autoAckChannels
+              .split(',')
+              .map((c: string) => parseInt(c.trim()))
+              .filter((n: number) => !isNaN(n));
             setAutoAckChannels(channels);
           }
 
@@ -1021,8 +1043,8 @@ function App() {
         },
         body: JSON.stringify({
           targetVersion: latestVersion,
-          backup: true
-        })
+          backup: true,
+        }),
       });
 
       const data = await response.json();
@@ -1120,7 +1142,9 @@ function App() {
       }
 
       // Schedule next poll with current interval
-      upgradePollingIntervalRef.current = setTimeout(poll, currentInterval) as unknown as ReturnType<typeof setInterval>;
+      upgradePollingIntervalRef.current = setTimeout(poll, currentInterval) as unknown as ReturnType<
+        typeof setInterval
+      >;
     };
 
     // Start polling
@@ -1245,20 +1269,23 @@ function App() {
   }, [isScrolledNearBottom]);
 
   // Auto-scroll to bottom when messages change or channel changes (only if user is at bottom)
-  const scrollToBottom = useCallback((force: boolean = false) => {
-    // Scroll the appropriate container based on active tab
-    if (activeTab === 'channels' && channelMessagesContainerRef.current) {
-      if (force || isChannelScrolledToBottom) {
-        channelMessagesContainerRef.current.scrollTop = channelMessagesContainerRef.current.scrollHeight;
-        setIsChannelScrolledToBottom(true);
+  const scrollToBottom = useCallback(
+    (force: boolean = false) => {
+      // Scroll the appropriate container based on active tab
+      if (activeTab === 'channels' && channelMessagesContainerRef.current) {
+        if (force || isChannelScrolledToBottom) {
+          channelMessagesContainerRef.current.scrollTop = channelMessagesContainerRef.current.scrollHeight;
+          setIsChannelScrolledToBottom(true);
+        }
+      } else if (activeTab === 'messages' && dmMessagesContainerRef.current) {
+        if (force || isDMScrolledToBottom) {
+          dmMessagesContainerRef.current.scrollTop = dmMessagesContainerRef.current.scrollHeight;
+          setIsDMScrolledToBottom(true);
+        }
       }
-    } else if (activeTab === 'messages' && dmMessagesContainerRef.current) {
-      if (force || isDMScrolledToBottom) {
-        dmMessagesContainerRef.current.scrollTop = dmMessagesContainerRef.current.scrollHeight;
-        setIsDMScrolledToBottom(true);
-      }
-    }
-  }, [activeTab, isChannelScrolledToBottom, isDMScrolledToBottom]);
+    },
+    [activeTab, isChannelScrolledToBottom, isDMScrolledToBottom]
+  );
 
   // Attach scroll event listeners
   useEffect(() => {
@@ -1340,13 +1367,13 @@ function App() {
       channels: unreadCountsData?.channels,
       directMessages: unreadCountsData?.directMessages,
       hasUnreadChannels,
-      hasUnreadDMs
+      hasUnreadDMs,
     });
     logger.debug('🔴 Unread counts updated:', {
       channels: unreadCountsData?.channels,
       directMessages: unreadCountsData?.directMessages,
       hasUnreadChannels,
-      hasUnreadDMs
+      hasUnreadDMs,
     });
 
     updateFavicon(hasUnreadChannels || hasUnreadDMs);
@@ -1429,7 +1456,7 @@ function App() {
     try {
       logger.debug('📡 Requesting full node database refresh...');
       const response = await authFetch(`${baseUrl}/api/nodes/refresh`, {
-        method: 'POST'
+        method: 'POST',
       });
 
       if (response.ok) {
@@ -1550,7 +1577,9 @@ function App() {
           return;
         }
 
-        logger.debug(`📡 Connection API response: connected=${status.connected}, nodeResponsive=${status.nodeResponsive}, configuring=${status.configuring}, userDisconnected=${status.userDisconnected}`);
+        logger.debug(
+          `📡 Connection API response: connected=${status.connected}, nodeResponsive=${status.nodeResponsive}, configuring=${status.configuring}, userDisconnected=${status.userDisconnected}`
+        );
 
         // Check if user has manually disconnected
         if (status.userDisconnected) {
@@ -1580,7 +1609,9 @@ function App() {
         if (status.connected && !status.nodeResponsive) {
           logger.debug('⚠️  Server connected but node is not responsive');
           setConnectionStatus('node-offline');
-          setError(`Connected to server, but Meshtastic node is not responding. Please check if the device is powered on and properly connected.`);
+          setError(
+            `Connected to server, but Meshtastic node is not responding. Please check if the device is powered on and properly connected.`
+          );
           return;
         }
 
@@ -1615,7 +1646,9 @@ function App() {
         } else {
           logger.debug('⚠️ Connection API returned connected=false');
           setConnectionStatus('disconnected');
-          setError(`Cannot connect to Meshtastic node at ${nodeAddress}. Please ensure the node is reachable and has HTTP API enabled.`);
+          setError(
+            `Cannot connect to Meshtastic node at ${nodeAddress}. Please ensure the node is reachable and has HTTP API enabled.`
+          );
         }
       } else {
         logger.debug('⚠️ Connection API request failed');
@@ -1633,7 +1666,7 @@ function App() {
   const fetchTraceroutes = async () => {
     try {
       const response = await fetch(`${baseUrl}/api/traceroutes/recent`, {
-        credentials: 'include'
+        credentials: 'include',
       });
       if (response.ok) {
         const data = await response.json();
@@ -1700,7 +1733,7 @@ function App() {
           hasSelectedInitialChannel: hasSelectedInitialChannelRef.current,
           selectedChannelState: selectedChannel,
           selectedChannelRef: currentSelectedChannel,
-          firstChannelId: channelsData[0]?.id
+          firstChannelId: channelsData[0]?.id,
         });
 
         if (channelsData.length > 0) {
@@ -1748,7 +1781,8 @@ function App() {
       // Version change detection is now handled by useHealth hook
 
       // Extract localNodeId early to use in message processing (don't wait for state update)
-      const localNodeId = pollData.deviceConfig?.basic?.nodeId || pollData.config?.localNodeInfo?.nodeId || currentNodeId;
+      const localNodeId =
+        pollData.deviceConfig?.basic?.nodeId || pollData.config?.localNodeInfo?.nodeId || currentNodeId;
 
       // Store in ref for immediate access across functions (bypasses React state delay)
       if (localNodeId) {
@@ -1769,23 +1803,32 @@ function App() {
         } else {
           console.log('[POLL] Merging with pending favorites:', Array.from(pendingRequests.entries()));
           // Merge: keep optimistic isFavorite for nodes with pending requests
-          setNodes(pollData.nodes.map((serverNode: DeviceInfo) => {
-            const pendingState = pendingRequests.get(serverNode.nodeNum);
-            if (pendingState !== undefined) {
-              // Check if server data now matches our pending update
-              if (serverNode.isFavorite === pendingState) {
-                // Server has caught up, remove from pending
-                console.log('[POLL] Server caught up for node:', serverNode.nodeNum);
-                pendingRequests.delete(serverNode.nodeNum);
-                return serverNode;
+          setNodes(
+            pollData.nodes.map((serverNode: DeviceInfo) => {
+              const pendingState = pendingRequests.get(serverNode.nodeNum);
+              if (pendingState !== undefined) {
+                // Check if server data now matches our pending update
+                if (serverNode.isFavorite === pendingState) {
+                  // Server has caught up, remove from pending
+                  console.log('[POLL] Server caught up for node:', serverNode.nodeNum);
+                  pendingRequests.delete(serverNode.nodeNum);
+                  return serverNode;
+                }
+                // Server hasn't caught up yet, preserve the local optimistic value
+                console.log(
+                  '[POLL] Preserving optimistic value for node:',
+                  serverNode.nodeNum,
+                  'pending:',
+                  pendingState,
+                  'server:',
+                  serverNode.isFavorite
+                );
+                return { ...serverNode, isFavorite: pendingState };
               }
-              // Server hasn't caught up yet, preserve the local optimistic value
-              console.log('[POLL] Preserving optimistic value for node:', serverNode.nodeNum, 'pending:', pendingState, 'server:', serverNode.isFavorite);
-              return { ...serverNode, isFavorite: pendingState };
-            }
-            // Use server data for nodes without pending updates
-            return serverNode;
-          }));
+              // Use server data for nodes without pending updates
+              return serverNode;
+            })
+          );
         }
       }
 
@@ -1795,7 +1838,7 @@ function App() {
         // Convert timestamp strings back to Date objects
         const processedMessages = messagesData.map((msg: any) => ({
           ...msg,
-          timestamp: new Date(msg.timestamp)
+          timestamp: new Date(msg.timestamp),
         }));
 
         // Play notification sound if new messages arrived from OTHER users (not your own messages)
@@ -1803,7 +1846,6 @@ function App() {
         if (processedMessages.length > 0) {
           const currentNewestMessage = processedMessages[0]; // Messages are sorted newest first
           const currentNewestId = currentNewestMessage.id;
-
 
           // Check if this is a new message (different ID than before)
           if (newestMessageId.current && currentNewestId !== newestMessageId.current) {
@@ -1835,16 +1877,18 @@ function App() {
               if (msg.text !== pendingMsg.text) return false;
 
               // Match by sender
-              const senderMatches = (localNodeId && msg.from === localNodeId) ||
-                                   (msg.from === pendingMsg.from) ||
-                                   (msg.fromNodeId === pendingMsg.fromNodeId);
+              const senderMatches =
+                (localNodeId && msg.from === localNodeId) ||
+                msg.from === pendingMsg.from ||
+                msg.fromNodeId === pendingMsg.fromNodeId;
 
               if (!senderMatches) return false;
               if (Math.abs(msg.timestamp.getTime() - pendingMsg.timestamp.getTime()) >= 30000) return false;
 
               if (isDM) {
-                const matches = msg.toNodeId === pendingMsg.toNodeId ||
-                       (msg.to === pendingMsg.to && (msg.channel === 0 || msg.channel === -1));
+                const matches =
+                  msg.toNodeId === pendingMsg.toNodeId ||
+                  (msg.to === pendingMsg.to && (msg.channel === 0 || msg.channel === -1));
                 return matches;
               } else {
                 return msg.channel === pendingMsg.channel;
@@ -1879,7 +1923,7 @@ function App() {
         setMessages(mergedMessages);
 
         // Group messages by channel using the SAME mergedMessages array (not processedMessages)
-        const channelGroups: {[key: number]: MeshMessage[]} = {};
+        const channelGroups: { [key: number]: MeshMessage[] } = {};
 
         // Process merged messages (which already have acknowledged status preserved)
         mergedMessages.forEach((msg: MeshMessage) => {
@@ -1898,7 +1942,7 @@ function App() {
 
         // Fetch the latest unread counts from the backend
         // This is done periodically via useEffect, but we also use the current state
-        let newUnreadCounts: {[key: number]: number};
+        let newUnreadCounts: { [key: number]: number };
 
         if (unreadCountsData?.channels) {
           // Use database-backed counts
@@ -1913,7 +1957,7 @@ function App() {
 
         logger.debug('📊 Updating unread counts:', {
           currentSelected,
-          newUnreadCounts
+          newUnreadCounts,
         });
 
         setUnreadCounts(newUnreadCounts);
@@ -1975,13 +2019,12 @@ function App() {
     // Find most recent traceroute between current node and selected node
     // Use 7 days for traceroute visibility (traceroutes are less frequent than node updates)
     const TRACEROUTE_DISPLAY_HOURS = 7 * 24; // 7 days
-    const cutoff = Date.now() - (TRACEROUTE_DISPLAY_HOURS * 60 * 60 * 1000);
+    const cutoff = Date.now() - TRACEROUTE_DISPLAY_HOURS * 60 * 60 * 1000;
     const recentTraceroutes = traceroutes
       .filter(tr => {
-        const isRelevant = (
+        const isRelevant =
           (tr.fromNodeNum === currentNodeNum && tr.toNodeNum === nodeNum) ||
-          (tr.fromNodeNum === nodeNum && tr.toNodeNum === currentNodeNum)
-        );
+          (tr.fromNodeNum === nodeNum && tr.toNodeNum === currentNodeNum);
 
         if (!isRelevant || tr.timestamp < cutoff) {
           return false;
@@ -2062,9 +2105,9 @@ function App() {
       await authFetch(`${baseUrl}/api/traceroute`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ destination: nodeNum })
+        body: JSON.stringify({ destination: nodeNum }),
       });
 
       logger.debug(`🗺️ Traceroute request sent to ${nodeId}`);
@@ -2072,7 +2115,7 @@ function App() {
       // Poll for traceroute results with increasing delays
       // This provides faster UI feedback instead of waiting for the 60s interval
       const pollDelays = [2000, 5000, 10000, 15000]; // 2s, 5s, 10s, 15s
-      pollDelays.forEach((delay) => {
+      pollDelays.forEach(delay => {
         setTimeout(() => {
           fetchTraceroutes();
         }, delay);
@@ -2111,9 +2154,9 @@ function App() {
       await authFetch(`${baseUrl}/api/position/request`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ destination: nodeNum })
+        body: JSON.stringify({ destination: nodeNum }),
       });
 
       logger.debug(`📍 Position request sent to ${nodeId}`);
@@ -2164,7 +2207,7 @@ function App() {
       isLocalMessage: true,
       acknowledged: false,
       portnum: 1, // Text message
-      replyId: replyId
+      replyId: replyId,
     };
 
     // Add message to local state immediately for instant feedback
@@ -2194,14 +2237,14 @@ function App() {
       const response = await authFetch(`${baseUrl}/api/messages/send`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           text: messageText,
           channel: 0, // Backend may expect channel 0 for DMs
           destination: destinationNodeId,
-          replyId: replyId
-        })
+          replyId: replyId,
+        }),
       });
 
       if (response.ok) {
@@ -2253,15 +2296,13 @@ function App() {
         // If the message is from me, send to the original recipient
         // Use localNodeIdRef for immediate access (bypasses React state delay)
         const nodeId = localNodeIdRef.current || currentNodeId;
-        const toNodeId = originalMessage.fromNodeId === nodeId
-          ? originalMessage.toNodeId
-          : originalMessage.fromNodeId;
+        const toNodeId = originalMessage.fromNodeId === nodeId ? originalMessage.toNodeId : originalMessage.fromNodeId;
 
         requestBody = {
           text: emoji,
-          destination: toNodeId,  // Server expects 'destination' not 'toNodeId'
+          destination: toNodeId, // Server expects 'destination' not 'toNodeId'
           replyId: replyId,
-          emoji: EMOJI_FLAG
+          emoji: EMOJI_FLAG,
         };
       } else {
         // For channel messages: use channel
@@ -2269,16 +2310,16 @@ function App() {
           text: emoji,
           channel: originalMessage.channel,
           replyId: replyId,
-          emoji: EMOJI_FLAG
+          emoji: EMOJI_FLAG,
         };
       }
 
       const response = await authFetch(`${baseUrl}/api/messages/send`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
       });
 
       if (response.ok) {
@@ -2302,8 +2343,8 @@ function App() {
       const response = await authFetch(`${baseUrl}/api/messages/${message.id}`, {
         method: 'DELETE',
         headers: {
-          'Content-Type': 'application/json'
-        }
+          'Content-Type': 'application/json',
+        },
       });
 
       if (response.ok) {
@@ -2312,7 +2353,7 @@ function App() {
         setMessages(prev => prev.filter(m => m.id !== message.id));
         setChannelMessages(prev => ({
           ...prev,
-          [message.channel]: (prev[message.channel] || []).filter(m => m.id !== message.id)
+          [message.channel]: (prev[message.channel] || []).filter(m => m.id !== message.id),
         }));
         updateDataFromBackend();
       } else {
@@ -2328,7 +2369,9 @@ function App() {
     const channel = channels.find(c => c.id === channelId);
     const channelName = channel?.name || `Channel ${channelId}`;
 
-    if (!window.confirm(`Are you sure you want to purge ALL messages from ${channelName}? This action cannot be undone.`)) {
+    if (
+      !window.confirm(`Are you sure you want to purge ALL messages from ${channelName}? This action cannot be undone.`)
+    ) {
       return;
     }
 
@@ -2336,8 +2379,8 @@ function App() {
       const response = await authFetch(`${baseUrl}/api/messages/channels/${channelId}`, {
         method: 'DELETE',
         headers: {
-          'Content-Type': 'application/json'
-        }
+          'Content-Type': 'application/json',
+        },
       });
 
       if (response.ok) {
@@ -2346,7 +2389,7 @@ function App() {
         // Update local state
         setChannelMessages(prev => ({
           ...prev,
-          [channelId]: []
+          [channelId]: [],
         }));
         updateDataFromBackend();
       } else {
@@ -2362,7 +2405,11 @@ function App() {
     const node = nodes.find(n => n.nodeNum === nodeNum);
     const nodeName = node?.user?.shortName || node?.user?.longName || `Node ${nodeNum}`;
 
-    if (!window.confirm(`Are you sure you want to purge ALL direct messages with ${nodeName}? This action cannot be undone.`)) {
+    if (
+      !window.confirm(
+        `Are you sure you want to purge ALL direct messages with ${nodeName}? This action cannot be undone.`
+      )
+    ) {
       return;
     }
 
@@ -2370,8 +2417,8 @@ function App() {
       const response = await authFetch(`${baseUrl}/api/messages/direct-messages/${nodeNum}`, {
         method: 'DELETE',
         headers: {
-          'Content-Type': 'application/json'
-        }
+          'Content-Type': 'application/json',
+        },
       });
 
       if (response.ok) {
@@ -2380,9 +2427,7 @@ function App() {
         // Update local state to immediately reflect deletions
         const nodeId = node?.user?.id;
         if (nodeId) {
-          setMessages(prev => prev.filter(m =>
-            !(m.fromNodeId === nodeId || m.toNodeId === nodeId)
-          ));
+          setMessages(prev => prev.filter(m => !(m.fromNodeId === nodeId || m.toNodeId === nodeId)));
         }
         // Also refresh from backend to ensure consistency
         updateDataFromBackend();
@@ -2399,7 +2444,9 @@ function App() {
     const node = nodes.find(n => n.nodeNum === nodeNum);
     const nodeName = node?.user?.shortName || node?.user?.longName || `Node ${nodeNum}`;
 
-    if (!window.confirm(`Are you sure you want to purge ALL traceroutes for ${nodeName}? This action cannot be undone.`)) {
+    if (
+      !window.confirm(`Are you sure you want to purge ALL traceroutes for ${nodeName}? This action cannot be undone.`)
+    ) {
       return;
     }
 
@@ -2407,8 +2454,8 @@ function App() {
       const response = await authFetch(`${baseUrl}/api/messages/nodes/${nodeNum}/traceroutes`, {
         method: 'DELETE',
         headers: {
-          'Content-Type': 'application/json'
-        }
+          'Content-Type': 'application/json',
+        },
       });
 
       if (response.ok) {
@@ -2429,7 +2476,11 @@ function App() {
     const node = nodes.find(n => n.nodeNum === nodeNum);
     const nodeName = node?.user?.shortName || node?.user?.longName || `Node ${nodeNum}`;
 
-    if (!window.confirm(`Are you sure you want to purge ALL telemetry data for ${nodeName}? This action cannot be undone.`)) {
+    if (
+      !window.confirm(
+        `Are you sure you want to purge ALL telemetry data for ${nodeName}? This action cannot be undone.`
+      )
+    ) {
       return;
     }
 
@@ -2437,8 +2488,8 @@ function App() {
       const response = await authFetch(`${baseUrl}/api/messages/nodes/${nodeNum}/telemetry`, {
         method: 'DELETE',
         headers: {
-          'Content-Type': 'application/json'
-        }
+          'Content-Type': 'application/json',
+        },
       });
 
       if (response.ok) {
@@ -2459,7 +2510,11 @@ function App() {
     const node = nodes.find(n => n.nodeNum === nodeNum);
     const nodeName = node?.user?.shortName || node?.user?.longName || `Node ${nodeNum}`;
 
-    if (!window.confirm(`Are you sure you want to DELETE ${nodeName} from the local database?\n\nThis will remove:\n- The node from the map and node list\n- All messages with this node\n- All traceroutes for this node\n- All telemetry data for this node\n\nThis action cannot be undone.`)) {
+    if (
+      !window.confirm(
+        `Are you sure you want to DELETE ${nodeName} from the local database?\n\nThis will remove:\n- The node from the map and node list\n- All messages with this node\n- All traceroutes for this node\n- All telemetry data for this node\n\nThis action cannot be undone.`
+      )
+    ) {
       return;
     }
 
@@ -2467,13 +2522,16 @@ function App() {
       const response = await authFetch(`${baseUrl}/api/messages/nodes/${nodeNum}`, {
         method: 'DELETE',
         headers: {
-          'Content-Type': 'application/json'
-        }
+          'Content-Type': 'application/json',
+        },
       });
 
       if (response.ok) {
         const data = await response.json();
-        showToast(`Deleted ${nodeName} - ${data.messagesDeleted} messages, ${data.traceroutesDeleted} traceroutes, ${data.telemetryDeleted} telemetry records`, 'success');
+        showToast(
+          `Deleted ${nodeName} - ${data.messagesDeleted} messages, ${data.traceroutesDeleted} traceroutes, ${data.telemetryDeleted} telemetry records`,
+          'success'
+        );
         // Close the purge data modal if open
         setShowPurgeDataModal(false);
         // Clear the selected DM node if it's the one being deleted
@@ -2496,7 +2554,11 @@ function App() {
     const node = nodes.find(n => n.nodeNum === nodeNum);
     const nodeName = node?.user?.shortName || node?.user?.longName || `Node ${nodeNum}`;
 
-    if (!window.confirm(`Are you sure you want to PURGE ${nodeName} from BOTH the connected device AND the local database?\n\nThis will:\n- Send an admin command to remove the node from the device NodeDB\n- Remove the node from the map and node list\n- Delete all messages with this node\n- Delete all traceroutes for this node\n- Delete all telemetry data for this node\n\nThis action cannot be undone and affects both the device and local database.`)) {
+    if (
+      !window.confirm(
+        `Are you sure you want to PURGE ${nodeName} from BOTH the connected device AND the local database?\n\nThis will:\n- Send an admin command to remove the node from the device NodeDB\n- Remove the node from the map and node list\n- Delete all messages with this node\n- Delete all traceroutes for this node\n- Delete all telemetry data for this node\n\nThis action cannot be undone and affects both the device and local database.`
+      )
+    ) {
       return;
     }
 
@@ -2504,13 +2566,16 @@ function App() {
       const response = await authFetch(`${baseUrl}/api/messages/nodes/${nodeNum}/purge-from-device`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
-        }
+          'Content-Type': 'application/json',
+        },
       });
 
       if (response.ok) {
         const data = await response.json();
-        showToast(`Purged ${nodeName} from device and database - ${data.messagesDeleted} messages, ${data.traceroutesDeleted} traceroutes, ${data.telemetryDeleted} telemetry records`, 'success');
+        showToast(
+          `Purged ${nodeName} from device and database - ${data.messagesDeleted} messages, ${data.traceroutesDeleted} traceroutes, ${data.telemetryDeleted} telemetry records`,
+          'success'
+        );
         // Close the purge data modal if open
         setShowPurgeDataModal(false);
         // Clear the selected DM node if it's the one being deleted
@@ -2561,14 +2626,14 @@ function App() {
       timestamp: new Date(),
       isLocalMessage: true,
       acknowledged: false,
-      replyId: replyId
+      replyId: replyId,
     };
 
     // Add message to local state immediately
     setMessages(prev => [...prev, sentMessage]);
     setChannelMessages(prev => ({
       ...prev,
-      [messageChannel]: [...(prev[messageChannel] || []), sentMessage]
+      [messageChannel]: [...(prev[messageChannel] || []), sentMessage],
     }));
 
     // Add to pending acknowledgments
@@ -2577,7 +2642,7 @@ function App() {
       text: sentMessage.text,
       from: sentMessage.from,
       fromNodeId: sentMessage.fromNodeId,
-      channel: sentMessage.channel
+      channel: sentMessage.channel,
     });
     setPendingMessages(prev => {
       const updated = new Map(prev).set(tempId, sentMessage);
@@ -2603,13 +2668,13 @@ function App() {
       const response = await authFetch(`${baseUrl}/api/messages/send`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           text: messageText,
           channel: messageChannel,
-          replyId: replyId
-        })
+          replyId: replyId,
+        }),
       });
 
       if (response.ok) {
@@ -2624,7 +2689,7 @@ function App() {
         setMessages(prev => prev.filter(msg => msg.id !== tempId));
         setChannelMessages(prev => ({
           ...prev,
-          [channel]: prev[channel]?.filter(msg => msg.id !== tempId) || []
+          [channel]: prev[channel]?.filter(msg => msg.id !== tempId) || [],
         }));
         setPendingMessages(prev => {
           const updated = new Map(prev);
@@ -2640,7 +2705,7 @@ function App() {
       setMessages(prev => prev.filter(msg => msg.id !== tempId));
       setChannelMessages(prev => ({
         ...prev,
-        [channel]: prev[channel]?.filter(msg => msg.id !== tempId) || []
+        [channel]: prev[channel]?.filter(msg => msg.id !== tempId) || [],
       }));
       setPendingMessages(prev => {
         const updated = new Map(prev);
@@ -2650,7 +2715,6 @@ function App() {
       });
     }
   };
-
 
   // Use imported helpers with current nodes state
   const getNodeName = (nodeId: string): string => {
@@ -2664,7 +2728,7 @@ function App() {
   };
 
   const isMyMessage = (msg: MeshMessage): boolean => {
-    return msg.from === currentNodeId || (msg.isLocalMessage === true);
+    return msg.from === currentNodeId || msg.isLocalMessage === true;
   };
 
   const getChannelName = (channelNum: number): string => {
@@ -2714,11 +2778,12 @@ function App() {
   };
 
   const getDMMessages = (nodeId: string): MeshMessage[] => {
-    return messages.filter(msg =>
-      (msg.from === nodeId || msg.to === nodeId) &&
-      msg.to !== '!ffffffff' && // Exclude broadcasts
-      msg.channel === -1 && // Only direct messages
-      msg.portnum === 1 // Only text messages, exclude traceroutes (portnum 70)
+    return messages.filter(
+      msg =>
+        (msg.from === nodeId || msg.to === nodeId) &&
+        msg.to !== '!ffffffff' && // Exclude broadcasts
+        msg.channel === -1 && // Only direct messages
+        msg.portnum === 1 // Only text messages, exclude traceroutes (portnum 70)
     );
   };
 
@@ -2788,16 +2853,13 @@ function App() {
       const shortName = (node.user?.shortName || '').toLowerCase();
       const id = (node.user?.id || '').toLowerCase();
 
-      return longName.includes(lowerFilter) ||
-             shortName.includes(lowerFilter) ||
-             id.includes(lowerFilter);
+      return longName.includes(lowerFilter) || shortName.includes(lowerFilter) || id.includes(lowerFilter);
     });
   };
 
-
   // Get processed (filtered and sorted) nodes
   const processedNodes = useMemo((): DeviceInfo[] => {
-    const cutoffTime = Date.now() / 1000 - (maxNodeAgeHours * 60 * 60);
+    const cutoffTime = Date.now() / 1000 - maxNodeAgeHours * 60 * 60;
 
     const ageFiltered = nodes.filter(node => {
       if (!node.lastHeard) return false;
@@ -2846,9 +2908,7 @@ function App() {
 
       // Position filter
       if (nodeFilters.showPosition) {
-        const hasPosition = node.position &&
-          node.position.latitude != null &&
-          node.position.longitude != null;
+        const hasPosition = node.position && node.position.latitude != null && node.position.longitude != null;
         const matches = hasPosition;
         if (isShowMode && !matches) return false;
         if (!isShowMode && matches) return false;
@@ -2912,7 +2972,17 @@ function App() {
 
     // Concatenate: favorites first, then non-favorites
     return [...sortedFavorites, ...sortedNonFavorites];
-  }, [nodes, maxNodeAgeHours, nodeFilter, sortField, sortDirection, nodeFilters, nodesWithTelemetry, nodesWithWeatherTelemetry, nodesWithPKC]);
+  }, [
+    nodes,
+    maxNodeAgeHours,
+    nodeFilter,
+    sortField,
+    sortDirection,
+    nodeFilters,
+    nodesWithTelemetry,
+    nodesWithWeatherTelemetry,
+    nodesWithPKC,
+  ]);
 
   // Memoize selected channel config for modal
   const selectedChannelConfig = useMemo(() => {
@@ -2967,7 +3037,14 @@ function App() {
     try {
       // Mark this request as pending with the expected new state
       pendingFavoriteRequests.set(node.nodeNum, newFavoriteStatus);
-      console.log('[FAVORITE] Set pending for node:', node.nodeNum, 'Map size:', pendingFavoriteRequests.size, 'Map contents:', Array.from(pendingFavoriteRequests.entries()));
+      console.log(
+        '[FAVORITE] Set pending for node:',
+        node.nodeNum,
+        'Map size:',
+        pendingFavoriteRequests.size,
+        'Map contents:',
+        Array.from(pendingFavoriteRequests.entries())
+      );
 
       console.log('[FAVORITE] About to call setNodes...');
       // Optimistically update the UI - use flushSync to force immediate render
@@ -2976,9 +3053,7 @@ function App() {
         setNodes(prevNodes => {
           console.log('[FAVORITE] setNodes callback executing, prevNodes length:', prevNodes.length);
           const updated = prevNodes.map(n =>
-            n.nodeNum === node.nodeNum
-              ? { ...n, isFavorite: newFavoriteStatus }
-              : n
+            n.nodeNum === node.nodeNum ? { ...n, isFavorite: newFavoriteStatus } : n
           );
           console.log('[FAVORITE] setNodes callback complete');
           return updated;
@@ -2989,12 +3064,12 @@ function App() {
       const response = await authFetch(`${baseUrl}/api/nodes/${node.user.id}/favorite`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           isFavorite: newFavoriteStatus,
-          syncToDevice: true  // Enable two-way sync to Meshtastic device
-        })
+          syncToDevice: true, // Enable two-way sync to Meshtastic device
+        }),
       });
 
       if (!response.ok) {
@@ -3002,11 +3077,7 @@ function App() {
           showToast('Insufficient permissions to update favorites', 'error');
           // Revert to original state using the saved original value
           setNodes(prevNodes =>
-            prevNodes.map(n =>
-              n.nodeNum === node.nodeNum
-                ? { ...n, isFavorite: originalFavoriteStatus }
-                : n
-            )
+            prevNodes.map(n => (n.nodeNum === node.nodeNum ? { ...n, isFavorite: originalFavoriteStatus } : n))
           );
           return;
         }
@@ -3031,11 +3102,7 @@ function App() {
       logger.error('Error toggling favorite:', error);
       // Revert to original state using the saved original value
       setNodes(prevNodes =>
-        prevNodes.map(n =>
-          n.nodeNum === node.nodeNum
-            ? { ...n, isFavorite: originalFavoriteStatus }
-            : n
-        )
+        prevNodes.map(n => (n.nodeNum === node.nodeNum ? { ...n, isFavorite: originalFavoriteStatus } : n))
       );
       // Remove from pending on error since we reverted
       pendingFavoriteRequests.delete(node.nodeNum);
@@ -3069,8 +3136,8 @@ function App() {
       nodeId,
       position: {
         x,
-        y: rect.top
-      }
+        y: rect.top,
+      },
     });
   }, []);
 
@@ -3089,10 +3156,12 @@ function App() {
   // Helper function to find a message by its ID
   const findMessageById = (messageId: number, channelId: number): MeshMessage | null => {
     const messagesForChannel = channelMessages[channelId] || [];
-    return messagesForChannel.find(msg => {
-      const msgIdNum = parseInt(msg.id.split('_')[1] || '0');
-      return msgIdNum === messageId;
-    }) || null;
+    return (
+      messagesForChannel.find(msg => {
+        const msgIdNum = parseInt(msg.id.split('_')[1] || '0');
+        return msgIdNum === messageId;
+      }) || null
+    );
   };
 
   const renderNodeFilterPopup = () => {
@@ -3100,13 +3169,10 @@ function App() {
 
     return (
       <div className="filter-popup-overlay" onClick={() => setShowNodeFilterPopup(false)}>
-        <div className="filter-popup" onClick={(e) => e.stopPropagation()}>
+        <div className="filter-popup" onClick={e => e.stopPropagation()}>
           <div className="filter-popup-header">
             <h4>Filter Nodes</h4>
-            <button
-              className="filter-popup-close"
-              onClick={() => setShowNodeFilterPopup(false)}
-            >
+            <button className="filter-popup-close" onClick={() => setShowNodeFilterPopup(false)}>
               ✕
             </button>
           </div>
@@ -3116,13 +3182,13 @@ function App() {
               <div className="filter-toggle-group">
                 <button
                   className={`filter-toggle-btn ${nodeFilters.filterMode === 'show' ? 'active' : ''}`}
-                  onClick={() => setNodeFilters({...nodeFilters, filterMode: 'show'})}
+                  onClick={() => setNodeFilters({ ...nodeFilters, filterMode: 'show' })}
                 >
                   Show only
                 </button>
                 <button
                   className={`filter-toggle-btn ${nodeFilters.filterMode === 'hide' ? 'active' : ''}`}
-                  onClick={() => setNodeFilters({...nodeFilters, filterMode: 'hide'})}
+                  onClick={() => setNodeFilters({ ...nodeFilters, filterMode: 'hide' })}
                 >
                   Hide matching
                 </button>
@@ -3136,7 +3202,9 @@ function App() {
 
             <div className="filter-section">
               <div className="filter-section-title">
-                <span className="filter-icon-wrapper"><span className="filter-icon">⚠️</span></span>
+                <span className="filter-icon-wrapper">
+                  <span className="filter-icon">⚠️</span>
+                </span>
                 <span>Security</span>
               </div>
               <div className="filter-radio-group">
@@ -3146,7 +3214,7 @@ function App() {
                     name="securityFilter"
                     value="all"
                     checked={securityFilter === 'all'}
-                    onChange={(e) => setSecurityFilter(e.target.value as any)}
+                    onChange={e => setSecurityFilter(e.target.value as any)}
                   />
                   <span>All Nodes</span>
                 </label>
@@ -3156,7 +3224,7 @@ function App() {
                     name="securityFilter"
                     value="flaggedOnly"
                     checked={securityFilter === 'flaggedOnly'}
-                    onChange={(e) => setSecurityFilter(e.target.value as any)}
+                    onChange={e => setSecurityFilter(e.target.value as any)}
                   />
                   <span>⚠️ Flagged Only</span>
                 </label>
@@ -3166,7 +3234,7 @@ function App() {
                     name="securityFilter"
                     value="hideFlagged"
                     checked={securityFilter === 'hideFlagged'}
-                    onChange={(e) => setSecurityFilter(e.target.value as any)}
+                    onChange={e => setSecurityFilter(e.target.value as any)}
                   />
                   <span>Hide Flagged</span>
                 </label>
@@ -3180,7 +3248,7 @@ function App() {
                 <input
                   type="checkbox"
                   checked={nodeFilters.showTelemetry}
-                  onChange={(e) => setNodeFilters({...nodeFilters, showTelemetry: e.target.checked})}
+                  onChange={e => setNodeFilters({ ...nodeFilters, showTelemetry: e.target.checked })}
                 />
                 <span className="filter-label-with-icon">
                   <span className="filter-icon">📊</span>
@@ -3192,7 +3260,7 @@ function App() {
                 <input
                   type="checkbox"
                   checked={nodeFilters.showEnvironment}
-                  onChange={(e) => setNodeFilters({...nodeFilters, showEnvironment: e.target.checked})}
+                  onChange={e => setNodeFilters({ ...nodeFilters, showEnvironment: e.target.checked })}
                 />
                 <span className="filter-label-with-icon">
                   <span className="filter-icon">☀️</span>
@@ -3204,7 +3272,7 @@ function App() {
                 <input
                   type="checkbox"
                   checked={nodeFilters.showPosition}
-                  onChange={(e) => setNodeFilters({...nodeFilters, showPosition: e.target.checked})}
+                  onChange={e => setNodeFilters({ ...nodeFilters, showPosition: e.target.checked })}
                 />
                 <span className="filter-label-with-icon">
                   <span className="filter-icon">📍</span>
@@ -3216,7 +3284,7 @@ function App() {
                 <input
                   type="checkbox"
                   checked={nodeFilters.showPKI}
-                  onChange={(e) => setNodeFilters({...nodeFilters, showPKI: e.target.checked})}
+                  onChange={e => setNodeFilters({ ...nodeFilters, showPKI: e.target.checked })}
                 />
                 <span className="filter-label-with-icon">
                   <span className="filter-icon">🔐</span>
@@ -3228,7 +3296,7 @@ function App() {
                 <input
                   type="checkbox"
                   checked={nodeFilters.showMqtt}
-                  onChange={(e) => setNodeFilters({...nodeFilters, showMqtt: e.target.checked})}
+                  onChange={e => setNodeFilters({ ...nodeFilters, showMqtt: e.target.checked })}
                 />
                 <span className="filter-label-with-icon">
                   <span className="filter-icon">🌐</span>
@@ -3240,7 +3308,7 @@ function App() {
                 <input
                   type="checkbox"
                   checked={nodeFilters.showUnknown}
-                  onChange={(e) => setNodeFilters({...nodeFilters, showUnknown: e.target.checked})}
+                  onChange={e => setNodeFilters({ ...nodeFilters, showUnknown: e.target.checked })}
                 />
                 <span className="filter-label-with-icon">
                   <span className="filter-icon">❓</span>
@@ -3251,7 +3319,9 @@ function App() {
 
             <div className="filter-section">
               <div className="filter-section-title">
-                <span className="filter-icon-wrapper"><span className="filter-icon">🔋</span></span>
+                <span className="filter-icon-wrapper">
+                  <span className="filter-icon">🔋</span>
+                </span>
                 <span>Power Source</span>
               </div>
               <div className="filter-radio-group">
@@ -3261,7 +3331,7 @@ function App() {
                     name="powerSource"
                     value="both"
                     checked={nodeFilters.powerSource === 'both'}
-                    onChange={(e) => setNodeFilters({...nodeFilters, powerSource: e.target.value as 'both'})}
+                    onChange={e => setNodeFilters({ ...nodeFilters, powerSource: e.target.value as 'both' })}
                   />
                   <span>Both</span>
                 </label>
@@ -3271,7 +3341,7 @@ function App() {
                     name="powerSource"
                     value="powered"
                     checked={nodeFilters.powerSource === 'powered'}
-                    onChange={(e) => setNodeFilters({...nodeFilters, powerSource: e.target.value as 'powered'})}
+                    onChange={e => setNodeFilters({ ...nodeFilters, powerSource: e.target.value as 'powered' })}
                   />
                   <span>🔌 Powered only</span>
                 </label>
@@ -3281,7 +3351,7 @@ function App() {
                     name="powerSource"
                     value="battery"
                     checked={nodeFilters.powerSource === 'battery'}
-                    onChange={(e) => setNodeFilters({...nodeFilters, powerSource: e.target.value as 'battery'})}
+                    onChange={e => setNodeFilters({ ...nodeFilters, powerSource: e.target.value as 'battery' })}
                   />
                   <span>🔋 Battery only</span>
                 </label>
@@ -3290,7 +3360,9 @@ function App() {
 
             <div className="filter-section">
               <div className="filter-section-title">
-                <span className="filter-icon-wrapper"><span className="filter-icon">🔗</span></span>
+                <span className="filter-icon-wrapper">
+                  <span className="filter-icon">🔗</span>
+                </span>
                 <span>Hops Away</span>
               </div>
               <div className="filter-range-group">
@@ -3301,7 +3373,7 @@ function App() {
                     min="0"
                     max="10"
                     value={nodeFilters.minHops}
-                    onChange={(e) => setNodeFilters({...nodeFilters, minHops: parseInt(e.target.value) || 0})}
+                    onChange={e => setNodeFilters({ ...nodeFilters, minHops: parseInt(e.target.value) || 0 })}
                   />
                 </div>
                 <div className="filter-range-input">
@@ -3311,9 +3383,9 @@ function App() {
                     min="0"
                     max="10"
                     value={nodeFilters.maxHops}
-                    onChange={(e) => {
+                    onChange={e => {
                       const val = parseInt(e.target.value);
-                      setNodeFilters({...nodeFilters, maxHops: isNaN(val) ? 10 : val});
+                      setNodeFilters({ ...nodeFilters, maxHops: isNaN(val) ? 10 : val });
                     }}
                   />
                 </div>
@@ -3322,7 +3394,9 @@ function App() {
 
             <div className="filter-section">
               <div className="filter-section-title">
-                <span className="filter-icon-wrapper"><span className="filter-icon">👤</span></span>
+                <span className="filter-icon-wrapper">
+                  <span className="filter-icon">👤</span>
+                </span>
                 <span>Device Role</span>
               </div>
               <div className="filter-role-group">
@@ -3331,7 +3405,7 @@ function App() {
                     <input
                       type="checkbox"
                       checked={nodeFilters.deviceRoles.length === 0 || nodeFilters.deviceRoles.includes(roleNum)}
-                      onChange={(e) => {
+                      onChange={e => {
                         const allRoles = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
                         if (e.target.checked) {
@@ -3344,9 +3418,9 @@ function App() {
                             const newRoles = [...nodeFilters.deviceRoles, roleNum];
                             // If all are now selected, set to empty array (show all)
                             if (newRoles.length === 13) {
-                              setNodeFilters({...nodeFilters, deviceRoles: []});
+                              setNodeFilters({ ...nodeFilters, deviceRoles: [] });
                             } else {
-                              setNodeFilters({...nodeFilters, deviceRoles: newRoles});
+                              setNodeFilters({ ...nodeFilters, deviceRoles: newRoles });
                             }
                           }
                         } else {
@@ -3354,11 +3428,11 @@ function App() {
                           if (nodeFilters.deviceRoles.length === 0) {
                             // All were selected (empty array), now exclude this one
                             const newRoles = allRoles.filter((r: number) => r !== roleNum);
-                            setNodeFilters({...nodeFilters, deviceRoles: newRoles});
+                            setNodeFilters({ ...nodeFilters, deviceRoles: newRoles });
                           } else {
                             // Remove this role from the array
                             const newRoles = nodeFilters.deviceRoles.filter((r: number) => r !== roleNum);
-                            setNodeFilters({...nodeFilters, deviceRoles: newRoles});
+                            setNodeFilters({ ...nodeFilters, deviceRoles: newRoles });
                           }
                         }
                       }}
@@ -3371,7 +3445,9 @@ function App() {
 
             <div className="filter-section">
               <div className="filter-section-title">
-                <span className="filter-icon-wrapper"><span className="filter-icon">📡</span></span>
+                <span className="filter-icon-wrapper">
+                  <span className="filter-icon">📡</span>
+                </span>
                 <span>Channel</span>
               </div>
               <div className="filter-role-group">
@@ -3380,7 +3456,7 @@ function App() {
                     <input
                       type="checkbox"
                       checked={nodeFilters.channels.length === 0 || nodeFilters.channels.includes(ch.id)}
-                      onChange={(e) => {
+                      onChange={e => {
                         const allChannels = (channels || []).map(c => c.id);
 
                         if (e.target.checked) {
@@ -3389,53 +3465,54 @@ function App() {
                           } else {
                             const newChannels = [...nodeFilters.channels, ch.id];
                             if (newChannels.length === (channels || []).length) {
-                              setNodeFilters({...nodeFilters, channels: []});
+                              setNodeFilters({ ...nodeFilters, channels: [] });
                             } else {
-                              setNodeFilters({...nodeFilters, channels: newChannels});
+                              setNodeFilters({ ...nodeFilters, channels: newChannels });
                             }
                           }
                         } else {
                           if (nodeFilters.channels.length === 0) {
                             const newChannels = allChannels.filter((c: number) => c !== ch.id);
-                            setNodeFilters({...nodeFilters, channels: newChannels});
+                            setNodeFilters({ ...nodeFilters, channels: newChannels });
                           } else {
                             const newChannels = nodeFilters.channels.filter((c: number) => c !== ch.id);
-                            setNodeFilters({...nodeFilters, channels: newChannels});
+                            setNodeFilters({ ...nodeFilters, channels: newChannels });
                           }
                         }
                       }}
                     />
-                    <span>Channel {ch.id}{ch.name ? ` (${ch.name})` : ""}</span>
+                    <span>
+                      Channel {ch.id}
+                      {ch.name ? ` (${ch.name})` : ''}
+                    </span>
                   </label>
                 ))}
               </div>
             </div>
-
           </div>
           <div className="filter-popup-actions">
             <button
               className="filter-reset-btn"
-              onClick={() => setNodeFilters({
-                filterMode: 'show',
-                showMqtt: false,
-                showTelemetry: false,
-                showEnvironment: false,
-                powerSource: 'both',
-                showPosition: false,
-                minHops: 0,
-                maxHops: 10,
-                showPKI: false,
-                showUnknown: false,
-                deviceRoles: [],
-                channels: []
-              })}
+              onClick={() =>
+                setNodeFilters({
+                  filterMode: 'show',
+                  showMqtt: false,
+                  showTelemetry: false,
+                  showEnvironment: false,
+                  powerSource: 'both',
+                  showPosition: false,
+                  minHops: 0,
+                  maxHops: 10,
+                  showPKI: false,
+                  showUnknown: false,
+                  deviceRoles: [],
+                  channels: [],
+                })
+              }
             >
               Reset All
             </button>
-            <button
-              className="filter-apply-btn"
-              onClick={() => setShowNodeFilterPopup(false)}
-            >
+            <button className="filter-apply-btn" onClick={() => setShowNodeFilterPopup(false)}>
               Apply
             </button>
           </div>
@@ -3444,75 +3521,32 @@ function App() {
     );
   };
 
-
   const renderChannelsTab = () => {
     const availableChannels = getAvailableChannels();
     return (
-    <div className="tab-content channels-tab-content">
-      <div className="channels-header">
-        <h2>Channels ({availableChannels.length})</h2>
-        <div className="channels-controls">
-          <label className="mqtt-toggle">
-            <input
-              type="checkbox"
-              checked={showMqttMessages}
-              onChange={(e) => setShowMqttMessages(e.target.checked)}
-            />
-            Show MQTT/Bridge Messages
-          </label>
+      <div className="tab-content channels-tab-content">
+        <div className="channels-header">
+          <h2>Channels ({availableChannels.length})</h2>
+          <div className="channels-controls">
+            <label className="mqtt-toggle">
+              <input type="checkbox" checked={showMqttMessages} onChange={e => setShowMqttMessages(e.target.checked)} />
+              Show MQTT/Bridge Messages
+            </label>
+          </div>
         </div>
-      </div>
-      {shouldShowData() ? (
-        availableChannels.length > 0 ? (
-          <>
-            {/* Mobile Channel Dropdown */}
-            <div className="channel-dropdown-mobile">
-              <select
-                className="channel-dropdown-select"
-                value={selectedChannel}
-                onChange={(e) => {
-                  const channelId = parseInt(e.target.value);
-                  logger.debug('👆 User selected channel from dropdown:', channelId);
-                  setSelectedChannel(channelId);
-                  selectedChannelRef.current = channelId;
-                  setReplyingTo(null); // Clear reply state when switching channels
-                  setUnreadCounts(prev => {
-                    const updated = { ...prev, [channelId]: 0 };
-                    logger.debug('📝 Setting unread counts:', updated);
-                    return updated;
-                  });
-                }}
-              >
-                {availableChannels.map(channelId => {
-                  const channelConfig = channels.find(ch => ch.id === channelId);
-                  const displayName = channelConfig?.name || getChannelName(channelId);
-                  const unread = unreadCounts[channelId] || 0;
-                  const encrypted = channelConfig?.psk && channelConfig.psk !== DEFAULT_UNENCRYPTED_PSK;
-                  const uplink = channelConfig?.uplinkEnabled ? '↑' : '';
-                  const downlink = channelConfig?.downlinkEnabled ? '↓' : '';
-
-                  return (
-                    <option key={channelId} value={channelId}>
-                      {encrypted ? '🔒' : '🔓'} {displayName} #{channelId} {uplink}{downlink} {unread > 0 ? `(${unread})` : ''}
-                    </option>
-                  );
-                })}
-              </select>
-            </div>
-
-            {/* Channel Buttons */}
-            <div className="channels-grid">
-              {availableChannels.map(channelId => {
-                const channelConfig = channels.find(ch => ch.id === channelId);
-                const displayName = channelConfig?.name || getChannelName(channelId);
-                return (
-                <button
-                  key={channelId}
-                  className={`channel-button ${selectedChannel === channelId ? 'selected' : ''}`}
-                  onClick={() => {
-                    logger.debug('👆 User clicked channel:', channelId, 'Previous selected:', selectedChannel);
+        {shouldShowData() ? (
+          availableChannels.length > 0 ? (
+            <>
+              {/* Mobile Channel Dropdown */}
+              <div className="channel-dropdown-mobile">
+                <select
+                  className="channel-dropdown-select"
+                  value={selectedChannel}
+                  onChange={e => {
+                    const channelId = parseInt(e.target.value);
+                    logger.debug('👆 User selected channel from dropdown:', channelId);
                     setSelectedChannel(channelId);
-                    selectedChannelRef.current = channelId; // Update ref immediately
+                    selectedChannelRef.current = channelId;
                     setReplyingTo(null); // Clear reply state when switching channels
                     setUnreadCounts(prev => {
                       const updated = { ...prev, [channelId]: 0 };
@@ -3521,427 +3555,499 @@ function App() {
                     });
                   }}
                 >
-                  <div className="channel-button-content">
-                    <div className="channel-button-left">
-                      <div className="channel-button-header">
-                        <span className="channel-name">{displayName}</span>
-                        <span className="channel-id">#{channelId}</span>
-                      </div>
-                      <div className="channel-button-indicators">
-                        {channelConfig?.psk && channelConfig.psk !== DEFAULT_UNENCRYPTED_PSK ? (
-                          <span className="encryption-icon encrypted" title="Encrypted">🔒</span>
-                        ) : (
-                          <span className="encryption-icon unencrypted" title="Unencrypted">🔓</span>
-                        )}
-                        <a
-                          href="#"
-                          className="channel-info-link"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setChannelInfoModal(channelId);
-                          }}
-                          title="Show channel info"
-                        >
-                          info
-                        </a>
-                      </div>
-                    </div>
-                    <div className="channel-button-right">
-                      {unreadCounts[channelId] > 0 && (
-                        <span className="unread-badge">{unreadCounts[channelId]}</span>
-                      )}
-                      <div className="channel-button-status">
-                        <span className={`arrow-icon uplink ${channelConfig?.uplinkEnabled ? 'enabled' : 'disabled'}`} title="MQTT Uplink">
-                          ↑
-                        </span>
-                        <span className={`arrow-icon downlink ${channelConfig?.downlinkEnabled ? 'enabled' : 'disabled'}`} title="MQTT Downlink">
-                          ↓
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </button>
-                );
-              })}
-            </div>
+                  {availableChannels.map(channelId => {
+                    const channelConfig = channels.find(ch => ch.id === channelId);
+                    const displayName = channelConfig?.name || getChannelName(channelId);
+                    const unread = unreadCounts[channelId] || 0;
+                    const encrypted = channelConfig?.psk && channelConfig.psk !== DEFAULT_UNENCRYPTED_PSK;
+                    const uplink = channelConfig?.uplinkEnabled ? '↑' : '';
+                    const downlink = channelConfig?.downlinkEnabled ? '↓' : '';
 
-            {/* Selected Channel Messaging */}
-            {selectedChannel !== -1 && (
-              <div className="channel-conversation-section">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                  <h3 style={{ margin: 0 }}>
-                    {getChannelName(selectedChannel)}
-                    <span className="channel-id-label">#{selectedChannel}</span>
-                  </h3>
-                  <button
-                    className="btn btn-secondary"
-                    onClick={() => {
-                      markMessagesAsRead(undefined, selectedChannel);
-                    }}
-                    title="Mark all messages in this channel as read"
+                    return (
+                      <option key={channelId} value={channelId}>
+                        {encrypted ? '🔒' : '🔓'} {displayName} #{channelId} {uplink}
+                        {downlink} {unread > 0 ? `(${unread})` : ''}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              {/* Channel Buttons */}
+              <div className="channels-grid">
+                {availableChannels.map(channelId => {
+                  const channelConfig = channels.find(ch => ch.id === channelId);
+                  const displayName = channelConfig?.name || getChannelName(channelId);
+                  return (
+                    <button
+                      key={channelId}
+                      className={`channel-button ${selectedChannel === channelId ? 'selected' : ''}`}
+                      onClick={() => {
+                        logger.debug('👆 User clicked channel:', channelId, 'Previous selected:', selectedChannel);
+                        setSelectedChannel(channelId);
+                        selectedChannelRef.current = channelId; // Update ref immediately
+                        setReplyingTo(null); // Clear reply state when switching channels
+                        setUnreadCounts(prev => {
+                          const updated = { ...prev, [channelId]: 0 };
+                          logger.debug('📝 Setting unread counts:', updated);
+                          return updated;
+                        });
+                      }}
+                    >
+                      <div className="channel-button-content">
+                        <div className="channel-button-left">
+                          <div className="channel-button-header">
+                            <span className="channel-name">{displayName}</span>
+                            <span className="channel-id">#{channelId}</span>
+                          </div>
+                          <div className="channel-button-indicators">
+                            {channelConfig?.psk && channelConfig.psk !== DEFAULT_UNENCRYPTED_PSK ? (
+                              <span className="encryption-icon encrypted" title="Encrypted">
+                                🔒
+                              </span>
+                            ) : (
+                              <span className="encryption-icon unencrypted" title="Unencrypted">
+                                🔓
+                              </span>
+                            )}
+                            <a
+                              href="#"
+                              className="channel-info-link"
+                              onClick={e => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setChannelInfoModal(channelId);
+                              }}
+                              title="Show channel info"
+                            >
+                              info
+                            </a>
+                          </div>
+                        </div>
+                        <div className="channel-button-right">
+                          {unreadCounts[channelId] > 0 && (
+                            <span className="unread-badge">{unreadCounts[channelId]}</span>
+                          )}
+                          <div className="channel-button-status">
+                            <span
+                              className={`arrow-icon uplink ${channelConfig?.uplinkEnabled ? 'enabled' : 'disabled'}`}
+                              title="MQTT Uplink"
+                            >
+                              ↑
+                            </span>
+                            <span
+                              className={`arrow-icon downlink ${
+                                channelConfig?.downlinkEnabled ? 'enabled' : 'disabled'
+                              }`}
+                              title="MQTT Downlink"
+                            >
+                              ↓
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Selected Channel Messaging */}
+              {selectedChannel !== -1 && (
+                <div className="channel-conversation-section">
+                  <div
                     style={{
-                      padding: '0.5rem 1rem',
-                      fontSize: '0.9rem',
-                      whiteSpace: 'nowrap'
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: '1rem',
                     }}
                   >
-                    Mark all as Read
-                  </button>
-                </div>
+                    <h3 style={{ margin: 0 }}>
+                      {getChannelName(selectedChannel)}
+                      <span className="channel-id-label">#{selectedChannel}</span>
+                    </h3>
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => {
+                        markMessagesAsRead(undefined, selectedChannel);
+                      }}
+                      title="Mark all messages in this channel as read"
+                      style={{
+                        padding: '0.5rem 1rem',
+                        fontSize: '0.9rem',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      Mark all as Read
+                    </button>
+                  </div>
 
-                <div className="channel-conversation">
-                  <div className="messages-container" ref={channelMessagesContainerRef}>
-                    {(() => {
-                      // Use selected channel ID directly - no mapping needed
-                      const messageChannel = selectedChannel;
-                      let messagesForChannel = channelMessages[messageChannel] || [];
+                  <div className="channel-conversation">
+                    <div className="messages-container" ref={channelMessagesContainerRef}>
+                      {(() => {
+                        // Use selected channel ID directly - no mapping needed
+                        const messageChannel = selectedChannel;
+                        let messagesForChannel = channelMessages[messageChannel] || [];
 
-                      // Filter MQTT messages if the option is disabled
-                      if (!showMqttMessages) {
-                        messagesForChannel = messagesForChannel.filter(msg => !isMqttBridgeMessage(msg));
-                      }
-
-                      // Filter traceroutes from Primary channel (channel 0)
-                      if (messageChannel === 0) {
-                        messagesForChannel = messagesForChannel.filter(msg => msg.portnum !== 70);
-                      }
-
-                      // Sort messages by timestamp (oldest first)
-                      messagesForChannel = messagesForChannel.sort((a, b) =>
-                        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-                      );
-
-                      return messagesForChannel && messagesForChannel.length > 0 ? (
-                      messagesForChannel.map((msg, index) => {
-                        const isMine = isMyMessage(msg);
-                        const repliedMessage = msg.replyId ? findMessageById(msg.replyId, messageChannel) : null;
-                        const isReaction = msg.emoji === 1;
-
-                        // Hide reactions (tapbacks) from main message list
-                        // They will be shown inline under the original message if it exists
-                        if (isReaction) {
-                          return null;
+                        // Filter MQTT messages if the option is disabled
+                        if (!showMqttMessages) {
+                          messagesForChannel = messagesForChannel.filter(msg => !isMqttBridgeMessage(msg));
                         }
 
-                        // Find ALL reactions in the full channel message list (not filtered)
-                        const allChannelMessages = channelMessages[messageChannel] || [];
-                        const reactions = allChannelMessages.filter(m =>
-                          m.emoji === 1 && m.replyId && m.replyId.toString() === msg.id.split('_')[1]
+                        // Filter traceroutes from Primary channel (channel 0)
+                        if (messageChannel === 0) {
+                          messagesForChannel = messagesForChannel.filter(msg => msg.portnum !== 70);
+                        }
+
+                        // Sort messages by timestamp (oldest first)
+                        messagesForChannel = messagesForChannel.sort(
+                          (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
                         );
 
-                        // Check if we should show a date separator
-                        const currentDate = new Date(msg.timestamp);
-                        const prevMsg = index > 0 ? messagesForChannel[index - 1] : null;
-                        const prevDate = prevMsg ? new Date(prevMsg.timestamp) : null;
-                        const showSeparator = shouldShowDateSeparator(prevDate, currentDate);
+                        return messagesForChannel && messagesForChannel.length > 0 ? (
+                          messagesForChannel.map((msg, index) => {
+                            const isMine = isMyMessage(msg);
+                            const repliedMessage = msg.replyId ? findMessageById(msg.replyId, messageChannel) : null;
+                            const isReaction = msg.emoji === 1;
 
-                        return (
-                          <React.Fragment key={msg.id}>
-                            {showSeparator && (
-                              <div className="date-separator">
-                                <span className="date-separator-text">
-                                  {getMessageDateSeparator(currentDate, dateFormat)}
-                                </span>
-                              </div>
-                            )}
-                            <div className={`message-bubble-container ${isMine ? 'mine' : 'theirs'}`}>
-                            {!isMine && (
-                              <div
-                                className="sender-dot clickable"
-                                title={`Click for ${getNodeName(msg.from)} details`}
-                                onClick={(e) => handleSenderClick(msg.from, e)}
-                              >
-                                {getNodeShortName(msg.from)}
-                              </div>
-                            )}
-                            <div className="message-content">
-                              {msg.replyId && !isReaction && (
-                                <div className="replied-message">
-                                  <div className="reply-arrow">↳</div>
-                                  <div className="reply-content">
-                                    {repliedMessage ? (
-                                      <>
-                                        <div className="reply-from">{getNodeShortName(repliedMessage.from)}</div>
-                                        <div className="reply-text">{repliedMessage.text || "Empty Message"}</div>
-                                      </>
-                                    ) : (
-                                      <div className="reply-text" style={{ fontStyle: 'italic', opacity: 0.6 }}>
-                                        Message not available
+                            // Hide reactions (tapbacks) from main message list
+                            // They will be shown inline under the original message if it exists
+                            if (isReaction) {
+                              return null;
+                            }
+
+                            // Find ALL reactions in the full channel message list (not filtered)
+                            const allChannelMessages = channelMessages[messageChannel] || [];
+                            const reactions = allChannelMessages.filter(
+                              m => m.emoji === 1 && m.replyId && m.replyId.toString() === msg.id.split('_')[1]
+                            );
+
+                            // Check if we should show a date separator
+                            const currentDate = new Date(msg.timestamp);
+                            const prevMsg = index > 0 ? messagesForChannel[index - 1] : null;
+                            const prevDate = prevMsg ? new Date(prevMsg.timestamp) : null;
+                            const showSeparator = shouldShowDateSeparator(prevDate, currentDate);
+
+                            return (
+                              <React.Fragment key={msg.id}>
+                                {showSeparator && (
+                                  <div className="date-separator">
+                                    <span className="date-separator-text">
+                                      {getMessageDateSeparator(currentDate, dateFormat)}
+                                    </span>
+                                  </div>
+                                )}
+                                <div className={`message-bubble-container ${isMine ? 'mine' : 'theirs'}`}>
+                                  {!isMine && (
+                                    <div
+                                      className="sender-dot clickable"
+                                      title={`Click for ${getNodeName(msg.from)} details`}
+                                      onClick={e => handleSenderClick(msg.from, e)}
+                                    >
+                                      {getNodeShortName(msg.from)}
+                                    </div>
+                                  )}
+                                  <div className="message-content">
+                                    {msg.replyId && !isReaction && (
+                                      <div className="replied-message">
+                                        <div className="reply-arrow">↳</div>
+                                        <div className="reply-content">
+                                          {repliedMessage ? (
+                                            <>
+                                              <div className="reply-from">{getNodeShortName(repliedMessage.from)}</div>
+                                              <div className="reply-text">{repliedMessage.text || 'Empty Message'}</div>
+                                            </>
+                                          ) : (
+                                            <div className="reply-text" style={{ fontStyle: 'italic', opacity: 0.6 }}>
+                                              Message not available
+                                            </div>
+                                          )}
+                                        </div>
                                       </div>
                                     )}
+                                    <div className={`message-bubble ${isMine ? 'mine' : 'theirs'}`}>
+                                      {hasPermission(`channel_${selectedChannel}` as ResourceType, 'write') && (
+                                        <div className="message-actions">
+                                          <button
+                                            className="reply-button"
+                                            onClick={() => {
+                                              setReplyingTo(msg);
+                                              channelMessageInputRef.current?.focus();
+                                            }}
+                                            title="Reply to this message"
+                                          >
+                                            ↩
+                                          </button>
+                                          <button
+                                            className="emoji-picker-button"
+                                            onClick={() => setEmojiPickerMessage(msg)}
+                                            title="React with emoji"
+                                          >
+                                            😄
+                                          </button>
+                                          <button
+                                            className="delete-button"
+                                            onClick={() => handleDeleteMessage(msg)}
+                                            title="Delete this message"
+                                          >
+                                            🗑️
+                                          </button>
+                                        </div>
+                                      )}
+                                      <div className="message-text" style={{ whiteSpace: 'pre-line' }}>
+                                        {renderMessageWithLinks(msg.text)}
+                                      </div>
+                                      <LinkPreview text={msg.text} />
+                                      {reactions.length > 0 && (
+                                        <div className="message-reactions">
+                                          {reactions.map(reaction => (
+                                            <span
+                                              key={reaction.id}
+                                              className="reaction"
+                                              title={`From ${getNodeShortName(
+                                                reaction.from
+                                              )} - Click to send same reaction`}
+                                              onClick={() => handleSendTapback(reaction.text, msg)}
+                                            >
+                                              {reaction.text}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      )}
+                                      <div className="message-meta">
+                                        <span className="message-time">
+                                          {formatMessageTime(currentDate, timeFormat, dateFormat)}
+                                          <HopCountDisplay hopStart={msg.hopStart} hopLimit={msg.hopLimit} />
+                                        </span>
+                                      </div>
+                                    </div>
                                   </div>
+                                  {isMine && <div className="message-status">{renderMessageStatus(msg)}</div>}
                                 </div>
-                              )}
-                              <div className={`message-bubble ${isMine ? 'mine' : 'theirs'}`}>
-                                {hasPermission(`channel_${selectedChannel}` as ResourceType, 'write') && (
-                                  <div className="message-actions">
-                                    <button
-                                      className="reply-button"
-                                      onClick={() => {
-                                        setReplyingTo(msg);
-                                        channelMessageInputRef.current?.focus();
-                                      }}
-                                      title="Reply to this message"
-                                    >
-                                      ↩
-                                    </button>
-                                    <button
-                                      className="emoji-picker-button"
-                                      onClick={() => setEmojiPickerMessage(msg)}
-                                      title="React with emoji"
-                                    >
-                                      😄
-                                    </button>
-                                    <button
-                                      className="delete-button"
-                                      onClick={() => handleDeleteMessage(msg)}
-                                      title="Delete this message"
-                                    >
-                                      🗑️
-                                    </button>
-                                  </div>
-                                )}
-                                <div className="message-text" style={{whiteSpace: 'pre-line'}}>
-                                  {renderMessageWithLinks(msg.text)}
-                                </div>
-                                <LinkPreview text={msg.text} />
-                                {reactions.length > 0 && (
-                                  <div className="message-reactions">
-                                    {reactions.map(reaction => (
-                                      <span
-                                        key={reaction.id}
-                                        className="reaction"
-                                        title={`From ${getNodeShortName(reaction.from)} - Click to send same reaction`}
-                                        onClick={() => handleSendTapback(reaction.text, msg)}
-                                      >
-                                        {reaction.text}
-                                      </span>
-                                    ))}
-                                  </div>
-                                )}
-                                <div className="message-meta">
-                                  <span className="message-time">
-                                    {formatMessageTime(currentDate, timeFormat, dateFormat)}
-                                    <HopCountDisplay hopStart={msg.hopStart} hopLimit={msg.hopLimit} />
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                            {isMine && (
-                              <div className="message-status">
-                                {renderMessageStatus(msg)}
-                              </div>
-                            )}
-                          </div>
-                          </React.Fragment>
+                              </React.Fragment>
+                            );
+                          })
+                        ) : (
+                          <p className="no-messages">No messages in this channel yet</p>
                         );
-                      })
-                    ) : (
-                      <p className="no-messages">No messages in this channel yet</p>
-                    );
-                    })()}
-                  </div>
+                      })()}
+                    </div>
 
-                  {/* Send message form */}
-                  {connectionStatus === 'connected' && (
-                    <div className="send-message-form">
-                      {replyingTo && (
-                        <div className="reply-indicator">
-                          <div className="reply-indicator-content">
-                            <div className="reply-indicator-label">Replying to {getNodeName(replyingTo.from)}</div>
-                            <div className="reply-indicator-text">{replyingTo.text}</div>
-                          </div>
-                          <button
-                            className="reply-indicator-close"
-                            onClick={() => setReplyingTo(null)}
-                            title="Cancel reply"
-                          >
-                            ×
-                          </button>
-                        </div>
-                      )}
-                      {hasPermission(`channel_${selectedChannel}` as ResourceType, 'write') && (
-                        <div className="message-input-container">
-                          <div className="input-with-counter">
-                            <input
-                              ref={channelMessageInputRef}
-                              type="text"
-                              value={newMessage}
-                              onChange={(e) => setNewMessage(e.target.value)}
-                              placeholder={`Send message to ${getChannelName(selectedChannel)}...`}
-                              className="message-input"
-                              onKeyPress={(e) => {
-                                if (e.key === 'Enter') {
-                                  handleSendMessage(selectedChannel);
-                                }
-                              }}
-                            />
-                            <div className={formatByteCount(getUtf8ByteLength(newMessage)).className}>
-                              {formatByteCount(getUtf8ByteLength(newMessage)).text}
+                    {/* Send message form */}
+                    {connectionStatus === 'connected' && (
+                      <div className="send-message-form">
+                        {replyingTo && (
+                          <div className="reply-indicator">
+                            <div className="reply-indicator-content">
+                              <div className="reply-indicator-label">Replying to {getNodeName(replyingTo.from)}</div>
+                              <div className="reply-indicator-text">{replyingTo.text}</div>
                             </div>
+                            <button
+                              className="reply-indicator-close"
+                              onClick={() => setReplyingTo(null)}
+                              title="Cancel reply"
+                            >
+                              ×
+                            </button>
                           </div>
-                          <button
-                            onClick={() => handleSendMessage(selectedChannel)}
-                            disabled={!newMessage.trim()}
-                            className="send-btn"
+                        )}
+                        {hasPermission(`channel_${selectedChannel}` as ResourceType, 'write') && (
+                          <div className="message-input-container">
+                            <div className="input-with-counter">
+                              <input
+                                ref={channelMessageInputRef}
+                                type="text"
+                                value={newMessage}
+                                onChange={e => setNewMessage(e.target.value)}
+                                placeholder={`Send message to ${getChannelName(selectedChannel)}...`}
+                                className="message-input"
+                                onKeyPress={e => {
+                                  if (e.key === 'Enter') {
+                                    handleSendMessage(selectedChannel);
+                                  }
+                                }}
+                              />
+                              <div className={formatByteCount(getUtf8ByteLength(newMessage)).className}>
+                                {formatByteCount(getUtf8ByteLength(newMessage)).text}
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => handleSendMessage(selectedChannel)}
+                              disabled={!newMessage.trim()}
+                              className="send-btn"
+                            >
+                              →
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {selectedChannel === -1 && (
+                <p className="no-data">Select a channel above to view messages and send messages</p>
+              )}
+            </>
+          ) : (
+            <p className="no-data">No channel configurations discovered yet. Waiting for mesh updates...</p>
+          )
+        ) : (
+          <p className="no-data">Connect to a Meshtastic node to view channel configurations</p>
+        )}
+
+        {/* Channel Info Modal */}
+        {channelInfoModal !== null &&
+          selectedChannelConfig &&
+          (() => {
+            const displayName = selectedChannelConfig.name || getChannelName(channelInfoModal);
+            const handleCloseModal = () => {
+              setChannelInfoModal(null);
+              setShowPsk(false);
+            };
+
+            return (
+              <div className="modal-overlay" onClick={handleCloseModal}>
+                <div className="modal-content channel-info-modal" onClick={e => e.stopPropagation()}>
+                  <div className="modal-header">
+                    <h2>Channel Information</h2>
+                    <button className="modal-close" onClick={handleCloseModal}>
+                      ×
+                    </button>
+                  </div>
+                  <div className="modal-body">
+                    <div className="channel-info-grid">
+                      <div className="info-row">
+                        <span className="info-label">Channel Name:</span>
+                        <span className="info-value">{displayName}</span>
+                      </div>
+                      <div className="info-row">
+                        <span className="info-label">Channel Number:</span>
+                        <span className="info-value">#{channelInfoModal}</span>
+                      </div>
+                      <div className="info-row">
+                        <span className="info-label">Encryption:</span>
+                        <span className="info-value">
+                          {selectedChannelConfig.psk && selectedChannelConfig.psk !== DEFAULT_UNENCRYPTED_PSK ? (
+                            <span className="status-encrypted">🔒 Encrypted</span>
+                          ) : (
+                            <span className="status-unencrypted">🔓 Unencrypted</span>
+                          )}
+                        </span>
+                      </div>
+                      {selectedChannelConfig.psk && (
+                        <div className="info-row">
+                          <span className="info-label">PSK (Base64):</span>
+                          <span
+                            className="info-value info-value-code"
+                            style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}
                           >
-                            →
-                          </button>
+                            {showPsk ? selectedChannelConfig.psk : '••••••••'}
+                            <button
+                              onClick={() => setShowPsk(!showPsk)}
+                              style={{
+                                padding: '0.25rem 0.5rem',
+                                fontSize: '0.75rem',
+                                background: 'var(--ctp-surface1)',
+                                border: '1px solid var(--ctp-surface2)',
+                                borderRadius: '4px',
+                                color: 'var(--ctp-text)',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s',
+                              }}
+                              onMouseOver={e => (e.currentTarget.style.background = 'var(--ctp-surface2)')}
+                              onMouseOut={e => (e.currentTarget.style.background = 'var(--ctp-surface1)')}
+                            >
+                              {showPsk ? 'Hide' : 'Show'}
+                            </button>
+                          </span>
+                        </div>
+                      )}
+                      <div className="info-row">
+                        <span className="info-label">MQTT Uplink:</span>
+                        <span className="info-value">
+                          {selectedChannelConfig.uplinkEnabled ? (
+                            <span className="status-enabled">✓ Enabled</span>
+                          ) : (
+                            <span className="status-disabled">✗ Disabled</span>
+                          )}
+                        </span>
+                      </div>
+                      <div className="info-row">
+                        <span className="info-label">MQTT Downlink:</span>
+                        <span className="info-value">
+                          {selectedChannelConfig.downlinkEnabled ? (
+                            <span className="status-enabled">✓ Enabled</span>
+                          ) : (
+                            <span className="status-disabled">✗ Disabled</span>
+                          )}
+                        </span>
+                      </div>
+                      {selectedChannelConfig.createdAt && (
+                        <div className="info-row">
+                          <span className="info-label">Discovered:</span>
+                          <span className="info-value">
+                            {new Date(selectedChannelConfig.createdAt).toLocaleString()}
+                          </span>
+                        </div>
+                      )}
+                      {selectedChannelConfig.updatedAt && (
+                        <div className="info-row">
+                          <span className="info-label">Last Updated:</span>
+                          <span className="info-value">
+                            {new Date(selectedChannelConfig.updatedAt).toLocaleString()}
+                          </span>
                         </div>
                       )}
                     </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {selectedChannel === -1 && (
-              <p className="no-data">Select a channel above to view messages and send messages</p>
-            )}
-          </>
-        ) : (
-          <p className="no-data">No channel configurations discovered yet. Waiting for mesh updates...</p>
-        )
-      ) : (
-        <p className="no-data">Connect to a Meshtastic node to view channel configurations</p>
-      )}
-
-      {/* Channel Info Modal */}
-      {channelInfoModal !== null && selectedChannelConfig && (() => {
-        const displayName = selectedChannelConfig.name || getChannelName(channelInfoModal);
-        const handleCloseModal = () => {
-          setChannelInfoModal(null);
-          setShowPsk(false);
-        };
-
-        return (
-          <div className="modal-overlay" onClick={handleCloseModal}>
-            <div className="modal-content channel-info-modal" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-header">
-                <h2>Channel Information</h2>
-                <button className="modal-close" onClick={handleCloseModal}>×</button>
-              </div>
-              <div className="modal-body">
-                <div className="channel-info-grid">
-                  <div className="info-row">
-                    <span className="info-label">Channel Name:</span>
-                    <span className="info-value">{displayName}</span>
-                  </div>
-                  <div className="info-row">
-                    <span className="info-label">Channel Number:</span>
-                    <span className="info-value">#{channelInfoModal}</span>
-                  </div>
-                  <div className="info-row">
-                    <span className="info-label">Encryption:</span>
-                    <span className="info-value">
-                      {selectedChannelConfig.psk && selectedChannelConfig.psk !== DEFAULT_UNENCRYPTED_PSK ? (
-                        <span className="status-encrypted">🔒 Encrypted</span>
-                      ) : (
-                        <span className="status-unencrypted">🔓 Unencrypted</span>
-                      )}
-                    </span>
-                  </div>
-                  {selectedChannelConfig.psk && (
-                    <div className="info-row">
-                      <span className="info-label">PSK (Base64):</span>
-                      <span className="info-value info-value-code" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                        {showPsk ? selectedChannelConfig.psk : '••••••••'}
-                        <button
-                          onClick={() => setShowPsk(!showPsk)}
+                    {hasPermission(`channel_${channelInfoModal}` as ResourceType, 'write') &&
+                      channelInfoModal !== -1 && (
+                        <div
                           style={{
-                            padding: '0.25rem 0.5rem',
-                            fontSize: '0.75rem',
-                            background: 'var(--ctp-surface1)',
-                            border: '1px solid var(--ctp-surface2)',
-                            borderRadius: '4px',
-                            color: 'var(--ctp-text)',
-                            cursor: 'pointer',
-                            transition: 'all 0.2s'
+                            marginTop: '1.5rem',
+                            paddingTop: '1rem',
+                            borderTop: '1px solid var(--ctp-surface2)',
                           }}
-                          onMouseOver={(e) => e.currentTarget.style.background = 'var(--ctp-surface2)'}
-                          onMouseOut={(e) => e.currentTarget.style.background = 'var(--ctp-surface1)'}
                         >
-                          {showPsk ? 'Hide' : 'Show'}
-                        </button>
-                      </span>
-                    </div>
-                  )}
-                  <div className="info-row">
-                    <span className="info-label">MQTT Uplink:</span>
-                    <span className="info-value">
-                      {selectedChannelConfig.uplinkEnabled ? (
-                        <span className="status-enabled">✓ Enabled</span>
-                      ) : (
-                        <span className="status-disabled">✗ Disabled</span>
+                          <button
+                            onClick={() => {
+                              handleCloseModal();
+                              handlePurgeChannelMessages(channelInfoModal);
+                            }}
+                            style={{
+                              width: '100%',
+                              padding: '0.75rem',
+                              backgroundColor: '#dc3545',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              fontWeight: 'bold',
+                              fontSize: '0.95rem',
+                            }}
+                            title="Purge all messages from this channel"
+                          >
+                            Purge All Messages
+                          </button>
+                          <p
+                            style={{
+                              marginTop: '0.5rem',
+                              fontSize: '0.85rem',
+                              color: 'var(--ctp-subtext0)',
+                              textAlign: 'center',
+                            }}
+                          >
+                            This action cannot be undone
+                          </p>
+                        </div>
                       )}
-                    </span>
                   </div>
-                  <div className="info-row">
-                    <span className="info-label">MQTT Downlink:</span>
-                    <span className="info-value">
-                      {selectedChannelConfig.downlinkEnabled ? (
-                        <span className="status-enabled">✓ Enabled</span>
-                      ) : (
-                        <span className="status-disabled">✗ Disabled</span>
-                      )}
-                    </span>
-                  </div>
-                  {selectedChannelConfig.createdAt && (
-                    <div className="info-row">
-                      <span className="info-label">Discovered:</span>
-                      <span className="info-value">{new Date(selectedChannelConfig.createdAt).toLocaleString()}</span>
-                    </div>
-                  )}
-                  {selectedChannelConfig.updatedAt && (
-                    <div className="info-row">
-                      <span className="info-label">Last Updated:</span>
-                      <span className="info-value">{new Date(selectedChannelConfig.updatedAt).toLocaleString()}</span>
-                    </div>
-                  )}
                 </div>
-                {hasPermission(`channel_${channelInfoModal}` as ResourceType, 'write') && channelInfoModal !== -1 && (
-                  <div style={{
-                    marginTop: '1.5rem',
-                    paddingTop: '1rem',
-                    borderTop: '1px solid var(--ctp-surface2)'
-                  }}>
-                    <button
-                      onClick={() => {
-                        handleCloseModal();
-                        handlePurgeChannelMessages(channelInfoModal);
-                      }}
-                      style={{
-                        width: '100%',
-                        padding: '0.75rem',
-                        backgroundColor: '#dc3545',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        fontWeight: 'bold',
-                        fontSize: '0.95rem'
-                      }}
-                      title="Purge all messages from this channel"
-                    >
-                      Purge All Messages
-                    </button>
-                    <p style={{
-                      marginTop: '0.5rem',
-                      fontSize: '0.85rem',
-                      color: 'var(--ctp-subtext0)',
-                      textAlign: 'center'
-                    }}>
-                      This action cannot be undone
-                    </p>
-                  </div>
-                )}
               </div>
-            </div>
-          </div>
-        );
-      })()}
-    </div>
+            );
+          })()}
+      </div>
     );
   };
 
@@ -3950,7 +4056,9 @@ function App() {
     if (!hasPermission('messages', 'read')) {
       return (
         <div className="no-permission-message">
-          <p>You need <strong>messages:read</strong> permission to view direct messages.</p>
+          <p>
+            You need <strong>messages:read</strong> permission to view direct messages.
+          </p>
         </div>
       );
     }
@@ -3960,24 +4068,24 @@ function App() {
       .filter(node => node.user?.id !== currentNodeId) // Exclude local node
       .map(node => {
         const nodeId = node.user?.id;
-        if (!nodeId) return {
-          ...node,
-          messageCount: 0,
-          unreadCount: 0,
-          lastMessageTime: 0,
-          lastMessageText: ''
-        };
+        if (!nodeId)
+          return {
+            ...node,
+            messageCount: 0,
+            unreadCount: 0,
+            lastMessageTime: 0,
+            lastMessageText: '',
+          };
 
         const dmMessages = getDMMessages(nodeId);
         // Get unread count from database-backed tracking instead of counting all messages
         const unreadCount = unreadCountsData?.directMessages?.[nodeId] || 0;
 
         // Get last message text (most recent message)
-        const lastMessage = dmMessages.length > 0
-          ? dmMessages.reduce((latest, msg) =>
-              msg.timestamp.getTime() > latest.timestamp.getTime() ? msg : latest
-            )
-          : null;
+        const lastMessage =
+          dmMessages.length > 0
+            ? dmMessages.reduce((latest, msg) => (msg.timestamp.getTime() > latest.timestamp.getTime() ? msg : latest))
+            : null;
 
         const lastMessageText = lastMessage
           ? (lastMessage.text || '').substring(0, 50) + (lastMessage.text && lastMessage.text.length > 50 ? '...' : '')
@@ -3988,31 +4096,32 @@ function App() {
           messageCount: dmMessages.length,
           unreadCount: unreadCount,
           lastMessageTime: dmMessages.length > 0 ? Math.max(...dmMessages.map(m => m.timestamp.getTime())) : 0,
-          lastMessageText
+          lastMessageText,
         };
       });
 
     // Sort by most recent message first (feature request #490)
-    const sortedNodesWithMessages = [...nodesWithMessages].sort((a, b) => {
-      // Favorites first
-      if (a.isFavorite && !b.isFavorite) return -1;
-      if (!a.isFavorite && b.isFavorite) return 1;
+    const sortedNodesWithMessages = [...nodesWithMessages]
+      .sort((a, b) => {
+        // Favorites first
+        if (a.isFavorite && !b.isFavorite) return -1;
+        if (!a.isFavorite && b.isFavorite) return 1;
 
-      // Then by last message time (most recent first)
-      return b.lastMessageTime - a.lastMessageTime;
-    })
+        // Then by last message time (most recent first)
+        return b.lastMessageTime - a.lastMessageTime;
+      })
 
-    // Apply DM filter
-    .filter(node => {
-      if (dmFilter === 'unread') {
-        return node.unreadCount > 0;
-      } else if (dmFilter === 'recent') {
-        // Show only nodes with messages in last 24 hours
-        const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
-        return node.lastMessageTime > oneDayAgo;
-      }
-      return true; // 'all' filter
-    });
+      // Apply DM filter
+      .filter(node => {
+        if (dmFilter === 'unread') {
+          return node.unreadCount > 0;
+        } else if (dmFilter === 'recent') {
+          // Show only nodes with messages in last 24 hours
+          const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+          return node.lastMessageTime > oneDayAgo;
+        }
+        return true; // 'all' filter
+      });
 
     return (
       <div className="nodes-split-view messages-split-view">
@@ -4027,193 +4136,200 @@ function App() {
               {isMessagesNodeListCollapsed ? '▶' : '◀'}
             </button>
             {!isMessagesNodeListCollapsed && (
-            <div className="sidebar-header-content">
-              <h3>Nodes</h3>
-            </div>
+              <div className="sidebar-header-content">
+                <h3>Nodes</h3>
+              </div>
             )}
             {!isMessagesNodeListCollapsed && (
-            <div className="node-controls">
-              <input
-                type="text"
-                placeholder="Filter nodes..."
-                value={nodeFilter}
-                onChange={(e) => setNodeFilter(e.target.value)}
-                className="filter-input-small"
-              />
-              <div className="sort-controls">
-                <select
-                  value={dmFilter}
-                  onChange={(e) => setDmFilter(e.target.value as 'all' | 'unread' | 'recent')}
-                  className="sort-dropdown"
-                  title="Filter conversations"
-                >
-                  <option value="all">All Conversations</option>
-                  <option value="unread">Unread Only</option>
-                  <option value="recent">Recent (24h)</option>
-                </select>
+              <div className="node-controls">
+                <input
+                  type="text"
+                  placeholder="Filter nodes..."
+                  value={nodeFilter}
+                  onChange={e => setNodeFilter(e.target.value)}
+                  className="filter-input-small"
+                />
+                <div className="sort-controls">
+                  <select
+                    value={dmFilter}
+                    onChange={e => setDmFilter(e.target.value as 'all' | 'unread' | 'recent')}
+                    className="sort-dropdown"
+                    title="Filter conversations"
+                  >
+                    <option value="all">All Conversations</option>
+                    <option value="unread">Unread Only</option>
+                    <option value="recent">Recent (24h)</option>
+                  </select>
+                </div>
               </div>
-            </div>
             )}
           </div>
 
-          <NodeFilterPopup
-            isOpen={showNodeFilterPopup}
-            onClose={() => setShowNodeFilterPopup(false)}
-          />
+          <NodeFilterPopup isOpen={showNodeFilterPopup} onClose={() => setShowNodeFilterPopup(false)} />
 
           {!isMessagesNodeListCollapsed && (
-          <div className="nodes-list">
-            {shouldShowData() ? (
-              processedNodes.length > 0 ? (
-                <>
-                  {sortedNodesWithMessages
-                    .filter(node => {
-                      // Apply security filter
-                      if (securityFilter === 'flaggedOnly') {
-                        if (!node.keyIsLowEntropy && !node.duplicateKeyDetected) return false;
-                      } else if (securityFilter === 'hideFlagged') {
-                        if (node.keyIsLowEntropy || node.duplicateKeyDetected) return false;
-                      }
-                      // Apply incomplete nodes filter
-                      if (!showIncompleteNodes && !isNodeComplete(node)) {
-                        return false;
-                      }
-                      // Apply channel filter
-                      if (channelFilter !== 'all') {
-                        const nodeChannel = node.channel ?? 0;
-                        if (nodeChannel !== channelFilter) return false;
-                      }
-                      // Apply text filter
-                      if (!nodeFilter) return true;
-                      const searchTerm = nodeFilter.toLowerCase();
-                      return (
-                        node.user?.longName?.toLowerCase().includes(searchTerm) ||
-                        node.user?.shortName?.toLowerCase().includes(searchTerm) ||
-                        node.user?.id?.toLowerCase().includes(searchTerm)
-                      );
-                    })
-                    .map(node => (
-                      <div
-                        key={node.nodeNum}
-                        className={`node-item ${selectedDMNode === node.user?.id ? 'selected' : ''}`}
-                        onClick={() => {
-                          setSelectedDMNode(node.user?.id || '');
-                          setReplyingTo(null); // Clear reply state when switching DM nodes
-                        }}
-                      >
-                        <div className="node-header">
-                          <div className="node-name">
-                            {node.isFavorite && <span className="favorite-indicator">⭐</span>}
-                            <span className="node-name-text">
-                              {node.user?.longName || `Node ${node.nodeNum}`}
-                            </span>
-                          </div>
-                          <div className="node-actions">
-                            {(node.keyIsLowEntropy || node.duplicateKeyDetected) && (
-                              <span
-                                className="security-warning-icon"
-                                title={node.keySecurityIssueDetails || 'Key security issue detected'}
-                                style={{
-                                  fontSize: '16px',
-                                  color: '#f44336',
-                                  marginLeft: '4px',
-                                  cursor: 'help'
-                                }}
-                              >
-                                ⚠️
-                              </span>
-                            )}
-                            <div className="node-short">
-                              {node.user?.shortName || '-'}
+            <div className="nodes-list">
+              {shouldShowData() ? (
+                processedNodes.length > 0 ? (
+                  <>
+                    {sortedNodesWithMessages
+                      .filter(node => {
+                        // Apply security filter
+                        if (securityFilter === 'flaggedOnly') {
+                          if (!node.keyIsLowEntropy && !node.duplicateKeyDetected) return false;
+                        } else if (securityFilter === 'hideFlagged') {
+                          if (node.keyIsLowEntropy || node.duplicateKeyDetected) return false;
+                        }
+                        // Apply incomplete nodes filter
+                        if (!showIncompleteNodes && !isNodeComplete(node)) {
+                          return false;
+                        }
+                        // Apply channel filter
+                        if (channelFilter !== 'all') {
+                          const nodeChannel = node.channel ?? 0;
+                          if (nodeChannel !== channelFilter) return false;
+                        }
+                        // Apply text filter
+                        if (!nodeFilter) return true;
+                        const searchTerm = nodeFilter.toLowerCase();
+                        return (
+                          node.user?.longName?.toLowerCase().includes(searchTerm) ||
+                          node.user?.shortName?.toLowerCase().includes(searchTerm) ||
+                          node.user?.id?.toLowerCase().includes(searchTerm)
+                        );
+                      })
+                      .map(node => (
+                        <div
+                          key={node.nodeNum}
+                          className={`node-item ${selectedDMNode === node.user?.id ? 'selected' : ''}`}
+                          onClick={() => {
+                            setSelectedDMNode(node.user?.id || '');
+                            setReplyingTo(null); // Clear reply state when switching DM nodes
+                          }}
+                        >
+                          <div className="node-header">
+                            <div className="node-name">
+                              {node.isFavorite && <span className="favorite-indicator">⭐</span>}
+                              <span className="node-name-text">{node.user?.longName || `Node ${node.nodeNum}`}</span>
                             </div>
-                          </div>
-                        </div>
-
-                        <div className="node-details" style={{ width: '100%' }}>
-                          <div style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            gap: '0.5rem',
-                            width: '100%'
-                          }}>
-                            {/* Left: Message preview */}
-                            <div className="last-message-preview" style={{
-                              fontSize: '0.85rem',
-                              color: 'var(--ctp-subtext0)',
-                              fontStyle: 'italic',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                              flex: '1',
-                              minWidth: 0
-                            }}>
-                              {node.lastMessageText || 'No messages'}
-                            </div>
-
-                            {/* Right: Message count and time */}
-                            <div style={{
-                              display: 'flex',
-                              gap: '0.5rem',
-                              alignItems: 'center',
-                              flexShrink: 0,
-                              fontSize: '0.85rem'
-                            }}>
-                              <span className="stat" title="Total Messages">
-                                💬 {node.messageCount}
-                              </span>
-                              {node.lastMessageTime > 0 && (
+                            <div className="node-actions">
+                              {(node.keyIsLowEntropy || node.duplicateKeyDetected) && (
                                 <span
-                                  className="stat"
-                                  title={formatDateTime(new Date(node.lastMessageTime), timeFormat, dateFormat)}
-                                  style={node.unreadCount > 0 ? {
-                                    border: '2px solid var(--ctp-red)',
-                                    borderRadius: '12px',
-                                    padding: '2px 6px',
-                                    backgroundColor: 'var(--ctp-surface0)'
-                                  } : undefined}
+                                  className="security-warning-icon"
+                                  title={node.keySecurityIssueDetails || 'Key security issue detected'}
+                                  style={{
+                                    fontSize: '16px',
+                                    color: '#f44336',
+                                    marginLeft: '4px',
+                                    cursor: 'help',
+                                  }}
                                 >
-                                  🕒 {formatRelativeTime(node.lastMessageTime)}
+                                  ⚠️
                                 </span>
                               )}
+                              <div className="node-short">{node.user?.shortName || '-'}</div>
                             </div>
                           </div>
-                        </div>
 
-                        <div className="node-indicators">
-                          {node.position && node.position.latitude != null && node.position.longitude != null && (
-                            <div className="node-location" title="Location">
-                              📍 {node.position.latitude.toFixed(3)}, {node.position.longitude.toFixed(3)}
-                              {node.isMobile && <span title="Mobile Node (position varies > 1km)" style={{ marginLeft: '4px' }}>🚶</span>}
+                          <div className="node-details" style={{ width: '100%' }}>
+                            <div
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                width: '100%',
+                              }}
+                            >
+                              {/* Left: Message preview */}
+                              <div
+                                className="last-message-preview"
+                                style={{
+                                  fontSize: '0.85rem',
+                                  color: 'var(--ctp-subtext0)',
+                                  fontStyle: 'italic',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  flex: '1',
+                                  minWidth: 0,
+                                }}
+                              >
+                                {node.lastMessageText || 'No messages'}
+                              </div>
+
+                              {/* Right: Message count and time */}
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  gap: '0.5rem',
+                                  alignItems: 'center',
+                                  flexShrink: 0,
+                                  fontSize: '0.85rem',
+                                }}
+                              >
+                                <span className="stat" title="Total Messages">
+                                  💬 {node.messageCount}
+                                </span>
+                                {node.lastMessageTime > 0 && (
+                                  <span
+                                    className="stat"
+                                    title={formatDateTime(new Date(node.lastMessageTime), timeFormat, dateFormat)}
+                                    style={
+                                      node.unreadCount > 0
+                                        ? {
+                                            border: '2px solid var(--ctp-red)',
+                                            borderRadius: '12px',
+                                            padding: '2px 6px',
+                                            backgroundColor: 'var(--ctp-surface0)',
+                                          }
+                                        : undefined
+                                    }
+                                  >
+                                    🕒 {formatRelativeTime(node.lastMessageTime)}
+                                  </span>
+                                )}
+                              </div>
                             </div>
-                          )}
-                          {node.user?.id && nodesWithTelemetry.has(node.user.id) && (
-                            <div className="node-telemetry" title="Has Telemetry Data">
-                              📊
-                            </div>
-                          )}
-                          {node.user?.id && nodesWithWeatherTelemetry.has(node.user.id) && (
-                            <div className="node-weather" title="Has Weather Data">
-                              ☀️
-                            </div>
-                          )}
-                          {node.user?.id && nodesWithPKC.has(node.user.id) && (
-                            <div className="node-pkc" title="Has Public Key Cryptography">
-                              🔐
-                            </div>
-                          )}
+                          </div>
+
+                          <div className="node-indicators">
+                            {node.position && node.position.latitude != null && node.position.longitude != null && (
+                              <div className="node-location" title="Location">
+                                📍 {node.position.latitude.toFixed(3)}, {node.position.longitude.toFixed(3)}
+                                {node.isMobile && (
+                                  <span title="Mobile Node (position varies > 1km)" style={{ marginLeft: '4px' }}>
+                                    🚶
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                            {node.user?.id && nodesWithTelemetry.has(node.user.id) && (
+                              <div className="node-telemetry" title="Has Telemetry Data">
+                                📊
+                              </div>
+                            )}
+                            {node.user?.id && nodesWithWeatherTelemetry.has(node.user.id) && (
+                              <div className="node-weather" title="Has Weather Data">
+                                ☀️
+                              </div>
+                            )}
+                            {node.user?.id && nodesWithPKC.has(node.user.id) && (
+                              <div className="node-pkc" title="Has Public Key Cryptography">
+                                🔐
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))
-                  }
-                </>
+                      ))}
+                  </>
+                ) : (
+                  <div className="no-data">No nodes available</div>
+                )
               ) : (
-                <div className="no-data">No nodes available</div>
-              )
-            ) : (
-              <div className="no-data">Connect to a Meshtastic node to view messages</div>
-            )}
-          </div>
+                <div className="no-data">Connect to a Meshtastic node to view messages</div>
+              )}
+            </div>
           )}
         </div>
 
@@ -4224,7 +4340,7 @@ function App() {
             <select
               className="node-dropdown-select"
               value={selectedDMNode || ''}
-              onChange={(e) => {
+              onChange={e => {
                 const nodeId = e.target.value;
                 logger.debug('👆 User selected node from dropdown:', nodeId);
                 setSelectedDMNode(nodeId);
@@ -4250,14 +4366,20 @@ function App() {
                   const displayName = node.user?.longName || `Node ${node.nodeNum}`;
                   const shortName = node.user?.shortName || '-';
                   const snr = node.snr != null ? ` ${node.snr.toFixed(1)}dB` : '';
-                  const battery = node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null
-                    ? (node.deviceMetrics.batteryLevel === 101 ? ' 🔌' : ` ${node.deviceMetrics.batteryLevel}%`)
-                    : '';
+                  const battery =
+                    node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null
+                      ? node.deviceMetrics.batteryLevel === 101
+                        ? ' 🔌'
+                        : ` ${node.deviceMetrics.batteryLevel}%`
+                      : '';
                   const unread = node.unreadCount > 0 ? ` (${node.unreadCount})` : '';
 
                   return (
                     <option key={node.user?.id || node.nodeNum} value={node.user?.id || ''}>
-                      {node.isFavorite ? '⭐ ' : ''}{displayName} ({shortName}){snr}{battery}{unread}
+                      {node.isFavorite ? '⭐ ' : ''}
+                      {displayName} ({shortName}){snr}
+                      {battery}
+                      {unread}
                     </option>
                   );
                 })}
@@ -4291,7 +4413,7 @@ function App() {
                     style={{
                       padding: '0.5rem 1rem',
                       fontSize: '0.9rem',
-                      whiteSpace: 'nowrap'
+                      whiteSpace: 'nowrap',
                     }}
                   >
                     Mark all as Read
@@ -4304,15 +4426,17 @@ function App() {
                 const selectedNode = nodes.find(n => n.user?.id === selectedDMNode);
                 if (selectedNode && (selectedNode.keyIsLowEntropy || selectedNode.duplicateKeyDetected)) {
                   return (
-                    <div style={{
-                      backgroundColor: '#f44336',
-                      color: 'white',
-                      padding: '12px',
-                      marginBottom: '10px',
-                      borderRadius: '4px',
-                      fontWeight: 'bold',
-                      textAlign: 'center'
-                    }}>
+                    <div
+                      style={{
+                        backgroundColor: '#f44336',
+                        color: 'white',
+                        padding: '12px',
+                        marginBottom: '10px',
+                        borderRadius: '4px',
+                        fontWeight: 'bold',
+                        textAlign: 'center',
+                      }}
+                    >
                       ⚠️ This node is a security risk
                     </div>
                   );
@@ -4325,8 +4449,8 @@ function App() {
                   let dmMessages = getDMMessages(selectedDMNode);
 
                   // Sort messages by timestamp (oldest first, newest at bottom)
-                  dmMessages = dmMessages.sort((a, b) =>
-                    new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+                  dmMessages = dmMessages.sort(
+                    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
                   );
 
                   return dmMessages.length > 0 ? (
@@ -4342,14 +4466,14 @@ function App() {
 
                       // Find ALL reactions to this message
                       const allDMMessages = getDMMessages(selectedDMNode);
-                      const reactions = allDMMessages.filter(m =>
-                        m.emoji === 1 && m.replyId && m.replyId.toString() === msg.id.split('_')[1]
+                      const reactions = allDMMessages.filter(
+                        m => m.emoji === 1 && m.replyId && m.replyId.toString() === msg.id.split('_')[1]
                       );
 
                       // Find replied message if this is a reply
-                      const repliedMessage = msg.replyId ? allDMMessages.find(m =>
-                        m.id.split('_')[1] === msg.replyId?.toString()
-                      ) : null;
+                      const repliedMessage = msg.replyId
+                        ? allDMMessages.find(m => m.id.split('_')[1] === msg.replyId?.toString())
+                        : null;
 
                       // Check if we should show a date separator
                       const currentDate = new Date(msg.timestamp);
@@ -4369,16 +4493,18 @@ function App() {
                               </div>
                             )}
                             <div className="message-item traceroute">
-                            <div className="message-header">
-                              <span className="message-from">{getNodeName(msg.from)}</span>
-                              <span className="message-time">
-                                {formatMessageTime(currentDate, timeFormat, dateFormat)}
-                                <HopCountDisplay hopStart={msg.hopStart} hopLimit={msg.hopLimit} />
-                              </span>
-                              <span className="traceroute-badge">TRACEROUTE</span>
+                              <div className="message-header">
+                                <span className="message-from">{getNodeName(msg.from)}</span>
+                                <span className="message-time">
+                                  {formatMessageTime(currentDate, timeFormat, dateFormat)}
+                                  <HopCountDisplay hopStart={msg.hopStart} hopLimit={msg.hopLimit} />
+                                </span>
+                                <span className="traceroute-badge">TRACEROUTE</span>
+                              </div>
+                              <div className="message-text" style={{ whiteSpace: 'pre-line', fontFamily: 'monospace' }}>
+                                {renderMessageWithLinks(msg.text)}
+                              </div>
                             </div>
-                            <div className="message-text" style={{whiteSpace: 'pre-line', fontFamily: 'monospace'}}>{renderMessageWithLinks(msg.text)}</div>
-                          </div>
                           </React.Fragment>
                         );
                       }
@@ -4393,94 +4519,90 @@ function App() {
                             </div>
                           )}
                           <div className={`message-bubble-container ${isMine ? 'mine' : 'theirs'}`}>
-                          {!isMine && (
-                            <div
-                              className="sender-dot clickable"
-                              title={`Click for ${getNodeName(msg.from)} details`}
-                              onClick={(e) => handleSenderClick(msg.from, e)}
-                            >
-                              {getNodeShortName(msg.from)}
-                            </div>
-                          )}
-                          <div className="message-content">
-                            {msg.replyId && (
-                              <div className="replied-message">
-                                <div className="reply-arrow">↳</div>
-                                <div className="reply-content">
-                                  {repliedMessage ? (
-                                    <>
-                                      <div className="reply-from">{getNodeShortName(repliedMessage.from)}</div>
-                                      <div className="reply-text">{repliedMessage.text || "Empty Message"}</div>
-                                    </>
-                                  ) : (
-                                    <div className="reply-text" style={{ fontStyle: 'italic', opacity: 0.6 }}>
-                                      Message not available
-                                    </div>
-                                  )}
-                                </div>
+                            {!isMine && (
+                              <div
+                                className="sender-dot clickable"
+                                title={`Click for ${getNodeName(msg.from)} details`}
+                                onClick={e => handleSenderClick(msg.from, e)}
+                              >
+                                {getNodeShortName(msg.from)}
                               </div>
                             )}
-                            <div className={`message-bubble ${isMine ? 'mine' : 'theirs'}`}>
-                              {hasPermission('messages', 'write') && (
-                                <div className="message-actions">
-                                  <button
-                                    className="reply-button"
-                                    onClick={() => {
-                                      setReplyingTo(msg);
-                                      dmMessageInputRef.current?.focus();
-                                    }}
-                                    title="Reply to this message"
-                                  >
-                                    ↩
-                                  </button>
-                                  <button
-                                    className="emoji-picker-button"
-                                    onClick={() => setEmojiPickerMessage(msg)}
-                                    title="React with emoji"
-                                  >
-                                    😄
-                                  </button>
-                                  <button
-                                    className="delete-button"
-                                    onClick={() => handleDeleteMessage(msg)}
-                                    title="Delete this message"
-                                  >
-                                    🗑️
-                                  </button>
+                            <div className="message-content">
+                              {msg.replyId && (
+                                <div className="replied-message">
+                                  <div className="reply-arrow">↳</div>
+                                  <div className="reply-content">
+                                    {repliedMessage ? (
+                                      <>
+                                        <div className="reply-from">{getNodeShortName(repliedMessage.from)}</div>
+                                        <div className="reply-text">{repliedMessage.text || 'Empty Message'}</div>
+                                      </>
+                                    ) : (
+                                      <div className="reply-text" style={{ fontStyle: 'italic', opacity: 0.6 }}>
+                                        Message not available
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                               )}
-                              <div className="message-text" style={{whiteSpace: 'pre-line'}}>
-                                {renderMessageWithLinks(msg.text)}
-                              </div>
-                              <LinkPreview text={msg.text} />
-                              {reactions.length > 0 && (
-                                <div className="message-reactions">
-                                  {reactions.map(reaction => (
-                                    <span
-                                      key={reaction.id}
-                                      className="reaction"
-                                      title={`From ${getNodeShortName(reaction.from)} - Click to send same reaction`}
-                                      onClick={() => handleSendTapback(reaction.text, msg)}
+                              <div className={`message-bubble ${isMine ? 'mine' : 'theirs'}`}>
+                                {hasPermission('messages', 'write') && (
+                                  <div className="message-actions">
+                                    <button
+                                      className="reply-button"
+                                      onClick={() => {
+                                        setReplyingTo(msg);
+                                        dmMessageInputRef.current?.focus();
+                                      }}
+                                      title="Reply to this message"
                                     >
-                                      {reaction.text}
-                                    </span>
-                                  ))}
+                                      ↩
+                                    </button>
+                                    <button
+                                      className="emoji-picker-button"
+                                      onClick={() => setEmojiPickerMessage(msg)}
+                                      title="React with emoji"
+                                    >
+                                      😄
+                                    </button>
+                                    <button
+                                      className="delete-button"
+                                      onClick={() => handleDeleteMessage(msg)}
+                                      title="Delete this message"
+                                    >
+                                      🗑️
+                                    </button>
+                                  </div>
+                                )}
+                                <div className="message-text" style={{ whiteSpace: 'pre-line' }}>
+                                  {renderMessageWithLinks(msg.text)}
                                 </div>
-                              )}
-                              <div className="message-meta">
-                                <span className="message-time">
-                                  {formatMessageTime(currentDate, timeFormat, dateFormat)}
-                                  <HopCountDisplay hopStart={msg.hopStart} hopLimit={msg.hopLimit} />
-                                </span>
+                                <LinkPreview text={msg.text} />
+                                {reactions.length > 0 && (
+                                  <div className="message-reactions">
+                                    {reactions.map(reaction => (
+                                      <span
+                                        key={reaction.id}
+                                        className="reaction"
+                                        title={`From ${getNodeShortName(reaction.from)} - Click to send same reaction`}
+                                        onClick={() => handleSendTapback(reaction.text, msg)}
+                                      >
+                                        {reaction.text}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                                <div className="message-meta">
+                                  <span className="message-time">
+                                    {formatMessageTime(currentDate, timeFormat, dateFormat)}
+                                    <HopCountDisplay hopStart={msg.hopStart} hopLimit={msg.hopLimit} />
+                                  </span>
+                                </div>
                               </div>
                             </div>
+                            {isMine && <div className="message-status">{renderMessageStatus(msg)}</div>}
                           </div>
-                          {isMine && (
-                            <div className="message-status">
-                              {renderMessageStatus(msg)}
-                            </div>
-                          )}
-                        </div>
                         </React.Fragment>
                       );
                     })
@@ -4515,10 +4637,10 @@ function App() {
                           ref={dmMessageInputRef}
                           type="text"
                           value={newMessage}
-                          onChange={(e) => setNewMessage(e.target.value)}
+                          onChange={e => setNewMessage(e.target.value)}
                           placeholder={`Send direct message to ${getNodeName(selectedDMNode)}...`}
                           className="message-input"
-                          onKeyPress={(e) => {
+                          onKeyPress={e => {
                             if (e.key === 'Enter') {
                               handleSendDirectMessage(selectedDMNode);
                             }
@@ -4553,9 +4675,7 @@ function App() {
                         title="Run traceroute to this node"
                       >
                         🗺️ Traceroute
-                        {tracerouteLoading === selectedDMNode && (
-                          <span className="spinner"></span>
-                        )}
+                        {tracerouteLoading === selectedDMNode && <span className="spinner"></span>}
                       </button>
                       <button
                         onClick={() => setShowTracerouteHistoryModal(true)}
@@ -4574,9 +4694,7 @@ function App() {
                       title="Request position exchange with this node"
                     >
                       📍 Exchange Position
-                      {positionLoading === selectedDMNode && (
-                        <span className="spinner"></span>
-                      )}
+                      {positionLoading === selectedDMNode && <span className="spinner"></span>}
                     </button>
                   )}
                   {hasPermission('messages', 'write') && selectedDMNode !== null && (
@@ -4590,7 +4708,7 @@ function App() {
                         padding: '0.5rem 1rem',
                         borderRadius: '4px',
                         cursor: 'pointer',
-                        fontWeight: 'bold'
+                        fontWeight: 'bold',
                       }}
                     >
                       🗑️ Purge Data
@@ -4599,58 +4717,84 @@ function App() {
                 </div>
 
                 {/* Traceroute Display */}
-                {hasPermission('traceroute', 'write') && (() => {
-                  const recentTrace = getRecentTraceroute(selectedDMNode);
-                  if (recentTrace) {
-                    const age = Math.floor((Date.now() - recentTrace.timestamp) / (1000 * 60));
-                    const ageStr = age < 60 ? `${age}m ago` : `${Math.floor(age / 60)}h ago`;
+                {hasPermission('traceroute', 'write') &&
+                  (() => {
+                    const recentTrace = getRecentTraceroute(selectedDMNode);
+                    if (recentTrace) {
+                      const age = Math.floor((Date.now() - recentTrace.timestamp) / (1000 * 60));
+                      const ageStr = age < 60 ? `${age}m ago` : `${Math.floor(age / 60)}h ago`;
 
-                    return (
-                      <div className="traceroute-info" style={{ marginTop: '1rem' }}>
-                        <div className="traceroute-route">
-                          <strong>→ Forward:</strong> {formatTracerouteRoute(recentTrace.route, recentTrace.snrTowards, recentTrace.fromNodeNum, recentTrace.toNodeNum, nodes, distanceUnit)}
+                      return (
+                        <div className="traceroute-info" style={{ marginTop: '1rem' }}>
+                          <div className="traceroute-route">
+                            <strong>→ Forward:</strong>{' '}
+                            {formatTracerouteRoute(
+                              recentTrace.route,
+                              recentTrace.snrTowards,
+                              recentTrace.fromNodeNum,
+                              recentTrace.toNodeNum,
+                              nodes,
+                              distanceUnit
+                            )}
+                          </div>
+                          <div className="traceroute-route">
+                            <strong>← Return:</strong>{' '}
+                            {formatTracerouteRoute(
+                              recentTrace.routeBack,
+                              recentTrace.snrBack,
+                              recentTrace.toNodeNum,
+                              recentTrace.fromNodeNum,
+                              nodes,
+                              distanceUnit
+                            )}
+                          </div>
+                          <div className="traceroute-age">Last traced {ageStr}</div>
                         </div>
-                        <div className="traceroute-route">
-                          <strong>← Return:</strong> {formatTracerouteRoute(recentTrace.routeBack, recentTrace.snrBack, recentTrace.toNodeNum, recentTrace.fromNodeNum, nodes, distanceUnit)}
-                        </div>
-                        <div className="traceroute-age">Last traced {ageStr}</div>
-                      </div>
-                    );
-                  }
-                  return null;
-                })()}
+                      );
+                    }
+                    return null;
+                  })()}
               </div>
 
               {(() => {
                 const selectedNode = nodes.find(n => n.user?.id === selectedDMNode);
                 return selectedNode ? (
-                  <NodeDetailsBlock
-                    node={selectedNode}
-                    timeFormat={timeFormat}
-                    dateFormat={dateFormat}
-                  />
+                  <NodeDetailsBlock node={selectedNode} timeFormat={timeFormat} dateFormat={dateFormat} />
                 ) : null;
               })()}
 
               {/* Security Details Section */}
               {(() => {
                 const selectedNode = nodes.find(n => n.user?.id === selectedDMNode);
-                if (selectedNode && (selectedNode.keyIsLowEntropy || selectedNode.duplicateKeyDetected) && selectedNode.keySecurityIssueDetails) {
+                if (
+                  selectedNode &&
+                  (selectedNode.keyIsLowEntropy || selectedNode.duplicateKeyDetected) &&
+                  selectedNode.keySecurityIssueDetails
+                ) {
                   // Parse node IDs from the details string (format: "Key shared with nodes: 1234, 5678")
                   const match = selectedNode.keySecurityIssueDetails.match(/nodes?: ([\d, ]+)/);
                   const sharedNodeNums = match ? match[1].split(',').map(s => parseInt(s.trim(), 10)) : [];
 
                   return (
                     <div className="node-details-block" style={{ marginTop: '1rem' }}>
-                      <h3 className="node-details-title" style={{ color: '#f44336' }}>⚠️ Security Issue</h3>
+                      <h3 className="node-details-title" style={{ color: '#f44336' }}>
+                        ⚠️ Security Issue
+                      </h3>
                       <div className="node-details-grid">
-                        <div className="node-detail-card" style={{ gridColumn: '1 / -1', borderLeft: '4px solid #f44336' }}>
+                        <div
+                          className="node-detail-card"
+                          style={{ gridColumn: '1 / -1', borderLeft: '4px solid #f44336' }}
+                        >
                           <div className="node-detail-label">Issue Details</div>
-                          <div className="node-detail-value" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                          <div
+                            className="node-detail-value"
+                            style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+                          >
                             {selectedNode.keyIsLowEntropy && 'This node uses a known low-entropy cryptographic key. '}
                             {selectedNode.duplicateKeyDetected && sharedNodeNums.length > 0 && (
                               <>
-                                This key is shared with: {sharedNodeNums.map((nodeNum, idx) => {
+                                This key is shared with:{' '}
+                                {sharedNodeNums.map((nodeNum, idx) => {
                                   const sharedNode = nodes.find(n => n.nodeNum === nodeNum);
                                   const displayName = sharedNode?.user?.longName || `Node ${nodeNum}`;
                                   const shortName = sharedNode?.user?.shortName || '?';
@@ -4670,7 +4814,7 @@ function App() {
                                           textDecoration: 'underline',
                                           cursor: 'pointer',
                                           padding: 0,
-                                          font: 'inherit'
+                                          font: 'inherit',
                                         }}
                                         title={`Switch to ${displayName}`}
                                       >
@@ -4690,7 +4834,12 @@ function App() {
                 return null;
               })()}
 
-              <TelemetryGraphs nodeId={selectedDMNode} temperatureUnit={temperatureUnit} telemetryHours={telemetryVisualizationHours} baseUrl={baseUrl} />
+              <TelemetryGraphs
+                nodeId={selectedDMNode}
+                temperatureUnit={temperatureUnit}
+                telemetryHours={telemetryVisualizationHours}
+                baseUrl={baseUrl}
+              />
             </div>
           ) : (
             <div className="no-selection">
@@ -4714,15 +4863,19 @@ function App() {
   const nodesPositionDigest = useMemo(() => {
     return nodes.map(n => ({
       nodeNum: n.nodeNum,
-      position: n.position ? {
-        latitude: n.position.latitude,
-        longitude: n.position.longitude
-      } : undefined,
-      user: n.user ? {
-        longName: n.user.longName,
-        shortName: n.user.shortName,
-        id: n.user.id
-      } : undefined
+      position: n.position
+        ? {
+            latitude: n.position.latitude,
+            longitude: n.position.longitude,
+          }
+        : undefined,
+      user: n.user
+        ? {
+            longName: n.user.longName,
+            shortName: n.user.shortName,
+            id: n.user.id,
+          }
+        : undefined,
     }));
   }, [nodes.map(n => `${n.nodeNum}-${n.position?.latitude}-${n.position?.longitude}`).join(',')]);
 
@@ -4737,9 +4890,13 @@ function App() {
       snrTowards: tr.snrTowards,
       snrBack: tr.snrBack,
       timestamp: tr.timestamp,
-      createdAt: tr.createdAt
+      createdAt: tr.createdAt,
     }));
-  }, [traceroutes.map(tr => `${tr.fromNodeNum}-${tr.toNodeNum}-${tr.route}-${tr.routeBack}-${tr.timestamp || tr.createdAt}`).join(',')]);
+  }, [
+    traceroutes
+      .map(tr => `${tr.fromNodeNum}-${tr.toNodeNum}-${tr.route}-${tr.routeBack}-${tr.timestamp || tr.createdAt}`)
+      .join(','),
+  ]);
 
   // Memoize base traceroute paths (showPaths) - doesn't depend on selectedNodeId
   // This prevents re-rendering markers when clicking to select a node
@@ -4755,7 +4912,7 @@ function App() {
 
     // Calculate segment usage counts and collect SNR values with timestamps (only if showPaths is enabled)
     const segmentUsage = new Map<string, number>();
-    const segmentSNRs = new Map<string, Array<{snr: number; timestamp: number}>>();
+    const segmentSNRs = new Map<string, Array<{ snr: number; timestamp: number }>>();
     const segmentsList: Array<{
       key: string;
       positions: [number, number][];
@@ -4764,14 +4921,14 @@ function App() {
 
     if (showPaths) {
       // Filter traceroutes by age using the same maxNodeAgeHours setting
-      const cutoffTime = Date.now() - (maxNodeAgeHours * 60 * 60 * 1000);
+      const cutoffTime = Date.now() - maxNodeAgeHours * 60 * 60 * 1000;
       const recentTraceroutes = traceroutesForRender.filter(tr => {
         const timestamp = tr.timestamp || tr.createdAt || 0;
         return timestamp >= cutoffTime;
       });
 
       // Deduplicate: keep only the most recent traceroute per node pair
-      const tracerouteMap = new Map<string, typeof traceroutesForRender[0]>();
+      const tracerouteMap = new Map<string, (typeof traceroutesForRender)[0]>();
       recentTraceroutes.forEach(tr => {
         // Create a bidirectional key (same for A→B and B→A)
         const key = [tr.fromNodeNum, tr.toNodeNum].sort().join('-');
@@ -4789,334 +4946,362 @@ function App() {
       const deduplicatedTraceroutes = Array.from(tracerouteMap.values());
 
       deduplicatedTraceroutes.forEach((tr, idx) => {
-      try {
-        // Skip traceroutes with null or invalid route data (failed traceroutes)
-        if (!tr.route || tr.route === 'null' || tr.route === '' ||
-            !tr.routeBack || tr.routeBack === 'null' || tr.routeBack === '') {
-          return; // Skip this traceroute - no valid route data to display
-        }
+        try {
+          // Skip traceroutes with null or invalid route data (failed traceroutes)
+          if (
+            !tr.route ||
+            tr.route === 'null' ||
+            tr.route === '' ||
+            !tr.routeBack ||
+            tr.routeBack === 'null' ||
+            tr.routeBack === ''
+          ) {
+            return; // Skip this traceroute - no valid route data to display
+          }
 
-        // Process forward path
-        const routeForward = JSON.parse(tr.route);
-        const routeBack = JSON.parse(tr.routeBack);
+          // Process forward path
+          const routeForward = JSON.parse(tr.route);
+          const routeBack = JSON.parse(tr.routeBack);
 
-        // Note: Empty arrays are valid (direct path with no intermediate hops)
-        // Actual failures are caught by the null/invalid check above or by insufficient positions below
+          // Note: Empty arrays are valid (direct path with no intermediate hops)
+          // Actual failures are caught by the null/invalid check above or by insufficient positions below
 
-        const snrForward = tr.snrTowards && tr.snrTowards !== 'null' && tr.snrTowards !== ''
-          ? JSON.parse(tr.snrTowards)
-          : [];
-        const timestamp = tr.timestamp || tr.createdAt || Date.now();
-        // Build forward path: responder -> route -> requester (fromNodeNum -> toNodeNum)
-        const forwardSequence: number[] = [tr.fromNodeNum, ...routeForward, tr.toNodeNum];
-        const forwardPositions: Array<{nodeNum: number; pos: [number, number]}> = [];
+          const snrForward =
+            tr.snrTowards && tr.snrTowards !== 'null' && tr.snrTowards !== '' ? JSON.parse(tr.snrTowards) : [];
+          const timestamp = tr.timestamp || tr.createdAt || Date.now();
+          // Build forward path: responder -> route -> requester (fromNodeNum -> toNodeNum)
+          const forwardSequence: number[] = [tr.fromNodeNum, ...routeForward, tr.toNodeNum];
+          const forwardPositions: Array<{ nodeNum: number; pos: [number, number] }> = [];
 
-        // Build forward sequence with positions
-        forwardSequence.forEach((nodeNum) => {
-          const node = nodesForRender.find(n => n.nodeNum === nodeNum);
-          if (node?.position?.latitude && node?.position?.longitude) {
-            forwardPositions.push({
-              nodeNum,
-              pos: [node.position.latitude, node.position.longitude]
+          // Build forward sequence with positions
+          forwardSequence.forEach(nodeNum => {
+            const node = nodesForRender.find(n => n.nodeNum === nodeNum);
+            if (node?.position?.latitude && node?.position?.longitude) {
+              forwardPositions.push({
+                nodeNum,
+                pos: [node.position.latitude, node.position.longitude],
+              });
+            }
+          });
+
+          // Create forward segments and count usage
+          for (let i = 0; i < forwardPositions.length - 1; i++) {
+            const from = forwardPositions[i];
+            const to = forwardPositions[i + 1];
+            const segmentKey = [from.nodeNum, to.nodeNum].sort().join('-');
+
+            segmentUsage.set(segmentKey, (segmentUsage.get(segmentKey) || 0) + 1);
+
+            // Collect SNR value with timestamp for this segment
+            // SNR array is in order of path: snrForward[i] is for the i-th link
+            if (snrForward[i] !== undefined) {
+              const snrValue = snrForward[i] / 4; // Scale SNR value
+              if (!segmentSNRs.has(segmentKey)) {
+                segmentSNRs.set(segmentKey, []);
+              }
+              segmentSNRs.get(segmentKey)!.push({ snr: snrValue, timestamp });
+            }
+
+            segmentsList.push({
+              key: `tr-${idx}-fwd-seg-${i}`,
+              positions: [from.pos, to.pos],
+              nodeNums: [from.nodeNum, to.nodeNum],
             });
           }
-        });
 
-        // Create forward segments and count usage
-        for (let i = 0; i < forwardPositions.length - 1; i++) {
-          const from = forwardPositions[i];
-          const to = forwardPositions[i + 1];
-          const segmentKey = [from.nodeNum, to.nodeNum].sort().join('-');
+          // Process return path (already parsed above for validation)
+          const snrBack = tr.snrBack && tr.snrBack !== 'null' && tr.snrBack !== '' ? JSON.parse(tr.snrBack) : [];
+          // Build return path: requester -> routeBack -> responder (toNodeNum -> fromNodeNum)
+          const backSequence: number[] = [tr.toNodeNum, ...routeBack, tr.fromNodeNum];
+          const backPositions: Array<{ nodeNum: number; pos: [number, number] }> = [];
 
-          segmentUsage.set(segmentKey, (segmentUsage.get(segmentKey) || 0) + 1);
-
-          // Collect SNR value with timestamp for this segment
-          // SNR array is in order of path: snrForward[i] is for the i-th link
-          if (snrForward[i] !== undefined) {
-            const snrValue = snrForward[i] / 4; // Scale SNR value
-            if (!segmentSNRs.has(segmentKey)) {
-              segmentSNRs.set(segmentKey, []);
+          // Build back sequence with positions
+          backSequence.forEach(nodeNum => {
+            const node = nodesForRender.find(n => n.nodeNum === nodeNum);
+            if (node?.position?.latitude && node?.position?.longitude) {
+              backPositions.push({
+                nodeNum,
+                pos: [node.position.latitude, node.position.longitude],
+              });
             }
-            segmentSNRs.get(segmentKey)!.push({snr: snrValue, timestamp});
-          }
-
-          segmentsList.push({
-            key: `tr-${idx}-fwd-seg-${i}`,
-            positions: [from.pos, to.pos],
-            nodeNums: [from.nodeNum, to.nodeNum]
           });
-        }
 
-        // Process return path (already parsed above for validation)
-        const snrBack = tr.snrBack && tr.snrBack !== 'null' && tr.snrBack !== ''
-          ? JSON.parse(tr.snrBack)
-          : [];
-        // Build return path: requester -> routeBack -> responder (toNodeNum -> fromNodeNum)
-        const backSequence: number[] = [tr.toNodeNum, ...routeBack, tr.fromNodeNum];
-        const backPositions: Array<{nodeNum: number; pos: [number, number]}> = [];
+          // Create back segments and count usage
+          for (let i = 0; i < backPositions.length - 1; i++) {
+            const from = backPositions[i];
+            const to = backPositions[i + 1];
+            const segmentKey = [from.nodeNum, to.nodeNum].sort().join('-');
 
-        // Build back sequence with positions
-        backSequence.forEach((nodeNum) => {
-          const node = nodesForRender.find(n => n.nodeNum === nodeNum);
-          if (node?.position?.latitude && node?.position?.longitude) {
-            backPositions.push({
-              nodeNum,
-              pos: [node.position.latitude, node.position.longitude]
+            segmentUsage.set(segmentKey, (segmentUsage.get(segmentKey) || 0) + 1);
+
+            // Collect SNR value with timestamp for this segment
+            if (snrBack[i] !== undefined) {
+              const snrValue = snrBack[i] / 4; // Scale SNR value
+              if (!segmentSNRs.has(segmentKey)) {
+                segmentSNRs.set(segmentKey, []);
+              }
+              segmentSNRs.get(segmentKey)!.push({ snr: snrValue, timestamp });
+            }
+
+            segmentsList.push({
+              key: `tr-${idx}-back-seg-${i}`,
+              positions: [from.pos, to.pos],
+              nodeNums: [from.nodeNum, to.nodeNum],
             });
           }
-        });
-
-        // Create back segments and count usage
-        for (let i = 0; i < backPositions.length - 1; i++) {
-          const from = backPositions[i];
-          const to = backPositions[i + 1];
-          const segmentKey = [from.nodeNum, to.nodeNum].sort().join('-');
-
-          segmentUsage.set(segmentKey, (segmentUsage.get(segmentKey) || 0) + 1);
-
-          // Collect SNR value with timestamp for this segment
-          if (snrBack[i] !== undefined) {
-            const snrValue = snrBack[i] / 4; // Scale SNR value
-            if (!segmentSNRs.has(segmentKey)) {
-              segmentSNRs.set(segmentKey, []);
-            }
-            segmentSNRs.get(segmentKey)!.push({snr: snrValue, timestamp});
-          }
-
-          segmentsList.push({
-            key: `tr-${idx}-back-seg-${i}`,
-            positions: [from.pos, to.pos],
-            nodeNums: [from.nodeNum, to.nodeNum]
-          });
+        } catch (error) {
+          logger.error('Error parsing traceroute:', error);
         }
-      } catch (error) {
-        logger.error('Error parsing traceroute:', error);
-      }
-    });
+      });
 
       // Render segments with weighted lines
-      const segmentElements = segmentsList.map((segment) => {
-      const segmentKey = segment.nodeNums.sort().join('-');
-      const usage = segmentUsage.get(segmentKey) || 1;
-      // Base weight 2, add 1 per usage, max 8
-      const weight = Math.min(2 + usage, 8);
+      const segmentElements = segmentsList.map(segment => {
+        const segmentKey = segment.nodeNums.sort().join('-');
+        const usage = segmentUsage.get(segmentKey) || 1;
+        // Base weight 2, add 1 per usage, max 8
+        const weight = Math.min(2 + usage, 8);
 
-      // Get node names for popup
-      const BROADCAST_ADDR = 4294967295;
-      const node1 = nodesForRender.find(n => n.nodeNum === segment.nodeNums[0]);
-      const node2 = nodesForRender.find(n => n.nodeNum === segment.nodeNums[1]);
-      const node1Name = segment.nodeNums[0] === BROADCAST_ADDR ? '(unknown)' :
-                        (node1?.user?.longName || node1?.user?.shortName || `!${segment.nodeNums[0].toString(16)}`);
-      const node2Name = segment.nodeNums[1] === BROADCAST_ADDR ? '(unknown)' :
-                        (node2?.user?.longName || node2?.user?.shortName || `!${segment.nodeNums[1].toString(16)}`);
+        // Get node names for popup
+        const BROADCAST_ADDR = 4294967295;
+        const node1 = nodesForRender.find(n => n.nodeNum === segment.nodeNums[0]);
+        const node2 = nodesForRender.find(n => n.nodeNum === segment.nodeNums[1]);
+        const node1Name =
+          segment.nodeNums[0] === BROADCAST_ADDR
+            ? '(unknown)'
+            : node1?.user?.longName || node1?.user?.shortName || `!${segment.nodeNums[0].toString(16)}`;
+        const node2Name =
+          segment.nodeNums[1] === BROADCAST_ADDR
+            ? '(unknown)'
+            : node2?.user?.longName || node2?.user?.shortName || `!${segment.nodeNums[1].toString(16)}`;
 
-      // Calculate distance if both nodes have position data
-      let segmentDistanceKm = 0;
-      if (node1?.position?.latitude && node1?.position?.longitude &&
-          node2?.position?.latitude && node2?.position?.longitude) {
-        segmentDistanceKm = calculateDistance(
-          node1.position.latitude, node1.position.longitude,
-          node2.position.latitude, node2.position.longitude
-        );
-      }
-
-      // Calculate SNR statistics
-      const snrData = segmentSNRs.get(segmentKey) || [];
-      let snrStats = null;
-      let chartData = null;
-      if (snrData.length > 0) {
-        const snrValues = snrData.map(d => d.snr);
-        const minSNR = Math.min(...snrValues);
-        const maxSNR = Math.max(...snrValues);
-        const avgSNR = snrValues.reduce((sum, val) => sum + val, 0) / snrValues.length;
-        snrStats = {
-          min: minSNR.toFixed(1),
-          max: maxSNR.toFixed(1),
-          avg: avgSNR.toFixed(1),
-          count: snrData.length
-        };
-
-        // Prepare chart data for 3+ samples (sorted by time of day)
-        if (snrData.length >= 3) {
-          chartData = snrData.map(d => {
-            const date = new Date(d.timestamp);
-            const hours = date.getHours();
-            const minutes = date.getMinutes();
-            // Convert to decimal hours (0-24) for continuous time axis
-            const timeDecimal = hours + (minutes / 60);
-            return {
-              timeDecimal,
-              timeLabel: `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`,
-              snr: parseFloat(d.snr.toFixed(1)),
-              fullTimestamp: d.timestamp
-            };
-          }).sort((a, b) => a.timeDecimal - b.timeDecimal);
+        // Calculate distance if both nodes have position data
+        let segmentDistanceKm = 0;
+        if (
+          node1?.position?.latitude &&
+          node1?.position?.longitude &&
+          node2?.position?.latitude &&
+          node2?.position?.longitude
+        ) {
+          segmentDistanceKm = calculateDistance(
+            node1.position.latitude,
+            node1.position.longitude,
+            node2.position.latitude,
+            node2.position.longitude
+          );
         }
-      }
 
-      return (
-        <Polyline
-          key={segment.key}
-          positions={segment.positions}
-          color={themeColors.mauve}
-          weight={weight}
-          opacity={0.7}
-        >
-          <Popup>
-            <div className="route-popup">
-              <h4>Route Segment</h4>
-              <div className="route-endpoints">
-                <strong
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    // Look up fresh node data by nodeNum from segment
-                    const freshNode = nodesForRender.find(n => n.nodeNum === segment.nodeNums[0]);
-                    if (freshNode?.user?.id && freshNode?.position?.latitude && freshNode?.position?.longitude) {
-                      setSelectedNodeId(freshNode.user.id);
-                      setMapCenterTarget([freshNode.position.latitude, freshNode.position.longitude]);
-                    }
-                  }}
-                  style={{ cursor: node1?.user?.id ? 'pointer' : 'default', color: node1?.user?.id ? 'var(--ctp-blue)' : 'inherit' }}
-                  title={node1?.user?.id ? 'Click to select and center on this node' : ''}
-                >
-                  {node1Name}
-                </strong>
-                {' ↔ '}
-                <strong
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    // Look up fresh node data by nodeNum from segment
-                    const freshNode = nodesForRender.find(n => n.nodeNum === segment.nodeNums[1]);
-                    if (freshNode?.user?.id && freshNode?.position?.latitude && freshNode?.position?.longitude) {
-                      setSelectedNodeId(freshNode.user.id);
-                      setMapCenterTarget([freshNode.position.latitude, freshNode.position.longitude]);
-                    }
-                  }}
-                  style={{ cursor: node2?.user?.id ? 'pointer' : 'default', color: node2?.user?.id ? 'var(--ctp-blue)' : 'inherit' }}
-                  title={node2?.user?.id ? 'Click to select and center on this node' : ''}
-                >
-                  {node2Name}
-                </strong>
-              </div>
-              <div className="route-usage">
-                Used in{' '}
-                <strong
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSelectedRouteSegment({ nodeNum1: segment.nodeNums[0], nodeNum2: segment.nodeNums[1] });
-                  }}
-                  style={{ cursor: 'pointer', color: 'var(--ctp-blue)', textDecoration: 'underline' }}
-                  title="Click to view all traceroutes using this segment"
-                >
-                  {usage}
-                </strong>
-                {' '}traceroute{usage !== 1 ? 's' : ''}
-              </div>
-              {segmentDistanceKm > 0 && (
+        // Calculate SNR statistics
+        const snrData = segmentSNRs.get(segmentKey) || [];
+        let snrStats = null;
+        let chartData = null;
+        if (snrData.length > 0) {
+          const snrValues = snrData.map(d => d.snr);
+          const minSNR = Math.min(...snrValues);
+          const maxSNR = Math.max(...snrValues);
+          const avgSNR = snrValues.reduce((sum, val) => sum + val, 0) / snrValues.length;
+          snrStats = {
+            min: minSNR.toFixed(1),
+            max: maxSNR.toFixed(1),
+            avg: avgSNR.toFixed(1),
+            count: snrData.length,
+          };
+
+          // Prepare chart data for 3+ samples (sorted by time of day)
+          if (snrData.length >= 3) {
+            chartData = snrData
+              .map(d => {
+                const date = new Date(d.timestamp);
+                const hours = date.getHours();
+                const minutes = date.getMinutes();
+                // Convert to decimal hours (0-24) for continuous time axis
+                const timeDecimal = hours + minutes / 60;
+                return {
+                  timeDecimal,
+                  timeLabel: `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`,
+                  snr: parseFloat(d.snr.toFixed(1)),
+                  fullTimestamp: d.timestamp,
+                };
+              })
+              .sort((a, b) => a.timeDecimal - b.timeDecimal);
+          }
+        }
+
+        return (
+          <Polyline
+            key={segment.key}
+            positions={segment.positions}
+            color={themeColors.mauve}
+            weight={weight}
+            opacity={0.7}
+          >
+            <Popup>
+              <div className="route-popup">
+                <h4>Route Segment</h4>
+                <div className="route-endpoints">
+                  <strong
+                    onClick={e => {
+                      e.stopPropagation();
+                      // Look up fresh node data by nodeNum from segment
+                      const freshNode = nodesForRender.find(n => n.nodeNum === segment.nodeNums[0]);
+                      if (freshNode?.user?.id && freshNode?.position?.latitude && freshNode?.position?.longitude) {
+                        setSelectedNodeId(freshNode.user.id);
+                        setMapCenterTarget([freshNode.position.latitude, freshNode.position.longitude]);
+                      }
+                    }}
+                    style={{
+                      cursor: node1?.user?.id ? 'pointer' : 'default',
+                      color: node1?.user?.id ? 'var(--ctp-blue)' : 'inherit',
+                    }}
+                    title={node1?.user?.id ? 'Click to select and center on this node' : ''}
+                  >
+                    {node1Name}
+                  </strong>
+                  {' ↔ '}
+                  <strong
+                    onClick={e => {
+                      e.stopPropagation();
+                      // Look up fresh node data by nodeNum from segment
+                      const freshNode = nodesForRender.find(n => n.nodeNum === segment.nodeNums[1]);
+                      if (freshNode?.user?.id && freshNode?.position?.latitude && freshNode?.position?.longitude) {
+                        setSelectedNodeId(freshNode.user.id);
+                        setMapCenterTarget([freshNode.position.latitude, freshNode.position.longitude]);
+                      }
+                    }}
+                    style={{
+                      cursor: node2?.user?.id ? 'pointer' : 'default',
+                      color: node2?.user?.id ? 'var(--ctp-blue)' : 'inherit',
+                    }}
+                    title={node2?.user?.id ? 'Click to select and center on this node' : ''}
+                  >
+                    {node2Name}
+                  </strong>
+                </div>
                 <div className="route-usage">
-                  Distance: <strong>{formatDistance(segmentDistanceKm, distanceUnit)}</strong>
+                  Used in{' '}
+                  <strong
+                    onClick={e => {
+                      e.stopPropagation();
+                      setSelectedRouteSegment({ nodeNum1: segment.nodeNums[0], nodeNum2: segment.nodeNums[1] });
+                    }}
+                    style={{ cursor: 'pointer', color: 'var(--ctp-blue)', textDecoration: 'underline' }}
+                    title="Click to view all traceroutes using this segment"
+                  >
+                    {usage}
+                  </strong>{' '}
+                  traceroute{usage !== 1 ? 's' : ''}
                 </div>
-              )}
-              {snrStats && (
-                <div className="route-snr-stats">
-                  {snrStats.count === 1 ? (
-                    <>
-                      <h5>SNR:</h5>
-                      <div className="snr-stat-row">
-                        <span className="stat-value">{snrStats.min} dB</span>
-                      </div>
-                    </>
-                  ) : snrStats.count === 2 ? (
-                    <>
-                      <h5>SNR Statistics:</h5>
-                      <div className="snr-stat-row">
-                        <span className="stat-label">Min:</span>
-                        <span className="stat-value">{snrStats.min} dB</span>
-                      </div>
-                      <div className="snr-stat-row">
-                        <span className="stat-label">Max:</span>
-                        <span className="stat-value">{snrStats.max} dB</span>
-                      </div>
-                      <div className="snr-stat-row">
-                        <span className="stat-label">Samples:</span>
-                        <span className="stat-value">{snrStats.count}</span>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <h5>SNR Statistics:</h5>
-                      <div className="snr-stat-row">
-                        <span className="stat-label">Min:</span>
-                        <span className="stat-value">{snrStats.min} dB</span>
-                      </div>
-                      <div className="snr-stat-row">
-                        <span className="stat-label">Max:</span>
-                        <span className="stat-value">{snrStats.max} dB</span>
-                      </div>
-                      <div className="snr-stat-row">
-                        <span className="stat-label">Average:</span>
-                        <span className="stat-value">{snrStats.avg} dB</span>
-                      </div>
-                      <div className="snr-stat-row">
-                        <span className="stat-label">Samples:</span>
-                        <span className="stat-value">{snrStats.count}</span>
-                      </div>
-                      {chartData && (
-                        <div className="snr-timeline-chart">
-                          <ResponsiveContainer width="100%" height={150}>
-                            <LineChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="var(--ctp-surface2)" />
-                              <XAxis
-                                dataKey="timeDecimal"
-                                type="number"
-                                domain={[0, 24]}
-                                ticks={[0, 6, 12, 18, 24]}
-                                tickFormatter={(value) => {
-                                  const hours = Math.floor(value);
-                                  const minutes = Math.round((value - hours) * 60);
-                                  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-                                }}
-                                tick={{ fill: 'var(--ctp-subtext1)', fontSize: 10 }}
-                                stroke="var(--ctp-surface2)"
-                              />
-                              <YAxis
-                                tick={{ fill: 'var(--ctp-subtext1)', fontSize: 10 }}
-                                stroke="var(--ctp-surface2)"
-                                label={{ value: 'SNR (dB)', angle: -90, position: 'insideLeft', style: { fill: 'var(--ctp-subtext1)', fontSize: 10 } }}
-                              />
-                              <Tooltip
-                                contentStyle={{
-                                  backgroundColor: 'var(--ctp-surface0)',
-                                  border: '1px solid var(--ctp-surface2)',
-                                  borderRadius: '4px',
-                                  fontSize: '12px'
-                                }}
-                                labelStyle={{ color: 'var(--ctp-text)' }}
-                                labelFormatter={(value) => {
-                                  const item = chartData.find(d => d.timeDecimal === value);
-                                  return item ? item.timeLabel : value;
-                                }}
-                              />
-                              <Line
-                                type="monotone"
-                                dataKey="snr"
-                                stroke="var(--ctp-mauve)"
-                                strokeWidth={2}
-                                dot={{ fill: 'var(--ctp-mauve)', r: 3 }}
-                              />
-                            </LineChart>
-                          </ResponsiveContainer>
+                {segmentDistanceKm > 0 && (
+                  <div className="route-usage">
+                    Distance: <strong>{formatDistance(segmentDistanceKm, distanceUnit)}</strong>
+                  </div>
+                )}
+                {snrStats && (
+                  <div className="route-snr-stats">
+                    {snrStats.count === 1 ? (
+                      <>
+                        <h5>SNR:</h5>
+                        <div className="snr-stat-row">
+                          <span className="stat-value">{snrStats.min} dB</span>
                         </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-          </Popup>
-        </Polyline>
-      );
-    });
+                      </>
+                    ) : snrStats.count === 2 ? (
+                      <>
+                        <h5>SNR Statistics:</h5>
+                        <div className="snr-stat-row">
+                          <span className="stat-label">Min:</span>
+                          <span className="stat-value">{snrStats.min} dB</span>
+                        </div>
+                        <div className="snr-stat-row">
+                          <span className="stat-label">Max:</span>
+                          <span className="stat-value">{snrStats.max} dB</span>
+                        </div>
+                        <div className="snr-stat-row">
+                          <span className="stat-label">Samples:</span>
+                          <span className="stat-value">{snrStats.count}</span>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <h5>SNR Statistics:</h5>
+                        <div className="snr-stat-row">
+                          <span className="stat-label">Min:</span>
+                          <span className="stat-value">{snrStats.min} dB</span>
+                        </div>
+                        <div className="snr-stat-row">
+                          <span className="stat-label">Max:</span>
+                          <span className="stat-value">{snrStats.max} dB</span>
+                        </div>
+                        <div className="snr-stat-row">
+                          <span className="stat-label">Average:</span>
+                          <span className="stat-value">{snrStats.avg} dB</span>
+                        </div>
+                        <div className="snr-stat-row">
+                          <span className="stat-label">Samples:</span>
+                          <span className="stat-value">{snrStats.count}</span>
+                        </div>
+                        {chartData && (
+                          <div className="snr-timeline-chart">
+                            <ResponsiveContainer width="100%" height={150}>
+                              <LineChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="var(--ctp-surface2)" />
+                                <XAxis
+                                  dataKey="timeDecimal"
+                                  type="number"
+                                  domain={[0, 24]}
+                                  ticks={[0, 6, 12, 18, 24]}
+                                  tickFormatter={value => {
+                                    const hours = Math.floor(value);
+                                    const minutes = Math.round((value - hours) * 60);
+                                    return `${hours.toString().padStart(2, '0')}:${minutes
+                                      .toString()
+                                      .padStart(2, '0')}`;
+                                  }}
+                                  tick={{ fill: 'var(--ctp-subtext1)', fontSize: 10 }}
+                                  stroke="var(--ctp-surface2)"
+                                />
+                                <YAxis
+                                  tick={{ fill: 'var(--ctp-subtext1)', fontSize: 10 }}
+                                  stroke="var(--ctp-surface2)"
+                                  label={{
+                                    value: 'SNR (dB)',
+                                    angle: -90,
+                                    position: 'insideLeft',
+                                    style: { fill: 'var(--ctp-subtext1)', fontSize: 10 },
+                                  }}
+                                />
+                                <Tooltip
+                                  contentStyle={{
+                                    backgroundColor: 'var(--ctp-surface0)',
+                                    border: '1px solid var(--ctp-surface2)',
+                                    borderRadius: '4px',
+                                    fontSize: '12px',
+                                  }}
+                                  labelStyle={{ color: 'var(--ctp-text)' }}
+                                  labelFormatter={value => {
+                                    const item = chartData.find(d => d.timeDecimal === value);
+                                    return item ? item.timeLabel : value;
+                                  }}
+                                />
+                                <Line
+                                  type="monotone"
+                                  dataKey="snr"
+                                  stroke="var(--ctp-mauve)"
+                                  strokeWidth={2}
+                                  dot={{ fill: 'var(--ctp-mauve)', r: 3 }}
+                                />
+                              </LineChart>
+                            </ResponsiveContainer>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            </Popup>
+          </Polyline>
+        );
+      });
 
       // Add route segments to elements
       allElements.push(...segmentElements);
@@ -5138,39 +5323,45 @@ function App() {
     const allElements: React.ReactElement[] = [];
 
     if (showRoute && selectedNodeId && selectedNodeId !== currentNodeId) {
-      const selectedTrace = traceroutesForRender.find(tr =>
-        tr.toNodeId === selectedNodeId || tr.fromNodeId === selectedNodeId
+      const selectedTrace = traceroutesForRender.find(
+        tr => tr.toNodeId === selectedNodeId || tr.fromNodeId === selectedNodeId
       );
 
       if (selectedTrace) {
         // Skip if the traceroute has null or invalid route data (failed traceroute)
-        if (!selectedTrace.route || selectedTrace.route === 'null' || selectedTrace.route === '' ||
-            !selectedTrace.routeBack || selectedTrace.routeBack === 'null' || selectedTrace.routeBack === '') {
+        if (
+          !selectedTrace.route ||
+          selectedTrace.route === 'null' ||
+          selectedTrace.route === '' ||
+          !selectedTrace.routeBack ||
+          selectedTrace.routeBack === 'null' ||
+          selectedTrace.routeBack === ''
+        ) {
           // Don't render anything for failed traceroutes
         } else {
-        try {
-          // Route arrays are stored exactly as Meshtastic provides them (no backend reversal)
-          // fromNodeNum = responder (remote), toNodeNum = requester (local)
-          // route = intermediate hops from requester toward responder
-          // routeBack = intermediate hops from responder toward requester
-          const routeForward = JSON.parse(selectedTrace.route);  // Forward: local -> remote
-          const routeBack = JSON.parse(selectedTrace.routeBack);  // Return: remote -> local
+          try {
+            // Route arrays are stored exactly as Meshtastic provides them (no backend reversal)
+            // fromNodeNum = responder (remote), toNodeNum = requester (local)
+            // route = intermediate hops from requester toward responder
+            // routeBack = intermediate hops from responder toward requester
+            const routeForward = JSON.parse(selectedTrace.route); // Forward: local -> remote
+            const routeBack = JSON.parse(selectedTrace.routeBack); // Return: remote -> local
 
-          // Note: Empty arrays are valid (direct path with no intermediate hops)
-          // Actual failures are caught by the null/invalid check above or by insufficient positions below
+            // Note: Empty arrays are valid (direct path with no intermediate hops)
+            // Actual failures are caught by the null/invalid check above or by insufficient positions below
 
-          const fromNode = nodesForRender.find(n => n.nodeNum === selectedTrace.fromNodeNum);
-          const toNode = nodesForRender.find(n => n.nodeNum === selectedTrace.toNodeNum);
-          const fromName = fromNode?.user?.longName || fromNode?.user?.shortName || selectedTrace.fromNodeId;
-          const toName = toNode?.user?.longName || toNode?.user?.shortName || selectedTrace.toNodeId;
+            const fromNode = nodesForRender.find(n => n.nodeNum === selectedTrace.fromNodeNum);
+            const toNode = nodesForRender.find(n => n.nodeNum === selectedTrace.toNodeNum);
+            const fromName = fromNode?.user?.longName || fromNode?.user?.shortName || selectedTrace.fromNodeId;
+            const toName = toNode?.user?.longName || toNode?.user?.shortName || selectedTrace.toNodeId;
 
-          // Forward path: responder -> requester (for correct visualization)
-          if (routeForward.length >= 0) {
+            // Forward path: responder -> requester (for correct visualization)
+            if (routeForward.length >= 0) {
               // Build path: fromNodeNum (responder) → route intermediates → toNodeNum (requester)
               const forwardSequence: number[] = [selectedTrace.fromNodeNum, ...routeForward, selectedTrace.toNodeNum];
               const forwardPositions: [number, number][] = [];
 
-              forwardSequence.forEach((nodeNum) => {
+              forwardSequence.forEach(nodeNum => {
                 const node = nodesForRender.find(n => n.nodeNum === nodeNum);
                 if (node?.position?.latitude && node?.position?.longitude) {
                   forwardPositions.push([node.position.latitude, node.position.longitude]);
@@ -5183,11 +5374,17 @@ function App() {
                 for (let i = 0; i < forwardSequence.length - 1; i++) {
                   const node1 = nodesForRender.find(n => n.nodeNum === forwardSequence[i]);
                   const node2 = nodesForRender.find(n => n.nodeNum === forwardSequence[i + 1]);
-                  if (node1?.position?.latitude && node1?.position?.longitude &&
-                      node2?.position?.latitude && node2?.position?.longitude) {
+                  if (
+                    node1?.position?.latitude &&
+                    node1?.position?.longitude &&
+                    node2?.position?.latitude &&
+                    node2?.position?.longitude
+                  ) {
                     forwardTotalDistanceKm += calculateDistance(
-                      node1.position.latitude, node1.position.longitude,
-                      node2.position.latitude, node2.position.longitude
+                      node1.position.latitude,
+                      node1.position.longitude,
+                      node2.position.latitude,
+                      node2.position.longitude
                     );
                   }
                 }
@@ -5208,10 +5405,13 @@ function App() {
                           <strong>{fromName}</strong> → <strong>{toName}</strong>
                         </div>
                         <div className="route-usage">
-                          Path: {forwardSequence.map(num => {
-                            const n = nodesForRender.find(nd => nd.nodeNum === num);
-                            return n?.user?.longName || n?.user?.shortName || `!${num.toString(16)}`;
-                          }).join(' → ')}
+                          Path:{' '}
+                          {forwardSequence
+                            .map(num => {
+                              const n = nodesForRender.find(nd => nd.nodeNum === num);
+                              return n?.user?.longName || n?.user?.shortName || `!${num.toString(16)}`;
+                            })
+                            .join(' → ')}
                         </div>
                         {forwardTotalDistanceKm > 0 && (
                           <div className="route-usage">
@@ -5240,7 +5440,7 @@ function App() {
               const backSequence: number[] = [selectedTrace.toNodeNum, ...routeBack, selectedTrace.fromNodeNum];
               const backPositions: [number, number][] = [];
 
-              backSequence.forEach((nodeNum) => {
+              backSequence.forEach(nodeNum => {
                 const node = nodesForRender.find(n => n.nodeNum === nodeNum);
                 if (node?.position?.latitude && node?.position?.longitude) {
                   backPositions.push([node.position.latitude, node.position.longitude]);
@@ -5253,11 +5453,17 @@ function App() {
                 for (let i = 0; i < backSequence.length - 1; i++) {
                   const node1 = nodesForRender.find(n => n.nodeNum === backSequence[i]);
                   const node2 = nodesForRender.find(n => n.nodeNum === backSequence[i + 1]);
-                  if (node1?.position?.latitude && node1?.position?.longitude &&
-                      node2?.position?.latitude && node2?.position?.longitude) {
+                  if (
+                    node1?.position?.latitude &&
+                    node1?.position?.longitude &&
+                    node2?.position?.latitude &&
+                    node2?.position?.longitude
+                  ) {
                     backTotalDistanceKm += calculateDistance(
-                      node1.position.latitude, node1.position.longitude,
-                      node2.position.latitude, node2.position.longitude
+                      node1.position.latitude,
+                      node1.position.longitude,
+                      node2.position.latitude,
+                      node2.position.longitude
                     );
                   }
                 }
@@ -5278,10 +5484,13 @@ function App() {
                           <strong>{toName}</strong> → <strong>{fromName}</strong>
                         </div>
                         <div className="route-usage">
-                          Path: {backSequence.map(num => {
-                            const n = nodesForRender.find(nd => nd.nodeNum === num);
-                            return n?.user?.longName || n?.user?.shortName || `!${num.toString(16)}`;
-                          }).join(' → ')}
+                          Path:{' '}
+                          {backSequence
+                            .map(num => {
+                              const n = nodesForRender.find(nd => nd.nodeNum === num);
+                              return n?.user?.longName || n?.user?.shortName || `!${num.toString(16)}`;
+                            })
+                            .join(' → ')}
                         </div>
                         {backTotalDistanceKm > 0 && (
                           <div className="route-usage">
@@ -5294,18 +5503,13 @@ function App() {
                 );
 
                 // Generate arrow markers for back path
-                const backArrows = generateArrowMarkers(
-                  backPositions,
-                  'back',
-                  themeColors.red,
-                  allElements.length
-                );
+                const backArrows = generateArrowMarkers(backPositions, 'back', themeColors.red, allElements.length);
                 allElements.push(...backArrows);
               }
             }
-        } catch (error) {
-          logger.error('Error rendering selected node traceroute:', error);
-        }
+          } catch (error) {
+            logger.error('Error rendering selected node traceroute:', error);
+          }
         } // End of else block for valid route data
       }
     }
@@ -5366,33 +5570,37 @@ function App() {
         </div>
         <div className="header-right" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <div className="connection-status-container" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div className="connection-status" onClick={fetchSystemStatus} style={{ cursor: 'pointer' }} title="Click for system status">
-              <span className={`status-indicator ${connectionStatus === 'user-disconnected' ? 'disconnected' : connectionStatus}`}></span>
-              <span>{
-                connectionStatus === 'user-disconnected' ? 'Disconnected' :
-                connectionStatus === 'configuring' ? 'initializing' :
-                connectionStatus === 'node-offline' ? 'Node Offline' :
-                connectionStatus
-              }</span>
+            <div
+              className="connection-status"
+              onClick={fetchSystemStatus}
+              style={{ cursor: 'pointer' }}
+              title="Click for system status"
+            >
+              <span
+                className={`status-indicator ${
+                  connectionStatus === 'user-disconnected' ? 'disconnected' : connectionStatus
+                }`}
+              ></span>
+              <span>
+                {connectionStatus === 'user-disconnected'
+                  ? 'Disconnected'
+                  : connectionStatus === 'configuring'
+                  ? 'initializing'
+                  : connectionStatus === 'node-offline'
+                  ? 'Node Offline'
+                  : connectionStatus}
+              </span>
             </div>
 
             {/* Show disconnect/reconnect buttons based on connection status and permissions */}
             {hasPermission('connection', 'write') && connectionStatus === 'connected' && (
-              <button
-                onClick={handleDisconnect}
-                className="connection-control-btn"
-                title="Disconnect from node"
-              >
+              <button onClick={handleDisconnect} className="connection-control-btn" title="Disconnect from node">
                 Disconnect
               </button>
             )}
 
             {hasPermission('connection', 'write') && connectionStatus === 'user-disconnected' && (
-              <button
-                onClick={handleReconnect}
-                className="connection-control-btn reconnect"
-                title="Reconnect to node"
-              >
+              <button onClick={handleReconnect} className="connection-control-btn reconnect" title="Reconnect to node">
                 Connect
               </button>
             )}
@@ -5411,16 +5619,21 @@ function App() {
       {/* Default Password Warning Banner */}
       {isDefaultPassword && (
         <div className="warning-banner">
-          ⚠️ Security Warning: The admin account is using the default password. Please change it immediately in the Users tab.
+          ⚠️ Security Warning: The admin account is using the default password. Please change it immediately in the
+          Users tab.
         </div>
       )}
 
       {/* TX Disabled Warning Banner */}
       {isTxDisabled && (
-        <div className="warning-banner" style={{
-          top: isDefaultPassword ? 'calc(var(--header-height) + var(--banner-height))' : 'var(--header-height)'
-        }}>
-          ⚠️ Transmit Disabled: Your device cannot send messages. TX is currently disabled in the LoRa configuration. Enable it via the Meshtastic app or re-import your configuration.
+        <div
+          className="warning-banner"
+          style={{
+            top: isDefaultPassword ? 'calc(var(--header-height) + var(--banner-height))' : 'var(--header-height)',
+          }}
+        >
+          ⚠️ Transmit Disabled: Your device cannot send messages. TX is currently disabled in the LoRa configuration.
+          Enable it via the Meshtastic app or re-import your configuration.
         </div>
       )}
 
@@ -5428,9 +5641,10 @@ function App() {
       {configIssues.map((issue, index) => {
         // Calculate how many banners are above this one
         const bannersAbove = [isDefaultPassword, isTxDisabled].filter(Boolean).length + index;
-        const topOffset = bannersAbove === 0
-          ? 'var(--header-height)'
-          : `calc(var(--header-height) + (var(--banner-height) * ${bannersAbove}))`;
+        const topOffset =
+          bannersAbove === 0
+            ? 'var(--header-height)'
+            : `calc(var(--header-height) + (var(--banner-height) * ${bannersAbove}))`;
 
         return (
           <div key={issue.type} className="warning-banner" style={{ top: topOffset }}>
@@ -5449,76 +5663,87 @@ function App() {
 
       {/* Don't show banner until images are confirmed ready - no point notifying users about builds in progress */}
 
-      {updateAvailable && (() => {
-        // Calculate total warning banners above the update banner
-        const warningBannersCount = [isDefaultPassword, isTxDisabled].filter(Boolean).length + configIssues.length;
-        const topOffset = warningBannersCount === 0
-          ? 'var(--header-height)'
-          : `calc(var(--header-height) + (var(--banner-height) * ${warningBannersCount}))`;
+      {updateAvailable &&
+        (() => {
+          // Calculate total warning banners above the update banner
+          const warningBannersCount = [isDefaultPassword, isTxDisabled].filter(Boolean).length + configIssues.length;
+          const topOffset =
+            warningBannersCount === 0
+              ? 'var(--header-height)'
+              : `calc(var(--header-height) + (var(--banner-height) * ${warningBannersCount}))`;
 
-        return (
-        <div className="update-banner" style={{ top: topOffset }}>
-          <div style={{ flex: 1, textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem' }}>
-            {upgradeInProgress ? (
-              <>
-                <span>⚙️ Upgrading to {latestVersion}...</span>
-                <span style={{ fontSize: '0.9em', opacity: 0.9 }}>{upgradeStatus}</span>
-                {upgradeProgress > 0 && (
-                  <span style={{ fontSize: '0.9em', opacity: 0.9 }}>({upgradeProgress}%)</span>
+          return (
+            <div className="update-banner" style={{ top: topOffset }}>
+              <div
+                style={{
+                  flex: 1,
+                  textAlign: 'center',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '1rem',
+                }}
+              >
+                {upgradeInProgress ? (
+                  <>
+                    <span>⚙️ Upgrading to {latestVersion}...</span>
+                    <span style={{ fontSize: '0.9em', opacity: 0.9 }}>{upgradeStatus}</span>
+                    {upgradeProgress > 0 && (
+                      <span style={{ fontSize: '0.9em', opacity: 0.9 }}>({upgradeProgress}%)</span>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <span>🔔 Update Available: Version {latestVersion} is now available.</span>
+                    <a
+                      href={releaseUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        color: 'white',
+                        textDecoration: 'underline',
+                        fontWeight: '600',
+                      }}
+                    >
+                      View Release Notes →
+                    </a>
+                    {upgradeEnabled && (
+                      <button
+                        onClick={handleUpgrade}
+                        style={{
+                          padding: '0.4rem 1rem',
+                          backgroundColor: '#10b981',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          fontWeight: '600',
+                          fontSize: '0.9em',
+                          transition: 'background-color 0.2s',
+                        }}
+                        onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#059669')}
+                        onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#10b981')}
+                        title="Automatically upgrade to the latest version"
+                      >
+                        Upgrade Now
+                      </button>
+                    )}
+                  </>
                 )}
-              </>
-            ) : (
-              <>
-                <span>🔔 Update Available: Version {latestVersion} is now available.</span>
-                <a
-                  href={releaseUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    color: 'white',
-                    textDecoration: 'underline',
-                    fontWeight: '600'
-                  }}
+              </div>
+              {!upgradeInProgress && (
+                <button
+                  className="banner-dismiss"
+                  onClick={() => setUpdateAvailable(false)}
+                  aria-label="Dismiss update notification"
+                  title="Dismiss"
                 >
-                  View Release Notes →
-                </a>
-                {upgradeEnabled && (
-                  <button
-                    onClick={handleUpgrade}
-                    style={{
-                      padding: '0.4rem 1rem',
-                      backgroundColor: '#10b981',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      fontWeight: '600',
-                      fontSize: '0.9em',
-                      transition: 'background-color 0.2s'
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#059669'}
-                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#10b981'}
-                    title="Automatically upgrade to the latest version"
-                  >
-                    Upgrade Now
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-          {!upgradeInProgress && (
-            <button
-              className="banner-dismiss"
-              onClick={() => setUpdateAvailable(false)}
-              aria-label="Dismiss update notification"
-              title="Dismiss"
-            >
-              ✕
-            </button>
-          )}
-        </div>
-        );
-      })()}
+                  ✕
+                </button>
+              )}
+            </div>
+          );
+        })()}
 
       <LoginModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />
       <RebootModal isOpen={showRebootModal} onClose={handleRebootModalClose} />
@@ -5526,14 +5751,10 @@ function App() {
       {/* Emoji Picker Modal */}
       {emojiPickerMessage && (
         <div className="modal-overlay" onClick={() => setEmojiPickerMessage(null)}>
-          <div className="emoji-picker-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="emoji-picker-modal" onClick={e => e.stopPropagation()}>
             <div className="emoji-picker-header">
               <h3>React with an emoji</h3>
-              <button
-                className="emoji-picker-close"
-                onClick={() => setEmojiPickerMessage(null)}
-                title="Close"
-              >
+              <button className="emoji-picker-close" onClick={() => setEmojiPickerMessage(null)} title="Close">
                 ×
               </button>
             </div>
@@ -5570,10 +5791,12 @@ function App() {
       {/* Purge Data Modal */}
       {showPurgeDataModal && selectedDMNode && (
         <div className="modal-overlay" onClick={() => setShowPurgeDataModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px' }}>
             <div className="modal-header">
               <h2>⚠️ Purge Data for {getNodeName(selectedDMNode)}</h2>
-              <button className="modal-close" onClick={() => setShowPurgeDataModal(false)}>&times;</button>
+              <button className="modal-close" onClick={() => setShowPurgeDataModal(false)}>
+                &times;
+              </button>
             </div>
             <div className="modal-body">
               <p style={{ marginBottom: '1.5rem', color: '#dc3545', fontWeight: 'bold' }}>
@@ -5597,7 +5820,7 @@ function App() {
                     borderRadius: '4px',
                     cursor: 'pointer',
                     fontWeight: 'bold',
-                    fontSize: '1rem'
+                    fontSize: '1rem',
                   }}
                 >
                   🗑️ Purge All Messages
@@ -5619,7 +5842,7 @@ function App() {
                     borderRadius: '4px',
                     cursor: 'pointer',
                     fontWeight: 'bold',
-                    fontSize: '1rem'
+                    fontSize: '1rem',
                   }}
                 >
                   🗺️ Purge Traceroutes
@@ -5641,16 +5864,14 @@ function App() {
                     borderRadius: '4px',
                     cursor: 'pointer',
                     fontWeight: 'bold',
-                    fontSize: '1rem'
+                    fontSize: '1rem',
                   }}
                 >
                   📊 Purge Telemetry
                 </button>
               </div>
               <hr style={{ margin: '1.5rem 0', borderColor: '#dee2e6' }} />
-              <p style={{ marginBottom: '1rem', fontWeight: 'bold' }}>
-                Delete Node Completely:
-              </p>
+              <p style={{ marginBottom: '1rem', fontWeight: 'bold' }}>Delete Node Completely:</p>
               <p style={{ marginBottom: '1rem', fontSize: '0.9rem', color: '#6c757d' }}>
                 Choose how to delete the node - from local database only, or from both the device and database.
               </p>
@@ -5672,7 +5893,7 @@ function App() {
                     cursor: 'pointer',
                     fontWeight: 'bold',
                     fontSize: '1rem',
-                    width: '100%'
+                    width: '100%',
                   }}
                 >
                   ❌ Delete Node (Local Database Only)
@@ -5694,7 +5915,7 @@ function App() {
                     cursor: 'pointer',
                     fontWeight: 'bold',
                     fontSize: '1rem',
-                    width: '100%'
+                    width: '100%',
                   }}
                 >
                   🗑️ Purge from Device AND Database
@@ -5944,86 +6165,91 @@ function App() {
         {activeTab === 'notifications' && <NotificationsTab isAdmin={authStatus?.user?.isAdmin || false} />}
         {activeTab === 'users' && <UsersTab />}
         {activeTab === 'audit' && <AuditLogTab />}
-        {activeTab === 'security' && <SecurityTab onTabChange={setActiveTab} onSelectDMNode={setSelectedDMNode} setNewMessage={setNewMessage} />}
+        {activeTab === 'security' && (
+          <SecurityTab onTabChange={setActiveTab} onSelectDMNode={setSelectedDMNode} setNewMessage={setNewMessage} />
+        )}
       </main>
 
       {/* Node Popup */}
-      {nodePopup && (() => {
-        const node = nodes.find(n => n.user?.id === nodePopup.nodeId);
-        if (!node) return null;
+      {nodePopup &&
+        (() => {
+          const node = nodes.find(n => n.user?.id === nodePopup.nodeId);
+          if (!node) return null;
 
-        return (
-          <div
-            className="route-popup node-popup"
-            style={{
-              position: 'fixed',
-              left: nodePopup.position.x,
-              top: nodePopup.position.y - 10,
-              transform: 'translateX(-50%) translateY(-100%)',
-              zIndex: 1000
-            }}
-          >
-            <h4>{node.user?.longName || `Node ${node.nodeNum}`}</h4>
-            {node.user?.shortName && (
-              <div className="route-endpoints">
-                <strong>{node.user.shortName}</strong>
-              </div>
-            )}
+          return (
+            <div
+              className="route-popup node-popup"
+              style={{
+                position: 'fixed',
+                left: nodePopup.position.x,
+                top: nodePopup.position.y - 10,
+                transform: 'translateX(-50%) translateY(-100%)',
+                zIndex: 1000,
+              }}
+            >
+              <h4>{node.user?.longName || `Node ${node.nodeNum}`}</h4>
+              {node.user?.shortName && (
+                <div className="route-endpoints">
+                  <strong>{node.user.shortName}</strong>
+                </div>
+              )}
 
-            {node.user?.id && (
-              <div className="route-usage">ID: {node.user.id}</div>
-            )}
+              {node.user?.id && <div className="route-usage">ID: {node.user.id}</div>}
 
-            {node.user?.role !== undefined && (() => {
-              const roleNum = typeof node.user.role === 'string'
-                ? parseInt(node.user.role, 10)
-                : node.user.role;
-              const roleName = getRoleName(roleNum);
-              return roleName ? <div className="route-usage">Role: {roleName}</div> : null;
-            })()}
+              {node.user?.role !== undefined &&
+                (() => {
+                  const roleNum = typeof node.user.role === 'string' ? parseInt(node.user.role, 10) : node.user.role;
+                  const roleName = getRoleName(roleNum);
+                  return roleName ? <div className="route-usage">Role: {roleName}</div> : null;
+                })()}
 
-            {node.user?.hwModel !== undefined && (() => {
-              const hwModelName = getHardwareModelName(node.user.hwModel);
-              return hwModelName ? <div className="route-usage">Hardware: {hwModelName}</div> : null;
-            })()}
+              {node.user?.hwModel !== undefined &&
+                (() => {
+                  const hwModelName = getHardwareModelName(node.user.hwModel);
+                  return hwModelName ? <div className="route-usage">Hardware: {hwModelName}</div> : null;
+                })()}
 
-            {node.snr != null && (
-              <div className="route-usage">SNR: {node.snr.toFixed(1)} dB</div>
-            )}
+              {node.snr != null && <div className="route-usage">SNR: {node.snr.toFixed(1)} dB</div>}
 
-            {node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null && (
-              <div className="route-usage">
-                {node.deviceMetrics.batteryLevel === 101 ? 'Power: Plugged In' : `Battery: ${node.deviceMetrics.batteryLevel}%`}
-              </div>
-            )}
+              {node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null && (
+                <div className="route-usage">
+                  {node.deviceMetrics.batteryLevel === 101
+                    ? 'Power: Plugged In'
+                    : `Battery: ${node.deviceMetrics.batteryLevel}%`}
+                </div>
+              )}
 
-            {node.lastHeard && (
-              <div className="route-usage">Last Seen: {formatDateTime(new Date(node.lastHeard * 1000), timeFormat, dateFormat)}</div>
-            )}
+              {node.lastHeard && (
+                <div className="route-usage">
+                  Last Seen: {formatDateTime(new Date(node.lastHeard * 1000), timeFormat, dateFormat)}
+                </div>
+              )}
 
-            {node.user?.id && hasPermission('messages', 'read') && (
-              <button
-                className="popup-dm-btn"
-                onClick={() => {
-                  setSelectedDMNode(node.user!.id);
-                  setActiveTab('messages');
-                  setNodePopup(null);
-                }}
-              >
-                💬 Direct Message
-              </button>
-            )}
-          </div>
-        );
-      })()}
+              {node.user?.id && hasPermission('messages', 'read') && (
+                <button
+                  className="popup-dm-btn"
+                  onClick={() => {
+                    setSelectedDMNode(node.user!.id);
+                    setActiveTab('messages');
+                    setNodePopup(null);
+                  }}
+                >
+                  💬 Direct Message
+                </button>
+              )}
+            </div>
+          );
+        })()}
 
       {/* System Status Modal */}
       {showStatusModal && systemStatus && (
         <div className="modal-overlay" onClick={() => setShowStatusModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>System Status</h2>
-              <button className="modal-close" onClick={() => setShowStatusModal(false)}>&times;</button>
+              <button className="modal-close" onClick={() => setShowStatusModal(false)}>
+                &times;
+              </button>
             </div>
             <div className="modal-body">
               <div className="status-grid">
@@ -6041,7 +6267,9 @@ function App() {
                 </div>
                 <div className="status-item">
                   <strong>Platform:</strong>
-                  <span>{systemStatus.platform} ({systemStatus.architecture})</span>
+                  <span>
+                    {systemStatus.platform} ({systemStatus.architecture})
+                  </span>
                 </div>
                 <div className="status-item">
                   <strong>Environment:</strong>
@@ -6064,9 +6292,8 @@ function App() {
           </div>
         </div>
       )}
-
     </div>
-  )
+  );
 }
 
 const AppWithToast = () => {
@@ -6113,4 +6340,4 @@ const AppWithToast = () => {
   );
 };
 
-export default AppWithToast
+export default AppWithToast;
