@@ -149,10 +149,90 @@ All scripts receive these environment variables:
 |----------|-------------|---------|
 | `MESSAGE` | Full message text received | `"weather miami"` |
 | `FROM_NODE` | Sender's node number | `"123456789"` |
+| `FROM_LAT` | Sender's latitude (if known) | `"25.7617"` |
+| `FROM_LON` | Sender's longitude (if known) | `"-80.1918"` |
+| `MM_LAT` | MeshMonitor node's latitude (if known) | `"25.7617"` |
+| `MM_LON` | MeshMonitor node's longitude (if known) | `"-80.1918"` |
 | `PACKET_ID` | Message packet ID | `"987654321"` |
 | `TRIGGER` | Trigger pattern that matched | `"weather {location}"` |
 | `PARAM_*` | Extracted parameters | `PARAM_location="miami"` |
 | `TZ` | Server timezone (IANA timezone name) | `"America/New_York"` |
+
+### Location Environment Variables
+
+Scripts can access location data for both the sender node and the MeshMonitor node:
+
+- **`FROM_LAT`/`FROM_LON`**: The latitude/longitude of the node that sent the message. Only set if the sender's position is known in the database.
+- **`MM_LAT`/`MM_LON`**: The latitude/longitude of the MeshMonitor's connected node. Only set if the node's position is known.
+
+**Note:** These variables are only set when location data is available. Always check if they exist before using them.
+
+**Example: Python distance calculation**
+```python
+#!/usr/bin/env python3
+import os
+import json
+import math
+
+def haversine(lat1, lon1, lat2, lon2):
+    """Calculate distance in km between two points"""
+    R = 6371  # Earth's radius in km
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * \
+        math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
+    return R * 2 * math.asin(math.sqrt(a))
+
+# Get locations
+from_lat = os.environ.get('FROM_LAT')
+from_lon = os.environ.get('FROM_LON')
+mm_lat = os.environ.get('MM_LAT')
+mm_lon = os.environ.get('MM_LON')
+
+if all([from_lat, from_lon, mm_lat, mm_lon]):
+    dist = haversine(
+        float(from_lat), float(from_lon),
+        float(mm_lat), float(mm_lon)
+    )
+    response = f"You are {dist:.1f} km away from me"
+else:
+    response = "Location data not available"
+
+print(json.dumps({"response": response}))
+```
+
+**Example: JavaScript distance calculation**
+```javascript
+#!/usr/bin/env node
+
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371; // km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 +
+            Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) *
+            Math.sin(dLon/2)**2;
+  return R * 2 * Math.asin(Math.sqrt(a));
+}
+
+const fromLat = process.env.FROM_LAT;
+const fromLon = process.env.FROM_LON;
+const mmLat = process.env.MM_LAT;
+const mmLon = process.env.MM_LON;
+
+let response;
+if (fromLat && fromLon && mmLat && mmLon) {
+  const dist = haversine(
+    parseFloat(fromLat), parseFloat(fromLon),
+    parseFloat(mmLat), parseFloat(mmLon)
+  );
+  response = `You are ${dist.toFixed(1)} km away from me`;
+} else {
+  response = "Location data not available";
+}
+
+console.log(JSON.stringify({ response }));
+```
 
 ### Timezone Support
 
