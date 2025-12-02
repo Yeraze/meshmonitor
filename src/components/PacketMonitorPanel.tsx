@@ -5,7 +5,7 @@ import { PacketLog, PacketFilters } from '../types/packet';
 import { getPackets, clearPackets, exportPackets } from '../services/packetApi';
 import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
-import { useData } from '../contexts/DataContext';
+import { useDeviceConfig } from '../hooks/useServerData';
 import { formatDateTime } from '../utils/datetime';
 import { ResourceType } from '../types/permission';
 import './PacketMonitorPanel.css';
@@ -34,7 +34,7 @@ const safeJsonParse = <T,>(value: string | null, fallback: T): T => {
 const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNodeClick }) => {
   const { hasPermission, authStatus } = useAuth();
   const { timeFormat, dateFormat } = useSettings();
-  const { deviceInfo } = useData();
+  const { config: deviceInfo } = useDeviceConfig();
   const [rawPackets, setRawPackets] = useState<PacketLog[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);

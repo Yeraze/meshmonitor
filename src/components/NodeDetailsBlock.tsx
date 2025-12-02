@@ -5,7 +5,7 @@ import { getDeviceRoleName } from '../utils/deviceRole';
 import { getHardwareImageUrl } from '../utils/hardwareImages';
 import { formatRelativeTime } from '../utils/datetime';
 import { TimeFormat, DateFormat } from '../contexts/SettingsContext';
-import { useData } from '../contexts/DataContext';
+import { useChannels } from '../hooks/useServerData';
 import './NodeDetailsBlock.css';
 
 interface NodeDetailsBlockProps {
@@ -15,7 +15,7 @@ interface NodeDetailsBlockProps {
 }
 
 const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = '24', dateFormat = 'MM/DD/YYYY' }) => {
-  const { channels } = useData();
+  const { channels } = useChannels();
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     const stored = localStorage.getItem('nodeDetailsCollapsed');
     return stored === 'true';
