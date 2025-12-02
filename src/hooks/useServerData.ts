@@ -15,7 +15,7 @@
  */
 
 import { useQueryClient } from "@tanstack/react-query";
-import { usePoll, PollData } from "./usePoll";
+import { usePoll, PollData, POLL_QUERY_KEY } from "./usePoll";
 import type { DeviceInfo, Channel } from "../types/device";
 
 /**
@@ -122,7 +122,7 @@ export function useUnreadCountsFromPoll() {
 export function getNodesFromCache(
   queryClient: ReturnType<typeof useQueryClient>
 ): DeviceInfo[] {
-  const data = queryClient.getQueryData<PollData>(["poll"]);
+  const data = queryClient.getQueryData<PollData>(POLL_QUERY_KEY);
   return (data?.nodes ?? []) as DeviceInfo[];
 }
 
@@ -136,7 +136,7 @@ export function getNodesFromCache(
 export function getChannelsFromCache(
   queryClient: ReturnType<typeof useQueryClient>
 ): Channel[] {
-  const data = queryClient.getQueryData<PollData>(["poll"]);
+  const data = queryClient.getQueryData<PollData>(POLL_QUERY_KEY);
   return (data?.channels ?? []) as Channel[];
 }
 
@@ -149,7 +149,7 @@ export function getChannelsFromCache(
 export function getCurrentNodeIdFromCache(
   queryClient: ReturnType<typeof useQueryClient>
 ): string {
-  const data = queryClient.getQueryData<PollData>(["poll"]);
+  const data = queryClient.getQueryData<PollData>(POLL_QUERY_KEY);
   return (
     (data?.deviceConfig?.basic?.nodeId as string) ??
     data?.config?.localNodeInfo?.nodeId ??

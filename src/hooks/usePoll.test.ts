@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createElement } from 'react';
-import { usePoll } from './usePoll';
+import { usePoll, POLL_QUERY_KEY } from './usePoll';
 import type { PollData } from './usePoll';
 
 // Mock useCsrfFetch
@@ -231,8 +231,12 @@ describe('usePoll', () => {
       });
 
       // Check that data is cached under correct key
-      const cachedData = queryClient.getQueryData(['poll']);
+      const cachedData = queryClient.getQueryData(POLL_QUERY_KEY);
       expect(cachedData).toEqual(mockData);
+    });
+
+    it('should export POLL_QUERY_KEY constant', () => {
+      expect(POLL_QUERY_KEY).toEqual(['poll']);
     });
   });
 

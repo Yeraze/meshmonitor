@@ -3,6 +3,25 @@
  *
  * Provides consolidated polling for nodes, messages, channels, config and connection status.
  * Replaces the manual setInterval-based polling in App.tsx.
+ *
+ * ## Usage Guidelines
+ *
+ * **For React components**: Use the convenience hooks from `useServerData.ts`:
+ * - `useNodes()` - Get nodes array
+ * - `useChannels()` - Get channels array
+ * - `useConnectionInfo()` - Get connection status
+ * - `useTelemetryNodes()` - Get telemetry availability
+ * - `useDeviceConfig()` - Get device configuration
+ *
+ * **For callbacks/handlers outside React**: Use the cache helpers:
+ * - `getNodesFromCache(queryClient)` - Get nodes without subscribing
+ * - `getChannelsFromCache(queryClient)` - Get channels without subscribing
+ * - `getCurrentNodeIdFromCache(queryClient)` - Get current node ID
+ *
+ * **Direct query key access**: Use `POLL_QUERY_KEY` only when:
+ * - Invalidating the cache manually: `queryClient.invalidateQueries({ queryKey: POLL_QUERY_KEY })`
+ * - Setting up query observers outside components
+ * - Custom cache manipulation scenarios
  */
 
 import { useQuery } from '@tanstack/react-query';
@@ -132,6 +151,19 @@ interface UsePollOptions {
 }
 
 /**
+ * Query key for the poll endpoint.
+ *
+ * Use this when you need to:
+ * - Invalidate the poll cache: `queryClient.invalidateQueries({ queryKey: POLL_QUERY_KEY })`
+ * - Manually refetch: `queryClient.refetchQueries({ queryKey: POLL_QUERY_KEY })`
+ * - Set up custom query observers
+ *
+ * For accessing cached data, prefer the helper functions in useServerData.ts:
+ * `getNodesFromCache()`, `getChannelsFromCache()`, `getCurrentNodeIdFromCache()`
+ */
+export const POLL_QUERY_KEY = ['poll'] as const;
+
+/**
  * Hook to poll the consolidated /api/poll endpoint
  *
  * Uses TanStack Query for automatic request deduplication, caching, and retry.
@@ -153,13 +185,18 @@ interface UsePollOptions {
  * const nodes = data?.nodes ?? [];
  * const messages = data?.messages ?? [];
  * const connection = data?.connection;
+ *
+ * // Handle errors
+ * if (error) {
+ *   console.error('Poll failed:', error.message);
+ * }
  * ```
  */
 export function usePoll({ baseUrl = '', pollInterval = 5000, enabled = true }: UsePollOptions = {}) {
   const authFetch = useCsrfFetch();
 
   return useQuery({
-    queryKey: ['poll'],
+    queryKey: POLL_QUERY_KEY,
     queryFn: async (): Promise<PollData> => {
       const response = await authFetch(`${baseUrl}/api/poll`);
 

@@ -20,11 +20,13 @@ import {
   getCurrentNodeIdFromCache,
 } from './useServerData';
 import type { PollData } from './usePoll';
+import { POLL_QUERY_KEY } from './usePoll';
 
 // Mock usePoll to return controlled data
 const mockUsePollReturn = vi.fn();
 vi.mock('./usePoll', () => ({
   usePoll: () => mockUsePollReturn(),
+  POLL_QUERY_KEY: ['poll'],
 }));
 
 // Helper to create a wrapper with QueryClient
