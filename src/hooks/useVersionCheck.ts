@@ -15,11 +15,12 @@ interface VersionCheckResult {
   latestVersion: string;
   /** URL to the release page */
   releaseUrl: string;
-  /** Dismiss the update notification */
+  /** Dismiss the update notification (sets updateAvailable to false) */
   dismissUpdate: () => void;
 }
 
-const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
+/** Interval between version checks (4 hours) */
+export const VERSION_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
 
 /**
  * Hook to check for application updates
@@ -72,8 +73,8 @@ export function useVersionCheck(baseUrl: string): VersionCheckResult {
     // Initial check
     checkForUpdates();
 
-    // Check for updates every 4 hours
-    intervalId = setInterval(checkForUpdates, CHECK_INTERVAL_MS);
+    // Check for updates at configured interval
+    intervalId = setInterval(checkForUpdates, VERSION_CHECK_INTERVAL_MS);
 
     return () => {
       if (intervalId) {

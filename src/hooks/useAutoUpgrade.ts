@@ -21,9 +21,15 @@ interface UpgradeState {
   triggerUpgrade: (targetVersion: string) => Promise<void>;
 }
 
-const BASE_POLL_INTERVAL = 10000; // 10 seconds
-const MAX_POLL_INTERVAL = 30000; // 30 seconds
-const MAX_POLL_ATTEMPTS = 60;
+// Polling configuration constants
+/** Base polling interval for upgrade status checks */
+export const BASE_POLL_INTERVAL_MS = 10000; // 10 seconds
+/** Maximum polling interval after exponential backoff */
+export const MAX_POLL_INTERVAL_MS = 30000; // 30 seconds
+/** Maximum number of polling attempts before timeout */
+export const MAX_POLL_ATTEMPTS = 60;
+/** Delay before reloading page after successful upgrade */
+export const RELOAD_DELAY_MS = 3000; // 3 seconds
 
 /**
  * Hook to manage auto-upgrade functionality
@@ -81,7 +87,7 @@ export function useAutoUpgrade(
     }
 
     let attempts = 0;
-    let currentInterval = BASE_POLL_INTERVAL;
+    let currentInterval = BASE_POLL_INTERVAL_MS;
 
     const poll = async () => {
       attempts++;
@@ -103,10 +109,10 @@ export function useAutoUpgrade(
             setUpgradeStatus('Complete! Reloading...');
             setUpgradeProgress(100);
 
-            // Reload after 3 seconds
+            // Reload after configured delay
             setTimeout(() => {
               window.location.reload();
-            }, 3000);
+            }, RELOAD_DELAY_MS);
             return;
           } else if (data.status === 'failed') {
             if (pollingIntervalRef.current) {
@@ -120,11 +126,11 @@ export function useAutoUpgrade(
           }
 
           // Reset interval on successful response
-          currentInterval = BASE_POLL_INTERVAL;
+          currentInterval = BASE_POLL_INTERVAL_MS;
         }
       } catch (error) {
         // Connection may be lost during restart - use exponential backoff
-        currentInterval = Math.min(currentInterval * 1.5, MAX_POLL_INTERVAL);
+        currentInterval = Math.min(currentInterval * 1.5, MAX_POLL_INTERVAL_MS);
         logger.debug('Polling upgrade status (connection may be restarting):', error);
       }
 
