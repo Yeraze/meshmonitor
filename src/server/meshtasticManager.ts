@@ -4997,6 +4997,23 @@ class MeshtasticManager {
                 MATCHED_PATTERN: matchedPattern || '',
               };
 
+              // Add location environment variables for the sender node (FROM_LAT, FROM_LON)
+              const fromNode = databaseService.getNode(fromNum);
+              if (fromNode?.latitude != null && fromNode?.longitude != null) {
+                scriptEnv.FROM_LAT = String(fromNode.latitude);
+                scriptEnv.FROM_LON = String(fromNode.longitude);
+              }
+
+              // Add location environment variables for the MeshMonitor node (MM_LAT, MM_LON)
+              const localNodeInfo = this.getLocalNodeInfo();
+              if (localNodeInfo) {
+                const mmNode = databaseService.getNode(localNodeInfo.nodeNum);
+                if (mmNode?.latitude != null && mmNode?.longitude != null) {
+                  scriptEnv.MM_LAT = String(mmNode.latitude);
+                  scriptEnv.MM_LON = String(mmNode.longitude);
+                }
+              }
+
               // Add extracted parameters as PARAM_* environment variables
               Object.entries(extractedParams).forEach(([key, value]) => {
                 scriptEnv[`PARAM_${key}`] = value;

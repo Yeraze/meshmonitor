@@ -75,9 +75,16 @@ All scripts receive these environment variables:
 
 - `MESSAGE`: Full message text received
 - `FROM_NODE`: Sender's node number
+- `FROM_LAT`: Sender's latitude (if known)
+- `FROM_LON`: Sender's longitude (if known)
+- `MM_LAT`: MeshMonitor node's latitude (if known)
+- `MM_LON`: MeshMonitor node's longitude (if known)
 - `PACKET_ID`: Message packet ID
 - `TRIGGER`: The trigger pattern that matched
 - `PARAM_*`: Extracted parameters from trigger pattern (e.g., `PARAM_name`, `PARAM_location`)
+- `TZ`: Server timezone (IANA timezone name)
+
+**Note:** Location variables (`FROM_LAT`, `FROM_LON`, `MM_LAT`, `MM_LON`) are only set when position data is available in the database.
 
 ## Output Format
 
@@ -164,6 +171,42 @@ Multi-message example scripts that demonstrate returning multiple responses.
 **Trigger:** `lorem`
 **Example message:** `lorem`
 **Responses:** Three sequential messages containing Lorem Ipsum text, sent 30 seconds apart with retry logic.
+
+### distance.py (Python)
+Distance calculator that uses the new location environment variables to calculate the distance between the sender and the MeshMonitor node.
+
+**Trigger:** `distance, dist`
+**Example message:** `distance`
+**Response:** `Distance: 15.2km / 9.4mi (NE)`
+
+**Features:**
+- Uses `FROM_LAT`/`FROM_LON` for sender location
+- Uses `MM_LAT`/`MM_LON` for MeshMonitor location
+- Shows distance in both kilometers and miles
+- Includes compass direction from sender to MeshMonitor
+
+### api-query.py (Python)
+Demonstrates using MeshMonitor's v1 API from scripts. Shows how to query node information using API token authentication.
+
+**Requirements:**
+- `MM_API_TOKEN` environment variable (generate from Settings > API Tokens)
+- `MM_API_URL` environment variable (optional, defaults to `http://localhost:3001/meshmonitor`)
+
+**Trigger:** `nodeinfo, nodeinfo {nodeid}`
+**Example messages:**
+- `nodeinfo` - Shows info about the sender node
+- `nodeinfo !abc12345` - Shows info about a specific node
+
+**Response:** `NodeName (!abc12345) | HW: TBEAM | Loc: 25.7617,-80.1918 | Batt: 85% | Seen: 5m ago`
+
+**Setup:**
+1. Generate an API token: Settings > API Tokens > Generate Token
+2. Add to docker-compose.yaml:
+   ```yaml
+   environment:
+     - MM_API_TOKEN=your_token_here
+   ```
+3. Configure trigger with pattern `nodeinfo, nodeinfo {nodeid}`
 
 ## Regex Pattern Examples
 
