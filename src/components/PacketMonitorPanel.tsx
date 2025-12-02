@@ -18,6 +18,7 @@ interface PacketMonitorPanelProps {
 // Constants
 const PACKET_FETCH_LIMIT = 100; // Fetch most recent 100 packets for display
 const POLL_INTERVAL_MS = 5000;
+const LOAD_MORE_THRESHOLD = 10; // Load more when within this many items from the end
 
 // Safe JSON parse helper
 const safeJsonParse = <T,>(value: string | null, fallback: T): T => {
@@ -57,6 +58,8 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
   const rateLimitResetTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const lastLoadedRawLengthRef = useRef<number>(0); // Track raw packet count at last load to prevent reload loops
+  const userHasScrolledRef = useRef<boolean>(false); // Track if user has scrolled to enable infinite scroll
 
   // Check permissions - user needs to have at least one channel permission and messages permission
   const hasAnyChannelPermission = () => {
@@ -104,7 +107,11 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
       if (response.packets.length === 0) {
         setHasMore(false);
       } else {
-        setRawPackets(prev => [...prev, ...response.packets]);
+        setRawPackets(prev => {
+          const newLength = prev.length + response.packets.length;
+          lastLoadedRawLengthRef.current = newLength;
+          return [...prev, ...response.packets];
+        });
         setTotal(response.total);
       }
     } catch (error) {
@@ -131,11 +138,38 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     }
   }, [loadingMore, hasMore, rateLimitError, rawPackets.length, filters]);
 
-  // Load more packets when scrolling near the end
+  // Track scroll to enable infinite loading only after user interaction
+  // This prevents infinite loops when filters reduce the packet list to fewer items than the viewport
   useEffect(() => {
-    const [lastItem] = [...rowVirtualizer.getVirtualItems()].reverse();
+    const scrollElement = parentRef.current;
+    if (!scrollElement) return;
 
-    if (!lastItem) return;
+    const handleScroll = () => {
+      // Mark that user has scrolled - this enables infinite scroll loading
+      if (!userHasScrolledRef.current && scrollElement.scrollTop > 50) {
+        userHasScrolledRef.current = true;
+      }
+    };
+
+    scrollElement.addEventListener('scroll', handleScroll, { passive: true });
+    return () => scrollElement.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Reset scroll tracking when raw packets are reset (e.g., filter change)
+  useEffect(() => {
+    if (rawPackets.length === 0) {
+      userHasScrolledRef.current = false;
+      lastLoadedRawLengthRef.current = 0;
+    }
+  }, [rawPackets.length]);
+
+  // Load more packets when scrolling near the end
+  // Use a stable dependency - the last visible index - instead of the full virtual items array
+  const virtualItems = rowVirtualizer.getVirtualItems();
+  const lastVisibleIndex = virtualItems.length > 0 ? virtualItems[virtualItems.length - 1]?.index ?? -1 : -1;
+
+  useEffect(() => {
+    if (lastVisibleIndex < 0) return;
 
     // Prevent infinite loop when filters result in empty packet list
     // If we have raw packets but no filtered packets, don't keep trying to load more
@@ -143,15 +177,29 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
       return;
     }
 
+    // Only trigger load when we're near the end of the filtered list
+    const nearEnd = lastVisibleIndex >= packets.length - LOAD_MORE_THRESHOLD;
+
+    // Additional guard: only load if we haven't recently loaded from this raw position
+    // This prevents loops when heavy filtering (hideOwnPackets) keeps us at the "end"
+    const alreadyLoadedFromHere = rawPackets.length > 0 && rawPackets.length === lastLoadedRawLengthRef.current;
+
+    // Require user scroll interaction before loading more, unless we have very few items displayed
+    // This prevents the infinite loop when filtering leaves us at "end" without user action
+    const enoughItemsDisplayed = packets.length >= LOAD_MORE_THRESHOLD;
+    const shouldRequireScroll = enoughItemsDisplayed && !userHasScrolledRef.current;
+
     if (
-      lastItem.index >= packets.length - 1 &&
+      nearEnd &&
       hasMore &&
       !loadingMore &&
+      !alreadyLoadedFromHere &&
+      !shouldRequireScroll &&
       canView
     ) {
       loadMore();
     }
-  }, [rowVirtualizer.getVirtualItems(), hasMore, loadingMore, packets.length, rawPackets.length, canView, loadMore]);
+  }, [lastVisibleIndex, hasMore, loadingMore, packets.length, rawPackets.length, canView, loadMore]);
 
   // Persist filter settings to localStorage
   useEffect(() => {
