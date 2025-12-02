@@ -78,6 +78,17 @@ jobs:
             lxc/build/*.sha256
           retention-days: 90
 
+      - name: Get existing release body
+        if: startsWith(github.ref, 'refs/tags/')
+        id: get_release
+        run: |
+          RELEASE_BODY=$(gh release view "${GITHUB_REF#refs/tags/}" --json body --jq '.body')
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          echo "$RELEASE_BODY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Upload to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
@@ -86,6 +97,10 @@ jobs:
             lxc/build/*.tar.gz
             lxc/build/*.sha256
           body: |
+            ${{ steps.get_release.outputs.body }}
+
+            ---
+
             ## Proxmox LXC Template
 
             This release includes a Proxmox-compatible LXC container template for MeshMonitor.
