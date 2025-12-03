@@ -3485,6 +3485,25 @@ class DatabaseService {
     return Number(result.changes);
   }
 
+  /**
+   * Mark all DM messages as read for the local node
+   * This marks all direct messages (channel = -1) involving the local node as read
+   */
+  markAllDMMessagesAsRead(localNodeId: string, userId: number | null): number {
+    const query = `
+      INSERT OR IGNORE INTO read_messages (message_id, user_id, read_at)
+      SELECT id, ?, ? FROM messages
+      WHERE (fromNodeId = ? OR toNodeId = ?)
+        AND portnum = 1
+        AND channel = -1
+    `;
+    const params: any[] = [userId, Date.now(), localNodeId, localNodeId];
+
+    const stmt = this.db.prepare(query);
+    const result = stmt.run(...params);
+    return Number(result.changes);
+  }
+
   // Update message acknowledgment status by requestId (for tracking routing ACKs)
   updateMessageAckByRequestId(requestId: number, _acknowledged: boolean = true, ackFailed: boolean = false): boolean {
     const stmt = this.db.prepare(`

@@ -2795,8 +2795,9 @@ body {
 
 .sidebar-header-content {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
   margin-bottom: 0.75rem;
 }
 
@@ -2804,6 +2805,21 @@ body {
   margin: 0;
   color: var(--ctp-text);
   font-size: 1.1rem;
+}
+
+.mark-all-read-btn {
+  background: var(--ctp-surface1);
+  border: 1px solid var(--ctp-surface2);
+  color: var(--ctp-text);
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.mark-all-read-btn:hover {
+  background: var(--ctp-surface2);
 }
 
 .filter-popup-btn {
