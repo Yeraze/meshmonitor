@@ -48,9 +48,12 @@ import { DataProvider, useData } from './contexts/DataContext'
 import { MessagingProvider, useMessaging } from './contexts/MessagingContext'
 import { UIProvider, useUI } from './contexts/UIContext'
 import { useAuth } from './contexts/AuthContext'
-import { useCsrf } from './contexts/CsrfContext'
 import { useHealth } from './hooks/useHealth'
 import { useTxStatus } from './hooks/useTxStatus'
+import { useAuthFetch } from './hooks/useAuthFetch'
+import { useVersionCheck } from './hooks/useVersionCheck'
+import { useSecurityCheck } from './hooks/useSecurityCheck'
+import { useAutoUpgrade } from './hooks/useAutoUpgrade'
 import LoginModal from './components/LoginModal'
 import LoginPage from './components/LoginPage'
 import UserMenu from './components/UserMenu'
@@ -132,24 +135,10 @@ function renderMessageStatus(msg: MeshMessage): React.ReactElement {
 
 function App() {
   const { authStatus, hasPermission } = useAuth();
-  const { getToken: getCsrfToken, refreshToken: refreshCsrfToken } = useCsrf();
+  const authFetch = useAuthFetch();
   const { showToast } = useToast();
   const [showLoginModal, setShowLoginModal] = useState(false);
-  const [isDefaultPassword, setIsDefaultPassword] = useState(false);
-  const [configIssues, setConfigIssues] = useState<Array<{
-    type: 'cookie_secure' | 'allowed_origins';
-    severity: 'error' | 'warning';
-    message: string;
-    docsUrl: string;
-  }>>([]);
-  const [updateAvailable, setUpdateAvailable] = useState(false);
-  const [latestVersion, setLatestVersion] = useState('');
-  const [releaseUrl, setReleaseUrl] = useState('');
-  const [upgradeEnabled, setUpgradeEnabled] = useState(false);
-  const [upgradeInProgress, setUpgradeInProgress] = useState(false);
-  const [upgradeStatus, setUpgradeStatus] = useState('');
-  const [upgradeProgress, setUpgradeProgress] = useState(0);
-  const [_upgradeId, setUpgradeId] = useState<string | null>(null);
+  const [dismissedUpdate, setDismissedUpdate] = useState(false);
   const [channelInfoModal, setChannelInfoModal] = useState<number | null>(null);
   const [showPsk, setShowPsk] = useState(false);
   const [showRebootModal, setShowRebootModal] = useState(false);
@@ -229,7 +218,6 @@ function App() {
   const connectionStatusRef = useRef<string>('disconnected') // Track connection status for interval closure
   const localNodeIdRef = useRef<string>('') // Track local node ID for immediate access (bypasses React state delay)
   const pendingMessagesRef = useRef<Map<string, MeshMessage>>(new Map()) // Track pending messages for interval access (bypasses closure stale state)
-  const upgradePollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null) // Track upgrade polling interval for cleanup
 
   // Constants for emoji tapbacks
   const EMOJI_FLAG = 1; // Protobuf flag indicating this is a tapback/reaction
@@ -308,6 +296,21 @@ function App() {
 
   // Monitor device TX status to show warning banner when TX is disabled
   const { isTxDisabled } = useTxStatus({ baseUrl });
+
+  // Check for application updates
+  const { updateAvailable, latestVersion, releaseUrl } = useVersionCheck(baseUrl);
+
+  // Check for security configuration issues
+  const { isDefaultPassword, configIssues } = useSecurityCheck(baseUrl, authFetch);
+
+  // Handle auto-upgrade functionality
+  const {
+    upgradeEnabled,
+    upgradeInProgress,
+    upgradeStatus,
+    upgradeProgress,
+    triggerUpgrade
+  } = useAutoUpgrade(baseUrl, authFetch, showToast);
 
   // Settings from context
   const {
@@ -645,69 +648,6 @@ function App() {
     }
   }, [connectedNodeName]);
 
-  // Helper to fetch with credentials and automatic CSRF token retry
-  // Memoized to prevent unnecessary re-renders of components that depend on it
-  const authFetch = useCallback(async (url: string, options?: RequestInit, retryCount = 0, timeoutMs = 10000): Promise<Response> => {
-    const headers = new Headers(options?.headers);
-
-    // Add CSRF token for mutation requests
-    const method = options?.method?.toUpperCase() || 'GET';
-    if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
-      const csrfToken = getCsrfToken();
-      if (csrfToken) {
-        headers.set('X-CSRF-Token', csrfToken);
-        console.log('[App] ✓ CSRF token added to request');
-      } else {
-        console.error('[App] ✗ NO CSRF TOKEN - Request may fail!');
-      }
-    }
-
-    // Create AbortController for timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-    try {
-      const response = await fetch(url, {
-        ...options,
-        headers,
-        credentials: 'include',
-        signal: controller.signal,
-      });
-
-      // Handle 403 CSRF errors with automatic token refresh and retry
-      if (response.status === 403 && retryCount < 1) {
-        if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
-          // Clone response to check if it's a CSRF error without consuming the body
-          const clonedResponse = response.clone();
-          const error = await clonedResponse.json().catch(() => ({ error: '' }));
-          if (error.error && error.error.toLowerCase().includes('csrf')) {
-            console.warn('[App] 403 CSRF error - Refreshing token and retrying...');
-            sessionStorage.removeItem('csrfToken');
-            await refreshCsrfToken();
-            return authFetch(url, options, retryCount + 1, timeoutMs);
-          }
-        }
-      }
-
-      // Silently handle auth errors to prevent console spam
-      if (response.status === 401 || response.status === 403) {
-        return response;
-      }
-
-      return response;
-    } catch (error) {
-      // Check for AbortError from both Error and DOMException for browser compatibility
-      if ((error instanceof DOMException && error.name === 'AbortError') ||
-          (error instanceof Error && error.name === 'AbortError')) {
-        throw new Error(`Request timeout after ${timeoutMs}ms`);
-      }
-      throw error;
-    } finally {
-      // Always clear timeout to prevent memory leaks
-      clearTimeout(timeoutId);
-    }
-  }, [getCsrfToken, refreshCsrfToken]);
-
   // Function to detect MQTT/bridge messages that should be filtered
   const isMqttBridgeMessage = (msg: MeshMessage): boolean => {
     // Filter messages from unknown senders
@@ -905,227 +845,6 @@ function App() {
 
     initializeApp();
   }, []);
-
-  // Check for default admin password
-  useEffect(() => {
-    const checkDefaultPassword = async () => {
-      try {
-        const response = await authFetch(`${baseUrl}/api/auth/check-default-password`);
-        if (response.ok) {
-          const data = await response.json();
-          setIsDefaultPassword(data.isDefaultPassword);
-        }
-      } catch (error) {
-        logger.error('Error checking default password:', error);
-      }
-    };
-
-    checkDefaultPassword();
-  }, [baseUrl]);
-
-  // Check for configuration issues
-  useEffect(() => {
-    const checkConfigIssues = async () => {
-      try {
-        const response = await authFetch(`${baseUrl}/api/auth/check-config-issues`);
-        if (response.ok) {
-          const data = await response.json();
-          setConfigIssues(data.issues || []);
-        }
-      } catch (error) {
-        logger.error('Error checking config issues:', error);
-      }
-    };
-
-    checkConfigIssues();
-  }, [baseUrl]);
-
-  // TX status is now handled by useTxStatus hook
-
-  // Check for version updates
-  useEffect(() => {
-    const checkForUpdates = async (interval: number) => {
-      try {
-        const response = await fetch(`${baseUrl}/api/version/check`);
-        if (response.ok) {
-          const data = await response.json();
-
-          // Always update version info if a newer version exists
-          if (data.latestVersion && data.latestVersion !== data.currentVersion) {
-            setLatestVersion(data.latestVersion);
-            setReleaseUrl(data.releaseUrl);
-          }
-
-          // Only show update available if images are ready
-          if (data.updateAvailable) {
-            setUpdateAvailable(true);
-          } else {
-            setUpdateAvailable(false);
-          }
-        } else if (response.status == 404) {
-          clearInterval(interval);
-        }
-      } catch (error) {
-        logger.error('Error checking for updates:', error);
-      }
-    };
-
-    // Check for updates every 4 hours
-    const interval = setInterval(checkForUpdates, 4 * 60 * 60 * 1000);
-
-    checkForUpdates(interval);
-
-    return () => clearInterval(interval);
-  }, [baseUrl]);
-
-  // Check if auto-upgrade is enabled
-  useEffect(() => {
-    const checkUpgradeStatus = async () => {
-      try {
-        const response = await authFetch(`${baseUrl}/api/upgrade/status`);
-        if (response.ok) {
-          const data = await response.json();
-          setUpgradeEnabled(data.enabled && data.deploymentMethod === 'docker');
-        }
-      } catch (error) {
-        logger.debug('Auto-upgrade not available:', error);
-      }
-    };
-
-    checkUpgradeStatus();
-  }, [baseUrl, authFetch]);
-
-  // Cleanup upgrade polling on unmount
-  useEffect(() => {
-    return () => {
-      if (upgradePollingIntervalRef.current) {
-        clearInterval(upgradePollingIntervalRef.current);
-        upgradePollingIntervalRef.current = null;
-      }
-    };
-  }, []);
-
-  // Handle upgrade trigger
-  const handleUpgrade = async () => {
-    if (!updateAvailable || upgradeInProgress) return;
-
-    try {
-      setUpgradeInProgress(true);
-      setUpgradeStatus('Initiating upgrade...');
-      setUpgradeProgress(0);
-
-      const response = await authFetch(`${baseUrl}/api/upgrade/trigger`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          targetVersion: latestVersion,
-          backup: true
-        })
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        setUpgradeId(data.upgradeId);
-        setUpgradeStatus('Upgrade initiated...');
-        showToast?.('Upgrade initiated! The application will restart shortly.', 'info');
-
-        // Poll for status updates
-        pollUpgradeStatus(data.upgradeId);
-      } else {
-        showToast?.(`Upgrade failed: ${data.message}`, 'error');
-        setUpgradeInProgress(false);
-        setUpgradeStatus('');
-      }
-    } catch (error) {
-      logger.error('Error triggering upgrade:', error);
-      showToast?.('Failed to trigger upgrade', 'error');
-      setUpgradeInProgress(false);
-      setUpgradeStatus('');
-    }
-  };
-
-  // Poll upgrade status with exponential backoff
-  const pollUpgradeStatus = (id: string) => {
-    // Clear any existing polling interval
-    if (upgradePollingIntervalRef.current) {
-      clearInterval(upgradePollingIntervalRef.current);
-      upgradePollingIntervalRef.current = null;
-    }
-
-    let attempts = 0;
-    const maxAttempts = 60; // Max attempts before timeout
-    const baseInterval = 10000; // Start at 10 seconds (reduced from 5s to limit server load)
-    const maxInterval = 30000; // Cap at 30 seconds (increased from 15s)
-    let currentInterval = baseInterval;
-
-    const poll = async () => {
-      attempts++;
-
-      try {
-        const response = await authFetch(`${baseUrl}/api/upgrade/status/${id}`);
-        if (response.ok) {
-          const data = await response.json();
-
-          setUpgradeStatus(data.currentStep || data.status);
-          setUpgradeProgress(data.progress || 0);
-
-          // Update status messages
-          if (data.status === 'complete') {
-            if (upgradePollingIntervalRef.current) {
-              clearInterval(upgradePollingIntervalRef.current);
-              upgradePollingIntervalRef.current = null;
-            }
-            showToast?.('Upgrade complete! Reloading...', 'success');
-            setUpgradeStatus('Complete! Reloading...');
-            setUpgradeProgress(100);
-
-            // Reload after 3 seconds
-            setTimeout(() => {
-              window.location.reload();
-            }, 3000);
-            return;
-          } else if (data.status === 'failed') {
-            if (upgradePollingIntervalRef.current) {
-              clearInterval(upgradePollingIntervalRef.current);
-              upgradePollingIntervalRef.current = null;
-            }
-            showToast?.('Upgrade failed. Check logs for details.', 'error');
-            setUpgradeInProgress(false);
-            setUpgradeStatus('Failed');
-            return;
-          }
-
-          // Reset interval on successful response (application is responsive)
-          currentInterval = baseInterval;
-        }
-      } catch (error) {
-        // Connection may be lost during restart - this is expected
-        // Use exponential backoff for retries
-        currentInterval = Math.min(currentInterval * 1.5, maxInterval);
-        logger.debug('Polling upgrade status (connection may be restarting):', error);
-      }
-
-      // Stop polling after max attempts
-      if (attempts >= maxAttempts) {
-        if (upgradePollingIntervalRef.current) {
-          clearInterval(upgradePollingIntervalRef.current);
-          upgradePollingIntervalRef.current = null;
-        }
-        setUpgradeInProgress(false);
-        setUpgradeStatus('Upgrade timeout - check status manually');
-        return;
-      }
-
-      // Schedule next poll with current interval
-      upgradePollingIntervalRef.current = setTimeout(poll, currentInterval) as unknown as ReturnType<typeof setInterval>;
-    };
-
-    // Start polling
-    poll();
-  };
 
   // Debug effect to track selectedChannel changes and keep ref in sync
   useEffect(() => {
@@ -5449,7 +5168,7 @@ function App() {
 
       {/* Don't show banner until images are confirmed ready - no point notifying users about builds in progress */}
 
-      {updateAvailable && (() => {
+      {updateAvailable && !dismissedUpdate && (() => {
         // Calculate total warning banners above the update banner
         const warningBannersCount = [isDefaultPassword, isTxDisabled].filter(Boolean).length + configIssues.length;
         const topOffset = warningBannersCount === 0
@@ -5484,7 +5203,7 @@ function App() {
                 </a>
                 {upgradeEnabled && (
                   <button
-                    onClick={handleUpgrade}
+                    onClick={() => triggerUpgrade(latestVersion)}
                     style={{
                       padding: '0.4rem 1rem',
                       backgroundColor: '#10b981',
@@ -5509,7 +5228,7 @@ function App() {
           {!upgradeInProgress && (
             <button
               className="banner-dismiss"
-              onClick={() => setUpdateAvailable(false)}
+              onClick={() => setDismissedUpdate(true)}
               aria-label="Dismiss update notification"
               title="Dismiss"
             >
