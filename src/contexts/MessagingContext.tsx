@@ -26,7 +26,7 @@ interface MessagingContextType {
   isDMScrolledToBottom: boolean;
   setIsDMScrolledToBottom: React.Dispatch<React.SetStateAction<boolean>>;
   // New read tracking functions
-  markMessagesAsRead: (messageIds?: string[], channelId?: number, nodeId?: string) => Promise<void>;
+  markMessagesAsRead: (messageIds?: string[], channelId?: number, nodeId?: string, allDMs?: boolean) => Promise<void>;
   fetchUnreadCounts: () => Promise<UnreadCounts | null>;
   unreadCountsData: UnreadCounts | null;
 }
@@ -73,9 +73,9 @@ export const MessagingProvider: React.FC<MessagingProviderProps> = ({ children, 
 
   // Mark messages as read using the mutation hook
   const markMessagesAsRead = useCallback(
-    async (messageIds?: string[], channelId?: number, nodeId?: string): Promise<void> => {
+    async (messageIds?: string[], channelId?: number, nodeId?: string, allDMs?: boolean): Promise<void> => {
       try {
-        await markAsReadMutation({ messageIds, channelId, nodeId });
+        await markAsReadMutation({ messageIds, channelId, nodeId, allDMs });
         // The mutation automatically invalidates and refetches unread counts
       } catch (error) {
         console.error('Error marking messages as read:', error);

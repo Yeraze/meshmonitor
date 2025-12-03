@@ -4074,6 +4074,16 @@ function App() {
             {!isMessagesNodeListCollapsed && (
               <div className="sidebar-header-content">
                 <h3>Nodes</h3>
+                <button
+                  className="mark-all-read-btn"
+                  onClick={() => {
+                    // Mark all DM messages as read (server-side handles all nodes)
+                    markMessagesAsRead(undefined, undefined, undefined, true);
+                  }}
+                  title="Mark all direct messages as read"
+                >
+                  Mark All Read
+                </button>
               </div>
             )}
             {!isMessagesNodeListCollapsed && (

@@ -1064,7 +1064,7 @@ apiRouter.get('/messages/direct/:nodeId1/:nodeId2', requirePermission('messages'
 // Mark messages as read
 apiRouter.post('/messages/mark-read', optionalAuth(), (req, res) => {
   try {
-    const { messageIds, channelId, nodeId, beforeTimestamp } = req.body;
+    const { messageIds, channelId, nodeId, beforeTimestamp, allDMs } = req.body;
 
     // If marking by channelId, check per-channel read permission
     if (channelId !== undefined && channelId !== null && channelId !== -1) {
@@ -1078,8 +1078,8 @@ apiRouter.post('/messages/mark-read', optionalAuth(), (req, res) => {
       }
     }
 
-    // If marking by nodeId (DMs), check messages permission
-    if (nodeId && channelId === -1) {
+    // If marking by nodeId (DMs) or allDMs, check messages permission
+    if ((nodeId && channelId === -1) || allDMs) {
       const hasMessagesRead = req.user?.isAdmin || hasPermission(req.user!, 'messages', 'read');
       if (!hasMessagesRead) {
         return res.status(403).json({
@@ -1097,6 +1097,13 @@ apiRouter.post('/messages/mark-read', optionalAuth(), (req, res) => {
       // Mark specific messages as read
       databaseService.markMessagesAsRead(messageIds, userId);
       markedCount = messageIds.length;
+    } else if (allDMs) {
+      // Mark ALL DMs as read
+      const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+      if (!localNodeInfo) {
+        return res.status(500).json({ error: 'Local node not connected' });
+      }
+      markedCount = databaseService.markAllDMMessagesAsRead(localNodeInfo.nodeId, userId);
     } else if (channelId !== undefined) {
       // Mark all messages in a channel as read (specific channel permission already checked above)
       markedCount = databaseService.markChannelMessagesAsRead(channelId, userId, beforeTimestamp);
@@ -1108,7 +1115,7 @@ apiRouter.post('/messages/mark-read', optionalAuth(), (req, res) => {
       }
       markedCount = databaseService.markDMMessagesAsRead(localNodeInfo.nodeId, nodeId, userId, beforeTimestamp);
     } else {
-      return res.status(400).json({ error: 'Must provide messageIds, channelId, or nodeId' });
+      return res.status(400).json({ error: 'Must provide messageIds, channelId, nodeId, or allDMs' });
     }
 
     res.json({ marked: markedCount });

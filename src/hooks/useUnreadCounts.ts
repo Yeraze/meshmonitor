@@ -94,6 +94,8 @@ interface MarkAsReadOptions {
   channelId?: number;
   /** Mark all DMs with a node as read */
   nodeId?: string;
+  /** Mark ALL DMs as read (across all nodes) */
+  allDMs?: boolean;
 }
 
 /**
