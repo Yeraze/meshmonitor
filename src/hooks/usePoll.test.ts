@@ -11,6 +11,11 @@ import { createElement } from 'react';
 import { usePoll, POLL_QUERY_KEY } from './usePoll';
 import type { PollData } from './usePoll';
 
+// Mock init.ts to provide empty appBasename for tests
+vi.mock('../init', () => ({
+  appBasename: '',
+}));
+
 // Mock useCsrfFetch
 const mockFetch = vi.fn();
 vi.mock('./useCsrfFetch', () => ({

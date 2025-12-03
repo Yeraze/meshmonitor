@@ -27,6 +27,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useCsrfFetch } from './useCsrfFetch';
 import type { DeviceInfo, Channel } from '../types/device';
+import { appBasename } from '../init';
 
 /**
  * Connection status from the server
@@ -142,7 +143,7 @@ export interface PollData {
  * Options for usePoll hook
  */
 interface UsePollOptions {
-  /** Base URL for API requests (default: '') */
+  /** Base URL for API requests (default: appBasename from init.ts) */
   baseUrl?: string;
   /** Poll interval in milliseconds (default: 5000) */
   pollInterval?: number;
@@ -176,7 +177,6 @@ export const POLL_QUERY_KEY = ['poll'] as const;
  * @example
  * ```tsx
  * const { data, isLoading, error } = usePoll({
- *   baseUrl: '',
  *   pollInterval: 5000,
  *   enabled: connectionStatus === 'connected'
  * });
@@ -192,7 +192,7 @@ export const POLL_QUERY_KEY = ['poll'] as const;
  * }
  * ```
  */
-export function usePoll({ baseUrl = '', pollInterval = 5000, enabled = true }: UsePollOptions = {}) {
+export function usePoll({ baseUrl = appBasename, pollInterval = 5000, enabled = true }: UsePollOptions = {}) {
   const authFetch = useCsrfFetch();
 
   return useQuery({
