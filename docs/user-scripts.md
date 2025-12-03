@@ -94,9 +94,14 @@ All scripts receive these environment variables:
 
 - `MESSAGE`: Full message text received
 - `FROM_NODE`: Sender's node number
+- `FROM_LAT`: Sender's latitude (if known)
+- `FROM_LON`: Sender's longitude (if known)
+- `MM_LAT`: MeshMonitor node's latitude (if known)
+- `MM_LON`: MeshMonitor node's longitude (if known)
 - `PACKET_ID`: Message packet ID
 - `TRIGGER`: The trigger pattern that matched
 - `PARAM_*`: Extracted parameters from trigger pattern (e.g., `PARAM_name`, `PARAM_location`)
+- `TZ`: Server timezone (IANA timezone name)
 
 ## Source Code Location
 
