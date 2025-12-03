@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useUI } from '../contexts/UIContext';
-import { useData } from '../contexts/DataContext';
+import { useChannels } from '../hooks/useServerData';
 
 // Meshtastic default PSK (base64 encoded single byte 0x01 = default/unencrypted)
 const DEFAULT_UNENCRYPTED_PSK = 'AQ==';
@@ -19,7 +19,7 @@ export const NodeFilterPopup: React.FC<NodeFilterPopupProps> = ({ isOpen, onClos
     showIncompleteNodes,
     setShowIncompleteNodes,
   } = useUI();
-  const { channels } = useData();
+  const { channels } = useChannels();
 
   // Get unique channel numbers from available channels
   const availableChannels = (channels || []).map(ch => ch.id).sort((a, b) => a - b);
