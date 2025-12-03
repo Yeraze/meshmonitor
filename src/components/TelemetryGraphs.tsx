@@ -340,6 +340,22 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
         ch8Voltage: 'Channel 8 Voltage',
         ch8Current: 'Channel 8 Current',
         altitude: 'Altitude',
+        // Air Quality metrics
+        pm10Standard: 'PM1.0 (Standard)',
+        pm25Standard: 'PM2.5 (Standard)',
+        pm100Standard: 'PM10 (Standard)',
+        pm10Environmental: 'PM1.0 (Environmental)',
+        pm25Environmental: 'PM2.5 (Environmental)',
+        pm100Environmental: 'PM10 (Environmental)',
+        particles03um: 'Particles 0.3µm',
+        particles05um: 'Particles 0.5µm',
+        particles10um: 'Particles 1.0µm',
+        particles25um: 'Particles 2.5µm',
+        particles50um: 'Particles 5.0µm',
+        particles100um: 'Particles 10µm',
+        co2: 'CO₂',
+        co2Temperature: 'CO₂ Sensor Temperature',
+        co2Humidity: 'CO₂ Sensor Humidity',
       };
       return labels[type] || type;
     };
@@ -374,6 +390,22 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
         ch8Voltage: '#d8c088',
         ch8Current: '#ffbf6b',
         altitude: '#74c0fc',
+        // Air Quality metrics - using earthy/green tones for PM and blue/purple for particles
+        pm10Standard: '#a6da95', // Light green
+        pm25Standard: '#8bd5ca', // Teal
+        pm100Standard: '#7dc4e4', // Blue
+        pm10Environmental: '#91d7e3', // Sky
+        pm25Environmental: '#7dc4e4', // Sapphire
+        pm100Environmental: '#8aadf4', // Lavender
+        particles03um: '#b7bdf8', // Lavender light
+        particles05um: '#c6a0f6', // Mauve
+        particles10um: '#f5bde6', // Pink
+        particles25um: '#ee99a0', // Maroon
+        particles50um: '#f5a97f', // Peach
+        particles100um: '#eed49f', // Yellow
+        co2: '#ed8796', // Red for CO2 (important air quality indicator)
+        co2Temperature: '#f5a97f', // Peach
+        co2Humidity: '#91d7e3', // Sky blue
       };
       return colors[type] || '#8884d8';
     };
