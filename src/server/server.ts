@@ -1916,10 +1916,25 @@ apiRouter.post('/position/request', requirePermission('messages', 'write'), asyn
 apiRouter.get('/traceroutes/recent', (req, res) => {
   try {
     const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 24;
-    const limit = req.query.limit ? parseInt(req.query.limit as string) : 100;
+    const cutoffTime = Date.now() - (hoursParam * 60 * 60 * 1000);
+
+    // Calculate dynamic default limit based on settings:
+    // Auto-traceroutes per hour * Max Node Age (hours) * 1.1 (padding for manual traceroutes)
+    let limit: number;
+    if (req.query.limit) {
+      // Use explicit limit if provided
+      limit = parseInt(req.query.limit as string);
+    } else {
+      // Calculate dynamic default based on traceroute settings
+      const tracerouteIntervalMinutes = parseInt(databaseService.getSetting('tracerouteIntervalMinutes') || '5');
+      const maxNodeAgeHours = parseInt(databaseService.getSetting('maxNodeAgeHours') || '24');
+      const traceroutesPerHour = tracerouteIntervalMinutes > 0 ? 60 / tracerouteIntervalMinutes : 12;
+      limit = Math.ceil(traceroutesPerHour * maxNodeAgeHours * 1.1);
+      // Ensure a reasonable minimum
+      limit = Math.max(limit, 100);
+    }
 
     const allTraceroutes = databaseService.getAllTraceroutes(limit);
-    const cutoffTime = Date.now() - (hoursParam * 60 * 60 * 1000);
 
     const recentTraceroutes = allTraceroutes.filter(tr => tr.timestamp >= cutoffTime);
 
