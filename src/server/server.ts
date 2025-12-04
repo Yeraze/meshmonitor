@@ -1918,8 +1918,23 @@ apiRouter.get('/traceroutes/recent', (req, res) => {
     const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 24;
     const cutoffTime = Date.now() - (hoursParam * 60 * 60 * 1000);
 
-    // Get all traceroutes without limit - time filtering will reduce the set
-    const allTraceroutes = databaseService.getAllTraceroutes(10000);
+    // Calculate dynamic default limit based on settings:
+    // Auto-traceroutes per hour * Max Node Age (hours) * 1.1 (padding for manual traceroutes)
+    let limit: number;
+    if (req.query.limit) {
+      // Use explicit limit if provided
+      limit = parseInt(req.query.limit as string);
+    } else {
+      // Calculate dynamic default based on traceroute settings
+      const tracerouteIntervalMinutes = parseInt(databaseService.getSetting('tracerouteIntervalMinutes') || '5');
+      const maxNodeAgeHours = parseInt(databaseService.getSetting('maxNodeAgeHours') || '24');
+      const traceroutesPerHour = tracerouteIntervalMinutes > 0 ? 60 / tracerouteIntervalMinutes : 12;
+      limit = Math.ceil(traceroutesPerHour * maxNodeAgeHours * 1.1);
+      // Ensure a reasonable minimum
+      limit = Math.max(limit, 100);
+    }
+
+    const allTraceroutes = databaseService.getAllTraceroutes(limit);
 
     const recentTraceroutes = allTraceroutes.filter(tr => tr.timestamp >= cutoffTime);
 
