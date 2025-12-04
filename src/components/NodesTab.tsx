@@ -510,15 +510,21 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
           <div className="sidebar-header-content">
             <h3>Nodes ({(() => {
               const filteredCount = processedNodes.filter(node => {
+                // Security filter
                 if (securityFilter === 'flaggedOnly') {
-                  return node.keyIsLowEntropy || node.duplicateKeyDetected;
+                  if (!node.keyIsLowEntropy && !node.duplicateKeyDetected) return false;
                 }
                 if (securityFilter === 'hideFlagged') {
-                  return !node.keyIsLowEntropy && !node.duplicateKeyDetected;
+                  if (node.keyIsLowEntropy || node.duplicateKeyDetected) return false;
+                }
+                // Incomplete nodes filter
+                if (!showIncompleteNodes && !isNodeComplete(node)) {
+                  return false;
                 }
                 return true;
               }).length;
-              return securityFilter !== 'all' ? `${filteredCount}/${processedNodes.length}` : processedNodes.length;
+              const isFiltered = securityFilter !== 'all' || !showIncompleteNodes;
+              return isFiltered ? `${filteredCount}/${processedNodes.length}` : processedNodes.length;
             })()})</h3>
           </div>
           )}
