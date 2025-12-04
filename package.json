@@ -1,6 +1,6 @@
 {
   "name": "meshmonitor",
-  "version": "2.19.12",
+  "version": "2.19.13",
   "description": "Web application for monitoring Meshtastic nodes over IP",
   "license": "BSD-3-Clause",
   "private": true,
