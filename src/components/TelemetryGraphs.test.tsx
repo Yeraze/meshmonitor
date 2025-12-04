@@ -614,8 +614,8 @@ describe('TelemetryGraphs Component', () => {
       renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} />);
 
       await waitFor(() => {
-        expect(screen.getByText('Particles >0.3µm (#/0.1L)')).toBeInTheDocument();
-        expect(screen.getByText('Particles >2.5µm (#/0.1L)')).toBeInTheDocument();
+        expect(screen.getByText('Particles 0.3µm (#/0.1L)')).toBeInTheDocument();
+        expect(screen.getByText('Particles 2.5µm (#/0.1L)')).toBeInTheDocument();
       });
     });
 
@@ -658,7 +658,7 @@ describe('TelemetryGraphs Component', () => {
 
       await waitFor(() => {
         expect(screen.getByText('CO₂ (ppm)')).toBeInTheDocument();
-        expect(screen.getByText('CO₂ Sensor Temp (°C)')).toBeInTheDocument();
+        expect(screen.getByText('CO₂ Sensor Temperature (°C)')).toBeInTheDocument();
         expect(screen.getByText('CO₂ Sensor Humidity (%)')).toBeInTheDocument();
       });
     });
