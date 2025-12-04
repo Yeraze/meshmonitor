@@ -1916,10 +1916,10 @@ apiRouter.post('/position/request', requirePermission('messages', 'write'), asyn
 apiRouter.get('/traceroutes/recent', (req, res) => {
   try {
     const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 24;
-    const limit = req.query.limit ? parseInt(req.query.limit as string) : 100;
-
-    const allTraceroutes = databaseService.getAllTraceroutes(limit);
     const cutoffTime = Date.now() - (hoursParam * 60 * 60 * 1000);
+
+    // Get all traceroutes without limit - time filtering will reduce the set
+    const allTraceroutes = databaseService.getAllTraceroutes(10000);
 
     const recentTraceroutes = allTraceroutes.filter(tr => tr.timestamp >= cutoffTime);
 
