@@ -530,6 +530,140 @@ describe('TelemetryGraphs Component', () => {
     // we just verify the component doesn't crash when processing the data
   });
 
+  describe('Air Quality Telemetry', () => {
+    it('should display correct labels for air quality metrics', async () => {
+      const mockAirQualityData = [
+        { nodeId: mockNodeId, telemetryType: 'pm10Standard', value: 12, timestamp: Date.now(), unit: 'µg/m³' },
+        { nodeId: mockNodeId, telemetryType: 'pm25Standard', value: 25, timestamp: Date.now(), unit: 'µg/m³' },
+        { nodeId: mockNodeId, telemetryType: 'pm100Standard', value: 45, timestamp: Date.now(), unit: 'µg/m³' },
+        { nodeId: mockNodeId, telemetryType: 'co2', value: 450, timestamp: Date.now(), unit: 'ppm' },
+      ];
+
+      (global.fetch as Mock).mockImplementation((url: string) => {
+        if (url.includes('/api/settings')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({}),
+          });
+        }
+        if (url.includes('/api/solar/estimates')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              count: 0,
+              estimates: [],
+            }),
+          });
+        }
+        if (url.includes('/api/csrf-token')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ token: 'test-csrf-token' }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => mockAirQualityData,
+        });
+      });
+
+      renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('PM1.0 (Standard) (µg/m³)')).toBeInTheDocument();
+        expect(screen.getByText('PM2.5 (Standard) (µg/m³)')).toBeInTheDocument();
+        expect(screen.getByText('PM10 (Standard) (µg/m³)')).toBeInTheDocument();
+        expect(screen.getByText('CO₂ (ppm)')).toBeInTheDocument();
+      });
+    });
+
+    it('should display particle count labels correctly', async () => {
+      const mockParticleData = [
+        { nodeId: mockNodeId, telemetryType: 'particles03um', value: 1500, timestamp: Date.now(), unit: '#/0.1L' },
+        { nodeId: mockNodeId, telemetryType: 'particles25um', value: 45, timestamp: Date.now(), unit: '#/0.1L' },
+      ];
+
+      (global.fetch as Mock).mockImplementation((url: string) => {
+        if (url.includes('/api/settings')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({}),
+          });
+        }
+        if (url.includes('/api/solar/estimates')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              count: 0,
+              estimates: [],
+            }),
+          });
+        }
+        if (url.includes('/api/csrf-token')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ token: 'test-csrf-token' }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => mockParticleData,
+        });
+      });
+
+      renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Particles >0.3µm (#/0.1L)')).toBeInTheDocument();
+        expect(screen.getByText('Particles >2.5µm (#/0.1L)')).toBeInTheDocument();
+      });
+    });
+
+    it('should display CO2 environmental readings correctly', async () => {
+      const mockCo2Data = [
+        { nodeId: mockNodeId, telemetryType: 'co2', value: 800, timestamp: Date.now(), unit: 'ppm' },
+        { nodeId: mockNodeId, telemetryType: 'co2Temperature', value: 22.5, timestamp: Date.now(), unit: '°C' },
+        { nodeId: mockNodeId, telemetryType: 'co2Humidity', value: 55, timestamp: Date.now(), unit: '%' },
+      ];
+
+      (global.fetch as Mock).mockImplementation((url: string) => {
+        if (url.includes('/api/settings')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({}),
+          });
+        }
+        if (url.includes('/api/solar/estimates')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              count: 0,
+              estimates: [],
+            }),
+          });
+        }
+        if (url.includes('/api/csrf-token')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ token: 'test-csrf-token' }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => mockCo2Data,
+        });
+      });
+
+      renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('CO₂ (ppm)')).toBeInTheDocument();
+        expect(screen.getByText('CO₂ Sensor Temp (°C)')).toBeInTheDocument();
+        expect(screen.getByText('CO₂ Sensor Humidity (%)')).toBeInTheDocument();
+      });
+    });
+  });
+
   describe('Temperature Unit Conversion', () => {
     it('should display temperature in Celsius by default', async () => {
       const mockData = [

@@ -129,6 +129,34 @@ class MeshtasticManager {
     };
   }
 
+  /**
+   * Save an array of telemetry metrics to the database
+   * Filters out undefined/null/NaN values before inserting
+   */
+  private saveTelemetryMetrics(
+    metricsToSave: Array<{ type: string; value: number | undefined; unit: string }>,
+    nodeId: string,
+    fromNum: number,
+    timestamp: number,
+    packetTimestamp: number | undefined
+  ): void {
+    const now = Date.now();
+    for (const metric of metricsToSave) {
+      if (metric.value !== undefined && metric.value !== null && !isNaN(Number(metric.value))) {
+        databaseService.insertTelemetry({
+          nodeId,
+          nodeNum: fromNum,
+          telemetryType: metric.type,
+          timestamp,
+          value: Number(metric.value),
+          unit: metric.unit,
+          createdAt: now,
+          packetTimestamp
+        });
+      }
+    }
+  }
+
   async connect(): Promise<boolean> {
     try {
       const config = this.getConfig();
@@ -2002,7 +2030,7 @@ class MeshtasticManager {
         logger.debug(`🌬️ Air Quality telemetry: PM2.5=${aqMetrics.pm25Standard}µg/m³, CO2=${aqMetrics.co2}ppm`);
 
         // Save all AirQuality metrics to telemetry table
-        const metricsToSave = [
+        this.saveTelemetryMetrics([
           // PM Standard measurements (µg/m³)
           { type: 'pm10Standard', value: aqMetrics.pm10Standard, unit: 'µg/m³' },
           { type: 'pm25Standard', value: aqMetrics.pm25Standard, unit: 'µg/m³' },
@@ -2022,28 +2050,13 @@ class MeshtasticManager {
           { type: 'co2', value: aqMetrics.co2, unit: 'ppm' },
           { type: 'co2Temperature', value: aqMetrics.co2Temperature, unit: '°C' },
           { type: 'co2Humidity', value: aqMetrics.co2Humidity, unit: '%' }
-        ];
-
-        for (const metric of metricsToSave) {
-          if (metric.value !== undefined && metric.value !== null && !isNaN(Number(metric.value))) {
-            databaseService.insertTelemetry({
-              nodeId,
-              nodeNum: fromNum,
-              telemetryType: metric.type,
-              timestamp,
-              value: Number(metric.value),
-              unit: metric.unit,
-              createdAt: now,
-              packetTimestamp
-            });
-          }
-        }
+        ], nodeId, fromNum, timestamp, packetTimestamp);
       } else if (telemetry.localStats) {
         const localStats = telemetry.localStats;
         logger.debug(`📊 LocalStats telemetry: uptime=${localStats.uptimeSeconds}s, heap_free=${localStats.heapFreeBytes}B`);
 
         // Save all LocalStats metrics to telemetry table
-        const metricsToSave = [
+        this.saveTelemetryMetrics([
           { type: 'uptimeSeconds', value: localStats.uptimeSeconds, unit: 's' },
           { type: 'channelUtilization', value: localStats.channelUtilization, unit: '%' },
           { type: 'airUtilTx', value: localStats.airUtilTx, unit: '%' },
@@ -2058,28 +2071,13 @@ class MeshtasticManager {
           { type: 'heapTotalBytes', value: localStats.heapTotalBytes, unit: 'bytes' },
           { type: 'heapFreeBytes', value: localStats.heapFreeBytes, unit: 'bytes' },
           { type: 'numTxDropped', value: localStats.numTxDropped, unit: 'packets' }
-        ];
-
-        for (const metric of metricsToSave) {
-          if (metric.value !== undefined && metric.value !== null && !isNaN(Number(metric.value))) {
-            databaseService.insertTelemetry({
-              nodeId,
-              nodeNum: fromNum,
-              telemetryType: metric.type,
-              timestamp,
-              value: Number(metric.value),
-              unit: metric.unit,
-              createdAt: now,
-              packetTimestamp
-            });
-          }
-        }
+        ], nodeId, fromNum, timestamp, packetTimestamp);
       } else if (telemetry.hostMetrics) {
         const hostMetrics = telemetry.hostMetrics;
         logger.debug(`🖥️ HostMetrics telemetry: uptime=${hostMetrics.uptimeSeconds}s, freemem=${hostMetrics.freememBytes}B`);
 
         // Save all HostMetrics metrics to telemetry table
-        const metricsToSave = [
+        this.saveTelemetryMetrics([
           { type: 'hostUptimeSeconds', value: hostMetrics.uptimeSeconds, unit: 's' },
           { type: 'hostFreememBytes', value: hostMetrics.freememBytes, unit: 'bytes' },
           { type: 'hostDiskfree1Bytes', value: hostMetrics.diskfree1Bytes, unit: 'bytes' },
@@ -2088,22 +2086,7 @@ class MeshtasticManager {
           { type: 'hostLoad1', value: hostMetrics.load1, unit: 'load' },
           { type: 'hostLoad5', value: hostMetrics.load5, unit: 'load' },
           { type: 'hostLoad15', value: hostMetrics.load15, unit: 'load' }
-        ];
-
-        for (const metric of metricsToSave) {
-          if (metric.value !== undefined && metric.value !== null && !isNaN(Number(metric.value))) {
-            databaseService.insertTelemetry({
-              nodeId,
-              nodeNum: fromNum,
-              telemetryType: metric.type,
-              timestamp,
-              value: Number(metric.value),
-              unit: metric.unit,
-              createdAt: now,
-              packetTimestamp
-            });
-          }
-        }
+        ], nodeId, fromNum, timestamp, packetTimestamp);
       }
 
       databaseService.upsertNode(nodeData);
