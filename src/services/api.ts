@@ -488,6 +488,35 @@ class ApiService {
     return data.messages || [];
   }
 
+  async getChannelMessages(
+    channel: number,
+    limit: number = 100,
+    offset: number = 0
+  ): Promise<{ messages: MeshMessage[]; hasMore: boolean }> {
+    await this.ensureBaseUrl();
+    const response = await fetch(
+      `${this.baseUrl}/api/messages/channel/${channel}?limit=${limit}&offset=${offset}`,
+      { credentials: 'include' }
+    );
+    if (!response.ok) throw new Error('Failed to fetch channel messages');
+    return response.json();
+  }
+
+  async getDirectMessages(
+    nodeId1: string,
+    nodeId2: string,
+    limit: number = 100,
+    offset: number = 0
+  ): Promise<{ messages: MeshMessage[]; hasMore: boolean }> {
+    await this.ensureBaseUrl();
+    const response = await fetch(
+      `${this.baseUrl}/api/messages/direct/${nodeId1}/${nodeId2}?limit=${limit}&offset=${offset}`,
+      { credentials: 'include' }
+    );
+    if (!response.ok) throw new Error('Failed to fetch direct messages');
+    return response.json();
+  }
+
   async sendMessage(payload: {
     channel?: number;
     text: string;

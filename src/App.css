@@ -2699,6 +2699,35 @@ body {
 .messages-container::-webkit-scrollbar-thumb:hover {
   background: var(--ctp-overlay1);
 }
+
+/* Loading indicator for infinite scroll */
+.loading-more-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  color: var(--ctp-subtext0);
+  font-size: 0.875rem;
+  border-bottom: 1px solid var(--ctp-surface1);
+  margin-bottom: 0.5rem;
+}
+
+.loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--ctp-surface2);
+  border-top-color: var(--ctp-mauve);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* Fullscreen Map Layout for Nodes */
 .nodes-split-view {
   position: fixed;

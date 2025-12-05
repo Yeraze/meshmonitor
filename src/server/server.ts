@@ -5,7 +5,8 @@ import helmet from 'helmet';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import databaseService from '../services/database.js';
+import databaseService, { DbMessage } from '../services/database.js';
+import { MeshMessage } from '../types/message.js';
 import meshtasticManager from './meshtasticManager.js';
 import meshtasticProtobufService from './meshtasticProtobufService.js';
 import { VirtualNodeServer } from './virtualNodeServer.js';
@@ -1018,10 +1019,39 @@ apiRouter.get('/messages', optionalAuth(), (req, res) => {
   }
 });
 
+// Helper function to transform DbMessage to MeshMessage format
+// This mirrors the transformation in meshtasticManager.getRecentMessages()
+function transformDbMessageToMeshMessage(msg: DbMessage): MeshMessage {
+  return {
+    id: msg.id,
+    from: msg.fromNodeId,
+    to: msg.toNodeId,
+    fromNodeId: msg.fromNodeId,
+    toNodeId: msg.toNodeId,
+    text: msg.text,
+    channel: msg.channel,
+    portnum: msg.portnum,
+    timestamp: new Date(msg.rxTime ?? msg.timestamp),
+    hopStart: msg.hopStart,
+    hopLimit: msg.hopLimit,
+    replyId: msg.replyId,
+    emoji: msg.emoji,
+    requestId: (msg as any).requestId,
+    wantAck: Boolean((msg as any).wantAck),
+    ackFailed: Boolean((msg as any).ackFailed),
+    routingErrorReceived: Boolean((msg as any).routingErrorReceived),
+    deliveryState: (msg as any).deliveryState,
+    acknowledged: msg.channel === -1
+      ? ((msg as any).deliveryState === 'confirmed' ? true : undefined)
+      : ((msg as any).deliveryState === 'delivered' || (msg as any).deliveryState === 'confirmed' ? true : undefined)
+  };
+}
+
 apiRouter.get('/messages/channel/:channel', optionalAuth(), (req, res) => {
   try {
     const requestedChannel = parseInt(req.params.channel);
     const limit = parseInt(req.query.limit as string) || 100;
+    const offset = parseInt(req.query.offset as string) || 0;
 
     // Check if this is a Primary channel request and map to channel 0 messages
     let messageChannel = requestedChannel;
@@ -1041,8 +1071,10 @@ apiRouter.get('/messages/channel/:channel', optionalAuth(), (req, res) => {
       });
     }
 
-    const messages = databaseService.getMessagesByChannel(messageChannel, limit);
-    res.json(messages);
+    const dbMessages = databaseService.getMessagesByChannel(messageChannel, limit, offset);
+    const messages = dbMessages.map(transformDbMessageToMeshMessage);
+    const hasMore = dbMessages.length === limit;
+    res.json({ messages, hasMore });
   } catch (error) {
     logger.error('Error fetching channel messages:', error);
     res.status(500).json({ error: 'Failed to fetch channel messages' });
@@ -1053,8 +1085,11 @@ apiRouter.get('/messages/direct/:nodeId1/:nodeId2', requirePermission('messages'
   try {
     const { nodeId1, nodeId2 } = req.params;
     const limit = parseInt(req.query.limit as string) || 100;
-    const messages = databaseService.getDirectMessages(nodeId1, nodeId2, limit);
-    res.json(messages);
+    const offset = parseInt(req.query.offset as string) || 0;
+    const dbMessages = databaseService.getDirectMessages(nodeId1, nodeId2, limit, offset);
+    const messages = dbMessages.map(transformDbMessageToMeshMessage);
+    const hasMore = dbMessages.length === limit;
+    res.json({ messages, hasMore });
   } catch (error) {
     logger.error('Error fetching direct messages:', error);
     res.status(500).json({ error: 'Failed to fetch direct messages' });
