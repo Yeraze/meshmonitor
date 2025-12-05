@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { PacketLog, PacketFilters } from '../types/packet';
-import { getPackets, clearPackets, exportPackets } from '../services/packetApi';
+import { clearPackets, exportPackets } from '../services/packetApi';
 import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { useDeviceConfig } from '../hooks/useServerData';
+import { usePackets } from '../hooks/usePackets';
 import { formatDateTime } from '../utils/datetime';
 import { ResourceType } from '../types/permission';
 import './PacketMonitorPanel.css';
@@ -16,9 +17,7 @@ interface PacketMonitorPanelProps {
 }
 
 // Constants
-const PACKET_FETCH_LIMIT = 100; // Fetch most recent 100 packets for display
-const POLL_INTERVAL_MS = 5000;
-const LOAD_MORE_THRESHOLD = 10; // Load more when within this many items from the end
+const LOAD_MORE_THRESHOLD = 10;
 
 // Safe JSON parse helper
 const safeJsonParse = <T,>(value: string | null, fallback: T): T => {
@@ -35,11 +34,8 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
   const { hasPermission, authStatus } = useAuth();
   const { timeFormat, dateFormat } = useSettings();
   const { config: deviceInfo } = useDeviceConfig();
-  const [rawPackets, setRawPackets] = useState<PacketLog[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
+
+  // UI state (not data-related)
   const [autoScroll, setAutoScroll] = useState(() =>
     safeJsonParse(localStorage.getItem('packetMonitor.autoScroll'), true)
   );
@@ -53,13 +49,8 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
   const [hideOwnPackets, setHideOwnPackets] = useState(() =>
     safeJsonParse(localStorage.getItem('packetMonitor.hideOwnPackets'), true)
   );
-  const [rateLimitError, setRateLimitError] = useState(false);
-  const tableRef = useRef<HTMLDivElement>(null);
-  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
   const parentRef = useRef<HTMLDivElement>(null);
-  const rateLimitResetTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const lastLoadedRawLengthRef = useRef<number>(0); // Track raw packet count at last load to prevent reload loops
-  const userHasScrolledRef = useRef<boolean>(false); // Track if user has scrolled to enable infinite scroll
 
   // Check permissions - user needs to have at least one channel permission and messages permission
   const hasAnyChannelPermission = () => {
@@ -80,13 +71,23 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     return parseInt(nodeId.substring(1), 16);
   }, [deviceInfo?.localNodeInfo?.nodeId]);
 
-  // Apply "Hide Own Packets" filter reactively
-  const packets = React.useMemo(() => {
-    if (hideOwnPackets && ownNodeNum) {
-      return rawPackets.filter(packet => packet.from_node !== ownNodeNum);
-    }
-    return rawPackets;
-  }, [rawPackets, hideOwnPackets, ownNodeNum]);
+  // Use the packets hook for all data fetching
+  const {
+    packets,
+    total,
+    loading,
+    hasMore,
+    rateLimitError,
+    loadMore,
+    refresh: fetchPackets,
+    markUserScrolled,
+    shouldLoadMore,
+  } = usePackets({
+    canView,
+    filters,
+    hideOwnPackets,
+    ownNodeNum,
+  });
 
   // Virtual scrolling setup with infinite loading
   const rowVirtualizer = useVirtualizer({
@@ -96,110 +97,31 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     overscan: 10, // Number of items to render outside of visible area
   });
 
-  // Load more packets function
-  const loadMore = useCallback(async () => {
-    if (loadingMore || !hasMore || rateLimitError) return;
-
-    setLoadingMore(true);
-    try {
-      const response = await getPackets(rawPackets.length, PACKET_FETCH_LIMIT, filters);
-
-      if (response.packets.length === 0) {
-        setHasMore(false);
-      } else {
-        setRawPackets(prev => {
-          const newLength = prev.length + response.packets.length;
-          lastLoadedRawLengthRef.current = newLength;
-          return [...prev, ...response.packets];
-        });
-        setTotal(response.total);
-      }
-    } catch (error) {
-      console.error('Failed to load more packets:', error);
-
-      // Check if this is a rate limit error
-      if (error instanceof Error && error.message.includes('Too many requests')) {
-        setRateLimitError(true);
-        setHasMore(false); // Prevent further load attempts
-
-        // Clear any existing reset timer
-        if (rateLimitResetTimerRef.current) {
-          clearTimeout(rateLimitResetTimerRef.current);
-        }
-
-        // Reset after 15 minutes (matches rate limit window)
-        rateLimitResetTimerRef.current = setTimeout(() => {
-          setRateLimitError(false);
-          setHasMore(true);
-        }, 15 * 60 * 1000);
-      }
-    } finally {
-      setLoadingMore(false);
-    }
-  }, [loadingMore, hasMore, rateLimitError, rawPackets.length, filters]);
-
   // Track scroll to enable infinite loading only after user interaction
-  // This prevents infinite loops when filters reduce the packet list to fewer items than the viewport
   useEffect(() => {
     const scrollElement = parentRef.current;
     if (!scrollElement) return;
 
     const handleScroll = () => {
       // Mark that user has scrolled - this enables infinite scroll loading
-      if (!userHasScrolledRef.current && scrollElement.scrollTop > 50) {
-        userHasScrolledRef.current = true;
+      if (scrollElement.scrollTop > 50) {
+        markUserScrolled();
       }
     };
 
     scrollElement.addEventListener('scroll', handleScroll, { passive: true });
     return () => scrollElement.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  // Reset scroll tracking when raw packets are reset (e.g., filter change)
-  useEffect(() => {
-    if (rawPackets.length === 0) {
-      userHasScrolledRef.current = false;
-      lastLoadedRawLengthRef.current = 0;
-    }
-  }, [rawPackets.length]);
+  }, [markUserScrolled]);
 
   // Load more packets when scrolling near the end
-  // Use a stable dependency - the last visible index - instead of the full virtual items array
   const virtualItems = rowVirtualizer.getVirtualItems();
   const lastVisibleIndex = virtualItems.length > 0 ? virtualItems[virtualItems.length - 1]?.index ?? -1 : -1;
 
   useEffect(() => {
-    if (lastVisibleIndex < 0) return;
-
-    // Prevent infinite loop when filters result in empty packet list
-    // If we have raw packets but no filtered packets, don't keep trying to load more
-    if (packets.length === 0 && rawPackets.length > 0) {
-      return;
-    }
-
-    // Only trigger load when we're near the end of the filtered list
-    const nearEnd = lastVisibleIndex >= packets.length - LOAD_MORE_THRESHOLD;
-
-    // Additional guard: only load if we haven't recently loaded from this raw position
-    // This prevents loops when heavy filtering (hideOwnPackets) keeps us at the "end"
-    const alreadyLoadedFromHere = rawPackets.length > 0 && rawPackets.length === lastLoadedRawLengthRef.current;
-
-    // Require user scroll interaction before loading more, unless we have very few items displayed
-    // This prevents the infinite loop when filtering leaves us at "end" without user action
-    const enoughItemsDisplayed = packets.length >= LOAD_MORE_THRESHOLD;
-    const shouldRequireScroll = enoughItemsDisplayed && !userHasScrolledRef.current;
-
-    if (
-      nearEnd &&
-      hasMore &&
-      !loadingMore &&
-      !alreadyLoadedFromHere &&
-      !shouldRequireScroll &&
-      canView
-    ) {
+    if (shouldLoadMore(lastVisibleIndex, LOAD_MORE_THRESHOLD)) {
       loadMore();
     }
-  }, [lastVisibleIndex, hasMore, loadingMore, packets.length, rawPackets.length, canView, loadMore]);
+  }, [lastVisibleIndex, shouldLoadMore, loadMore]);
 
   // Persist filter settings to localStorage
   useEffect(() => {
@@ -223,73 +145,6 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     if (!longName) return undefined;
     return longName.length > maxLength ? `${longName.substring(0, maxLength)}...` : longName;
   };
-
-  // Fetch packets (initial load or refresh from polling)
-  const fetchPackets = useCallback(async () => {
-    if (!canView) return;
-
-    try {
-      // When polling updates, only fetch the first batch to check for new packets
-      // This prevents resetting the scroll position
-      const currentPacketCount = rawPackets.length;
-      const isInitialLoad = currentPacketCount === 0;
-
-      // Fetch most recent packets
-      const response = await getPackets(0, PACKET_FETCH_LIMIT, filters);
-
-      // Only update if this is initial load OR if there are new packets
-      // This prevents unnecessary state updates that could reset scroll position
-      if (isInitialLoad || response.packets[0]?.id !== rawPackets[0]?.id) {
-        // Preserve existing packets beyond the first batch when polling
-        if (!isInitialLoad && currentPacketCount > PACKET_FETCH_LIMIT) {
-          // The new response contains positions 0-99 (most recent packets)
-          // We want to keep our existing packets from position 100+ that aren't in the new batch
-
-          // Remove duplicates: filter out any of our existing packets that appear in the new batch
-          const newPacketIds = new Set(response.packets.map(p => p.id));
-          const oldPacketsWithoutDuplicates = rawPackets.filter(p => !newPacketIds.has(p.id));
-
-          // We already have positions 0-99 from the server (response.packets)
-          // So we want to keep old packets starting from what would be position 100
-          // Since we removed duplicates, we take everything from the old list
-          setRawPackets([...response.packets, ...oldPacketsWithoutDuplicates]);
-        } else {
-          setRawPackets(response.packets);
-          setHasMore(response.packets.length >= PACKET_FETCH_LIMIT);
-        }
-        setTotal(response.total);
-      }
-
-      setLoading(false);
-
-      // Auto-scroll to top only on initial load if enabled
-      if (autoScroll && tableRef.current && isInitialLoad) {
-        tableRef.current.scrollTop = 0;
-      }
-    } catch (error) {
-      console.error('Failed to fetch packets:', error);
-      setLoading(false);
-    }
-  }, [canView, filters, autoScroll]);
-
-  // Initial fetch and polling
-  useEffect(() => {
-    if (!canView) return;
-
-    fetchPackets();
-
-    // Poll for new packets
-    pollIntervalRef.current = setInterval(fetchPackets, POLL_INTERVAL_MS);
-
-    return () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-      }
-      if (rateLimitResetTimerRef.current) {
-        clearTimeout(rateLimitResetTimerRef.current);
-      }
-    };
-  }, [fetchPackets, canView]);
 
   // Handle clear packets
   const handleClear = async () => {
@@ -322,25 +177,40 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
   // Get port number color
   const getPortnumColor = (portnum: number): string => {
     switch (portnum) {
-      case 1: return '#4a9eff'; // TEXT_MESSAGE - blue
-      case 3: return '#4caf50'; // POSITION - green
-      case 4: return '#00bcd4'; // NODEINFO - cyan
-      case 67: return '#ff9800'; // TELEMETRY - orange
-      case 70: return '#9c27b0'; // TRACEROUTE - purple
-      case 71: return '#673ab7'; // NEIGHBORINFO - deep purple
-      case 5: return '#f44336'; // ROUTING - red
-      case 6: return '#e91e63'; // ADMIN - pink
-      case 8: return '#4caf50'; // WAYPOINT - green
-      case 11: return '#ff5722'; // ALERT - deep orange
-      case 32: return '#2196f3'; // REPLY - light blue
+      case 1:
+        return '#4a9eff'; // TEXT_MESSAGE - blue
+      case 3:
+        return '#4caf50'; // POSITION - green
+      case 4:
+        return '#00bcd4'; // NODEINFO - cyan
+      case 67:
+        return '#ff9800'; // TELEMETRY - orange
+      case 70:
+        return '#9c27b0'; // TRACEROUTE - purple
+      case 71:
+        return '#673ab7'; // NEIGHBORINFO - deep purple
+      case 5:
+        return '#f44336'; // ROUTING - red
+      case 6:
+        return '#e91e63'; // ADMIN - pink
+      case 8:
+        return '#4caf50'; // WAYPOINT - green
+      case 11:
+        return '#ff5722'; // ALERT - deep orange
+      case 32:
+        return '#2196f3'; // REPLY - light blue
       case 64: // SERIAL - brown
       case 65: // STORE_FORWARD - brown
-      case 66: return '#795548'; // RANGE_TEST - brown
+      case 66:
+        return '#795548'; // RANGE_TEST - brown
       case 72: // ATAK_PLUGIN - teal
-      case 73: return '#009688'; // MAP_REPORT - teal
+      case 73:
+        return '#009688'; // MAP_REPORT - teal
       case 256: // PRIVATE_APP - gray
-      case 257: return '#757575'; // ATAK_FORWARDER - gray
-      default: return '#9e9e9e'; // UNKNOWN - gray
+      case 257:
+        return '#757575'; // ATAK_FORWARDER - gray
+      default:
+        return '#9e9e9e'; // UNKNOWN - gray
     }
   };
 
@@ -351,7 +221,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
       hour12: timeFormat === '12',
       hour: '2-digit',
       minute: '2-digit',
-      second: '2-digit'
+      second: '2-digit',
     });
     const ms = String(date.getMilliseconds()).padStart(3, '0');
     return `${time}.${ms}`;
@@ -397,10 +267,15 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
       <div className="packet-monitor-panel">
         <div className="packet-monitor-header">
           <h3>Mesh Traffic Monitor</h3>
-          <button className="close-btn" onClick={onClose}>×</button>
+          <button className="close-btn" onClick={onClose}>
+            ×
+          </button>
         </div>
         <div className="packet-monitor-no-permission">
-          <p>You need both <strong>channels:read</strong> and <strong>messages:read</strong> permissions to view packet logs.</p>
+          <p>
+            You need both <strong>channels:read</strong> and <strong>messages:read</strong> permissions to view packet
+            logs.
+          </p>
         </div>
       </div>
     );
@@ -408,150 +283,117 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
 
   return (
     <>
-    <div className="packet-monitor-panel">
-      <div className="packet-monitor-header">
-        <h3>Mesh Traffic Monitor</h3>
-        <div className="packet-count" title={`Showing ${packets.length} most recent packets. Export will include all ${total} packets.`}>
-          {packets.length} shown / {total} total
-        </div>
-        <div className="header-controls">
-          <button
-            className="control-btn"
-            onClick={() => setAutoScroll(!autoScroll)}
-            title={autoScroll ? 'Pause auto-scroll' : 'Resume auto-scroll'}
+      <div className="packet-monitor-panel">
+        <div className="packet-monitor-header">
+          <h3>Mesh Traffic Monitor</h3>
+          <div
+            className="packet-count"
+            title={`Showing ${packets.length} most recent packets. Export will include all ${total} packets.`}
           >
-            {autoScroll ? '⏸️' : '▶️'}
-          </button>
-          <button
-            className="control-btn"
-            onClick={() => setShowFilters(!showFilters)}
-            title="Toggle filters"
-          >
-            🔍
-          </button>
-          <button
-            className="control-btn"
-            onClick={handleExport}
-            title="Export packets to JSONL"
-            disabled={total === 0}
-          >
-            📥
-          </button>
-          {authStatus?.user?.isAdmin && (
-            <button className="control-btn" onClick={handleClear} title="Clear all packets">
-              🗑️
+            {packets.length} shown / {total} total
+          </div>
+          <div className="header-controls">
+            <button
+              className="control-btn"
+              onClick={() => setAutoScroll(!autoScroll)}
+              title={autoScroll ? 'Pause auto-scroll' : 'Resume auto-scroll'}
+            >
+              {autoScroll ? '⏸️' : '▶️'}
             </button>
-          )}
-          <button
-            className="control-btn"
-            onClick={handlePopout}
-            title="Pop out to new window"
-          >
-            ⧉
-          </button>
-          <button className="close-btn" onClick={onClose}>×</button>
+            <button className="control-btn" onClick={() => setShowFilters(!showFilters)} title="Toggle filters">
+              🔍
+            </button>
+            <button
+              className="control-btn"
+              onClick={handleExport}
+              title="Export packets to JSONL"
+              disabled={total === 0}
+            >
+              📥
+            </button>
+            {authStatus?.user?.isAdmin && (
+              <button className="control-btn" onClick={handleClear} title="Clear all packets">
+                🗑️
+              </button>
+            )}
+            <button className="control-btn" onClick={handlePopout} title="Pop out to new window">
+              ⧉
+            </button>
+            <button className="close-btn" onClick={onClose}>
+              ×
+            </button>
+          </div>
         </div>
-      </div>
 
-      {showFilters && (
-        <div className="packet-filters">
-          <select
-            value={filters.portnum ?? ''}
-            onChange={(e) => setFilters({ ...filters, portnum: e.target.value ? parseInt(e.target.value) : undefined })}
-          >
-            <option value="">All Types</option>
-            <option value="1">TEXT_MESSAGE</option>
-            <option value="3">POSITION</option>
-            <option value="4">NODEINFO</option>
-            <option value="5">ROUTING</option>
-            <option value="6">ADMIN</option>
-            <option value="67">TELEMETRY</option>
-            <option value="70">TRACEROUTE</option>
-            <option value="71">NEIGHBORINFO</option>
-          </select>
+        {showFilters && (
+          <div className="packet-filters">
+            <select
+              value={filters.portnum ?? ''}
+              onChange={e => setFilters({ ...filters, portnum: e.target.value ? parseInt(e.target.value) : undefined })}
+            >
+              <option value="">All Types</option>
+              <option value="1">TEXT_MESSAGE</option>
+              <option value="3">POSITION</option>
+              <option value="4">NODEINFO</option>
+              <option value="5">ROUTING</option>
+              <option value="6">ADMIN</option>
+              <option value="67">TELEMETRY</option>
+              <option value="70">TRACEROUTE</option>
+              <option value="71">NEIGHBORINFO</option>
+            </select>
 
-          <select
-            value={filters.encrypted !== undefined ? (filters.encrypted ? 'true' : 'false') : ''}
-            onChange={(e) => setFilters({
-              ...filters,
-              encrypted: e.target.value ? e.target.value === 'true' : undefined
-            })}
-          >
-            <option value="">All Packets</option>
-            <option value="true">Encrypted Only</option>
-            <option value="false">Decoded Only</option>
-          </select>
+            <select
+              value={filters.encrypted !== undefined ? (filters.encrypted ? 'true' : 'false') : ''}
+              onChange={e =>
+                setFilters({
+                  ...filters,
+                  encrypted: e.target.value ? e.target.value === 'true' : undefined,
+                })
+              }
+            >
+              <option value="">All Packets</option>
+              <option value="true">Encrypted Only</option>
+              <option value="false">Decoded Only</option>
+            </select>
 
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={hideOwnPackets}
-              onChange={(e) => setHideOwnPackets(e.target.checked)}
-              style={{ cursor: 'pointer' }}
-            />
-            <span>Hide Own Packets</span>
-          </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={hideOwnPackets}
+                onChange={e => setHideOwnPackets(e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              <span>Hide Own Packets</span>
+            </label>
 
-          <button onClick={() => setFilters({})} className="clear-filters-btn">
-            Clear Filters
-          </button>
-        </div>
-      )}
-
-      <div className="packet-table-container" ref={parentRef}>
-        {rateLimitError && (
-          <div className="rate-limit-warning" style={{
-            padding: '1rem',
-            margin: '1rem',
-            backgroundColor: 'var(--warning-bg, #fff3cd)',
-            color: 'var(--warning-text, #856404)',
-            borderRadius: '4px',
-            border: '1px solid var(--warning-border, #ffeaa7)'
-          }}>
-            ⚠️ Rate limit reached. Infinite scrolling paused for 15 minutes. Current packets will continue to update.
+            <button onClick={() => setFilters({})} className="clear-filters-btn">
+              Clear Filters
+            </button>
           </div>
         )}
-        {loading ? (
-          <div className="loading">Loading packets...</div>
-        ) : packets.length === 0 ? (
-          <div className="no-packets">No packets logged yet</div>
-        ) : (
-          <div style={{ width: '100%' }}>
-            <table className="packet-table packet-table-fixed">
-              <colgroup>
-                <col style={{ width: '60px' }} />
-                <col style={{ width: '110px' }} />
-                <col style={{ width: '140px' }} />
-                <col style={{ width: '140px' }} />
-                <col style={{ width: '120px' }} />
-                <col style={{ width: '50px' }} />
-                <col style={{ width: '60px' }} />
-                <col style={{ width: '60px' }} />
-                <col style={{ width: '60px' }} />
-                <col style={{ minWidth: '200px' }} />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th style={{ width: '60px' }}>#</th>
-                  <th style={{ width: '110px' }}>Time</th>
-                  <th style={{ width: '140px' }}>From</th>
-                  <th style={{ width: '140px' }}>To</th>
-                  <th style={{ width: '120px' }}>Type</th>
-                  <th style={{ width: '50px' }}>Ch</th>
-                  <th style={{ width: '60px' }}>SNR</th>
-                  <th style={{ width: '60px' }}>Hops</th>
-                  <th style={{ width: '60px' }}>Size</th>
-                  <th style={{ minWidth: '200px' }}>Content</th>
-                </tr>
-              </thead>
-            </table>
+
+        <div className="packet-table-container" ref={parentRef}>
+          {rateLimitError && (
             <div
+              className="rate-limit-warning"
               style={{
-                height: `${rowVirtualizer.getTotalSize()}px`,
-                width: '100%',
-                position: 'relative',
+                padding: '1rem',
+                margin: '1rem',
+                backgroundColor: 'var(--warning-bg, #fff3cd)',
+                color: 'var(--warning-text, #856404)',
+                borderRadius: '4px',
+                border: '1px solid var(--warning-border, #ffeaa7)',
               }}
             >
+              ⚠️ Rate limit reached. Infinite scrolling paused for 15 minutes. Current packets will continue to update.
+            </div>
+          )}
+          {loading ? (
+            <div className="loading">Loading packets...</div>
+          ) : packets.length === 0 ? (
+            <div className="no-packets">No packets logged yet</div>
+          ) : (
+            <div style={{ width: '100%' }}>
               <table className="packet-table packet-table-fixed">
                 <colgroup>
                   <col style={{ width: '60px' }} />
@@ -565,15 +407,74 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                   <col style={{ width: '60px' }} />
                   <col style={{ minWidth: '200px' }} />
                 </colgroup>
-                <tbody>
-                  {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-                    const isLoaderRow = virtualRow.index > packets.length - 1;
-                    const packet = packets[virtualRow.index];
+                <thead>
+                  <tr>
+                    <th style={{ width: '60px' }}>#</th>
+                    <th style={{ width: '110px' }}>Time</th>
+                    <th style={{ width: '140px' }}>From</th>
+                    <th style={{ width: '140px' }}>To</th>
+                    <th style={{ width: '120px' }}>Type</th>
+                    <th style={{ width: '50px' }}>Ch</th>
+                    <th style={{ width: '60px' }}>SNR</th>
+                    <th style={{ width: '60px' }}>Hops</th>
+                    <th style={{ width: '60px' }}>Size</th>
+                    <th style={{ minWidth: '200px' }}>Content</th>
+                  </tr>
+                </thead>
+              </table>
+              <div
+                style={{
+                  height: `${rowVirtualizer.getTotalSize()}px`,
+                  width: '100%',
+                  position: 'relative',
+                }}
+              >
+                <table className="packet-table packet-table-fixed">
+                  <colgroup>
+                    <col style={{ width: '60px' }} />
+                    <col style={{ width: '110px' }} />
+                    <col style={{ width: '140px' }} />
+                    <col style={{ width: '140px' }} />
+                    <col style={{ width: '120px' }} />
+                    <col style={{ width: '50px' }} />
+                    <col style={{ width: '60px' }} />
+                    <col style={{ width: '60px' }} />
+                    <col style={{ width: '60px' }} />
+                    <col style={{ minWidth: '200px' }} />
+                  </colgroup>
+                  <tbody>
+                    {rowVirtualizer.getVirtualItems().map(virtualRow => {
+                      const isLoaderRow = virtualRow.index > packets.length - 1;
+                      const packet = packets[virtualRow.index];
 
-                    if (isLoaderRow) {
+                      if (isLoaderRow) {
+                        return (
+                          <tr
+                            key="loader"
+                            style={{
+                              position: 'absolute',
+                              top: 0,
+                              left: 0,
+                              width: '100%',
+                              height: `${virtualRow.size}px`,
+                              transform: `translateY(${virtualRow.start}px)`,
+                              display: 'table',
+                              tableLayout: 'fixed',
+                            }}
+                          >
+                            <td colSpan={10} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+                              Loading more packets...
+                            </td>
+                          </tr>
+                        );
+                      }
+
+                      const hops = calculateHops(packet);
                       return (
                         <tr
-                          key="loader"
+                          key={packet.id}
+                          onClick={() => setSelectedPacket(packet)}
+                          className={selectedPacket?.id === packet.id ? 'selected' : ''}
                           style={{
                             position: 'absolute',
                             top: 0,
@@ -585,106 +486,98 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                             tableLayout: 'fixed',
                           }}
                         >
-                          <td colSpan={10} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
-                            Loading more packets...
+                          <td className="packet-number" style={{ width: '60px', textAlign: 'right' }}>
+                            {virtualRow.index + 1}
+                          </td>
+                          <td
+                            className="timestamp"
+                            style={{ width: '110px' }}
+                            title={formatDateTime(new Date(packet.timestamp * 1000), timeFormat, dateFormat)}
+                          >
+                            {formatTimestamp(packet.timestamp)}
+                          </td>
+                          <td
+                            className="from-node"
+                            style={{ width: '140px' }}
+                            title={packet.from_node_longName || packet.from_node_id || ''}
+                          >
+                            {packet.from_node_id && onNodeClick ? (
+                              <span className="node-id-link" onClick={e => handleNodeClick(packet.from_node_id!, e)}>
+                                {truncateLongName(packet.from_node_longName) || packet.from_node_id}
+                              </span>
+                            ) : (
+                              truncateLongName(packet.from_node_longName) || packet.from_node_id || packet.from_node
+                            )}
+                          </td>
+                          <td
+                            className="to-node"
+                            style={{ width: '140px' }}
+                            title={packet.to_node_longName || packet.to_node_id || ''}
+                          >
+                            {packet.to_node_id === '!ffffffff' ? (
+                              'Broadcast'
+                            ) : packet.to_node_id && onNodeClick ? (
+                              <span className="node-id-link" onClick={e => handleNodeClick(packet.to_node_id!, e)}>
+                                {truncateLongName(packet.to_node_longName) || packet.to_node_id}
+                              </span>
+                            ) : (
+                              truncateLongName(packet.to_node_longName) || packet.to_node_id || packet.to_node || 'N/A'
+                            )}
+                          </td>
+                          <td
+                            className="portnum"
+                            style={{ width: '120px', color: getPortnumColor(packet.portnum) }}
+                            title={packet.portnum_name || ''}
+                          >
+                            {packet.portnum_name || packet.portnum}
+                          </td>
+                          <td className="channel" style={{ width: '50px' }}>
+                            {packet.channel ?? 'N/A'}
+                          </td>
+                          <td className="snr" style={{ width: '60px' }}>
+                            {packet.snr !== null && packet.snr !== undefined ? `${packet.snr.toFixed(1)}` : 'N/A'}
+                          </td>
+                          <td className="hops" style={{ width: '60px' }}>
+                            {hops !== null ? hops : 'N/A'}
+                          </td>
+                          <td className="size" style={{ width: '60px' }}>
+                            {packet.payload_size ?? 'N/A'}
+                          </td>
+                          <td className="content" style={{ minWidth: '200px' }}>
+                            {packet.encrypted ? (
+                              <span className="encrypted-indicator">🔒 &lt;ENCRYPTED&gt;</span>
+                            ) : (
+                              <span className="content-preview">{packet.payload_preview || '[No preview]'}</span>
+                            )}
                           </td>
                         </tr>
                       );
-                    }
-
-                    const hops = calculateHops(packet);
-                    return (
-                      <tr
-                        key={packet.id}
-                        onClick={() => setSelectedPacket(packet)}
-                        className={selectedPacket?.id === packet.id ? 'selected' : ''}
-                        style={{
-                          position: 'absolute',
-                          top: 0,
-                          left: 0,
-                          width: '100%',
-                          height: `${virtualRow.size}px`,
-                          transform: `translateY(${virtualRow.start}px)`,
-                          display: 'table',
-                          tableLayout: 'fixed',
-                        }}
-                      >
-                        <td className="packet-number" style={{ width: '60px', textAlign: 'right' }}>
-                          {virtualRow.index + 1}
-                        </td>
-                        <td className="timestamp" style={{ width: '110px' }} title={formatDateTime(new Date(packet.timestamp * 1000), timeFormat, dateFormat)}>
-                          {formatTimestamp(packet.timestamp)}
-                        </td>
-                        <td className="from-node" style={{ width: '140px' }} title={packet.from_node_longName || packet.from_node_id || ''}>
-                          {packet.from_node_id && onNodeClick ? (
-                            <span
-                              className="node-id-link"
-                              onClick={(e) => handleNodeClick(packet.from_node_id!, e)}
-                            >
-                              {truncateLongName(packet.from_node_longName) || packet.from_node_id}
-                            </span>
-                          ) : (
-                            truncateLongName(packet.from_node_longName) || packet.from_node_id || packet.from_node
-                          )}
-                        </td>
-                        <td className="to-node" style={{ width: '140px' }} title={packet.to_node_longName || packet.to_node_id || ''}>
-                          {packet.to_node_id === '!ffffffff' ? (
-                            'Broadcast'
-                          ) : packet.to_node_id && onNodeClick ? (
-                            <span
-                              className="node-id-link"
-                              onClick={(e) => handleNodeClick(packet.to_node_id!, e)}
-                            >
-                              {truncateLongName(packet.to_node_longName) || packet.to_node_id}
-                            </span>
-                          ) : (
-                            truncateLongName(packet.to_node_longName) || packet.to_node_id || packet.to_node || 'N/A'
-                          )}
-                        </td>
-                        <td
-                          className="portnum"
-                          style={{ width: '120px', color: getPortnumColor(packet.portnum) }}
-                          title={packet.portnum_name || ''}
-                        >
-                          {packet.portnum_name || packet.portnum}
-                        </td>
-                        <td className="channel" style={{ width: '50px' }}>{packet.channel ?? 'N/A'}</td>
-                        <td className="snr" style={{ width: '60px' }}>{packet.snr !== null && packet.snr !== undefined ? `${packet.snr.toFixed(1)}` : 'N/A'}</td>
-                        <td className="hops" style={{ width: '60px' }}>{hops !== null ? hops : 'N/A'}</td>
-                        <td className="size" style={{ width: '60px' }}>{packet.payload_size ?? 'N/A'}</td>
-                        <td className="content" style={{ minWidth: '200px' }}>
-                          {packet.encrypted ? (
-                            <span className="encrypted-indicator">🔒 &lt;ENCRYPTED&gt;</span>
-                          ) : (
-                            <span className="content-preview">{packet.payload_preview || '[No preview]'}</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
-        )}
-      </div>
-
-    </div>
-    {/* Render modal as a portal to document.body to avoid overflow:hidden issues */}
-    {selectedPacket && createPortal(
-      <div className="packet-detail-modal" onClick={() => setSelectedPacket(null)}>
-        <div className="packet-detail-content" onClick={(e) => e.stopPropagation()}>
-          <div className="packet-detail-header">
-            <h4>Packet Details (Full JSON)</h4>
-            <button className="close-btn" onClick={() => setSelectedPacket(null)}>×</button>
-          </div>
-          <div className="packet-detail-body">
-            <pre className="packet-json">{JSON.stringify(selectedPacket, null, 2)}</pre>
-          </div>
+          )}
         </div>
-      </div>,
-      document.body
-    )}
+      </div>
+      {/* Render modal as a portal to document.body to avoid overflow:hidden issues */}
+      {selectedPacket &&
+        createPortal(
+          <div className="packet-detail-modal" onClick={() => setSelectedPacket(null)}>
+            <div className="packet-detail-content" onClick={e => e.stopPropagation()}>
+              <div className="packet-detail-header">
+                <h4>Packet Details (Full JSON)</h4>
+                <button className="close-btn" onClick={() => setSelectedPacket(null)}>
+                  ×
+                </button>
+              </div>
+              <div className="packet-detail-body">
+                <pre className="packet-json">{JSON.stringify(selectedPacket, null, 2)}</pre>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </>
   );
 };
