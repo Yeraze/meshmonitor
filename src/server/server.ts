@@ -546,6 +546,10 @@ apiRouter.get('/nodes', optionalAuth(), (_req, res) => {
   try {
     const nodes = meshtasticManager.getAllNodes();
 
+    // Get all estimated positions in a single batch query (fixes N+1 query problem)
+    // This is much more efficient than querying each node individually
+    const estimatedPositions = databaseService.getAllNodesEstimatedPositions();
+
     // Enhance nodes with estimated positions if no regular position is available
     // Mobile status is now pre-computed in the database during packet processing
     const enhancedNodes = nodes.map(node => {
@@ -555,19 +559,12 @@ apiRouter.get('/nodes', optionalAuth(), (_req, res) => {
 
       // If node doesn't have a regular position, check for estimated position
       if (!node.position?.latitude && !node.position?.longitude) {
-        // Get only the most recent estimated position (limit 1 of each type)
-        const positionTelemetry = databaseService.getPositionTelemetryByNode(node.user.id, 2);
-        const estimatedLatitudes = positionTelemetry.filter(t => t.telemetryType === 'estimated_latitude');
-        const estimatedLongitudes = positionTelemetry.filter(t => t.telemetryType === 'estimated_longitude');
-
-        if (estimatedLatitudes.length > 0 && estimatedLongitudes.length > 0) {
-          // Use the most recent estimated position
-          const latestEstimatedLat = estimatedLatitudes[0]; // getPositionTelemetryByNode returns most recent first
-          const latestEstimatedLon = estimatedLongitudes[0];
-
+        // Use batch-loaded estimated positions (O(1) lookup instead of DB query)
+        const estimatedPos = estimatedPositions.get(node.user.id);
+        if (estimatedPos) {
           enhancedNode.position = {
-            latitude: latestEstimatedLat.value,
-            longitude: latestEstimatedLon.value,
+            latitude: estimatedPos.latitude,
+            longitude: estimatedPos.longitude,
             altitude: node.position?.altitude
           };
         }
@@ -2358,6 +2355,10 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
     try {
       const nodes = meshtasticManager.getAllNodes();
 
+      // Get all estimated positions in a single batch query (fixes N+1 query problem)
+      // This is much more efficient than querying each node individually
+      const estimatedPositions = databaseService.getAllNodesEstimatedPositions();
+
       // Enhance nodes with estimated positions if no regular position is available
       // Mobile status is now pre-computed in the database during packet processing
       const enhancedNodes = nodes.map(node => {
@@ -2367,18 +2368,12 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
 
         // If node doesn't have a regular position, check for estimated position
         if (!node.position?.latitude && !node.position?.longitude) {
-          // Get only the most recent estimated position (limit 1 of each type)
-          const positionTelemetry = databaseService.getPositionTelemetryByNode(node.user.id, 2);
-          const estimatedLatitudes = positionTelemetry.filter(t => t.telemetryType === 'estimated_latitude');
-          const estimatedLongitudes = positionTelemetry.filter(t => t.telemetryType === 'estimated_longitude');
-
-          if (estimatedLatitudes.length > 0 && estimatedLongitudes.length > 0) {
-            const latestEstimatedLat = estimatedLatitudes[0];
-            const latestEstimatedLon = estimatedLongitudes[0];
-
+          // Use batch-loaded estimated positions (O(1) lookup instead of DB query)
+          const estimatedPos = estimatedPositions.get(node.user.id);
+          if (estimatedPos) {
             enhancedNode.position = {
-              latitude: latestEstimatedLat.value,
-              longitude: latestEstimatedLon.value,
+              latitude: estimatedPos.latitude,
+              longitude: estimatedPos.longitude,
               altitude: node.position?.altitude
             };
           }

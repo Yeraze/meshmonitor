@@ -2417,6 +2417,57 @@ class DatabaseService {
     return telemetry.map(t => this.normalizeBigInts(t));
   }
 
+  /**
+   * Get the latest estimated positions for all nodes in a single query.
+   * This is much more efficient than querying each node individually (N+1 problem).
+   * Returns a Map of nodeId -> { latitude, longitude } for nodes with estimated positions.
+   */
+  getAllNodesEstimatedPositions(): Map<string, { latitude: number; longitude: number }> {
+    // Use a subquery to get the latest timestamp for each node/type combination,
+    // then join to get the actual values. This avoids the N+1 query problem.
+    const query = `
+      WITH LatestEstimates AS (
+        SELECT nodeId, telemetryType, MAX(timestamp) as maxTimestamp
+        FROM telemetry
+        WHERE telemetryType IN ('estimated_latitude', 'estimated_longitude')
+        GROUP BY nodeId, telemetryType
+      )
+      SELECT t.nodeId, t.telemetryType, t.value
+      FROM telemetry t
+      INNER JOIN LatestEstimates le
+        ON t.nodeId = le.nodeId
+        AND t.telemetryType = le.telemetryType
+        AND t.timestamp = le.maxTimestamp
+    `;
+
+    const stmt = this.db.prepare(query);
+    const results = stmt.all() as Array<{ nodeId: string; telemetryType: string; value: number }>;
+
+    // Build a map of nodeId -> { latitude, longitude }
+    const positionMap = new Map<string, { latitude: number; longitude: number }>();
+
+    for (const row of results) {
+      const existing = positionMap.get(row.nodeId) || { latitude: 0, longitude: 0 };
+
+      if (row.telemetryType === 'estimated_latitude') {
+        existing.latitude = row.value;
+      } else if (row.telemetryType === 'estimated_longitude') {
+        existing.longitude = row.value;
+      }
+
+      positionMap.set(row.nodeId, existing);
+    }
+
+    // Filter out entries that don't have both lat and lon
+    for (const [nodeId, pos] of positionMap) {
+      if (pos.latitude === 0 || pos.longitude === 0) {
+        positionMap.delete(nodeId);
+      }
+    }
+
+    return positionMap;
+  }
+
   getTelemetryByNodeAveraged(nodeId: string, sinceTimestamp?: number, intervalMinutes?: number, maxHours?: number): DbTelemetry[] {
     // Dynamic bucketing: automatically choose interval based on time range
     // This prevents data cutoff for long time periods or chatty nodes
