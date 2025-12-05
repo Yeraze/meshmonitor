@@ -378,6 +378,49 @@ const createTestDatabase = () => {
       return Number(result.changes);
     }
 
+    getAllNodesEstimatedPositions(): Map<string, { latitude: number; longitude: number }> {
+      const query = `
+        WITH LatestEstimates AS (
+          SELECT nodeId, telemetryType, MAX(timestamp) as maxTimestamp
+          FROM telemetry
+          WHERE telemetryType IN ('estimated_latitude', 'estimated_longitude')
+          GROUP BY nodeId, telemetryType
+        )
+        SELECT t.nodeId, t.telemetryType, t.value
+        FROM telemetry t
+        INNER JOIN LatestEstimates le
+          ON t.nodeId = le.nodeId
+          AND t.telemetryType = le.telemetryType
+          AND t.timestamp = le.maxTimestamp
+      `;
+
+      const stmt = this.db.prepare(query);
+      const results = stmt.all() as Array<{ nodeId: string; telemetryType: string; value: number }>;
+
+      const positionMap = new Map<string, { latitude: number; longitude: number }>();
+
+      for (const row of results) {
+        const existing = positionMap.get(row.nodeId) || { latitude: 0, longitude: 0 };
+
+        if (row.telemetryType === 'estimated_latitude') {
+          existing.latitude = row.value;
+        } else if (row.telemetryType === 'estimated_longitude') {
+          existing.longitude = row.value;
+        }
+
+        positionMap.set(row.nodeId, existing);
+      }
+
+      // Filter out entries that don't have both lat and lon
+      for (const [nodeId, pos] of positionMap) {
+        if (pos.latitude === 0 || pos.longitude === 0) {
+          positionMap.delete(nodeId);
+        }
+      }
+
+      return positionMap;
+    }
+
     // Route segment operations
     insertRouteSegment(segmentData: DbRouteSegment): void {
       const stmt = this.db.prepare(`
@@ -715,6 +758,124 @@ describe('DatabaseService - Extended Coverage', () => {
 
       expect(latitudes).toHaveLength(5);
       expect(longitudes).toHaveLength(5);
+    });
+
+    it('should get all estimated positions in batch', () => {
+      db.upsertNode({ nodeNum: 2, nodeId: '!node2' });
+      db.upsertNode({ nodeNum: 3, nodeId: '!node3' });
+      const baseTime = Date.now();
+
+      // Insert estimated positions for node1
+      db.insertTelemetry({
+        nodeId: '!node1',
+        nodeNum: 1,
+        telemetryType: 'estimated_latitude',
+        timestamp: baseTime,
+        value: 40.7128,
+        unit: '° (est)',
+        createdAt: baseTime
+      });
+      db.insertTelemetry({
+        nodeId: '!node1',
+        nodeNum: 1,
+        telemetryType: 'estimated_longitude',
+        timestamp: baseTime,
+        value: -74.0060,
+        unit: '° (est)',
+        createdAt: baseTime
+      });
+
+      // Insert estimated positions for node2
+      db.insertTelemetry({
+        nodeId: '!node2',
+        nodeNum: 2,
+        telemetryType: 'estimated_latitude',
+        timestamp: baseTime,
+        value: 34.0522,
+        unit: '° (est)',
+        createdAt: baseTime
+      });
+      db.insertTelemetry({
+        nodeId: '!node2',
+        nodeNum: 2,
+        telemetryType: 'estimated_longitude',
+        timestamp: baseTime,
+        value: -118.2437,
+        unit: '° (est)',
+        createdAt: baseTime
+      });
+
+      // Node3 has only latitude, no longitude - should not be included
+      db.insertTelemetry({
+        nodeId: '!node3',
+        nodeNum: 3,
+        telemetryType: 'estimated_latitude',
+        timestamp: baseTime,
+        value: 51.5074,
+        unit: '° (est)',
+        createdAt: baseTime
+      });
+
+      const positions = db.getAllNodesEstimatedPositions();
+
+      expect(positions.size).toBe(2);
+      expect(positions.get('!node1')).toEqual({ latitude: 40.7128, longitude: -74.0060 });
+      expect(positions.get('!node2')).toEqual({ latitude: 34.0522, longitude: -118.2437 });
+      expect(positions.has('!node3')).toBe(false); // Missing longitude
+    });
+
+    it('should return latest estimated position when multiple exist', () => {
+      const baseTime = Date.now();
+
+      // Insert older estimated position
+      db.insertTelemetry({
+        nodeId: '!node1',
+        nodeNum: 1,
+        telemetryType: 'estimated_latitude',
+        timestamp: baseTime - 60000,
+        value: 40.0,
+        unit: '° (est)',
+        createdAt: baseTime
+      });
+      db.insertTelemetry({
+        nodeId: '!node1',
+        nodeNum: 1,
+        telemetryType: 'estimated_longitude',
+        timestamp: baseTime - 60000,
+        value: -74.0,
+        unit: '° (est)',
+        createdAt: baseTime
+      });
+
+      // Insert newer estimated position
+      db.insertTelemetry({
+        nodeId: '!node1',
+        nodeNum: 1,
+        telemetryType: 'estimated_latitude',
+        timestamp: baseTime,
+        value: 41.0,
+        unit: '° (est)',
+        createdAt: baseTime
+      });
+      db.insertTelemetry({
+        nodeId: '!node1',
+        nodeNum: 1,
+        telemetryType: 'estimated_longitude',
+        timestamp: baseTime,
+        value: -75.0,
+        unit: '° (est)',
+        createdAt: baseTime
+      });
+
+      const positions = db.getAllNodesEstimatedPositions();
+
+      expect(positions.size).toBe(1);
+      expect(positions.get('!node1')).toEqual({ latitude: 41.0, longitude: -75.0 });
+    });
+
+    it('should return empty map when no estimated positions exist', () => {
+      const positions = db.getAllNodesEstimatedPositions();
+      expect(positions.size).toBe(0);
     });
   });
 
