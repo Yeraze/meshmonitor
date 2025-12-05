@@ -1,59 +1,75 @@
-// CORS error detection - redirect to error page if CORS blocks the app
+// CORS error detection - redirect to error page ONLY if actual CORS errors occur
 let corsErrorCount = 0;
 let appLoaded = false;
-let authCheckFailed = false;
+
+// Redirect to CORS error page
+function redirectToCorsError() {
+  if (appLoaded) return; // Don't redirect if app already loaded
+  console.log('[CORS Detection] Redirecting to error page. CORS errors:', corsErrorCount);
+  const baseTag = document.querySelector('base');
+  const baseUrl = baseTag ? baseTag.href.replace(/\/$/, '') : window.location.origin;
+  window.location.href = baseUrl + '/cors-error.html';
+}
 
 // Monitor console errors for CORS issues
 const originalConsoleError = console.error;
 console.error = function(...args) {
   const message = args.join(' ');
-  if (message.includes('CORS') || message.includes('500') || message.includes('NetworkError')) {
+  // Only count actual CORS errors
+  if (message.includes('CORS') || message.includes('Access-Control-Allow-Origin') ||
+      message.includes('blocked by CORS') || message.includes('Cross-Origin')) {
     corsErrorCount++;
-    console.log('[CORS Detection] Error detected, count:', corsErrorCount);
+    console.log('[CORS Detection] CORS error detected, count:', corsErrorCount);
+    // Redirect immediately on CORS error - no need to wait
+    if (corsErrorCount >= 2) {
+      redirectToCorsError();
+    }
   }
   return originalConsoleError.apply(console, args);
 };
 
-// Intercept fetch to detect CORS/network errors
+// Intercept fetch to detect CORS errors
 const originalFetch = window.fetch;
 window.fetch = function(...args) {
   const url = args[0];
-  return originalFetch.apply(this, args).then(response => {
-    // Check for 500 errors which often indicate CORS issues
-    if (response.status === 500) {
+  return originalFetch.apply(this, args).catch(error => {
+    // Check if this is a CORS error
+    const errorMessage = (error.message || '').toLowerCase();
+    const errorName = (error.name || '').toLowerCase();
+
+    // TypeError with "Failed to fetch" on API calls is typically CORS
+    // But we need to be careful not to count slow network as CORS
+    if (errorMessage.includes('cors') || errorMessage.includes('access-control') ||
+        errorMessage.includes('cross-origin') || errorName.includes('cors')) {
       corsErrorCount++;
-      console.log('[CORS Detection] 500 error on', url, 'count:', corsErrorCount);
+      console.log('[CORS Detection] CORS fetch error on', url, 'count:', corsErrorCount);
+      if (corsErrorCount >= 2) {
+        redirectToCorsError();
+      }
+    } else if (error.name === 'TypeError' && errorMessage.includes('failed to fetch')) {
+      // This could be CORS or network - check if it's an API call
+      const urlStr = typeof url === 'string' ? url : url.toString();
+      if (urlStr.includes('/api/') || urlStr.includes('/auth/')) {
+        corsErrorCount++;
+        console.log('[CORS Detection] Likely CORS error (failed to fetch API)', url, 'count:', corsErrorCount);
+        if (corsErrorCount >= 2) {
+          redirectToCorsError();
+        }
+      }
     }
-    // Check if /auth/status fails - critical endpoint
-    if (url.includes('/auth/status') && !response.ok) {
-      authCheckFailed = true;
-      console.log('[CORS Detection] Auth check failed');
-    }
-    return response;
-  }).catch(error => {
-    corsErrorCount++;
-    console.log('[CORS Detection] Fetch error on', url, 'count:', corsErrorCount);
     throw error;
   });
 };
 
-// Set a timeout to check if the app loaded successfully
-setTimeout(() => {
-  // If we detected ANY CORS/network errors, auth check failed, or app didn't load
-  if (corsErrorCount >= 1 || authCheckFailed || (!appLoaded && document.getElementById('root').children.length === 0)) {
-    console.log('[CORS Detection] Redirecting to error page. Errors:', corsErrorCount, 'Auth failed:', authCheckFailed, 'App loaded:', appLoaded);
-    // Redirect to error page - use BASE_URL from <base> tag if available
-    const baseTag = document.querySelector('base');
-    const baseUrl = baseTag ? baseTag.href.replace(/\/$/, '') : window.location.origin;
-    window.location.href = baseUrl + '/cors-error.html';
-  }
-}, 5000); // Wait 5 seconds for app to load and detect CORS issues
-
-// Mark as loaded if React mounts anything
-const observer = new MutationObserver(() => {
-  if (document.getElementById('root').children.length > 0) {
-    appLoaded = true;
-    observer.disconnect();
-  }
-});
-observer.observe(document.getElementById('root'), { childList: true });
+// Mark as loaded if React mounts anything - this prevents any redirect
+const rootElement = document.getElementById('root');
+if (rootElement) {
+  const observer = new MutationObserver(() => {
+    if (rootElement.children.length > 0) {
+      appLoaded = true;
+      console.log('[CORS Detection] React app mounted - CORS detection disabled');
+      observer.disconnect();
+    }
+  });
+  observer.observe(rootElement, { childList: true });
+}

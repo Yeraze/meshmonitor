@@ -197,8 +197,9 @@ export function usePoll({ baseUrl = appBasename, pollInterval = 5000, enabled = 
 
   return useQuery({
     queryKey: POLL_QUERY_KEY,
-    queryFn: async (): Promise<PollData> => {
-      const response = await authFetch(`${baseUrl}/api/poll`);
+    queryFn: async ({ signal }): Promise<PollData> => {
+      // Pass the AbortSignal to allow TanStack Query to cancel in-flight requests
+      const response = await authFetch(`${baseUrl}/api/poll`, undefined, signal);
 
       if (!response.ok) {
         throw new Error(`Poll request failed: ${response.status}`);
@@ -207,7 +208,14 @@ export function usePoll({ baseUrl = appBasename, pollInterval = 5000, enabled = 
       return response.json();
     },
     enabled,
-    refetchInterval: pollInterval,
+    // Use function form to prevent overlapping requests on slow networks
+    // Returns false (skip refetch) if a request is currently in progress
+    refetchInterval: (query) => {
+      if (query.state.fetchStatus === 'fetching') {
+        return false; // Skip this interval, wait for current request to complete
+      }
+      return pollInterval;
+    },
     staleTime: pollInterval - 1000, // Consider stale just before next poll
     gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
     refetchOnWindowFocus: false,

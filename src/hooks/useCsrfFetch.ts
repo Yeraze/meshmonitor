@@ -11,7 +11,11 @@ import { useCsrf } from '../contexts/CsrfContext';
 export const useCsrfFetch = () => {
   const { getToken: getCsrfToken } = useCsrf();
 
-  const csrfFetch = useCallback(async (url: string, options?: RequestInit): Promise<Response> => {
+  const csrfFetch = useCallback(async (
+    url: string,
+    options?: RequestInit,
+    signal?: AbortSignal
+  ): Promise<Response> => {
     const headers = new Headers(options?.headers);
 
     // Add CSRF token for mutation requests
@@ -27,10 +31,12 @@ export const useCsrfFetch = () => {
     }
 
     // Always include credentials for session cookies
+    // Use provided signal for request cancellation (e.g., from TanStack Query)
     return fetch(url, {
       ...options,
       headers,
       credentials: 'include',
+      signal: signal || options?.signal,
     });
   }, [getCsrfToken]);
 
