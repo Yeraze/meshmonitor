@@ -378,6 +378,49 @@ const createTestDatabase = () => {
       return Number(result.changes);
     }
 
+    getAllNodesEstimatedPositions(): Map<string, { latitude: number; longitude: number }> {
+      const query = `
+        WITH LatestEstimates AS (
+          SELECT nodeId, telemetryType, MAX(timestamp) as maxTimestamp
+          FROM telemetry
+          WHERE telemetryType IN ('estimated_latitude', 'estimated_longitude')
+          GROUP BY nodeId, telemetryType
+        )
+        SELECT t.nodeId, t.telemetryType, t.value
+        FROM telemetry t
+        INNER JOIN LatestEstimates le
+          ON t.nodeId = le.nodeId
+          AND t.telemetryType = le.telemetryType
+          AND t.timestamp = le.maxTimestamp
+      `;
+
+      const stmt = this.db.prepare(query);
+      const results = stmt.all() as Array<{ nodeId: string; telemetryType: string; value: number }>;
+
+      const positionMap = new Map<string, { latitude: number; longitude: number }>();
+
+      for (const row of results) {
+        const existing = positionMap.get(row.nodeId) || { latitude: 0, longitude: 0 };
+
+        if (row.telemetryType === 'estimated_latitude') {
+          existing.latitude = row.value;
+        } else if (row.telemetryType === 'estimated_longitude') {
+          existing.longitude = row.value;
+        }
+
+        positionMap.set(row.nodeId, existing);
+      }
+
+      // Filter out entries that don't have both lat and lon
+      for (const [nodeId, pos] of positionMap) {
+        if (pos.latitude === 0 || pos.longitude === 0) {
+          positionMap.delete(nodeId);
+        }
+      }
+
+      return positionMap;
+    }
+
     // Route segment operations
     insertRouteSegment(segmentData: DbRouteSegment): void {
       const stmt = this.db.prepare(`
