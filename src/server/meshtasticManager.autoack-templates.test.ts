@@ -644,4 +644,136 @@ describe('MeshtasticManager - Auto-Acknowledge Message Template Token Replacemen
       expect(result).toBe('From !a1b2c3d4, 3 hops, SNR: 7.5, RSSI: -95');
     });
   });
+
+  describe('{CHANNEL} token replacement', () => {
+    it('should replace {CHANNEL} with channel name when available', () => {
+      const template = 'Message received on {CHANNEL}';
+      const channelName = 'LongFast';
+      const isDirectMessage = false;
+
+      // Simulate the token replacement logic
+      let result = template;
+      if (isDirectMessage) {
+        result = result.replace(/{CHANNEL}/g, 'DM');
+      } else {
+        result = result.replace(/{CHANNEL}/g, channelName);
+      }
+
+      expect(result).toBe('Message received on LongFast');
+    });
+
+    it('should replace {CHANNEL} with channel index when name is empty', () => {
+      const template = 'Message received on {CHANNEL}';
+      const channelName = '';
+      const channelIndex = 2;
+      const isDirectMessage = false;
+
+      let result = template;
+      if (isDirectMessage) {
+        result = result.replace(/{CHANNEL}/g, 'DM');
+      } else {
+        const displayName = (channelName && channelName.trim()) ? channelName.trim() : channelIndex.toString();
+        result = result.replace(/{CHANNEL}/g, displayName);
+      }
+
+      expect(result).toBe('Message received on 2');
+    });
+
+    it('should replace {CHANNEL} with DM for direct messages', () => {
+      const template = 'Message received on {CHANNEL}';
+      const isDirectMessage = true;
+
+      let result = template;
+      if (isDirectMessage) {
+        result = result.replace(/{CHANNEL}/g, 'DM');
+      }
+
+      expect(result).toBe('Message received on DM');
+    });
+
+    it('should replace {CHANNEL} with channel index when channel has no name', () => {
+      const template = '{CHANNEL}';
+      const channelIndex = 0;
+      const channelName = null;
+      const isDirectMessage = false;
+
+      let result = template;
+      if (isDirectMessage) {
+        result = result.replace(/{CHANNEL}/g, 'DM');
+      } else {
+        const displayName = (channelName && String(channelName).trim()) ? String(channelName).trim() : channelIndex.toString();
+        result = result.replace(/{CHANNEL}/g, displayName);
+      }
+
+      expect(result).toBe('0');
+    });
+
+    it('should handle {CHANNEL} with other tokens', () => {
+      const template = 'From {NODE_ID} on {CHANNEL}, {NUMBER_HOPS} hops';
+      const nodeId = '!a1b2c3d4';
+      const channelName = 'gauntlet';
+      const numberHops = 2;
+      const isDirectMessage = false;
+
+      let result = template;
+      result = result.replace(/{NODE_ID}/g, nodeId);
+      result = result.replace(/{NUMBER_HOPS}/g, numberHops.toString());
+      if (isDirectMessage) {
+        result = result.replace(/{CHANNEL}/g, 'DM');
+      } else {
+        result = result.replace(/{CHANNEL}/g, channelName);
+      }
+
+      expect(result).toBe('From !a1b2c3d4 on gauntlet, 2 hops');
+    });
+
+    it('should replace multiple {CHANNEL} tokens', () => {
+      const template = 'Channel {CHANNEL} - Received on {CHANNEL}';
+      const channelName = 'TestChannel';
+      const isDirectMessage = false;
+
+      let result = template;
+      if (isDirectMessage) {
+        result = result.replace(/{CHANNEL}/g, 'DM');
+      } else {
+        result = result.replace(/{CHANNEL}/g, channelName);
+      }
+
+      expect(result).toBe('Channel TestChannel - Received on TestChannel');
+    });
+
+    it('should trim whitespace from channel name', () => {
+      const template = '{CHANNEL}';
+      const channelName = '  MyChannel  ';
+      const channelIndex = 1;
+      const isDirectMessage = false;
+
+      let result = template;
+      if (isDirectMessage) {
+        result = result.replace(/{CHANNEL}/g, 'DM');
+      } else {
+        const displayName = (channelName && channelName.trim()) ? channelName.trim() : channelIndex.toString();
+        result = result.replace(/{CHANNEL}/g, displayName);
+      }
+
+      expect(result).toBe('MyChannel');
+    });
+
+    it('should use channel index when name is only whitespace', () => {
+      const template = '{CHANNEL}';
+      const channelName = '   ';
+      const channelIndex = 3;
+      const isDirectMessage = false;
+
+      let result = template;
+      if (isDirectMessage) {
+        result = result.replace(/{CHANNEL}/g, 'DM');
+      } else {
+        const displayName = (channelName && channelName.trim()) ? channelName.trim() : channelIndex.toString();
+        result = result.replace(/{CHANNEL}/g, displayName);
+      }
+
+      expect(result).toBe('3');
+    });
+  });
 });

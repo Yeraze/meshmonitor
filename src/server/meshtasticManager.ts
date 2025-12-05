@@ -4622,7 +4622,7 @@ class MeshtasticManager {
       const receivedTime = formatTime(timestamp, timeFormat as '12' | '24');
 
       // Replace tokens in the message template
-      let ackText = await this.replaceAcknowledgementTokens(autoAckMessage, message.fromNodeId, fromNum, hopsTraveled, receivedDate, receivedTime, rxSnr, rxRssi);
+      let ackText = await this.replaceAcknowledgementTokens(autoAckMessage, message.fromNodeId, fromNum, hopsTraveled, receivedDate, receivedTime, channelIndex, isDirectMessage, rxSnr, rxRssi);
 
       // Check if we should always use DM
       const autoAckUseDM = databaseService.getSetting('autoAckUseDM');
@@ -5576,7 +5576,7 @@ class MeshtasticManager {
     return result;
   }
 
-  private async replaceAcknowledgementTokens(message: string, nodeId: string, fromNum: number, numberHops: number, date: string, time: string, rxSnr?: number, rxRssi?: number): Promise<string> {
+  private async replaceAcknowledgementTokens(message: string, nodeId: string, fromNum: number, numberHops: number, date: string, time: string, channelIndex: number, isDirectMessage: boolean, rxSnr?: number, rxRssi?: number): Promise<string> {
     let result = message;
 
     // {NODE_ID} - Sender node ID
@@ -5698,6 +5698,19 @@ class MeshtasticManager {
         ? rxRssi.toString()
         : 'N/A';
       result = result.replace(/{RSSI}/g, rssiValue);
+    }
+
+    // {CHANNEL} - Channel name (or index if no name or DM)
+    if (result.includes('{CHANNEL}')) {
+      let channelName: string;
+      if (isDirectMessage) {
+        channelName = 'DM';
+      } else {
+        const channel = databaseService.getChannelById(channelIndex);
+        // Use channel name if available and not empty, otherwise fall back to channel number
+        channelName = (channel?.name && channel.name.trim()) ? channel.name.trim() : channelIndex.toString();
+      }
+      result = result.replace(/{CHANNEL}/g, channelName);
     }
 
     return result;
