@@ -168,3 +168,60 @@ export function useSolarEstimates({
     refetchOnWindowFocus: false,
   });
 }
+
+/**
+ * Options for useSolarEstimatesLatest hook
+ */
+interface UseSolarEstimatesLatestOptions {
+  /** Base URL for API requests (default: '') */
+  baseUrl?: string;
+  /** Maximum number of estimates to fetch (default: 500) */
+  limit?: number;
+  /** Whether to enable the query (default: true) */
+  enabled?: boolean;
+}
+
+/**
+ * Hook to fetch latest solar power estimates (no time range)
+ *
+ * Uses TanStack Query for automatic caching and periodic refetching.
+ * Returns an empty Map if solar monitoring is not configured.
+ * This is useful for the Dashboard which shows all available solar data.
+ *
+ * @param options - Configuration options
+ * @returns TanStack Query result with solar estimates as Map<timestamp_ms, wattHours>
+ */
+export function useSolarEstimatesLatest({
+  baseUrl = '',
+  limit = 500,
+  enabled = true,
+}: UseSolarEstimatesLatestOptions = {}) {
+  return useQuery({
+    queryKey: ['solarEstimatesLatest', limit],
+    queryFn: async (): Promise<Map<number, number>> => {
+      const response = await fetch(`${baseUrl}/api/solar/estimates?limit=${limit}`);
+
+      if (!response.ok) {
+        // Return empty map if solar monitoring not configured
+        return new Map();
+      }
+
+      const data: SolarEstimatesResponse = await response.json();
+
+      const estimatesMap = new Map<number, number>();
+      if (data.estimates && data.estimates.length > 0) {
+        data.estimates.forEach(est => {
+          // Convert Unix seconds to milliseconds for consistency with telemetry timestamps
+          estimatesMap.set(est.timestamp * 1000, est.wattHours);
+        });
+      }
+
+      return estimatesMap;
+    },
+    enabled,
+    refetchInterval: 300000, // Refetch every 5 minutes (solar data changes slowly)
+    staleTime: 290000, // Data considered fresh for ~5 minutes
+    gcTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
+    refetchOnWindowFocus: false,
+  });
+}
