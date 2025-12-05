@@ -1,0 +1,765 @@
+/**
+ * ChannelsTab - Channel messaging view
+ *
+ * Extracted from App.tsx to improve maintainability.
+ * Handles the Channels tab with channel selection and messaging.
+ */
+
+import React, { useRef } from 'react';
+import { Channel } from '../types/device';
+import { MeshMessage, MessageDeliveryState } from '../types/message';
+import { ResourceType } from '../types/permission';
+import { TimeFormat, DateFormat } from '../contexts/SettingsContext';
+import { formatMessageTime, getMessageDateSeparator, shouldShowDateSeparator } from '../utils/datetime';
+import { getUtf8ByteLength, formatByteCount } from '../utils/text';
+import { renderMessageWithLinks } from '../utils/linkRenderer';
+import HopCountDisplay from './HopCountDisplay';
+import LinkPreview from './LinkPreview';
+import { logger } from '../utils/logger';
+
+// Default PSK value for unencrypted channels
+const DEFAULT_UNENCRYPTED_PSK = 'AQ==';
+
+/**
+ * Render message delivery status indicator
+ */
+function renderMessageStatus(msg: MeshMessage): React.ReactElement {
+  const messageAge = Date.now() - msg.timestamp.getTime();
+  const TIMEOUT_MS = 30000;
+
+  if (msg.ackFailed || msg.routingErrorReceived || msg.deliveryState === MessageDeliveryState.FAILED) {
+    return (
+      <span className="status-failed" title="Failed to send - routing error or max retries exceeded">
+        ❌
+      </span>
+    );
+  }
+
+  if (msg.deliveryState === MessageDeliveryState.CONFIRMED) {
+    return (
+      <span className="status-confirmed" title="Received by target node">
+        🔒
+      </span>
+    );
+  }
+
+  if (msg.deliveryState === MessageDeliveryState.DELIVERED) {
+    return (
+      <span className="status-delivered" title="Transmitted to mesh">
+        ✅
+      </span>
+    );
+  }
+
+  if (messageAge < TIMEOUT_MS) {
+    return (
+      <span className="status-pending" title="Sending...">
+        ⏳
+      </span>
+    );
+  }
+
+  return (
+    <span className="status-timeout" title="No acknowledgment received (timeout)">
+      ⏱️
+    </span>
+  );
+}
+
+export interface ChannelsTabProps {
+  // Data
+  channels: Channel[];
+  channelMessages: Record<number, MeshMessage[]>;
+  messages: MeshMessage[];
+  currentNodeId: string;
+
+  // Connection state
+  connectionStatus: string;
+
+  // Channel selection
+  selectedChannel: number;
+  setSelectedChannel: (channel: number) => void;
+  selectedChannelRef: React.MutableRefObject<number>;
+
+  // MQTT filter
+  showMqttMessages: boolean;
+  setShowMqttMessages: (show: boolean) => void;
+
+  // Message input
+  newMessage: string;
+  setNewMessage: (message: string) => void;
+  replyingTo: MeshMessage | null;
+  setReplyingTo: (message: MeshMessage | null) => void;
+
+  // Unread tracking
+  unreadCounts: Record<number, number>;
+  setUnreadCounts: (updater: (prev: Record<number, number>) => Record<number, number>) => void;
+  markMessagesAsRead: (
+    messageIds?: string[],
+    channelId?: number,
+    dmNodeId?: string,
+    markAllDMs?: boolean
+  ) => Promise<void>;
+
+  // Modal state
+  channelInfoModal: number | null;
+  setChannelInfoModal: (channelId: number | null) => void;
+  showPsk: boolean;
+  setShowPsk: (show: boolean) => void;
+
+  // Settings
+  timeFormat: TimeFormat;
+  dateFormat: DateFormat;
+
+  // Permission check
+  hasPermission: (resource: ResourceType, action: 'read' | 'write') => boolean;
+
+  // Handlers
+  handleSendMessage: (channel: number) => Promise<void>;
+  handleDeleteMessage: (message: MeshMessage) => Promise<void>;
+  handleSendTapback: (emoji: string, message: MeshMessage) => void;
+  handlePurgeChannelMessages: (channelId: number) => Promise<void>;
+  handleSenderClick: (nodeId: string, event: React.MouseEvent) => void;
+
+  // Helper functions
+  shouldShowData: () => boolean;
+  getNodeName: (nodeId: string) => string;
+  getNodeShortName: (nodeId: string) => string;
+  isMqttBridgeMessage: (msg: MeshMessage) => boolean;
+
+  // Emoji picker
+  setEmojiPickerMessage: (message: MeshMessage | null) => void;
+}
+
+export default function ChannelsTab({
+  channels,
+  channelMessages,
+  messages,
+  currentNodeId,
+  connectionStatus,
+  selectedChannel,
+  setSelectedChannel,
+  selectedChannelRef,
+  showMqttMessages,
+  setShowMqttMessages,
+  newMessage,
+  setNewMessage,
+  replyingTo,
+  setReplyingTo,
+  unreadCounts,
+  setUnreadCounts,
+  markMessagesAsRead,
+  channelInfoModal,
+  setChannelInfoModal,
+  showPsk,
+  setShowPsk,
+  timeFormat,
+  dateFormat,
+  hasPermission,
+  handleSendMessage,
+  handleDeleteMessage,
+  handleSendTapback,
+  handlePurgeChannelMessages,
+  handleSenderClick,
+  shouldShowData,
+  getNodeName,
+  getNodeShortName,
+  isMqttBridgeMessage,
+  setEmojiPickerMessage,
+}: ChannelsTabProps) {
+  // Refs
+  const channelMessagesContainerRef = useRef<HTMLDivElement>(null);
+  const channelMessageInputRef = useRef<HTMLInputElement>(null);
+
+  // Helper: get channel name
+  const getChannelName = (channelNum: number): string => {
+    const channel = channels.find(ch => ch.id === channelNum);
+    if (channel) {
+      return channel.name;
+    }
+    return `Channel ${channelNum}`;
+  };
+
+  // Helper: get available channels
+  const getAvailableChannels = (): number[] => {
+    const channelSet = new Set<number>();
+
+    // Add channels from channel configurations first (these are authoritative)
+    channels.forEach(ch => channelSet.add(ch.id));
+
+    // Add channels from messages
+    messages.forEach(msg => {
+      channelSet.add(msg.channel);
+    });
+
+    // Filter out channel -1 (used for direct messages), disabled channels (role = 0),
+    // and channels the user doesn't have permission to read
+    return Array.from(channelSet)
+      .filter(ch => {
+        if (ch === -1) return false; // Exclude DM channel
+
+        // Check if channel has a configuration
+        const channelConfig = channels.find(c => c.id === ch);
+
+        // If channel has config and role is Disabled (0), exclude it
+        if (channelConfig && channelConfig.role === 0) {
+          return false;
+        }
+
+        // Check if user has permission to read this channel
+        if (!hasPermission(`channel_${ch}` as ResourceType, 'read')) {
+          return false;
+        }
+
+        return true;
+      })
+      .sort((a, b) => a - b);
+  };
+
+  // Helper: check if message is mine
+  const isMyMessage = (msg: MeshMessage): boolean => {
+    return msg.from === currentNodeId || msg.isLocalMessage === true;
+  };
+
+  // Helper: find message by ID in channel
+  const findMessageById = (messageId: number, channelId: number): MeshMessage | null => {
+    const messagesForChannel = channelMessages[channelId] || [];
+    return (
+      messagesForChannel.find(msg => {
+        const msgIdNum = parseInt(msg.id.split('_')[1] || '0');
+        return msgIdNum === messageId;
+      }) || null
+    );
+  };
+
+  // Get selected channel config for modal
+  const selectedChannelConfig = channelInfoModal !== null
+    ? channels.find(ch => ch.id === channelInfoModal) || null
+    : null;
+
+  const availableChannels = getAvailableChannels();
+
+  return (
+    <div className="tab-content channels-tab-content">
+      <div className="channels-header">
+        <h2>Channels ({availableChannels.length})</h2>
+        <div className="channels-controls">
+          <label className="mqtt-toggle">
+            <input
+              type="checkbox"
+              checked={showMqttMessages}
+              onChange={e => setShowMqttMessages(e.target.checked)}
+            />
+            Show MQTT/Bridge Messages
+          </label>
+        </div>
+      </div>
+
+      {shouldShowData() ? (
+        availableChannels.length > 0 ? (
+          <>
+            {/* Mobile Channel Dropdown */}
+            <div className="channel-dropdown-mobile">
+              <select
+                className="channel-dropdown-select"
+                value={selectedChannel}
+                onChange={e => {
+                  const channelId = parseInt(e.target.value);
+                  logger.debug('👆 User selected channel from dropdown:', channelId);
+                  setSelectedChannel(channelId);
+                  selectedChannelRef.current = channelId;
+                  setReplyingTo(null);
+                  setUnreadCounts(prev => {
+                    const updated = { ...prev, [channelId]: 0 };
+                    logger.debug('📝 Setting unread counts:', updated);
+                    return updated;
+                  });
+                }}
+              >
+                {availableChannels.map(channelId => {
+                  const channelConfig = channels.find(ch => ch.id === channelId);
+                  const displayName = channelConfig?.name || getChannelName(channelId);
+                  const unread = unreadCounts[channelId] || 0;
+                  const encrypted = channelConfig?.psk && channelConfig.psk !== DEFAULT_UNENCRYPTED_PSK;
+                  const uplink = channelConfig?.uplinkEnabled ? '↑' : '';
+                  const downlink = channelConfig?.downlinkEnabled ? '↓' : '';
+
+                  return (
+                    <option key={channelId} value={channelId}>
+                      {encrypted ? '🔒' : '🔓'} {displayName} #{channelId} {uplink}
+                      {downlink} {unread > 0 ? `(${unread})` : ''}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+
+            {/* Channel Buttons */}
+            <div className="channels-grid">
+              {availableChannels.map(channelId => {
+                const channelConfig = channels.find(ch => ch.id === channelId);
+                const displayName = channelConfig?.name || getChannelName(channelId);
+                return (
+                  <button
+                    key={channelId}
+                    className={`channel-button ${selectedChannel === channelId ? 'selected' : ''}`}
+                    onClick={() => {
+                      logger.debug('👆 User clicked channel:', channelId, 'Previous selected:', selectedChannel);
+                      setSelectedChannel(channelId);
+                      selectedChannelRef.current = channelId;
+                      setReplyingTo(null);
+                      setUnreadCounts(prev => {
+                        const updated = { ...prev, [channelId]: 0 };
+                        logger.debug('📝 Setting unread counts:', updated);
+                        return updated;
+                      });
+                    }}
+                  >
+                    <div className="channel-button-content">
+                      <div className="channel-button-left">
+                        <div className="channel-button-header">
+                          <span className="channel-name">{displayName}</span>
+                          <span className="channel-id">#{channelId}</span>
+                        </div>
+                        <div className="channel-button-indicators">
+                          {channelConfig?.psk && channelConfig.psk !== DEFAULT_UNENCRYPTED_PSK ? (
+                            <span className="encryption-icon encrypted" title="Encrypted">
+                              🔒
+                            </span>
+                          ) : (
+                            <span className="encryption-icon unencrypted" title="Unencrypted">
+                              🔓
+                            </span>
+                          )}
+                          <a
+                            href="#"
+                            className="channel-info-link"
+                            onClick={e => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setChannelInfoModal(channelId);
+                            }}
+                            title="Show channel info"
+                          >
+                            info
+                          </a>
+                        </div>
+                      </div>
+                      <div className="channel-button-right">
+                        {unreadCounts[channelId] > 0 && (
+                          <span className="unread-badge">{unreadCounts[channelId]}</span>
+                        )}
+                        <div className="channel-button-status">
+                          <span
+                            className={`arrow-icon uplink ${channelConfig?.uplinkEnabled ? 'enabled' : 'disabled'}`}
+                            title="MQTT Uplink"
+                          >
+                            ↑
+                          </span>
+                          <span
+                            className={`arrow-icon downlink ${channelConfig?.downlinkEnabled ? 'enabled' : 'disabled'}`}
+                            title="MQTT Downlink"
+                          >
+                            ↓
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Selected Channel Messaging */}
+            {selectedChannel !== -1 && (
+              <div className="channel-conversation-section">
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '1rem',
+                  }}
+                >
+                  <h3 style={{ margin: 0 }}>
+                    {getChannelName(selectedChannel)}
+                    <span className="channel-id-label">#{selectedChannel}</span>
+                  </h3>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      markMessagesAsRead(undefined, selectedChannel);
+                    }}
+                    title="Mark all messages in this channel as read"
+                    style={{
+                      padding: '0.5rem 1rem',
+                      fontSize: '0.9rem',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Mark all as Read
+                  </button>
+                </div>
+
+                <div className="channel-conversation">
+                  <div className="messages-container" ref={channelMessagesContainerRef}>
+                    {(() => {
+                      const messageChannel = selectedChannel;
+                      let messagesForChannel = channelMessages[messageChannel] || [];
+
+                      // Filter MQTT messages if the option is disabled
+                      if (!showMqttMessages) {
+                        messagesForChannel = messagesForChannel.filter(msg => !isMqttBridgeMessage(msg));
+                      }
+
+                      // Filter traceroutes from Primary channel (channel 0)
+                      if (messageChannel === 0) {
+                        messagesForChannel = messagesForChannel.filter(msg => msg.portnum !== 70);
+                      }
+
+                      // Sort messages by timestamp (oldest first)
+                      messagesForChannel = messagesForChannel.sort(
+                        (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+                      );
+
+                      return messagesForChannel && messagesForChannel.length > 0 ? (
+                        messagesForChannel.map((msg, index) => {
+                          const isMine = isMyMessage(msg);
+                          const repliedMessage = msg.replyId ? findMessageById(msg.replyId, messageChannel) : null;
+                          const isReaction = msg.emoji === 1;
+
+                          // Hide reactions (tapbacks) from main message list
+                          if (isReaction) {
+                            return null;
+                          }
+
+                          // Find ALL reactions in the full channel message list
+                          const allChannelMessages = channelMessages[messageChannel] || [];
+                          const reactions = allChannelMessages.filter(
+                            m => m.emoji === 1 && m.replyId && m.replyId.toString() === msg.id.split('_')[1]
+                          );
+
+                          // Check if we should show a date separator
+                          const currentDate = new Date(msg.timestamp);
+                          const prevMsg = index > 0 ? messagesForChannel[index - 1] : null;
+                          const prevDate = prevMsg ? new Date(prevMsg.timestamp) : null;
+                          const showSeparator = shouldShowDateSeparator(prevDate, currentDate);
+
+                          return (
+                            <React.Fragment key={msg.id}>
+                              {showSeparator && (
+                                <div className="date-separator">
+                                  <span className="date-separator-text">
+                                    {getMessageDateSeparator(currentDate, dateFormat)}
+                                  </span>
+                                </div>
+                              )}
+                              <div className={`message-bubble-container ${isMine ? 'mine' : 'theirs'}`}>
+                                {!isMine && (
+                                  <div
+                                    className="sender-dot clickable"
+                                    title={`Click for ${getNodeName(msg.from)} details`}
+                                    onClick={e => handleSenderClick(msg.from, e)}
+                                  >
+                                    {getNodeShortName(msg.from)}
+                                  </div>
+                                )}
+                                <div className="message-content">
+                                  {msg.replyId && !isReaction && (
+                                    <div className="replied-message">
+                                      <div className="reply-arrow">↳</div>
+                                      <div className="reply-content">
+                                        {repliedMessage ? (
+                                          <>
+                                            <div className="reply-from">{getNodeShortName(repliedMessage.from)}</div>
+                                            <div className="reply-text">{repliedMessage.text || 'Empty Message'}</div>
+                                          </>
+                                        ) : (
+                                          <div className="reply-text" style={{ fontStyle: 'italic', opacity: 0.6 }}>
+                                            Message not available
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+                                  <div className={`message-bubble ${isMine ? 'mine' : 'theirs'}`}>
+                                    {hasPermission(`channel_${selectedChannel}` as ResourceType, 'write') && (
+                                      <div className="message-actions">
+                                        <button
+                                          className="reply-button"
+                                          onClick={() => {
+                                            setReplyingTo(msg);
+                                            channelMessageInputRef.current?.focus();
+                                          }}
+                                          title="Reply to this message"
+                                        >
+                                          ↩
+                                        </button>
+                                        <button
+                                          className="emoji-picker-button"
+                                          onClick={() => setEmojiPickerMessage(msg)}
+                                          title="React with emoji"
+                                        >
+                                          😄
+                                        </button>
+                                        <button
+                                          className="delete-button"
+                                          onClick={() => handleDeleteMessage(msg)}
+                                          title="Delete this message"
+                                        >
+                                          🗑️
+                                        </button>
+                                      </div>
+                                    )}
+                                    <div className="message-text" style={{ whiteSpace: 'pre-line' }}>
+                                      {renderMessageWithLinks(msg.text)}
+                                    </div>
+                                    <LinkPreview text={msg.text} />
+                                    {reactions.length > 0 && (
+                                      <div className="message-reactions">
+                                        {reactions.map(reaction => (
+                                          <span
+                                            key={reaction.id}
+                                            className="reaction"
+                                            title={`From ${getNodeShortName(reaction.from)} - Click to send same reaction`}
+                                            onClick={() => handleSendTapback(reaction.text, msg)}
+                                          >
+                                            {reaction.text}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                    <div className="message-meta">
+                                      <span className="message-time">
+                                        {formatMessageTime(currentDate, timeFormat, dateFormat)}
+                                        <HopCountDisplay hopStart={msg.hopStart} hopLimit={msg.hopLimit} />
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                                {isMine && <div className="message-status">{renderMessageStatus(msg)}</div>}
+                              </div>
+                            </React.Fragment>
+                          );
+                        })
+                      ) : (
+                        <p className="no-messages">No messages in this channel yet</p>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Send message form */}
+                  {connectionStatus === 'connected' && (
+                    <div className="send-message-form">
+                      {replyingTo && (
+                        <div className="reply-indicator">
+                          <div className="reply-indicator-content">
+                            <div className="reply-indicator-label">Replying to {getNodeName(replyingTo.from)}</div>
+                            <div className="reply-indicator-text">{replyingTo.text}</div>
+                          </div>
+                          <button
+                            className="reply-indicator-close"
+                            onClick={() => setReplyingTo(null)}
+                            title="Cancel reply"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      )}
+                      {hasPermission(`channel_${selectedChannel}` as ResourceType, 'write') && (
+                        <div className="message-input-container">
+                          <div className="input-with-counter">
+                            <input
+                              ref={channelMessageInputRef}
+                              type="text"
+                              value={newMessage}
+                              onChange={e => setNewMessage(e.target.value)}
+                              placeholder={`Send message to ${getChannelName(selectedChannel)}...`}
+                              className="message-input"
+                              onKeyPress={e => {
+                                if (e.key === 'Enter') {
+                                  handleSendMessage(selectedChannel);
+                                }
+                              }}
+                            />
+                            <div className={formatByteCount(getUtf8ByteLength(newMessage)).className}>
+                              {formatByteCount(getUtf8ByteLength(newMessage)).text}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleSendMessage(selectedChannel)}
+                            disabled={!newMessage.trim()}
+                            className="send-btn"
+                          >
+                            →
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {selectedChannel === -1 && (
+              <p className="no-data">Select a channel above to view messages and send messages</p>
+            )}
+          </>
+        ) : (
+          <p className="no-data">No channel configurations discovered yet. Waiting for mesh updates...</p>
+        )
+      ) : (
+        <p className="no-data">Connect to a Meshtastic node to view channel configurations</p>
+      )}
+
+      {/* Channel Info Modal */}
+      {channelInfoModal !== null && selectedChannelConfig && (() => {
+        const displayName = selectedChannelConfig.name || getChannelName(channelInfoModal);
+        const handleCloseModal = () => {
+          setChannelInfoModal(null);
+          setShowPsk(false);
+        };
+
+        return (
+          <div className="modal-overlay" onClick={handleCloseModal}>
+            <div className="modal-content channel-info-modal" onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>Channel Information</h2>
+                <button className="modal-close" onClick={handleCloseModal}>
+                  ×
+                </button>
+              </div>
+              <div className="modal-body">
+                <div className="channel-info-grid">
+                  <div className="info-row">
+                    <span className="info-label">Channel Name:</span>
+                    <span className="info-value">{displayName}</span>
+                  </div>
+                  <div className="info-row">
+                    <span className="info-label">Channel Number:</span>
+                    <span className="info-value">#{channelInfoModal}</span>
+                  </div>
+                  <div className="info-row">
+                    <span className="info-label">Encryption:</span>
+                    <span className="info-value">
+                      {selectedChannelConfig.psk && selectedChannelConfig.psk !== DEFAULT_UNENCRYPTED_PSK ? (
+                        <span className="status-encrypted">🔒 Encrypted</span>
+                      ) : (
+                        <span className="status-unencrypted">🔓 Unencrypted</span>
+                      )}
+                    </span>
+                  </div>
+                  {selectedChannelConfig.psk && (
+                    <div className="info-row">
+                      <span className="info-label">PSK (Base64):</span>
+                      <span
+                        className="info-value info-value-code"
+                        style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}
+                      >
+                        {showPsk ? selectedChannelConfig.psk : '••••••••'}
+                        <button
+                          onClick={() => setShowPsk(!showPsk)}
+                          style={{
+                            padding: '0.25rem 0.5rem',
+                            fontSize: '0.75rem',
+                            background: 'var(--ctp-surface1)',
+                            border: '1px solid var(--ctp-surface2)',
+                            borderRadius: '4px',
+                            color: 'var(--ctp-text)',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s',
+                          }}
+                          onMouseOver={e => (e.currentTarget.style.background = 'var(--ctp-surface2)')}
+                          onMouseOut={e => (e.currentTarget.style.background = 'var(--ctp-surface1)')}
+                        >
+                          {showPsk ? 'Hide' : 'Show'}
+                        </button>
+                      </span>
+                    </div>
+                  )}
+                  <div className="info-row">
+                    <span className="info-label">MQTT Uplink:</span>
+                    <span className="info-value">
+                      {selectedChannelConfig.uplinkEnabled ? (
+                        <span className="status-enabled">✓ Enabled</span>
+                      ) : (
+                        <span className="status-disabled">✗ Disabled</span>
+                      )}
+                    </span>
+                  </div>
+                  <div className="info-row">
+                    <span className="info-label">MQTT Downlink:</span>
+                    <span className="info-value">
+                      {selectedChannelConfig.downlinkEnabled ? (
+                        <span className="status-enabled">✓ Enabled</span>
+                      ) : (
+                        <span className="status-disabled">✗ Disabled</span>
+                      )}
+                    </span>
+                  </div>
+                  {selectedChannelConfig.createdAt && (
+                    <div className="info-row">
+                      <span className="info-label">Discovered:</span>
+                      <span className="info-value">
+                        {new Date(selectedChannelConfig.createdAt).toLocaleString()}
+                      </span>
+                    </div>
+                  )}
+                  {selectedChannelConfig.updatedAt && (
+                    <div className="info-row">
+                      <span className="info-label">Last Updated:</span>
+                      <span className="info-value">
+                        {new Date(selectedChannelConfig.updatedAt).toLocaleString()}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                {hasPermission(`channel_${channelInfoModal}` as ResourceType, 'write') &&
+                  channelInfoModal !== -1 && (
+                    <div
+                      style={{
+                        marginTop: '1.5rem',
+                        paddingTop: '1rem',
+                        borderTop: '1px solid var(--ctp-surface2)',
+                      }}
+                    >
+                      <button
+                        onClick={() => {
+                          handleCloseModal();
+                          handlePurgeChannelMessages(channelInfoModal);
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '0.75rem',
+                          backgroundColor: '#dc3545',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          fontWeight: 'bold',
+                          fontSize: '0.95rem',
+                        }}
+                        title="Purge all messages from this channel"
+                      >
+                        Purge All Messages
+                      </button>
+                      <p
+                        style={{
+                          marginTop: '0.5rem',
+                          fontSize: '0.85rem',
+                          color: 'var(--ctp-subtext0)',
+                          textAlign: 'center',
+                        }}
+                      >
+                        This action cannot be undone
+                      </p>
+                    </div>
+                  )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
