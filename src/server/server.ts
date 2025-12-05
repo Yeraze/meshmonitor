@@ -1050,8 +1050,9 @@ function transformDbMessageToMeshMessage(msg: DbMessage): MeshMessage {
 apiRouter.get('/messages/channel/:channel', optionalAuth(), (req, res) => {
   try {
     const requestedChannel = parseInt(req.params.channel);
-    const limit = parseInt(req.query.limit as string) || 100;
-    const offset = parseInt(req.query.offset as string) || 0;
+    // Validate and clamp limit (1-500) and offset (0-50000) to prevent abuse
+    const limit = Math.max(1, Math.min(parseInt(req.query.limit as string) || 100, 500));
+    const offset = Math.max(0, Math.min(parseInt(req.query.offset as string) || 0, 50000));
 
     // Check if this is a Primary channel request and map to channel 0 messages
     let messageChannel = requestedChannel;
@@ -1071,9 +1072,11 @@ apiRouter.get('/messages/channel/:channel', optionalAuth(), (req, res) => {
       });
     }
 
-    const dbMessages = databaseService.getMessagesByChannel(messageChannel, limit, offset);
-    const messages = dbMessages.map(transformDbMessageToMeshMessage);
-    const hasMore = dbMessages.length === limit;
+    // Fetch limit+1 to accurately detect if more messages exist
+    const dbMessages = databaseService.getMessagesByChannel(messageChannel, limit + 1, offset);
+    const hasMore = dbMessages.length > limit;
+    // Return only the requested limit
+    const messages = dbMessages.slice(0, limit).map(transformDbMessageToMeshMessage);
     res.json({ messages, hasMore });
   } catch (error) {
     logger.error('Error fetching channel messages:', error);
@@ -1084,11 +1087,14 @@ apiRouter.get('/messages/channel/:channel', optionalAuth(), (req, res) => {
 apiRouter.get('/messages/direct/:nodeId1/:nodeId2', requirePermission('messages', 'read'), (req, res) => {
   try {
     const { nodeId1, nodeId2 } = req.params;
-    const limit = parseInt(req.query.limit as string) || 100;
-    const offset = parseInt(req.query.offset as string) || 0;
-    const dbMessages = databaseService.getDirectMessages(nodeId1, nodeId2, limit, offset);
-    const messages = dbMessages.map(transformDbMessageToMeshMessage);
-    const hasMore = dbMessages.length === limit;
+    // Validate and clamp limit (1-500) and offset (0-50000) to prevent abuse
+    const limit = Math.max(1, Math.min(parseInt(req.query.limit as string) || 100, 500));
+    const offset = Math.max(0, Math.min(parseInt(req.query.offset as string) || 0, 50000));
+    // Fetch limit+1 to accurately detect if more messages exist
+    const dbMessages = databaseService.getDirectMessages(nodeId1, nodeId2, limit + 1, offset);
+    const hasMore = dbMessages.length > limit;
+    // Return only the requested limit
+    const messages = dbMessages.slice(0, limit).map(transformDbMessageToMeshMessage);
     res.json({ messages, hasMore });
   } catch (error) {
     logger.error('Error fetching direct messages:', error);

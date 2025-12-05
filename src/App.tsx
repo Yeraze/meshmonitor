@@ -284,6 +284,7 @@ function App() {
   const dmMessagesContainerRef = useRef<HTMLDivElement>(null);
   const initialChannelScrollDoneRef = useRef<Set<number>>(new Set()); // Track channels that have had initial scroll
   const initialDMScrollDoneRef = useRef<Set<string>>(new Set()); // Track DM conversations that have had initial scroll
+  const lastScrollLoadTimeRef = useRef<number>(0); // Throttle scroll-triggered loads (200ms)
   // const lastNotificationTime = useRef<number>(0) // Disabled for now
   // Detect base URL from pathname
   const detectBaseUrl = () => {
@@ -1327,10 +1328,11 @@ function App() {
       setChannelHasMore(prev => ({ ...prev, [selectedChannel]: result.hasMore }));
     } catch (error) {
       logger.error('Failed to load more channel messages:', error);
+      showToast('Failed to load older messages', 'error');
     } finally {
       setChannelLoadingMore(prev => ({ ...prev, [selectedChannel]: false }));
     }
-  }, [selectedChannel, channelLoadingMore, channelHasMore, channelMessages, setChannelMessages, setChannelHasMore, setChannelLoadingMore]);
+  }, [selectedChannel, channelLoadingMore, channelHasMore, channelMessages, setChannelMessages, setChannelHasMore, setChannelLoadingMore, showToast]);
 
   // Load more direct messages (for infinite scroll)
   const loadMoreDirectMessages = useCallback(async () => {
@@ -1384,19 +1386,22 @@ function App() {
       setDmHasMore(prev => ({ ...prev, [dmKey]: result.hasMore }));
     } catch (error) {
       logger.error('Failed to load more direct messages:', error);
+      showToast('Failed to load older messages', 'error');
     } finally {
       setDmLoadingMore(prev => ({ ...prev, [dmKey]: false }));
     }
-  }, [selectedDMNode, currentNodeId, dmLoadingMore, dmHasMore, messages, setMessages, setDmHasMore, setDmLoadingMore]);
+  }, [selectedDMNode, currentNodeId, dmLoadingMore, dmHasMore, messages, setMessages, setDmHasMore, setDmLoadingMore, showToast]);
 
-  // Handle scroll events to track scroll position
+  // Handle scroll events to track scroll position (throttled for load-more)
   const handleChannelScroll = useCallback(() => {
     if (channelMessagesContainerRef.current) {
       const atBottom = isScrolledNearBottom(channelMessagesContainerRef.current);
       setIsChannelScrolledToBottom(atBottom);
 
-      // Check if scrolled near top and trigger load more
-      if (isScrolledNearTop(channelMessagesContainerRef.current)) {
+      // Check if scrolled near top and trigger load more (throttled to 200ms)
+      const now = Date.now();
+      if (isScrolledNearTop(channelMessagesContainerRef.current) && now - lastScrollLoadTimeRef.current > 200) {
+        lastScrollLoadTimeRef.current = now;
         loadMoreChannelMessages();
       }
     }
@@ -1407,8 +1412,10 @@ function App() {
       const atBottom = isScrolledNearBottom(dmMessagesContainerRef.current);
       setIsDMScrolledToBottom(atBottom);
 
-      // Check if scrolled near top and trigger load more
-      if (isScrolledNearTop(dmMessagesContainerRef.current)) {
+      // Check if scrolled near top and trigger load more (throttled to 200ms)
+      const now = Date.now();
+      if (isScrolledNearTop(dmMessagesContainerRef.current) && now - lastScrollLoadTimeRef.current > 200) {
+        lastScrollLoadTimeRef.current = now;
         loadMoreDirectMessages();
       }
     }
