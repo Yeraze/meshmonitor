@@ -5,8 +5,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import './App.css';
-import TelemetryGraphs from './components/TelemetryGraphs';
-import NodeDetailsBlock from './components/NodeDetailsBlock';
+
 import InfoTab from './components/InfoTab';
 import SettingsTab from './components/SettingsTab';
 import ConfigurationTab from './components/ConfigurationTab';
@@ -16,6 +15,7 @@ import AuditLogTab from './components/AuditLogTab';
 import { SecurityTab } from './components/SecurityTab';
 import Dashboard from './components/Dashboard';
 import NodesTab from './components/NodesTab';
+import MessagesTab from './components/MessagesTab';
 import HopCountDisplay from './components/HopCountDisplay';
 import AutoAcknowledgeSection from './components/AutoAcknowledgeSection';
 import AutoTracerouteSection from './components/AutoTracerouteSection';
@@ -29,12 +29,11 @@ import { type TemperatureUnit } from './utils/temperature';
 import { calculateDistance, formatDistance } from './utils/distance';
 import {
   formatDateTime,
-  formatRelativeTime,
   formatMessageTime,
   getMessageDateSeparator,
   shouldShowDateSeparator,
 } from './utils/datetime';
-import { formatTracerouteRoute } from './utils/traceroute';
+
 import { getUtf8ByteLength, formatByteCount } from './utils/text';
 import { renderMessageWithLinks } from './utils/linkRenderer';
 import { DeviceInfo, Channel } from './types/device';
@@ -45,7 +44,7 @@ import api from './services/api';
 import { logger } from './utils/logger';
 import { generateArrowMarkers } from './utils/mapHelpers.tsx';
 import { ROLE_NAMES } from './constants';
-import { getHardwareModelName, getRoleName, isNodeComplete } from './utils/nodeHelpers';
+import { getHardwareModelName, getRoleName } from './utils/nodeHelpers';
 import Sidebar from './components/Sidebar';
 import LinkPreview from './components/LinkPreview';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
@@ -67,7 +66,6 @@ import UserMenu from './components/UserMenu';
 const pendingFavoriteRequests = new Map<number, boolean>();
 import TracerouteHistoryModal from './components/TracerouteHistoryModal';
 import RouteSegmentTraceroutesModal from './components/RouteSegmentTraceroutesModal';
-import { NodeFilterPopup } from './components/NodeFilterPopup';
 
 // Fix for default markers in React-Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -571,7 +569,6 @@ function App() {
 
   // Refs for message input fields (to focus on reply)
   const channelMessageInputRef = useRef<HTMLInputElement>(null);
-  const dmMessageInputRef = useRef<HTMLInputElement>(null);
 
   // Play notification sound using Web Audio API
   const playNotificationSound = useCallback(() => {
@@ -2902,16 +2899,6 @@ function App() {
       .sort((a, b) => a - b);
   };
 
-  const getDMMessages = (nodeId: string): MeshMessage[] => {
-    return messages.filter(
-      msg =>
-        (msg.from === nodeId || msg.to === nodeId) &&
-        msg.to !== '!ffffffff' && // Exclude broadcasts
-        msg.channel === -1 && // Only direct messages
-        msg.portnum === 1 // Only text messages, exclude traceroutes (portnum 70)
-    );
-  };
-
   // Helper function to sort nodes
   const sortNodes = (nodes: DeviceInfo[], field: SortField, direction: SortDirection): DeviceInfo[] => {
     return [...nodes].sort((a, b) => {
@@ -4181,45 +4168,6 @@ function App() {
       </div>
     );
   };
-
-  const renderMessagesTab = () => {
-    // Check if user has permission to view messages
-    if (!hasPermission('messages', 'read')) {
-      return (
-        <div className="no-permission-message">
-          <p>
-            You need <strong>messages:read</strong> permission to view direct messages.
-          </p>
-        </div>
-      );
-    }
-
-    // Use processedNodes which already has sorting applied from the Map page logic
-    const nodesWithMessages = processedNodes
-      .filter(node => node.user?.id !== currentNodeId) // Exclude local node
-      .map(node => {
-        const nodeId = node.user?.id;
-        if (!nodeId)
-          return {
-            ...node,
-            messageCount: 0,
-            unreadCount: 0,
-            lastMessageTime: 0,
-            lastMessageText: '',
-          };
-
-        const dmMessages = getDMMessages(nodeId);
-        // Get unread count from database-backed tracking instead of counting all messages
-        const unreadCount = unreadCountsData?.directMessages?.[nodeId] || 0;
-
-        // Get last message text (most recent message)
-        const lastMessage =
-          dmMessages.length > 0
-            ? dmMessages.reduce((latest, msg) => (msg.timestamp.getTime() > latest.timestamp.getTime() ? msg : latest))
-            : null;
-
-        const lastMessageText = lastMessage
-          ? (lastMessage.text || '').substring(0, 50) + (lastMessage.text && lastMessage.text.length > 50 ? '...' : '')
           : '';
 
         return {
@@ -6158,7 +6106,57 @@ function App() {
           />
         )}
         {activeTab === 'channels' && renderChannelsTab()}
-        {activeTab === 'messages' && renderMessagesTab()}
+        {activeTab === 'messages' && (
+          <MessagesTab
+            processedNodes={processedNodes}
+            nodes={nodes}
+            messages={messages}
+            currentNodeId={currentNodeId}
+            nodesWithTelemetry={nodesWithTelemetry}
+            nodesWithWeatherTelemetry={nodesWithWeatherTelemetry}
+            nodesWithPKC={nodesWithPKC}
+            connectionStatus={connectionStatus}
+            selectedDMNode={selectedDMNode}
+            setSelectedDMNode={setSelectedDMNode}
+            newMessage={newMessage}
+            setNewMessage={setNewMessage}
+            replyingTo={replyingTo}
+            setReplyingTo={setReplyingTo}
+            unreadCountsData={unreadCountsData}
+            markMessagesAsRead={markMessagesAsRead}
+            nodeFilter={nodeFilter}
+            setNodeFilter={setNodeFilter}
+            dmFilter={dmFilter}
+            setDmFilter={setDmFilter}
+            securityFilter={securityFilter}
+            channelFilter={channelFilter}
+            showIncompleteNodes={showIncompleteNodes}
+            showNodeFilterPopup={showNodeFilterPopup}
+            setShowNodeFilterPopup={setShowNodeFilterPopup}
+            isMessagesNodeListCollapsed={isMessagesNodeListCollapsed}
+            setIsMessagesNodeListCollapsed={setIsMessagesNodeListCollapsed}
+            tracerouteLoading={tracerouteLoading}
+            positionLoading={positionLoading}
+            timeFormat={timeFormat}
+            dateFormat={dateFormat}
+            temperatureUnit={temperatureUnit}
+            telemetryVisualizationHours={telemetryVisualizationHours}
+            distanceUnit={distanceUnit}
+            baseUrl={baseUrl}
+            hasPermission={hasPermission}
+            handleSendDirectMessage={handleSendDirectMessage}
+            handleTraceroute={handleTraceroute}
+            handleExchangePosition={handleExchangePosition}
+            handleDeleteMessage={handleDeleteMessage}
+            handleSenderClick={handleSenderClick}
+            handleSendTapback={handleSendTapback}
+            getRecentTraceroute={getRecentTraceroute}
+            setShowTracerouteHistoryModal={setShowTracerouteHistoryModal}
+            setShowPurgeDataModal={setShowPurgeDataModal}
+            setEmojiPickerMessage={setEmojiPickerMessage}
+            shouldShowData={shouldShowData}
+          />
+        )}
         {activeTab === 'info' && (
           <InfoTab
             connectionStatus={connectionStatus}
