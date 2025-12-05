@@ -30,6 +30,15 @@ interface DataContextType {
   setNodesWithEstimatedPosition: React.Dispatch<React.SetStateAction<Set<string>>>;
   nodesWithPKC: Set<string>;
   setNodesWithPKC: React.Dispatch<React.SetStateAction<Set<string>>>;
+  // Pagination state for infinite scroll
+  channelHasMore: {[key: number]: boolean};
+  setChannelHasMore: React.Dispatch<React.SetStateAction<{[key: number]: boolean}>>;
+  channelLoadingMore: {[key: number]: boolean};
+  setChannelLoadingMore: React.Dispatch<React.SetStateAction<{[key: number]: boolean}>>;
+  dmHasMore: {[key: string]: boolean};
+  setDmHasMore: React.Dispatch<React.SetStateAction<{[key: string]: boolean}>>;
+  dmLoadingMore: {[key: string]: boolean};
+  setDmLoadingMore: React.Dispatch<React.SetStateAction<{[key: string]: boolean}>>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -52,6 +61,11 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
   const [nodesWithWeatherTelemetry, setNodesWithWeatherTelemetry] = useState<Set<string>>(new Set());
   const [nodesWithEstimatedPosition, setNodesWithEstimatedPosition] = useState<Set<string>>(new Set());
   const [nodesWithPKC, setNodesWithPKC] = useState<Set<string>>(new Set());
+  // Pagination state for infinite scroll
+  const [channelHasMore, setChannelHasMore] = useState<{[key: number]: boolean}>({});
+  const [channelLoadingMore, setChannelLoadingMore] = useState<{[key: number]: boolean}>({});
+  const [dmHasMore, setDmHasMore] = useState<{[key: string]: boolean}>({});
+  const [dmLoadingMore, setDmLoadingMore] = useState<{[key: string]: boolean}>({});
 
   return (
     <DataContext.Provider
@@ -82,6 +96,14 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
         setNodesWithEstimatedPosition,
         nodesWithPKC,
         setNodesWithPKC,
+        channelHasMore,
+        setChannelHasMore,
+        channelLoadingMore,
+        setChannelLoadingMore,
+        dmHasMore,
+        setDmHasMore,
+        dmLoadingMore,
+        setDmLoadingMore,
       }}
     >
       {children}

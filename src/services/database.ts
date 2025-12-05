@@ -1913,26 +1913,26 @@ class DatabaseService {
     return messages.map(message => this.normalizeBigInts(message));
   }
 
-  getMessagesByChannel(channel: number, limit: number = 100): DbMessage[] {
+  getMessagesByChannel(channel: number, limit: number = 100, offset: number = 0): DbMessage[] {
     const stmt = this.db.prepare(`
       SELECT * FROM messages
       WHERE channel = ?
       ORDER BY COALESCE(rxTime, timestamp) DESC
-      LIMIT ?
+      LIMIT ? OFFSET ?
     `);
-    const messages = stmt.all(channel, limit) as DbMessage[];
+    const messages = stmt.all(channel, limit, offset) as DbMessage[];
     return messages.map(message => this.normalizeBigInts(message));
   }
 
-  getDirectMessages(nodeId1: string, nodeId2: string, limit: number = 100): DbMessage[] {
+  getDirectMessages(nodeId1: string, nodeId2: string, limit: number = 100, offset: number = 0): DbMessage[] {
     const stmt = this.db.prepare(`
       SELECT * FROM messages
       WHERE (fromNodeId = ? AND toNodeId = ?)
          OR (fromNodeId = ? AND toNodeId = ?)
       ORDER BY COALESCE(rxTime, timestamp) DESC
-      LIMIT ?
+      LIMIT ? OFFSET ?
     `);
-    const messages = stmt.all(nodeId1, nodeId2, nodeId2, nodeId1, limit) as DbMessage[];
+    const messages = stmt.all(nodeId1, nodeId2, nodeId2, nodeId1, limit, offset) as DbMessage[];
     return messages.map(message => this.normalizeBigInts(message));
   }
 

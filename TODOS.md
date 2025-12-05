@@ -2,6 +2,32 @@
 
 ## Current Sprint
 
+### Infinite Scroll for Messages (#853)
+
+**Completed:**
+- [x] Add offset parameter to `getMessagesByChannel` in database.ts
+- [x] Add offset parameter to `getDirectMessages` in database.ts
+- [x] Add offset query parameter to `/api/messages/channel/:channel` endpoint
+- [x] Add offset query parameter to `/api/messages/direct/:nodeId1/:nodeId2` endpoint
+- [x] Add `getChannelMessages` and `getDirectMessages` API client functions
+- [x] Add pagination state to DataContext (channelHasMore, channelLoadingMore, dmHasMore, dmLoadingMore)
+- [x] Implement `isScrolledNearTop` detection in App.tsx
+- [x] Implement `loadMoreChannelMessages` with scroll position preservation
+- [x] Implement `loadMoreDirectMessages` with scroll position preservation
+- [x] Add loading indicator UI for both channel and DM views
+- [x] Add CSS styles for loading spinner animation
+- [x] Docker build successful
+- [x] TypeScript type check passed
+- [x] Unit tests passed
+
+**In Progress:**
+- [x] System tests passed (7/7)
+
+**Summary:**
+Implemented infinite scroll for both channel messages and direct messages. When users scroll to the top of a message list, older messages are automatically loaded from the database. Scroll position is preserved so users don't experience a jump when new messages are prepended. Loading indicator shows while fetching.
+
+---
+
 ### Version 2.16.0 (In Progress)
 
 #### System Backup & Restore (#488)

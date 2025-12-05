@@ -282,6 +282,9 @@ function App() {
 
   const channelMessagesContainerRef = useRef<HTMLDivElement>(null);
   const dmMessagesContainerRef = useRef<HTMLDivElement>(null);
+  const initialChannelScrollDoneRef = useRef<Set<number>>(new Set()); // Track channels that have had initial scroll
+  const initialDMScrollDoneRef = useRef<Set<string>>(new Set()); // Track DM conversations that have had initial scroll
+  const lastScrollLoadTimeRef = useRef<number>(0); // Throttle scroll-triggered loads (200ms)
   // const lastNotificationTime = useRef<number>(0) // Disabled for now
   // Detect base URL from pathname
   const detectBaseUrl = () => {
@@ -402,6 +405,14 @@ function App() {
     setNodesWithEstimatedPosition,
     nodesWithPKC,
     setNodesWithPKC,
+    channelHasMore,
+    setChannelHasMore,
+    channelLoadingMore,
+    setChannelLoadingMore,
+    dmHasMore,
+    setDmHasMore,
+    dmLoadingMore,
+    setDmLoadingMore,
   } = useData();
 
   // Consolidated polling for nodes, messages, channels, config
@@ -444,9 +455,9 @@ function App() {
     setPendingMessages,
     unreadCounts,
     setUnreadCounts,
-    isChannelScrolledToBottom,
+    isChannelScrolledToBottom: _isChannelScrolledToBottom,
     setIsChannelScrolledToBottom,
-    isDMScrolledToBottom,
+    isDMScrolledToBottom: _isDMScrolledToBottom,
     setIsDMScrolledToBottom,
     markMessagesAsRead,
     unreadCountsData,
@@ -1263,39 +1274,152 @@ function App() {
     return scrollHeight - scrollTop - clientHeight < threshold;
   }, []);
 
-  // Handle scroll events to track scroll position
+  // Check if container is scrolled near top (within 100px)
+  const isScrolledNearTop = useCallback((container: HTMLDivElement | null): boolean => {
+    if (!container) return false;
+    return container.scrollTop < 100;
+  }, []);
+
+  // Load more channel messages (for infinite scroll)
+  const loadMoreChannelMessages = useCallback(async () => {
+    if (channelLoadingMore[selectedChannel] || channelHasMore[selectedChannel] === false) {
+      return;
+    }
+
+    const currentMessages = channelMessages[selectedChannel] || [];
+    const offset = currentMessages.length;
+    const container = channelMessagesContainerRef.current;
+
+    // Store scroll position before loading
+    const scrollHeightBefore = container?.scrollHeight || 0;
+
+    setChannelLoadingMore(prev => ({ ...prev, [selectedChannel]: true }));
+
+    try {
+      const result = await api.getChannelMessages(selectedChannel, 100, offset);
+
+      if (result.messages.length > 0) {
+        // Process timestamps for new messages
+        const processedMessages = result.messages.map(msg => ({
+          ...msg,
+          timestamp: new Date(msg.timestamp),
+        }));
+
+        // Prepend older messages to the existing list, deduplicating by id
+        setChannelMessages(prev => {
+          const existingMessages = prev[selectedChannel] || [];
+          const existingIds = new Set(existingMessages.map(m => m.id));
+          const newMessages = processedMessages.filter(m => !existingIds.has(m.id));
+          return {
+            ...prev,
+            [selectedChannel]: [...newMessages, ...existingMessages],
+          };
+        });
+
+        // Restore scroll position after messages are prepended
+        requestAnimationFrame(() => {
+          if (container) {
+            const scrollHeightAfter = container.scrollHeight;
+            container.scrollTop = scrollHeightAfter - scrollHeightBefore;
+          }
+        });
+      }
+
+      setChannelHasMore(prev => ({ ...prev, [selectedChannel]: result.hasMore }));
+    } catch (error) {
+      logger.error('Failed to load more channel messages:', error);
+      showToast('Failed to load older messages', 'error');
+    } finally {
+      setChannelLoadingMore(prev => ({ ...prev, [selectedChannel]: false }));
+    }
+  }, [selectedChannel, channelLoadingMore, channelHasMore, channelMessages, setChannelMessages, setChannelHasMore, setChannelLoadingMore, showToast]);
+
+  // Load more direct messages (for infinite scroll)
+  const loadMoreDirectMessages = useCallback(async () => {
+    if (!selectedDMNode || !currentNodeId) return;
+
+    const dmKey = [currentNodeId, selectedDMNode].sort().join('_');
+    if (dmLoadingMore[dmKey] || dmHasMore[dmKey] === false) {
+      return;
+    }
+
+    // Get current DM messages from the messages array (channel -1 or direct messages)
+    const currentDMs = messages.filter(
+      msg => (msg.fromNodeId === currentNodeId && msg.toNodeId === selectedDMNode) ||
+             (msg.fromNodeId === selectedDMNode && msg.toNodeId === currentNodeId)
+    );
+    const offset = currentDMs.length;
+    const container = dmMessagesContainerRef.current;
+
+    // Store scroll position before loading
+    const scrollHeightBefore = container?.scrollHeight || 0;
+
+    setDmLoadingMore(prev => ({ ...prev, [dmKey]: true }));
+
+    try {
+      const result = await api.getDirectMessages(currentNodeId, selectedDMNode, 100, offset);
+
+      if (result.messages.length > 0) {
+        // Process timestamps for new messages
+        const processedMessages = result.messages.map(msg => ({
+          ...msg,
+          timestamp: new Date(msg.timestamp),
+        }));
+
+        // Prepend older messages to the existing list
+        setMessages(prev => {
+          // Remove duplicates by id
+          const existingIds = new Set(prev.map(m => m.id));
+          const newMessages = processedMessages.filter(m => !existingIds.has(m.id));
+          return [...newMessages, ...prev];
+        });
+
+        // Restore scroll position after messages are prepended
+        requestAnimationFrame(() => {
+          if (container) {
+            const scrollHeightAfter = container.scrollHeight;
+            container.scrollTop = scrollHeightAfter - scrollHeightBefore;
+          }
+        });
+      }
+
+      setDmHasMore(prev => ({ ...prev, [dmKey]: result.hasMore }));
+    } catch (error) {
+      logger.error('Failed to load more direct messages:', error);
+      showToast('Failed to load older messages', 'error');
+    } finally {
+      setDmLoadingMore(prev => ({ ...prev, [dmKey]: false }));
+    }
+  }, [selectedDMNode, currentNodeId, dmLoadingMore, dmHasMore, messages, setMessages, setDmHasMore, setDmLoadingMore, showToast]);
+
+  // Handle scroll events to track scroll position (throttled for load-more)
   const handleChannelScroll = useCallback(() => {
     if (channelMessagesContainerRef.current) {
       const atBottom = isScrolledNearBottom(channelMessagesContainerRef.current);
       setIsChannelScrolledToBottom(atBottom);
+
+      // Check if scrolled near top and trigger load more (throttled to 200ms)
+      const now = Date.now();
+      if (isScrolledNearTop(channelMessagesContainerRef.current) && now - lastScrollLoadTimeRef.current > 200) {
+        lastScrollLoadTimeRef.current = now;
+        loadMoreChannelMessages();
+      }
     }
-  }, [isScrolledNearBottom]);
+  }, [isScrolledNearBottom, isScrolledNearTop, loadMoreChannelMessages]);
 
   const handleDMScroll = useCallback(() => {
     if (dmMessagesContainerRef.current) {
       const atBottom = isScrolledNearBottom(dmMessagesContainerRef.current);
       setIsDMScrolledToBottom(atBottom);
-    }
-  }, [isScrolledNearBottom]);
 
-  // Auto-scroll to bottom when messages change or channel changes (only if user is at bottom)
-  const scrollToBottom = useCallback(
-    (force: boolean = false) => {
-      // Scroll the appropriate container based on active tab
-      if (activeTab === 'channels' && channelMessagesContainerRef.current) {
-        if (force || isChannelScrolledToBottom) {
-          channelMessagesContainerRef.current.scrollTop = channelMessagesContainerRef.current.scrollHeight;
-          setIsChannelScrolledToBottom(true);
-        }
-      } else if (activeTab === 'messages' && dmMessagesContainerRef.current) {
-        if (force || isDMScrolledToBottom) {
-          dmMessagesContainerRef.current.scrollTop = dmMessagesContainerRef.current.scrollHeight;
-          setIsDMScrolledToBottom(true);
-        }
+      // Check if scrolled near top and trigger load more (throttled to 200ms)
+      const now = Date.now();
+      if (isScrolledNearTop(dmMessagesContainerRef.current) && now - lastScrollLoadTimeRef.current > 200) {
+        lastScrollLoadTimeRef.current = now;
+        loadMoreDirectMessages();
       }
-    },
-    [activeTab, isChannelScrolledToBottom, isDMScrolledToBottom]
-  );
+    }
+  }, [isScrolledNearBottom, isScrolledNearTop, loadMoreDirectMessages]);
 
   // Attach scroll event listeners
   useEffect(() => {
@@ -1319,28 +1443,66 @@ function App() {
     };
   }, [handleChannelScroll, handleDMScroll]);
 
-  // Force scroll to bottom when channel changes (new conversation)
+  // Force scroll to bottom when channel changes OR when messages first load for a channel
+  // Note: We track initial scroll per channel to avoid re-scrolling when user manually scrolls
   useEffect(() => {
-    if (activeTab === 'channels') {
-      // Use setTimeout to ensure messages are rendered before scrolling
-      setTimeout(() => {
-        scrollToBottom(true);
-      }, 100);
-    }
-  }, [selectedChannel, activeTab, scrollToBottom]);
+    if (activeTab === 'channels' && selectedChannel >= 0) {
+      const currentChannelMessages = channelMessages[selectedChannel] || [];
+      const hasMessages = currentChannelMessages.length > 0;
+      const hasInitialScrollDone = initialChannelScrollDoneRef.current.has(selectedChannel);
 
-  // Force scroll to bottom when DM node changes (new conversation)
-  useEffect(() => {
-    if (activeTab === 'messages' && selectedDMNode) {
-      // Use setTimeout to ensure messages are rendered before scrolling
-      setTimeout(() => {
-        if (dmMessagesContainerRef.current) {
-          dmMessagesContainerRef.current.scrollTop = dmMessagesContainerRef.current.scrollHeight;
-          setIsDMScrolledToBottom(true);
-        }
-      }, 150);
+      // Scroll to bottom if:
+      // 1. Channel just changed (reset the initial scroll flag)
+      // 2. Messages just loaded for the first time for this channel
+      if (!hasInitialScrollDone && hasMessages) {
+        // Use setTimeout to ensure messages are rendered before scrolling
+        setTimeout(() => {
+          if (channelMessagesContainerRef.current) {
+            channelMessagesContainerRef.current.scrollTop = channelMessagesContainerRef.current.scrollHeight;
+            setIsChannelScrolledToBottom(true);
+            initialChannelScrollDoneRef.current.add(selectedChannel);
+          }
+        }, 100);
+      }
     }
-  }, [selectedDMNode, activeTab]);
+  }, [selectedChannel, activeTab, channelMessages]);
+
+  // Reset initial scroll flag when channel changes
+  useEffect(() => {
+    // Clear the flag when channel changes so next scroll will happen
+    initialChannelScrollDoneRef.current.delete(selectedChannel);
+  }, [selectedChannel]);
+
+  // Force scroll to bottom when DM node changes OR when messages first load
+  useEffect(() => {
+    if (activeTab === 'messages' && selectedDMNode && currentNodeId) {
+      const dmKey = [currentNodeId, selectedDMNode].sort().join('_');
+      const currentDMMessages = messages.filter(
+        msg => (msg.fromNodeId === currentNodeId && msg.toNodeId === selectedDMNode) ||
+               (msg.fromNodeId === selectedDMNode && msg.toNodeId === currentNodeId)
+      );
+      const hasMessages = currentDMMessages.length > 0;
+      const hasInitialScrollDone = initialDMScrollDoneRef.current.has(dmKey);
+
+      if (!hasInitialScrollDone && hasMessages) {
+        setTimeout(() => {
+          if (dmMessagesContainerRef.current) {
+            dmMessagesContainerRef.current.scrollTop = dmMessagesContainerRef.current.scrollHeight;
+            setIsDMScrolledToBottom(true);
+            initialDMScrollDoneRef.current.add(dmKey);
+          }
+        }, 150);
+      }
+    }
+  }, [selectedDMNode, activeTab, messages, currentNodeId]);
+
+  // Reset initial DM scroll flag when conversation changes
+  useEffect(() => {
+    if (selectedDMNode && currentNodeId) {
+      const dmKey = [currentNodeId, selectedDMNode].sort().join('_');
+      initialDMScrollDoneRef.current.delete(dmKey);
+    }
+  }, [selectedDMNode, currentNodeId]);
 
   // Unread counts polling is now handled by useUnreadCounts hook in MessagingContext
 
@@ -1900,7 +2062,34 @@ function App() {
         }
 
         setUnreadCounts(newUnreadCounts);
-        setChannelMessages(channelGroups);
+
+        // Merge poll messages with existing messages (preserve older messages loaded via infinite scroll)
+        setChannelMessages(prev => {
+          const merged: { [key: number]: MeshMessage[] } = {};
+
+          // Get all channel IDs from both existing and new messages
+          const allChannelIds = new Set([
+            ...Object.keys(prev).map(Number),
+            ...Object.keys(channelGroups).map(Number)
+          ]);
+
+          allChannelIds.forEach(channelId => {
+            const existingMsgs = prev[channelId] || [];
+            const pollMsgs = channelGroups[channelId] || [];
+
+            // Create a map of poll message IDs for quick lookup
+            const pollMsgIds = new Set(pollMsgs.map(m => m.id));
+
+            // Keep older messages that aren't in the poll (they were loaded via infinite scroll)
+            // Poll returns newest 100, so any messages not in poll are older
+            const olderMsgs = existingMsgs.filter(m => !pollMsgIds.has(m.id));
+
+            // Combine: older messages + poll messages (poll messages are newer/updated)
+            merged[channelId] = [...olderMsgs, ...pollMsgs];
+          });
+
+          return merged;
+        });
       }
 
       // Process config data
@@ -3620,6 +3809,12 @@ function App() {
 
                   <div className="channel-conversation">
                     <div className="messages-container" ref={channelMessagesContainerRef}>
+                      {channelLoadingMore[selectedChannel] && (
+                        <div className="loading-more-indicator">
+                          <span className="loading-spinner"></span>
+                          Loading older messages...
+                        </div>
+                      )}
                       {(() => {
                         // Use selected channel ID directly - no mapping needed
                         const messageChannel = selectedChannel;
@@ -4391,6 +4586,15 @@ function App() {
               })()}
 
               <div className="messages-container" ref={dmMessagesContainerRef}>
+                {(() => {
+                  const dmKey = currentNodeId && selectedDMNode ? [currentNodeId, selectedDMNode].sort().join('_') : '';
+                  return dmLoadingMore[dmKey] ? (
+                    <div className="loading-more-indicator">
+                      <span className="loading-spinner"></span>
+                      Loading older messages...
+                    </div>
+                  ) : null;
+                })()}
                 {(() => {
                   let dmMessages = getDMMessages(selectedDMNode);
 
