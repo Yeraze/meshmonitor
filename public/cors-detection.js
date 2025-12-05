@@ -62,11 +62,14 @@ window.fetch = function(...args) {
 };
 
 // Mark as loaded if React mounts anything - this prevents any redirect
-const observer = new MutationObserver(() => {
-  if (document.getElementById('root').children.length > 0) {
-    appLoaded = true;
-    console.log('[CORS Detection] React app mounted - CORS detection disabled');
-    observer.disconnect();
-  }
-});
-observer.observe(document.getElementById('root'), { childList: true });
+const rootElement = document.getElementById('root');
+if (rootElement) {
+  const observer = new MutationObserver(() => {
+    if (rootElement.children.length > 0) {
+      appLoaded = true;
+      console.log('[CORS Detection] React app mounted - CORS detection disabled');
+      observer.disconnect();
+    }
+  });
+  observer.observe(rootElement, { childList: true });
+}
