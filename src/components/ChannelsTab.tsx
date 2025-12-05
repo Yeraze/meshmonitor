@@ -233,9 +233,8 @@ export default function ChannelsTab({
   };
 
   // Get selected channel config for modal
-  const selectedChannelConfig = channelInfoModal !== null
-    ? channels.find(ch => ch.id === channelInfoModal) || null
-    : null;
+  const selectedChannelConfig =
+    channelInfoModal !== null ? channels.find(ch => ch.id === channelInfoModal) || null : null;
 
   const availableChannels = getAvailableChannels();
 
@@ -245,11 +244,7 @@ export default function ChannelsTab({
         <h2>Channels ({availableChannels.length})</h2>
         <div className="channels-controls">
           <label className="mqtt-toggle">
-            <input
-              type="checkbox"
-              checked={showMqttMessages}
-              onChange={e => setShowMqttMessages(e.target.checked)}
-            />
+            <input type="checkbox" checked={showMqttMessages} onChange={e => setShowMqttMessages(e.target.checked)} />
             Show MQTT/Bridge Messages
           </label>
         </div>
@@ -346,9 +341,7 @@ export default function ChannelsTab({
                         </div>
                       </div>
                       <div className="channel-button-right">
-                        {unreadCounts[channelId] > 0 && (
-                          <span className="unread-badge">{unreadCounts[channelId]}</span>
-                        )}
+                        {unreadCounts[channelId] > 0 && <span className="unread-badge">{unreadCounts[channelId]}</span>}
                         <div className="channel-button-status">
                           <span
                             className={`arrow-icon uplink ${channelConfig?.uplinkEnabled ? 'enabled' : 'disabled'}`}
@@ -521,7 +514,9 @@ export default function ChannelsTab({
                                           <span
                                             key={reaction.id}
                                             className="reaction"
-                                            title={`From ${getNodeShortName(reaction.from)} - Click to send same reaction`}
+                                            title={`From ${getNodeShortName(
+                                              reaction.from
+                                            )} - Click to send same reaction`}
                                             onClick={() => handleSendTapback(reaction.text, msg)}
                                           >
                                             {reaction.text}
@@ -613,109 +608,106 @@ export default function ChannelsTab({
       )}
 
       {/* Channel Info Modal */}
-      {channelInfoModal !== null && selectedChannelConfig && (() => {
-        const displayName = selectedChannelConfig.name || getChannelName(channelInfoModal);
-        const handleCloseModal = () => {
-          setChannelInfoModal(null);
-          setShowPsk(false);
-        };
+      {channelInfoModal !== null &&
+        selectedChannelConfig &&
+        (() => {
+          const displayName = selectedChannelConfig.name || getChannelName(channelInfoModal);
+          const handleCloseModal = () => {
+            setChannelInfoModal(null);
+            setShowPsk(false);
+          };
 
-        return (
-          <div className="modal-overlay" onClick={handleCloseModal}>
-            <div className="modal-content channel-info-modal" onClick={e => e.stopPropagation()}>
-              <div className="modal-header">
-                <h2>Channel Information</h2>
-                <button className="modal-close" onClick={handleCloseModal}>
-                  ×
-                </button>
-              </div>
-              <div className="modal-body">
-                <div className="channel-info-grid">
-                  <div className="info-row">
-                    <span className="info-label">Channel Name:</span>
-                    <span className="info-value">{displayName}</span>
-                  </div>
-                  <div className="info-row">
-                    <span className="info-label">Channel Number:</span>
-                    <span className="info-value">#{channelInfoModal}</span>
-                  </div>
-                  <div className="info-row">
-                    <span className="info-label">Encryption:</span>
-                    <span className="info-value">
-                      {selectedChannelConfig.psk && selectedChannelConfig.psk !== DEFAULT_UNENCRYPTED_PSK ? (
-                        <span className="status-encrypted">🔒 Encrypted</span>
-                      ) : (
-                        <span className="status-unencrypted">🔓 Unencrypted</span>
-                      )}
-                    </span>
-                  </div>
-                  {selectedChannelConfig.psk && (
-                    <div className="info-row">
-                      <span className="info-label">PSK (Base64):</span>
-                      <span
-                        className="info-value info-value-code"
-                        style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}
-                      >
-                        {showPsk ? selectedChannelConfig.psk : '••••••••'}
-                        <button
-                          onClick={() => setShowPsk(!showPsk)}
-                          style={{
-                            padding: '0.25rem 0.5rem',
-                            fontSize: '0.75rem',
-                            background: 'var(--ctp-surface1)',
-                            border: '1px solid var(--ctp-surface2)',
-                            borderRadius: '4px',
-                            color: 'var(--ctp-text)',
-                            cursor: 'pointer',
-                            transition: 'all 0.2s',
-                          }}
-                          onMouseOver={e => (e.currentTarget.style.background = 'var(--ctp-surface2)')}
-                          onMouseOut={e => (e.currentTarget.style.background = 'var(--ctp-surface1)')}
-                        >
-                          {showPsk ? 'Hide' : 'Show'}
-                        </button>
-                      </span>
-                    </div>
-                  )}
-                  <div className="info-row">
-                    <span className="info-label">MQTT Uplink:</span>
-                    <span className="info-value">
-                      {selectedChannelConfig.uplinkEnabled ? (
-                        <span className="status-enabled">✓ Enabled</span>
-                      ) : (
-                        <span className="status-disabled">✗ Disabled</span>
-                      )}
-                    </span>
-                  </div>
-                  <div className="info-row">
-                    <span className="info-label">MQTT Downlink:</span>
-                    <span className="info-value">
-                      {selectedChannelConfig.downlinkEnabled ? (
-                        <span className="status-enabled">✓ Enabled</span>
-                      ) : (
-                        <span className="status-disabled">✗ Disabled</span>
-                      )}
-                    </span>
-                  </div>
-                  {selectedChannelConfig.createdAt && (
-                    <div className="info-row">
-                      <span className="info-label">Discovered:</span>
-                      <span className="info-value">
-                        {new Date(selectedChannelConfig.createdAt).toLocaleString()}
-                      </span>
-                    </div>
-                  )}
-                  {selectedChannelConfig.updatedAt && (
-                    <div className="info-row">
-                      <span className="info-label">Last Updated:</span>
-                      <span className="info-value">
-                        {new Date(selectedChannelConfig.updatedAt).toLocaleString()}
-                      </span>
-                    </div>
-                  )}
+          return (
+            <div className="modal-overlay" onClick={handleCloseModal}>
+              <div className="modal-content channel-info-modal" onClick={e => e.stopPropagation()}>
+                <div className="modal-header">
+                  <h2>Channel Information</h2>
+                  <button className="modal-close" onClick={handleCloseModal}>
+                    ×
+                  </button>
                 </div>
-                {hasPermission(`channel_${channelInfoModal}` as ResourceType, 'write') &&
-                  channelInfoModal !== -1 && (
+                <div className="modal-body">
+                  <div className="channel-info-grid">
+                    <div className="info-row">
+                      <span className="info-label">Channel Name:</span>
+                      <span className="info-value">{displayName}</span>
+                    </div>
+                    <div className="info-row">
+                      <span className="info-label">Channel Number:</span>
+                      <span className="info-value">#{channelInfoModal}</span>
+                    </div>
+                    <div className="info-row">
+                      <span className="info-label">Encryption:</span>
+                      <span className="info-value">
+                        {selectedChannelConfig.psk && selectedChannelConfig.psk !== DEFAULT_UNENCRYPTED_PSK ? (
+                          <span className="status-encrypted">🔒 Encrypted</span>
+                        ) : (
+                          <span className="status-unencrypted">🔓 Unencrypted</span>
+                        )}
+                      </span>
+                    </div>
+                    {selectedChannelConfig.psk && (
+                      <div className="info-row">
+                        <span className="info-label">PSK (Base64):</span>
+                        <span
+                          className="info-value info-value-code"
+                          style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}
+                        >
+                          {showPsk ? selectedChannelConfig.psk : '••••••••'}
+                          <button
+                            onClick={() => setShowPsk(!showPsk)}
+                            style={{
+                              padding: '0.25rem 0.5rem',
+                              fontSize: '0.75rem',
+                              background: 'var(--ctp-surface1)',
+                              border: '1px solid var(--ctp-surface2)',
+                              borderRadius: '4px',
+                              color: 'var(--ctp-text)',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s',
+                            }}
+                            onMouseOver={e => (e.currentTarget.style.background = 'var(--ctp-surface2)')}
+                            onMouseOut={e => (e.currentTarget.style.background = 'var(--ctp-surface1)')}
+                          >
+                            {showPsk ? 'Hide' : 'Show'}
+                          </button>
+                        </span>
+                      </div>
+                    )}
+                    <div className="info-row">
+                      <span className="info-label">MQTT Uplink:</span>
+                      <span className="info-value">
+                        {selectedChannelConfig.uplinkEnabled ? (
+                          <span className="status-enabled">✓ Enabled</span>
+                        ) : (
+                          <span className="status-disabled">✗ Disabled</span>
+                        )}
+                      </span>
+                    </div>
+                    <div className="info-row">
+                      <span className="info-label">MQTT Downlink:</span>
+                      <span className="info-value">
+                        {selectedChannelConfig.downlinkEnabled ? (
+                          <span className="status-enabled">✓ Enabled</span>
+                        ) : (
+                          <span className="status-disabled">✗ Disabled</span>
+                        )}
+                      </span>
+                    </div>
+                    {selectedChannelConfig.createdAt && (
+                      <div className="info-row">
+                        <span className="info-label">Discovered:</span>
+                        <span className="info-value">{new Date(selectedChannelConfig.createdAt).toLocaleString()}</span>
+                      </div>
+                    )}
+                    {selectedChannelConfig.updatedAt && (
+                      <div className="info-row">
+                        <span className="info-label">Last Updated:</span>
+                        <span className="info-value">{new Date(selectedChannelConfig.updatedAt).toLocaleString()}</span>
+                      </div>
+                    )}
+                  </div>
+                  {hasPermission(`channel_${channelInfoModal}` as ResourceType, 'write') && channelInfoModal !== -1 && (
                     <div
                       style={{
                         marginTop: '1.5rem',
@@ -755,11 +747,11 @@ export default function ChannelsTab({
                       </p>
                     </div>
                   )}
+                </div>
               </div>
             </div>
-          </div>
-        );
-      })()}
+          );
+        })()}
     </div>
   );
 }

@@ -8,23 +8,23 @@
  * reading directly from the TanStack Query cache instead of DataContext.
  */
 
-import { useMemo } from "react";
-import { useNodes, useTelemetryNodes } from "./useServerData";
-import { useUI } from "../contexts/UIContext";
-import { useSettings } from "../contexts/SettingsContext";
-import type { DeviceInfo } from "../types/device";
-import type { SortField, SortDirection } from "../types/ui";
+import { useMemo } from 'react';
+import { useNodes, useTelemetryNodes } from './useServerData';
+import { useUI } from '../contexts/UIContext';
+import { useSettings } from '../contexts/SettingsContext';
+import type { DeviceInfo } from '../types/device';
+import type { SortField, SortDirection } from '../types/ui';
 
 /**
  * Node filter configuration
  * Controls which nodes are displayed based on various criteria
  */
 export interface NodeFilters {
-  filterMode: "show" | "hide";
+  filterMode: 'show' | 'hide';
   showMqtt: boolean;
   showTelemetry: boolean;
   showEnvironment: boolean;
-  powerSource: "powered" | "battery" | "both";
+  powerSource: 'powered' | 'battery' | 'both';
   showPosition: boolean;
   minHops: number;
   maxHops: number;
@@ -38,11 +38,11 @@ export interface NodeFilters {
  * Default filter values
  */
 export const DEFAULT_NODE_FILTERS: NodeFilters = {
-  filterMode: "show",
+  filterMode: 'show',
   showMqtt: false,
   showTelemetry: false,
   showEnvironment: false,
-  powerSource: "both",
+  powerSource: 'both',
   showPosition: false,
   minHops: 0,
   maxHops: 10,
@@ -55,67 +55,57 @@ export const DEFAULT_NODE_FILTERS: NodeFilters = {
 /**
  * Helper function to sort nodes by a given field and direction
  */
-export function sortNodes(
-  nodes: DeviceInfo[],
-  field: SortField,
-  direction: SortDirection
-): DeviceInfo[] {
+export function sortNodes(nodes: DeviceInfo[], field: SortField, direction: SortDirection): DeviceInfo[] {
   return [...nodes].sort((a, b) => {
     let aVal: string | number, bVal: string | number;
 
     switch (field) {
-      case "longName":
+      case 'longName':
         aVal = a.user?.longName || `Node ${a.nodeNum}`;
         bVal = b.user?.longName || `Node ${b.nodeNum}`;
         break;
-      case "shortName":
-        aVal = a.user?.shortName || "";
-        bVal = b.user?.shortName || "";
+      case 'shortName':
+        aVal = a.user?.shortName || '';
+        bVal = b.user?.shortName || '';
         break;
-      case "id":
+      case 'id':
         aVal = a.user?.id || String(a.nodeNum);
         bVal = b.user?.id || String(b.nodeNum);
         break;
-      case "lastHeard":
+      case 'lastHeard':
         aVal = a.lastHeard || 0;
         bVal = b.lastHeard || 0;
         break;
-      case "snr":
+      case 'snr':
         aVal = a.snr || -999;
         bVal = b.snr || -999;
         break;
-      case "battery":
+      case 'battery':
         aVal = a.deviceMetrics?.batteryLevel || -1;
         bVal = b.deviceMetrics?.batteryLevel || -1;
         break;
-      case "hwModel":
+      case 'hwModel':
         aVal = a.user?.hwModel || 0;
         bVal = b.user?.hwModel || 0;
         break;
-      case "hops": {
+      case 'hops': {
         // For nodes without hop data, use fallback values that push them to bottom
         // Ascending: use 999 (high value = bottom), Descending: use -1 (low value = bottom)
-        const noHopFallback = direction === "asc" ? 999 : -1;
-        aVal =
-          a.hopsAway !== undefined && a.hopsAway !== null
-            ? a.hopsAway
-            : noHopFallback;
-        bVal =
-          b.hopsAway !== undefined && b.hopsAway !== null
-            ? b.hopsAway
-            : noHopFallback;
+        const noHopFallback = direction === 'asc' ? 999 : -1;
+        aVal = a.hopsAway !== undefined && a.hopsAway !== null ? a.hopsAway : noHopFallback;
+        bVal = b.hopsAway !== undefined && b.hopsAway !== null ? b.hopsAway : noHopFallback;
         break;
       }
       default:
         return 0;
     }
 
-    if (typeof aVal === "string" && typeof bVal === "string") {
+    if (typeof aVal === 'string' && typeof bVal === 'string') {
       const comparison = aVal.toLowerCase().localeCompare(bVal.toLowerCase());
-      return direction === "asc" ? comparison : -comparison;
+      return direction === 'asc' ? comparison : -comparison;
     } else {
       const comparison = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
-      return direction === "asc" ? comparison : -comparison;
+      return direction === 'asc' ? comparison : -comparison;
     }
   });
 }
@@ -123,23 +113,16 @@ export function sortNodes(
 /**
  * Helper function to filter nodes by text search
  */
-export function filterNodesByText(
-  nodes: DeviceInfo[],
-  filter: string
-): DeviceInfo[] {
+export function filterNodesByText(nodes: DeviceInfo[], filter: string): DeviceInfo[] {
   if (!filter.trim()) return nodes;
 
   const lowerFilter = filter.toLowerCase();
-  return nodes.filter((node) => {
-    const longName = (node.user?.longName || "").toLowerCase();
-    const shortName = (node.user?.shortName || "").toLowerCase();
-    const id = (node.user?.id || "").toLowerCase();
+  return nodes.filter(node => {
+    const longName = (node.user?.longName || '').toLowerCase();
+    const shortName = (node.user?.shortName || '').toLowerCase();
+    const id = (node.user?.id || '').toLowerCase();
 
-    return (
-      longName.includes(lowerFilter) ||
-      shortName.includes(lowerFilter) ||
-      id.includes(lowerFilter)
-    );
+    return longName.includes(lowerFilter) || shortName.includes(lowerFilter) || id.includes(lowerFilter);
   });
 }
 
@@ -176,18 +159,13 @@ export function useProcessedNodes(options: UseProcessedNodesOptions = {}) {
   const { nodes, isLoading } = useNodes();
 
   // Get telemetry availability
-  const { nodesWithTelemetry, nodesWithWeather, nodesWithPKC } =
-    useTelemetryNodes();
+  const { nodesWithTelemetry, nodesWithWeather, nodesWithPKC } = useTelemetryNodes();
 
   // Get UI filters
   const { nodeFilter: uiNodeFilter } = useUI();
 
   // Get settings
-  const {
-    maxNodeAgeHours: settingsMaxAge,
-    preferredSortField,
-    preferredSortDirection,
-  } = useSettings();
+  const { maxNodeAgeHours: settingsMaxAge, preferredSortField, preferredSortDirection } = useSettings();
 
   // Allow overrides from options
   const nodeFilters = options.nodeFilters ?? DEFAULT_NODE_FILTERS;
@@ -201,7 +179,7 @@ export function useProcessedNodes(options: UseProcessedNodesOptions = {}) {
     const cutoffTime = Date.now() / 1000 - maxNodeAgeHours * 60 * 60;
 
     // Step 1: Age filter
-    const ageFiltered = nodes.filter((node) => {
+    const ageFiltered = nodes.filter(node => {
       if (!node.lastHeard) return false;
       return node.lastHeard >= cutoffTime;
     });
@@ -210,9 +188,9 @@ export function useProcessedNodes(options: UseProcessedNodesOptions = {}) {
     const textFiltered = filterNodesByText(ageFiltered, textFilter);
 
     // Step 3: Advanced filters
-    const advancedFiltered = textFiltered.filter((node) => {
+    const advancedFiltered = textFiltered.filter(node => {
       const nodeId = node.user?.id;
-      const isShowMode = nodeFilters.filterMode === "show";
+      const isShowMode = nodeFilters.filterMode === 'show';
 
       // MQTT filter
       if (nodeFilters.showMqtt) {
@@ -237,22 +215,19 @@ export function useProcessedNodes(options: UseProcessedNodesOptions = {}) {
 
       // Power source filter
       const batteryLevel = node.deviceMetrics?.batteryLevel;
-      if (nodeFilters.powerSource !== "both" && batteryLevel !== undefined) {
+      if (nodeFilters.powerSource !== 'both' && batteryLevel !== undefined) {
         const isPowered = batteryLevel === 101;
-        if (nodeFilters.powerSource === "powered" && !isPowered) {
+        if (nodeFilters.powerSource === 'powered' && !isPowered) {
           return false;
         }
-        if (nodeFilters.powerSource === "battery" && isPowered) {
+        if (nodeFilters.powerSource === 'battery' && isPowered) {
           return false;
         }
       }
 
       // Position filter
       if (nodeFilters.showPosition) {
-        const hasPosition =
-          node.position &&
-          node.position.latitude != null &&
-          node.position.longitude != null;
+        const hasPosition = node.position && node.position.latitude != null && node.position.longitude != null;
         const matches = hasPosition;
         if (isShowMode && !matches) return false;
         if (!isShowMode && matches) return false;
@@ -260,10 +235,7 @@ export function useProcessedNodes(options: UseProcessedNodesOptions = {}) {
 
       // Hops filter (always applies regardless of mode)
       if (node.hopsAway != null) {
-        if (
-          node.hopsAway < nodeFilters.minHops ||
-          node.hopsAway > nodeFilters.maxHops
-        ) {
+        if (node.hopsAway < nodeFilters.minHops || node.hopsAway > nodeFilters.maxHops) {
           return false;
         }
       }
@@ -277,10 +249,8 @@ export function useProcessedNodes(options: UseProcessedNodesOptions = {}) {
 
       // Unknown nodes filter
       if (nodeFilters.showUnknown) {
-        const hasLongName =
-          node.user?.longName && node.user.longName.trim() !== "";
-        const hasShortName =
-          node.user?.shortName && node.user.shortName.trim() !== "";
+        const hasLongName = node.user?.longName && node.user.longName.trim() !== '';
+        const hasShortName = node.user?.shortName && node.user.shortName.trim() !== '';
         const isUnknown = !hasLongName && !hasShortName;
         const matches = isUnknown;
         if (isShowMode && !matches) return false;
@@ -289,10 +259,7 @@ export function useProcessedNodes(options: UseProcessedNodesOptions = {}) {
 
       // Device role filter
       if (nodeFilters.deviceRoles.length > 0) {
-        const role =
-          typeof node.user?.role === "number"
-            ? node.user.role
-            : parseInt(node.user?.role || "0");
+        const role = typeof node.user?.role === 'number' ? node.user.role : parseInt(node.user?.role || '0');
         const matches = nodeFilters.deviceRoles.includes(role);
         if (isShowMode && !matches) return false;
         if (!isShowMode && matches) return false;
@@ -310,8 +277,8 @@ export function useProcessedNodes(options: UseProcessedNodesOptions = {}) {
     });
 
     // Step 4: Sort with favorites first
-    const favorites = advancedFiltered.filter((node) => node.isFavorite);
-    const nonFavorites = advancedFiltered.filter((node) => !node.isFavorite);
+    const favorites = advancedFiltered.filter(node => node.isFavorite);
+    const nonFavorites = advancedFiltered.filter(node => !node.isFavorite);
 
     const sortedFavorites = sortNodes(favorites, sortField, sortDirection);
     const sortedNonFavorites = sortNodes(nonFavorites, sortField, sortDirection);

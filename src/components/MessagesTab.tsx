@@ -295,9 +295,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
 
       const lastMessage =
         dmMessages.length > 0
-          ? dmMessages.reduce((latest, msg) =>
-              msg.timestamp.getTime() > latest.timestamp.getTime() ? msg : latest
-            )
+          ? dmMessages.reduce((latest, msg) => (msg.timestamp.getTime() > latest.timestamp.getTime() ? msg : latest))
           : null;
 
       const lastMessageText = lastMessage
@@ -798,11 +796,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       <div className="reply-indicator-label">Replying to {getNodeName(replyingTo.from)}</div>
                       <div className="reply-indicator-text">{replyingTo.text}</div>
                     </div>
-                    <button
-                      className="reply-indicator-close"
-                      onClick={() => setReplyingTo(null)}
-                      title="Cancel reply"
-                    >
+                    <button className="reply-indicator-close" onClick={() => setReplyingTo(null)} title="Cancel reply">
                       ×
                     </button>
                   </div>
