@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { logger } from '../utils/logger';
 
@@ -14,6 +15,7 @@ interface LoginModalProps {
 }
 
 const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
+  const { t } = useTranslation();
   const { login, loginWithOIDC, authStatus } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -49,7 +51,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
       if (err instanceof Error && err.message.includes('Session cookie')) {
         setError(err.message);
       } else {
-        setError('Invalid username or password');
+        setError(t('auth.invalid_credentials'));
       }
     } finally {
       setLoading(false);
@@ -65,7 +67,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
       // User will be redirected to OIDC provider
     } catch (err) {
       logger.error('OIDC login error:', err);
-      setError('Failed to initiate OIDC login');
+      setError(t('auth.oidc_failed'));
       setLoading(false);
     }
   };
@@ -74,7 +76,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2>Login</h2>
+          <h2>{t('auth.login')}</h2>
           <button className="close-button" onClick={onClose}>×</button>
         </div>
 
@@ -83,7 +85,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
           {!localAuthDisabled && (
             <form onSubmit={handleLocalLogin}>
               <div className="form-group">
-                <label htmlFor="username">Username</label>
+                <label htmlFor="username">{t('auth.username')}</label>
                 <input
                   ref={usernameInputRef}
                   id="username"
@@ -97,7 +99,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
               </div>
 
               <div className="form-group">
-                <label htmlFor="password">Password</label>
+                <label htmlFor="password">{t('auth.password')}</label>
                 <input
                   id="password"
                   type="password"
@@ -120,7 +122,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                 className="button button-primary"
                 disabled={loading || !username || !password}
               >
-                {loading ? 'Logging in...' : 'Login'}
+                {loading ? t('auth.logging_in') : t('auth.login')}
               </button>
             </form>
           )}
@@ -128,7 +130,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
           {/* Divider between auth methods */}
           {!localAuthDisabled && oidcEnabled && (
             <div className="login-divider">
-              <span>OR</span>
+              <span>{t('common.or')}</span>
             </div>
           )}
 
@@ -147,7 +149,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                 onClick={handleOIDCLogin}
                 disabled={loading}
               >
-                Login with OIDC
+                {t('auth.login_with_oidc')}
               </button>
             </>
           )}
@@ -155,8 +157,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
           {/* Show message if only OIDC is available */}
           {localAuthDisabled && !oidcEnabled && (
             <div className="error-message">
-              Local authentication is disabled and OIDC is not configured.
-              Please contact your administrator.
+              {t('auth.local_disabled_no_oidc')}
             </div>
           )}
         </div>

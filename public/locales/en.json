@@ -86,6 +86,9 @@
   "common.send": "Send",
   "common.download": "Download",
   "common.upload": "Upload",
+  "common.or": "OR",
+  "common.version": "Version",
+  "common.view_on_github": "View on GitHub",
 
   "auth.login": "Login",
   "auth.username": "Username",
@@ -107,6 +110,9 @@
   "auth.passwords_not_match": "Passwords do not match",
   "auth.password_same_as_current": "New password must be different from current password",
   "auth.failed_change_password": "Failed to change password",
+  "auth.logging_in": "Logging in...",
+  "auth.oidc_failed": "Failed to initiate OIDC login",
+  "auth.local_disabled_no_oidc": "Local authentication is disabled and OIDC is not configured. Please contact your administrator.",
 
   "nodes.title": "Nodes",
   "nodes.map": "Map View",
