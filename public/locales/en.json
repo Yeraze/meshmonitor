@@ -1109,5 +1109,64 @@
   "info.record_clear_failed": "Failed to clear record holder. Please try again.",
 
   "info.device_config_unavailable": "Device configuration not available. Ensure connection is established.",
-  "info.local_telemetry": "Local Node Telemetry"
+  "info.local_telemetry": "Local Node Telemetry",
+
+  "config.loading": "Loading configuration...",
+  "config.warning_title": "WARNING",
+  "config.warning_text": "Modifying these settings can break your Meshtastic node configuration.",
+  "config.warning_description": "These settings directly modify the configuration of your locally connected Meshtastic device. Incorrect settings may cause communication issues, network problems, or require a factory reset. Only modify these settings if you understand what you are doing.",
+  "config.reboot_device": "Reboot Device",
+  "config.purge_node_db": "Purge Node Database",
+  "config.import_export_title": "Configuration Import/Export",
+  "config.import_export_description": "Import or export channel configurations and device settings in Meshtastic URL format. These URLs are compatible with the official Meshtastic apps.",
+  "config.import_config": "Import Configuration",
+  "config.export_config": "Export Configuration",
+
+  "config.reboot_confirm": "Are you sure you want to reboot the device?\n\nThe device will restart and be unavailable for approximately 30-60 seconds.",
+  "config.rebooting": "Rebooting device... This may take up to 60 seconds.",
+  "config.rebooting_toast": "Rebooting device...",
+  "config.reboot_success": "Device rebooted successfully and reconnected!",
+  "config.reboot_success_toast": "Device rebooted successfully!",
+  "config.reboot_failed_reconnect": "Device reboot initiated, but failed to reconnect. Please check connection manually.",
+  "config.reboot_failed_reconnect_toast": "Device reboot initiated, but failed to reconnect",
+  "config.reboot_sent": "Reboot command sent! Device will restart in 5 seconds.",
+  "config.reboot_sent_toast": "Reboot command sent!",
+  "config.reboot_failed": "Failed to reboot device",
+
+  "config.purge_confirm": "Are you sure you want to purge the node database?\n\nThis will PERMANENTLY DELETE all stored node information from the device.\nThis action CANNOT be undone!\n\nThe device will automatically rebuild the database as it hears from nodes on the mesh.",
+  "config.purge_success": "Node database purged successfully!",
+  "config.purge_failed": "Failed to purge node database",
+
+  "config.node_info_adjusted": "Node Info Broadcast Interval adjusted to minimum value of 3600 seconds (1 hour)",
+  "config.device_config_saved": "Device configuration saved successfully! Device will reboot...",
+  "config.device_config_saved_toast": "Device configuration saved! Device will reboot...",
+  "config.device_config_failed": "Failed to save device configuration",
+
+  "config.node_names_saved": "Node names saved successfully! Device will reboot...",
+  "config.node_names_saved_toast": "Node names saved! Device will reboot...",
+  "config.node_names_failed": "Failed to save node names",
+
+  "config.hop_limit_adjusted": "Hop Limit adjusted to valid range (1-7)",
+  "config.lora_saved": "LoRa configuration saved successfully! Device will reboot...",
+  "config.lora_saved_toast": "LoRa configuration saved! Device will reboot...",
+  "config.lora_failed": "Failed to save LoRa configuration",
+
+  "config.position_interval_adjusted": "Position Broadcast Interval adjusted to minimum value of 32 seconds",
+  "config.latitude_range_error": "Latitude must be between -90 and 90",
+  "config.longitude_range_error": "Longitude must be between -180 and 180",
+  "config.position_saved": "Position configuration saved successfully! Device will reboot...",
+  "config.position_saved_toast": "Position configuration saved! Device will reboot...",
+  "config.position_failed": "Failed to save position configuration",
+
+  "config.mqtt_saved": "MQTT configuration saved successfully! Device will reboot...",
+  "config.mqtt_saved_toast": "MQTT configuration saved! Device will reboot...",
+  "config.mqtt_failed": "Failed to save MQTT configuration",
+
+  "config.neighbor_interval_adjusted": "NeighborInfo interval adjusted to minimum value of 14400 seconds (4 hours)",
+  "config.neighbor_saved": "NeighborInfo configuration saved successfully! Device will reboot...",
+  "config.neighbor_saved_toast": "NeighborInfo configuration saved! Device will reboot...",
+  "config.neighbor_failed": "Failed to save NeighborInfo configuration",
+
+  "config.import_success": "Configuration imported successfully",
+  "config.load_warning": "Warning: Could not load current configuration. Default values shown."
 }

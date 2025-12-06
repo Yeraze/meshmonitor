@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import apiService from '../services/api';
 import { useToast } from './ToastContainer';
 import type { DeviceInfo, Channel } from '../types/device';
@@ -26,6 +27,7 @@ interface ConfigurationTabProps {
 }
 
 const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [], onRebootDevice, onConfigChangeTriggeringReboot, onChannelsUpdated, refreshTrigger }) => {
+  const { t } = useTranslation();
   const { showToast } = useToast();
 
   // Device Config State
@@ -187,7 +189,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         }
       } catch (error) {
         logger.error('Error fetching configuration:', error);
-        setStatusMessage('Warning: Could not load current configuration. Default values shown.');
+        setStatusMessage(t('config.load_warning'));
       } finally {
         setIsLoading(false);
       }
@@ -238,7 +240,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
       const validNodeInfoBroadcastSecs = Math.max(3600, nodeInfoBroadcastSecs);
       if (validNodeInfoBroadcastSecs !== nodeInfoBroadcastSecs) {
         setNodeInfoBroadcastSecs(validNodeInfoBroadcastSecs);
-        showToast('Node Info Broadcast Interval adjusted to minimum value of 3600 seconds (1 hour)', 'warning');
+        showToast(t('config.node_info_adjusted'), 'warning');
         setIsSaving(false);
         return;
       }
@@ -247,15 +249,15 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         role,
         nodeInfoBroadcastSecs: validNodeInfoBroadcastSecs
       });
-      setStatusMessage('Device configuration saved successfully! Device will reboot...');
-      showToast('Device configuration saved! Device will reboot...', 'success');
+      setStatusMessage(t('config.device_config_saved'));
+      showToast(t('config.device_config_saved_toast'), 'success');
       // Notify parent that config change will trigger reboot
       onConfigChangeTriggeringReboot?.();
     } catch (error) {
       logger.error('Error saving device config:', error);
-      const errorMsg = error instanceof Error ? error.message : 'Failed to save device configuration';
+      const errorMsg = error instanceof Error ? error.message : t('config.device_config_failed');
       setStatusMessage(`Error: ${errorMsg}`);
-      showToast(`Failed to save device configuration: ${errorMsg}`, 'error');
+      showToast(`${t('config.device_config_failed')}: ${errorMsg}`, 'error');
     } finally {
       setIsSaving(false);
     }
@@ -266,14 +268,14 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
     setStatusMessage('');
     try {
       await apiService.setNodeOwner(longName, shortName, isUnmessagable);
-      setStatusMessage('Node names saved successfully! Device will reboot...');
-      showToast('Node names saved! Device will reboot...', 'success');
+      setStatusMessage(t('config.node_names_saved'));
+      showToast(t('config.node_names_saved_toast'), 'success');
       onConfigChangeTriggeringReboot?.();
     } catch (error) {
       logger.error('Error saving node owner:', error);
-      const errorMsg = error instanceof Error ? error.message : 'Failed to save node names';
+      const errorMsg = error instanceof Error ? error.message : t('config.node_names_failed');
       setStatusMessage(`Error: ${errorMsg}`);
-      showToast(`Failed to save node names: ${errorMsg}`, 'error');
+      showToast(`${t('config.node_names_failed')}: ${errorMsg}`, 'error');
     } finally {
       setIsSaving(false);
     }
@@ -287,7 +289,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
       const validHopLimit = Math.min(7, Math.max(1, hopLimit));
       if (validHopLimit !== hopLimit) {
         setHopLimit(validHopLimit);
-        showToast(`Hop Limit adjusted to valid range (1-7)`, 'warning');
+        showToast(t('config.hop_limit_adjusted'), 'warning');
         setIsSaving(false);
         return;
       }
@@ -306,14 +308,14 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         channelNum,
         sx126xRxBoostedGain
       });
-      setStatusMessage('LoRa configuration saved successfully! Device will reboot...');
-      showToast('LoRa configuration saved! Device will reboot...', 'success');
+      setStatusMessage(t('config.lora_saved'));
+      showToast(t('config.lora_saved_toast'), 'success');
       onConfigChangeTriggeringReboot?.();
     } catch (error) {
       logger.error('Error saving LoRa config:', error);
-      const errorMsg = error instanceof Error ? error.message : 'Failed to save LoRa configuration';
+      const errorMsg = error instanceof Error ? error.message : t('config.lora_failed');
       setStatusMessage(`Error: ${errorMsg}`);
-      showToast(`Failed to save LoRa configuration: ${errorMsg}`, 'error');
+      showToast(`${t('config.lora_failed')}: ${errorMsg}`, 'error');
     } finally {
       setIsSaving(false);
     }
@@ -327,7 +329,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
       const validPositionBroadcastSecs = Math.max(32, positionBroadcastSecs);
       if (validPositionBroadcastSecs !== positionBroadcastSecs) {
         setPositionBroadcastSecs(validPositionBroadcastSecs);
-        showToast('Position Broadcast Interval adjusted to minimum value of 32 seconds', 'warning');
+        showToast(t('config.position_interval_adjusted'), 'warning');
         setIsSaving(false);
         return;
       }
@@ -335,12 +337,12 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
       // Validate lat/long ranges if fixed position is enabled
       if (fixedPosition) {
         if (fixedLatitude < -90 || fixedLatitude > 90) {
-          showToast('Latitude must be between -90 and 90', 'error');
+          showToast(t('config.latitude_range_error'), 'error');
           setIsSaving(false);
           return;
         }
         if (fixedLongitude < -180 || fixedLongitude > 180) {
-          showToast('Longitude must be between -180 and 180', 'error');
+          showToast(t('config.longitude_range_error'), 'error');
           setIsSaving(false);
           return;
         }
@@ -354,14 +356,14 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         longitude: fixedPosition ? fixedLongitude : undefined,
         altitude: fixedPosition ? fixedAltitude : undefined
       });
-      setStatusMessage('Position configuration saved successfully! Device will reboot...');
-      showToast('Position configuration saved! Device will reboot...', 'success');
+      setStatusMessage(t('config.position_saved'));
+      showToast(t('config.position_saved_toast'), 'success');
       onConfigChangeTriggeringReboot?.();
     } catch (error) {
       logger.error('Error saving position config:', error);
-      const errorMsg = error instanceof Error ? error.message : 'Failed to save position configuration';
+      const errorMsg = error instanceof Error ? error.message : t('config.position_failed');
       setStatusMessage(`Error: ${errorMsg}`);
-      showToast(`Failed to save position configuration: ${errorMsg}`, 'error');
+      showToast(`${t('config.position_failed')}: ${errorMsg}`, 'error');
     } finally {
       setIsSaving(false);
     }
@@ -380,14 +382,14 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         jsonEnabled: mqttJsonEnabled,
         root: mqttRoot
       });
-      setStatusMessage('MQTT configuration saved successfully! Device will reboot...');
-      showToast('MQTT configuration saved! Device will reboot...', 'success');
+      setStatusMessage(t('config.mqtt_saved'));
+      showToast(t('config.mqtt_saved_toast'), 'success');
       onConfigChangeTriggeringReboot?.();
     } catch (error) {
       logger.error('Error saving MQTT config:', error);
-      const errorMsg = error instanceof Error ? error.message : 'Failed to save MQTT configuration';
+      const errorMsg = error instanceof Error ? error.message : t('config.mqtt_failed');
       setStatusMessage(`Error: ${errorMsg}`);
-      showToast(`Failed to save MQTT configuration: ${errorMsg}`, 'error');
+      showToast(`${t('config.mqtt_failed')}: ${errorMsg}`, 'error');
     } finally {
       setIsSaving(false);
     }
@@ -401,31 +403,28 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
       const validInterval = Math.max(14400, neighborInfoInterval);
       if (validInterval !== neighborInfoInterval) {
         setNeighborInfoInterval(validInterval);
-        showToast('NeighborInfo interval adjusted to minimum value of 14400 seconds (4 hours)', 'warning');
+        showToast(t('config.neighbor_interval_adjusted'), 'warning');
       }
 
       await apiService.setNeighborInfoConfig({
         enabled: neighborInfoEnabled,
         updateInterval: validInterval
       });
-      setStatusMessage('NeighborInfo configuration saved successfully! Device will reboot...');
-      showToast('NeighborInfo configuration saved! Device will reboot...', 'success');
+      setStatusMessage(t('config.neighbor_saved'));
+      showToast(t('config.neighbor_saved_toast'), 'success');
       onConfigChangeTriggeringReboot?.();
     } catch (error) {
       logger.error('Error saving NeighborInfo config:', error);
-      const errorMsg = error instanceof Error ? error.message : 'Failed to save NeighborInfo configuration';
+      const errorMsg = error instanceof Error ? error.message : t('config.neighbor_failed');
       setStatusMessage(`Error: ${errorMsg}`);
-      showToast(`Failed to save NeighborInfo configuration: ${errorMsg}`, 'error');
+      showToast(`${t('config.neighbor_failed')}: ${errorMsg}`, 'error');
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleRebootDevice = async () => {
-    const confirmed = window.confirm(
-      'Are you sure you want to reboot the device?\n\n' +
-      'The device will restart and be unavailable for approximately 30-60 seconds.'
-    );
+    const confirmed = window.confirm(t('config.reboot_confirm'));
 
     if (!confirmed) {
       return;
@@ -436,39 +435,34 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
     try {
       if (onRebootDevice) {
         // Use the parent handler which manages connection status
-        setStatusMessage('Rebooting device... This may take up to 60 seconds.');
-        showToast('Rebooting device...', 'info');
+        setStatusMessage(t('config.rebooting'));
+        showToast(t('config.rebooting_toast'), 'info');
         const success = await onRebootDevice();
         if (success) {
-          setStatusMessage('Device rebooted successfully and reconnected!');
-          showToast('Device rebooted successfully!', 'success');
+          setStatusMessage(t('config.reboot_success'));
+          showToast(t('config.reboot_success_toast'), 'success');
         } else {
-          setStatusMessage('Device reboot initiated, but failed to reconnect. Please check connection manually.');
-          showToast('Device reboot initiated, but failed to reconnect', 'warning');
+          setStatusMessage(t('config.reboot_failed_reconnect'));
+          showToast(t('config.reboot_failed_reconnect_toast'), 'warning');
         }
       } else {
         // Fallback to direct API call if handler not provided
         await apiService.rebootDevice(5);
-        setStatusMessage('Reboot command sent! Device will restart in 5 seconds.');
-        showToast('Reboot command sent!', 'success');
+        setStatusMessage(t('config.reboot_sent'));
+        showToast(t('config.reboot_sent_toast'), 'success');
       }
     } catch (error) {
       logger.error('Error rebooting device:', error);
-      const errorMsg = error instanceof Error ? error.message : 'Failed to reboot device';
+      const errorMsg = error instanceof Error ? error.message : t('config.reboot_failed');
       setStatusMessage(`Error: ${errorMsg}`);
-      showToast(`Failed to reboot device: ${errorMsg}`, 'error');
+      showToast(`${t('config.reboot_failed')}: ${errorMsg}`, 'error');
     } finally {
       setIsSaving(false);
     }
   };
 
   const handlePurgeNodeDb = async () => {
-    const confirmed = window.confirm(
-      'Are you sure you want to purge the node database?\n\n' +
-      'This will PERMANENTLY DELETE all stored node information from the device.\n' +
-      'This action CANNOT be undone!\n\n' +
-      'The device will automatically rebuild the database as it hears from nodes on the mesh.'
-    );
+    const confirmed = window.confirm(t('config.purge_confirm'));
 
     if (!confirmed) {
       return;
@@ -478,13 +472,13 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
     setStatusMessage('');
     try {
       await apiService.purgeNodeDb(0);
-      setStatusMessage('Node database purged successfully!');
-      showToast('Node database purged successfully!', 'success');
+      setStatusMessage(t('config.purge_success'));
+      showToast(t('config.purge_success'), 'success');
     } catch (error) {
       logger.error('Error purging node database:', error);
-      const errorMsg = error instanceof Error ? error.message : 'Failed to purge node database';
+      const errorMsg = error instanceof Error ? error.message : t('config.purge_failed');
       setStatusMessage(`Error: ${errorMsg}`);
-      showToast(`Failed to purge node database: ${errorMsg}`, 'error');
+      showToast(`${t('config.purge_failed')}: ${errorMsg}`, 'error');
     } finally {
       setIsSaving(false);
     }
@@ -494,7 +488,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
     return (
       <div className="tab-content">
         <div style={{ textAlign: 'center', padding: '2rem' }}>
-          <p>Loading configuration...</p>
+          <p>{t('config.loading')}</p>
         </div>
       </div>
     );
@@ -503,14 +497,12 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   return (
     <div className="tab-content">
       <div className="settings-section danger-zone" style={{ marginBottom: '2rem' }}>
-        <h2 style={{ color: '#ff4444', marginTop: 0 }}>⚠️ WARNING</h2>
+        <h2 style={{ color: '#ff4444', marginTop: 0 }}>⚠️ {t('config.warning_title')}</h2>
         <p style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>
-          Modifying these settings can break your Meshtastic node configuration.
+          {t('config.warning_text')}
         </p>
         <p>
-          These settings directly modify the configuration of your locally connected Meshtastic device.
-          Incorrect settings may cause communication issues, network problems, or require a factory reset.
-          Only modify these settings if you understand what you are doing.
+          {t('config.warning_description')}
         </p>
         <div style={{ marginTop: '1.5rem', display: 'flex', gap: '1rem' }}>
           <button
@@ -528,7 +520,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
               opacity: isSaving ? 0.6 : 1
             }}
           >
-            🔄 Reboot Device
+            🔄 {t('config.reboot_device')}
           </button>
           <button
             onClick={handlePurgeNodeDb}
@@ -545,17 +537,16 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
               opacity: isSaving ? 0.6 : 1
             }}
           >
-            🗑️ Purge Node Database
+            🗑️ {t('config.purge_node_db')}
           </button>
         </div>
       </div>
 
       {/* Import/Export Configuration Section */}
       <div className="settings-section" style={{ marginBottom: '2rem' }}>
-        <h3>Configuration Import/Export</h3>
+        <h3>{t('config.import_export_title')}</h3>
         <p style={{ color: 'var(--ctp-subtext0)', marginBottom: '1rem' }}>
-          Import or export channel configurations and device settings in Meshtastic URL format.
-          These URLs are compatible with the official Meshtastic apps.
+          {t('config.import_export_description')}
         </p>
         <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
           <button
@@ -571,7 +562,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
               fontWeight: 'bold'
             }}
           >
-            📥 Import Configuration
+            📥 {t('config.import_config')}
           </button>
           <button
             onClick={() => setIsExportModalOpen(true)}
@@ -586,7 +577,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
               fontWeight: 'bold'
             }}
           >
-            📤 Export Configuration
+            📤 {t('config.export_config')}
           </button>
         </div>
 
@@ -716,7 +707,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
         onImportSuccess={() => {
-          showToast('Configuration imported successfully', 'success');
+          showToast(t('config.import_success'), 'success');
           if (onChannelsUpdated) onChannelsUpdated();
         }}
       />
