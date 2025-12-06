@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { flushSync } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 // Popup and Polyline moved to useTraceroutePaths hook
 // Recharts imports moved to useTraceroutePaths hook
 import L from 'leaflet';
@@ -76,6 +77,7 @@ L.Icon.Default.mergeOptions({
 // Icons and helpers are now imported from utils/
 
 function App() {
+  const { t } = useTranslation();
   const { authStatus, hasPermission } = useAuth();
   const { getToken: getCsrfToken, refreshToken: refreshCsrfToken } = useCsrf();
   const { showToast } = useToast();
@@ -1258,7 +1260,7 @@ function App() {
       setChannelHasMore(prev => ({ ...prev, [selectedChannel]: result.hasMore }));
     } catch (error) {
       logger.error('Failed to load more channel messages:', error);
-      showToast('Failed to load older messages', 'error');
+      showToast(t('toast.failed_load_older_messages'), 'error');
     } finally {
       setChannelLoadingMore(prev => ({ ...prev, [selectedChannel]: false }));
     }
@@ -1316,7 +1318,7 @@ function App() {
       setDmHasMore(prev => ({ ...prev, [dmKey]: result.hasMore }));
     } catch (error) {
       logger.error('Failed to load more direct messages:', error);
-      showToast('Failed to load older messages', 'error');
+      showToast(t('toast.failed_load_older_messages'), 'error');
     } finally {
       setDmLoadingMore(prev => ({ ...prev, [dmKey]: false }));
     }
@@ -2124,10 +2126,10 @@ function App() {
     try {
       await api.disconnectFromNode();
       setConnectionStatus('user-disconnected');
-      showToast('Disconnected from node', 'info');
+      showToast(t('toast.disconnected_from_node'), 'info');
     } catch (error) {
       logger.error('Failed to disconnect:', error);
-      showToast('Failed to disconnect', 'error');
+      showToast(t('toast.failed_disconnect'), 'error');
     }
   };
 
@@ -2135,12 +2137,12 @@ function App() {
     try {
       setConnectionStatus('connecting');
       await api.reconnectToNode();
-      showToast('Reconnecting to node...', 'info');
+      showToast(t('toast.reconnecting_to_node'), 'info');
       // Status will update via polling
     } catch (error) {
       logger.error('Failed to reconnect:', error);
       setConnectionStatus('user-disconnected');
-      showToast('Failed to reconnect', 'error');
+      showToast(t('toast.failed_reconnect'), 'error');
     }
   };
 
@@ -2403,7 +2405,7 @@ function App() {
       });
 
       if (response.ok) {
-        showToast('Message deleted successfully', 'success');
+        showToast(t('toast.message_deleted'), 'success');
         // Update local state to remove the message
         setMessages(prev => prev.filter(m => m.id !== message.id));
         setChannelMessages(prev => ({
@@ -2413,10 +2415,10 @@ function App() {
         refetchPoll();
       } else {
         const errorData = await response.json();
-        showToast(`Failed to delete message: ${errorData.message || 'Unknown error'}`, 'error');
+        showToast(t('toast.failed_delete_message', { error: errorData.message || t('errors.unknown') }), 'error');
       }
     } catch (err) {
-      showToast(`Failed to delete message: ${err instanceof Error ? err.message : 'Network error'}`, 'error');
+      showToast(t('toast.failed_delete_message', { error: err instanceof Error ? err.message : t('errors.network') }), 'error');
     }
   };
 
@@ -2440,7 +2442,7 @@ function App() {
 
       if (response.ok) {
         const data = await response.json();
-        showToast(`Purged ${data.deletedCount} messages from ${channelName}`, 'success');
+        showToast(t('toast.purged_messages_channel', { count: data.deletedCount, channel: channelName }), 'success');
         // Update local state
         setChannelMessages(prev => ({
           ...prev,
@@ -2449,10 +2451,10 @@ function App() {
         refetchPoll();
       } else {
         const errorData = await response.json();
-        showToast(`Failed to purge messages: ${errorData.message || 'Unknown error'}`, 'error');
+        showToast(t('toast.failed_purge_messages', { error: errorData.message || t('errors.unknown') }), 'error');
       }
     } catch (err) {
-      showToast(`Failed to purge messages: ${err instanceof Error ? err.message : 'Network error'}`, 'error');
+      showToast(t('toast.failed_purge_messages', { error: err instanceof Error ? err.message : t('errors.network') }), 'error');
     }
   };
 
@@ -2478,7 +2480,7 @@ function App() {
 
       if (response.ok) {
         const data = await response.json();
-        showToast(`Purged ${data.deletedCount} messages with ${nodeName}`, 'success');
+        showToast(t('toast.purged_messages_dm', { count: data.deletedCount, node: nodeName }), 'success');
         // Update local state to immediately reflect deletions
         const nodeId = node?.user?.id;
         if (nodeId) {
@@ -2488,10 +2490,10 @@ function App() {
         refetchPoll();
       } else {
         const errorData = await response.json();
-        showToast(`Failed to purge messages: ${errorData.message || 'Unknown error'}`, 'error');
+        showToast(t('toast.failed_purge_messages', { error: errorData.message || t('errors.unknown') }), 'error');
       }
     } catch (err) {
-      showToast(`Failed to purge messages: ${err instanceof Error ? err.message : 'Network error'}`, 'error');
+      showToast(t('toast.failed_purge_messages', { error: err instanceof Error ? err.message : t('errors.network') }), 'error');
     }
   };
 
@@ -2515,15 +2517,15 @@ function App() {
 
       if (response.ok) {
         const data = await response.json();
-        showToast(`Purged ${data.deletedCount} traceroutes for ${nodeName}`, 'success');
+        showToast(t('toast.purged_traceroutes', { count: data.deletedCount, node: nodeName }), 'success');
         // Refresh data from backend to ensure consistency
         refetchPoll();
       } else {
         const errorData = await response.json();
-        showToast(`Failed to purge traceroutes: ${errorData.message || 'Unknown error'}`, 'error');
+        showToast(t('toast.failed_purge_traceroutes', { error: errorData.message || t('errors.unknown') }), 'error');
       }
     } catch (err) {
-      showToast(`Failed to purge traceroutes: ${err instanceof Error ? err.message : 'Network error'}`, 'error');
+      showToast(t('toast.failed_purge_traceroutes', { error: err instanceof Error ? err.message : t('errors.network') }), 'error');
     }
   };
 
@@ -2549,15 +2551,15 @@ function App() {
 
       if (response.ok) {
         const data = await response.json();
-        showToast(`Purged ${data.deletedCount} telemetry records for ${nodeName}`, 'success');
+        showToast(t('toast.purged_telemetry', { count: data.deletedCount, node: nodeName }), 'success');
         // Refresh data from backend to ensure consistency
         refetchPoll();
       } else {
         const errorData = await response.json();
-        showToast(`Failed to purge telemetry: ${errorData.message || 'Unknown error'}`, 'error');
+        showToast(t('toast.failed_purge_telemetry', { error: errorData.message || t('errors.unknown') }), 'error');
       }
     } catch (err) {
-      showToast(`Failed to purge telemetry: ${err instanceof Error ? err.message : 'Network error'}`, 'error');
+      showToast(t('toast.failed_purge_telemetry', { error: err instanceof Error ? err.message : t('errors.network') }), 'error');
     }
   };
 
@@ -2584,7 +2586,7 @@ function App() {
       if (response.ok) {
         const data = await response.json();
         showToast(
-          `Deleted ${nodeName} - ${data.messagesDeleted} messages, ${data.traceroutesDeleted} traceroutes, ${data.telemetryDeleted} telemetry records`,
+          t('toast.deleted_node', { node: nodeName, messages: data.messagesDeleted, traceroutes: data.traceroutesDeleted, telemetry: data.telemetryDeleted }),
           'success'
         );
         // Close the purge data modal if open
@@ -2598,10 +2600,10 @@ function App() {
         refetchPoll();
       } else {
         const errorData = await response.json();
-        showToast(`Failed to delete node: ${errorData.message || 'Unknown error'}`, 'error');
+        showToast(t('toast.failed_delete_node', { error: errorData.message || t('errors.unknown') }), 'error');
       }
     } catch (err) {
-      showToast(`Failed to delete node: ${err instanceof Error ? err.message : 'Network error'}`, 'error');
+      showToast(t('toast.failed_delete_node', { error: err instanceof Error ? err.message : t('errors.network') }), 'error');
     }
   };
 
@@ -2628,7 +2630,7 @@ function App() {
       if (response.ok) {
         const data = await response.json();
         showToast(
-          `Purged ${nodeName} from device and database - ${data.messagesDeleted} messages, ${data.traceroutesDeleted} traceroutes, ${data.telemetryDeleted} telemetry records`,
+          t('toast.purged_node_device', { node: nodeName, messages: data.messagesDeleted, traceroutes: data.traceroutesDeleted, telemetry: data.telemetryDeleted }),
           'success'
         );
         // Close the purge data modal if open
@@ -2642,10 +2644,10 @@ function App() {
         refetchPoll();
       } else {
         const errorData = await response.json();
-        showToast(`Failed to purge node from device: ${errorData.message || 'Unknown error'}`, 'error');
+        showToast(t('toast.failed_purge_node_device', { error: errorData.message || t('errors.unknown') }), 'error');
       }
     } catch (err) {
-      showToast(`Failed to purge node from device: ${err instanceof Error ? err.message : 'Network error'}`, 'error');
+      showToast(t('toast.failed_purge_node_device', { error: err instanceof Error ? err.message : t('errors.network') }), 'error');
     }
   };
 
@@ -3086,7 +3088,7 @@ function App() {
 
       if (!response.ok) {
         if (response.status === 403) {
-          showToast('Insufficient permissions to update favorites', 'error');
+          showToast(t('toast.insufficient_permissions_favorites'), 'error');
           // Revert to original state using the saved original value
           setNodes(prevNodes =>
             prevNodes.map(n => (n.nodeNum === node.nodeNum ? { ...n, isFavorite: originalFavoriteStatus } : n))
@@ -3118,7 +3120,7 @@ function App() {
       );
       // Remove from pending on error since we reverted
       pendingFavoriteRequests.delete(node.nodeNum);
-      showToast('Failed to update favorite status. Please try again.', 'error');
+      showToast(t('toast.failed_update_favorite'), 'error');
     }
     // Note: On success, the polling logic will remove from pendingFavoriteRequests
     // when it detects the server has caught up
