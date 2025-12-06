@@ -70,6 +70,9 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
   const [customWidgets, setCustomWidgets] = useState<CustomWidget[]>([]);
   const [showAddWidgetModal, setShowAddWidgetModal] = useState(false);
 
+  // Unified dashboard order (contains all item IDs - widgets and charts)
+  const [dashboardOrder, setDashboardOrder] = useState<string[]>([]);
+
   // Track telemetry data from charts for global time range calculation
   const [telemetryDataMap, setTelemetryDataMap] = useState<Map<string, TelemetryData[]>>(new Map());
 
@@ -168,6 +171,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
           telemetryFavorites?: string;
           telemetryCustomOrder?: string;
           dashboardWidgets?: string;
+          dashboardOrder?: string;
         }>('/api/settings');
         const favoritesArray: FavoriteChart[] = settings.telemetryFavorites
           ? JSON.parse(settings.telemetryFavorites)
@@ -208,6 +212,25 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
         } catch (error) {
           logger.error('Error saving custom order to Local Storage:', error);
         }
+
+        // Load unified dashboard order - prioritize localStorage over server
+        const serverDashboardOrder: string[] = settings.dashboardOrder
+          ? JSON.parse(settings.dashboardOrder)
+          : [];
+        let finalDashboardOrder: string[] = [];
+        try {
+          const localDashboardOrder = localStorage.getItem('dashboardOrder');
+          if (localDashboardOrder) {
+            const localOrder = JSON.parse(localDashboardOrder);
+            finalDashboardOrder = localOrder.length > 0 ? localOrder : serverDashboardOrder;
+          } else {
+            finalDashboardOrder = serverDashboardOrder;
+          }
+        } catch (error) {
+          logger.error('Error loading dashboard order from Local Storage:', error);
+          finalDashboardOrder = serverDashboardOrder;
+        }
+        setDashboardOrder(finalDashboardOrder);
 
         // Fetch node information
         const nodesData = await api.get<NodeInfo[]>('/api/nodes');
@@ -265,39 +288,28 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
 
   const globalMinTime = globalTimeRange ? globalTimeRange[0] : undefined;
 
-  // Handle drag end
-  const handleDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event;
+  // Save dashboard order to localStorage and server
+  const saveDashboardOrder = useCallback(async (newOrder: string[]) => {
+    setDashboardOrder(newOrder);
 
-    if (over && active.id !== over.id) {
-      const oldIndex = filteredAndSortedFavorites.findIndex(f => `${f.nodeId}-${f.telemetryType}` === active.id);
-      const newIndex = filteredAndSortedFavorites.findIndex(f => `${f.nodeId}-${f.telemetryType}` === over.id);
-
-      const newOrder = arrayMove(filteredAndSortedFavorites, oldIndex, newIndex);
-      const newCustomOrder = newOrder.map(f => `${f.nodeId}-${f.telemetryType}`);
-
-      setCustomOrder(newCustomOrder);
-      setSortOption('custom');
-
-      // Save to Local Storage
-      try {
-        localStorage.setItem('telemetryCustomOrder', JSON.stringify(newCustomOrder));
-      } catch (error) {
-        logger.error('Error saving custom order to Local Storage:', error);
-      }
-
-      // Save to server
-      try {
-        await csrfFetch(`${baseUrl}/api/settings`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ telemetryCustomOrder: JSON.stringify(newCustomOrder) }),
-        });
-      } catch (error) {
-        logger.error('Error saving custom order:', error);
-      }
+    // Save to Local Storage
+    try {
+      localStorage.setItem('dashboardOrder', JSON.stringify(newOrder));
+    } catch (error) {
+      logger.error('Error saving dashboard order to Local Storage:', error);
     }
-  };
+
+    // Save to server
+    try {
+      await csrfFetch(`${baseUrl}/api/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dashboardOrder: JSON.stringify(newOrder) }),
+      });
+    } catch (error) {
+      logger.error('Error saving dashboard order:', error);
+    }
+  }, [baseUrl, csrfFetch]);
 
   // Get unique nodes for filter dropdown
   const getUniqueNodes = useMemo(() => {
@@ -398,6 +410,57 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
 
     return result;
   }, [favorites, nodes, searchQuery, selectedNode, selectedType, selectedRoles, sortOption, customOrder]);
+
+  // Create unified ordered list of all items (widgets + charts)
+  type UnifiedItem =
+    | { type: 'widget'; widget: CustomWidget }
+    | { type: 'chart'; favorite: FavoriteChart };
+
+  const unifiedOrderedItems = useMemo((): UnifiedItem[] => {
+    // Build list of all items with their IDs
+    const widgetItems: UnifiedItem[] = customWidgets.map(w => ({ type: 'widget' as const, widget: w }));
+    const chartItems: UnifiedItem[] = filteredAndSortedFavorites.map(f => ({ type: 'chart' as const, favorite: f }));
+    const allItems = [...widgetItems, ...chartItems];
+
+    // If we have a saved dashboard order, sort by it
+    if (dashboardOrder.length > 0 && sortOption === 'custom') {
+      allItems.sort((a, b) => {
+        const idA = a.type === 'widget' ? a.widget.id : `${a.favorite.nodeId}-${a.favorite.telemetryType}`;
+        const idB = b.type === 'widget' ? b.widget.id : `${b.favorite.nodeId}-${b.favorite.telemetryType}`;
+        const indexA = dashboardOrder.indexOf(idA);
+        const indexB = dashboardOrder.indexOf(idB);
+        if (indexA === -1 && indexB === -1) return 0;
+        if (indexA === -1) return 1;
+        if (indexB === -1) return -1;
+        return indexA - indexB;
+      });
+    }
+
+    return allItems;
+  }, [customWidgets, filteredAndSortedFavorites, dashboardOrder, sortOption]);
+
+  // Handle drag end - unified ordering for all items
+  // Uses unifiedOrderedItems to get the current display order
+  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      // Get current order from unifiedOrderedItems (already sorted correctly)
+      const currentOrder = unifiedOrderedItems.map(item =>
+        item.type === 'widget' ? item.widget.id : `${item.favorite.nodeId}-${item.favorite.telemetryType}`
+      );
+
+      // Find indices in the current order
+      const oldIndex = currentOrder.indexOf(String(active.id));
+      const newIndex = currentOrder.indexOf(String(over.id));
+
+      if (oldIndex !== -1 && newIndex !== -1) {
+        const newOrder = arrayMove(currentOrder, oldIndex, newIndex);
+        await saveDashboardOrder(newOrder);
+        setSortOption('custom');
+      }
+    }
+  }, [unifiedOrderedItems, saveDashboardOrder]);
 
   const removeFavorite = useCallback(async (nodeId: string, telemetryType: string) => {
     try {
@@ -659,64 +722,63 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
 
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext
-              items={[
-                ...customWidgets.map(w => w.id),
-                ...filteredAndSortedFavorites.map(f => `${f.nodeId}-${f.telemetryType}`),
-              ]}
+              items={unifiedOrderedItems.map(item =>
+                item.type === 'widget' ? item.widget.id : `${item.favorite.nodeId}-${item.favorite.telemetryType}`
+              )}
               strategy={verticalListSortingStrategy}
             >
               <div className="dashboard-grid">
-                {/* Custom Widgets */}
-                {customWidgets.map(widget => {
-                  if (widget.type === 'nodeStatus') {
+                {unifiedOrderedItems.map(item => {
+                  if (item.type === 'widget') {
+                    const widget = item.widget;
+                    if (widget.type === 'nodeStatus') {
+                      return (
+                        <NodeStatusWidget
+                          key={widget.id}
+                          id={widget.id}
+                          nodeIds={widget.nodeIds}
+                          nodes={nodes}
+                          onRemove={() => handleRemoveWidget(widget.id)}
+                          onAddNode={(nodeId) => handleAddNodeToWidget(widget.id, nodeId)}
+                          onRemoveNode={(nodeId) => handleRemoveNodeFromWidget(widget.id, nodeId)}
+                        />
+                      );
+                    } else if (widget.type === 'traceroute') {
+                      return (
+                        <TracerouteWidget
+                          key={widget.id}
+                          id={widget.id}
+                          targetNodeId={widget.targetNodeId}
+                          currentNodeId={currentNodeId}
+                          nodes={nodes}
+                          onRemove={() => handleRemoveWidget(widget.id)}
+                          onSelectNode={(nodeId) => handleSelectTracerouteNode(widget.id, nodeId)}
+                        />
+                      );
+                    }
+                    return null;
+                  } else {
+                    const favorite = item.favorite;
+                    const key = `${favorite.nodeId}-${favorite.telemetryType}`;
+                    const node = nodes.get(favorite.nodeId);
+
                     return (
-                      <NodeStatusWidget
-                        key={widget.id}
-                        id={widget.id}
-                        nodeIds={widget.nodeIds}
-                        nodes={nodes}
-                        onRemove={() => handleRemoveWidget(widget.id)}
-                        onAddNode={(nodeId) => handleAddNodeToWidget(widget.id, nodeId)}
-                        onRemoveNode={(nodeId) => handleRemoveNodeFromWidget(widget.id, nodeId)}
-                      />
-                    );
-                  } else if (widget.type === 'traceroute') {
-                    return (
-                      <TracerouteWidget
-                        key={widget.id}
-                        id={widget.id}
-                        targetNodeId={widget.targetNodeId}
-                        currentNodeId={currentNodeId}
-                        nodes={nodes}
-                        onRemove={() => handleRemoveWidget(widget.id)}
-                        onSelectNode={(nodeId) => handleSelectTracerouteNode(widget.id, nodeId)}
+                      <TelemetryChart
+                        key={key}
+                        id={key}
+                        favorite={favorite}
+                        node={node}
+                        temperatureUnit={temperatureUnit}
+                        hours={hours}
+                        baseUrl={baseUrl}
+                        globalTimeRange={globalTimeRange}
+                        globalMinTime={globalMinTime}
+                        solarEstimates={solarEstimates || new Map()}
+                        onRemove={removeFavorite}
+                        onDataLoaded={handleDataLoaded}
                       />
                     );
                   }
-                  return null;
-                })}
-
-                {/* Telemetry Charts */}
-                {filteredAndSortedFavorites.map(favorite => {
-                  const key = `${favorite.nodeId}-${favorite.telemetryType}`;
-                  const node = nodes.get(favorite.nodeId);
-
-                  return (
-                    <TelemetryChart
-                      key={key}
-                      id={key}
-                      favorite={favorite}
-                      node={node}
-                      temperatureUnit={temperatureUnit}
-                      hours={hours}
-                      baseUrl={baseUrl}
-                      globalTimeRange={globalTimeRange}
-                      globalMinTime={globalMinTime}
-                      solarEstimates={solarEstimates || new Map()}
-                      onRemove={removeFavorite}
-                      onDataLoaded={handleDataLoaded}
-                    />
-                  );
                 })}
               </div>
             </SortableContext>
