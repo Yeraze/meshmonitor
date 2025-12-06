@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { MapContainer, TileLayer, Marker, Popup, Tooltip, Polyline, Circle } from 'react-leaflet';
 import type { Marker as LeafletMarker } from 'leaflet';
 import { DeviceInfo } from '../types/device';
@@ -81,6 +82,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   traceroutePathsElements,
   selectedNodeTraceroute,
 }) => {
+  const { t } = useTranslation();
   // Use context hooks
   const {
     showPaths,
@@ -532,7 +534,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
           <div className="node-controls">
             <input
               type="text"
-              placeholder="Filter nodes..."
+              placeholder={t('nodes.filter_placeholder')}
               value={nodeFilter}
               onChange={(e) => setNodeFilter(e.target.value)}
               className="filter-input-small"
@@ -541,29 +543,29 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               <button
                 className="filter-popup-btn"
                 onClick={handleToggleFilterPopup}
-                title="Filter nodes"
+                title={t('nodes.filter_title')}
               >
-                Filter
+                {t('common.filter')}
               </button>
               <select
                 value={sortField}
                 onChange={(e) => setSortField(e.target.value as any)}
                 className="sort-dropdown"
-                title="Sort nodes by"
+                title={t('nodes.sort_by')}
               >
-                <option value="longName">Sort: Name</option>
-                <option value="shortName">Sort: Short Name</option>
-                <option value="id">Sort: ID</option>
-                <option value="lastHeard">Sort: Updated</option>
-                <option value="snr">Sort: Signal</option>
-                <option value="battery">Sort: Charge</option>
-                <option value="hwModel">Sort: Hardware</option>
-                <option value="hops">Sort: Hops</option>
+                <option value="longName">{t('nodes.sort_name')}</option>
+                <option value="shortName">{t('nodes.sort_short_name')}</option>
+                <option value="id">{t('nodes.sort_id')}</option>
+                <option value="lastHeard">{t('nodes.sort_updated')}</option>
+                <option value="snr">{t('nodes.sort_signal')}</option>
+                <option value="battery">{t('nodes.sort_charge')}</option>
+                <option value="hwModel">{t('nodes.sort_hardware')}</option>
+                <option value="hops">{t('nodes.sort_hops')}</option>
               </select>
               <button
                 className="sort-direction-btn"
                 onClick={handleToggleSortDirection}
-                title={sortDirection === 'asc' ? 'Ascending' : 'Descending'}
+                title={sortDirection === 'asc' ? t('nodes.ascending') : t('nodes.descending')}
               >
                 {sortDirection === 'asc' ? '↑' : '↓'}
               </button>
@@ -618,7 +620,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                     <div className="node-name">
                       <button
                         className="favorite-star"
-                        title={node.isFavorite ? "Remove from favorites" : "Add to favorites"}
+                        title={node.isFavorite ? t('nodes.remove_favorite') : t('nodes.add_favorite')}
                         onClick={handleFavoriteClick(node)}
                       >
                         {node.isFavorite ? '⭐' : '☆'}
@@ -628,7 +630,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                           {node.user?.longName || `Node ${node.nodeNum}`}
                         </div>
                         {node.user?.role !== undefined && node.user?.role !== null && getRoleName(node.user.role) && (
-                          <div className="node-role" title="Node Role">{getRoleName(node.user.role)}</div>
+                          <div className="node-role" title={t('nodes.node_role')}>{getRoleName(node.user.role)}</div>
                         )}
                       </div>
                     </div>
@@ -636,7 +638,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       {hasPermission('messages', 'read') && (
                         <button
                           className="dm-icon"
-                          title="Send Direct Message"
+                          title={t('nodes.send_dm')}
                           onClick={handleDMClick(node)}
                         >
                           💬
@@ -665,18 +667,18 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   <div className="node-details">
                     <div className="node-stats">
                       {node.snr != null && (
-                        <span className="stat" title="Signal-to-Noise Ratio">
+                        <span className="stat" title={t('nodes.snr')}>
                           📶 {node.snr.toFixed(1)}dB
                         </span>
                       )}
                       {node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null && (
-                        <span className="stat" title={node.deviceMetrics.batteryLevel === 101 ? "Plugged In" : "Battery Level"}>
+                        <span className="stat" title={node.deviceMetrics.batteryLevel === 101 ? t('nodes.plugged_in') : t('nodes.battery_level')}>
                           {node.deviceMetrics.batteryLevel === 101 ? '🔌' : `🔋 ${node.deviceMetrics.batteryLevel}%`}
                         </span>
                       )}
                       {node.hopsAway != null && (
-                        <span className="stat" title="Hops Away">
-                          🔗 {node.hopsAway} hop{node.hopsAway !== 1 ? 's' : ''}
+                        <span className="stat" title={t('nodes.hops_away')}>
+                          🔗 {node.hopsAway} {t('nodes.hop', { count: node.hopsAway })}
                           {node.channel != null && node.channel !== 0 && ` (ch:${node.channel})`}
                         </span>
                       )}
@@ -688,34 +690,34 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                         return isToday(date)
                           ? formatTime(date, timeFormat)
                           : formatDateTime(date, timeFormat, dateFormat);
-                      })() : 'Never'}
+                      })() : t('time.never')}
                     </div>
                   </div>
 
                   <div className="node-indicators">
                     {node.position && node.position.latitude != null && node.position.longitude != null && (
-                      <div className="node-location" title="Location">
+                      <div className="node-location" title={t('nodes.location')}>
                         📍 {node.position.latitude.toFixed(3)}, {node.position.longitude.toFixed(3)}
-                        {node.isMobile && <span title="Mobile Node (position varies > 1km)" style={{ marginLeft: '4px' }}>🚶</span>}
+                        {node.isMobile && <span title={t('nodes.mobile_node')} style={{ marginLeft: '4px' }}>🚶</span>}
                       </div>
                     )}
                     {node.viaMqtt && (
-                      <div className="node-mqtt" title="Connected via MQTT">
+                      <div className="node-mqtt" title={t('nodes.via_mqtt')}>
                         🌐
                       </div>
                     )}
                     {node.user?.id && nodesWithTelemetry.has(node.user.id) && (
-                      <div className="node-telemetry" title="Has Telemetry Data">
+                      <div className="node-telemetry" title={t('nodes.has_telemetry')}>
                         📊
                       </div>
                     )}
                     {node.user?.id && nodesWithWeatherTelemetry.has(node.user.id) && (
-                      <div className="node-weather" title="Has Weather Data">
+                      <div className="node-weather" title={t('nodes.has_weather')}>
                         ☀️
                       </div>
                     )}
                     {node.user?.id && nodesWithPKC.has(node.user.id) && (
-                      <div className="node-pkc" title="Has Public Key Cryptography">
+                      <div className="node-pkc" title={t('nodes.has_pkc')}>
                         🔐
                       </div>
                     )}
