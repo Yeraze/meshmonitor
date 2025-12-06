@@ -122,8 +122,10 @@ describe('Dashboard', () => {
       );
 
       // Check that the useEffect has baseUrl in its dependency array
-      // Pattern: }, [daysToView, baseUrl]);
-      const useEffectPattern = /},\s*\[daysToView,\s*baseUrl\]/;
+      // After refactoring to use useTelemetry hook, the fetch effect only depends on baseUrl
+      // (telemetry fetching is handled by individual TelemetryChart components with hours prop)
+      // Pattern: }, [baseUrl]); at the end of the main fetch effect
+      const useEffectPattern = /},\s*\[baseUrl\]/;
       expect(dashboardSource).toMatch(useEffectPattern);
     });
   });
