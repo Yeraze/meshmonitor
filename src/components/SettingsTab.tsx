@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { TemperatureUnit } from '../utils/temperature';
 import { SortField, SortDirection } from '../types/ui';
 import { version } from '../../package.json';
@@ -14,6 +15,7 @@ import { CustomThemeManagement } from './CustomThemeManagement';
 import { CustomTilesetManager } from './CustomTilesetManager';
 import { type Theme, useSettings } from '../contexts/SettingsContext';
 import { useUI } from '../contexts/UIContext';
+import { LanguageSelector } from './LanguageSelector';
 
 type DistanceUnit = 'km' | 'mi';
 type TimeFormat = '12' | '24';
@@ -33,6 +35,7 @@ interface SettingsTabProps {
   mapTileset: TilesetId;
   mapPinStyle: MapPinStyle;
   theme: Theme;
+  language: string;
   solarMonitoringEnabled: boolean;
   solarMonitoringLatitude: number;
   solarMonitoringLongitude: number;
@@ -53,6 +56,7 @@ interface SettingsTabProps {
   onMapTilesetChange: (tilesetId: TilesetId) => void;
   onMapPinStyleChange: (style: MapPinStyle) => void;
   onThemeChange: (theme: Theme) => void;
+  onLanguageChange: (language: string) => void;
   onSolarMonitoringEnabledChange: (enabled: boolean) => void;
   onSolarMonitoringLatitudeChange: (latitude: number) => void;
   onSolarMonitoringLongitudeChange: (longitude: number) => void;
@@ -73,6 +77,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   mapTileset,
   mapPinStyle,
   theme,
+  language,
   solarMonitoringEnabled,
   solarMonitoringLatitude,
   solarMonitoringLongitude,
@@ -93,12 +98,14 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   onMapTilesetChange,
   onMapPinStyleChange,
   onThemeChange,
+  onLanguageChange,
   onSolarMonitoringEnabledChange,
   onSolarMonitoringLatitudeChange,
   onSolarMonitoringLongitudeChange,
   onSolarMonitoringAzimuthChange,
   onSolarMonitoringDeclinationChange
 }) => {
+  const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
   const { customThemes, customTilesets } = useSettings();
   const { showIncompleteNodes, setShowIncompleteNodes } = useUI();
@@ -822,6 +829,16 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                 </optgroup>
               )}
             </select>
+          </div>
+          <div className="setting-item">
+            <label htmlFor="language">
+              {t('settings.language')}
+              <span className="setting-description">{t('settings.languageDescription')}</span>
+            </label>
+            <LanguageSelector
+              value={language}
+              onChange={onLanguageChange}
+            />
           </div>
         </div>
 

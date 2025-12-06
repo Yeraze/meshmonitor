@@ -271,6 +271,7 @@ function App() {
     mapTileset,
     mapPinStyle,
     theme,
+    language,
     solarMonitoringEnabled,
     solarMonitoringLatitude,
     solarMonitoringLongitude,
@@ -289,6 +290,7 @@ function App() {
     setMapTileset,
     setMapPinStyle,
     setTheme,
+    setLanguage,
     setSolarMonitoringEnabled,
     setSolarMonitoringLatitude,
     setSolarMonitoringLongitude,
@@ -4217,6 +4219,7 @@ function App() {
             mapTileset={mapTileset}
             mapPinStyle={mapPinStyle}
             theme={theme}
+            language={language}
             solarMonitoringEnabled={solarMonitoringEnabled}
             solarMonitoringLatitude={solarMonitoringLatitude}
             solarMonitoringLongitude={solarMonitoringLongitude}
@@ -4237,6 +4240,7 @@ function App() {
             onMapTilesetChange={setMapTileset}
             onMapPinStyleChange={setMapPinStyle}
             onThemeChange={setTheme}
+            onLanguageChange={setLanguage}
             onSolarMonitoringEnabledChange={setSolarMonitoringEnabled}
             onSolarMonitoringLatitudeChange={setSolarMonitoringLatitude}
             onSolarMonitoringLongitudeChange={setSolarMonitoringLongitude}
