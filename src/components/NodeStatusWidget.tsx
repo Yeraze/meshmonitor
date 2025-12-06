@@ -22,6 +22,7 @@ interface NodeStatusWidgetProps {
   onRemove: () => void;
   onAddNode: (nodeId: string) => void;
   onRemoveNode: (nodeId: string) => void;
+  canEdit?: boolean;
 }
 
 interface NodeStatusRow {
@@ -38,6 +39,7 @@ const NodeStatusWidget: React.FC<NodeStatusWidgetProps> = ({
   onRemove,
   onAddNode,
   onRemoveNode,
+  canEdit = true,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
@@ -142,29 +144,31 @@ const NodeStatusWidget: React.FC<NodeStatusWidgetProps> = ({
       </div>
 
       <div className="node-status-content">
-        {/* Add node search */}
-        <div className="node-status-add-section" ref={searchRef}>
-          <div className="node-status-search-container">
-            <input
-              type="text"
-              className="node-status-search"
-              placeholder="Search nodes to add..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              onFocus={() => setShowSearch(true)}
-            />
-            {showSearch && availableNodes.length > 0 && (
-              <div className="node-status-search-dropdown">
-                {availableNodes.map(node => (
-                  <div key={node.nodeId} className="node-status-search-item" onClick={() => handleAddNode(node.nodeId)}>
-                    {node.name}
-                    <span className="node-status-search-id">{node.nodeId}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+        {/* Add node search - only show if user can edit */}
+        {canEdit && (
+          <div className="node-status-add-section" ref={searchRef}>
+            <div className="node-status-search-container">
+              <input
+                type="text"
+                className="node-status-search"
+                placeholder="Search nodes to add..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                onFocus={() => setShowSearch(true)}
+              />
+              {showSearch && availableNodes.length > 0 && (
+                <div className="node-status-search-dropdown">
+                  {availableNodes.map(node => (
+                    <div key={node.nodeId} className="node-status-search-item" onClick={() => handleAddNode(node.nodeId)}>
+                      {node.name}
+                      <span className="node-status-search-id">{node.nodeId}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Node status table */}
         {nodeRows.length > 0 ? (
@@ -174,7 +178,7 @@ const NodeStatusWidget: React.FC<NodeStatusWidgetProps> = ({
                 <th>Node</th>
                 <th>Last Heard</th>
                 <th>Hops</th>
-                <th></th>
+                {canEdit && <th></th>}
               </tr>
             </thead>
             <tbody>
@@ -183,21 +187,25 @@ const NodeStatusWidget: React.FC<NodeStatusWidgetProps> = ({
                   <td className="node-status-name">{row.name}</td>
                   <td className="node-status-time">{formatLastHeard(row.lastHeard)}</td>
                   <td className="node-status-hops">{row.hopsAway !== null ? row.hopsAway : '-'}</td>
-                  <td className="node-status-actions">
-                    <button
-                      className="node-status-remove-node"
-                      onClick={() => onRemoveNode(row.nodeId)}
-                      title="Remove node"
-                    >
-                      ×
-                    </button>
-                  </td>
+                  {canEdit && (
+                    <td className="node-status-actions">
+                      <button
+                        className="node-status-remove-node"
+                        onClick={() => onRemoveNode(row.nodeId)}
+                        title="Remove node"
+                      >
+                        ×
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
           </table>
         ) : (
-          <div className="node-status-empty">No nodes added. Use the search above to add nodes.</div>
+          <div className="node-status-empty">
+            {canEdit ? 'No nodes added. Use the search above to add nodes.' : 'No nodes configured.'}
+          </div>
         )}
       </div>
     </div>

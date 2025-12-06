@@ -4200,6 +4200,7 @@ function App() {
             favoriteTelemetryStorageDays={favoriteTelemetryStorageDays}
             baseUrl={baseUrl}
             currentNodeId={currentNodeId}
+            canEdit={hasPermission('dashboard', 'write')}
           />
         )}
         {activeTab === 'settings' && (

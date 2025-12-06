@@ -33,6 +33,7 @@ interface DashboardProps {
   favoriteTelemetryStorageDays?: number;
   baseUrl: string;
   currentNodeId?: string | null;
+  canEdit?: boolean;
 }
 
 // Custom widget types for node status and traceroute
@@ -58,6 +59,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
   favoriteTelemetryStorageDays = 7,
   baseUrl,
   currentNodeId = null,
+  canEdit = true,
 }) => {
   const csrfFetch = useCsrfFetch();
   const [favorites, setFavorites] = useState<FavoriteChart[]>([]);
@@ -741,6 +743,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
                           onRemove={() => handleRemoveWidget(widget.id)}
                           onAddNode={(nodeId) => handleAddNodeToWidget(widget.id, nodeId)}
                           onRemoveNode={(nodeId) => handleRemoveNodeFromWidget(widget.id, nodeId)}
+                          canEdit={canEdit}
                         />
                       );
                     } else if (widget.type === 'traceroute') {
@@ -753,6 +756,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
                           nodes={nodes}
                           onRemove={() => handleRemoveWidget(widget.id)}
                           onSelectNode={(nodeId) => handleSelectTracerouteNode(widget.id, nodeId)}
+                          canEdit={canEdit}
                         />
                       );
                     }
