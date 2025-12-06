@@ -462,6 +462,72 @@ Description: Offline OpenStreetMap tiles via TileServer GL
 
 **Side Effects**: Larger values may result in slower graph rendering if you have many nodes with frequent telemetry updates.
 
+## Telemetry Dashboard
+
+The Telemetry Dashboard provides customizable monitoring of your mesh network with drag-and-drop widgets. Access it via the **Telemetry** tab in the main navigation.
+
+### Adding Widgets
+
+Click the **+** button in the dashboard header to add new widgets. Two widget types are available:
+
+#### Node Status Widget
+
+**Description**: A table widget for monitoring the status of multiple nodes at a glance.
+
+**Features**:
+- Displays Node Name, Last Heard time, and Hops Away
+- Support for multiple nodes in a single widget
+- Search functionality to add nodes to the list
+- Sort by Last Heard time (most recent first)
+- Individual node removal via the × button
+
+**Adding Nodes**:
+1. Click in the "Add node..." search field
+2. Type to filter available nodes by name or ID
+3. Click a node in the dropdown to add it
+4. Repeat to add additional nodes
+
+**Use Cases**:
+- Monitor a group of remote nodes at once
+- Track when specific nodes were last active
+- Identify nodes that may have connectivity issues
+- Keep tabs on infrastructure nodes (routers, repeaters)
+
+#### Traceroute Widget
+
+**Description**: Displays the last successful traceroute results to and from a selected node.
+
+**Features**:
+- Shows the forward path (from your node to the target)
+- Shows the return path (from the target back to your node)
+- Displays SNR values for each hop when available
+- Shows the timestamp of the last traceroute
+- Supports a single target node per widget
+
+**Selecting a Node**:
+1. Click in the "Select a node..." search field
+2. Type to filter available nodes by name or ID
+3. Click a node to display its traceroute information
+
+**Information Displayed**:
+- **Forward Path**: The route your messages take to reach the target node, showing each hop with signal quality
+- **Return Path**: The route used for return messages, which may differ from the forward path
+- **SNR (Signal-to-Noise Ratio)**: Displayed in dB for each hop when available, helping identify weak links
+
+**Use Cases**:
+- Understanding network topology and message routing
+- Identifying problematic links in the mesh
+- Comparing signal quality across different paths
+- Troubleshooting connectivity issues with specific nodes
+
+### Widget Management
+
+**Drag and Drop**: All widgets (telemetry charts, Node Status, and Traceroute) can be reordered by dragging the ⋮⋮ handle in the widget header.
+
+**Removing Widgets**: Click the × button in the widget header to remove it from the dashboard.
+
+**Persistence**: Widget configurations (including selected nodes and order) are automatically saved and restored when you return to the dashboard.
+
 ## Settings Management
 
 ### Save Settings
