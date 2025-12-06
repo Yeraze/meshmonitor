@@ -316,11 +316,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       // Update initial packet monitor settings after successful save
       setInitialPacketMonitorSettings({ enabled: localPacketLogEnabled, maxCount: localPacketLogMaxCount, maxAgeHours: localPacketLogMaxAgeHours });
 
-      showToast('Settings saved successfully!', 'success');
+      showToast(t('settings.saved_success'), 'success');
       setHasChanges(false);
     } catch (error) {
       logger.error('Error saving settings:', error);
-      showToast('Failed to save settings. Please try again.', 'error');
+      showToast(t('settings.save_failed'), 'error');
     } finally {
       setIsSaving(false);
     }
@@ -340,10 +340,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         throw new Error('Failed to trigger solar estimate fetch');
       }
 
-      showToast('Solar estimates fetch triggered successfully!', 'success');
+      showToast(t('settings.solar_fetch_success'), 'success');
     } catch (error) {
       logger.error('Error triggering solar estimate fetch:', error);
-      showToast('Failed to trigger solar estimate fetch', 'error');
+      showToast(t('settings.solar_fetch_failed'), 'error');
     } finally {
       setIsFetchingSolarEstimates(false);
     }
@@ -351,21 +351,21 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
 
   const handleReset = async () => {
     const confirmed = window.confirm(
-      'Are you sure you want to reset all settings to defaults?\n\n' +
-      'Default values:\n' +
-      '• Max Node Age: 24 hours\n' +
-      '• Temperature Unit: Celsius\n' +
-      '• Distance Unit: Kilometers\n' +
-      '• Telemetry Hours: 24\n' +
-      '• Preferred Sort: Long Name (Ascending)\n' +
-      '• Time Format: 24-hour\n' +
-      '• Date Format: MM/DD/YYYY\n' +
-      '• Map Tileset: OpenStreetMap\n' +
-      '• Map Pin Style: MeshMonitor\n' +
-      '• Packet Monitor: Disabled\n' +
-      '• Max Packets: 1000\n' +
-      '• Packet Age: 24 hours\n\n' +
-      'This will affect all browsers accessing this system.'
+      t('settings.confirm_reset_title') + '\n\n' +
+      t('settings.confirm_reset_defaults') + '\n' +
+      '• ' + t('settings.confirm_reset_max_age') + '\n' +
+      '• ' + t('settings.confirm_reset_temp') + '\n' +
+      '• ' + t('settings.confirm_reset_dist') + '\n' +
+      '• ' + t('settings.confirm_reset_telemetry') + '\n' +
+      '• ' + t('settings.confirm_reset_sort') + '\n' +
+      '• ' + t('settings.confirm_reset_time') + '\n' +
+      '• ' + t('settings.confirm_reset_date') + '\n' +
+      '• ' + t('settings.confirm_reset_tileset') + '\n' +
+      '• ' + t('settings.confirm_reset_pins') + '\n' +
+      '• ' + t('settings.confirm_reset_packet') + '\n' +
+      '• ' + t('settings.confirm_reset_max_packets') + '\n' +
+      '• ' + t('settings.confirm_reset_packet_age') + '\n\n' +
+      t('settings.confirm_reset_affects')
     );
 
     if (!confirmed) return;
@@ -420,112 +420,112 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       // Update initial packet monitor settings
       setInitialPacketMonitorSettings({ enabled: false, maxCount: 1000, maxAgeHours: 24 });
 
-      showToast('Settings reset to defaults!', 'success');
+      showToast(t('settings.reset_success'), 'success');
       setHasChanges(false);
     } catch (error) {
       logger.error('Error resetting settings:', error);
-      showToast('Failed to reset settings. Please try again.', 'error');
+      showToast(t('settings.reset_failed'), 'error');
     } finally {
       setIsSaving(false);
     }
   };
   const handlePurgeNodes = async () => {
     const confirmed = window.confirm(
-      'Are you sure you want to erase all nodes and traceroute history?\n\n' +
-      'Impact:\n' +
-      '• All node information will be deleted\n' +
-      '• All traceroute history will be deleted\n' +
-      '• A node refresh will be triggered to repopulate the list\n\n' +
-      'This action cannot be undone!'
+      t('settings.confirm_purge_nodes_title') + '\n\n' +
+      t('settings.confirm_purge_nodes_impact') + '\n' +
+      '• ' + t('settings.confirm_purge_nodes_item1') + '\n' +
+      '• ' + t('settings.confirm_purge_nodes_item2') + '\n' +
+      '• ' + t('settings.confirm_purge_nodes_item3') + '\n\n' +
+      t('settings.confirm_cannot_undo')
     );
 
     if (!confirmed) return;
 
     try {
       await apiService.purgeNodes(0);
-      showToast('Node list and traceroutes have been purged. Refreshing...', 'success');
+      showToast(t('toast.nodes_purged'), 'success');
       setTimeout(() => window.location.reload(), 1500);
     } catch (error) {
       logger.error('Error purging nodes:', error);
-      showToast('Error purging nodes. Please try again.', 'error');
+      showToast(t('toast.node_purge_failed'), 'error');
     }
   };
 
   const handlePurgeTelemetry = async () => {
     const confirmed = window.confirm(
-      'Are you sure you want to purge all telemetry data?\n\n' +
-      'Impact:\n' +
-      '• All historical telemetry records will be deleted\n' +
-      '• Telemetry graphs will show no historical data\n' +
-      '• Current node states (battery, voltage) will be preserved\n' +
-      '• New telemetry will continue to be collected\n\n' +
-      'This action cannot be undone!'
+      t('settings.confirm_purge_telemetry_title') + '\n\n' +
+      t('settings.confirm_purge_nodes_impact') + '\n' +
+      '• ' + t('settings.confirm_purge_telemetry_item1') + '\n' +
+      '• ' + t('settings.confirm_purge_telemetry_item2') + '\n' +
+      '• ' + t('settings.confirm_purge_telemetry_item3') + '\n' +
+      '• ' + t('settings.confirm_purge_telemetry_item4') + '\n\n' +
+      t('settings.confirm_cannot_undo')
     );
 
     if (!confirmed) return;
 
     try {
       await apiService.purgeTelemetry(0);
-      showToast('Telemetry has been purged. Refreshing...', 'success');
+      showToast(t('toast.telemetry_purged'), 'success');
       setTimeout(() => window.location.reload(), 1500);
     } catch (error) {
       logger.error('Error purging telemetry:', error);
-      showToast('Error purging telemetry. Please try again.', 'error');
+      showToast(t('toast.telemetry_purge_failed'), 'error');
     }
   };
 
   const handlePurgeMessages = async () => {
     const confirmed = window.confirm(
-      'Are you sure you want to purge all messages?\n\n' +
-      'Impact:\n' +
-      '• All channel messages will be deleted\n' +
-      '• All direct messages will be deleted\n' +
-      '• New messages will continue to be received\n\n' +
-      'This action cannot be undone!'
+      t('settings.confirm_purge_messages_title') + '\n\n' +
+      t('settings.confirm_purge_nodes_impact') + '\n' +
+      '• ' + t('settings.confirm_purge_messages_item1') + '\n' +
+      '• ' + t('settings.confirm_purge_messages_item2') + '\n' +
+      '• ' + t('settings.confirm_purge_messages_item3') + '\n\n' +
+      t('settings.confirm_cannot_undo')
     );
 
     if (!confirmed) return;
 
     try {
       await apiService.purgeMessages(0);
-      showToast('Messages have been purged. Refreshing...', 'success');
+      showToast(t('messages.purged_success'), 'success');
       setTimeout(() => window.location.reload(), 1500);
     } catch (error) {
       logger.error('Error purging messages:', error);
-      showToast('Error purging messages. Please try again.', 'error');
+      showToast(t('messages.error_purging'), 'error');
     }
   };
 
   const handlePurgeTraceroutes = async () => {
     const confirmed = window.confirm(
-      'Are you sure you want to reset all traceroutes?\n\n' +
-      'Impact:\n' +
-      '• All saved traceroutes will be deleted\n' +
-      '• All traceroute history will be deleted\n' +
-      '• All route segments (including record holders) will be deleted\n' +
-      '• New traceroutes will continue to be collected\n\n' +
-      'This action cannot be undone!'
+      t('settings.confirm_purge_traceroutes_title') + '\n\n' +
+      t('settings.confirm_purge_nodes_impact') + '\n' +
+      '• ' + t('settings.confirm_purge_traceroutes_item1') + '\n' +
+      '• ' + t('settings.confirm_purge_traceroutes_item2') + '\n' +
+      '• ' + t('settings.confirm_purge_traceroutes_item3') + '\n' +
+      '• ' + t('settings.confirm_purge_traceroutes_item4') + '\n\n' +
+      t('settings.confirm_cannot_undo')
     );
 
     if (!confirmed) return;
 
     try {
       await apiService.purgeTraceroutes();
-      showToast('Traceroutes have been purged. Refreshing...', 'success');
+      showToast(t('toast.traceroutes_purged'), 'success');
       setTimeout(() => window.location.reload(), 1500);
     } catch (error) {
       logger.error('Error purging traceroutes:', error);
-      showToast('Error purging traceroutes. Please try again.', 'error');
+      showToast(t('toast.traceroutes_purge_failed'), 'error');
     }
   };
 
   const handleRestartContainer = async () => {
-    const action = isDocker ? 'restart' : 'shut down';
+    const action = isDocker ? t('settings.restart_action') : t('settings.shutdown_action');
     const confirmed = window.confirm(
-      `Are you sure you want to ${action} MeshMonitor?\n\n` +
+      t('settings.confirm_restart_title', { action }) + '\n\n' +
       (isDocker
-        ? 'The container will restart automatically and be unavailable for approximately 10-30 seconds.'
-        : 'MeshMonitor will shut down and will need to be manually restarted.')
+        ? t('settings.confirm_restart_docker')
+        : t('settings.confirm_restart_manual'))
     );
 
     if (!confirmed) return;
@@ -543,7 +543,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       }
     } catch (error) {
       logger.error(`Error ${action}ing:`, error);
-      showToast(`Failed to ${action}. Please try again.`, 'error');
+      showToast(t('settings.restart_failed', { action }), 'error');
       setIsRestarting(false);
     }
   };
@@ -570,7 +570,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             alignItems: 'center',
             gap: '0.5rem'
           }}
-          title="View Settings Documentation"
+          title={t('settings.view_docs')}
         >
           ❓
         </a>
@@ -594,20 +594,19 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             border: 'none',
             cursor: 'pointer'
           }}
-          title="Support MeshMonitor"
+          title={t('settings.support')}
           onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#74a0e0'}
           onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#89b4fa'}
         >
-          ❤️ Support MeshMonitor
-        </a>
+          ❤️ {t('settings.support')}</a>
       </div>
       <div className="settings-content">
         <div className="settings-section">
-          <h3>Node Display</h3>
+          <h3>{t('settings.node_display')}</h3>
           <div className="setting-item">
             <label htmlFor="maxNodeAge">
-              Maximum Age of Active Nodes (hours)
-              <span className="setting-description">Nodes older than this will not appear in the Node List</span>
+              {t('settings.max_node_age_label')}
+              <span className="setting-description">{t('settings.max_node_age_description')}</span>
             </label>
             <input
               id="maxNodeAge"
@@ -622,11 +621,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         </div>
 
         <div className="settings-section">
-          <h3>Display Preferences</h3>
+          <h3>{t('settings.display_prefs')}</h3>
           <div className="setting-item">
             <label htmlFor="preferredSortField">
-              Preferred Node List Sorting - Field
-              <span className="setting-description">Default sorting field for the Node List on the main page</span>
+              {t('settings.sort_field_label')}
+              <span className="setting-description">{t('settings.sort_field_description')}</span>
             </label>
             <select
               id="preferredSortField"
@@ -634,20 +633,20 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               onChange={(e) => setLocalPreferredSortField(e.target.value as SortField)}
               className="setting-input"
             >
-              <option value="longName">Long Name</option>
-              <option value="shortName">Short Name</option>
-              <option value="id">ID</option>
-              <option value="lastHeard">Last Heard</option>
-              <option value="snr">SNR</option>
-              <option value="battery">Battery</option>
-              <option value="hwModel">Hardware Model</option>
-              <option value="hops">Hops</option>
+              <option value="longName">{t('settings.sort_long_name')}</option>
+              <option value="shortName">{t('settings.sort_short_name')}</option>
+              <option value="id">{t('settings.sort_id')}</option>
+              <option value="lastHeard">{t('settings.sort_last_heard')}</option>
+              <option value="snr">{t('settings.sort_snr')}</option>
+              <option value="battery">{t('settings.sort_battery')}</option>
+              <option value="hwModel">{t('settings.sort_hw_model')}</option>
+              <option value="hops">{t('settings.sort_hops')}</option>
             </select>
           </div>
           <div className="setting-item">
             <label htmlFor="preferredSortDirection">
-              Preferred Node List Sorting - Direction
-              <span className="setting-description">Default sorting direction for the Node List on the main page</span>
+              {t('settings.sort_direction_label')}
+              <span className="setting-description">{t('settings.sort_direction_description')}</span>
             </label>
             <select
               id="preferredSortDirection"
@@ -655,14 +654,14 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               onChange={(e) => setLocalPreferredSortDirection(e.target.value as SortDirection)}
               className="setting-input"
             >
-              <option value="asc">Ascending (A-Z, 0-9, oldest-newest)</option>
-              <option value="desc">Descending (Z-A, 9-0, newest-oldest)</option>
+              <option value="asc">{t('settings.sort_ascending')}</option>
+              <option value="desc">{t('settings.sort_descending')}</option>
             </select>
           </div>
           <div className="setting-item">
             <label htmlFor="timeFormat">
-              Time Format
-              <span className="setting-description">Choose between 12-hour or 24-hour time display</span>
+              {t('settings.time_format_label')}
+              <span className="setting-description">{t('settings.time_format_description')}</span>
             </label>
             <select
               id="timeFormat"
@@ -670,14 +669,14 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               onChange={(e) => setLocalTimeFormat(e.target.value as TimeFormat)}
               className="setting-input"
             >
-              <option value="12">12-hour (e.g., 3:45 PM)</option>
-              <option value="24">24-hour (e.g., 15:45)</option>
+              <option value="12">{t('settings.time_12_hour')}</option>
+              <option value="24">{t('settings.time_24_hour')}</option>
             </select>
           </div>
           <div className="setting-item">
             <label htmlFor="dateFormat">
-              Date Format
-              <span className="setting-description">Choose your preferred date display format</span>
+              {t('settings.date_format_label')}
+              <span className="setting-description">{t('settings.date_format_description')}</span>
             </label>
             <select
               id="dateFormat"
@@ -685,15 +684,15 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               onChange={(e) => setLocalDateFormat(e.target.value as DateFormat)}
               className="setting-input"
             >
-              <option value="MM/DD/YYYY">MM/DD/YYYY (e.g., 12/31/2024)</option>
-              <option value="DD/MM/YYYY">DD/MM/YYYY (e.g., 31/12/2024)</option>
-              <option value="YYYY-MM-DD">YYYY-MM-DD (e.g., 2024-12-31) - ISO 8601</option>
+              <option value="MM/DD/YYYY">{t('settings.date_mdy')}</option>
+              <option value="DD/MM/YYYY">{t('settings.date_dmy')}</option>
+              <option value="YYYY-MM-DD">{t('settings.date_iso')}</option>
             </select>
           </div>
           <div className="setting-item">
             <label htmlFor="temperatureUnit">
-              Temperature Unit
-              <span className="setting-description">Choose between Celsius and Fahrenheit for temperature display</span>
+              {t('settings.temp_unit_label')}
+              <span className="setting-description">{t('settings.temp_unit_description')}</span>
             </label>
             <select
               id="temperatureUnit"
@@ -701,14 +700,14 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               onChange={(e) => setLocalTemperatureUnit(e.target.value as TemperatureUnit)}
               className="setting-input"
             >
-              <option value="C">Celsius (°C)</option>
-              <option value="F">Fahrenheit (°F)</option>
+              <option value="C">{t('settings.temp_celsius')}</option>
+              <option value="F">{t('settings.temp_fahrenheit')}</option>
             </select>
           </div>
           <div className="setting-item">
             <label htmlFor="distanceUnit">
-              Distance Unit
-              <span className="setting-description">Choose between Kilometers and Miles for distance display</span>
+              {t('settings.dist_unit_label')}
+              <span className="setting-description">{t('settings.dist_unit_description')}</span>
             </label>
             <select
               id="distanceUnit"
@@ -716,14 +715,14 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               onChange={(e) => setLocalDistanceUnit(e.target.value as DistanceUnit)}
               className="setting-input"
             >
-              <option value="km">Kilometers (km)</option>
-              <option value="mi">Miles (mi)</option>
+              <option value="km">{t('settings.dist_km')}</option>
+              <option value="mi">{t('settings.dist_mi')}</option>
             </select>
           </div>
           <div className="setting-item">
             <label htmlFor="telemetryVisualizationHours">
-              Telemetry Visualization (Hours)
-              <span className="setting-description">How many hours of telemetry data to display in graphs (1-168)</span>
+              {t('settings.telemetry_hours_label')}
+              <span className="setting-description">{t('settings.telemetry_hours_description')}</span>
             </label>
             <input
               type="number"
@@ -737,8 +736,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           </div>
           <div className="setting-item">
             <label htmlFor="favoriteTelemetryStorageDays">
-              Favorite Telemetry Storage Length (Days)
-              <span className="setting-description">How many days to retain favorited telemetry data (7-90 days). Favorited telemetry is exempt from regular purge.</span>
+              {t('settings.fav_telemetry_label')}
+              <span className="setting-description">{t('settings.fav_telemetry_description')}</span>
             </label>
             <input
               type="number"
@@ -752,8 +751,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           </div>
           <div className="setting-item">
             <label htmlFor="mapTileset">
-              Map Tileset
-              <span className="setting-description">Choose the map style for the network visualization</span>
+              {t('settings.map_tileset_label')}
+              <span className="setting-description">{t('settings.map_tileset_description')}</span>
             </label>
             <select
               id="mapTileset"
@@ -772,8 +771,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           <CustomTilesetManager />
           <div className="setting-item">
             <label htmlFor="mapPinStyle">
-              Map Pin Style
-              <span className="setting-description">Choose the style of node markers on the map</span>
+              {t('settings.map_pin_label')}
+              <span className="setting-description">{t('settings.map_pin_description')}</span>
             </label>
             <select
               id="mapPinStyle"
@@ -781,14 +780,14 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               onChange={(e) => setLocalMapPinStyle(e.target.value as MapPinStyle)}
               className="setting-input"
             >
-              <option value="meshmonitor">MeshMonitor - Pin markers with zoom-based labels</option>
-              <option value="official">Official Meshtastic - Circle markers with always-visible labels</option>
+              <option value="meshmonitor">{t('settings.map_pin_meshmonitor')}</option>
+              <option value="official">{t('settings.map_pin_official')}</option>
             </select>
           </div>
           <div className="setting-item">
             <label htmlFor="theme">
-              Color Theme
-              <span className="setting-description">Choose from 15 themes including accessibility-focused options</span>
+              {t('settings.theme_label')}
+              <span className="setting-description">{t('settings.theme_description')}</span>
             </label>
             <select
               id="theme"
@@ -796,31 +795,31 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               onChange={(e) => setLocalTheme(e.target.value as Theme)}
               className="setting-input"
             >
-              <optgroup label="Catppuccin">
-                <option value="mocha">Mocha (Dark)</option>
-                <option value="macchiato">Macchiato (Medium-Dark)</option>
-                <option value="frappe">Frappé (Medium)</option>
-                <option value="latte">Latte (Light)</option>
+              <optgroup label={t('settings.theme_catppuccin')}>
+                <option value="mocha">{t('settings.theme_mocha')}</option>
+                <option value="macchiato">{t('settings.theme_macchiato')}</option>
+                <option value="frappe">{t('settings.theme_frappe')}</option>
+                <option value="latte">{t('settings.theme_latte')}</option>
               </optgroup>
-              <optgroup label="Popular Themes">
-                <option value="nord">Nord</option>
-                <option value="dracula">Dracula</option>
-                <option value="solarized-dark">Solarized Dark</option>
-                <option value="solarized-light">Solarized Light</option>
-                <option value="gruvbox-dark">Gruvbox Dark</option>
-                <option value="gruvbox-light">Gruvbox Light</option>
+              <optgroup label={t('settings.theme_popular')}>
+                <option value="nord">{t('settings.theme_nord')}</option>
+                <option value="dracula">{t('settings.theme_dracula')}</option>
+                <option value="solarized-dark">{t('settings.theme_solarized_dark')}</option>
+                <option value="solarized-light">{t('settings.theme_solarized_light')}</option>
+                <option value="gruvbox-dark">{t('settings.theme_gruvbox_dark')}</option>
+                <option value="gruvbox-light">{t('settings.theme_gruvbox_light')}</option>
               </optgroup>
-              <optgroup label="High Contrast (WCAG AAA)">
-                <option value="high-contrast-dark">High Contrast Dark</option>
-                <option value="high-contrast-light">High Contrast Light</option>
+              <optgroup label={t('settings.theme_high_contrast')}>
+                <option value="high-contrast-dark">{t('settings.theme_hc_dark')}</option>
+                <option value="high-contrast-light">{t('settings.theme_hc_light')}</option>
               </optgroup>
-              <optgroup label="Color Blind Friendly">
-                <option value="protanopia">Protanopia (Red-Blind)</option>
-                <option value="deuteranopia">Deuteranopia (Green-Blind)</option>
-                <option value="tritanopia">Tritanopia (Blue-Blind)</option>
+              <optgroup label={t('settings.theme_colorblind')}>
+                <option value="protanopia">{t('settings.theme_protanopia')}</option>
+                <option value="deuteranopia">{t('settings.theme_deuteranopia')}</option>
+                <option value="tritanopia">{t('settings.theme_tritanopia')}</option>
               </optgroup>
               {customThemes.length > 0 && (
-                <optgroup label="Custom Themes">
+                <optgroup label={t('settings.theme_custom')}>
                   {customThemes.map((customTheme) => (
                     <option key={customTheme.id} value={customTheme.slug}>
                       {customTheme.name}
@@ -855,11 +854,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                 onChange={(e) => setLocalPacketLogEnabled(e.target.checked)}
                 style={{ cursor: 'pointer' }}
               />
-              <span>Packet Monitor</span>
+              <span>{t('settings.packet_monitor')}</span>
             </label>
-            <span style={{ fontSize: '0.85rem', fontWeight: 'normal', color: 'var(--text-secondary)' }}>(Desktop Only)</span>
+            <span style={{ fontSize: '0.85rem', fontWeight: 'normal', color: 'var(--text-secondary)' }}>{t('settings.packet_monitor_desktop_only')}</span>
           </h3>
-          <p className="setting-description">Configure the mesh traffic monitor that displays all packets on the network. Requires both channels:read and messages:read permissions.</p>
+          <p className="setting-description">{t('settings.packet_monitor_description')}</p>
           <div className="packet-monitor-settings">
             <PacketMonitorSettings
               enabled={localPacketLogEnabled}
@@ -880,11 +879,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                 onChange={(e) => setLocalHideIncompleteNodes(e.target.checked)}
                 style={{ cursor: 'pointer' }}
               />
-              <span>Hide Incomplete Nodes</span>
+              <span>{t('settings.hide_incomplete_nodes')}</span>
             </label>
           </h3>
           <p className="setting-description">
-            Hide nodes missing name or hardware info. On secure channels (custom PSK), incomplete nodes haven't been verified as being on your channel.
+            {t('settings.hide_incomplete_description')}
           </p>
         </div>
 
@@ -897,23 +896,22 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                 onChange={(e) => setLocalSolarMonitoringEnabled(e.target.checked)}
                 style={{ cursor: 'pointer' }}
               />
-              <span>Solar Monitoring</span>
+              <span>{t('settings.solar_monitoring')}</span>
             </label>
           </h3>
           <p className="setting-description">
-            Configure solar panel monitoring for production estimates. Thanks to{' '}
+            {t('settings.solar_monitoring_description', { link: '' })}
             <a href="https://forecast.solar/" target="_blank" rel="noopener noreferrer" style={{ color: '#89b4fa' }}>
               Forecast.Solar
             </a>
-            {' '}for their Solar Estimates API!
           </p>
           {localSolarMonitoringEnabled && (
             <>
               <div className="setting-item">
                 <label htmlFor="solarLatitude">
-                  Latitude
+                  {t('settings.solar_latitude')}
                   <span className="setting-description">
-                    North-south position on Earth (-90 south to +90 north) • <a href="https://gps-coordinates.org/" target="_blank" rel="noopener noreferrer" style={{ color: '#4a9eff', textDecoration: 'underline' }}>Find your GPS coordinates here</a>
+                    {t('settings.solar_latitude_description')} • <a href="https://gps-coordinates.org/" target="_blank" rel="noopener noreferrer" style={{ color: '#4a9eff', textDecoration: 'underline' }}>{t('settings.solar_find_coords')}</a>
                   </span>
                 </label>
                 <input
@@ -929,8 +927,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               </div>
               <div className="setting-item">
                 <label htmlFor="solarLongitude">
-                  Longitude
-                  <span className="setting-description">East-west position on Earth (-180 west to +180 east)</span>
+                  {t('settings.solar_longitude')}
+                  <span className="setting-description">{t('settings.solar_longitude_description')}</span>
                 </label>
                 <input
                   id="solarLongitude"
@@ -945,8 +943,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               </div>
               <div className="setting-item">
                 <label htmlFor="solarAzimuth">
-                  Azimuth (degrees)
-                  <span className="setting-description">Compass direction panels face: -180=north, -90=east, 0=south, 90=west, 180=north</span>
+                  {t('settings.solar_azimuth')}
+                  <span className="setting-description">{t('settings.solar_azimuth_description')}</span>
                 </label>
                 <input
                   id="solarAzimuth"
@@ -961,8 +959,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               </div>
               <div className="setting-item">
                 <label htmlFor="solarDeclination">
-                  Declination/Tilt (degrees)
-                  <span className="setting-description">Panel angle from ground: 0=horizontal, 90=vertical. Typical: 20-40 degrees</span>
+                  {t('settings.solar_declination')}
+                  <span className="setting-description">{t('settings.solar_declination_description')}</span>
                 </label>
                 <input
                   id="solarDeclination"
@@ -982,10 +980,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                   className="save-button"
                   style={{ width: 'auto', padding: '0.5rem 1rem' }}
                 >
-                  {isFetchingSolarEstimates ? 'Fetching...' : 'Fetch Estimates Now'}
+                  {isFetchingSolarEstimates ? t('settings.solar_fetching') : t('settings.solar_fetch_now')}
                 </button>
                 <p className="setting-description" style={{ marginTop: '0.5rem' }}>
-                  Manually trigger a solar estimate fetch from Forecast.Solar. Estimates are automatically fetched every hour at :05 past the hour.
+                  {t('settings.solar_fetch_description')}
                 </p>
               </div>
             </>
@@ -997,90 +995,90 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         <AutoUpgradeTestSection baseUrl={baseUrl} />
 
         <div className="settings-section">
-          <h3>Settings Management</h3>
-          <p className="setting-description">Changes are not applied until saved. Settings are stored on the server and persist across all browsers.</p>
+          <h3>{t('settings.settings_management')}</h3>
+          <p className="setting-description">{t('settings.settings_management_description')}</p>
           <div className="settings-buttons">
             <button
               className="save-button"
               onClick={handleSave}
               disabled={!hasChanges || isSaving}
             >
-              {isSaving ? 'Saving...' : 'Save Settings'}
+              {isSaving ? t('settings.saving') : t('settings.save_settings')}
             </button>
             <button
               className="reset-button"
               onClick={handleReset}
               disabled={isSaving}
             >
-              Reset to Defaults
+              {t('settings.reset_defaults')}
             </button>
           </div>
         </div>
 
         <div className="settings-section danger-zone">
-          <h3>⚠️ Danger Zone</h3>
-          <p className="danger-zone-description">These actions cannot be undone. Use with caution.</p>
+          <h3>⚠️ {t('settings.danger_zone')}</h3>
+          <p className="danger-zone-description">{t('settings.danger_zone_description')}</p>
 
           <div className="danger-action">
             <div className="danger-action-info">
-              <h4>Erase Node List</h4>
-              <p>Removes all nodes and traceroute history from the database. A node refresh will be triggered to repopulate the list.</p>
+              <h4>{t('settings.erase_nodes_title')}</h4>
+              <p>{t('settings.erase_nodes_description')}</p>
             </div>
             <button
               className="danger-button"
               onClick={handlePurgeNodes}
             >
-              Erase Nodes
+              {t('settings.erase_nodes_button')}
             </button>
           </div>
 
           <div className="danger-action">
             <div className="danger-action-info">
-              <h4>Purge Telemetry</h4>
-              <p>Removes all historical telemetry data (battery, voltage, temperature, etc.). Current node states will be preserved.</p>
+              <h4>{t('settings.purge_telemetry_title')}</h4>
+              <p>{t('settings.purge_telemetry_description')}</p>
             </div>
             <button
               className="danger-button"
               onClick={handlePurgeTelemetry}
             >
-              Purge Telemetry
+              {t('settings.purge_telemetry_button')}
             </button>
           </div>
 
           <div className="danger-action">
             <div className="danger-action-info">
-              <h4>Purge Messages</h4>
-              <p>Removes all messages from channels and direct message conversations. This action is permanent.</p>
+              <h4>{t('settings.purge_messages_title')}</h4>
+              <p>{t('settings.purge_messages_description')}</p>
             </div>
             <button
               className="danger-button"
               onClick={handlePurgeMessages}
             >
-              Purge Messages
+              {t('settings.purge_messages_button')}
             </button>
           </div>
 
           <div className="danger-action">
             <div className="danger-action-info">
-              <h4>Reset Traceroutes</h4>
-              <p>Removes all saved traceroutes, traceroute history, and route segments (including record holders). New traceroutes will continue to be collected.</p>
+              <h4>{t('settings.reset_traceroutes_title')}</h4>
+              <p>{t('settings.reset_traceroutes_description')}</p>
             </div>
             <button
               className="danger-button"
               onClick={handlePurgeTraceroutes}
             >
-              Reset Traceroutes
+              {t('settings.reset_traceroutes_button')}
             </button>
           </div>
 
           {isDocker !== null && (
             <div className="danger-action">
               <div className="danger-action-info">
-                <h4>{isDocker ? 'Restart Container' : 'Shutdown MeshMonitor'}</h4>
+                <h4>{isDocker ? t('settings.restart_container_title') : t('settings.shutdown_title')}</h4>
                 <p>
                   {isDocker
-                    ? 'Restarts the Docker container. The system will be unavailable for approximately 10-30 seconds.'
-                    : 'Shuts down MeshMonitor. You will need to manually restart it.'}
+                    ? t('settings.restart_container_description')
+                    : t('settings.shutdown_description')}
                 </p>
               </div>
               <button
@@ -1088,7 +1086,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                 onClick={handleRestartContainer}
                 disabled={isRestarting}
               >
-                {isRestarting ? (isDocker ? 'Restarting...' : 'Shutting down...') : (isDocker ? '🔄 Restart Container' : '🛑 Shutdown')}
+                {isRestarting ? (isDocker ? t('settings.restarting') : t('settings.shutting_down')) : (isDocker ? '🔄 ' + t('settings.restart_button') : '🛑 ' + t('settings.shutdown_button'))}
               </button>
             </div>
           )}
