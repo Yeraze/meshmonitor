@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   DndContext,
   closestCenter,
@@ -61,6 +62,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
   currentNodeId = null,
   canEdit = true,
 }) => {
+  const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
   const [favorites, setFavorites] = useState<FavoriteChart[]>([]);
   const [customOrder, setCustomOrder] = useState<string[]>([]);
@@ -565,11 +567,11 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
   }, [customWidgets, saveWidgets]);
 
   if (loading) {
-    return <div className="dashboard-loading">Loading dashboard...</div>;
+    return <div className="dashboard-loading">{t('dashboard.loading')}</div>;
   }
 
   if (error) {
-    return <div className="dashboard-error">Error: {error}</div>;
+    return <div className="dashboard-error">{t('dashboard.error', { error })}</div>;
   }
 
   const hours = daysToView * 24;
@@ -579,19 +581,19 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
     <div className="dashboard">
       <div className="dashboard-header-section">
         <div>
-          <h2 className="dashboard-title">Telemetry Dashboard</h2>
+          <h2 className="dashboard-title">{t('dashboard.title')}</h2>
           <p className="dashboard-subtitle">
             {favorites.length > 0
-              ? `Showing last ${daysToView} days of favorited telemetry`
-              : 'Add widgets or star telemetry in the Nodes tab'}
+              ? t('dashboard.subtitle_with_data', { days: daysToView })
+              : t('dashboard.subtitle_empty')}
           </p>
         </div>
         <button
           className="dashboard-add-widget-btn"
           onClick={() => setShowAddWidgetModal(true)}
-          title="Add widget"
+          title={t('dashboard.add_widget_title')}
         >
-          + Add Widget
+          {t('dashboard.add_widget_button')}
         </button>
       </div>
 
@@ -605,7 +607,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
         <div className="dashboard-filters">
           <div className="dashboard-filter-group">
             <label htmlFor="daysToView" style={{ marginRight: '0.5rem', fontWeight: '500' }}>
-              Days to View:
+              {t('dashboard.days_to_view')}
             </label>
             <input
               type="number"
@@ -631,7 +633,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
           <input
             type="text"
             className="dashboard-search"
-            placeholder="Search nodes or telemetry types..."
+            placeholder={t('dashboard.search_placeholder')}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
           />
@@ -641,7 +643,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
             value={selectedNode}
             onChange={e => setSelectedNode(e.target.value)}
           >
-            <option value="all">All Nodes</option>
+            <option value="all">{t('dashboard.all_nodes')}</option>
             {getUniqueNodes.map(([nodeId, nodeName]) => (
               <option key={nodeId} value={nodeId}>
                 {nodeName}
@@ -654,7 +656,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
             value={selectedType}
             onChange={e => setSelectedType(e.target.value)}
           >
-            <option value="all">All Types</option>
+            <option value="all">{t('dashboard.all_types')}</option>
             {getUniqueTelemetryTypes.map(type => (
               <option key={type} value={type}>
                 {getTelemetryLabel(type)}
@@ -665,7 +667,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
           <div className="dashboard-role-filter-dropdown" ref={roleDropdownRef}>
             <div className="dashboard-role-filter-button" onClick={handleToggleRoleDropdown}>
               <span>
-                {selectedRoles.size === 0 ? 'Device Roles: All' : `Device Roles: ${selectedRoles.size} selected`}
+                {selectedRoles.size === 0 ? t('dashboard.device_roles_all') : t('dashboard.device_roles_selected', { count: selectedRoles.size })}
               </span>
               <span className="dashboard-dropdown-arrow">{roleDropdownOpen ? '▲' : '▼'}</span>
             </div>
@@ -675,7 +677,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
                   <>
                     <label className="dashboard-role-checkbox-label">
                       <input type="checkbox" checked={selectedRoles.size === 0} onChange={handleClearRoleFilter} />
-                      <span>All Roles</span>
+                      <span>{t('dashboard.all_roles')}</span>
                     </label>
                     <div className="dashboard-role-divider" />
                     {getUniqueDeviceRoles.map(role => (
@@ -690,7 +692,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
                     ))}
                   </>
                 ) : (
-                  <span className="dashboard-no-roles">No roles available</span>
+                  <span className="dashboard-no-roles">{t('dashboard.no_roles')}</span>
                 )}
               </div>
             )}
@@ -698,18 +700,18 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
         </div>
 
         <div className="dashboard-sort">
-          <label htmlFor="sort-select">Sort by:</label>
+          <label htmlFor="sort-select">{t('dashboard.sort_by')}</label>
           <select
             id="sort-select"
             className="dashboard-sort-select"
             value={sortOption}
             onChange={e => setSortOption(e.target.value as SortOption)}
           >
-            <option value="custom">Custom Order (Drag & Drop)</option>
-            <option value="node-asc">Node Name (A-Z)</option>
-            <option value="node-desc">Node Name (Z-A)</option>
-            <option value="type-asc">Telemetry Type (A-Z)</option>
-            <option value="type-desc">Telemetry Type (Z-A)</option>
+            <option value="custom">{t('dashboard.sort_custom')}</option>
+            <option value="node-asc">{t('dashboard.sort_node_asc')}</option>
+            <option value="node-desc">{t('dashboard.sort_node_desc')}</option>
+            <option value="type-asc">{t('dashboard.sort_type_asc')}</option>
+            <option value="type-desc">{t('dashboard.sort_type_desc')}</option>
           </select>
         </div>
       </div>
@@ -717,9 +719,9 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
       {hasContent && (
         <>
           <div className="dashboard-results-info">
-            {customWidgets.length > 0 && `${customWidgets.length} widget${customWidgets.length !== 1 ? 's' : ''}`}
+            {customWidgets.length > 0 && t(customWidgets.length !== 1 ? 'dashboard.widget_count_plural' : 'dashboard.widget_count', { count: customWidgets.length })}
             {customWidgets.length > 0 && favorites.length > 0 && ', '}
-            {favorites.length > 0 && `${filteredAndSortedFavorites.length} of ${favorites.length} chart${favorites.length !== 1 ? 's' : ''}`}
+            {favorites.length > 0 && t(favorites.length !== 1 ? 'dashboard.chart_count_plural' : 'dashboard.chart_count', { shown: filteredAndSortedFavorites.length, total: favorites.length })}
           </div>
 
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -792,8 +794,8 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
 
       {!hasContent && (
         <div className="dashboard-empty">
-          <h2>No Widgets or Favorites Yet</h2>
-          <p>Click &quot;+ Add Widget&quot; above or star telemetry charts in the Nodes tab</p>
+          <h2>{t('dashboard.empty_title')}</h2>
+          <p>{t('dashboard.empty_description')}</p>
         </div>
       )}
     </div>
