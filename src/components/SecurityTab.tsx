@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../services/api';
 import { TabType } from '../types/ui';
@@ -43,6 +44,7 @@ interface SecurityTabProps {
 }
 
 export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectDMNode, setNewMessage }) => {
+  const { t } = useTranslation();
   const { hasPermission } = useAuth();
   const [issues, setIssues] = useState<SecurityIssuesResponse | null>(null);
   const [scannerStatus, setScannerStatus] = useState<ScannerStatus | null>(null);
@@ -65,7 +67,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
       setScannerStatus(statusData);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load security data');
+      setError(err instanceof Error ? err.message : t('security.failed_load'));
     } finally {
       setLoading(false);
     }
@@ -86,26 +88,26 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
       // Wait a moment then refresh data
       setTimeout(fetchSecurityData, 2000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to trigger scan');
+      setError(err instanceof Error ? err.message : t('security.failed_scan'));
     } finally {
       setScanning(false);
     }
   }, []);
 
   const formatDate = (timestamp: number | null) => {
-    if (!timestamp) return 'Never';
+    if (!timestamp) return t('security.never');
     return new Date(timestamp * 1000).toLocaleString();
   };
 
   const formatRelativeTime = (timestamp: number | null) => {
-    if (!timestamp) return 'Never';
+    if (!timestamp) return t('security.never');
     const now = Date.now() / 1000;
     const diff = now - timestamp;
 
-    if (diff < 60) return 'Just now';
-    if (diff < 3600) return `${Math.floor(diff / 60)} minutes ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)} hours ago`;
-    return `${Math.floor(diff / 86400)} days ago`;
+    if (diff < 60) return t('security.just_now');
+    if (diff < 3600) return t('security.minutes_ago', { count: Math.floor(diff / 60) });
+    if (diff < 86400) return t('security.hours_ago', { count: Math.floor(diff / 3600) });
+    return t('security.days_ago', { count: Math.floor(diff / 86400) });
   };
 
   const groupDuplicateKeyNodes = (nodes: SecurityNode[]): DuplicateKeyGroup[] => {
@@ -128,7 +130,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
   const handleNodeClick = useCallback((nodeNum: number) => {
     // Check if user has permission to view messages before navigating
     if (!hasPermission('messages', 'read')) {
-      setError('You need messages:read permission to view direct messages');
+      setError(t('security.no_permission_messages'));
       return;
     }
 
@@ -138,12 +140,12 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
       onSelectDMNode(nodeId);
       onTabChange('messages');
     }
-  }, [onTabChange, onSelectDMNode, hasPermission]);
+  }, [onTabChange, onSelectDMNode, hasPermission, t]);
 
   const handleSendNotification = useCallback((node: SecurityNode, duplicateCount?: number) => {
     // Check if user has permission to send messages before navigating
     if (!hasPermission('messages', 'read')) {
-      setError('You need messages:read permission to send notifications');
+      setError(t('security.no_permission_send'));
       return;
     }
 
@@ -164,7 +166,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
       setNewMessage(message);
       onTabChange('messages');
     }
-  }, [onTabChange, onSelectDMNode, setNewMessage, hasPermission]);
+  }, [onTabChange, onSelectDMNode, setNewMessage, hasPermission, t]);
 
   const handleExport = useCallback(async (format: 'csv' | 'json') => {
     try {
@@ -195,14 +197,14 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to export data');
+      setError(err instanceof Error ? err.message : t('security.failed_export'));
     }
-  }, []);
+  }, [t]);
 
   if (loading) {
     return (
       <div className="security-tab">
-        <div className="loading">Loading security data...</div>
+        <div className="loading">{t('security.loading')}</div>
       </div>
     );
   }
@@ -210,8 +212,8 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
   if (error) {
     return (
       <div className="security-tab">
-        <div className="error">Error: {error}</div>
-        <button onClick={fetchSecurityData}>Retry</button>
+        <div className="error">{t('security.error_loading', { error })}</div>
+        <button onClick={fetchSecurityData}>{t('security.retry')}</button>
       </div>
     );
   }
@@ -221,25 +223,25 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
       <div className="security-header">
         <div className="header-content">
           <div>
-            <h2>Security Scanner</h2>
-            <p>Monitor encryption key security issues including low-entropy and duplicate keys</p>
+            <h2>{t('security.title')}</h2>
+            <p>{t('security.description')}</p>
           </div>
           <div className="header-actions">
             <div className="export-dropdown">
               <button
                 onClick={() => setShowExportMenu(!showExportMenu)}
                 className="export-button"
-                title="Export security scan results"
+                title={t('security.export_results')}
               >
-                Export ▼
+                {t('security.export')} ▼
               </button>
               {showExportMenu && (
                 <div className="export-menu">
                   <button onClick={() => handleExport('csv')} className="export-menu-item">
-                    Export as CSV
+                    {t('security.export_as_csv')}
                   </button>
                   <button onClick={() => handleExport('json')} className="export-menu-item">
-                    Export as JSON
+                    {t('security.export_as_json')}
                   </button>
                 </div>
               )}
@@ -251,20 +253,20 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
       {/* Scanner Status */}
       <div className="scanner-status">
         <div className="status-card">
-          <h3>Scanner Status</h3>
+          <h3>{t('security.scanner_status')}</h3>
           <div className="status-details">
             <div className="status-row">
-              <span className="label">Status:</span>
+              <span className="label">{t('security.status')}:</span>
               <span className={`value ${scannerStatus?.running ? 'running' : 'stopped'}`}>
-                {scannerStatus?.scanningNow ? 'Scanning...' : scannerStatus?.running ? 'Active' : 'Stopped'}
+                {scannerStatus?.scanningNow ? t('security.scanning_now') : scannerStatus?.running ? t('security.active') : t('security.stopped')}
               </span>
             </div>
             <div className="status-row">
-              <span className="label">Scan Interval:</span>
-              <span className="value">Every {scannerStatus?.intervalHours} hours</span>
+              <span className="label">{t('security.scan_interval')}:</span>
+              <span className="value">{t('security.every_hours', { hours: scannerStatus?.intervalHours })}</span>
             </div>
             <div className="status-row">
-              <span className="label">Last Scan:</span>
+              <span className="label">{t('security.last_scan')}:</span>
               <span className="value">
                 {formatRelativeTime(scannerStatus?.lastScanTime || null)}
                 {scannerStatus?.lastScanTime && (
@@ -279,7 +281,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
               disabled={scanning || scannerStatus?.scanningNow}
               className="scan-button"
             >
-              {scanning || scannerStatus?.scanningNow ? 'Scanning...' : 'Run Scan Now'}
+              {scanning || scannerStatus?.scanningNow ? t('security.scanning') : t('security.run_scan_now')}
             </button>
           )}
         </div>
@@ -289,20 +291,20 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
       <div className="security-stats">
         <div className="stat-card total">
           <div className="stat-value">{issues?.total || 0}</div>
-          <div className="stat-label">Nodes with Issues</div>
+          <div className="stat-label">{t('security.nodes_with_issues')}</div>
         </div>
         <div className="stat-card low-entropy">
           <div className="stat-value">{issues?.lowEntropyCount || 0}</div>
-          <div className="stat-label">Have Low-Entropy Keys</div>
+          <div className="stat-label">{t('security.have_low_entropy')}</div>
         </div>
         <div className="stat-card duplicate">
           <div className="stat-value">{issues?.duplicateKeyCount || 0}</div>
-          <div className="stat-label">Have Duplicate Keys</div>
+          <div className="stat-label">{t('security.have_duplicate')}</div>
         </div>
       </div>
       {issues && issues.total > 0 && (issues.lowEntropyCount + issues.duplicateKeyCount > issues.total) && (
         <div className="info-note" style={{marginTop: '0.5rem', fontSize: '0.85rem', color: '#666', fontStyle: 'italic'}}>
-          Note: Some nodes have both low-entropy and duplicate keys
+          {t('security.both_issues_note')}
         </div>
       )}
 
@@ -310,9 +312,9 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
       <div className="security-issues">
         {!issues || issues.total === 0 ? (
           <div className="no-issues">
-            <p>No security issues detected.</p>
+            <p>{t('security.no_issues')}</p>
             <p className="help-text">
-              The scanner checks for known low-entropy keys and duplicate keys across your mesh network.
+              {t('security.scanner_checks')}
             </p>
           </div>
         ) : (
@@ -320,7 +322,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
             {/* Low-Entropy Keys Section */}
             {issues.lowEntropyCount > 0 && (
               <div className="issues-section">
-                <h3>Low-Entropy Keys ({issues.lowEntropyCount})</h3>
+                <h3>{t('security.low_entropy_count', { count: issues.lowEntropyCount })}</h3>
                 <div className="issues-list">
                   {issues.nodes.filter(node => node.keyIsLowEntropy).map((node) => (
               <div key={node.nodeNum} className="issue-card">
@@ -347,15 +349,15 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
                       )}
                     </div>
                     <div className="node-last-seen">
-                      Last seen {formatRelativeTime(node.lastHeard)}
+                      {t('security.last_seen', { time: formatRelativeTime(node.lastHeard) })}
                     </div>
                   </div>
                   <div className="issue-types">
                     {node.keyIsLowEntropy && (
-                      <span className="badge low-entropy">Low-Entropy</span>
+                      <span className="badge low-entropy">{t('security.badge_low_entropy')}</span>
                     )}
                     {node.duplicateKeyDetected && (
-                      <span className="badge duplicate">Duplicate</span>
+                      <span className="badge duplicate">{t('security.badge_duplicate')}</span>
                     )}
                   </div>
                   <button
@@ -364,7 +366,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
                       e.stopPropagation();
                       handleSendNotification(node);
                     }}
-                    title="Send security notification to this node"
+                    title={t('security.send_notification_title')}
                   >
                     →
                   </button>
@@ -376,34 +378,34 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
                 {expandedNode === node.nodeNum && (
                   <div className="issue-details">
                     <div className="detail-row">
-                      <span className="detail-label">Last Heard:</span>
+                      <span className="detail-label">{t('security.last_heard')}:</span>
                       <span className="detail-value">{formatDate(node.lastHeard)}</span>
                     </div>
                     {node.keySecurityIssueDetails && (
                       <div className="detail-row">
-                        <span className="detail-label">Details:</span>
+                        <span className="detail-label">{t('security.details')}:</span>
                         <span className="detail-value">{node.keySecurityIssueDetails}</span>
                       </div>
                     )}
                     {node.publicKey && (
                       <div className="detail-row">
-                        <span className="detail-label">Public Key:</span>
+                        <span className="detail-label">{t('security.public_key')}:</span>
                         <span className="detail-value key-hash">
                           {node.publicKey.substring(0, 32)}...
                         </span>
                       </div>
                     )}
                     <div className="detail-row recommendations">
-                      <span className="detail-label">Recommendations:</span>
+                      <span className="detail-label">{t('security.recommendations')}:</span>
                       <ul>
                         {node.keyIsLowEntropy && (
-                          <li>This node is using a known weak encryption key that can be easily compromised.</li>
+                          <li>{t('security.recommendation_weak_key')}</li>
                         )}
                         {node.duplicateKeyDetected && (
-                          <li>This key is shared with other nodes, reducing privacy and security.</li>
+                          <li>{t('security.recommendation_shared_key')}</li>
                         )}
-                        <li>Consider reconfiguring the node with a secure, randomly-generated encryption key.</li>
-                        <li>Consult the Meshtastic documentation for secure key generation practices.</li>
+                        <li>{t('security.recommendation_reconfigure')}</li>
+                        <li>{t('security.recommendation_docs')}</li>
                       </ul>
                     </div>
                   </div>
@@ -417,15 +419,15 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
             {/* Duplicate Keys Section - Grouped by Public Key */}
             {issues.duplicateKeyCount > 0 && (
               <div className="issues-section">
-                <h3>Duplicate Keys ({issues.duplicateKeyCount} nodes affected)</h3>
+                <h3>{t('security.duplicate_count', { count: issues.duplicateKeyCount })}</h3>
                 {groupDuplicateKeyNodes(issues.nodes).map((group, groupIndex) => (
                   <div key={groupIndex} className="duplicate-group">
                     <div className="duplicate-group-header">
                       <div className="group-title">
-                        <span className="badge duplicate">Shared Key</span>
+                        <span className="badge duplicate">{t('security.shared_key')}</span>
                         <span className="key-hash">{group.publicKey.substring(0, 32)}...</span>
                       </div>
-                      <div className="node-count">{group.nodes.length} nodes sharing this key</div>
+                      <div className="node-count">{t('security.nodes_sharing', { count: group.nodes.length })}</div>
                     </div>
                     <div className="duplicate-node-list">
                       {group.nodes.map((node) => (
@@ -438,7 +440,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
                               {node.longName || node.shortName} ({node.shortName})
                             </span>
                             <div className="node-last-seen">
-                              Last seen {formatRelativeTime(node.lastHeard)}
+                              {t('security.last_seen', { time: formatRelativeTime(node.lastHeard) })}
                             </div>
                           </div>
                           <div className="duplicate-node-actions">
@@ -454,7 +456,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
                                 e.stopPropagation();
                                 handleSendNotification(node, group.nodes.length - 1);
                               }}
-                              title="Send security notification to this node"
+                              title={t('security.send_notification_title')}
                             >
                               →
                             </button>
@@ -463,9 +465,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
                       ))}
                     </div>
                     <div className="group-recommendations">
-                      <strong>Recommendation:</strong> Each of these nodes is using the same encryption key,
-                      compromising network security and privacy. Reconfigure each node with a unique,
-                      randomly-generated encryption key.
+                      <strong>{t('security.group_recommendation')}</strong> {t('security.group_recommendation_text')}
                     </div>
                   </div>
                 ))}
