@@ -5,6 +5,7 @@
 [![Docker Image](https://ghcr-badge.egpl.dev/yeraze/meshmonitor/latest_tag?color=%235b4566&ignore=latest,main,dev&label=version&trim=)](https://github.com/Yeraze/meshmonitor/pkgs/container/meshmonitor)
 [![Docker Pulls](https://ghcr-badge.egpl.dev/yeraze/meshmonitor/size?color=%235b4566&tag=latest&label=image%20size&trim=)](https://github.com/Yeraze/meshmonitor/pkgs/container/meshmonitor)
 [![License](https://img.shields.io/github/license/Yeraze/meshmonitor)](https://github.com/Yeraze/meshmonitor/blob/main/LICENSE)
+[![Translation Status](https://hosted.weblate.org/widgets/meshmonitor/-/svg-badge.svg)](https://hosted.weblate.org/engage/meshmonitor/)
 
 A comprehensive web application for monitoring Meshtastic mesh networks over IP. Built with React, TypeScript, and Node.js, featuring a beautiful Catppuccin Mocha dark theme and persistent SQLite database storage.
 
