@@ -7,7 +7,7 @@
 
 import React, { useRef } from 'react';
 import { Channel } from '../types/device';
-import { MeshMessage, MessageDeliveryState } from '../types/message';
+import { MeshMessage } from '../types/message';
 import { ResourceType } from '../types/permission';
 import { TimeFormat, DateFormat } from '../contexts/SettingsContext';
 import { formatMessageTime, getMessageDateSeparator, shouldShowDateSeparator } from '../utils/datetime';
@@ -16,55 +16,10 @@ import { renderMessageWithLinks } from '../utils/linkRenderer';
 import HopCountDisplay from './HopCountDisplay';
 import LinkPreview from './LinkPreview';
 import { logger } from '../utils/logger';
+import { MessageStatusIndicator } from './MessageStatusIndicator';
 
 // Default PSK value for unencrypted channels
 const DEFAULT_UNENCRYPTED_PSK = 'AQ==';
-
-/**
- * Render message delivery status indicator
- */
-function renderMessageStatus(msg: MeshMessage): React.ReactElement {
-  const messageAge = Date.now() - msg.timestamp.getTime();
-  const TIMEOUT_MS = 30000;
-
-  if (msg.ackFailed || msg.routingErrorReceived || msg.deliveryState === MessageDeliveryState.FAILED) {
-    return (
-      <span className="status-failed" title="Failed to send - routing error or max retries exceeded">
-        ❌
-      </span>
-    );
-  }
-
-  if (msg.deliveryState === MessageDeliveryState.CONFIRMED) {
-    return (
-      <span className="status-confirmed" title="Received by target node">
-        🔒
-      </span>
-    );
-  }
-
-  if (msg.deliveryState === MessageDeliveryState.DELIVERED) {
-    return (
-      <span className="status-delivered" title="Transmitted to mesh">
-        ✅
-      </span>
-    );
-  }
-
-  if (messageAge < TIMEOUT_MS) {
-    return (
-      <span className="status-pending" title="Sending...">
-        ⏳
-      </span>
-    );
-  }
-
-  return (
-    <span className="status-timeout" title="No acknowledgment received (timeout)">
-      ⏱️
-    </span>
-  );
-}
 
 export interface ChannelsTabProps {
   // Data
@@ -532,7 +487,7 @@ export default function ChannelsTab({
                                     </div>
                                   </div>
                                 </div>
-                                {isMine && <div className="message-status">{renderMessageStatus(msg)}</div>}
+                                {isMine && <div className="message-status"><MessageStatusIndicator message={msg} /></div>}
                               </div>
                             </React.Fragment>
                           );
