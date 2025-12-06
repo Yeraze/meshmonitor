@@ -34,6 +34,8 @@ interface NodeInfo {
     hwModel?: number;
     role?: number | string;
   };
+  lastHeard?: number;
+  hopsAway?: number;
 }
 
 interface ChartData {
