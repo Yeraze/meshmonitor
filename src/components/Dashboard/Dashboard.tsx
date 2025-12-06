@@ -17,6 +17,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
   favoriteTelemetryStorageDays = 7,
   baseUrl,
   currentNodeId = null,
+  canEdit = true,
 }) => {
   const csrfFetch = useCsrfFetch();
   
@@ -249,6 +250,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
           widgetsCount={customWidgets.length}
           favoritesCount={favorites.length}
           filteredCount={filteredAndSortedFavorites.length}
+          canEdit={canEdit}
         />
       )}
 

@@ -25,6 +25,7 @@ export interface DashboardProps {
   favoriteTelemetryStorageDays?: number;
   baseUrl: string;
   currentNodeId?: string | null;
+  canEdit?: boolean;
 }
 
 export interface DashboardFiltersState {

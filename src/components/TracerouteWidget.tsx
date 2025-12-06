@@ -69,6 +69,7 @@ interface TracerouteWidgetProps {
   nodes: Map<string, NodeInfo>;
   onRemove: () => void;
   onSelectNode: (nodeId: string) => void;
+  canEdit?: boolean;
 }
 
 const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
@@ -78,6 +79,7 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
   nodes,
   onRemove,
   onSelectNode,
+  canEdit = true,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
@@ -418,37 +420,41 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
       </div>
 
       <div className="traceroute-content">
-        {/* Node selection */}
-        <div className="traceroute-select-section" ref={searchRef}>
-          <div className="traceroute-search-container">
-            <input
-              type="text"
-              className="traceroute-search"
-              placeholder={targetNodeId ? 'Change node...' : 'Select a node...'}
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              onFocus={() => setShowSearch(true)}
-            />
-            {showSearch && availableNodes.length > 0 && (
-              <div className="traceroute-search-dropdown">
-                {availableNodes.map(node => (
-                  <div
-                    key={node.nodeId}
-                    className="traceroute-search-item"
-                    onClick={() => handleSelectNode(node.nodeId)}
-                  >
-                    {node.name}
-                    <span className="traceroute-search-id">{node.nodeId}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+        {/* Node selection - only show if user can edit */}
+        {canEdit && (
+          <div className="traceroute-select-section" ref={searchRef}>
+            <div className="traceroute-search-container">
+              <input
+                type="text"
+                className="traceroute-search"
+                placeholder={targetNodeId ? 'Change node...' : 'Select a node...'}
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                onFocus={() => setShowSearch(true)}
+              />
+              {showSearch && availableNodes.length > 0 && (
+                <div className="traceroute-search-dropdown">
+                  {availableNodes.map(node => (
+                    <div
+                      key={node.nodeId}
+                      className="traceroute-search-item"
+                      onClick={() => handleSelectNode(node.nodeId)}
+                    >
+                      {node.name}
+                      <span className="traceroute-search-id">{node.nodeId}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Traceroute display */}
         {!targetNodeId ? (
-          <div className="traceroute-empty">Select a node above to view traceroute information.</div>
+          <div className="traceroute-empty">
+            {canEdit ? 'Select a node above to view traceroute information.' : 'No node configured.'}
+          </div>
         ) : isLoading ? (
           <div className="traceroute-loading">Loading traceroute data...</div>
         ) : !traceroute ? (

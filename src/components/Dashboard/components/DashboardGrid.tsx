@@ -46,6 +46,9 @@ interface DashboardGridProps {
   widgetsCount: number;
   favoritesCount: number;
   filteredCount: number;
+
+  // Permissions
+  canEdit?: boolean;
 }
 
 const DashboardGrid: React.FC<DashboardGridProps> = ({
@@ -69,6 +72,7 @@ const DashboardGrid: React.FC<DashboardGridProps> = ({
   widgetsCount,
   favoritesCount,
   filteredCount,
+  canEdit = true,
 }) => {
   // Drag and drop sensors
   const sensors = useSensors(
@@ -107,6 +111,7 @@ const DashboardGrid: React.FC<DashboardGridProps> = ({
                     onRemove={() => onRemoveWidget(widget.id)}
                     onAddNode={(nodeId) => onAddNodeToWidget(widget.id, nodeId)}
                     onRemoveNode={(nodeId) => onRemoveNodeFromWidget(widget.id, nodeId)}
+                    canEdit={canEdit}
                   />
                 );
               } else if (widget.type === 'traceroute') {
@@ -119,6 +124,7 @@ const DashboardGrid: React.FC<DashboardGridProps> = ({
                     nodes={nodes}
                     onRemove={() => onRemoveWidget(widget.id)}
                     onSelectNode={(nodeId) => onSelectTracerouteNode(widget.id, nodeId)}
+                    canEdit={canEdit}
                   />
                 );
               }
