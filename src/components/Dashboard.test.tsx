@@ -108,25 +108,27 @@ describe('Dashboard', () => {
   });
 
   describe('useEffect dependencies', () => {
-    it('should include baseUrl in dependency array', () => {
-      // This is a regression test to ensure baseUrl is in the dependency array
-      // The bug was that baseUrl was missing, causing stale closures
-      // We verify this by checking that the dependency array includes baseUrl
+    it('should use TanStack Query for data fetching', () => {
+      // This is a regression test to ensure proper data fetching
+      // The Dashboard was refactored to use TanStack Query for data fetching
+      // We verify this by checking that useDashboardData hook uses useQuery
 
-      // Read the Dashboard component source to verify dependencies
+      // Read the useDashboardData hook source to verify TanStack Query usage
       const __filename = fileURLToPath(import.meta.url);
       const __dirname = path.dirname(__filename);
-      const dashboardSource = fs.readFileSync(
-        path.join(__dirname, 'Dashboard.tsx'),
+      const hookSource = fs.readFileSync(
+        path.join(__dirname, 'Dashboard/hooks/useDashboardData.ts'),
         'utf8'
       );
 
-      // Check that the useEffect has baseUrl in its dependency array
-      // After refactoring to use useTelemetry hook, the fetch effect only depends on baseUrl
-      // (telemetry fetching is handled by individual TelemetryChart components with hours prop)
-      // Pattern: }, [baseUrl]); at the end of the main fetch effect
-      const useEffectPattern = /},\s*\[baseUrl\]/;
-      expect(dashboardSource).toMatch(useEffectPattern);
+      // Check that the hook uses useQuery from TanStack Query
+      // This ensures proper caching, background refetching, and no stale closures
+      const useQueryPattern = /useQuery\(\{/;
+      expect(hookSource).toMatch(useQueryPattern);
+      
+      // Also verify refetchInterval is set for polling
+      const refetchIntervalPattern = /refetchInterval/;
+      expect(hookSource).toMatch(refetchIntervalPattern);
     });
   });
 });
