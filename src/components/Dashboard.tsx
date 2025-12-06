@@ -23,13 +23,32 @@ import { useSolarEstimatesLatest } from '../hooks/useTelemetry';
 import { getDeviceRoleName } from '../utils/deviceRole';
 import TelemetryChart, { getTelemetryLabel, type FavoriteChart, type NodeInfo } from './TelemetryChart';
 import { type TelemetryData } from '../hooks/useTelemetry';
+import NodeStatusWidget from './NodeStatusWidget';
+import TracerouteWidget from './TracerouteWidget';
+import AddWidgetModal, { type WidgetType } from './AddWidgetModal';
 
 interface DashboardProps {
   temperatureUnit?: TemperatureUnit;
   telemetryHours?: number;
   favoriteTelemetryStorageDays?: number;
   baseUrl: string;
+  currentNodeId?: string | null;
 }
+
+// Custom widget types for node status and traceroute
+interface NodeStatusWidgetConfig {
+  id: string;
+  type: 'nodeStatus';
+  nodeIds: string[];
+}
+
+interface TracerouteWidgetConfig {
+  id: string;
+  type: 'traceroute';
+  targetNodeId: string | null;
+}
+
+type CustomWidget = NodeStatusWidgetConfig | TracerouteWidgetConfig;
 
 type SortOption = 'custom' | 'node-asc' | 'node-desc' | 'type-asc' | 'type-desc';
 
@@ -38,6 +57,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
   telemetryHours: _telemetryHours = 24,
   favoriteTelemetryStorageDays = 7,
   baseUrl,
+  currentNodeId = null,
 }) => {
   const csrfFetch = useCsrfFetch();
   const [favorites, setFavorites] = useState<FavoriteChart[]>([]);
@@ -45,6 +65,10 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
   const [nodes, setNodes] = useState<Map<string, NodeInfo>>(new Map());
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Custom widgets state
+  const [customWidgets, setCustomWidgets] = useState<CustomWidget[]>([]);
+  const [showAddWidgetModal, setShowAddWidgetModal] = useState(false);
 
   // Track telemetry data from charts for global time range calculation
   const [telemetryDataMap, setTelemetryDataMap] = useState<Map<string, TelemetryData[]>>(new Map());
@@ -139,8 +163,12 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
       try {
         setLoading(true);
 
-        // Fetch favorites and custom order from settings
-        const settings = await api.get<{ telemetryFavorites?: string; telemetryCustomOrder?: string }>('/api/settings');
+        // Fetch favorites, custom order, and custom widgets from settings
+        const settings = await api.get<{
+          telemetryFavorites?: string;
+          telemetryCustomOrder?: string;
+          dashboardWidgets?: string;
+        }>('/api/settings');
         const favoritesArray: FavoriteChart[] = settings.telemetryFavorites
           ? JSON.parse(settings.telemetryFavorites)
           : [];
@@ -148,6 +176,12 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
         const serverCustomOrder: string[] = settings.telemetryCustomOrder
           ? JSON.parse(settings.telemetryCustomOrder)
           : [];
+
+        // Load custom widgets from settings
+        const widgetsArray: CustomWidget[] = settings.dashboardWidgets
+          ? JSON.parse(settings.dashboardWidgets)
+          : [];
+        setCustomWidgets(widgetsArray);
 
         setFavorites(favoritesArray);
 
@@ -393,6 +427,78 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
     }
   }, [favorites, baseUrl, csrfFetch]);
 
+  // Save custom widgets to server
+  const saveWidgets = useCallback(async (widgets: CustomWidget[]) => {
+    try {
+      await csrfFetch(`${baseUrl}/api/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dashboardWidgets: JSON.stringify(widgets) }),
+      });
+    } catch (error) {
+      logger.error('Error saving widgets:', error);
+    }
+  }, [baseUrl, csrfFetch]);
+
+  // Add a new widget
+  const handleAddWidget = useCallback((type: WidgetType) => {
+    const id = `widget-${Date.now()}`;
+    let newWidget: CustomWidget;
+
+    if (type === 'nodeStatus') {
+      newWidget = { id, type: 'nodeStatus', nodeIds: [] };
+    } else {
+      newWidget = { id, type: 'traceroute', targetNodeId: null };
+    }
+
+    const newWidgets = [...customWidgets, newWidget];
+    setCustomWidgets(newWidgets);
+    saveWidgets(newWidgets);
+  }, [customWidgets, saveWidgets]);
+
+  // Remove a widget
+  const handleRemoveWidget = useCallback((widgetId: string) => {
+    const newWidgets = customWidgets.filter(w => w.id !== widgetId);
+    setCustomWidgets(newWidgets);
+    saveWidgets(newWidgets);
+  }, [customWidgets, saveWidgets]);
+
+  // Add node to NodeStatus widget
+  const handleAddNodeToWidget = useCallback((widgetId: string, nodeId: string) => {
+    const newWidgets = customWidgets.map(w => {
+      if (w.id === widgetId && w.type === 'nodeStatus') {
+        return { ...w, nodeIds: [...w.nodeIds, nodeId] };
+      }
+      return w;
+    });
+    setCustomWidgets(newWidgets);
+    saveWidgets(newWidgets);
+  }, [customWidgets, saveWidgets]);
+
+  // Remove node from NodeStatus widget
+  const handleRemoveNodeFromWidget = useCallback((widgetId: string, nodeId: string) => {
+    const newWidgets = customWidgets.map(w => {
+      if (w.id === widgetId && w.type === 'nodeStatus') {
+        return { ...w, nodeIds: w.nodeIds.filter(id => id !== nodeId) };
+      }
+      return w;
+    });
+    setCustomWidgets(newWidgets);
+    saveWidgets(newWidgets);
+  }, [customWidgets, saveWidgets]);
+
+  // Set target node for Traceroute widget
+  const handleSelectTracerouteNode = useCallback((widgetId: string, nodeId: string) => {
+    const newWidgets = customWidgets.map(w => {
+      if (w.id === widgetId && w.type === 'traceroute') {
+        return { ...w, targetNodeId: nodeId };
+      }
+      return w;
+    });
+    setCustomWidgets(newWidgets);
+    saveWidgets(newWidgets);
+  }, [customWidgets, saveWidgets]);
+
   if (loading) {
     return <div className="dashboard-loading">Loading dashboard...</div>;
   }
@@ -401,25 +507,34 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
     return <div className="dashboard-error">Error: {error}</div>;
   }
 
-  if (favorites.length === 0) {
-    return (
-      <div className="dashboard-empty">
-        <h2>No Favorites Yet</h2>
-        <p>Star telemetry charts in the Nodes tab to see them here</p>
-      </div>
-    );
-  }
-
   const hours = daysToView * 24;
+  const hasContent = favorites.length > 0 || customWidgets.length > 0;
 
   return (
     <div className="dashboard">
       <div className="dashboard-header-section">
         <div>
           <h2 className="dashboard-title">Telemetry Dashboard</h2>
-          <p className="dashboard-subtitle">Showing last {daysToView} days of favorited telemetry</p>
+          <p className="dashboard-subtitle">
+            {favorites.length > 0
+              ? `Showing last ${daysToView} days of favorited telemetry`
+              : 'Add widgets or star telemetry in the Nodes tab'}
+          </p>
         </div>
+        <button
+          className="dashboard-add-widget-btn"
+          onClick={() => setShowAddWidgetModal(true)}
+          title="Add widget"
+        >
+          + Add Widget
+        </button>
       </div>
+
+      <AddWidgetModal
+        isOpen={showAddWidgetModal}
+        onClose={() => setShowAddWidgetModal(false)}
+        onAddWidget={handleAddWidget}
+      />
 
       <div className="dashboard-controls">
         <div className="dashboard-filters">
@@ -534,40 +649,87 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
         </div>
       </div>
 
-      <div className="dashboard-results-info">
-        Showing {filteredAndSortedFavorites.length} of {favorites.length} chart{favorites.length !== 1 ? 's' : ''}
-      </div>
-
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext
-          items={filteredAndSortedFavorites.map(f => `${f.nodeId}-${f.telemetryType}`)}
-          strategy={verticalListSortingStrategy}
-        >
-          <div className="dashboard-grid">
-            {filteredAndSortedFavorites.map(favorite => {
-              const key = `${favorite.nodeId}-${favorite.telemetryType}`;
-              const node = nodes.get(favorite.nodeId);
-
-              return (
-                <TelemetryChart
-                  key={key}
-                  id={key}
-                  favorite={favorite}
-                  node={node}
-                  temperatureUnit={temperatureUnit}
-                  hours={hours}
-                  baseUrl={baseUrl}
-                  globalTimeRange={globalTimeRange}
-                  globalMinTime={globalMinTime}
-                  solarEstimates={solarEstimates || new Map()}
-                  onRemove={removeFavorite}
-                  onDataLoaded={handleDataLoaded}
-                />
-              );
-            })}
+      {hasContent && (
+        <>
+          <div className="dashboard-results-info">
+            {customWidgets.length > 0 && `${customWidgets.length} widget${customWidgets.length !== 1 ? 's' : ''}`}
+            {customWidgets.length > 0 && favorites.length > 0 && ', '}
+            {favorites.length > 0 && `${filteredAndSortedFavorites.length} of ${favorites.length} chart${favorites.length !== 1 ? 's' : ''}`}
           </div>
-        </SortableContext>
-      </DndContext>
+
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext
+              items={[
+                ...customWidgets.map(w => w.id),
+                ...filteredAndSortedFavorites.map(f => `${f.nodeId}-${f.telemetryType}`),
+              ]}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="dashboard-grid">
+                {/* Custom Widgets */}
+                {customWidgets.map(widget => {
+                  if (widget.type === 'nodeStatus') {
+                    return (
+                      <NodeStatusWidget
+                        key={widget.id}
+                        id={widget.id}
+                        nodeIds={widget.nodeIds}
+                        nodes={nodes}
+                        onRemove={() => handleRemoveWidget(widget.id)}
+                        onAddNode={(nodeId) => handleAddNodeToWidget(widget.id, nodeId)}
+                        onRemoveNode={(nodeId) => handleRemoveNodeFromWidget(widget.id, nodeId)}
+                      />
+                    );
+                  } else if (widget.type === 'traceroute') {
+                    return (
+                      <TracerouteWidget
+                        key={widget.id}
+                        id={widget.id}
+                        targetNodeId={widget.targetNodeId}
+                        currentNodeId={currentNodeId}
+                        nodes={nodes}
+                        onRemove={() => handleRemoveWidget(widget.id)}
+                        onSelectNode={(nodeId) => handleSelectTracerouteNode(widget.id, nodeId)}
+                      />
+                    );
+                  }
+                  return null;
+                })}
+
+                {/* Telemetry Charts */}
+                {filteredAndSortedFavorites.map(favorite => {
+                  const key = `${favorite.nodeId}-${favorite.telemetryType}`;
+                  const node = nodes.get(favorite.nodeId);
+
+                  return (
+                    <TelemetryChart
+                      key={key}
+                      id={key}
+                      favorite={favorite}
+                      node={node}
+                      temperatureUnit={temperatureUnit}
+                      hours={hours}
+                      baseUrl={baseUrl}
+                      globalTimeRange={globalTimeRange}
+                      globalMinTime={globalMinTime}
+                      solarEstimates={solarEstimates || new Map()}
+                      onRemove={removeFavorite}
+                      onDataLoaded={handleDataLoaded}
+                    />
+                  );
+                })}
+              </div>
+            </SortableContext>
+          </DndContext>
+        </>
+      )}
+
+      {!hasContent && (
+        <div className="dashboard-empty">
+          <h2>No Widgets or Favorites Yet</h2>
+          <p>Click &quot;+ Add Widget&quot; above or star telemetry charts in the Nodes tab</p>
+        </div>
+      )}
     </div>
   );
 });

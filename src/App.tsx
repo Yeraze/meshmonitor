@@ -4199,6 +4199,7 @@ function App() {
             telemetryHours={telemetryVisualizationHours}
             favoriteTelemetryStorageDays={favoriteTelemetryStorageDays}
             baseUrl={baseUrl}
+            currentNodeId={currentNodeId}
           />
         )}
         {activeTab === 'settings' && (
