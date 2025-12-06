@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../services/api';
 import { logger } from '../utils/logger';
@@ -25,6 +26,7 @@ interface User {
 }
 
 const UsersTab: React.FC = () => {
+  const { t } = useTranslation();
   const { authStatus } = useAuth();
   const { showToast } = useToast();
   const [users, setUsers] = useState<User[]>([]);
@@ -62,7 +64,7 @@ const UsersTab: React.FC = () => {
       setUsers(response.users);
     } catch (err) {
       logger.error('Failed to fetch users:', err);
-      setError('Failed to load users');
+      setError(t('users.failed_load'));
     } finally {
       setLoading(false);
     }
@@ -102,7 +104,7 @@ const UsersTab: React.FC = () => {
       }
     } catch (err) {
       logger.error('Failed to fetch user permissions:', err);
-      setError('Failed to load permissions');
+      setError(t('users.failed_load_permissions'));
     }
   };
 
@@ -123,15 +125,15 @@ const UsersTab: React.FC = () => {
 
       await api.put(`/api/users/${selectedUser.id}/permissions`, { permissions: validPermissions });
       setError(null);
-      showToast('Permissions updated successfully', 'success');
+      showToast(t('users.permissions_updated'), 'success');
     } catch (err) {
       logger.error('Failed to update permissions:', err);
       if (err && typeof err === 'object' && 'status' in err && err.status === 403) {
-        showToast('Insufficient permissions to update user permissions', 'error');
+        showToast(t('users.insufficient_permissions_update'), 'error');
       } else {
-        showToast('Failed to update permissions. Please try again.', 'error');
+        showToast(t('users.failed_update_permissions'), 'error');
       }
-      setError('Failed to update permissions');
+      setError(t('users.failed_update_permissions'));
     }
   };
 
@@ -144,13 +146,13 @@ const UsersTab: React.FC = () => {
         setSelectedUser({ ...selectedUser, isAdmin: !user.isAdmin });
       }
       showToast(
-        user.isAdmin ? 'Admin privileges removed' : 'Admin privileges granted',
+        user.isAdmin ? t('users.admin_removed') : t('users.admin_granted'),
         'success'
       );
     } catch (err) {
       logger.error('Failed to update admin status:', err);
-      showToast('Failed to update admin status', 'error');
-      setError('Failed to update admin status');
+      showToast(t('users.failed_admin_status'), 'error');
+      setError(t('users.failed_admin_status'));
     }
   };
 
@@ -163,13 +165,13 @@ const UsersTab: React.FC = () => {
         setSelectedUser({ ...selectedUser, passwordLocked: !user.passwordLocked });
       }
       showToast(
-        user.passwordLocked ? 'Password changes unlocked' : 'Password changes locked',
+        user.passwordLocked ? t('users.password_unlocked') : t('users.password_locked'),
         'success'
       );
     } catch (err) {
       logger.error('Failed to toggle password lock:', err);
-      showToast('Failed to update password lock status', 'error');
-      setError('Failed to toggle password lock');
+      showToast(t('users.failed_password_lock'), 'error');
+      setError(t('users.failed_password_lock'));
     }
   };
 
@@ -187,17 +189,17 @@ const UsersTab: React.FC = () => {
 
     // Validation
     if (!passwordForm.newPassword || !passwordForm.confirmPassword) {
-      setPasswordError('Both password fields are required');
+      setPasswordError(t('users.password_fields_required'));
       return;
     }
 
     if (passwordForm.newPassword.length < 8) {
-      setPasswordError('Password must be at least 8 characters');
+      setPasswordError(t('users.password_min_length'));
       return;
     }
 
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      setPasswordError('Passwords do not match');
+      setPasswordError(t('users.passwords_not_match'));
       return;
     }
 
@@ -210,15 +212,15 @@ const UsersTab: React.FC = () => {
       setPasswordForm({ newPassword: '', confirmPassword: '' });
       setShowSetPasswordModal(false);
       setPasswordError(null);
-      showToast('Password updated successfully', 'success');
+      showToast(t('users.password_updated'), 'success');
     } catch (err) {
       logger.error('Failed to set password:', err);
       if (err && typeof err === 'object' && 'status' in err && err.status === 403) {
-        showToast('Insufficient permissions to set password', 'error');
+        showToast(t('users.insufficient_permissions_password'), 'error');
       } else {
-        showToast(err instanceof Error ? err.message : 'Failed to set password. Please try again.', 'error');
+        showToast(err instanceof Error ? err.message : t('users.failed_set_password'), 'error');
       }
-      setPasswordError(err instanceof Error ? err.message : 'Failed to set password');
+      setPasswordError(err instanceof Error ? err.message : t('users.failed_set_password'));
     }
   };
 
@@ -236,17 +238,17 @@ const UsersTab: React.FC = () => {
       if (selectedUser?.id === userToDeactivate.id) {
         setSelectedUser(null);
       }
-      showToast(`User ${userToDeactivate.username} deactivated successfully`, 'success');
+      showToast(t('users.user_deactivated', { username: userToDeactivate.username }), 'success');
       setShowDeactivateConfirm(false);
       setUserToDeactivate(null);
     } catch (err) {
       logger.error('Failed to deactivate user:', err);
       if (err && typeof err === 'object' && 'status' in err && err.status === 403) {
-        showToast('Insufficient permissions to deactivate user', 'error');
+        showToast(t('users.insufficient_permissions_deactivate'), 'error');
       } else {
-        showToast('Failed to deactivate user. Please try again.', 'error');
+        showToast(t('users.failed_deactivate'), 'error');
       }
-      setError('Failed to deactivate user');
+      setError(t('users.failed_deactivate'));
       setShowDeactivateConfirm(false);
       setUserToDeactivate(null);
     }
@@ -268,12 +270,12 @@ const UsersTab: React.FC = () => {
       setCreateError(null);
 
       if (!createForm.username || !createForm.password) {
-        setCreateError('Username and password are required');
+        setCreateError(t('users.username_password_required'));
         return;
       }
 
       if (createForm.password.length < 8) {
-        setCreateError('Password must be at least 8 characters');
+        setCreateError(t('users.password_min_length'));
         return;
       }
 
@@ -292,10 +294,10 @@ const UsersTab: React.FC = () => {
 
       // Refresh user list
       await fetchUsers();
-      showToast('User created successfully', 'success');
+      showToast(t('users.user_created'), 'success');
     } catch (err) {
       logger.error('Failed to create user:', err);
-      setCreateError(err instanceof Error ? err.message : 'Failed to create user');
+      setCreateError(err instanceof Error ? err.message : t('users.failed_create'));
     }
   };
 
@@ -304,14 +306,14 @@ const UsersTab: React.FC = () => {
     return (
       <div className="users-tab">
         <div className="error-message">
-          Access denied. Admin privileges required.
+          {t('users.access_denied')}
         </div>
       </div>
     );
   }
 
   if (loading) {
-    return <div className="users-tab">Loading users...</div>;
+    return <div className="users-tab">{t('users.loading')}</div>;
   }
 
   return (
@@ -321,7 +323,7 @@ const UsersTab: React.FC = () => {
       <div className="users-container">
         <div className="users-list">
           <div className="users-list-header">
-            <h2>Users</h2>
+            <h2>{t('users.title')}</h2>
             <button
               className="button button-primary"
               onClick={() => {
@@ -329,7 +331,7 @@ const UsersTab: React.FC = () => {
                 setCreateError(null);
               }}
             >
-              Add User
+              {t('users.add_user')}
             </button>
           </div>
 
@@ -348,64 +350,64 @@ const UsersTab: React.FC = () => {
                   @{user.username} • {user.authProvider.toUpperCase()}
                 </div>
               </div>
-              {!user.isActive && <span className="inactive-badge">Inactive</span>}
+              {!user.isActive && <span className="inactive-badge">{t('users.inactive')}</span>}
             </div>
           ))}
         </div>
 
         {selectedUser && (
           <div className="user-details">
-            <h2>User Details</h2>
+            <h2>{t('users.user_details')}</h2>
 
             <div className="user-info-grid">
               <div className="info-item">
-                <label>Username</label>
+                <label>{t('users.username_label')}</label>
                 <div>
                   @{selectedUser.username}
                   {selectedUser.username === 'anonymous' && (
                     <span style={{ marginLeft: '8px', padding: '2px 6px', background: 'var(--ctp-surface2)', borderRadius: '4px', fontSize: '0.8em', color: 'var(--ctp-subtext0)' }}>
-                      Special User
+                      {t('users.special_user')}
                     </span>
                   )}
                 </div>
               </div>
               <div className="info-item">
-                <label>Display Name</label>
+                <label>{t('users.display_name')}</label>
                 <div>
                   {selectedUser.displayName || '-'}
                   {selectedUser.username === 'anonymous' && (
                     <div style={{ marginTop: '4px', fontSize: '0.9em', color: 'var(--ctp-subtext0)' }}>
-                      💡 Defines permissions for unauthenticated users
+                      💡 {t('users.anonymous_hint')}
                     </div>
                   )}
                 </div>
               </div>
               <div className="info-item">
-                <label>Email</label>
+                <label>{t('users.email')}</label>
                 <div>{selectedUser.email || '-'}</div>
               </div>
               <div className="info-item">
-                <label>Auth Provider</label>
+                <label>{t('users.auth_provider')}</label>
                 <div>{selectedUser.authProvider.toUpperCase()}</div>
               </div>
               <div className="info-item">
-                <label>Status</label>
-                <div>{selectedUser.isActive ? 'Active' : 'Inactive'}</div>
+                <label>{t('common.status')}</label>
+                <div>{selectedUser.isActive ? t('users.active') : t('users.inactive')}</div>
               </div>
               <div className="info-item">
-                <label>Admin</label>
-                <div>{selectedUser.isAdmin ? 'Yes' : 'No'}</div>
+                <label>{t('users.administrator')}</label>
+                <div>{selectedUser.isAdmin ? t('common.yes') : t('common.no')}</div>
               </div>
               {selectedUser.authProvider === 'local' && (
                 <div className="info-item">
-                  <label>Password Locked</label>
+                  <label>{t('users.password_locked')}</label>
                   <div>
                     <input
                       type="checkbox"
                       checked={selectedUser.passwordLocked}
                       onChange={() => handleTogglePasswordLocked(selectedUser)}
                     />
-                    {selectedUser.passwordLocked ? ' Yes (Password changes disabled)' : ' No'}
+                    {selectedUser.passwordLocked ? ` ${t('users.password_locked_yes')}` : ` ${t('common.no')}`}
                   </div>
                 </div>
               )}
@@ -417,16 +419,16 @@ const UsersTab: React.FC = () => {
                 onClick={() => handleToggleAdmin(selectedUser)}
                 disabled={selectedUser.id === authStatus.user?.id}
               >
-                {selectedUser.isAdmin ? 'Remove Admin' : 'Make Admin'}
+                {selectedUser.isAdmin ? t('users.remove_admin') : t('users.make_admin')}
               </button>
               {selectedUser.authProvider === 'local' && (
                 <button
                   className="button button-secondary"
                   onClick={() => setShowSetPasswordModal(true)}
                   disabled={selectedUser.passwordLocked}
-                  title={selectedUser.passwordLocked ? 'Password changes are locked for this account' : ''}
+                  title={selectedUser.passwordLocked ? t('users.password_locked_hint') : ''}
                 >
-                  Set Password
+                  {t('users.set_password')}
                 </button>
               )}
               <button
@@ -434,20 +436,20 @@ const UsersTab: React.FC = () => {
                 onClick={() => handleDeactivateUser(selectedUser)}
                 disabled={selectedUser.id === authStatus.user?.id || selectedUser.username === 'anonymous'}
                 style={{ color: 'var(--ctp-red)' }}
-                title={selectedUser.username === 'anonymous' ? 'Cannot deactivate anonymous user' : ''}
+                title={selectedUser.username === 'anonymous' ? t('users.cannot_deactivate_anonymous') : ''}
               >
-                Deactivate User
+                {t('users.deactivate_user')}
               </button>
             </div>
 
-            <h3>Permissions</h3>
+            <h3>{t('users.permissions')}</h3>
             <div className="permissions-grid">
               {(['dashboard', 'nodes', 'channel_0', 'channel_1', 'channel_2', 'channel_3', 'channel_4', 'channel_5', 'channel_6', 'channel_7', 'messages', 'settings', 'configuration', 'info', 'automation', 'connection', 'traceroute', 'audit', 'security'] as const).map(resource => {
                 // Format the label for display
                 let label = resource.charAt(0).toUpperCase() + resource.slice(1);
                 if (resource.startsWith('channel_')) {
                   const channelNum = resource.split('_')[1];
-                  label = channelNum === '0' ? 'Channel 0 (Primary)' : `Channel ${channelNum}`;
+                  label = channelNum === '0' ? t('users.channel_primary') : t('users.channel_n', { n: channelNum });
                 }
 
                 return (
@@ -469,7 +471,7 @@ const UsersTab: React.FC = () => {
                               });
                             }}
                           />
-                          {resource === 'connection' ? 'Can Control Connection' : 'Can Initiate Traceroutes'}
+                          {resource === 'connection' ? t('users.can_control_connection') : t('users.can_initiate_traceroutes')}
                         </label>
                       ) : (
                         // Other permissions use read/write checkboxes
@@ -480,7 +482,7 @@ const UsersTab: React.FC = () => {
                               checked={permissions[resource]?.read || false}
                               onChange={() => togglePermission(resource, 'read')}
                             />
-                            Read
+                            {t('users.read')}
                           </label>
                           <label>
                             <input
@@ -488,7 +490,7 @@ const UsersTab: React.FC = () => {
                               checked={permissions[resource]?.write || false}
                               onChange={() => togglePermission(resource, 'write')}
                             />
-                            Write
+                            {t('users.write')}
                           </label>
                         </>
                       )}
@@ -499,7 +501,7 @@ const UsersTab: React.FC = () => {
             </div>
 
             <button className="button button-primary" onClick={handleUpdatePermissions}>
-              Save Permissions
+              {t('users.save_permissions')}
             </button>
           </div>
         )}
@@ -513,7 +515,7 @@ const UsersTab: React.FC = () => {
         }}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>Create New User</h2>
+              <h2>{t('users.create_new_user')}</h2>
               <button className="close-button" onClick={() => {
                 setShowCreateModal(false);
                 setCreateError(null);
@@ -522,7 +524,7 @@ const UsersTab: React.FC = () => {
 
             <div className="modal-body">
               <div className="form-group">
-                <label>Username *</label>
+                <label>{t('users.username_label')} *</label>
                 <input
                   type="text"
                   value={createForm.username}
@@ -532,27 +534,27 @@ const UsersTab: React.FC = () => {
               </div>
 
               <div className="form-group">
-                <label>Password *</label>
+                <label>{t('users.password_label')} *</label>
                 <input
                   type="password"
                   value={createForm.password}
                   onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
-                  placeholder="At least 8 characters"
+                  placeholder={t('users.at_least_8_chars')}
                 />
               </div>
 
               <div className="form-group">
-                <label>Display Name</label>
+                <label>{t('users.display_name')}</label>
                 <input
                   type="text"
                   value={createForm.displayName}
                   onChange={(e) => setCreateForm({ ...createForm, displayName: e.target.value })}
-                  placeholder="Full name"
+                  placeholder={t('users.full_name')}
                 />
               </div>
 
               <div className="form-group">
-                <label>Email</label>
+                <label>{t('users.email')}</label>
                 <input
                   type="email"
                   value={createForm.email}
@@ -568,7 +570,7 @@ const UsersTab: React.FC = () => {
                     checked={createForm.isAdmin}
                     onChange={(e) => setCreateForm({ ...createForm, isAdmin: e.target.checked })}
                   />
-                  {' '}Administrator
+                  {' '}{t('users.administrator')}
                 </label>
               </div>
 
@@ -586,13 +588,13 @@ const UsersTab: React.FC = () => {
                     setCreateError(null);
                   }}
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </button>
                 <button
                   className="button button-primary"
                   onClick={handleCreateUser}
                 >
-                  Create User
+                  {t('users.create_user')}
                 </button>
               </div>
             </div>
@@ -605,32 +607,32 @@ const UsersTab: React.FC = () => {
         <div className="modal-overlay" onClick={handleCloseSetPasswordModal}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>Set Password for {selectedUser.username}</h2>
+              <h2>{t('users.set_password_for', { username: selectedUser.username })}</h2>
               <button className="close-button" onClick={handleCloseSetPasswordModal}>×</button>
             </div>
 
             <div className="modal-body">
               <div className="form-group">
-                <label htmlFor="new-password">New Password *</label>
+                <label htmlFor="new-password">{t('users.new_password')} *</label>
                 <input
                   id="new-password"
                   type="password"
                   value={passwordForm.newPassword}
                   onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
-                  placeholder="At least 8 characters"
+                  placeholder={t('users.at_least_8_chars')}
                   autoComplete="new-password"
                   minLength={8}
                 />
               </div>
 
               <div className="form-group">
-                <label htmlFor="confirm-password">Confirm Password *</label>
+                <label htmlFor="confirm-password">{t('users.confirm_password')} *</label>
                 <input
                   id="confirm-password"
                   type="password"
                   value={passwordForm.confirmPassword}
                   onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
-                  placeholder="Re-enter password"
+                  placeholder={t('users.reenter_password')}
                   autoComplete="new-password"
                   minLength={8}
                 />
@@ -651,14 +653,14 @@ const UsersTab: React.FC = () => {
                     setPasswordError(null);
                   }}
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </button>
                 <button
                   className="button button-primary"
                   onClick={handleSetPassword}
                   disabled={!passwordForm.newPassword || !passwordForm.confirmPassword}
                 >
-                  Set Password
+                  {t('users.set_password')}
                 </button>
               </div>
             </div>
@@ -671,14 +673,14 @@ const UsersTab: React.FC = () => {
         <div className="modal-overlay" onClick={() => setShowDeactivateConfirm(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>Deactivate User?</h2>
+              <h2>{t('users.deactivate_confirm')}</h2>
               <button className="close-button" onClick={() => setShowDeactivateConfirm(false)}>×</button>
             </div>
 
             <div className="modal-body">
-              <p>Are you sure you want to deactivate user <strong>{userToDeactivate.username}</strong>?</p>
+              <p dangerouslySetInnerHTML={{ __html: t('users.deactivate_confirm_text', { username: userToDeactivate.username }) }} />
               <p style={{ color: 'var(--ctp-red)', marginTop: '1rem' }}>
-                This will revoke their access to MeshMonitor.
+                {t('users.deactivate_warning')}
               </p>
 
               <div className="modal-actions">
@@ -689,14 +691,14 @@ const UsersTab: React.FC = () => {
                     setUserToDeactivate(null);
                   }}
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </button>
                 <button
                   className="button button-primary"
                   onClick={confirmDeactivateUser}
                   style={{ backgroundColor: 'var(--ctp-red)', borderColor: 'var(--ctp-red)' }}
                 >
-                  Deactivate User
+                  {t('users.deactivate_user')}
                 </button>
               </div>
             </div>
