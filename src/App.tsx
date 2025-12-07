@@ -216,8 +216,6 @@ function App() {
 
   const channelMessagesContainerRef = useRef<HTMLDivElement>(null);
   const dmMessagesContainerRef = useRef<HTMLDivElement>(null);
-  const initialChannelScrollDoneRef = useRef<Set<number>>(new Set()); // Track channels that have had initial scroll
-  const initialDMScrollDoneRef = useRef<Set<string>>(new Set()); // Track DM conversations that have had initial scroll
   const lastScrollLoadTimeRef = useRef<number>(0); // Throttle scroll-triggered loads (200ms)
   // const lastNotificationTime = useRef<number>(0) // Disabled for now
   // Detect base URL from pathname
@@ -1375,66 +1373,46 @@ function App() {
     };
   }, [handleChannelScroll, handleDMScroll]);
 
-  // Force scroll to bottom when channel changes OR when messages first load for a channel
+  // Force scroll to bottom when channel changes OR when switching to channels tab
   // Note: We track initial scroll per channel to avoid re-scrolling when user manually scrolls
   useEffect(() => {
     if (activeTab === 'channels' && selectedChannel >= 0) {
       const currentChannelMessages = channelMessages[selectedChannel] || [];
       const hasMessages = currentChannelMessages.length > 0;
-      const hasInitialScrollDone = initialChannelScrollDoneRef.current.has(selectedChannel);
 
-      // Scroll to bottom if:
-      // 1. Channel just changed (reset the initial scroll flag)
-      // 2. Messages just loaded for the first time for this channel
-      if (!hasInitialScrollDone && hasMessages) {
+      // Always scroll to bottom when entering the channels tab or changing channels
+      if (hasMessages) {
         // Use setTimeout to ensure messages are rendered before scrolling
         setTimeout(() => {
           if (channelMessagesContainerRef.current) {
             channelMessagesContainerRef.current.scrollTop = channelMessagesContainerRef.current.scrollHeight;
             setIsChannelScrolledToBottom(true);
-            initialChannelScrollDoneRef.current.add(selectedChannel);
           }
         }, 100);
       }
     }
-  }, [selectedChannel, activeTab, channelMessages]);
+  }, [selectedChannel, activeTab]);
 
-  // Reset initial scroll flag when channel changes
-  useEffect(() => {
-    // Clear the flag when channel changes so next scroll will happen
-    initialChannelScrollDoneRef.current.delete(selectedChannel);
-  }, [selectedChannel]);
-
-  // Force scroll to bottom when DM node changes OR when messages first load
+  // Force scroll to bottom when DM node changes OR when switching to messages tab
   useEffect(() => {
     if (activeTab === 'messages' && selectedDMNode && currentNodeId) {
-      const dmKey = [currentNodeId, selectedDMNode].sort().join('_');
       const currentDMMessages = messages.filter(
         msg => (msg.fromNodeId === currentNodeId && msg.toNodeId === selectedDMNode) ||
                (msg.fromNodeId === selectedDMNode && msg.toNodeId === currentNodeId)
       );
       const hasMessages = currentDMMessages.length > 0;
-      const hasInitialScrollDone = initialDMScrollDoneRef.current.has(dmKey);
 
-      if (!hasInitialScrollDone && hasMessages) {
+      // Always scroll to bottom when entering the messages tab or changing conversations
+      if (hasMessages) {
         setTimeout(() => {
           if (dmMessagesContainerRef.current) {
             dmMessagesContainerRef.current.scrollTop = dmMessagesContainerRef.current.scrollHeight;
             setIsDMScrolledToBottom(true);
-            initialDMScrollDoneRef.current.add(dmKey);
           }
         }, 150);
       }
     }
-  }, [selectedDMNode, activeTab, messages, currentNodeId]);
-
-  // Reset initial DM scroll flag when conversation changes
-  useEffect(() => {
-    if (selectedDMNode && currentNodeId) {
-      const dmKey = [currentNodeId, selectedDMNode].sort().join('_');
-      initialDMScrollDoneRef.current.delete(dmKey);
-    }
-  }, [selectedDMNode, currentNodeId]);
+  }, [selectedDMNode, activeTab, currentNodeId]);
 
   // Unread counts polling is now handled by useUnreadCounts hook in MessagingContext
 
@@ -4138,6 +4116,7 @@ function App() {
             getNodeShortName={getNodeShortName}
             isMqttBridgeMessage={isMqttBridgeMessage}
             setEmojiPickerMessage={setEmojiPickerMessage}
+            channelMessagesContainerRef={channelMessagesContainerRef}
           />
         )}
         {activeTab === 'messages' && (
@@ -4189,6 +4168,7 @@ function App() {
             setShowPurgeDataModal={setShowPurgeDataModal}
             setEmojiPickerMessage={setEmojiPickerMessage}
             shouldShowData={shouldShowData}
+            dmMessagesContainerRef={dmMessagesContainerRef}
           />
         )}
         {activeTab === 'info' && (

@@ -128,6 +128,9 @@ export interface MessagesTabProps {
 
   // Helper function
   shouldShowData: () => boolean;
+
+  // Refs from parent for scroll handling
+  dmMessagesContainerRef: React.RefObject<HTMLDivElement | null>;
 }
 
 const MessagesTab: React.FC<MessagesTabProps> = ({
@@ -178,11 +181,11 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   setShowPurgeDataModal,
   setEmojiPickerMessage,
   shouldShowData,
+  dmMessagesContainerRef,
 }) => {
   const { t } = useTranslation();
 
   // Refs
-  const dmMessagesContainerRef = useRef<HTMLDivElement>(null);
   const dmMessageInputRef = useRef<HTMLInputElement>(null);
 
   // Helper functions

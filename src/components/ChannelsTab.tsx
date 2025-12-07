@@ -85,6 +85,9 @@ export interface ChannelsTabProps {
 
   // Emoji picker
   setEmojiPickerMessage: (message: MeshMessage | null) => void;
+
+  // Refs from parent for scroll handling
+  channelMessagesContainerRef: React.RefObject<HTMLDivElement | null>;
 }
 
 export default function ChannelsTab({
@@ -122,11 +125,11 @@ export default function ChannelsTab({
   getNodeShortName,
   isMqttBridgeMessage,
   setEmojiPickerMessage,
+  channelMessagesContainerRef,
 }: ChannelsTabProps) {
   const { t } = useTranslation();
 
   // Refs
-  const channelMessagesContainerRef = useRef<HTMLDivElement>(null);
   const channelMessageInputRef = useRef<HTMLInputElement>(null);
 
   // Helper: get channel name
