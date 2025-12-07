@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useUI } from '../contexts/UIContext';
 import { useChannels } from '../hooks/useServerData';
 
@@ -11,6 +12,7 @@ interface NodeFilterPopupProps {
 }
 
 export const NodeFilterPopup: React.FC<NodeFilterPopupProps> = ({ isOpen, onClose }) => {
+  const { t } = useTranslation();
   const {
     securityFilter,
     setSecurityFilter,
@@ -48,8 +50,8 @@ export const NodeFilterPopup: React.FC<NodeFilterPopupProps> = ({ isOpen, onClos
     <div className="filter-popup-overlay" onClick={onClose}>
       <div className="filter-popup" onClick={(e) => e.stopPropagation()}>
         <div className="filter-popup-header">
-          <h4>Filter Nodes</h4>
-          <button className="filter-popup-close" onClick={onClose} aria-label="Close">
+          <h4>{t('node_filter.title')}</h4>
+          <button className="filter-popup-close" onClick={onClose} aria-label={t('common.close')}>
             ×
           </button>
         </div>
@@ -57,33 +59,33 @@ export const NodeFilterPopup: React.FC<NodeFilterPopupProps> = ({ isOpen, onClos
         <div className="filter-popup-content">
           {/* Security Filter */}
           <div className="filter-section">
-            <span className="filter-section-title">Security Status</span>
+            <span className="filter-section-title">{t('node_filter.security_status')}</span>
             <select
               value={securityFilter}
               onChange={(e) => setSecurityFilter(e.target.value as 'all' | 'flaggedOnly' | 'hideFlagged')}
               className="filter-dropdown"
             >
-              <option value="all">All Nodes</option>
-              <option value="flaggedOnly">Flagged Only</option>
-              <option value="hideFlagged">Hide Flagged</option>
+              <option value="all">{t('node_filter.all_nodes')}</option>
+              <option value="flaggedOnly">{t('node_filter.flagged_only')}</option>
+              <option value="hideFlagged">{t('node_filter.hide_flagged')}</option>
             </select>
           </div>
 
           {/* Channel Filter */}
           <div className="filter-section">
-            <span className="filter-section-title">Channel</span>
+            <span className="filter-section-title">{t('node_filter.channel')}</span>
             <select
               value={channelFilter}
               onChange={(e) => setChannelFilter(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
               className="filter-dropdown"
             >
-              <option value="all">All Channels</option>
+              <option value="all">{t('node_filter.all_channels')}</option>
               {availableChannels.map(channelId => {
                 const channel = channels.find(ch => ch.id === channelId);
                 const isSecure = isSecureChannel(channelId);
                 return (
                   <option key={channelId} value={channelId}>
-                    Channel {channelId}{channel?.name ? ` (${channel.name})` : ''}{isSecure ? ' 🔒' : ''}
+                    {t('node_filter.channel_number', { number: channelId })}{channel?.name ? ` (${channel.name})` : ''}{isSecure ? ' 🔒' : ''}
                   </option>
                 );
               })}
@@ -98,13 +100,13 @@ export const NodeFilterPopup: React.FC<NodeFilterPopupProps> = ({ isOpen, onClos
                 checked={!showIncompleteNodes}
                 onChange={(e) => setShowIncompleteNodes(!e.target.checked)}
               />
-              <span>Hide incomplete nodes</span>
+              <span>{t('node_filter.hide_incomplete')}</span>
             </label>
             <div className="filter-help-text">
-              Incomplete nodes are missing name or hardware info.
+              {t('node_filter.incomplete_help')}
               {selectedChannelIsSecure && (
                 <span className="filter-warning">
-                  {' '}Recommended for secure channels.
+                  {' '}{t('node_filter.secure_channel_warning')}
                 </span>
               )}
             </div>

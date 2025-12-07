@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import ApiService from '../services/api';
 import { DbTraceroute } from '../services/database';
 import { formatDateTime } from '../utils/datetime';
@@ -27,6 +28,7 @@ const TracerouteHistoryModal: React.FC<TracerouteHistoryModalProps> = ({
   nodes,
   onClose,
 }) => {
+  const { t } = useTranslation();
   const [traceroutes, setTraceroutes] = useState<TracerouteWithHops[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -42,7 +44,7 @@ const TracerouteHistoryModal: React.FC<TracerouteHistoryModalProps> = ({
         setError(null);
       } catch (err) {
         console.error('Failed to fetch traceroute history:', err);
-        setError('Failed to load traceroute history');
+        setError(t('traceroute_history.load_error'));
       } finally {
         setLoading(false);
       }
@@ -90,13 +92,13 @@ const TracerouteHistoryModal: React.FC<TracerouteHistoryModalProps> = ({
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '900px', maxHeight: '80vh' }}>
         <div className="modal-header">
-          <h2>Traceroute History</h2>
+          <h2>{t('traceroute_history.title')}</h2>
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
 
         <div className="modal-body" style={{ padding: '1.5rem', overflowY: 'auto', maxHeight: 'calc(80vh - 100px)' }}>
           <div style={{ marginBottom: '1.5rem' }}>
-            <strong>From:</strong> {fromNodeName} → <strong>To:</strong> {toNodeName}
+            <strong>{t('traceroute_history.from')}:</strong> {fromNodeName} → <strong>{t('traceroute_history.to')}:</strong> {toNodeName}
           </div>
 
           <div style={{ marginBottom: '1rem' }}>
@@ -107,14 +109,14 @@ const TracerouteHistoryModal: React.FC<TracerouteHistoryModalProps> = ({
                 onChange={(e) => setShowFailedTraceroutes(e.target.checked)}
                 style={{ marginRight: '0.5rem', cursor: 'pointer' }}
               />
-              Show failed traceroutes
+              {t('traceroute_history.show_failed')}
             </label>
           </div>
 
           {loading && (
             <div style={{ textAlign: 'center', padding: '2rem' }}>
               <div className="spinner"></div>
-              <p>Loading traceroute history...</p>
+              <p>{t('traceroute_history.loading')}</p>
             </div>
           )}
 
@@ -126,22 +128,26 @@ const TracerouteHistoryModal: React.FC<TracerouteHistoryModalProps> = ({
 
           {!loading && !error && filteredTraceroutes.length === 0 && (
             <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--ctp-subtext0)' }}>
-              {traceroutes.length === 0 ? 'No traceroute history found for this node pair.' : 'No traceroutes match the current filter.'}
+              {traceroutes.length === 0 ? t('traceroute_history.no_history') : t('traceroute_history.no_matches')}
             </div>
           )}
 
           {!loading && !error && filteredTraceroutes.length > 0 && (
             <div>
               <p style={{ marginBottom: '1rem', color: 'var(--ctp-subtext0)' }}>
-                Showing {filteredTraceroutes.length} traceroute{filteredTraceroutes.length !== 1 ? 's' : ''}
+                {t('traceroute_history.showing_count', { count: filteredTraceroutes.length })}
                 {!showFailedTraceroutes && traceroutes.length > filteredTraceroutes.length && (
-                  <span> ({traceroutes.length - filteredTraceroutes.length} failed hidden)</span>
+                  <span> {t('traceroute_history.failed_hidden', { count: traceroutes.length - filteredTraceroutes.length })}</span>
                 )}
               </p>
 
               {filteredTraceroutes.map((tr: TracerouteWithHops, index: number) => {
                 const age = Math.floor((Date.now() - tr.timestamp) / (1000 * 60));
-                const ageStr = age < 60 ? `${age}m ago` : age < 1440 ? `${Math.floor(age / 60)}h ago` : `${Math.floor(age / 1440)}d ago`;
+                const ageStr = age < 60
+                  ? t('common.minutes_ago', { count: age })
+                  : age < 1440
+                    ? t('common.hours_ago', { count: Math.floor(age / 60) })
+                    : t('common.days_ago', { count: Math.floor(age / 1440) });
 
                 return (
                   <div
@@ -167,14 +173,14 @@ const TracerouteHistoryModal: React.FC<TracerouteHistoryModalProps> = ({
                     </div>
 
                     <div style={{ marginBottom: '0.5rem' }}>
-                      <strong style={{ color: 'var(--ctp-green)' }}>→ Forward:</strong>{' '}
+                      <strong style={{ color: 'var(--ctp-green)' }}>→ {t('traceroute_history.forward')}:</strong>{' '}
                       <span style={{ fontFamily: 'monospace', fontSize: '0.95em' }}>
                         {formatTracerouteRoute(tr.route, tr.snrTowards, tr.fromNodeNum, tr.toNodeNum, nodes, distanceUnit)}
                       </span>
                     </div>
 
                     <div>
-                      <strong style={{ color: 'var(--ctp-yellow)' }}>← Return:</strong>{' '}
+                      <strong style={{ color: 'var(--ctp-yellow)' }}>← {t('traceroute_history.return')}:</strong>{' '}
                       <span style={{ fontFamily: 'monospace', fontSize: '0.95em' }}>
                         {formatTracerouteRoute(tr.routeBack, tr.snrBack, tr.toNodeNum, tr.fromNodeNum, nodes, distanceUnit)}
                       </span>

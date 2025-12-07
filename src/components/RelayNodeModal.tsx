@@ -1,5 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import './RelayNodeModal.css';
 
 interface Node {
@@ -28,6 +29,8 @@ const RelayNodeModal: React.FC<RelayNodeModalProps> = ({
   nodes,
   onNodeClick
 }) => {
+  const { t } = useTranslation();
+
   if (!isOpen) return null;
 
   console.log('[RelayNodeModal] Props:', { relayNode, ackFromNode, rxTime, nodeCount: nodes.length });
@@ -60,7 +63,7 @@ const RelayNodeModal: React.FC<RelayNodeModalProps> = ({
       })();
 
   const formatDateTime = (date?: Date) => {
-    if (!date) return 'Unknown';
+    if (!date) return t('common.unknown');
     return date.toLocaleString();
   };
 
@@ -76,35 +79,36 @@ const RelayNodeModal: React.FC<RelayNodeModalProps> = ({
     }
   };
 
+  const isAckMode = ackFromNode !== undefined && ackFromNode !== null;
+
   const modalContent = (
     <div className="modal-overlay" onClick={handleBackdropClick}>
       <div className="modal-content relay-node-modal">
         <div className="modal-header">
-          <h2>{(ackFromNode !== undefined && ackFromNode !== null) ? 'Message Acknowledgment' : 'Message Relay Information'}</h2>
-          <button className="modal-close" onClick={onClose} aria-label="Close modal">
+          <h2>{isAckMode ? t('relay_modal.title_ack') : t('relay_modal.title_relay')}</h2>
+          <button className="modal-close" onClick={onClose} aria-label={t('common.close')}>
             ×
           </button>
         </div>
         <div className="modal-body">
           <div className="relay-info-section">
             <div className="relay-info-row">
-              <span className="relay-info-label">Acknowledged:</span>
+              <span className="relay-info-label">{t('relay_modal.acknowledged')}:</span>
               <span className="relay-info-value">{formatDateTime(rxTime)}</span>
             </div>
-            {(ackFromNode === undefined || ackFromNode === null) && (
+            {!isAckMode && (
               <div className="relay-info-row">
-                <span className="relay-info-label">Relay Node Byte:</span>
+                <span className="relay-info-label">{t('relay_modal.relay_node_byte')}:</span>
                 <span className="relay-info-value">0x{relayNode.toString(16).padStart(2, '0').toUpperCase()}</span>
               </div>
             )}
           </div>
 
           <div className="potential-relays-section">
-            <h3>{(ackFromNode !== undefined && ackFromNode !== null) ? 'Acknowledged By' : 'Potential Relay Nodes'}</h3>
+            <h3>{isAckMode ? t('relay_modal.acknowledged_by') : t('relay_modal.potential_relays')}</h3>
             {matchingNodes.length === 0 ? (
               <p className="no-matches">
-                No nodes found matching relay byte 0x{relayNode.toString(16).padStart(2, '0').toUpperCase()}.
-                The relay node may not be in the node database yet.
+                {t('relay_modal.no_matches', { byte: `0x${relayNode.toString(16).padStart(2, '0').toUpperCase()}` })}
               </p>
             ) : (
               <div className="relay-nodes-list">
@@ -132,7 +136,7 @@ const RelayNodeModal: React.FC<RelayNodeModalProps> = ({
             )}
             {matchingNodes.length > 1 && (
               <p className="multiple-matches-note">
-                Note: Multiple nodes share the same lowest byte. The actual relay node is one of these.
+                {t('relay_modal.multiple_matches_note')}
               </p>
             )}
           </div>
