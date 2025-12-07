@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { 
@@ -30,6 +31,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
   onTriggersChange,
   onSkipIncompleteNodesChange,
 }) => {
+  const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();
   const [localEnabled, setLocalEnabled] = useState(enabled);
@@ -124,11 +126,11 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
         throw new Error(error.error || 'Failed to import script');
       }
 
-      showToast('Script imported successfully', 'success');
+      showToast(t('auto_responder.script_imported'), 'success');
       await fetchScripts();
       setShowImportModal(false);
     } catch (error: any) {
-      showToast(error.message || 'Failed to import script', 'error');
+      showToast(error.message || t('auto_responder.script_import_failed'), 'error');
     } finally {
       setIsImporting(false);
     }
@@ -140,7 +142,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
       : availableScripts;
 
     if (scriptsToExport.length === 0) {
-      showToast('No scripts selected for export', 'warning');
+      showToast(t('auto_responder.no_scripts_to_export'), 'warning');
       return;
     }
 
@@ -167,11 +169,11 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
 
-      showToast(`Exported ${scriptsToExport.length} script(s)`, 'success');
+      showToast(t('auto_responder.scripts_exported', { count: scriptsToExport.length }), 'success');
       setShowExportModal(false);
       setSelectedScripts(new Set());
     } catch (error: any) {
-      showToast(error.message || 'Failed to export scripts', 'error');
+      showToast(error.message || t('auto_responder.script_export_failed'), 'error');
     } finally {
       setIsExporting(false);
     }
@@ -189,7 +191,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
         throw new Error(error.error || 'Failed to delete script');
       }
 
-      showToast('Script deleted successfully', 'success');
+      showToast(t('auto_responder.script_deleted'), 'success');
       await fetchScripts();
       setSelectedScripts(prev => {
         const next = new Set(prev);
@@ -199,7 +201,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
       setShowDeleteModal(false);
       setScriptToDelete(null);
     } catch (error: any) {
-      showToast(error.message || 'Failed to delete script', 'error');
+      showToast(error.message || t('auto_responder.script_delete_failed'), 'error');
     } finally {
       setIsDeleting(null);
     }
@@ -311,13 +313,13 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
   const addTrigger = () => {
     const triggerValidation = validateTrigger(newTrigger);
     if (!triggerValidation.valid) {
-      showToast(triggerValidation.error || 'Invalid trigger', 'error');
+      showToast(triggerValidation.error || t('auto_responder.invalid_trigger'), 'error');
       return;
     }
 
     const responseValidation = validateResponse(newResponse, newResponseType);
     if (!responseValidation.valid) {
-      showToast(responseValidation.error || 'Invalid response', 'error');
+      showToast(responseValidation.error || t('auto_responder.invalid_response'), 'error');
       return;
     }
 
@@ -357,13 +359,13 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
   const saveEdit = (id: string, trigger: string | string[], responseType: ResponseType, response: string, multiline: boolean, verifyResponse: boolean, channel: number | 'dm') => {
     const triggerValidation = validateTrigger(trigger);
     if (!triggerValidation.valid) {
-      showToast(triggerValidation.error || 'Invalid trigger', 'error');
+      showToast(triggerValidation.error || t('auto_responder.invalid_trigger'), 'error');
       return;
     }
 
     const responseValidation = validateResponse(response, responseType);
     if (!responseValidation.valid) {
-      showToast(responseValidation.error || 'Invalid response', 'error');
+      showToast(responseValidation.error || t('auto_responder.invalid_response'), 'error');
       return;
     }
 
@@ -482,7 +484,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
 
       if (!response.ok) {
         if (response.status === 403) {
-          showToast('Insufficient permissions to save settings', 'error');
+          showToast(t('common.permission_denied'), 'error');
           return;
         }
         throw new Error(`Server returned ${response.status}`);
@@ -494,10 +496,10 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
       onSkipIncompleteNodesChange(localSkipIncompleteNodes);
 
       setHasChanges(false);
-      showToast('Settings saved successfully!', 'success');
+      showToast(t('auto_responder.settings_saved'), 'success');
     } catch (error) {
       console.error('Failed to save auto-responder settings:', error);
-      showToast('Failed to save settings. Please try again.', 'error');
+      showToast(t('auto_responder.settings_save_failed'), 'error');
     } finally {
       setIsSaving(false);
     }
@@ -521,7 +523,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
             onChange={(e) => setLocalEnabled(e.target.checked)}
             style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
           />
-          Auto Responder
+          {t('auto_responder.title')}
           <a
             href="https://meshmonitor.org/features/automation#auto-responder"
             target="_blank"
@@ -532,7 +534,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
               textDecoration: 'none',
               marginLeft: '0.5rem'
             }}
-            title="View Auto Responder Documentation"
+            title={t('auto_responder.view_docs')}
           >
             ❓
           </a>
@@ -548,21 +550,20 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
             cursor: hasChanges ? 'pointer' : 'not-allowed'
           }}
         >
-          {isSaving ? 'Saving...' : 'Save Changes'}
+          {isSaving ? t('common.saving') : t('automation.save_changes')}
         </button>
       </div>
 
       <div className="settings-section" style={{ opacity: localEnabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>
         <p style={{ marginBottom: '1rem', color: '#666', lineHeight: '1.5', marginLeft: '1.75rem' }}>
-          Automatically respond to messages matching your trigger patterns. Supports text responses, HTTP webhooks, and custom script execution.
-          Scripts must be placed in <code style={{ background: 'var(--ctp-surface1)', padding: '2px 4px', borderRadius: '2px' }}>/data/scripts/</code> (production) and can be Node.js (.js, .mjs), Python (.py), or Shell (.sh). Responses are truncated to 200 characters.
+          {t('auto_responder.description')}
         </p>
 
         <div className="setting-item" style={{ marginTop: '1rem', marginBottom: '1.5rem' }}>
           <label>
-            Security
+            {t('auto_responder.security')}
             <span className="setting-description">
-              Protect against sending messages to nodes that may not be on your channel
+              {t('auto_responder.security_description')}
             </span>
           </label>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
@@ -575,11 +576,11 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
               style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
             />
             <label htmlFor="autoResponderSkipIncomplete" style={{ margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed', fontWeight: 'bold' }}>
-              Skip incomplete nodes
+              {t('auto_responder.skip_incomplete_nodes')}
             </label>
           </div>
           <div style={{ marginTop: '0.5rem', marginLeft: '1.75rem', fontSize: '0.9rem', color: 'var(--ctp-subtext0)' }}>
-            Don't auto-respond to messages from nodes that are missing name or hardware info. Recommended for secure channels to avoid responding to nodes that may have overheard your encrypted traffic.
+            {t('auto_responder.skip_incomplete_description')}
           </div>
         </div>
 
@@ -612,10 +613,9 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
 
         <div className="setting-item" style={{ marginTop: '1.5rem' }}>
           <label>
-            Add Trigger
+            {t('auto_responder.add_trigger')}
             <span className="setting-description">
-              Create a trigger pattern that matches incoming messages. Use {`{parameter}`} for dynamic values, or {`{param:regex}`} for custom matching rules.
-              Multiple patterns can be separated by commas (e.g., <code style={{ background: 'var(--ctp-surface1)', padding: '1px 3px', borderRadius: '2px' }}>weather, weather {`{location}`}</code>).
+              {t('auto_responder.add_trigger_description')}
             </span>
           </label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginTop: '0.5rem' }}>
@@ -625,7 +625,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
               type="text"
               value={newTrigger}
               onChange={(e) => setNewTrigger(e.target.value)}
-                  placeholder="Try: weather, weather {location}, w {location}"
+                  placeholder={t('auto_responder.trigger_placeholder')}
               disabled={!localEnabled}
               className="setting-input"
                   style={{ 
@@ -646,7 +646,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                     color: 'var(--ctp-subtext0)',
                     pointerEvents: 'none'
                   }}>
-                    {splitTriggerPatterns(newTrigger).length} pattern{splitTriggerPatterns(newTrigger).length !== 1 ? 's' : ''}
+                    {t('auto_responder.pattern_count', { count: splitTriggerPatterns(newTrigger).length })}
                   </div>
                 )}
               </div>
@@ -658,16 +658,16 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
               style={{ width: '120px', minWidth: '120px' }}
                 title="Response type: Text (static), HTTP (fetch from URL), or Script (execute from data/scripts/)"
             >
-              <option value="text">Text</option>
-              <option value="http">HTTP</option>
-              <option value="script">Script</option>
+              <option value="text">{t('auto_responder.type_text')}</option>
+              <option value="http">{t('auto_responder.type_http')}</option>
+              <option value="script">{t('auto_responder.type_script')}</option>
             </select>
             <div style={{ flex: '2' }}>
               {newResponseType === 'text' ? (
                 <textarea
                   value={newResponse}
                   onChange={(e) => setNewResponse(e.target.value)}
-                  placeholder="Enter response text...\nUse {parameter} to include matched values\nSupports multi-line responses"
+                  placeholder={t('auto_responder.response_text_placeholder')}
                   disabled={!localEnabled}
                   className="setting-input"
                   style={{ width: '100%', fontFamily: 'monospace', minHeight: '60px', resize: 'vertical' }}
@@ -684,7 +684,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                   title="Select a script from data/scripts/ to execute. Scripts receive parameters as environment variables (PARAM_*)."
                 >
                   <option value="">
-                    {availableScripts.length === 0 ? 'No scripts found in data/scripts/' : 'Select a script...'}
+                    {availableScripts.length === 0 ? t('auto_responder.no_scripts_found') : t('auto_responder.select_script')}
                   </option>
                   {availableScripts.map((script) => {
                     const filename = script.replace('/data/scripts/', '');
@@ -719,7 +719,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                 cursor: (localEnabled && newTrigger.trim() && newResponse.trim() && newTriggerValidation.valid) ? 'pointer' : 'not-allowed'
               }}
             >
-              Add
+              {t('common.add')}
             </button>
             <button
               onClick={() => {
@@ -742,9 +742,9 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                 opacity: localEnabled ? 1 : 0.5,
                 cursor: localEnabled ? 'pointer' : 'not-allowed'
               }}
-              title="Clear all fields in Add Trigger section"
+              title={t('auto_responder.clear_fields')}
             >
-              Clear
+              {t('common.clear')}
             </button>
             </div>
             {!newTriggerValidation.valid && newTriggerValidation.error && (
@@ -801,16 +801,16 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
               return (
                 <div style={{ marginTop: '0.5rem', padding: '0.75rem', background: 'var(--ctp-surface0)', border: '1px solid var(--ctp-overlay0)', borderRadius: '4px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--ctp-green)', fontWeight: 'bold' }}>✓ Valid</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--ctp-green)', fontWeight: 'bold' }}>✓ {t('auto_responder.valid')}</span>
                     <span style={{ fontSize: '0.7rem', color: 'var(--ctp-subtext0)' }}>
-                      {patterns.length} pattern{patterns.length !== 1 ? 's' : ''}
-                      {uniqueParams.length > 0 && ` • ${uniqueParams.length} parameter${uniqueParams.length !== 1 ? 's' : ''}`}
+                      {t('auto_responder.pattern_count', { count: patterns.length })}
+                      {uniqueParams.length > 0 && ` • ${t('auto_responder.parameter_count', { count: uniqueParams.length })}`}
                     </span>
                   </div>
                   
                   {/* Real-time Pattern Preview with Highlighting */}
                   <div style={{ marginTop: '0.75rem', marginBottom: '0.75rem' }}>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem', fontWeight: 'bold' }}>Pattern Preview:</div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem', fontWeight: 'bold' }}>{t('auto_responder.pattern_preview')}</div>
                     <div style={{ 
                       padding: '0.5rem', 
                       background: 'var(--ctp-surface1)', 
@@ -960,7 +960,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                   
                   {uniqueParams.length > 0 && (
                     <div style={{ marginTop: '0.5rem' }}>
-                      <div style={{ fontSize: '0.7rem', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem', fontWeight: 'bold' }}>Detected Parameters:</div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem', fontWeight: 'bold' }}>{t('auto_responder.detected_parameters')}</div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
                         {uniqueParams.map((paramName, idx) => {
                           const param = allParams.find(p => p.name === paramName);
@@ -1000,7 +1000,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                           setNewTriggerTestInput(e.target.value);
                           setNewTriggerLiveTestResult(null);
                         }}
-                        placeholder="Enter a test message to test pattern matching and response..."
+                        placeholder={t('auto_responder.test_message_placeholder')}
                         className="setting-input"
                         style={{ 
                           flex: '1',
@@ -1160,7 +1160,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                             
                             {testMatch.params && Object.keys(testMatch.params).length > 0 && (
                               <div style={{ marginBottom: '0.5rem' }}>
-                                <div style={{ fontSize: '0.7rem', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem', fontWeight: 'bold' }}>Extracted Parameters:</div>
+                                <div style={{ fontSize: '0.7rem', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem', fontWeight: 'bold' }}>{t('auto_responder.extracted_parameters')}</div>
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
                                   {Object.entries(testMatch.params).map(([key, value]) => (
                                     <span
@@ -1331,7 +1331,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
               style={{ width: '100%', maxWidth: '400px' }}
               title="Select which channel or direct messages this trigger should respond to"
             >
-              <option value="dm">Direct Messages</option>
+              <option value="dm">{t('auto_responder.direct_messages')}</option>
               {channels.map((channel) => (
                 <option key={channel.id} value={channel.id}>
                   Channel {channel.id}: {channel.name}
@@ -1393,9 +1393,9 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
         {localTriggers.length > 0 && (
           <div className="setting-item" style={{ marginTop: '1.5rem' }}>
             <label>
-              Configured Triggers ({localTriggers.length})
+              {t('auto_responder.configured_triggers', { count: localTriggers.length })}
               <span className="setting-description">
-                Current trigger patterns and their responses
+                {t('auto_responder.current_triggers_description')}
               </span>
             </label>
             {/* Search and Filter */}
@@ -1404,7 +1404,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                 type="text"
                 value={triggerSearch}
                 onChange={(e) => setTriggerSearch(e.target.value)}
-                placeholder="Search triggers..."
+                placeholder={t('auto_responder.search_triggers')}
                 className="setting-input"
                 style={{ flex: '1', minWidth: '200px', fontFamily: 'monospace', fontSize: '0.9rem' }}
               />
@@ -1414,10 +1414,10 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                 className="setting-input"
                 style={{ width: '120px' }}
               >
-                <option value="all">All Types</option>
-                <option value="text">Text</option>
-                <option value="http">HTTP</option>
-                <option value="script">Script</option>
+                <option value="all">{t('auto_responder.filter_all')}</option>
+                <option value="text">{t('auto_responder.type_text')}</option>
+                <option value="http">{t('auto_responder.type_http')}</option>
+                <option value="script">{t('auto_responder.type_script')}</option>
               </select>
             </div>
             {/* Color Legend */}
@@ -1432,7 +1432,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
               alignItems: 'center',
               flexWrap: 'wrap'
             }}>
-              <span style={{ color: 'var(--ctp-subtext0)', fontWeight: 'bold' }}>Legend:</span>
+              <span style={{ color: 'var(--ctp-subtext0)', fontWeight: 'bold' }}>{t('auto_responder.legend')}</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <span style={{ 
                   display: 'inline-flex',
@@ -1447,22 +1447,22 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                     border: '1px solid rgba(137, 180, 250, 0.5)',
                     borderRadius: '2px' 
                   }}></span>
-                  <span style={{ color: 'var(--ctp-text)' }}>Literal</span>
+                  <span style={{ color: 'var(--ctp-text)' }}>{t('auto_responder.literal')}</span>
                 </span>
-                <span style={{ 
+                <span style={{
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '0.25rem'
                 }}>
-                  <span style={{ 
+                  <span style={{
                     display: 'inline-block',
-                    width: '12px', 
-                    height: '12px', 
-                    backgroundColor: 'rgba(166, 227, 161, 0.3)', 
+                    width: '12px',
+                    height: '12px',
+                    backgroundColor: 'rgba(166, 227, 161, 0.3)',
                     border: '1px solid rgba(166, 227, 161, 0.5)',
-                    borderRadius: '2px' 
+                    borderRadius: '2px'
                   }}></span>
-                  <span style={{ color: 'var(--ctp-text)' }}>Parameter</span>
+                  <span style={{ color: 'var(--ctp-text)' }}>{t('auto_responder.parameter')}</span>
                 </span>
               </div>
             </div>
@@ -1507,7 +1507,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                   background: 'var(--ctp-surface0)',
                   borderRadius: '4px'
                 }}>
-                  No triggers match your search/filter criteria
+                  {t('auto_responder.no_triggers_match')}
                 </div>
               )}
             </div>
@@ -1517,16 +1517,15 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
         {localTriggers.length > 0 && (
           <div className="setting-item" style={{ marginTop: '1.5rem' }}>
             <label htmlFor="testMessages">
-              Test Pattern Matching
+              {t('auto_responder.test_pattern_matching')}
               <span className="setting-description">
-                Test your trigger patterns with sample messages. Enter one message per line to see which patterns match and what parameters are extracted.
-                Green = matches trigger, Red = no match. Real-time matching updates as you type.
+                {t('auto_responder.test_patterns_description')}
               </span>
             </label>
             {/* Real-time test input */}
             <div style={{ marginTop: '0.5rem', marginBottom: '0.5rem' }}>
               <label style={{ fontSize: '0.85rem', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem', display: 'block' }}>
-                Quick Test (real-time matching):
+                {t('auto_responder.quick_test')}
               </label>
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'stretch' }}>
                 <input
@@ -2260,7 +2259,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
             textAlign: 'center',
             fontStyle: 'italic'
           }}>
-            No triggers configured. Add your first trigger above to get started.
+            {t('auto_responder.no_triggers_configured')}
           </div>
         )}
 
@@ -2287,7 +2286,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
               border: '1px solid var(--ctp-overlay0)'
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <h3 style={{ margin: 0, color: 'var(--ctp-text)' }}>Import Script</h3>
+                <h3 style={{ margin: 0, color: 'var(--ctp-text)' }}>{t('auto_responder.import_script')}</h3>
                 <button
                   onClick={() => setShowImportModal(false)}
                   style={{
@@ -2413,7 +2412,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
               border: '1px solid var(--ctp-overlay0)'
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <h3 style={{ margin: 0, color: 'var(--ctp-text)' }}>Export Scripts</h3>
+                <h3 style={{ margin: 0, color: 'var(--ctp-text)' }}>{t('auto_responder.export_scripts')}</h3>
                 <button
                   onClick={() => setShowExportModal(false)}
                   style={{
@@ -2506,7 +2505,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
               border: '1px solid var(--ctp-overlay0)'
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <h3 style={{ margin: 0, color: 'var(--ctp-text)' }}>Delete Script</h3>
+                <h3 style={{ margin: 0, color: 'var(--ctp-text)' }}>{t('auto_responder.delete_script')}</h3>
                 <button
                   onClick={() => {
                     setShowDeleteModal(false);
