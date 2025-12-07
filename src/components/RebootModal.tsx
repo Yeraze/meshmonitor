@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import apiService from '../services/api';
 
 interface RebootModalProps {
@@ -7,14 +8,17 @@ interface RebootModalProps {
 }
 
 export const RebootModal: React.FC<RebootModalProps> = ({ isOpen, onClose }) => {
-  const [status, setStatus] = useState<string>('Device rebooting...');
+  const { t } = useTranslation();
+  const [statusKey, setStatusKey] = useState<string>('reboot.rebooting');
+  const [statusParams, setStatusParams] = useState<Record<string, string | number>>({});
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
   const [isVerifying, setIsVerifying] = useState<boolean>(false);
 
   useEffect(() => {
     if (!isOpen) {
       // Reset state when modal closes
-      setStatus('Device rebooting...');
+      setStatusKey('reboot.rebooting');
+      setStatusParams({});
       setElapsedSeconds(0);
       setIsVerifying(false);
       return;
@@ -37,7 +41,8 @@ export const RebootModal: React.FC<RebootModalProps> = ({ isOpen, onClose }) => 
         console.log('[RebootModal] ===== REBOOT SEQUENCE STARTED =====');
 
         // Wait 30 seconds for device to reboot (typical reboot time)
-        setStatus('Device rebooting... Please wait');
+        setStatusKey('reboot.rebooting_please_wait');
+        setStatusParams({});
         console.log('[RebootModal] Waiting 30 seconds for device reboot...');
         await new Promise(resolve => setTimeout(resolve, 30000));
 
@@ -47,7 +52,8 @@ export const RebootModal: React.FC<RebootModalProps> = ({ isOpen, onClose }) => 
         }
 
         // Now verify device is back online
-        setStatus('Verifying device connection...');
+        setStatusKey('reboot.verifying_connection');
+        setStatusParams({});
         setIsVerifying(true);
         console.log('[RebootModal] Starting connection verification...');
 
@@ -80,7 +86,8 @@ export const RebootModal: React.FC<RebootModalProps> = ({ isOpen, onClose }) => 
 
         if (!connected) {
           console.error('[RebootModal] ❌ Device reconnection timeout');
-          setStatus('Device reconnection timeout. Please reload page.');
+          setStatusKey('reboot.reconnection_timeout');
+          setStatusParams({});
           await new Promise(resolve => setTimeout(resolve, 5000));
           clearInterval(intervalId);
           if (!aborted) onClose();
@@ -95,7 +102,8 @@ export const RebootModal: React.FC<RebootModalProps> = ({ isOpen, onClose }) => 
         console.log('[RebootModal] ===== STARTING CONFIGURATION POLLING =====');
 
       // Device is connected - now poll for configuration updates
-      setStatus('Waiting for device to apply configuration...');
+      setStatusKey('reboot.waiting_for_config');
+      setStatusParams({});
       console.log('[RebootModal] Device connected, starting configuration polling...');
 
       // Get initial reboot count to compare against
@@ -114,7 +122,8 @@ export const RebootModal: React.FC<RebootModalProps> = ({ isOpen, onClose }) => 
         if (aborted) return;
 
         console.log(`[RebootModal] Poll attempt ${pollAttempt}/20 - requesting config refresh...`);
-        setStatus(`Checking for configuration updates... (${pollAttempt}/20)`);
+        setStatusKey('reboot.checking_config');
+        setStatusParams({ attempt: pollAttempt, total: 20 });
 
         try {
           // Request fresh config from device
@@ -134,7 +143,8 @@ export const RebootModal: React.FC<RebootModalProps> = ({ isOpen, onClose }) => 
           // If reboot count increased, the device has rebooted and config is updated
           if (currentRebootCount !== undefined && initialRebootCount !== undefined && currentRebootCount > initialRebootCount) {
             console.log(`[RebootModal] ✅ Device rebooted! rebootCount: ${initialRebootCount} → ${currentRebootCount}`);
-            setStatus('Configuration verified!');
+            setStatusKey('reboot.config_verified');
+            setStatusParams({});
             await new Promise(resolve => setTimeout(resolve, 1000));
             configUpdated = true;
             break;
@@ -156,7 +166,8 @@ export const RebootModal: React.FC<RebootModalProps> = ({ isOpen, onClose }) => 
 
       if (!configUpdated) {
         console.log('[RebootModal] ⏱️ Configuration polling timeout - config may not have changed or device is slow');
-        setStatus('Configuration saved. Please reload page if changes are not visible.');
+        setStatusKey('reboot.config_saved_reload');
+        setStatusParams({});
         await new Promise(resolve => setTimeout(resolve, 3000));
       }
 
@@ -165,7 +176,8 @@ export const RebootModal: React.FC<RebootModalProps> = ({ isOpen, onClose }) => 
       if (!aborted) onClose();
     } catch (error) {
       console.error('[RebootModal] ❌ Fatal error in reboot sequence:', error);
-      setStatus('Error during reboot verification. Please reload page.');
+      setStatusKey('reboot.error_reload');
+      setStatusParams({});
       await new Promise(resolve => setTimeout(resolve, 5000));
       clearInterval(intervalId);
       if (!aborted) onClose();
@@ -211,16 +223,16 @@ export const RebootModal: React.FC<RebootModalProps> = ({ isOpen, onClose }) => 
       >
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--ctp-blue)', marginBottom: '1rem' }}>
-            {isVerifying ? '✓' : '⟳'} Device Reboot
+            {isVerifying ? '✓' : '⟳'} {t('reboot.title')}
           </div>
 
           <div style={{ fontSize: '1rem', color: 'var(--ctp-text)', marginBottom: '1.5rem' }}>
-            {status}
+            {t(statusKey, statusParams)}
           </div>
 
           {!isVerifying && elapsedSeconds > 0 && (
             <div style={{ fontSize: '0.875rem', color: 'var(--ctp-subtext0)', marginBottom: '1.5rem' }}>
-              Elapsed: {elapsedSeconds}s
+              {t('reboot.elapsed', { seconds: elapsedSeconds })}
             </div>
           )}
 
@@ -255,7 +267,7 @@ export const RebootModal: React.FC<RebootModalProps> = ({ isOpen, onClose }) => 
           `}</style>
 
           <div style={{ fontSize: '0.875rem', color: 'var(--ctp-subtext1)', marginTop: '1rem' }}>
-            Please do not close this window or refresh the page.
+            {t('reboot.do_not_close')}
           </div>
         </div>
       </div>
