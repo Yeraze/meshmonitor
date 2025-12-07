@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 
 interface PacketMonitorSettingsProps {
@@ -16,6 +17,7 @@ const PacketMonitorSettings: React.FC<PacketMonitorSettingsProps> = ({
   onMaxCountChange,
   onMaxAgeHoursChange
 }) => {
+  const { t } = useTranslation();
   const { hasPermission } = useAuth();
 
   // Can only configure if user has settings:write permission
@@ -26,16 +28,16 @@ const PacketMonitorSettings: React.FC<PacketMonitorSettingsProps> = ({
       {!enabled && (
         <div className="setting-item">
           <p className="setting-description" style={{ color: 'var(--warning-color)', marginBottom: '1rem' }}>
-            ⚠️ Packet logging is currently disabled. No packets will be stored. Enable it in the section header above to start collecting packet data.
+            {t('packet_monitor.settings.disabled_warning')}
           </p>
         </div>
       )}
 
       <div className="setting-item">
         <label htmlFor="packet-max-count">
-          Maximum Packets to Store
+          {t('packet_monitor.settings.max_packets')}
           <span className="setting-description">
-            Oldest packets will be automatically deleted when this limit is reached (Range: 100-10,000)
+            {t('packet_monitor.settings.max_packets_desc')}
           </span>
         </label>
         <input
@@ -53,9 +55,9 @@ const PacketMonitorSettings: React.FC<PacketMonitorSettingsProps> = ({
 
       <div className="setting-item">
         <label htmlFor="packet-max-age">
-          Keep Packets For (hours)
+          {t('packet_monitor.settings.keep_packets')}
           <span className="setting-description">
-            Packets older than this will be automatically deleted (Range: 1-168 hours / 1 week)
+            {t('packet_monitor.settings.keep_packets_desc')}
           </span>
         </label>
         <input
@@ -72,17 +74,17 @@ const PacketMonitorSettings: React.FC<PacketMonitorSettingsProps> = ({
 
       <div className="packet-monitor-info">
         <p className="setting-description">
-          <strong>Storage Estimate:</strong> {maxCount} packets ≈ {Math.round(maxCount * 0.5 / 1024)} MB
+          <strong>{t('packet_monitor.settings.storage_estimate')}:</strong> {t('packet_monitor.settings.storage_value', { count: maxCount, size: Math.round(maxCount * 0.5 / 1024) })}
         </p>
         <p className="setting-description">
-          <strong>Note:</strong> Automatic cleanup runs every 15 minutes to enforce these limits.
+          <strong>{t('packet_monitor.settings.note')}:</strong> {t('packet_monitor.settings.cleanup_note')}
         </p>
       </div>
 
       {!canWrite && (
         <div className="packet-monitor-no-permission">
           <p className="setting-description" style={{ color: 'var(--warning-color)' }}>
-            ⚠️ You need <strong>settings:write</strong> permission to modify packet monitor settings.
+            {t('packet_monitor.settings.no_permission')}
           </p>
         </div>
       )}
