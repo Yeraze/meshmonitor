@@ -4,6 +4,7 @@ import { type SortField, type SortDirection } from '../types/ui';
 import { logger } from '../utils/logger';
 import { useCsrf } from './CsrfContext';
 import { DEFAULT_TILESET_ID, type TilesetId, type CustomTileset } from '../config/tilesets';
+import i18n from '../config/i18n';
 
 export type DistanceUnit = 'km' | 'mi';
 export type TimeFormat = '12' | '24';
@@ -48,6 +49,7 @@ interface SettingsContextType {
   mapTileset: TilesetId;
   mapPinStyle: MapPinStyle;
   theme: Theme;
+  language: string;
   customThemes: CustomTheme[];
   customTilesets: CustomTileset[];
   isLoadingThemes: boolean;
@@ -72,6 +74,7 @@ interface SettingsContextType {
   setMapTileset: (tilesetId: TilesetId) => void;
   setMapPinStyle: (style: MapPinStyle) => void;
   setTheme: (theme: Theme) => void;
+  setLanguage: (language: string) => void;
   loadCustomThemes: () => Promise<void>;
   addCustomTileset: (tileset: Omit<CustomTileset, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
   updateCustomTileset: (id: string, updates: Partial<Omit<CustomTileset, 'id' | 'createdAt' | 'updatedAt'>>) => Promise<void>;
@@ -173,6 +176,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
       'protanopia', 'deuteranopia', 'tritanopia'
     ];
     return (saved && validThemes.includes(saved as Theme) ? saved : 'mocha') as Theme;
+  });
+
+  const [language, setLanguageState] = useState<string>(() => {
+    const saved = localStorage.getItem('language');
+    return saved || 'en';
   });
 
   // Solar monitoring settings are database-only, not persisted in localStorage
@@ -406,6 +414,29 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     }
   };
 
+  const setLanguage = async (lang: string) => {
+    setLanguageState(lang);
+    localStorage.setItem('language', lang);
+    i18n.changeLanguage(lang);
+
+    // Persist to database for logged-in users (fire and forget)
+    try {
+      const csrfToken = getCsrfToken();
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+
+      await fetch(`${baseUrl}/api/settings`, {
+        method: 'POST',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify({ language: lang })
+      });
+      logger.debug(`✅ Language preference saved to server: ${lang}`);
+    } catch (error) {
+      logger.debug('Failed to save language preference to server:', error);
+    }
+  };
+
   // Solar monitoring setters update state only - values are persisted server-side
   const setSolarMonitoringEnabled = (enabled: boolean) => {
     setSolarMonitoringEnabledState(enabled);
@@ -629,6 +660,13 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             }
           }
 
+          if (settings.language) {
+            setLanguageState(settings.language);
+            localStorage.setItem('language', settings.language);
+            i18n.changeLanguage(settings.language);
+            logger.debug(`🌐 Language loaded from server: ${settings.language}`);
+          }
+
           // Solar monitoring settings - database-only, no localStorage persistence
           if (settings.solarMonitoringEnabled !== undefined) {
             const enabled = settings.solarMonitoringEnabled === '1' || settings.solarMonitoringEnabled === 'true';
@@ -746,6 +784,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     mapTileset,
     mapPinStyle,
     theme,
+    language,
     customThemes,
     customTilesets,
     isLoadingThemes,
@@ -770,6 +809,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setMapTileset,
     setMapPinStyle,
     setTheme,
+    setLanguage,
     loadCustomThemes,
     addCustomTileset,
     updateCustomTileset,

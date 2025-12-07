@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { Channel } from '../types/device';
@@ -47,6 +48,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   onUseDMChange,
   onSkipIncompleteNodesChange,
 }) => {
+  const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();
   const [localEnabled, setLocalEnabled] = useState(enabled);
@@ -86,12 +88,12 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   const validateRegex = (pattern: string): { valid: boolean; error?: string } => {
     // Check length
     if (pattern.length > 100) {
-      return { valid: false, error: 'Pattern too long (max 100 characters)' };
+      return { valid: false, error: t('automation.auto_ack.pattern_too_long') };
     }
 
     // Check for potentially dangerous patterns
     if (/(\.\*){2,}|(\+.*\+)|(\*.*\*)|(\{[0-9]{3,}\})|(\{[0-9]+,\})/.test(pattern)) {
-      return { valid: false, error: 'Pattern too complex or may cause performance issues' };
+      return { valid: false, error: t('automation.auto_ack.pattern_too_complex') };
     }
 
     // Try to compile
@@ -99,7 +101,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
       new RegExp(pattern, 'i');
       return { valid: true };
     } catch (_error) {
-      return { valid: false, error: 'Invalid regex syntax' };
+      return { valid: false, error: t('automation.auto_ack.invalid_regex') };
     }
   };
 
@@ -202,7 +204,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
 
       if (!response.ok) {
         if (response.status === 403) {
-          showToast('Insufficient permissions to save settings', 'error');
+          showToast(t('automation.insufficient_permissions'), 'error');
           return;
         }
         throw new Error(`Server returned ${response.status}`);
@@ -219,10 +221,10 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
       onSkipIncompleteNodesChange(localSkipIncompleteNodes);
 
       setHasChanges(false);
-      showToast('Settings saved successfully!', 'success');
+      showToast(t('automation.settings_saved'), 'success');
     } catch (error) {
       console.error('Failed to save auto-acknowledge settings:', error);
-      showToast('Failed to save settings. Please try again.', 'error');
+      showToast(t('automation.settings_save_failed'), 'error');
     } finally {
       setIsSaving(false);
     }
@@ -245,7 +247,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
             onChange={(e) => setLocalEnabled(e.target.checked)}
             style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
           />
-          Auto Acknowledge
+          {t('automation.auto_ack.title')}
           <a
             href="https://meshmonitor.org/features/automation#auto-acknowledge"
             target="_blank"
@@ -256,7 +258,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
               textDecoration: 'none',
               marginLeft: '0.5rem'
             }}
-            title="View Auto Acknowledge Documentation"
+            title={t('automation.view_docs')}
           >
             ❓
           </a>
@@ -272,22 +274,22 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
             cursor: hasChanges ? 'pointer' : 'not-allowed'
           }}
         >
-          {isSaving ? 'Saving...' : 'Save Changes'}
+          {isSaving ? t('automation.saving') : t('automation.save_changes')}
         </button>
       </div>
 
       <div className="settings-section" style={{ opacity: localEnabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>
         <p style={{ marginBottom: '1rem', color: '#666', lineHeight: '1.5', marginLeft: '1.75rem' }}>
-          When enabled, automatically reply to any message matching the RegEx pattern with a customizable template.
-          Use tokens like <code>{'{NODE_ID}'}</code>, <code>{'{NUMBER_HOPS}'}</code>, <code>{'{DATE}'}</code>, <code>{'{TIME}'}</code>, <code>{'{SNR}'}</code>, and <code>{'{RSSI}'}</code> for dynamic content.
+          {t('automation.auto_ack.description')}
+          {' '}{t('automation.auto_ack.tokens_info')}
         </p>
 
         <div className="setting-item" style={{ marginTop: '1rem' }}>
           <label htmlFor="autoAckRegex">
-            Message Pattern (Regular Expression)
+            {t('automation.auto_ack.regex_label')}
             <span className="setting-description">
-              Messages matching this pattern will trigger an automatic acknowledgment.
-              Pattern is case-insensitive. Default: <code>^(test|ping)</code>
+              {t('automation.auto_ack.regex_description')}
+              {' '}{t('automation.auto_ack.regex_default')}
             </span>
           </label>
           <input
@@ -304,9 +306,9 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
 
         <div className="setting-item" style={{ marginTop: '1.5rem' }}>
           <label>
-            Active Channels
+            {t('automation.auto_ack.active_channels')}
             <span className="setting-description">
-              Select which channels and direct messages should have auto-acknowledge enabled
+              {t('automation.auto_ack.active_channels_description')}
             </span>
           </label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
@@ -320,7 +322,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
                 style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
               />
               <label htmlFor="autoAckDM" style={{ margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed', fontWeight: 'bold' }}>
-                Direct Messages
+                {t('automation.auto_ack.direct_messages')}
               </label>
             </div>
             {channels.map((channel, idx) => (
@@ -349,9 +351,9 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
 
         <div className="setting-item" style={{ marginTop: '1.5rem' }}>
           <label>
-            Response Delivery
+            {t('automation.auto_ack.response_delivery')}
             <span className="setting-description">
-              Control how acknowledgment responses are delivered
+              {t('automation.auto_ack.response_delivery_description')}
             </span>
           </label>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
@@ -364,19 +366,19 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
               style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
             />
             <label htmlFor="autoAckUseDM" style={{ margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed', fontWeight: 'bold' }}>
-              Always respond via Direct Message
+              {t('automation.auto_ack.always_respond_dm')}
             </label>
           </div>
           <div style={{ marginTop: '0.5rem', marginLeft: '1.75rem', fontSize: '0.9rem', color: 'var(--ctp-subtext0)' }}>
-            When enabled, acknowledgments will be sent as DMs regardless of which channel triggered them
+            {t('automation.auto_ack.always_respond_dm_description')}
           </div>
         </div>
 
         <div className="setting-item" style={{ marginTop: '1.5rem' }}>
           <label>
-            Security
+            {t('automation.auto_ack.security')}
             <span className="setting-description">
-              Protect against sending messages to nodes that may not be on your channel
+              {t('automation.auto_ack.security_description')}
             </span>
           </label>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
@@ -389,19 +391,19 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
               style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
             />
             <label htmlFor="autoAckSkipIncomplete" style={{ margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed', fontWeight: 'bold' }}>
-              Skip incomplete nodes
+              {t('automation.auto_ack.skip_incomplete')}
             </label>
           </div>
           <div style={{ marginTop: '0.5rem', marginLeft: '1.75rem', fontSize: '0.9rem', color: 'var(--ctp-subtext0)' }}>
-            Don't auto-acknowledge messages from nodes that are missing name or hardware info. Recommended for secure channels to avoid responding to nodes that may have overheard your encrypted traffic.
+            {t('automation.auto_ack.skip_incomplete_description')}
           </div>
         </div>
 
         <div className="setting-item" style={{ marginTop: '1.5rem' }}>
           <label htmlFor="autoAckMessage">
-            Acknowledgment Message Template (Multi-hop Messages)
+            {t('automation.auto_ack.message_multihop')}
             <span className="setting-description">
-              Message to send for multi-hop messages (hop count &gt; 0). Available tokens: {'{NODE_ID}'} (sender node ID), {'{NUMBER_HOPS}'} or {'{HOPS}'} (hop count), {'{RABBIT_HOPS}'} (rabbit emojis equal to hop count), {'{DATE}'} (current date), {'{TIME}'} (current time), {'{VERSION}'}, {'{DURATION}'}, {'{FEATURES}'}, {'{NODECOUNT}'}, {'{DIRECTCOUNT}'}, {'{LONG_NAME}'} (sender's long name), {'{SHORT_NAME}'} (sender's short name), {'{SNR}'} (Signal-to-Noise Ratio in dB), {'{RSSI}'} (Received Signal Strength Indicator in dBm)
+              {t('automation.auto_ack.message_multihop_description')} {t('automation.auto_ack.available_tokens')} {'{NODE_ID}'}, {'{NUMBER_HOPS}'}, {'{HOPS}'}, {'{RABBIT_HOPS}'}, {'{DATE}'}, {'{TIME}'}, {'{VERSION}'}, {'{DURATION}'}, {'{FEATURES}'}, {'{NODECOUNT}'}, {'{DIRECTCOUNT}'}, {'{LONG_NAME}'}, {'{SHORT_NAME}'}, {'{SNR}'}, {'{RSSI}'}
             </span>
           </label>
           <textarea
@@ -648,9 +650,9 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
 
         <div className="setting-item" style={{ marginTop: '1rem' }}>
           <label>
-            Sample Message Preview (Multi-hop)
+            {t('automation.auto_ack.sample_preview_multihop')}
             <span className="setting-description">
-              Shows how your acknowledgment will appear after token substitution (using example values for 3 hops)
+              {t('automation.auto_ack.sample_preview_multihop_description')}
             </span>
           </label>
           <div style={{
@@ -670,9 +672,9 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
 
         <div className="setting-item" style={{ marginTop: '1.5rem' }}>
           <label htmlFor="autoAckMessageDirect">
-            Acknowledgment Message Template (Direct Connections - 0 Hops)
+            {t('automation.auto_ack.message_direct')}
             <span className="setting-description">
-              Message to send for direct connections (hop count = 0). Available tokens: {'{NODE_ID}'}, {'{HOPS}'} or {'{NUMBER_HOPS}'} (will be 0), {'{RABBIT_HOPS}'} (will be 🎯), {'{DATE}'}, {'{TIME}'}, {'{VERSION}'}, {'{DURATION}'}, {'{FEATURES}'}, {'{NODECOUNT}'}, {'{DIRECTCOUNT}'}, {'{LONG_NAME}'}, {'{SHORT_NAME}'}, {'{SNR}'} (Signal-to-Noise Ratio), {'{RSSI}'} (Received Signal Strength). Leave empty to use the multi-hop template for all messages.
+              {t('automation.auto_ack.message_direct_description')} {t('automation.auto_ack.available_tokens')} {'{NODE_ID}'}, {'{HOPS}'}, {'{NUMBER_HOPS}'}, {'{RABBIT_HOPS}'}, {'{DATE}'}, {'{TIME}'}, {'{VERSION}'}, {'{DURATION}'}, {'{FEATURES}'}, {'{NODECOUNT}'}, {'{DIRECTCOUNT}'}, {'{LONG_NAME}'}, {'{SHORT_NAME}'}, {'{SNR}'}, {'{RSSI}'}
             </span>
           </label>
           <textarea
@@ -693,9 +695,9 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
 
         <div className="setting-item" style={{ marginTop: '1rem' }}>
           <label>
-            Sample Message Preview (Direct Connection)
+            {t('automation.auto_ack.sample_preview_direct')}
             <span className="setting-description">
-              Shows how your direct connection acknowledgment will appear (using example values for 0 hops)
+              {t('automation.auto_ack.sample_preview_direct_description')}
             </span>
           </label>
           <div style={{
@@ -715,10 +717,9 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
 
         <div className="setting-item" style={{ marginTop: '1.5rem' }}>
           <label htmlFor="testMessages">
-            Pattern Testing
+            {t('automation.auto_ack.pattern_testing')}
             <span className="setting-description">
-              Enter sample messages (one per line) to test your regex pattern.
-              Green = will trigger auto-ack, Red = will not trigger
+              {t('automation.auto_ack.pattern_testing_description')}
             </span>
           </label>
           <div className="auto-ack-test-container">
@@ -727,7 +728,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
                 id="testMessages"
                 value={testMessages}
                 onChange={(e) => setTestMessages(e.target.value)}
-                placeholder="Enter test messages, one per line..."
+                placeholder={t('automation.auto_ack.test_placeholder')}
                 disabled={!localEnabled}
                 className="setting-input"
                 rows={6}

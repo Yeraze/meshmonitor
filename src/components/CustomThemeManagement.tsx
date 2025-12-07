@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ThemeEditor } from './ThemeEditor';
 import { useSettings, type CustomTheme, type BuiltInTheme } from '../contexts/SettingsContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -7,6 +8,7 @@ import api from '../services/api';
 import './CustomThemeManagement.css';
 
 export const CustomThemeManagement: React.FC = () => {
+  const { t } = useTranslation();
   const { customThemes, loadCustomThemes, theme, setTheme } = useSettings();
   const { authStatus } = useAuth();
   const { getToken: getCsrfToken } = useCsrf();
@@ -75,7 +77,7 @@ export const CustomThemeManagement: React.FC = () => {
   };
 
   const handleDelete = async (themeSlug: string) => {
-    if (!confirm(`Are you sure you want to delete this theme?`)) {
+    if (!confirm(t('theme_management.delete_confirm'))) {
       return;
     }
 
@@ -95,7 +97,7 @@ export const CustomThemeManagement: React.FC = () => {
 
     if (!response.ok) {
       const error = await response.json();
-      alert(`Failed to delete theme: ${error.error}`);
+      alert(t('theme_management.delete_failed', { error: error.error }));
       return;
     }
 
@@ -130,21 +132,21 @@ export const CustomThemeManagement: React.FC = () => {
     <div className="custom-theme-management">
       <div className="theme-management-header">
         <div>
-          <h3>Custom Themes</h3>
-          <p>Create and manage custom color themes for the application</p>
+          <h3>{t('theme_management.title')}</h3>
+          <p>{t('theme_management.description')}</p>
         </div>
         {canWrite && (
           <button onClick={handleCreateNew} className="btn-primary">
-            Create New Theme
+            {t('theme_management.create_new')}
           </button>
         )}
       </div>
 
       {customThemes.length === 0 ? (
         <div className="no-themes-message">
-          <p>No custom themes yet.</p>
+          <p>{t('theme_management.no_themes')}</p>
           {canWrite && (
-            <p>Click "Create New Theme" to get started!</p>
+            <p>{t('theme_management.get_started')}</p>
           )}
         </div>
       ) : (
@@ -186,6 +188,7 @@ const ThemeCard: React.FC<ThemeCardProps> = ({
   onClone,
   onDelete
 }) => {
+  const { t } = useTranslation();
   const definition = React.useMemo(() => {
     try {
       return JSON.parse(theme.definition);
@@ -222,7 +225,7 @@ const ThemeCard: React.FC<ThemeCardProps> = ({
           <h4>{theme.name}</h4>
           <span className="theme-slug">{theme.slug}</span>
           {theme.is_builtin === 1 && (
-            <span className="builtin-badge">Built-in</span>
+            <span className="builtin-badge">{t('theme_management.built_in')}</span>
           )}
         </div>
 
@@ -232,21 +235,21 @@ const ThemeCard: React.FC<ThemeCardProps> = ({
             className={`btn-apply ${isActive ? 'active' : ''}`}
             disabled={isActive}
           >
-            {isActive ? 'Active' : 'Apply'}
+            {isActive ? t('theme_management.active') : t('theme_management.apply')}
           </button>
 
           {canWrite && !theme.is_builtin && (
-            <button onClick={onEdit} className="btn-icon" title="Edit">
+            <button onClick={onEdit} className="btn-icon" title={t('common.edit')}>
               ✏️
             </button>
           )}
 
-          <button onClick={onClone} className="btn-icon" title="Clone">
+          <button onClick={onClone} className="btn-icon" title={t('theme_management.clone')}>
             📋
           </button>
 
           {canWrite && !theme.is_builtin && (
-            <button onClick={onDelete} className="btn-icon btn-danger" title="Delete">
+            <button onClick={onDelete} className="btn-icon btn-danger" title={t('common.delete')}>
               🗑️
             </button>
           )}

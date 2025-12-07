@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 
@@ -28,6 +29,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
   baseUrl,
   onIntervalChange,
 }) => {
+  const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();
   const [localEnabled, setLocalEnabled] = useState(intervalMinutes > 0);
@@ -110,7 +112,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
 
       if (!intervalResponse.ok) {
         if (intervalResponse.status === 403) {
-          showToast('Insufficient permissions to save settings', 'error');
+          showToast(t('automation.insufficient_permissions'), 'error');
           return;
         }
         throw new Error(`Server returned ${intervalResponse.status}`);
@@ -128,7 +130,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
 
       if (!filterResponse.ok) {
         if (filterResponse.status === 403) {
-          showToast('Insufficient permissions to save settings', 'error');
+          showToast(t('automation.insufficient_permissions'), 'error');
           return;
         }
         throw new Error(`Server returned ${filterResponse.status}`);
@@ -140,10 +142,10 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
       setInitialSelectedNodes(selectedNodeNums);
 
       setHasChanges(false);
-      showToast('Settings saved! Container restart required for changes to take effect.', 'success');
+      showToast(t('automation.auto_traceroute.settings_saved_restart'), 'success');
     } catch (error) {
       console.error('Failed to save auto-traceroute settings:', error);
-      showToast('Failed to save settings. Please try again.', 'error');
+      showToast(t('automation.settings_save_failed'), 'error');
     } finally {
       setIsSaving(false);
     }
@@ -203,7 +205,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
             onChange={(e) => setLocalEnabled(e.target.checked)}
             style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
           />
-          Auto Traceroute
+          {t('automation.auto_traceroute.title')}
           <a
             href="https://meshmonitor.org/features/automation#auto-traceroute"
             target="_blank"
@@ -214,7 +216,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
               textDecoration: 'none',
               marginLeft: '0.5rem'
             }}
-            title="View Auto Traceroute Documentation"
+            title={t('automation.view_docs')}
           >
             ❓
           </a>
@@ -230,21 +232,20 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
             cursor: hasChanges ? 'pointer' : 'not-allowed'
           }}
         >
-          {isSaving ? 'Saving...' : 'Save Changes'}
+          {isSaving ? t('automation.saving') : t('automation.save_changes')}
         </button>
       </div>
 
       <div className="settings-section" style={{ opacity: localEnabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>
         <p style={{ marginBottom: '1rem', color: '#666', lineHeight: '1.5', marginLeft: '1.75rem' }}>
-          When enabled, automatically send traceroute requests to all active nodes at the configured interval.
-          This helps maintain up-to-date network topology information. <strong>Requires container restart to take effect.</strong>
+          {t('automation.auto_traceroute.description')}
         </p>
 
         <div className="setting-item" style={{ marginTop: '1rem' }}>
           <label htmlFor="tracerouteInterval">
-            Traceroute Interval (minutes)
+            {t('automation.auto_traceroute.interval')}
             <span className="setting-description">
-              How often to automatically send traceroutes to nodes. Default: 3 minutes
+              {t('automation.auto_traceroute.interval_description')}
             </span>
           </label>
           <input
@@ -271,9 +272,9 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
               style={{ width: 'auto', margin: 0, marginRight: '0.5rem', cursor: 'pointer' }}
             />
             <label htmlFor="nodeFilter" style={{ margin: 0, cursor: 'pointer' }}>
-              Limit to Specific Nodes
+              {t('automation.auto_traceroute.limit_to_nodes')}
               <span className="setting-description" style={{ display: 'block', marginTop: '0.25rem' }}>
-                When enabled, only selected nodes will be tracerouted. When disabled, all nodes are eligible.
+                {t('automation.auto_traceroute.limit_to_nodes_description')}
               </span>
             </label>
           </div>
@@ -290,7 +291,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
               {/* Search bar */}
               <input
                 type="text"
-                placeholder="Search nodes..."
+                placeholder={t('automation.auto_traceroute.search_nodes')}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 style={{
@@ -311,14 +312,14 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                   className="btn-secondary"
                   style={{ padding: '0.4rem 0.8rem', fontSize: '12px' }}
                 >
-                  Select All
+                  {t('common.select_all')}
                 </button>
                 <button
                   onClick={handleDeselectAll}
                   className="btn-secondary"
                   style={{ padding: '0.4rem 0.8rem', fontSize: '12px' }}
                 >
-                  Deselect All
+                  {t('common.deselect_all')}
                 </button>
               </div>
 
@@ -332,7 +333,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
               }}>
                 {filteredNodes.length === 0 ? (
                   <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--ctp-subtext0)' }}>
-                    {searchTerm ? 'No nodes match your search' : 'No nodes available'}
+                    {searchTerm ? t('automation.auto_traceroute.no_nodes_match') : t('automation.auto_traceroute.no_nodes_available')}
                   </div>
                 ) : (
                   filteredNodes.map(node => (
@@ -374,10 +375,10 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
 
               {/* Selection count */}
               <div style={{ marginTop: '0.75rem', fontSize: '13px', color: 'var(--ctp-subtext0)' }}>
-                Selected: {selectedNodeNums.length} {selectedNodeNums.length === 1 ? 'node' : 'nodes'}
+                {t('automation.auto_traceroute.selected_count', { count: selectedNodeNums.length })}
                 {selectedNodeNums.length === 0 && filterEnabled && (
                   <span style={{ color: 'var(--ctp-yellow)', marginLeft: '0.5rem' }}>
-                    (All nodes eligible when none selected)
+                    ({t('automation.auto_traceroute.all_nodes_eligible')})
                   </span>
                 )}
               </div>

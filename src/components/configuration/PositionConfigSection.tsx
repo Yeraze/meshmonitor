@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface PositionConfigSectionProps {
   positionBroadcastSecs: number;
@@ -33,10 +34,12 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
   isSaving,
   onSave
 }) => {
+  const { t } = useTranslation();
+
   return (
     <div className="settings-section">
       <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        Position Broadcast
+        {t('position_config.title')}
         <a
           href="https://meshmonitor.org/features/device#position-configuration"
           target="_blank"
@@ -46,15 +49,15 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
             color: '#89b4fa',
             textDecoration: 'none'
           }}
-          title="View Position Configuration Documentation"
+          title={t('position_config.view_docs')}
         >
           ❓
         </a>
       </h3>
       <div className="setting-item">
         <label htmlFor="positionBroadcastSecs">
-          Position Broadcast Interval (seconds)
-          <span className="setting-description">How often to broadcast position. Range: 32-4294967295 (default: 900 = 15 minutes, minimum: 32 seconds)</span>
+          {t('position_config.broadcast_interval')}
+          <span className="setting-description">{t('position_config.broadcast_interval_description')}</span>
         </label>
         <input
           id="positionBroadcastSecs"
@@ -76,8 +79,8 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
             style={{ marginTop: '0.2rem', flexShrink: 0 }}
           />
           <div style={{ flex: 1 }}>
-            <div>Smart Position Broadcast</div>
-            <span className="setting-description">Only broadcast when position has changed significantly</span>
+            <div>{t('position_config.smart_broadcast')}</div>
+            <span className="setting-description">{t('position_config.smart_broadcast_description')}</span>
           </div>
         </label>
       </div>
@@ -91,8 +94,8 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
             style={{ marginTop: '0.2rem', flexShrink: 0 }}
           />
           <div style={{ flex: 1 }}>
-            <div>Fixed Position</div>
-            <span className="setting-description">Node is at a fixed position (disables GPS updates)</span>
+            <div>{t('position_config.fixed_position')}</div>
+            <span className="setting-description">{t('position_config.fixed_position_description')}</span>
           </div>
         </label>
       </div>
@@ -100,9 +103,9 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
         <>
           <div className="setting-item">
             <label htmlFor="fixedLatitude">
-              Latitude
+              {t('position_config.latitude')}
               <span className="setting-description">
-                Range: -90 to 90 (decimal degrees) • <a href="https://gps-coordinates.org/" target="_blank" rel="noopener noreferrer" style={{ color: '#4a9eff', textDecoration: 'underline' }}>Find your GPS coordinates here</a>
+                {t('position_config.latitude_description')} • <a href="https://gps-coordinates.org/" target="_blank" rel="noopener noreferrer" style={{ color: '#4a9eff', textDecoration: 'underline' }}>{t('position_config.find_coordinates')}</a>
               </span>
             </label>
             <input
@@ -118,8 +121,8 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
           </div>
           <div className="setting-item">
             <label htmlFor="fixedLongitude">
-              Longitude
-              <span className="setting-description">Range: -180 to 180 (decimal degrees)</span>
+              {t('position_config.longitude')}
+              <span className="setting-description">{t('position_config.longitude_description')}</span>
             </label>
             <input
               id="fixedLongitude"
@@ -134,8 +137,8 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
           </div>
           <div className="setting-item">
             <label htmlFor="fixedAltitude">
-              Altitude (meters)
-              <span className="setting-description">Elevation above sea level in meters</span>
+              {t('position_config.altitude')}
+              <span className="setting-description">{t('position_config.altitude_description')}</span>
             </label>
             <input
               id="fixedAltitude"
@@ -153,7 +156,7 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
         onClick={onSave}
         disabled={isSaving}
       >
-        {isSaving ? 'Saving...' : 'Save Position Config'}
+        {isSaving ? t('common.saving') : t('position_config.save_button')}
       </button>
     </div>
   );

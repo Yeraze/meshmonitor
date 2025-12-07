@@ -188,7 +188,7 @@ describe('RouteSegmentTraceroutesModal - Node Direction Display', () => {
       />
     );
 
-    expect(screen.getByText('Traceroutes Using Segment')).toBeInTheDocument();
+    expect(screen.getByText('route_segment.title')).toBeInTheDocument();
   });
 
   /**
@@ -205,6 +205,6 @@ describe('RouteSegmentTraceroutesModal - Node Direction Display', () => {
       />
     );
 
-    expect(screen.getByText('No traceroutes found using this segment.')).toBeInTheDocument();
+    expect(screen.getByText('route_segment.no_traceroutes')).toBeInTheDocument();
   });
 });

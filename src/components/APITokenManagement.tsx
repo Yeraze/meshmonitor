@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { logger } from '../utils/logger';
 import api from '../services/api';
@@ -23,6 +24,7 @@ interface APITokenState {
 }
 
 const APITokenManagement: React.FC = () => {
+  const { t } = useTranslation();
   const { showToast } = useToast();
   const [tokenState, setTokenState] = useState<APITokenState>({ hasToken: false, token: null });
   const [generatedToken, setGeneratedToken] = useState<string | null>(null);
@@ -42,7 +44,7 @@ const APITokenManagement: React.FC = () => {
       setTokenState(data);
     } catch (error) {
       logger.error('Failed to load API token info:', error);
-      showToast('Failed to load API token information', 'error');
+      showToast(t('api_token.load_failed'), 'error');
     } finally {
       setLoading(false);
     }
@@ -57,10 +59,10 @@ const APITokenManagement: React.FC = () => {
         hasToken: true,
         token: data.tokenInfo
       });
-      showToast('API token generated successfully', 'success');
+      showToast(t('api_token.generated_success'), 'success');
     } catch (error) {
       logger.error('Failed to generate API token:', error);
-      showToast(error instanceof Error ? error.message : 'Failed to generate API token', 'error');
+      showToast(error instanceof Error ? error.message : t('api_token.generate_failed'), 'error');
     } finally {
       setIsGenerating(false);
     }
@@ -73,10 +75,10 @@ const APITokenManagement: React.FC = () => {
       setTokenState({ hasToken: false, token: null });
       setGeneratedToken(null);
       setShowConfirmRevoke(false);
-      showToast('API token revoked successfully', 'success');
+      showToast(t('api_token.revoked_success'), 'success');
     } catch (error) {
       logger.error('Failed to revoke API token:', error);
-      showToast(error instanceof Error ? error.message : 'Failed to revoke API token', 'error');
+      showToast(error instanceof Error ? error.message : t('api_token.revoke_failed'), 'error');
     } finally {
       setIsRevoking(false);
     }
@@ -84,7 +86,7 @@ const APITokenManagement: React.FC = () => {
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    showToast('Token copied to clipboard', 'success');
+    showToast(t('api_token.copied'), 'success');
   };
 
   const formatDate = (timestamp: number) => {
@@ -94,43 +96,43 @@ const APITokenManagement: React.FC = () => {
   if (loading) {
     return (
       <div className="api-token-section">
-        <h3>API Token</h3>
-        <div className="loading">Loading token information...</div>
+        <h3>{t('api_token.title')}</h3>
+        <div className="loading">{t('api_token.loading')}</div>
       </div>
     );
   }
 
   return (
     <div className="api-token-section">
-      <h3>API Token</h3>
+      <h3>{t('api_token.title')}</h3>
       <p className="description">
-        Generate an API token to access the MeshMonitor REST API v1.
-        View the <a href="/api/v1/docs" target="_blank" rel="noopener noreferrer">API documentation</a> for details.
+        {t('api_token.description')}{' '}
+        <a href="/api/v1/docs" target="_blank" rel="noopener noreferrer">{t('api_token.view_docs')}</a>
       </p>
 
       {generatedToken && (
         <div className="token-generated-alert">
           <div className="alert-header">
-            <strong>Token Generated!</strong>
+            <strong>{t('api_token.token_generated')}</strong>
           </div>
           <p className="alert-message">
-            Save this token securely - it will not be shown again.
+            {t('api_token.save_warning')}
           </p>
           <div className="token-display">
             <code>{generatedToken}</code>
             <button
               onClick={() => copyToClipboard(generatedToken)}
               className="copy-btn"
-              title="Copy to clipboard"
+              title={t('common.copy_to_clipboard')}
             >
-              Copy
+              {t('common.copy')}
             </button>
           </div>
           <button
             onClick={() => setGeneratedToken(null)}
             className="dismiss-btn"
           >
-            Dismiss
+            {t('common.dismiss')}
           </button>
         </div>
       )}
@@ -139,24 +141,24 @@ const APITokenManagement: React.FC = () => {
         <div className="token-info">
           <div className="info-grid">
             <div className="info-item">
-              <span className="info-label">Prefix:</span>
+              <span className="info-label">{t('api_token.prefix')}:</span>
               <span className="info-value"><code>{tokenState.token.prefix}...</code></span>
             </div>
             <div className="info-item">
-              <span className="info-label">Created:</span>
+              <span className="info-label">{t('api_token.created')}:</span>
               <span className="info-value">{formatDate(tokenState.token.createdAt)}</span>
             </div>
             <div className="info-item">
-              <span className="info-label">Last Used:</span>
+              <span className="info-label">{t('api_token.last_used')}:</span>
               <span className="info-value">
                 {tokenState.token.lastUsedAt
                   ? formatDate(tokenState.token.lastUsedAt)
-                  : 'Never'}
+                  : t('time.never')}
               </span>
             </div>
             <div className="info-item">
-              <span className="info-label">Status:</span>
-              <span className="info-value status-active">Active</span>
+              <span className="info-label">{t('api_token.status')}:</span>
+              <span className="info-value status-active">{t('api_token.status_active')}</span>
             </div>
           </div>
 
@@ -167,13 +169,13 @@ const APITokenManagement: React.FC = () => {
                 className="revoke-btn"
                 disabled={isRevoking}
               >
-                Revoke Token
+                {t('api_token.revoke')}
               </button>
             </div>
           ) : (
             <div className="confirm-revoke">
               <p className="confirm-message">
-                Are you sure you want to revoke this token? This action cannot be undone.
+                {t('api_token.revoke_confirm')}
               </p>
               <div className="confirm-actions">
                 <button
@@ -181,14 +183,14 @@ const APITokenManagement: React.FC = () => {
                   className="confirm-btn"
                   disabled={isRevoking}
                 >
-                  {isRevoking ? 'Revoking...' : 'Yes, Revoke'}
+                  {isRevoking ? t('api_token.revoking') : t('api_token.yes_revoke')}
                 </button>
                 <button
                   onClick={() => setShowConfirmRevoke(false)}
                   className="cancel-btn"
                   disabled={isRevoking}
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </button>
               </div>
             </div>
@@ -196,24 +198,24 @@ const APITokenManagement: React.FC = () => {
         </div>
       ) : (
         <div className="no-token">
-          <p>You don't have an active API token.</p>
+          <p>{t('api_token.no_token')}</p>
           <button
             onClick={handleGenerateToken}
             className="generate-btn"
             disabled={isGenerating}
           >
-            {isGenerating ? 'Generating...' : 'Generate API Token'}
+            {isGenerating ? t('api_token.generating') : t('api_token.generate')}
           </button>
         </div>
       )}
 
       <div className="api-token-help">
-        <h4>Using Your API Token</h4>
-        <p>Include the token in the Authorization header:</p>
+        <h4>{t('api_token.usage_title')}</h4>
+        <p>{t('api_token.usage_instruction')}</p>
         <pre><code>Authorization: Bearer YOUR_TOKEN_HERE</code></pre>
         <p>
           <a href="/api/v1/docs" target="_blank" rel="noopener noreferrer">
-            View API Documentation
+            {t('api_token.view_api_docs')}
           </a>
         </p>
       </div>

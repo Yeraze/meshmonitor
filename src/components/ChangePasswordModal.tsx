@@ -5,6 +5,7 @@
  */
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import api from '../services/api';
 import { logger } from '../utils/logger';
 
@@ -14,6 +15,7 @@ interface ChangePasswordModalProps {
 }
 
 const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ isOpen, onClose }) => {
+  const { t } = useTranslation();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -30,22 +32,22 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ isOpen, onClo
 
     // Validation
     if (!currentPassword || !newPassword || !confirmPassword) {
-      setError('All fields are required');
+      setError(t('change_password.all_fields_required'));
       return;
     }
 
     if (newPassword.length < 8) {
-      setError('New password must be at least 8 characters');
+      setError(t('change_password.min_length'));
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setError('New passwords do not match');
+      setError(t('change_password.passwords_no_match'));
       return;
     }
 
     if (currentPassword === newPassword) {
-      setError('New password must be different from current password');
+      setError(t('change_password.must_be_different'));
       return;
     }
 
@@ -69,7 +71,7 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ isOpen, onClo
       }, 2000);
     } catch (err: any) {
       logger.error('Password change error:', err);
-      setError(err.response?.data?.error || 'Failed to change password');
+      setError(err.response?.data?.error || t('change_password.failed'));
     } finally {
       setLoading(false);
     }
@@ -88,14 +90,14 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ isOpen, onClo
     <div className="modal-overlay" onClick={handleClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2>Change Password</h2>
+          <h2>{t('change_password.title')}</h2>
           <button className="close-button" onClick={handleClose}>×</button>
         </div>
 
         <div className="modal-body">
           <form onSubmit={handleSubmit}>
             <div className="form-group">
-              <label htmlFor="current-password">Current Password</label>
+              <label htmlFor="current-password">{t('change_password.current_password')}</label>
               <input
                 id="current-password"
                 type="password"
@@ -108,7 +110,7 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ isOpen, onClo
             </div>
 
             <div className="form-group">
-              <label htmlFor="new-password">New Password</label>
+              <label htmlFor="new-password">{t('change_password.new_password')}</label>
               <input
                 id="new-password"
                 type="password"
@@ -119,11 +121,11 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ isOpen, onClo
                 autoComplete="new-password"
                 minLength={8}
               />
-              <small className="form-hint">Minimum 8 characters</small>
+              <small className="form-hint">{t('change_password.min_length_hint')}</small>
             </div>
 
             <div className="form-group">
-              <label htmlFor="confirm-password">Confirm New Password</label>
+              <label htmlFor="confirm-password">{t('change_password.confirm_password')}</label>
               <input
                 id="confirm-password"
                 type="password"
@@ -144,7 +146,7 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ isOpen, onClo
 
             {success && (
               <div className="success-message">
-                Password changed successfully!
+                {t('change_password.success')}
               </div>
             )}
 
@@ -155,14 +157,14 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ isOpen, onClo
                 onClick={handleClose}
                 disabled={loading}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 type="submit"
                 className="button button-primary"
                 disabled={loading || success || !currentPassword || !newPassword || !confirmPassword}
               >
-                {loading ? 'Changing...' : 'Change Password'}
+                {loading ? t('change_password.changing') : t('change_password.title')}
               </button>
             </div>
           </form>

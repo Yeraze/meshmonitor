@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import apiService from '../../services/api';
 
 interface ImportConfigModalProps {
@@ -54,6 +55,7 @@ const regionNames: { [key: number]: string } = {
 };
 
 export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, onClose, onImportSuccess }) => {
+  const { t } = useTranslation();
   const [url, setUrl] = useState('');
   const [decoded, setDecoded] = useState<DecodedConfig | null>(null);
   const [selectedChannels, setSelectedChannels] = useState<Set<number>>(new Set());
@@ -65,7 +67,7 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
 
   const handleDecode = async () => {
     if (!url.trim()) {
-      setError('Please enter a URL');
+      setError(t('import_config.error_enter_url'));
       return;
     }
 
@@ -82,7 +84,7 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
       // Select LoRa config if present
       setIncludeLoraConfig(!!result.loraConfig);
     } catch (err: any) {
-      setError(err.message || 'Failed to decode URL');
+      setError(err.message || t('import_config.error_decode_failed'));
       setDecoded(null);
     } finally {
       setLoading(false);
@@ -100,32 +102,32 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
       // - Decode the URL
       // - Write selected channels to the device
       // - Write LoRa config to the device if selected
-      setImportStatus('Sending configuration to device...');
+      setImportStatus(t('import_config.status_sending'));
       const result = await apiService.importConfig(url);
 
       console.log('Import result:', result);
 
       // If reboot is required, wait for device to reconnect and sync
       if (result.requiresReboot) {
-        setImportStatus('Device rebooting... Please wait');
+        setImportStatus(t('import_config.status_rebooting'));
         await waitForDeviceReconnect();
       } else {
-        setImportStatus('Configuration sent, waiting for device sync...');
+        setImportStatus(t('import_config.status_syncing'));
         // Even without reboot, give device time to process and sync
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
 
       // Poll for updated channel data
-      setImportStatus('Verifying configuration...');
+      setImportStatus(t('import_config.status_verifying'));
       await pollForChannelUpdates();
 
-      setImportStatus('Import complete!');
+      setImportStatus(t('import_config.status_complete'));
       await new Promise(resolve => setTimeout(resolve, 1000));
 
       onImportSuccess();
       handleClose();
     } catch (err: any) {
-      setError(err.message || 'Failed to import configuration');
+      setError(err.message || t('import_config.error_import_failed'));
       setImporting(false);
     }
   };
@@ -150,11 +152,11 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
       }
 
       const elapsed = Math.floor((Date.now() - startTime) / 1000);
-      setImportStatus(`Device rebooting... (${elapsed}s)`);
+      setImportStatus(t('import_config.status_rebooting_elapsed', { elapsed }));
       await new Promise(resolve => setTimeout(resolve, pollInterval));
     }
 
-    throw new Error('Device did not reconnect within 60 seconds');
+    throw new Error(t('import_config.error_reconnect_timeout'));
   };
 
   const pollForChannelUpdates = async (): Promise<void> => {
@@ -252,17 +254,17 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
           overflowY: 'auto'
         }}
       >
-        <h2>Import Meshtastic Configuration</h2>
+        <h2>{t('import_config.title')}</h2>
 
         <div style={{ marginBottom: '1rem' }}>
           <label style={{ display: 'block', marginBottom: '0.5rem' }}>
-            Meshtastic Configuration URL
+            {t('import_config.url_label')}
           </label>
           <input
             type="text"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://meshtastic.org/e/#..."
+            placeholder={t('import_config.url_placeholder')}
             style={{ width: '100%', padding: '0.5rem' }}
             disabled={loading}
           />
@@ -293,7 +295,7 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
               }
             }}
           >
-            {loading ? 'Decoding...' : 'Decode URL'}
+            {loading ? t('import_config.decoding') : t('import_config.decode_button')}
           </button>
         </div>
 
@@ -305,11 +307,11 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
 
         {decoded && (
           <div style={{ marginTop: '1rem', maxHeight: '400px', overflowY: 'auto' }}>
-            <h3>Configuration Preview</h3>
+            <h3>{t('import_config.config_preview')}</h3>
 
             {decoded.channels.length > 0 && (
               <div style={{ marginBottom: '1rem' }}>
-                <h4>Channels ({decoded.channels.length})</h4>
+                <h4>{t('import_config.channels_count', { count: decoded.channels.length })}</h4>
                 {decoded.channels.map((channel, idx) => (
                   <div
                     key={idx}
@@ -330,13 +332,13 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
                       />
                       <div style={{ flex: 1 }}>
                         <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>
-                          Channel {idx}: {channel.name || '(unnamed)'}
+                          {t('import_config.channel_label', { idx, name: channel.name || t('import_config.channel_unnamed') })}
                         </div>
                         <div style={{ fontSize: '0.875rem', color: 'var(--ctp-subtext0)' }}>
-                          PSK: {channel.psk || 'none'}
-                          {channel.positionPrecision !== undefined && ` | Position Precision: ${channel.positionPrecision} bits`}
-                          {channel.uplinkEnabled !== undefined && ` | Uplink: ${channel.uplinkEnabled ? 'enabled' : 'disabled'}`}
-                          {channel.downlinkEnabled !== undefined && ` | Downlink: ${channel.downlinkEnabled ? 'enabled' : 'disabled'}`}
+                          {channel.psk ? t('import_config.psk_label', { psk: channel.psk }) : t('import_config.psk_none')}
+                          {channel.positionPrecision !== undefined && ` | ${t('import_config.position_precision', { bits: channel.positionPrecision })}`}
+                          {channel.uplinkEnabled !== undefined && ` | ${channel.uplinkEnabled ? t('import_config.uplink_enabled') : t('import_config.uplink_disabled')}`}
+                          {channel.downlinkEnabled !== undefined && ` | ${channel.downlinkEnabled ? t('import_config.downlink_enabled') : t('import_config.downlink_disabled')}`}
                         </div>
                       </div>
                     </label>
@@ -364,13 +366,13 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
                     />
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>
-                        LoRa Device Settings
+                        {t('import_config.lora_settings')}
                       </div>
                       <div style={{ fontSize: '0.875rem', color: 'var(--ctp-subtext0)' }}>
-                        Preset: {modemPresetNames[decoded.loraConfig.modemPreset ?? 0] || decoded.loraConfig.modemPreset}
-                        {decoded.loraConfig.region !== undefined && ` | Region: ${regionNames[decoded.loraConfig.region] || decoded.loraConfig.region}`}
-                        {decoded.loraConfig.hopLimit !== undefined && ` | Hop Limit: ${decoded.loraConfig.hopLimit}`}
-                        {decoded.loraConfig.txPower !== undefined && ` | TX Power: ${decoded.loraConfig.txPower} dBm`}
+                        {t('import_config.preset', { preset: modemPresetNames[decoded.loraConfig.modemPreset ?? 0] || decoded.loraConfig.modemPreset })}
+                        {decoded.loraConfig.region !== undefined && ` | ${t('import_config.region', { region: regionNames[decoded.loraConfig.region] || decoded.loraConfig.region })}`}
+                        {decoded.loraConfig.hopLimit !== undefined && ` | ${t('import_config.hop_limit', { limit: decoded.loraConfig.hopLimit })}`}
+                        {decoded.loraConfig.txPower !== undefined && ` | ${t('import_config.tx_power', { power: decoded.loraConfig.txPower })}`}
                       </div>
                     </div>
                   </label>
@@ -390,7 +392,7 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
                 }}
               >
                 <div style={{ fontSize: '1rem', fontWeight: 'bold', color: 'var(--ctp-blue)', marginBottom: '0.5rem' }}>
-                  Import in Progress
+                  {t('import_config.import_in_progress')}
                 </div>
                 <div style={{ fontSize: '0.875rem', color: 'var(--ctp-text)', marginBottom: '0.75rem' }}>
                   {importStatus}
@@ -450,7 +452,7 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
                   }
                 }}
               >
-                Cancel
+                {t('import_config.cancel')}
               </button>
               <button
                 onClick={handleImport}
@@ -478,7 +480,7 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
                   }
                 }}
               >
-                {loading ? 'Decoding...' : importing ? 'Importing...' : 'Import Selected'}
+                {loading ? t('import_config.decoding') : importing ? t('import_config.importing') : t('import_config.import_selected')}
               </button>
             </div>
           </div>

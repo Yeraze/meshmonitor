@@ -156,7 +156,7 @@ describe('AuditLogTab', () => {
         </AuthContext.Provider>
       );
 
-      expect(screen.getByText(/You do not have permission to view audit logs/i)).toBeInTheDocument();
+      expect(screen.getByText(/audit.no_permission/i)).toBeInTheDocument();
     });
 
     it('should render audit log when user has permission', async () => {
@@ -165,7 +165,7 @@ describe('AuditLogTab', () => {
       renderWithProviders(authStatus);
 
       await waitFor(() => {
-        expect(screen.getByText('Audit Log')).toBeInTheDocument();
+        expect(screen.getByText('audit.title')).toBeInTheDocument();
       });
     });
   });
@@ -178,7 +178,7 @@ describe('AuditLogTab', () => {
 
       renderWithProviders(authStatus);
 
-      expect(screen.getByText(/Loading audit logs/i)).toBeInTheDocument();
+      expect(screen.getByText(/audit.loading/i)).toBeInTheDocument();
     });
 
     it('should fetch audit logs on mount', async () => {
@@ -222,7 +222,7 @@ describe('AuditLogTab', () => {
       renderWithProviders(authStatus);
 
       await waitFor(() => {
-        expect(screen.getByText(/Failed to load audit logs/i)).toBeInTheDocument();
+        expect(screen.getByText(/audit.failed_load/i)).toBeInTheDocument();
       });
     });
 
@@ -234,7 +234,7 @@ describe('AuditLogTab', () => {
       renderWithProviders(authStatus);
 
       await waitFor(() => {
-        expect(screen.getByText(/No audit log entries found/i)).toBeInTheDocument();
+        expect(screen.getByText(/audit.no_entries/i)).toBeInTheDocument();
       });
     });
   });
@@ -250,10 +250,9 @@ describe('AuditLogTab', () => {
       renderWithProviders(authStatus);
 
       await waitFor(() => {
-        expect(screen.getByText('Total Events (30 days)')).toBeInTheDocument();
-        expect(screen.getByText('15')).toBeInTheDocument(); // totalEvents
-        expect(screen.getByText('Top Action')).toBeInTheDocument();
-        expect(screen.getByText('Most Active User')).toBeInTheDocument();
+        expect(screen.getByText('audit.total_events_30_days')).toBeInTheDocument();
+        expect(screen.getByText('audit.top_action')).toBeInTheDocument();
+        expect(screen.getByText('audit.most_active_user')).toBeInTheDocument();
       });
     });
   });
@@ -270,13 +269,13 @@ describe('AuditLogTab', () => {
 
       // Wait for all filter controls to be rendered
       await waitFor(() => {
-        expect(screen.getByText('Filters')).toBeInTheDocument();
-        expect(screen.getByLabelText(/User/i)).toBeInTheDocument();
-        expect(screen.getByLabelText(/Action/i)).toBeInTheDocument();
-        expect(screen.getByLabelText(/Resource/i)).toBeInTheDocument();
-        expect(screen.getByLabelText(/Start Date/i)).toBeInTheDocument();
-        expect(screen.getByLabelText(/End Date/i)).toBeInTheDocument();
-        expect(screen.getByLabelText(/Search/i)).toBeInTheDocument();
+        expect(screen.getByText('audit.filters')).toBeInTheDocument();
+        expect(screen.getByLabelText(/audit.user/i)).toBeInTheDocument();
+        expect(screen.getByLabelText(/audit.action/i)).toBeInTheDocument();
+        expect(screen.getByLabelText(/audit.resource/i)).toBeInTheDocument();
+        expect(screen.getByLabelText(/audit.start_date/i)).toBeInTheDocument();
+        expect(screen.getByLabelText(/audit.end_date/i)).toBeInTheDocument();
+        expect(screen.getByLabelText(/audit.search/i)).toBeInTheDocument();
       });
     });
 
@@ -288,7 +287,7 @@ describe('AuditLogTab', () => {
       renderWithProviders(authStatus);
 
       await waitFor(() => {
-        expect(screen.getByText('Clear Filters')).toBeInTheDocument();
+        expect(screen.getByText('audit.clear_filters')).toBeInTheDocument();
       });
     });
   });
@@ -304,9 +303,9 @@ describe('AuditLogTab', () => {
       renderWithProviders(authStatus);
 
       await waitFor(() => {
-        expect(screen.getByText(/Showing/)).toBeInTheDocument();
-        expect(screen.getByText(/Previous/)).toBeInTheDocument();
-        expect(screen.getByText(/Next/)).toBeInTheDocument();
+        expect(screen.getByText(/audit.showing/)).toBeInTheDocument();
+        expect(screen.getByText(/audit.previous/)).toBeInTheDocument();
+        expect(screen.getByText(/audit.next/)).toBeInTheDocument();
       });
     });
 
@@ -318,8 +317,8 @@ describe('AuditLogTab', () => {
       renderWithProviders(authStatus);
 
       await waitFor(() => {
-        expect(screen.queryByText(/Previous/)).not.toBeInTheDocument();
-        expect(screen.queryByText(/Next/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/audit.previous/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/audit.next/)).not.toBeInTheDocument();
       });
     });
   });
@@ -345,8 +344,8 @@ describe('AuditLogTab', () => {
       fireEvent.click(row!);
 
       await waitFor(() => {
-        expect(screen.getByText(/Before:/)).toBeInTheDocument();
-        expect(screen.getByText(/After:/)).toBeInTheDocument();
+        expect(screen.getByText(/audit.value_before/)).toBeInTheDocument();
+        expect(screen.getByText(/audit.value_after/)).toBeInTheDocument();
       });
     });
   });
@@ -420,7 +419,7 @@ describe('AuditLogTab', () => {
       renderWithProviders(authStatus);
 
       await waitFor(() => {
-        expect(screen.getByText('Export CSV')).toBeInTheDocument();
+        expect(screen.getByText('audit.export_csv')).toBeInTheDocument();
       });
     });
 
@@ -432,7 +431,7 @@ describe('AuditLogTab', () => {
       renderWithProviders(authStatus);
 
       await waitFor(() => {
-        const exportButton = screen.getByText('Export CSV');
+        const exportButton = screen.getByText('audit.export_csv');
         expect(exportButton).toBeDisabled();
       });
     });
@@ -449,7 +448,7 @@ describe('AuditLogTab', () => {
       renderWithProviders(authStatus);
 
       await waitFor(() => {
-        expect(screen.getByText('System')).toBeInTheDocument();
+        expect(screen.getByText('audit.system')).toBeInTheDocument();
       });
     });
   });

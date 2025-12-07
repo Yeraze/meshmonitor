@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import './Sidebar.css';
 import { TabType } from '../types/ui';
 import { ResourceType, PermissionAction } from '../types/permission';
@@ -35,6 +36,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   baseUrl,
   connectedNodeName
 }) => {
+  const { t } = useTranslation();
   // Start collapsed (narrow/icon-only) by default for cleaner desktop UI
   const [isCollapsed, setIsCollapsed] = useState(true);
 
@@ -108,13 +110,13 @@ const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       <nav className="sidebar-nav">
-        <SectionHeader title="Main" />
+        <SectionHeader title={t('nav.section_main')} />
         <div className="sidebar-section">
-          <NavItem id="nodes" label="Nodes" icon="🗺️" />
+          <NavItem id="nodes" label={t('nav.nodes')} icon="🗺️" />
           {hasAnyChannelPermission() && (
             <NavItem
               id="channels"
-              label="Channels"
+              label={t('nav.channels')}
               icon="💬"
               onClick={onChannelsClick}
               showNotification={
@@ -127,7 +129,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           {hasPermission('messages', 'read') && (
             <NavItem
               id="messages"
-              label="Messages"
+              label={t('nav.messages')}
               icon="✉️"
               onClick={onMessagesClick}
               showNotification={
@@ -138,41 +140,41 @@ const Sidebar: React.FC<SidebarProps> = ({
             />
           )}
           {hasPermission('info', 'read') && (
-            <NavItem id="info" label="Info" icon="ℹ️" />
+            <NavItem id="info" label={t('nav.info')} icon="ℹ️" />
           )}
           {hasPermission('dashboard', 'read') && (
-            <NavItem id="dashboard" label="Dashboard" icon="📊" />
+            <NavItem id="dashboard" label={t('nav.dashboard')} icon="📊" />
           )}
         </div>
 
-        <SectionHeader title="Configuration" />
+        <SectionHeader title={t('nav.section_configuration')} />
         <div className="sidebar-section">
           {hasPermission('settings', 'read') && (
-            <NavItem id="settings" label="Settings" icon="⚙️" />
+            <NavItem id="settings" label={t('nav.settings')} icon="⚙️" />
           )}
           {hasPermission('automation', 'read') && (
-            <NavItem id="automation" label="Automation" icon="🤖" />
+            <NavItem id="automation" label={t('nav.automation')} icon="🤖" />
           )}
           {hasPermission('configuration', 'read') && (
-            <NavItem id="configuration" label="Device" icon="📡" />
+            <NavItem id="configuration" label={t('nav.device')} icon="📡" />
           )}
           {isAuthenticated && (
-            <NavItem id="notifications" label="Notifications" icon="🔔" />
+            <NavItem id="notifications" label={t('nav.notifications')} icon="🔔" />
           )}
         </div>
 
         {(isAdmin || hasPermission('audit', 'read') || hasPermission('security', 'read')) && (
           <>
-            <SectionHeader title="Admin" />
+            <SectionHeader title={t('nav.section_admin')} />
             <div className="sidebar-section">
               {isAdmin && (
-                <NavItem id="users" label="Users" icon="👥" />
+                <NavItem id="users" label={t('nav.users')} icon="👥" />
               )}
               {hasPermission('audit', 'read') && (
-                <NavItem id="audit" label="Audit Log" icon="📋" />
+                <NavItem id="audit" label={t('nav.audit_log')} icon="📋" />
               )}
               {hasPermission('security', 'read') && (
-                <NavItem id="security" label="Security" icon="🔐" />
+                <NavItem id="security" label={t('nav.security')} icon="🔐" />
               )}
             </div>
           </>
@@ -188,7 +190,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               target="_blank"
               rel="noopener noreferrer"
               className="github-link"
-              title="View on GitHub"
+              title={t('common.view_on_github')}
             >
               <svg viewBox="0 0 16 16" width="20" height="20" fill="currentColor">
                 <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path>
@@ -202,7 +204,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             target="_blank"
             rel="noopener noreferrer"
             className="github-link"
-            title="View on GitHub"
+            title={t('common.view_on_github')}
           >
             <svg viewBox="0 0 16 16" width="20" height="20" fill="currentColor">
               <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path>
@@ -214,7 +216,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       <button
         className="sidebar-toggle"
         onClick={() => setIsCollapsed(!isCollapsed)}
-        title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        title={isCollapsed ? t('nav.expand_sidebar') : t('nav.collapse_sidebar')}
       >
         {isCollapsed ? '▶' : '◀'}
       </button>

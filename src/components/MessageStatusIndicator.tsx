@@ -6,6 +6,7 @@
  */
 
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { MeshMessage, MessageDeliveryState } from '../types/message';
 
 /** Timeout for pending messages before showing timeout indicator */
@@ -19,12 +20,13 @@ interface MessageStatusIndicatorProps {
  * Render message delivery status indicator
  */
 export function MessageStatusIndicator({ message }: MessageStatusIndicatorProps): React.ReactElement {
+  const { t } = useTranslation();
   const messageAge = Date.now() - message.timestamp.getTime();
 
   // Check for explicit failures first
   if (message.ackFailed || message.routingErrorReceived || message.deliveryState === MessageDeliveryState.FAILED) {
     return (
-      <span className="status-failed" title="Failed to send - routing error or max retries exceeded">
+      <span className="status-failed" title={t('message_status.failed')}>
         ❌
       </span>
     );
@@ -33,7 +35,7 @@ export function MessageStatusIndicator({ message }: MessageStatusIndicatorProps)
   // Confirmed - received by target node (DMs only)
   if (message.deliveryState === MessageDeliveryState.CONFIRMED) {
     return (
-      <span className="status-confirmed" title="Received by target node">
+      <span className="status-confirmed" title={t('message_status.confirmed')}>
         🔒
       </span>
     );
@@ -42,7 +44,7 @@ export function MessageStatusIndicator({ message }: MessageStatusIndicatorProps)
   // Delivered - transmitted to mesh
   if (message.deliveryState === MessageDeliveryState.DELIVERED) {
     return (
-      <span className="status-delivered" title="Transmitted to mesh">
+      <span className="status-delivered" title={t('message_status.delivered')}>
         ✅
       </span>
     );
@@ -51,7 +53,7 @@ export function MessageStatusIndicator({ message }: MessageStatusIndicatorProps)
   // Pending - still waiting for acknowledgment
   if (messageAge < TIMEOUT_MS) {
     return (
-      <span className="status-pending" title="Sending...">
+      <span className="status-pending" title={t('message_status.pending')}>
         ⏳
       </span>
     );
@@ -59,7 +61,7 @@ export function MessageStatusIndicator({ message }: MessageStatusIndicatorProps)
 
   // Timeout - no acknowledgment received
   return (
-    <span className="status-timeout" title="No acknowledgment received (timeout)">
+    <span className="status-timeout" title={t('message_status.timeout')}>
       ⏱️
     </span>
   );

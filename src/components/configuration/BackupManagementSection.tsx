@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import apiService from '../../services/api';
 import { useToast } from '../ToastContainer';
 import { logger } from '../../utils/logger';
@@ -16,6 +17,7 @@ interface BackupManagementSectionProps {
 }
 
 const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBackupCreated }) => {
+  const { t } = useTranslation();
   const { showToast } = useToast();
 
   // State
@@ -77,10 +79,10 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
         throw new Error('Failed to save backup settings');
       }
 
-      showToast('Backup settings saved successfully', 'success');
+      showToast(t('backup_management.toast_settings_saved'), 'success');
     } catch (error) {
       logger.error('Error saving backup settings:', error);
-      showToast(`Failed to save backup settings: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
+      showToast(t('backup_management.toast_settings_failed', { error: error instanceof Error ? error.message : 'Unknown error' }), 'error');
     } finally {
       setIsSavingSettings(false);
     }
@@ -88,7 +90,7 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
 
   const handleManualBackup = async () => {
     try {
-      showToast('Creating backup...', 'info');
+      showToast(t('backup_management.toast_creating_backup'), 'info');
 
       const baseUrl = await apiService.getBaseUrl();
       const response = await fetch(`${baseUrl}/api/device/backup?save=true`, {
@@ -121,11 +123,11 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
 
-      showToast('Backup created and downloaded successfully', 'success');
+      showToast(t('backup_management.toast_backup_created'), 'success');
       if (onBackupCreated) onBackupCreated();
     } catch (error) {
       logger.error('Error creating backup:', error);
-      showToast(`Failed to create backup: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
+      showToast(t('backup_management.toast_backup_failed', { error: error instanceof Error ? error.message : 'Unknown error' }), 'error');
     }
   };
 
@@ -147,7 +149,7 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
       setIsBackupModalOpen(true);
     } catch (error) {
       logger.error('Error loading backup list:', error);
-      showToast(`Failed to load backup list: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
+      showToast(t('backup_management.toast_list_failed', { error: error instanceof Error ? error.message : 'Unknown error' }), 'error');
     } finally {
       setIsLoadingBackups(false);
     }
@@ -177,15 +179,15 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
 
-      showToast('Backup downloaded successfully', 'success');
+      showToast(t('backup_management.toast_downloaded'), 'success');
     } catch (error) {
       logger.error('Error downloading backup:', error);
-      showToast(`Failed to download backup: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
+      showToast(t('backup_management.toast_download_failed', { error: error instanceof Error ? error.message : 'Unknown error' }), 'error');
     }
   };
 
   const handleDeleteBackup = async (filename: string) => {
-    if (!confirm(`Are you sure you want to delete the backup "${filename}"?`)) {
+    if (!confirm(t('backup_management.confirm_delete', { filename }))) {
       return;
     }
 
@@ -201,12 +203,12 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
         throw new Error('Failed to delete backup');
       }
 
-      showToast('Backup deleted successfully', 'success');
+      showToast(t('backup_management.toast_deleted'), 'success');
       // Refresh the backup list
       handleShowBackups();
     } catch (error) {
       logger.error('Error deleting backup:', error);
-      showToast(`Failed to delete backup: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
+      showToast(t('backup_management.toast_delete_failed', { error: error instanceof Error ? error.message : 'Unknown error' }), 'error');
     }
   };
 
@@ -226,7 +228,7 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
 
   return (
     <div className="settings-section" style={{ marginTop: '2rem' }}>
-      <h3>📦 Device Backup Management</h3>
+      <h3>{t('backup_management.title')}</h3>
 
       <div style={{
         backgroundColor: 'var(--ctp-surface0)',
@@ -234,20 +236,17 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
         borderRadius: '8px',
         marginBottom: '1.5rem'
       }}>
-        <h4 style={{ marginTop: 0, marginBottom: '0.5rem' }}>About Device Backups</h4>
+        <h4 style={{ marginTop: 0, marginBottom: '0.5rem' }}>{t('backup_management.about_title')}</h4>
         <p style={{ color: 'var(--ctp-subtext0)', margin: 0, fontSize: '0.9rem', lineHeight: '1.6' }}>
-          Device backups export your complete Meshtastic configuration in YAML format, compatible with the
-          Meshtastic CLI <code>--export-config</code> command. Backups include all device settings, module
-          configurations, and channel settings. Use these backups to restore your device configuration after
-          a firmware update or to clone settings to another device.
+          {t('backup_management.about_description')}
         </p>
       </div>
 
       {/* Manual Backup */}
       <div style={{ marginBottom: '1.5rem' }}>
-        <h4 style={{ marginBottom: '0.5rem' }}>Manual Backup</h4>
+        <h4 style={{ marginBottom: '0.5rem' }}>{t('backup_management.manual_title')}</h4>
         <p style={{ color: 'var(--ctp-subtext0)', marginBottom: '1rem', fontSize: '0.9rem' }}>
-          Create an immediate backup and download it to your computer.
+          {t('backup_management.manual_description')}
         </p>
         <button
           onClick={handleManualBackup}
@@ -263,7 +262,7 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
             marginRight: '1rem'
           }}
         >
-          💾 Create Backup Now
+          {t('backup_management.create_button')}
         </button>
         <button
           onClick={handleShowBackups}
@@ -280,16 +279,15 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
             opacity: isLoadingBackups ? 0.6 : 1
           }}
         >
-          📋 {isLoadingBackups ? 'Loading...' : 'Show Saved Backups'}
+          {isLoadingBackups ? t('backup_management.loading') : t('backup_management.show_backups')}
         </button>
       </div>
 
       {/* Automated Backup Settings */}
       <div>
-        <h4 style={{ marginBottom: '0.5rem' }}>Automated Backup Schedule</h4>
+        <h4 style={{ marginBottom: '0.5rem' }}>{t('backup_management.auto_title')}</h4>
         <p style={{ color: 'var(--ctp-subtext0)', marginBottom: '1rem', fontSize: '0.9rem' }}>
-          Automatically create backups daily at a specified time. Backups are saved to the server's
-          filesystem and can be downloaded or restored later.
+          {t('backup_management.auto_description')}
         </p>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1rem' }}>
@@ -301,13 +299,13 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
               onChange={(e) => setAutoBackupEnabled(e.target.checked)}
               style={{ width: '18px', height: '18px', cursor: 'pointer' }}
             />
-            <span style={{ fontWeight: 'bold' }}>Enable Automatic Backups</span>
+            <span style={{ fontWeight: 'bold' }}>{t('backup_management.enable_auto')}</span>
           </label>
 
           {/* Max Backups to Keep */}
           <div>
             <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-              Maximum Backups to Keep:
+              {t('backup_management.max_backups')}
             </label>
             <input
               type="number"
@@ -327,14 +325,14 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
               }}
             />
             <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-subtext0)', fontSize: '0.9rem' }}>
-              (Oldest backups will be deleted automatically)
+              {t('backup_management.max_backups_hint')}
             </span>
           </div>
 
           {/* Backup Time */}
           <div>
             <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-              Daily Backup Time:
+              {t('backup_management.backup_time')}
             </label>
             <input
               type="time"
@@ -352,7 +350,7 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
               }}
             />
             <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-subtext0)', fontSize: '0.9rem' }}>
-              (Server timezone)
+              {t('backup_management.backup_time_hint')}
             </span>
           </div>
         </div>
@@ -372,7 +370,7 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
             opacity: isSavingSettings ? 0.6 : 1
           }}
         >
-          {isSavingSettings ? 'Saving...' : '💾 Save Backup Settings'}
+          {isSavingSettings ? t('common.saving') : t('backup_management.save_settings')}
         </button>
       </div>
 
@@ -386,39 +384,39 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
             className="backup-modal-content"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3>📋 Saved Backups</h3>
+            <h3>{t('backup_management.modal_title')}</h3>
 
             {backupList.length === 0 ? (
               <p style={{ color: 'var(--ctp-subtext0)' }}>
-                No backups found. Create your first backup using the button above.
+                {t('backup_management.no_backups')}
               </p>
             ) : (
               <div>
                 <table className="backup-table">
                   <thead>
                     <tr>
-                      <th>Filename</th>
-                      <th>Date</th>
-                      <th>Type</th>
-                      <th>Size</th>
-                      <th>Actions</th>
+                      <th>{t('backup_management.table_filename')}</th>
+                      <th>{t('backup_management.table_date')}</th>
+                      <th>{t('backup_management.table_type')}</th>
+                      <th>{t('backup_management.table_size')}</th>
+                      <th>{t('backup_management.table_actions')}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {backupList.map((backup) => (
                       <tr key={backup.filename}>
-                        <td data-label="Filename:" className="backup-filename">
+                        <td data-label={`${t('backup_management.table_filename')}:`} className="backup-filename">
                           {backup.filename}
                         </td>
-                        <td data-label="Date:" className="backup-date">
+                        <td data-label={`${t('backup_management.table_date')}:`} className="backup-date">
                           {formatTimestamp(backup.timestamp)}
                         </td>
-                        <td data-label="Type:">
+                        <td data-label={`${t('backup_management.table_type')}:`}>
                           <span className={`backup-type-badge ${backup.type === 'automatic' ? 'automatic' : 'manual'}`}>
-                            {backup.type === 'automatic' ? '🤖 Auto' : '👤 Manual'}
+                            {backup.type === 'automatic' ? t('backup_management.type_auto') : t('backup_management.type_manual')}
                           </span>
                         </td>
-                        <td data-label="Size:" className="backup-size">
+                        <td data-label={`${t('backup_management.table_size')}:`} className="backup-size">
                           {formatFileSize(backup.size)}
                         </td>
                         <td>
@@ -427,13 +425,13 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
                               onClick={() => handleDownloadBackup(backup.filename)}
                               className="backup-btn download"
                             >
-                              ⬇️ Download
+                              {t('backup_management.download')}
                             </button>
                             <button
                               onClick={() => handleDeleteBackup(backup.filename)}
                               className="backup-btn delete"
                             >
-                              🗑️ Delete
+                              {t('backup_management.delete')}
                             </button>
                           </div>
                         </td>
@@ -449,7 +447,7 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
                 onClick={() => setIsBackupModalOpen(false)}
                 className="backup-close-btn"
               >
-                Close
+                {t('common.close')}
               </button>
             </div>
           </div>

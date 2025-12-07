@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import QRCode from 'qrcode';
 import apiService from '../../services/api';
 import type { Channel } from '../../types/device';
@@ -16,6 +17,7 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
   channels: _channels,
   deviceConfig
 }) => {
+  const { t } = useTranslation();
   const [channels, setChannels] = useState<Channel[]>([]);
   const [selectedChannels, setSelectedChannels] = useState<Set<number>>(new Set());
   const [includeLoraConfig, setIncludeLoraConfig] = useState(true);
@@ -175,18 +177,17 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
           overflowY: 'auto'
         }}
       >
-        <h2>Export Meshtastic Configuration</h2>
+        <h2>{t('export_config.title')}</h2>
 
         <p style={{ color: 'var(--ctp-subtext0)', marginBottom: '1rem' }}>
-          Select the channels and settings you want to include in the exported URL.
-          The URL will be compatible with the official Meshtastic apps.
+          {t('export_config.description')}
         </p>
 
         <div style={{ marginBottom: '1rem' }}>
-          <h3>Select Channels</h3>
+          <h3>{t('export_config.select_channels')}</h3>
           {channels.length === 0 ? (
             <div style={{ padding: '1rem', background: 'var(--ctp-surface0)', borderRadius: '4px', color: 'var(--ctp-subtext0)' }}>
-              No channels configured
+              {t('export_config.no_channels')}
             </div>
           ) : (
             channels.map((channel) => (
@@ -209,13 +210,13 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
                   />
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>
-                      Channel {channel.id}: {channel.name}
+                      {t('export_config.channel_label', { id: channel.id, name: channel.name })}
                     </div>
                     <div style={{ fontSize: '0.875rem', color: 'var(--ctp-subtext0)' }}>
-                      PSK: {channel.psk ? 'set' : 'none'}
-                      {channel.positionPrecision !== undefined && channel.positionPrecision !== null && ` | Position Precision: ${channel.positionPrecision} bits`}
-                      {` | Uplink: ${channel.uplinkEnabled ? 'enabled' : 'disabled'}`}
-                      {` | Downlink: ${channel.downlinkEnabled ? 'enabled' : 'disabled'}`}
+                      PSK: {channel.psk ? t('export_config.psk_set') : t('export_config.psk_none')}
+                      {channel.positionPrecision !== undefined && channel.positionPrecision !== null && ` | ${t('export_config.position_precision', { bits: channel.positionPrecision })}`}
+                      {` | ${channel.uplinkEnabled ? t('export_config.uplink_enabled') : t('export_config.uplink_disabled')}`}
+                      {` | ${channel.downlinkEnabled ? t('export_config.downlink_enabled') : t('export_config.downlink_disabled')}`}
                     </div>
                   </div>
                 </label>
@@ -225,7 +226,7 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
 
           {deviceConfig?.lora && (
             <div style={{ marginTop: '1rem' }}>
-              <h3>Device Settings</h3>
+              <h3>{t('export_config.device_settings')}</h3>
               <div
                 style={{
                   padding: '0.75rem',
@@ -243,10 +244,10 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
                   />
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>
-                      LoRa Configuration
+                      {t('export_config.lora_config')}
                     </div>
                     <div style={{ fontSize: '0.875rem', color: 'var(--ctp-subtext0)' }}>
-                      Include LoRa radio settings (region, preset, hop limit, etc.)
+                      {t('export_config.lora_config_description')}
                     </div>
                   </div>
                 </label>
@@ -264,7 +265,7 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
         {generatedUrl && (
           <div style={{ marginBottom: '1rem' }}>
             <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-              Generated URL
+              {t('export_config.generated_url')}
             </label>
             <div style={{ display: 'flex', gap: '0.5rem' }}>
               <input
@@ -304,16 +305,16 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
                   e.currentTarget.style.opacity = '1';
                 }}
               >
-                {copied ? '✓ Copied!' : 'Copy'}
+                {copied ? `✓ ${t('export_config.copied')}` : t('export_config.copy')}
               </button>
             </div>
             <div style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)', marginTop: '0.5rem' }}>
-              Share this URL with others to import your channel configuration into their Meshtastic devices
+              {t('export_config.share_url_description')}
             </div>
 
             <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
               <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-                QR Code
+                {t('export_config.qr_code')}
               </label>
               <div style={{
                 padding: '1rem',
@@ -324,7 +325,7 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
                 <canvas ref={qrCanvasRef} />
               </div>
               <div style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)', marginTop: '0.5rem', textAlign: 'center' }}>
-                Scan with the Meshtastic mobile app to import configuration
+                {t('export_config.scan_qr_description')}
               </div>
             </div>
           </div>
@@ -347,7 +348,7 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
             onMouseOver={(e) => e.currentTarget.style.background = 'var(--ctp-surface2)'}
             onMouseOut={(e) => e.currentTarget.style.background = 'var(--ctp-surface1)'}
           >
-            Close
+            {t('export_config.close')}
           </button>
         </div>
       </div>

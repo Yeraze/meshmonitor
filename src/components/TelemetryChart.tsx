@@ -14,6 +14,7 @@
  */
 
 import React, { useMemo, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -59,6 +60,20 @@ interface TelemetryChartProps {
   onDataLoaded?: (key: string, data: TelemetryData[]) => void;
 }
 
+// Translation keys for telemetry types
+const TELEMETRY_LABEL_KEYS: Record<string, string> = {
+  batteryLevel: 'telemetry.battery_level',
+  voltage: 'telemetry.voltage',
+  channelUtilization: 'telemetry.channel_utilization',
+  airUtilTx: 'telemetry.air_util_tx',
+  temperature: 'telemetry.temperature',
+  humidity: 'telemetry.humidity',
+  pressure: 'telemetry.barometric_pressure',
+  ch1Voltage: 'telemetry.ch1_voltage',
+  ch1Current: 'telemetry.ch1_current',
+};
+
+// Fallback labels (used when translation is not available or for sorting/filtering)
 const TELEMETRY_LABELS: Record<string, string> = {
   batteryLevel: 'Battery Level',
   voltage: 'Voltage',
@@ -70,6 +85,9 @@ const TELEMETRY_LABELS: Record<string, string> = {
   ch1Voltage: 'Channel 1 Voltage',
   ch1Current: 'Channel 1 Current',
 };
+
+// Export for external use (returns English labels for sorting/filtering compatibility)
+const getTelemetryLabel = (type: string): string => TELEMETRY_LABELS[type] || type;
 
 const TELEMETRY_COLORS: Record<string, string> = {
   batteryLevel: '#82ca9d',
@@ -83,7 +101,6 @@ const TELEMETRY_COLORS: Record<string, string> = {
   ch1Current: '#ff6b9d',
 };
 
-const getTelemetryLabel = (type: string): string => TELEMETRY_LABELS[type] || type;
 const getColor = (type: string): string => TELEMETRY_COLORS[type] || '#8884d8';
 
 /**
@@ -191,6 +208,14 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
     onRemove,
     onDataLoaded,
   }) => {
+    const { t } = useTranslation();
+
+    // Helper to get translated telemetry label
+    const getTranslatedLabel = useCallback((type: string): string => {
+      const key = TELEMETRY_LABEL_KEYS[type];
+      return key ? t(key) : type;
+    }, [t]);
+
     // Fetch telemetry data using the hook
     const { data: rawTelemetryData, isLoading, error } = useTelemetry({
       nodeId: favorite.nodeId,
@@ -228,7 +253,7 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
     const nodeName = formatNodeName(node, favorite.nodeId);
     const isTemperature = favorite.telemetryType === 'temperature';
     const color = getColor(favorite.telemetryType);
-    const label = getTelemetryLabel(favorite.telemetryType);
+    const label = getTranslatedLabel(favorite.telemetryType);
 
     // Loading state
     if (isLoading) {
@@ -241,11 +266,11 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
             <h3 className="dashboard-chart-title" title={`${nodeName} - ${label}`}>
               {nodeName} - {label}
             </h3>
-            <button className="dashboard-remove-btn" onClick={handleRemoveClick} aria-label="Remove from dashboard">
+            <button className="dashboard-remove-btn" onClick={handleRemoveClick} aria-label={t('dashboard.remove_from_dashboard')}>
               ✕
             </button>
           </div>
-          <div className="dashboard-loading-chart">Loading...</div>
+          <div className="dashboard-loading-chart">{t('dashboard.loading_chart')}</div>
         </div>
       );
     }
@@ -261,11 +286,11 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
             <h3 className="dashboard-chart-title" title={`${nodeName} - ${label}`}>
               {nodeName} - {label}
             </h3>
-            <button className="dashboard-remove-btn" onClick={handleRemoveClick} aria-label="Remove from dashboard">
+            <button className="dashboard-remove-btn" onClick={handleRemoveClick} aria-label={t('dashboard.remove_from_dashboard')}>
               ✕
             </button>
           </div>
-          <div className="dashboard-error-chart">Error loading data</div>
+          <div className="dashboard-error-chart">{t('dashboard.error_chart')}</div>
         </div>
       );
     }
@@ -281,11 +306,11 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
             <h3 className="dashboard-chart-title" title={`${nodeName} - ${label}`}>
               {nodeName} - {label}
             </h3>
-            <button className="dashboard-remove-btn" onClick={handleRemoveClick} aria-label="Remove from dashboard">
+            <button className="dashboard-remove-btn" onClick={handleRemoveClick} aria-label={t('dashboard.remove_from_dashboard')}>
               ✕
             </button>
           </div>
-          <div className="dashboard-no-data">No data available</div>
+          <div className="dashboard-no-data">{t('dashboard.no_chart_data')}</div>
         </div>
       );
     }
@@ -306,7 +331,7 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
           >
             {nodeName} - {label} {unit && `(${unit})`}
           </h3>
-          <button className="dashboard-remove-btn" onClick={handleRemoveClick} aria-label="Remove from dashboard">
+          <button className="dashboard-remove-btn" onClick={handleRemoveClick} aria-label={t('dashboard.remove_from_dashboard')}>
             ✕
           </button>
         </div>

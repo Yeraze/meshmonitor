@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { isValidCron } from 'cron-validator';
 
 import { Channel } from '../types/device';
@@ -44,6 +45,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
   onUseScheduleChange,
   onScheduleChange,
 }) => {
+  const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();
   const [localEnabled, setLocalEnabled] = useState(enabled);
@@ -95,14 +97,14 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
   useEffect(() => {
     if (localUseSchedule && localSchedule) {
       if (!isValidCron(localSchedule, { seconds: false, alias: true, allowBlankDay: true })) {
-        setScheduleError('Invalid cron expression');
+        setScheduleError(t('automation.auto_announce.invalid_cron'));
       } else {
         setScheduleError(null);
       }
     } else {
       setScheduleError(null);
     }
-  }, [localSchedule, localUseSchedule]);
+  }, [localSchedule, localUseSchedule, t]);
 
   // Check if any settings have changed
   useEffect(() => {
@@ -120,7 +122,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
   const handleSave = async () => {
     // Validate cron expression before saving
     if (localUseSchedule && scheduleError) {
-      showToast('Cannot save: Invalid cron expression', 'error');
+      showToast(t('automation.auto_announce.cannot_save_invalid_cron'), 'error');
       return;
     }
 
@@ -155,10 +157,10 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
       onScheduleChange(localSchedule);
 
       setHasChanges(false);
-      showToast('Settings saved! Schedule changes applied immediately.', 'success');
+      showToast(t('automation.auto_announce.settings_saved_schedule'), 'success');
     } catch (error) {
       console.error('Failed to save auto-announce settings:', error);
-      showToast('Failed to save settings. Please try again.', 'error');
+      showToast(t('automation.settings_save_failed'), 'error');
     } finally {
       setIsSaving(false);
     }
@@ -221,13 +223,13 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
       }
 
       const result = await response.json();
-      showToast(result.message || 'Announcement sent successfully!', 'success');
+      showToast(result.message || t('automation.auto_announce.sent_success'), 'success');
 
       // Refresh last announcement time
       setLastAnnouncementTime(Date.now());
     } catch (error: any) {
       console.error('Failed to send announcement:', error);
-      showToast(error.message || 'Failed to send announcement. Please try again.', 'error');
+      showToast(error.message || t('automation.auto_announce.send_failed'), 'error');
     } finally {
       setIsSendingNow(false);
     }
@@ -264,7 +266,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
             onChange={(e) => setLocalEnabled(e.target.checked)}
             style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
           />
-          Auto Announce
+          {t('automation.auto_announce.title')}
           <a
             href="https://meshmonitor.org/features/automation#auto-announce"
             target="_blank"
@@ -275,7 +277,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
               textDecoration: 'none',
               marginLeft: '0.5rem'
             }}
-            title="View Auto Announce Documentation"
+            title={t('automation.view_docs')}
           >
             ❓
           </a>
@@ -292,7 +294,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
               cursor: (localEnabled && !isSendingNow) ? 'pointer' : 'not-allowed'
             }}
           >
-            {isSendingNow ? 'Sending...' : 'Send Now'}
+            {isSendingNow ? t('automation.auto_announce.sending') : t('automation.auto_announce.send_now')}
           </button>
           <button
             onClick={handleSaveClick}
@@ -305,16 +307,14 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
               cursor: hasChanges ? 'pointer' : 'not-allowed'
             }}
           >
-            {isSaving ? 'Saving...' : 'Save Changes'}
+            {isSaving ? t('automation.saving') : t('automation.save_changes')}
           </button>
         </div>
       </div>
 
       <div className="settings-section" style={{ opacity: localEnabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>
         <p style={{ marginBottom: '1rem', color: '#666', lineHeight: '1.5' }}>
-          When enabled, automatically broadcast an announcement message to a selected channel at the configured interval.
-          Use tokens like <code>{'{VERSION}'}</code>, <code>{'{DURATION}'}</code>, <code>{'{FEATURES}'}</code>, <code>{'{NODECOUNT}'}</code>, and <code>{'{DIRECTCOUNT}'}</code> for dynamic content.
-          <strong> Requires container restart to take effect.</strong>
+          {t('automation.auto_announce.description')}
         </p>
 
         {lastAnnouncementTime && (
@@ -327,7 +327,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
             fontSize: '0.9rem',
             color: 'var(--ctp-subtext0)'
           }}>
-            <strong>Last Announcement:</strong> {new Date(lastAnnouncementTime).toLocaleString()}
+            <strong>{t('automation.auto_announce.last_announcement')}:</strong> {new Date(lastAnnouncementTime).toLocaleString()}
           </div>
         )}
 
@@ -342,10 +342,10 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
                 disabled={!localEnabled}
                 style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
               />
-              Announce on Start
+              {t('automation.auto_announce.announce_on_start')}
             </div>
             <span className="setting-description">
-              Automatically send an announcement when the container starts (includes 1-hour spam protection to avoid network flooding)
+              {t('automation.auto_announce.announce_on_start_description')}
             </span>
           </label>
         </div>
@@ -361,10 +361,10 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
                 disabled={!localEnabled}
                 style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
               />
-              Scheduled Sends
+              {t('automation.auto_announce.scheduled_sends')}
             </div>
             <span className="setting-description">
-              Use a cron expression to schedule announcements instead of a fixed interval
+              {t('automation.auto_announce.scheduled_sends_description')}
             </span>
           </label>
         </div>
@@ -372,16 +372,16 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
         {localUseSchedule && (
           <div className="setting-item" style={{ marginTop: '1rem', marginLeft: '1.5rem' }}>
             <label htmlFor="scheduleExpression">
-              Cron Expression
+              {t('automation.auto_announce.cron_expression')}
               <span className="setting-description">
-                Schedule format: minute hour day month weekday.{' '}
+                {t('automation.auto_announce.cron_expression_description')}{' '}
                 <a
                   href="https://crontab.guru/"
                   target="_blank"
                   rel="noopener noreferrer"
                   style={{ color: '#89b4fa', textDecoration: 'underline' }}
                 >
-                  Get help at crontab.guru
+                  {t('automation.auto_announce.cron_help_link')}
                 </a>
               </span>
             </label>
@@ -413,7 +413,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
                 fontSize: '0.875rem',
                 marginTop: '0.25rem'
               }}>
-                Valid cron expression
+                {t('automation.auto_announce.valid_cron')}
               </div>
             )}
           </div>
@@ -422,9 +422,9 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
         {!localUseSchedule && (
           <div className="setting-item" style={{ marginTop: '1rem' }}>
             <label htmlFor="announceInterval">
-                Announcement Interval (hours)
+                {t('automation.auto_announce.interval')}
               <span className="setting-description">
-                How often to broadcast the announcement (3-24 hours). Default: 6 hours
+                {t('automation.auto_announce.interval_description')}
               </span>
             </label>
             <input
@@ -442,9 +442,9 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
 
         <div className="setting-item" style={{ marginTop: '1rem' }}>
           <label htmlFor="announceChannel">
-            Broadcast Channel
+            {t('automation.auto_announce.broadcast_channel')}
             <span className="setting-description">
-              Select which channel to broadcast announcements on
+              {t('automation.auto_announce.broadcast_channel_description')}
             </span>
           </label>
           <select
@@ -464,9 +464,9 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
 
         <div className="setting-item" style={{ marginTop: '1rem' }}>
           <label htmlFor="announceMessage">
-            Announcement Message
+            {t('automation.auto_announce.message_label')}
             <span className="setting-description">
-              Message to broadcast. Available tokens: {'{VERSION}'} (MeshMonitor version), {'{DURATION}'} (uptime), {'{FEATURES}'} (enabled features as emojis), {'{NODECOUNT}'} (active nodes), {'{DIRECTCOUNT}'} (direct nodes at 0 hops)
+              {t('automation.auto_announce.message_description')}
             </span>
           </label>
           <textarea
@@ -569,9 +569,9 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
 
         <div className="setting-item" style={{ marginTop: '1rem' }}>
           <label>
-            Sample Message Preview
+            {t('automation.auto_announce.sample_preview')}
             <span className="setting-description">
-              Shows how your announcement will appear after token substitution (using example values)
+              {t('automation.auto_announce.sample_preview_description')}
             </span>
           </label>
           <div style={{
@@ -598,12 +598,12 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
           fontSize: '0.9rem',
           color: 'var(--ctp-subtext0)'
         }}>
-          <strong>Feature Emojis:</strong>
+          <strong>{t('automation.auto_announce.feature_emojis')}:</strong>
           <ul style={{ margin: '0.5rem 0', paddingLeft: '1.5rem' }}>
-            <li>🗺️ Auto Traceroute - Network topology mapping</li>
-            <li>🤖 Auto Acknowledge - Automated message responses</li>
-            <li>📢 Auto Announce - Periodic announcements</li>
-            <li>👋 Auto Welcome - New node greetings</li>
+            <li>{t('automation.auto_announce.feature_traceroute')}</li>
+            <li>{t('automation.auto_announce.feature_acknowledge')}</li>
+            <li>{t('automation.auto_announce.feature_announce')}</li>
+            <li>{t('automation.auto_announce.feature_welcome')}</li>
           </ul>
         </div>
       </div>

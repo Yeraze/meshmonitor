@@ -11,6 +11,7 @@
  */
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { type NodeInfo } from './TelemetryChart';
@@ -41,6 +42,7 @@ const NodeStatusWidget: React.FC<NodeStatusWidgetProps> = ({
   onRemoveNode,
   canEdit = true,
 }) => {
+  const { t } = useTranslation();
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
@@ -117,18 +119,18 @@ const NodeStatusWidget: React.FC<NodeStatusWidgetProps> = ({
   );
 
   const formatLastHeard = (timestamp: number | null): string => {
-    if (timestamp === null) return 'Unknown';
+    if (timestamp === null) return t('common.unknown');
 
     // Convert seconds to milliseconds if needed (timestamps < year 2000 are in seconds)
     const ms = timestamp < 946684800000 ? timestamp * 1000 : timestamp;
     const now = Date.now();
     const diff = now - ms;
 
-    if (diff < 0) return 'Just now';
-    if (diff < 60000) return `${Math.floor(diff / 1000)}s ago`;
-    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-    return `${Math.floor(diff / 86400000)}d ago`;
+    if (diff < 0) return t('common.just_now');
+    if (diff < 60000) return t('common.seconds_ago', { count: Math.floor(diff / 1000) });
+    if (diff < 3600000) return t('common.minutes_ago', { count: Math.floor(diff / 60000) });
+    if (diff < 86400000) return t('common.hours_ago', { count: Math.floor(diff / 3600000) });
+    return t('common.days_ago', { count: Math.floor(diff / 86400000) });
   };
 
   return (
@@ -137,8 +139,8 @@ const NodeStatusWidget: React.FC<NodeStatusWidgetProps> = ({
         <span className="dashboard-drag-handle" {...attributes} {...listeners}>
           ⋮⋮
         </span>
-        <h3 className="dashboard-chart-title">Node Status</h3>
-        <button className="dashboard-remove-btn" onClick={onRemove} title="Remove widget">
+        <h3 className="dashboard-chart-title">{t('dashboard.widget.node_status.title')}</h3>
+        <button className="dashboard-remove-btn" onClick={onRemove} title={t('dashboard.remove_widget')}>
           ×
         </button>
       </div>
@@ -151,7 +153,7 @@ const NodeStatusWidget: React.FC<NodeStatusWidgetProps> = ({
               <input
                 type="text"
                 className="node-status-search"
-                placeholder="Search nodes to add..."
+                placeholder={t('dashboard.widget.node_status.search_placeholder')}
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 onFocus={() => setShowSearch(true)}
@@ -175,9 +177,9 @@ const NodeStatusWidget: React.FC<NodeStatusWidgetProps> = ({
           <table className="node-status-table">
             <thead>
               <tr>
-                <th>Node</th>
-                <th>Last Heard</th>
-                <th>Hops</th>
+                <th>{t('nodes.node')}</th>
+                <th>{t('nodes.last_heard')}</th>
+                <th>{t('nodes.hops')}</th>
                 {canEdit && <th></th>}
               </tr>
             </thead>
@@ -192,7 +194,7 @@ const NodeStatusWidget: React.FC<NodeStatusWidgetProps> = ({
                       <button
                         className="node-status-remove-node"
                         onClick={() => onRemoveNode(row.nodeId)}
-                        title="Remove node"
+                        title={t('dashboard.widget.node_status.remove_node')}
                       >
                         ×
                       </button>
@@ -204,7 +206,7 @@ const NodeStatusWidget: React.FC<NodeStatusWidgetProps> = ({
           </table>
         ) : (
           <div className="node-status-empty">
-            {canEdit ? 'No nodes added. Use the search above to add nodes.' : 'No nodes configured.'}
+            {canEdit ? t('dashboard.widget.node_status.empty_editable') : t('dashboard.widget.node_status.empty')}
           </div>
         )}
       </div>

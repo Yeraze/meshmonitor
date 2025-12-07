@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface HopCountDisplayProps {
   hopStart?: number;
@@ -11,6 +12,8 @@ interface HopCountDisplayProps {
  * Only renders when both values are available and result is valid
  */
 const HopCountDisplay: React.FC<HopCountDisplayProps> = ({ hopStart, hopLimit }) => {
+  const { t } = useTranslation();
+
   // Return null if either value is missing
   if (hopStart === undefined || hopLimit === undefined) {
     return null;
@@ -25,7 +28,7 @@ const HopCountDisplay: React.FC<HopCountDisplayProps> = ({ hopStart, hopLimit })
 
   return (
     <span style={{ fontSize: '0.75em', marginLeft: '4px', opacity: 0.7 }}>
-      ({hopCount} hop{hopCount !== 1 ? 's' : ''})
+      ({t('messages.hops', { count: hopCount })})
     </span>
   );
 };

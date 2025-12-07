@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import './TelemetryGraphs.css';
 import { type TemperatureUnit, formatTemperature, getTemperatureUnit } from '../utils/temperature';
@@ -36,6 +37,7 @@ const getMinTimestamp = (data: TelemetryData[]): number => {
 
 const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
   ({ nodeId, temperatureUnit = 'C', telemetryHours = 24, baseUrl = '' }) => {
+    const { t } = useTranslation();
     const csrfFetch = useCsrfFetch();
     const { showToast } = useToast();
     const [openMenu, setOpenMenu] = useState<string | null>(null);
@@ -92,7 +94,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
       baseUrl,
       onError: message => {
         logger.error('Error saving favorite:', message);
-        showToast('Failed to save favorite. Please try again.', 'error');
+        showToast(t('telemetry.favorite_save_failed'), 'error');
       },
     });
 
@@ -100,7 +102,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
     const error = telemetryError
       ? telemetryError instanceof Error
         ? telemetryError.message
-        : 'Failed to load telemetry data'
+        : t('telemetry.load_failed')
       : null;
 
     // Get computed CSS color values for chart styling (Recharts doesn't support CSS variables in inline styles)
@@ -178,9 +180,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
     // Handle purge data
     const handlePurgeData = async (telemetryType: string) => {
       const confirmed = window.confirm(
-        `Are you sure you want to purge all ${getTelemetryLabel(
-          telemetryType
-        )} data for this node? This action cannot be undone.`
+        t('telemetry.purge_confirm', { type: getTelemetryLabel(telemetryType) })
       );
 
       if (!confirmed) {
@@ -196,19 +196,19 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
 
         if (!response.ok) {
           if (response.status === 403) {
-            showToast('Insufficient permissions to purge telemetry data', 'error');
+            showToast(t('telemetry.purge_permission_denied'), 'error');
             return;
           }
           throw new Error(`Server returned ${response.status}`);
         }
 
-        showToast(`${getTelemetryLabel(telemetryType)} data purged successfully`, 'success');
+        showToast(t('telemetry.purge_success', { type: getTelemetryLabel(telemetryType) }), 'success');
 
         // Refresh telemetry data using TanStack Query
         refetchTelemetry();
       } catch (error) {
         logger.error('Error purging telemetry data:', error);
-        showToast('Failed to purge telemetry data. Please try again.', 'error');
+        showToast(t('telemetry.purge_failed'), 'error');
       } finally {
         setOpenMenu(null);
         setMenuPosition(null);
@@ -411,19 +411,19 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
     };
 
     if (loading) {
-      return <div className="telemetry-loading">Loading telemetry data...</div>;
+      return <div className="telemetry-loading">{t('telemetry.loading')}</div>;
     }
 
     if (error) {
       return (
         <div className="telemetry-empty" style={{ color: '#f38ba8' }}>
-          Error: {error}
+          {t('common.error')}: {error}
         </div>
       );
     }
 
     if (telemetryData.length === 0) {
-      return <div className="telemetry-empty">No telemetry data available for this node</div>;
+      return <div className="telemetry-empty">{t('telemetry.no_data')}</div>;
     }
 
     const groupedData = groupByType(telemetryData);
@@ -477,7 +477,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
     return (
       <div className="telemetry-graphs">
         <h3 className="telemetry-title">
-          Last {telemetryHours} Hour{telemetryHours !== 1 ? 's' : ''} Telemetry
+          {t('telemetry.title', { count: telemetryHours })}
         </h3>
         <div className="graphs-grid">
           {filteredData.map(([type, data]) => {
@@ -497,14 +497,14 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
                     <button
                       className={`favorite-btn ${favorites.has(type) ? 'favorited' : ''}`}
                       onClick={createToggleFavorite(type)}
-                      aria-label={favorites.has(type) ? 'Remove from favorites' : 'Add to favorites'}
+                      aria-label={favorites.has(type) ? t('telemetry.remove_favorite') : t('telemetry.add_favorite')}
                     >
                       {favorites.has(type) ? '★' : '☆'}
                     </button>
                     <button
                       className="graph-menu-btn"
                       onClick={e => handleMenuClick(e, type)}
-                      aria-label="More options"
+                      aria-label={t('telemetry.more_options')}
                     >
                       ⋯
                     </button>
@@ -519,7 +519,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
                         onClick={e => e.stopPropagation()}
                       >
                         <button className="context-menu-item" onClick={() => handlePurgeData(type)}>
-                          Purge Data
+                          {t('telemetry.purge_data')}
                         </button>
                       </div>
                     )}

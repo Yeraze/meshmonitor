@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ROLE_OPTIONS } from './constants';
 
 interface DeviceConfigSectionProps {
@@ -18,17 +19,12 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
   isSaving,
   onSave
 }) => {
+  const { t } = useTranslation();
   const [isRoleDropdownOpen, setIsRoleDropdownOpen] = useState(false);
 
   const handleRoleChange = (newRole: number) => {
     if (newRole === 2) {
-      const confirmed = window.confirm(
-        'Are you sure?\n\n' +
-        'Setting the device role to ROUTER is generally not recommended for most users. ' +
-        'ROUTER mode will cause your device to relay all packets, significantly increasing power consumption ' +
-        'and airtime usage.\n\n' +
-        'Click OK to confirm this change, or Cancel to keep your current setting.'
-      );
+      const confirmed = window.confirm(t('device_config.router_warning'));
 
       if (!confirmed) {
         setIsRoleDropdownOpen(false);
@@ -43,7 +39,7 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
   return (
     <div className="settings-section">
       <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        Device Configuration
+        {t('device_config.title')}
         <a
           href="https://meshmonitor.org/features/device#device-configuration"
           target="_blank"
@@ -53,23 +49,23 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
             color: '#89b4fa',
             textDecoration: 'none'
           }}
-          title="View Device Configuration Documentation"
+          title={t('device_config.view_docs')}
         >
           ❓
         </a>
       </h3>
       <div className="setting-item">
         <label htmlFor="role">
-          Device Role
+          {t('device_config.device_role')}
           <span className="setting-description">
-            Defines how your node behaves on the mesh network.{' '}
+            {t('device_config.device_role_description')}{' '}
             <a
               href="https://meshtastic.org/docs/configuration/radio/device/#roles"
               target="_blank"
               rel="noopener noreferrer"
               style={{ color: '#4CAF50', textDecoration: 'underline' }}
             >
-              For more information
+              {t('common.more_info')}
             </a>
           </span>
         </label>
@@ -156,8 +152,8 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
       </div>
       <div className="setting-item">
         <label htmlFor="nodeInfoBroadcastSecs">
-          Node Info Broadcast Interval (seconds)
-          <span className="setting-description">How often to broadcast node info. Range: 3600-4294967295 (default: 10800 = 3 hours, minimum: 3600 = 1 hour)</span>
+          {t('device_config.node_info_broadcast')}
+          <span className="setting-description">{t('device_config.node_info_broadcast_description')}</span>
         </label>
         <input
           id="nodeInfoBroadcastSecs"
@@ -174,7 +170,7 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
         onClick={onSave}
         disabled={isSaving}
       >
-        {isSaving ? 'Saving...' : 'Save Device Config'}
+        {isSaving ? t('common.saving') : t('device_config.save_button')}
       </button>
     </div>
   );

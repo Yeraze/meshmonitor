@@ -6,6 +6,7 @@
  */
 
 import React, { useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Channel } from '../types/device';
 import { MeshMessage } from '../types/message';
 import { ResourceType } from '../types/permission';
@@ -122,6 +123,8 @@ export default function ChannelsTab({
   isMqttBridgeMessage,
   setEmojiPickerMessage,
 }: ChannelsTabProps) {
+  const { t } = useTranslation();
+
   // Refs
   const channelMessagesContainerRef = useRef<HTMLDivElement>(null);
   const channelMessageInputRef = useRef<HTMLInputElement>(null);
@@ -132,7 +135,7 @@ export default function ChannelsTab({
     if (channel) {
       return channel.name;
     }
-    return `Channel ${channelNum}`;
+    return t('channels.channel_fallback', { channelNum });
   };
 
   // Helper: get available channels
@@ -196,11 +199,11 @@ export default function ChannelsTab({
   return (
     <div className="tab-content channels-tab-content">
       <div className="channels-header">
-        <h2>Channels ({availableChannels.length})</h2>
+        <h2>{t('channels.title_with_count', { count: availableChannels.length })}</h2>
         <div className="channels-controls">
           <label className="mqtt-toggle">
             <input type="checkbox" checked={showMqttMessages} onChange={e => setShowMqttMessages(e.target.checked)} />
-            Show MQTT/Bridge Messages
+            {t('channels.show_mqtt_messages')}
           </label>
         </div>
       </div>
@@ -273,11 +276,11 @@ export default function ChannelsTab({
                         </div>
                         <div className="channel-button-indicators">
                           {channelConfig?.psk && channelConfig.psk !== DEFAULT_UNENCRYPTED_PSK ? (
-                            <span className="encryption-icon encrypted" title="Encrypted">
+                            <span className="encryption-icon encrypted" title={t('channels.encrypted')}>
                               🔒
                             </span>
                           ) : (
-                            <span className="encryption-icon unencrypted" title="Unencrypted">
+                            <span className="encryption-icon unencrypted" title={t('channels.unencrypted')}>
                               🔓
                             </span>
                           )}
@@ -289,9 +292,9 @@ export default function ChannelsTab({
                               e.stopPropagation();
                               setChannelInfoModal(channelId);
                             }}
-                            title="Show channel info"
+                            title={t('channels.show_channel_info')}
                           >
-                            info
+                            {t('channels.info_link')}
                           </a>
                         </div>
                       </div>
@@ -300,13 +303,13 @@ export default function ChannelsTab({
                         <div className="channel-button-status">
                           <span
                             className={`arrow-icon uplink ${channelConfig?.uplinkEnabled ? 'enabled' : 'disabled'}`}
-                            title="MQTT Uplink"
+                            title={t('channels.mqtt_uplink')}
                           >
                             ↑
                           </span>
                           <span
                             className={`arrow-icon downlink ${channelConfig?.downlinkEnabled ? 'enabled' : 'disabled'}`}
-                            title="MQTT Downlink"
+                            title={t('channels.mqtt_downlink')}
                           >
                             ↓
                           </span>
@@ -338,14 +341,14 @@ export default function ChannelsTab({
                     onClick={() => {
                       markMessagesAsRead(undefined, selectedChannel);
                     }}
-                    title="Mark all messages in this channel as read"
+                    title={t('channels.mark_all_read_title')}
                     style={{
                       padding: '0.5rem 1rem',
                       fontSize: '0.9rem',
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    Mark all as Read
+                    {t('channels.mark_all_read_button')}
                   </button>
                 </div>
 
@@ -406,7 +409,7 @@ export default function ChannelsTab({
                                 {!isMine && (
                                   <div
                                     className="sender-dot clickable"
-                                    title={`Click for ${getNodeName(msg.from)} details`}
+                                    title={t('channels.sender_click_title', { name: getNodeName(msg.from) })}
                                     onClick={e => handleSenderClick(msg.from, e)}
                                   >
                                     {getNodeShortName(msg.from)}
@@ -420,11 +423,11 @@ export default function ChannelsTab({
                                         {repliedMessage ? (
                                           <>
                                             <div className="reply-from">{getNodeShortName(repliedMessage.from)}</div>
-                                            <div className="reply-text">{repliedMessage.text || 'Empty Message'}</div>
+                                            <div className="reply-text">{repliedMessage.text || t('channels.empty_message')}</div>
                                           </>
                                         ) : (
                                           <div className="reply-text" style={{ fontStyle: 'italic', opacity: 0.6 }}>
-                                            Message not available
+                                            {t('channels.message_unavailable')}
                                           </div>
                                         )}
                                       </div>
@@ -439,21 +442,21 @@ export default function ChannelsTab({
                                             setReplyingTo(msg);
                                             channelMessageInputRef.current?.focus();
                                           }}
-                                          title="Reply to this message"
+                                          title={t('channels.reply_button_title')}
                                         >
                                           ↩
                                         </button>
                                         <button
                                           className="emoji-picker-button"
                                           onClick={() => setEmojiPickerMessage(msg)}
-                                          title="React with emoji"
+                                          title={t('channels.emoji_button_title')}
                                         >
                                           😄
                                         </button>
                                         <button
                                           className="delete-button"
                                           onClick={() => handleDeleteMessage(msg)}
-                                          title="Delete this message"
+                                          title={t('channels.delete_button_title')}
                                         >
                                           🗑️
                                         </button>
@@ -469,9 +472,7 @@ export default function ChannelsTab({
                                           <span
                                             key={reaction.id}
                                             className="reaction"
-                                            title={`From ${getNodeShortName(
-                                              reaction.from
-                                            )} - Click to send same reaction`}
+                                            title={t('channels.reaction_tooltip', { name: getNodeShortName(reaction.from) })}
                                             onClick={() => handleSendTapback(reaction.text, msg)}
                                           >
                                             {reaction.text}
@@ -493,7 +494,7 @@ export default function ChannelsTab({
                           );
                         })
                       ) : (
-                        <p className="no-messages">No messages in this channel yet</p>
+                        <p className="no-messages">{t('channels.no_messages_yet')}</p>
                       );
                     })()}
                   </div>
@@ -504,13 +505,13 @@ export default function ChannelsTab({
                       {replyingTo && (
                         <div className="reply-indicator">
                           <div className="reply-indicator-content">
-                            <div className="reply-indicator-label">Replying to {getNodeName(replyingTo.from)}</div>
+                            <div className="reply-indicator-label">{t('channels.replying_to', { name: getNodeName(replyingTo.from) })}</div>
                             <div className="reply-indicator-text">{replyingTo.text}</div>
                           </div>
                           <button
                             className="reply-indicator-close"
                             onClick={() => setReplyingTo(null)}
-                            title="Cancel reply"
+                            title={t('channels.cancel_reply_title')}
                           >
                             ×
                           </button>
@@ -524,7 +525,7 @@ export default function ChannelsTab({
                               type="text"
                               value={newMessage}
                               onChange={e => setNewMessage(e.target.value)}
-                              placeholder={`Send message to ${getChannelName(selectedChannel)}...`}
+                              placeholder={t('channels.send_placeholder', { name: getChannelName(selectedChannel) })}
                               className="message-input"
                               onKeyPress={e => {
                                 if (e.key === 'Enter') {
@@ -552,14 +553,14 @@ export default function ChannelsTab({
             )}
 
             {selectedChannel === -1 && (
-              <p className="no-data">Select a channel above to view messages and send messages</p>
+              <p className="no-data">{t('channels.select_channel_prompt')}</p>
             )}
           </>
         ) : (
-          <p className="no-data">No channel configurations discovered yet. Waiting for mesh updates...</p>
+          <p className="no-data">{t('channels.no_configs_yet')}</p>
         )
       ) : (
-        <p className="no-data">Connect to a Meshtastic node to view channel configurations</p>
+        <p className="no-data">{t('channels.connect_to_view')}</p>
       )}
 
       {/* Channel Info Modal */}
@@ -576,7 +577,7 @@ export default function ChannelsTab({
             <div className="modal-overlay" onClick={handleCloseModal}>
               <div className="modal-content channel-info-modal" onClick={e => e.stopPropagation()}>
                 <div className="modal-header">
-                  <h2>Channel Information</h2>
+                  <h2>{t('channels.info_modal_title')}</h2>
                   <button className="modal-close" onClick={handleCloseModal}>
                     ×
                   </button>
@@ -584,26 +585,26 @@ export default function ChannelsTab({
                 <div className="modal-body">
                   <div className="channel-info-grid">
                     <div className="info-row">
-                      <span className="info-label">Channel Name:</span>
+                      <span className="info-label">{t('channels.channel_name')}</span>
                       <span className="info-value">{displayName}</span>
                     </div>
                     <div className="info-row">
-                      <span className="info-label">Channel Number:</span>
+                      <span className="info-label">{t('channels.channel_number')}</span>
                       <span className="info-value">#{channelInfoModal}</span>
                     </div>
                     <div className="info-row">
-                      <span className="info-label">Encryption:</span>
+                      <span className="info-label">{t('channels.encryption')}</span>
                       <span className="info-value">
                         {selectedChannelConfig.psk && selectedChannelConfig.psk !== DEFAULT_UNENCRYPTED_PSK ? (
-                          <span className="status-encrypted">🔒 Encrypted</span>
+                          <span className="status-encrypted">{t('channels.status_encrypted')}</span>
                         ) : (
-                          <span className="status-unencrypted">🔓 Unencrypted</span>
+                          <span className="status-unencrypted">{t('channels.status_unencrypted')}</span>
                         )}
                       </span>
                     </div>
                     {selectedChannelConfig.psk && (
                       <div className="info-row">
-                        <span className="info-label">PSK (Base64):</span>
+                        <span className="info-label">{t('channels.psk_base64')}</span>
                         <span
                           className="info-value info-value-code"
                           style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}
@@ -624,40 +625,40 @@ export default function ChannelsTab({
                             onMouseOver={e => (e.currentTarget.style.background = 'var(--ctp-surface2)')}
                             onMouseOut={e => (e.currentTarget.style.background = 'var(--ctp-surface1)')}
                           >
-                            {showPsk ? 'Hide' : 'Show'}
+                            {showPsk ? t('channels.hide') : t('channels.show')}
                           </button>
                         </span>
                       </div>
                     )}
                     <div className="info-row">
-                      <span className="info-label">MQTT Uplink:</span>
+                      <span className="info-label">{t('channels.mqtt_uplink')}:</span>
                       <span className="info-value">
                         {selectedChannelConfig.uplinkEnabled ? (
-                          <span className="status-enabled">✓ Enabled</span>
+                          <span className="status-enabled">{t('channels.enabled')}</span>
                         ) : (
-                          <span className="status-disabled">✗ Disabled</span>
+                          <span className="status-disabled">{t('channels.disabled')}</span>
                         )}
                       </span>
                     </div>
                     <div className="info-row">
-                      <span className="info-label">MQTT Downlink:</span>
+                      <span className="info-label">{t('channels.mqtt_downlink')}:</span>
                       <span className="info-value">
                         {selectedChannelConfig.downlinkEnabled ? (
-                          <span className="status-enabled">✓ Enabled</span>
+                          <span className="status-enabled">{t('channels.enabled')}</span>
                         ) : (
-                          <span className="status-disabled">✗ Disabled</span>
+                          <span className="status-disabled">{t('channels.disabled')}</span>
                         )}
                       </span>
                     </div>
                     {selectedChannelConfig.createdAt && (
                       <div className="info-row">
-                        <span className="info-label">Discovered:</span>
+                        <span className="info-label">{t('channels.discovered')}</span>
                         <span className="info-value">{new Date(selectedChannelConfig.createdAt).toLocaleString()}</span>
                       </div>
                     )}
                     {selectedChannelConfig.updatedAt && (
                       <div className="info-row">
-                        <span className="info-label">Last Updated:</span>
+                        <span className="info-label">{t('channels.last_updated')}</span>
                         <span className="info-value">{new Date(selectedChannelConfig.updatedAt).toLocaleString()}</span>
                       </div>
                     )}
@@ -686,9 +687,9 @@ export default function ChannelsTab({
                           fontWeight: 'bold',
                           fontSize: '0.95rem',
                         }}
-                        title="Purge all messages from this channel"
+                        title={t('channels.purge_messages_title')}
                       >
-                        Purge All Messages
+                        {t('channels.purge_all_messages')}
                       </button>
                       <p
                         style={{
@@ -698,7 +699,7 @@ export default function ChannelsTab({
                           textAlign: 'center',
                         }}
                       >
-                        This action cannot be undone
+                        {t('channels.cannot_undo')}
                       </p>
                     </div>
                   )}
