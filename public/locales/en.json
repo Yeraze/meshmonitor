@@ -1840,5 +1840,17 @@
   "node_details.hops_other": "{{count}} hops",
   "node_details.connection": "Connection",
   "node_details.via_mqtt": "Via MQTT",
-  "node_details.last_heard": "Last Heard"
+  "node_details.last_heard": "Last Heard",
+
+  "messages.hops_one": "{{count}} hop",
+  "messages.hops_other": "{{count}} hops",
+
+  "link_preview.loading": "Loading preview...",
+  "link_preview.image_alt": "Link preview",
+
+  "message_status.failed": "Failed to send - routing error or max retries exceeded",
+  "message_status.confirmed": "Received by target node",
+  "message_status.delivered": "Transmitted to mesh",
+  "message_status.pending": "Sending...",
+  "message_status.timeout": "No acknowledgment received (timeout)"
 }
