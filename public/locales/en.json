@@ -1917,5 +1917,25 @@
   "device_config.node_info_broadcast_description": "How often to broadcast node info. Range: 3600-4294967295 (default: 10800 = 3 hours, minimum: 3600 = 1 hour)",
   "device_config.save_button": "Save Device Config",
 
-  "common.more_info": "For more information"
+  "common.more_info": "For more information",
+
+  "node_identity.title": "Node Identity",
+  "node_identity.view_docs": "View Node Identity Documentation",
+  "node_identity.long_name": "Long Name",
+  "node_identity.long_name_description": "Full name for your node (up to 40 characters)",
+  "node_identity.long_name_placeholder": "My Meshtastic Node",
+  "node_identity.short_name": "Short Name",
+  "node_identity.short_name_description": "Short identifier (up to 4 characters)",
+  "node_identity.short_name_placeholder": "MESH",
+  "node_identity.unmessageable": "Unmessageable",
+  "node_identity.unmessageable_description": "Prevent others from sending direct messages to this node",
+  "node_identity.save_button": "Save Node Names",
+
+  "neighbor_info.title": "Neighbor Info Module",
+  "neighbor_info.view_docs": "View Neighbor Info Documentation",
+  "neighbor_info.enable": "Enable Neighbor Info",
+  "neighbor_info.enable_description": "Broadcast neighbor information to the mesh",
+  "neighbor_info.interval": "Update Interval (seconds)",
+  "neighbor_info.interval_description": "How often to send neighbor info (minimum: 14400 = 4 hours)",
+  "neighbor_info.save_button": "Save NeighborInfo Config"
 }
