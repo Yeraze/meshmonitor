@@ -1553,9 +1553,11 @@
   "automation.auto_announce.feature_welcome": "👋 Auto Welcome - New node greetings",
 
   "automation.auto_traceroute.title": "Auto Traceroute",
-  "automation.auto_traceroute.description": "When enabled, automatically perform traceroutes to nodes based on the configured schedule.",
+  "automation.auto_traceroute.description": "When enabled, automatically send traceroute requests to all active nodes at the configured interval. This helps maintain up-to-date network topology information. Requires container restart to take effect.",
   "automation.auto_traceroute.schedule": "Schedule",
   "automation.auto_traceroute.schedule_description": "Set the traceroute schedule using cron expression",
+  "automation.auto_traceroute.interval": "Traceroute Interval (minutes)",
+  "automation.auto_traceroute.interval_description": "How often to automatically send traceroutes to nodes. Default: 3 minutes",
   "automation.auto_traceroute.target_selection": "Target Selection",
   "automation.auto_traceroute.target_selection_description": "Configure which nodes to traceroute",
   "automation.auto_traceroute.favorites_only": "Favorites Only",
@@ -1563,5 +1565,13 @@
   "automation.auto_traceroute.max_nodes": "Maximum Nodes",
   "automation.auto_traceroute.max_nodes_description": "Maximum number of nodes to traceroute per run",
   "automation.auto_traceroute.min_interval": "Minimum Interval",
-  "automation.auto_traceroute.min_interval_description": "Minimum time between traceroutes to the same node"
+  "automation.auto_traceroute.min_interval_description": "Minimum time between traceroutes to the same node",
+  "automation.auto_traceroute.limit_to_nodes": "Limit to Specific Nodes",
+  "automation.auto_traceroute.limit_to_nodes_description": "When enabled, only selected nodes will be tracerouted. When disabled, all nodes are eligible.",
+  "automation.auto_traceroute.search_nodes": "Search nodes...",
+  "automation.auto_traceroute.no_nodes_match": "No nodes match your search",
+  "automation.auto_traceroute.no_nodes_available": "No nodes available",
+  "automation.auto_traceroute.selected_count": "Selected: {{count}} node(s)",
+  "automation.auto_traceroute.all_nodes_eligible": "All nodes eligible when none selected",
+  "automation.auto_traceroute.settings_saved_restart": "Settings saved! Container restart required for changes to take effect."
 }
