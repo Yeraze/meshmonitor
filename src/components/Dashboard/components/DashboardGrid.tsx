@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   DndContext,
   closestCenter,
@@ -74,6 +75,8 @@ const DashboardGrid: React.FC<DashboardGridProps> = ({
   filteredCount,
   canEdit = true,
 }) => {
+  const { t } = useTranslation();
+
   // Drag and drop sensors
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -85,9 +88,9 @@ const DashboardGrid: React.FC<DashboardGridProps> = ({
   return (
     <>
       <div className="dashboard-results-info">
-        {widgetsCount > 0 && `${widgetsCount} widget${widgetsCount !== 1 ? 's' : ''}`}
+        {widgetsCount > 0 && t(widgetsCount !== 1 ? 'dashboard.widget_count_plural' : 'dashboard.widget_count', { count: widgetsCount })}
         {widgetsCount > 0 && favoritesCount > 0 && ', '}
-        {favoritesCount > 0 && `${filteredCount} of ${favoritesCount} chart${favoritesCount !== 1 ? 's' : ''}`}
+        {favoritesCount > 0 && t(favoritesCount !== 1 ? 'dashboard.chart_count_plural' : 'dashboard.chart_count', { shown: filteredCount, total: favoritesCount })}
       </div>
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>

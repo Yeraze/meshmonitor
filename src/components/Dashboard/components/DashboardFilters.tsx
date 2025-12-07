@@ -1,4 +1,5 @@
 import React, { useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { getTelemetryLabel } from '../../TelemetryChart';
 import { type SortOption } from '../types';
 
@@ -56,6 +57,7 @@ const DashboardFilters: React.FC<DashboardFiltersProps> = ({
   sortOption,
   onSortChange,
 }) => {
+  const { t } = useTranslation();
   const roleDropdownRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown when clicking outside
@@ -79,7 +81,7 @@ const DashboardFilters: React.FC<DashboardFiltersProps> = ({
       <div className="dashboard-filters">
         <div className="dashboard-filter-group">
           <label htmlFor="daysToView" style={{ marginRight: '0.5rem', fontWeight: '500' }}>
-            Days to View:
+            {t('dashboard.days_to_view')}
           </label>
           <input
             type="number"
@@ -103,7 +105,7 @@ const DashboardFilters: React.FC<DashboardFiltersProps> = ({
         <input
           type="text"
           className="dashboard-search"
-          placeholder="Search nodes or telemetry types..."
+          placeholder={t('dashboard.search_placeholder')}
           value={searchQuery}
           onChange={e => onSearchChange(e.target.value)}
         />
@@ -113,7 +115,7 @@ const DashboardFilters: React.FC<DashboardFiltersProps> = ({
           value={selectedNode}
           onChange={e => onNodeChange(e.target.value)}
         >
-          <option value="all">All Nodes</option>
+          <option value="all">{t('dashboard.all_nodes')}</option>
           {uniqueNodes.map(([nodeId, nodeName]) => (
             <option key={nodeId} value={nodeId}>
               {nodeName}
@@ -126,7 +128,7 @@ const DashboardFilters: React.FC<DashboardFiltersProps> = ({
           value={selectedType}
           onChange={e => onTypeChange(e.target.value)}
         >
-          <option value="all">All Types</option>
+          <option value="all">{t('dashboard.all_types')}</option>
           {uniqueTypes.map(type => (
             <option key={type} value={type}>
               {getTelemetryLabel(type)}
@@ -137,7 +139,9 @@ const DashboardFilters: React.FC<DashboardFiltersProps> = ({
         <div className="dashboard-role-filter-dropdown" ref={roleDropdownRef}>
           <div className="dashboard-role-filter-button" onClick={onToggleRoleDropdown}>
             <span>
-              {selectedRoles.size === 0 ? 'Device Roles: All' : `Device Roles: ${selectedRoles.size} selected`}
+              {selectedRoles.size === 0
+                ? t('dashboard.device_roles_all')
+                : t('dashboard.device_roles_selected', { count: selectedRoles.size })}
             </span>
             <span className="dashboard-dropdown-arrow">{roleDropdownOpen ? '▲' : '▼'}</span>
           </div>
@@ -147,7 +151,7 @@ const DashboardFilters: React.FC<DashboardFiltersProps> = ({
                 <>
                   <label className="dashboard-role-checkbox-label">
                     <input type="checkbox" checked={selectedRoles.size === 0} onChange={onClearRoleFilter} />
-                    <span>All Roles</span>
+                    <span>{t('dashboard.all_roles')}</span>
                   </label>
                   <div className="dashboard-role-divider" />
                   {uniqueRoles.map(role => (
@@ -162,7 +166,7 @@ const DashboardFilters: React.FC<DashboardFiltersProps> = ({
                   ))}
                 </>
               ) : (
-                <span className="dashboard-no-roles">No roles available</span>
+                <span className="dashboard-no-roles">{t('dashboard.no_roles')}</span>
               )}
             </div>
           )}
@@ -170,18 +174,18 @@ const DashboardFilters: React.FC<DashboardFiltersProps> = ({
       </div>
 
       <div className="dashboard-sort">
-        <label htmlFor="sort-select">Sort by:</label>
+        <label htmlFor="sort-select">{t('dashboard.sort_by')}</label>
         <select
           id="sort-select"
           className="dashboard-sort-select"
           value={sortOption}
           onChange={e => onSortChange(e.target.value as SortOption)}
         >
-          <option value="custom">Custom Order (Drag & Drop)</option>
-          <option value="node-asc">Node Name (A-Z)</option>
-          <option value="node-desc">Node Name (Z-A)</option>
-          <option value="type-asc">Telemetry Type (A-Z)</option>
-          <option value="type-desc">Telemetry Type (Z-A)</option>
+          <option value="custom">{t('dashboard.sort_custom')}</option>
+          <option value="node-asc">{t('dashboard.sort_node_asc')}</option>
+          <option value="node-desc">{t('dashboard.sort_node_desc')}</option>
+          <option value="type-asc">{t('dashboard.sort_type_asc')}</option>
+          <option value="type-desc">{t('dashboard.sort_type_desc')}</option>
         </select>
       </div>
     </div>

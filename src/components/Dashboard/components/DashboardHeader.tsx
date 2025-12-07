@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface DashboardHeaderProps {
   favoritesCount: number;
@@ -11,22 +12,24 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   daysToView,
   onAddWidgetClick,
 }) => {
+  const { t } = useTranslation();
+
   return (
     <div className="dashboard-header-section">
       <div>
-        <h2 className="dashboard-title">Telemetry Dashboard</h2>
+        <h2 className="dashboard-title">{t('dashboard.title')}</h2>
         <p className="dashboard-subtitle">
           {favoritesCount > 0
-            ? `Showing last ${daysToView} days of favorited telemetry`
-            : 'Add widgets or star telemetry in the Nodes tab'}
+            ? t('dashboard.subtitle_with_data', { days: daysToView })
+            : t('dashboard.subtitle_empty')}
         </p>
       </div>
       <button
         className="dashboard-add-widget-btn"
         onClick={onAddWidgetClick}
-        title="Add widget"
+        title={t('dashboard.add_widget_title')}
       >
-        + Add Widget
+        {t('dashboard.add_widget_button')}
       </button>
     </div>
   );
