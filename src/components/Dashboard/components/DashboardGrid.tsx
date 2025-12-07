@@ -1,0 +1,163 @@
+import React from 'react';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import TelemetryChart from '../../TelemetryChart';
+import NodeStatusWidget from '../../NodeStatusWidget';
+import TracerouteWidget from '../../TracerouteWidget';
+import { type CustomWidget, type FavoriteChart, type NodeInfo, type TelemetryData, type TemperatureUnit } from '../types';
+
+interface DashboardGridProps {
+  // Widgets
+  customWidgets: CustomWidget[];
+  onRemoveWidget: (widgetId: string) => void;
+  onAddNodeToWidget: (widgetId: string, nodeId: string) => void;
+  onRemoveNodeFromWidget: (widgetId: string, nodeId: string) => void;
+  onSelectTracerouteNode: (widgetId: string, nodeId: string) => void;
+
+  // Charts
+  favorites: FavoriteChart[];
+  nodes: Map<string, NodeInfo>;
+  currentNodeId: string | null;
+  temperatureUnit: TemperatureUnit;
+  hours: number;
+  baseUrl: string;
+  globalTimeRange: [number, number] | null;
+  globalMinTime: number | undefined;
+  solarEstimates: Map<number, number>;
+  onRemoveFavorite: (nodeId: string, telemetryType: string) => void;
+  onDataLoaded: (key: string, data: TelemetryData[]) => void;
+
+  // Drag and drop
+  onDragEnd: (event: DragEndEvent) => void;
+
+  // Stats
+  widgetsCount: number;
+  favoritesCount: number;
+  filteredCount: number;
+
+  // Permissions
+  canEdit?: boolean;
+}
+
+const DashboardGrid: React.FC<DashboardGridProps> = ({
+  customWidgets,
+  onRemoveWidget,
+  onAddNodeToWidget,
+  onRemoveNodeFromWidget,
+  onSelectTracerouteNode,
+  favorites,
+  nodes,
+  currentNodeId,
+  temperatureUnit,
+  hours,
+  baseUrl,
+  globalTimeRange,
+  globalMinTime,
+  solarEstimates,
+  onRemoveFavorite,
+  onDataLoaded,
+  onDragEnd,
+  widgetsCount,
+  favoritesCount,
+  filteredCount,
+  canEdit = true,
+}) => {
+  // Drag and drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  return (
+    <>
+      <div className="dashboard-results-info">
+        {widgetsCount > 0 && `${widgetsCount} widget${widgetsCount !== 1 ? 's' : ''}`}
+        {widgetsCount > 0 && favoritesCount > 0 && ', '}
+        {favoritesCount > 0 && `${filteredCount} of ${favoritesCount} chart${favoritesCount !== 1 ? 's' : ''}`}
+      </div>
+
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+        <SortableContext
+          items={[
+            ...customWidgets.map(w => w.id),
+            ...favorites.map(f => `${f.nodeId}-${f.telemetryType}`),
+          ]}
+          strategy={verticalListSortingStrategy}
+        >
+          <div className="dashboard-grid">
+            {/* Custom Widgets */}
+            {customWidgets.map(widget => {
+              if (widget.type === 'nodeStatus') {
+                return (
+                  <NodeStatusWidget
+                    key={widget.id}
+                    id={widget.id}
+                    nodeIds={widget.nodeIds}
+                    nodes={nodes}
+                    onRemove={() => onRemoveWidget(widget.id)}
+                    onAddNode={(nodeId) => onAddNodeToWidget(widget.id, nodeId)}
+                    onRemoveNode={(nodeId) => onRemoveNodeFromWidget(widget.id, nodeId)}
+                    canEdit={canEdit}
+                  />
+                );
+              } else if (widget.type === 'traceroute') {
+                return (
+                  <TracerouteWidget
+                    key={widget.id}
+                    id={widget.id}
+                    targetNodeId={widget.targetNodeId}
+                    currentNodeId={currentNodeId}
+                    nodes={nodes}
+                    onRemove={() => onRemoveWidget(widget.id)}
+                    onSelectNode={(nodeId) => onSelectTracerouteNode(widget.id, nodeId)}
+                    canEdit={canEdit}
+                  />
+                );
+              }
+              return null;
+            })}
+
+            {/* Telemetry Charts */}
+            {favorites.map(favorite => {
+              const key = `${favorite.nodeId}-${favorite.telemetryType}`;
+              const node = nodes.get(favorite.nodeId);
+
+              return (
+                <TelemetryChart
+                  key={key}
+                  id={key}
+                  favorite={favorite}
+                  node={node}
+                  temperatureUnit={temperatureUnit}
+                  hours={hours}
+                  baseUrl={baseUrl}
+                  globalTimeRange={globalTimeRange}
+                  globalMinTime={globalMinTime}
+                  solarEstimates={solarEstimates}
+                  onRemove={onRemoveFavorite}
+                  onDataLoaded={onDataLoaded}
+                />
+              );
+            })}
+          </div>
+        </SortableContext>
+      </DndContext>
+    </>
+  );
+};
+
+export default DashboardGrid;

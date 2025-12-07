@@ -726,11 +726,35 @@
   gap: 12px;
 }
 
+.traceroute-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--ctp-surface0);
+}
+
 .traceroute-timestamp {
   color: var(--ctp-subtext0);
   font-size: 0.8rem;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--ctp-surface0);
+}
+
+.traceroute-map-toggle-inline {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: var(--ctp-surface0);
+  border: 1px solid var(--ctp-surface1);
+  border-radius: 4px;
+  color: var(--ctp-text);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.traceroute-map-toggle-inline:hover {
+  background: var(--ctp-surface1);
 }
 
 .traceroute-path-section {
@@ -782,4 +806,72 @@
   text-align: center;
   padding: 20px;
   font-style: italic;
+}
+
+/* Traceroute Map */
+.traceroute-map-container {
+  margin: 8px 0;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--ctp-surface1);
+}
+
+.traceroute-map-container .leaflet-container {
+  background: var(--ctp-mantle);
+}
+
+.traceroute-map-legend {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  padding: 8px;
+  background: var(--ctp-surface0);
+  font-size: 0.75rem;
+  color: var(--ctp-subtext0);
+}
+
+.traceroute-map-legend .legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.traceroute-map-legend .legend-color {
+  width: 12px;
+  height: 3px;
+  border-radius: 2px;
+}
+
+/* Arrow icon styling for traceroute map */
+.traceroute-arrow-icon {
+  background: transparent !important;
+  border: none !important;
+}
+
+.traceroute-node-icon {
+  background: transparent !important;
+  border: none !important;
+}
+
+/* Traceroute Map Toggle */
+.traceroute-map-section {
+  margin: 8px 0;
+}
+
+.traceroute-map-warning {
+  margin-left: 4px;
+  font-size: 0.8rem;
+}
+
+/* Node without position indicator */
+.traceroute-hop.no-position {
+  border: 1px dashed var(--ctp-overlay0);
+  opacity: 0.8;
+}
+
+.traceroute-no-pos-icon {
+  font-size: 0.7rem;
+  margin-left: 4px;
+  opacity: 0.6;
+  filter: grayscale(1);
 }
