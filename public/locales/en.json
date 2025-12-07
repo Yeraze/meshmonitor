@@ -2051,5 +2051,13 @@
   "position_config.longitude_description": "Range: -180 to 180 (decimal degrees)",
   "position_config.altitude": "Altitude (meters)",
   "position_config.altitude_description": "Elevation above sea level in meters",
-  "position_config.save_button": "Save Position Config"
+  "position_config.save_button": "Save Position Config",
+
+  "export_config.title": "Export Meshtastic Configuration",
+  "export_config.description": "Select the channels and settings you want to include in the exported URL. The URL will be compatible with the official Meshtastic apps.",
+  "export_config.select_channels": "Select Channels",
+  "export_config.no_channels": "No channels configured",
+
+  "import_config.title": "Import Meshtastic Configuration",
+  "import_config.url_label": "Meshtastic Configuration URL"
 }

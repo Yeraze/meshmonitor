@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import QRCode from 'qrcode';
 import apiService from '../../services/api';
 import type { Channel } from '../../types/device';
@@ -16,6 +17,7 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
   channels: _channels,
   deviceConfig
 }) => {
+  const { t } = useTranslation();
   const [channels, setChannels] = useState<Channel[]>([]);
   const [selectedChannels, setSelectedChannels] = useState<Set<number>>(new Set());
   const [includeLoraConfig, setIncludeLoraConfig] = useState(true);
@@ -175,18 +177,17 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
           overflowY: 'auto'
         }}
       >
-        <h2>Export Meshtastic Configuration</h2>
+        <h2>{t('export_config.title')}</h2>
 
         <p style={{ color: 'var(--ctp-subtext0)', marginBottom: '1rem' }}>
-          Select the channels and settings you want to include in the exported URL.
-          The URL will be compatible with the official Meshtastic apps.
+          {t('export_config.description')}
         </p>
 
         <div style={{ marginBottom: '1rem' }}>
-          <h3>Select Channels</h3>
+          <h3>{t('export_config.select_channels')}</h3>
           {channels.length === 0 ? (
             <div style={{ padding: '1rem', background: 'var(--ctp-surface0)', borderRadius: '4px', color: 'var(--ctp-subtext0)' }}>
-              No channels configured
+              {t('export_config.no_channels')}
             </div>
           ) : (
             channels.map((channel) => (

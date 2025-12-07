@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import apiService from '../../services/api';
 
 interface ImportConfigModalProps {
@@ -54,6 +55,7 @@ const regionNames: { [key: number]: string } = {
 };
 
 export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, onClose, onImportSuccess }) => {
+  const { t } = useTranslation();
   const [url, setUrl] = useState('');
   const [decoded, setDecoded] = useState<DecodedConfig | null>(null);
   const [selectedChannels, setSelectedChannels] = useState<Set<number>>(new Set());
@@ -252,11 +254,11 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
           overflowY: 'auto'
         }}
       >
-        <h2>Import Meshtastic Configuration</h2>
+        <h2>{t('import_config.title')}</h2>
 
         <div style={{ marginBottom: '1rem' }}>
           <label style={{ display: 'block', marginBottom: '0.5rem' }}>
-            Meshtastic Configuration URL
+            {t('import_config.url_label')}
           </label>
           <input
             type="text"
