@@ -16,7 +16,6 @@ class InactiveNodeNotificationService {
   private initialCheckTimeout: NodeJS.Timeout | null = null;
   private lastNotifiedNodes: Map<string, number> = new Map(); // "userId:nodeId" -> last notification timestamp
   private currentThresholdHours: number = 24;
-  private currentCheckIntervalMinutes: number = 60;
   private currentCooldownHours: number = 24;
   private readonly DEFAULT_CHECK_INTERVAL_MINUTES = 60; // Check every hour
   private readonly DEFAULT_INACTIVE_THRESHOLD_HOURS = 24; // 24 hours of inactivity
@@ -36,7 +35,6 @@ class InactiveNodeNotificationService {
     }
 
     this.currentThresholdHours = inactiveThresholdHours;
-    this.currentCheckIntervalMinutes = checkIntervalMinutes;
     this.currentCooldownHours = cooldownHours;
 
     logger.info(
