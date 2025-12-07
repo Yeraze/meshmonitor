@@ -18,14 +18,14 @@ describe('MapLegend', () => {
   describe('rendering', () => {
     it('should render the legend title', () => {
       render(<MapLegend />);
-      expect(screen.getByText('Hops:')).toBeInTheDocument();
+      expect(screen.getByText('map.legend.hops')).toBeInTheDocument();
     });
 
     it('should render all 7 hop levels', () => {
       render(<MapLegend />);
 
       // Check all legend labels are present
-      expect(screen.getByText('Local')).toBeInTheDocument();
+      expect(screen.getByText('map.legend.local')).toBeInTheDocument();
       expect(screen.getByText('1')).toBeInTheDocument();
       expect(screen.getByText('2')).toBeInTheDocument();
       expect(screen.getByText('3')).toBeInTheDocument();
@@ -108,7 +108,7 @@ describe('MapLegend', () => {
 
       const titleElement = container.querySelector('.legend-title');
       expect(titleElement).toBeInTheDocument();
-      expect(titleElement).toHaveTextContent('Hops:');
+      expect(titleElement).toHaveTextContent('map.legend.hops');
     });
 
     it('should have legend dots with proper class', () => {
@@ -124,7 +124,7 @@ describe('MapLegend', () => {
       render(<MapLegend />);
 
       const labels = [
-        'Local',
+        'map.legend.local',
         '1',
         '2',
         '3',
@@ -153,7 +153,7 @@ describe('MapLegend', () => {
       render(<MapLegend />);
 
       const orderedLabels = [
-        'Local',
+        'map.legend.local',
         '1',
         '2',
         '3',
@@ -163,7 +163,7 @@ describe('MapLegend', () => {
       ];
 
       // Get all text content and verify order
-      const legendText = screen.getByText('Hops:').parentElement;
+      const legendText = screen.getByText('map.legend.hops').parentElement;
       expect(legendText).toBeInTheDocument();
 
       // Verify each label appears in the correct order
