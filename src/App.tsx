@@ -2392,7 +2392,7 @@ function App() {
   };
 
   const handleDeleteMessage = async (message: MeshMessage) => {
-    if (!window.confirm('Are you sure you want to delete this message?')) {
+    if (!window.confirm(t('messages.confirm_delete'))) {
       return;
     }
 

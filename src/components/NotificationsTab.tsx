@@ -207,7 +207,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
       }
     } catch (error) {
       logger.error('Failed to save preferences:', error);
-      alert('Failed to save notification preferences');
+      alert(t('notifications.alert_save_failed'));
     } finally {
       setIsSavingPreferences(false);
     }
@@ -215,7 +215,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
 
   const requestNotificationPermission = async () => {
     if (!('Notification' in window)) {
-      alert('Push notifications are not supported in your browser');
+      alert(t('notifications.alert_not_supported'));
       return;
     }
 
@@ -228,13 +228,13 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
       }
     } catch (error) {
       logger.error('Failed to request notification permission:', error);
-      alert('Failed to request notification permission. Please try again.');
+      alert(t('notifications.alert_permission_failed'));
     }
   };
 
   const subscribeToNotifications = async () => {
     if (notificationPermission !== 'granted') {
-      alert('Please grant notification permission first');
+      alert(t('notifications.alert_grant_permission'));
       return;
     }
 
@@ -292,7 +292,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
     } catch (error: any) {
       logger.error('Failed to subscribe to push notifications:', error);
       setDebugInfo(`❌ Error: ${error.message}`);
-      alert(`Failed to subscribe to push notifications: ${error.message}`);
+      alert(t('notifications.alert_subscribe_failed', { error: error.message }));
     } finally {
       setIsSubscribing(false);
     }
@@ -315,7 +315,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
       logger.info('Unsubscribed from push notifications');
     } catch (error) {
       logger.error('Failed to unsubscribe:', error);
-      alert('Failed to unsubscribe from push notifications');
+      alert(t('notifications.alert_unsubscribe_failed'));
     } finally {
       setIsSubscribing(false);
     }
@@ -329,7 +329,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
       await loadVapidStatus();
     } catch (error) {
       logger.error('Failed to update VAPID subject:', error);
-      alert('Failed to update contact email');
+      alert(t('notifications.alert_update_email_failed'));
     } finally {
       setIsUpdatingSubject(false);
     }
