@@ -24,6 +24,9 @@ type MapPinStyle = 'meshmonitor' | 'official';
 
 interface SettingsTabProps {
   maxNodeAgeHours: number;
+  inactiveNodeThresholdHours: number;
+  inactiveNodeCheckIntervalMinutes: number;
+  inactiveNodeCooldownHours: number;
   temperatureUnit: TemperatureUnit;
   distanceUnit: DistanceUnit;
   telemetryVisualizationHours: number;
@@ -45,6 +48,9 @@ interface SettingsTabProps {
   nodes: any[];
   baseUrl: string;
   onMaxNodeAgeChange: (hours: number) => void;
+  onInactiveNodeThresholdHoursChange: (hours: number) => void;
+  onInactiveNodeCheckIntervalMinutesChange: (minutes: number) => void;
+  onInactiveNodeCooldownHoursChange: (hours: number) => void;
   onTemperatureUnitChange: (unit: TemperatureUnit) => void;
   onDistanceUnitChange: (unit: DistanceUnit) => void;
   onTelemetryVisualizationChange: (hours: number) => void;
@@ -66,6 +72,9 @@ interface SettingsTabProps {
 
 const SettingsTab: React.FC<SettingsTabProps> = ({
   maxNodeAgeHours,
+  inactiveNodeThresholdHours,
+  inactiveNodeCheckIntervalMinutes,
+  inactiveNodeCooldownHours,
   temperatureUnit,
   distanceUnit,
   telemetryVisualizationHours,
@@ -87,6 +96,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   nodes,
   baseUrl,
   onMaxNodeAgeChange,
+  onInactiveNodeThresholdHoursChange,
+  onInactiveNodeCheckIntervalMinutesChange,
+  onInactiveNodeCooldownHoursChange,
   onTemperatureUnitChange,
   onDistanceUnitChange,
   onTelemetryVisualizationChange,
@@ -112,6 +124,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
 
   // Local state for editing
   const [localMaxNodeAge, setLocalMaxNodeAge] = useState(maxNodeAgeHours);
+  const [localInactiveNodeThresholdHours, setLocalInactiveNodeThresholdHours] = useState(inactiveNodeThresholdHours);
+  const [localInactiveNodeCheckIntervalMinutes, setLocalInactiveNodeCheckIntervalMinutes] = useState(inactiveNodeCheckIntervalMinutes);
+  const [localInactiveNodeCooldownHours, setLocalInactiveNodeCooldownHours] = useState(inactiveNodeCooldownHours);
   const [localTemperatureUnit, setLocalTemperatureUnit] = useState(temperatureUnit);
   const [localDistanceUnit, setLocalDistanceUnit] = useState(distanceUnit);
   const [localTelemetryHours, setLocalTelemetryHours] = useState(telemetryVisualizationHours);
@@ -192,6 +207,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   // Update local state when props change
   useEffect(() => {
     setLocalMaxNodeAge(maxNodeAgeHours);
+    setLocalInactiveNodeThresholdHours(inactiveNodeThresholdHours);
+    setLocalInactiveNodeCheckIntervalMinutes(inactiveNodeCheckIntervalMinutes);
+    setLocalInactiveNodeCooldownHours(inactiveNodeCooldownHours);
     setLocalTemperatureUnit(temperatureUnit);
     setLocalDistanceUnit(distanceUnit);
     setLocalTelemetryHours(telemetryVisualizationHours);
@@ -209,7 +227,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLocalSolarMonitoringAzimuth(solarMonitoringAzimuth);
     setLocalSolarMonitoringDeclination(solarMonitoringDeclination);
     setLocalHideIncompleteNodes(!showIncompleteNodes);
-  }, [maxNodeAgeHours, temperatureUnit, distanceUnit, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle, solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination, showIncompleteNodes]);
+  }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours, temperatureUnit, distanceUnit, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle, solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination, showIncompleteNodes]);
 
   // Default solar monitoring lat/long to device position if still at 0
   useEffect(() => {
@@ -231,6 +249,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   useEffect(() => {
     const changed =
       localMaxNodeAge !== maxNodeAgeHours ||
+      localInactiveNodeThresholdHours !== inactiveNodeThresholdHours ||
+      localInactiveNodeCheckIntervalMinutes !== inactiveNodeCheckIntervalMinutes ||
+      localInactiveNodeCooldownHours !== inactiveNodeCooldownHours ||
       localTemperatureUnit !== temperatureUnit ||
       localDistanceUnit !== distanceUnit ||
       localTelemetryHours !== telemetryVisualizationHours ||
@@ -252,8 +273,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localSolarMonitoringDeclination !== solarMonitoringDeclination ||
       localHideIncompleteNodes !== !showIncompleteNodes;
     setHasChanges(changed);
-  }, [localMaxNodeAge, localTemperatureUnit, localDistanceUnit, localTelemetryHours, localFavoriteTelemetryStorageDays, localPreferredSortField, localPreferredSortDirection, localTimeFormat, localDateFormat, localMapTileset, localMapPinStyle, localTheme,
-      maxNodeAgeHours, temperatureUnit, distanceUnit, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle, theme,
+  }, [localMaxNodeAge, localInactiveNodeThresholdHours, localInactiveNodeCheckIntervalMinutes, localInactiveNodeCooldownHours, localTemperatureUnit, localDistanceUnit, localTelemetryHours, localFavoriteTelemetryStorageDays, localPreferredSortField, localPreferredSortDirection, localTimeFormat, localDateFormat, localMapTileset, localMapPinStyle, localTheme,
+      maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours, temperatureUnit, distanceUnit, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle, theme,
       localPacketLogEnabled, localPacketLogMaxCount, localPacketLogMaxAgeHours, initialPacketMonitorSettings,
       localSolarMonitoringEnabled, localSolarMonitoringLatitude, localSolarMonitoringLongitude, localSolarMonitoringAzimuth, localSolarMonitoringDeclination,
       solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination,
@@ -264,6 +285,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     try {
       const settings = {
         maxNodeAgeHours: localMaxNodeAge,
+        inactiveNodeThresholdHours: localInactiveNodeThresholdHours,
+        inactiveNodeCheckIntervalMinutes: localInactiveNodeCheckIntervalMinutes,
+        inactiveNodeCooldownHours: localInactiveNodeCooldownHours,
         temperatureUnit: localTemperatureUnit,
         distanceUnit: localDistanceUnit,
         telemetryVisualizationHours: localTelemetryHours,
@@ -295,6 +319,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
 
       // Update parent component state
       onMaxNodeAgeChange(localMaxNodeAge);
+      onInactiveNodeThresholdHoursChange(localInactiveNodeThresholdHours);
+      onInactiveNodeCheckIntervalMinutesChange(localInactiveNodeCheckIntervalMinutes);
+      onInactiveNodeCooldownHoursChange(localInactiveNodeCooldownHours);
       onTemperatureUnitChange(localTemperatureUnit);
       onDistanceUnitChange(localDistanceUnit);
       onTelemetryVisualizationChange(localTelemetryHours);
@@ -615,6 +642,51 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               max="168"
               value={localMaxNodeAge}
               onChange={(e) => setLocalMaxNodeAge(parseInt(e.target.value))}
+              className="setting-input"
+            />
+          </div>
+          <div className="setting-item">
+            <label htmlFor="inactiveNodeThresholdHours">
+              {t('settings.inactive_node_threshold_label')}
+              <span className="setting-description">{t('settings.inactive_node_threshold_description')}</span>
+            </label>
+            <input
+              id="inactiveNodeThresholdHours"
+              type="number"
+              min="1"
+              max="720"
+              value={localInactiveNodeThresholdHours}
+              onChange={(e) => setLocalInactiveNodeThresholdHours(parseInt(e.target.value))}
+              className="setting-input"
+            />
+          </div>
+          <div className="setting-item">
+            <label htmlFor="inactiveNodeCheckIntervalMinutes">
+              {t('settings.inactive_node_check_interval_label')}
+              <span className="setting-description">{t('settings.inactive_node_check_interval_description')}</span>
+            </label>
+            <input
+              id="inactiveNodeCheckIntervalMinutes"
+              type="number"
+              min="1"
+              max="1440"
+              value={localInactiveNodeCheckIntervalMinutes}
+              onChange={(e) => setLocalInactiveNodeCheckIntervalMinutes(parseInt(e.target.value))}
+              className="setting-input"
+            />
+          </div>
+          <div className="setting-item">
+            <label htmlFor="inactiveNodeCooldownHours">
+              {t('settings.inactive_node_cooldown_label')}
+              <span className="setting-description">{t('settings.inactive_node_cooldown_description')}</span>
+            </label>
+            <input
+              id="inactiveNodeCooldownHours"
+              type="number"
+              min="1"
+              max="720"
+              value={localInactiveNodeCooldownHours}
+              onChange={(e) => setLocalInactiveNodeCooldownHours(parseInt(e.target.value))}
               className="setting-input"
             />
           </div>
