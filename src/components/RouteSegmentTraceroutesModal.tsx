@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { DbTraceroute } from '../services/database';
 import { formatDateTime } from '../utils/datetime';
 import { DeviceInfo } from '../types/device';
@@ -20,6 +21,7 @@ const RouteSegmentTraceroutesModal: React.FC<RouteSegmentTraceroutesModalProps> 
   nodes,
   onClose,
 }) => {
+  const { t } = useTranslation();
   const { timeFormat, dateFormat, distanceUnit } = useSettings();
 
   const node1Name = formatNodeName(nodeNum1, nodes);
@@ -65,30 +67,34 @@ const RouteSegmentTraceroutesModal: React.FC<RouteSegmentTraceroutesModalProps> 
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '900px', maxHeight: '80vh' }}>
         <div className="modal-header">
-          <h2>Traceroutes Using Segment</h2>
+          <h2>{t('route_segment.title')}</h2>
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
 
         <div className="modal-body" style={{ padding: '1.5rem', overflowY: 'auto', maxHeight: 'calc(80vh - 100px)' }}>
           <div style={{ marginBottom: '1.5rem' }}>
-            <strong>Segment:</strong> {node1Name} ↔ {node2Name}
+            <strong>{t('route_segment.segment')}:</strong> {node1Name} ↔ {node2Name}
           </div>
 
           {relevantTraceroutes.length === 0 && (
             <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--ctp-subtext0)' }}>
-              No traceroutes found using this segment.
+              {t('route_segment.no_traceroutes')}
             </div>
           )}
 
           {relevantTraceroutes.length > 0 && (
             <div>
               <p style={{ marginBottom: '1rem', color: 'var(--ctp-subtext0)' }}>
-                Showing {relevantTraceroutes.length} traceroute{relevantTraceroutes.length !== 1 ? 's' : ''} using this segment
+                {t('route_segment.showing_count', { count: relevantTraceroutes.length })}
               </p>
 
               {relevantTraceroutes.map((tr, index) => {
                 const age = Math.floor((Date.now() - (tr.timestamp || tr.createdAt || Date.now())) / (1000 * 60));
-                const ageStr = age < 60 ? `${age}m ago` : age < 1440 ? `${Math.floor(age / 60)}h ago` : `${Math.floor(age / 1440)}d ago`;
+                const ageStr = age < 60
+                  ? t('common.minutes_ago', { count: age })
+                  : age < 1440
+                    ? t('common.hours_ago', { count: Math.floor(age / 60) })
+                    : t('common.days_ago', { count: Math.floor(age / 1440) });
 
                 const fromNode = nodes.find(n => n.nodeNum === tr.fromNodeNum);
                 const toNode = nodes.find(n => n.nodeNum === tr.toNodeNum);
@@ -122,7 +128,7 @@ const RouteSegmentTraceroutesModal: React.FC<RouteSegmentTraceroutesModalProps> 
                     </div>
 
                     <div style={{ marginBottom: '0.5rem' }}>
-                      <strong style={{ color: 'var(--ctp-green)' }}>→ Forward:</strong>{' '}
+                      <strong style={{ color: 'var(--ctp-green)' }}>→ {t('traceroute_history.forward')}:</strong>{' '}
                       <span style={{ fontFamily: 'monospace', fontSize: '0.95em' }}>
                         {formatTracerouteRoute(
                           tr.route,
@@ -141,7 +147,7 @@ const RouteSegmentTraceroutesModal: React.FC<RouteSegmentTraceroutesModalProps> 
                     </div>
 
                     <div>
-                      <strong style={{ color: 'var(--ctp-yellow)' }}>← Return:</strong>{' '}
+                      <strong style={{ color: 'var(--ctp-yellow)' }}>← {t('traceroute_history.return')}:</strong>{' '}
                       <span style={{ fontFamily: 'monospace', fontSize: '0.95em' }}>
                         {formatTracerouteRoute(
                           tr.routeBack,

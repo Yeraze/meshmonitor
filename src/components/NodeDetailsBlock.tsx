@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { DeviceInfo } from '../types/device';
 import { getHardwareModelName } from '../utils/nodeHelpers';
 import { getDeviceRoleName } from '../utils/deviceRole';
@@ -15,6 +16,7 @@ interface NodeDetailsBlockProps {
 }
 
 const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = '24', dateFormat = 'MM/DD/YYYY' }) => {
+  const { t } = useTranslation();
   const { channels } = useChannels();
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     const stored = localStorage.getItem('nodeDetailsCollapsed');
@@ -149,11 +151,11 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
   return (
     <div className="node-details-block">
       <div className="node-details-header">
-        <h3 className="node-details-title">Node Details</h3>
+        <h3 className="node-details-title">{t('node_details.title')}</h3>
         <button
           className="node-details-toggle"
           onClick={() => setIsCollapsed(!isCollapsed)}
-          aria-label={isCollapsed ? 'Expand node details' : 'Collapse node details'}
+          aria-label={isCollapsed ? t('node_details.expand') : t('node_details.collapse')}
         >
           {isCollapsed ? '▼' : '▲'}
         </button>
@@ -163,7 +165,7 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
           {/* Hardware Model - Now First */}
           {hwModel !== undefined && (
             <div className="node-detail-card node-detail-card-hardware">
-              <div className="node-detail-label">Hardware</div>
+              <div className="node-detail-label">{t('node_details.hardware')}</div>
               <div className="node-detail-value node-detail-hardware-content">
                 {hardwareImageUrl && (
                   <img
@@ -180,7 +182,7 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
           {/* Battery Status */}
           {(deviceMetrics?.batteryLevel !== undefined || deviceMetrics?.voltage !== undefined) && (
             <div className="node-detail-card">
-              <div className="node-detail-label">Battery</div>
+              <div className="node-detail-label">{t('node_details.battery')}</div>
               <div className={`node-detail-value ${getBatteryClass(deviceMetrics?.batteryLevel)}`}>
                 {formatBatteryLevel(deviceMetrics?.batteryLevel)}
                 {deviceMetrics?.voltage !== undefined && (
@@ -193,7 +195,7 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
           {/* Signal Quality - SNR */}
           {snr !== undefined && (
             <div className="node-detail-card">
-              <div className="node-detail-label">Signal (SNR)</div>
+              <div className="node-detail-label">{t('node_details.signal_snr')}</div>
               <div className={`node-detail-value ${getSignalClass(snr)}`}>
                 {formatSNR(snr)}
               </div>
@@ -203,7 +205,7 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
           {/* Signal Quality - RSSI */}
           {rssi !== undefined && (
             <div className="node-detail-card">
-              <div className="node-detail-label">Signal (RSSI)</div>
+              <div className="node-detail-label">{t('node_details.signal_rssi')}</div>
               <div className="node-detail-value">
                 {formatRSSI(rssi)}
               </div>
@@ -213,7 +215,7 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
           {/* Channel Utilization */}
           {deviceMetrics?.channelUtilization !== undefined && (
             <div className="node-detail-card">
-              <div className="node-detail-label">Channel Utilization</div>
+              <div className="node-detail-label">{t('node_details.channel_utilization')}</div>
               <div className={`node-detail-value ${getUtilizationClass(deviceMetrics.channelUtilization)}`}>
                 {formatUtilization(deviceMetrics.channelUtilization)}
               </div>
@@ -223,7 +225,7 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
           {/* Air Utilization TX */}
           {deviceMetrics?.airUtilTx !== undefined && (
             <div className="node-detail-card">
-              <div className="node-detail-label">Air Utilization TX</div>
+              <div className="node-detail-label">{t('node_details.air_utilization_tx')}</div>
               <div className={`node-detail-value ${getUtilizationClass(deviceMetrics.airUtilTx)}`}>
                 {formatUtilization(deviceMetrics.airUtilTx)}
               </div>
@@ -233,7 +235,7 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
           {/* Uptime */}
           {deviceMetrics?.uptimeSeconds !== undefined && (
             <div className="node-detail-card">
-              <div className="node-detail-label">Uptime</div>
+              <div className="node-detail-label">{t('node_details.uptime')}</div>
               <div className="node-detail-value">
                 {formatUptime(deviceMetrics.uptimeSeconds)}
               </div>
@@ -243,7 +245,7 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
         {/* Node ID */}
         {node.nodeNum !== undefined && (
           <div className="node-detail-card">
-            <div className="node-detail-label">Node ID</div>
+            <div className="node-detail-label">{t('node_details.node_id')}</div>
             <div className="node-detail-value">
               <div>{formatNodeIdHex(node.nodeNum)}</div>
               <div className="node-detail-secondary">{formatNodeIdDecimal(node.nodeNum)}</div>
@@ -254,7 +256,7 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
         {/* Role */}
         {role !== undefined && (
           <div className="node-detail-card">
-            <div className="node-detail-label">Role</div>
+            <div className="node-detail-label">{t('node_details.role')}</div>
             <div className="node-detail-value">
               {getDeviceRoleName(role)}
             </div>
@@ -264,7 +266,7 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
         {/* Channel */}
         {node.channel !== undefined && (
           <div className="node-detail-card">
-            <div className="node-detail-label">Channel</div>
+            <div className="node-detail-label">{t('node_details.channel')}</div>
             <div className="node-detail-value">
               {(() => {
                 const channel = (channels || []).find(ch => ch.id === node.channel);
@@ -279,7 +281,7 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
         {/* Firmware Version */}
         {firmwareVersion && (
           <div className="node-detail-card">
-            <div className="node-detail-label">Firmware</div>
+            <div className="node-detail-label">{t('node_details.firmware')}</div>
             <div className="node-detail-value">
               {firmwareVersion}
             </div>
@@ -289,9 +291,9 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
         {/* Hops Away */}
         {hopsAway !== undefined && (
           <div className="node-detail-card">
-            <div className="node-detail-label">Hops Away</div>
+            <div className="node-detail-label">{t('node_details.hops_away')}</div>
             <div className="node-detail-value">
-              {hopsAway === 0 ? 'Direct' : `${hopsAway} hop${hopsAway !== 1 ? 's' : ''}`}
+              {hopsAway === 0 ? t('node_details.direct') : t('node_details.hops', { count: hopsAway })}
             </div>
           </div>
         )}
@@ -299,9 +301,9 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
         {/* Via MQTT */}
         {viaMqtt && (
           <div className="node-detail-card">
-            <div className="node-detail-label">Connection</div>
+            <div className="node-detail-label">{t('node_details.connection')}</div>
             <div className="node-detail-value">
-              Via MQTT
+              {t('node_details.via_mqtt')}
             </div>
           </div>
         )}
@@ -309,7 +311,7 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
           {/* Last Heard */}
           {lastHeard !== undefined && (
             <div className="node-detail-card">
-              <div className="node-detail-label">Last Heard</div>
+              <div className="node-detail-label">{t('node_details.last_heard')}</div>
               <div className="node-detail-value">
                 {formatLastHeard(lastHeard)}
               </div>

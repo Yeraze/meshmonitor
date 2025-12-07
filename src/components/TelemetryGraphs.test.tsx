@@ -162,7 +162,7 @@ describe('TelemetryGraphs Component', () => {
       renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} />);
     });
 
-    expect(screen.getByText('Loading telemetry data...')).toBeInTheDocument();
+    expect(screen.getByText('telemetry.loading')).toBeInTheDocument();
   });
 
   it('should fetch telemetry data on mount', async () => {
@@ -177,7 +177,7 @@ describe('TelemetryGraphs Component', () => {
     renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} />);
 
     await waitFor(() => {
-      expect(screen.getByText('Last 24 Hours Telemetry')).toBeInTheDocument();
+      expect(screen.getByText('telemetry.title')).toBeInTheDocument();
     });
   });
 
@@ -248,7 +248,7 @@ describe('TelemetryGraphs Component', () => {
     renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} />);
 
     await waitFor(() => {
-      expect(screen.getByText('No telemetry data available for this node')).toBeInTheDocument();
+      expect(screen.getByText('telemetry.no_data')).toBeInTheDocument();
     });
   });
 
@@ -424,7 +424,7 @@ describe('TelemetryGraphs Component', () => {
 
     await waitFor(() => {
       // Should handle gracefully without crashing
-      expect(screen.getByText('Last 24 Hours Telemetry')).toBeInTheDocument();
+      expect(screen.getByText('telemetry.title')).toBeInTheDocument();
     });
   });
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { flushSync } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 // Popup and Polyline moved to useTraceroutePaths hook
 // Recharts imports moved to useTraceroutePaths hook
 import L from 'leaflet';
@@ -76,6 +77,7 @@ L.Icon.Default.mergeOptions({
 // Icons and helpers are now imported from utils/
 
 function App() {
+  const { t } = useTranslation();
   const { authStatus, hasPermission } = useAuth();
   const { getToken: getCsrfToken, refreshToken: refreshCsrfToken } = useCsrf();
   const { showToast } = useToast();
@@ -214,8 +216,6 @@ function App() {
 
   const channelMessagesContainerRef = useRef<HTMLDivElement>(null);
   const dmMessagesContainerRef = useRef<HTMLDivElement>(null);
-  const initialChannelScrollDoneRef = useRef<Set<number>>(new Set()); // Track channels that have had initial scroll
-  const initialDMScrollDoneRef = useRef<Set<string>>(new Set()); // Track DM conversations that have had initial scroll
   const lastScrollLoadTimeRef = useRef<number>(0); // Throttle scroll-triggered loads (200ms)
   // const lastNotificationTime = useRef<number>(0) // Disabled for now
   // Detect base URL from pathname
@@ -271,6 +271,7 @@ function App() {
     mapTileset,
     mapPinStyle,
     theme,
+    language,
     solarMonitoringEnabled,
     solarMonitoringLatitude,
     solarMonitoringLongitude,
@@ -289,6 +290,7 @@ function App() {
     setMapTileset,
     setMapPinStyle,
     setTheme,
+    setLanguage,
     setSolarMonitoringEnabled,
     setSolarMonitoringLatitude,
     setSolarMonitoringLongitude,
@@ -1256,7 +1258,7 @@ function App() {
       setChannelHasMore(prev => ({ ...prev, [selectedChannel]: result.hasMore }));
     } catch (error) {
       logger.error('Failed to load more channel messages:', error);
-      showToast('Failed to load older messages', 'error');
+      showToast(t('toast.failed_load_older_messages'), 'error');
     } finally {
       setChannelLoadingMore(prev => ({ ...prev, [selectedChannel]: false }));
     }
@@ -1314,7 +1316,7 @@ function App() {
       setDmHasMore(prev => ({ ...prev, [dmKey]: result.hasMore }));
     } catch (error) {
       logger.error('Failed to load more direct messages:', error);
-      showToast('Failed to load older messages', 'error');
+      showToast(t('toast.failed_load_older_messages'), 'error');
     } finally {
       setDmLoadingMore(prev => ({ ...prev, [dmKey]: false }));
     }
@@ -1371,66 +1373,46 @@ function App() {
     };
   }, [handleChannelScroll, handleDMScroll]);
 
-  // Force scroll to bottom when channel changes OR when messages first load for a channel
+  // Force scroll to bottom when channel changes OR when switching to channels tab
   // Note: We track initial scroll per channel to avoid re-scrolling when user manually scrolls
   useEffect(() => {
     if (activeTab === 'channels' && selectedChannel >= 0) {
       const currentChannelMessages = channelMessages[selectedChannel] || [];
       const hasMessages = currentChannelMessages.length > 0;
-      const hasInitialScrollDone = initialChannelScrollDoneRef.current.has(selectedChannel);
 
-      // Scroll to bottom if:
-      // 1. Channel just changed (reset the initial scroll flag)
-      // 2. Messages just loaded for the first time for this channel
-      if (!hasInitialScrollDone && hasMessages) {
+      // Always scroll to bottom when entering the channels tab or changing channels
+      if (hasMessages) {
         // Use setTimeout to ensure messages are rendered before scrolling
         setTimeout(() => {
           if (channelMessagesContainerRef.current) {
             channelMessagesContainerRef.current.scrollTop = channelMessagesContainerRef.current.scrollHeight;
             setIsChannelScrolledToBottom(true);
-            initialChannelScrollDoneRef.current.add(selectedChannel);
           }
         }, 100);
       }
     }
-  }, [selectedChannel, activeTab, channelMessages]);
+  }, [selectedChannel, activeTab]);
 
-  // Reset initial scroll flag when channel changes
-  useEffect(() => {
-    // Clear the flag when channel changes so next scroll will happen
-    initialChannelScrollDoneRef.current.delete(selectedChannel);
-  }, [selectedChannel]);
-
-  // Force scroll to bottom when DM node changes OR when messages first load
+  // Force scroll to bottom when DM node changes OR when switching to messages tab
   useEffect(() => {
     if (activeTab === 'messages' && selectedDMNode && currentNodeId) {
-      const dmKey = [currentNodeId, selectedDMNode].sort().join('_');
       const currentDMMessages = messages.filter(
         msg => (msg.fromNodeId === currentNodeId && msg.toNodeId === selectedDMNode) ||
                (msg.fromNodeId === selectedDMNode && msg.toNodeId === currentNodeId)
       );
       const hasMessages = currentDMMessages.length > 0;
-      const hasInitialScrollDone = initialDMScrollDoneRef.current.has(dmKey);
 
-      if (!hasInitialScrollDone && hasMessages) {
+      // Always scroll to bottom when entering the messages tab or changing conversations
+      if (hasMessages) {
         setTimeout(() => {
           if (dmMessagesContainerRef.current) {
             dmMessagesContainerRef.current.scrollTop = dmMessagesContainerRef.current.scrollHeight;
             setIsDMScrolledToBottom(true);
-            initialDMScrollDoneRef.current.add(dmKey);
           }
         }, 150);
       }
     }
-  }, [selectedDMNode, activeTab, messages, currentNodeId]);
-
-  // Reset initial DM scroll flag when conversation changes
-  useEffect(() => {
-    if (selectedDMNode && currentNodeId) {
-      const dmKey = [currentNodeId, selectedDMNode].sort().join('_');
-      initialDMScrollDoneRef.current.delete(dmKey);
-    }
-  }, [selectedDMNode, currentNodeId]);
+  }, [selectedDMNode, activeTab, currentNodeId]);
 
   // Unread counts polling is now handled by useUnreadCounts hook in MessagingContext
 
@@ -2010,7 +1992,21 @@ function App() {
 
             // Keep older messages that aren't in the poll (they were loaded via infinite scroll)
             // Poll returns newest 100, so any messages not in poll are older
-            const olderMsgs = existingMsgs.filter(m => !pollMsgIds.has(m.id));
+            // Also filter out pending messages that are no longer pending (they've been matched to real messages)
+            const olderMsgs = existingMsgs.filter(m => {
+              // If message is in poll results, don't keep it (poll version is authoritative)
+              if (pollMsgIds.has(m.id)) return false;
+
+              // For pending messages (temp IDs), only keep if still pending
+              // Once matched/acknowledged, pendingIds won't contain it anymore
+              // Channel messages use 'temp_' prefix, DMs use 'temp_dm_' prefix
+              if (m.id.toString().startsWith('temp_')) {
+                return pendingIds.has(m.id);
+              }
+
+              // Keep all other older messages (loaded via infinite scroll)
+              return true;
+            });
 
             // Combine: older messages + poll messages (poll messages are newer/updated)
             merged[channelId] = [...olderMsgs, ...pollMsgs];
@@ -2122,10 +2118,10 @@ function App() {
     try {
       await api.disconnectFromNode();
       setConnectionStatus('user-disconnected');
-      showToast('Disconnected from node', 'info');
+      showToast(t('toast.disconnected_from_node'), 'info');
     } catch (error) {
       logger.error('Failed to disconnect:', error);
-      showToast('Failed to disconnect', 'error');
+      showToast(t('toast.failed_disconnect'), 'error');
     }
   };
 
@@ -2133,12 +2129,12 @@ function App() {
     try {
       setConnectionStatus('connecting');
       await api.reconnectToNode();
-      showToast('Reconnecting to node...', 'info');
+      showToast(t('toast.reconnecting_to_node'), 'info');
       // Status will update via polling
     } catch (error) {
       logger.error('Failed to reconnect:', error);
       setConnectionStatus('user-disconnected');
-      showToast('Failed to reconnect', 'error');
+      showToast(t('toast.failed_reconnect'), 'error');
     }
   };
 
@@ -2388,7 +2384,7 @@ function App() {
   };
 
   const handleDeleteMessage = async (message: MeshMessage) => {
-    if (!window.confirm('Are you sure you want to delete this message?')) {
+    if (!window.confirm(t('messages.confirm_delete'))) {
       return;
     }
 
@@ -2401,7 +2397,7 @@ function App() {
       });
 
       if (response.ok) {
-        showToast('Message deleted successfully', 'success');
+        showToast(t('toast.message_deleted'), 'success');
         // Update local state to remove the message
         setMessages(prev => prev.filter(m => m.id !== message.id));
         setChannelMessages(prev => ({
@@ -2411,10 +2407,10 @@ function App() {
         refetchPoll();
       } else {
         const errorData = await response.json();
-        showToast(`Failed to delete message: ${errorData.message || 'Unknown error'}`, 'error');
+        showToast(t('toast.failed_delete_message', { error: errorData.message || t('errors.unknown') }), 'error');
       }
     } catch (err) {
-      showToast(`Failed to delete message: ${err instanceof Error ? err.message : 'Network error'}`, 'error');
+      showToast(t('toast.failed_delete_message', { error: err instanceof Error ? err.message : t('errors.network') }), 'error');
     }
   };
 
@@ -2438,7 +2434,7 @@ function App() {
 
       if (response.ok) {
         const data = await response.json();
-        showToast(`Purged ${data.deletedCount} messages from ${channelName}`, 'success');
+        showToast(t('toast.purged_messages_channel', { count: data.deletedCount, channel: channelName }), 'success');
         // Update local state
         setChannelMessages(prev => ({
           ...prev,
@@ -2447,10 +2443,10 @@ function App() {
         refetchPoll();
       } else {
         const errorData = await response.json();
-        showToast(`Failed to purge messages: ${errorData.message || 'Unknown error'}`, 'error');
+        showToast(t('toast.failed_purge_messages', { error: errorData.message || t('errors.unknown') }), 'error');
       }
     } catch (err) {
-      showToast(`Failed to purge messages: ${err instanceof Error ? err.message : 'Network error'}`, 'error');
+      showToast(t('toast.failed_purge_messages', { error: err instanceof Error ? err.message : t('errors.network') }), 'error');
     }
   };
 
@@ -2476,7 +2472,7 @@ function App() {
 
       if (response.ok) {
         const data = await response.json();
-        showToast(`Purged ${data.deletedCount} messages with ${nodeName}`, 'success');
+        showToast(t('toast.purged_messages_dm', { count: data.deletedCount, node: nodeName }), 'success');
         // Update local state to immediately reflect deletions
         const nodeId = node?.user?.id;
         if (nodeId) {
@@ -2486,10 +2482,10 @@ function App() {
         refetchPoll();
       } else {
         const errorData = await response.json();
-        showToast(`Failed to purge messages: ${errorData.message || 'Unknown error'}`, 'error');
+        showToast(t('toast.failed_purge_messages', { error: errorData.message || t('errors.unknown') }), 'error');
       }
     } catch (err) {
-      showToast(`Failed to purge messages: ${err instanceof Error ? err.message : 'Network error'}`, 'error');
+      showToast(t('toast.failed_purge_messages', { error: err instanceof Error ? err.message : t('errors.network') }), 'error');
     }
   };
 
@@ -2513,15 +2509,15 @@ function App() {
 
       if (response.ok) {
         const data = await response.json();
-        showToast(`Purged ${data.deletedCount} traceroutes for ${nodeName}`, 'success');
+        showToast(t('toast.purged_traceroutes', { count: data.deletedCount, node: nodeName }), 'success');
         // Refresh data from backend to ensure consistency
         refetchPoll();
       } else {
         const errorData = await response.json();
-        showToast(`Failed to purge traceroutes: ${errorData.message || 'Unknown error'}`, 'error');
+        showToast(t('toast.failed_purge_traceroutes', { error: errorData.message || t('errors.unknown') }), 'error');
       }
     } catch (err) {
-      showToast(`Failed to purge traceroutes: ${err instanceof Error ? err.message : 'Network error'}`, 'error');
+      showToast(t('toast.failed_purge_traceroutes', { error: err instanceof Error ? err.message : t('errors.network') }), 'error');
     }
   };
 
@@ -2547,15 +2543,15 @@ function App() {
 
       if (response.ok) {
         const data = await response.json();
-        showToast(`Purged ${data.deletedCount} telemetry records for ${nodeName}`, 'success');
+        showToast(t('toast.purged_telemetry', { count: data.deletedCount, node: nodeName }), 'success');
         // Refresh data from backend to ensure consistency
         refetchPoll();
       } else {
         const errorData = await response.json();
-        showToast(`Failed to purge telemetry: ${errorData.message || 'Unknown error'}`, 'error');
+        showToast(t('toast.failed_purge_telemetry', { error: errorData.message || t('errors.unknown') }), 'error');
       }
     } catch (err) {
-      showToast(`Failed to purge telemetry: ${err instanceof Error ? err.message : 'Network error'}`, 'error');
+      showToast(t('toast.failed_purge_telemetry', { error: err instanceof Error ? err.message : t('errors.network') }), 'error');
     }
   };
 
@@ -2582,7 +2578,7 @@ function App() {
       if (response.ok) {
         const data = await response.json();
         showToast(
-          `Deleted ${nodeName} - ${data.messagesDeleted} messages, ${data.traceroutesDeleted} traceroutes, ${data.telemetryDeleted} telemetry records`,
+          t('toast.deleted_node', { node: nodeName, messages: data.messagesDeleted, traceroutes: data.traceroutesDeleted, telemetry: data.telemetryDeleted }),
           'success'
         );
         // Close the purge data modal if open
@@ -2596,10 +2592,10 @@ function App() {
         refetchPoll();
       } else {
         const errorData = await response.json();
-        showToast(`Failed to delete node: ${errorData.message || 'Unknown error'}`, 'error');
+        showToast(t('toast.failed_delete_node', { error: errorData.message || t('errors.unknown') }), 'error');
       }
     } catch (err) {
-      showToast(`Failed to delete node: ${err instanceof Error ? err.message : 'Network error'}`, 'error');
+      showToast(t('toast.failed_delete_node', { error: err instanceof Error ? err.message : t('errors.network') }), 'error');
     }
   };
 
@@ -2626,7 +2622,7 @@ function App() {
       if (response.ok) {
         const data = await response.json();
         showToast(
-          `Purged ${nodeName} from device and database - ${data.messagesDeleted} messages, ${data.traceroutesDeleted} traceroutes, ${data.telemetryDeleted} telemetry records`,
+          t('toast.purged_node_device', { node: nodeName, messages: data.messagesDeleted, traceroutes: data.traceroutesDeleted, telemetry: data.telemetryDeleted }),
           'success'
         );
         // Close the purge data modal if open
@@ -2640,10 +2636,10 @@ function App() {
         refetchPoll();
       } else {
         const errorData = await response.json();
-        showToast(`Failed to purge node from device: ${errorData.message || 'Unknown error'}`, 'error');
+        showToast(t('toast.failed_purge_node_device', { error: errorData.message || t('errors.unknown') }), 'error');
       }
     } catch (err) {
-      showToast(`Failed to purge node from device: ${err instanceof Error ? err.message : 'Network error'}`, 'error');
+      showToast(t('toast.failed_purge_node_device', { error: err instanceof Error ? err.message : t('errors.network') }), 'error');
     }
   };
 
@@ -3084,7 +3080,7 @@ function App() {
 
       if (!response.ok) {
         if (response.status === 403) {
-          showToast('Insufficient permissions to update favorites', 'error');
+          showToast(t('toast.insufficient_permissions_favorites'), 'error');
           // Revert to original state using the saved original value
           setNodes(prevNodes =>
             prevNodes.map(n => (n.nodeNum === node.nodeNum ? { ...n, isFavorite: originalFavoriteStatus } : n))
@@ -3116,7 +3112,7 @@ function App() {
       );
       // Remove from pending on error since we reverted
       pendingFavoriteRequests.delete(node.nodeNum);
-      showToast('Failed to update favorite status. Please try again.', 'error');
+      showToast(t('toast.failed_update_favorite'), 'error');
     }
     // Note: On success, the polling logic will remove from pendingFavoriteRequests
     // when it detects the server has caught up
@@ -4120,6 +4116,7 @@ function App() {
             getNodeShortName={getNodeShortName}
             isMqttBridgeMessage={isMqttBridgeMessage}
             setEmojiPickerMessage={setEmojiPickerMessage}
+            channelMessagesContainerRef={channelMessagesContainerRef}
           />
         )}
         {activeTab === 'messages' && (
@@ -4171,6 +4168,7 @@ function App() {
             setShowPurgeDataModal={setShowPurgeDataModal}
             setEmojiPickerMessage={setEmojiPickerMessage}
             shouldShowData={shouldShowData}
+            dmMessagesContainerRef={dmMessagesContainerRef}
           />
         )}
         {activeTab === 'info' && (
@@ -4217,6 +4215,7 @@ function App() {
             mapTileset={mapTileset}
             mapPinStyle={mapPinStyle}
             theme={theme}
+            language={language}
             solarMonitoringEnabled={solarMonitoringEnabled}
             solarMonitoringLatitude={solarMonitoringLatitude}
             solarMonitoringLongitude={solarMonitoringLongitude}
@@ -4237,6 +4236,7 @@ function App() {
             onMapTilesetChange={setMapTileset}
             onMapPinStyleChange={setMapPinStyle}
             onThemeChange={setTheme}
+            onLanguageChange={setLanguage}
             onSolarMonitoringEnabledChange={setSolarMonitoringEnabled}
             onSolarMonitoringLatitudeChange={setSolarMonitoringLatitude}
             onSolarMonitoringLongitudeChange={setSolarMonitoringLongitude}

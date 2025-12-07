@@ -5,6 +5,7 @@
  */
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { logger } from '../utils/logger';
 import ChangePasswordModal from './ChangePasswordModal';
@@ -15,6 +16,7 @@ interface UserMenuProps {
 }
 
 const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
+  const { t } = useTranslation();
   const { authStatus, logout } = useAuth();
   const [showMenu, setShowMenu] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -61,11 +63,11 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
       <button
         className="user-menu-button"
         onClick={() => setShowMenu(!showMenu)}
-        title={`Logged in as ${displayName}`}
+        title={t('user_menu.logged_in_as', { name: displayName })}
       >
         <span className="user-icon">👤</span>
         <span className="user-name">{displayName}</span>
-        {isAdmin && <span className="admin-badge" title="Administrator">⭐</span>}
+        {isAdmin && <span className="admin-badge" title={t('user_menu.administrator')}>⭐</span>}
       </button>
 
       {showMenu && (
@@ -79,10 +81,10 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
                 <div className="user-menu-email">{authStatus.user.email}</div>
               )}
               <div className="user-menu-provider">
-                {authStatus.user.authProvider === 'oidc' ? 'OIDC' : 'Local'} account
+                {authStatus.user.authProvider === 'oidc' ? t('user_menu.oidc_account') : t('user_menu.local_account')}
               </div>
               {isAdmin && (
-                <div className="user-menu-admin">Administrator</div>
+                <div className="user-menu-admin">{t('user_menu.administrator')}</div>
               )}
             </div>
 
@@ -94,7 +96,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
                 onClick={handleChangePassword}
                 disabled={loading}
               >
-                Change Password
+                {t('user_menu.change_password')}
               </button>
             )}
 
@@ -103,7 +105,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
               onClick={handleAPIToken}
               disabled={loading}
             >
-              API Token
+              {t('user_menu.api_token')}
             </button>
 
             <button
@@ -111,7 +113,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
               onClick={handleLogout}
               disabled={loading}
             >
-              {loading ? 'Logging out...' : 'Logout'}
+              {loading ? t('user_menu.logging_out') : t('user_menu.logout')}
             </button>
           </div>
         </>
@@ -126,7 +128,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
         <div className="modal-overlay" onClick={() => setShowAPIToken(false)}>
           <div className="modal-content api-token-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>API Token Management</h2>
+              <h2>{t('user_menu.api_token_management')}</h2>
               <button className="modal-close" onClick={() => setShowAPIToken(false)}>×</button>
             </div>
             <div className="modal-body">

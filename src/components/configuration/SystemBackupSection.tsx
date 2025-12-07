@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import apiService from '../../services/api';
 import { useToast } from '../ToastContainer';
 import { logger } from '../../utils/logger';
@@ -16,6 +17,7 @@ interface SystemBackupFile {
 }
 
 const SystemBackupSection: React.FC = () => {
+  const { t } = useTranslation();
   const { showToast } = useToast();
 
   // State
@@ -78,10 +80,10 @@ const SystemBackupSection: React.FC = () => {
         throw new Error('Failed to save system backup settings');
       }
 
-      showToast('System backup settings saved successfully', 'success');
+      showToast(t('system_backup.toast_settings_saved'), 'success');
     } catch (error) {
       logger.error('Error saving system backup settings:', error);
-      showToast(`Failed to save settings: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
+      showToast(t('system_backup.toast_settings_failed', { error: error instanceof Error ? error.message : 'Unknown error' }), 'error');
     } finally {
       setIsSavingSettings(false);
     }
@@ -90,7 +92,7 @@ const SystemBackupSection: React.FC = () => {
   const handleManualBackup = async () => {
     try {
       setIsCreatingBackup(true);
-      showToast('Creating system backup...', 'info');
+      showToast(t('system_backup.toast_creating'), 'info');
 
       const baseUrl = await apiService.getBaseUrl();
 
@@ -113,7 +115,7 @@ const SystemBackupSection: React.FC = () => {
       }
 
       const result = await response.json();
-      showToast(`System backup created successfully: ${result.dirname}`, 'success');
+      showToast(t('system_backup.toast_backup_created', { dirname: result.dirname }), 'success');
 
       // Refresh backup list if modal is open
       if (isBackupModalOpen) {
@@ -121,7 +123,7 @@ const SystemBackupSection: React.FC = () => {
       }
     } catch (error) {
       logger.error('Error creating system backup:', error);
-      showToast(`Failed to create backup: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
+      showToast(t('system_backup.toast_backup_failed', { error: error instanceof Error ? error.message : 'Unknown error' }), 'error');
     } finally {
       setIsCreatingBackup(false);
     }
@@ -145,7 +147,7 @@ const SystemBackupSection: React.FC = () => {
       setIsBackupModalOpen(true);
     } catch (error) {
       logger.error('Error loading system backup list:', error);
-      showToast(`Failed to load backup list: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
+      showToast(t('system_backup.toast_list_failed', { error: error instanceof Error ? error.message : 'Unknown error' }), 'error');
     } finally {
       setIsLoadingBackups(false);
     }
@@ -153,7 +155,7 @@ const SystemBackupSection: React.FC = () => {
 
   const handleDownloadBackup = async (dirname: string) => {
     try {
-      showToast('Downloading system backup...', 'info');
+      showToast(t('system_backup.toast_downloading'), 'info');
       const baseUrl = await apiService.getBaseUrl();
 
       const response = await fetch(`${baseUrl}/api/system/backup/download/${encodeURIComponent(dirname)}`, {
@@ -174,15 +176,15 @@ const SystemBackupSection: React.FC = () => {
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
 
-      showToast('System backup downloaded successfully', 'success');
+      showToast(t('system_backup.toast_downloaded'), 'success');
     } catch (error) {
       logger.error('Error downloading system backup:', error);
-      showToast(`Failed to download backup: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
+      showToast(t('system_backup.toast_download_failed', { error: error instanceof Error ? error.message : 'Unknown error' }), 'error');
     }
   };
 
   const handleDeleteBackup = async (dirname: string) => {
-    if (!confirm(`Are you sure you want to delete the system backup "${dirname}"?`)) {
+    if (!confirm(t('system_backup.confirm_delete', { dirname }))) {
       return;
     }
 
@@ -206,12 +208,12 @@ const SystemBackupSection: React.FC = () => {
         throw new Error('Failed to delete system backup');
       }
 
-      showToast('System backup deleted successfully', 'success');
+      showToast(t('system_backup.toast_deleted'), 'success');
       // Refresh the backup list
       handleShowBackups();
     } catch (error) {
       logger.error('Error deleting system backup:', error);
-      showToast(`Failed to delete backup: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
+      showToast(t('system_backup.toast_delete_failed', { error: error instanceof Error ? error.message : 'Unknown error' }), 'error');
     }
   };
 
@@ -231,7 +233,7 @@ const SystemBackupSection: React.FC = () => {
 
   return (
     <div className="settings-section" style={{ marginTop: '2rem' }}>
-      <h3>🗄️ System Backup Management</h3>
+      <h3>{t('system_backup.title')}</h3>
 
       <div style={{
         backgroundColor: 'var(--ctp-surface0)',
@@ -239,12 +241,9 @@ const SystemBackupSection: React.FC = () => {
         borderRadius: '8px',
         marginBottom: '1.5rem'
       }}>
-        <h4 style={{ marginTop: 0, marginBottom: '0.5rem' }}>About System Backups</h4>
+        <h4 style={{ marginTop: 0, marginBottom: '0.5rem' }}>{t('system_backup.about_title')}</h4>
         <p style={{ color: 'var(--ctp-subtext0)', margin: 0, fontSize: '0.9rem', lineHeight: '1.6' }}>
-          System backups export your complete MeshMonitor database including message history, node information,
-          telemetry data, user accounts, and system settings. Each backup is a collection of JSON files with
-          integrity checksums and version metadata. Use system backups for disaster recovery, server migration,
-          or database rollback.
+          {t('system_backup.about_description')}
         </p>
         <div style={{
           backgroundColor: 'var(--ctp-yellow)',
@@ -254,16 +253,15 @@ const SystemBackupSection: React.FC = () => {
           marginTop: '1rem',
           fontSize: '0.9rem'
         }}>
-          <strong>⚠️ Restore Note:</strong> To restore a system backup, you must set the <code>RESTORE_FROM_BACKUP</code> environment
-          variable and restart the container. Restores cannot be done through the UI for safety reasons.
+          <strong>{t('system_backup.restore_warning_title')}</strong> {t('system_backup.restore_warning_description')}
         </div>
       </div>
 
       {/* Manual Backup */}
       <div style={{ marginBottom: '1.5rem' }}>
-        <h4 style={{ marginBottom: '0.5rem' }}>Manual Backup</h4>
+        <h4 style={{ marginBottom: '0.5rem' }}>{t('system_backup.manual_title')}</h4>
         <p style={{ color: 'var(--ctp-subtext0)', marginBottom: '1rem', fontSize: '0.9rem' }}>
-          Create a system backup on demand. Backup will be saved to <code>/data/system-backups</code>.
+          {t('system_backup.manual_description')}
         </p>
         <div className="settings-buttons">
           <button
@@ -271,23 +269,23 @@ const SystemBackupSection: React.FC = () => {
             onClick={handleManualBackup}
             disabled={isCreatingBackup}
           >
-            {isCreatingBackup ? 'Creating...' : '📦 Create Backup Now'}
+            {isCreatingBackup ? t('system_backup.creating') : t('system_backup.create_button')}
           </button>
           <button
             className="reset-button"
             onClick={handleShowBackups}
             disabled={isLoadingBackups}
           >
-            {isLoadingBackups ? 'Loading...' : '📋 View Saved Backups'}
+            {isLoadingBackups ? t('backup_management.loading') : t('system_backup.view_backups')}
           </button>
         </div>
       </div>
 
       {/* Automated Backups */}
       <div style={{ marginBottom: '1.5rem' }}>
-        <h4 style={{ marginBottom: '0.5rem' }}>Automated Backups</h4>
+        <h4 style={{ marginBottom: '0.5rem' }}>{t('system_backup.auto_title')}</h4>
         <p style={{ color: 'var(--ctp-subtext0)', marginBottom: '1rem', fontSize: '0.9rem' }}>
-          Schedule automatic system backups to run daily at a specific time.
+          {t('system_backup.auto_description')}
         </p>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -298,14 +296,14 @@ const SystemBackupSection: React.FC = () => {
               onChange={(e) => setAutoBackupEnabled(e.target.checked)}
               style={{ width: '20px', height: '20px', cursor: 'pointer' }}
             />
-            <span>Enable automatic system backups</span>
+            <span>{t('system_backup.enable_auto')}</span>
           </label>
 
           {autoBackupEnabled && (
             <>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
-                  Backup Time (24-hour format)
+                  {t('system_backup.backup_time')}
                 </label>
                 <input
                   type="time"
@@ -324,7 +322,7 @@ const SystemBackupSection: React.FC = () => {
 
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
-                  Maximum Backups to Keep
+                  {t('system_backup.max_backups')}
                 </label>
                 <input
                   type="number"
@@ -343,7 +341,7 @@ const SystemBackupSection: React.FC = () => {
                   }}
                 />
                 <p style={{ color: 'var(--ctp-subtext0)', fontSize: '0.85rem', marginTop: '0.25rem' }}>
-                  Older backups will be automatically deleted when this limit is exceeded.
+                  {t('system_backup.max_backups_hint')}
                 </p>
               </div>
             </>
@@ -355,7 +353,7 @@ const SystemBackupSection: React.FC = () => {
               onClick={handleSaveBackupSettings}
               disabled={isSavingSettings}
             >
-              {isSavingSettings ? 'Saving...' : '💾 Save Backup Settings'}
+              {isSavingSettings ? t('common.saving') : t('system_backup.save_settings')}
             </button>
           </div>
         </div>
@@ -366,11 +364,11 @@ const SystemBackupSection: React.FC = () => {
         <div className="modal-overlay" onClick={() => setIsBackupModalOpen(false)}>
           <div className="modal-content backup-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>📦 Saved System Backups</h3>
+              <h3>{t('system_backup.modal_title')}</h3>
               <button
                 className="modal-close"
                 onClick={() => setIsBackupModalOpen(false)}
-                aria-label="Close"
+                aria-label={t('common.close')}
               >
                 ✕
               </button>
@@ -379,19 +377,19 @@ const SystemBackupSection: React.FC = () => {
             <div className="backup-list">
               {backupList.length === 0 ? (
                 <p style={{ textAlign: 'center', color: 'var(--ctp-subtext0)', padding: '2rem' }}>
-                  No system backups found. Create one to get started!
+                  {t('system_backup.no_backups')}
                 </p>
               ) : (
                 <table className="backup-table">
                   <thead>
                     <tr>
-                      <th>Backup Directory</th>
-                      <th>Created</th>
-                      <th>Type</th>
-                      <th>Version</th>
-                      <th>Tables</th>
-                      <th>Size</th>
-                      <th>Actions</th>
+                      <th>{t('system_backup.table_directory')}</th>
+                      <th>{t('system_backup.table_created')}</th>
+                      <th>{t('system_backup.table_type')}</th>
+                      <th>{t('system_backup.table_version')}</th>
+                      <th>{t('system_backup.table_tables')}</th>
+                      <th>{t('system_backup.table_size')}</th>
+                      <th>{t('system_backup.table_actions')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -401,7 +399,7 @@ const SystemBackupSection: React.FC = () => {
                         <td>{formatTimestamp(backup.timestamp)}</td>
                         <td>
                           <span className={`backup-type-badge ${backup.type}`}>
-                            {backup.type === 'automatic' ? '🤖 Auto' : '👤 Manual'}
+                            {backup.type === 'automatic' ? t('backup_management.type_auto') : t('backup_management.type_manual')}
                           </span>
                         </td>
                         <td style={{ fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
@@ -414,14 +412,14 @@ const SystemBackupSection: React.FC = () => {
                             <button
                               className="backup-action-button download"
                               onClick={() => handleDownloadBackup(backup.dirname)}
-                              title="Download backup"
+                              title={t('backup_management.download')}
                             >
                               📥
                             </button>
                             <button
                               className="backup-action-button delete"
                               onClick={() => handleDeleteBackup(backup.dirname)}
-                              title="Delete backup"
+                              title={t('backup_management.delete')}
                             >
                               🗑️
                             </button>
@@ -439,7 +437,7 @@ const SystemBackupSection: React.FC = () => {
                 className="reset-button"
                 onClick={() => setIsBackupModalOpen(false)}
               >
-                Close
+                {t('common.close')}
               </button>
             </div>
           </div>

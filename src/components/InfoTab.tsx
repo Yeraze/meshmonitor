@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { DeviceInfo, Channel } from '../types/device';
 import { MeshMessage } from '../types/message';
 import { ConnectionStatus } from '../types/ui';
@@ -62,6 +63,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
   dateFormat = 'MM/DD/YYYY',
   isAuthenticated = false
 }) => {
+  const { t } = useTranslation();
   const { showToast } = useToast();
   const [longestActiveSegment, setLongestActiveSegment] = useState<RouteSegment | null>(null);
   const [recordHolderSegment, setRecordHolderSegment] = useState<RouteSegment | null>(null);
@@ -168,13 +170,13 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
     try {
       await apiService.clearRecordHolderSegment();
       setRecordHolderSegment(null);
-      showToast('Record holder cleared successfully', 'success');
+      showToast(t('info.record_cleared'), 'success');
     } catch (error) {
       logger.error('Error clearing record holder:', error);
       if (error instanceof Error && error.message.includes('403')) {
-        showToast('Insufficient permissions to clear record holder', 'error');
+        showToast(t('info.record_clear_permission'), 'error');
       } else {
-        showToast('Failed to clear record holder. Please try again.', 'error');
+        showToast(t('info.record_clear_failed'), 'error');
       }
     }
   };
@@ -234,76 +236,76 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
 
   return (
     <div className="tab-content">
-      <h2>Device Information & Configuration</h2>
+      <h2>{t('info.title')}</h2>
       <div className="device-info">
         <div className="info-section">
-          <h3>Connection Status</h3>
+          <h3>{t('info.connection_status')}</h3>
           {isAuthenticated && (
-            <p><strong>Node Address:</strong> {nodeAddress}</p>
+            <p><strong>{t('info.node_address')}</strong> {nodeAddress}</p>
           )}
           {deviceConfig?.basic?.nodeId && (
-            <p><strong>Node ID:</strong> {deviceConfig.basic.nodeId}</p>
+            <p><strong>{t('info.node_id')}</strong> {deviceConfig.basic.nodeId}</p>
           )}
           {deviceConfig?.basic?.nodeName && (
-            <p><strong>Node Name:</strong> {deviceConfig.basic.nodeName}</p>
+            <p><strong>{t('info.node_name')}</strong> {deviceConfig.basic.nodeName}</p>
           )}
           {deviceConfig?.basic && (
-            <p><strong>Firmware Version:</strong> {deviceConfig.basic.firmwareVersion || 'Not available'}</p>
+            <p><strong>{t('info.firmware_version')}</strong> {deviceConfig.basic.firmwareVersion || t('info.not_available')}</p>
           )}
-          <p><strong>Connection Status:</strong> <span className={`status-text ${connectionStatus}`}>{connectionStatus}</span></p>
+          <p><strong>{t('info.connection_status_label')}</strong> <span className={`status-text ${connectionStatus}`}>{connectionStatus}</span></p>
           {(localStats?.uptimeSeconds !== undefined || localStats?.hostUptimeSeconds !== undefined) && (
-            <p><strong>Uptime:</strong> {formatUptime(localStats.hostUptimeSeconds ?? localStats.uptimeSeconds)}</p>
+            <p><strong>{t('info.uptime')}</strong> {formatUptime(localStats.hostUptimeSeconds ?? localStats.uptimeSeconds)}</p>
           )}
-          <p><strong>Uses TLS:</strong> {deviceInfo?.meshtasticUseTls ? 'Yes' : 'No'}</p>
+          <p><strong>{t('info.uses_tls')}</strong> {deviceInfo?.meshtasticUseTls ? t('common.yes') : t('common.no')}</p>
           {deviceInfo?.deviceMetadata?.rebootCount !== undefined && (
-            <p><strong>Reboot Count:</strong> {deviceInfo.deviceMetadata.rebootCount}</p>
+            <p><strong>{t('info.reboot_count')}</strong> {deviceInfo.deviceMetadata.rebootCount}</p>
           )}
         </div>
 
         {deviceConfig && (
           <>
             <div className="info-section">
-              <h3>LoRa Radio Configuration</h3>
+              <h3>{t('info.lora_config')}</h3>
               {(() => {
                 const localNode = nodes.find(n => n.user?.id === currentNodeId);
                 const roleName = getDeviceRoleName(localNode?.user?.role);
-                return <p><strong>Device Role:</strong> {roleName}</p>;
+                return <p><strong>{t('info.device_role')}</strong> {roleName}</p>;
               })()}
-              <p><strong>Region:</strong> {deviceConfig.radio?.region || 'Unknown'}</p>
-              <p><strong>Modem Preset:</strong> {deviceConfig.radio?.modemPreset || 'Unknown'}</p>
-              <p><strong>Channel Number:</strong> {deviceConfig.radio?.channelNum !== undefined ? deviceConfig.radio.channelNum : 'Unknown'}</p>
-              <p><strong>Frequency:</strong> {deviceConfig.radio?.frequency || 'Unknown'}</p>
-              <p><strong>Hop Limit:</strong> {deviceConfig.radio?.hopLimit !== undefined ? deviceConfig.radio.hopLimit : 'Unknown'}</p>
-              <p><strong>TX Power:</strong> {deviceConfig.radio?.txPower !== undefined ? `${deviceConfig.radio.txPower} dBm` : 'Unknown'}</p>
-              <p><strong>TX Enabled:</strong> {deviceConfig.radio?.txEnabled !== undefined ? (deviceConfig.radio.txEnabled ? 'Yes' : 'No') : 'Unknown'}</p>
-              <p><strong>Boosted RX Gain:</strong> {deviceConfig.radio?.sx126xRxBoostedGain !== undefined ? (deviceConfig.radio.sx126xRxBoostedGain ? 'Yes' : 'No') : 'Unknown'}</p>
+              <p><strong>{t('info.region')}</strong> {deviceConfig.radio?.region || t('info.unknown')}</p>
+              <p><strong>{t('info.modem_preset')}</strong> {deviceConfig.radio?.modemPreset || t('info.unknown')}</p>
+              <p><strong>{t('info.channel_number')}</strong> {deviceConfig.radio?.channelNum !== undefined ? deviceConfig.radio.channelNum : t('info.unknown')}</p>
+              <p><strong>{t('info.frequency')}</strong> {deviceConfig.radio?.frequency || t('info.unknown')}</p>
+              <p><strong>{t('info.hop_limit')}</strong> {deviceConfig.radio?.hopLimit !== undefined ? deviceConfig.radio.hopLimit : t('info.unknown')}</p>
+              <p><strong>{t('info.tx_power')}</strong> {deviceConfig.radio?.txPower !== undefined ? `${deviceConfig.radio.txPower} dBm` : t('info.unknown')}</p>
+              <p><strong>{t('info.tx_enabled')}</strong> {deviceConfig.radio?.txEnabled !== undefined ? (deviceConfig.radio.txEnabled ? t('common.yes') : t('common.no')) : t('info.unknown')}</p>
+              <p><strong>{t('info.boosted_rx_gain')}</strong> {deviceConfig.radio?.sx126xRxBoostedGain !== undefined ? (deviceConfig.radio.sx126xRxBoostedGain ? t('common.yes') : t('common.no')) : t('info.unknown')}</p>
             </div>
 
             {isAuthenticated && (
               <div className="info-section">
-                <h3>MQTT Configuration</h3>
-                <p><strong>Enabled:</strong> {deviceConfig.mqtt?.enabled ? 'Yes' : 'No'}</p>
-                <p><strong>Server:</strong> {deviceConfig.mqtt?.server || 'Not configured'}</p>
-                <p><strong>Username:</strong> {deviceConfig.mqtt?.username || 'Not set'}</p>
-                <p><strong>Encryption Enabled:</strong> {deviceConfig.mqtt?.encryption ? 'Yes' : 'No'}</p>
-                <p><strong>JSON Format:</strong> {deviceConfig.mqtt?.json ? 'Enabled' : 'Disabled'}</p>
-                <p><strong>TLS Enabled:</strong> {deviceConfig.mqtt?.tls ? 'Yes' : 'No'}</p>
-                <p><strong>Root Topic:</strong> {deviceConfig.mqtt?.rootTopic || 'msh'}</p>
+                <h3>{t('info.mqtt_config')}</h3>
+                <p><strong>{t('info.mqtt_enabled')}</strong> {deviceConfig.mqtt?.enabled ? t('common.yes') : t('common.no')}</p>
+                <p><strong>{t('info.mqtt_server')}</strong> {deviceConfig.mqtt?.server || t('info.not_configured')}</p>
+                <p><strong>{t('info.mqtt_username')}</strong> {deviceConfig.mqtt?.username || t('info.not_set')}</p>
+                <p><strong>{t('info.mqtt_encryption')}</strong> {deviceConfig.mqtt?.encryption ? t('common.yes') : t('common.no')}</p>
+                <p><strong>{t('info.mqtt_json')}</strong> {deviceConfig.mqtt?.json ? t('common.enabled') : t('common.disabled')}</p>
+                <p><strong>{t('info.mqtt_tls')}</strong> {deviceConfig.mqtt?.tls ? t('common.yes') : t('common.no')}</p>
+                <p><strong>{t('info.mqtt_root_topic')}</strong> {deviceConfig.mqtt?.rootTopic || 'msh'}</p>
               </div>
             )}
           </>
         )}
 
         <div className="info-section">
-          <h3>Application Information</h3>
-          <p><strong>Version:</strong> {version}</p>
-          {loadingServerInfo && <p>Loading...</p>}
+          <h3>{t('info.app_info')}</h3>
+          <p><strong>{t('info.version')}</strong> {version}</p>
+          {loadingServerInfo && <p>{t('common.loading_indicator')}</p>}
           {!loadingServerInfo && serverInfo && (
             <p>
-              <strong>Timezone:</strong> {serverInfo.timezone}
+              <strong>{t('info.timezone')}</strong> {serverInfo.timezone}
               {!serverInfo.timezoneProvided && (
                 <span style={{ fontSize: '0.85em', color: '#888', marginLeft: '0.5rem' }}>
-                  (default)
+                  {t('info.timezone_default')}
                 </span>
               )}
             </p>
@@ -311,19 +313,19 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
         </div>
 
         <div className="info-section">
-          <h3>Virtual Node Server</h3>
-          {loadingVirtualNode && <p>Loading...</p>}
+          <h3>{t('info.virtual_node')}</h3>
+          {loadingVirtualNode && <p>{t('common.loading_indicator')}</p>}
           {!loadingVirtualNode && virtualNodeStatus && (
             <>
-              <p><strong>Status:</strong> {virtualNodeStatus.enabled ? 'Enabled' : 'Disabled'}</p>
+              <p><strong>{t('info.virtual_node_status')}</strong> {virtualNodeStatus.enabled ? t('common.enabled') : t('common.disabled')}</p>
               {virtualNodeStatus.enabled && (
                 <>
-                  <p><strong>Server Running:</strong> {virtualNodeStatus.isRunning ? 'Yes' : 'No'}</p>
-                  <p><strong>Connected Clients:</strong> {virtualNodeStatus.clientCount}</p>
+                  <p><strong>{t('info.server_running')}</strong> {virtualNodeStatus.isRunning ? t('common.yes') : t('common.no')}</p>
+                  <p><strong>{t('info.connected_clients')}</strong> {virtualNodeStatus.clientCount}</p>
 
                   {virtualNodeStatus.clients && virtualNodeStatus.clients.length > 0 && (
                     <div style={{ marginTop: '0.75rem', fontSize: '0.9em' }}>
-                      <strong>Client Details:</strong>
+                      <strong>{t('info.client_details')}</strong>
                       {virtualNodeStatus.clients.map((client: any) => (
                         <div key={client.id} style={{
                           marginTop: '0.5rem',
@@ -331,10 +333,10 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
                           backgroundColor: 'var(--ctp-surface0)',
                           borderRadius: '4px'
                         }}>
-                          <p style={{ margin: '0.25rem 0' }}><strong>ID:</strong> {client.id}</p>
-                          <p style={{ margin: '0.25rem 0' }}><strong>IP:</strong> {client.ip}</p>
-                          <p style={{ margin: '0.25rem 0' }}><strong>Connected:</strong> {formatDateTime(new Date(client.connectedAt), timeFormat, dateFormat)}</p>
-                          <p style={{ margin: '0.25rem 0' }}><strong>Last Activity:</strong> {formatDateTime(new Date(client.lastActivity), timeFormat, dateFormat)}</p>
+                          <p style={{ margin: '0.25rem 0' }}><strong>{t('info.client_id')}</strong> {client.id}</p>
+                          <p style={{ margin: '0.25rem 0' }}><strong>{t('info.client_ip')}</strong> {client.ip}</p>
+                          <p style={{ margin: '0.25rem 0' }}><strong>{t('info.client_connected')}</strong> {formatDateTime(new Date(client.connectedAt), timeFormat, dateFormat)}</p>
+                          <p style={{ margin: '0.25rem 0' }}><strong>{t('info.client_last_activity')}</strong> {formatDateTime(new Date(client.lastActivity), timeFormat, dateFormat)}</p>
                         </div>
                       ))}
                     </div>
@@ -343,105 +345,105 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
               )}
 
               <p style={{ fontSize: '0.9em', color: '#888', marginTop: '0.75rem' }}>
-                The Virtual Node Server allows multiple Meshtastic mobile apps to connect simultaneously, reducing load on your physical node.
+                {t('info.virtual_node_description')}
               </p>
               <p style={{ fontSize: '0.85em', color: '#999', marginTop: '0.5rem', fontStyle: 'italic' }}>
-                Note: Admin commands are blocked for security. See .env.example for configuration details.
+                {t('info.virtual_node_note')}
               </p>
             </>
           )}
           {!loadingVirtualNode && !virtualNodeStatus && (
-            <p className="no-data">Virtual Node status unavailable</p>
+            <p className="no-data">{t('info.virtual_node_unavailable')}</p>
           )}
         </div>
 
         <div className="info-section">
-          <h3>Network Statistics</h3>
-          <p><strong>Total Nodes:</strong> {nodes.length}</p>
-          <p><strong>Total Channels:</strong> {channels.length}</p>
-          <p><strong>Total Messages:</strong> {messages.length}</p>
-          <p><strong>Active Message Channels:</strong> {getAvailableChannels().length}</p>
+          <h3>{t('info.network_stats')}</h3>
+          <p><strong>{t('info.total_nodes')}</strong> {nodes.length}</p>
+          <p><strong>{t('info.total_channels')}</strong> {channels.length}</p>
+          <p><strong>{t('info.total_messages')}</strong> {messages.length}</p>
+          <p><strong>{t('info.active_channels')}</strong> {getAvailableChannels().length}</p>
           {localStats?.numPacketsTx !== undefined ? (
             <>
-              <p><strong>Packets TX:</strong> {localStats.numPacketsTx.toLocaleString()}</p>
-              <p><strong>Packets RX:</strong> {localStats.numPacketsRx?.toLocaleString() || 'N/A'}</p>
-              <p><strong>RX Bad:</strong> {localStats.numPacketsRxBad?.toLocaleString() || '0'}</p>
-              <p><strong>RX Duplicate:</strong> {localStats.numRxDupe?.toLocaleString() || '0'}</p>
-              <p><strong>TX Dropped:</strong> {localStats.numTxDropped?.toLocaleString() || '0'}</p>
+              <p><strong>{t('info.packets_tx')}</strong> {localStats.numPacketsTx.toLocaleString()}</p>
+              <p><strong>{t('info.packets_rx')}</strong> {localStats.numPacketsRx?.toLocaleString() || t('info.na')}</p>
+              <p><strong>{t('info.rx_bad')}</strong> {localStats.numPacketsRxBad?.toLocaleString() || '0'}</p>
+              <p><strong>{t('info.rx_duplicate')}</strong> {localStats.numRxDupe?.toLocaleString() || '0'}</p>
+              <p><strong>{t('info.tx_dropped')}</strong> {localStats.numTxDropped?.toLocaleString() || '0'}</p>
             </>
           ) : localStats?.hostUptimeSeconds !== undefined ? (
             <p style={{ fontSize: '0.9em', color: '#888', marginTop: '0.5rem' }}>
-              Packet statistics not available. This device is sending HostMetrics (Linux-based device) instead of LocalStats.
+              {t('info.packet_stats_unavailable')}
             </p>
           ) : null}
         </div>
 
         {localStats?.hostUptimeSeconds !== undefined && (
           <div className="info-section">
-            <h3>Host System Metrics</h3>
+            <h3>{t('info.host_metrics')}</h3>
             <p style={{ fontSize: '0.9em', color: '#888', fontStyle: 'italic', marginBottom: '0.5rem' }}>
-              Linux-based device telemetry
+              {t('info.host_metrics_description')}
             </p>
             {localStats.hostUptimeSeconds !== undefined && (
-              <p><strong>Host Uptime:</strong> {formatUptime(localStats.hostUptimeSeconds)}</p>
+              <p><strong>{t('info.host_uptime')}</strong> {formatUptime(localStats.hostUptimeSeconds)}</p>
             )}
             {localStats.hostFreememBytes !== undefined && (
-              <p><strong>Free Memory:</strong> {(localStats.hostFreememBytes / 1024 / 1024).toFixed(0)} MB</p>
+              <p><strong>{t('info.free_memory')}</strong> {(localStats.hostFreememBytes / 1024 / 1024).toFixed(0)} MB</p>
             )}
             {localStats.hostDiskfree1Bytes !== undefined && (
-              <p><strong>Disk Free (/):</strong> {(localStats.hostDiskfree1Bytes / 1024 / 1024 / 1024).toFixed(2)} GB</p>
+              <p><strong>{t('info.disk_free_root')}</strong> {(localStats.hostDiskfree1Bytes / 1024 / 1024 / 1024).toFixed(2)} GB</p>
             )}
             {localStats.hostDiskfree2Bytes !== undefined && (
-              <p><strong>Disk Free (2):</strong> {(localStats.hostDiskfree2Bytes / 1024 / 1024 / 1024).toFixed(2)} GB</p>
+              <p><strong>{t('info.disk_free_2')}</strong> {(localStats.hostDiskfree2Bytes / 1024 / 1024 / 1024).toFixed(2)} GB</p>
             )}
             {localStats.hostDiskfree3Bytes !== undefined && (
-              <p><strong>Disk Free (3):</strong> {(localStats.hostDiskfree3Bytes / 1024 / 1024 / 1024).toFixed(2)} GB</p>
+              <p><strong>{t('info.disk_free_3')}</strong> {(localStats.hostDiskfree3Bytes / 1024 / 1024 / 1024).toFixed(2)} GB</p>
             )}
             {localStats.hostLoad1 !== undefined && (
-              <p><strong>Load Average:</strong> {(localStats.hostLoad1 / 100).toFixed(2)} / {(localStats.hostLoad5 / 100).toFixed(2)} / {(localStats.hostLoad15 / 100).toFixed(2)}</p>
+              <p><strong>{t('info.load_average')}</strong> {(localStats.hostLoad1 / 100).toFixed(2)} / {(localStats.hostLoad5 / 100).toFixed(2)} / {(localStats.hostLoad15 / 100).toFixed(2)}</p>
             )}
           </div>
         )}
 
         <div className="info-section">
-          <h3>Recent Activity</h3>
-          <p><strong>Last Message:</strong> {messages.length > 0 ? formatDateTime(messages[0].timestamp, timeFormat, dateFormat) : 'None'}</p>
-          <p><strong>Most Active Node:</strong> {
+          <h3>{t('info.recent_activity')}</h3>
+          <p><strong>{t('info.last_message')}</strong> {messages.length > 0 ? formatDateTime(messages[0].timestamp, timeFormat, dateFormat) : t('common.none')}</p>
+          <p><strong>{t('info.most_active_node')}</strong> {
             nodes.length > 0 ?
             nodes.reduce((prev, current) =>
               (prev.lastHeard || 0) > (current.lastHeard || 0) ? prev : current
-            ).user?.longName || 'Unknown' : 'None'
+            ).user?.longName || t('info.unknown') : t('common.none')
           }</p>
         </div>
 
         <div className="info-section">
-          <h3>Longest Active Route Segment</h3>
-          {loadingSegments && <p>Loading...</p>}
+          <h3>{t('info.longest_route')}</h3>
+          {loadingSegments && <p>{t('common.loading_indicator')}</p>}
           {!loadingSegments && longestActiveSegment && (
             <>
-              <p><strong>Distance:</strong> {formatDistance(longestActiveSegment.distanceKm, distanceUnit)}</p>
-              <p><strong>From:</strong> {longestActiveSegment.fromNodeName} ({longestActiveSegment.fromNodeId})</p>
-              <p><strong>To:</strong> {longestActiveSegment.toNodeName} ({longestActiveSegment.toNodeId})</p>
+              <p><strong>{t('info.distance')}</strong> {formatDistance(longestActiveSegment.distanceKm, distanceUnit)}</p>
+              <p><strong>{t('info.from')}</strong> {longestActiveSegment.fromNodeName} ({longestActiveSegment.fromNodeId})</p>
+              <p><strong>{t('info.to')}</strong> {longestActiveSegment.toNodeName} ({longestActiveSegment.toNodeId})</p>
               <p style={{ fontSize: '0.85em', color: '#888' }}>
-                Last seen: {formatDateTime(new Date(longestActiveSegment.timestamp), timeFormat, dateFormat)}
+                {t('info.last_seen')} {formatDateTime(new Date(longestActiveSegment.timestamp), timeFormat, dateFormat)}
               </p>
             </>
           )}
           {!loadingSegments && !longestActiveSegment && (
-            <p className="no-data">No active route segments found</p>
+            <p className="no-data">{t('info.no_active_routes')}</p>
           )}
         </div>
 
         <div className="info-section">
-          <h3>Record Holder Route Segment</h3>
-          {loadingSegments && <p>Loading...</p>}
+          <h3>{t('info.record_holder')}</h3>
+          {loadingSegments && <p>{t('common.loading_indicator')}</p>}
           {!loadingSegments && recordHolderSegment && (
             <>
-              <p><strong>Distance:</strong> {formatDistance(recordHolderSegment.distanceKm, distanceUnit)} 🏆</p>
-              <p><strong>From:</strong> {recordHolderSegment.fromNodeName} ({recordHolderSegment.fromNodeId})</p>
-              <p><strong>To:</strong> {recordHolderSegment.toNodeName} ({recordHolderSegment.toNodeId})</p>
+              <p><strong>{t('info.distance')}</strong> {formatDistance(recordHolderSegment.distanceKm, distanceUnit)} 🏆</p>
+              <p><strong>{t('info.from')}</strong> {recordHolderSegment.fromNodeName} ({recordHolderSegment.fromNodeId})</p>
+              <p><strong>{t('info.to')}</strong> {recordHolderSegment.toNodeName} ({recordHolderSegment.toNodeId})</p>
               <p style={{ fontSize: '0.85em', color: '#888' }}>
-                Achieved: {formatDateTime(new Date(recordHolderSegment.timestamp), timeFormat, dateFormat)}
+                {t('info.achieved')} {formatDateTime(new Date(recordHolderSegment.timestamp), timeFormat, dateFormat)}
               </p>
               {isAuthenticated && (
                 <button
@@ -449,26 +451,26 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
                   className="danger-button"
                   style={{ marginTop: '8px' }}
                 >
-                  Clear Record
+                  {t('info.clear_record')}
                 </button>
               )}
             </>
           )}
           {!loadingSegments && !recordHolderSegment && (
-            <p className="no-data">No record holder set yet</p>
+            <p className="no-data">{t('info.no_record_holder')}</p>
           )}
         </div>
 
         {!deviceConfig && (
           <div className="info-section">
-            <p className="no-data">Device configuration not available. Ensure connection is established.</p>
+            <p className="no-data">{t('info.device_config_unavailable')}</p>
           </div>
         )}
       </div>
 
       {currentNodeId && connectionStatus === 'connected' && (
         <div className="info-section-full-width">
-          <h3>Local Node Telemetry</h3>
+          <h3>{t('info.local_telemetry')}</h3>
           <TelemetryGraphs nodeId={currentNodeId} temperatureUnit={temperatureUnit} telemetryHours={telemetryHours} baseUrl={baseUrl} />
         </div>
       )}
@@ -493,20 +495,20 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
             maxWidth: '400px',
             border: '1px solid var(--ctp-surface2)'
           }}>
-            <h3 style={{ marginTop: 0 }}>Clear Record Holder?</h3>
-            <p>Are you sure you want to clear the record holder? This action cannot be undone.</p>
+            <h3 style={{ marginTop: 0 }}>{t('info.clear_record_title')}</h3>
+            <p>{t('info.clear_record_confirm')}</p>
             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
               <button
                 onClick={handleCancelConfirm}
                 className="btn-secondary"
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 onClick={handleConfirmClear}
                 className="danger-button"
               >
-                Clear Record
+                {t('info.clear_record')}
               </button>
             </div>
           </div>

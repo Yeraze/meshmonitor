@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface NodeIdentitySectionProps {
   longName: string;
@@ -21,10 +22,12 @@ const NodeIdentitySection: React.FC<NodeIdentitySectionProps> = ({
   isSaving,
   onSave
 }) => {
+  const { t } = useTranslation();
+
   return (
     <div className="settings-section">
       <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        Node Identity
+        {t('node_identity.title')}
         <a
           href="https://meshmonitor.org/features/device#node-identity"
           target="_blank"
@@ -34,15 +37,15 @@ const NodeIdentitySection: React.FC<NodeIdentitySectionProps> = ({
             color: '#89b4fa',
             textDecoration: 'none'
           }}
-          title="View Node Identity Documentation"
+          title={t('node_identity.view_docs')}
         >
           ❓
         </a>
       </h3>
       <div className="setting-item">
         <label htmlFor="longName">
-          Long Name
-          <span className="setting-description">Full name for your node (up to 40 characters)</span>
+          {t('node_identity.long_name')}
+          <span className="setting-description">{t('node_identity.long_name_description')}</span>
         </label>
         <input
           id="longName"
@@ -51,13 +54,13 @@ const NodeIdentitySection: React.FC<NodeIdentitySectionProps> = ({
           value={longName}
           onChange={(e) => setLongName(e.target.value)}
           className="setting-input"
-          placeholder="My Meshtastic Node"
+          placeholder={t('node_identity.long_name_placeholder')}
         />
       </div>
       <div className="setting-item">
         <label htmlFor="shortName">
-          Short Name
-          <span className="setting-description">Short identifier (up to 4 characters)</span>
+          {t('node_identity.short_name')}
+          <span className="setting-description">{t('node_identity.short_name_description')}</span>
         </label>
         <input
           id="shortName"
@@ -66,7 +69,7 @@ const NodeIdentitySection: React.FC<NodeIdentitySectionProps> = ({
           value={shortName}
           onChange={(e) => setShortName(e.target.value)}
           className="setting-input"
-          placeholder="MESH"
+          placeholder={t('node_identity.short_name_placeholder')}
         />
       </div>
       <div className="setting-item">
@@ -79,8 +82,8 @@ const NodeIdentitySection: React.FC<NodeIdentitySectionProps> = ({
             style={{ marginTop: '0.2rem', flexShrink: 0 }}
           />
           <div style={{ flex: 1 }}>
-            <div>Unmessageable</div>
-            <span className="setting-description">Prevent others from sending direct messages to this node</span>
+            <div>{t('node_identity.unmessageable')}</div>
+            <span className="setting-description">{t('node_identity.unmessageable_description')}</span>
           </div>
         </label>
       </div>
@@ -89,7 +92,7 @@ const NodeIdentitySection: React.FC<NodeIdentitySectionProps> = ({
         onClick={onSave}
         disabled={isSaving || !longName || !shortName}
       >
-        {isSaving ? 'Saving...' : 'Save Node Names'}
+        {isSaving ? t('common.saving') : t('node_identity.save_button')}
       </button>
     </div>
   );

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface NeighborInfoSectionProps {
   neighborInfoEnabled: boolean;
@@ -17,10 +18,12 @@ const NeighborInfoSection: React.FC<NeighborInfoSectionProps> = ({
   isSaving,
   onSave
 }) => {
+  const { t } = useTranslation();
+
   return (
     <div className="settings-section">
       <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        Neighbor Info Module
+        {t('neighbor_info.title')}
         <a
           href="https://meshmonitor.org/features/device#neighbor-info"
           target="_blank"
@@ -30,7 +33,7 @@ const NeighborInfoSection: React.FC<NeighborInfoSectionProps> = ({
             color: '#89b4fa',
             textDecoration: 'none'
           }}
-          title="View Neighbor Info Documentation"
+          title={t('neighbor_info.view_docs')}
         >
           ❓
         </a>
@@ -45,16 +48,16 @@ const NeighborInfoSection: React.FC<NeighborInfoSectionProps> = ({
             style={{ marginTop: '0.2rem', flexShrink: 0 }}
           />
           <div style={{ flex: 1 }}>
-            <div>Enable Neighbor Info</div>
-            <span className="setting-description">Broadcast neighbor information to the mesh</span>
+            <div>{t('neighbor_info.enable')}</div>
+            <span className="setting-description">{t('neighbor_info.enable_description')}</span>
           </div>
         </label>
       </div>
       {neighborInfoEnabled && (
         <div className="setting-item">
           <label htmlFor="neighborInfoInterval">
-            Update Interval (seconds)
-            <span className="setting-description">How often to send neighbor info (minimum: 14400 = 4 hours)</span>
+            {t('neighbor_info.interval')}
+            <span className="setting-description">{t('neighbor_info.interval_description')}</span>
           </label>
           <input
             id="neighborInfoInterval"
@@ -72,7 +75,7 @@ const NeighborInfoSection: React.FC<NeighborInfoSectionProps> = ({
         onClick={onSave}
         disabled={isSaving}
       >
-        {isSaving ? 'Saving...' : 'Save NeighborInfo Config'}
+        {isSaving ? t('common.saving') : t('neighbor_info.save_button')}
       </button>
     </div>
   );

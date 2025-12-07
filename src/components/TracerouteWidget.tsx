@@ -6,6 +6,7 @@
  */
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useQuery } from '@tanstack/react-query';
@@ -81,6 +82,7 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
   onSelectNode,
   canEdit = true,
 }) => {
+  const { t } = useTranslation();
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const [showMap, setShowMap] = useState(false); // Map hidden by default
@@ -369,7 +371,7 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
       return (
         <div className="traceroute-path-section">
           <div className="traceroute-path-label">{label}</div>
-          <div className="traceroute-no-data">No route data available</div>
+          <div className="traceroute-no-data">{t('dashboard.widget.traceroute.no_route_data')}</div>
         </div>
       );
     }
@@ -412,9 +414,9 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
           ⋮⋮
         </span>
         <h3 className="dashboard-chart-title">
-          Traceroute{targetNodeName ? `: ${targetNodeName}` : ''}
+          {t('dashboard.widget.traceroute.title')}{targetNodeName ? `: ${targetNodeName}` : ''}
         </h3>
-        <button className="dashboard-remove-btn" onClick={onRemove} title="Remove widget">
+        <button className="dashboard-remove-btn" onClick={onRemove} title={t('dashboard.remove_widget')}>
           ×
         </button>
       </div>
@@ -427,7 +429,7 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
               <input
                 type="text"
                 className="traceroute-search"
-                placeholder={targetNodeId ? 'Change node...' : 'Select a node...'}
+                placeholder={targetNodeId ? t('dashboard.widget.traceroute.change_node') : t('dashboard.widget.traceroute.select_node')}
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 onFocus={() => setShowSearch(true)}
@@ -453,27 +455,27 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
         {/* Traceroute display */}
         {!targetNodeId ? (
           <div className="traceroute-empty">
-            {canEdit ? 'Select a node above to view traceroute information.' : 'No node configured.'}
+            {canEdit ? t('dashboard.widget.traceroute.empty_editable') : t('dashboard.widget.traceroute.empty')}
           </div>
         ) : isLoading ? (
-          <div className="traceroute-loading">Loading traceroute data...</div>
+          <div className="traceroute-loading">{t('dashboard.widget.traceroute.loading')}</div>
         ) : !traceroute ? (
-          <div className="traceroute-no-data">No traceroute data available for this node.</div>
+          <div className="traceroute-no-data">{t('dashboard.widget.traceroute.no_data')}</div>
         ) : (
           <div className="traceroute-details">
             <div className="traceroute-header-row">
               <div className="traceroute-timestamp">
-                Last: {formatTimestamp(traceroute.timestamp || traceroute.createdAt || 0)}
+                {t('dashboard.widget.traceroute.last_traceroute')}: {formatTimestamp(traceroute.timestamp || traceroute.createdAt || 0)}
               </div>
               {mapData && mapData.nodes.length >= 2 && (
                 <button 
                   className="traceroute-map-toggle-inline"
                   onClick={() => setShowMap(!showMap)}
-                  title={showMap ? 'Hide map' : 'Show map'}
+                  title={showMap ? t('dashboard.widget.traceroute.hide_map') : t('dashboard.widget.traceroute.show_map')}
                 >
                   {showMap ? '📝 Text' : '🗺️ Map'}
                   {mapData.nodes.length < (mapData.forwardPositions.length + mapData.backPositions.length) / 2 && (
-                    <span className="traceroute-map-warning" title="Some nodes have no position data">⚠️</span>
+                    <span className="traceroute-map-warning" title={t('dashboard.widget.traceroute.no_position_warning')}>⚠️</span>
                   )}
                 </button>
               )}
@@ -543,8 +545,8 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
                       ))}
                     </MapContainer>
                     <div className="traceroute-map-legend">
-                      <span className="legend-item"><span className="legend-color" style={{ background: '#4CAF50' }}></span> Forward</span>
-                      <span className="legend-item"><span className="legend-color" style={{ background: '#2196F3' }}></span> Return</span>
+                      <span className="legend-item"><span className="legend-color" style={{ background: '#4CAF50' }}></span> {t('dashboard.widget.traceroute.forward')}</span>
+                      <span className="legend-item"><span className="legend-color" style={{ background: '#2196F3' }}></span> {t('dashboard.widget.traceroute.return')}</span>
                     </div>
                   </div>
               </div>
@@ -554,7 +556,7 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
             {!showMap && (
               <>
                 {renderRoute(
-                  'Forward Path:',
+                  t('dashboard.widget.traceroute.forward_path'),
                   traceroute.fromNodeNum,
                   traceroute.toNodeNum,
                   traceroute.route,
@@ -562,7 +564,7 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
                 )}
 
                 {renderRoute(
-                  'Return Path:',
+                  t('dashboard.widget.traceroute.return_path'),
                   traceroute.toNodeNum,
                   traceroute.fromNodeNum,
                   traceroute.routeBack,

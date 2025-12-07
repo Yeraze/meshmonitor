@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { PacketLog, PacketFilters } from '../types/packet';
 import { clearPackets, exportPackets } from '../services/packetApi';
@@ -31,6 +32,7 @@ const safeJsonParse = <T,>(value: string | null, fallback: T): T => {
 };
 
 const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNodeClick }) => {
+  const { t } = useTranslation();
   const { hasPermission, authStatus } = useAuth();
   const { timeFormat, dateFormat } = useSettings();
   const { config: deviceInfo } = useDeviceConfig();
@@ -149,11 +151,11 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
   // Handle clear packets
   const handleClear = async () => {
     if (!authStatus?.user?.isAdmin) {
-      alert('Only administrators can clear packet logs');
+      alert(t('packet_monitor.admin_only'));
       return;
     }
 
-    if (!confirm('Are you sure you want to clear all packet logs?')) {
+    if (!confirm(t('packet_monitor.confirm_clear'))) {
       return;
     }
 
@@ -162,7 +164,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
       fetchPackets();
     } catch (error) {
       console.error('Failed to clear packets:', error);
-      alert('Failed to clear packet logs');
+      alert(t('packet_monitor.clear_failed'));
     }
   };
 
@@ -243,7 +245,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
       exportPackets(filters);
     } catch (error) {
       console.error('Failed to export packets:', error);
-      alert('Failed to export packets');
+      alert(t('packet_monitor.export_failed'));
     }
   };
 
@@ -266,15 +268,14 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     return (
       <div className="packet-monitor-panel">
         <div className="packet-monitor-header">
-          <h3>Mesh Traffic Monitor</h3>
+          <h3>{t('packet_monitor.title')}</h3>
           <button className="close-btn" onClick={onClose}>
             ×
           </button>
         </div>
         <div className="packet-monitor-no-permission">
           <p>
-            You need both <strong>channels:read</strong> and <strong>messages:read</strong> permissions to view packet
-            logs.
+            {t('packet_monitor.no_permission')}
           </p>
         </div>
       </div>
@@ -285,38 +286,38 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     <>
       <div className="packet-monitor-panel">
         <div className="packet-monitor-header">
-          <h3>Mesh Traffic Monitor</h3>
+          <h3>{t('packet_monitor.title')}</h3>
           <div
             className="packet-count"
-            title={`Showing ${packets.length} most recent packets. Export will include all ${total} packets.`}
+            title={t('packet_monitor.count_tooltip', { shown: packets.length, total })}
           >
-            {packets.length} shown / {total} total
+            {t('packet_monitor.count', { shown: packets.length, total })}
           </div>
           <div className="header-controls">
             <button
               className="control-btn"
               onClick={() => setAutoScroll(!autoScroll)}
-              title={autoScroll ? 'Pause auto-scroll' : 'Resume auto-scroll'}
+              title={autoScroll ? t('packet_monitor.pause_autoscroll') : t('packet_monitor.resume_autoscroll')}
             >
               {autoScroll ? '⏸️' : '▶️'}
             </button>
-            <button className="control-btn" onClick={() => setShowFilters(!showFilters)} title="Toggle filters">
+            <button className="control-btn" onClick={() => setShowFilters(!showFilters)} title={t('packet_monitor.toggle_filters')}>
               🔍
             </button>
             <button
               className="control-btn"
               onClick={handleExport}
-              title="Export packets to JSONL"
+              title={t('packet_monitor.export_title')}
               disabled={total === 0}
             >
               📥
             </button>
             {authStatus?.user?.isAdmin && (
-              <button className="control-btn" onClick={handleClear} title="Clear all packets">
+              <button className="control-btn" onClick={handleClear} title={t('packet_monitor.clear_all')}>
                 🗑️
               </button>
             )}
-            <button className="control-btn" onClick={handlePopout} title="Pop out to new window">
+            <button className="control-btn" onClick={handlePopout} title={t('packet_monitor.popout')}>
               ⧉
             </button>
             <button className="close-btn" onClick={onClose}>
@@ -331,7 +332,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
               value={filters.portnum ?? ''}
               onChange={e => setFilters({ ...filters, portnum: e.target.value ? parseInt(e.target.value) : undefined })}
             >
-              <option value="">All Types</option>
+              <option value="">{t('packet_monitor.filter.all_types')}</option>
               <option value="1">TEXT_MESSAGE</option>
               <option value="3">POSITION</option>
               <option value="4">NODEINFO</option>
@@ -351,9 +352,9 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                 })
               }
             >
-              <option value="">All Packets</option>
-              <option value="true">Encrypted Only</option>
-              <option value="false">Decoded Only</option>
+              <option value="">{t('packet_monitor.filter.all_packets')}</option>
+              <option value="true">{t('packet_monitor.filter.encrypted_only')}</option>
+              <option value="false">{t('packet_monitor.filter.decoded_only')}</option>
             </select>
 
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
@@ -363,11 +364,11 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                 onChange={e => setHideOwnPackets(e.target.checked)}
                 style={{ cursor: 'pointer' }}
               />
-              <span>Hide Own Packets</span>
+              <span>{t('packet_monitor.filter.hide_own')}</span>
             </label>
 
             <button onClick={() => setFilters({})} className="clear-filters-btn">
-              Clear Filters
+              {t('packet_monitor.filter.clear')}
             </button>
           </div>
         )}
@@ -385,13 +386,13 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                 border: '1px solid var(--warning-border, #ffeaa7)',
               }}
             >
-              ⚠️ Rate limit reached. Infinite scrolling paused for 15 minutes. Current packets will continue to update.
+              ⚠️ {t('packet_monitor.rate_limit_warning')}
             </div>
           )}
           {loading ? (
-            <div className="loading">Loading packets...</div>
+            <div className="loading">{t('packet_monitor.loading')}</div>
           ) : packets.length === 0 ? (
-            <div className="no-packets">No packets logged yet</div>
+            <div className="no-packets">{t('packet_monitor.no_packets')}</div>
           ) : (
             <div style={{ width: '100%' }}>
               <table className="packet-table packet-table-fixed">
@@ -410,15 +411,15 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                 <thead>
                   <tr>
                     <th style={{ width: '60px' }}>#</th>
-                    <th style={{ width: '110px' }}>Time</th>
-                    <th style={{ width: '140px' }}>From</th>
-                    <th style={{ width: '140px' }}>To</th>
-                    <th style={{ width: '120px' }}>Type</th>
-                    <th style={{ width: '50px' }}>Ch</th>
-                    <th style={{ width: '60px' }}>SNR</th>
-                    <th style={{ width: '60px' }}>Hops</th>
-                    <th style={{ width: '60px' }}>Size</th>
-                    <th style={{ minWidth: '200px' }}>Content</th>
+                    <th style={{ width: '110px' }}>{t('packet_monitor.column.time')}</th>
+                    <th style={{ width: '140px' }}>{t('packet_monitor.column.from')}</th>
+                    <th style={{ width: '140px' }}>{t('packet_monitor.column.to')}</th>
+                    <th style={{ width: '120px' }}>{t('packet_monitor.column.type')}</th>
+                    <th style={{ width: '50px' }}>{t('packet_monitor.column.ch')}</th>
+                    <th style={{ width: '60px' }}>{t('packet_monitor.column.snr')}</th>
+                    <th style={{ width: '60px' }}>{t('packet_monitor.column.hops')}</th>
+                    <th style={{ width: '60px' }}>{t('packet_monitor.column.size')}</th>
+                    <th style={{ minWidth: '200px' }}>{t('packet_monitor.column.content')}</th>
                   </tr>
                 </thead>
               </table>
@@ -463,7 +464,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                             }}
                           >
                             <td colSpan={10} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
-                              Loading more packets...
+                              {t('packet_monitor.loading_more')}
                             </td>
                           </tr>
                         );
@@ -515,13 +516,13 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                             title={packet.to_node_longName || packet.to_node_id || ''}
                           >
                             {packet.to_node_id === '!ffffffff' ? (
-                              'Broadcast'
+                              t('packet_monitor.broadcast')
                             ) : packet.to_node_id && onNodeClick ? (
                               <span className="node-id-link" onClick={e => handleNodeClick(packet.to_node_id!, e)}>
                                 {truncateLongName(packet.to_node_longName) || packet.to_node_id}
                               </span>
                             ) : (
-                              truncateLongName(packet.to_node_longName) || packet.to_node_id || packet.to_node || 'N/A'
+                              truncateLongName(packet.to_node_longName) || packet.to_node_id || packet.to_node || t('common.na')
                             )}
                           </td>
                           <td
@@ -532,22 +533,22 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                             {packet.portnum_name || packet.portnum}
                           </td>
                           <td className="channel" style={{ width: '50px' }}>
-                            {packet.channel ?? 'N/A'}
+                            {packet.channel ?? t('common.na')}
                           </td>
                           <td className="snr" style={{ width: '60px' }}>
-                            {packet.snr !== null && packet.snr !== undefined ? `${packet.snr.toFixed(1)}` : 'N/A'}
+                            {packet.snr !== null && packet.snr !== undefined ? `${packet.snr.toFixed(1)}` : t('common.na')}
                           </td>
                           <td className="hops" style={{ width: '60px' }}>
-                            {hops !== null ? hops : 'N/A'}
+                            {hops !== null ? hops : t('common.na')}
                           </td>
                           <td className="size" style={{ width: '60px' }}>
-                            {packet.payload_size ?? 'N/A'}
+                            {packet.payload_size ?? t('common.na')}
                           </td>
                           <td className="content" style={{ minWidth: '200px' }}>
                             {packet.encrypted ? (
-                              <span className="encrypted-indicator">🔒 &lt;ENCRYPTED&gt;</span>
+                              <span className="encrypted-indicator">🔒 {t('packet_monitor.encrypted')}</span>
                             ) : (
-                              <span className="content-preview">{packet.payload_preview || '[No preview]'}</span>
+                              <span className="content-preview">{packet.payload_preview || t('packet_monitor.no_preview')}</span>
                             )}
                           </td>
                         </tr>
@@ -566,7 +567,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
           <div className="packet-detail-modal" onClick={() => setSelectedPacket(null)}>
             <div className="packet-detail-content" onClick={e => e.stopPropagation()}>
               <div className="packet-detail-header">
-                <h4>Packet Details (Full JSON)</h4>
+                <h4>{t('packet_monitor.details_title')}</h4>
                 <button className="close-btn" onClick={() => setSelectedPacket(null)}>
                   ×
                 </button>

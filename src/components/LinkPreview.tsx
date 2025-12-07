@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { extractUrls, fetchLinkPreview, LinkMetadata } from '../utils/linkRenderer';
 
 interface LinkPreviewProps {
@@ -11,6 +12,7 @@ interface LinkPreviewProps {
  * Uses Intersection Observer for lazy loading - only fetches when visible
  */
 export const LinkPreview: React.FC<LinkPreviewProps> = ({ text }) => {
+  const { t } = useTranslation();
   const [previews, setPreviews] = useState<LinkMetadata[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
@@ -103,7 +105,7 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({ text }) => {
     <div ref={containerRef} className="link-preview-container">
       {loading && (
         <div className="link-preview loading">
-          <div className="link-preview-spinner">Loading preview...</div>
+          <div className="link-preview-spinner">{t('link_preview.loading')}</div>
         </div>
       )}
 
@@ -118,7 +120,7 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({ text }) => {
         >
           {preview.image && (
             <div className="link-preview-image">
-              <img src={preview.image} alt={preview.title || 'Link preview'} />
+              <img src={preview.image} alt={preview.title || t('link_preview.image_alt')} />
             </div>
           )}
           <div className="link-preview-content">

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation, Trans } from 'react-i18next';
 import api from '../services/api';
 import { logger } from '../utils/logger';
 import { Channel } from '../types/device';
@@ -27,6 +28,7 @@ interface NotificationsTabProps {
 }
 
 const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
+  const { t } = useTranslation();
   const [vapidStatus, setVapidStatus] = useState<VapidStatus | null>(null);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isSubscribing, setIsSubscribing] = useState(false);
@@ -205,7 +207,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
       }
     } catch (error) {
       logger.error('Failed to save preferences:', error);
-      alert('Failed to save notification preferences');
+      alert(t('notifications.alert_save_failed'));
     } finally {
       setIsSavingPreferences(false);
     }
@@ -213,7 +215,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
 
   const requestNotificationPermission = async () => {
     if (!('Notification' in window)) {
-      alert('Push notifications are not supported in your browser');
+      alert(t('notifications.alert_not_supported'));
       return;
     }
 
@@ -226,13 +228,13 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
       }
     } catch (error) {
       logger.error('Failed to request notification permission:', error);
-      alert('Failed to request notification permission. Please try again.');
+      alert(t('notifications.alert_permission_failed'));
     }
   };
 
   const subscribeToNotifications = async () => {
     if (notificationPermission !== 'granted') {
-      alert('Please grant notification permission first');
+      alert(t('notifications.alert_grant_permission'));
       return;
     }
 
@@ -290,7 +292,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
     } catch (error: any) {
       logger.error('Failed to subscribe to push notifications:', error);
       setDebugInfo(`❌ Error: ${error.message}`);
-      alert(`Failed to subscribe to push notifications: ${error.message}`);
+      alert(t('notifications.alert_subscribe_failed', { error: error.message }));
     } finally {
       setIsSubscribing(false);
     }
@@ -313,7 +315,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
       logger.info('Unsubscribed from push notifications');
     } catch (error) {
       logger.error('Failed to unsubscribe:', error);
-      alert('Failed to unsubscribe from push notifications');
+      alert(t('notifications.alert_unsubscribe_failed'));
     } finally {
       setIsSubscribing(false);
     }
@@ -327,7 +329,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
       await loadVapidStatus();
     } catch (error) {
       logger.error('Failed to update VAPID subject:', error);
-      alert('Failed to update contact email');
+      alert(t('notifications.alert_update_email_failed'));
     } finally {
       setIsUpdatingSubject(false);
     }
@@ -422,15 +424,15 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
 
   return (
     <div className="tab-content">
-      <h2>Notifications</h2>
+      <h2>{t('notifications.title')}</h2>
 
       {/* ========================================
           SECTION 1: Notification Services & Filtering (Top)
           ======================================== */}
       <div className="settings-section">
-        <h3>🔔 Notification Services</h3>
+        <h3>🔔 {t('notifications.services_title')}</h3>
         <p style={{ marginBottom: '24px', color: '#666' }}>
-          Enable or disable notification services. Both services use the same filtering preferences below.
+          {t('notifications.services_description')}
         </p>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '16px', marginBottom: '32px' }}>
@@ -455,10 +457,10 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
               />
               <div>
                 <div style={{ fontWeight: '600', fontSize: '15px' }}>
-                  📱 Web Push Notifications
+                  📱 {t('notifications.webpush_title')}
                 </div>
                 <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
-                  Browser push notifications (requires HTTPS)
+                  {t('notifications.webpush_description')}
                 </div>
               </div>
             </label>
@@ -485,10 +487,10 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
               />
               <div>
                 <div style={{ fontWeight: '600', fontSize: '15px' }}>
-                  🔔 Apprise Notifications
+                  🔔 {t('notifications.apprise_title')}
                 </div>
                 <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
-                  Discord, Slack, Email, SMS, etc. (no HTTPS required)
+                  {t('notifications.apprise_description')}
                 </div>
               </div>
             </label>
@@ -496,10 +498,8 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
         </div>
 
         {/* Filtering Section */}
-        <h4 style={{ marginTop: '32px', marginBottom: '16px' }}>⚙️ Notification Filtering</h4>
-        <p style={{ marginBottom: '24px', color: '#666', fontSize: '14px' }}>
-          These filters apply to <strong>both Web Push and Apprise</strong> notifications.
-        </p>
+        <h4 style={{ marginTop: '32px', marginBottom: '16px' }}>⚙️ {t('notifications.filtering_title')}</h4>
+        <p style={{ marginBottom: '24px', color: '#666', fontSize: '14px' }}><Trans i18nKey="notifications.filtering_description" components={{ strong: <strong /> }} /></p>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px', marginBottom: '24px' }}>
           {/* Channel/DM Selection */}
@@ -511,7 +511,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
               border: '1px solid #3a3a3a'
             }}>
               <h4 style={{ marginTop: '0', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span>📢</span> Notification Sources
+                <span>📢</span> {t('notifications.sources_title')}
               </h4>
 
               {/* Direct Messages Toggle */}
@@ -534,7 +534,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                     }}
                     style={{ width: '18px', height: '18px' }}
                   />
-                  <span style={{ fontWeight: '500' }}>💬 Direct Messages</span>
+                  <span style={{ fontWeight: '500' }}>💬 {t('notifications.direct_messages')}</span>
                 </label>
               </div>
 
@@ -558,7 +558,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                     }}
                     style={{ width: '18px', height: '18px' }}
                   />
-                  <span style={{ fontWeight: '500' }}>😀 Emoji Reactions</span>
+                  <span style={{ fontWeight: '500' }}>😀 {t('notifications.emoji_reactions')}</span>
                 </label>
               </div>
 
@@ -582,7 +582,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                     }}
                     style={{ width: '18px', height: '18px' }}
                   />
-                  <span style={{ fontWeight: '500' }}>🆕 Newly Found Nodes</span>
+                  <span style={{ fontWeight: '500' }}>🆕 {t('notifications.new_nodes')}</span>
                 </label>
               </div>
 
@@ -606,7 +606,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                     }}
                     style={{ width: '18px', height: '18px' }}
                   />
-                  <span style={{ fontWeight: '500' }}>🗺️ Successful Traceroutes</span>
+                  <span style={{ fontWeight: '500' }}>🗺️ {t('notifications.traceroutes')}</span>
                 </label>
               </div>
 
@@ -616,9 +616,9 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                 borderRadius: '6px',
                 padding: '12px'
               }}>
-                <div style={{ fontWeight: '600', marginBottom: '8px' }}>Channels:</div>
+                <div style={{ fontWeight: '600', marginBottom: '8px' }}>{t('notifications.channels')}:</div>
                 {channels.length === 0 ? (
-                  <p style={{ fontSize: '14px', color: '#999', margin: 0 }}>No channels available</p>
+                  <p style={{ fontSize: '14px', color: '#999', margin: 0 }}>{t('notifications.no_channels')}</p>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {channels.map(channel => (
@@ -639,7 +639,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                           }}
                           style={{ width: '16px', height: '16px' }}
                         />
-                        <span style={{ fontSize: '14px' }}>{channel.name || `Channel ${channel.id}`}</span>
+                        <span style={{ fontSize: '14px' }}>{channel.name || t('notifications.channel_number', { id: channel.id })}</span>
                       </label>
                     ))}
                   </div>
@@ -657,7 +657,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
               border: '1px solid #3a3a3a'
             }}>
               <h4 style={{ marginTop: '0', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span>🔤</span> Keyword Filtering
+                <span>🔤</span> {t('notifications.keyword_filtering')}
               </h4>
 
               {/* Whitelist */}
@@ -670,11 +670,9 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                   alignItems: 'center',
                   gap: '6px'
                 }}>
-                  <span>✅</span> Whitelist (Always Notify)
+                  <span>✅</span> {t('notifications.whitelist_title')}
                 </label>
-                <p style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '8px', marginTop: 0 }}>
-                  Messages with these words will <strong>always</strong> send a notification (one per line):
-                </p>
+                <p style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '8px', marginTop: 0 }}><Trans i18nKey="notifications.whitelist_description" components={{ strong: <strong /> }} /></p>
                 <textarea
                   value={whitelistText}
                   onChange={(e) => setWhitelistText(e.target.value)}
@@ -704,11 +702,9 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                   alignItems: 'center',
                   gap: '6px'
                 }}>
-                  <span>🚫</span> Blacklist (Silence)
+                  <span>🚫</span> {t('notifications.blacklist_title')}
                 </label>
-                <p style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '8px', marginTop: 0 }}>
-                  Messages with these words will <strong>never</strong> send a notification (one per line):
-                </p>
+                <p style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '8px', marginTop: 0 }}><Trans i18nKey="notifications.blacklist_description" components={{ strong: <strong /> }} /></p>
                 <textarea
                   value={blacklistText}
                   onChange={(e) => setBlacklistText(e.target.value)}
@@ -741,8 +737,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
           fontSize: '14px',
           color: '#93c5fd'
         }}>
-          <strong>ℹ️ Filter Priority:</strong> Whitelist (highest) → Blacklist → Channel/DM settings.
-          All matching is case-insensitive and checks for substrings.
+          <strong>ℹ️ {t('notifications.filter_priority')}:</strong> {t('notifications.filter_priority_order')}
         </div>
 
         {/* Save Button */}
@@ -753,7 +748,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
             disabled={isSavingPreferences}
             style={{ minWidth: '150px' }}
           >
-            {isSavingPreferences ? 'Saving...' : '💾 Save Preferences'}
+            {isSavingPreferences ? t('common.saving') : `💾 ${t('notifications.save_preferences')}`}
           </button>
         </div>
       </div>
@@ -763,32 +758,32 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
           ======================================== */}
       {preferences.enableWebPush && (
       <div className="settings-section">
-        <h3>📱 Web Push Configuration</h3>
+        <h3>📱 {t('notifications.webpush_config_title')}</h3>
 
         {/* HTTPS Warning */}
         {!isSecureContext && !isLocalhost && (
           <div style={{ backgroundColor: '#f8d7da', color: '#721c24', padding: '15px', borderRadius: '8px', border: '1px solid #f5c6cb', marginBottom: '20px' }}>
-            <h4 style={{ color: '#721c24', marginTop: 0 }}>⚠️ HTTPS Required</h4>
+            <h4 style={{ color: '#721c24', marginTop: 0 }}>⚠️ {t('notifications.https_required')}</h4>
             <p>
-              <strong>Push notifications are not available over HTTP.</strong>
+              <strong>{t('notifications.https_required_text')}</strong>
             </p>
-            <p>To enable push notifications, you must access MeshMonitor via:</p>
+            <p>{t('notifications.https_enable_options')}</p>
             <ul style={{ paddingLeft: '20px', marginLeft: '0' }}>
-              <li><strong>HTTPS:</strong> Set up SSL certificates (recommended for production)</li>
-              <li><strong>Localhost:</strong> Access via <code>http://localhost</code> for local testing</li>
+              <li><strong>HTTPS:</strong> {t('notifications.https_option_ssl')}</li>
+              <li><strong>Localhost:</strong> {t('notifications.https_option_localhost')}</li>
             </ul>
             <p>
-              Current connection: <strong>{window.location.protocol}//{window.location.host}</strong>
+              {t('notifications.current_connection')}: <strong>{window.location.protocol}//{window.location.host}</strong>
             </p>
             <p style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #f5c6cb' }}>
-              <strong>Need help setting up HTTPS?</strong><br />
-              Check out our <a
+              <strong>{t('notifications.https_help_title')}</strong><br />
+              {t('notifications.https_help_text')} <a
                 href="https://github.com/Yeraze/meshmonitor/blob/main/docs/configuration/duckdns-https.md"
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{ color: '#721c24', textDecoration: 'underline' }}
               >
-                beginner-friendly guide to setting up free HTTPS with DuckDNS
+                {t('notifications.https_help_link')}
               </a>.
             </p>
           </div>
@@ -796,29 +791,29 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
 
         {/* Browser Support */}
         <div style={{ marginBottom: '20px' }}>
-          <h4>Browser Support</h4>
+          <h4>{t('notifications.browser_support')}</h4>
           <div className="info-grid">
             <div className="info-item">
-              <strong>Notifications API:</strong> {('Notification' in window) ? '✅ Supported' : '❌ Not Supported'}
+              <strong>{t('notifications.notifications_api')}:</strong> {('Notification' in window) ? `✅ ${t('notifications.supported')}` : `❌ ${t('notifications.not_supported')}`}
             </div>
             <div className="info-item">
-              <strong>Service Workers:</strong> {('serviceWorker' in navigator) ? '✅ Supported' : '❌ Not Supported'}
+              <strong>{t('notifications.service_workers')}:</strong> {('serviceWorker' in navigator) ? `✅ ${t('notifications.supported')}` : `❌ ${t('notifications.not_supported')}`}
             </div>
             <div className="info-item">
-              <strong>Push API:</strong> {('PushManager' in window) ? '✅ Supported' : '❌ Not Supported'}
+              <strong>{t('notifications.push_api')}:</strong> {('PushManager' in window) ? `✅ ${t('notifications.supported')}` : `❌ ${t('notifications.not_supported')}`}
             </div>
             <div className="info-item">
-              <strong>PWA Installed:</strong> {isPWAInstalled ? '✅ Yes' : '⚠️ No (add to home screen for iOS)'}
+              <strong>{t('notifications.pwa_installed')}:</strong> {isPWAInstalled ? `✅ ${t('common.yes')}` : `⚠️ ${t('notifications.pwa_not_installed')}`}
             </div>
             <div className="info-item">
-              <strong>Permission:</strong> {
-                notificationPermission === 'granted' ? '✅ Granted' :
-                notificationPermission === 'denied' ? '❌ Denied' :
-                '⚠️ Not Requested'
+              <strong>{t('notifications.permission')}:</strong> {
+                notificationPermission === 'granted' ? `✅ ${t('notifications.permission_granted')}` :
+                notificationPermission === 'denied' ? `❌ ${t('notifications.permission_denied')}` :
+                `⚠️ ${t('notifications.permission_not_requested')}`
               }
             </div>
             <div className="info-item">
-              <strong>Subscription:</strong> {isSubscribed ? '✅ Subscribed' : '⚠️ Not Subscribed'}
+              <strong>{t('notifications.subscription')}:</strong> {isSubscribed ? `✅ ${t('notifications.subscribed')}` : `⚠️ ${t('notifications.not_subscribed')}`}
             </div>
           </div>
         </div>
@@ -826,15 +821,15 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
         {/* iOS Instructions */}
         {!isPWAInstalled && (
           <div style={{ backgroundColor: '#fff3cd', color: '#856404', padding: '15px', borderRadius: '8px', border: '1px solid #ffc107', marginBottom: '20px' }}>
-            <h4 style={{ color: '#856404', marginTop: 0 }}>📱 iOS Users: Installation Required</h4>
-            <p>On iOS (iPhone/iPad), push notifications require HTTPS and PWA installation:</p>
+            <h4 style={{ color: '#856404', marginTop: 0 }}>📱 {t('notifications.ios_title')}</h4>
+            <p>{t('notifications.ios_description')}</p>
             <ol style={{ paddingLeft: '20px', marginLeft: '0' }}>
-              <li><strong>HTTPS Required:</strong> Access MeshMonitor via HTTPS (e.g., https://your-server.com)</li>
-              <li>Open MeshMonitor in Safari</li>
-              <li>Tap the Share button (square with arrow)</li>
-              <li>Scroll down and tap "Add to Home Screen"</li>
-              <li>Open MeshMonitor from your home screen</li>
-              <li>Return here to enable notifications</li>
+              <li><strong>{t('notifications.https_required')}:</strong> {t('notifications.ios_step_https')}</li>
+              <li>{t('notifications.ios_step_safari')}</li>
+              <li>{t('notifications.ios_step_share')}</li>
+              <li>{t('notifications.ios_step_add')}</li>
+              <li>{t('notifications.ios_step_open')}</li>
+              <li>{t('notifications.ios_step_return')}</li>
             </ol>
           </div>
         )}
@@ -842,31 +837,31 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
         {/* Setup Notifications */}
         {isSupported && (
           <div>
-            <h4>Setup Notifications</h4>
-            <p>Follow these steps to enable push notifications:</p>
+            <h4>{t('notifications.setup_title')}</h4>
+            <p>{t('notifications.setup_description')}</p>
 
             {/* Step 1: Request Permission */}
             <div style={{ marginBottom: '20px' }}>
-              <h5>Step 1: Enable Notifications</h5>
+              <h5>{t('notifications.step1_title')}</h5>
               {notificationPermission === 'default' && (
                 <div>
-                  <p>Grant permission for this site to show notifications.</p>
+                  <p>{t('notifications.step1_description')}</p>
                   <button
                     className="button button-primary"
                     onClick={requestNotificationPermission}
                   >
-                    🔔 Enable Notifications
+                    🔔 {t('notifications.enable_notifications')}
                   </button>
                 </div>
               )}
               {notificationPermission === 'granted' && (
-                <p>✅ Notification permission granted</p>
+                <p>✅ {t('notifications.permission_granted')}</p>
               )}
               {notificationPermission === 'denied' && (
                 <div className="error-message">
-                  <p>❌ Notification permission denied. Please enable notifications in your browser settings.</p>
-                  <p><strong>Chrome/Edge:</strong> Click the lock icon in the address bar → Site settings → Notifications</p>
-                  <p><strong>Safari:</strong> Safari → Settings → Websites → Notifications</p>
+                  <p>❌ {t('notifications.permission_denied_message')}</p>
+                  <p><strong>Chrome/Edge:</strong> {t('notifications.permission_fix_chrome')}</p>
+                  <p><strong>Safari:</strong> {t('notifications.permission_fix_safari')}</p>
                 </div>
               )}
             </div>
@@ -874,33 +869,33 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
             {/* Step 2: Subscribe */}
             {notificationPermission === 'granted' && (
               <div style={{ marginBottom: '20px' }}>
-                <h5>Step 2: Subscribe to Notifications</h5>
+                <h5>{t('notifications.step2_title')}</h5>
                 {!isSubscribed && (
                   <div>
-                    <p>Subscribe to receive push notifications for new messages.</p>
+                    <p>{t('notifications.step2_description')}</p>
                     <button
                       className="button button-primary"
                       onClick={subscribeToNotifications}
                       disabled={isSubscribing}
                     >
-                      {isSubscribing ? 'Subscribing...' : '📥 Subscribe to Notifications'}
+                      {isSubscribing ? t('notifications.subscribing') : `📥 ${t('notifications.subscribe_button')}`}
                     </button>
                     {debugInfo && (
                       <div style={{ marginTop: '10px', padding: '10px', backgroundColor: '#f0f0f0', borderRadius: '4px' }}>
-                        <strong>Debug:</strong> {debugInfo}
+                        <strong>{t('notifications.debug')}:</strong> {debugInfo}
                       </div>
                     )}
                   </div>
                 )}
                 {isSubscribed && (
                   <div>
-                    <p>✅ You are subscribed to push notifications!</p>
+                    <p>✅ {t('notifications.subscribed_message')}</p>
                     <button
                       className="button button-secondary"
                       onClick={unsubscribeFromNotifications}
                       disabled={isSubscribing}
                     >
-                      {isSubscribing ? 'Unsubscribing...' : '📤 Unsubscribe'}
+                      {isSubscribing ? t('notifications.unsubscribing') : `📤 ${t('notifications.unsubscribe_button')}`}
                     </button>
                   </div>
                 )}
@@ -912,14 +907,14 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
         {/* Test Notifications */}
         {isAdmin && isSubscribed && (
           <div style={{ marginTop: '20px' }}>
-            <h4>Test Notifications</h4>
-            <p>Send a test notification to verify everything is working.</p>
+            <h4>{t('notifications.test_title')}</h4>
+            <p>{t('notifications.test_description')}</p>
             <button
               className="button button-secondary"
               onClick={sendTestNotification}
               disabled={!!testStatus}
             >
-              🧪 Send Test Notification
+              🧪 {t('notifications.send_test')}
             </button>
             {testStatus && <div style={{ marginTop: '10px', fontWeight: 'bold' }}>{testStatus}</div>}
           </div>
@@ -928,25 +923,25 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
         {/* VAPID Configuration (Admin Only) */}
         {isAdmin && vapidStatus && (
           <div style={{ marginTop: '32px', paddingTop: '32px', borderTop: '1px solid #3a3a3a' }}>
-            <h4>VAPID Configuration (Admin)</h4>
+            <h4>{t('notifications.vapid_title')}</h4>
             <div className="info-grid">
               <div className="info-item">
-                <strong>Status:</strong> {vapidStatus.configured ? '✅ Configured' : '❌ Not Configured'}
+                <strong>{t('common.status')}:</strong> {vapidStatus.configured ? `✅ ${t('notifications.configured')}` : `❌ ${t('notifications.not_configured')}`}
               </div>
               <div className="info-item">
-                <strong>Active Subscriptions:</strong> {vapidStatus.subscriptionCount}
+                <strong>{t('notifications.active_subscriptions')}:</strong> {vapidStatus.subscriptionCount}
               </div>
               <div className="info-item">
-                <strong>Public Key:</strong>
+                <strong>{t('notifications.public_key')}:</strong>
                 <code style={{ fontSize: '10px', wordBreak: 'break-all' }}>
-                  {vapidStatus.publicKey ? vapidStatus.publicKey.substring(0, 50) + '...' : 'Not set'}
+                  {vapidStatus.publicKey ? vapidStatus.publicKey.substring(0, 50) + '...' : t('notifications.not_set')}
                 </code>
               </div>
             </div>
 
             <div style={{ marginTop: '20px' }}>
               <label>
-                <strong>Contact Email (VAPID Subject):</strong>
+                <strong>{t('notifications.contact_email')}:</strong>
                 <input
                   type="text"
                   value={vapidSubject}
@@ -961,7 +956,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                 disabled={isUpdatingSubject}
                 style={{ marginTop: '10px' }}
               >
-                {isUpdatingSubject ? 'Updating...' : 'Update Contact Email'}
+                {isUpdatingSubject ? t('common.updating') : t('notifications.update_contact_email')}
               </button>
             </div>
           </div>
@@ -974,11 +969,8 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
           ======================================== */}
       {preferences.enableApprise && (
       <div className="settings-section">
-        <h3>🔔 Apprise Configuration</h3>
-        <p style={{ marginBottom: '20px', color: '#666' }}>
-          Configure Apprise to send notifications to external services like Discord, Slack, Email, SMS, and more.
-          Apprise works over HTTP, so <strong>no HTTPS required</strong>!
-        </p>
+        <h3>🔔 {t('notifications.apprise_config_title')}</h3>
+        <p style={{ marginBottom: '20px', color: '#666' }}><Trans i18nKey="notifications.apprise_config_description" components={{ strong: <strong /> }} /></p>
 
         <div style={{
           backgroundColor: '#1e3a5f',
@@ -989,32 +981,31 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
           fontSize: '14px',
           color: '#93c5fd'
         }}>
-          <strong>ℹ️ About Apprise:</strong> Apprise supports 100+ notification services including Discord, Slack, Telegram,
-          Microsoft Teams, Email (SMTP), SMS, and many more. Enter one service URL per line below.
+          <strong>ℹ️ {t('notifications.about_apprise')}:</strong> {t('notifications.apprise_info')}
         </div>
 
         <div>
           <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600' }}>
-            Notification Service URLs
+            {t('notifications.service_urls_label')}
           </label>
           <p style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '12px' }}>
-            Enter Apprise notification URLs (one per line). Examples:
+            {t('notifications.service_urls_description')}
           </p>
           <ul style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '12px', paddingLeft: '20px' }}>
-            <li><code>discord://webhook_id/webhook_token</code> - Discord webhook</li>
-            <li><code>slack://token_a/token_b/token_c</code> - Slack webhook</li>
-            <li><code>mailto://user:pass@gmail.com</code> - Email via Gmail</li>
-            <li><code>tgram://bot_token/chat_id</code> - Telegram</li>
+            <li><code>discord://webhook_id/webhook_token</code> - {t('notifications.example_discord')}</li>
+            <li><code>slack://token_a/token_b/token_c</code> - {t('notifications.example_slack')}</li>
+            <li><code>mailto://user:pass@gmail.com</code> - {t('notifications.example_email')}</li>
+            <li><code>tgram://bot_token/chat_id</code> - {t('notifications.example_telegram')}</li>
           </ul>
           <p style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '12px' }}>
-            See <a
+            {t('notifications.see_docs')} <a
               href="https://github.com/caronc/apprise#supported-notifications"
               target="_blank"
               rel="noopener noreferrer"
               style={{ color: '#60a5fa', textDecoration: 'underline' }}
             >
-              Apprise documentation
-            </a> for full list of supported services.
+              {t('notifications.apprise_docs_link')}
+            </a> {t('notifications.full_list')}.
           </p>
           <textarea
             value={appriseUrls}
@@ -1042,14 +1033,14 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
             disabled={isSavingApprise}
             style={{ minWidth: '150px' }}
           >
-            {isSavingApprise ? 'Saving...' : '💾 Save Configuration'}
+            {isSavingApprise ? t('common.saving') : `💾 ${t('notifications.save_config')}`}
           </button>
           <button
             className="button button-secondary"
             onClick={testAppriseConnection}
             disabled={!!appriseTestStatus}
           >
-            🧪 Send Test Notification
+            🧪 {t('notifications.send_test')}
           </button>
           {appriseTestStatus && (
             <div style={{ fontWeight: 'bold', marginLeft: '12px' }}>{appriseTestStatus}</div>

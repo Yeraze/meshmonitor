@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import apiService from '../../services/api';
 import { useToast } from '../ToastContainer';
 import { Channel } from '../../types/device';
@@ -24,6 +25,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
   channels,
   onChannelsUpdated
 }) => {
+  const { t } = useTranslation();
   const { showToast } = useToast();
   const [editingChannel, setEditingChannel] = useState<ChannelEditState | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -61,7 +63,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
 
     // Allow empty names (Meshtastic supports unnamed channels)
     if (editingChannel.name && editingChannel.name.length > 11) {
-      showToast('Channel name must be 11 characters or less', 'error');
+      showToast(t('channels_config.toast_name_too_long'), 'error');
       return;
     }
 
@@ -76,13 +78,13 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
         positionPrecision: editingChannel.positionPrecision
       });
 
-      showToast(`Channel ${editingChannel.slotId} updated successfully!`, 'success');
+      showToast(t('channels_config.toast_channel_updated', { slot: editingChannel.slotId }), 'success');
       setShowEditModal(false);
       setEditingChannel(null);
       onChannelsUpdated?.();
     } catch (error) {
       logger.error('Error updating channel:', error);
-      const errorMsg = error instanceof Error ? error.message : 'Failed to update channel';
+      const errorMsg = error instanceof Error ? error.message : t('channels_config.toast_update_failed');
       showToast(errorMsg, 'error');
     } finally {
       setIsSaving(false);
@@ -92,10 +94,10 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
   const handleExportChannel = async (channelId: number) => {
     try {
       await apiService.exportChannel(channelId);
-      showToast(`Channel ${channelId} exported successfully!`, 'success');
+      showToast(t('channels_config.toast_channel_exported', { slot: channelId }), 'success');
     } catch (error) {
       logger.error('Error exporting channel:', error);
-      const errorMsg = error instanceof Error ? error.message : 'Failed to export channel';
+      const errorMsg = error instanceof Error ? error.message : t('channels_config.toast_export_failed');
       showToast(errorMsg, 'error');
     }
   };
@@ -120,7 +122,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
 
   const handleImportChannel = async () => {
     if (!importFileContent) {
-      showToast('Please select a file to import', 'error');
+      showToast(t('channels_config.toast_select_file'), 'error');
       return;
     }
 
@@ -130,13 +132,13 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
       const importData = JSON.parse(importFileContent);
 
       if (!importData.channel) {
-        throw new Error('Invalid import file format. Expected channel object.');
+        throw new Error(t('channels_config.toast_invalid_format'));
       }
 
       // Import the channel
       await apiService.importChannel(importSlotId, importData.channel);
 
-      showToast(`Channel imported to slot ${importSlotId} successfully!`, 'success');
+      showToast(t('channels_config.toast_channel_imported', { slot: importSlotId }), 'success');
       setShowImportModal(false);
       setImportFileContent('');
       if (fileInputRef.current) {
@@ -145,7 +147,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
       onChannelsUpdated?.();
     } catch (error) {
       logger.error('Error importing channel:', error);
-      const errorMsg = error instanceof Error ? error.message : 'Failed to import channel';
+      const errorMsg = error instanceof Error ? error.message : t('channels_config.toast_import_failed');
       showToast(errorMsg, 'error');
     } finally {
       setIsSaving(false);
@@ -162,7 +164,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
 
     if (editingChannel) {
       setEditingChannel({ ...editingChannel, psk: base64Key });
-      showToast('Generated new AES256 key', 'success');
+      showToast(t('channels_config.toast_key_generated'), 'success');
     }
   };
 
@@ -170,7 +172,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
     <>
       <div className="settings-section">
         <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          Channels Configuration
+          {t('channels_config.title')}
           <a
             href="https://meshtastic.org/docs/configuration/radio/channels/"
             target="_blank"
@@ -180,14 +182,13 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
               color: '#89b4fa',
               textDecoration: 'none'
             }}
-            title="View Meshtastic Channels Documentation"
+            title={t('channels_config.view_docs')}
           >
             ❓
           </a>
         </h3>
         <p className="setting-description" style={{ marginBottom: '1rem' }}>
-          Meshtastic devices support up to 8 channels (0-7). Channel 0 is typically the Primary channel.
-          You can configure each channel's name, encryption key (PSK), and uplink/downlink settings.
+          {t('channels_config.description')}
         </p>
 
         <div style={{ display: 'grid', gap: '1rem' }}>
@@ -208,21 +209,21 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
                 <div>
                   <h4 style={{ margin: 0, color: 'var(--ctp-text)' }}>
-                    Slot {slotId}: {channel ? (
+                    {t('channels_config.slot', { slot: slotId })}: {channel ? (
                       <>
-                        {channel.name || <span style={{ color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>(unnamed)</span>}
-                        {channel.role === 1 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-blue)', fontSize: '0.8rem' }}>★ PRIMARY</span>}
-                        {channel.role === 0 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-overlay0)', fontSize: '0.8rem' }}>⊘ DISABLED</span>}
+                        {channel.name || <span style={{ color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>{t('channels_config.unnamed')}</span>}
+                        {channel.role === 1 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-blue)', fontSize: '0.8rem' }}>★ {t('channels_config.primary')}</span>}
+                        {channel.role === 0 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-overlay0)', fontSize: '0.8rem' }}>⊘ {t('channels_config.disabled')}</span>}
                       </>
-                    ) : <span style={{ color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>Empty</span>}
+                    ) : <span style={{ color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>{t('channels_config.empty')}</span>}
                   </h4>
                   {channel && (
                     <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: 'var(--ctp-subtext1)' }}>
-                      <div>🔒 {channel.psk ? 'Encrypted' : 'Unencrypted'}</div>
+                      <div>🔒 {channel.psk ? t('channels_config.encrypted') : t('channels_config.unencrypted')}</div>
                       <div>
-                        {channel.uplinkEnabled && '↑ Uplink '}
-                        {channel.downlinkEnabled && '↓ Downlink'}
-                        {!channel.uplinkEnabled && !channel.downlinkEnabled && 'No bridge'}
+                        {channel.uplinkEnabled && `↑ ${t('channels_config.uplink')} `}
+                        {channel.downlinkEnabled && `↓ ${t('channels_config.downlink')}`}
+                        {!channel.uplinkEnabled && !channel.downlinkEnabled && t('channels_config.no_bridge')}
                       </div>
                     </div>
                   )}
@@ -240,7 +241,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                       cursor: 'pointer'
                     }}
                   >
-                    ✏️ Edit
+                    ✏️ {t('common.edit')}
                   </button>
                   {channel && (
                     <button
@@ -255,7 +256,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                         cursor: 'pointer'
                       }}
                     >
-                      📥 Export
+                      📥 {t('common.export')}
                     </button>
                   )}
                   <button
@@ -270,7 +271,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                       cursor: 'pointer'
                     }}
                   >
-                    📤 Import
+                    📤 {t('common.import')}
                   </button>
                 </div>
               </div>
@@ -308,12 +309,12 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 style={{ marginTop: 0 }}>Edit Channel {editingChannel.slotId}</h3>
+            <h3 style={{ marginTop: 0 }}>{t('channels_config.edit_channel', { slot: editingChannel.slotId })}</h3>
 
             <div className="setting-item">
               <label htmlFor="edit-channel-name">
-                Channel Name
-                <span className="setting-description">Up to 11 characters</span>
+                {t('channels_config.channel_name')}
+                <span className="setting-description">{t('channels_config.channel_name_description')}</span>
               </label>
               <input
                 id="edit-channel-name"
@@ -322,15 +323,15 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                 value={editingChannel.name}
                 onChange={(e) => setEditingChannel({ ...editingChannel, name: e.target.value })}
                 className="setting-input"
-                placeholder="Channel Name"
+                placeholder={t('channels_config.channel_name_placeholder')}
               />
             </div>
 
             <div className="setting-item">
               <label htmlFor="edit-channel-psk">
-                Pre-Shared Key (PSK)
+                {t('channels_config.psk')}
                 <span className="setting-description">
-                  Leave empty for no encryption, or enter base64-encoded key (16 or 32 bytes)
+                  {t('channels_config.psk_description')}
                 </span>
               </label>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -340,7 +341,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                   value={editingChannel.psk}
                   onChange={(e) => setEditingChannel({ ...editingChannel, psk: e.target.value })}
                   className="setting-input"
-                  placeholder="Optional: base64 PSK"
+                  placeholder={t('channels_config.psk_placeholder')}
                   style={{ flex: 1 }}
                 />
                 <button
@@ -355,18 +356,18 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                     cursor: 'pointer',
                     whiteSpace: 'nowrap'
                   }}
-                  title="Generate random AES256 key"
+                  title={t('channels_config.generate_key_title')}
                 >
-                  Generate
+                  {t('channels_config.generate')}
                 </button>
               </div>
             </div>
 
             <div className="setting-item">
               <label htmlFor="edit-channel-role">
-                Channel Role
+                {t('channels_config.channel_role')}
                 <span className="setting-description">
-                  Primary sets radio frequency; Secondary is for encryption only; Disabled turns off the channel
+                  {t('channels_config.channel_role_description')}
                 </span>
               </label>
               <select
@@ -375,17 +376,17 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                 onChange={(e) => setEditingChannel({ ...editingChannel, role: parseInt(e.target.value) })}
                 className="setting-input"
               >
-                <option value={0}>Disabled</option>
-                <option value={1}>Primary</option>
-                <option value={2}>Secondary</option>
+                <option value={0}>{t('channels_config.role_disabled')}</option>
+                <option value={1}>{t('channels_config.role_primary')}</option>
+                <option value={2}>{t('channels_config.role_secondary')}</option>
               </select>
             </div>
 
             <div className="setting-item">
               <label htmlFor="edit-channel-precision">
-                Location Precision (bits)
+                {t('channels_config.position_precision')}
                 <span className="setting-description">
-                  Number of bits for position data (0-32). Higher = more precise. 32 = full precision.
+                  {t('channels_config.position_precision_description')}
                 </span>
               </label>
               <input
@@ -408,10 +409,10 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                     checked={editingChannel.uplinkEnabled}
                     onChange={(e) => setEditingChannel({ ...editingChannel, uplinkEnabled: e.target.checked })}
                   />
-                  <span>Uplink Enabled</span>
+                  <span>{t('channels_config.uplink_enabled')}</span>
                 </div>
                 <span className="setting-description" style={{ marginLeft: '1.75rem' }}>
-                  Allow gateway nodes to forward mesh messages to internet
+                  {t('channels_config.uplink_description')}
                 </span>
               </label>
             </div>
@@ -424,10 +425,10 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                     checked={editingChannel.downlinkEnabled}
                     onChange={(e) => setEditingChannel({ ...editingChannel, downlinkEnabled: e.target.checked })}
                   />
-                  <span>Downlink Enabled</span>
+                  <span>{t('channels_config.downlink_enabled')}</span>
                 </div>
                 <span className="setting-description" style={{ marginLeft: '1.75rem' }}>
-                  Allow internet messages to route to local mesh
+                  {t('channels_config.downlink_description')}
                 </span>
               </label>
             </div>
@@ -447,7 +448,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                   opacity: isSaving ? 0.6 : 1
                 }}
               >
-                {isSaving ? 'Saving...' : 'Save Channel'}
+                {isSaving ? t('common.saving') : t('channels_config.save_channel')}
               </button>
               <button
                 onClick={() => setShowEditModal(false)}
@@ -462,7 +463,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                   cursor: isSaving ? 'not-allowed' : 'pointer'
                 }}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
             </div>
           </div>
@@ -498,12 +499,12 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 style={{ marginTop: 0 }}>Import Channel to Slot {importSlotId}</h3>
+            <h3 style={{ marginTop: 0 }}>{t('channels_config.import_channel', { slot: importSlotId })}</h3>
 
             <div className="setting-item">
               <label htmlFor="import-file">
-                Select Channel Configuration File
-                <span className="setting-description">Choose a previously exported channel JSON file</span>
+                {t('channels_config.select_file')}
+                <span className="setting-description">{t('channels_config.select_file_description')}</span>
               </label>
               <input
                 ref={fileInputRef}
@@ -521,7 +522,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
 
             {importFileContent && (
               <div style={{ marginTop: '1rem' }}>
-                <label>Preview:</label>
+                <label>{t('channels_config.preview')}:</label>
                 <pre
                   style={{
                     backgroundColor: 'var(--ctp-surface0)',
@@ -552,7 +553,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                   opacity: (isSaving || !importFileContent) ? 0.6 : 1
                 }}
               >
-                {isSaving ? 'Importing...' : 'Import Channel'}
+                {isSaving ? t('channels_config.importing') : t('channels_config.import_channel_button')}
               </button>
               <button
                 onClick={() => setShowImportModal(false)}
@@ -567,7 +568,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                   cursor: isSaving ? 'not-allowed' : 'pointer'
                 }}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
             </div>
           </div>

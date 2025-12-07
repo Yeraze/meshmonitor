@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { Channel } from '../types/device';
 import { useToast } from './ToastContainer';
@@ -35,6 +36,7 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
   onWaitForNameChange,
   onMaxHopsChange,
 }) => {
+  const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();
   const [localEnabled, setLocalEnabled] = useState(enabled);
@@ -84,7 +86,7 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
 
       if (!response.ok) {
         if (response.status === 403) {
-          showToast('Insufficient permissions to save settings', 'error');
+          showToast(t('automation.insufficient_permissions'), 'error');
           return;
         }
         throw new Error(`Server returned ${response.status}`);
@@ -98,10 +100,10 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
       onMaxHopsChange(localMaxHops);
 
       setHasChanges(false);
-      showToast('Settings saved successfully!', 'success');
+      showToast(t('automation.settings_saved'), 'success');
     } catch (error) {
       console.error('Failed to save auto-welcome settings:', error);
-      showToast('Failed to save settings. Please try again.', 'error');
+      showToast(t('automation.settings_save_failed'), 'error');
     } finally {
       setIsSaving(false);
     }
@@ -162,7 +164,7 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
             onChange={(e) => setLocalEnabled(e.target.checked)}
             style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
           />
-          Auto Welcome
+          {t('automation.auto_welcome.title')}
           <a
             href="https://meshmonitor.org/features/automation#auto-welcome"
             target="_blank"
@@ -173,7 +175,7 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
               textDecoration: 'none',
               marginLeft: '0.5rem'
             }}
-            title="View Auto Welcome Documentation"
+            title={t('automation.view_docs')}
           >
             ❓
           </a>
@@ -190,15 +192,15 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
               cursor: hasChanges ? 'pointer' : 'not-allowed'
             }}
           >
-            {isSaving ? 'Saving...' : 'Save Changes'}
+            {isSaving ? t('automation.saving') : t('automation.save_changes')}
           </button>
         </div>
       </div>
 
       <div className="settings-section" style={{ opacity: localEnabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>
         <p style={{ marginBottom: '1rem', color: '#666', lineHeight: '1.5' }}>
-          When enabled, automatically send a welcome message when a new node joins the mesh network.
-          Use tokens to personalize messages: <code>{'{LONG_NAME}'}</code>, <code>{'{SHORT_NAME}'}</code>, <code>{'{VERSION}'}</code>, <code>{'{DURATION}'}</code>, <code>{'{FEATURES}'}</code>, <code>{'{NODECOUNT}'}</code>, <code>{'{DIRECTCOUNT}'}</code>
+          {t('automation.auto_welcome.description')}{' '}
+          {t('automation.auto_welcome.tokens_info')}
         </p>
 
         <div className="setting-item" style={{ marginTop: '1rem' }}>
@@ -212,20 +214,19 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
                 disabled={!localEnabled}
                 style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
               />
-              Wait for Name
+              {t('automation.auto_welcome.wait_for_name')}
             </div>
             <span className="setting-description">
-              Wait until the node has a Long Name or Short Name before sending the welcome message.
-              If disabled, welcome messages will be sent immediately when a new node is discovered.
+              {t('automation.auto_welcome.wait_for_name_description')}
             </span>
           </label>
         </div>
 
         <div className="setting-item" style={{ marginTop: '1rem' }}>
           <label htmlFor="maxHops">
-            Maximum Hops
+            {t('automation.auto_welcome.max_hops')}
             <span className="setting-description">
-              Only welcome nodes within this many hops (1-10). Nodes further away will not receive a welcome message.
+              {t('automation.auto_welcome.max_hops_description')}
             </span>
           </label>
           <input
@@ -248,9 +249,9 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
 
         <div className="setting-item" style={{ marginTop: '1rem' }}>
           <label htmlFor="welcomeTarget">
-            Broadcast Target
+            {t('automation.auto_welcome.broadcast_target')}
             <span className="setting-description">
-              Select where to send the welcome message
+              {t('automation.auto_welcome.broadcast_target_description')}
             </span>
           </label>
           <select
@@ -260,7 +261,7 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
             disabled={!localEnabled}
             className="setting-input"
           >
-            <option value="dm">Direct Message to New Node</option>
+            <option value="dm">{t('automation.auto_welcome.dm_to_new_node')}</option>
             {channels.map((channel, idx) => (
               <option key={channel.id} value={String(idx)}>
                 {channel.name || `Channel ${idx}`}
@@ -271,9 +272,9 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
 
         <div className="setting-item" style={{ marginTop: '1rem' }}>
           <label htmlFor="welcomeMessage">
-            Welcome Message
+            {t('automation.auto_welcome.message_label')}
             <span className="setting-description">
-              Message to send to new nodes. Available tokens: {'{LONG_NAME}'}, {'{SHORT_NAME}'}, {'{VERSION}'}, {'{DURATION}'}, {'{FEATURES}'}, {'{NODECOUNT}'}, {'{DIRECTCOUNT}'}
+              {t('automation.auto_welcome.message_description')} {t('automation.available_tokens')}: {'{LONG_NAME}'}, {'{SHORT_NAME}'}, {'{VERSION}'}, {'{DURATION}'}, {'{FEATURES}'}, {'{NODECOUNT}'}, {'{DIRECTCOUNT}'}
             </span>
           </label>
           <textarea
@@ -323,9 +324,9 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
 
         <div className="setting-item" style={{ marginTop: '1rem' }}>
           <label>
-            Sample Message Preview
+            {t('automation.auto_welcome.sample_preview')}
             <span className="setting-description">
-              Shows how your welcome message will appear after token substitution (using example values)
+              {t('automation.auto_welcome.sample_preview_description')}
             </span>
           </label>
           <div style={{

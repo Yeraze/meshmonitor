@@ -6,12 +6,14 @@
  */
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { logger } from '../utils/logger';
 import { version } from '../../package.json';
 import './LoginPage.css';
 
 const LoginPage: React.FC = () => {
+  const { t } = useTranslation();
   const { login, loginWithOIDC, authStatus } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -37,7 +39,7 @@ const LoginPage: React.FC = () => {
       if (err instanceof Error && err.message.includes('Session cookie')) {
         setError(err.message);
       } else {
-        setError('Invalid username or password');
+        setError(t('auth.invalid_credentials'));
       }
     } finally {
       setLoading(false);
@@ -53,7 +55,7 @@ const LoginPage: React.FC = () => {
       // User will be redirected to OIDC provider
     } catch (err) {
       logger.error('OIDC login error:', err);
-      setError('Failed to initiate OIDC login');
+      setError(t('auth.oidc_failed'));
       setLoading(false);
     }
   };
@@ -92,7 +94,7 @@ const LoginPage: React.FC = () => {
           {!localAuthDisabled && (
             <form onSubmit={handleLocalLogin} className="login-form">
               <div className="form-group">
-                <label htmlFor="username">Username</label>
+                <label htmlFor="username">{t('auth.username')}</label>
                 <input
                   id="username"
                   type="text"
@@ -106,7 +108,7 @@ const LoginPage: React.FC = () => {
               </div>
 
               <div className="form-group">
-                <label htmlFor="password">Password</label>
+                <label htmlFor="password">{t('auth.password')}</label>
                 <input
                   id="password"
                   type="password"
@@ -129,7 +131,7 @@ const LoginPage: React.FC = () => {
                 className="button button-primary login-button"
                 disabled={loading || !username || !password}
               >
-                {loading ? 'Logging in...' : 'Login'}
+                {loading ? t('auth.logging_in') : t('auth.login')}
               </button>
             </form>
           )}
@@ -137,7 +139,7 @@ const LoginPage: React.FC = () => {
           {/* Divider between auth methods */}
           {!localAuthDisabled && oidcEnabled && (
             <div className="login-divider">
-              <span>OR</span>
+              <span>{t('common.or')}</span>
             </div>
           )}
 
@@ -156,7 +158,7 @@ const LoginPage: React.FC = () => {
                 onClick={handleOIDCLogin}
                 disabled={loading}
               >
-                Login with OIDC
+                {t('auth.login_with_oidc')}
               </button>
             </>
           )}
@@ -164,22 +166,21 @@ const LoginPage: React.FC = () => {
           {/* Show message if only OIDC is available */}
           {localAuthDisabled && !oidcEnabled && (
             <div className="error-message">
-              Local authentication is disabled and OIDC is not configured.
-              Please contact your administrator.
+              {t('auth.local_disabled_no_oidc')}
             </div>
           )}
         </div>
 
         {/* Version and GitHub Link */}
         <div className="login-footer">
-          <div className="version">Version {version}</div>
+          <div className="version">{t('common.version')} {version}</div>
           <a
             href="https://github.com/yeraze/meshmonitor"
             target="_blank"
             rel="noopener noreferrer"
             className="github-link"
           >
-            View on GitHub
+            {t('common.view_on_github')}
           </a>
         </div>
       </div>

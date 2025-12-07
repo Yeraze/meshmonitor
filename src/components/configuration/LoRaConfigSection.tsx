@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { MODEM_PRESET_OPTIONS, REGION_OPTIONS } from './constants';
 
 interface LoRaConfigSectionProps {
@@ -58,12 +59,13 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
   isSaving,
   onSave
 }) => {
+  const { t } = useTranslation();
   const [isPresetDropdownOpen, setIsPresetDropdownOpen] = useState(false);
 
   return (
     <div className="settings-section">
       <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        LoRa Radio Configuration
+        {t('lora_config.title')}
         <a
           href="https://meshmonitor.org/features/device#lora-radio-configuration"
           target="_blank"
@@ -73,7 +75,7 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
             color: '#89b4fa',
             textDecoration: 'none'
           }}
-          title="View LoRa Configuration Documentation"
+          title={t('lora_config.view_docs')}
         >
           ❓
         </a>
@@ -88,16 +90,16 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
             style={{ marginTop: '0.2rem', flexShrink: 0 }}
           />
           <div style={{ flex: 1 }}>
-            <div>Use Preset</div>
-            <span className="setting-description">Use predefined modem settings (recommended)</span>
+            <div>{t('lora_config.use_preset')}</div>
+            <span className="setting-description">{t('lora_config.use_preset_description')}</span>
           </div>
         </label>
       </div>
       {usePreset && (
         <div className="setting-item">
           <label htmlFor="modemPreset">
-            Modem Preset
-            <span className="setting-description">Predefined radio settings balancing range and speed</span>
+            {t('lora_config.modem_preset')}
+            <span className="setting-description">{t('lora_config.modem_preset_description')}</span>
           </label>
           <div style={{ position: 'relative' }}>
             <div
@@ -188,8 +190,8 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
         <>
           <div className="setting-item">
             <label htmlFor="bandwidth">
-              Bandwidth (kHz)
-              <span className="setting-description">Channel bandwidth in kHz. Common values: 125, 250, 500 (31 = 31.25)</span>
+              {t('lora_config.bandwidth')}
+              <span className="setting-description">{t('lora_config.bandwidth_description')}</span>
             </label>
             <input
               id="bandwidth"
@@ -203,8 +205,8 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
           </div>
           <div className="setting-item">
             <label htmlFor="spreadFactor">
-              Spreading Factor
-              <span className="setting-description">Number of chirps per symbol (7-12). Higher = longer range, slower speed</span>
+              {t('lora_config.spread_factor')}
+              <span className="setting-description">{t('lora_config.spread_factor_description')}</span>
             </label>
             <input
               id="spreadFactor"
@@ -218,8 +220,8 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
           </div>
           <div className="setting-item">
             <label htmlFor="codingRate">
-              Coding Rate Denominator
-              <span className="setting-description">Denominator of coding rate (5-8). For 4/5 use 5, for 4/8 use 8</span>
+              {t('lora_config.coding_rate')}
+              <span className="setting-description">{t('lora_config.coding_rate_description')}</span>
             </label>
             <input
               id="codingRate"
@@ -233,8 +235,8 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
           </div>
           <div className="setting-item">
             <label htmlFor="frequencyOffset">
-              Frequency Offset (MHz)
-              <span className="setting-description">Advanced: Frequency offset for crystal calibration (default: 0)</span>
+              {t('lora_config.frequency_offset')}
+              <span className="setting-description">{t('lora_config.frequency_offset_description')}</span>
             </label>
             <input
               id="frequencyOffset"
@@ -249,8 +251,8 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
       )}
       <div className="setting-item">
         <label htmlFor="overrideFrequency">
-          Override Frequency (MHz)
-          <span className="setting-description">HAM/Advanced: Override channel calculation and use this frequency. Frequency offset still applies. Value of 0 = disabled</span>
+          {t('lora_config.override_frequency')}
+          <span className="setting-description">{t('lora_config.override_frequency_description')}</span>
         </label>
         <input
           id="overrideFrequency"
@@ -263,8 +265,8 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
       </div>
       <div className="setting-item">
         <label htmlFor="region">
-          Region Code
-          <span className="setting-description">Select your regulatory region for frequency/power limits</span>
+          {t('lora_config.region')}
+          <span className="setting-description">{t('lora_config.region_description')}</span>
         </label>
         <select
           id="region"
@@ -281,8 +283,8 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
       </div>
       <div className="setting-item">
         <label htmlFor="hopLimit">
-          Hop Limit
-          <span className="setting-description">Maximum number of hops for mesh packets. Range: 1-7 (default: 3)</span>
+          {t('lora_config.hop_limit')}
+          <span className="setting-description">{t('lora_config.hop_limit_description')}</span>
         </label>
         <input
           id="hopLimit"
@@ -296,8 +298,8 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
       </div>
       <div className="setting-item">
         <label htmlFor="txPower">
-          Transmit Power (dBm)
-          <span className="setting-description">LoRa transmit power in dBm. Value of 0 uses the default maximum safe power for your hardware. Units are in dBm.</span>
+          {t('lora_config.tx_power')}
+          <span className="setting-description">{t('lora_config.tx_power_description')}</span>
         </label>
         <input
           id="txPower"
@@ -309,8 +311,8 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
       </div>
       <div className="setting-item">
         <label htmlFor="channelNum">
-          Channel Number
-          <span className="setting-description">LoRa channel number for frequency hopping. Range: 0-255 (default: 0)</span>
+          {t('lora_config.channel_num')}
+          <span className="setting-description">{t('lora_config.channel_num_description')}</span>
         </label>
         <input
           id="channelNum"
@@ -332,8 +334,8 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
             style={{ marginTop: '0.2rem', flexShrink: 0 }}
           />
           <div style={{ flex: 1 }}>
-            <div>RX Boosted Gain (SX126x)</div>
-            <span className="setting-description">Enable boosted receive gain for SX126x radios (improves sensitivity but increases power consumption)</span>
+            <div>{t('lora_config.rx_boosted_gain')}</div>
+            <span className="setting-description">{t('lora_config.rx_boosted_gain_description')}</span>
           </div>
         </label>
       </div>
@@ -342,7 +344,7 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
         onClick={onSave}
         disabled={isSaving}
       >
-        {isSaving ? 'Saving...' : 'Save LoRa Config'}
+        {isSaving ? t('common.saving') : t('lora_config.save_button')}
       </button>
     </div>
   );

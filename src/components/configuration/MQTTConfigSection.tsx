@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface MQTTConfigSectionProps {
   mqttEnabled: boolean;
@@ -37,10 +38,12 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
   isSaving,
   onSave
 }) => {
+  const { t } = useTranslation();
+
   return (
     <div className="settings-section">
       <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        MQTT Module
+        {t('mqtt_config.title')}
         <a
           href="https://meshmonitor.org/features/device#mqtt-configuration"
           target="_blank"
@@ -50,7 +53,7 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
             color: '#89b4fa',
             textDecoration: 'none'
           }}
-          title="View MQTT Configuration Documentation"
+          title={t('mqtt_config.view_docs')}
         >
           ❓
         </a>
@@ -65,8 +68,8 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
             style={{ marginTop: '0.2rem', flexShrink: 0 }}
           />
           <div style={{ flex: 1 }}>
-            <div>Enable MQTT</div>
-            <span className="setting-description">Enable MQTT uplink/downlink gateway</span>
+            <div>{t('mqtt_config.enable')}</div>
+            <span className="setting-description">{t('mqtt_config.enable_description')}</span>
           </div>
         </label>
       </div>
@@ -74,8 +77,8 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
         <>
           <div className="setting-item">
             <label htmlFor="mqttAddress">
-              MQTT Server Address
-              <span className="setting-description">Leave empty for default server (mqtt.meshtastic.org)</span>
+              {t('mqtt_config.server_address')}
+              <span className="setting-description">{t('mqtt_config.server_address_description')}</span>
             </label>
             <input
               id="mqttAddress"
@@ -88,8 +91,8 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
           </div>
           <div className="setting-item">
             <label htmlFor="mqttUsername">
-              MQTT Username
-              <span className="setting-description">Username for MQTT authentication (optional)</span>
+              {t('mqtt_config.username')}
+              <span className="setting-description">{t('mqtt_config.username_description')}</span>
             </label>
             <input
               id="mqttUsername"
@@ -101,8 +104,8 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
           </div>
           <div className="setting-item">
             <label htmlFor="mqttPassword">
-              MQTT Password
-              <span className="setting-description">Password for MQTT authentication (optional)</span>
+              {t('mqtt_config.password')}
+              <span className="setting-description">{t('mqtt_config.password_description')}</span>
             </label>
             <input
               id="mqttPassword"
@@ -114,8 +117,8 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
           </div>
           <div className="setting-item">
             <label htmlFor="mqttRoot">
-              MQTT Root Topic
-              <span className="setting-description">Root topic for MQTT messages (e.g., "msh/US/MyRegion")</span>
+              {t('mqtt_config.root_topic')}
+              <span className="setting-description">{t('mqtt_config.root_topic_description')}</span>
             </label>
             <input
               id="mqttRoot"
@@ -136,8 +139,8 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
                 style={{ marginTop: '0.2rem', flexShrink: 0 }}
               />
               <div style={{ flex: 1 }}>
-                <div>Encryption Enabled</div>
-                <span className="setting-description">Send encrypted packets to MQTT</span>
+                <div>{t('mqtt_config.encryption_enabled')}</div>
+                <span className="setting-description">{t('mqtt_config.encryption_description')}</span>
               </div>
             </label>
           </div>
@@ -151,8 +154,8 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
                 style={{ marginTop: '0.2rem', flexShrink: 0 }}
               />
               <div style={{ flex: 1 }}>
-                <div>JSON Enabled</div>
-                <span className="setting-description">Send/receive JSON packets on MQTT</span>
+                <div>{t('mqtt_config.json_enabled')}</div>
+                <span className="setting-description">{t('mqtt_config.json_description')}</span>
               </div>
             </label>
           </div>
@@ -163,7 +166,7 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
         onClick={onSave}
         disabled={isSaving}
       >
-        {isSaving ? 'Saving...' : 'Save MQTT Config'}
+        {isSaving ? t('common.saving') : t('mqtt_config.save_button')}
       </button>
     </div>
   );

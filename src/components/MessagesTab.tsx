@@ -6,6 +6,7 @@
  */
 
 import React, { useRef, useCallback } from 'react';
+import { useTranslation, Trans } from 'react-i18next';
 import { DeviceInfo } from '../types/device';
 import { MeshMessage } from '../types/message';
 import { ResourceType } from '../types/permission';
@@ -127,6 +128,9 @@ export interface MessagesTabProps {
 
   // Helper function
   shouldShowData: () => boolean;
+
+  // Refs from parent for scroll handling
+  dmMessagesContainerRef: React.RefObject<HTMLDivElement | null>;
 }
 
 const MessagesTab: React.FC<MessagesTabProps> = ({
@@ -177,9 +181,11 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   setShowPurgeDataModal,
   setEmojiPickerMessage,
   shouldShowData,
+  dmMessagesContainerRef,
 }) => {
+  const { t } = useTranslation();
+
   // Refs
-  const dmMessagesContainerRef = useRef<HTMLDivElement>(null);
   const dmMessageInputRef = useRef<HTMLInputElement>(null);
 
   // Helper functions
@@ -223,9 +229,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   if (!hasPermission('messages', 'read')) {
     return (
       <div className="no-permission-message">
-        <p>
-          You need <strong>messages:read</strong> permission to view direct messages.
-        </p>
+        <p><Trans i18nKey="messages.permission_denied" components={{ strong: <strong /> }} /></p>
       </div>
     );
   }
@@ -321,19 +325,19 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
           <button
             className="collapse-nodes-btn"
             onClick={() => setIsMessagesNodeListCollapsed(!isMessagesNodeListCollapsed)}
-            title={isMessagesNodeListCollapsed ? 'Expand node list' : 'Collapse node list'}
+            title={isMessagesNodeListCollapsed ? t('nodes.expand_node_list') : t('nodes.collapse_node_list')}
           >
             {isMessagesNodeListCollapsed ? '▶' : '◀'}
           </button>
           {!isMessagesNodeListCollapsed && (
             <div className="sidebar-header-content">
-              <h3>Nodes</h3>
+              <h3>{t('messages.nodes_header')}</h3>
               <button
                 className="mark-all-read-btn"
                 onClick={() => markMessagesAsRead(undefined, undefined, undefined, true)}
-                title="Mark all direct messages as read"
+                title={t('messages.mark_all_read_title')}
               >
-                Mark All Read
+                {t('messages.mark_all_read_button')}
               </button>
             </div>
           )}
@@ -341,7 +345,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
             <div className="node-controls">
               <input
                 type="text"
-                placeholder="Filter nodes..."
+                placeholder={t('messages.filter_placeholder')}
                 value={nodeFilter}
                 onChange={e => setNodeFilter(e.target.value)}
                 className="filter-input-small"
@@ -351,11 +355,11 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                   value={dmFilter}
                   onChange={e => setDmFilter(e.target.value as 'all' | 'unread' | 'recent')}
                   className="sort-dropdown"
-                  title="Filter conversations"
+                  title={t('messages.filter_conversations_title')}
                 >
-                  <option value="all">All Conversations</option>
-                  <option value="unread">Unread Only</option>
-                  <option value="recent">Recent (24h)</option>
+                  <option value="all">{t('messages.all_conversations')}</option>
+                  <option value="unread">{t('messages.unread_only')}</option>
+                  <option value="recent">{t('messages.recent_24h')}</option>
                 </select>
               </div>
             </div>
@@ -381,13 +385,13 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       <div className="node-header">
                         <div className="node-name">
                           {node.isFavorite && <span className="favorite-indicator">⭐</span>}
-                          <span className="node-name-text">{node.user?.longName || `Node ${node.nodeNum}`}</span>
+                          <span className="node-name-text">{node.user?.longName || t('messages.node_fallback', { nodeNum: node.nodeNum })}</span>
                         </div>
                         <div className="node-actions">
                           {(node.keyIsLowEntropy || node.duplicateKeyDetected) && (
                             <span
                               className="security-warning-icon"
-                              title={node.keySecurityIssueDetails || 'Key security issue detected'}
+                              title={node.keySecurityIssueDetails || t('messages.key_security_issue')}
                               style={{
                                 fontSize: '16px',
                                 color: '#f44336',
@@ -425,7 +429,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                               minWidth: 0,
                             }}
                           >
-                            {node.lastMessageText || 'No messages'}
+                            {node.lastMessageText || t('messages.no_messages_preview')}
                           </div>
 
                           <div
@@ -437,7 +441,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                               fontSize: '0.85rem',
                             }}
                           >
-                            <span className="stat" title="Total Messages">
+                            <span className="stat" title={t('messages.total_messages_title')}>
                               💬 {node.messageCount}
                             </span>
                             {node.lastMessageTime > 0 && (
@@ -464,27 +468,27 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
 
                       <div className="node-indicators">
                         {node.position && node.position.latitude != null && node.position.longitude != null && (
-                          <div className="node-location" title="Location">
+                          <div className="node-location" title={t('nodes.location')}>
                             📍 {node.position.latitude.toFixed(3)}, {node.position.longitude.toFixed(3)}
                             {node.isMobile && (
-                              <span title="Mobile Node (position varies > 1km)" style={{ marginLeft: '4px' }}>
+                              <span title={t('nodes.mobile_node')} style={{ marginLeft: '4px' }}>
                                 🚶
                               </span>
                             )}
                           </div>
                         )}
                         {node.user?.id && nodesWithTelemetry.has(node.user.id) && (
-                          <div className="node-telemetry" title="Has Telemetry Data">
+                          <div className="node-telemetry" title={t('nodes.has_telemetry')}>
                             📊
                           </div>
                         )}
                         {node.user?.id && nodesWithWeatherTelemetry.has(node.user.id) && (
-                          <div className="node-weather" title="Has Weather Data">
+                          <div className="node-weather" title={t('nodes.has_weather')}>
                             ☀️
                           </div>
                         )}
                         {node.user?.id && nodesWithPKC.has(node.user.id) && (
-                          <div className="node-pkc" title="Has Public Key Cryptography">
+                          <div className="node-pkc" title={t('nodes.has_pkc')}>
                             🔐
                           </div>
                         )}
@@ -493,10 +497,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                   ))}
                 </>
               ) : (
-                <div className="no-data">No nodes available</div>
+                <div className="no-data">{t('messages.no_nodes')}</div>
               )
             ) : (
-              <div className="no-data">Connect to a Meshtastic node to view messages</div>
+              <div className="no-data">{t('messages.connect_to_view')}</div>
             )}
           </div>
         )}
@@ -514,7 +518,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
               setReplyingTo(null);
             }}
           >
-            <option value="">Select a conversation...</option>
+            <option value="">{t('messages.select_conversation')}</option>
             {sortedNodesWithMessages
               .filter(node => {
                 if (!showIncompleteNodes && !isNodeComplete(node)) return false;
@@ -555,20 +559,20 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
             <div className="dm-header">
               <div className="dm-header-top">
                 <h3>
-                  Conversation with {getNodeName(selectedDMNode)}
+                  {t('messages.conversation_with', { name: getNodeName(selectedDMNode) })}
                   {selectedNode?.lastHeard && (
                     <div style={{ fontSize: '0.75em', fontWeight: 'normal', color: '#888', marginTop: '4px' }}>
-                      Last seen: {formatDateTime(new Date(selectedNode.lastHeard * 1000), timeFormat, dateFormat)}
+                      {t('messages.last_seen', { time: formatDateTime(new Date(selectedNode.lastHeard * 1000), timeFormat, dateFormat) })}
                     </div>
                   )}
                 </h3>
                 <button
                   className="btn btn-secondary"
                   onClick={() => markMessagesAsRead(undefined, undefined, selectedDMNode)}
-                  title="Mark all messages in this conversation as read"
+                  title={t('messages.mark_read_conversation_title')}
                   style={{ padding: '0.5rem 1rem', fontSize: '0.9rem', whiteSpace: 'nowrap' }}
                 >
-                  Mark all as Read
+                  {t('messages.mark_read_button')}
                 </button>
               </div>
             </div>
@@ -586,7 +590,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                   textAlign: 'center',
                 }}
               >
-                ⚠️ This node is a security risk
+                ⚠️ {t('messages.security_risk')}
               </div>
             )}
 
@@ -630,7 +634,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                               {formatMessageTime(currentDate, timeFormat, dateFormat)}
                               <HopCountDisplay hopStart={msg.hopStart} hopLimit={msg.hopLimit} />
                             </span>
-                            <span className="traceroute-badge">TRACEROUTE</span>
+                            <span className="traceroute-badge">{t('messages.traceroute_badge')}</span>
                           </div>
                           <div className="message-text" style={{ whiteSpace: 'pre-line', fontFamily: 'monospace' }}>
                             {renderMessageWithLinks(msg.text)}
@@ -667,11 +671,11 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                 {repliedMessage ? (
                                   <>
                                     <div className="reply-from">{getNodeShortName(repliedMessage.from)}</div>
-                                    <div className="reply-text">{repliedMessage.text || 'Empty Message'}</div>
+                                    <div className="reply-text">{repliedMessage.text || t('messages.empty_message')}</div>
                                   </>
                                 ) : (
                                   <div className="reply-text" style={{ fontStyle: 'italic', opacity: 0.6 }}>
-                                    Message not available
+                                    {t('messages.message_unavailable')}
                                   </div>
                                 )}
                               </div>
@@ -686,21 +690,21 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                     setReplyingTo(msg);
                                     dmMessageInputRef.current?.focus();
                                   }}
-                                  title="Reply to this message"
+                                  title={t('messages.reply_button_title')}
                                 >
                                   ↩
                                 </button>
                                 <button
                                   className="emoji-picker-button"
                                   onClick={() => setEmojiPickerMessage(msg)}
-                                  title="React with emoji"
+                                  title={t('messages.emoji_button_title')}
                                 >
                                   😄
                                 </button>
                                 <button
                                   className="delete-button"
                                   onClick={() => handleDeleteMessage(msg)}
-                                  title="Delete this message"
+                                  title={t('messages.delete_button_title')}
                                 >
                                   🗑️
                                 </button>
@@ -716,7 +720,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                   <span
                                     key={reaction.id}
                                     className="reaction"
-                                    title={`From ${getNodeShortName(reaction.from)} - Click to send same reaction`}
+                                    title={t('messages.reaction_tooltip', { name: getNodeShortName(reaction.from) })}
                                     onClick={() => handleSendTapback(reaction.text, msg)}
                                   >
                                     {reaction.text}
@@ -738,7 +742,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                   );
                 })
               ) : (
-                <p className="no-messages">No direct messages with this node yet</p>
+                <p className="no-messages">{t('messages.no_dm_yet')}</p>
               )}
             </div>
 
@@ -748,10 +752,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                 {replyingTo && (
                   <div className="reply-indicator">
                     <div className="reply-indicator-content">
-                      <div className="reply-indicator-label">Replying to {getNodeName(replyingTo.from)}</div>
+                      <div className="reply-indicator-label">{t('messages.replying_to', { name: getNodeName(replyingTo.from) })}</div>
                       <div className="reply-indicator-text">{replyingTo.text}</div>
                     </div>
-                    <button className="reply-indicator-close" onClick={() => setReplyingTo(null)} title="Cancel reply">
+                    <button className="reply-indicator-close" onClick={() => setReplyingTo(null)} title={t('messages.cancel_reply_title')}>
                       ×
                     </button>
                   </div>
@@ -764,7 +768,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                         type="text"
                         value={newMessage}
                         onChange={e => setNewMessage(e.target.value)}
-                        placeholder={`Send direct message to ${getNodeName(selectedDMNode)}...`}
+                        placeholder={t('messages.dm_placeholder', { name: getNodeName(selectedDMNode) })}
                         className="message-input"
                         onKeyPress={e => {
                           if (e.key === 'Enter') {
@@ -797,17 +801,17 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       onClick={() => handleTraceroute(selectedDMNode)}
                       disabled={connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode}
                       className="traceroute-btn"
-                      title="Run traceroute to this node"
+                      title={t('messages.traceroute_title')}
                     >
-                      🗺️ Traceroute
+                      🗺️ {t('messages.traceroute_button')}
                       {tracerouteLoading === selectedDMNode && <span className="spinner"></span>}
                     </button>
                     <button
                       onClick={() => setShowTracerouteHistoryModal(true)}
                       className="traceroute-btn"
-                      title="View traceroute history for this node"
+                      title={t('messages.history_title')}
                     >
-                      📜 Show History
+                      📜 {t('messages.history_button')}
                     </button>
                   </>
                 )}
@@ -816,9 +820,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                     onClick={() => handleExchangePosition(selectedDMNode)}
                     disabled={connectionStatus !== 'connected' || positionLoading === selectedDMNode}
                     className="traceroute-btn"
-                    title="Request position exchange with this node"
+                    title={t('messages.exchange_position_title')}
                   >
-                    📍 Exchange Position
+                    📍 {t('messages.exchange_position')}
                     {positionLoading === selectedDMNode && <span className="spinner"></span>}
                   </button>
                 )}
@@ -836,7 +840,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       fontWeight: 'bold',
                     }}
                   >
-                    🗑️ Purge Data
+                    🗑️ {t('messages.purge_data')}
                   </button>
                 )}
               </div>
@@ -852,7 +856,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                     return (
                       <div className="traceroute-info" style={{ marginTop: '1rem' }}>
                         <div className="traceroute-route">
-                          <strong>→ Forward:</strong>{' '}
+                          <strong>{t('messages.traceroute_forward')}</strong>{' '}
                           {formatTracerouteRoute(
                             recentTrace.route,
                             recentTrace.snrTowards,
@@ -863,7 +867,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                           )}
                         </div>
                         <div className="traceroute-route">
-                          <strong>← Return:</strong>{' '}
+                          <strong>{t('messages.traceroute_return')}</strong>{' '}
                           {formatTracerouteRoute(
                             recentTrace.routeBack,
                             recentTrace.snrBack,
@@ -873,7 +877,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             distanceUnit
                           )}
                         </div>
-                        <div className="traceroute-age">Last traced {ageStr}</div>
+                        <div className="traceroute-age">{t('messages.last_traced', { time: ageStr })}</div>
                       </div>
                     );
                   }
@@ -889,13 +893,13 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
               selectedNode.keySecurityIssueDetails && (
                 <div className="node-details-block" style={{ marginTop: '1rem' }}>
                   <h3 className="node-details-title" style={{ color: '#f44336' }}>
-                    ⚠️ Security Issue
+                    ⚠️ {t('messages.security_issue_title')}
                   </h3>
                   <div className="node-details-grid">
                     <div className="node-detail-card" style={{ gridColumn: '1 / -1', borderLeft: '4px solid #f44336' }}>
-                      <div className="node-detail-label">Issue Details</div>
+                      <div className="node-detail-label">{t('messages.issue_details')}</div>
                       <div className="node-detail-value" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                        {selectedNode.keyIsLowEntropy && 'This node uses a known low-entropy cryptographic key. '}
+                        {selectedNode.keyIsLowEntropy && t('messages.low_entropy_warning')}
                         {selectedNode.duplicateKeyDetected &&
                           (() => {
                             const match = selectedNode.keySecurityIssueDetails?.match(/nodes?: ([\d, ]+)/);
@@ -904,10 +908,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
 
                             return (
                               <>
-                                This key is shared with:{' '}
+                                {t('messages.shared_key_with')}
                                 {sharedNodeNums.map((nodeNum, idx) => {
                                   const sharedNode = nodes.find(n => n.nodeNum === nodeNum);
-                                  const displayName = sharedNode?.user?.longName || `Node ${nodeNum}`;
+                                  const displayName = sharedNode?.user?.longName || t('messages.node_fallback', { nodeNum });
                                   const shortName = sharedNode?.user?.shortName || '?';
                                   return (
                                     <span key={nodeNum}>
@@ -927,7 +931,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                           padding: 0,
                                           font: 'inherit',
                                         }}
-                                        title={`Switch to ${displayName}`}
+                                        title={t('messages.switch_to_title', { name: displayName })}
                                       >
                                         {displayName} ({shortName})
                                       </button>
@@ -952,7 +956,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
           </div>
         ) : (
           <div className="no-selection">
-            <p>Select a conversation from the list to view messages</p>
+            <p>{t('messages.select_from_list')}</p>
           </div>
         )}
       </div>

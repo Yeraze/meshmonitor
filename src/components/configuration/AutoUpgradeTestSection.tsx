@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useToast } from '../ToastContainer';
 import { logger } from '../../utils/logger';
@@ -36,6 +37,7 @@ interface UpgradeStatus {
 }
 
 const AutoUpgradeTestSection: React.FC<AutoUpgradeTestSectionProps> = ({ baseUrl }) => {
+  const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();
   const [isTesting, setIsTesting] = useState(false);
@@ -61,22 +63,22 @@ const AutoUpgradeTestSection: React.FC<AutoUpgradeTestSectionProps> = ({ baseUrl
       setTestResults(data);
 
       if (data.success) {
-        showToast('All auto-upgrade configuration checks passed!', 'success');
+        showToast(t('auto_upgrade_test.toast_all_passed'), 'success');
       } else {
-        showToast('Auto-upgrade configuration has issues. See details below.', 'warning');
+        showToast(t('auto_upgrade_test.toast_has_issues'), 'warning');
       }
     } catch (error) {
       logger.error('Failed to test auto-upgrade configuration:', error);
-      showToast('Failed to test auto-upgrade configuration', 'error');
+      showToast(t('auto_upgrade_test.toast_test_failed'), 'error');
       setTestResults({
         success: false,
         results: [{
-          check: 'Connection Error',
+          check: t('auto_upgrade_test.check_connection_error'),
           passed: false,
-          message: 'Failed to communicate with server',
+          message: t('auto_upgrade_test.message_server_communication_failed'),
           details: error instanceof Error ? error.message : String(error)
         }],
-        overallMessage: 'Could not connect to server'
+        overallMessage: t('auto_upgrade_test.message_connect_failed')
       });
     } finally {
       setIsTesting(false);
@@ -101,9 +103,9 @@ const AutoUpgradeTestSection: React.FC<AutoUpgradeTestSectionProps> = ({ baseUrl
         setIsTestUpgrading(false);
 
         if (status.status === 'complete') {
-          showToast('Test upgrade completed successfully!', 'success');
+          showToast(t('auto_upgrade_test.toast_upgrade_complete'), 'success');
         } else {
-          showToast('Test upgrade failed', 'error');
+          showToast(t('auto_upgrade_test.toast_upgrade_failed'), 'error');
         }
       }
     } catch (error) {
@@ -137,7 +139,7 @@ const AutoUpgradeTestSection: React.FC<AutoUpgradeTestSectionProps> = ({ baseUrl
       const data: TriggerUpgradeResponse = await response.json();
 
       if (data.success) {
-        showToast('Test upgrade started! Monitoring progress...', 'info');
+        showToast(t('auto_upgrade_test.toast_upgrade_started'), 'info');
 
         // Start polling for status
         const interval = setInterval(() => {
@@ -153,7 +155,7 @@ const AutoUpgradeTestSection: React.FC<AutoUpgradeTestSectionProps> = ({ baseUrl
       }
     } catch (error) {
       logger.error('Failed to trigger test upgrade:', error);
-      showToast('Failed to start test upgrade', 'error');
+      showToast(t('auto_upgrade_test.toast_start_failed'), 'error');
       setIsTestUpgrading(false);
     }
   };
@@ -177,26 +179,25 @@ const AutoUpgradeTestSection: React.FC<AutoUpgradeTestSectionProps> = ({ baseUrl
 
   const getUpgradeStatusDisplay = (status: string) => {
     const statusMap: Record<string, { label: string; icon: string; color: string }> = {
-      pending: { label: 'Pending', icon: '⏳', color: '#6b7280' },
-      backing_up: { label: 'Creating Backup', icon: '💾', color: '#3b82f6' },
-      downloading: { label: 'Pulling Image', icon: '⬇️', color: '#3b82f6' },
-      restarting: { label: 'Recreating Container', icon: '🔄', color: '#f59e0b' },
-      health_check: { label: 'Health Check', icon: '🏥', color: '#f59e0b' },
-      complete: { label: 'Complete', icon: '✅', color: '#10b981' },
-      failed: { label: 'Failed', icon: '❌', color: '#ef4444' },
-      rolling_back: { label: 'Rolling Back', icon: '↩️', color: '#f59e0b' }
+      pending: { label: t('auto_upgrade_test.status_pending'), icon: '⏳', color: '#6b7280' },
+      backing_up: { label: t('auto_upgrade_test.status_backing_up'), icon: '💾', color: '#3b82f6' },
+      downloading: { label: t('auto_upgrade_test.status_downloading'), icon: '⬇️', color: '#3b82f6' },
+      restarting: { label: t('auto_upgrade_test.status_restarting'), icon: '🔄', color: '#f59e0b' },
+      health_check: { label: t('auto_upgrade_test.status_health_check'), icon: '🏥', color: '#f59e0b' },
+      complete: { label: t('auto_upgrade_test.status_complete'), icon: '✅', color: '#10b981' },
+      failed: { label: t('auto_upgrade_test.status_failed'), icon: '❌', color: '#ef4444' },
+      rolling_back: { label: t('auto_upgrade_test.status_rolling_back'), icon: '↩️', color: '#f59e0b' }
     };
     return statusMap[status] || { label: status, icon: '❓', color: '#6b7280' };
   };
 
   return (
     <div className="settings-section">
-      <h3>Auto-Upgrade Testing</h3>
+      <h3>{t('auto_upgrade_test.title')}</h3>
       <p className="setting-description">
-        Test your auto-upgrade configuration to ensure all components are properly set up.
-        The <strong>Configuration Test</strong> checks environment variables, file permissions, the upgrader sidecar, and more.
-        The <strong>Upgrade Process Test</strong> performs an actual upgrade with the current version, testing backup creation,
-        container recreation, and health checks without changing your version.
+        {t('auto_upgrade_test.description_intro')}
+        {' '}<strong>{t('auto_upgrade_test.config_test_name')}</strong> {t('auto_upgrade_test.config_test_description')}
+        {' '}<strong>{t('auto_upgrade_test.upgrade_test_name')}</strong> {t('auto_upgrade_test.upgrade_test_description')}
       </p>
 
       <div className="setting-item" style={{ marginTop: '1rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
@@ -206,7 +207,7 @@ const AutoUpgradeTestSection: React.FC<AutoUpgradeTestSectionProps> = ({ baseUrl
           className="save-button"
           style={{ width: 'auto', padding: '0.5rem 1rem' }}
         >
-          {isTesting ? 'Testing Configuration...' : 'Test Auto-Upgrade Configuration'}
+          {isTesting ? t('auto_upgrade_test.btn_testing') : t('auto_upgrade_test.btn_test_config')}
         </button>
         <button
           onClick={handleTestUpgrade}
@@ -214,7 +215,7 @@ const AutoUpgradeTestSection: React.FC<AutoUpgradeTestSectionProps> = ({ baseUrl
           className="save-button"
           style={{ width: 'auto', padding: '0.5rem 1rem', backgroundColor: '#f59e0b' }}
         >
-          {isTestUpgrading ? 'Running Test Upgrade...' : 'Test Upgrade Process'}
+          {isTestUpgrading ? t('auto_upgrade_test.btn_running_upgrade') : t('auto_upgrade_test.btn_test_upgrade')}
         </button>
       </div>
 
@@ -238,10 +239,10 @@ const AutoUpgradeTestSection: React.FC<AutoUpgradeTestSectionProps> = ({ baseUrl
               </span>
             </div>
             <div style={{ fontSize: '0.9rem', opacity: 0.9 }}>
-              <div>Target Version: {upgradeStatus.targetVersion}</div>
-              <div>Started: {new Date(upgradeStatus.startTime).toLocaleString()}</div>
+              <div>{t('auto_upgrade_test.target_version')}: {upgradeStatus.targetVersion}</div>
+              <div>{t('auto_upgrade_test.started')}: {new Date(upgradeStatus.startTime).toLocaleString()}</div>
               {upgradeStatus.endTime && (
-                <div>Completed: {new Date(upgradeStatus.endTime).toLocaleString()}</div>
+                <div>{t('auto_upgrade_test.completed')}: {new Date(upgradeStatus.endTime).toLocaleString()}</div>
               )}
               {upgradeStatus.message && (
                 <div style={{ marginTop: '0.5rem', fontStyle: 'italic' }}>
@@ -259,9 +260,9 @@ const AutoUpgradeTestSection: React.FC<AutoUpgradeTestSectionProps> = ({ baseUrl
               borderRadius: '4px',
               fontSize: '0.85rem'
             }}>
-              <strong>Note:</strong> {upgradeStatus.status === 'complete'
-                ? 'Test upgrade completed successfully! The container was recreated with the same version. Check the system logs to verify everything is working correctly.'
-                : 'Test upgrade failed. Check the error message above and the system logs for details.'
+              <strong>{t('auto_upgrade_test.note_label')}</strong> {upgradeStatus.status === 'complete'
+                ? t('auto_upgrade_test.note_complete')
+                : t('auto_upgrade_test.note_failed')
               }
             </div>
           )}
@@ -299,7 +300,7 @@ const AutoUpgradeTestSection: React.FC<AutoUpgradeTestSectionProps> = ({ baseUrl
                 font: 'inherit'
               }}
             >
-              {showDetails ? 'Hide Details' : 'Show Details'}
+              {showDetails ? t('auto_upgrade_test.hide_details') : t('auto_upgrade_test.show_details')}
             </button>
           </div>
 
@@ -316,9 +317,9 @@ const AutoUpgradeTestSection: React.FC<AutoUpgradeTestSectionProps> = ({ baseUrl
               }}>
                 <thead>
                   <tr style={{ backgroundColor: 'var(--background-secondary, #2a2a2a)' }}>
-                    <th style={{ padding: '0.75rem', textAlign: 'left', width: '3rem' }}>Status</th>
-                    <th style={{ padding: '0.75rem', textAlign: 'left', width: '200px' }}>Check</th>
-                    <th style={{ padding: '0.75rem', textAlign: 'left' }}>Result</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'left', width: '3rem' }}>{t('auto_upgrade_test.table_status')}</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'left', width: '200px' }}>{t('auto_upgrade_test.table_check')}</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'left' }}>{t('auto_upgrade_test.table_result')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -367,7 +368,7 @@ const AutoUpgradeTestSection: React.FC<AutoUpgradeTestSectionProps> = ({ baseUrl
             fontSize: '0.85rem',
             opacity: 0.9
           }}>
-            <strong>Note:</strong> If the "Upgrader Sidecar" check fails, ensure you started MeshMonitor with both compose files:
+            <strong>{t('auto_upgrade_test.note_label')}</strong> {t('auto_upgrade_test.sidecar_note')}
             <div style={{
               marginTop: '0.5rem',
               fontFamily: 'monospace',

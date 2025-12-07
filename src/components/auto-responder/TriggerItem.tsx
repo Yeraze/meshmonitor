@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { TriggerItemProps, ResponseType } from './types';
 import { getFileIcon, splitTriggerPatterns, formatTriggerPatterns } from './utils';
 
@@ -14,6 +15,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
   onRemove,
   showToast,
 }) => {
+  const { t } = useTranslation();
   const [showRemoveModal, setShowRemoveModal] = useState(false);
   // Format trigger for editing (convert array to comma-separated string)
   const formatTriggerForEdit = (trigger: string | string[]): string => {
@@ -726,7 +728,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                   onRemove();
                   setShowRemoveModal(false);
                   if (showToast) {
-                    showToast('Trigger removed successfully', 'success');
+                    showToast(t('auto_responder.trigger_removed'), 'success');
                   }
                 }}
                 style={{

@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../services/api';
 import { logger } from '../utils/logger';
@@ -36,6 +37,7 @@ interface User {
 }
 
 const AuditLogTab: React.FC = () => {
+  const { t } = useTranslation();
   const { authStatus } = useAuth();
   const { showToast } = useToast();
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
@@ -97,7 +99,7 @@ const AuditLogTab: React.FC = () => {
       setTotal(response.total);
     } catch (err) {
       logger.error('Failed to fetch audit logs:', err);
-      setError('Failed to load audit logs');
+      setError(t('audit.failed_load'));
     } finally {
       setLoading(false);
     }
@@ -178,10 +180,10 @@ const AuditLogTab: React.FC = () => {
       link.click();
       URL.revokeObjectURL(url);
 
-      showToast('Audit log exported successfully', 'success');
+      showToast(t('audit.export_success'), 'success');
     } catch (err) {
       logger.error('Failed to export CSV:', err);
-      showToast('Failed to export audit log', 'error');
+      showToast(t('audit.export_failed'), 'error');
     }
   };
 
@@ -217,7 +219,7 @@ const AuditLogTab: React.FC = () => {
     return (
       <div className="audit-log-tab">
         <div className="error-message">
-          You do not have permission to view audit logs.
+          {t('audit.no_permission')}
         </div>
       </div>
     );
@@ -226,13 +228,13 @@ const AuditLogTab: React.FC = () => {
   return (
     <div className="audit-log-tab">
       <div className="audit-log-header">
-        <h2>Audit Log</h2>
+        <h2>{t('audit.title')}</h2>
         <button
           onClick={handleExportCSV}
           className="button button-primary"
           disabled={!logs || logs.length === 0}
         >
-          Export CSV
+          {t('audit.export_csv')}
         </button>
       </div>
 
@@ -240,19 +242,19 @@ const AuditLogTab: React.FC = () => {
       {stats && (
         <div className="audit-stats">
           <div className="stat-card">
-            <h3>Total Events (30 days)</h3>
+            <h3>{t('audit.total_events_30_days')}</h3>
             <p className="stat-value">{stats.totalEvents}</p>
           </div>
           <div className="stat-card">
-            <h3>Top Action</h3>
+            <h3>{t('audit.top_action')}</h3>
             <p className="stat-label">
-              {stats.actionStats[0]?.action || 'N/A'} ({stats.actionStats[0]?.count || 0})
+              {stats.actionStats[0]?.action || t('audit.na')} ({stats.actionStats[0]?.count || 0})
             </p>
           </div>
           <div className="stat-card">
-            <h3>Most Active User</h3>
+            <h3>{t('audit.most_active_user')}</h3>
             <p className="stat-label">
-              {stats.userStats[0]?.username || 'N/A'} ({stats.userStats[0]?.count || 0})
+              {stats.userStats[0]?.username || t('audit.na')} ({stats.userStats[0]?.count || 0})
             </p>
           </div>
         </div>
@@ -260,16 +262,16 @@ const AuditLogTab: React.FC = () => {
 
       {/* Filters */}
       <div className="audit-filters">
-        <h3>Filters</h3>
+        <h3>{t('audit.filters')}</h3>
         <div className="filter-grid">
           <div className="form-group">
-            <label htmlFor="filter-user">User</label>
+            <label htmlFor="filter-user">{t('audit.user')}</label>
             <select
               id="filter-user"
               value={filters.userId}
               onChange={(e) => handleFilterChange('userId', e.target.value)}
             >
-              <option value="">All Users</option>
+              <option value="">{t('audit.all_users')}</option>
               {users && users.map(user => (
                 <option key={user.id} value={user.id}>{user.username}</option>
               ))}
@@ -277,13 +279,13 @@ const AuditLogTab: React.FC = () => {
           </div>
 
           <div className="form-group">
-            <label htmlFor="filter-action">Action</label>
+            <label htmlFor="filter-action">{t('audit.action')}</label>
             <select
               id="filter-action"
               value={filters.action}
               onChange={(e) => handleFilterChange('action', e.target.value)}
             >
-              <option value="">All Actions</option>
+              <option value="">{t('audit.all_actions')}</option>
               {uniqueActions.map(action => (
                 <option key={action} value={action}>{action}</option>
               ))}
@@ -291,13 +293,13 @@ const AuditLogTab: React.FC = () => {
           </div>
 
           <div className="form-group">
-            <label htmlFor="filter-resource">Resource</label>
+            <label htmlFor="filter-resource">{t('audit.resource')}</label>
             <select
               id="filter-resource"
               value={filters.resource}
               onChange={(e) => handleFilterChange('resource', e.target.value)}
             >
-              <option value="">All Resources</option>
+              <option value="">{t('audit.all_resources')}</option>
               {uniqueResources.map(resource => (
                 <option key={resource} value={resource}>{resource}</option>
               ))}
@@ -305,7 +307,7 @@ const AuditLogTab: React.FC = () => {
           </div>
 
           <div className="form-group">
-            <label htmlFor="filter-start-date">Start Date</label>
+            <label htmlFor="filter-start-date">{t('audit.start_date')}</label>
             <input
               id="filter-start-date"
               type="date"
@@ -315,7 +317,7 @@ const AuditLogTab: React.FC = () => {
           </div>
 
           <div className="form-group">
-            <label htmlFor="filter-end-date">End Date</label>
+            <label htmlFor="filter-end-date">{t('audit.end_date')}</label>
             <input
               id="filter-end-date"
               type="date"
@@ -325,11 +327,11 @@ const AuditLogTab: React.FC = () => {
           </div>
 
           <div className="form-group">
-            <label htmlFor="filter-search">Search</label>
+            <label htmlFor="filter-search">{t('audit.search')}</label>
             <input
               id="filter-search"
               type="text"
-              placeholder="Search in details..."
+              placeholder={t('audit.search_placeholder')}
               value={filters.search}
               onChange={(e) => handleFilterChange('search', e.target.value)}
             />
@@ -341,10 +343,10 @@ const AuditLogTab: React.FC = () => {
             onClick={handleClearFilters}
             className="button button-secondary"
           >
-            Clear Filters
+            {t('audit.clear_filters')}
           </button>
           <div className="form-group inline-group">
-            <label>Per Page:</label>
+            <label>{t('audit.per_page')}</label>
             <select
               value={filters.limit}
               onChange={(e) => handleFilterChange('limit', parseInt(e.target.value))}
@@ -360,23 +362,23 @@ const AuditLogTab: React.FC = () => {
 
       {/* Audit Log Table */}
       {loading ? (
-        <div className="audit-loading">Loading audit logs...</div>
+        <div className="audit-loading">{t('audit.loading')}</div>
       ) : error ? (
         <div className="error-message">{error}</div>
       ) : !logs || logs.length === 0 ? (
-        <div className="audit-empty">No audit log entries found</div>
+        <div className="audit-empty">{t('audit.no_entries')}</div>
       ) : (
         <>
           <div className="audit-table-container">
             <table className="audit-table">
               <thead>
                 <tr>
-                  <th>Timestamp</th>
-                  <th>User</th>
-                  <th>Action</th>
-                  <th>Resource</th>
-                  <th>IP Address</th>
-                  <th>Details</th>
+                  <th>{t('audit.timestamp')}</th>
+                  <th>{t('audit.user')}</th>
+                  <th>{t('audit.action')}</th>
+                  <th>{t('audit.resource')}</th>
+                  <th>{t('audit.ip_address')}</th>
+                  <th>{t('audit.details')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -387,7 +389,7 @@ const AuditLogTab: React.FC = () => {
                         {formatTimestamp(log.timestamp)}
                       </td>
                       <td>
-                        {log.username || <span className="system-label">System</span>}
+                        {log.username || <span className="system-label">{t('audit.system')}</span>}
                       </td>
                       <td className={`action-cell ${getActionColor(log.action)}`}>
                         {log.action}
@@ -409,16 +411,16 @@ const AuditLogTab: React.FC = () => {
                         <td colSpan={6}>
                           <div className="audit-details">
                             <div className="detail-section">
-                              <strong>Details:</strong>
+                              <strong>{t('audit.details')}:</strong>
                               <pre className="detail-pre">
-                                {log.details ? JSON.stringify(JSON.parse(log.details), null, 2) : 'N/A'}
+                                {log.details ? JSON.stringify(JSON.parse(log.details), null, 2) : t('audit.na')}
                               </pre>
                             </div>
                             {(log.valueBefore || log.valueAfter) && (
                               <div className="detail-comparison">
                                 {log.valueBefore && (
                                   <div className="detail-section before">
-                                    <strong>Before:</strong>
+                                    <strong>{t('audit.value_before')}</strong>
                                     <pre className="detail-pre">
                                       {JSON.stringify(JSON.parse(log.valueBefore), null, 2)}
                                     </pre>
@@ -426,7 +428,7 @@ const AuditLogTab: React.FC = () => {
                                 )}
                                 {log.valueAfter && (
                                   <div className="detail-section after">
-                                    <strong>After:</strong>
+                                    <strong>{t('audit.value_after')}</strong>
                                     <pre className="detail-pre">
                                       {JSON.stringify(JSON.parse(log.valueAfter), null, 2)}
                                     </pre>
@@ -448,7 +450,7 @@ const AuditLogTab: React.FC = () => {
           {totalPages > 1 && (
             <div className="audit-pagination">
               <div className="pagination-info">
-                Showing {filters.offset + 1} to {Math.min(filters.offset + itemsPerPage, total)} of {total} entries
+                {t('audit.showing', { start: filters.offset + 1, end: Math.min(filters.offset + itemsPerPage, total), total })}
               </div>
               <div className="pagination-controls">
                 <button
@@ -456,17 +458,17 @@ const AuditLogTab: React.FC = () => {
                   disabled={currentPage === 1}
                   className="button"
                 >
-                  Previous
+                  {t('audit.previous')}
                 </button>
                 <span className="page-indicator">
-                  Page {currentPage} of {totalPages}
+                  {t('audit.page', { current: currentPage, total: totalPages })}
                 </span>
                 <button
                   onClick={() => handlePageChange(currentPage + 1)}
                   disabled={currentPage === totalPages}
                   className="button"
                 >
-                  Next
+                  {t('audit.next')}
                 </button>
               </div>
             </div>
