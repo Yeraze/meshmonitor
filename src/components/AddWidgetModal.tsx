@@ -3,27 +3,28 @@
  */
 
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 export type WidgetType = 'nodeStatus' | 'traceroute';
 
 interface WidgetOption {
   type: WidgetType;
-  title: string;
-  description: string;
+  titleKey: string;
+  descriptionKey: string;
   icon: string;
 }
 
 const WIDGET_OPTIONS: WidgetOption[] = [
   {
     type: 'nodeStatus',
-    title: 'Node Status',
-    description: 'Monitor multiple nodes with a table showing name, last heard time, and hop count.',
+    titleKey: 'dashboard.widget.node_status.title',
+    descriptionKey: 'dashboard.widget.node_status.description',
     icon: '📊',
   },
   {
     type: 'traceroute',
-    title: 'Traceroute',
-    description: 'View the last successful traceroute to and from a selected node.',
+    titleKey: 'dashboard.widget.traceroute.title',
+    descriptionKey: 'dashboard.widget.traceroute.description',
     icon: '🔀',
   },
 ];
@@ -35,6 +36,7 @@ interface AddWidgetModalProps {
 }
 
 const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ isOpen, onClose, onAddWidget }) => {
+  const { t } = useTranslation();
   if (!isOpen) return null;
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -52,7 +54,7 @@ const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ isOpen, onClose, onAddW
     <div className="add-widget-modal-backdrop" onClick={handleBackdropClick}>
       <div className="add-widget-modal">
         <div className="add-widget-modal-header">
-          <h2>Add Widget</h2>
+          <h2>{t('dashboard.add_widget')}</h2>
           <button className="add-widget-modal-close" onClick={onClose}>
             ×
           </button>
@@ -62,8 +64,8 @@ const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ isOpen, onClose, onAddW
             <div key={option.type} className="add-widget-option" onClick={() => handleAddWidget(option.type)}>
               <div className="add-widget-option-icon">{option.icon}</div>
               <div className="add-widget-option-info">
-                <h3>{option.title}</h3>
-                <p>{option.description}</p>
+                <h3>{t(option.titleKey)}</h3>
+                <p>{t(option.descriptionKey)}</p>
               </div>
             </div>
           ))}
