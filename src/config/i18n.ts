@@ -30,6 +30,7 @@ i18n
   .use(initReactI18next)
   .init({
     fallbackLng: 'en',
+    load: 'languageOnly', // Use 'en' instead of 'en-US'
     debug: process.env.NODE_ENV === 'development',
 
     interpolation: {
