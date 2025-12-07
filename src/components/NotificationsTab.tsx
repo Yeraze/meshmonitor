@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useTranslation, Trans } from 'react-i18next';
 import api from '../services/api';
 import { logger } from '../utils/logger';
 import { Channel } from '../types/device';
@@ -499,7 +499,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
 
         {/* Filtering Section */}
         <h4 style={{ marginTop: '32px', marginBottom: '16px' }}>⚙️ {t('notifications.filtering_title')}</h4>
-        <p style={{ marginBottom: '24px', color: '#666', fontSize: '14px' }} dangerouslySetInnerHTML={{ __html: t('notifications.filtering_description') }} />
+        <p style={{ marginBottom: '24px', color: '#666', fontSize: '14px' }}><Trans i18nKey="notifications.filtering_description" components={{ strong: <strong /> }} /></p>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px', marginBottom: '24px' }}>
           {/* Channel/DM Selection */}
@@ -672,7 +672,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                 }}>
                   <span>✅</span> {t('notifications.whitelist_title')}
                 </label>
-                <p style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '8px', marginTop: 0 }} dangerouslySetInnerHTML={{ __html: t('notifications.whitelist_description') }} />
+                <p style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '8px', marginTop: 0 }}><Trans i18nKey="notifications.whitelist_description" components={{ strong: <strong /> }} /></p>
                 <textarea
                   value={whitelistText}
                   onChange={(e) => setWhitelistText(e.target.value)}
@@ -704,7 +704,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                 }}>
                   <span>🚫</span> {t('notifications.blacklist_title')}
                 </label>
-                <p style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '8px', marginTop: 0 }} dangerouslySetInnerHTML={{ __html: t('notifications.blacklist_description') }} />
+                <p style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '8px', marginTop: 0 }}><Trans i18nKey="notifications.blacklist_description" components={{ strong: <strong /> }} /></p>
                 <textarea
                   value={blacklistText}
                   onChange={(e) => setBlacklistText(e.target.value)}
@@ -970,7 +970,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
       {preferences.enableApprise && (
       <div className="settings-section">
         <h3>🔔 {t('notifications.apprise_config_title')}</h3>
-        <p style={{ marginBottom: '20px', color: '#666' }} dangerouslySetInnerHTML={{ __html: t('notifications.apprise_config_description') }} />
+        <p style={{ marginBottom: '20px', color: '#666' }}><Trans i18nKey="notifications.apprise_config_description" components={{ strong: <strong /> }} /></p>
 
         <div style={{
           backgroundColor: '#1e3a5f',

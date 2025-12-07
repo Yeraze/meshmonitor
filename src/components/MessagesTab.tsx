@@ -6,7 +6,7 @@
  */
 
 import React, { useRef, useCallback } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useTranslation, Trans } from 'react-i18next';
 import { DeviceInfo } from '../types/device';
 import { MeshMessage } from '../types/message';
 import { ResourceType } from '../types/permission';
@@ -226,7 +226,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   if (!hasPermission('messages', 'read')) {
     return (
       <div className="no-permission-message">
-        <p dangerouslySetInnerHTML={{ __html: t('messages.permission_denied') }} />
+        <p><Trans i18nKey="messages.permission_denied" components={{ strong: <strong /> }} /></p>
       </div>
     );
   }

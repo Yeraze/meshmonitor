@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useTranslation, Trans } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../services/api';
 import { logger } from '../utils/logger';
@@ -678,7 +678,7 @@ const UsersTab: React.FC = () => {
             </div>
 
             <div className="modal-body">
-              <p dangerouslySetInnerHTML={{ __html: t('users.deactivate_confirm_text', { username: userToDeactivate.username }) }} />
+              <p><Trans i18nKey="users.deactivate_confirm_text" values={{ username: userToDeactivate.username }} components={{ strong: <strong /> }} /></p>
               <p style={{ color: 'var(--ctp-red)', marginTop: '1rem' }}>
                 {t('users.deactivate_warning')}
               </p>
