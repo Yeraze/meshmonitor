@@ -172,6 +172,22 @@ class NotificationService {
       logger.error('❌ Error sending traceroute notification:', error);
     }
   }
+
+  /**
+   * Broadcast to users who have a specific preference enabled
+   * Optionally target a specific user ID
+   */
+  public async broadcastToPreferenceUsers(
+    preferenceKey: 'notifyOnNewNode' | 'notifyOnTraceroute' | 'notifyOnInactiveNode',
+    payload: NotificationPayload,
+    targetUserId?: number
+  ): Promise<void> {
+    // Send to users with the preference enabled
+    await Promise.allSettled([
+      pushNotificationService.broadcastToPreferenceUsers(preferenceKey, payload, targetUserId),
+      appriseNotificationService.broadcastToPreferenceUsers(preferenceKey, payload, targetUserId)
+    ]);
+  }
 }
 
 export const notificationService = new NotificationService();

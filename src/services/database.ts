@@ -18,6 +18,7 @@ import { migration as pushSubscriptionsMigration } from '../server/migrations/00
 import { migration as notificationPreferencesMigration } from '../server/migrations/009_add_notification_preferences.js';
 import { migration as notifyOnEmojiMigration } from '../server/migrations/010_add_notify_on_emoji.js';
 import { migration as packetLogMigration } from '../server/migrations/011_add_packet_log.js';
+import { migration as inactiveNodeNotificationMigration } from '../server/migrations/032_add_notify_on_inactive_node.js';
 import { migration as channelRoleMigration } from '../server/migrations/012_add_channel_role_and_position.js';
 import { migration as backupTablesMigration } from '../server/migrations/013_add_backup_tables.js';
 import { migration as messageDeliveryTrackingMigration } from '../server/migrations/014_add_message_delivery_tracking.js';
@@ -399,6 +400,7 @@ class DatabaseService {
     this.runCascadeForeignKeysMigration();
     this.runAutoWelcomeMigration();
     this.runUserMapPreferencesMigration();
+    this.runInactiveNodeNotificationMigration();
     this.ensureAutomationDefaults();
     this.isInitialized = true;
   }
@@ -1033,6 +1035,27 @@ class DatabaseService {
       logger.debug('✅ User map preferences migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run user map preferences migration:', error);
+      throw error;
+    }
+  }
+
+  private runInactiveNodeNotificationMigration(): void {
+    logger.debug('Running inactive node notification migration...');
+    try {
+      const migrationKey = 'migration_032_inactive_node_notification';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Inactive node notification migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 032: Add notify_on_inactive_node and monitored_nodes columns...');
+      inactiveNodeNotificationMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Inactive node notification migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run inactive node notification migration:', error);
       throw error;
     }
   }

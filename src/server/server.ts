@@ -37,6 +37,7 @@ import { systemBackupService } from './services/systemBackupService.js';
 import { systemRestoreService } from './services/systemRestoreService.js';
 import { duplicateKeySchedulerService } from './services/duplicateKeySchedulerService.js';
 import { solarMonitoringService } from './services/solarMonitoringService.js';
+import { inactiveNodeNotificationService } from './services/inactiveNodeNotificationService.js';
 import { getUserNotificationPreferences, saveUserNotificationPreferences } from './utils/notificationFiltering.js';
 
 const require = createRequire(import.meta.url);
@@ -414,6 +415,11 @@ setTimeout(async () => {
     // Initialize solar monitoring service
     solarMonitoringService.initialize();
     logger.debug('Solar monitoring service initialized');
+
+    // Start inactive node notification service
+    const inactiveThresholdHours = parseInt(databaseService.getSetting('inactiveNodeThresholdHours') || '24', 10);
+    inactiveNodeNotificationService.start(inactiveThresholdHours);
+    logger.info('✅ Inactive node notification service started');
 
     // Note: Virtual node server initialization has been moved to a callback
     // that triggers when config capture completes (see registerConfigCaptureCompleteCallback above)
@@ -4362,6 +4368,8 @@ apiRouter.get('/push/preferences', requireAuth(), async (req, res) => {
         notifyOnEmoji: true,
         notifyOnNewNode: true,
         notifyOnTraceroute: true,
+        notifyOnInactiveNode: false,
+        monitoredNodes: [],
         whitelist: ['Hi', 'Help'],
         blacklist: ['Test', 'Copy']
       });
@@ -4380,15 +4388,26 @@ apiRouter.post('/push/preferences', requireAuth(), async (req, res) => {
       return res.status(401).json({ error: 'Authentication required' });
     }
 
-    const { enableWebPush, enableApprise, enabledChannels, enableDirectMessages, notifyOnEmoji, notifyOnNewNode, notifyOnTraceroute, whitelist, blacklist } = req.body;
+    const { enableWebPush, enableApprise, enabledChannels, enableDirectMessages, notifyOnEmoji, notifyOnNewNode, notifyOnTraceroute, notifyOnInactiveNode, monitoredNodes, whitelist, blacklist } = req.body;
 
     // Validate input
     if (typeof enableWebPush !== 'boolean' || typeof enableApprise !== 'boolean' ||
         !Array.isArray(enabledChannels) || typeof enableDirectMessages !== 'boolean' ||
         typeof notifyOnEmoji !== 'boolean' || typeof notifyOnNewNode !== 'boolean' ||
         typeof notifyOnTraceroute !== 'boolean' ||
+        typeof notifyOnInactiveNode !== 'boolean' ||
         !Array.isArray(whitelist) || !Array.isArray(blacklist)) {
       return res.status(400).json({ error: 'Invalid preferences data' });
+    }
+
+    // Validate monitoredNodes is an array of strings
+    if (monitoredNodes !== undefined && !Array.isArray(monitoredNodes)) {
+      return res.status(400).json({ error: 'monitoredNodes must be an array' });
+    }
+
+    // Validate each element is a string
+    if (monitoredNodes && monitoredNodes.some((id: any) => typeof id !== 'string')) {
+      return res.status(400).json({ error: 'monitoredNodes must be an array of strings' });
     }
 
     const prefs = {
@@ -4399,6 +4418,8 @@ apiRouter.post('/push/preferences', requireAuth(), async (req, res) => {
       notifyOnEmoji,
       notifyOnNewNode,
       notifyOnTraceroute,
+      notifyOnInactiveNode: notifyOnInactiveNode ?? false,
+      monitoredNodes: monitoredNodes ?? [],
       whitelist,
       blacklist
     };
