@@ -115,12 +115,12 @@ describe('TracerouteHistoryModal - Node Direction Display', () => {
     // The header should show the correct direction
     // fromNodeNum=100 (Local Node), toNodeNum=200 (Remote Node)
     // Header should display: "From: Local Node → To: Remote Node"
-    expect(screen.getByText(/From:/)).toBeInTheDocument();
-    expect(screen.getByText(/To:/)).toBeInTheDocument();
+    expect(screen.getByText(/traceroute_history\.from/)).toBeInTheDocument();
+    expect(screen.getByText(/traceroute_history\.to/)).toBeInTheDocument();
 
-    // Check for the correct order
+    // Check for the correct order - both node names and translation keys should be present
     const headerText = screen.getByText(/Local Node/).closest('div');
-    expect(headerText?.textContent).toMatch(/From:.*Local Node.*→.*To:.*Remote Node/);
+    expect(headerText?.textContent).toMatch(/traceroute_history\.from.*Local Node.*→.*traceroute_history\.to.*Remote Node/);
   });
 
   /**
@@ -146,7 +146,7 @@ describe('TracerouteHistoryModal - Node Direction Display', () => {
 
     // The header text should NOT have Remote Node before Local Node
     const headerText = screen.getByText(/Local Node/).closest('div');
-    expect(headerText?.textContent).not.toMatch(/From:.*Remote Node.*→.*To:.*Local Node/);
+    expect(headerText?.textContent).not.toMatch(/traceroute_history\.from.*Remote Node.*→.*traceroute_history\.to.*Local Node/);
   });
 
   /**
@@ -168,7 +168,7 @@ describe('TracerouteHistoryModal - Node Direction Display', () => {
       expect(ApiService.getTracerouteHistory).toHaveBeenCalled();
     });
 
-    expect(screen.getByText('Traceroute History')).toBeInTheDocument();
+    expect(screen.getByText('traceroute_history.title')).toBeInTheDocument();
   });
 
   /**
@@ -189,7 +189,7 @@ describe('TracerouteHistoryModal - Node Direction Display', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('No traceroute history found for this node pair.')).toBeInTheDocument();
+      expect(screen.getByText('traceroute_history.no_history')).toBeInTheDocument();
     });
   });
 
@@ -214,7 +214,7 @@ describe('TracerouteHistoryModal - Node Direction Display', () => {
     );
 
     // Should show loading indicator
-    expect(screen.getByText('Loading traceroute history...')).toBeInTheDocument();
+    expect(screen.getByText('traceroute_history.loading')).toBeInTheDocument();
   });
 
   /**
@@ -235,7 +235,7 @@ describe('TracerouteHistoryModal - Node Direction Display', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Failed to load traceroute history')).toBeInTheDocument();
+      expect(screen.getByText('traceroute_history.load_error')).toBeInTheDocument();
     });
   });
 
@@ -278,7 +278,7 @@ describe('TracerouteHistoryModal - Node Direction Display', () => {
       expect(ApiService.getTracerouteHistory).toHaveBeenCalled();
     });
 
-    const checkbox = screen.getByRole('checkbox', { name: /Show failed traceroutes/i });
+    const checkbox = screen.getByRole('checkbox', { name: /traceroute_history\.show_failed/i });
     expect(checkbox).toBeInTheDocument();
     expect(checkbox).toBeChecked(); // Should be checked by default
   });
