@@ -2014,7 +2014,21 @@ function App() {
 
             // Keep older messages that aren't in the poll (they were loaded via infinite scroll)
             // Poll returns newest 100, so any messages not in poll are older
-            const olderMsgs = existingMsgs.filter(m => !pollMsgIds.has(m.id));
+            // Also filter out pending messages that are no longer pending (they've been matched to real messages)
+            const olderMsgs = existingMsgs.filter(m => {
+              // If message is in poll results, don't keep it (poll version is authoritative)
+              if (pollMsgIds.has(m.id)) return false;
+
+              // For pending messages (temp IDs), only keep if still pending
+              // Once matched/acknowledged, pendingIds won't contain it anymore
+              // Channel messages use 'temp_' prefix, DMs use 'temp_dm_' prefix
+              if (m.id.toString().startsWith('temp_')) {
+                return pendingIds.has(m.id);
+              }
+
+              // Keep all other older messages (loaded via infinite scroll)
+              return true;
+            });
 
             // Combine: older messages + poll messages (poll messages are newer/updated)
             merged[channelId] = [...olderMsgs, ...pollMsgs];
