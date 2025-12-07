@@ -597,7 +597,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
           onImportClick={() => setShowImportModal(true)}
           onExportClick={() => {
             if (selectedScripts.size === 0 && availableScripts.length === 0) {
-              showToast('No scripts available to export', 'warning');
+              showToast(t('auto_responder.no_scripts_to_export'), 'warning');
               return;
             }
             setShowExportModal(true);
@@ -1272,7 +1272,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                       onClick={() => {
                                         if (newTriggerLiveTestResult?.result) {
                                           navigator.clipboard.writeText(newTriggerLiveTestResult.result);
-                                          showToast('Result copied to clipboard', 'success');
+                                          showToast(t('common.copied_to_clipboard'), 'success');
                                         }
                                       }}
                                       style={{
@@ -1884,7 +1884,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                   onClick={() => {
                                     if (quickTestResult?.result) {
                                       navigator.clipboard.writeText(quickTestResult.result);
-                                      showToast('Copied to clipboard', 'success');
+                                      showToast(t('common.copied_to_clipboard'), 'success');
                                     }
                                   }}
                                   className="btn-secondary"
@@ -2124,7 +2124,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                         onClick={() => {
                                           if (liveTestResults[index]?.result) {
                                             navigator.clipboard.writeText(liveTestResults[index].result!);
-                                            showToast('Result copied to clipboard', 'success');
+                                            showToast(t('common.copied_to_clipboard'), 'success');
                                           }
                                         }}
                                         style={{
