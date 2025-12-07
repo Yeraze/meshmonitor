@@ -1906,5 +1906,16 @@
   "auto_responder.invalid_trigger": "Invalid trigger pattern",
   "auto_responder.invalid_response": "Invalid response",
   "auto_responder.settings_saved": "Auto-responder settings saved",
-  "auto_responder.settings_save_failed": "Failed to save auto-responder settings"
+  "auto_responder.settings_save_failed": "Failed to save auto-responder settings",
+
+  "device_config.title": "Device Configuration",
+  "device_config.view_docs": "View Device Configuration Documentation",
+  "device_config.router_warning": "Are you sure?\n\nSetting the device role to ROUTER is generally not recommended for most users. ROUTER mode will cause your device to relay all packets, significantly increasing power consumption and airtime usage.\n\nClick OK to confirm this change, or Cancel to keep your current setting.",
+  "device_config.device_role": "Device Role",
+  "device_config.device_role_description": "Defines how your node behaves on the mesh network.",
+  "device_config.node_info_broadcast": "Node Info Broadcast Interval (seconds)",
+  "device_config.node_info_broadcast_description": "How often to broadcast node info. Range: 3600-4294967295 (default: 10800 = 3 hours, minimum: 3600 = 1 hour)",
+  "device_config.save_button": "Save Device Config",
+
+  "common.more_info": "For more information"
 }
