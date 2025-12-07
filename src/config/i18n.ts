@@ -18,10 +18,9 @@ import { appBasename } from '../init';
  */
 export const AVAILABLE_LANGUAGES = [
   { code: 'en', name: 'English', nativeName: 'English' },
-  // Additional languages will be added as translations are contributed
-  // { code: 'es', name: 'Spanish', nativeName: 'Espanol' },
-  // { code: 'de', name: 'German', nativeName: 'Deutsch' },
-  // { code: 'fr', name: 'French', nativeName: 'Francais' },
+  { code: 'es', name: 'Spanish', nativeName: 'Español' },
+  { code: 'de', name: 'German', nativeName: 'Deutsch' },
+  { code: 'fr', name: 'French', nativeName: 'Français' },
 ];
 
 i18n
