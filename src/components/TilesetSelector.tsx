@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { getAllTilesets, type TilesetId } from '../config/tilesets';
 import { useSettings } from '../contexts/SettingsContext';
 import './TilesetSelector.css';
@@ -12,6 +13,7 @@ export const TilesetSelector: React.FC<TilesetSelectorProps> = ({
   selectedTilesetId,
   onTilesetChange
 }) => {
+  const { t } = useTranslation();
   const { customTilesets } = useSettings();
   const tilesets = getAllTilesets(customTilesets);
   const [isCollapsed, setIsCollapsed] = useState(true);
@@ -20,7 +22,7 @@ export const TilesetSelector: React.FC<TilesetSelectorProps> = ({
     <div className={`tileset-selector ${isCollapsed ? 'collapsed' : ''}`}>
       {!isCollapsed ? (
         <>
-          <div className="tileset-selector-label">Map Style:</div>
+          <div className="tileset-selector-label">{t('tileset.map_style')}:</div>
           <div className="tileset-buttons">
             {tilesets.map((tileset) => (
               <button
@@ -37,7 +39,7 @@ export const TilesetSelector: React.FC<TilesetSelectorProps> = ({
                 />
                 <div className="tileset-name">
                   {tileset.name}
-                  {tileset.isCustom && <span className="custom-badge">Custom</span>}
+                  {tileset.isCustom && <span className="custom-badge">{t('tileset.custom')}</span>}
                 </div>
               </button>
             ))}
@@ -45,7 +47,7 @@ export const TilesetSelector: React.FC<TilesetSelectorProps> = ({
           <button
             className="collapse-button"
             onClick={() => setIsCollapsed(true)}
-            title="Collapse tileset selector"
+            title={t('tileset.collapse')}
           >
             ▼
           </button>
@@ -54,9 +56,9 @@ export const TilesetSelector: React.FC<TilesetSelectorProps> = ({
         <button
           className="expand-button"
           onClick={() => setIsCollapsed(false)}
-          title="Expand tileset selector"
+          title={t('tileset.expand')}
         >
-          Map Style ▲
+          {t('tileset.map_style')} ▲
         </button>
       )}
     </div>

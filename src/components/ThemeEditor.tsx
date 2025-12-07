@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { validateThemeDefinition, generateThemeSlug } from '../utils/themeValidation';
 import { validateThemeAccessibility } from '../utils/accessibilityChecker';
 import type { CustomTheme, BuiltInTheme } from '../contexts/SettingsContext';
@@ -53,6 +54,7 @@ export const ThemeEditor: React.FC<ThemeEditorProps> = ({
   onSave,
   onCancel
 }) => {
+  const { t } = useTranslation();
   const { authStatus } = useAuth();
 
   const [name, setName] = useState(theme?.name || '');
@@ -133,13 +135,13 @@ export const ThemeEditor: React.FC<ThemeEditorProps> = ({
 
   const handleSave = async () => {
     if (!name.trim()) {
-      alert('Please enter a theme name');
+      alert(t('theme_editor.enter_name'));
       return;
     }
 
     const validation = validateThemeDefinition(colors);
     if (!validation.isValid) {
-      alert(`Theme validation failed:\n${validation.errors.join('\n')}`);
+      alert(t('theme_editor.validation_failed', { errors: validation.errors.join('\n') }));
       return;
     }
 
@@ -148,7 +150,7 @@ export const ThemeEditor: React.FC<ThemeEditorProps> = ({
       const slug = theme?.slug || generateThemeSlug(name);
       await onSave(name.trim(), slug, colors);
     } catch (error: any) {
-      alert(`Failed to save theme: ${error.message}`);
+      alert(t('theme_editor.save_failed', { error: error.message }));
     } finally {
       setIsSaving(false);
     }
@@ -176,11 +178,11 @@ export const ThemeEditor: React.FC<ThemeEditorProps> = ({
           if (validation.isValid) {
             setColors(def);
           } else {
-            alert(`Invalid theme file:\n${validation.errors.join('\n')}`);
+            alert(t('theme_editor.invalid_file', { errors: validation.errors.join('\n') }));
           }
         }
       } catch (error: any) {
-        alert(`Failed to import theme: ${error.message}`);
+        alert(t('theme_editor.import_failed', { error: error.message }));
       }
     };
     input.click();
@@ -210,32 +212,32 @@ export const ThemeEditor: React.FC<ThemeEditorProps> = ({
   return (
     <div className="theme-editor">
       <div className="theme-editor-header">
-        <h2>{theme ? 'Edit Theme' : 'Create Custom Theme'}</h2>
+        <h2>{theme ? t('theme_editor.edit_title') : t('theme_editor.create_title')}</h2>
 
         <div className="theme-editor-actions">
           <button onClick={handleImport} className="btn-secondary">
-            Import
+            {t('theme_editor.import')}
           </button>
           <button onClick={handleExport} className="btn-secondary" disabled={!name.trim()}>
-            Export
+            {t('theme_editor.export')}
           </button>
         </div>
       </div>
 
       <div className="theme-editor-metadata">
         <div className="form-group">
-          <label htmlFor="theme-name">Theme Name</label>
+          <label htmlFor="theme-name">{t('theme_editor.theme_name')}</label>
           <input
             id="theme-name"
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="My Custom Theme"
+            placeholder={t('theme_editor.name_placeholder')}
             maxLength={50}
             className="form-control"
           />
           {theme?.slug && (
-            <small className="form-text">Slug: {theme.slug}</small>
+            <small className="form-text">{t('theme_editor.slug')}: {theme.slug}</small>
           )}
         </div>
       </div>
@@ -245,13 +247,13 @@ export const ThemeEditor: React.FC<ThemeEditorProps> = ({
           className={`mode-btn ${mode === 'visual' ? 'active' : ''}`}
           onClick={() => setMode('visual')}
         >
-          Visual Editor
+          {t('theme_editor.visual_editor')}
         </button>
         <button
           className={`mode-btn ${mode === 'json' ? 'active' : ''}`}
           onClick={() => setMode('json')}
         >
-          JSON Editor
+          {t('theme_editor.json_editor')}
         </button>
       </div>
 
@@ -305,7 +307,7 @@ export const ThemeEditor: React.FC<ThemeEditorProps> = ({
 
       {validationErrors.length > 0 && (
         <div className="theme-validation-errors">
-          <h4>Validation Errors:</h4>
+          <h4>{t('theme_editor.validation_errors')}:</h4>
           <ul>
             {validationErrors.map((error, i) => (
               <li key={i}>{error}</li>
@@ -316,11 +318,11 @@ export const ThemeEditor: React.FC<ThemeEditorProps> = ({
 
       {accessibilityReport && (
         <div className={`theme-accessibility-report ${accessibilityReport.isAccessible ? 'success' : 'warning'}`}>
-          <h4>Accessibility Check</h4>
+          <h4>{t('theme_editor.accessibility_check')}</h4>
 
           {accessibilityReport.criticalIssues.length > 0 && (
             <div className="critical-issues">
-              <strong>Critical Issues:</strong>
+              <strong>{t('theme_editor.critical_issues')}:</strong>
               <ul>
                 {accessibilityReport.criticalIssues.map((issue: string, i: number) => (
                   <li key={i}>{issue}</li>
@@ -331,7 +333,7 @@ export const ThemeEditor: React.FC<ThemeEditorProps> = ({
 
           {accessibilityReport.warnings.length > 0 && (
             <div className="warnings">
-              <strong>Warnings:</strong>
+              <strong>{t('theme_editor.warnings')}:</strong>
               <ul>
                 {accessibilityReport.warnings.map((warning: string, i: number) => (
                   <li key={i}>{warning}</li>
@@ -342,7 +344,7 @@ export const ThemeEditor: React.FC<ThemeEditorProps> = ({
 
           {accessibilityReport.recommendations.length > 0 && (
             <div className="recommendations">
-              <strong>Recommendations:</strong>
+              <strong>{t('theme_editor.recommendations')}:</strong>
               <ul>
                 {accessibilityReport.recommendations.map((rec: string, i: number) => (
                   <li key={i}>{rec}</li>
@@ -355,14 +357,14 @@ export const ThemeEditor: React.FC<ThemeEditorProps> = ({
 
       <div className="theme-editor-footer">
         <button onClick={onCancel} className="btn-secondary">
-          Cancel
+          {t('common.cancel')}
         </button>
         <button
           onClick={handleSave}
           className="btn-primary"
           disabled={!canSave || isSaving}
         >
-          {isSaving ? 'Saving...' : theme ? 'Update Theme' : 'Create Theme'}
+          {isSaving ? t('common.saving') : theme ? t('theme_editor.update_theme') : t('theme_editor.create_theme')}
         </button>
       </div>
     </div>

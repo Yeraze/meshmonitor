@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSettings } from '../contexts/SettingsContext';
 import { validateTileUrl, isVectorTileUrl, type CustomTileset } from '../config/tilesets';
 import './CustomTilesetManager.css';
@@ -20,6 +21,7 @@ const DEFAULT_FORM_DATA: FormData = {
 };
 
 export function CustomTilesetManager() {
+  const { t } = useTranslation();
   const { customTilesets, addCustomTileset, updateCustomTileset, deleteCustomTileset } = useSettings();
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -73,7 +75,7 @@ export function CustomTilesetManager() {
       setUrlValidation(null);
     } catch (error) {
       console.error('Failed to save custom tileset:', error);
-      alert('Failed to save custom tileset. Please try again.');
+      alert(t('tileset_manager.save_failed'));
     } finally {
       setIsSaving(false);
     }
@@ -99,7 +101,7 @@ export function CustomTilesetManager() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this custom tileset?')) {
+    if (!confirm(t('tileset_manager.delete_confirm'))) {
       return;
     }
 
@@ -107,16 +109,16 @@ export function CustomTilesetManager() {
       await deleteCustomTileset(id);
     } catch (error) {
       console.error('Failed to delete custom tileset:', error);
-      alert('Failed to delete custom tileset. Please try again.');
+      alert(t('tileset_manager.delete_failed'));
     }
   };
 
   return (
     <div className="custom-tileset-manager">
       <div className="manager-header">
-        <h3>Custom Tile Servers</h3>
+        <h3>{t('tileset_manager.title')}</h3>
         <span className="manager-description">
-          Add custom tile servers for offline maps or custom styling.{' '}
+          {t('tileset_manager.description')}{' '}
           <a
             href="https://meshmonitor.org/features/maps"
             target="_blank"
@@ -127,16 +129,16 @@ export function CustomTilesetManager() {
               fontWeight: '500'
             }}
           >
-            View setup guide →
+            {t('tileset_manager.setup_guide')} →
           </a>
         </span>
       </div>
 
       {customTilesets.length === 0 && !isAdding && !editingId && (
         <div className="no-custom-tilesets">
-          <p>No custom tile servers configured.</p>
+          <p>{t('tileset_manager.no_tilesets')}</p>
           <p className="hint">
-            Configure a local tile server (like TileServer GL) or use a custom hosted service.
+            {t('tileset_manager.no_tilesets_hint')}
           </p>
         </div>
       )}
@@ -151,7 +153,7 @@ export function CustomTilesetManager() {
                   <div className="tileset-header">
                     <div className="tileset-name">{tileset.name}</div>
                     <span className={`tileset-badge ${isVector ? 'vector' : 'raster'}`}>
-                      {isVector ? 'Vector' : 'Raster'}
+                      {isVector ? t('tileset_manager.vector') : t('tileset_manager.raster')}
                     </span>
                   </div>
                   <div className="tileset-url">{tileset.url}</div>
@@ -159,9 +161,9 @@ export function CustomTilesetManager() {
                     <div className="tileset-description">{tileset.description}</div>
                   )}
                   <div className="tileset-meta">
-                    <span>Max Zoom: {tileset.maxZoom}</span>
+                    <span>{t('tileset_manager.max_zoom')}: {tileset.maxZoom}</span>
                     <span className="meta-separator">•</span>
-                    <span>Attribution: {tileset.attribution}</span>
+                    <span>{t('tileset_manager.attribution')}: {tileset.attribution}</span>
                   </div>
                 </div>
                 <div className="tileset-actions">
@@ -169,17 +171,17 @@ export function CustomTilesetManager() {
                     onClick={() => handleEdit(tileset)}
                     className="btn-edit"
                     disabled={isSaving}
-                    title="Edit tileset"
+                    title={t('common.edit')}
                   >
-                    Edit
+                    {t('common.edit')}
                   </button>
                   <button
                     onClick={() => handleDelete(tileset.id)}
                     className="btn-delete"
                     disabled={isSaving}
-                    title="Delete tileset"
+                    title={t('common.delete')}
                   >
-                    Delete
+                    {t('common.delete')}
                   </button>
                 </div>
               </div>
@@ -191,29 +193,29 @@ export function CustomTilesetManager() {
       {(isAdding || editingId) && (
         <form onSubmit={handleSubmit} className="tileset-form">
           <div className="form-header">
-            <h4>{editingId ? 'Edit Custom Tile Server' : 'Add Custom Tile Server'}</h4>
+            <h4>{editingId ? t('tileset_manager.edit_form_title') : t('tileset_manager.add_form_title')}</h4>
           </div>
 
           <div className="form-field">
             <label htmlFor="tileset-name">
-              Name <span className="required">*</span>
+              {t('tileset_manager.field_name')} <span className="required">*</span>
             </label>
             <input
               id="tileset-name"
               type="text"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="My Custom Tiles"
+              placeholder={t('tileset_manager.name_placeholder')}
               maxLength={100}
               required
               disabled={isSaving}
             />
-            <small>A friendly name for this tile server (max 100 characters)</small>
+            <small>{t('tileset_manager.name_help')}</small>
           </div>
 
           <div className="form-field">
             <label htmlFor="tileset-url">
-              Tile URL <span className="required">*</span>
+              {t('tileset_manager.field_url')} <span className="required">*</span>
             </label>
             <input
               id="tileset-url"
@@ -232,13 +234,13 @@ export function CustomTilesetManager() {
               </div>
             )}
             <small>
-              Must include {'{z}'}, {'{x}'}, {'{y}'} placeholders. Optional: {'{s}'} for subdomains
+              {t('tileset_manager.url_help')}
             </small>
             <small className="example">
-              Raster: http://localhost:8080/styles/osm-bright/{'{z}/{x}/{y}'}.png
+              {t('tileset_manager.url_example_raster')}
             </small>
             <small className="example">
-              Vector: http://localhost:8080/data/v3/{'{z}/{x}/{y}'}.pbf
+              {t('tileset_manager.url_example_vector')}
             </small>
             <div style={{
               marginTop: '0.75rem',
@@ -249,10 +251,10 @@ export function CustomTilesetManager() {
               fontSize: '0.85rem'
             }}>
               <strong style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--ctp-blue)' }}>
-                💡 TileServer GL Light (Recommended for Offline Maps)
+                💡 {t('tileset_manager.tileserver_tip_title')}
               </strong>
               <div style={{ color: 'var(--ctp-subtext0)', lineHeight: '1.5' }}>
-                For offline operation, use <strong>TileServer GL Light</strong> with .mbtiles files:
+                {t('tileset_manager.tileserver_tip_desc')}
                 <br />
                 <code style={{
                   display: 'block',
@@ -265,7 +267,7 @@ export function CustomTilesetManager() {
                   docker run -p 8080:8080 -v /path/to/tiles:/data maptiler/tileserver-gl-light
                 </code>
                 <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: 'var(--ctp-subtext1)' }}>
-                  <strong>Supports both vector (.pbf) and raster (.png) tiles.</strong> Light version has no native dependencies and runs on all platforms.
+                  <strong>{t('tileset_manager.tileserver_tip_support')}</strong>
                 </div>
                 <div style={{ marginTop: '0.5rem', fontSize: '0.8rem' }}>
                   <a
@@ -277,7 +279,7 @@ export function CustomTilesetManager() {
                       textDecoration: 'underline'
                     }}
                   >
-                    View complete setup guide with Docker Compose configurator →
+                    {t('tileset_manager.tileserver_tip_link')} →
                   </a>
                 </div>
               </div>
@@ -286,24 +288,24 @@ export function CustomTilesetManager() {
 
           <div className="form-field">
             <label htmlFor="tileset-attribution">
-              Attribution <span className="required">*</span>
+              {t('tileset_manager.field_attribution')} <span className="required">*</span>
             </label>
             <input
               id="tileset-attribution"
               type="text"
               value={formData.attribution}
               onChange={(e) => setFormData({ ...formData, attribution: e.target.value })}
-              placeholder="Map data © Your Organization"
+              placeholder={t('tileset_manager.attribution_placeholder')}
               maxLength={200}
               required
               disabled={isSaving}
             />
-            <small>Attribution text to display on the map (max 200 characters)</small>
+            <small>{t('tileset_manager.attribution_help')}</small>
           </div>
 
           <div className="form-field">
             <label htmlFor="tileset-maxzoom">
-              Max Zoom <span className="required">*</span>
+              {t('tileset_manager.field_max_zoom')} <span className="required">*</span>
             </label>
             <input
               id="tileset-maxzoom"
@@ -315,28 +317,28 @@ export function CustomTilesetManager() {
               required
               disabled={isSaving}
             />
-            <small>Maximum zoom level (1-22)</small>
+            <small>{t('tileset_manager.max_zoom_help')}</small>
           </div>
 
           <div className="form-field">
             <label htmlFor="tileset-description">
-              Description
+              {t('tileset_manager.field_description')}
             </label>
             <input
               id="tileset-description"
               type="text"
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              placeholder="Custom offline tiles for field deployment"
+              placeholder={t('tileset_manager.description_placeholder')}
               maxLength={200}
               disabled={isSaving}
             />
-            <small>Optional description (max 200 characters)</small>
+            <small>{t('tileset_manager.description_help')}</small>
           </div>
 
           <div className="form-actions">
             <button type="submit" className="btn-save" disabled={isSaving}>
-              {isSaving ? 'Saving...' : 'Save'}
+              {isSaving ? t('common.saving') : t('common.save')}
             </button>
             <button
               type="button"
@@ -344,7 +346,7 @@ export function CustomTilesetManager() {
               onClick={handleCancel}
               disabled={isSaving}
             >
-              Cancel
+              {t('common.cancel')}
             </button>
           </div>
         </form>
@@ -356,7 +358,7 @@ export function CustomTilesetManager() {
           className="btn-add-tileset"
           disabled={isSaving}
         >
-          + Add Custom Tile Server
+          + {t('tileset_manager.add_button')}
         </button>
       )}
     </div>

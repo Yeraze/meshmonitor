@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSettings, type Theme } from '../contexts/SettingsContext';
 import './ThemeDocumentation.css';
 
@@ -124,28 +125,28 @@ const colorSwatchProps = [
 ];
 
 export const ThemeDocumentation: React.FC = () => {
+  const { t } = useTranslation();
   const { theme: currentTheme, setTheme } = useSettings();
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
   const filteredThemes = selectedCategory === 'all'
     ? themes
-    : themes.filter(t => t.category === selectedCategory);
+    : themes.filter(theme => theme.category === selectedCategory);
 
   const categories = [
-    { id: 'all', name: 'All Themes' },
-    { id: 'catppuccin', name: 'Catppuccin' },
-    { id: 'popular', name: 'Popular' },
-    { id: 'high-contrast', name: 'High Contrast' },
-    { id: 'colorblind', name: 'Color Blind Friendly' }
+    { id: 'all', name: t('theme_gallery.category_all') },
+    { id: 'catppuccin', name: t('theme_gallery.category_catppuccin') },
+    { id: 'popular', name: t('theme_gallery.category_popular') },
+    { id: 'high-contrast', name: t('theme_gallery.category_high_contrast') },
+    { id: 'colorblind', name: t('theme_gallery.category_colorblind') }
   ];
 
   return (
     <div className="theme-documentation">
       <div className="theme-doc-header">
-        <h2>Theme Gallery</h2>
+        <h2>{t('theme_gallery.title')}</h2>
         <p>
-          Choose from {themes.length} carefully crafted themes including accessibility-focused options.
-          Click on any theme card to preview it instantly!
+          {t('theme_gallery.description', { count: themes.length })}
         </p>
       </div>
 
@@ -173,31 +174,29 @@ export const ThemeDocumentation: React.FC = () => {
       </div>
 
       <div className="theme-doc-footer">
-        <h3>Accessibility Information</h3>
+        <h3>{t('theme_gallery.accessibility_info')}</h3>
         <div className="accessibility-info">
           <div className="info-section">
-            <h4>High Contrast Themes</h4>
+            <h4>{t('theme_gallery.high_contrast_title')}</h4>
             <p>
-              Our high-contrast themes provide maximum readability with WCAG AAA compliance.
-              Perfect for users with low vision or anyone who prefers stronger color differentiation.
+              {t('theme_gallery.high_contrast_desc')}
             </p>
           </div>
           <div className="info-section">
-            <h4>Color Blind Friendly Themes</h4>
+            <h4>{t('theme_gallery.colorblind_title')}</h4>
             <p>
-              We offer three specialized themes for different types of color blindness:
+              {t('theme_gallery.colorblind_desc')}
             </p>
             <ul>
-              <li><strong>Protanopia:</strong> For red color blindness (affects ~1% of males)</li>
-              <li><strong>Deuteranopia:</strong> For green color blindness (affects ~1% of males)</li>
-              <li><strong>Tritanopia:</strong> For blue color blindness (rare, affects ~0.001%)</li>
+              <li><strong>{t('theme_gallery.protanopia')}:</strong> {t('theme_gallery.protanopia_desc')}</li>
+              <li><strong>{t('theme_gallery.deuteranopia')}:</strong> {t('theme_gallery.deuteranopia_desc')}</li>
+              <li><strong>{t('theme_gallery.tritanopia')}:</strong> {t('theme_gallery.tritanopia_desc')}</li>
             </ul>
           </div>
           <div className="info-section">
-            <h4>Theme Persistence</h4>
+            <h4>{t('theme_gallery.persistence_title')}</h4>
             <p>
-              Your theme choice is saved automatically and will persist across sessions.
-              All themes work seamlessly across all pages and components.
+              {t('theme_gallery.persistence_desc')}
             </p>
           </div>
         </div>
@@ -213,6 +212,7 @@ interface ThemeCardProps {
 }
 
 const ThemeCard: React.FC<ThemeCardProps> = ({ themeInfo, isActive, onSelect }) => {
+  const { t } = useTranslation();
   const [colors, setColors] = useState<Record<string, string>>({});
 
   React.useEffect(() => {
@@ -242,7 +242,7 @@ const ThemeCard: React.FC<ThemeCardProps> = ({ themeInfo, isActive, onSelect }) 
     >
       <div className="theme-card-header">
         <h3>{themeInfo.name}</h3>
-        {isActive && <span className="current-badge">Current</span>}
+        {isActive && <span className="current-badge">{t('theme_gallery.current')}</span>}
       </div>
 
       <p className="theme-description">{themeInfo.description}</p>
@@ -268,7 +268,7 @@ const ThemeCard: React.FC<ThemeCardProps> = ({ themeInfo, isActive, onSelect }) 
       </div>
 
       <button className="preview-btn" onClick={onSelect}>
-        {isActive ? 'Active' : 'Preview'}
+        {isActive ? t('theme_gallery.active') : t('theme_gallery.preview')}
       </button>
     </div>
   );
