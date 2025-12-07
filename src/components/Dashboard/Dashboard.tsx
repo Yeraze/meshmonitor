@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { arrayMove } from '@dnd-kit/sortable';
 import { DragEndEvent } from '@dnd-kit/core';
 import '../Dashboard.css';
@@ -19,6 +20,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
   currentNodeId = null,
   canEdit = true,
 }) => {
+  const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
   
   // Modal state
@@ -182,11 +184,11 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
   }, [favorites, setFavorites, baseUrl, csrfFetch]);
 
   if (loading) {
-    return <div className="dashboard-loading">Loading dashboard...</div>;
+    return <div className="dashboard-loading">{t('dashboard.loading')}</div>;
   }
 
   if (error) {
-    return <div className="dashboard-error">Error: {error}</div>;
+    return <div className="dashboard-error">{t('dashboard.error', { error })}</div>;
   }
 
   const hours = daysToView * 24;
@@ -256,8 +258,8 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
 
       {!hasContent && (
         <div className="dashboard-empty">
-          <h2>No Widgets or Favorites Yet</h2>
-          <p>Click &quot;+ Add Widget&quot; above or star telemetry charts in the Nodes tab</p>
+          <h2>{t('dashboard.empty_title')}</h2>
+          <p>{t('dashboard.empty_description')}</p>
         </div>
       )}
     </div>
