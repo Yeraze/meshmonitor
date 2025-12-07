@@ -62,6 +62,10 @@ For a complete list of known weak keys, see the [Meshtastic Security Documentati
 
 ## How to Fix This Issue
 
+::: warning Upgrade Firmware First
+Before rotating your encryption keys, **upgrade your Meshtastic firmware to version 2.6.11 or later**. Earlier firmware versions may regenerate weak keys. See the [official security advisory](https://github.com/meshtastic/firmware/security/advisories/GHSA-gq7v-jr8c-mfr7) for details.
+:::
+
 You must **generate and configure a strong, random encryption key** for your device. Follow the instructions for your platform:
 
 ### iOS App (Meshtastic App)
@@ -195,6 +199,9 @@ After updating your key:
    ```
 
 ## Additional Resources
+
+### Security Advisories
+- [GHSA-gq7v-jr8c-mfr7: Low-Entropy Key Vulnerability](https://github.com/meshtastic/firmware/security/advisories/GHSA-gq7v-jr8c-mfr7) - Official Meshtastic security advisory
 
 ### Official Documentation
 - [Meshtastic Security Overview](https://meshtastic.org/docs/overview/encryption)
