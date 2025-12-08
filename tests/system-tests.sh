@@ -112,23 +112,46 @@ echo -e "${BLUE}Running Configuration Import Test${NC}"
 echo "=========================================="
 echo ""
 
-# Run Configuration Import test FIRST
-# This test imports two different configurations and verifies them
+# Run Configuration Import test FIRST - it sets up the device to a known state
+# This test imports channels (primary, dummyA, dummyB) that other tests depend on
 if bash "$SCRIPT_DIR/test-config-import.sh"; then
     CONFIG_IMPORT_RESULT="PASSED"
     echo ""
     echo -e "${GREEN}✓ Configuration Import test PASSED${NC}"
 else
-    # Check if test was skipped (exit 0 with skip message)
-    if [ $? -eq 0 ]; then
-        CONFIG_IMPORT_RESULT="SKIPPED"
-        echo ""
-        echo -e "${YELLOW}⊘ Configuration Import test SKIPPED${NC}"
-    else
-        CONFIG_IMPORT_RESULT="FAILED"
-        echo ""
-        echo -e "${RED}✗ Configuration Import test FAILED${NC}"
-    fi
+    CONFIG_IMPORT_RESULT="FAILED"
+    echo ""
+    echo -e "${RED}✗ Configuration Import test FAILED${NC}"
+    echo ""
+    echo -e "${RED}===========================================${NC}"
+    echo -e "${RED}ABORTING: Configuration Import failed${NC}"
+    echo -e "${RED}Other tests depend on the device state set by this test.${NC}"
+    echo -e "${RED}===========================================${NC}"
+    # Set all other results to SKIPPED
+    QUICKSTART_RESULT="SKIPPED"
+    SECURITY_RESULT="SKIPPED"
+    REVERSE_PROXY_RESULT="SKIPPED"
+    OIDC_RESULT="SKIPPED"
+    VIRTUAL_NODE_RESULT="SKIPPED"
+    BACKUP_RESTORE_RESULT="SKIPPED"
+    # Skip to results
+    echo ""
+    echo "=========================================="
+    echo "System Test Results"
+    echo "=========================================="
+    echo ""
+    echo -e "Configuration Import:     ${RED}✗ FAILED${NC}"
+    echo -e "Quick Start Test:         ${YELLOW}⊘ SKIPPED${NC}"
+    echo -e "Security Test:            ${YELLOW}⊘ SKIPPED${NC}"
+    echo -e "Reverse Proxy Test:       ${YELLOW}⊘ SKIPPED${NC}"
+    echo -e "Reverse Proxy + OIDC:     ${YELLOW}⊘ SKIPPED${NC}"
+    echo -e "Virtual Node CLI Test:    ${YELLOW}⊘ SKIPPED${NC}"
+    echo -e "Backup & Restore Test:    ${YELLOW}⊘ SKIPPED${NC}"
+    echo ""
+    echo -e "${RED}===========================================${NC}"
+    echo -e "${RED}✗ SYSTEM TESTS FAILED${NC}"
+    echo -e "${RED}===========================================${NC}"
+    exit 1
 fi
 echo ""
 
@@ -137,7 +160,8 @@ echo -e "${BLUE}Running Quick Start Test${NC}"
 echo "=========================================="
 echo ""
 
-# Run Quick Start test (includes security test)
+# Run Quick Start test - expects device state from Configuration Import
+# (channels: primary, dummyA, dummyB)
 if bash "$SCRIPT_DIR/test-quick-start.sh"; then
     QUICKSTART_RESULT="PASSED"
     SECURITY_RESULT="PASSED"  # Security test is integrated into Quick Start
