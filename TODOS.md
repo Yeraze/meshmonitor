@@ -2,6 +2,22 @@
 
 ## Current Sprint
 
+### MQTT Traceroute Visualization (#893)
+
+**Completed:**
+- [x] Add overlay0 color to ThemeColors interface (useTraceroutePaths.tsx)
+- [x] Update App.tsx to include overlay0 in theme colors
+- [x] Track MQTT segments (SNR = 0.0 dB indicates MQTT traversal)
+- [x] Render MQTT segments with dotted line and different color (overlay0)
+- [x] Add "via MQTT" indicator badge to route segment popup
+- [x] Update useMemo dependency array for themeColors.overlay0
+- [x] TypeScript typecheck passed
+- [x] Unit tests passed (81 test files, 1784 tests)
+- [x] Build successful
+
+**Summary:**
+Traceroute segments that report 0.0 dB SNR (indicating MQTT traversal) are now rendered differently on the map. MQTT segments display as dotted lines in a muted gray color (overlay0 from Catppuccin theme) with reduced opacity. The route segment popup also shows a "via MQTT" badge for these segments.
+
 ### Infinite Scroll for Messages (#853)
 
 **Completed:**

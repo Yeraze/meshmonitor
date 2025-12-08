@@ -368,6 +368,7 @@ function App() {
   const [themeColors, setThemeColors] = useState({
     mauve: '#cba6f7', // Default to Mocha theme colors
     red: '#f38ba8',
+    overlay0: '#6c7086', // For MQTT segments (muted gray)
   });
 
   // Update theme colors when theme changes
@@ -375,9 +376,10 @@ function App() {
     const rootStyle = getComputedStyle(document.documentElement);
     const mauve = rootStyle.getPropertyValue('--ctp-mauve').trim();
     const red = rootStyle.getPropertyValue('--ctp-red').trim();
+    const overlay0 = rootStyle.getPropertyValue('--ctp-overlay0').trim();
 
-    if (mauve && red) {
-      setThemeColors({ mauve, red });
+    if (mauve && red && overlay0) {
+      setThemeColors({ mauve, red, overlay0 });
     }
   }, [theme]);
 

@@ -57,6 +57,7 @@ export interface TracerouteDigest {
 export interface ThemeColors {
   mauve: string;
   red: string;
+  overlay0: string; // For MQTT segments (muted color)
 }
 
 /**
@@ -121,6 +122,8 @@ export function useTraceroutePaths({
     // Calculate segment usage counts and collect SNR values with timestamps
     const segmentUsage = new Map<string, number>();
     const segmentSNRs = new Map<string, Array<{ snr: number; timestamp: number }>>();
+    // Track segments that have MQTT hops (0.0 dB SNR indicates MQTT traversal)
+    const segmentHasMqtt = new Map<string, boolean>();
     const segmentsList: Array<{
       key: string;
       positions: [number, number][];
@@ -206,6 +209,10 @@ export function useTraceroutePaths({
               segmentSNRs.set(segmentKey, []);
             }
             segmentSNRs.get(segmentKey)!.push({ snr: snrValue, timestamp });
+            // Mark segment as MQTT if SNR is 0.0 dB (indicates MQTT traversal)
+            if (snrValue === 0) {
+              segmentHasMqtt.set(segmentKey, true);
+            }
           }
 
           segmentsList.push({
@@ -247,6 +254,10 @@ export function useTraceroutePaths({
               segmentSNRs.set(segmentKey, []);
             }
             segmentSNRs.get(segmentKey)!.push({ snr: snrValue, timestamp });
+            // Mark segment as MQTT if SNR is 0.0 dB (indicates MQTT traversal)
+            if (snrValue === 0) {
+              segmentHasMqtt.set(segmentKey, true);
+            }
           }
 
           segmentsList.push({
@@ -266,6 +277,8 @@ export function useTraceroutePaths({
       const usage = segmentUsage.get(segmentKey) || 1;
       // Base weight 2, add 1 per usage, max 8
       const weight = Math.min(2 + usage, 8);
+      // Check if this segment traversed MQTT (has 0.0 dB SNR)
+      const isMqttSegment = segmentHasMqtt.get(segmentKey) || false;
 
       // Get node names for popup
       const node1 = nodesPositionDigest.find(n => n.nodeNum === segment.nodeNums[0]);
@@ -341,13 +354,31 @@ export function useTraceroutePaths({
         <Polyline
           key={segment.key}
           positions={segment.positions}
-          color={themeColors.mauve}
+          color={isMqttSegment ? themeColors.overlay0 : themeColors.mauve}
           weight={weight}
-          opacity={0.7}
+          opacity={isMqttSegment ? 0.6 : 0.7}
+          dashArray={isMqttSegment ? '8, 8' : undefined}
         >
           <Popup>
             <div className="route-popup">
               <h4>Route Segment</h4>
+              {isMqttSegment && (
+                <div
+                  className="mqtt-indicator"
+                  style={{
+                    display: 'inline-block',
+                    backgroundColor: 'var(--ctp-overlay0)',
+                    color: 'var(--ctp-base)',
+                    padding: '2px 8px',
+                    borderRadius: '4px',
+                    fontSize: '0.75rem',
+                    fontWeight: 500,
+                    marginBottom: '8px',
+                  }}
+                >
+                  via MQTT
+                </div>
+              )}
               <div className="route-endpoints">
                 <strong
                   onClick={e => {
@@ -518,7 +549,7 @@ export function useTraceroutePaths({
     allElements.push(...segmentElements);
 
     return allElements;
-  }, [showPaths, traceroutesDigest, nodesPositionDigest, distanceUnit, maxNodeAgeHours, themeColors.mauve, callbacks]);
+  }, [showPaths, traceroutesDigest, nodesPositionDigest, distanceUnit, maxNodeAgeHours, themeColors.mauve, themeColors.overlay0, callbacks]);
 
   // Separate memoization for selected node traceroute (showRoute)
   // This can change independently without re-rendering the base map markers
