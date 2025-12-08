@@ -18,13 +18,7 @@ import { logger } from '../utils/logger.js';
 import { normalizeTriggerPatterns } from '../utils/autoResponderUtils.js';
 import { getSessionConfig } from './auth/sessionConfig.js';
 import { initializeOIDC } from './auth/oidcAuth.js';
-import {
-  optionalAuth,
-  requireAuth,
-  requirePermission,
-  requireAdmin,
-  hasPermission
-} from './auth/authMiddleware.js';
+import { optionalAuth, requireAuth, requirePermission, requireAdmin, hasPermission } from './auth/authMiddleware.js';
 import { apiLimiter } from './middleware/rateLimiters.js';
 import { setupAccessLogger } from './middleware/accessLogger.js';
 import { getEnvironmentConfig, resetEnvironmentConfig } from './config/environment.js';
@@ -37,6 +31,7 @@ import { systemBackupService } from './services/systemBackupService.js';
 import { systemRestoreService } from './services/systemRestoreService.js';
 import { duplicateKeySchedulerService } from './services/duplicateKeySchedulerService.js';
 import { solarMonitoringService } from './services/solarMonitoringService.js';
+import { inactiveNodeNotificationService } from './services/inactiveNodeNotificationService.js';
 import { getUserNotificationPreferences, saveUserNotificationPreferences } from './utils/notificationFiltering.js';
 
 const require = createRequire(import.meta.url);
@@ -69,16 +64,16 @@ const getScriptsDirectory = (): string => {
     // In development, use relative path from project root
     const projectRoot = path.resolve(__dirname, '../../');
     const devScriptsDir = path.join(projectRoot, 'data', 'scripts');
-    
+
     // Ensure directory exists
     if (!fs.existsSync(devScriptsDir)) {
       fs.mkdirSync(devScriptsDir, { recursive: true });
       logger.info(`📁 Created scripts directory: ${devScriptsDir}`);
     }
-    
+
     return devScriptsDir;
   }
-  
+
   // In production, use absolute path
   return '/data/scripts';
 };
@@ -93,20 +88,20 @@ const resolveScriptPath = (scriptPath: string): string | null => {
     logger.error(`🚫 Invalid script path: ${scriptPath}`);
     return null;
   }
-  
+
   const scriptsDir = getScriptsDirectory();
   const filename = path.basename(scriptPath);
   const resolvedPath = path.join(scriptsDir, filename);
-  
+
   // Additional security: ensure resolved path is within scripts directory
   const normalizedResolved = path.normalize(resolvedPath);
   const normalizedScriptsDir = path.normalize(scriptsDir);
-  
+
   if (!normalizedResolved.startsWith(normalizedScriptsDir)) {
     logger.error(`🚫 Script path resolves outside scripts directory: ${scriptPath}`);
     return null;
   }
-  
+
   return normalizedResolved;
 };
 
@@ -125,7 +120,7 @@ const jsonReplacer = (_key: string, value: any) => {
 
 // Override JSON.stringify to handle BigInt
 const originalStringify = JSON.stringify;
-JSON.stringify = function(value, replacer?: any, space?: any) {
+JSON.stringify = function (value, replacer?: any, space?: any) {
   if (replacer) {
     return originalStringify(value, replacer, space);
   }
@@ -149,79 +144,80 @@ if (env.trustProxyProvided) {
 // Use relaxed settings in development to avoid HTTPS enforcement
 // For Quick Start: default to HTTP-friendly (no HSTS) even in production
 // Only enable HSTS when COOKIE_SECURE explicitly set to 'true'
-const helmetConfig = env.isProduction && env.cookieSecure
-  ? {
-      contentSecurityPolicy: {
-        directives: {
-          defaultSrc: ["'self'"],
-          scriptSrc: ["'self'"],
-          styleSrc: ["'self'", "'unsafe-inline'"],  // React uses inline styles
-          imgSrc: [
-            "'self'",
-            "data:",
-            "https:",
-            "https://*.tile.openstreetmap.org",  // OpenStreetMap tiles
-            "https://*.basemaps.cartocdn.com",   // CartoDB tiles
-            "https://*.tile.opentopomap.org",    // OpenTopoMap tiles
-            "https://server.arcgisonline.com"    // Esri tiles
-          ],
-          connectSrc: [
-            "'self'",
-            "https://*.tile.openstreetmap.org",  // OpenStreetMap tiles
-            "https://*.basemaps.cartocdn.com",   // CartoDB tiles
-            "https://*.tile.opentopomap.org",    // OpenTopoMap tiles
-            "https://server.arcgisonline.com"    // Esri tiles
-          ],
-          fontSrc: ["'self'"],
-          objectSrc: ["'none'"],
-          mediaSrc: ["'self'"],
-          frameSrc: ["'none'"],
-          baseUri: ["'self'"],
-          formAction: ["'self'"]
+const helmetConfig =
+  env.isProduction && env.cookieSecure
+    ? {
+        contentSecurityPolicy: {
+          directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'"],
+            styleSrc: ["'self'", "'unsafe-inline'"], // React uses inline styles
+            imgSrc: [
+              "'self'",
+              'data:',
+              'https:',
+              'https://*.tile.openstreetmap.org', // OpenStreetMap tiles
+              'https://*.basemaps.cartocdn.com', // CartoDB tiles
+              'https://*.tile.opentopomap.org', // OpenTopoMap tiles
+              'https://server.arcgisonline.com', // Esri tiles
+            ],
+            connectSrc: [
+              "'self'",
+              'https://*.tile.openstreetmap.org', // OpenStreetMap tiles
+              'https://*.basemaps.cartocdn.com', // CartoDB tiles
+              'https://*.tile.opentopomap.org', // OpenTopoMap tiles
+              'https://server.arcgisonline.com', // Esri tiles
+            ],
+            fontSrc: ["'self'"],
+            objectSrc: ["'none'"],
+            mediaSrc: ["'self'"],
+            frameSrc: ["'none'"],
+            baseUri: ["'self'"],
+            formAction: ["'self'"],
+          },
         },
-      },
-      hsts: {
-        maxAge: 31536000, // 1 year
-        includeSubDomains: true,
-        preload: true
-      },
-      frameguard: {
-        action: 'deny' as const
-      },
-      noSniff: true,
-      xssFilter: true
-    }
-  : {
-      // Development or HTTP-only: Relaxed CSP, no HSTS, no upgrade-insecure-requests
-      contentSecurityPolicy: {
-        useDefaults: false,  // Don't use default directives that include upgrade-insecure-requests
-        directives: {
-          defaultSrc: ["'self'"],
-          scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-          styleSrc: ["'self'", "'unsafe-inline'"],
-          imgSrc: ["'self'", "data:", "http:", "https:"],
-          connectSrc: [
-            "'self'",
-            "https://*.tile.openstreetmap.org",  // OpenStreetMap tiles
-            "http://*.tile.openstreetmap.org"    // HTTP fallback for development
-          ],
-          fontSrc: ["'self'"],
-          objectSrc: ["'none'"],
-          mediaSrc: ["'self'"],
-          frameSrc: ["'none'"],
-          baseUri: ["'self'"],
-          formAction: ["'self'"]
-          // upgradeInsecureRequests intentionally omitted for HTTP
+        hsts: {
+          maxAge: 31536000, // 1 year
+          includeSubDomains: true,
+          preload: true,
         },
-      },
-      hsts: false, // Disable HSTS when not using secure cookies or in development
-      crossOriginOpenerPolicy: false, // Disable COOP for HTTP - browser ignores it on non-HTTPS anyway
-      frameguard: {
-        action: 'deny' as const
-      },
-      noSniff: true,
-      xssFilter: true
-    };
+        frameguard: {
+          action: 'deny' as const,
+        },
+        noSniff: true,
+        xssFilter: true,
+      }
+    : {
+        // Development or HTTP-only: Relaxed CSP, no HSTS, no upgrade-insecure-requests
+        contentSecurityPolicy: {
+          useDefaults: false, // Don't use default directives that include upgrade-insecure-requests
+          directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+            styleSrc: ["'self'", "'unsafe-inline'"],
+            imgSrc: ["'self'", 'data:', 'http:', 'https:'],
+            connectSrc: [
+              "'self'",
+              'https://*.tile.openstreetmap.org', // OpenStreetMap tiles
+              'http://*.tile.openstreetmap.org', // HTTP fallback for development
+            ],
+            fontSrc: ["'self'"],
+            objectSrc: ["'none'"],
+            mediaSrc: ["'self'"],
+            frameSrc: ["'none'"],
+            baseUri: ["'self'"],
+            formAction: ["'self'"],
+            // upgradeInsecureRequests intentionally omitted for HTTP
+          },
+        },
+        hsts: false, // Disable HSTS when not using secure cookies or in development
+        crossOriginOpenerPolicy: false, // Disable COOP for HTTP - browser ignores it on non-HTTPS anyway
+        frameguard: {
+          action: 'deny' as const,
+        },
+        noSniff: true,
+        xssFilter: true,
+      };
 
 app.use(helmet(helmetConfig));
 
@@ -235,23 +231,25 @@ const getAllowedOrigins = () => {
   return origins.length > 0 ? origins : ['http://localhost:3000'];
 };
 
-app.use(cors({
-  origin: (origin, callback) => {
-    const allowedOrigins = getAllowedOrigins();
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      const allowedOrigins = getAllowedOrigins();
 
-    // Allow requests with no origin (mobile apps, Postman, same-origin)
-    if (!origin) return callback(null, true);
+      // Allow requests with no origin (mobile apps, Postman, same-origin)
+      if (!origin) return callback(null, true);
 
-    if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
-      callback(null, true);
-    } else {
-      logger.warn(`CORS request blocked from origin: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-  optionsSuccessStatus: 200
-}));
+      if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+        callback(null, true);
+      } else {
+        logger.warn(`CORS request blocked from origin: ${origin}`);
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    credentials: true,
+    optionsSuccessStatus: 200,
+  })
+);
 
 // Access logging for fail2ban (optional, configured via ACCESS_LOG_ENABLED)
 const accessLogger = setupAccessLogger();
@@ -268,19 +266,21 @@ app.use(session(getSessionConfig()));
 
 // Security: CSRF protection middleware
 import { csrfTokenMiddleware, csrfProtection, csrfTokenEndpoint } from './middleware/csrf.js';
-app.use(csrfTokenMiddleware);  // Generate and attach tokens to all requests
+app.use(csrfTokenMiddleware); // Generate and attach tokens to all requests
 // csrfProtection applied to API routes below (after CSRF token endpoint)
 
 // Initialize OIDC if configured
-initializeOIDC().then(enabled => {
-  if (enabled) {
-    logger.debug('✅ OIDC authentication enabled');
-  } else {
-    logger.debug('ℹ️  OIDC authentication disabled (not configured)');
-  }
-}).catch(error => {
-  logger.error('Failed to initialize OIDC:', error);
-});
+initializeOIDC()
+  .then(enabled => {
+    if (enabled) {
+      logger.debug('✅ OIDC authentication enabled');
+    } else {
+      logger.debug('ℹ️  OIDC authentication disabled (not configured)');
+    }
+  })
+  .catch(error => {
+    logger.error('Failed to initialize OIDC:', error);
+  });
 
 // Function to initialize virtual node server after config capture is complete
 async function initializeVirtualNodeServer(): Promise<void> {
@@ -357,7 +357,7 @@ meshtasticManager.registerConfigCaptureCompleteCallback(initializeVirtualNodeSer
             dirname: restoreFromBackup,
             tablesRestored: result.tablesRestored,
             rowsRestored: result.rowsRestored,
-            migrationRequired: result.migrationRequired || false
+            migrationRequired: result.migrationRequired || false,
           }),
           null // No IP address during startup
         );
@@ -386,7 +386,9 @@ setTimeout(async () => {
       const intervalMinutes = parseInt(savedInterval);
       if (!isNaN(intervalMinutes) && intervalMinutes >= 0 && intervalMinutes <= 60) {
         meshtasticManager.setTracerouteInterval(intervalMinutes);
-        logger.debug(`✅ Loaded saved traceroute interval: ${intervalMinutes} minutes${intervalMinutes === 0 ? ' (disabled)' : ''}`);
+        logger.debug(
+          `✅ Loaded saved traceroute interval: ${intervalMinutes} minutes${intervalMinutes === 0 ? ' (disabled)' : ''}`
+        );
       }
     }
 
@@ -414,6 +416,44 @@ setTimeout(async () => {
     // Initialize solar monitoring service
     solarMonitoringService.initialize();
     logger.debug('Solar monitoring service initialized');
+
+    // Start inactive node notification service with validation
+    const inactiveThresholdHoursRaw = parseInt(databaseService.getSetting('inactiveNodeThresholdHours') || '24', 10);
+    const inactiveCheckIntervalMinutesRaw = parseInt(
+      databaseService.getSetting('inactiveNodeCheckIntervalMinutes') || '60',
+      10
+    );
+    const inactiveCooldownHoursRaw = parseInt(databaseService.getSetting('inactiveNodeCooldownHours') || '24', 10);
+
+    // Validate and use defaults if invalid values are found in database
+    const inactiveThresholdHours =
+      !isNaN(inactiveThresholdHoursRaw) && inactiveThresholdHoursRaw >= 1 && inactiveThresholdHoursRaw <= 720
+        ? inactiveThresholdHoursRaw
+        : 24;
+    const inactiveCheckIntervalMinutes =
+      !isNaN(inactiveCheckIntervalMinutesRaw) &&
+      inactiveCheckIntervalMinutesRaw >= 1 &&
+      inactiveCheckIntervalMinutesRaw <= 1440
+        ? inactiveCheckIntervalMinutesRaw
+        : 60;
+    const inactiveCooldownHours =
+      !isNaN(inactiveCooldownHoursRaw) && inactiveCooldownHoursRaw >= 1 && inactiveCooldownHoursRaw <= 720
+        ? inactiveCooldownHoursRaw
+        : 24;
+
+    // Log warning if invalid values were found and corrected
+    if (
+      inactiveThresholdHours !== inactiveThresholdHoursRaw ||
+      inactiveCheckIntervalMinutes !== inactiveCheckIntervalMinutesRaw ||
+      inactiveCooldownHours !== inactiveCooldownHoursRaw
+    ) {
+      logger.warn(
+        `⚠️  Invalid inactive node notification settings found in database, using defaults (threshold: ${inactiveThresholdHours}h, check: ${inactiveCheckIntervalMinutes}min, cooldown: ${inactiveCooldownHours}h)`
+      );
+    }
+
+    inactiveNodeNotificationService.start(inactiveThresholdHours, inactiveCheckIntervalMinutes, inactiveCooldownHours);
+    logger.info('✅ Inactive node notification service started');
 
     // Note: Virtual node server initialization has been moved to a callback
     // that triggers when config capture completes (see registerConfigCaptureCompleteCallback above)
@@ -478,7 +518,7 @@ apiRouter.get('/health', (_req, res) => {
   res.json({
     status: 'ok',
     version: packageJson.version,
-    uptime: Date.now() - serverStartTime
+    uptime: Date.now() - serverStartTime,
   });
 });
 
@@ -486,7 +526,7 @@ apiRouter.get('/health', (_req, res) => {
 apiRouter.get('/server-info', (_req, res) => {
   res.json({
     timezone: env.timezone,
-    timezoneProvided: env.timezoneProvided
+    timezoneProvided: env.timezoneProvided,
   });
 });
 
@@ -500,7 +540,7 @@ if (!env.isProduction) {
       'x-forwarded-for': req.headers['x-forwarded-for'],
       'x-real-ip': req.headers['x-real-ip'],
       'trust-proxy': app.get('trust proxy'),
-      note: 'The rate limiter uses req.ip to identify clients'
+      note: 'The rate limiter uses req.ip to identify clients',
     });
   });
 }
@@ -565,7 +605,7 @@ apiRouter.get('/nodes', optionalAuth(), (_req, res) => {
           enhancedNode.position = {
             latitude: estimatedPos.latitude,
             longitude: estimatedPos.longitude,
-            altitude: node.position?.altitude
+            altitude: node.position?.altitude,
           };
         }
       }
@@ -573,13 +613,18 @@ apiRouter.get('/nodes', optionalAuth(), (_req, res) => {
       return enhancedNode;
     });
 
-    logger.debug('🔍 Sending nodes to frontend, sample node:', enhancedNodes[0] ? {
-      nodeNum: enhancedNodes[0].nodeNum,
-      longName: enhancedNodes[0].user?.longName,
-      role: enhancedNodes[0].user?.role,
-      hopsAway: enhancedNodes[0].hopsAway,
-      isMobile: enhancedNodes[0].isMobile
-    } : 'No nodes');
+    logger.debug(
+      '🔍 Sending nodes to frontend, sample node:',
+      enhancedNodes[0]
+        ? {
+            nodeNum: enhancedNodes[0].nodeNum,
+            longName: enhancedNodes[0].user?.longName,
+            role: enhancedNodes[0].user?.role,
+            hopsAway: enhancedNodes[0].hopsAway,
+            isMobile: enhancedNodes[0].isMobile,
+          }
+        : 'No nodes'
+    );
     res.json(enhancedNodes);
   } catch (error) {
     logger.error('Error fetching nodes:', error);
@@ -606,7 +651,7 @@ apiRouter.get('/nodes/:nodeId/position-history', optionalAuth(), (req, res) => {
     // Allow hours parameter for future use, but default to fetching ALL position history
     // This ensures we capture movement that may have happened long ago
     const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : null;
-    const cutoffTime = hoursParam ? Date.now() - (hoursParam * 60 * 60 * 1000) : 0;
+    const cutoffTime = hoursParam ? Date.now() - hoursParam * 60 * 60 * 1000 : 0;
 
     // Get only position-related telemetry (lat/lon/alt) for the node - much more efficient!
     const positionTelemetry = databaseService.getPositionTelemetryByNode(nodeId, 1500, cutoffTime);
@@ -636,7 +681,7 @@ apiRouter.get('/nodes/:nodeId/position-history', optionalAuth(), (req, res) => {
         timestamp,
         latitude: pos.lat!,
         longitude: pos.lon!,
-        altitude: pos.alt
+        altitude: pos.alt,
       }))
       .sort((a, b) => a.timestamp - b.timestamp);
 
@@ -681,7 +726,7 @@ apiRouter.get('/nodes/:nodeId/positions', optionalAuth(), (req, res) => {
         timestamp,
         latitude: pos.lat!,
         longitude: pos.lon!,
-        altitude: pos.alt
+        altitude: pos.alt,
       }))
       .sort((a, b) => a.timestamp - b.timestamp);
 
@@ -709,7 +754,7 @@ apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write'), a
       const errorResponse: ApiErrorResponse = {
         error: 'isFavorite must be a boolean',
         code: 'INVALID_PARAMETER_TYPE',
-        details: 'Expected boolean value for isFavorite parameter'
+        details: 'Expected boolean value for isFavorite parameter',
       };
       res.status(400).json(errorResponse);
       return;
@@ -723,7 +768,7 @@ apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write'), a
       const errorResponse: ApiErrorResponse = {
         error: 'Invalid nodeId format',
         code: 'INVALID_NODE_ID',
-        details: 'nodeId must be in format !XXXXXXXX (8 hex characters)'
+        details: 'nodeId must be in format !XXXXXXXX (8 hex characters)',
       };
       res.status(400).json(errorResponse);
       return;
@@ -752,19 +797,27 @@ apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write'), a
               role: node.role,
               publicKey: node.publicKey,
             },
-            position: (node.latitude && node.longitude) ? {
-              latitude: node.latitude,
-              longitude: node.longitude,
-              altitude: node.altitude || 0,
-              time: node.lastHeard || Math.floor(Date.now() / 1000),
-            } : undefined,
-            deviceMetrics: (node.batteryLevel !== undefined || node.voltage !== undefined ||
-                           node.channelUtilization !== undefined || node.airUtilTx !== undefined) ? {
-              batteryLevel: node.batteryLevel,
-              voltage: node.voltage,
-              channelUtilization: node.channelUtilization,
-              airUtilTx: node.airUtilTx,
-            } : undefined,
+            position:
+              node.latitude && node.longitude
+                ? {
+                    latitude: node.latitude,
+                    longitude: node.longitude,
+                    altitude: node.altitude || 0,
+                    time: node.lastHeard || Math.floor(Date.now() / 1000),
+                  }
+                : undefined,
+            deviceMetrics:
+              node.batteryLevel !== undefined ||
+              node.voltage !== undefined ||
+              node.channelUtilization !== undefined ||
+              node.airUtilTx !== undefined
+                ? {
+                    batteryLevel: node.batteryLevel,
+                    voltage: node.voltage,
+                    channelUtilization: node.channelUtilization,
+                    airUtilTx: node.airUtilTx,
+                  }
+                : undefined,
             snr: node.snr,
             lastHeard: node.lastHeard,
             hopsAway: node.hopsAway,
@@ -799,7 +852,9 @@ apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write'), a
         // Special handling for firmware version incompatibility
         if (error instanceof Error && error.message === 'FIRMWARE_NOT_SUPPORTED') {
           deviceSyncStatus = 'skipped';
-          logger.debug(`ℹ️ Device sync skipped for node ${nodeNum}: firmware does not support favorites (requires >= 2.7.0)`);
+          logger.debug(
+            `ℹ️ Device sync skipped for node ${nodeNum}: firmware does not support favorites (requires >= 2.7.0)`
+          );
           // Don't set deviceSyncError - this is expected behavior for pre-2.7 firmware
         } else {
           deviceSyncStatus = 'failed';
@@ -816,15 +871,15 @@ apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write'), a
       isFavorite,
       deviceSync: {
         status: deviceSyncStatus,
-        error: deviceSyncError
-      }
+        error: deviceSyncError,
+      },
     });
   } catch (error) {
     logger.error('Error setting node favorite:', error);
     const errorResponse: ApiErrorResponse = {
       error: 'Failed to set node favorite',
       code: 'INTERNAL_ERROR',
-      details: error instanceof Error ? error.message : 'Unknown error occurred'
+      details: error instanceof Error ? error.message : 'Unknown error occurred',
     };
     res.status(500).json(errorResponse);
   }
@@ -840,7 +895,7 @@ apiRouter.get('/nodes/security-issues', optionalAuth(), (_req, res) => {
     const errorResponse: ApiErrorResponse = {
       error: 'Failed to get nodes with security issues',
       code: 'INTERNAL_ERROR',
-      details: error instanceof Error ? error.message : 'Unknown error occurred'
+      details: error instanceof Error ? error.message : 'Unknown error occurred',
     };
     res.status(500).json(errorResponse);
   }
@@ -859,7 +914,7 @@ apiRouter.post('/nodes/:nodeId/send-key-warning', requirePermission('messages', 
       const errorResponse: ApiErrorResponse = {
         error: 'Invalid nodeId format',
         code: 'INVALID_NODE_ID',
-        details: 'nodeId must be in format !XXXXXXXX (8 hex characters)'
+        details: 'nodeId must be in format !XXXXXXXX (8 hex characters)',
       };
       res.status(400).json(errorResponse);
       return;
@@ -873,7 +928,7 @@ apiRouter.post('/nodes/:nodeId/send-key-warning', requirePermission('messages', 
       const errorResponse: ApiErrorResponse = {
         error: 'Node not found',
         code: 'NODE_NOT_FOUND',
-        details: `No node found with ID ${nodeId}`
+        details: `No node found with ID ${nodeId}`,
       };
       res.status(404).json(errorResponse);
       return;
@@ -883,7 +938,7 @@ apiRouter.post('/nodes/:nodeId/send-key-warning', requirePermission('messages', 
       const errorResponse: ApiErrorResponse = {
         error: 'Node has no security issues',
         code: 'NO_SECURITY_ISSUE',
-        details: 'This node does not have any detected key security issues'
+        details: 'This node does not have any detected key security issues',
       };
       res.status(400).json(errorResponse);
       return;
@@ -896,8 +951,8 @@ apiRouter.post('/nodes/:nodeId/send-key-warning', requirePermission('messages', 
 
     const messageId = await meshtasticManager.sendTextMessage(
       warningMessage,
-      0,  // Channel 0
-      nodeNum  // Destination
+      0, // Channel 0
+      nodeNum // Destination
     );
 
     logger.info(`🔐 Sent key security warning to node ${nodeId} (${node.longName || 'Unknown'})`);
@@ -907,14 +962,14 @@ apiRouter.post('/nodes/:nodeId/send-key-warning', requirePermission('messages', 
       nodeNum,
       nodeId,
       messageId,
-      messageSent: warningMessage
+      messageSent: warningMessage,
     });
   } catch (error) {
     logger.error('Error sending key warning:', error);
     const errorResponse: ApiErrorResponse = {
       error: 'Failed to send key warning',
       code: 'INTERNAL_ERROR',
-      details: error instanceof Error ? error.message : 'Unknown error occurred'
+      details: error instanceof Error ? error.message : 'Unknown error occurred',
     };
     res.status(500).json(errorResponse);
   }
@@ -935,9 +990,7 @@ apiRouter.post('/nodes/scan-duplicate-keys', requirePermission('nodes', 'write')
           nodeNum: node.nodeNum,
           nodeId: node.nodeId,
           duplicateKeyDetected: false,
-          keySecurityIssueDetails: node.keyIsLowEntropy
-            ? 'Known low-entropy key detected'
-            : undefined
+          keySecurityIssueDetails: node.keyIsLowEntropy ? 'Known low-entropy key detected' : undefined,
         });
       }
     }
@@ -957,7 +1010,7 @@ apiRouter.post('/nodes/scan-duplicate-keys', requirePermission('nodes', 'write')
           nodeNum,
           nodeId: node.nodeId,
           duplicateKeyDetected: true,
-          keySecurityIssueDetails: details
+          keySecurityIssueDetails: details,
         });
       }
       logger.info(`🔐 Detected ${nodeNums.length} nodes sharing key hash ${keyHash.substring(0, 16)}...`);
@@ -967,14 +1020,14 @@ apiRouter.post('/nodes/scan-duplicate-keys', requirePermission('nodes', 'write')
       success: true,
       duplicatesFound: duplicates.size,
       affectedNodes: Array.from(duplicates.values()).flat(),
-      totalNodesScanned: nodesWithKeys.length
+      totalNodesScanned: nodesWithKeys.length,
     });
   } catch (error) {
     logger.error('Error scanning for duplicate keys:', error);
     const errorResponse: ApiErrorResponse = {
       error: 'Failed to scan for duplicate keys',
       code: 'INTERNAL_ERROR',
-      details: error instanceof Error ? error.message : 'Unknown error occurred'
+      details: error instanceof Error ? error.message : 'Unknown error occurred',
     };
     res.status(500).json(errorResponse);
   }
@@ -990,7 +1043,7 @@ apiRouter.get('/messages', optionalAuth(), (req, res) => {
       return res.status(403).json({
         error: 'Insufficient permissions',
         code: 'FORBIDDEN',
-        required: { resource: 'channel_0 or messages', action: 'read' }
+        required: { resource: 'channel_0 or messages', action: 'read' },
       });
     }
 
@@ -1038,9 +1091,14 @@ function transformDbMessageToMeshMessage(msg: DbMessage): MeshMessage {
     ackFailed: Boolean((msg as any).ackFailed),
     routingErrorReceived: Boolean((msg as any).routingErrorReceived),
     deliveryState: (msg as any).deliveryState,
-    acknowledged: msg.channel === -1
-      ? ((msg as any).deliveryState === 'confirmed' ? true : undefined)
-      : ((msg as any).deliveryState === 'delivered' || (msg as any).deliveryState === 'confirmed' ? true : undefined)
+    acknowledged:
+      msg.channel === -1
+        ? (msg as any).deliveryState === 'confirmed'
+          ? true
+          : undefined
+        : (msg as any).deliveryState === 'delivered' || (msg as any).deliveryState === 'confirmed'
+        ? true
+        : undefined,
   };
 }
 
@@ -1065,7 +1123,7 @@ apiRouter.get('/messages/channel/:channel', optionalAuth(), (req, res) => {
       return res.status(403).json({
         error: 'Insufficient permissions',
         code: 'FORBIDDEN',
-        required: { resource: channelResource, action: 'read' }
+        required: { resource: channelResource, action: 'read' },
       });
     }
 
@@ -1111,7 +1169,7 @@ apiRouter.post('/messages/mark-read', optionalAuth(), (req, res) => {
         return res.status(403).json({
           error: 'Insufficient permissions',
           code: 'FORBIDDEN',
-          required: { resource: channelResource, action: 'read' }
+          required: { resource: channelResource, action: 'read' },
         });
       }
     }
@@ -1123,7 +1181,7 @@ apiRouter.post('/messages/mark-read', optionalAuth(), (req, res) => {
         return res.status(403).json({
           error: 'Insufficient permissions',
           code: 'FORBIDDEN',
-          required: { resource: 'messages', action: 'read' }
+          required: { resource: 'messages', action: 'read' },
         });
       }
     }
@@ -1174,7 +1232,7 @@ apiRouter.get('/messages/unread-counts', optionalAuth(), (req, res) => {
       return res.status(403).json({
         error: 'Insufficient permissions',
         code: 'FORBIDDEN',
-        required: { resource: 'channel_0 or messages', action: 'read' }
+        required: { resource: 'channel_0 or messages', action: 'read' },
       });
     }
 
@@ -1182,8 +1240,8 @@ apiRouter.get('/messages/unread-counts', optionalAuth(), (req, res) => {
     const localNodeInfo = meshtasticManager.getLocalNodeInfo();
 
     const result: {
-      channels?: {[channelId: number]: number},
-      directMessages?: {[nodeId: string]: number}
+      channels?: { [channelId: number]: number };
+      directMessages?: { [nodeId: string]: number };
     } = {};
 
     // Get channel unread counts if user has channels permission
@@ -1193,7 +1251,7 @@ apiRouter.get('/messages/unread-counts', optionalAuth(), (req, res) => {
 
     // Get DM unread counts if user has messages permission
     if (hasMessagesRead && localNodeInfo) {
-      const directMessages: {[nodeId: string]: number} = {};
+      const directMessages: { [nodeId: string]: number } = {};
       // Get all nodes that have DMs
       const allNodes = meshtasticManager.getAllNodes();
       for (const node of allNodes) {
@@ -1224,7 +1282,7 @@ apiRouter.get('/virtual-node/status', requireAuth(), (_req, res) => {
         enabled: false,
         isRunning: false,
         clientCount: 0,
-        clients: []
+        clients: [],
       });
     }
 
@@ -1236,7 +1294,7 @@ apiRouter.get('/virtual-node/status', requireAuth(), (_req, res) => {
       enabled: true,
       isRunning,
       clientCount,
-      clients
+      clients,
     });
   } catch (error) {
     logger.error('Error getting virtual node status:', error);
@@ -1309,8 +1367,14 @@ apiRouter.get('/channels', requirePermission('channel_0', 'read'), (_req, res) =
     }
 
     logger.debug(`📡 Serving ${filteredChannels.length} filtered channels (from ${allChannels.length} total)`);
-    logger.debug(`🔍 All channels in DB:`, allChannels.map(ch => ({ id: ch.id, name: ch.name })));
-    logger.debug(`🔍 Filtered channels:`, filteredChannels.map(ch => ({ id: ch.id, name: ch.name })));
+    logger.debug(
+      `🔍 All channels in DB:`,
+      allChannels.map(ch => ({ id: ch.id, name: ch.name }))
+    );
+    logger.debug(
+      `🔍 Filtered channels:`,
+      filteredChannels.map(ch => ({ id: ch.id, name: ch.name }))
+    );
     res.json(filteredChannels);
   } catch (error) {
     logger.error('Error fetching channels:', error);
@@ -1335,7 +1399,7 @@ apiRouter.get('/channels/:id/export', requirePermission('channel_0', 'read'), (r
       role: channel.role,
       positionPrecision: channel.positionPrecision,
       uplinkEnabled: channel.uplinkEnabled,
-      downlinkEnabled: channel.downlinkEnabled
+      downlinkEnabled: channel.downlinkEnabled,
     });
 
     // Create export data with metadata
@@ -1349,8 +1413,8 @@ apiRouter.get('/channels/:id/export', requirePermission('channel_0', 'read'), (r
         role: channel.role,
         uplinkEnabled: channel.uplinkEnabled,
         downlinkEnabled: channel.downlinkEnabled,
-        positionPrecision: channel.positionPrecision
-      }
+        positionPrecision: channel.positionPrecision,
+      },
     };
 
     // Set filename header
@@ -1395,7 +1459,11 @@ apiRouter.put('/channels/:id', requirePermission('channel_0', 'write'), async (r
     }
 
     // Validate positionPrecision if provided
-    if (positionPrecision !== undefined && positionPrecision !== null && (typeof positionPrecision !== 'number' || positionPrecision < 0 || positionPrecision > 32)) {
+    if (
+      positionPrecision !== undefined &&
+      positionPrecision !== null &&
+      (typeof positionPrecision !== 'number' || positionPrecision < 0 || positionPrecision > 32)
+    ) {
       return res.status(400).json({ error: 'Invalid position precision. Must be between 0-32' });
     }
 
@@ -1408,12 +1476,15 @@ apiRouter.put('/channels/:id', requirePermission('channel_0', 'write'), async (r
     // Prepare the updated channel data
     const updatedChannelData = {
       id: channelId,
-      name: (name !== undefined && name !== null) ? name : existingChannel.name,
-      psk: (psk !== undefined && psk !== null) ? psk : existingChannel.psk,
-      role: (role !== undefined && role !== null) ? role : existingChannel.role,
+      name: name !== undefined && name !== null ? name : existingChannel.name,
+      psk: psk !== undefined && psk !== null ? psk : existingChannel.psk,
+      role: role !== undefined && role !== null ? role : existingChannel.role,
       uplinkEnabled: uplinkEnabled !== undefined ? uplinkEnabled : existingChannel.uplinkEnabled,
       downlinkEnabled: downlinkEnabled !== undefined ? downlinkEnabled : existingChannel.downlinkEnabled,
-      positionPrecision: (positionPrecision !== undefined && positionPrecision !== null) ? positionPrecision : existingChannel.positionPrecision
+      positionPrecision:
+        positionPrecision !== undefined && positionPrecision !== null
+          ? positionPrecision
+          : existingChannel.positionPrecision,
     };
 
     // Update channel in database
@@ -1427,7 +1498,7 @@ apiRouter.put('/channels/:id', requirePermission('channel_0', 'write'), async (r
         role: updatedChannelData.role,
         uplinkEnabled: updatedChannelData.uplinkEnabled,
         downlinkEnabled: updatedChannelData.downlinkEnabled,
-        positionPrecision: updatedChannelData.positionPrecision
+        positionPrecision: updatedChannelData.positionPrecision,
       });
       logger.info(`✅ Sent channel ${channelId} configuration to device`);
     } catch (deviceError) {
@@ -1488,10 +1559,10 @@ apiRouter.post('/channels/:slotId/import', requirePermission('channel_0', 'write
       id: slotId,
       name,
       psk: psk || undefined,
-      role: (role !== null && role !== undefined) ? role : undefined,
+      role: role !== null && role !== undefined ? role : undefined,
       uplinkEnabled: uplinkEnabled !== undefined ? uplinkEnabled : true,
       downlinkEnabled: downlinkEnabled !== undefined ? downlinkEnabled : true,
-      positionPrecision: (positionPrecision !== null && positionPrecision !== undefined) ? positionPrecision : undefined
+      positionPrecision: positionPrecision !== null && positionPrecision !== undefined ? positionPrecision : undefined,
     };
 
     // Import channel to the specified slot in database
@@ -1505,7 +1576,7 @@ apiRouter.post('/channels/:slotId/import', requirePermission('channel_0', 'write
         role: importedChannelData.role,
         uplinkEnabled: importedChannelData.uplinkEnabled,
         downlinkEnabled: importedChannelData.downlinkEnabled,
-        positionPrecision: importedChannelData.positionPrecision
+        positionPrecision: importedChannelData.positionPrecision,
       });
       logger.info(`✅ Sent imported channel ${slotId} configuration to device`);
     } catch (deviceError) {
@@ -1567,7 +1638,7 @@ apiRouter.post('/channels/encode-url', requirePermission('configuration', 'read'
           name: ch.name, // Use the actual name from database (preserved from device)
           uplinkEnabled: ch.uplinkEnabled,
           downlinkEnabled: ch.downlinkEnabled,
-          positionPrecision: ch.positionPrecision
+          positionPrecision: ch.positionPrecision,
         };
       });
 
@@ -1597,7 +1668,7 @@ apiRouter.post('/channels/encode-url', requirePermission('configuration', 'read'
           txPower: deviceConfig.lora.txPower,
           channelNum: deviceConfig.lora.channelNum,
           sx126xRxBoostedGain: deviceConfig.lora.sx126xRxBoostedGain,
-          configOkToMqtt: deviceConfig.lora.configOkToMqtt
+          configOkToMqtt: deviceConfig.lora.configOkToMqtt,
         };
         logger.info('📡 LoRa config to encode:', JSON.stringify(loraConfig, null, 2));
       } else {
@@ -1674,7 +1745,7 @@ apiRouter.post('/channels/import-config', requirePermission('configuration', 'wr
             role: role,
             uplinkEnabled: channel.uplinkEnabled,
             downlinkEnabled: channel.downlinkEnabled,
-            positionPrecision: channel.positionPrecision
+            positionPrecision: channel.positionPrecision,
           });
 
           importedChannels.push({ index: i, name: channel.name || '(unnamed)' });
@@ -1698,7 +1769,7 @@ apiRouter.post('/channels/import-config', requirePermission('configuration', 'wr
         // Ignore any incoming configuration that tries to disable TX
         const loraConfigToImport = {
           ...decoded.loraConfig,
-          txEnabled: true
+          txEnabled: true,
         };
 
         logger.info(`📥 LoRa config with txEnabled defaulted: txEnabled=${loraConfigToImport.txEnabled}`);
@@ -1714,7 +1785,11 @@ apiRouter.post('/channels/import-config', requirePermission('configuration', 'wr
     // Commit all changes (channels + LoRa config) as a single transaction
     // This will save everything to flash and trigger device reboot if needed
     try {
-      logger.info(`💾 Committing all configuration changes (${importedChannels.length} channels${loraImported ? ' + LoRa config' : ''})...`);
+      logger.info(
+        `💾 Committing all configuration changes (${importedChannels.length} channels${
+          loraImported ? ' + LoRa config' : ''
+        })...`
+      );
       await meshtasticManager.commitEditSettings();
       logger.info(`✅ Configuration changes committed successfully`);
     } catch (error) {
@@ -1726,9 +1801,9 @@ apiRouter.post('/channels/import-config', requirePermission('configuration', 'wr
       imported: {
         channels: importedChannels.length,
         channelDetails: importedChannels,
-        loraConfig: loraImported
+        loraConfig: loraImported,
       },
-      requiresReboot
+      requiresReboot,
     });
   } catch (error) {
     logger.error('Error importing configuration:', error);
@@ -1747,7 +1822,7 @@ apiRouter.get('/stats', requirePermission('dashboard', 'read'), (_req, res) => {
       messageCount,
       nodeCount,
       channelCount,
-      messagesByDay
+      messagesByDay,
     });
   } catch (error) {
     logger.error('Error fetching stats:', error);
@@ -1808,7 +1883,6 @@ apiRouter.post('/cleanup/channels', requireAdmin(), (_req, res) => {
   }
 });
 
-
 // Send message endpoint
 apiRouter.post('/messages/send', optionalAuth(), async (req, res) => {
   try {
@@ -1836,8 +1910,13 @@ apiRouter.post('/messages/send', optionalAuth(), async (req, res) => {
 
     // Map channel to mesh network
     // Channel must be 0-7 for Meshtastic. If undefined or invalid, default to 0 (Primary)
-    let meshChannel = (channel !== undefined && channel >= 0 && channel <= 7) ? channel : 0;
-    logger.info(`📨 Sending message - Received channel: ${channel}, Using meshChannel: ${meshChannel}, Text: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
+    let meshChannel = channel !== undefined && channel >= 0 && channel <= 7 ? channel : 0;
+    logger.info(
+      `📨 Sending message - Received channel: ${channel}, Using meshChannel: ${meshChannel}, Text: "${text.substring(
+        0,
+        50
+      )}${text.length > 50 ? '...' : ''}"`
+    );
 
     // Check permissions based on whether this is a DM or channel message
     if (destinationNum) {
@@ -1846,7 +1925,7 @@ apiRouter.post('/messages/send', optionalAuth(), async (req, res) => {
         return res.status(403).json({
           error: 'Insufficient permissions',
           code: 'FORBIDDEN',
-          required: { resource: 'messages', action: 'write' }
+          required: { resource: 'messages', action: 'write' },
         });
       }
     } else {
@@ -1856,7 +1935,7 @@ apiRouter.post('/messages/send', optionalAuth(), async (req, res) => {
         return res.status(403).json({
           error: 'Insufficient permissions',
           code: 'FORBIDDEN',
-          required: { resource: channelResource, action: 'write' }
+          required: { resource: channelResource, action: 'write' },
         });
       }
     }
@@ -1888,7 +1967,10 @@ apiRouter.post('/traceroute', requirePermission('traceroute', 'write'), async (r
     const channel = node?.channel ?? 0; // Default to 0 if node not found or channel not set
 
     await meshtasticManager.sendTraceroute(destinationNum, channel);
-    res.json({ success: true, message: `Traceroute request sent to ${destinationNum.toString(16)} on channel ${channel}` });
+    res.json({
+      success: true,
+      message: `Traceroute request sent to ${destinationNum.toString(16)} on channel ${channel}`,
+    });
   } catch (error) {
     logger.error('Error sending traceroute:', error);
     res.status(500).json({ error: 'Failed to send traceroute' });
@@ -1913,7 +1995,11 @@ apiRouter.post('/position/request', requirePermission('messages', 'write'), asyn
 
     // Get local node info to create system message
     const localNodeInfo = meshtasticManager.getLocalNodeInfo();
-    logger.info(`📍 localNodeInfo for system message: ${localNodeInfo ? `nodeId=${localNodeInfo.nodeId}, nodeNum=${localNodeInfo.nodeNum}` : 'NULL'}`);
+    logger.info(
+      `📍 localNodeInfo for system message: ${
+        localNodeInfo ? `nodeId=${localNodeInfo.nodeId}, nodeNum=${localNodeInfo.nodeNum}` : 'NULL'
+      }`
+    );
 
     if (localNodeInfo) {
       // Create a system message to record the position request using the actual packet ID and requestId
@@ -1921,9 +2007,11 @@ apiRouter.post('/position/request', requirePermission('messages', 'write'), asyn
       const timestamp = Date.now();
 
       // For DMs (channel 0), store as channel -1 to show in DM conversation
-      const messageChannel = (channel === 0) ? -1 : channel;
+      const messageChannel = channel === 0 ? -1 : channel;
 
-      logger.info(`📍 Inserting position request system message to database: ${messageId} (channel: ${messageChannel}, packetId: ${packetId}, requestId: ${requestId})`);
+      logger.info(
+        `📍 Inserting position request system message to database: ${messageId} (channel: ${messageChannel}, packetId: ${packetId}, requestId: ${requestId})`
+      );
       databaseService.insertMessage({
         id: messageId,
         fromNodeNum: localNodeInfo.nodeNum,
@@ -1936,14 +2024,17 @@ apiRouter.post('/position/request', requirePermission('messages', 'write'), asyn
         requestId: requestId, // Store requestId for ACK matching
         timestamp: timestamp,
         rxTime: timestamp,
-        createdAt: timestamp
+        createdAt: timestamp,
       });
       logger.info(`📍 Position request system message inserted successfully`);
     } else {
       logger.warn(`⚠️ Could not create system message for position request - localNodeInfo is null`);
     }
 
-    res.json({ success: true, message: `Position request sent to ${destinationNum.toString(16)} on channel ${channel}` });
+    res.json({
+      success: true,
+      message: `Position request sent to ${destinationNum.toString(16)} on channel ${channel}`,
+    });
   } catch (error) {
     logger.error('Error sending position request:', error);
     res.status(500).json({ error: 'Failed to send position request' });
@@ -1954,7 +2045,7 @@ apiRouter.post('/position/request', requirePermission('messages', 'write'), asyn
 apiRouter.get('/traceroutes/recent', (req, res) => {
   try {
     const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 24;
-    const cutoffTime = Date.now() - (hoursParam * 60 * 60 * 1000);
+    const cutoffTime = Date.now() - hoursParam * 60 * 60 * 1000;
 
     // Calculate dynamic default limit based on settings:
     // Auto-traceroutes per hour * Max Node Age (hours) * 1.1 (padding for manual traceroutes)
@@ -2010,7 +2101,7 @@ apiRouter.get('/traceroutes/history/:fromNodeNum/:toNodeNum', (req, res) => {
     }
 
     // Validate node numbers are positive integers (Meshtastic node numbers are 32-bit unsigned)
-    if (fromNodeNum < 0 || fromNodeNum > 0xFFFFFFFF || toNodeNum < 0 || toNodeNum > 0xFFFFFFFF) {
+    if (fromNodeNum < 0 || fromNodeNum > 0xffffffff || toNodeNum < 0 || toNodeNum > 0xffffffff) {
       res.status(400).json({ error: 'Node numbers must be between 0 and 4294967295' });
       return;
     }
@@ -2059,7 +2150,7 @@ apiRouter.get('/route-segments/longest-active', requirePermission('info', 'read'
     const enrichedSegment = {
       ...segment,
       fromNodeName: fromNode?.longName || segment.fromNodeId,
-      toNodeName: toNode?.longName || segment.toNodeId
+      toNodeName: toNode?.longName || segment.toNodeId,
     };
 
     res.json(enrichedSegment);
@@ -2085,7 +2176,7 @@ apiRouter.get('/route-segments/record-holder', requirePermission('info', 'read')
     const enrichedSegment = {
       ...segment,
       fromNodeName: fromNode?.longName || segment.fromNodeId,
-      toNodeName: toNode?.longName || segment.toNodeId
+      toNodeName: toNode?.longName || segment.toNodeId,
     };
 
     res.json(enrichedSegment);
@@ -2114,7 +2205,7 @@ apiRouter.get('/neighbor-info', requirePermission('info', 'read'), (_req, res) =
     // Get max node age setting (default 24 hours)
     const maxNodeAgeStr = databaseService.getSetting('maxNodeAge');
     const maxNodeAgeHours = maxNodeAgeStr ? parseInt(maxNodeAgeStr, 10) : 24;
-    const cutoffTime = Math.floor(Date.now() / 1000) - (maxNodeAgeHours * 60 * 60);
+    const cutoffTime = Math.floor(Date.now() / 1000) - maxNodeAgeHours * 60 * 60;
 
     // Enrich with node names and filter by node age
     const enrichedNeighborInfo = neighborInfo
@@ -2133,7 +2224,7 @@ apiRouter.get('/neighbor-info', requirePermission('info', 'read'), (_req, res) =
           neighborLatitude: neighbor?.latitude,
           neighborLongitude: neighbor?.longitude,
           node,
-          neighbor
+          neighbor,
         };
       })
       .filter(ni => {
@@ -2167,7 +2258,7 @@ apiRouter.get('/neighbor-info/:nodeNum', requirePermission('info', 'read'), (req
         neighborNodeId: neighbor?.nodeId || `!${ni.neighborNodeNum.toString(16).padStart(8, '0')}`,
         neighborName: neighbor?.longName || `Node !${ni.neighborNodeNum.toString(16).padStart(8, '0')}`,
         neighborLatitude: neighbor?.latitude,
-        neighborLongitude: neighbor?.longitude
+        neighborLongitude: neighbor?.longitude,
       };
     });
 
@@ -2182,9 +2273,11 @@ apiRouter.get('/neighbor-info/:nodeNum', requirePermission('info', 'read'), (req
 apiRouter.get('/telemetry/:nodeId', optionalAuth(), (req, res) => {
   try {
     // Allow users with info read OR dashboard read (dashboard needs telemetry data)
-    if (!req.user?.isAdmin &&
-        !hasPermission(req.user!, 'info', 'read') &&
-        !hasPermission(req.user!, 'dashboard', 'read')) {
+    if (
+      !req.user?.isAdmin &&
+      !hasPermission(req.user!, 'info', 'read') &&
+      !hasPermission(req.user!, 'dashboard', 'read')
+    ) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
 
@@ -2192,7 +2285,7 @@ apiRouter.get('/telemetry/:nodeId', optionalAuth(), (req, res) => {
     const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 24;
 
     // Calculate cutoff timestamp for filtering
-    const cutoffTime = Date.now() - (hoursParam * 60 * 60 * 1000);
+    const cutoffTime = Date.now() - hoursParam * 60 * 60 * 1000;
 
     // Use averaged query for graph data to reduce data points
     // Dynamic bucketing automatically adjusts interval based on time range:
@@ -2284,7 +2377,7 @@ apiRouter.get('/telemetry/available/nodes', requirePermission('info', 'read'), (
       nodes: nodesWithTelemetry,
       weather: nodesWithWeather,
       estimatedPosition: nodesWithEstimatedPosition,
-      pkc: nodesWithPKC
+      pkc: nodesWithPKC,
     });
   } catch (error) {
     logger.error('Error checking telemetry availability:', error);
@@ -2374,7 +2467,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
             enhancedNode.position = {
               latitude: estimatedPos.latitude,
               longitude: estimatedPos.longitude,
-              altitude: node.position?.altitude
+              altitude: node.position?.altitude,
             };
           }
         }
@@ -2416,15 +2509,15 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       const hasMessagesRead = req.user?.isAdmin || hasPermission(req.user!, 'messages', 'read');
 
       const unreadResult: {
-        channels?: {[channelId: number]: number},
-        directMessages?: {[nodeId: string]: number}
+        channels?: { [channelId: number]: number };
+        directMessages?: { [nodeId: string]: number };
       } = {};
 
       // Get unread counts for all channels first
       const allUnreadChannels = databaseService.getUnreadCountsByChannel(userId);
 
       // Filter channels based on per-channel read permission
-      const filteredUnreadChannels: {[channelId: number]: number} = {};
+      const filteredUnreadChannels: { [channelId: number]: number } = {};
       for (const [channelIdStr, count] of Object.entries(allUnreadChannels)) {
         const channelId = parseInt(channelIdStr);
         const channelResource = `channel_${channelId}` as import('../types/permission.js').ResourceType;
@@ -2437,7 +2530,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       unreadResult.channels = filteredUnreadChannels;
 
       if (hasMessagesRead && localNodeInfo) {
-        const directMessages: {[nodeId: string]: number} = {};
+        const directMessages: { [nodeId: string]: number } = {};
         const allNodes = meshtasticManager.getAllNodes();
         for (const node of allNodes) {
           if (node.user?.id) {
@@ -2470,7 +2563,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
         const hasChannelRead = req.user?.isAdmin || hasPermission(req.user!, channelResource, 'read');
 
         if (!hasChannelRead) {
-          return false;  // User doesn't have permission to see this channel
+          return false; // User doesn't have permission to see this channel
         }
 
         // Show channel 0 (Primary channel) if user has permission
@@ -2539,7 +2632,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
           nodes: nodesWithTelemetry,
           weather: nodesWithWeather,
           estimatedPosition: nodesWithEstimatedPosition,
-          pkc: nodesWithPKC
+          pkc: nodesWithPKC,
         };
       }
     } catch (error) {
@@ -2559,13 +2652,13 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
         if (currentNode) {
           deviceMetadata = {
             firmwareVersion: currentNode.firmwareVersion,
-            rebootCount: currentNode.rebootCount
+            rebootCount: currentNode.rebootCount,
           };
 
           localNodeInfo = {
             nodeId: currentNode.nodeId,
             longName: currentNode.longName,
-            shortName: currentNode.shortName
+            shortName: currentNode.shortName,
           };
         }
       }
@@ -2576,7 +2669,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
         meshtasticUseTls: false,
         baseUrl: BASE_URL,
         deviceMetadata: deviceMetadata,
-        localNodeInfo: localNodeInfo
+        localNodeInfo: localNodeInfo,
       };
     } catch (error) {
       logger.error('Error in config section of poll:', error);
@@ -2584,7 +2677,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
         ...(req.session.userId ? { meshtasticNodeIp: env.meshtasticNodeIp } : {}),
         meshtasticTcpPort: env.meshtasticTcpPort,
         meshtasticUseTls: false,
-        baseUrl: BASE_URL
+        baseUrl: BASE_URL,
       };
     }
 
@@ -2599,7 +2692,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
             const { nodeAddress, ...basicWithoutNodeAddress } = config.basic;
             result.deviceConfig = {
               ...config,
-              basic: basicWithoutNodeAddress
+              basic: basicWithoutNodeAddress,
             };
           } else {
             result.deviceConfig = config;
@@ -2654,7 +2747,7 @@ apiRouter.post('/connection/reconnect', requirePermission('connection', 'write')
 
     res.json({
       success,
-      status: success ? 'connecting' : 'disconnected'
+      status: success ? 'connecting' : 'disconnected',
     });
   } catch (error) {
     logger.error('Error reconnecting:', error);
@@ -2677,14 +2770,14 @@ apiRouter.get('/config', optionalAuth(), async (req, res) => {
       if (currentNode) {
         deviceMetadata = {
           firmwareVersion: currentNode.firmwareVersion,
-          rebootCount: currentNode.rebootCount
+          rebootCount: currentNode.rebootCount,
         };
 
         // Include local node identity information for anonymous users
         localNodeInfo = {
           nodeId: currentNode.nodeId,
           longName: currentNode.longName,
-          shortName: currentNode.shortName
+          shortName: currentNode.shortName,
         };
       }
     }
@@ -2692,10 +2785,10 @@ apiRouter.get('/config', optionalAuth(), async (req, res) => {
     res.json({
       ...(req.session.userId ? { meshtasticNodeIp: env.meshtasticNodeIp } : {}),
       meshtasticTcpPort: env.meshtasticTcpPort,
-      meshtasticUseTls: false,  // We're using TCP, not TLS
+      meshtasticUseTls: false, // We're using TCP, not TLS
       baseUrl: BASE_URL,
       deviceMetadata: deviceMetadata,
-      localNodeInfo: localNodeInfo
+      localNodeInfo: localNodeInfo,
     });
   } catch (error) {
     logger.error('Error in /api/config:', error);
@@ -2703,7 +2796,7 @@ apiRouter.get('/config', optionalAuth(), async (req, res) => {
       ...(req.session.userId ? { meshtasticNodeIp: env.meshtasticNodeIp } : {}),
       meshtasticTcpPort: env.meshtasticTcpPort,
       meshtasticUseTls: false,
-      baseUrl: BASE_URL
+      baseUrl: BASE_URL,
     });
   }
 });
@@ -2766,7 +2859,7 @@ apiRouter.get('/device/backup', requirePermission('configuration', 'read'), asyn
     logger.error('❌ Error generating device backup:', error);
     res.status(500).json({
       error: 'Failed to generate device backup',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
@@ -2781,13 +2874,13 @@ apiRouter.get('/backup/settings', requirePermission('configuration', 'read'), as
     res.json({
       enabled,
       maxBackups,
-      backupTime
+      backupTime,
     });
   } catch (error) {
     logger.error('❌ Error getting backup settings:', error);
     res.status(500).json({
       error: 'Failed to get backup settings',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
@@ -2822,7 +2915,7 @@ apiRouter.post('/backup/settings', requirePermission('configuration', 'write'), 
     logger.error('❌ Error saving backup settings:', error);
     res.status(500).json({
       error: 'Failed to save backup settings',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
@@ -2836,7 +2929,7 @@ apiRouter.get('/backup/list', requirePermission('configuration', 'read'), async 
     logger.error('❌ Error listing backups:', error);
     res.status(500).json({
       error: 'Failed to list backups',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
@@ -2862,7 +2955,7 @@ apiRouter.get('/backup/download/:filename', requirePermission('configuration', '
     logger.error('❌ Error downloading backup:', error);
     res.status(500).json({
       error: 'Failed to download backup',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
@@ -2886,7 +2979,7 @@ apiRouter.delete('/backup/delete/:filename', requirePermission('configuration', 
     logger.error('❌ Error deleting backup:', error);
     res.status(500).json({
       error: 'Failed to delete backup',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
@@ -2914,13 +3007,13 @@ apiRouter.post('/system/backup', requirePermission('configuration', 'write'), as
     res.json({
       success: true,
       dirname,
-      message: 'System backup created successfully'
+      message: 'System backup created successfully',
     });
   } catch (error) {
     logger.error('❌ Error creating system backup:', error);
     res.status(500).json({
       error: 'Failed to create system backup',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
@@ -2934,7 +3027,7 @@ apiRouter.get('/system/backup/list', requirePermission('configuration', 'read'),
     logger.error('❌ Error listing system backups:', error);
     res.status(500).json({
       error: 'Failed to list system backups',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
@@ -2964,10 +3057,10 @@ apiRouter.get('/system/backup/download/:dirname', requirePermission('configurati
 
     const archive = archiver.default('tar', {
       gzip: true,
-      gzipOptions: { level: 9 }
+      gzipOptions: { level: 9 },
     });
 
-    archive.on('error', (err) => {
+    archive.on('error', err => {
       logger.error('❌ Error creating archive:', err);
       res.status(500).json({ error: 'Failed to create archive' });
     });
@@ -2990,7 +3083,7 @@ apiRouter.get('/system/backup/download/:dirname', requirePermission('configurati
     logger.error('❌ Error downloading system backup:', error);
     res.status(500).json({
       error: 'Failed to download system backup',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
@@ -3023,7 +3116,7 @@ apiRouter.delete('/system/backup/delete/:dirname', requirePermission('configurat
     logger.error('❌ Error deleting system backup:', error);
     res.status(500).json({
       error: 'Failed to delete system backup',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
@@ -3038,13 +3131,13 @@ apiRouter.get('/system/backup/settings', requirePermission('configuration', 'rea
     res.json({
       enabled,
       maxBackups,
-      backupTime
+      backupTime,
     });
   } catch (error) {
     logger.error('❌ Error getting system backup settings:', error);
     res.status(500).json({
       error: 'Failed to get system backup settings',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
@@ -3079,7 +3172,7 @@ apiRouter.post('/system/backup/settings', requirePermission('configuration', 'wr
     logger.error('❌ Error saving system backup settings:', error);
     res.status(500).json({
       error: 'Failed to save system backup settings',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
@@ -3101,13 +3194,13 @@ apiRouter.post('/nodes/refresh', requirePermission('nodes', 'write'), async (_re
       success: true,
       nodeCount,
       channelCount,
-      message: `Refreshed ${nodeCount} nodes and ${channelCount} channels`
+      message: `Refreshed ${nodeCount} nodes and ${channelCount} channels`,
     });
   } catch (error) {
     logger.error('❌ Failed to refresh nodes:', error);
     res.status(500).json({
       error: 'Failed to refresh node database',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
@@ -3127,13 +3220,13 @@ apiRouter.post('/channels/refresh', requirePermission('messages', 'write'), asyn
     res.json({
       success: true,
       channelCount,
-      message: `Refreshed ${channelCount} channels`
+      message: `Refreshed ${channelCount} channels`,
     });
   } catch (error) {
     logger.error('❌ Failed to refresh channels:', error);
     res.status(500).json({
       error: 'Failed to refresh channel database',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
@@ -3207,11 +3300,7 @@ function validateTileUrl(url: string): boolean {
 
   // Basic URL validation - replace placeholders with test values
   try {
-    const testUrl = url
-      .replace(/{z}/g, '0')
-      .replace(/{x}/g, '0')
-      .replace(/{y}/g, '0')
-      .replace(/{s}/g, 'a');
+    const testUrl = url.replace(/{z}/g, '0').replace(/{x}/g, '0').replace(/{y}/g, '0').replace(/{s}/g, 'a');
 
     const parsedUrl = new URL(testUrl);
 
@@ -3233,14 +3322,16 @@ function validateCustomTilesets(tilesets: any[]): boolean {
 
   for (const tileset of tilesets) {
     // Check required fields exist and have correct types
-    if (typeof tileset.id !== 'string' ||
-        typeof tileset.name !== 'string' ||
-        typeof tileset.url !== 'string' ||
-        typeof tileset.attribution !== 'string' ||
-        typeof tileset.maxZoom !== 'number' ||
-        typeof tileset.description !== 'string' ||
-        typeof tileset.createdAt !== 'number' ||
-        typeof tileset.updatedAt !== 'number') {
+    if (
+      typeof tileset.id !== 'string' ||
+      typeof tileset.name !== 'string' ||
+      typeof tileset.url !== 'string' ||
+      typeof tileset.attribution !== 'string' ||
+      typeof tileset.maxZoom !== 'number' ||
+      typeof tileset.description !== 'string' ||
+      typeof tileset.createdAt !== 'number' ||
+      typeof tileset.updatedAt !== 'number'
+    ) {
       return false;
     }
 
@@ -3250,10 +3341,12 @@ function validateCustomTilesets(tilesets: any[]): boolean {
     }
 
     // Validate string lengths
-    if (tileset.name.length > 100 ||
-        tileset.url.length > 500 ||
-        tileset.attribution.length > 200 ||
-        tileset.description.length > 200) {
+    if (
+      tileset.name.length > 100 ||
+      tileset.url.length > 500 ||
+      tileset.attribution.length > 200 ||
+      tileset.description.length > 200
+    ) {
       return false;
     }
 
@@ -3293,7 +3386,60 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
     const currentSettings = databaseService.getAllSettings();
 
     // Validate settings
-    const validKeys = ['maxNodeAgeHours', 'tracerouteIntervalMinutes', 'temperatureUnit', 'distanceUnit', 'telemetryVisualizationHours', 'telemetryFavorites', 'telemetryCustomOrder', 'dashboardWidgets', 'autoAckEnabled', 'autoAckRegex', 'autoAckMessage', 'autoAckMessageDirect', 'autoAckChannels', 'autoAckDirectMessages', 'autoAckUseDM', 'autoAckSkipIncompleteNodes', 'autoAnnounceEnabled', 'autoAnnounceIntervalHours', 'autoAnnounceMessage', 'autoAnnounceChannelIndex', 'autoAnnounceOnStart', 'autoAnnounceUseSchedule', 'autoAnnounceSchedule', 'autoWelcomeEnabled', 'autoWelcomeMessage', 'autoWelcomeTarget', 'autoWelcomeWaitForName', 'autoWelcomeMaxHops', 'autoResponderEnabled', 'autoResponderTriggers', 'autoResponderSkipIncompleteNodes', 'preferredSortField', 'preferredSortDirection', 'timeFormat', 'dateFormat', 'mapTileset', 'packet_log_enabled', 'packet_log_max_count', 'packet_log_max_age_hours', 'solarMonitoringEnabled', 'solarMonitoringLatitude', 'solarMonitoringLongitude', 'solarMonitoringAzimuth', 'solarMonitoringDeclination', 'mapPinStyle', 'favoriteTelemetryStorageDays', 'theme', 'customTilesets', 'hideIncompleteNodes'];
+    const validKeys = [
+      'maxNodeAgeHours',
+      'tracerouteIntervalMinutes',
+      'temperatureUnit',
+      'distanceUnit',
+      'telemetryVisualizationHours',
+      'telemetryFavorites',
+      'telemetryCustomOrder',
+      'dashboardWidgets',
+      'autoAckEnabled',
+      'autoAckRegex',
+      'autoAckMessage',
+      'autoAckMessageDirect',
+      'autoAckChannels',
+      'autoAckDirectMessages',
+      'autoAckUseDM',
+      'autoAckSkipIncompleteNodes',
+      'autoAnnounceEnabled',
+      'autoAnnounceIntervalHours',
+      'autoAnnounceMessage',
+      'autoAnnounceChannelIndex',
+      'autoAnnounceOnStart',
+      'autoAnnounceUseSchedule',
+      'autoAnnounceSchedule',
+      'autoWelcomeEnabled',
+      'autoWelcomeMessage',
+      'autoWelcomeTarget',
+      'autoWelcomeWaitForName',
+      'autoWelcomeMaxHops',
+      'autoResponderEnabled',
+      'autoResponderTriggers',
+      'autoResponderSkipIncompleteNodes',
+      'preferredSortField',
+      'preferredSortDirection',
+      'timeFormat',
+      'dateFormat',
+      'mapTileset',
+      'packet_log_enabled',
+      'packet_log_max_count',
+      'packet_log_max_age_hours',
+      'solarMonitoringEnabled',
+      'solarMonitoringLatitude',
+      'solarMonitoringLongitude',
+      'solarMonitoringAzimuth',
+      'solarMonitoringDeclination',
+      'mapPinStyle',
+      'favoriteTelemetryStorageDays',
+      'theme',
+      'customTilesets',
+      'hideIncompleteNodes',
+      'inactiveNodeThresholdHours',
+      'inactiveNodeCheckIntervalMinutes',
+      'inactiveNodeCooldownHours',
+    ];
     const filteredSettings: Record<string, string> = {};
 
     for (const key of validKeys) {
@@ -3327,11 +3473,31 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
     // Validate autoAckChannels (channel indices must be 0-7)
     if ('autoAckChannels' in filteredSettings) {
       const channelList = filteredSettings.autoAckChannels.split(',');
-      const validChannels = channelList
-        .map(c => parseInt(c.trim()))
-        .filter(n => !isNaN(n) && n >= 0 && n < 8); // Max 8 channels in Meshtastic
+      const validChannels = channelList.map(c => parseInt(c.trim())).filter(n => !isNaN(n) && n >= 0 && n < 8); // Max 8 channels in Meshtastic
 
       filteredSettings.autoAckChannels = validChannels.join(',');
+    }
+
+    // Validate inactive node notification settings
+    if ('inactiveNodeThresholdHours' in filteredSettings) {
+      const threshold = parseInt(filteredSettings.inactiveNodeThresholdHours, 10);
+      if (isNaN(threshold) || threshold < 1 || threshold > 720) {
+        return res.status(400).json({ error: 'inactiveNodeThresholdHours must be between 1 and 720 hours' });
+      }
+    }
+
+    if ('inactiveNodeCheckIntervalMinutes' in filteredSettings) {
+      const interval = parseInt(filteredSettings.inactiveNodeCheckIntervalMinutes, 10);
+      if (isNaN(interval) || interval < 1 || interval > 1440) {
+        return res.status(400).json({ error: 'inactiveNodeCheckIntervalMinutes must be between 1 and 1440 minutes' });
+      }
+    }
+
+    if ('inactiveNodeCooldownHours' in filteredSettings) {
+      const cooldown = parseInt(filteredSettings.inactiveNodeCooldownHours, 10);
+      if (isNaN(cooldown) || cooldown < 1 || cooldown > 720) {
+        return res.status(400).json({ error: 'inactiveNodeCooldownHours must be between 1 and 720 hours' });
+      }
     }
 
     // Validate autoResponderTriggers JSON
@@ -3347,7 +3513,9 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
         // Validate each trigger
         for (const trigger of triggers) {
           if (!trigger.id || !trigger.trigger || !trigger.responseType || !trigger.response) {
-            return res.status(400).json({ error: 'Each trigger must have id, trigger, responseType, and response fields' });
+            return res
+              .status(400)
+              .json({ error: 'Each trigger must have id, trigger, responseType, and response fields' });
           }
 
           // Validate trigger is string or non-empty array
@@ -3398,7 +3566,9 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
 
         // Validate each tileset
         if (!validateCustomTilesets(tilesets)) {
-          return res.status(400).json({ error: 'Invalid custom tileset configuration. Check field types, lengths, and URL format.' });
+          return res
+            .status(400)
+            .json({ error: 'Invalid custom tileset configuration. Check field types, lengths, and URL format.' });
         }
       } catch (error) {
         return res.status(400).json({ error: 'Invalid JSON format for customTilesets' });
@@ -3416,8 +3586,52 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
       }
     }
 
+    // Restart inactive node notification service if any inactive node settings changed
+    const inactiveNodeSettings = [
+      'inactiveNodeThresholdHours',
+      'inactiveNodeCheckIntervalMinutes',
+      'inactiveNodeCooldownHours',
+    ];
+    const inactiveNodeSettingsChanged = inactiveNodeSettings.some(key => key in filteredSettings);
+    if (inactiveNodeSettingsChanged) {
+      const threshold = parseInt(
+        filteredSettings.inactiveNodeThresholdHours || databaseService.getSetting('inactiveNodeThresholdHours') || '24',
+        10
+      );
+      const checkInterval = parseInt(
+        filteredSettings.inactiveNodeCheckIntervalMinutes ||
+          databaseService.getSetting('inactiveNodeCheckIntervalMinutes') ||
+          '60',
+        10
+      );
+      const cooldown = parseInt(
+        filteredSettings.inactiveNodeCooldownHours || databaseService.getSetting('inactiveNodeCooldownHours') || '24',
+        10
+      );
+
+      if (
+        !isNaN(threshold) &&
+        threshold > 0 &&
+        !isNaN(checkInterval) &&
+        checkInterval > 0 &&
+        !isNaN(cooldown) &&
+        cooldown > 0
+      ) {
+        inactiveNodeNotificationService.stop();
+        inactiveNodeNotificationService.start(threshold, checkInterval, cooldown);
+        logger.info(
+          `✅ Inactive node notification service restarted (threshold: ${threshold}h, check: ${checkInterval}min, cooldown: ${cooldown}h)`
+        );
+      }
+    }
+
     // Restart announce scheduler if announce settings changed
-    const announceSettings = ['autoAnnounceEnabled', 'autoAnnounceIntervalHours', 'autoAnnounceUseSchedule', 'autoAnnounceSchedule'];
+    const announceSettings = [
+      'autoAnnounceEnabled',
+      'autoAnnounceIntervalHours',
+      'autoAnnounceUseSchedule',
+      'autoAnnounceSchedule',
+    ];
     const announceSettingsChanged = announceSettings.some(key => key in filteredSettings);
     if (announceSettingsChanged) {
       meshtasticManager.restartAnnounceScheduler();
@@ -3429,7 +3643,7 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
       if (currentSettings[key] !== filteredSettings[key]) {
         changedSettings[key] = {
           before: currentSettings[key],
-          after: filteredSettings[key]
+          after: filteredSettings[key],
         };
       }
     });
@@ -3530,7 +3744,7 @@ apiRouter.post('/user/map-preferences', requireAuth(), (req, res) => {
       showRoute,
       showMotion,
       showMqttNodes,
-      showAnimations
+      showAnimations,
     });
 
     res.json({ success: true, message: 'Map preferences saved successfully' });
@@ -3581,7 +3795,9 @@ apiRouter.post('/themes', requirePermission('themes', 'write'), (req, res) => {
     }
 
     if (!slug || typeof slug !== 'string' || !slug.match(/^custom-[a-z0-9-]+$/)) {
-      return res.status(400).json({ error: 'Slug must start with "custom-" and contain only lowercase letters, numbers, and hyphens' });
+      return res
+        .status(400)
+        .json({ error: 'Slug must start with "custom-" and contain only lowercase letters, numbers, and hyphens' });
     }
 
     // Check if theme already exists
@@ -3592,16 +3808,13 @@ apiRouter.post('/themes', requirePermission('themes', 'write'), (req, res) => {
 
     // Validate theme definition
     if (!databaseService.validateThemeDefinition(definition)) {
-      return res.status(400).json({ error: 'Invalid theme definition. All 26 color variables must be valid hex codes' });
+      return res
+        .status(400)
+        .json({ error: 'Invalid theme definition. All 26 color variables must be valid hex codes' });
     }
 
     // Create the theme
-    const theme = databaseService.createCustomTheme(
-      name,
-      slug,
-      definition,
-      req.user!.id
-    );
+    const theme = databaseService.createCustomTheme(name, slug, definition, req.user!.id);
 
     // Audit log
     databaseService.auditLog(
@@ -3650,7 +3863,9 @@ apiRouter.put('/themes/:slug', requirePermission('themes', 'write'), (req, res) 
     // Validate definition if provided
     if (definition !== undefined) {
       if (!databaseService.validateThemeDefinition(definition)) {
-        return res.status(400).json({ error: 'Invalid theme definition. All 26 color variables must be valid hex codes' });
+        return res
+          .status(400)
+          .json({ error: 'Invalid theme definition. All 26 color variables must be valid hex codes' });
       }
       updates.definition = definition;
     }
@@ -3856,7 +4071,7 @@ apiRouter.post('/config/lora', requirePermission('configuration', 'write'), asyn
     // Ignore any incoming configuration that tries to disable TX
     const loraConfigToSet = {
       ...config,
-      txEnabled: true
+      txEnabled: true,
     };
 
     logger.info(`⚙️ Setting LoRa config with txEnabled defaulted: txEnabled=${loraConfigToSet.txEnabled}`);
@@ -3970,7 +4185,10 @@ apiRouter.post('/device/purge-nodedb', requirePermission('configuration', 'write
     databaseService.purgeAllNodes();
     logger.info('✅ Local node database purged successfully');
 
-    res.json({ success: true, message: `Node database purged (both device and local)${seconds > 0 ? ` in ${seconds} seconds` : ''}` });
+    res.json({
+      success: true,
+      message: `Node database purged (both device and local)${seconds > 0 ? ` in ${seconds} seconds` : ''}`,
+    });
   } catch (error) {
     logger.error('Error purging node database:', error);
     res.status(500).json({ error: 'Failed to purge node database' });
@@ -4012,8 +4230,8 @@ apiRouter.get('/system/status', requirePermission('dashboard', 'read'), (_req, r
     memoryUsage: {
       heapUsed: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + ' MB',
       heapTotal: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + ' MB',
-      rss: Math.round(process.memoryUsage().rss / 1024 / 1024) + ' MB'
-    }
+      rss: Math.round(process.memoryUsage().rss / 1024 / 1024) + ' MB',
+    },
   });
 });
 
@@ -4022,7 +4240,7 @@ apiRouter.get('/health', optionalAuth(), (_req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
-    nodeEnv: env.nodeEnv
+    nodeEnv: env.nodeEnv,
   });
 });
 
@@ -4038,19 +4256,21 @@ apiRouter.get('/status', optionalAuth(), (_req, res) => {
     nodeEnv: env.nodeEnv,
     connection: {
       connected: connectionStatus.connected,
-      localNode: localNode ? {
-        nodeNum: localNode.nodeNum,
-        nodeId: localNode.nodeId,
-        longName: localNode.longName,
-        shortName: localNode.shortName
-      } : null
+      localNode: localNode
+        ? {
+            nodeNum: localNode.nodeNum,
+            nodeId: localNode.nodeId,
+            longName: localNode.longName,
+            shortName: localNode.shortName,
+          }
+        : null,
     },
     statistics: {
       nodes: databaseService.getNodeCount(),
       messages: databaseService.getMessageCount(),
-      channels: databaseService.getChannelCount()
+      channels: databaseService.getChannelCount(),
     },
-    uptime: process.uptime()
+    uptime: process.uptime(),
   });
 });
 
@@ -4078,9 +4298,9 @@ async function checkDockerImageExists(version: string, publishedAt?: string): Pr
           const manifestUrl = `https://ghcr.io/v2/${owner}/${repo}/manifests/${tag}`;
           const manifestResponse = await fetch(manifestUrl, {
             headers: {
-              'Authorization': `Bearer ${token}`,
-              'Accept': 'application/vnd.docker.distribution.manifest.v2+json'
-            }
+              Authorization: `Bearer ${token}`,
+              Accept: 'application/vnd.docker.distribution.manifest.v2+json',
+            },
           });
 
           if (manifestResponse.ok) {
@@ -4106,10 +4326,16 @@ async function checkDockerImageExists(version: string, publishedAt?: string): Pr
       const minutesSincePublish = (now - publishTime) / (60 * 1000);
 
       if (minutesSincePublish >= 30) {
-        logger.info(`✓ Image for ${version} assumed ready (${Math.round(minutesSincePublish)} minutes since release, API check failed)`);
+        logger.info(
+          `✓ Image for ${version} assumed ready (${Math.round(
+            minutesSincePublish
+          )} minutes since release, API check failed)`
+        );
         return true;
       } else {
-        logger.info(`⏳ Image for ${version} still building (${Math.round(minutesSincePublish)}/30 minutes since release)`);
+        logger.info(
+          `⏳ Image for ${version} still building (${Math.round(minutesSincePublish)}/30 minutes since release)`
+        );
         return false;
       }
     }
@@ -4124,7 +4350,11 @@ async function checkDockerImageExists(version: string, publishedAt?: string): Pr
       const minutesSincePublish = (Date.now() - new Date(publishedAt).getTime()) / (60 * 1000);
       const assumeReady = minutesSincePublish >= 30;
       if (assumeReady) {
-        logger.info(`✓ Image for ${version} assumed ready (${Math.round(minutesSincePublish)} minutes since release, error during check)`);
+        logger.info(
+          `✓ Image for ${version} assumed ready (${Math.round(
+            minutesSincePublish
+          )} minutes since release, error during check)`
+        );
       }
       return assumeReady;
     }
@@ -4143,7 +4373,7 @@ apiRouter.get('/version/check', optionalAuth(), async (_req, res) => {
   }
   try {
     // Check cache first
-    if (versionCheckCache && (Date.now() - versionCheckCache.timestamp) < VERSION_CHECK_CACHE_MS) {
+    if (versionCheckCache && Date.now() - versionCheckCache.timestamp < VERSION_CHECK_CACHE_MS) {
       return res.json(versionCheckCache.data);
     }
 
@@ -4179,7 +4409,7 @@ apiRouter.get('/version/check', optionalAuth(), async (_req, res) => {
       releaseUrl: release.html_url,
       releaseName: release.name,
       publishedAt: release.published_at,
-      imageReady
+      imageReady,
     };
 
     // Cache the result
@@ -4217,7 +4447,7 @@ apiRouter.post('/system/restart', requirePermission('settings', 'write'), (_req,
     res.json({
       success: true,
       message: 'Container will restart now',
-      action: 'restart'
+      action: 'restart',
     });
 
     // Gracefully shutdown - Docker will restart the container automatically
@@ -4229,7 +4459,7 @@ apiRouter.post('/system/restart', requirePermission('settings', 'write'), (_req,
     res.json({
       success: true,
       message: 'MeshMonitor will shut down now',
-      action: 'shutdown'
+      action: 'shutdown',
     });
 
     // Gracefully shutdown - will need to be manually restarted
@@ -4250,7 +4480,7 @@ apiRouter.get('/push/vapid-key', optionalAuth(), (_req, res) => {
 
   res.json({
     publicKey,
-    status
+    status,
   });
 });
 
@@ -4326,13 +4556,13 @@ apiRouter.post('/push/test', requireAdmin(), async (req, res) => {
       body: 'This is a test push notification from MeshMonitor',
       icon: '/logo.png',
       badge: '/logo.png',
-      tag: 'test-notification'
+      tag: 'test-notification',
     });
 
     res.json({
       success: true,
       sent: result.sent,
-      failed: result.failed
+      failed: result.failed,
     });
   } catch (error: any) {
     logger.error('Error sending test notification:', error);
@@ -4362,8 +4592,10 @@ apiRouter.get('/push/preferences', requireAuth(), async (req, res) => {
         notifyOnEmoji: true,
         notifyOnNewNode: true,
         notifyOnTraceroute: true,
+        notifyOnInactiveNode: false,
+        monitoredNodes: [],
         whitelist: ['Hi', 'Help'],
-        blacklist: ['Test', 'Copy']
+        blacklist: ['Test', 'Copy'],
       });
     }
   } catch (error: any) {
@@ -4380,15 +4612,44 @@ apiRouter.post('/push/preferences', requireAuth(), async (req, res) => {
       return res.status(401).json({ error: 'Authentication required' });
     }
 
-    const { enableWebPush, enableApprise, enabledChannels, enableDirectMessages, notifyOnEmoji, notifyOnNewNode, notifyOnTraceroute, whitelist, blacklist } = req.body;
+    const {
+      enableWebPush,
+      enableApprise,
+      enabledChannels,
+      enableDirectMessages,
+      notifyOnEmoji,
+      notifyOnNewNode,
+      notifyOnTraceroute,
+      notifyOnInactiveNode,
+      monitoredNodes,
+      whitelist,
+      blacklist,
+    } = req.body;
 
     // Validate input
-    if (typeof enableWebPush !== 'boolean' || typeof enableApprise !== 'boolean' ||
-        !Array.isArray(enabledChannels) || typeof enableDirectMessages !== 'boolean' ||
-        typeof notifyOnEmoji !== 'boolean' || typeof notifyOnNewNode !== 'boolean' ||
-        typeof notifyOnTraceroute !== 'boolean' ||
-        !Array.isArray(whitelist) || !Array.isArray(blacklist)) {
+    if (
+      typeof enableWebPush !== 'boolean' ||
+      typeof enableApprise !== 'boolean' ||
+      !Array.isArray(enabledChannels) ||
+      typeof enableDirectMessages !== 'boolean' ||
+      typeof notifyOnEmoji !== 'boolean' ||
+      typeof notifyOnNewNode !== 'boolean' ||
+      typeof notifyOnTraceroute !== 'boolean' ||
+      typeof notifyOnInactiveNode !== 'boolean' ||
+      !Array.isArray(whitelist) ||
+      !Array.isArray(blacklist)
+    ) {
       return res.status(400).json({ error: 'Invalid preferences data' });
+    }
+
+    // Validate monitoredNodes is an array of strings
+    if (monitoredNodes !== undefined && !Array.isArray(monitoredNodes)) {
+      return res.status(400).json({ error: 'monitoredNodes must be an array' });
+    }
+
+    // Validate each element is a string
+    if (monitoredNodes && monitoredNodes.some((id: any) => typeof id !== 'string')) {
+      return res.status(400).json({ error: 'monitoredNodes must be an array of strings' });
     }
 
     const prefs = {
@@ -4399,14 +4660,18 @@ apiRouter.post('/push/preferences', requireAuth(), async (req, res) => {
       notifyOnEmoji,
       notifyOnNewNode,
       notifyOnTraceroute,
+      notifyOnInactiveNode: notifyOnInactiveNode ?? false,
+      monitoredNodes: monitoredNodes ?? [],
       whitelist,
-      blacklist
+      blacklist,
     };
 
     const success = saveUserNotificationPreferences(userId, prefs);
 
     if (success) {
-      logger.info(`✅ Saved notification preferences for user ${userId} (WebPush: ${enableWebPush}, Apprise: ${enableApprise})`);
+      logger.info(
+        `✅ Saved notification preferences for user ${userId} (WebPush: ${enableWebPush}, Apprise: ${enableApprise})`
+      );
       res.json({ success: true });
     } else {
       res.status(500).json({ error: 'Failed to save preferences' });
@@ -4428,7 +4693,7 @@ apiRouter.get('/apprise/status', requireAdmin(), async (_req, res) => {
     res.json({
       available: isAvailable,
       enabled: databaseService.getSetting('apprise_enabled') === 'true',
-      url: databaseService.getSetting('apprise_url') || 'http://localhost:8000'
+      url: databaseService.getSetting('apprise_url') || 'http://localhost:8000',
     });
   } catch (error: any) {
     logger.error('Error getting Apprise status:', error);
@@ -4442,7 +4707,7 @@ apiRouter.post('/apprise/test', requireAdmin(), async (_req, res) => {
     const success = await appriseNotificationService.sendNotification({
       title: 'Test Notification',
       body: 'This is a test notification from MeshMonitor via Apprise',
-      type: 'info'
+      type: 'info',
     });
 
     if (success) {
@@ -4501,63 +4766,180 @@ apiRouter.post('/apprise/configure', requireAdmin(), async (req, res) => {
     // Reference: https://github.com/caronc/apprise
     const ALLOWED_SCHEMES = [
       // Core Apprise
-      'apprise', 'apprises',
+      'apprise',
+      'apprises',
 
       // Chat & Messaging
-      'discord', 'slack', 'msteams', 'teams', 'guilded', 'revolt',
-      'matrix', 'matrixs', 'mmost', 'mmosts', 'rocket', 'rockets',
-      'ryver', 'zulip', 'twist', 'gchat', 'flock',
+      'discord',
+      'slack',
+      'msteams',
+      'teams',
+      'guilded',
+      'revolt',
+      'matrix',
+      'matrixs',
+      'mmost',
+      'mmosts',
+      'rocket',
+      'rockets',
+      'ryver',
+      'zulip',
+      'twist',
+      'gchat',
+      'flock',
 
       // Instant Messaging & Social
-      'telegram', 'tgram', 'signal', 'signals', 'whatsapp', 'line',
-      'mastodon', 'mastodons', 'misskey', 'misskeys', 'bluesky', 'reddit', 'twitter',
+      'telegram',
+      'tgram',
+      'signal',
+      'signals',
+      'whatsapp',
+      'line',
+      'mastodon',
+      'mastodons',
+      'misskey',
+      'misskeys',
+      'bluesky',
+      'reddit',
+      'twitter',
 
       // Team Communication
-      'workflows', 'wxteams', 'wecombot', 'feishu', 'lark', 'dingtalk',
+      'workflows',
+      'wxteams',
+      'wecombot',
+      'feishu',
+      'lark',
+      'dingtalk',
 
       // Push Notifications
-      'pushover', 'pover', 'pushbullet', 'pbul', 'pushed', 'pushme',
-      'pushplus', 'pushdeer', 'pushdeers', 'pushy', 'prowl',
-      'simplepush', 'spush', 'popcorn', 'push',
+      'pushover',
+      'pover',
+      'pushbullet',
+      'pbul',
+      'pushed',
+      'pushme',
+      'pushplus',
+      'pushdeer',
+      'pushdeers',
+      'pushy',
+      'prowl',
+      'simplepush',
+      'spush',
+      'popcorn',
+      'push',
 
       // Notification Services
-      'ntfy', 'ntfys', 'gotify', 'gotifys', 'join', 'ifttt', 'notica',
-      'notifiarr', 'notifico', 'onesignal', 'kumulos', 'bark', 'barks',
-      'chanify', 'serverchan', 'schan', 'qq', 'wxpusher',
+      'ntfy',
+      'ntfys',
+      'gotify',
+      'gotifys',
+      'join',
+      'ifttt',
+      'notica',
+      'notifiarr',
+      'notifico',
+      'onesignal',
+      'kumulos',
+      'bark',
+      'barks',
+      'chanify',
+      'serverchan',
+      'schan',
+      'qq',
+      'wxpusher',
 
       // Incident Management & Monitoring
-      'pagerduty', 'pagertree', 'opsgenie', 'spike', 'splunk', 'victorops',
+      'pagerduty',
+      'pagertree',
+      'opsgenie',
+      'spike',
+      'splunk',
+      'victorops',
       'signl4',
 
       // Email Services
-      'mailto', 'email', 'smtp', 'smtps', 'ses', 'mailgun', 'sendgrid',
-      'smtp2go', 'sparkpost', 'o365', 'resend', 'sendpulse',
+      'mailto',
+      'email',
+      'smtp',
+      'smtps',
+      'ses',
+      'mailgun',
+      'sendgrid',
+      'smtp2go',
+      'sparkpost',
+      'o365',
+      'resend',
+      'sendpulse',
 
       // SMS Services
-      'bulksms', 'bulkvs', 'burstsms', 'clickatell', 'clicksend', 'd7sms',
-      'freemobile', 'httpsms', 'atalk',
+      'bulksms',
+      'bulkvs',
+      'burstsms',
+      'clickatell',
+      'clicksend',
+      'd7sms',
+      'freemobile',
+      'httpsms',
+      'atalk',
 
       // Cloud/IoT/Home
-      'fcm', 'hassio', 'hassios', 'homeassistant', 'parsep', 'parseps',
-      'aws', 'sns',
+      'fcm',
+      'hassio',
+      'hassios',
+      'homeassistant',
+      'parsep',
+      'parseps',
+      'aws',
+      'sns',
 
       // Media Centers
-      'kodi', 'kodis', 'xbmc', 'xbmcs', 'emby', 'embys', 'enigma2', 'enigma2s',
+      'kodi',
+      'kodis',
+      'xbmc',
+      'xbmcs',
+      'emby',
+      'embys',
+      'enigma2',
+      'enigma2s',
 
       // Collaboration & Productivity
-      'ncloud', 'nclouds', 'nctalk', 'nctalks', 'office365',
+      'ncloud',
+      'nclouds',
+      'nctalk',
+      'nctalks',
+      'office365',
 
       // Streaming & Gaming
-      'streamlabs', 'strmlabs',
+      'streamlabs',
+      'strmlabs',
 
       // Specialized
-      'lametric', 'synology', 'synologys', 'vapid', 'mqtt', 'mqtts',
-      'rsyslog', 'syslog', 'dapnet', 'aprs', 'growl', 'pjet', 'pjets',
-      'psafer', 'psafers', 'spugpush', 'pushsafer',
+      'lametric',
+      'synology',
+      'synologys',
+      'vapid',
+      'mqtt',
+      'mqtts',
+      'rsyslog',
+      'syslog',
+      'dapnet',
+      'aprs',
+      'growl',
+      'pjet',
+      'pjets',
+      'psafer',
+      'psafers',
+      'spugpush',
+      'pushsafer',
 
       // Generic webhooks & protocols
-      'webhook', 'webhooks', 'json', 'xml', 'form',
-      'http', 'https'
+      'webhook',
+      'webhooks',
+      'json',
+      'xml',
+      'form',
+      'http',
+      'https',
     ];
 
     const invalidUrls: string[] = [];
@@ -4592,7 +4974,7 @@ apiRouter.post('/apprise/configure', requireAdmin(), async (req, res) => {
       return res.status(400).json({
         error: 'Invalid or disallowed URL schemes detected',
         invalidUrls,
-        allowedSchemes: ALLOWED_SCHEMES
+        allowedSchemes: ALLOWED_SCHEMES,
       });
     }
 
@@ -4727,12 +5109,9 @@ apiRouter.post('/scripts/test', requirePermission('settings', 'read'), async (re
           }
 
           if (endPos !== -1) {
-            const paramName = colonPos !== -1
-              ? patternStr.substring(startPos, colonPos)
-              : patternStr.substring(startPos, endPos);
-            const paramPattern = colonPos !== -1
-              ? patternStr.substring(colonPos + 1, endPos)
-              : undefined;
+            const paramName =
+              colonPos !== -1 ? patternStr.substring(startPos, colonPos) : patternStr.substring(startPos, endPos);
+            const paramPattern = colonPos !== -1 ? patternStr.substring(colonPos + 1, endPos) : undefined;
 
             if (!params.find(p => p.name === paramName)) {
               params.push({ name: paramName, pattern: paramPattern });
@@ -4776,7 +5155,7 @@ apiRouter.post('/scripts/test', requirePermission('settings', 'read'), async (re
               replacements.push({
                 start: startPos,
                 end: endPos + 1,
-                replacement: `(${paramRegex})`
+                replacement: `(${paramRegex})`,
               });
             }
             i = endPos + 1;
@@ -4824,9 +5203,9 @@ apiRouter.post('/scripts/test', requirePermission('settings', 'read'), async (re
     // Determine interpreter based on file extension
     const ext = script.split('.').pop()?.toLowerCase();
     let interpreter: string;
-    
+
     const isDev = process.env.NODE_ENV !== 'production';
-    
+
     switch (ext) {
       case 'js':
       case 'mjs':
@@ -4849,7 +5228,7 @@ apiRouter.post('/scripts/test', requirePermission('settings', 'read'), async (re
 
     // Prepare environment variables (same as in meshtasticManager)
     const scriptEnv: Record<string, string> = {
-      ...process.env as Record<string, string>,
+      ...(process.env as Record<string, string>),
       MESSAGE: testMessage,
       FROM_NODE: '12345', // Test node number
       PACKET_ID: '99999', // Test packet ID
@@ -4871,19 +5250,19 @@ apiRouter.post('/scripts/test', requirePermission('settings', 'read'), async (re
       // Return both stdout and stderr
       const output = stdout.trim();
       const errorOutput = stderr.trim();
-      
+
       return res.json({
         output: output || '(no output)',
         stderr: errorOutput || undefined,
         params: extractedParams,
-        matchedPattern: matchedPattern
+        matchedPattern: matchedPattern,
       });
     } catch (error: any) {
       // Handle execution errors
       if (error.code === 'ETIMEDOUT' || error.signal === 'SIGTERM') {
         return res.status(408).json({ error: 'Script execution timed out after 10 seconds' });
       }
-      
+
       // Handle Windows EPERM errors gracefully (process may have already terminated)
       if (error.code === 'EPERM' && process.platform === 'win32') {
         // On Windows, EPERM can occur when trying to kill a process that's already dead
@@ -4893,19 +5272,19 @@ apiRouter.post('/scripts/test', requirePermission('settings', 'read'), async (re
             output: error.stdout?.toString().trim() || '(no output)',
             stderr: error.stderr?.toString().trim() || undefined,
             params: extractedParams,
-            matchedPattern: matchedPattern
+            matchedPattern: matchedPattern,
           });
         }
         // Otherwise, return a more user-friendly error
-        return res.status(500).json({ 
+        return res.status(500).json({
           error: 'Script execution completed but encountered a cleanup error (this is usually harmless)',
-          stderr: error.stderr?.toString() || undefined
+          stderr: error.stderr?.toString() || undefined,
         });
       }
-      
-      return res.status(500).json({ 
+
+      return res.status(500).json({
         error: error.message || 'Script execution failed',
-        stderr: error.stderr?.toString() || undefined
+        stderr: error.stderr?.toString() || undefined,
       });
     }
   } catch (error: any) {
@@ -4944,17 +5323,17 @@ apiRouter.post('/http/test', requirePermission('settings', 'read'), async (req, 
       const response = await fetch(url, {
         method: 'GET',
         headers: {
-          'Accept': 'text/plain, text/*, application/json',
-          'User-Agent': 'MeshMonitor/AutoResponder-Test'
+          Accept: 'text/plain, text/*, application/json',
+          'User-Agent': 'MeshMonitor/AutoResponder-Test',
         },
-        signal: controller.signal
+        signal: controller.signal,
       });
 
       clearTimeout(timeoutId);
 
       if (!response.ok) {
         return res.status(response.status).json({
-          error: `HTTP ${response.status}: ${response.statusText}`
+          error: `HTTP ${response.status}: ${response.statusText}`,
         });
       }
 
@@ -4963,7 +5342,7 @@ apiRouter.post('/http/test', requirePermission('settings', 'read'), async (req, 
       return res.json({
         result: text.substring(0, 500) + (text.length > 500 ? '...' : ''),
         status: response.status,
-        statusText: response.statusText
+        statusText: response.statusText,
       });
     } catch (fetchError: any) {
       clearTimeout(timeoutId);
@@ -4973,7 +5352,7 @@ apiRouter.post('/http/test', requirePermission('settings', 'read'), async (req, 
       }
 
       return res.status(500).json({
-        error: fetchError.message || 'Failed to fetch URL'
+        error: fetchError.message || 'Failed to fetch URL',
       });
     }
   } catch (error: any) {
@@ -4983,51 +5362,56 @@ apiRouter.post('/http/test', requirePermission('settings', 'read'), async (req, 
 });
 
 // Script import endpoint - upload a script file
-apiRouter.post('/scripts/import', requirePermission('settings', 'write'), express.raw({ type: '*/*', limit: '5mb' }), async (req, res) => {
-  try {
-    const filename = req.headers['x-filename'] as string;
+apiRouter.post(
+  '/scripts/import',
+  requirePermission('settings', 'write'),
+  express.raw({ type: '*/*', limit: '5mb' }),
+  async (req, res) => {
+    try {
+      const filename = req.headers['x-filename'] as string;
 
-    if (!filename) {
-      return res.status(400).json({ error: 'Filename header (x-filename) is required' });
+      if (!filename) {
+        return res.status(400).json({ error: 'Filename header (x-filename) is required' });
+      }
+
+      // Security: Validate filename
+      const sanitizedFilename = path.basename(filename); // Remove any path components
+      const ext = path.extname(sanitizedFilename).toLowerCase();
+      const validExtensions = ['.js', '.mjs', '.py', '.sh'];
+
+      if (!validExtensions.includes(ext)) {
+        return res.status(400).json({ error: `Invalid file extension. Allowed: ${validExtensions.join(', ')}` });
+      }
+
+      // Prevent system script overwrite
+      if (sanitizedFilename === 'upgrade-watchdog.sh') {
+        return res.status(400).json({ error: 'Cannot overwrite system script' });
+      }
+
+      const scriptsDir = getScriptsDirectory();
+      const filePath = path.join(scriptsDir, sanitizedFilename);
+
+      // Ensure scripts directory exists
+      if (!fs.existsSync(scriptsDir)) {
+        fs.mkdirSync(scriptsDir, { recursive: true });
+      }
+
+      // Write file
+      fs.writeFileSync(filePath, req.body);
+
+      // Set executable permissions (Unix-like systems)
+      if (process.platform !== 'win32') {
+        fs.chmodSync(filePath, 0o755);
+      }
+
+      logger.info(`✅ Script imported: ${sanitizedFilename}`);
+      res.json({ success: true, filename: sanitizedFilename, path: `/data/scripts/${sanitizedFilename}` });
+    } catch (error: any) {
+      logger.error('❌ Error importing script:', error);
+      res.status(500).json({ error: error.message || 'Failed to import script' });
     }
-
-    // Security: Validate filename
-    const sanitizedFilename = path.basename(filename); // Remove any path components
-    const ext = path.extname(sanitizedFilename).toLowerCase();
-    const validExtensions = ['.js', '.mjs', '.py', '.sh'];
-    
-    if (!validExtensions.includes(ext)) {
-      return res.status(400).json({ error: `Invalid file extension. Allowed: ${validExtensions.join(', ')}` });
-    }
-
-    // Prevent system script overwrite
-    if (sanitizedFilename === 'upgrade-watchdog.sh') {
-      return res.status(400).json({ error: 'Cannot overwrite system script' });
-    }
-
-    const scriptsDir = getScriptsDirectory();
-    const filePath = path.join(scriptsDir, sanitizedFilename);
-
-    // Ensure scripts directory exists
-    if (!fs.existsSync(scriptsDir)) {
-      fs.mkdirSync(scriptsDir, { recursive: true });
-    }
-
-    // Write file
-    fs.writeFileSync(filePath, req.body);
-    
-    // Set executable permissions (Unix-like systems)
-    if (process.platform !== 'win32') {
-      fs.chmodSync(filePath, 0o755);
-    }
-
-    logger.info(`✅ Script imported: ${sanitizedFilename}`);
-    res.json({ success: true, filename: sanitizedFilename, path: `/data/scripts/${sanitizedFilename}` });
-  } catch (error: any) {
-    logger.error('❌ Error importing script:', error);
-    res.status(500).json({ error: error.message || 'Failed to import script' });
   }
-});
+);
 
 // Script export endpoint - download selected scripts as zip
 apiRouter.post('/scripts/export', requirePermission('settings', 'read'), async (req, res) => {
@@ -5079,7 +5463,7 @@ apiRouter.delete('/scripts/:filename', requirePermission('settings', 'write'), a
 
     // Security: Validate filename
     const sanitizedFilename = path.basename(filename);
-    
+
     // Prevent deletion of system scripts
     if (sanitizedFilename === 'upgrade-watchdog.sh') {
       return res.status(400).json({ error: 'Cannot delete system script' });
@@ -5235,7 +5619,7 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
   logger.error('Unhandled error:', err);
   res.status(500).json({
     error: 'Internal server error',
-    message: env.isDevelopment ? err.message : 'Something went wrong'
+    message: env.isDevelopment ? err.message : 'Something went wrong',
   });
 });
 
@@ -5331,12 +5715,20 @@ migrateAutoResponderTriggers();
 const server = app.listen(PORT, () => {
   logger.debug(`MeshMonitor server running on port ${PORT}`);
   logger.debug(`Environment: ${env.nodeEnv}`);
-  
+
   // Log environment variable sources in development
   if (env.isDevelopment) {
-    logger.info(`🔧 Meshtastic Node IP: ${env.meshtasticNodeIp} ${env.meshtasticNodeIpProvided ? '📄 (from .env)' : '⚙️ (default)'}`);
-    logger.info(`🔧 Meshtastic TCP Port: ${env.meshtasticTcpPort} ${env.meshtasticTcpPortProvided ? '📄 (from .env)' : '⚙️ (default)'}`);
-    
+    logger.info(
+      `🔧 Meshtastic Node IP: ${env.meshtasticNodeIp} ${
+        env.meshtasticNodeIpProvided ? '📄 (from .env)' : '⚙️ (default)'
+      }`
+    );
+    logger.info(
+      `🔧 Meshtastic TCP Port: ${env.meshtasticTcpPort} ${
+        env.meshtasticTcpPortProvided ? '📄 (from .env)' : '⚙️ (default)'
+      }`
+    );
+
     // Log scripts directory location in development
     const scriptsDir = getScriptsDirectory();
     logger.info(`📜 Auto-responder scripts directory: ${scriptsDir}`);

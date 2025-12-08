@@ -259,6 +259,9 @@ function App() {
   // Settings from context
   const {
     maxNodeAgeHours,
+    inactiveNodeThresholdHours,
+    inactiveNodeCheckIntervalMinutes,
+    inactiveNodeCooldownHours,
     tracerouteIntervalMinutes,
     temperatureUnit,
     distanceUnit,
@@ -278,6 +281,9 @@ function App() {
     solarMonitoringAzimuth,
     solarMonitoringDeclination,
     setMaxNodeAgeHours,
+    setInactiveNodeThresholdHours,
+    setInactiveNodeCheckIntervalMinutes,
+    setInactiveNodeCooldownHours,
     setTracerouteIntervalMinutes,
     setTemperatureUnit,
     setDistanceUnit,
@@ -731,6 +737,30 @@ function App() {
             const value = parseInt(settings.maxNodeAgeHours);
             setMaxNodeAgeHours(value);
             localStorage.setItem('maxNodeAgeHours', value.toString());
+          }
+
+          if (settings.inactiveNodeThresholdHours) {
+            const value = parseInt(settings.inactiveNodeThresholdHours);
+            if (!isNaN(value) && value > 0) {
+              setInactiveNodeThresholdHours(value);
+              localStorage.setItem('inactiveNodeThresholdHours', value.toString());
+            }
+          }
+
+          if (settings.inactiveNodeCheckIntervalMinutes) {
+            const value = parseInt(settings.inactiveNodeCheckIntervalMinutes);
+            if (!isNaN(value) && value > 0) {
+              setInactiveNodeCheckIntervalMinutes(value);
+              localStorage.setItem('inactiveNodeCheckIntervalMinutes', value.toString());
+            }
+          }
+
+          if (settings.inactiveNodeCooldownHours) {
+            const value = parseInt(settings.inactiveNodeCooldownHours);
+            if (!isNaN(value) && value > 0) {
+              setInactiveNodeCooldownHours(value);
+              localStorage.setItem('inactiveNodeCooldownHours', value.toString());
+            }
           }
 
           if (settings.tracerouteIntervalMinutes) {
@@ -4204,6 +4234,9 @@ function App() {
         {activeTab === 'settings' && (
           <SettingsTab
             maxNodeAgeHours={maxNodeAgeHours}
+            inactiveNodeThresholdHours={inactiveNodeThresholdHours}
+            inactiveNodeCheckIntervalMinutes={inactiveNodeCheckIntervalMinutes}
+            inactiveNodeCooldownHours={inactiveNodeCooldownHours}
             temperatureUnit={temperatureUnit}
             distanceUnit={distanceUnit}
             telemetryVisualizationHours={telemetryVisualizationHours}
@@ -4225,6 +4258,9 @@ function App() {
             nodes={nodes}
             baseUrl={baseUrl}
             onMaxNodeAgeChange={setMaxNodeAgeHours}
+            onInactiveNodeThresholdHoursChange={setInactiveNodeThresholdHours}
+            onInactiveNodeCheckIntervalMinutesChange={setInactiveNodeCheckIntervalMinutes}
+            onInactiveNodeCooldownHoursChange={setInactiveNodeCooldownHours}
             onTemperatureUnitChange={setTemperatureUnit}
             onDistanceUnitChange={setDistanceUnit}
             onTelemetryVisualizationChange={setTelemetryVisualizationHours}

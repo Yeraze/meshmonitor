@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useTranslation, Trans } from 'react-i18next';
 import api from '../services/api';
 import { logger } from '../utils/logger';
@@ -19,6 +19,8 @@ interface NotificationPreferences {
   notifyOnEmoji: boolean;
   notifyOnNewNode: boolean;
   notifyOnTraceroute: boolean;
+  notifyOnInactiveNode: boolean;
+  monitoredNodes: string[];
   whitelist: string[];
   blacklist: string[];
 }
@@ -48,12 +50,19 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
     notifyOnEmoji: true,
     notifyOnNewNode: true,
     notifyOnTraceroute: true,
+    notifyOnInactiveNode: false,
+    monitoredNodes: [],
     whitelist: ['Hi', 'Help'],
     blacklist: ['Test', 'Copy']
   });
   const [whitelistText, setWhitelistText] = useState('Hi\nHelp');
   const [blacklistText, setBlacklistText] = useState('Test\nCopy');
   const [isSavingPreferences, setIsSavingPreferences] = useState(false);
+  
+  // Inactive node monitoring
+  const [selectedMonitoredNodes, setSelectedMonitoredNodes] = useState<string[]>([]);
+  const [availableNodes, setAvailableNodes] = useState<any[]>([]);
+  const [nodeSearchTerm, setNodeSearchTerm] = useState('');
 
   // Apprise configuration
   const [appriseUrls, setAppriseUrls] = useState('');
@@ -76,7 +85,19 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
     checkNotificationStatus();
     loadVapidStatus();
     loadChannels();
+    loadNodes();
   }, []);
+
+  // Fetch available nodes
+  const loadNodes = async () => {
+    try {
+      const response = await api.get('/api/nodes');
+      const nodeList = Array.isArray(response) ? response : [];
+      setAvailableNodes(nodeList);
+    } catch (error) {
+      logger.error('Failed to fetch nodes:', error);
+    }
+  };
 
   // Load preferences after channels are loaded
   useEffect(() => {
@@ -84,6 +105,22 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
       loadPreferences();
     }
   }, [channels.length]);
+
+  // Filter nodes based on search term
+  const filteredNodes = useMemo(() => {
+    if (!nodeSearchTerm.trim()) {
+      return availableNodes;
+    }
+    const lowerSearch = nodeSearchTerm.toLowerCase().trim();
+    return availableNodes.filter(node => {
+      const longName = (node.user?.longName || node.longName || '').toLowerCase();
+      const shortName = (node.user?.shortName || node.shortName || '').toLowerCase();
+      const nodeId = (node.user?.id || node.nodeId || '').toLowerCase();
+      return longName.includes(lowerSearch) ||
+             shortName.includes(lowerSearch) ||
+             nodeId.includes(lowerSearch);
+    });
+  }, [availableNodes, nodeSearchTerm]);
 
   const checkNotificationStatus = async () => {
     if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
@@ -142,6 +179,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
       setPreferences(response);
       setWhitelistText(response.whitelist.join('\n'));
       setBlacklistText(response.blacklist.join('\n'));
+      setSelectedMonitoredNodes(response.monitoredNodes || []);
 
       // Load Apprise URLs if Apprise is enabled
       if (response.enableApprise) {
@@ -193,6 +231,8 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
 
       const prefs: NotificationPreferences = {
         ...preferences,
+        notifyOnInactiveNode: preferences.notifyOnInactiveNode,
+        monitoredNodes: selectedMonitoredNodes,
         whitelist,
         blacklist
       };
@@ -608,6 +648,161 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                   />
                   <span style={{ fontWeight: '500' }}>🗺️ {t('notifications.traceroutes')}</span>
                 </label>
+              </div>
+
+              {/* Inactive Node Notifications */}
+              <div style={{
+                padding: '12px',
+                backgroundColor: '#252535',
+                borderRadius: '6px',
+                marginBottom: '16px',
+                border: '2px solid #3a3a3a'
+              }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', margin: 0 }}>
+                  <input
+                    type="checkbox"
+                    checked={preferences.notifyOnInactiveNode}
+                    onChange={(e) => {
+                      setPreferences(prev => ({
+                        ...prev,
+                        notifyOnInactiveNode: e.target.checked
+                      }));
+                    }}
+                    style={{ width: '18px', height: '18px' }}
+                  />
+                  <span style={{ fontWeight: '500' }}>⚠️ {t('notifications.notify_on_inactive_node')}</span>
+                </label>
+                
+                {preferences.notifyOnInactiveNode && (
+                  <div style={{ 
+                    marginLeft: '28px', 
+                    marginTop: '12px',
+                    padding: '12px',
+                    background: 'var(--ctp-surface0)',
+                    border: '1px solid var(--ctp-surface2)',
+                    borderRadius: '6px'
+                  }}>
+                    <p style={{ marginBottom: '0.75rem', fontSize: '0.9em', color: 'var(--ctp-subtext0)' }}>
+                      {t('notifications.monitored_nodes_description')}
+                    </p>
+                    
+                    {/* Search bar */}
+                    <input
+                      type="text"
+                      placeholder={t('notifications.search_nodes')}
+                      value={nodeSearchTerm}
+                      onChange={(e) => setNodeSearchTerm(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '0.5rem',
+                        marginBottom: '0.75rem',
+                        background: 'var(--ctp-base)',
+                        border: '1px solid var(--ctp-surface2)',
+                        borderRadius: '4px',
+                        color: 'var(--ctp-text)'
+                      }}
+                    />
+                    
+                    {/* Select/Deselect buttons */}
+                    <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                      <button
+                        onClick={() => {
+                          const filtered = filteredNodes.map(n => n.user?.id || n.nodeId);
+                          setSelectedMonitoredNodes([...new Set([...selectedMonitoredNodes, ...filtered])]);
+                        }}
+                        className="btn-secondary"
+                        style={{ padding: '0.4rem 0.8rem', fontSize: '12px' }}
+                      >
+                        {t('common.select_all')}
+                      </button>
+                      <button
+                        onClick={() => {
+                          const filtered = filteredNodes.map(n => n.user?.id || n.nodeId);
+                          setSelectedMonitoredNodes(selectedMonitoredNodes.filter(id => !filtered.includes(id)));
+                        }}
+                        className="btn-secondary"
+                        style={{ padding: '0.4rem 0.8rem', fontSize: '12px' }}
+                      >
+                        {t('common.deselect_all')}
+                      </button>
+                    </div>
+                    
+                    {/* Node list */}
+                    <div style={{
+                      maxHeight: '300px',
+                      overflowY: 'auto',
+                      border: '1px solid var(--ctp-surface2)',
+                      borderRadius: '4px',
+                      background: 'var(--ctp-base)'
+                    }}>
+                      {filteredNodes.length === 0 ? (
+                        <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--ctp-subtext0)' }}>
+                          {nodeSearchTerm ? t('notifications.no_nodes_match') : t('notifications.no_nodes_available')}
+                        </div>
+                      ) : (
+                        filteredNodes.map(node => {
+                          const nodeId = node.user?.id || node.nodeId;
+                          return (
+                            <div
+                              key={nodeId}
+                              style={{
+                                padding: '0.5rem 0.75rem',
+                                borderBottom: '1px solid var(--ctp-surface1)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                cursor: 'pointer',
+                                transition: 'background 0.1s'
+                              }}
+                              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--ctp-surface0)'}
+                              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                              onClick={() => {
+                                setSelectedMonitoredNodes(prev =>
+                                  prev.includes(nodeId)
+                                    ? prev.filter(id => id !== nodeId)
+                                    : [...prev, nodeId]
+                                );
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedMonitoredNodes.includes(nodeId)}
+                                onChange={() => {
+                                  setSelectedMonitoredNodes(prev =>
+                                    prev.includes(nodeId)
+                                      ? prev.filter(id => id !== nodeId)
+                                      : [...prev, nodeId]
+                                  );
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                style={{ width: 'auto', margin: 0, marginRight: '0.75rem', cursor: 'pointer' }}
+                              />
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontWeight: '500', color: 'var(--ctp-text)' }}>
+                                  {node.user?.longName || node.longName || node.user?.shortName || node.shortName || nodeId || 'Unknown'}
+                                </div>
+                                {(node.user?.longName || node.longName || node.user?.shortName || node.shortName) && (
+                                  <div style={{ fontSize: '12px', color: 'var(--ctp-subtext0)' }}>
+                                    {nodeId}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                    
+                    {/* Selection count */}
+                    <div style={{ marginTop: '0.75rem', fontSize: '13px', color: 'var(--ctp-subtext0)' }}>
+                      {t('notifications.monitored_nodes_count', { count: selectedMonitoredNodes.length })}
+                      {selectedMonitoredNodes.length === 0 && (
+                        <span style={{ color: 'var(--ctp-yellow)', marginLeft: '0.5rem' }}>
+                          ({t('notifications.no_nodes_selected_warning')})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Channel Selection */}

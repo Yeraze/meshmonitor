@@ -276,11 +276,12 @@ class AppriseNotificationService {
 
   /**
    * Broadcast to users who have a specific preference enabled
-   * Used for special notifications like new nodes and traceroutes
+   * Used for special notifications like new nodes, traceroutes, and inactive nodes
    */
   public async broadcastToPreferenceUsers(
-    preferenceKey: 'notifyOnNewNode' | 'notifyOnTraceroute',
-    payload: AppriseNotificationPayload
+    preferenceKey: 'notifyOnNewNode' | 'notifyOnTraceroute' | 'notifyOnInactiveNode',
+    payload: AppriseNotificationPayload,
+    targetUserId?: number
   ): Promise<{ sent: number; failed: number; filtered: number }> {
     let sent = 0;
     let failed = 0;
@@ -288,9 +289,15 @@ class AppriseNotificationService {
 
     // Get all users with Apprise enabled and this preference enabled
     const users = getUsersWithServiceEnabled('apprise');
-    logger.info(`📢 Broadcasting ${preferenceKey} notification to ${users.length} Apprise users`);
+    logger.info(`📢 Broadcasting ${preferenceKey} notification to ${users.length} Apprise users${targetUserId ? ` (target user: ${targetUserId})` : ''}`);
 
     for (const userId of users) {
+      // If targetUserId is specified, only send to that user
+      if (targetUserId !== undefined && userId !== targetUserId) {
+        filtered++;
+        continue;
+      }
+
       // Check if user has this preference enabled
       const prefs = getUserNotificationPreferences(userId);
       if (!prefs || !prefs.enableApprise || !prefs[preferenceKey]) {

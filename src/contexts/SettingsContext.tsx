@@ -37,6 +37,9 @@ export interface CustomTheme {
 
 interface SettingsContextType {
   maxNodeAgeHours: number;
+  inactiveNodeThresholdHours: number;
+  inactiveNodeCheckIntervalMinutes: number;
+  inactiveNodeCooldownHours: number;
   tracerouteIntervalMinutes: number;
   temperatureUnit: TemperatureUnit;
   distanceUnit: DistanceUnit;
@@ -62,6 +65,9 @@ interface SettingsContextType {
   setTemporaryTileset: (tilesetId: TilesetId | null) => void;
   isLoading: boolean;
   setMaxNodeAgeHours: (hours: number) => void;
+  setInactiveNodeThresholdHours: (hours: number) => void;
+  setInactiveNodeCheckIntervalMinutes: (minutes: number) => void;
+  setInactiveNodeCooldownHours: (hours: number) => void;
   setTracerouteIntervalMinutes: (minutes: number) => void;
   setTemperatureUnit: (unit: TemperatureUnit) => void;
   setDistanceUnit: (unit: DistanceUnit) => void;
@@ -99,6 +105,21 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
 
   const [maxNodeAgeHours, setMaxNodeAgeHoursState] = useState<number>(() => {
     const saved = localStorage.getItem('maxNodeAgeHours');
+    return saved ? parseInt(saved) : 24;
+  });
+
+  const [inactiveNodeThresholdHours, setInactiveNodeThresholdHoursState] = useState<number>(() => {
+    const saved = localStorage.getItem('inactiveNodeThresholdHours');
+    return saved ? parseInt(saved) : 24;
+  });
+
+  const [inactiveNodeCheckIntervalMinutes, setInactiveNodeCheckIntervalMinutesState] = useState<number>(() => {
+    const saved = localStorage.getItem('inactiveNodeCheckIntervalMinutes');
+    return saved ? parseInt(saved) : 60;
+  });
+
+  const [inactiveNodeCooldownHours, setInactiveNodeCooldownHoursState] = useState<number>(() => {
+    const saved = localStorage.getItem('inactiveNodeCooldownHours');
     return saved ? parseInt(saved) : 24;
   });
 
@@ -202,6 +223,21 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   const setMaxNodeAgeHours = (value: number) => {
     setMaxNodeAgeHoursState(value);
     localStorage.setItem('maxNodeAgeHours', value.toString());
+  };
+
+  const setInactiveNodeThresholdHours = (value: number) => {
+    setInactiveNodeThresholdHoursState(value);
+    localStorage.setItem('inactiveNodeThresholdHours', value.toString());
+  };
+
+  const setInactiveNodeCheckIntervalMinutes = (value: number) => {
+    setInactiveNodeCheckIntervalMinutesState(value);
+    localStorage.setItem('inactiveNodeCheckIntervalMinutes', value.toString());
+  };
+
+  const setInactiveNodeCooldownHours = (value: number) => {
+    setInactiveNodeCooldownHoursState(value);
+    localStorage.setItem('inactiveNodeCooldownHours', value.toString());
   };
 
   const setTracerouteIntervalMinutes = async (value: number) => {
@@ -586,6 +622,30 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             }
           }
 
+          if (settings.inactiveNodeThresholdHours) {
+            const value = parseInt(settings.inactiveNodeThresholdHours);
+            if (!isNaN(value) && value > 0) {
+              setInactiveNodeThresholdHoursState(value);
+              localStorage.setItem('inactiveNodeThresholdHours', value.toString());
+            }
+          }
+
+          if (settings.inactiveNodeCheckIntervalMinutes) {
+            const value = parseInt(settings.inactiveNodeCheckIntervalMinutes);
+            if (!isNaN(value) && value > 0) {
+              setInactiveNodeCheckIntervalMinutesState(value);
+              localStorage.setItem('inactiveNodeCheckIntervalMinutes', value.toString());
+            }
+          }
+
+          if (settings.inactiveNodeCooldownHours) {
+            const value = parseInt(settings.inactiveNodeCooldownHours);
+            if (!isNaN(value) && value > 0) {
+              setInactiveNodeCooldownHoursState(value);
+              localStorage.setItem('inactiveNodeCooldownHours', value.toString());
+            }
+          }
+
           if (settings.temperatureUnit) {
             setTemperatureUnitState(settings.temperatureUnit as TemperatureUnit);
             localStorage.setItem('temperatureUnit', settings.temperatureUnit);
@@ -772,6 +832,9 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
 
   const value: SettingsContextType = {
     maxNodeAgeHours,
+    inactiveNodeThresholdHours,
+    inactiveNodeCheckIntervalMinutes,
+    inactiveNodeCooldownHours,
     tracerouteIntervalMinutes,
     temperatureUnit,
     distanceUnit,
@@ -797,6 +860,9 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setTemporaryTileset,
     isLoading,
     setMaxNodeAgeHours,
+    setInactiveNodeThresholdHours,
+    setInactiveNodeCheckIntervalMinutes,
+    setInactiveNodeCooldownHours,
     setTracerouteIntervalMinutes,
     setTemperatureUnit,
     setDistanceUnit,

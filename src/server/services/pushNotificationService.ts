@@ -445,24 +445,31 @@ class PushNotificationService {
 
   /**
    * Broadcast to users who have a specific preference enabled
-   * Used for special notifications like new nodes and traceroutes
+   * Used for special notifications like new nodes, traceroutes, and inactive nodes
    */
   public async broadcastToPreferenceUsers(
-    preferenceKey: 'notifyOnNewNode' | 'notifyOnTraceroute',
-    payload: PushNotificationPayload
+    preferenceKey: 'notifyOnNewNode' | 'notifyOnTraceroute' | 'notifyOnInactiveNode',
+    payload: PushNotificationPayload,
+    targetUserId?: number
   ): Promise<{ sent: number; failed: number; filtered: number }> {
     const subscriptions = this.getAllSubscriptions();
     let sent = 0;
     let failed = 0;
     let filtered = 0;
 
-    logger.info(`📢 Broadcasting ${preferenceKey} notification to ${subscriptions.length} subscriptions`);
+    logger.info(`📢 Broadcasting ${preferenceKey} notification to ${subscriptions.length} subscriptions${targetUserId ? ` (target user: ${targetUserId})` : ''}`);
 
     for (const subscription of subscriptions) {
       const userId = subscription.userId;
 
       // Skip anonymous users for these special notifications
       if (!userId) {
+        filtered++;
+        continue;
+      }
+
+      // If targetUserId is specified, only send to that user
+      if (targetUserId !== undefined && userId !== targetUserId) {
         filtered++;
         continue;
       }
