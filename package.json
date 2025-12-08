@@ -94,7 +94,7 @@
     "@typescript-eslint/eslint-plugin": "^8.47.0",
     "@typescript-eslint/parser": "^8.46.0",
     "@vitejs/plugin-react": "^5.1.1",
-    "@vitest/coverage-v8": "^4.0.14",
+    "@vitest/coverage-v8": "^4.0.15",
     "@vitest/ui": "^4.0.6",
     "concurrently": "^9.2.1",
     "eslint": "^9.39.1",
