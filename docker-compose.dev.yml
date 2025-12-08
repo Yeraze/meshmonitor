@@ -12,7 +12,7 @@ services:
     container_name: meshmonitor
     ports:
       - "8081:3001"  # Changed to 8081 to avoid conflict with devcontainer
-      # - "4404:4404"  # Virtual Node Server - disabled to avoid port conflict
+      - "4405:4404"  # Virtual Node Server on unique external port
     restart: unless-stopped
     volumes:
       - meshmonitor-data:/data
@@ -24,7 +24,7 @@ services:
       - SESSION_SECRET=qlskjerhqlwkjehrlqkwejh
       - BASE_URL=/meshmonitor
       - TZ=America/New_York
-      - ALLOWED_ORIGINS=http://localhost:8081,http://localhost:8080,http://sentry.yeraze.online:8080,https://meshdev.yeraze.online
+      - ALLOWED_ORIGINS=http://localhost:8081,http://localhost:8080,http://sentry.yeraze.online:8081,https://meshdev.yeraze.online
       - TRUST_PROXY=1
       - COOKIE_SECURE=false
       - DISABLE_ANONYMOUS=${DISABLE_ANONYMOUS:-false}
@@ -35,7 +35,7 @@ services:
       - ACCESS_LOG_ENABLED=true
       - ACCESS_LOG_PATH=/data/logs/access.log
       - ACCESS_LOG_FORMAT=combined
-      - ENABLE_VIRTUAL_NODE=${ENABLE_VIRTUAL_NODE:-false}  # Disabled to avoid port conflict
+      - ENABLE_VIRTUAL_NODE=${ENABLE_VIRTUAL_NODE:-true}  # Re-enabled on port 4405
       - VIRTUAL_NODE_PORT=${VIRTUAL_NODE_PORT:-4404}
 
 volumes:
