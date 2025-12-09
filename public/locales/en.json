@@ -1215,8 +1215,11 @@
   "dashboard.widget.traceroute.no_data": "No traceroute data available for this node.",
   "dashboard.widget.traceroute.no_route_data": "No route data available",
   "dashboard.widget.traceroute.last_traceroute": "Last traceroute",
-  "dashboard.widget.traceroute.forward_path": "Forward Path:",
-  "dashboard.widget.traceroute.return_path": "Return Path:",
+  "dashboard.widget.traceroute.forward_path": "Forward Path",
+  "dashboard.widget.traceroute.return_path": "Return Path",
+  "dashboard.widget.traceroute.show_map": "Show map",
+  "dashboard.widget.traceroute.hide_map": "Hide map",
+  "dashboard.widget.traceroute.no_position_warning": "Some nodes have no position data",
 
   "info.title": "Device Information & Configuration",
   "info.connection_status": "Connection Status",

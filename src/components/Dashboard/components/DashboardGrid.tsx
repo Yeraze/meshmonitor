@@ -9,15 +9,17 @@ import {
   useSensors,
   DragEndEvent,
 } from '@dnd-kit/core';
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
+import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import TelemetryChart from '../../TelemetryChart';
 import NodeStatusWidget from '../../NodeStatusWidget';
 import TracerouteWidget from '../../TracerouteWidget';
-import { type CustomWidget, type FavoriteChart, type NodeInfo, type TelemetryData, type TemperatureUnit } from '../types';
+import {
+  type CustomWidget,
+  type FavoriteChart,
+  type NodeInfo,
+  type TelemetryData,
+  type TemperatureUnit,
+} from '../types';
 
 interface DashboardGridProps {
   // Widgets
@@ -88,17 +90,19 @@ const DashboardGrid: React.FC<DashboardGridProps> = ({
   return (
     <>
       <div className="dashboard-results-info">
-        {widgetsCount > 0 && t(widgetsCount !== 1 ? 'dashboard.widget_count_plural' : 'dashboard.widget_count', { count: widgetsCount })}
+        {widgetsCount > 0 &&
+          t(widgetsCount !== 1 ? 'dashboard.widget_count_plural' : 'dashboard.widget_count', { count: widgetsCount })}
         {widgetsCount > 0 && favoritesCount > 0 && ', '}
-        {favoritesCount > 0 && t(favoritesCount !== 1 ? 'dashboard.chart_count_plural' : 'dashboard.chart_count', { shown: filteredCount, total: favoritesCount })}
+        {favoritesCount > 0 &&
+          t(favoritesCount !== 1 ? 'dashboard.chart_count_plural' : 'dashboard.chart_count', {
+            shown: filteredCount,
+            total: favoritesCount,
+          })}
       </div>
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
         <SortableContext
-          items={[
-            ...customWidgets.map(w => w.id),
-            ...favorites.map(f => `${f.nodeId}-${f.telemetryType}`),
-          ]}
+          items={[...customWidgets.map(w => w.id), ...favorites.map(f => `${f.nodeId}-${f.telemetryType}`)]}
           strategy={verticalListSortingStrategy}
         >
           <div className="dashboard-grid">
@@ -112,8 +116,8 @@ const DashboardGrid: React.FC<DashboardGridProps> = ({
                     nodeIds={widget.nodeIds}
                     nodes={nodes}
                     onRemove={() => onRemoveWidget(widget.id)}
-                    onAddNode={(nodeId) => onAddNodeToWidget(widget.id, nodeId)}
-                    onRemoveNode={(nodeId) => onRemoveNodeFromWidget(widget.id, nodeId)}
+                    onAddNode={nodeId => onAddNodeToWidget(widget.id, nodeId)}
+                    onRemoveNode={nodeId => onRemoveNodeFromWidget(widget.id, nodeId)}
                     canEdit={canEdit}
                   />
                 );
@@ -126,7 +130,7 @@ const DashboardGrid: React.FC<DashboardGridProps> = ({
                     currentNodeId={currentNodeId}
                     nodes={nodes}
                     onRemove={() => onRemoveWidget(widget.id)}
-                    onSelectNode={(nodeId) => onSelectTracerouteNode(widget.id, nodeId)}
+                    onSelectNode={nodeId => onSelectTracerouteNode(widget.id, nodeId)}
                     canEdit={canEdit}
                   />
                 );

@@ -13,18 +13,20 @@ import { useQuery } from '@tanstack/react-query';
 import { MapContainer, TileLayer, Polyline, Marker, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import api from '../services/api';
+import { useSettings } from '../contexts/SettingsContext';
+import { getTilesetById } from '../config/tilesets';
 import 'leaflet/dist/leaflet.css';
 
 // Component to fit map bounds
 const FitBounds: React.FC<{ bounds: [[number, number], [number, number]] }> = ({ bounds }) => {
   const map = useMap();
-  
+
   useEffect(() => {
     if (bounds) {
       map.fitBounds(bounds, { padding: [20, 20] });
     }
   }, [map, bounds]);
-  
+
   return null;
 };
 
@@ -83,10 +85,15 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
   canEdit = true,
 }) => {
   const { t } = useTranslation();
+  const { mapTileset, customTilesets } = useSettings();
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const [showMap, setShowMap] = useState(false); // Map hidden by default
+  const [highlightedPath, setHighlightedPath] = useState<'forward' | 'back' | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
+
+  // Get tileset configuration
+  const tileset = getTilesetById(mapTileset, customTilesets);
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
 
@@ -217,26 +224,22 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
     if (!traceroute) return null;
 
     // Parse routes
-    const forwardHops = traceroute.route && traceroute.route !== 'null' && traceroute.route !== ''
-      ? parseRoute(traceroute.route, traceroute.snrTowards)
-      : [];
-    const backHops = traceroute.routeBack && traceroute.routeBack !== 'null' && traceroute.routeBack !== ''
-      ? parseRoute(traceroute.routeBack, traceroute.snrBack)
-      : [];
+    const forwardHops =
+      traceroute.route && traceroute.route !== 'null' && traceroute.route !== ''
+        ? parseRoute(traceroute.route, traceroute.snrTowards)
+        : [];
+    const backHops =
+      traceroute.routeBack && traceroute.routeBack !== 'null' && traceroute.routeBack !== ''
+        ? parseRoute(traceroute.routeBack, traceroute.snrBack)
+        : [];
 
-    // Build complete forward path: from -> hops -> to
-    const forwardPath = [
-      traceroute.fromNodeNum,
-      ...forwardHops.map(h => h.nodeNum),
-      traceroute.toNodeNum,
-    ];
+    // Build complete forward path: from -> hops -> to (with SNR for each segment)
+    const forwardPath = [traceroute.fromNodeNum, ...forwardHops.map(h => h.nodeNum), traceroute.toNodeNum];
+    const forwardSnrs = forwardHops.map(h => h.snr);
 
-    // Build complete back path: to -> hops -> from
-    const backPath = [
-      traceroute.toNodeNum,
-      ...backHops.map(h => h.nodeNum),
-      traceroute.fromNodeNum,
-    ];
+    // Build complete back path: to -> hops -> from (with SNR for each segment)
+    const backPath = [traceroute.toNodeNum, ...backHops.map(h => h.nodeNum), traceroute.fromNodeNum];
+    const backSnrs = backHops.map(h => h.snr);
 
     // Collect unique nodes with positions
     const uniqueNodes = new Map<number, { nodeNum: number; position: [number, number]; name: string }>();
@@ -253,21 +256,33 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
       }
     });
 
-    // Build path positions for forward route
+    // Build path positions for forward route with SNR for each segment
     const forwardPositions: [number, number][] = [];
-    forwardPath.forEach(nodeNum => {
+    const forwardSegmentSnrs: (number | undefined)[] = [];
+    forwardPath.forEach((nodeNum, idx) => {
       const node = uniqueNodes.get(nodeNum);
       if (node) {
         forwardPositions.push(node.position);
+        // SNR is for the segment arriving at this hop (index - 1)
+        // For direct routes (no hops), we still need one undefined SNR for the single segment
+        if (idx > 0) {
+          forwardSegmentSnrs.push(idx <= forwardSnrs.length ? forwardSnrs[idx - 1] : undefined);
+        }
       }
     });
 
-    // Build path positions for back route
+    // Build path positions for back route with SNR for each segment
     const backPositions: [number, number][] = [];
-    backPath.forEach(nodeNum => {
+    const backSegmentSnrs: (number | undefined)[] = [];
+    backPath.forEach((nodeNum, idx) => {
       const node = uniqueNodes.get(nodeNum);
       if (node) {
         backPositions.push(node.position);
+        // SNR is for the segment arriving at this hop
+        // For direct routes (no hops), we still need one undefined SNR for the single segment
+        if (idx > 0) {
+          backSegmentSnrs.push(idx <= backSnrs.length ? backSnrs[idx - 1] : undefined);
+        }
       }
     });
 
@@ -277,7 +292,7 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
     const allPositions = Array.from(uniqueNodes.values()).map(n => n.position);
     const lats = allPositions.map(p => p[0]);
     const lngs = allPositions.map(p => p[1]);
-    
+
     const bounds: [[number, number], [number, number]] = [
       [Math.min(...lats) - 0.01, Math.min(...lngs) - 0.01],
       [Math.max(...lats) + 0.01, Math.max(...lngs) + 0.01],
@@ -287,6 +302,8 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
       nodes: Array.from(uniqueNodes.values()),
       forwardPositions,
       backPositions,
+      forwardSegmentSnrs,
+      backSegmentSnrs,
       bounds,
       fromNodeNum: traceroute.fromNodeNum,
       toNodeNum: traceroute.toNodeNum,
@@ -305,36 +322,119 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
     });
   }, []);
 
-  // Generate arrow markers along a path
+  // Generate curved path between two points (quadratic bezier approximation)
+  // curvature: positive = curve to the "left" side (relative to direction), negative = curve to "right"
+  // To ensure forward and back paths curve in opposite directions consistently,
+  // we normalize direction based on comparing start/end coordinates
+  const generateCurvedPath = useCallback(
+    (
+      start: [number, number],
+      end: [number, number],
+      curvature: number = 0.15,
+      segments: number = 20,
+      normalizeDirection: boolean = false
+    ): [number, number][] => {
+      const points: [number, number][] = [];
+
+      // If normalizeDirection is true, we ensure the curvature is consistent
+      // regardless of which direction we're traveling
+      let effectiveCurvature = curvature;
+      if (normalizeDirection) {
+        // Always curve based on "canonical" direction (lower lat/lng to higher)
+        // This ensures forward A->B and back B->A curve on opposite sides
+        const shouldFlip = start[0] > end[0] || (start[0] === end[0] && start[1] > end[1]);
+        if (shouldFlip) {
+          effectiveCurvature = -curvature;
+        }
+      }
+
+      // Calculate perpendicular offset for control point
+      const midLat = (start[0] + end[0]) / 2;
+      const midLng = (start[1] + end[1]) / 2;
+
+      // Vector from start to end
+      const dx = end[1] - start[1];
+      const dy = end[0] - start[0];
+      const length = Math.sqrt(dx * dx + dy * dy);
+
+      if (length === 0) return [start, end];
+
+      // Perpendicular vector (normalized) * curvature * length
+      const perpLat = (-dx / length) * effectiveCurvature * length;
+      const perpLng = (dy / length) * effectiveCurvature * length;
+
+      // Control point
+      const ctrlLat = midLat + perpLat;
+      const ctrlLng = midLng + perpLng;
+
+      // Generate points along quadratic bezier curve
+      for (let i = 0; i <= segments; i++) {
+        const t = i / segments;
+        const t1 = 1 - t;
+
+        // Quadratic bezier: B(t) = (1-t)²P0 + 2(1-t)tP1 + t²P2
+        const lat = t1 * t1 * start[0] + 2 * t1 * t * ctrlLat + t * t * end[0];
+        const lng = t1 * t1 * start[1] + 2 * t1 * t * ctrlLng + t * t * end[1];
+
+        points.push([lat, lng]);
+      }
+
+      return points;
+    },
+    []
+  );
+
+  // Calculate line weight based on SNR (-20 to +10 dB range typically)
+  const getLineWeight = useCallback((snr: number | undefined): number => {
+    if (snr === undefined) return 3; // default
+    // Map SNR from -20..+10 to weight 2..6
+    const normalized = Math.max(-20, Math.min(10, snr));
+    return 2 + ((normalized + 20) / 30) * 4;
+  }, []);
+
+  // Generate arrow markers along a curved path with SNR tooltips
   const generatePathArrows = useCallback(
-    (positions: [number, number][], pathKey: string, color: string): React.ReactElement[] => {
+    (
+      positions: [number, number][],
+      pathKey: string,
+      color: string,
+      snrs: (number | undefined)[],
+      curvature: number,
+      normalizeDirection: boolean = true
+    ): React.ReactElement[] => {
       const arrows: React.ReactElement[] = [];
 
       for (let i = 0; i < positions.length - 1; i++) {
         const start = positions[i];
         const end = positions[i + 1];
+        const snr = snrs[i];
 
-        // Calculate midpoint
-        const midLat = (start[0] + end[0]) / 2;
-        const midLng = (start[1] + end[1]) / 2;
+        // Generate the curved path to find the midpoint on the curve
+        const curvedPath = generateCurvedPath(start, end, curvature, 20, normalizeDirection);
+        const midIdx = Math.floor(curvedPath.length / 2);
+        const midPoint = curvedPath[midIdx];
 
-        // Calculate angle
-        const latDiff = end[0] - start[0];
-        const lngDiff = end[1] - start[1];
+        // Calculate tangent angle at midpoint using adjacent points
+        const prevPoint = curvedPath[midIdx - 1] || curvedPath[midIdx];
+        const nextPoint = curvedPath[midIdx + 1] || curvedPath[midIdx];
+        const latDiff = nextPoint[0] - prevPoint[0];
+        const lngDiff = nextPoint[1] - prevPoint[1];
         const angle = Math.atan2(lngDiff, latDiff) * (180 / Math.PI);
 
         arrows.push(
-          <Marker
-            key={`${pathKey}-arrow-${i}`}
-            position={[midLat, midLng]}
-            icon={createArrowIcon(angle, color)}
-          />
+          <Marker key={`${pathKey}-arrow-${i}`} position={midPoint} icon={createArrowIcon(angle, color)}>
+            {snr !== undefined && (
+              <Tooltip permanent={false} direction="top" offset={[0, -10]}>
+                {snr.toFixed(1)} dB
+              </Tooltip>
+            )}
+          </Marker>
         );
       }
 
       return arrows;
     },
-    [createArrowIcon]
+    [createArrowIcon, generateCurvedPath]
   );
 
   // Create node marker icon
@@ -391,9 +491,16 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
             const hasPosition = getNodePosition(hop.nodeNum) !== null;
             return (
               <React.Fragment key={`${hop.nodeNum}-${idx}`}>
-                <span className={`traceroute-hop ${!hasPosition ? 'no-position' : ''}`} title={!hasPosition ? 'No position data' : undefined}>
+                <span
+                  className={`traceroute-hop ${!hasPosition ? 'no-position' : ''}`}
+                  title={!hasPosition ? 'No position data' : undefined}
+                >
                   {getNodeName(hop.nodeNum)}
-                  {!hasPosition && <span className="traceroute-no-pos-icon" title="No position data">📍</span>}
+                  {!hasPosition && (
+                    <span className="traceroute-no-pos-icon" title="No position data">
+                      📍
+                    </span>
+                  )}
                   {hop.snr !== undefined && <span className="traceroute-snr">{hop.snr.toFixed(1)} dB</span>}
                 </span>
                 {idx < fullPath.length - 1 && <span className="traceroute-arrow">→</span>}
@@ -405,7 +512,9 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
     );
   };
 
-  const targetNodeName = targetNodeId ? nodes.get(targetNodeId)?.user?.longName || nodes.get(targetNodeId)?.user?.shortName || targetNodeId : null;
+  const targetNodeName = targetNodeId
+    ? nodes.get(targetNodeId)?.user?.longName || nodes.get(targetNodeId)?.user?.shortName || targetNodeId
+    : null;
 
   return (
     <div ref={setNodeRef} style={style} className="dashboard-chart-container traceroute-widget">
@@ -414,7 +523,8 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
           ⋮⋮
         </span>
         <h3 className="dashboard-chart-title">
-          {t('dashboard.widget.traceroute.title')}{targetNodeName ? `: ${targetNodeName}` : ''}
+          {t('dashboard.widget.traceroute.title')}
+          {targetNodeName ? `: ${targetNodeName}` : ''}
         </h3>
         <button className="dashboard-remove-btn" onClick={onRemove} title={t('dashboard.remove_widget')}>
           ×
@@ -429,7 +539,11 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
               <input
                 type="text"
                 className="traceroute-search"
-                placeholder={targetNodeId ? t('dashboard.widget.traceroute.change_node') : t('dashboard.widget.traceroute.select_node')}
+                placeholder={
+                  targetNodeId
+                    ? t('dashboard.widget.traceroute.change_node')
+                    : t('dashboard.widget.traceroute.select_node')
+                }
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 onFocus={() => setShowSearch(true)}
@@ -465,17 +579,25 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
           <div className="traceroute-details">
             <div className="traceroute-header-row">
               <div className="traceroute-timestamp">
-                {t('dashboard.widget.traceroute.last_traceroute')}: {formatTimestamp(traceroute.timestamp || traceroute.createdAt || 0)}
+                {t('dashboard.widget.traceroute.last_traceroute')}:{' '}
+                {formatTimestamp(traceroute.timestamp || traceroute.createdAt || 0)}
               </div>
               {mapData && mapData.nodes.length >= 2 && (
-                <button 
+                <button
                   className="traceroute-map-toggle-inline"
                   onClick={() => setShowMap(!showMap)}
-                  title={showMap ? t('dashboard.widget.traceroute.hide_map') : t('dashboard.widget.traceroute.show_map')}
+                  title={
+                    showMap ? t('dashboard.widget.traceroute.hide_map') : t('dashboard.widget.traceroute.show_map')
+                  }
                 >
-                  {showMap ? '📝 Text' : '🗺️ Map'}
+                  {showMap ? t('dashboard.widget.traceroute.hide_map') : t('dashboard.widget.traceroute.show_map')}
                   {mapData.nodes.length < (mapData.forwardPositions.length + mapData.backPositions.length) / 2 && (
-                    <span className="traceroute-map-warning" title={t('dashboard.widget.traceroute.no_position_warning')}>⚠️</span>
+                    <span
+                      className="traceroute-map-warning"
+                      title={t('dashboard.widget.traceroute.no_position_warning')}
+                    >
+                      ⚠️
+                    </span>
                   )}
                 </button>
               )}
@@ -489,66 +611,118 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
                     center={[mapData.bounds[0][0], mapData.bounds[0][1]]}
                     zoom={10}
                     style={{ height: '200px', width: '100%', borderRadius: '8px' }}
-                      scrollWheelZoom={false}
-                      dragging={true}
-                      zoomControl={true}
-                      attributionControl={false}
-                    >
-                      <FitBounds bounds={mapData.bounds} />
-                      <TileLayer
-                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                      />
+                    scrollWheelZoom={false}
+                    dragging={true}
+                    zoomControl={true}
+                    attributionControl={false}
+                  >
+                    <FitBounds bounds={mapData.bounds} />
+                    <TileLayer 
+                      url={tileset.url}
+                      attribution={tileset.attribution}
+                      maxZoom={tileset.maxZoom}
+                    />
 
-                      {/* Forward path (green/teal) */}
-                      {mapData.forwardPositions.length >= 2 && (
-                        <>
-                          <Polyline
-                            positions={mapData.forwardPositions}
-                            color="#4CAF50"
-                            weight={3}
-                            opacity={0.8}
-                            dashArray="5, 10"
-                          />
-                          {generatePathArrows(mapData.forwardPositions, 'forward', '#4CAF50')}
-                        </>
-                      )}
-
-                      {/* Back path (blue) - offset slightly for visibility */}
-                      {mapData.backPositions.length >= 2 && (
-                        <>
-                          <Polyline
-                            positions={mapData.backPositions}
-                            color="#2196F3"
-                            weight={3}
-                            opacity={0.8}
-                            dashArray="5, 10"
-                          />
-                          {generatePathArrows(mapData.backPositions, 'back', '#2196F3')}
-                        </>
-                      )}
-
-                      {/* Node markers */}
-                      {mapData.nodes.map(node => (
-                        <Marker
-                          key={node.nodeNum}
-                          position={node.position}
-                          icon={createNodeIcon(
-                            node.nodeNum === mapData.fromNodeNum || node.nodeNum === mapData.toNodeNum,
-                            node.nodeNum === mapData.fromNodeNum,
-                            node.nodeNum === mapData.toNodeNum
+                    {/* Forward path (green) - render curved segments with variable weight based on SNR */}
+                    {mapData.forwardPositions.length >= 2 && (
+                      <>
+                        {mapData.forwardPositions.slice(0, -1).map((pos, idx) => {
+                          const nextPos = mapData.forwardPositions[idx + 1];
+                          const snr = mapData.forwardSegmentSnrs[idx];
+                          const weight = getLineWeight(snr);
+                          const isHighlighted = highlightedPath === null || highlightedPath === 'forward';
+                          const curvedPath = generateCurvedPath(pos, nextPos, 0.2, 20, true);
+                          return (
+                            <Polyline
+                              key={`forward-segment-${idx}`}
+                              positions={curvedPath}
+                              color="#4CAF50"
+                              weight={weight}
+                              opacity={isHighlighted ? 0.9 : 0.2}
+                              dashArray={snr === undefined ? '5, 10' : undefined}
+                            />
+                          );
+                        })}
+                        {(highlightedPath === null || highlightedPath === 'forward') &&
+                          generatePathArrows(
+                            mapData.forwardPositions,
+                            'forward',
+                            '#4CAF50',
+                            mapData.forwardSegmentSnrs,
+                            0.2,
+                            true
                           )}
-                        >
-                          <Tooltip permanent={false} direction="top" offset={[0, -5]}>
-                            {node.name}
-                          </Tooltip>
-                        </Marker>
-                      ))}
-                    </MapContainer>
-                    <div className="traceroute-map-legend">
-                      <span className="legend-item"><span className="legend-color" style={{ background: '#4CAF50' }}></span> {t('dashboard.widget.traceroute.forward')}</span>
-                      <span className="legend-item"><span className="legend-color" style={{ background: '#2196F3' }}></span> {t('dashboard.widget.traceroute.return')}</span>
-                    </div>
+                      </>
+                    )}
+
+                    {/* Back path (blue) - render curved segments (opposite side) with variable weight based on SNR */}
+                    {mapData.backPositions.length >= 2 && (
+                      <>
+                        {mapData.backPositions.slice(0, -1).map((pos, idx) => {
+                          const nextPos = mapData.backPositions[idx + 1];
+                          const snr = mapData.backSegmentSnrs[idx];
+                          const weight = getLineWeight(snr);
+                          const isHighlighted = highlightedPath === null || highlightedPath === 'back';
+                          const curvedPath = generateCurvedPath(pos, nextPos, -0.2, 20, true);
+                          return (
+                            <Polyline
+                              key={`back-segment-${idx}`}
+                              positions={curvedPath}
+                              color="#2196F3"
+                              weight={weight}
+                              opacity={isHighlighted ? 0.9 : 0.2}
+                              dashArray={snr === undefined ? '5, 10' : undefined}
+                            />
+                          );
+                        })}
+                        {(highlightedPath === null || highlightedPath === 'back') &&
+                          generatePathArrows(
+                            mapData.backPositions,
+                            'back',
+                            '#2196F3',
+                            mapData.backSegmentSnrs,
+                            -0.2,
+                            true
+                          )}
+                      </>
+                    )}
+
+                    {/* Node markers */}
+                    {mapData.nodes.map(node => (
+                      <Marker
+                        key={node.nodeNum}
+                        position={node.position}
+                        icon={createNodeIcon(
+                          node.nodeNum === mapData.fromNodeNum || node.nodeNum === mapData.toNodeNum,
+                          node.nodeNum === mapData.fromNodeNum,
+                          node.nodeNum === mapData.toNodeNum
+                        )}
+                      >
+                        <Tooltip permanent={false} direction="top" offset={[0, -5]}>
+                          {node.name}
+                        </Tooltip>
+                      </Marker>
+                    ))}
+                  </MapContainer>
+                  <div className="traceroute-map-legend">
+                    <span
+                      className={`legend-item ${highlightedPath === 'forward' ? 'highlighted' : ''}`}
+                      onMouseEnter={() => setHighlightedPath('forward')}
+                      onMouseLeave={() => setHighlightedPath(null)}
+                    >
+                      <span className="legend-color" style={{ background: '#4CAF50' }}></span>{' '}
+                      {t('dashboard.widget.traceroute.forward_path')}
+                    </span>
+                    <span
+                      className={`legend-item ${highlightedPath === 'back' ? 'highlighted' : ''}`}
+                      onMouseEnter={() => setHighlightedPath('back')}
+                      onMouseLeave={() => setHighlightedPath(null)}
+                    >
+                      <span className="legend-color" style={{ background: '#2196F3' }}></span>{' '}
+                      {t('dashboard.widget.traceroute.return_path')}
+                    </span>
                   </div>
+                </div>
               </div>
             )}
 
@@ -556,7 +730,7 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
             {!showMap && (
               <>
                 {renderRoute(
-                  t('dashboard.widget.traceroute.forward_path'),
+                  `${t('dashboard.widget.traceroute.forward_path')}:`,
                   traceroute.fromNodeNum,
                   traceroute.toNodeNum,
                   traceroute.route,
@@ -564,7 +738,7 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
                 )}
 
                 {renderRoute(
-                  t('dashboard.widget.traceroute.return_path'),
+                  `${t('dashboard.widget.traceroute.return_path')}:`,
                   traceroute.toNodeNum,
                   traceroute.fromNodeNum,
                   traceroute.routeBack,
