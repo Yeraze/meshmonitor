@@ -185,13 +185,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
       await (manager as any).checkAutoWelcome(999999, '!000f423f');
 
       expect(mockTransport.send).toHaveBeenCalledTimes(1);
-      expect(databaseService.upsertNode).toHaveBeenCalledWith(
-        expect.objectContaining({
-          nodeNum: 999999,
-          nodeId: '!000f423f',
-          welcomedAt: expect.any(Number),
-        })
-      );
+      expect(databaseService.markNodeAsWelcomedIfNotAlready).toHaveBeenCalledWith(999999, '!000f423f');
     });
 
     it('should send welcome as DM when target is dm', async () => {
