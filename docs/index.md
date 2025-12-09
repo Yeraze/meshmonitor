@@ -157,6 +157,7 @@ Manage users, permissions, and authentication with a comprehensive admin interfa
 
 ## Community & Support
 
+- **Discord**: [Join our Discord](https://discord.gg/aeeQbKN5) - Chat with the community and get help
 - **GitHub**: [github.com/yeraze/meshmonitor](https://github.com/yeraze/meshmonitor)
 - **Issues**: Report bugs and request features on GitHub Issues
 - **License**: BSD-3-Clause

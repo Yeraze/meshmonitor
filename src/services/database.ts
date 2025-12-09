@@ -1982,6 +1982,12 @@ class DatabaseService {
     return Number(result.count);
   }
 
+  getTelemetryCount(): number {
+    const stmt = this.db.prepare('SELECT COUNT(*) as count FROM telemetry');
+    const result = stmt.get() as { count: number };
+    return Number(result.count);
+  }
+
   /**
    * Update node mobility status based on position telemetry
    * Checks if a node has moved more than 100 meters based on its last 50 position records

@@ -843,7 +843,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               <SpiderfierController ref={spiderfierRef} zoomLevel={mapZoom} />
               <MapLegend />
               {nodesWithPosition
-                .filter(node => showMqttNodes || !node.viaMqtt)
+                .filter(node => (showMqttNodes || !node.viaMqtt) && (showIncompleteNodes || isNodeComplete(node)))
                 .map(node => {
                 const roleNum = typeof node.user?.role === 'string'
                   ? parseInt(node.user.role, 10)
