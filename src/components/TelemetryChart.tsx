@@ -20,6 +20,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useTelemetry, type TelemetryData } from '../hooks/useTelemetry';
 import { type TemperatureUnit, formatTemperature, getTemperatureUnit } from '../utils/temperature';
+import { formatChartAxisTimestamp } from '../utils/datetime';
 
 interface FavoriteChart {
   nodeId: string;
@@ -344,12 +345,7 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
               type="number"
               domain={globalTimeRange || ['dataMin', 'dataMax']}
               tick={{ fontSize: 12 }}
-              tickFormatter={timestamp =>
-                new Date(timestamp).toLocaleTimeString([], {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })
-              }
+              tickFormatter={timestamp => formatChartAxisTimestamp(timestamp, globalTimeRange)}
             />
             <YAxis yAxisId="left" tick={{ fontSize: 12 }} domain={['auto', 'auto']} />
             <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 12 }} domain={['auto', 'auto']} hide={true} />

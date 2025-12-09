@@ -8,6 +8,7 @@ import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { useTelemetry, useSolarEstimates, type TelemetryData } from '../hooks/useTelemetry';
 import { useFavorites, useToggleFavorite } from '../hooks/useFavorites';
+import { formatChartAxisTimestamp } from '../utils/datetime';
 
 interface TelemetryGraphsProps {
   nodeId: string;
@@ -533,12 +534,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
                       type="number"
                       domain={globalTimeRange || ['dataMin', 'dataMax']}
                       tick={{ fontSize: 12 }}
-                      tickFormatter={timestamp =>
-                        new Date(timestamp).toLocaleTimeString([], {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })
-                      }
+                      tickFormatter={timestamp => formatChartAxisTimestamp(timestamp, globalTimeRange)}
                     />
                     <YAxis yAxisId="left" tick={{ fontSize: 12 }} domain={['auto', 'auto']} />
                     <YAxis
