@@ -18,7 +18,6 @@ export default defineConfig({
     logo: '/images/logo.svg',
 
     nav: [
-      { text: 'Home', link: '/' },
       { text: 'Getting Started', link: '/getting-started' },
       { text: 'FAQ', link: '/faq' },
       { text: '🌐 Site Gallery', link: '/site-gallery' },
@@ -100,6 +99,7 @@ export default defineConfig({
     },
 
     socialLinks: [
+      { icon: 'discord', link: 'https://discord.gg/aeeQbKN5' },
       { icon: 'github', link: 'https://github.com/yeraze/meshmonitor' }
     ],
 
