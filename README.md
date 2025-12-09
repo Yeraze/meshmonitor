@@ -174,6 +174,12 @@ Quick start:
 
 This project is licensed under the BSD-3-Clause License - see the [LICENSE](LICENSE) file for details.
 
+## Community & Support
+
+- **Discord**: [Join our Discord](https://discord.gg/aeeQbKN5) - Chat with the community and get help
+- **GitHub Issues**: Report bugs and request features
+- **Documentation**: [meshmonitor.org](https://meshmonitor.org/)
+
 ## Acknowledgments
 
 - [Meshtastic](https://meshtastic.org/) - Open source mesh networking
