@@ -135,8 +135,36 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
         throw new Error(t('channels_config.toast_invalid_format'));
       }
 
+      // Normalize boolean values - handle both boolean (true/false) and numeric (1/0) formats
+      const normalizeBoolean = (value: any, defaultValue: boolean = true): boolean => {
+        if (value === undefined || value === null) {
+          return defaultValue;
+        }
+        // Handle boolean values
+        if (typeof value === 'boolean') {
+          return value;
+        }
+        // Handle numeric values (0/1)
+        if (typeof value === 'number') {
+          return value !== 0;
+        }
+        // Handle string values ("true"/"false", "1"/"0")
+        if (typeof value === 'string') {
+          return value.toLowerCase() === 'true' || value === '1';
+        }
+        // Default to truthy check
+        return !!value;
+      };
+
+      // Normalize the channel data before sending
+      const normalizedChannelData = {
+        ...importData.channel,
+        uplinkEnabled: normalizeBoolean(importData.channel.uplinkEnabled, true),
+        downlinkEnabled: normalizeBoolean(importData.channel.downlinkEnabled, true)
+      };
+
       // Import the channel
-      await apiService.importChannel(importSlotId, importData.channel);
+      await apiService.importChannel(importSlotId, normalizedChannelData);
 
       showToast(t('channels_config.toast_channel_imported', { slot: importSlotId }), 'success');
       setShowImportModal(false);
@@ -221,8 +249,8 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                     <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: 'var(--ctp-subtext1)' }}>
                       <div>🔒 {channel.psk ? t('channels_config.encrypted') : t('channels_config.unencrypted')}</div>
                       <div>
-                        {channel.uplinkEnabled && `↑ ${t('channels_config.uplink')} `}
-                        {channel.downlinkEnabled && `↓ ${t('channels_config.downlink')}`}
+                        {channel.uplinkEnabled ? `↑ ${t('channels_config.uplink')} ` : ''}
+                        {channel.downlinkEnabled ? `↓ ${t('channels_config.downlink')}` : ''}
                         {!channel.uplinkEnabled && !channel.downlinkEnabled && t('channels_config.no_bridge')}
                       </div>
                     </div>

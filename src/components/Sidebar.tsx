@@ -168,7 +168,10 @@ const Sidebar: React.FC<SidebarProps> = ({
             <SectionHeader title={t('nav.section_admin')} />
             <div className="sidebar-section">
               {isAdmin && (
-                <NavItem id="users" label={t('nav.users')} icon="👥" />
+                <>
+                  <NavItem id="users" label={t('nav.users')} icon="👥" />
+                  <NavItem id="admin" label={t('nav.admin_commands')} icon="⚡" />
+                </>
               )}
               {hasPermission('audit', 'read') && (
                 <NavItem id="audit" label={t('nav.audit_log')} icon="📋" />

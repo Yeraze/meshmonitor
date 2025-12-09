@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import QRCode from 'qrcode';
 import apiService from '../../services/api';
@@ -9,13 +9,15 @@ interface ExportConfigModalProps {
   onClose: () => void;
   channels: Channel[];
   deviceConfig: any;
+  nodeNum?: number; // Optional node number for remote nodes
 }
 
 export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
   isOpen,
   onClose,
   channels: _channels,
-  deviceConfig
+  deviceConfig,
+  nodeNum
 }) => {
   const { t } = useTranslation();
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -28,31 +30,69 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      // Fetch ALL channels (unfiltered) for export
-      apiService.getAllChannels().then(allChannels => {
-        setChannels(allChannels);
+      // For remote nodes (nodeNum provided), use passed channels prop (even if empty)
+      // For local nodes, fetch channels from API
+      if (nodeNum !== undefined) {
+        // Remote node - use passed channels
+        setChannels(_channels);
         // Select only channels that are not disabled (role !== 0)
         const enabledChannelIds = new Set(
-          allChannels
+          _channels
             .filter(ch => ch.role !== 0) // Exclude DISABLED channels
             .map(ch => ch.id)
         );
         setSelectedChannels(enabledChannelIds);
-      }).catch(err => {
-        setError(`Failed to load channels: ${err.message}`);
-      });
+      } else {
+        // Local node - fetch ALL channels (unfiltered) for export
+        apiService.getAllChannels().then(allChannels => {
+          setChannels(allChannels);
+          // Select only channels that are not disabled (role !== 0)
+          const enabledChannelIds = new Set(
+            allChannels
+              .filter(ch => ch.role !== 0) // Exclude DISABLED channels
+              .map(ch => ch.id)
+          );
+          setSelectedChannels(enabledChannelIds);
+        }).catch(err => {
+          setError(`Failed to load channels: ${err.message}`);
+        });
+      }
       setIncludeLoraConfig(true);
       setCopied(false);
       setError(null);
+      setGeneratedUrl(''); // Clear any previous URL
     }
-  }, [isOpen]);
+    // Only re-run when modal opens/closes or node changes, not when channels prop updates
+    // This prevents resetting user's manual channel selections when parent updates channels
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, nodeNum]);
+
+  const generateUrl = useCallback(async () => {
+    if (selectedChannels.size === 0) {
+      setGeneratedUrl('');
+      return;
+    }
+
+    setError(null);
+    try {
+      const channelIds = Array.from(selectedChannels).sort((a, b) => a - b);
+      const url = await apiService.encodeChannelUrl(channelIds, includeLoraConfig, nodeNum);
+      setGeneratedUrl(url);
+    } catch (err: any) {
+      setError(err.message || 'Failed to generate URL');
+      setGeneratedUrl('');
+    }
+  }, [selectedChannels, includeLoraConfig, nodeNum]);
 
   useEffect(() => {
     // Generate URL whenever selections change
     if (isOpen && selectedChannels.size > 0) {
       generateUrl();
+    } else if (isOpen && selectedChannels.size === 0) {
+      // Clear URL if no channels selected
+      setGeneratedUrl('');
     }
-  }, [selectedChannels, includeLoraConfig, isOpen]);
+  }, [selectedChannels, includeLoraConfig, isOpen, generateUrl]);
 
   useEffect(() => {
     // Generate QR code when URL changes
@@ -69,23 +109,6 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
       });
     }
   }, [generatedUrl]);
-
-  const generateUrl = async () => {
-    if (selectedChannels.size === 0) {
-      setGeneratedUrl('');
-      return;
-    }
-
-    setError(null);
-    try {
-      const channelIds = Array.from(selectedChannels).sort((a, b) => a - b);
-      const url = await apiService.encodeChannelUrl(channelIds, includeLoraConfig);
-      setGeneratedUrl(url);
-    } catch (err: any) {
-      setError(err.message || 'Failed to generate URL');
-      setGeneratedUrl('');
-    }
-  };
 
   const toggleChannel = (channelId: number) => {
     const newSelected = new Set(selectedChannels);
@@ -224,7 +247,7 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
             ))
           )}
 
-          {deviceConfig?.lora && (
+          {(deviceConfig?.lora || nodeNum !== undefined) && (
             <div style={{ marginTop: '1rem' }}>
               <h3>{t('export_config.device_settings')}</h3>
               <div

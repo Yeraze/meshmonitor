@@ -134,7 +134,8 @@ router.get('/export', (req: Request, res: Response) => {
 
       res.setHeader('Content-Type', 'application/json');
       res.setHeader('Content-Disposition', `attachment; filename="security-scan-${Date.now()}.json"`);
-      return res.json(jsonData);
+      // Use pretty-printed JSON for consistency with other exports
+      return res.send(JSON.stringify(jsonData, null, 2));
     } else {
       // CSV export (default)
       const csvRows = [

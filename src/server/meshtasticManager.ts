@@ -1,6 +1,7 @@
 import databaseService, { type DbMessage } from '../services/database.js';
 import meshtasticProtobufService from './meshtasticProtobufService.js';
 import protobufService from './protobufService.js';
+import { getProtobufRoot } from './protobufLoader.js';
 import { TcpTransport } from './tcpTransport.js';
 import { calculateDistance } from '../utils/distance.js';
 import { formatTime, formatDate } from '../utils/datetime.js';
@@ -89,10 +90,25 @@ class MeshtasticManager {
     rebootCount?: number;
     isLocked?: boolean;  // Flag to prevent overwrites after initial setup
   } | null = null;
-  private actualDeviceConfig: any = null;  // Store actual device config
-  private actualModuleConfig: any = null;  // Store actual module config
-  private sessionPasskey: Uint8Array | null = null;  // Session passkey for admin messages
-  private sessionPasskeyExpiry: number | null = null;  // Expiry time (expires after 300 seconds)
+  private actualDeviceConfig: any = null;  // Store actual device config (local node)
+  private actualModuleConfig: any = null;  // Store actual module config (local node)
+  private sessionPasskey: Uint8Array | null = null;  // Session passkey for local node (backward compatibility)
+  private sessionPasskeyExpiry: number | null = null;  // Expiry time for local node (expires after 300 seconds)
+  // Per-node session passkey storage for remote admin commands
+  private remoteSessionPasskeys: Map<number, { 
+    passkey: Uint8Array; 
+    expiry: number 
+  }> = new Map();
+  // Per-node config storage for remote nodes
+  private remoteNodeConfigs: Map<number, {
+    deviceConfig: any;
+    moduleConfig: any;
+    lastUpdated: number;
+  }> = new Map();
+  // Per-node channel storage for remote nodes
+  private remoteNodeChannels: Map<number, Map<number, any>> = new Map();
+  // Per-node owner storage for remote nodes
+  private remoteNodeOwners: Map<number, any> = new Map();
   private favoritesSupportCache: boolean | null = null;  // Cache firmware support check result
   private cachedAutoAckRegex: { pattern: string; regex: RegExp } | null = null;  // Cached compiled regex
 
@@ -1455,7 +1471,7 @@ class MeshtasticManager {
             await this.processRoutingErrorMessage(meshPacket, processedPayload as any);
             break;
           case 6: // ADMIN_APP
-            await this.processAdminMessage(processedPayload as Uint8Array);
+            await this.processAdminMessage(processedPayload as Uint8Array, meshPacket);
             break;
           case 71: // NEIGHBORINFO_APP
             await this.processNeighborInfoProtobuf(meshPacket, processedPayload as any);
@@ -5737,8 +5753,9 @@ class MeshtasticManager {
 
   /**
    * Process incoming admin messages and extract session passkey
+   * Extracts session passkeys from ALL admin responses (per research findings)
    */
-  private async processAdminMessage(payload: Uint8Array): Promise<void> {
+  private async processAdminMessage(payload: Uint8Array, meshPacket: any): Promise<void> {
     try {
       logger.debug('⚙️ Processing ADMIN_APP message, payload size:', payload.length);
       const adminMsg = protobufService.decodeAdminMessage(payload);
@@ -5749,19 +5766,126 @@ class MeshtasticManager {
 
       logger.debug('⚙️ Decoded admin message keys:', Object.keys(adminMsg));
 
-      // Extract session passkey if present
+      // Extract session passkey from ALL admin responses (per research findings)
       if (adminMsg.sessionPasskey && adminMsg.sessionPasskey.length > 0) {
-        this.sessionPasskey = new Uint8Array(adminMsg.sessionPasskey);
-        this.sessionPasskeyExpiry = Date.now() + (290 * 1000); // 290 seconds (10 second buffer before 300s expiry)
-        logger.debug('🔑 Session passkey received and stored (expires in 290 seconds)');
+        const fromNum = meshPacket.from ? Number(meshPacket.from) : 0;
+        const localNodeNum = this.localNodeInfo?.nodeNum || 0;
+        
+        if (fromNum === localNodeNum || fromNum === 0) {
+          // Local node - store in legacy location for backward compatibility
+          this.sessionPasskey = new Uint8Array(adminMsg.sessionPasskey);
+          this.sessionPasskeyExpiry = Date.now() + (290 * 1000); // 290 seconds (10 second buffer before 300s expiry)
+          logger.debug('🔑 Session passkey received from local node and stored (expires in 290 seconds)');
+        } else {
+          // Remote node - store per-node
+          this.remoteSessionPasskeys.set(fromNum, {
+            passkey: new Uint8Array(adminMsg.sessionPasskey),
+            expiry: Date.now() + (290 * 1000) // 290 seconds
+          });
+          logger.debug(`🔑 Session passkey received from remote node ${fromNum} and stored (expires in 290 seconds)`);
+        }
       }
 
-      // Log the response type for debugging
+      // Process config responses from remote nodes
+      const fromNum = meshPacket.from ? Number(meshPacket.from) : 0;
+      const localNodeNum = this.localNodeInfo?.nodeNum || 0;
+      const isRemoteNode = fromNum !== 0 && fromNum !== localNodeNum;
+
       if (adminMsg.getConfigResponse) {
-        logger.debug('⚙️ Received GetConfigResponse (session key)');
+        logger.debug('⚙️ Received GetConfigResponse from node', fromNum);
+        logger.debug('⚙️ GetConfigResponse structure:', JSON.stringify(Object.keys(adminMsg.getConfigResponse || {})));
+        if (isRemoteNode) {
+          // Store config for remote node
+          // getConfigResponse is a Config object containing device, lora, position, etc.
+          if (!this.remoteNodeConfigs.has(fromNum)) {
+            this.remoteNodeConfigs.set(fromNum, {
+              deviceConfig: {},
+              moduleConfig: {},
+              lastUpdated: Date.now()
+            });
+          }
+          const nodeConfig = this.remoteNodeConfigs.get(fromNum)!;
+          // getConfigResponse is a Config object with device, lora, position fields
+          // Assign it directly (don't spread, as it already has the correct structure)
+          nodeConfig.deviceConfig = adminMsg.getConfigResponse;
+          nodeConfig.lastUpdated = Date.now();
+          logger.debug(`📊 Stored config response from remote node ${fromNum}, keys:`, Object.keys(nodeConfig.deviceConfig));
+        }
       }
+
+      if (adminMsg.getModuleConfigResponse) {
+        logger.debug('⚙️ Received GetModuleConfigResponse from node', fromNum);
+        logger.debug('⚙️ GetModuleConfigResponse structure:', JSON.stringify(Object.keys(adminMsg.getModuleConfigResponse || {})));
+        if (isRemoteNode) {
+          // Store module config for remote node
+          // getModuleConfigResponse is a ModuleConfig object containing mqtt, neighborInfo, etc.
+          if (!this.remoteNodeConfigs.has(fromNum)) {
+            this.remoteNodeConfigs.set(fromNum, {
+              deviceConfig: {},
+              moduleConfig: {},
+              lastUpdated: Date.now()
+            });
+          }
+          const nodeConfig = this.remoteNodeConfigs.get(fromNum)!;
+          // getModuleConfigResponse is a ModuleConfig object with mqtt, neighborInfo, etc. fields
+          // Assign it directly (don't spread, as it already has the correct structure)
+          nodeConfig.moduleConfig = adminMsg.getModuleConfigResponse;
+          nodeConfig.lastUpdated = Date.now();
+          logger.debug(`📊 Stored module config response from remote node ${fromNum}, keys:`, Object.keys(nodeConfig.moduleConfig));
+        }
+      }
+
+      // Process channel responses from remote nodes
+      if (adminMsg.getChannelResponse) {
+        logger.debug('⚙️ Received GetChannelResponse from node', fromNum);
+        if (isRemoteNode) {
+          // Store channel for remote node
+          if (!this.remoteNodeChannels.has(fromNum)) {
+            this.remoteNodeChannels.set(fromNum, new Map());
+          }
+          const nodeChannels = this.remoteNodeChannels.get(fromNum)!;
+          // getChannelResponse contains the channel data
+          const channel = adminMsg.getChannelResponse;
+          // The channel.index in the response is 0-based (0-7) per protobuf definition
+          // The request uses index + 1 (1-based, 1-8), but the response Channel.index is 0-based
+          let storedIndex = channel.index;
+          if (storedIndex === undefined || storedIndex === null) {
+            logger.warn(`⚠️ Channel response from node ${fromNum} missing index field`);
+            // Skip storing this channel but continue processing other admin message types
+          } else if (storedIndex < 0 || storedIndex > 7) {
+            // Validate the index is in the valid range (0-7)
+            logger.warn(`⚠️ Channel index ${storedIndex} from node ${fromNum} is out of valid range (0-7), skipping`);
+            // Skip storing this channel but continue processing other admin message types
+          } else {
+            // Use the index directly - it's already 0-based
+            nodeChannels.set(storedIndex, channel);
+            logger.debug(`📊 Stored channel ${storedIndex} (from response index ${channel.index}) from remote node ${fromNum}`, {
+              hasSettings: !!channel.settings,
+              name: channel.settings?.name,
+              role: channel.role,
+              channelKeys: Object.keys(channel),
+              settingsKeys: channel.settings ? Object.keys(channel.settings) : [],
+              fullChannel: JSON.stringify(channel, null, 2)
+            });
+          }
+        }
+      }
+
+      // Process owner responses from remote nodes
       if (adminMsg.getOwnerResponse) {
-        logger.debug('⚙️ Received GetOwnerResponse');
+        logger.debug('⚙️ Received GetOwnerResponse from node', fromNum);
+        if (isRemoteNode) {
+          // Store owner for remote node
+          this.remoteNodeOwners.set(fromNum, adminMsg.getOwnerResponse);
+          logger.debug(`📊 Stored owner response from remote node ${fromNum}`, {
+            longName: adminMsg.getOwnerResponse.longName,
+            shortName: adminMsg.getOwnerResponse.shortName,
+            isUnmessagable: adminMsg.getOwnerResponse.isUnmessagable
+          });
+        }
+      }
+      if (adminMsg.getDeviceMetadataResponse) {
+        logger.debug('⚙️ Received GetDeviceMetadataResponse');
       }
     } catch (error) {
       logger.error('❌ Error processing admin message:', error);
@@ -5769,7 +5893,7 @@ class MeshtasticManager {
   }
 
   /**
-   * Check if current session passkey is valid
+   * Check if current session passkey is valid (for local node)
    */
   private isSessionPasskeyValid(): boolean {
     if (!this.sessionPasskey || !this.sessionPasskeyExpiry) {
@@ -5779,7 +5903,44 @@ class MeshtasticManager {
   }
 
   /**
-   * Request session passkey from the device
+   * Get session passkey for a specific node (local or remote)
+   * @param nodeNum Node number (0 or local node num for local, other for remote)
+   * @returns Session passkey if valid, null otherwise
+   */
+  getSessionPasskey(nodeNum: number): Uint8Array | null {
+    const localNodeNum = this.localNodeInfo?.nodeNum || 0;
+    
+    if (nodeNum === 0 || nodeNum === localNodeNum) {
+      // Local node - use legacy storage
+      if (this.isSessionPasskeyValid()) {
+        return this.sessionPasskey;
+      }
+      return null;
+    } else {
+      // Remote node - check per-node storage
+      const stored = this.remoteSessionPasskeys.get(nodeNum);
+      if (stored && Date.now() < stored.expiry) {
+        return stored.passkey;
+      }
+      // Clean up expired entry
+      if (stored) {
+        this.remoteSessionPasskeys.delete(nodeNum);
+      }
+      return null;
+    }
+  }
+
+  /**
+   * Check if session passkey is valid for a specific node
+   * @param nodeNum Node number
+   * @returns true if valid session passkey exists
+   */
+  isSessionPasskeyValidForNode(nodeNum: number): boolean {
+    return this.getSessionPasskey(nodeNum) !== null;
+  }
+
+  /**
+   * Request session passkey from the device (local node)
    */
   async requestSessionPasskey(): Promise<void> {
     if (!this.isConnected || !this.transport) {
@@ -5802,6 +5963,58 @@ class MeshtasticManager {
       }
     } catch (error) {
       logger.error('❌ Error requesting session passkey:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Request session passkey from a remote node
+   * Uses getDeviceMetadataRequest (per research findings - Android pattern)
+   * @param destinationNodeNum The node number to request session passkey from
+   * @returns Session passkey if received, null otherwise
+   */
+  async requestRemoteSessionPasskey(destinationNodeNum: number): Promise<Uint8Array | null> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    if (!this.localNodeInfo?.nodeNum) {
+      throw new Error('Local node number not available');
+    }
+
+    try {
+      // Use getDeviceMetadataRequest (per research - Android pattern uses this for SESSIONKEY_CONFIG)
+      // We'll need to create this message directly using protobufService
+      const root = getProtobufRoot();
+      if (!root) {
+        throw new Error('Protobuf definitions not loaded. Please ensure protobuf definitions are initialized.');
+      }
+      const AdminMessage = root.lookupType('meshtastic.AdminMessage');
+      if (!AdminMessage) {
+        throw new Error('AdminMessage type not found');
+      }
+
+      const adminMsg = AdminMessage.create({
+        getDeviceMetadataRequest: true
+      });
+      const encoded = AdminMessage.encode(adminMsg).finish();
+      
+      const adminPacket = protobufService.createAdminPacket(encoded, destinationNodeNum, this.localNodeInfo.nodeNum);
+      
+      await this.transport.send(adminPacket);
+      logger.debug(`🔑 Requested session passkey from remote node ${destinationNodeNum} (via getDeviceMetadataRequest)`);
+
+      // Wait for the response (admin messages can take time)
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
+      // Check if we received the passkey
+      const passkey = this.getSessionPasskey(destinationNodeNum);
+      if (!passkey) {
+        logger.debug(`⚠️ No session passkey response received from remote node ${destinationNodeNum}`);
+      }
+      return passkey;
+    } catch (error) {
+      logger.error(`❌ Error requesting session passkey from remote node ${destinationNodeNum}:`, error);
       throw error;
     }
   }
@@ -5988,6 +6201,297 @@ class MeshtasticManager {
   }
 
   /**
+   * Request config from a remote node
+   * @param destinationNodeNum The remote node number
+   * @param configType The config type to request (DEVICE_CONFIG=0, LORA_CONFIG=5, etc.)
+   * @param isModuleConfig Whether this is a module config request (false for device configs)
+   * @returns The config data if received, null otherwise
+   */
+  async requestRemoteConfig(destinationNodeNum: number, configType: number, isModuleConfig: boolean = false): Promise<any> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    if (!this.localNodeInfo?.nodeNum) {
+      throw new Error('Local node number not available');
+    }
+
+    try {
+      // Get or request session passkey
+      let sessionPasskey = this.getSessionPasskey(destinationNodeNum);
+      if (!sessionPasskey) {
+        logger.debug(`Requesting session passkey for remote node ${destinationNodeNum}`);
+        sessionPasskey = await this.requestRemoteSessionPasskey(destinationNodeNum);
+        if (!sessionPasskey) {
+          throw new Error(`Failed to obtain session passkey for remote node ${destinationNodeNum}`);
+        }
+      }
+
+      // Create the config request message with session passkey
+      const root = getProtobufRoot();
+      if (!root) {
+        throw new Error('Protobuf definitions not loaded. Please ensure protobuf definitions are initialized.');
+      }
+      const AdminMessage = root.lookupType('meshtastic.AdminMessage');
+      if (!AdminMessage) {
+        throw new Error('AdminMessage type not found');
+      }
+
+      const adminMsgData: any = {
+        sessionPasskey: sessionPasskey
+      };
+
+      if (isModuleConfig) {
+        adminMsgData.getModuleConfigRequest = configType;
+      } else {
+        adminMsgData.getConfigRequest = configType;
+      }
+
+      const adminMsg = AdminMessage.create(adminMsgData);
+      const encoded = AdminMessage.encode(adminMsg).finish();
+
+      // Send the request
+      const adminPacket = protobufService.createAdminPacket(encoded, destinationNodeNum, this.localNodeInfo.nodeNum);
+      await this.transport.send(adminPacket);
+      logger.debug(`📡 Requested ${isModuleConfig ? 'module' : 'device'} config type ${configType} from remote node ${destinationNodeNum}`);
+
+      // Clear any existing config for this type before requesting (to ensure fresh data)
+      // Map config types to their keys
+      if (isModuleConfig) {
+        const moduleConfigMap: { [key: number]: string } = {
+          0: 'mqtt',
+          9: 'neighborInfo'
+        };
+        const configKey = moduleConfigMap[configType];
+        if (configKey) {
+          const nodeConfig = this.remoteNodeConfigs.get(destinationNodeNum);
+          if (nodeConfig?.moduleConfig) {
+            delete nodeConfig.moduleConfig[configKey];
+          }
+        }
+      } else {
+        const deviceConfigMap: { [key: number]: string } = {
+          0: 'device',
+          5: 'lora',
+          6: 'position'
+        };
+        const configKey = deviceConfigMap[configType];
+        if (configKey) {
+          const nodeConfig = this.remoteNodeConfigs.get(destinationNodeNum);
+          if (nodeConfig?.deviceConfig) {
+            delete nodeConfig.deviceConfig[configKey];
+          }
+        }
+      }
+
+      // Wait for the response (config responses can take time, especially over mesh)
+      // Remote nodes may take longer due to mesh routing
+      // Poll for the response up to 10 seconds
+      const maxWaitTime = 10000; // 10 seconds
+      const pollInterval = 200; // Check every 200ms
+      const maxPolls = maxWaitTime / pollInterval;
+      
+      for (let i = 0; i < maxPolls; i++) {
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+        
+        // Check if we have the config for this remote node
+        const nodeConfig = this.remoteNodeConfigs.get(destinationNodeNum);
+        if (nodeConfig) {
+          if (isModuleConfig) {
+            // Map module config types to their keys
+            const moduleConfigMap: { [key: number]: string } = {
+              0: 'mqtt',
+              9: 'neighborInfo'
+            };
+            const configKey = moduleConfigMap[configType];
+            if (configKey && nodeConfig.moduleConfig?.[configKey]) {
+              logger.debug(`✅ Received ${configKey} config from remote node ${destinationNodeNum}`);
+              return nodeConfig.moduleConfig[configKey];
+            }
+          } else {
+            // Map device config types to their keys
+            const deviceConfigMap: { [key: number]: string } = {
+              0: 'device',
+              5: 'lora',
+              6: 'position'
+            };
+            const configKey = deviceConfigMap[configType];
+            if (configKey && nodeConfig.deviceConfig?.[configKey]) {
+              logger.debug(`✅ Received ${configKey} config from remote node ${destinationNodeNum}`);
+              return nodeConfig.deviceConfig[configKey];
+            }
+          }
+        }
+      }
+
+      logger.warn(`⚠️ Config type ${configType} not found in response from remote node ${destinationNodeNum} after waiting ${maxWaitTime}ms`);
+      return null;
+    } catch (error) {
+      logger.error(`❌ Error requesting config from remote node ${destinationNodeNum}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Request a specific channel from a remote node
+   * @param destinationNodeNum The remote node number
+   * @param channelIndex The channel index (0-7)
+   * @returns The channel data if received, null otherwise
+   */
+  async requestRemoteChannel(destinationNodeNum: number, channelIndex: number): Promise<any> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    if (!this.localNodeInfo?.nodeNum) {
+      throw new Error('Local node number not available');
+    }
+
+    try {
+      // Get or request session passkey
+      let sessionPasskey = this.getSessionPasskey(destinationNodeNum);
+      if (!sessionPasskey) {
+        logger.debug(`Requesting session passkey for remote node ${destinationNodeNum}`);
+        sessionPasskey = await this.requestRemoteSessionPasskey(destinationNodeNum);
+        if (!sessionPasskey) {
+          throw new Error(`Failed to obtain session passkey for remote node ${destinationNodeNum}`);
+        }
+      }
+
+      // Create the channel request message with session passkey
+      // Note: getChannelRequest uses channelIndex + 1 (per protobuf spec)
+      const root = getProtobufRoot();
+      if (!root) {
+        throw new Error('Protobuf definitions not loaded. Please ensure protobuf definitions are initialized.');
+      }
+      const AdminMessage = root.lookupType('meshtastic.AdminMessage');
+      if (!AdminMessage) {
+        throw new Error('AdminMessage type not found');
+      }
+
+      const adminMsg = AdminMessage.create({
+        sessionPasskey: sessionPasskey,
+        getChannelRequest: channelIndex + 1  // Protobuf uses index + 1
+      });
+      const encoded = AdminMessage.encode(adminMsg).finish();
+
+      // Send the request
+      const adminPacket = protobufService.createAdminPacket(encoded, destinationNodeNum, this.localNodeInfo.nodeNum);
+      await this.transport.send(adminPacket);
+      logger.debug(`📡 Requested channel ${channelIndex} from remote node ${destinationNodeNum}`);
+
+      // Clear any existing channel for this index before requesting (to ensure fresh data)
+      const nodeChannels = this.remoteNodeChannels.get(destinationNodeNum);
+      if (nodeChannels) {
+        nodeChannels.delete(channelIndex);
+      }
+      
+      // Wait for the response
+      // Use longer timeout for mesh routing - responses can take longer over mesh
+      const maxWaitTime = 8000; // 8 seconds (longer for mesh routing delays)
+      const pollInterval = 300; // Check every 300ms
+      const maxPolls = maxWaitTime / pollInterval;
+      
+      for (let i = 0; i < maxPolls; i++) {
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+        
+        // Check if we have the channel for this remote node
+        const nodeChannelsCheck = this.remoteNodeChannels.get(destinationNodeNum);
+        if (nodeChannelsCheck && nodeChannelsCheck.has(channelIndex)) {
+          const channel = nodeChannelsCheck.get(channelIndex);
+          logger.debug(`✅ Received channel ${channelIndex} from remote node ${destinationNodeNum}`, {
+            hasSettings: !!channel.settings,
+            name: channel.settings?.name,
+            role: channel.role
+          });
+          return channel;
+        }
+      }
+
+      logger.warn(`⚠️ Channel ${channelIndex} not found in response from remote node ${destinationNodeNum} after waiting ${maxWaitTime}ms`);
+      // Log what channels we did receive for debugging
+      const receivedChannels = this.remoteNodeChannels.get(destinationNodeNum);
+      if (receivedChannels) {
+        logger.debug(`📊 Received channels for node ${destinationNodeNum}:`, Array.from(receivedChannels.keys()));
+      }
+      return null;
+    } catch (error) {
+      logger.error(`❌ Error requesting channel from remote node ${destinationNodeNum}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Request owner information from a remote node
+   * @param destinationNodeNum The remote node number
+   * @returns The owner data if received, null otherwise
+   */
+  async requestRemoteOwner(destinationNodeNum: number): Promise<any> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    if (!this.localNodeInfo?.nodeNum) {
+      throw new Error('Local node number not available');
+    }
+
+    try {
+      // Get or request session passkey
+      let sessionPasskey = this.getSessionPasskey(destinationNodeNum);
+      if (!sessionPasskey) {
+        logger.debug(`Requesting session passkey for remote node ${destinationNodeNum}`);
+        sessionPasskey = await this.requestRemoteSessionPasskey(destinationNodeNum);
+        if (!sessionPasskey) {
+          throw new Error(`Failed to obtain session passkey for remote node ${destinationNodeNum}`);
+        }
+      }
+
+      // Create the owner request message with session passkey
+      const root = getProtobufRoot();
+      const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
+      if (!AdminMessage) {
+        throw new Error('AdminMessage type not found');
+      }
+
+      const adminMsg = AdminMessage.create({
+        sessionPasskey: sessionPasskey,
+        getOwnerRequest: true  // getOwnerRequest is a bool
+      });
+      const encoded = AdminMessage.encode(adminMsg).finish();
+
+      // Send the request
+      const adminPacket = protobufService.createAdminPacket(encoded, destinationNodeNum, this.localNodeInfo.nodeNum);
+      await this.transport.send(adminPacket);
+      logger.debug(`📡 Requested owner info from remote node ${destinationNodeNum}`);
+
+      // Clear any existing owner for this node before requesting (to ensure fresh data)
+      this.remoteNodeOwners.delete(destinationNodeNum);
+      
+      // Wait for the response
+      const maxWaitTime = 3000; // 3 seconds
+      const pollInterval = 200; // Check every 200ms
+      const maxPolls = maxWaitTime / pollInterval;
+      
+      for (let i = 0; i < maxPolls; i++) {
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+        
+        // Check if we have the owner for this remote node
+        if (this.remoteNodeOwners.has(destinationNodeNum)) {
+          const owner = this.remoteNodeOwners.get(destinationNodeNum);
+          logger.debug(`✅ Received owner info from remote node ${destinationNodeNum}`);
+          return owner;
+        }
+      }
+
+      logger.warn(`⚠️ Owner info not found in response from remote node ${destinationNodeNum} after waiting ${maxWaitTime}ms`);
+      return null;
+    } catch (error) {
+      logger.error(`❌ Error requesting owner info from remote node ${destinationNodeNum}:`, error);
+      throw error;
+    }
+  }
+
+  /**
    * Request all module configurations from the device for complete backup
    * This requests all 13 module config types defined in the protobufs
    */
@@ -6027,6 +6531,39 @@ class MeshtasticManager {
     }
 
     logger.info('✅ All module config requests sent');
+  }
+
+  /**
+   * Send an admin command to a node (local or remote)
+   * The admin message should already be built with session passkey if needed
+   * @param adminMessagePayload The encoded admin message (should already include session passkey for remote nodes)
+   * @param destinationNodeNum Destination node number (0 or local node num for local, other for remote)
+   * @returns Promise that resolves when command is sent
+   */
+  async sendAdminCommand(adminMessagePayload: Uint8Array, destinationNodeNum: number): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    if (!this.localNodeInfo?.nodeNum) {
+      throw new Error('Local node information not available');
+    }
+
+    const localNodeNum = this.localNodeInfo.nodeNum;
+
+    try {
+      const adminPacket = protobufService.createAdminPacket(
+        adminMessagePayload,
+        destinationNodeNum,
+        localNodeNum
+      );
+
+      await this.transport.send(adminPacket);
+      logger.debug(`✅ Sent admin command to node ${destinationNodeNum}`);
+    } catch (error) {
+      logger.error(`❌ Error sending admin command to node ${destinationNodeNum}:`, error);
+      throw error;
+    }
   }
 
   /**

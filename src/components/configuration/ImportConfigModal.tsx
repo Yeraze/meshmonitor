@@ -6,6 +6,7 @@ interface ImportConfigModalProps {
   isOpen: boolean;
   onClose: () => void;
   onImportSuccess: () => void;
+  nodeNum?: number; // Optional node number for remote nodes
 }
 
 interface DecodedChannel {
@@ -54,7 +55,7 @@ const regionNames: { [key: number]: string } = {
   18: 'LORA_24'
 };
 
-export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, onClose, onImportSuccess }) => {
+export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, onClose, onImportSuccess, nodeNum }) => {
   const { t } = useTranslation();
   const [url, setUrl] = useState('');
   const [decoded, setDecoded] = useState<DecodedConfig | null>(null);
@@ -103,7 +104,7 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
       // - Write selected channels to the device
       // - Write LoRa config to the device if selected
       setImportStatus(t('import_config.status_sending'));
-      const result = await apiService.importConfig(url);
+      const result = await apiService.importConfig(url, nodeNum);
 
       console.log('Import result:', result);
 

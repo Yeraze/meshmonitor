@@ -661,7 +661,36 @@ class ProtobufService {
       }
 
       const decoded = AdminMessage.decode(data);
-      const adminMsg = AdminMessage.toObject(decoded);
+      // Use toObject with proper options to ensure nested objects are converted to camelCase
+      const adminMsg = AdminMessage.toObject(decoded, {
+        longs: String,
+        enums: Number,  // Use Number instead of String to preserve enum values (0, 1, 2)
+        bytes: Buffer,  // Use Buffer instead of String to preserve byte arrays
+        defaults: true,
+        arrays: true,
+        objects: true,
+        oneofs: true
+      });
+      
+      // If there's a getChannelResponse, ensure the nested Channel object is properly converted
+      if (adminMsg.getChannelResponse) {
+        const Channel = root?.lookupType('meshtastic.Channel');
+        if (Channel) {
+          // Re-encode and decode the channel to ensure proper conversion
+          const channelEncoded = Channel.encode(adminMsg.getChannelResponse).finish();
+          const channelDecoded = Channel.decode(channelEncoded);
+          adminMsg.getChannelResponse = Channel.toObject(channelDecoded, {
+            longs: String,
+            enums: Number,  // Use Number instead of String to preserve enum values
+            bytes: Buffer,  // Use Buffer instead of String to preserve byte arrays
+            defaults: true,
+            arrays: true,
+            objects: true,
+            oneofs: true
+          });
+        }
+      }
+      
       logger.debug('⚙️ Decoded AdminMessage:', JSON.stringify(adminMsg, null, 2));
       return adminMsg;
     } catch (error) {
