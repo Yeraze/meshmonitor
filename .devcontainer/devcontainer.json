@@ -107,8 +107,9 @@
   // Displays welcome message with helpful commands and reminders
   "postAttachCommand": "bash .devcontainer/welcome.sh",
 
-  // Use non-root 'node' user for security and proper file permissions
-  "remoteUser": "node",
+  // Note: Running as root to avoid Windows volume mount permission issues
+  // All operations will have necessary permissions to create directories
+  // This is safe in a containerized development environment
 
   // Set development environment variables
   "remoteEnv": {
