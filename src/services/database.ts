@@ -420,7 +420,7 @@ class DatabaseService {
         autoAnnounceOnStart: 'false',
         autoAnnounceUseSchedule: 'false',
         autoAnnounceSchedule: '0 */6 * * *',
-        tracerouteIntervalMinutes: '0'
+        tracerouteIntervalMinutes: '0',
       };
 
       Object.entries(automationSettings).forEach(([key, defaultValue]) => {
@@ -442,9 +442,13 @@ class DatabaseService {
     logger.debug('Running authentication migration...');
     try {
       // Check if migration has already been run
-      const tableCheck = this.db.prepare(`
+      const tableCheck = this.db
+        .prepare(
+          `
         SELECT name FROM sqlite_master WHERE type='table' AND name='users'
-      `).get();
+      `
+        )
+        .get();
 
       if (!tableCheck) {
         logger.debug('Authentication tables not found, running migration...');
@@ -1075,7 +1079,7 @@ class DatabaseService {
           nodeNum: broadcastNodeNum,
           nodeId: broadcastNodeId,
           longName: 'Broadcast',
-          shortName: 'BCAST'
+          shortName: 'BCAST',
         });
 
         // Verify it was created
@@ -1536,12 +1540,12 @@ class DatabaseService {
             const toNode = this.getNode(toNodeNum);
 
             // Only calculate distance if both nodes have position data
-            if (fromNode?.latitude && fromNode?.longitude &&
-                toNode?.latitude && toNode?.longitude) {
-
+            if (fromNode?.latitude && fromNode?.longitude && toNode?.latitude && toNode?.longitude) {
               const distanceKm = calculateDistance(
-                fromNode.latitude, fromNode.longitude,
-                toNode.latitude, toNode.longitude
+                fromNode.latitude,
+                fromNode.longitude,
+                toNode.latitude,
+                toNode.longitude
               );
 
               const segment: DbRouteSegment = {
@@ -1552,7 +1556,7 @@ class DatabaseService {
                 distanceKm,
                 isRecordHolder: false,
                 timestamp: traceroute.timestamp,
-                createdAt: Date.now()
+                createdAt: Date.now(),
               };
 
               this.insertRouteSegment(segment);
@@ -1570,12 +1574,12 @@ class DatabaseService {
             const toNode = this.getNode(toNodeNum);
 
             // Only calculate distance if both nodes have position data
-            if (fromNode?.latitude && fromNode?.longitude &&
-                toNode?.latitude && toNode?.longitude) {
-
+            if (fromNode?.latitude && fromNode?.longitude && toNode?.latitude && toNode?.longitude) {
               const distanceKm = calculateDistance(
-                fromNode.latitude, fromNode.longitude,
-                toNode.latitude, toNode.longitude
+                fromNode.latitude,
+                fromNode.longitude,
+                toNode.latitude,
+                toNode.longitude
               );
 
               const segment: DbRouteSegment = {
@@ -1586,7 +1590,7 @@ class DatabaseService {
                 distanceKm,
                 isRecordHolder: false,
                 timestamp: traceroute.timestamp,
-                createdAt: Date.now()
+                createdAt: Date.now(),
               };
 
               this.insertRouteSegment(segment);
@@ -1609,8 +1613,9 @@ class DatabaseService {
 
       // Mark migration as completed
       this.setSetting(migrationKey, 'completed');
-      logger.debug(`✅ Migration completed! Processed ${processedCount} traceroutes, created ${segmentsCreated} route segments`);
-
+      logger.debug(
+        `✅ Migration completed! Processed ${processedCount} traceroutes, created ${segmentsCreated} route segments`
+      );
     } catch (error) {
       logger.error('❌ Error during route segments migration:', error);
       // Don't mark as completed if there was an error
@@ -1751,13 +1756,13 @@ class DatabaseService {
       // Send notification for newly discovered node (only if not broadcast node)
       if (nodeData.nodeNum !== 4294967295 && nodeData.nodeId) {
         // Import notification service dynamically to avoid circular dependencies
-        import('../server/services/notificationService.js').then(({ notificationService }) => {
-          notificationService.notifyNewNode(
-            nodeData.nodeId!,
-            nodeData.longName || nodeData.nodeId!,
-            nodeData.hopsAway
-          ).catch(err => logger.error('Failed to send new node notification:', err));
-        }).catch(err => logger.error('Failed to import notification service:', err));
+        import('../server/services/notificationService.js')
+          .then(({ notificationService }) => {
+            notificationService
+              .notifyNewNode(nodeData.nodeId!, nodeData.longName || nodeData.nodeId!, nodeData.hopsAway)
+              .catch(err => logger.error('Failed to send new node notification:', err));
+          })
+          .catch(err => logger.error('Failed to import notification service:', err));
       }
     }
   }
@@ -1776,7 +1781,7 @@ class DatabaseService {
 
   getActiveNodes(sinceDays: number = 7): DbNode[] {
     // lastHeard is stored in seconds (Unix timestamp), so convert cutoff to seconds
-    const cutoff = Math.floor(Date.now() / 1000) - (sinceDays * 24 * 60 * 60);
+    const cutoff = Math.floor(Date.now() / 1000) - sinceDays * 24 * 60 * 60;
     const stmt = this.db.prepare('SELECT * FROM nodes WHERE lastHeard > ? ORDER BY lastHeard DESC');
     const nodes = stmt.all(cutoff) as DbNode[];
     return nodes.map(node => this.normalizeBigInts(node));
@@ -1791,6 +1796,22 @@ class DatabaseService {
     const stmt = this.db.prepare('UPDATE nodes SET welcomedAt = ? WHERE welcomedAt IS NULL');
     const result = stmt.run(now);
     return result.changes;
+  }
+
+  /**
+   * Atomically mark a node as welcomed if not already welcomed
+   * Returns true if the node was marked, false if it was already welcomed
+   * This provides an atomic check-and-set operation to prevent race conditions
+   */
+  markNodeAsWelcomedIfNotAlready(nodeNum: number, nodeId: string): boolean {
+    const now = Date.now();
+    const stmt = this.db.prepare(`
+      UPDATE nodes 
+      SET welcomedAt = ?, updatedAt = ? 
+      WHERE nodeNum = ? AND nodeId = ? AND welcomedAt IS NULL
+    `);
+    const result = stmt.run(now, now, nodeNum, nodeId);
+    return result.changes > 0;
   }
 
   /**
@@ -2010,18 +2031,25 @@ class DatabaseService {
 
         // Calculate distance between min/max corners using Haversine formula
         const R = 6371; // Earth's radius in km
-        const dLat = (maxLat - minLat) * Math.PI / 180;
-        const dLon = (maxLon - minLon) * Math.PI / 180;
-        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                  Math.cos(minLat * Math.PI / 180) * Math.cos(maxLat * Math.PI / 180) *
-                  Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const dLat = ((maxLat - minLat) * Math.PI) / 180;
+        const dLon = ((maxLon - minLon) * Math.PI) / 180;
+        const a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos((minLat * Math.PI) / 180) *
+            Math.cos((maxLat * Math.PI) / 180) *
+            Math.sin(dLon / 2) *
+            Math.sin(dLon / 2);
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         const distance = R * c;
 
         // If movement is greater than 100 meters (0.1 km), mark as mobile
         isMobile = distance > 0.1 ? 1 : 0;
 
-        logger.debug(`📍 Node ${nodeId} mobility check: ${latitudes.length} positions, distance=${distance.toFixed(3)}km, mobile=${isMobile}`);
+        logger.debug(
+          `📍 Node ${nodeId} mobility check: ${latitudes.length} positions, distance=${distance.toFixed(
+            3
+          )}km, mobile=${isMobile}`
+        );
       }
 
       // Update the mobile flag in the database
@@ -2046,24 +2074,24 @@ class DatabaseService {
       ORDER BY date
     `);
 
-    const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
     const results = stmt.all(cutoff) as Array<{ date: string; count: number }>;
     return results.map(row => ({
       date: row.date,
-      count: Number(row.count)
+      count: Number(row.count),
     }));
   }
 
   // Cleanup operations
   cleanupOldMessages(days: number = 30): number {
-    const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
     const stmt = this.db.prepare('DELETE FROM messages WHERE timestamp < ?');
     const result = stmt.run(cutoff);
     return Number(result.changes);
   }
 
   cleanupInactiveNodes(days: number = 30): number {
-    const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
     const stmt = this.db.prepare('DELETE FROM nodes WHERE lastHeard < ? OR lastHeard IS NULL');
     const result = stmt.run(cutoff);
     return Number(result.changes);
@@ -2145,7 +2173,7 @@ class DatabaseService {
       messagesDeleted,
       traceroutesDeleted,
       telemetryDeleted,
-      nodeDeleted
+      nodeDeleted,
     };
   }
 
@@ -2192,7 +2220,7 @@ class DatabaseService {
   exportData(): { nodes: DbNode[]; messages: DbMessage[] } {
     return {
       nodes: this.getAllNodes(),
-      messages: this.getMessages(10000) // Export last 10k messages
+      messages: this.getMessages(10000), // Export last 10k messages
     };
   }
 
@@ -2214,11 +2242,24 @@ class DatabaseService {
 
       for (const node of data.nodes) {
         nodeStmt.run(
-          node.nodeNum, node.nodeId, node.longName, node.shortName,
-          node.hwModel, node.macaddr, node.latitude, node.longitude,
-          node.altitude, node.batteryLevel, node.voltage,
-          node.channelUtilization, node.airUtilTx, node.lastHeard,
-          node.snr, node.rssi, node.createdAt, node.updatedAt
+          node.nodeNum,
+          node.nodeId,
+          node.longName,
+          node.shortName,
+          node.hwModel,
+          node.macaddr,
+          node.latitude,
+          node.longitude,
+          node.altitude,
+          node.batteryLevel,
+          node.voltage,
+          node.channelUtilization,
+          node.airUtilTx,
+          node.lastHeard,
+          node.snr,
+          node.rssi,
+          node.createdAt,
+          node.updatedAt
         );
       }
 
@@ -2232,10 +2273,17 @@ class DatabaseService {
 
       for (const message of data.messages) {
         msgStmt.run(
-          message.id, message.fromNodeNum, message.toNodeNum,
-          message.fromNodeId, message.toNodeId, message.text,
-          message.channel, message.portnum, message.timestamp,
-          message.rxTime, message.createdAt
+          message.id,
+          message.fromNodeNum,
+          message.toNodeNum,
+          message.fromNodeId,
+          message.toNodeId,
+          message.text,
+          message.channel,
+          message.portnum,
+          message.timestamp,
+          message.rxTime,
+          message.createdAt
         );
       }
     });
@@ -2244,7 +2292,15 @@ class DatabaseService {
   }
 
   // Channel operations
-  upsertChannel(channelData: { id?: number; name: string; psk?: string; role?: number; uplinkEnabled?: boolean; downlinkEnabled?: boolean; positionPrecision?: number }): void {
+  upsertChannel(channelData: {
+    id?: number;
+    name: string;
+    psk?: string;
+    role?: number;
+    uplinkEnabled?: boolean;
+    downlinkEnabled?: boolean;
+    positionPrecision?: number;
+  }): void {
     const now = Date.now();
 
     // Defensive checks for channel roles:
@@ -2253,23 +2309,29 @@ class DatabaseService {
     // A mesh network requires exactly ONE PRIMARY channel, and Channel 0 is conventionally PRIMARY
     if (channelData.id === 0 && channelData.role === 0) {
       logger.warn(`⚠️  Blocking attempt to set Channel 0 role to DISABLED (0), forcing to PRIMARY (1)`);
-      channelData = { ...channelData, role: 1 };  // Clone and override
+      channelData = { ...channelData, role: 1 }; // Clone and override
     }
 
     if (channelData.id !== undefined && channelData.id > 0 && channelData.role === 1) {
-      logger.warn(`⚠️  Blocking attempt to set Channel ${channelData.id} role to PRIMARY (1), forcing to SECONDARY (2)`);
+      logger.warn(
+        `⚠️  Blocking attempt to set Channel ${channelData.id} role to PRIMARY (1), forcing to SECONDARY (2)`
+      );
       logger.warn(`⚠️  Only Channel 0 can be PRIMARY - all other channels must be SECONDARY or DISABLED`);
-      channelData = { ...channelData, role: 2 };  // Clone and override to SECONDARY
+      channelData = { ...channelData, role: 2 }; // Clone and override to SECONDARY
     }
 
-    logger.info(`📝 upsertChannel called with ID: ${channelData.id}, name: "${channelData.name}" (length: ${channelData.name.length})`);
+    logger.info(
+      `📝 upsertChannel called with ID: ${channelData.id}, name: "${channelData.name}" (length: ${channelData.name.length})`
+    );
 
     let existingChannel: DbChannel | null = null;
 
     // If we have an ID, check by ID FIRST
     if (channelData.id !== undefined) {
       existingChannel = this.getChannelById(channelData.id);
-      logger.info(`📝 getChannelById(${channelData.id}) returned: ${existingChannel ? `"${existingChannel.name}"` : 'null'}`);
+      logger.info(
+        `📝 getChannelById(${channelData.id}) returned: ${existingChannel ? `"${existingChannel.name}"` : 'null'}`
+      );
     }
 
     // Channel ID is required - we no longer support name-based lookups
@@ -2322,7 +2384,11 @@ class DatabaseService {
         now,
         now
       );
-      logger.debug(`Created channel: ${channelData.name} (ID: ${channelData.id !== undefined ? channelData.id : 'auto'}), lastInsertRowid: ${result.lastInsertRowid}`);
+      logger.debug(
+        `Created channel: ${channelData.name} (ID: ${
+          channelData.id !== undefined ? channelData.id : 'auto'
+        }), lastInsertRowid: ${result.lastInsertRowid}`
+      );
     }
   }
 
@@ -2330,7 +2396,11 @@ class DatabaseService {
     const stmt = this.db.prepare('SELECT * FROM channels WHERE id = ?');
     const channel = stmt.get(id) as DbChannel | null;
     if (id === 0) {
-      logger.info(`🔍 getChannelById(0) - RAW from DB: ${channel ? `name="${channel.name}" (length: ${channel.name?.length || 0})` : 'null'}`);
+      logger.info(
+        `🔍 getChannelById(0) - RAW from DB: ${
+          channel ? `name="${channel.name}" (length: ${channel.name?.length || 0})` : 'null'
+        }`
+      );
     }
     return channel ? this.normalizeBigInts(channel) : null;
   }
@@ -2491,7 +2561,12 @@ class DatabaseService {
     return positionMap;
   }
 
-  getTelemetryByNodeAveraged(nodeId: string, sinceTimestamp?: number, intervalMinutes?: number, maxHours?: number): DbTelemetry[] {
+  getTelemetryByNodeAveraged(
+    nodeId: string,
+    sinceTimestamp?: number,
+    intervalMinutes?: number,
+    maxHours?: number
+  ): DbTelemetry[] {
     // Dynamic bucketing: automatically choose interval based on time range
     // This prevents data cutoff for long time periods or chatty nodes
     let actualIntervalMinutes = intervalMinutes;
@@ -2601,8 +2676,8 @@ class DatabaseService {
       `);
 
       const pendingRecord = findPendingStmt.get(
-        tracerouteData.toNodeNum,    // Reversed: response's toNum is the requester
-        tracerouteData.fromNodeNum,  // Reversed: response's fromNum is the destination
+        tracerouteData.toNodeNum, // Reversed: response's toNum is the requester
+        tracerouteData.fromNodeNum, // Reversed: response's fromNum is the destination
         pendingTimeoutAgo
       ) as { id: number } | undefined;
 
@@ -2930,7 +3005,7 @@ class DatabaseService {
   }
 
   purgeOldTelemetry(hoursToKeep: number, favoriteDaysToKeep?: number): number {
-    const regularCutoffTime = Date.now() - (hoursToKeep * 60 * 60 * 1000);
+    const regularCutoffTime = Date.now() - hoursToKeep * 60 * 60 * 1000;
 
     // If no favorite storage duration specified, purge all telemetry older than hoursToKeep
     if (!favoriteDaysToKeep) {
@@ -2955,12 +3030,14 @@ class DatabaseService {
     if (favorites.length === 0) {
       const stmt = this.db.prepare('DELETE FROM telemetry WHERE timestamp < ?');
       const result = stmt.run(regularCutoffTime);
-      logger.debug(`🧹 Purged ${result.changes} old telemetry records (keeping last ${hoursToKeep} hours, no favorites)`);
+      logger.debug(
+        `🧹 Purged ${result.changes} old telemetry records (keeping last ${hoursToKeep} hours, no favorites)`
+      );
       return Number(result.changes);
     }
 
     // Calculate the cutoff time for favorited telemetry
-    const favoriteCutoffTime = Date.now() - (favoriteDaysToKeep * 24 * 60 * 60 * 1000);
+    const favoriteCutoffTime = Date.now() - favoriteDaysToKeep * 24 * 60 * 60 * 1000;
 
     // Build a query to purge old telemetry, exempting favorited telemetry
     // Purge non-favorited telemetry older than hoursToKeep
@@ -2971,23 +3048,19 @@ class DatabaseService {
     const conditions = favorites.map(() => '(nodeId = ? AND telemetryType = ?)').join(' OR ');
     const params = favorites.flatMap(f => [f.nodeId, f.telemetryType]);
 
-    const deleteNonFavoritesStmt = this.db.prepare(
-      `DELETE FROM telemetry WHERE timestamp < ? AND NOT (${conditions})`
-    );
+    const deleteNonFavoritesStmt = this.db.prepare(`DELETE FROM telemetry WHERE timestamp < ? AND NOT (${conditions})`);
     const nonFavoritesResult = deleteNonFavoritesStmt.run(regularCutoffTime, ...params);
     totalDeleted += Number(nonFavoritesResult.changes);
 
     // Then, delete favorited telemetry older than favoriteCutoffTime
-    const deleteFavoritesStmt = this.db.prepare(
-      `DELETE FROM telemetry WHERE timestamp < ? AND (${conditions})`
-    );
+    const deleteFavoritesStmt = this.db.prepare(`DELETE FROM telemetry WHERE timestamp < ? AND (${conditions})`);
     const favoritesResult = deleteFavoritesStmt.run(favoriteCutoffTime, ...params);
     totalDeleted += Number(favoritesResult.changes);
 
     logger.debug(
       `🧹 Purged ${totalDeleted} old telemetry records ` +
-      `(${nonFavoritesResult.changes} non-favorites older than ${hoursToKeep}h, ` +
-      `${favoritesResult.changes} favorites older than ${favoriteDaysToKeep}d)`
+        `(${nonFavoritesResult.changes} non-favorites older than ${hoursToKeep}h, ` +
+        `${favoritesResult.changes} favorites older than ${favoriteDaysToKeep}d)`
     );
     return totalDeleted;
   }
@@ -3077,7 +3150,7 @@ class DatabaseService {
 
   getLongestActiveRouteSegment(): DbRouteSegment | null {
     // Get the longest segment from recent traceroutes (within last 7 days)
-    const cutoff = Date.now() - (7 * 24 * 60 * 60 * 1000);
+    const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
     const stmt = this.db.prepare(`
       SELECT * FROM route_segments
       WHERE timestamp > ?
@@ -3110,10 +3183,14 @@ class DatabaseService {
       // Insert new record holder
       this.insertRouteSegment({
         ...newSegment,
-        isRecordHolder: true
+        isRecordHolder: true,
       });
 
-      logger.debug(`🏆 New record holder route segment: ${newSegment.distanceKm.toFixed(2)} km from ${newSegment.fromNodeId} to ${newSegment.toNodeId}`);
+      logger.debug(
+        `🏆 New record holder route segment: ${newSegment.distanceKm.toFixed(2)} km from ${newSegment.fromNodeId} to ${
+          newSegment.toNodeId
+        }`
+      );
     }
   }
 
@@ -3123,7 +3200,7 @@ class DatabaseService {
   }
 
   cleanupOldRouteSegments(days: number = 30): number {
-    const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
     const stmt = this.db.prepare(`
       DELETE FROM route_segments
       WHERE timestamp < ? AND isRecordHolder = 0
@@ -3197,7 +3274,9 @@ class DatabaseService {
       throw new Error(`Node ${nodeId} not found`);
     }
 
-    logger.debug(`${isFavorite ? '⭐' : '☆'} Node ${nodeNum} favorite status set to: ${isFavorite} (${result.changes} row updated)`);
+    logger.debug(
+      `${isFavorite ? '⭐' : '☆'} Node ${nodeNum} favorite status set to: ${isFavorite} (${result.changes} row updated)`
+    );
   }
 
   // Authentication and Authorization
@@ -3235,7 +3314,7 @@ class DatabaseService {
         password: password,
         authProvider: 'local',
         isAdmin: true,
-        displayName: 'Administrator'
+        displayName: 'Administrator',
       });
 
       // Grant all permissions
@@ -3254,13 +3333,7 @@ class DatabaseService {
       logger.warn('');
 
       // Log to audit log
-      this.auditLog(
-        admin.id,
-        'first_run_admin_created',
-        'users',
-        JSON.stringify({ username: adminUsername }),
-        null
-      );
+      this.auditLog(admin.id, 'first_run_admin_created', 'users', JSON.stringify({ username: adminUsername }), null);
 
       // Save to settings so we know setup is complete
       this.setSetting('setup_complete', 'true');
@@ -3289,10 +3362,10 @@ class DatabaseService {
 
       const anonymous = await this.userModel.create({
         username: 'anonymous',
-        password: randomPassword,  // Random password - effectively cannot login
+        password: randomPassword, // Random password - effectively cannot login
         authProvider: 'local',
         isAdmin: false,
-        displayName: 'Anonymous User'
+        displayName: 'Anonymous User',
       });
 
       // Grant default read-only permissions for anonymous users
@@ -3300,7 +3373,7 @@ class DatabaseService {
       const defaultAnonPermissions = [
         { resource: 'dashboard' as const, canRead: true, canWrite: false },
         { resource: 'nodes' as const, canRead: true, canWrite: false },
-        { resource: 'info' as const, canRead: true, canWrite: false }
+        { resource: 'info' as const, canRead: true, canWrite: false },
       ];
 
       for (const perm of defaultAnonPermissions) {
@@ -3309,7 +3382,7 @@ class DatabaseService {
           resource: perm.resource,
           canRead: perm.canRead,
           canWrite: perm.canWrite,
-          grantedBy: anonymous.id
+          grantedBy: anonymous.id,
         });
       }
 
@@ -3329,7 +3402,6 @@ class DatabaseService {
       throw error;
     }
   }
-
 
   auditLog(
     userId: number | null,
@@ -3353,26 +3425,19 @@ class DatabaseService {
     }
   }
 
-  getAuditLogs(options: {
-    limit?: number;
-    offset?: number;
-    userId?: number;
-    action?: string;
-    resource?: string;
-    startDate?: number;
-    endDate?: number;
-    search?: string;
-  } = {}): { logs: any[]; total: number } {
-    const {
-      limit = 100,
-      offset = 0,
-      userId,
-      action,
-      resource,
-      startDate,
-      endDate,
-      search
-    } = options;
+  getAuditLogs(
+    options: {
+      limit?: number;
+      offset?: number;
+      userId?: number;
+      action?: string;
+      resource?: string;
+      startDate?: number;
+      endDate?: number;
+      search?: string;
+    } = {}
+  ): { logs: any[]; total: number } {
+    const { limit = 100, offset = 0, userId, action, resource, startDate, endDate, search } = options;
 
     // Build WHERE clause dynamically
     const conditions: string[] = [];
@@ -3443,19 +3508,25 @@ class DatabaseService {
 
   // Get audit log statistics
   getAuditStats(days: number = 30): any {
-    const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
 
     // Count by action type
-    const actionStats = this.db.prepare(`
+    const actionStats = this.db
+      .prepare(
+        `
       SELECT action, COUNT(*) as count
       FROM audit_log
       WHERE timestamp >= ?
       GROUP BY action
       ORDER BY count DESC
-    `).all(cutoff);
+    `
+      )
+      .all(cutoff);
 
     // Count by user
-    const userStats = this.db.prepare(`
+    const userStats = this.db
+      .prepare(
+        `
       SELECT u.username, COUNT(*) as count
       FROM audit_log al
       LEFT JOIN users u ON al.user_id = u.id
@@ -3463,10 +3534,14 @@ class DatabaseService {
       GROUP BY al.user_id
       ORDER BY count DESC
       LIMIT 10
-    `).all(cutoff);
+    `
+      )
+      .all(cutoff);
 
     // Count by day
-    const dailyStats = this.db.prepare(`
+    const dailyStats = this.db
+      .prepare(
+        `
       SELECT
         date(timestamp/1000, 'unixepoch') as date,
         COUNT(*) as count
@@ -3474,19 +3549,21 @@ class DatabaseService {
       WHERE timestamp >= ?
       GROUP BY date(timestamp/1000, 'unixepoch')
       ORDER BY date DESC
-    `).all(cutoff);
+    `
+      )
+      .all(cutoff);
 
     return {
       actionStats,
       userStats,
       dailyStats,
-      totalEvents: actionStats.reduce((sum: number, stat: any) => sum + Number(stat.count), 0)
+      totalEvents: actionStats.reduce((sum: number, stat: any) => sum + Number(stat.count), 0),
     };
   }
 
   // Cleanup old audit logs
   cleanupAuditLogs(days: number): number {
-    const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
     const stmt = this.db.prepare('DELETE FROM audit_log WHERE timestamp < ?');
     const result = stmt.run(cutoff);
     logger.debug(`🧹 Cleaned up ${result.changes} audit log entries older than ${days} days`);
@@ -3539,7 +3616,12 @@ class DatabaseService {
     return Number(result.changes);
   }
 
-  markDMMessagesAsRead(localNodeId: string, remoteNodeId: string, userId: number | null, beforeTimestamp?: number): number {
+  markDMMessagesAsRead(
+    localNodeId: string,
+    remoteNodeId: string,
+    userId: number | null,
+    beforeTimestamp?: number
+  ): number {
     let query = `
       INSERT OR IGNORE INTO read_messages (message_id, user_id, read_at)
       SELECT id, ?, ? FROM messages
@@ -3610,11 +3692,11 @@ class DatabaseService {
       WHERE rm.message_id IS NULL
     `);
 
-    const rows = userId === null ? stmt.all() as Array<{ id: string }> : stmt.all(userId) as Array<{ id: string }>;
+    const rows = userId === null ? (stmt.all() as Array<{ id: string }>) : (stmt.all(userId) as Array<{ id: string }>);
     return rows.map(row => row.id);
   }
 
-  getUnreadCountsByChannel(userId: number | null): {[channelId: number]: number} {
+  getUnreadCountsByChannel(userId: number | null): { [channelId: number]: number } {
     const stmt = this.db.prepare(`
       SELECT m.channel, COUNT(*) as count
       FROM messages m
@@ -3625,11 +3707,12 @@ class DatabaseService {
       GROUP BY m.channel
     `);
 
-    const rows = userId === null
-      ? stmt.all() as Array<{ channel: number; count: number }>
-      : stmt.all(userId) as Array<{ channel: number; count: number }>;
+    const rows =
+      userId === null
+        ? (stmt.all() as Array<{ channel: number; count: number }>)
+        : (stmt.all(userId) as Array<{ channel: number; count: number }>);
 
-    const counts: {[channelId: number]: number} = {};
+    const counts: { [channelId: number]: number } = {};
     rows.forEach(row => {
       counts[row.channel] = Number(row.count);
     });
@@ -3647,16 +3730,17 @@ class DatabaseService {
         AND ((m.fromNodeId = ? AND m.toNodeId = ?) OR (m.fromNodeId = ? AND m.toNodeId = ?))
     `);
 
-    const params = userId === null
-      ? [localNodeId, remoteNodeId, remoteNodeId, localNodeId]
-      : [userId, localNodeId, remoteNodeId, remoteNodeId, localNodeId];
+    const params =
+      userId === null
+        ? [localNodeId, remoteNodeId, remoteNodeId, localNodeId]
+        : [userId, localNodeId, remoteNodeId, remoteNodeId, localNodeId];
 
     const result = stmt.get(...params) as { count: number };
     return Number(result.count);
   }
 
   cleanupOldReadMessages(days: number): number {
-    const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
     const stmt = this.db.prepare('DELETE FROM read_messages WHERE read_at < ?');
     const result = stmt.run(cutoff);
     logger.debug(`🧹 Cleaned up ${result.changes} read_messages entries older than ${days} days`);
@@ -3803,14 +3887,16 @@ class DatabaseService {
     return result || null;
   }
 
-  getPacketLogCount(options: {
-    portnum?: number;
-    from_node?: number;
-    to_node?: number;
-    channel?: number;
-    encrypted?: boolean;
-    since?: number;
-  } = {}): number {
+  getPacketLogCount(
+    options: {
+      portnum?: number;
+      from_node?: number;
+      to_node?: number;
+      channel?: number;
+      encrypted?: boolean;
+      since?: number;
+    } = {}
+  ): number {
     const { portnum, from_node, to_node, channel, encrypted, since } = options;
 
     let query = 'SELECT COUNT(*) as count FROM packet_log WHERE 1=1';
@@ -3856,7 +3942,7 @@ class DatabaseService {
   cleanupOldPacketLogs(): number {
     const maxAgeHoursStr = this.getSetting('packet_log_max_age_hours');
     const maxAgeHours = maxAgeHoursStr ? parseInt(maxAgeHoursStr, 10) : 24;
-    const cutoffTimestamp = Math.floor(Date.now() / 1000) - (maxAgeHours * 60 * 60);
+    const cutoffTimestamp = Math.floor(Date.now() / 1000) - maxAgeHours * 60 * 60;
 
     const stmt = this.db.prepare('DELETE FROM packet_log WHERE timestamp < ?');
     const result = stmt.run(cutoffTimestamp);
@@ -3932,7 +4018,7 @@ class DatabaseService {
         is_builtin: 0,
         created_by: userId,
         created_at: now,
-        updated_at: now
+        updated_at: now,
       };
     } catch (error) {
       logger.error(`❌ Failed to create custom theme ${name}:`, error);

@@ -9,8 +9,9 @@ vi.mock('../services/database.js', () => ({
     getNode: vi.fn(),
     getActiveNodes: vi.fn(),
     upsertNode: vi.fn(),
-    setSetting: vi.fn()
-  }
+    setSetting: vi.fn(),
+    markNodeAsWelcomedIfNotAlready: vi.fn(),
+  },
 }));
 
 // Mock the meshtasticProtobufService
@@ -18,9 +19,9 @@ vi.mock('../services/meshtasticProtobufService.js', () => ({
   default: {
     createTextMessage: vi.fn(() => ({
       data: new Uint8Array([1, 2, 3]),
-      messageId: 12345
-    }))
-  }
+      messageId: 12345,
+    })),
+  },
 }));
 
 describe('MeshtasticManager - Auto Welcome Integration', () => {
@@ -35,7 +36,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
     // Mock transport
     mockTransport = {
       send: vi.fn().mockResolvedValue(undefined),
-      isConnected: true
+      isConnected: true,
     };
 
     // Set up the manager with mock transport and local node info
@@ -45,7 +46,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
       nodeNum: 123456,
       nodeId: '!0001e240',
       longName: 'Local Node',
-      shortName: 'LOCAL'
+      shortName: 'LOCAL',
     };
   });
 
@@ -91,7 +92,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
     });
 
     it('should skip node that has already been welcomed', async () => {
-      const previouslyWelcomedTime = Date.now() - (30 * 24 * 60 * 60 * 1000); // 30 days ago
+      const previouslyWelcomedTime = Date.now() - 30 * 24 * 60 * 60 * 1000; // 30 days ago
 
       vi.mocked(databaseService.getSetting).mockImplementation((key: string) => {
         if (key === 'autoWelcomeEnabled') return 'true';
@@ -106,8 +107,8 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
         shortName: 'TEST',
         hwModel: 0,
         welcomedAt: previouslyWelcomedTime, // Node has been welcomed before
-        createdAt: Date.now() - (30 * 24 * 60 * 60 * 1000),
-        updatedAt: Date.now()
+        createdAt: Date.now() - 30 * 24 * 60 * 60 * 1000,
+        updatedAt: Date.now(),
       });
 
       await (manager as any).checkAutoWelcome(999999, '!000f423f');
@@ -131,7 +132,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
         shortName: '0f42',
         hwModel: 0,
         createdAt: Date.now(),
-        updatedAt: Date.now()
+        updatedAt: Date.now(),
       });
 
       await (manager as any).checkAutoWelcome(999999, '!000f423f');
@@ -154,7 +155,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
         shortName: '000f', // Default short name (first 4 chars after !)
         hwModel: 0,
         createdAt: Date.now(),
-        updatedAt: Date.now()
+        updatedAt: Date.now(),
       });
 
       await (manager as any).checkAutoWelcome(999999, '!000f423f');
@@ -178,7 +179,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
         shortName: 'TEST',
         hwModel: 0,
         createdAt: Date.now(),
-        updatedAt: Date.now()
+        updatedAt: Date.now(),
       });
 
       await (manager as any).checkAutoWelcome(999999, '!000f423f');
@@ -188,7 +189,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
         expect.objectContaining({
           nodeNum: 999999,
           nodeId: '!000f423f',
-          welcomedAt: expect.any(Number)
+          welcomedAt: expect.any(Number),
         })
       );
     });
@@ -209,18 +210,14 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
         shortName: 'TEST',
         hwModel: 0,
         createdAt: Date.now(),
-        updatedAt: Date.now()
+        updatedAt: Date.now(),
       });
 
       const sendTextMessageSpy = vi.spyOn(manager as any, 'sendTextMessage');
 
       await (manager as any).checkAutoWelcome(999999, '!000f423f');
 
-      expect(sendTextMessageSpy).toHaveBeenCalledWith(
-        'Welcome!',
-        0,
-        999999
-      );
+      expect(sendTextMessageSpy).toHaveBeenCalledWith('Welcome!', 0, 999999);
     });
 
     it('should send welcome to channel when target is channel number', async () => {
@@ -239,18 +236,14 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
         shortName: 'TEST',
         hwModel: 0,
         createdAt: Date.now(),
-        updatedAt: Date.now()
+        updatedAt: Date.now(),
       });
 
       const sendTextMessageSpy = vi.spyOn(manager as any, 'sendTextMessage');
 
       await (manager as any).checkAutoWelcome(999999, '!000f423f');
 
-      expect(sendTextMessageSpy).toHaveBeenCalledWith(
-        'Welcome!',
-        2,
-        undefined
-      );
+      expect(sendTextMessageSpy).toHaveBeenCalledWith('Welcome!', 2, undefined);
     });
 
     it('should use default welcome message when not configured', async () => {
@@ -268,18 +261,14 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
         shortName: 'TEST',
         hwModel: 0,
         createdAt: Date.now(),
-        updatedAt: Date.now()
+        updatedAt: Date.now(),
       });
 
       const sendTextMessageSpy = vi.spyOn(manager as any, 'sendTextMessage');
 
       await (manager as any).checkAutoWelcome(999999, '!000f423f');
 
-      expect(sendTextMessageSpy).toHaveBeenCalledWith(
-        'Welcome Test Node (TEST) to the mesh!',
-        0,
-        999999
-      );
+      expect(sendTextMessageSpy).toHaveBeenCalledWith('Welcome Test Node (TEST) to the mesh!', 0, 999999);
     });
 
     it('should handle errors gracefully without crashing', async () => {
@@ -290,9 +279,68 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
       });
 
       // Should not throw
-      await expect(
-        (manager as any).checkAutoWelcome(999999, '!000f423f')
-      ).resolves.not.toThrow();
+      await expect((manager as any).checkAutoWelcome(999999, '!000f423f')).resolves.not.toThrow();
+    });
+
+    it('should prevent duplicate welcomes when called in parallel (race condition protection)', async () => {
+      vi.mocked(databaseService.getSetting).mockImplementation((key: string) => {
+        if (key === 'autoWelcomeEnabled') return 'true';
+        if (key === 'localNodeNum') return '123456';
+        if (key === 'autoWelcomeMessage') return 'Welcome!';
+        if (key === 'autoWelcomeTarget') return 'dm';
+        return null;
+      });
+
+      vi.mocked(databaseService.getNode).mockReturnValue({
+        nodeNum: 999999,
+        nodeId: '!000f423f',
+        longName: 'Test Node',
+        shortName: 'TEST',
+        hwModel: 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+
+      vi.mocked(databaseService.markNodeAsWelcomedIfNotAlready).mockReturnValue(true);
+
+      // Call checkAutoWelcome twice in parallel (simulating race condition)
+      const promise1 = (manager as any).checkAutoWelcome(999999, '!000f423f');
+      const promise2 = (manager as any).checkAutoWelcome(999999, '!000f423f');
+
+      await Promise.all([promise1, promise2]);
+
+      // Should only send welcome message once due to in-memory tracking
+      expect(mockTransport.send).toHaveBeenCalledTimes(1);
+      expect(databaseService.markNodeAsWelcomedIfNotAlready).toHaveBeenCalledTimes(1);
+    });
+
+    it('should handle atomic database operation correctly when node already marked by another process', async () => {
+      vi.mocked(databaseService.getSetting).mockImplementation((key: string) => {
+        if (key === 'autoWelcomeEnabled') return 'true';
+        if (key === 'localNodeNum') return '123456';
+        if (key === 'autoWelcomeMessage') return 'Welcome!';
+        if (key === 'autoWelcomeTarget') return 'dm';
+        return null;
+      });
+
+      vi.mocked(databaseService.getNode).mockReturnValue({
+        nodeNum: 999999,
+        nodeId: '!000f423f',
+        longName: 'Test Node',
+        shortName: 'TEST',
+        hwModel: 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+
+      // Simulate that another process already marked the node
+      vi.mocked(databaseService.markNodeAsWelcomedIfNotAlready).mockReturnValue(false);
+
+      await (manager as any).checkAutoWelcome(999999, '!000f423f');
+
+      // Should still send the message but log a warning
+      expect(mockTransport.send).toHaveBeenCalledTimes(1);
+      expect(databaseService.markNodeAsWelcomedIfNotAlready).toHaveBeenCalledWith(999999, '!000f423f');
     });
   });
 
@@ -305,8 +353,8 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
         shortName: 'TEST',
         hwModel: 0,
         firmwareVersion: '2.3.1',
-        createdAt: Date.now() - (2 * 24 * 60 * 60 * 1000), // 2 days ago
-        updatedAt: Date.now()
+        createdAt: Date.now() - 2 * 24 * 60 * 60 * 1000, // 2 days ago
+        updatedAt: Date.now(),
       };
 
       vi.mocked(databaseService.getNode).mockReturnValue(mockNode);
@@ -317,10 +365,11 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
       vi.mocked(databaseService.getActiveNodes).mockReturnValue([
         mockNode,
         { ...mockNode, nodeNum: 888888, hopsAway: 0 },
-        { ...mockNode, nodeNum: 777777, hopsAway: 1 }
+        { ...mockNode, nodeNum: 777777, hopsAway: 1 },
       ]);
 
-      const template = 'Welcome {LONG_NAME} ({SHORT_NAME})! Version: {VERSION}, Active for: {DURATION}. Nodes: {NODECOUNT}, Direct: {DIRECTCOUNT}';
+      const template =
+        'Welcome {LONG_NAME} ({SHORT_NAME})! Version: {VERSION}, Active for: {DURATION}. Nodes: {NODECOUNT}, Direct: {DIRECTCOUNT}';
 
       const result = await (manager as any).replaceWelcomeTokens(template, 999999, '!000f423f');
 
@@ -351,7 +400,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
         shortName: 'TEST',
         hwModel: 0,
         createdAt: twoDaysAgo,
-        updatedAt: Date.now()
+        updatedAt: Date.now(),
       });
 
       const template = 'Active for {DURATION}';
@@ -370,7 +419,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
         shortName: 'TEST',
         hwModel: 0,
         createdAt: undefined, // Testing the case where createdAt is missing
-        updatedAt: now
+        updatedAt: now,
       } as any);
 
       const template = 'Active for {DURATION}';
@@ -388,7 +437,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
         shortName: 'TEST',
         hwModel: 0,
         createdAt: Date.now(),
-        updatedAt: Date.now()
+        updatedAt: Date.now(),
       });
 
       vi.mocked(databaseService.getSetting).mockImplementation((key: string) => {
