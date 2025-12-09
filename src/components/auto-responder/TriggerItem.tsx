@@ -30,7 +30,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
   const [editResponse, setEditResponse] = useState(trigger.response);
   const [editMultiline, setEditMultiline] = useState(trigger.multiline || false);
   const [editVerifyResponse, setEditVerifyResponse] = useState(trigger.verifyResponse || false);
-  const [editChannel, setEditChannel] = useState<number | 'dm'>(trigger.channel || 'dm');
+  const [editChannel, setEditChannel] = useState<number | 'dm'>(trigger.channel !== undefined ? trigger.channel : 'dm');
   const [triggerValidation, setTriggerValidation] = useState<{ valid: boolean; error?: string }>({ valid: true });
 
   // Validate trigger in realtime
@@ -82,7 +82,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
       setEditResponse(trigger.response);
       setEditMultiline(trigger.multiline || false);
       setEditVerifyResponse(trigger.verifyResponse || false);
-      setEditChannel(trigger.channel || 'dm');
+      setEditChannel(trigger.channel !== undefined ? trigger.channel : 'dm');
       setTriggerValidation({ valid: true });
     }
   }, [isEditing, trigger.trigger, trigger.responseType, trigger.response, trigger.multiline, trigger.verifyResponse, trigger.channel]);
@@ -608,12 +608,12 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                 <span style={{
                   fontSize: '0.7rem',
                   padding: '0.15rem 0.4rem',
-                  background: (trigger.channel === 'dm' || !trigger.channel) ? 'var(--ctp-sky)' : 'var(--ctp-lavender)',
+                  background: (trigger.channel === 'dm' || trigger.channel === undefined) ? 'var(--ctp-sky)' : 'var(--ctp-lavender)',
                   color: 'var(--ctp-base)',
                   borderRadius: '3px',
                   fontWeight: 'bold'
                 }}>
-                  {(trigger.channel === 'dm' || !trigger.channel)
+                  {(trigger.channel === 'dm' || trigger.channel === undefined)
                     ? 'DM'
                     : `CH ${trigger.channel}: ${channels.find(c => c.id === trigger.channel)?.name || 'Unknown'}`}
                 </span>
