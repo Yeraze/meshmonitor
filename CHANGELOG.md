@@ -7,7 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Added
-- **Admin Commands Tab** ([#TBD](https://github.com/Yeraze/meshmonitor/pull/TBD)): Comprehensive remote node management and administrative commands
+- **Admin Commands Tab** ([#911](https://github.com/Yeraze/meshmonitor/pull/911)): Comprehensive remote node management and administrative commands
   - **New Admin Tab**: Dedicated interface for managing both local and remote Meshtastic nodes
   - **Node Selection**: Search and select any node in the mesh network (local or remote)
   - **Device Management Commands**:
