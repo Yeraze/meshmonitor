@@ -266,8 +266,20 @@ components:
           example: true
         count:
           type: integer
-          description: Number of telemetry records returned
+          description: Number of telemetry records returned in this response
           example: 100
+        total:
+          type: integer
+          description: Total number of telemetry records matching the filters (for pagination)
+          example: 5432
+        offset:
+          type: integer
+          description: Offset used for pagination
+          example: 0
+        limit:
+          type: integer
+          description: Limit used for pagination
+          example: 1000
         data:
           type: array
           items:
@@ -763,7 +775,7 @@ paths:
       tags:
         - Telemetry
       summary: Get telemetry data
-      description: Retrieve telemetry data with optional filters
+      description: Retrieve telemetry data with optional filters and pagination
       parameters:
         - name: nodeId
           in: query
@@ -780,7 +792,13 @@ paths:
             enum: [device_metrics, environment_metrics, power_metrics, air_quality_metrics]
         - name: since
           in: query
-          description: Unix timestamp to filter data after this time
+          description: Unix timestamp (ms) to filter data after this time
+          required: false
+          schema:
+            type: integer
+        - name: before
+          in: query
+          description: Unix timestamp (ms) to filter data before this time
           required: false
           schema:
             type: integer
@@ -793,6 +811,14 @@ paths:
             default: 1000
             minimum: 1
             maximum: 10000
+        - name: offset
+          in: query
+          description: Number of records to skip for pagination
+          required: false
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
       responses:
         '200':
           description: Telemetry data retrieved successfully
@@ -855,7 +881,7 @@ paths:
       tags:
         - Telemetry
       summary: Get telemetry for a specific node
-      description: Retrieve all telemetry data for a specific node
+      description: Retrieve all telemetry data for a specific node with pagination support
       parameters:
         - name: nodeId
           in: path
@@ -872,7 +898,13 @@ paths:
             enum: [device_metrics, environment_metrics, power_metrics, air_quality_metrics]
         - name: since
           in: query
-          description: Unix timestamp to filter data after this time
+          description: Unix timestamp (ms) to filter data after this time
+          required: false
+          schema:
+            type: integer
+        - name: before
+          in: query
+          description: Unix timestamp (ms) to filter data before this time
           required: false
           schema:
             type: integer
@@ -885,6 +917,14 @@ paths:
             default: 1000
             minimum: 1
             maximum: 10000
+        - name: offset
+          in: query
+          description: Number of records to skip for pagination
+          required: false
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
       responses:
         '200':
           description: Telemetry data retrieved successfully
