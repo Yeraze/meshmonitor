@@ -237,3 +237,43 @@ export function shouldShowDateSeparator(
          prevDate.getMonth() !== currentDate.getMonth() ||
          prevDate.getDate() !== currentDate.getDate();
 }
+
+/**
+ * Formats a timestamp for chart X-axis display.
+ * Shows date + time if the time range spans more than 24 hours,
+ * otherwise just shows time.
+ *
+ * @param timestamp - Timestamp in milliseconds
+ * @param timeRange - Tuple of [minTimestamp, maxTimestamp] in milliseconds, or null
+ * @returns Formatted string like "Dec 9 14:32" (multi-day) or "14:32" (single day)
+ */
+export function formatChartAxisTimestamp(
+  timestamp: number,
+  timeRange: [number, number] | null
+): string {
+  const date = new Date(timestamp);
+  const timeStr = date.toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  // If no time range provided, default to time-only format
+  if (!timeRange) {
+    return timeStr;
+  }
+
+  const [minTime, maxTime] = timeRange;
+  const rangeMs = maxTime - minTime;
+  const twentyFourHours = 24 * 60 * 60 * 1000;
+
+  // If range is more than 24 hours, include the date
+  if (rangeMs > twentyFourHours) {
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const monthName = monthNames[date.getMonth()];
+    const day = date.getDate();
+    return `${monthName} ${day} ${timeStr}`;
+  }
+
+  return timeStr;
+}
