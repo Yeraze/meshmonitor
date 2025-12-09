@@ -813,6 +813,43 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /telemetry/count:
+    get:
+      tags:
+        - Telemetry
+      summary: Get total telemetry record count
+      description: Returns the total number of telemetry records in the database
+      responses:
+        '200':
+          description: Telemetry count retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - success
+                  - count
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  count:
+                    type: integer
+                    description: Total number of telemetry records
+                    example: 50432
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /telemetry/{nodeId}:
     get:
       tags:

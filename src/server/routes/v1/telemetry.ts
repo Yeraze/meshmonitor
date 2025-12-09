@@ -67,6 +67,28 @@ router.get('/', (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/v1/telemetry/count
+ * Get total count of telemetry records
+ */
+router.get('/count', (_req: Request, res: Response) => {
+  try {
+    const count = databaseService.getTelemetryCount();
+
+    res.json({
+      success: true,
+      count
+    });
+  } catch (error) {
+    logger.error('Error getting telemetry count:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal Server Error',
+      message: 'Failed to retrieve telemetry count'
+    });
+  }
+});
+
+/**
  * GET /api/v1/telemetry/:nodeId
  * Get all telemetry for a specific node
  */
