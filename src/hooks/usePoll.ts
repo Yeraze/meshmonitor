@@ -100,6 +100,24 @@ export interface DeviceConfig {
 }
 
 /**
+ * Traceroute data from the poll endpoint
+ */
+export interface PollTraceroute {
+  id?: number;
+  fromNodeNum: number;
+  toNodeNum: number;
+  fromNodeId: string;
+  toNodeId: string;
+  route: string;
+  routeBack: string;
+  snrTowards: string;
+  snrBack: string;
+  timestamp: number;
+  createdAt: number;
+  hopCount: number;
+}
+
+/**
  * Raw message from the server (before timestamp conversion)
  */
 export interface RawMessage {
@@ -137,6 +155,7 @@ export interface PollData {
   telemetryNodes?: TelemetryNodes;
   config?: PollConfig;
   deviceConfig?: DeviceConfig;
+  traceroutes?: PollTraceroute[];
 }
 
 /**

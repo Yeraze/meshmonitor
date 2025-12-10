@@ -2458,6 +2458,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       telemetryNodes?: any;
       config?: any;
       deviceConfig?: any;
+      traceroutes?: any[];
     } = {};
 
     // 1. Connection status (always available)
@@ -2732,6 +2733,40 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       }
     } catch (error) {
       logger.error('Error fetching device config in poll:', error);
+    }
+
+    // 9. Recent traceroutes (for dashboard widget and node view)
+    try {
+      const hoursParam = 24;
+      const cutoffTime = Date.now() - hoursParam * 60 * 60 * 1000;
+
+      // Calculate dynamic default limit based on settings
+      const tracerouteIntervalMinutes = parseInt(databaseService.getSetting('tracerouteIntervalMinutes') || '5');
+      const maxNodeAgeHours = parseInt(databaseService.getSetting('maxNodeAgeHours') || '24');
+      const traceroutesPerHour = tracerouteIntervalMinutes > 0 ? 60 / tracerouteIntervalMinutes : 12;
+      let limit = Math.ceil(traceroutesPerHour * maxNodeAgeHours * 1.1);
+      limit = Math.max(limit, 100);
+
+      const allTraceroutes = databaseService.getAllTraceroutes(limit);
+      const recentTraceroutes = allTraceroutes.filter(tr => tr.timestamp >= cutoffTime);
+
+      // Add hopCount for each traceroute
+      const traceroutesWithHops = recentTraceroutes.map(tr => {
+        let hopCount = 999;
+        try {
+          if (tr.route) {
+            const routeArray = JSON.parse(tr.route);
+            hopCount = routeArray.length;
+          }
+        } catch (e) {
+          hopCount = 999;
+        }
+        return { ...tr, hopCount };
+      });
+
+      result.traceroutes = traceroutesWithHops;
+    } catch (error) {
+      logger.error('Error fetching traceroutes in poll:', error);
     }
 
     res.json(result);

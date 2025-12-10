@@ -9,12 +9,11 @@ import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { useQuery } from '@tanstack/react-query';
 import { MapContainer, TileLayer, Polyline, Marker, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import api from '../services/api';
 import { useSettings } from '../contexts/SettingsContext';
 import { getTilesetById } from '../config/tilesets';
+import { useTraceroutes } from '../hooks/useTraceroutes';
 import 'leaflet/dist/leaflet.css';
 
 // Component to fit map bounds
@@ -30,18 +29,7 @@ const FitBounds: React.FC<{ bounds: [[number, number], [number, number]] }> = ({
   return null;
 };
 
-interface TracerouteData {
-  fromNodeNum: number;
-  toNodeNum: number;
-  fromNodeId: string;
-  toNodeId: string;
-  route: string;
-  routeBack: string;
-  snrTowards?: string;
-  snrBack?: string;
-  timestamp: number;
-  createdAt?: number;
-}
+// TracerouteData interface removed - now using PollTraceroute from useTraceroutes hook
 
 /**
  * Extended NodeInfo with position data for map rendering
@@ -117,31 +105,19 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
     }
   }, [showSearch]);
 
-  // Fetch all traceroutes using the internal API (not v1 which requires auth)
-  const { data: tracerouteData, isLoading } = useQuery<TracerouteData[]>({
-    queryKey: ['traceroutes-recent'],
-    queryFn: () => api.get('/api/traceroutes/recent'),
-    refetchInterval: 60000, // Refresh every minute
-    staleTime: 30000,
-  });
+  // Get traceroutes from centralized hook (synced via poll mechanism for consistency)
+  const { traceroutes: tracerouteData, isLoading } = useTraceroutes();
 
   // Find traceroute to/from selected node
+  // Data is already sorted by timestamp DESC from the poll endpoint
   const traceroute = useMemo(() => {
-    if (!targetNodeId || !tracerouteData) return null;
+    if (!targetNodeId || !tracerouteData || tracerouteData.length === 0) return null;
 
-    // Find traceroutes involving the target node
-    const relevantTraceroutes = tracerouteData.filter(
+    // Find the first (most recent) traceroute involving the target node
+    // Since data is pre-sorted by timestamp DESC, the first match is the most recent
+    return tracerouteData.find(
       tr => tr.toNodeId === targetNodeId || tr.fromNodeId === targetNodeId
-    );
-
-    if (relevantTraceroutes.length === 0) return null;
-
-    // Get the most recent one
-    return relevantTraceroutes.sort((a, b) => {
-      const aTime = a.timestamp || a.createdAt || 0;
-      const bTime = b.timestamp || b.createdAt || 0;
-      return bTime - aTime;
-    })[0];
+    ) || null;
   }, [targetNodeId, tracerouteData]);
 
   // Filter available nodes for search
