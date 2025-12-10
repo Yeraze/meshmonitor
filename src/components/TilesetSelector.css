@@ -1,8 +1,7 @@
 .tileset-selector {
   position: absolute;
   bottom: 20px;
-  left: 50%;
-  transform: translateX(-20%);
+  right: 10px;
   background: rgba(255, 255, 255, 0.95);
   border-radius: 8px;
   padding: 12px 16px;
@@ -116,6 +115,7 @@
 .tileset-selector.collapsed {
   padding: 8px 12px;
   bottom: 10px;
+  right: 10px;
 }
 
 /* Hide on mobile devices */
