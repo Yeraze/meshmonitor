@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { DeviceInfo, Channel } from '../types/device';
 import { MeshMessage } from '../types/message';
 import { ConnectionStatus } from '../types/ui';
@@ -13,6 +14,87 @@ import { formatDistance } from '../utils/distance';
 import { logger } from '../utils/logger';
 import { useToast } from './ToastContainer';
 import { getDeviceRoleName } from '../utils/deviceRole';
+
+// Chart data entry interface
+interface ChartDataEntry {
+  name: string;
+  value: number;
+  color: string;
+  [key: string]: string | number;  // Index signature for Recharts compatibility
+}
+
+// Reusable packet statistics chart component
+interface PacketStatsChartProps {
+  title: string;
+  data: ChartDataEntry[];
+  total: number;
+  chartId: string;
+}
+
+const PacketStatsChart: React.FC<PacketStatsChartProps> = React.memo(({ title, data, total, chartId }) => {
+  const filteredData = useMemo(() => data.filter(d => d.value > 0), [data]);
+
+  if (filteredData.length === 0) return null;
+
+  return (
+    <div className="info-section">
+      <h3>{title}</h3>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <div style={{ width: '140px', height: '140px' }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={filteredData}
+                cx="50%"
+                cy="50%"
+                innerRadius={30}
+                outerRadius={55}
+                paddingAngle={2}
+                dataKey="value"
+              >
+                {filteredData.map((entry, index) => (
+                  <Cell key={`${chartId}-cell-${index}`} fill={entry.color} />
+                ))}
+              </Pie>
+              <Tooltip
+                formatter={(value: number) => {
+                  const pct = total > 0 ? ((value / total) * 100).toFixed(1) : '0';
+                  return [`${value.toLocaleString()} (${pct}%)`, ''];
+                }}
+                contentStyle={{
+                  backgroundColor: 'var(--ctp-surface0)',
+                  border: '1px solid var(--ctp-surface2)',
+                  borderRadius: '4px',
+                  fontSize: '0.85em',
+                }}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+        <div style={{ fontSize: '0.85em' }}>
+          {filteredData.map((entry, index) => {
+            const pct = total > 0 ? ((entry.value / total) * 100).toFixed(1) : '0';
+            return (
+              <p key={`${chartId}-legend-${index}`} style={{ margin: '0.25rem 0' }}>
+                <span style={{
+                  display: 'inline-block',
+                  width: '10px',
+                  height: '10px',
+                  backgroundColor: entry.color,
+                  marginRight: '0.5rem',
+                  borderRadius: '2px'
+                }}></span>
+                {entry.name}: {pct}% ({entry.value.toLocaleString()})
+              </p>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+});
+
+PacketStatsChart.displayName = 'PacketStatsChart';
 
 interface RouteSegment {
   id: number;
@@ -363,20 +445,60 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
           <p><strong>{t('info.total_channels')}</strong> {channels.length}</p>
           <p><strong>{t('info.total_messages')}</strong> {messages.length}</p>
           <p><strong>{t('info.active_channels')}</strong> {getAvailableChannels().length}</p>
-          {localStats?.numPacketsTx !== undefined ? (
+          {localStats?.numPacketsTx !== undefined && (
             <>
               <p><strong>{t('info.packets_tx')}</strong> {localStats.numPacketsTx.toLocaleString()}</p>
               <p><strong>{t('info.packets_rx')}</strong> {localStats.numPacketsRx?.toLocaleString() || t('info.na')}</p>
-              <p><strong>{t('info.rx_bad')}</strong> {localStats.numPacketsRxBad?.toLocaleString() || '0'}</p>
-              <p><strong>{t('info.rx_duplicate')}</strong> {localStats.numRxDupe?.toLocaleString() || '0'}</p>
-              <p><strong>{t('info.tx_dropped')}</strong> {localStats.numTxDropped?.toLocaleString() || '0'}</p>
             </>
-          ) : localStats?.hostUptimeSeconds !== undefined ? (
+          )}
+          {localStats?.hostUptimeSeconds !== undefined && localStats?.numPacketsTx === undefined && (
             <p style={{ fontSize: '0.9em', color: '#888', marginTop: '0.5rem' }}>
               {t('info.packet_stats_unavailable')}
             </p>
-          ) : null}
+          )}
         </div>
+
+        {localStats?.numPacketsRx > 0 && (() => {
+          const rxTotal = localStats.numPacketsRx || 0;
+          const rxBad = localStats.numPacketsRxBad || 0;
+          const rxDupe = localStats.numRxDupe || 0;
+          const rxGood = Math.max(0, rxTotal - rxBad - rxDupe);
+          const rxData: ChartDataEntry[] = [
+            { name: t('info.rx_good'), value: rxGood, color: '#a6e3a1' },
+            { name: t('info.rx_bad_short'), value: rxBad, color: '#f38ba8' },
+            { name: t('info.rx_dupe_short'), value: rxDupe, color: '#fab387' },
+          ];
+          return (
+            <PacketStatsChart
+              title={t('info.rx_statistics')}
+              data={rxData}
+              total={rxTotal}
+              chartId="rx"
+            />
+          );
+        })()}
+
+        {localStats?.numPacketsTx > 0 && (() => {
+          const txTotal = localStats.numPacketsTx || 0;
+          const txDropped = localStats.numTxDropped || 0;
+          const txRelay = localStats.numTxRelay || 0;
+          const txRelayCanceled = localStats.numTxRelayCanceled || 0;
+          const txDirect = Math.max(0, txTotal - txDropped - txRelay - txRelayCanceled);
+          const txData: ChartDataEntry[] = [
+            { name: t('info.tx_direct'), value: txDirect, color: '#89b4fa' },
+            { name: t('info.tx_relay_short'), value: txRelay, color: '#a6e3a1' },
+            { name: t('info.tx_dropped_short'), value: txDropped, color: '#f38ba8' },
+            { name: t('info.tx_canceled_short'), value: txRelayCanceled, color: '#fab387' },
+          ];
+          return (
+            <PacketStatsChart
+              title={t('info.tx_statistics')}
+              data={txData}
+              total={txTotal}
+              chartId="tx"
+            />
+          );
+        })()}
 
         {localStats?.hostUptimeSeconds !== undefined && (
           <div className="info-section">
