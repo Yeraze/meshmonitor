@@ -5871,12 +5871,12 @@ class MeshtasticManager {
         return;
       }
 
-      // RACE CONDITION PROTECTION: Mark that we're welcoming this node
-      // This prevents duplicate welcomes if multiple packets arrive before database is updated
-      this.welcomingNodes.add(nodeNum);
-      logger.debug(`🔒 Locked auto-welcome for ${nodeId} to prevent duplicates`);
-
       try {
+        // RACE CONDITION PROTECTION: Mark that we're welcoming this node
+        // This prevents duplicate welcomes if multiple packets arrive before database is updated
+        this.welcomingNodes.add(nodeNum);
+        logger.debug(`🔒 Locked auto-welcome for ${nodeId} to prevent duplicates`);
+
         // Check if we should wait for name
         const autoWelcomeWaitForName = databaseService.getSetting('autoWelcomeWaitForName');
         if (autoWelcomeWaitForName === 'true') {
