@@ -13,12 +13,20 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && pip3 install --break-system-packages apprise \
     && apt-get clean -y && rm -rf /var/lib/apt/lists/*
 
+# Set up workspace directory
+RUN mkdir -p /workspace
 
-# Set up workspace
 WORKDIR /workspace
 
-# Use non-root user for security
-USER node
+# Copy entrypoint script
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # Default shell
 ENV SHELL=/bin/bash
+
+# Set entrypoint to fix permissions before running as node user
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+
+# Default command (will be overridden by docker-compose)
+CMD ["sleep", "infinity"]
