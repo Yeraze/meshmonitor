@@ -2274,5 +2274,9 @@
   "auto_upgrade_test.toast_start_failed": "Failed to start test upgrade",
   "auto_upgrade_test.check_connection_error": "Connection Error",
   "auto_upgrade_test.message_server_communication_failed": "Failed to communicate with server",
-  "auto_upgrade_test.message_connect_failed": "Could not connect to server"
+  "auto_upgrade_test.message_connect_failed": "Could not connect to server",
+  "auto_upgrade_test.immediate_upgrade": "Upgrade Immediately When Available",
+  "auto_upgrade_test.immediate_upgrade_description": "When a new version is detected and auto-upgrade is enabled, automatically begin the upgrade without waiting for manual confirmation. Use with caution - upgrades will happen automatically as soon as a new release is available.",
+  "auto_upgrade_test.setting_saved": "Auto-upgrade setting saved",
+  "auto_upgrade_test.setting_save_failed": "Failed to save auto-upgrade setting"
 }
