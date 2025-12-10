@@ -42,8 +42,8 @@ describe('DatabaseService - Auto Welcome Migration', () => {
       `);
 
       const now = Date.now();
-      const threeDaysAgo = now - (3 * 24 * 60 * 60 * 1000);
-      const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
+      const threeDaysAgo = now - 3 * 24 * 60 * 60 * 1000;
+      const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
 
       insertStmt.run(111111, '!0001b207', 'Node One', 'ONE', 0, threeDaysAgo, now);
       insertStmt.run(222222, '!000363de', 'Node Two', 'TWO', 0, sevenDaysAgo, now);
@@ -60,8 +60,15 @@ describe('DatabaseService - Auto Welcome Migration', () => {
       (dbService as any).runAutoWelcomeMigration();
 
       // Verify all nodes now have welcomedAt (excluding broadcast node)
-      const afterStmt = dbService.db.prepare('SELECT nodeNum, nodeId, welcomedAt, createdAt FROM nodes WHERE nodeNum != 4294967295 ORDER BY nodeNum');
-      const afterNodes = afterStmt.all() as Array<{ nodeNum: number; nodeId: string; welcomedAt: number; createdAt: number }>;
+      const afterStmt = dbService.db.prepare(
+        'SELECT nodeNum, nodeId, welcomedAt, createdAt FROM nodes WHERE nodeNum != 4294967295 ORDER BY nodeNum'
+      );
+      const afterNodes = afterStmt.all() as Array<{
+        nodeNum: number;
+        nodeId: string;
+        welcomedAt: number;
+        createdAt: number;
+      }>;
 
       expect(afterNodes.length).toBe(3);
 
@@ -122,7 +129,7 @@ describe('DatabaseService - Auto Welcome Migration', () => {
     });
 
     it('should not affect nodes that already have welcomedAt', () => {
-      const customWelcomedAt = Date.now() - (10 * 24 * 60 * 60 * 1000); // 10 days ago
+      const customWelcomedAt = Date.now() - 10 * 24 * 60 * 60 * 1000; // 10 days ago
 
       // Insert a node that already has welcomedAt
       dbService.db.exec(`
@@ -190,7 +197,9 @@ describe('DatabaseService - Auto Welcome Migration', () => {
       const duration = Date.now() - startTime;
 
       // Verify all nodes were marked (excluding broadcast node)
-      const stmt = dbService.db.prepare('SELECT COUNT(*) as count FROM nodes WHERE welcomedAt IS NOT NULL AND nodeNum >= 1000000 AND nodeNum != 4294967295');
+      const stmt = dbService.db.prepare(
+        'SELECT COUNT(*) as count FROM nodes WHERE welcomedAt IS NOT NULL AND nodeNum >= 1000000 AND nodeNum != 4294967295'
+      );
       const result = stmt.get() as { count: number };
       expect(result.count).toBe(100);
 
@@ -201,7 +210,7 @@ describe('DatabaseService - Auto Welcome Migration', () => {
 
   describe('welcomedAt column migration', () => {
     it('should have welcomedAt column in nodes table', () => {
-      const stmt = dbService.db.prepare("PRAGMA table_info(nodes)");
+      const stmt = dbService.db.prepare('PRAGMA table_info(nodes)');
       const columns = stmt.all() as Array<{ name: string; type: string }>;
 
       const welcomedAtColumn = columns.find(col => col.name === 'welcomedAt');
@@ -234,14 +243,14 @@ describe('DatabaseService - Auto Welcome Migration', () => {
         nodeNum: 888888,
         nodeId: '!000d8f4c',
         longName: 'Update Test',
-        shortName: 'UPD'
+        shortName: 'UPD',
       });
 
       // Update welcomedAt
       dbService.upsertNode({
         nodeNum: 888888,
         nodeId: '!000d8f4c',
-        welcomedAt: now
+        welcomedAt: now,
       });
 
       // Verify update
@@ -266,7 +275,9 @@ describe('DatabaseService - Auto Welcome Migration', () => {
       insertStmt.run(333333, '!000516f5', 'Node Three', 'THR', 0, now, now);
 
       // Verify nodes don't have welcomedAt (excluding broadcast node)
-      const beforeStmt = dbService.db.prepare('SELECT COUNT(*) as count FROM nodes WHERE welcomedAt IS NULL AND nodeNum IN (111111, 222222, 333333)');
+      const beforeStmt = dbService.db.prepare(
+        'SELECT COUNT(*) as count FROM nodes WHERE welcomedAt IS NULL AND nodeNum IN (111111, 222222, 333333)'
+      );
       const before = beforeStmt.get() as { count: number };
       expect(before.count).toBe(3);
 
@@ -276,13 +287,15 @@ describe('DatabaseService - Auto Welcome Migration', () => {
       expect(markedCount).toBeGreaterThanOrEqual(3);
 
       // Verify all our test nodes now have welcomedAt
-      const afterStmt = dbService.db.prepare('SELECT COUNT(*) as count FROM nodes WHERE welcomedAt IS NOT NULL AND nodeNum IN (111111, 222222, 333333)');
+      const afterStmt = dbService.db.prepare(
+        'SELECT COUNT(*) as count FROM nodes WHERE welcomedAt IS NOT NULL AND nodeNum IN (111111, 222222, 333333)'
+      );
       const after = afterStmt.get() as { count: number };
       expect(after.count).toBe(3);
     });
 
     it('should not modify nodes that already have welcomedAt', () => {
-      const originalWelcomedAt = Date.now() - (10 * 24 * 60 * 60 * 1000); // 10 days ago
+      const originalWelcomedAt = Date.now() - 10 * 24 * 60 * 60 * 1000; // 10 days ago
 
       // Insert a node with welcomedAt already set
       dbService.db.exec(`
@@ -310,7 +323,7 @@ describe('DatabaseService - Auto Welcome Migration', () => {
 
     it('should handle mixed scenarios correctly', () => {
       const now = Date.now();
-      const oldWelcomedAt = now - (5 * 24 * 60 * 60 * 1000); // 5 days ago
+      const oldWelcomedAt = now - 5 * 24 * 60 * 60 * 1000; // 5 days ago
 
       // Insert mix of nodes - some with welcomedAt, some without
       dbService.db.exec(`
@@ -342,6 +355,100 @@ describe('DatabaseService - Auto Welcome Migration', () => {
       const node3 = stmt1.get(777777) as { welcomedAt: number };
       expect(node2.welcomedAt).toBeDefined();
       expect(node3.welcomedAt).toBeDefined();
+    });
+  });
+
+  describe('markNodeAsWelcomedIfNotAlready', () => {
+    it('should mark node as welcomed when not already welcomed', () => {
+      const now = Date.now();
+
+      // Insert a node without welcomedAt
+      dbService.upsertNode({
+        nodeNum: 123456,
+        nodeId: '!0001e240',
+        longName: 'Test Node',
+        shortName: 'TEST',
+      });
+
+      // Mark the node as welcomed
+      const wasMarked = dbService.markNodeAsWelcomedIfNotAlready(123456, '!0001e240');
+
+      expect(wasMarked).toBe(true);
+
+      // Verify the node has welcomedAt set
+      const node = dbService.getNode(123456);
+      expect(node?.welcomedAt).toBeDefined();
+      expect(node?.welcomedAt).toBeGreaterThan(now - 1000);
+    });
+
+    it('should not mark node when already welcomed (atomic protection)', () => {
+      const now = Date.now();
+
+      // Insert a node with welcomedAt already set
+      dbService.upsertNode({
+        nodeNum: 234567,
+        nodeId: '!000393e7',
+        longName: 'Already Welcomed',
+        shortName: 'WLCM',
+        welcomedAt: now - 10000, // Welcomed 10 seconds ago
+      });
+
+      // Try to mark the node as welcomed again
+      const wasMarked = dbService.markNodeAsWelcomedIfNotAlready(234567, '!000393e7');
+
+      expect(wasMarked).toBe(false);
+
+      // Verify the welcomedAt timestamp didn't change
+      const node = dbService.getNode(234567);
+      expect(node?.welcomedAt).toBe(now - 10000);
+    });
+
+    it('should provide race condition protection for concurrent operations', () => {
+      // Insert a node without welcomedAt
+      dbService.upsertNode({
+        nodeNum: 345678,
+        nodeId: '!00054686',
+        longName: 'Concurrent Test',
+        shortName: 'CONC',
+      });
+
+      // Simulate two processes trying to mark the node simultaneously
+      const result1 = dbService.markNodeAsWelcomedIfNotAlready(345678, '!00054686');
+      const result2 = dbService.markNodeAsWelcomedIfNotAlready(345678, '!00054686');
+
+      // Only the first one should succeed
+      expect(result1).toBe(true);
+      expect(result2).toBe(false);
+
+      // Node should be marked exactly once
+      const node = dbService.getNode(345678);
+      expect(node?.welcomedAt).toBeDefined();
+    });
+
+    it('should not mark node if nodeId does not match', () => {
+      // Insert a node
+      dbService.upsertNode({
+        nodeNum: 456789,
+        nodeId: '!0006f855',
+        longName: 'ID Test',
+        shortName: 'IDT',
+      });
+
+      // Try to mark with wrong nodeId
+      const wasMarked = dbService.markNodeAsWelcomedIfNotAlready(456789, '!wrongid');
+
+      expect(wasMarked).toBe(false);
+
+      // Node should not be marked
+      const node = dbService.getNode(456789);
+      expect(node?.welcomedAt).toBeNull();
+    });
+
+    it('should return false for non-existent node', () => {
+      // Try to mark a node that doesn't exist
+      const wasMarked = dbService.markNodeAsWelcomedIfNotAlready(999999, '!000f423f');
+
+      expect(wasMarked).toBe(false);
     });
   });
 });
