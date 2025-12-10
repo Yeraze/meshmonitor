@@ -1988,7 +1988,7 @@ class DatabaseService {
     return Number(result.count);
   }
 
-  getTelemetryCountByNode(nodeId: string, sinceTimestamp?: number, beforeTimestamp?: number): number {
+  getTelemetryCountByNode(nodeId: string, sinceTimestamp?: number, beforeTimestamp?: number, telemetryType?: string): number {
     let query = 'SELECT COUNT(*) as count FROM telemetry WHERE nodeId = ?';
     const params: any[] = [nodeId];
 
@@ -2000,6 +2000,11 @@ class DatabaseService {
     if (beforeTimestamp !== undefined) {
       query += ' AND timestamp < ?';
       params.push(beforeTimestamp);
+    }
+
+    if (telemetryType !== undefined) {
+      query += ' AND telemetryType = ?';
+      params.push(telemetryType);
     }
 
     const stmt = this.db.prepare(query);
@@ -2416,7 +2421,7 @@ class DatabaseService {
     );
   }
 
-  getTelemetryByNode(nodeId: string, limit: number = 100, sinceTimestamp?: number, beforeTimestamp?: number, offset: number = 0): DbTelemetry[] {
+  getTelemetryByNode(nodeId: string, limit: number = 100, sinceTimestamp?: number, beforeTimestamp?: number, offset: number = 0, telemetryType?: string): DbTelemetry[] {
     let query = `
       SELECT * FROM telemetry
       WHERE nodeId = ?
@@ -2431,6 +2436,11 @@ class DatabaseService {
     if (beforeTimestamp !== undefined) {
       query += ` AND timestamp < ?`;
       params.push(beforeTimestamp);
+    }
+
+    if (telemetryType !== undefined) {
+      query += ` AND telemetryType = ?`;
+      params.push(telemetryType);
     }
 
     query += `
