@@ -4618,55 +4618,92 @@ class MeshtasticManager {
           ? message.hopStart - message.hopLimit
           : 0;
 
-      // Get auto-acknowledge message template
-      // Use the direct message template for 0 hops if available, otherwise fall back to standard template
-      const autoAckMessageDirect = databaseService.getSetting('autoAckMessageDirect') || '';
-      const autoAckMessageStandard = databaseService.getSetting('autoAckMessage') || '🤖 Copy, {NUMBER_HOPS} hops at {TIME}';
-      const autoAckMessage = (hopsTraveled === 0 && autoAckMessageDirect)
-        ? autoAckMessageDirect
-        : autoAckMessageStandard;
+      // Get response type settings
+      const autoAckTapbackEnabled = databaseService.getSetting('autoAckTapbackEnabled') === 'true';
+      const autoAckReplyEnabled = databaseService.getSetting('autoAckReplyEnabled') !== 'false'; // Default true for backward compatibility
 
-      // Format timestamp according to user preferences
-      const timestamp = new Date(message.timestamp);
-
-      // Get date and time format preferences from settings
-      const dateFormat = databaseService.getSetting('dateFormat') || 'MM/DD/YYYY';
-      const timeFormat = databaseService.getSetting('timeFormat') || '24';
-
-      // Use formatDate and formatTime utilities to respect user preferences
-      const receivedDate = formatDate(timestamp, dateFormat as 'MM/DD/YYYY' | 'DD/MM/YYYY');
-      const receivedTime = formatTime(timestamp, timeFormat as '12' | '24');
-
-      // Replace tokens in the message template
-      let ackText = await this.replaceAcknowledgementTokens(autoAckMessage, message.fromNodeId, fromNum, hopsTraveled, receivedDate, receivedTime, channelIndex, isDirectMessage, rxSnr, rxRssi);
+      // If neither tapback nor reply is enabled, skip
+      if (!autoAckTapbackEnabled && !autoAckReplyEnabled) {
+        logger.debug('⏭️  Skipping auto-acknowledge: both tapback and reply are disabled');
+        return;
+      }
 
       // Check if we should always use DM
       const autoAckUseDM = databaseService.getSetting('autoAckUseDM');
       const alwaysUseDM = autoAckUseDM === 'true';
-
-      // Don't make it a reply if we're changing channels (DM when triggered by channel message)
-      const replyId = (alwaysUseDM && !isDirectMessage) ? undefined : packetId;
 
       // Format target for logging
       const target = (alwaysUseDM || isDirectMessage)
         ? `!${fromNum.toString(16).padStart(8, '0')}`
         : `channel ${channelIndex}`;
 
-      logger.debug(`🤖 Auto-acknowledging message from ${message.fromNodeId}: "${messageText}" with "${ackText}" ${alwaysUseDM ? '(via DM)' : ''}`);
+      // Send tapback with hop count emoji if enabled
+      if (autoAckTapbackEnabled && packetId) {
+        // Hop count emojis: *️⃣ for 0 (direct), 1️⃣-7️⃣ for 1-7+ hops
+        const HOP_COUNT_EMOJIS = ['*️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣'];
+        const hopEmojiIndex = Math.min(hopsTraveled, 7); // Cap at 7 for 7+ hops
+        const hopEmoji = HOP_COUNT_EMOJIS[hopEmojiIndex];
 
-      // Use message queue to send auto-acknowledge with rate limiting and retry logic
-      messageQueueService.enqueue(
-        ackText,
-        (alwaysUseDM || isDirectMessage) ? fromNum : 0, // destination: node number for DM, 0 for channel
-        replyId, // replyId
-        () => {
-          logger.info(`✅ Auto-acknowledge delivered to ${target}`);
-        },
-        (reason: string) => {
-          logger.warn(`❌ Auto-acknowledge failed to ${target}: ${reason}`);
-        },
-        (alwaysUseDM || isDirectMessage) ? undefined : channelIndex // channel: undefined for DM, channel number for channel
-      );
+        logger.debug(`🤖 Auto-acknowledging with tapback ${hopEmoji} (${hopsTraveled} hops) to ${target}`);
+
+        // Send tapback reaction using sendTextMessage with emoji flag
+        try {
+          await this.sendTextMessage(
+            hopEmoji,
+            isDirectMessage ? 0 : channelIndex,
+            isDirectMessage ? fromNum : undefined,
+            packetId, // replyId - react to the original message
+            1 // emoji flag = 1 for tapback/reaction
+          );
+          logger.info(`✅ Auto-acknowledge tapback ${hopEmoji} delivered to ${target}`);
+        } catch (error) {
+          logger.warn(`❌ Auto-acknowledge tapback failed to ${target}:`, error);
+        }
+      }
+
+      // Send message reply if enabled
+      if (autoAckReplyEnabled) {
+        // Get auto-acknowledge message template
+        // Use the direct message template for 0 hops if available, otherwise fall back to standard template
+        const autoAckMessageDirect = databaseService.getSetting('autoAckMessageDirect') || '';
+        const autoAckMessageStandard = databaseService.getSetting('autoAckMessage') || '🤖 Copy, {NUMBER_HOPS} hops at {TIME}';
+        const autoAckMessage = (hopsTraveled === 0 && autoAckMessageDirect)
+          ? autoAckMessageDirect
+          : autoAckMessageStandard;
+
+        // Format timestamp according to user preferences
+        const timestamp = new Date(message.timestamp);
+
+        // Get date and time format preferences from settings
+        const dateFormat = databaseService.getSetting('dateFormat') || 'MM/DD/YYYY';
+        const timeFormat = databaseService.getSetting('timeFormat') || '24';
+
+        // Use formatDate and formatTime utilities to respect user preferences
+        const receivedDate = formatDate(timestamp, dateFormat as 'MM/DD/YYYY' | 'DD/MM/YYYY');
+        const receivedTime = formatTime(timestamp, timeFormat as '12' | '24');
+
+        // Replace tokens in the message template
+        const ackText = await this.replaceAcknowledgementTokens(autoAckMessage, message.fromNodeId, fromNum, hopsTraveled, receivedDate, receivedTime, channelIndex, isDirectMessage, rxSnr, rxRssi);
+
+        // Don't make it a reply if we're changing channels (DM when triggered by channel message)
+        const replyId = (alwaysUseDM && !isDirectMessage) ? undefined : packetId;
+
+        logger.debug(`🤖 Auto-acknowledging message from ${message.fromNodeId}: "${messageText}" with "${ackText}" ${alwaysUseDM ? '(via DM)' : ''}`);
+
+        // Use message queue to send auto-acknowledge with rate limiting and retry logic
+        messageQueueService.enqueue(
+          ackText,
+          (alwaysUseDM || isDirectMessage) ? fromNum : 0, // destination: node number for DM, 0 for channel
+          replyId, // replyId
+          () => {
+            logger.info(`✅ Auto-acknowledge message delivered to ${target}`);
+          },
+          (reason: string) => {
+            logger.warn(`❌ Auto-acknowledge message failed to ${target}: ${reason}`);
+          },
+          (alwaysUseDM || isDirectMessage) ? undefined : channelIndex // channel: undefined for DM, channel number for channel
+        );
+      }
     } catch (error) {
       logger.error('❌ Error in auto-acknowledge:', error);
     }

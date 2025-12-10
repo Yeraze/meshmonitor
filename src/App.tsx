@@ -197,6 +197,15 @@ function App() {
     { emoji: '❓', title: 'Question' },
     { emoji: '❗', title: 'Exclamation' },
     { emoji: '‼️', title: 'Double exclamation' },
+    // Hop count emojis (for ping/test responses)
+    { emoji: '*️⃣', title: 'Direct (0 hops)' },
+    { emoji: '1️⃣', title: '1 hop' },
+    { emoji: '2️⃣', title: '2 hops' },
+    { emoji: '3️⃣', title: '3 hops' },
+    { emoji: '4️⃣', title: '4 hops' },
+    { emoji: '5️⃣', title: '5 hops' },
+    { emoji: '6️⃣', title: '6 hops' },
+    { emoji: '7️⃣', title: '7+ hops' },
     // Fun emojis (OLED compatible)
     { emoji: '💩', title: 'Poop' },
     { emoji: '👋', title: 'Wave' },
@@ -449,6 +458,10 @@ function App() {
     setAutoAckUseDM,
     autoAckSkipIncompleteNodes,
     setAutoAckSkipIncompleteNodes,
+    autoAckTapbackEnabled,
+    setAutoAckTapbackEnabled,
+    autoAckReplyEnabled,
+    setAutoAckReplyEnabled,
     autoAnnounceEnabled,
     setAutoAnnounceEnabled,
     autoAnnounceIntervalHours,
@@ -823,6 +836,14 @@ function App() {
 
           if (settings.autoAckSkipIncompleteNodes !== undefined) {
             setAutoAckSkipIncompleteNodes(settings.autoAckSkipIncompleteNodes === 'true');
+          }
+
+          if (settings.autoAckTapbackEnabled !== undefined) {
+            setAutoAckTapbackEnabled(settings.autoAckTapbackEnabled === 'true');
+          }
+
+          if (settings.autoAckReplyEnabled !== undefined) {
+            setAutoAckReplyEnabled(settings.autoAckReplyEnabled !== 'false'); // Default true for backward compatibility
           }
 
           if (settings.autoAnnounceEnabled !== undefined) {
@@ -4299,6 +4320,8 @@ function App() {
                 directMessagesEnabled={autoAckDirectMessages}
                 useDM={autoAckUseDM}
                 skipIncompleteNodes={autoAckSkipIncompleteNodes}
+                tapbackEnabled={autoAckTapbackEnabled}
+                replyEnabled={autoAckReplyEnabled}
                 baseUrl={baseUrl}
                 onEnabledChange={setAutoAckEnabled}
                 onRegexChange={setAutoAckRegex}
@@ -4308,6 +4331,8 @@ function App() {
                 onDirectMessagesChange={setAutoAckDirectMessages}
                 onUseDMChange={setAutoAckUseDM}
                 onSkipIncompleteNodesChange={setAutoAckSkipIncompleteNodes}
+                onTapbackEnabledChange={setAutoAckTapbackEnabled}
+                onReplyEnabledChange={setAutoAckReplyEnabled}
               />
               <AutoAnnounceSection
                 enabled={autoAnnounceEnabled}

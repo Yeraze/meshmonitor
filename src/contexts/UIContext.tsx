@@ -47,6 +47,10 @@ interface UIContextType {
   setAutoAckUseDM: React.Dispatch<React.SetStateAction<boolean>>;
   autoAckSkipIncompleteNodes: boolean;
   setAutoAckSkipIncompleteNodes: React.Dispatch<React.SetStateAction<boolean>>;
+  autoAckTapbackEnabled: boolean;
+  setAutoAckTapbackEnabled: React.Dispatch<React.SetStateAction<boolean>>;
+  autoAckReplyEnabled: boolean;
+  setAutoAckReplyEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   autoAnnounceEnabled: boolean;
   setAutoAnnounceEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   autoAnnounceIntervalHours: number;
@@ -138,6 +142,8 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   const [autoAckDirectMessages, setAutoAckDirectMessages] = useState<boolean>(false);
   const [autoAckUseDM, setAutoAckUseDM] = useState<boolean>(false);
   const [autoAckSkipIncompleteNodes, setAutoAckSkipIncompleteNodes] = useState<boolean>(false);
+  const [autoAckTapbackEnabled, setAutoAckTapbackEnabled] = useState<boolean>(false);
+  const [autoAckReplyEnabled, setAutoAckReplyEnabled] = useState<boolean>(true); // Default true for backward compatibility
   const [autoAnnounceEnabled, setAutoAnnounceEnabled] = useState<boolean>(false);
   const [autoAnnounceIntervalHours, setAutoAnnounceIntervalHours] = useState<number>(6);
   const [autoAnnounceMessage, setAutoAnnounceMessage] = useState<string>('MeshMonitor {VERSION} online for {DURATION} {FEATURES}');
@@ -222,6 +228,10 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
         setAutoAckUseDM,
         autoAckSkipIncompleteNodes,
         setAutoAckSkipIncompleteNodes,
+        autoAckTapbackEnabled,
+        setAutoAckTapbackEnabled,
+        autoAckReplyEnabled,
+        setAutoAckReplyEnabled,
         autoAnnounceEnabled,
         setAutoAnnounceEnabled,
         autoAnnounceIntervalHours,
