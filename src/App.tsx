@@ -1150,17 +1150,8 @@ function App() {
     connectionStatusRef.current = connectionStatus;
   }, [connectionStatus]);
 
-  // Fetch traceroutes when showPaths or showRoute is enabled or Messages/Nodes tab is active
-  useEffect(() => {
-    if ((showPaths || showRoute || activeTab === 'messages' || activeTab === 'nodes') && shouldShowData()) {
-      fetchTraceroutes();
-      // Only auto-refresh when connected (not when viewing cached data)
-      if (connectionStatus === 'connected') {
-        const interval = setInterval(fetchTraceroutes, 60000); // Refresh every 60 seconds
-        return () => clearInterval(interval);
-      }
-    }
-  }, [showPaths, showRoute, activeTab, connectionStatus]);
+  // Traceroutes are now synced via the poll mechanism (processPollData)
+  // This provides consistent data across Dashboard Widget, Node View, and Traceroute History Modal
 
   // Fetch neighbor info when showNeighborInfo is enabled
   useEffect(() => {
@@ -1778,19 +1769,7 @@ function App() {
     }
   };
 
-  const fetchTraceroutes = async () => {
-    try {
-      const response = await fetch(`${baseUrl}/api/traceroutes/recent`, {
-        credentials: 'include',
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setTraceroutes(data);
-      }
-    } catch (error) {
-      logger.error('Error fetching traceroutes:', error);
-    }
-  };
+  // fetchTraceroutes removed - traceroutes are now synced via poll mechanism
 
   const fetchNeighborInfo = async () => {
     try {
@@ -2079,8 +2058,13 @@ function App() {
       if (data.channels) {
         setChannels(data.channels as Channel[]);
       }
+
+      // Process traceroutes data (synced via poll for consistency across all views)
+      if (data.traceroutes) {
+        setTraceroutes(data.traceroutes);
+      }
     },
-    [currentNodeId, playNotificationSound]
+    [currentNodeId, playNotificationSound, setTraceroutes]
   );
 
   // Process poll data when it changes (from usePoll hook)
@@ -2195,11 +2179,11 @@ function App() {
       logger.debug(`🗺️ Traceroute request sent to ${nodeId}`);
 
       // Poll for traceroute results with increasing delays
-      // This provides faster UI feedback instead of waiting for the 60s interval
+      // This provides faster UI feedback instead of waiting for the 5s poll interval
       const pollDelays = [2000, 5000, 10000, 15000]; // 2s, 5s, 10s, 15s
       pollDelays.forEach(delay => {
         setTimeout(() => {
-          fetchTraceroutes();
+          refetchPoll();
         }, delay);
       });
 
