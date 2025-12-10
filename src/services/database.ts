@@ -422,7 +422,8 @@ class DatabaseService {
         autoAnnounceOnStart: 'false',
         autoAnnounceUseSchedule: 'false',
         autoAnnounceSchedule: '0 */6 * * *',
-        tracerouteIntervalMinutes: '0'
+        tracerouteIntervalMinutes: '0',
+        autoUpgradeImmediate: 'false'
       };
 
       Object.entries(automationSettings).forEach(([key, defaultValue]) => {

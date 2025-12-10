@@ -46,6 +46,47 @@ const AutoUpgradeTestSection: React.FC<AutoUpgradeTestSectionProps> = ({ baseUrl
   const [isTestUpgrading, setIsTestUpgrading] = useState(false);
   const [upgradeStatus, setUpgradeStatus] = useState<UpgradeStatus | null>(null);
   const [statusPollInterval, setStatusPollInterval] = useState<NodeJS.Timeout | null>(null);
+  const [autoUpgradeImmediate, setAutoUpgradeImmediate] = useState(false);
+  const [isLoadingSettings, setIsLoadingSettings] = useState(true);
+
+  // Load the autoUpgradeImmediate setting on mount
+  React.useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const response = await csrfFetch(`${baseUrl}/api/settings`);
+        if (response.ok) {
+          const settings = await response.json();
+          setAutoUpgradeImmediate(settings.autoUpgradeImmediate === 'true');
+        }
+      } catch (error) {
+        logger.error('Failed to load autoUpgradeImmediate setting:', error);
+      } finally {
+        setIsLoadingSettings(false);
+      }
+    };
+    loadSettings();
+  }, [baseUrl, csrfFetch]);
+
+  const handleAutoUpgradeImmediateChange = async (enabled: boolean) => {
+    setAutoUpgradeImmediate(enabled);
+    try {
+      const response = await csrfFetch(`${baseUrl}/api/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ autoUpgradeImmediate: enabled ? 'true' : 'false' }),
+      });
+      if (response.ok) {
+        showToast(t('auto_upgrade_test.setting_saved'), 'success');
+      } else {
+        showToast(t('auto_upgrade_test.setting_save_failed'), 'error');
+        setAutoUpgradeImmediate(!enabled); // Revert on failure
+      }
+    } catch (error) {
+      logger.error('Failed to save autoUpgradeImmediate setting:', error);
+      showToast(t('auto_upgrade_test.setting_save_failed'), 'error');
+      setAutoUpgradeImmediate(!enabled); // Revert on failure
+    }
+  };
 
   const handleTestConfiguration = async () => {
     setIsTesting(true);
@@ -199,6 +240,24 @@ const AutoUpgradeTestSection: React.FC<AutoUpgradeTestSectionProps> = ({ baseUrl
         {' '}<strong>{t('auto_upgrade_test.config_test_name')}</strong> {t('auto_upgrade_test.config_test_description')}
         {' '}<strong>{t('auto_upgrade_test.upgrade_test_name')}</strong> {t('auto_upgrade_test.upgrade_test_description')}
       </p>
+
+      <div className="setting-item" style={{ marginTop: '1rem' }}>
+        <label className="checkbox-label" style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+          <input
+            type="checkbox"
+            checked={autoUpgradeImmediate}
+            onChange={(e) => handleAutoUpgradeImmediateChange(e.target.checked)}
+            disabled={isLoadingSettings}
+            style={{ marginTop: '0.25rem' }}
+          />
+          <div>
+            <strong>{t('auto_upgrade_test.immediate_upgrade')}</strong>
+            <p className="setting-description" style={{ margin: '0.25rem 0 0 0' }}>
+              {t('auto_upgrade_test.immediate_upgrade_description')}
+            </p>
+          </div>
+        </label>
+      </div>
 
       <div className="setting-item" style={{ marginTop: '1rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
         <button

@@ -34,6 +34,7 @@ import { duplicateKeySchedulerService } from './services/duplicateKeySchedulerSe
 import { solarMonitoringService } from './services/solarMonitoringService.js';
 import { inactiveNodeNotificationService } from './services/inactiveNodeNotificationService.js';
 import { getUserNotificationPreferences, saveUserNotificationPreferences } from './utils/notificationFiltering.js';
+import { upgradeService } from './services/upgradeService.js';
 
 const require = createRequire(import.meta.url);
 const packageJson = require('../../package.json');
@@ -3508,6 +3509,7 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
       'inactiveNodeThresholdHours',
       'inactiveNodeCheckIntervalMinutes',
       'inactiveNodeCooldownHours',
+      'autoUpgradeImmediate',
     ];
     const filteredSettings: Record<string, string> = {};
 
@@ -5279,6 +5281,37 @@ apiRouter.get('/version/check', optionalAuth(), async (_req, res) => {
     // Only mark update as available if it's a newer version AND container image exists
     const updateAvailable = isNewerVersion && imageReady;
 
+    // Check if auto-upgrade immediate is enabled and trigger upgrade automatically
+    let autoUpgradeTriggered = false;
+    if (updateAvailable && upgradeService.isEnabled()) {
+      const autoUpgradeImmediate = databaseService.getSetting('autoUpgradeImmediate') === 'true';
+      if (autoUpgradeImmediate) {
+        logger.info(`🚀 Auto-upgrade immediate enabled, triggering upgrade to ${latestVersion}`);
+        try {
+          const upgradeResult = await upgradeService.triggerUpgrade(
+            { targetVersion: latestVersion, backup: true },
+            currentVersion,
+            'system-auto-upgrade'
+          );
+          if (upgradeResult.success) {
+            autoUpgradeTriggered = true;
+            logger.info(`✅ Auto-upgrade triggered successfully: ${upgradeResult.upgradeId}`);
+            databaseService.auditLog(
+              null,
+              'auto_upgrade_triggered',
+              'system',
+              `Auto-upgrade initiated: ${currentVersion} → ${latestVersion}`,
+              null
+            );
+          } else {
+            logger.warn(`⚠️ Auto-upgrade failed to trigger: ${upgradeResult.message}`);
+          }
+        } catch (upgradeError) {
+          logger.error('❌ Error triggering auto-upgrade:', upgradeError);
+        }
+      }
+    }
+
     const result = {
       updateAvailable,
       currentVersion,
@@ -5287,6 +5320,7 @@ apiRouter.get('/version/check', optionalAuth(), async (_req, res) => {
       releaseName: release.name,
       publishedAt: release.published_at,
       imageReady,
+      autoUpgradeTriggered,
     };
 
     // Cache the result
