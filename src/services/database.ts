@@ -413,6 +413,8 @@ class DatabaseService {
         autoAckEnabled: 'false',
         autoAckRegex: '^(test|ping)',
         autoAckUseDM: 'false',
+        autoAckTapbackEnabled: 'false',
+        autoAckReplyEnabled: 'true',
         autoAnnounceEnabled: 'false',
         autoAnnounceIntervalHours: '6',
         autoAnnounceMessage: 'MeshMonitor {VERSION} online for {DURATION} {FEATURES}',

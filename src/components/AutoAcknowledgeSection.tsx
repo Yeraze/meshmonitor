@@ -14,6 +14,8 @@ interface AutoAcknowledgeSectionProps {
   directMessagesEnabled: boolean;
   useDM: boolean;
   skipIncompleteNodes: boolean;
+  tapbackEnabled: boolean;
+  replyEnabled: boolean;
   baseUrl: string;
   onEnabledChange: (enabled: boolean) => void;
   onRegexChange: (regex: string) => void;
@@ -23,10 +25,15 @@ interface AutoAcknowledgeSectionProps {
   onDirectMessagesChange: (enabled: boolean) => void;
   onUseDMChange: (enabled: boolean) => void;
   onSkipIncompleteNodesChange: (enabled: boolean) => void;
+  onTapbackEnabledChange: (enabled: boolean) => void;
+  onReplyEnabledChange: (enabled: boolean) => void;
 }
 
 const DEFAULT_MESSAGE = '🤖 Copy, {NUMBER_HOPS} hops at {TIME}';
 const DEFAULT_MESSAGE_DIRECT = '🤖 Copy, direct connection! SNR: {SNR}dB RSSI: {RSSI}dBm at {TIME}';
+
+// Hop count emojis for tapback (keycap digits 0-7+)
+const HOP_COUNT_EMOJIS = ['*️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣'];
 
 const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   enabled,
@@ -38,6 +45,8 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   directMessagesEnabled,
   useDM,
   skipIncompleteNodes,
+  tapbackEnabled,
+  replyEnabled,
   baseUrl,
   onEnabledChange,
   onRegexChange,
@@ -47,6 +56,8 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   onDirectMessagesChange,
   onUseDMChange,
   onSkipIncompleteNodesChange,
+  onTapbackEnabledChange,
+  onReplyEnabledChange,
 }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
@@ -59,6 +70,8 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   const [localDirectMessagesEnabled, setLocalDirectMessagesEnabled] = useState(directMessagesEnabled);
   const [localUseDM, setLocalUseDM] = useState(useDM);
   const [localSkipIncompleteNodes, setLocalSkipIncompleteNodes] = useState(skipIncompleteNodes);
+  const [localTapbackEnabled, setLocalTapbackEnabled] = useState(tapbackEnabled);
+  const [localReplyEnabled, setLocalReplyEnabled] = useState(replyEnabled);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [testMessages, setTestMessages] = useState('test\nTest message\nping\nPING\nHello world\nTESTING 123');
@@ -75,14 +88,16 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     setLocalDirectMessagesEnabled(directMessagesEnabled);
     setLocalUseDM(useDM);
     setLocalSkipIncompleteNodes(skipIncompleteNodes);
-  }, [enabled, regex, message, messageDirect, enabledChannels, directMessagesEnabled, useDM, skipIncompleteNodes]);
+    setLocalTapbackEnabled(tapbackEnabled);
+    setLocalReplyEnabled(replyEnabled);
+  }, [enabled, regex, message, messageDirect, enabledChannels, directMessagesEnabled, useDM, skipIncompleteNodes, tapbackEnabled, replyEnabled]);
 
   // Check if any settings have changed
   useEffect(() => {
     const channelsChanged = JSON.stringify(localEnabledChannels.sort()) !== JSON.stringify(enabledChannels.sort());
-    const changed = localEnabled !== enabled || localRegex !== regex || localMessage !== message || localMessageDirect !== messageDirect || channelsChanged || localDirectMessagesEnabled !== directMessagesEnabled || localUseDM !== useDM || localSkipIncompleteNodes !== skipIncompleteNodes;
+    const changed = localEnabled !== enabled || localRegex !== regex || localMessage !== message || localMessageDirect !== messageDirect || channelsChanged || localDirectMessagesEnabled !== directMessagesEnabled || localUseDM !== useDM || localSkipIncompleteNodes !== skipIncompleteNodes || localTapbackEnabled !== tapbackEnabled || localReplyEnabled !== replyEnabled;
     setHasChanges(changed);
-  }, [localEnabled, localRegex, localMessage, localMessageDirect, localEnabledChannels, localDirectMessagesEnabled, localUseDM, localSkipIncompleteNodes, enabled, regex, message, messageDirect, enabledChannels, directMessagesEnabled, useDM, skipIncompleteNodes]);
+  }, [localEnabled, localRegex, localMessage, localMessageDirect, localEnabledChannels, localDirectMessagesEnabled, localUseDM, localSkipIncompleteNodes, localTapbackEnabled, localReplyEnabled, enabled, regex, message, messageDirect, enabledChannels, directMessagesEnabled, useDM, skipIncompleteNodes, tapbackEnabled, replyEnabled]);
 
   // Validate regex pattern for safety
   const validateRegex = (pattern: string): { valid: boolean; error?: string } => {
@@ -198,7 +213,9 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
           autoAckChannels: localEnabledChannels.join(','),
           autoAckDirectMessages: String(localDirectMessagesEnabled),
           autoAckUseDM: String(localUseDM),
-          autoAckSkipIncompleteNodes: String(localSkipIncompleteNodes)
+          autoAckSkipIncompleteNodes: String(localSkipIncompleteNodes),
+          autoAckTapbackEnabled: String(localTapbackEnabled),
+          autoAckReplyEnabled: String(localReplyEnabled)
         })
       });
 
@@ -219,6 +236,8 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
       onDirectMessagesChange(localDirectMessagesEnabled);
       onUseDMChange(localUseDM);
       onSkipIncompleteNodesChange(localSkipIncompleteNodes);
+      onTapbackEnabledChange(localTapbackEnabled);
+      onReplyEnabledChange(localReplyEnabled);
 
       setHasChanges(false);
       showToast(t('automation.settings_saved'), 'success');
@@ -400,6 +419,57 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
         </div>
 
         <div className="setting-item" style={{ marginTop: '1.5rem' }}>
+          <label>
+            {t('automation.auto_ack.response_type')}
+            <span className="setting-description">
+              {t('automation.auto_ack.response_type_description')}
+            </span>
+          </label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <input
+                type="checkbox"
+                id="autoAckTapback"
+                checked={localTapbackEnabled}
+                onChange={(e) => setLocalTapbackEnabled(e.target.checked)}
+                disabled={!localEnabled}
+                style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
+              />
+              <label htmlFor="autoAckTapback" style={{ margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed', fontWeight: 'bold' }}>
+                {t('automation.auto_ack.tapback_with_hop_count')}
+              </label>
+            </div>
+            <div style={{ marginLeft: '1.75rem', fontSize: '0.9rem', color: 'var(--ctp-subtext0)' }}>
+              {t('automation.auto_ack.tapback_with_hop_count_description')}
+              <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.25rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                <span style={{ marginRight: '0.5rem' }}>{t('automation.auto_ack.hop_emojis')}:</span>
+                {HOP_COUNT_EMOJIS.map((emoji, idx) => (
+                  <span key={idx} title={idx === 0 ? 'Direct (0 hops)' : `${idx} hop${idx > 1 ? 's' : ''}`} style={{ fontSize: '1.2rem' }}>
+                    {emoji}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
+              <input
+                type="checkbox"
+                id="autoAckReply"
+                checked={localReplyEnabled}
+                onChange={(e) => setLocalReplyEnabled(e.target.checked)}
+                disabled={!localEnabled}
+                style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
+              />
+              <label htmlFor="autoAckReply" style={{ margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed', fontWeight: 'bold' }}>
+                {t('automation.auto_ack.reply_with_message')}
+              </label>
+            </div>
+            <div style={{ marginLeft: '1.75rem', fontSize: '0.9rem', color: 'var(--ctp-subtext0)' }}>
+              {t('automation.auto_ack.reply_with_message_description')}
+            </div>
+          </div>
+        </div>
+
+        <div className="setting-item" style={{ marginTop: '1.5rem', opacity: localReplyEnabled ? 1 : 0.5 }}>
           <label htmlFor="autoAckMessage">
             {t('automation.auto_ack.message_multihop')}
             <span className="setting-description">
@@ -411,7 +481,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
             ref={textareaRef}
             value={localMessage}
             onChange={(e) => setLocalMessage(e.target.value)}
-            disabled={!localEnabled}
+            disabled={!localEnabled || !localReplyEnabled}
             className="setting-input"
             rows={3}
             style={{
@@ -670,7 +740,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
           </div>
         </div>
 
-        <div className="setting-item" style={{ marginTop: '1.5rem' }}>
+        <div className="setting-item" style={{ marginTop: '1.5rem', opacity: localReplyEnabled ? 1 : 0.5 }}>
           <label htmlFor="autoAckMessageDirect">
             {t('automation.auto_ack.message_direct')}
             <span className="setting-description">
@@ -682,7 +752,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
             ref={textareaDirectRef}
             value={localMessageDirect}
             onChange={(e) => setLocalMessageDirect(e.target.value)}
-            disabled={!localEnabled}
+            disabled={!localEnabled || !localReplyEnabled}
             className="setting-input"
             rows={3}
             style={{

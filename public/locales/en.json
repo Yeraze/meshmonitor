@@ -1668,6 +1668,13 @@
   "automation.auto_ack.pattern_testing_description": "Enter sample messages (one per line) to test your regex pattern. Green = will trigger auto-ack, Red = will not trigger",
   "automation.auto_ack.test_placeholder": "Enter test messages, one per line...",
   "automation.auto_ack.available_tokens": "Available tokens:",
+  "automation.auto_ack.response_type": "Response Type",
+  "automation.auto_ack.response_type_description": "Choose how to respond when a message matches the pattern. You can enable both options to send a tapback and a message.",
+  "automation.auto_ack.tapback_with_hop_count": "Tapback with Hop Count",
+  "automation.auto_ack.tapback_with_hop_count_description": "Send a number emoji reaction indicating the hop count (*️⃣ for direct, 1️⃣-7️⃣ for hops). This is a low-bandwidth way to acknowledge messages.",
+  "automation.auto_ack.hop_emojis": "Hop emojis",
+  "automation.auto_ack.reply_with_message": "Reply with Message",
+  "automation.auto_ack.reply_with_message_description": "Send a customizable text message response using the templates below.",
 
   "automation.auto_welcome.title": "Auto Welcome",
   "automation.auto_welcome.description": "When enabled, automatically send a welcome message when a new node joins the mesh network.",
