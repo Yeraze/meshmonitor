@@ -5871,12 +5871,12 @@ class MeshtasticManager {
         return;
       }
 
-      // RACE CONDITION PROTECTION: Mark that we're welcoming this node
-      // This prevents duplicate welcomes if multiple packets arrive before database is updated
-      this.welcomingNodes.add(nodeNum);
-      logger.debug(`🔒 Locked auto-welcome for ${nodeId} to prevent duplicates`);
-
       try {
+        // RACE CONDITION PROTECTION: Mark that we're welcoming this node
+        // This prevents duplicate welcomes if multiple packets arrive before database is updated
+        this.welcomingNodes.add(nodeNum);
+        logger.debug(`🔒 Locked auto-welcome for ${nodeId} to prevent duplicates`);
+
         // Check if we should wait for name
         const autoWelcomeWaitForName = databaseService.getSetting('autoWelcomeWaitForName');
         if (autoWelcomeWaitForName === 'true') {
@@ -5946,16 +5946,12 @@ class MeshtasticManager {
         }
       } finally {
         // RACE CONDITION PROTECTION: Always remove from tracking set
-        // Use a small delay to ensure database write has completed
-        setTimeout(() => {
-          this.welcomingNodes.delete(nodeNum);
-          logger.debug(`🔓 Unlocked auto-welcome tracking for ${nodeId}`);
-        }, 100);
+        // better-sqlite3 uses synchronous writes, so no delay needed
+        this.welcomingNodes.delete(nodeNum);
+        logger.debug(`🔓 Unlocked auto-welcome tracking for ${nodeId}`);
       }
     } catch (error) {
       logger.error('❌ Error in auto-welcome:', error);
-      // Ensure we remove from tracking set even on error
-      this.welcomingNodes.delete(nodeNum);
     }
   }
 
