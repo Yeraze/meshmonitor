@@ -1988,6 +1988,30 @@ class DatabaseService {
     return Number(result.count);
   }
 
+  getTelemetryCountByNode(nodeId: string, sinceTimestamp?: number, beforeTimestamp?: number, telemetryType?: string): number {
+    let query = 'SELECT COUNT(*) as count FROM telemetry WHERE nodeId = ?';
+    const params: any[] = [nodeId];
+
+    if (sinceTimestamp !== undefined) {
+      query += ' AND timestamp >= ?';
+      params.push(sinceTimestamp);
+    }
+
+    if (beforeTimestamp !== undefined) {
+      query += ' AND timestamp < ?';
+      params.push(beforeTimestamp);
+    }
+
+    if (telemetryType !== undefined) {
+      query += ' AND telemetryType = ?';
+      params.push(telemetryType);
+    }
+
+    const stmt = this.db.prepare(query);
+    const result = stmt.get(...params) as { count: number };
+    return Number(result.count);
+  }
+
   /**
    * Update node mobility status based on position telemetry
    * Checks if a node has moved more than 100 meters based on its last 50 position records
@@ -2397,7 +2421,7 @@ class DatabaseService {
     );
   }
 
-  getTelemetryByNode(nodeId: string, limit: number = 100, sinceTimestamp?: number): DbTelemetry[] {
+  getTelemetryByNode(nodeId: string, limit: number = 100, sinceTimestamp?: number, beforeTimestamp?: number, offset: number = 0, telemetryType?: string): DbTelemetry[] {
     let query = `
       SELECT * FROM telemetry
       WHERE nodeId = ?
@@ -2409,11 +2433,21 @@ class DatabaseService {
       params.push(sinceTimestamp);
     }
 
+    if (beforeTimestamp !== undefined) {
+      query += ` AND timestamp < ?`;
+      params.push(beforeTimestamp);
+    }
+
+    if (telemetryType !== undefined) {
+      query += ` AND telemetryType = ?`;
+      params.push(telemetryType);
+    }
+
     query += `
       ORDER BY timestamp DESC
-      LIMIT ?
+      LIMIT ? OFFSET ?
     `;
-    params.push(limit);
+    params.push(limit, offset);
 
     const stmt = this.db.prepare(query);
     const telemetry = stmt.all(...params) as DbTelemetry[];

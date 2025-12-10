@@ -17,36 +17,43 @@ const router = express.Router();
  * Query parameters:
  * - nodeId: string - Filter by specific node
  * - type: string - Filter by telemetry type (battery_level, temperature, etc.)
- * - since: number - Unix timestamp to filter data after this time
+ * - since: number - Unix timestamp (ms) to filter data after this time
+ * - before: number - Unix timestamp (ms) to filter data before this time
  * - limit: number - Max number of records to return (default: 1000)
+ * - offset: number - Number of records to skip for pagination (default: 0)
  */
 router.get('/', (req: Request, res: Response) => {
   try {
-    const { nodeId, type, since, limit } = req.query;
+    const { nodeId, type, since, before, limit, offset } = req.query;
 
-    const maxLimit = parseInt(limit as string) || 1000;
+    const maxLimit = Math.min(parseInt(limit as string) || 1000, 10000);
+    const offsetNum = parseInt(offset as string) || 0;
     const sinceTimestamp = since ? parseInt(since as string) : undefined;
+    const beforeTimestamp = before ? parseInt(before as string) : undefined;
 
     let telemetry;
+    let total: number | undefined;
 
     if (nodeId) {
-      telemetry = databaseService.getTelemetryByNode(nodeId as string, maxLimit, sinceTimestamp);
-      // Filter by type if provided
-      if (type) {
-        telemetry = telemetry.filter(t => t.telemetryType === type);
-      }
+      const typeStr = type ? type as string : undefined;
+      telemetry = databaseService.getTelemetryByNode(nodeId as string, maxLimit, sinceTimestamp, beforeTimestamp, offsetNum, typeStr);
+      total = databaseService.getTelemetryCountByNode(nodeId as string, sinceTimestamp, beforeTimestamp, typeStr);
     } else if (type) {
       telemetry = databaseService.getTelemetryByType(type as string, maxLimit);
-      // Filter by since if provided
+      // Filter by since/before if provided
       if (sinceTimestamp) {
         telemetry = telemetry.filter(t => t.timestamp >= sinceTimestamp);
+      }
+      if (beforeTimestamp) {
+        telemetry = telemetry.filter(t => t.timestamp < beforeTimestamp);
       }
     } else {
       // Get all telemetry by getting all nodes and their telemetry
       const nodes = databaseService.getAllNodes();
       telemetry = [];
+      const perNodeLimit = Math.max(1, Math.floor(maxLimit / 10));
       for (const node of nodes.slice(0, 10)) { // Limit to first 10 nodes to avoid huge response
-        const nodeTelemetry = databaseService.getTelemetryByNode(node.nodeId, Math.floor(maxLimit / 10), sinceTimestamp);
+        const nodeTelemetry = databaseService.getTelemetryByNode(node.nodeId, perNodeLimit, sinceTimestamp, beforeTimestamp);
         telemetry.push(...nodeTelemetry);
       }
     }
@@ -54,6 +61,9 @@ router.get('/', (req: Request, res: Response) => {
     res.json({
       success: true,
       count: telemetry.length,
+      total,
+      offset: offsetNum,
+      limit: maxLimit,
       data: telemetry
     });
   } catch (error) {
@@ -91,25 +101,34 @@ router.get('/count', (_req: Request, res: Response) => {
 /**
  * GET /api/v1/telemetry/:nodeId
  * Get all telemetry for a specific node
+ *
+ * Query parameters:
+ * - type: string - Filter by telemetry type
+ * - since: number - Unix timestamp (ms) to filter data after this time
+ * - before: number - Unix timestamp (ms) to filter data before this time
+ * - limit: number - Max number of records to return (default: 1000, max: 10000)
+ * - offset: number - Number of records to skip for pagination (default: 0)
  */
 router.get('/:nodeId', (req: Request, res: Response) => {
   try {
     const { nodeId } = req.params;
-    const { type, since, limit } = req.query;
+    const { type, since, before, limit, offset } = req.query;
 
-    const maxLimit = parseInt(limit as string) || 1000;
+    const maxLimit = Math.min(parseInt(limit as string) || 1000, 10000);
+    const offsetNum = parseInt(offset as string) || 0;
     const sinceTimestamp = since ? parseInt(since as string) : undefined;
+    const beforeTimestamp = before ? parseInt(before as string) : undefined;
 
-    let telemetry = databaseService.getTelemetryByNode(nodeId, maxLimit, sinceTimestamp);
-
-    // Filter by type if provided
-    if (type) {
-      telemetry = telemetry.filter(t => t.telemetryType === type);
-    }
+    const typeStr = type ? type as string : undefined;
+    const telemetry = databaseService.getTelemetryByNode(nodeId, maxLimit, sinceTimestamp, beforeTimestamp, offsetNum, typeStr);
+    const total = databaseService.getTelemetryCountByNode(nodeId, sinceTimestamp, beforeTimestamp, typeStr);
 
     res.json({
       success: true,
       count: telemetry.length,
+      total,
+      offset: offsetNum,
+      limit: maxLimit,
       data: telemetry
     });
   } catch (error) {
