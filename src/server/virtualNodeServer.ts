@@ -534,10 +534,12 @@ export class VirtualNodeServer extends EventEmitter {
 
       // === STEP 2: Rebuild and send all NodeInfo entries from database ===
       // Apply activity filtering based on maxNodeAgeHours setting
+      // IMPORTANT: Exclude MQTT-sourced nodes to prevent "node bloat" (Issue #919)
+      // Only send nodes that the physical device actually heard directly
       const maxNodeAgeHours = parseInt(databaseService.getSetting('maxNodeAgeHours') || '24');
       const maxNodeAgeDays = maxNodeAgeHours / 24;
-      const allNodes = databaseService.getActiveNodes(maxNodeAgeDays);
-      logger.debug(`Virtual node: Rebuilding ${allNodes.length} active NodeInfo entries from database (maxNodeAgeHours: ${maxNodeAgeHours})`);
+      const allNodes = databaseService.getActiveNodesExcludingMqtt(maxNodeAgeDays);
+      logger.debug(`Virtual node: Rebuilding ${allNodes.length} active NodeInfo entries from database (maxNodeAgeHours: ${maxNodeAgeHours}, excluding MQTT nodes)`);
 
       for (const node of allNodes) {
         // Check if client is still connected

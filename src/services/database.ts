@@ -1783,6 +1783,18 @@ class DatabaseService {
   }
 
   /**
+   * Get active nodes excluding those received via MQTT
+   * Used by Virtual Node Server to only send nodes the physical device actually heard
+   */
+  getActiveNodesExcludingMqtt(sinceDays: number = 7): DbNode[] {
+    // lastHeard is stored in seconds (Unix timestamp), so convert cutoff to seconds
+    const cutoff = Math.floor(Date.now() / 1000) - (sinceDays * 24 * 60 * 60);
+    const stmt = this.db.prepare('SELECT * FROM nodes WHERE lastHeard > ? AND (viaMqtt IS NULL OR viaMqtt = 0) ORDER BY lastHeard DESC');
+    const nodes = stmt.all(cutoff) as DbNode[];
+    return nodes.map(node => this.normalizeBigInts(node));
+  }
+
+  /**
    * Mark all existing nodes as welcomed to prevent thundering herd on startup
    * Should be called when Auto-Welcome is enabled during server initialization
    */
