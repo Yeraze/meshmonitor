@@ -218,8 +218,38 @@ recreate_container() {
       log "Using project name: $COMPOSE_PROJECT_NAME"
     fi
 
-    docker compose $project_flag $compose_files stop "$CONTAINER_NAME" 2>/dev/null || true
-    docker compose $project_flag $compose_files rm -f "$CONTAINER_NAME" 2>/dev/null || true
+    # Stop container via compose
+    if ! docker compose $project_flag $compose_files stop "$CONTAINER_NAME" 2>/dev/null; then
+      log_warn "Compose stop failed, trying direct docker stop..."
+      docker stop "$CONTAINER_NAME" 2>/dev/null || true
+    fi
+
+    # Remove container via compose
+    if ! docker compose $project_flag $compose_files rm -f "$CONTAINER_NAME" 2>/dev/null; then
+      log_warn "Compose rm failed, trying direct docker rm..."
+      docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
+    fi
+
+    # Verify container is actually gone (critical for ARM/Raspberry Pi where Docker can be slower)
+    local wait_count=0
+    local max_wait=30
+    while docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; do
+      wait_count=$((wait_count + 1))
+      if [ $wait_count -ge $max_wait ]; then
+        log_error "Container still exists after ${max_wait}s - forcing removal"
+        docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
+        sleep 2
+        # Final check
+        if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+          log_error "Unable to remove container - manual intervention required"
+          return 1
+        fi
+        break
+      fi
+      log "Waiting for container removal... (${wait_count}s)"
+      sleep 1
+    done
+    log_success "Container removed successfully"
 
     # Recreate using docker compose (this properly handles all configuration)
     if docker compose $project_flag $compose_files up -d --no-deps "$CONTAINER_NAME"; then
@@ -258,8 +288,29 @@ recreate_container() {
 
     # Stop and remove old container
     log "Stopping current container..."
-    docker stop "$CONTAINER_NAME" || true
-    docker rm "$CONTAINER_NAME" || true
+    docker stop "$CONTAINER_NAME" 2>/dev/null || true
+    docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
+
+    # Verify container is actually gone (critical for ARM/Raspberry Pi where Docker can be slower)
+    local wait_count=0
+    local max_wait=30
+    while docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; do
+      wait_count=$((wait_count + 1))
+      if [ $wait_count -ge $max_wait ]; then
+        log_error "Container still exists after ${max_wait}s - forcing removal"
+        docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
+        sleep 2
+        if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+          log_error "Unable to remove container - manual intervention required"
+          rm -f "$env_file"
+          return 1
+        fi
+        break
+      fi
+      log "Waiting for container removal... (${wait_count}s)"
+      sleep 1
+    done
+    log_success "Container removed successfully"
 
     # Start new container with same configuration
     log "Starting new container..."
