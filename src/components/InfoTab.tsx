@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { DeviceInfo, Channel } from '../types/device';
@@ -14,6 +14,87 @@ import { formatDistance } from '../utils/distance';
 import { logger } from '../utils/logger';
 import { useToast } from './ToastContainer';
 import { getDeviceRoleName } from '../utils/deviceRole';
+
+// Chart data entry interface
+interface ChartDataEntry {
+  name: string;
+  value: number;
+  color: string;
+  [key: string]: string | number;  // Index signature for Recharts compatibility
+}
+
+// Reusable packet statistics chart component
+interface PacketStatsChartProps {
+  title: string;
+  data: ChartDataEntry[];
+  total: number;
+  chartId: string;
+}
+
+const PacketStatsChart: React.FC<PacketStatsChartProps> = React.memo(({ title, data, total, chartId }) => {
+  const filteredData = useMemo(() => data.filter(d => d.value > 0), [data]);
+
+  if (filteredData.length === 0) return null;
+
+  return (
+    <div className="info-section">
+      <h3>{title}</h3>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <div style={{ width: '140px', height: '140px' }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={filteredData}
+                cx="50%"
+                cy="50%"
+                innerRadius={30}
+                outerRadius={55}
+                paddingAngle={2}
+                dataKey="value"
+              >
+                {filteredData.map((entry, index) => (
+                  <Cell key={`${chartId}-cell-${index}`} fill={entry.color} />
+                ))}
+              </Pie>
+              <Tooltip
+                formatter={(value: number) => {
+                  const pct = total > 0 ? ((value / total) * 100).toFixed(1) : '0';
+                  return [`${value.toLocaleString()} (${pct}%)`, ''];
+                }}
+                contentStyle={{
+                  backgroundColor: 'var(--ctp-surface0)',
+                  border: '1px solid var(--ctp-surface2)',
+                  borderRadius: '4px',
+                  fontSize: '0.85em',
+                }}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+        <div style={{ fontSize: '0.85em' }}>
+          {filteredData.map((entry, index) => {
+            const pct = total > 0 ? ((entry.value / total) * 100).toFixed(1) : '0';
+            return (
+              <p key={`${chartId}-legend-${index}`} style={{ margin: '0.25rem 0' }}>
+                <span style={{
+                  display: 'inline-block',
+                  width: '10px',
+                  height: '10px',
+                  backgroundColor: entry.color,
+                  marginRight: '0.5rem',
+                  borderRadius: '2px'
+                }}></span>
+                {entry.name}: {pct}% ({entry.value.toLocaleString()})
+              </p>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+});
+
+PacketStatsChart.displayName = 'PacketStatsChart';
 
 interface RouteSegment {
   id: number;
@@ -377,168 +458,47 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
           )}
         </div>
 
-        {localStats?.numPacketsRx > 0 && (
-          <div className="info-section">
-            <h3>{t('info.rx_statistics')}</h3>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-              <div style={{ width: '140px', height: '140px' }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={(() => {
-                        const rxTotal = localStats.numPacketsRx || 0;
-                        const rxBad = localStats.numPacketsRxBad || 0;
-                        const rxDupe = localStats.numRxDupe || 0;
-                        const rxGood = Math.max(0, rxTotal - rxBad - rxDupe);
-                        return [
-                          { name: t('info.rx_good'), value: rxGood, color: '#a6e3a1' },
-                          { name: t('info.rx_bad_short'), value: rxBad, color: '#f38ba8' },
-                          { name: t('info.rx_dupe_short'), value: rxDupe, color: '#fab387' },
-                        ].filter(d => d.value > 0);
-                      })()}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={30}
-                      outerRadius={55}
-                      paddingAngle={2}
-                      dataKey="value"
-                    >
-                      {(() => {
-                        const rxTotal = localStats.numPacketsRx || 0;
-                        const rxBad = localStats.numPacketsRxBad || 0;
-                        const rxDupe = localStats.numRxDupe || 0;
-                        const rxGood = Math.max(0, rxTotal - rxBad - rxDupe);
-                        return [
-                          { name: t('info.rx_good'), value: rxGood, color: '#a6e3a1' },
-                          { name: t('info.rx_bad_short'), value: rxBad, color: '#f38ba8' },
-                          { name: t('info.rx_dupe_short'), value: rxDupe, color: '#fab387' },
-                        ].filter(d => d.value > 0).map((entry, index) => (
-                          <Cell key={`rx-cell-${index}`} fill={entry.color} />
-                        ));
-                      })()}
-                    </Pie>
-                    <Tooltip
-                      formatter={(value: number) => {
-                        const rxTotal = localStats.numPacketsRx || 1;
-                        const pct = ((value / rxTotal) * 100).toFixed(1);
-                        return [`${value.toLocaleString()} (${pct}%)`, ''];
-                      }}
-                      contentStyle={{
-                        backgroundColor: 'var(--ctp-surface0)',
-                        border: '1px solid var(--ctp-surface2)',
-                        borderRadius: '4px',
-                        fontSize: '0.85em',
-                      }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <div style={{ fontSize: '0.85em' }}>
-                {(() => {
-                  const rxTotal = localStats.numPacketsRx || 0;
-                  const rxBad = localStats.numPacketsRxBad || 0;
-                  const rxDupe = localStats.numRxDupe || 0;
-                  const rxGood = Math.max(0, rxTotal - rxBad - rxDupe);
-                  const pctGood = rxTotal > 0 ? ((rxGood / rxTotal) * 100).toFixed(1) : '0';
-                  const pctBad = rxTotal > 0 ? ((rxBad / rxTotal) * 100).toFixed(1) : '0';
-                  const pctDupe = rxTotal > 0 ? ((rxDupe / rxTotal) * 100).toFixed(1) : '0';
-                  return (
-                    <>
-                      <p style={{ margin: '0.25rem 0' }}><span style={{ display: 'inline-block', width: '10px', height: '10px', backgroundColor: '#a6e3a1', marginRight: '0.5rem', borderRadius: '2px' }}></span>{t('info.rx_good')}: {pctGood}% ({rxGood.toLocaleString()})</p>
-                      <p style={{ margin: '0.25rem 0' }}><span style={{ display: 'inline-block', width: '10px', height: '10px', backgroundColor: '#f38ba8', marginRight: '0.5rem', borderRadius: '2px' }}></span>{t('info.rx_bad_short')}: {pctBad}% ({rxBad.toLocaleString()})</p>
-                      <p style={{ margin: '0.25rem 0' }}><span style={{ display: 'inline-block', width: '10px', height: '10px', backgroundColor: '#fab387', marginRight: '0.5rem', borderRadius: '2px' }}></span>{t('info.rx_dupe_short')}: {pctDupe}% ({rxDupe.toLocaleString()})</p>
-                    </>
-                  );
-                })()}
-              </div>
-            </div>
-          </div>
-        )}
+        {localStats?.numPacketsRx > 0 && (() => {
+          const rxTotal = localStats.numPacketsRx || 0;
+          const rxBad = localStats.numPacketsRxBad || 0;
+          const rxDupe = localStats.numRxDupe || 0;
+          const rxGood = Math.max(0, rxTotal - rxBad - rxDupe);
+          const rxData: ChartDataEntry[] = [
+            { name: t('info.rx_good'), value: rxGood, color: '#a6e3a1' },
+            { name: t('info.rx_bad_short'), value: rxBad, color: '#f38ba8' },
+            { name: t('info.rx_dupe_short'), value: rxDupe, color: '#fab387' },
+          ];
+          return (
+            <PacketStatsChart
+              title={t('info.rx_statistics')}
+              data={rxData}
+              total={rxTotal}
+              chartId="rx"
+            />
+          );
+        })()}
 
-        {localStats?.numPacketsTx > 0 && (
-          <div className="info-section">
-            <h3>{t('info.tx_statistics')}</h3>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-              <div style={{ width: '140px', height: '140px' }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={(() => {
-                        const txTotal = localStats.numPacketsTx || 0;
-                        const txDropped = localStats.numTxDropped || 0;
-                        const txRelay = localStats.numTxRelay || 0;
-                        const txRelayCanceled = localStats.numTxRelayCanceled || 0;
-                        const txDirect = Math.max(0, txTotal - txDropped - txRelay - txRelayCanceled);
-                        return [
-                          { name: t('info.tx_direct'), value: txDirect, color: '#89b4fa' },
-                          { name: t('info.tx_relay_short'), value: txRelay, color: '#a6e3a1' },
-                          { name: t('info.tx_dropped_short'), value: txDropped, color: '#f38ba8' },
-                          { name: t('info.tx_canceled_short'), value: txRelayCanceled, color: '#fab387' },
-                        ].filter(d => d.value > 0);
-                      })()}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={30}
-                      outerRadius={55}
-                      paddingAngle={2}
-                      dataKey="value"
-                    >
-                      {(() => {
-                        const txTotal = localStats.numPacketsTx || 0;
-                        const txDropped = localStats.numTxDropped || 0;
-                        const txRelay = localStats.numTxRelay || 0;
-                        const txRelayCanceled = localStats.numTxRelayCanceled || 0;
-                        const txDirect = Math.max(0, txTotal - txDropped - txRelay - txRelayCanceled);
-                        return [
-                          { name: t('info.tx_direct'), value: txDirect, color: '#89b4fa' },
-                          { name: t('info.tx_relay_short'), value: txRelay, color: '#a6e3a1' },
-                          { name: t('info.tx_dropped_short'), value: txDropped, color: '#f38ba8' },
-                          { name: t('info.tx_canceled_short'), value: txRelayCanceled, color: '#fab387' },
-                        ].filter(d => d.value > 0).map((entry, index) => (
-                          <Cell key={`tx-cell-${index}`} fill={entry.color} />
-                        ));
-                      })()}
-                    </Pie>
-                    <Tooltip
-                      formatter={(value: number) => {
-                        const txTotal = localStats.numPacketsTx || 1;
-                        const pct = ((value / txTotal) * 100).toFixed(1);
-                        return [`${value.toLocaleString()} (${pct}%)`, ''];
-                      }}
-                      contentStyle={{
-                        backgroundColor: 'var(--ctp-surface0)',
-                        border: '1px solid var(--ctp-surface2)',
-                        borderRadius: '4px',
-                        fontSize: '0.85em',
-                      }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <div style={{ fontSize: '0.85em' }}>
-                {(() => {
-                  const txTotal = localStats.numPacketsTx || 0;
-                  const txDropped = localStats.numTxDropped || 0;
-                  const txRelay = localStats.numTxRelay || 0;
-                  const txRelayCanceled = localStats.numTxRelayCanceled || 0;
-                  const txDirect = Math.max(0, txTotal - txDropped - txRelay - txRelayCanceled);
-                  const pctDirect = txTotal > 0 ? ((txDirect / txTotal) * 100).toFixed(1) : '0';
-                  const pctRelay = txTotal > 0 ? ((txRelay / txTotal) * 100).toFixed(1) : '0';
-                  const pctDropped = txTotal > 0 ? ((txDropped / txTotal) * 100).toFixed(1) : '0';
-                  const pctCanceled = txTotal > 0 ? ((txRelayCanceled / txTotal) * 100).toFixed(1) : '0';
-                  return (
-                    <>
-                      <p style={{ margin: '0.25rem 0' }}><span style={{ display: 'inline-block', width: '10px', height: '10px', backgroundColor: '#89b4fa', marginRight: '0.5rem', borderRadius: '2px' }}></span>{t('info.tx_direct')}: {pctDirect}% ({txDirect.toLocaleString()})</p>
-                      <p style={{ margin: '0.25rem 0' }}><span style={{ display: 'inline-block', width: '10px', height: '10px', backgroundColor: '#a6e3a1', marginRight: '0.5rem', borderRadius: '2px' }}></span>{t('info.tx_relay_short')}: {pctRelay}% ({txRelay.toLocaleString()})</p>
-                      <p style={{ margin: '0.25rem 0' }}><span style={{ display: 'inline-block', width: '10px', height: '10px', backgroundColor: '#f38ba8', marginRight: '0.5rem', borderRadius: '2px' }}></span>{t('info.tx_dropped_short')}: {pctDropped}% ({txDropped.toLocaleString()})</p>
-                      <p style={{ margin: '0.25rem 0' }}><span style={{ display: 'inline-block', width: '10px', height: '10px', backgroundColor: '#fab387', marginRight: '0.5rem', borderRadius: '2px' }}></span>{t('info.tx_canceled_short')}: {pctCanceled}% ({txRelayCanceled.toLocaleString()})</p>
-                    </>
-                  );
-                })()}
-              </div>
-            </div>
-          </div>
-        )}
+        {localStats?.numPacketsTx > 0 && (() => {
+          const txTotal = localStats.numPacketsTx || 0;
+          const txDropped = localStats.numTxDropped || 0;
+          const txRelay = localStats.numTxRelay || 0;
+          const txRelayCanceled = localStats.numTxRelayCanceled || 0;
+          const txDirect = Math.max(0, txTotal - txDropped - txRelay - txRelayCanceled);
+          const txData: ChartDataEntry[] = [
+            { name: t('info.tx_direct'), value: txDirect, color: '#89b4fa' },
+            { name: t('info.tx_relay_short'), value: txRelay, color: '#a6e3a1' },
+            { name: t('info.tx_dropped_short'), value: txDropped, color: '#f38ba8' },
+            { name: t('info.tx_canceled_short'), value: txRelayCanceled, color: '#fab387' },
+          ];
+          return (
+            <PacketStatsChart
+              title={t('info.tx_statistics')}
+              data={txData}
+              total={txTotal}
+              chartId="tx"
+            />
+          );
+        })()}
 
         {localStats?.hostUptimeSeconds !== undefined && (
           <div className="info-section">
