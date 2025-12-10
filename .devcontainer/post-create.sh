@@ -50,26 +50,24 @@ else
     exit 1
 fi
 
-# Step 2.5: Fix node_modules permissions (volume created by root)
+# Step 2.5: Ensure workspace directories exist
 echo ""
-echo "2.5. Fixing node_modules volume permissions..."
-if [ -d "/workspace/node_modules" ]; then
-    if sudo chown -R node:node /workspace/node_modules 2>&1; then
-        echo "   ✓ node_modules ownership fixed"
-    else
-        echo "   ⚠ Failed to fix node_modules ownership (continuing anyway)"
+echo "2.5. Setting up workspace directories..."
+
+# Ensure common directories exist
+for dir in /workspace/node_modules /workspace/dist /workspace/.vite /workspace/.tsc-cache; do
+    if [ ! -d "$dir" ]; then
+        mkdir -p "$dir" 2>&1 || true
+        echo "   ✓ Created $dir"
     fi
-else
-    echo "   ℹ node_modules doesn't exist yet (will be created by npm install)"
-fi
+done
+
+# Ensure cache folders exist
+mkdir -p /root/.cache /root/.npm /root/.local 2>&1 || true
 
 # Step 3: Install npm dependencies
 echo ""
 echo "3. Installing npm dependencies (this may take a few minutes)..."
-
-# Ensure cache directory exists with correct permissions
-mkdir -p /home/node/.cache/puppeteer 2>&1 || true
-mkdir -p /home/node/.npm 2>&1 || true
 
 # Skip Puppeteer browser downloads (not needed for development)
 export PUPPETEER_SKIP_DOWNLOAD=true

@@ -15,18 +15,17 @@ services:
       # DON'T mount .gitconfig - we'll configure Git in post-create.sh instead
       # This avoids "Device or resource busy" errors on Windows
 
-      # Mount SSH keys for git operations
-      - ~/.ssh:/home/node/.ssh:ro
+      # Mount SSH keys for git operations (using root home since we run as root)
+      - ~/.ssh:/root/.ssh:ro
 
       # Mount Docker socket for Docker-from-Docker (required for testing docker-compose.dev.yml)
       # Security: Provides full Docker host access to container (standard for DevContainers)
       # See .devcontainer/README.md "Security Model" section for details
       - /var/run/docker.sock:/var/run/docker.sock
 
-      # Named volumes for better performance
-      - node_modules-cache:/workspace/node_modules
-      - vscode-extensions:/home/node/.vscode-server/extensions
-      - vscode-extensions-insiders:/home/node/.vscode-server-insiders/extensions
+      # Named volumes for better performance (using root paths)
+      - vscode-extensions:/root/.vscode-server/extensions
+      - vscode-extensions-insiders:/root/.vscode-server-insiders/extensions
 
     # Forward ports for development
     ports:
@@ -38,19 +37,20 @@ services:
     # Environment variables
     environment:
       - NODE_ENV=development
+      - WORKSPACE_FOLDER=/workspace
 
-    # Keep container running
-    command: sleep infinity
+    # Keep container running (entrypoint will handle user switching)
+    # Using 'bash -c' to ensure entrypoint runs first
+    command: /bin/bash -c "sleep infinity"
 
     # Network mode for accessing host services if needed
     network_mode: bridge
 
     # Add docker group to allow docker commands
-    user: node
+    # Note: Running as root so docker access is automatic
     group_add:
       - docker
 
 volumes:
-  node_modules-cache:
   vscode-extensions:
   vscode-extensions-insiders:

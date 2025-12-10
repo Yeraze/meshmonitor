@@ -60,8 +60,8 @@ export interface MeshMessage {
   id: string;
   from: string;
   to: string;
-  fromNodeId: string;  // For consistency with database
-  toNodeId: string;    // For consistency with database
+  fromNodeId: string; // For consistency with database
+  toNodeId: string; // For consistency with database
   text: string;
   channel: number;
   portnum?: number;
@@ -71,11 +71,11 @@ export interface MeshMessage {
 class MeshtasticManager {
   private transport: TcpTransport | null = null;
   private isConnected = false;
-  private userDisconnectedState = false;  // Track user-initiated disconnect
+  private userDisconnectedState = false; // Track user-initiated disconnect
   private tracerouteInterval: NodeJS.Timeout | null = null;
   private tracerouteIntervalMinutes: number = 0;
   private localStatsInterval: NodeJS.Timeout | null = null;
-  private localStatsIntervalMinutes: number = 5;  // Default 5 minutes
+  private localStatsIntervalMinutes: number = 5; // Default 5 minutes
   private announceInterval: NodeJS.Timeout | null = null;
   private announceCronJob: cron.ScheduledTask | null = null;
   private serverStartTime: number = Date.now();
@@ -87,34 +87,39 @@ class MeshtasticManager {
     hwModel?: number;
     firmwareVersion?: string;
     rebootCount?: number;
-    isLocked?: boolean;  // Flag to prevent overwrites after initial setup
+    isLocked?: boolean; // Flag to prevent overwrites after initial setup
   } | null = null;
-  private actualDeviceConfig: any = null;  // Store actual device config
-  private actualModuleConfig: any = null;  // Store actual module config
-  private sessionPasskey: Uint8Array | null = null;  // Session passkey for admin messages
-  private sessionPasskeyExpiry: number | null = null;  // Expiry time (expires after 300 seconds)
-  private favoritesSupportCache: boolean | null = null;  // Cache firmware support check result
-  private cachedAutoAckRegex: { pattern: string; regex: RegExp } | null = null;  // Cached compiled regex
+  private actualDeviceConfig: any = null; // Store actual device config
+  private actualModuleConfig: any = null; // Store actual module config
+  private sessionPasskey: Uint8Array | null = null; // Session passkey for admin messages
+  private sessionPasskeyExpiry: number | null = null; // Expiry time (expires after 300 seconds)
+  private favoritesSupportCache: boolean | null = null; // Cache firmware support check result
+  private cachedAutoAckRegex: { pattern: string; regex: RegExp } | null = null; // Cached compiled regex
+
+  // Auto-welcome tracking to prevent race conditions
+  private welcomingNodes: Set<number> = new Set(); // Track nodes currently being welcomed
 
   // Virtual Node Server - Message capture for initialization sequence
-  private initConfigCache: Array<{ type: string; data: Uint8Array }> = [];  // Store raw FromRadio messages with type metadata during init
-  private isCapturingInitConfig = false;  // Flag to track when we're capturing messages
-  private configCaptureComplete = false;  // Flag to track when capture is done
-  private onConfigCaptureComplete: (() => void) | null = null;  // Callback for when config capture completes
+  private initConfigCache: Array<{ type: string; data: Uint8Array }> = []; // Store raw FromRadio messages with type metadata during init
+  private isCapturingInitConfig = false; // Flag to track when we're capturing messages
+  private configCaptureComplete = false; // Flag to track when capture is done
+  private onConfigCaptureComplete: (() => void) | null = null; // Callback for when config capture completes
 
   constructor() {
     // Initialize message queue service with send callback
-    messageQueueService.setSendCallback(async (text: string, destination: number, replyId?: number, channel?: number) => {
-      // For channel messages: channel is specified, destination is 0 (undefined in sendTextMessage)
-      // For DMs: channel is undefined, destination is the node number
-      if (channel !== undefined) {
-        // Channel message - send to channel, no specific destination
-        return await this.sendTextMessage(text, channel, undefined, replyId);
-      } else {
-        // DM - send to specific node (channel 0)
-        return await this.sendTextMessage(text, 0, destination, replyId);
+    messageQueueService.setSendCallback(
+      async (text: string, destination: number, replyId?: number, channel?: number) => {
+        // For channel messages: channel is specified, destination is 0 (undefined in sendTextMessage)
+        // For DMs: channel is undefined, destination is the node number
+        if (channel !== undefined) {
+          // Channel message - send to channel, no specific destination
+          return await this.sendTextMessage(text, channel, undefined, replyId);
+        } else {
+          // DM - send to specific node (channel 0)
+          return await this.sendTextMessage(text, 0, destination, replyId);
+        }
       }
-    });
+    );
   }
 
   /**
@@ -125,7 +130,7 @@ class MeshtasticManager {
     const env = getEnvironmentConfig();
     return {
       nodeIp: env.meshtasticNodeIp,
-      tcpPort: env.meshtasticTcpPort
+      tcpPort: env.meshtasticTcpPort,
     };
   }
 
@@ -151,7 +156,7 @@ class MeshtasticManager {
           value: Number(metric.value),
           unit: metric.unit,
           createdAt: now,
-          packetTimestamp
+          packetTimestamp,
         });
       }
     }
@@ -263,9 +268,10 @@ class MeshtasticManager {
         // Start automatic announcement scheduler
         this.startAnnounceScheduler();
 
-        logger.debug(`✅ Configuration complete: ${databaseService.getNodeCount()} nodes, ${databaseService.getChannelCount()} channels`);
+        logger.debug(
+          `✅ Configuration complete: ${databaseService.getNodeCount()} nodes, ${databaseService.getChannelCount()} channels`
+        );
       }, 5000);
-
     } catch (error) {
       logger.error('❌ Failed to request configuration:', error);
       this.ensureBasicSetup();
@@ -302,7 +308,7 @@ class MeshtasticManager {
         databaseService.upsertChannel({
           id: 0,
           name: 'Primary',
-          role: 1  // PRIMARY
+          role: 1, // PRIMARY
         });
         logger.debug('📡 Created Primary channel with ID 0 and role PRIMARY');
       }
@@ -391,7 +397,11 @@ class MeshtasticManager {
           const targetNode = databaseService.getNodeNeedingTraceroute(this.localNodeInfo.nodeNum);
           if (targetNode) {
             const channel = targetNode.channel ?? 0; // Use node's channel, default to 0
-            logger.info(`🗺️ Auto-traceroute: Sending traceroute to ${targetNode.longName || targetNode.nodeId} (${targetNode.nodeId}) on channel ${channel}`);
+            logger.info(
+              `🗺️ Auto-traceroute: Sending traceroute to ${targetNode.longName || targetNode.nodeId} (${
+                targetNode.nodeId
+              }) on channel ${channel}`
+            );
             await this.sendTraceroute(targetNode.nodeNum, channel);
           } else {
             logger.info('🗺️ Auto-traceroute: No nodes available for traceroute');
@@ -573,7 +583,11 @@ class MeshtasticManager {
         const timeSinceLastAnnouncement = now - parseInt(lastAnnouncementTime);
         if (timeSinceLastAnnouncement < oneHour) {
           const minutesRemaining = Math.ceil((oneHour - timeSinceLastAnnouncement) / 60000);
-          logger.debug(`📢 Skipping startup announcement - last announcement was ${Math.floor(timeSinceLastAnnouncement / 60000)} minutes ago (spam protection: ${minutesRemaining} minutes remaining)`);
+          logger.debug(
+            `📢 Skipping startup announcement - last announcement was ${Math.floor(
+              timeSinceLastAnnouncement / 60000
+            )} minutes ago (spam protection: ${minutesRemaining} minutes remaining)`
+          );
         } else {
           logger.debug('📢 Sending startup announcement');
           // Send announcement after a short delay to ensure connection is stable
@@ -659,7 +673,9 @@ class MeshtasticManager {
         // Store a copy of the raw message bytes along with the message type
         const messageCopy = new Uint8Array(data);
         this.initConfigCache.push({ type: parsed.type, data: messageCopy });
-        logger.debug(`📸 Captured init message #${this.initConfigCache.length} (type: ${parsed.type}, ${data.length} bytes)`);
+        logger.debug(
+          `📸 Captured init message #${this.initConfigCache.length} (type: ${parsed.type}, ${data.length} bytes)`
+        );
       }
 
       // Process the message
@@ -770,7 +786,9 @@ class MeshtasticManager {
               logger.info('📊 Set positionBroadcastSecs to 0 (was undefined - Proto3 default)');
             }
 
-            logger.info(`📊 Position config after Proto3 defaults: positionBroadcastSecs=${parsed.data.position.positionBroadcastSecs}, positionBroadcastSmartEnabled=${parsed.data.position.positionBroadcastSmartEnabled}, fixedPosition=${parsed.data.position.fixedPosition}`);
+            logger.info(
+              `📊 Position config after Proto3 defaults: positionBroadcastSecs=${parsed.data.position.positionBroadcastSecs}, positionBroadcastSmartEnabled=${parsed.data.position.positionBroadcastSmartEnabled}, fixedPosition=${parsed.data.position.fixedPosition}`
+            );
           }
 
           // Merge the actual device configuration (don't overwrite)
@@ -778,7 +796,9 @@ class MeshtasticManager {
           logger.info('📊 Merged actualDeviceConfig now has keys:', Object.keys(this.actualDeviceConfig));
           logger.info('📊 actualDeviceConfig.lora present:', !!this.actualDeviceConfig?.lora);
           if (parsed.data.lora) {
-            logger.info(`📊 Received LoRa config - hopLimit=${parsed.data.lora.hopLimit}, usePreset=${this.actualDeviceConfig.lora.usePreset}, frequencyOffset=${this.actualDeviceConfig.lora.frequencyOffset}`);
+            logger.info(
+              `📊 Received LoRa config - hopLimit=${parsed.data.lora.hopLimit}, usePreset=${this.actualDeviceConfig.lora.usePreset}, frequencyOffset=${this.actualDeviceConfig.lora.frequencyOffset}`
+            );
           }
           logger.info(`📊 Current actualDeviceConfig.lora.hopLimit=${this.actualDeviceConfig?.lora?.hopLimit}`);
           logger.debug('📊 Merged actualDeviceConfig now has:', Object.keys(this.actualDeviceConfig));
@@ -837,7 +857,9 @@ class MeshtasticManager {
           if (this.isCapturingInitConfig && !this.configCaptureComplete) {
             this.configCaptureComplete = true;
             this.isCapturingInitConfig = false;
-            logger.info(`📸 Init config capture complete! Captured ${this.initConfigCache.length} messages for virtual node replay`);
+            logger.info(
+              `📸 Init config capture complete! Captured ${this.initConfigCache.length} messages for virtual node replay`
+            );
 
             // Call registered callback if present
             if (this.onConfigCaptureComplete) {
@@ -856,7 +878,6 @@ class MeshtasticManager {
       logger.error('❌ Error processing incoming data:', error);
     }
   }
-
 
   /**
    * Process MyNodeInfo protobuf message
@@ -899,9 +920,11 @@ class MeshtasticManager {
             shortName: node.shortName || 'UNK',
             hwModel: node.hwModel || undefined,
             rebootCount: (node as any).rebootCount !== undefined ? (node as any).rebootCount : undefined,
-            isLocked: false // Allow updates if MyNodeInfo arrives later
+            isLocked: false, // Allow updates if MyNodeInfo arrives later
           } as any;
-          logger.debug(`✅ Restored local node info from settings: ${savedNodeId}, rebootCount: ${(node as any).rebootCount}`);
+          logger.debug(
+            `✅ Restored local node info from settings: ${savedNodeId}, rebootCount: ${(node as any).rebootCount}`
+          );
         } else {
           // Create minimal local node info
           this.localNodeInfo = {
@@ -909,7 +932,7 @@ class MeshtasticManager {
             nodeId: savedNodeId,
             longName: 'Unknown',
             shortName: 'UNK',
-            isLocked: false
+            isLocked: false,
           } as any;
           logger.debug(`✅ Restored minimal local node info from settings: ${savedNodeId}`);
         }
@@ -958,7 +981,7 @@ class MeshtasticManager {
         hwModel: existingNode.hwModel || undefined,
         firmwareVersion: (existingNode as any).firmwareVersion || null,
         rebootCount: myNodeInfo.rebootCount !== undefined ? myNodeInfo.rebootCount : undefined,
-        isLocked: true  // Lock it to prevent overwrites
+        isLocked: true, // Lock it to prevent overwrites
       } as any;
 
       // Update rebootCount in the database since it changes over time
@@ -966,12 +989,16 @@ class MeshtasticManager {
         databaseService.upsertNode({
           nodeNum: nodeNum,
           nodeId: nodeId,
-          rebootCount: myNodeInfo.rebootCount
+          rebootCount: myNodeInfo.rebootCount,
         });
-        logger.debug(`📱 Updated rebootCount to ${myNodeInfo.rebootCount} for local device: ${existingNode.longName} (${nodeId})`);
+        logger.debug(
+          `📱 Updated rebootCount to ${myNodeInfo.rebootCount} for local device: ${existingNode.longName} (${nodeId})`
+        );
       }
 
-      logger.debug(`📱 Using existing node info for local device: ${existingNode.longName} (${nodeId}) - LOCKED, rebootCount: ${myNodeInfo.rebootCount}`);
+      logger.debug(
+        `📱 Using existing node info for local device: ${existingNode.longName} (${nodeId}) - LOCKED, rebootCount: ${myNodeInfo.rebootCount}`
+      );
     } else {
       // We don't have real node info yet, store basic info and wait for NodeInfo
       const nodeData = {
@@ -981,27 +1008,35 @@ class MeshtasticManager {
         rebootCount: myNodeInfo.rebootCount !== undefined ? myNodeInfo.rebootCount : undefined,
         lastHeard: Date.now() / 1000,
         createdAt: Date.now(),
-        updatedAt: Date.now()
+        updatedAt: Date.now(),
       };
 
       // Store minimal local node info - actual names will come from NodeInfo
       this.localNodeInfo = {
         nodeNum: nodeNum,
         nodeId: nodeId,
-        longName: null,  // Will be set when NodeInfo is received
-        shortName: null,  // Will be set when NodeInfo is received
+        longName: null, // Will be set when NodeInfo is received
+        shortName: null, // Will be set when NodeInfo is received
         hwModel: myNodeInfo.hwModel || undefined,
         firmwareVersion: null, // Will be set when DeviceMetadata is received
         rebootCount: myNodeInfo.rebootCount !== undefined ? myNodeInfo.rebootCount : undefined,
-        isLocked: false  // Not locked yet, waiting for complete info
+        isLocked: false, // Not locked yet, waiting for complete info
       } as any;
 
       databaseService.upsertNode(nodeData);
-      logger.debug(`📱 Stored basic local node info with rebootCount: ${myNodeInfo.rebootCount}, waiting for NodeInfo for names (${nodeId})`);
+      logger.debug(
+        `📱 Stored basic local node info with rebootCount: ${myNodeInfo.rebootCount}, waiting for NodeInfo for names (${nodeId})`
+      );
     }
   }
 
-  getLocalNodeInfo(): { nodeNum: number; nodeId: string; longName: string; shortName: string; hwModel?: number } | null {
+  getLocalNodeInfo(): {
+    nodeNum: number;
+    nodeId: string;
+    longName: string;
+    shortName: string;
+    hwModel?: number;
+  } | null {
     return this.localNodeInfo;
   }
 
@@ -1033,12 +1068,13 @@ class MeshtasticManager {
       const deviceConfigWithDefaults = {
         ...deviceConfig.device,
         // IMPORTANT: Proto3 omits numeric 0 values from JSON serialization
-        nodeInfoBroadcastSecs: deviceConfig.device.nodeInfoBroadcastSecs !== undefined ? deviceConfig.device.nodeInfoBroadcastSecs : 0
+        nodeInfoBroadcastSecs:
+          deviceConfig.device.nodeInfoBroadcastSecs !== undefined ? deviceConfig.device.nodeInfoBroadcastSecs : 0,
       };
 
       deviceConfig = {
         ...deviceConfig,
-        device: deviceConfigWithDefaults
+        device: deviceConfigWithDefaults,
       };
     }
 
@@ -1049,19 +1085,22 @@ class MeshtasticManager {
         // IMPORTANT: Proto3 omits boolean false and numeric 0 values from JSON serialization
         // but they're still accessible as properties. Explicitly include them.
         usePreset: deviceConfig.lora.usePreset !== undefined ? deviceConfig.lora.usePreset : false,
-        sx126xRxBoostedGain: deviceConfig.lora.sx126xRxBoostedGain !== undefined ? deviceConfig.lora.sx126xRxBoostedGain : false,
+        sx126xRxBoostedGain:
+          deviceConfig.lora.sx126xRxBoostedGain !== undefined ? deviceConfig.lora.sx126xRxBoostedGain : false,
         frequencyOffset: deviceConfig.lora.frequencyOffset !== undefined ? deviceConfig.lora.frequencyOffset : 0,
         overrideFrequency: deviceConfig.lora.overrideFrequency !== undefined ? deviceConfig.lora.overrideFrequency : 0,
         modemPreset: deviceConfig.lora.modemPreset !== undefined ? deviceConfig.lora.modemPreset : 0,
-        channelNum: deviceConfig.lora.channelNum !== undefined ? deviceConfig.lora.channelNum : 0
+        channelNum: deviceConfig.lora.channelNum !== undefined ? deviceConfig.lora.channelNum : 0,
       };
 
       deviceConfig = {
         ...deviceConfig,
-        lora: loraConfigWithDefaults
+        lora: loraConfigWithDefaults,
       };
 
-      logger.info(`[CONFIG] Returning lora config with usePreset=${loraConfigWithDefaults.usePreset}, sx126xRxBoostedGain=${loraConfigWithDefaults.sx126xRxBoostedGain}, frequencyOffset=${loraConfigWithDefaults.frequencyOffset}`);
+      logger.info(
+        `[CONFIG] Returning lora config with usePreset=${loraConfigWithDefaults.usePreset}, sx126xRxBoostedGain=${loraConfigWithDefaults.sx126xRxBoostedGain}, frequencyOffset=${loraConfigWithDefaults.frequencyOffset}`
+      );
     }
 
     // Apply Proto3 defaults to position config if it exists
@@ -1070,17 +1109,23 @@ class MeshtasticManager {
         ...deviceConfig.position,
         // IMPORTANT: Proto3 omits boolean false and numeric 0 values from JSON serialization
         // Explicitly include them to ensure frontend receives all values
-        positionBroadcastSecs: deviceConfig.position.positionBroadcastSecs !== undefined ? deviceConfig.position.positionBroadcastSecs : 0,
-        positionBroadcastSmartEnabled: deviceConfig.position.positionBroadcastSmartEnabled !== undefined ? deviceConfig.position.positionBroadcastSmartEnabled : false,
-        fixedPosition: deviceConfig.position.fixedPosition !== undefined ? deviceConfig.position.fixedPosition : false
+        positionBroadcastSecs:
+          deviceConfig.position.positionBroadcastSecs !== undefined ? deviceConfig.position.positionBroadcastSecs : 0,
+        positionBroadcastSmartEnabled:
+          deviceConfig.position.positionBroadcastSmartEnabled !== undefined
+            ? deviceConfig.position.positionBroadcastSmartEnabled
+            : false,
+        fixedPosition: deviceConfig.position.fixedPosition !== undefined ? deviceConfig.position.fixedPosition : false,
       };
 
       deviceConfig = {
         ...deviceConfig,
-        position: positionConfigWithDefaults
+        position: positionConfigWithDefaults,
       };
 
-      logger.info(`[CONFIG] Returning position config with positionBroadcastSecs=${positionConfigWithDefaults.positionBroadcastSecs}, positionBroadcastSmartEnabled=${positionConfigWithDefaults.positionBroadcastSmartEnabled}, fixedPosition=${positionConfigWithDefaults.fixedPosition}`);
+      logger.info(
+        `[CONFIG] Returning position config with positionBroadcastSecs=${positionConfigWithDefaults.positionBroadcastSecs}, positionBroadcastSmartEnabled=${positionConfigWithDefaults.positionBroadcastSmartEnabled}, fixedPosition=${positionConfigWithDefaults.fixedPosition}`
+      );
     }
 
     // Apply Proto3 defaults to module config if it exists
@@ -1092,16 +1137,19 @@ class MeshtasticManager {
         ...moduleConfig.mqtt,
         // IMPORTANT: Proto3 omits boolean false values from JSON serialization
         enabled: moduleConfig.mqtt.enabled !== undefined ? moduleConfig.mqtt.enabled : false,
-        encryptionEnabled: moduleConfig.mqtt.encryptionEnabled !== undefined ? moduleConfig.mqtt.encryptionEnabled : false,
-        jsonEnabled: moduleConfig.mqtt.jsonEnabled !== undefined ? moduleConfig.mqtt.jsonEnabled : false
+        encryptionEnabled:
+          moduleConfig.mqtt.encryptionEnabled !== undefined ? moduleConfig.mqtt.encryptionEnabled : false,
+        jsonEnabled: moduleConfig.mqtt.jsonEnabled !== undefined ? moduleConfig.mqtt.jsonEnabled : false,
       };
 
       moduleConfig = {
         ...moduleConfig,
-        mqtt: mqttConfigWithDefaults
+        mqtt: mqttConfigWithDefaults,
       };
 
-      logger.info(`[CONFIG] Returning MQTT config with enabled=${mqttConfigWithDefaults.enabled}, encryptionEnabled=${mqttConfigWithDefaults.encryptionEnabled}, jsonEnabled=${mqttConfigWithDefaults.jsonEnabled}`);
+      logger.info(
+        `[CONFIG] Returning MQTT config with enabled=${mqttConfigWithDefaults.enabled}, encryptionEnabled=${mqttConfigWithDefaults.encryptionEnabled}, jsonEnabled=${mqttConfigWithDefaults.jsonEnabled}`
+      );
     }
 
     // Apply Proto3 defaults to NeighborInfo module config
@@ -1110,15 +1158,18 @@ class MeshtasticManager {
         ...moduleConfig.neighborInfo,
         // IMPORTANT: Proto3 omits boolean false and numeric 0 values from JSON serialization
         enabled: moduleConfig.neighborInfo.enabled !== undefined ? moduleConfig.neighborInfo.enabled : false,
-        updateInterval: moduleConfig.neighborInfo.updateInterval !== undefined ? moduleConfig.neighborInfo.updateInterval : 0
+        updateInterval:
+          moduleConfig.neighborInfo.updateInterval !== undefined ? moduleConfig.neighborInfo.updateInterval : 0,
       };
 
       moduleConfig = {
         ...moduleConfig,
-        neighborInfo: neighborInfoConfigWithDefaults
+        neighborInfo: neighborInfoConfigWithDefaults,
       };
 
-      logger.info(`[CONFIG] Returning NeighborInfo config with enabled=${neighborInfoConfigWithDefaults.enabled}, updateInterval=${neighborInfoConfigWithDefaults.updateInterval}`);
+      logger.info(
+        `[CONFIG] Returning NeighborInfo config with enabled=${neighborInfoConfigWithDefaults.enabled}, updateInterval=${neighborInfoConfigWithDefaults.updateInterval}`
+      );
     }
 
     // Apply Proto3 defaults to position config if it exists
@@ -1127,23 +1178,29 @@ class MeshtasticManager {
         ...deviceConfig.position,
         // IMPORTANT: Proto3 omits boolean false and numeric 0 values from JSON serialization
         // Explicitly include them to ensure frontend receives all values
-        positionBroadcastSecs: deviceConfig.position.positionBroadcastSecs !== undefined ? deviceConfig.position.positionBroadcastSecs : 0,
-        positionBroadcastSmartEnabled: deviceConfig.position.positionBroadcastSmartEnabled !== undefined ? deviceConfig.position.positionBroadcastSmartEnabled : false,
-        fixedPosition: deviceConfig.position.fixedPosition !== undefined ? deviceConfig.position.fixedPosition : false
+        positionBroadcastSecs:
+          deviceConfig.position.positionBroadcastSecs !== undefined ? deviceConfig.position.positionBroadcastSecs : 0,
+        positionBroadcastSmartEnabled:
+          deviceConfig.position.positionBroadcastSmartEnabled !== undefined
+            ? deviceConfig.position.positionBroadcastSmartEnabled
+            : false,
+        fixedPosition: deviceConfig.position.fixedPosition !== undefined ? deviceConfig.position.fixedPosition : false,
       };
 
       deviceConfig = {
         ...deviceConfig,
-        position: positionConfigWithDefaults
+        position: positionConfigWithDefaults,
       };
 
-      logger.info(`[CONFIG] Returning position config with positionBroadcastSecs=${positionConfigWithDefaults.positionBroadcastSecs}, positionBroadcastSmartEnabled=${positionConfigWithDefaults.positionBroadcastSmartEnabled}, fixedPosition=${positionConfigWithDefaults.fixedPosition}`);
+      logger.info(
+        `[CONFIG] Returning position config with positionBroadcastSecs=${positionConfigWithDefaults.positionBroadcastSecs}, positionBroadcastSmartEnabled=${positionConfigWithDefaults.positionBroadcastSmartEnabled}, fixedPosition=${positionConfigWithDefaults.fixedPosition}`
+      );
     }
 
     return {
       deviceConfig,
       moduleConfig,
-      localNodeInfo: this.localNodeInfo
+      localNodeInfo: this.localNodeInfo,
     };
   }
 
@@ -1167,7 +1224,7 @@ class MeshtasticManager {
         const nodeData = {
           nodeNum: this.localNodeInfo.nodeNum,
           nodeId: this.localNodeInfo.nodeId,
-          firmwareVersion: metadata.firmwareVersion
+          firmwareVersion: metadata.firmwareVersion,
         };
         databaseService.upsertNode(nodeData);
         logger.debug(`📱 Saved firmware version to database for node ${this.localNodeInfo.nodeId}`);
@@ -1189,7 +1246,7 @@ class MeshtasticManager {
       uplinkEnabled: channel.settings?.uplinkEnabled,
       downlinkEnabled: channel.settings?.downlinkEnabled,
       positionPrecision: channel.settings?.moduleSettings?.positionPrecision,
-      hasModuleSettings: !!channel.settings?.moduleSettings
+      hasModuleSettings: !!channel.settings?.moduleSettings,
     });
 
     if (channel.settings) {
@@ -1197,11 +1254,12 @@ class MeshtasticManager {
       // Preserve the actual name from device (including empty strings for Channel 0)
       const channelName = channel.settings.name !== undefined ? channel.settings.name : `Channel ${channel.index}`;
       const displayName = channelName || `Channel ${channel.index}`; // For logging only
-      const hasValidConfig = channel.settings.name !== undefined ||
-                            channel.settings.psk ||
-                            channel.role === 1 || // PRIMARY role
-                            channel.role === 2 || // SECONDARY role
-                            channel.index === 0;   // Always include channel 0
+      const hasValidConfig =
+        channel.settings.name !== undefined ||
+        channel.settings.psk ||
+        channel.role === 1 || // PRIMARY role
+        channel.role === 2 || // SECONDARY role
+        channel.index === 0; // Always include channel 0
 
       if (hasValidConfig) {
         try {
@@ -1211,7 +1269,10 @@ class MeshtasticManager {
             try {
               pskString = Buffer.from(channel.settings.psk).toString('base64');
             } catch (pskError) {
-              logger.warn(`⚠️  Failed to convert PSK to base64 for channel ${channel.index} (${displayName}):`, pskError);
+              logger.warn(
+                `⚠️  Failed to convert PSK to base64 for channel ${channel.index} (${displayName}):`,
+                pskError
+              );
               pskString = undefined;
             }
           }
@@ -1226,16 +1287,18 @@ class MeshtasticManager {
           let channelRole = channel.role !== undefined ? channel.role : undefined;
           if (channel.index === 0 && channel.role === 0) {
             logger.warn(`⚠️  Channel 0 received with role=DISABLED (0), overriding to PRIMARY (1)`);
-            channelRole = 1;  // PRIMARY
+            channelRole = 1; // PRIMARY
           }
 
           if (channel.index > 0 && channel.role === 1) {
             logger.warn(`⚠️  Channel ${channel.index} received with role=PRIMARY (1), overriding to SECONDARY (2)`);
             logger.warn(`⚠️  Only Channel 0 can be PRIMARY - all other channels must be SECONDARY or DISABLED`);
-            channelRole = 2;  // SECONDARY
+            channelRole = 2; // SECONDARY
           }
 
-          logger.info(`📡 Saving channel ${channel.index} (${displayName}) - role: ${channelRole}, positionPrecision: ${positionPrecision}`);
+          logger.info(
+            `📡 Saving channel ${channel.index} (${displayName}) - role: ${channelRole}, positionPrecision: ${positionPrecision}`
+          );
           logger.info(`📡 Database will store name as: "${channelName}" (length: ${channelName.length})`);
 
           databaseService.upsertChannel({
@@ -1245,9 +1308,15 @@ class MeshtasticManager {
             role: channelRole,
             uplinkEnabled: channel.settings.uplinkEnabled ?? true,
             downlinkEnabled: channel.settings.downlinkEnabled ?? true,
-            positionPrecision: positionPrecision !== undefined ? positionPrecision : undefined
+            positionPrecision: positionPrecision !== undefined ? positionPrecision : undefined,
           });
-          logger.debug(`📡 Saved channel: ${displayName} (role: ${channel.role}, index: ${channel.index}, psk: ${pskString ? 'set' : 'none'}, uplink: ${channel.settings.uplinkEnabled}, downlink: ${channel.settings.downlinkEnabled}, positionPrecision: ${positionPrecision})`);
+          logger.debug(
+            `📡 Saved channel: ${displayName} (role: ${channel.role}, index: ${channel.index}, psk: ${
+              pskString ? 'set' : 'none'
+            }, uplink: ${channel.settings.uplinkEnabled}, downlink: ${
+              channel.settings.downlinkEnabled
+            }, positionPrecision: ${positionPrecision})`
+          );
         } catch (error) {
           logger.error('❌ Failed to save channel:', error);
         }
@@ -1295,7 +1364,12 @@ class MeshtasticManager {
             } else if (portnum === 3) {
               // POSITION - show coordinates (if available)
               const pos = processedPayload as any;
-              if (pos.latitudeI !== undefined || pos.longitudeI !== undefined || pos.latitude_i !== undefined || pos.longitude_i !== undefined) {
+              if (
+                pos.latitudeI !== undefined ||
+                pos.longitudeI !== undefined ||
+                pos.latitude_i !== undefined ||
+                pos.longitude_i !== undefined
+              ) {
                 const lat = pos.latitudeI || pos.latitude_i || 0;
                 const lon = pos.longitudeI || pos.longitude_i || 0;
                 const latDeg = (lat / 1e7).toFixed(5);
@@ -1358,7 +1432,7 @@ class MeshtasticManager {
           hop_start: meshPacket.hopStart,
           want_ack: meshPacket.wantAck,
           priority: meshPacket.priority,
-          via_mqtt: meshPacket.viaMqtt
+          via_mqtt: meshPacket.viaMqtt,
         };
 
         // Include encrypted payload bytes if packet is encrypted
@@ -1386,7 +1460,7 @@ class MeshtasticManager {
           want_ack: meshPacket.wantAck ?? false,
           priority: meshPacket.priority ?? undefined,
           payload_preview: payloadPreview ?? undefined,
-          metadata: JSON.stringify(metadata)
+          metadata: JSON.stringify(metadata),
         });
       }
     } catch (error) {
@@ -1406,7 +1480,7 @@ class MeshtasticManager {
       const nodeData: any = {
         nodeNum: fromNum,
         nodeId: nodeId,
-        lastHeard: meshPacket.rxTime ? Number(meshPacket.rxTime) : Date.now() / 1000
+        lastHeard: meshPacket.rxTime ? Number(meshPacket.rxTime) : Date.now() / 1000,
       };
 
       // Only set default name if this is a brand new node
@@ -1432,7 +1506,11 @@ class MeshtasticManager {
       const normalizedPortNum = meshtasticProtobufService.normalizePortNum(portnum);
       const payload = meshPacket.decoded.payload;
 
-      logger.debug(`📨 Processing payload: portnum=${normalizedPortNum} (${meshtasticProtobufService.getPortNumName(portnum)}), payload size=${payload?.length || 0}`);
+      logger.debug(
+        `📨 Processing payload: portnum=${normalizedPortNum} (${meshtasticProtobufService.getPortNumName(
+          portnum
+        )}), payload size=${payload?.length || 0}`
+      );
 
       if (payload && payload.length > 0 && normalizedPortNum !== undefined) {
         // Use the unified protobuf service to process the payload
@@ -1464,7 +1542,9 @@ class MeshtasticManager {
             await this.processTracerouteMessage(meshPacket, processedPayload as any);
             break;
           default:
-            logger.debug(`🤷 Unhandled portnum: ${normalizedPortNum} (${meshtasticProtobufService.getPortNumName(portnum)})`);
+            logger.debug(
+              `🤷 Unhandled portnum: ${normalizedPortNum} (${meshtasticProtobufService.getPortNumName(portnum)})`
+            );
         }
       }
     }
@@ -1473,7 +1553,11 @@ class MeshtasticManager {
   /**
    * Process text message using protobuf types
    */
-  private async processTextMessageProtobuf(meshPacket: any, messageText: string, context?: ProcessingContext): Promise<void> {
+  private async processTextMessageProtobuf(
+    meshPacket: any,
+    messageText: string,
+    context?: ProcessingContext
+  ): Promise<void> {
     try {
       logger.debug(`💬 Text message: "${messageText}"`);
 
@@ -1493,7 +1577,7 @@ class MeshtasticManager {
             shortName: fromNodeId.substring(1, 5),
             lastHeard: Date.now() / 1000,
             createdAt: Date.now(),
-            updatedAt: Date.now()
+            updatedAt: Date.now(),
           };
           databaseService.upsertNode(basicNodeData);
           logger.debug(`📝 Created basic node entry for ${fromNodeId}`);
@@ -1515,7 +1599,7 @@ class MeshtasticManager {
               shortName: 'BCAST',
               lastHeard: Date.now() / 1000,
               createdAt: Date.now(),
-              updatedAt: Date.now()
+              updatedAt: Date.now(),
             };
             databaseService.upsertNode(broadcastNodeData);
             logger.debug(`📝 Created broadcast node entry`);
@@ -1525,7 +1609,7 @@ class MeshtasticManager {
         // Determine if this is a direct message or a channel message
         // Direct messages (not broadcast) should use channel -1
         const isDirectMessage = toNum !== 4294967295;
-        const channelIndex = isDirectMessage ? -1 : (meshPacket.channel !== undefined ? meshPacket.channel : 0);
+        const channelIndex = isDirectMessage ? -1 : meshPacket.channel !== undefined ? meshPacket.channel : 0;
 
         // Ensure channel 0 exists if this message uses it
         if (!isDirectMessage && channelIndex === 0) {
@@ -1543,9 +1627,10 @@ class MeshtasticManager {
         const decodedData = meshPacket.decoded as any;
 
         const decodedReplyId = decodedData.replyId ?? decodedData.reply_id;
-        const replyId = (decodedReplyId !== undefined && decodedReplyId !== null && decodedReplyId > 0) ? decodedReplyId : undefined;
+        const replyId =
+          decodedReplyId !== undefined && decodedReplyId !== null && decodedReplyId > 0 ? decodedReplyId : undefined;
         const decodedEmoji = (meshPacket.decoded as any)?.emoji;
-        const emoji = (decodedEmoji !== undefined && decodedEmoji > 0) ? decodedEmoji : undefined;
+        const emoji = decodedEmoji !== undefined && decodedEmoji > 0 ? decodedEmoji : undefined;
 
         // Extract hop fields - check both camelCase and snake_case
         // Note: hopStart is the INITIAL hop limit when message was sent, hopLimit is current remaining hops
@@ -1570,20 +1655,39 @@ class MeshtasticManager {
           requestId: context?.virtualNodeRequestId, // For Virtual Node messages, preserve packet ID for ACK matching
           wantAck: context?.virtualNodeRequestId ? 1 : undefined, // Expect ACK for Virtual Node messages
           deliveryState: context?.virtualNodeRequestId ? 'pending' : undefined, // Track delivery for Virtual Node messages
-          createdAt: Date.now()
+          createdAt: Date.now(),
         };
         databaseService.insertMessage(message);
         if (isDirectMessage) {
-          logger.debug(`💾 Saved direct message from ${message.fromNodeId} to ${message.toNodeId}: "${messageText.substring(0, 30)}..." (replyId: ${message.replyId})`);
+          logger.debug(
+            `💾 Saved direct message from ${message.fromNodeId} to ${message.toNodeId}: "${messageText.substring(
+              0,
+              30
+            )}..." (replyId: ${message.replyId})`
+          );
         } else {
-          logger.debug(`💾 Saved channel message from ${message.fromNodeId} on channel ${channelIndex}: "${messageText.substring(0, 30)}..." (replyId: ${message.replyId})`);
+          logger.debug(
+            `💾 Saved channel message from ${message.fromNodeId} on channel ${channelIndex}: "${messageText.substring(
+              0,
+              30
+            )}..." (replyId: ${message.replyId})`
+          );
         }
 
         // Send push notification for new message
         await this.sendMessagePushNotification(message, messageText, isDirectMessage);
 
         // Auto-acknowledge matching messages
-        await this.checkAutoAcknowledge(message, messageText, channelIndex, isDirectMessage, fromNum, meshPacket.id, meshPacket.rxSnr, meshPacket.rxRssi);
+        await this.checkAutoAcknowledge(
+          message,
+          messageText,
+          channelIndex,
+          isDirectMessage,
+          fromNum,
+          meshPacket.id,
+          meshPacket.rxSnr,
+          meshPacket.rxRssi
+        );
 
         // Auto-respond to matching messages
         await this.checkAutoResponder(messageText, channelIndex, isDirectMessage, fromNum, meshPacket.id);
@@ -1636,7 +1740,9 @@ class MeshtasticManager {
 
         // Validate coordinates
         if (!this.isValidPosition(coords.latitude, coords.longitude)) {
-          logger.warn(`⚠️ Invalid position coordinates: lat=${coords.latitude}, lon=${coords.longitude}. Skipping position update.`);
+          logger.warn(
+            `⚠️ Invalid position coordinates: lat=${coords.latitude}, lon=${coords.longitude}. Skipping position update.`
+          );
           return;
         }
 
@@ -1661,17 +1767,20 @@ class MeshtasticManager {
         if (localNodeInfo) {
           const localNodeId = `!${localNodeInfo.nodeNum.toString(16).padStart(8, '0')}`;
           const pendingMessages = databaseService.getDirectMessages(localNodeId, nodeId, 100);
-          const pendingExchangeRequest = pendingMessages.find((msg: DbMessage) =>
-            msg.text === 'Position exchange requested' &&
-            msg.fromNodeNum === localNodeInfo.nodeNum &&
-            msg.toNodeNum === fromNum &&
-            msg.requestId !== undefined // Must have a requestId
+          const pendingExchangeRequest = pendingMessages.find(
+            (msg: DbMessage) =>
+              msg.text === 'Position exchange requested' &&
+              msg.fromNodeNum === localNodeInfo.nodeNum &&
+              msg.toNodeNum === fromNum &&
+              msg.requestId !== undefined // Must have a requestId
           );
 
           if (pendingExchangeRequest && pendingExchangeRequest.requestId !== undefined) {
             // Mark the position exchange request as delivered
             databaseService.updateMessageDeliveryState(pendingExchangeRequest.requestId, 'delivered');
-            logger.info(`📍 Position exchange acknowledged: Received position from ${nodeId}, marking request message as delivered`);
+            logger.info(
+              `📍 Position exchange acknowledged: Received position from ${nodeId}, marking request message as delivered`
+            );
           }
         }
 
@@ -1685,7 +1794,7 @@ class MeshtasticManager {
         if (existingNode && existingNode.positionPrecisionBits !== undefined && precisionBits !== undefined) {
           const existingPrecision = existingNode.positionPrecisionBits;
           const newPrecision = precisionBits;
-          const existingPositionAge = existingNode.positionTimestamp ? (now - existingNode.positionTimestamp) : Infinity;
+          const existingPositionAge = existingNode.positionTimestamp ? now - existingNode.positionTimestamp : Infinity;
           const twelveHoursMs = 12 * 60 * 60 * 1000;
 
           // Smart upgrade/downgrade logic:
@@ -1693,11 +1802,21 @@ class MeshtasticManager {
           // - Only downgrade if existing position is >12 hours old
           if (newPrecision < existingPrecision && existingPositionAge < twelveHoursMs) {
             shouldUpdatePosition = false;
-            logger.debug(`🗺️ Skipping position update for ${nodeId}: New precision (${newPrecision}) < existing (${existingPrecision}) and existing position is recent (${Math.round(existingPositionAge / 1000 / 60)}min old)`);
+            logger.debug(
+              `🗺️ Skipping position update for ${nodeId}: New precision (${newPrecision}) < existing (${existingPrecision}) and existing position is recent (${Math.round(
+                existingPositionAge / 1000 / 60
+              )}min old)`
+            );
           } else if (newPrecision > existingPrecision) {
-            logger.debug(`🗺️ Upgrading position precision for ${nodeId}: ${existingPrecision} -> ${newPrecision} bits (channel ${channelIndex})`);
+            logger.debug(
+              `🗺️ Upgrading position precision for ${nodeId}: ${existingPrecision} -> ${newPrecision} bits (channel ${channelIndex})`
+            );
           } else if (existingPositionAge >= twelveHoursMs) {
-            logger.debug(`🗺️ Updating stale position for ${nodeId}: existing is ${Math.round(existingPositionAge / 1000 / 60 / 60)}h old`);
+            logger.debug(
+              `🗺️ Updating stale position for ${nodeId}: existing is ${Math.round(
+                existingPositionAge / 1000 / 60 / 60
+              )}h old`
+            );
           }
         }
 
@@ -1713,7 +1832,7 @@ class MeshtasticManager {
             positionPrecisionBits: precisionBits,
             positionGpsAccuracy: gpsAccuracy,
             positionHdop: hdop,
-            positionTimestamp: now
+            positionTimestamp: now,
           };
 
           // Only include SNR/RSSI if they have valid values
@@ -1729,27 +1848,53 @@ class MeshtasticManager {
 
           // Save position to telemetry table (historical tracking with precision metadata)
           databaseService.insertTelemetry({
-            nodeId, nodeNum: fromNum, telemetryType: 'latitude',
-            timestamp, value: coords.latitude, unit: '°', createdAt: now, packetTimestamp,
-            channel: channelIndex, precisionBits, gpsAccuracy
+            nodeId,
+            nodeNum: fromNum,
+            telemetryType: 'latitude',
+            timestamp,
+            value: coords.latitude,
+            unit: '°',
+            createdAt: now,
+            packetTimestamp,
+            channel: channelIndex,
+            precisionBits,
+            gpsAccuracy,
           });
           databaseService.insertTelemetry({
-            nodeId, nodeNum: fromNum, telemetryType: 'longitude',
-            timestamp, value: coords.longitude, unit: '°', createdAt: now, packetTimestamp,
-            channel: channelIndex, precisionBits, gpsAccuracy
+            nodeId,
+            nodeNum: fromNum,
+            telemetryType: 'longitude',
+            timestamp,
+            value: coords.longitude,
+            unit: '°',
+            createdAt: now,
+            packetTimestamp,
+            channel: channelIndex,
+            precisionBits,
+            gpsAccuracy,
           });
           if (position.altitude !== undefined && position.altitude !== null) {
             databaseService.insertTelemetry({
-              nodeId, nodeNum: fromNum, telemetryType: 'altitude',
-              timestamp, value: position.altitude, unit: 'm', createdAt: now, packetTimestamp,
-              channel: channelIndex
+              nodeId,
+              nodeNum: fromNum,
+              telemetryType: 'altitude',
+              timestamp,
+              value: position.altitude,
+              unit: 'm',
+              createdAt: now,
+              packetTimestamp,
+              channel: channelIndex,
             });
           }
 
           // Update mobility detection for this node
           databaseService.updateNodeMobility(nodeId);
 
-          logger.debug(`🗺️ Updated node position: ${nodeId} -> ${coords.latitude}, ${coords.longitude} (precision: ${precisionBits ?? 'unknown'} bits, channel: ${channelIndex})`);
+          logger.debug(
+            `🗺️ Updated node position: ${nodeId} -> ${coords.latitude}, ${coords.longitude} (precision: ${
+              precisionBits ?? 'unknown'
+            } bits, channel: ${channelIndex})`
+          );
         }
       }
     } catch (error) {
@@ -1770,7 +1915,7 @@ class MeshtasticManager {
       databaseService.upsertNode({
         nodeNum,
         nodeId,
-        lastPKIPacket: Date.now()
+        lastPKIPacket: Date.now(),
       });
       logger.debug(`🔐 PKI-encrypted packet received from ${nodeId}`);
     }
@@ -1794,7 +1939,7 @@ class MeshtasticManager {
         hwModel: user.hwModel,
         role: user.role,
         hopsAway: meshPacket.hopsAway,
-        lastHeard: meshPacket.rxTime ? Number(meshPacket.rxTime) : timestamp / 1000
+        lastHeard: meshPacket.rxTime ? Number(meshPacket.rxTime) : timestamp / 1000,
       };
 
       // Capture public key if present
@@ -1802,7 +1947,9 @@ class MeshtasticManager {
         // Convert Uint8Array to base64 for storage
         nodeData.publicKey = Buffer.from(user.publicKey).toString('base64');
         nodeData.hasPKC = true;
-        logger.debug(`🔐 Captured public key for ${nodeId} (${user.longName}): ${nodeData.publicKey.substring(0, 16)}...`);
+        logger.debug(
+          `🔐 Captured public key for ${nodeId} (${user.longName}): ${nodeData.publicKey.substring(0, 16)}...`
+        );
 
         // Check for key security issues
         const { checkLowEntropyKey } = await import('../services/lowEntropyKeyService.js');
@@ -1810,7 +1957,8 @@ class MeshtasticManager {
 
         if (isLowEntropy) {
           nodeData.keyIsLowEntropy = true;
-          nodeData.keySecurityIssueDetails = 'Known low-entropy key detected - this key is compromised and should be regenerated';
+          nodeData.keySecurityIssueDetails =
+            'Known low-entropy key detected - this key is compromised and should be regenerated';
           logger.warn(`⚠️ Low-entropy key detected for node ${nodeId} (${user.longName})!`);
         } else {
           // Explicitly clear the flag when key is NOT low-entropy
@@ -1831,9 +1979,10 @@ class MeshtasticManager {
         // This ensures we have historical data for stable links
         const latestSnrTelemetry = databaseService.getLatestTelemetryForType(nodeId, 'snr_local');
         const tenMinutesMs = 10 * 60 * 1000;
-        const shouldSaveSnr = !latestSnrTelemetry ||
-                              latestSnrTelemetry.value !== meshPacket.rxSnr ||
-                              (timestamp - latestSnrTelemetry.timestamp) >= tenMinutesMs;
+        const shouldSaveSnr =
+          !latestSnrTelemetry ||
+          latestSnrTelemetry.value !== meshPacket.rxSnr ||
+          timestamp - latestSnrTelemetry.timestamp >= tenMinutesMs;
 
         if (shouldSaveSnr) {
           databaseService.insertTelemetry({
@@ -1843,11 +1992,18 @@ class MeshtasticManager {
             timestamp,
             value: meshPacket.rxSnr,
             unit: 'dB',
-            createdAt: timestamp
+            createdAt: timestamp,
           });
-          const reason = !latestSnrTelemetry ? 'initial' :
-                        latestSnrTelemetry.value !== meshPacket.rxSnr ? 'changed' : 'periodic';
-          logger.debug(`📊 Saved local SNR telemetry: ${meshPacket.rxSnr} dB (${reason}, previous: ${latestSnrTelemetry?.value || 'N/A'})`);
+          const reason = !latestSnrTelemetry
+            ? 'initial'
+            : latestSnrTelemetry.value !== meshPacket.rxSnr
+            ? 'changed'
+            : 'periodic';
+          logger.debug(
+            `📊 Saved local SNR telemetry: ${meshPacket.rxSnr} dB (${reason}, previous: ${
+              latestSnrTelemetry?.value || 'N/A'
+            })`
+          );
         }
       }
       if (meshPacket.rxRssi && meshPacket.rxRssi !== 0) {
@@ -1857,9 +2013,10 @@ class MeshtasticManager {
         // This ensures we have historical data for stable links
         const latestRssiTelemetry = databaseService.getLatestTelemetryForType(nodeId, 'rssi');
         const tenMinutesMs = 10 * 60 * 1000;
-        const shouldSaveRssi = !latestRssiTelemetry ||
-                               latestRssiTelemetry.value !== meshPacket.rxRssi ||
-                               (timestamp - latestRssiTelemetry.timestamp) >= tenMinutesMs;
+        const shouldSaveRssi =
+          !latestRssiTelemetry ||
+          latestRssiTelemetry.value !== meshPacket.rxRssi ||
+          timestamp - latestRssiTelemetry.timestamp >= tenMinutesMs;
 
         if (shouldSaveRssi) {
           databaseService.insertTelemetry({
@@ -1869,11 +2026,18 @@ class MeshtasticManager {
             timestamp,
             value: meshPacket.rxRssi,
             unit: 'dBm',
-            createdAt: timestamp
+            createdAt: timestamp,
           });
-          const reason = !latestRssiTelemetry ? 'initial' :
-                        latestRssiTelemetry.value !== meshPacket.rxRssi ? 'changed' : 'periodic';
-          logger.debug(`📊 Saved RSSI telemetry: ${meshPacket.rxRssi} dBm (${reason}, previous: ${latestRssiTelemetry?.value || 'N/A'})`);
+          const reason = !latestRssiTelemetry
+            ? 'initial'
+            : latestRssiTelemetry.value !== meshPacket.rxRssi
+            ? 'changed'
+            : 'periodic';
+          logger.debug(
+            `📊 Saved RSSI telemetry: ${meshPacket.rxRssi} dBm (${reason}, previous: ${
+              latestRssiTelemetry?.value || 'N/A'
+            })`
+          );
         }
       }
 
@@ -1913,7 +2077,7 @@ class MeshtasticManager {
       const nodeData: any = {
         nodeNum: fromNum,
         nodeId: nodeId,
-        lastHeard: meshPacket.rxTime ? Number(meshPacket.rxTime) : Date.now() / 1000
+        lastHeard: meshPacket.rxTime ? Number(meshPacket.rxTime) : Date.now() / 1000,
       };
 
       // Only include SNR/RSSI if they have valid values
@@ -1936,56 +2100,130 @@ class MeshtasticManager {
         nodeData.airUtilTx = deviceMetrics.airUtilTx;
 
         // Save all telemetry values from actual TELEMETRY_APP packets (no deduplication)
-        if (deviceMetrics.batteryLevel !== undefined && deviceMetrics.batteryLevel !== null && !isNaN(deviceMetrics.batteryLevel)) {
+        if (
+          deviceMetrics.batteryLevel !== undefined &&
+          deviceMetrics.batteryLevel !== null &&
+          !isNaN(deviceMetrics.batteryLevel)
+        ) {
           databaseService.insertTelemetry({
-            nodeId, nodeNum: fromNum, telemetryType: 'batteryLevel',
-            timestamp, value: deviceMetrics.batteryLevel, unit: '%', createdAt: now, packetTimestamp
+            nodeId,
+            nodeNum: fromNum,
+            telemetryType: 'batteryLevel',
+            timestamp,
+            value: deviceMetrics.batteryLevel,
+            unit: '%',
+            createdAt: now,
+            packetTimestamp,
           });
         }
         if (deviceMetrics.voltage !== undefined && deviceMetrics.voltage !== null && !isNaN(deviceMetrics.voltage)) {
           databaseService.insertTelemetry({
-            nodeId, nodeNum: fromNum, telemetryType: 'voltage',
-            timestamp, value: deviceMetrics.voltage, unit: 'V', createdAt: now, packetTimestamp
+            nodeId,
+            nodeNum: fromNum,
+            telemetryType: 'voltage',
+            timestamp,
+            value: deviceMetrics.voltage,
+            unit: 'V',
+            createdAt: now,
+            packetTimestamp,
           });
         }
-        if (deviceMetrics.channelUtilization !== undefined && deviceMetrics.channelUtilization !== null && !isNaN(deviceMetrics.channelUtilization)) {
+        if (
+          deviceMetrics.channelUtilization !== undefined &&
+          deviceMetrics.channelUtilization !== null &&
+          !isNaN(deviceMetrics.channelUtilization)
+        ) {
           databaseService.insertTelemetry({
-            nodeId, nodeNum: fromNum, telemetryType: 'channelUtilization',
-            timestamp, value: deviceMetrics.channelUtilization, unit: '%', createdAt: now, packetTimestamp
+            nodeId,
+            nodeNum: fromNum,
+            telemetryType: 'channelUtilization',
+            timestamp,
+            value: deviceMetrics.channelUtilization,
+            unit: '%',
+            createdAt: now,
+            packetTimestamp,
           });
         }
-        if (deviceMetrics.airUtilTx !== undefined && deviceMetrics.airUtilTx !== null && !isNaN(deviceMetrics.airUtilTx)) {
+        if (
+          deviceMetrics.airUtilTx !== undefined &&
+          deviceMetrics.airUtilTx !== null &&
+          !isNaN(deviceMetrics.airUtilTx)
+        ) {
           databaseService.insertTelemetry({
-            nodeId, nodeNum: fromNum, telemetryType: 'airUtilTx',
-            timestamp, value: deviceMetrics.airUtilTx, unit: '%', createdAt: now, packetTimestamp
+            nodeId,
+            nodeNum: fromNum,
+            telemetryType: 'airUtilTx',
+            timestamp,
+            value: deviceMetrics.airUtilTx,
+            unit: '%',
+            createdAt: now,
+            packetTimestamp,
           });
         }
-        if (deviceMetrics.uptimeSeconds !== undefined && deviceMetrics.uptimeSeconds !== null && !isNaN(deviceMetrics.uptimeSeconds)) {
+        if (
+          deviceMetrics.uptimeSeconds !== undefined &&
+          deviceMetrics.uptimeSeconds !== null &&
+          !isNaN(deviceMetrics.uptimeSeconds)
+        ) {
           databaseService.insertTelemetry({
-            nodeId, nodeNum: fromNum, telemetryType: 'uptimeSeconds',
-            timestamp, value: deviceMetrics.uptimeSeconds, unit: 's', createdAt: now, packetTimestamp
+            nodeId,
+            nodeNum: fromNum,
+            telemetryType: 'uptimeSeconds',
+            timestamp,
+            value: deviceMetrics.uptimeSeconds,
+            unit: 's',
+            createdAt: now,
+            packetTimestamp,
           });
         }
       } else if (telemetry.environmentMetrics) {
         const envMetrics = telemetry.environmentMetrics;
-        logger.debug(`🌡️ Environment telemetry: temp=${envMetrics.temperature}°C, humidity=${envMetrics.relativeHumidity}%`);
+        logger.debug(
+          `🌡️ Environment telemetry: temp=${envMetrics.temperature}°C, humidity=${envMetrics.relativeHumidity}%`
+        );
 
         if (envMetrics.temperature !== undefined && envMetrics.temperature !== null && !isNaN(envMetrics.temperature)) {
           databaseService.insertTelemetry({
-            nodeId, nodeNum: fromNum, telemetryType: 'temperature',
-            timestamp, value: envMetrics.temperature, unit: '°C', createdAt: now, packetTimestamp
+            nodeId,
+            nodeNum: fromNum,
+            telemetryType: 'temperature',
+            timestamp,
+            value: envMetrics.temperature,
+            unit: '°C',
+            createdAt: now,
+            packetTimestamp,
           });
         }
-        if (envMetrics.relativeHumidity !== undefined && envMetrics.relativeHumidity !== null && !isNaN(envMetrics.relativeHumidity)) {
+        if (
+          envMetrics.relativeHumidity !== undefined &&
+          envMetrics.relativeHumidity !== null &&
+          !isNaN(envMetrics.relativeHumidity)
+        ) {
           databaseService.insertTelemetry({
-            nodeId, nodeNum: fromNum, telemetryType: 'humidity',
-            timestamp, value: envMetrics.relativeHumidity, unit: '%', createdAt: now, packetTimestamp
+            nodeId,
+            nodeNum: fromNum,
+            telemetryType: 'humidity',
+            timestamp,
+            value: envMetrics.relativeHumidity,
+            unit: '%',
+            createdAt: now,
+            packetTimestamp,
           });
         }
-        if (envMetrics.barometricPressure !== undefined && envMetrics.barometricPressure !== null && !isNaN(envMetrics.barometricPressure)) {
+        if (
+          envMetrics.barometricPressure !== undefined &&
+          envMetrics.barometricPressure !== null &&
+          !isNaN(envMetrics.barometricPressure)
+        ) {
           databaseService.insertTelemetry({
-            nodeId, nodeNum: fromNum, telemetryType: 'pressure',
-            timestamp, value: envMetrics.barometricPressure, unit: 'hPa', createdAt: now, packetTimestamp
+            nodeId,
+            nodeNum: fromNum,
+            telemetryType: 'pressure',
+            timestamp,
+            value: envMetrics.barometricPressure,
+            unit: 'hPa',
+            createdAt: now,
+            packetTimestamp,
           });
         }
       } else if (telemetry.powerMetrics) {
@@ -2011,8 +2249,14 @@ class MeshtasticManager {
           const voltage = powerMetrics[voltageKey];
           if (voltage !== undefined && voltage !== null && !isNaN(Number(voltage))) {
             databaseService.insertTelemetry({
-              nodeId, nodeNum: fromNum, telemetryType: String(voltageKey),
-              timestamp, value: Number(voltage), unit: 'V', createdAt: now, packetTimestamp
+              nodeId,
+              nodeNum: fromNum,
+              telemetryType: String(voltageKey),
+              timestamp,
+              value: Number(voltage),
+              unit: 'V',
+              createdAt: now,
+              packetTimestamp,
             });
           }
 
@@ -2020,8 +2264,14 @@ class MeshtasticManager {
           const current = powerMetrics[currentKey];
           if (current !== undefined && current !== null && !isNaN(Number(current))) {
             databaseService.insertTelemetry({
-              nodeId, nodeNum: fromNum, telemetryType: String(currentKey),
-              timestamp, value: Number(current), unit: 'mA', createdAt: now, packetTimestamp
+              nodeId,
+              nodeNum: fromNum,
+              telemetryType: String(currentKey),
+              timestamp,
+              value: Number(current),
+              unit: 'mA',
+              createdAt: now,
+              packetTimestamp,
             });
           }
         }
@@ -2030,63 +2280,85 @@ class MeshtasticManager {
         logger.debug(`🌬️ Air Quality telemetry: PM2.5=${aqMetrics.pm25Standard}µg/m³, CO2=${aqMetrics.co2}ppm`);
 
         // Save all AirQuality metrics to telemetry table
-        this.saveTelemetryMetrics([
-          // PM Standard measurements (µg/m³)
-          { type: 'pm10Standard', value: aqMetrics.pm10Standard, unit: 'µg/m³' },
-          { type: 'pm25Standard', value: aqMetrics.pm25Standard, unit: 'µg/m³' },
-          { type: 'pm100Standard', value: aqMetrics.pm100Standard, unit: 'µg/m³' },
-          // PM Environmental measurements (µg/m³)
-          { type: 'pm10Environmental', value: aqMetrics.pm10Environmental, unit: 'µg/m³' },
-          { type: 'pm25Environmental', value: aqMetrics.pm25Environmental, unit: 'µg/m³' },
-          { type: 'pm100Environmental', value: aqMetrics.pm100Environmental, unit: 'µg/m³' },
-          // Particle counts (#/0.1L)
-          { type: 'particles03um', value: aqMetrics.particles03um, unit: '#/0.1L' },
-          { type: 'particles05um', value: aqMetrics.particles05um, unit: '#/0.1L' },
-          { type: 'particles10um', value: aqMetrics.particles10um, unit: '#/0.1L' },
-          { type: 'particles25um', value: aqMetrics.particles25um, unit: '#/0.1L' },
-          { type: 'particles50um', value: aqMetrics.particles50um, unit: '#/0.1L' },
-          { type: 'particles100um', value: aqMetrics.particles100um, unit: '#/0.1L' },
-          // CO2 and related
-          { type: 'co2', value: aqMetrics.co2, unit: 'ppm' },
-          { type: 'co2Temperature', value: aqMetrics.co2Temperature, unit: '°C' },
-          { type: 'co2Humidity', value: aqMetrics.co2Humidity, unit: '%' }
-        ], nodeId, fromNum, timestamp, packetTimestamp);
+        this.saveTelemetryMetrics(
+          [
+            // PM Standard measurements (µg/m³)
+            { type: 'pm10Standard', value: aqMetrics.pm10Standard, unit: 'µg/m³' },
+            { type: 'pm25Standard', value: aqMetrics.pm25Standard, unit: 'µg/m³' },
+            { type: 'pm100Standard', value: aqMetrics.pm100Standard, unit: 'µg/m³' },
+            // PM Environmental measurements (µg/m³)
+            { type: 'pm10Environmental', value: aqMetrics.pm10Environmental, unit: 'µg/m³' },
+            { type: 'pm25Environmental', value: aqMetrics.pm25Environmental, unit: 'µg/m³' },
+            { type: 'pm100Environmental', value: aqMetrics.pm100Environmental, unit: 'µg/m³' },
+            // Particle counts (#/0.1L)
+            { type: 'particles03um', value: aqMetrics.particles03um, unit: '#/0.1L' },
+            { type: 'particles05um', value: aqMetrics.particles05um, unit: '#/0.1L' },
+            { type: 'particles10um', value: aqMetrics.particles10um, unit: '#/0.1L' },
+            { type: 'particles25um', value: aqMetrics.particles25um, unit: '#/0.1L' },
+            { type: 'particles50um', value: aqMetrics.particles50um, unit: '#/0.1L' },
+            { type: 'particles100um', value: aqMetrics.particles100um, unit: '#/0.1L' },
+            // CO2 and related
+            { type: 'co2', value: aqMetrics.co2, unit: 'ppm' },
+            { type: 'co2Temperature', value: aqMetrics.co2Temperature, unit: '°C' },
+            { type: 'co2Humidity', value: aqMetrics.co2Humidity, unit: '%' },
+          ],
+          nodeId,
+          fromNum,
+          timestamp,
+          packetTimestamp
+        );
       } else if (telemetry.localStats) {
         const localStats = telemetry.localStats;
-        logger.debug(`📊 LocalStats telemetry: uptime=${localStats.uptimeSeconds}s, heap_free=${localStats.heapFreeBytes}B`);
+        logger.debug(
+          `📊 LocalStats telemetry: uptime=${localStats.uptimeSeconds}s, heap_free=${localStats.heapFreeBytes}B`
+        );
 
         // Save all LocalStats metrics to telemetry table
-        this.saveTelemetryMetrics([
-          { type: 'uptimeSeconds', value: localStats.uptimeSeconds, unit: 's' },
-          { type: 'channelUtilization', value: localStats.channelUtilization, unit: '%' },
-          { type: 'airUtilTx', value: localStats.airUtilTx, unit: '%' },
-          { type: 'numPacketsTx', value: localStats.numPacketsTx, unit: 'packets' },
-          { type: 'numPacketsRx', value: localStats.numPacketsRx, unit: 'packets' },
-          { type: 'numPacketsRxBad', value: localStats.numPacketsRxBad, unit: 'packets' },
-          { type: 'numOnlineNodes', value: localStats.numOnlineNodes, unit: 'nodes' },
-          { type: 'numTotalNodes', value: localStats.numTotalNodes, unit: 'nodes' },
-          { type: 'numRxDupe', value: localStats.numRxDupe, unit: 'packets' },
-          { type: 'numTxRelay', value: localStats.numTxRelay, unit: 'packets' },
-          { type: 'numTxRelayCanceled', value: localStats.numTxRelayCanceled, unit: 'packets' },
-          { type: 'heapTotalBytes', value: localStats.heapTotalBytes, unit: 'bytes' },
-          { type: 'heapFreeBytes', value: localStats.heapFreeBytes, unit: 'bytes' },
-          { type: 'numTxDropped', value: localStats.numTxDropped, unit: 'packets' }
-        ], nodeId, fromNum, timestamp, packetTimestamp);
+        this.saveTelemetryMetrics(
+          [
+            { type: 'uptimeSeconds', value: localStats.uptimeSeconds, unit: 's' },
+            { type: 'channelUtilization', value: localStats.channelUtilization, unit: '%' },
+            { type: 'airUtilTx', value: localStats.airUtilTx, unit: '%' },
+            { type: 'numPacketsTx', value: localStats.numPacketsTx, unit: 'packets' },
+            { type: 'numPacketsRx', value: localStats.numPacketsRx, unit: 'packets' },
+            { type: 'numPacketsRxBad', value: localStats.numPacketsRxBad, unit: 'packets' },
+            { type: 'numOnlineNodes', value: localStats.numOnlineNodes, unit: 'nodes' },
+            { type: 'numTotalNodes', value: localStats.numTotalNodes, unit: 'nodes' },
+            { type: 'numRxDupe', value: localStats.numRxDupe, unit: 'packets' },
+            { type: 'numTxRelay', value: localStats.numTxRelay, unit: 'packets' },
+            { type: 'numTxRelayCanceled', value: localStats.numTxRelayCanceled, unit: 'packets' },
+            { type: 'heapTotalBytes', value: localStats.heapTotalBytes, unit: 'bytes' },
+            { type: 'heapFreeBytes', value: localStats.heapFreeBytes, unit: 'bytes' },
+            { type: 'numTxDropped', value: localStats.numTxDropped, unit: 'packets' },
+          ],
+          nodeId,
+          fromNum,
+          timestamp,
+          packetTimestamp
+        );
       } else if (telemetry.hostMetrics) {
         const hostMetrics = telemetry.hostMetrics;
-        logger.debug(`🖥️ HostMetrics telemetry: uptime=${hostMetrics.uptimeSeconds}s, freemem=${hostMetrics.freememBytes}B`);
+        logger.debug(
+          `🖥️ HostMetrics telemetry: uptime=${hostMetrics.uptimeSeconds}s, freemem=${hostMetrics.freememBytes}B`
+        );
 
         // Save all HostMetrics metrics to telemetry table
-        this.saveTelemetryMetrics([
-          { type: 'hostUptimeSeconds', value: hostMetrics.uptimeSeconds, unit: 's' },
-          { type: 'hostFreememBytes', value: hostMetrics.freememBytes, unit: 'bytes' },
-          { type: 'hostDiskfree1Bytes', value: hostMetrics.diskfree1Bytes, unit: 'bytes' },
-          { type: 'hostDiskfree2Bytes', value: hostMetrics.diskfree2Bytes, unit: 'bytes' },
-          { type: 'hostDiskfree3Bytes', value: hostMetrics.diskfree3Bytes, unit: 'bytes' },
-          { type: 'hostLoad1', value: hostMetrics.load1, unit: 'load' },
-          { type: 'hostLoad5', value: hostMetrics.load5, unit: 'load' },
-          { type: 'hostLoad15', value: hostMetrics.load15, unit: 'load' }
-        ], nodeId, fromNum, timestamp, packetTimestamp);
+        this.saveTelemetryMetrics(
+          [
+            { type: 'hostUptimeSeconds', value: hostMetrics.uptimeSeconds, unit: 's' },
+            { type: 'hostFreememBytes', value: hostMetrics.freememBytes, unit: 'bytes' },
+            { type: 'hostDiskfree1Bytes', value: hostMetrics.diskfree1Bytes, unit: 'bytes' },
+            { type: 'hostDiskfree2Bytes', value: hostMetrics.diskfree2Bytes, unit: 'bytes' },
+            { type: 'hostDiskfree3Bytes', value: hostMetrics.diskfree3Bytes, unit: 'bytes' },
+            { type: 'hostLoad1', value: hostMetrics.load1, unit: 'load' },
+            { type: 'hostLoad5', value: hostMetrics.load5, unit: 'load' },
+            { type: 'hostLoad15', value: hostMetrics.load15, unit: 'load' },
+          ],
+          nodeId,
+          fromNum,
+          timestamp,
+          packetTimestamp
+        );
       }
 
       databaseService.upsertNode(nodeData);
@@ -2116,14 +2388,14 @@ class MeshtasticManager {
           nodeId: fromNodeId,
           longName: `Node ${fromNodeId}`,
           shortName: fromNodeId.substring(1, 5),
-          lastHeard: Date.now() / 1000
+          lastHeard: Date.now() / 1000,
         });
       } else {
         // Just update lastHeard, don't touch the name
         databaseService.upsertNode({
           nodeNum: fromNum,
           nodeId: fromNodeId,
-          lastHeard: Date.now() / 1000
+          lastHeard: Date.now() / 1000,
         });
       }
 
@@ -2135,14 +2407,14 @@ class MeshtasticManager {
           nodeId: toNodeId,
           longName: `Node ${toNodeId}`,
           shortName: toNodeId.substring(1, 5),
-          lastHeard: Date.now() / 1000
+          lastHeard: Date.now() / 1000,
         });
       } else {
         // Just update lastHeard, don't touch the name
         databaseService.upsertNode({
           nodeNum: toNum,
           nodeId: toNodeId,
-          lastHeard: Date.now() / 1000
+          lastHeard: Date.now() / 1000,
         });
       }
 
@@ -2206,7 +2478,7 @@ class MeshtasticManager {
         route.forEach((nodeNum: number, index: number) => {
           const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
           const node = databaseService.getNode(nodeNum);
-          const nodeName = nodeNum === BROADCAST_ADDR ? '(unknown)' : (node?.longName || nodeId);
+          const nodeName = nodeNum === BROADCAST_ADDR ? '(unknown)' : node?.longName || nodeId;
           const snr = snrTowards[index] !== undefined ? `${(snrTowards[index] / 4).toFixed(1)}dB` : 'N/A';
           const dist = calcDistance(fullPath[index], nodeNum);
           if (dist) {
@@ -2223,7 +2495,9 @@ class MeshtasticManager {
         if (snrTowards[finalSnrIndex] !== undefined) {
           const finalSnr = (snrTowards[finalSnrIndex] / 4).toFixed(1);
           if (finalDist) {
-            routeText += `  ${route.length + 2}. ${fromName} (${fromNodeId}) - SNR: ${finalSnr}dB, Distance: ${finalDist}\n`;
+            routeText += `  ${
+              route.length + 2
+            }. ${fromName} (${fromNodeId}) - SNR: ${finalSnr}dB, Distance: ${finalDist}\n`;
           } else {
             routeText += `  ${route.length + 2}. ${fromName} (${fromNodeId}) - SNR: ${finalSnr}dB\n`;
           }
@@ -2280,7 +2554,7 @@ class MeshtasticManager {
         routeBack.forEach((nodeNum: number, index: number) => {
           const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
           const node = databaseService.getNode(nodeNum);
-          const nodeName = nodeNum === BROADCAST_ADDR ? '(unknown)' : (node?.longName || nodeId);
+          const nodeName = nodeNum === BROADCAST_ADDR ? '(unknown)' : node?.longName || nodeId;
           const snr = snrBack[index] !== undefined ? `${(snrBack[index] / 4).toFixed(1)}dB` : 'N/A';
           const dist = calcDistanceReturn(fullReturnPath[index], nodeNum);
           if (dist) {
@@ -2297,7 +2571,9 @@ class MeshtasticManager {
         if (snrBack[finalSnrIndex] !== undefined) {
           const finalSnr = (snrBack[finalSnrIndex] / 4).toFixed(1);
           if (finalDist) {
-            routeText += `  ${routeBack.length + 2}. ${toName} (${toNodeId}) - SNR: ${finalSnr}dB, Distance: ${finalDist}\n`;
+            routeText += `  ${
+              routeBack.length + 2
+            }. ${toName} (${toNodeId}) - SNR: ${finalSnr}dB, Distance: ${finalDist}\n`;
           } else {
             routeText += `  ${routeBack.length + 2}. ${toName} (${toNodeId}) - SNR: ${finalSnr}dB\n`;
           }
@@ -2332,7 +2608,7 @@ class MeshtasticManager {
 
       // Traceroute responses are direct messages, not channel messages
       const isDirectMessage = toNum !== 4294967295;
-      const channelIndex = isDirectMessage ? -1 : (meshPacket.channel !== undefined ? meshPacket.channel : 0);
+      const channelIndex = isDirectMessage ? -1 : meshPacket.channel !== undefined ? meshPacket.channel : 0;
       const timestamp = meshPacket.rxTime ? Number(meshPacket.rxTime) * 1000 : Date.now();
 
       // Save as a special message in the database
@@ -2348,7 +2624,7 @@ class MeshtasticManager {
         portnum: 70, // TRACEROUTE_APP
         timestamp: timestamp,
         rxTime: timestamp,
-        createdAt: Date.now()
+        createdAt: Date.now(),
       };
 
       databaseService.insertMessage(message);
@@ -2369,14 +2645,15 @@ class MeshtasticManager {
         snrTowards: JSON.stringify(snrTowards),
         snrBack: JSON.stringify(snrBack),
         timestamp: timestamp,
-        createdAt: Date.now()
+        createdAt: Date.now(),
       };
 
       databaseService.insertTraceroute(tracerouteRecord);
       logger.debug(`💾 Saved traceroute record to traceroutes table`);
 
       // Send notification for successful traceroute
-      notificationService.notifyTraceroute(fromNodeId, toNodeId, routeText)
+      notificationService
+        .notifyTraceroute(fromNodeId, toNodeId, routeText)
         .catch(err => logger.error('Failed to send traceroute notification:', err));
 
       // Calculate and store route segment distances, and estimate positions for nodes without GPS
@@ -2395,12 +2672,7 @@ class MeshtasticManager {
 
           // Only calculate if both nodes have position data
           if (node1?.latitude && node1?.longitude && node2?.latitude && node2?.longitude) {
-            const distanceKm = calculateDistance(
-              node1.latitude,
-              node1.longitude,
-              node2.latitude,
-              node2.longitude
-            );
+            const distanceKm = calculateDistance(node1.latitude, node1.longitude, node2.latitude, node2.longitude);
 
             const node1Id = `!${node1Num.toString(16).padStart(8, '0')}`;
             const node2Id = `!${node2Num.toString(16).padStart(8, '0')}`;
@@ -2414,7 +2686,7 @@ class MeshtasticManager {
               distanceKm: distanceKm,
               isRecordHolder: false,
               timestamp: timestamp,
-              createdAt: Date.now()
+              createdAt: Date.now(),
             };
 
             databaseService.insertRouteSegment(segment);
@@ -2466,7 +2738,7 @@ class MeshtasticManager {
         8: 'NO_RESPONSE',
         9: 'DUTY_CYCLE_LIMIT',
         10: 'BAD_REQUEST',
-        11: 'NOT_AUTHORIZED'
+        11: 'NOT_AUTHORIZED',
       };
 
       const errorName = errorReasonNames[errorReason] || `UNKNOWN(${errorReason})`;
@@ -2483,7 +2755,9 @@ class MeshtasticManager {
 
           // ACK from our own radio - message transmitted to mesh
           if (fromNodeId === localNodeId) {
-            logger.info(`📡 ACK from our own radio ${fromNodeId} for requestId ${requestId} - message transmitted to mesh`);
+            logger.info(
+              `📡 ACK from our own radio ${fromNodeId} for requestId ${requestId} - message transmitted to mesh`
+            );
             const updated = databaseService.updateMessageDeliveryState(requestId, 'delivered');
             if (updated) {
               logger.debug(`💾 Marked message ${requestId} as delivered (transmitted)`);
@@ -2493,7 +2767,9 @@ class MeshtasticManager {
 
           // ACK from target node - message confirmed received by recipient (only for DMs)
           if (fromNodeId === targetNodeId && isDM) {
-            logger.info(`✅ ACK received from TARGET node ${fromNodeId} for requestId ${requestId} - message confirmed`);
+            logger.info(
+              `✅ ACK received from TARGET node ${fromNodeId} for requestId ${requestId} - message confirmed`
+            );
             const updated = databaseService.updateMessageDeliveryState(requestId, 'confirmed');
             if (updated) {
               logger.debug(`💾 Marked message ${requestId} as confirmed (received by target)`);
@@ -2503,7 +2779,9 @@ class MeshtasticManager {
           } else if (fromNodeId === targetNodeId && !isDM) {
             logger.debug(`📢 ACK from ${fromNodeId} for channel message ${requestId} (already marked as delivered)`);
           } else {
-            logger.warn(`⚠️  ACK from ${fromNodeId} but message was sent to ${targetNodeId} - ignoring (intermediate node)`);
+            logger.warn(
+              `⚠️  ACK from ${fromNodeId} but message was sent to ${targetNodeId} - ignoring (intermediate node)`
+            );
           }
         } else {
           logger.debug(`⚠️  Could not find original message with requestId ${requestId}`);
@@ -2518,7 +2796,7 @@ class MeshtasticManager {
         to: meshPacket.to ? `!${Number(meshPacket.to).toString(16).padStart(8, '0')}` : 'unknown',
         errorReason: errorName,
         requestId: requestId,
-        route: routing.route || []
+        route: routing.route || [],
       });
 
       // Update message in database to mark delivery as failed
@@ -2557,16 +2835,20 @@ class MeshtasticManager {
             nodeId,
             longName: `Node ${nodeId}`,
             shortName: nodeId.substring(1, 5),
-            lastHeard: Date.now() / 1000
+            lastHeard: Date.now() / 1000,
           });
           node = databaseService.getNode(nodeNum);
         }
 
         // Only estimate if this node lacks position but both neighbors have position
-        if (node && (!node.latitude || !node.longitude) &&
-            prevNode?.latitude && prevNode?.longitude &&
-            nextNode?.latitude && nextNode?.longitude) {
-
+        if (
+          node &&
+          (!node.latitude || !node.longitude) &&
+          prevNode?.latitude &&
+          prevNode?.longitude &&
+          nextNode?.latitude &&
+          nextNode?.longitude
+        ) {
           // Calculate midpoint (median) between the two neighbors
           const estimatedLat = (prevNode.latitude + nextNode.latitude) / 2;
           const estimatedLon = (prevNode.longitude + nextNode.longitude) / 2;
@@ -2582,7 +2864,7 @@ class MeshtasticManager {
             timestamp,
             value: estimatedLat,
             unit: '° (est)',
-            createdAt: now
+            createdAt: now,
           });
 
           databaseService.insertTelemetry({
@@ -2592,10 +2874,14 @@ class MeshtasticManager {
             timestamp,
             value: estimatedLon,
             unit: '° (est)',
-            createdAt: now
+            createdAt: now,
           });
 
-          logger.debug(`📍 Estimated position for ${nodeId} (${node.longName || nodeId}): ${estimatedLat.toFixed(6)}, ${estimatedLon.toFixed(6)} (midpoint between neighbors)`);
+          logger.debug(
+            `📍 Estimated position for ${nodeId} (${node.longName || nodeId}): ${estimatedLat.toFixed(
+              6
+            )}, ${estimatedLon.toFixed(6)} (midpoint between neighbors)`
+          );
         }
       }
     } catch (error) {
@@ -2623,7 +2909,7 @@ class MeshtasticManager {
           nodeId: fromNodeId,
           longName: `Node ${fromNodeId}`,
           shortName: fromNodeId.substring(1, 5),
-          lastHeard: Date.now() / 1000
+          lastHeard: Date.now() / 1000,
         });
         senderNode = databaseService.getNode(fromNum);
       }
@@ -2648,7 +2934,7 @@ class MeshtasticManager {
               longName: `Node ${neighborNodeId}`,
               shortName: neighborNodeId.substring(1, 5),
               hopsAway: senderHopsAway + 1,
-              lastHeard: Date.now() / 1000
+              lastHeard: Date.now() / 1000,
             });
             logger.debug(`➕ Created new node ${neighborNodeId} with hopsAway=${senderHopsAway + 1}`);
           }
@@ -2659,7 +2945,7 @@ class MeshtasticManager {
             neighborNodeNum: neighborNodeNum,
             snr: neighbor.snr ? Number(neighbor.snr) : undefined,
             lastRxTime: neighbor.lastRxTime ? Number(neighbor.lastRxTime) : undefined,
-            timestamp: timestamp
+            timestamp: timestamp,
           });
 
           logger.debug(`🔗 Saved neighbor: ${fromNodeId} -> ${neighborNodeId}, SNR: ${neighbor.snr || 'N/A'}`);
@@ -2689,11 +2975,11 @@ class MeshtasticManager {
       const nodeData: any = {
         nodeNum: Number(nodeInfo.num),
         nodeId: nodeId,
-        lastHeard: Math.min(nodeInfo.lastHeard || (Date.now() / 1000), Date.now() / 1000), // Cap at current time to prevent future timestamps
+        lastHeard: Math.min(nodeInfo.lastHeard || Date.now() / 1000, Date.now() / 1000), // Cap at current time to prevent future timestamps
         snr: nodeInfo.snr,
         rssi: 0, // Will be updated from mesh packet if available
         hopsAway: nodeInfo.hopsAway !== undefined ? nodeInfo.hopsAway : undefined,
-        channel: nodeInfo.channel !== undefined ? nodeInfo.channel : undefined
+        channel: nodeInfo.channel !== undefined ? nodeInfo.channel : undefined,
       };
 
       // Debug logging for channel extraction
@@ -2708,7 +2994,9 @@ class MeshtasticManager {
       if (nodeInfo.isFavorite !== undefined) {
         nodeData.isFavorite = nodeInfo.isFavorite;
         if (existingNode && existingNode.isFavorite !== nodeInfo.isFavorite) {
-          logger.debug(`⭐ Updating favorite status for node ${nodeId} from ${existingNode.isFavorite} to ${nodeInfo.isFavorite}`);
+          logger.debug(
+            `⭐ Updating favorite status for node ${nodeId} from ${existingNode.isFavorite} to ${nodeInfo.isFavorite}`
+          );
         }
       }
 
@@ -2732,7 +3020,8 @@ class MeshtasticManager {
 
           if (isLowEntropy) {
             nodeData.keyIsLowEntropy = true;
-            nodeData.keySecurityIssueDetails = 'Known low-entropy key detected - this key is compromised and should be regenerated';
+            nodeData.keySecurityIssueDetails =
+              'Known low-entropy key detected - this key is compromised and should be regenerated';
             logger.warn(`⚠️ Low-entropy key detected for node ${nodeId}!`);
           } else {
             // Explicitly clear the flag when key is NOT low-entropy
@@ -2749,7 +3038,8 @@ class MeshtasticManager {
       }
 
       // Add position information if available
-      let positionTelemetryData: { timestamp: number; latitude: number; longitude: number; altitude?: number } | null = null;
+      let positionTelemetryData: { timestamp: number; latitude: number; longitude: number; altitude?: number } | null =
+        null;
       if (nodeInfo.position && (nodeInfo.position.latitudeI || nodeInfo.position.longitudeI)) {
         const coords = meshtasticProtobufService.convertCoordinates(
           nodeInfo.position.latitudeI,
@@ -2768,10 +3058,12 @@ class MeshtasticManager {
             timestamp,
             latitude: coords.latitude,
             longitude: coords.longitude,
-            altitude: nodeInfo.position.altitude
+            altitude: nodeInfo.position.altitude,
           };
         } else {
-          logger.warn(`⚠️ Invalid position coordinates for node ${nodeId}: lat=${coords.latitude}, lon=${coords.longitude}. Skipping position save.`);
+          logger.warn(
+            `⚠️ Invalid position coordinates for node ${nodeId}: lat=${coords.latitude}, lon=${coords.longitude}. Skipping position save.`
+          );
         }
       }
 
@@ -2783,7 +3075,9 @@ class MeshtasticManager {
         const deviceMetrics = nodeInfo.deviceMetrics;
         const timestamp = nodeInfo.lastHeard ? Number(nodeInfo.lastHeard) * 1000 : Date.now();
 
-        logger.debug(`📊 Processing device telemetry from NodeInfo: battery=${deviceMetrics.batteryLevel}%, voltage=${deviceMetrics.voltage}V`);
+        logger.debug(
+          `📊 Processing device telemetry from NodeInfo: battery=${deviceMetrics.batteryLevel}%, voltage=${deviceMetrics.voltage}V`
+        );
 
         // Store device metrics to be inserted after node is created
         deviceMetricsTelemetryData = {
@@ -2792,7 +3086,7 @@ class MeshtasticManager {
           voltage: deviceMetrics.voltage,
           channelUtilization: deviceMetrics.channelUtilization,
           airUtilTx: deviceMetrics.airUtilTx,
-          uptimeSeconds: deviceMetrics.uptimeSeconds
+          uptimeSeconds: deviceMetrics.uptimeSeconds,
         };
       }
 
@@ -2802,7 +3096,7 @@ class MeshtasticManager {
         if (nodeInfo.user && nodeInfo.user.longName && nodeInfo.user.shortName) {
           this.localNodeInfo.longName = nodeInfo.user.longName;
           this.localNodeInfo.shortName = nodeInfo.user.shortName;
-          this.localNodeInfo.isLocked = true;  // Lock it now that we have complete info
+          this.localNodeInfo.isLocked = true; // Lock it now that we have complete info
           logger.debug(`📱 Local node: ${nodeInfo.user.longName} (${nodeInfo.user.shortName}) - LOCKED`);
         }
       }
@@ -2815,17 +3109,32 @@ class MeshtasticManager {
       if (positionTelemetryData) {
         const now = Date.now();
         databaseService.insertTelemetry({
-          nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'latitude',
-          timestamp: positionTelemetryData.timestamp, value: positionTelemetryData.latitude, unit: '°', createdAt: now
+          nodeId,
+          nodeNum: Number(nodeInfo.num),
+          telemetryType: 'latitude',
+          timestamp: positionTelemetryData.timestamp,
+          value: positionTelemetryData.latitude,
+          unit: '°',
+          createdAt: now,
         });
         databaseService.insertTelemetry({
-          nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'longitude',
-          timestamp: positionTelemetryData.timestamp, value: positionTelemetryData.longitude, unit: '°', createdAt: now
+          nodeId,
+          nodeNum: Number(nodeInfo.num),
+          telemetryType: 'longitude',
+          timestamp: positionTelemetryData.timestamp,
+          value: positionTelemetryData.longitude,
+          unit: '°',
+          createdAt: now,
         });
         if (positionTelemetryData.altitude !== undefined && positionTelemetryData.altitude !== null) {
           databaseService.insertTelemetry({
-            nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'altitude',
-            timestamp: positionTelemetryData.timestamp, value: positionTelemetryData.altitude, unit: 'm', createdAt: now
+            nodeId,
+            nodeNum: Number(nodeInfo.num),
+            telemetryType: 'altitude',
+            timestamp: positionTelemetryData.timestamp,
+            value: positionTelemetryData.altitude,
+            unit: 'm',
+            createdAt: now,
           });
         }
 
@@ -2837,38 +3146,83 @@ class MeshtasticManager {
       if (deviceMetricsTelemetryData) {
         const now = Date.now();
 
-        if (deviceMetricsTelemetryData.batteryLevel !== undefined && deviceMetricsTelemetryData.batteryLevel !== null && !isNaN(deviceMetricsTelemetryData.batteryLevel)) {
+        if (
+          deviceMetricsTelemetryData.batteryLevel !== undefined &&
+          deviceMetricsTelemetryData.batteryLevel !== null &&
+          !isNaN(deviceMetricsTelemetryData.batteryLevel)
+        ) {
           databaseService.insertTelemetry({
-            nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'batteryLevel',
-            timestamp: deviceMetricsTelemetryData.timestamp, value: deviceMetricsTelemetryData.batteryLevel, unit: '%', createdAt: now
+            nodeId,
+            nodeNum: Number(nodeInfo.num),
+            telemetryType: 'batteryLevel',
+            timestamp: deviceMetricsTelemetryData.timestamp,
+            value: deviceMetricsTelemetryData.batteryLevel,
+            unit: '%',
+            createdAt: now,
           });
         }
 
-        if (deviceMetricsTelemetryData.voltage !== undefined && deviceMetricsTelemetryData.voltage !== null && !isNaN(deviceMetricsTelemetryData.voltage)) {
+        if (
+          deviceMetricsTelemetryData.voltage !== undefined &&
+          deviceMetricsTelemetryData.voltage !== null &&
+          !isNaN(deviceMetricsTelemetryData.voltage)
+        ) {
           databaseService.insertTelemetry({
-            nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'voltage',
-            timestamp: deviceMetricsTelemetryData.timestamp, value: deviceMetricsTelemetryData.voltage, unit: 'V', createdAt: now
+            nodeId,
+            nodeNum: Number(nodeInfo.num),
+            telemetryType: 'voltage',
+            timestamp: deviceMetricsTelemetryData.timestamp,
+            value: deviceMetricsTelemetryData.voltage,
+            unit: 'V',
+            createdAt: now,
           });
         }
 
-        if (deviceMetricsTelemetryData.channelUtilization !== undefined && deviceMetricsTelemetryData.channelUtilization !== null && !isNaN(deviceMetricsTelemetryData.channelUtilization)) {
+        if (
+          deviceMetricsTelemetryData.channelUtilization !== undefined &&
+          deviceMetricsTelemetryData.channelUtilization !== null &&
+          !isNaN(deviceMetricsTelemetryData.channelUtilization)
+        ) {
           databaseService.insertTelemetry({
-            nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'channelUtilization',
-            timestamp: deviceMetricsTelemetryData.timestamp, value: deviceMetricsTelemetryData.channelUtilization, unit: '%', createdAt: now
+            nodeId,
+            nodeNum: Number(nodeInfo.num),
+            telemetryType: 'channelUtilization',
+            timestamp: deviceMetricsTelemetryData.timestamp,
+            value: deviceMetricsTelemetryData.channelUtilization,
+            unit: '%',
+            createdAt: now,
           });
         }
 
-        if (deviceMetricsTelemetryData.airUtilTx !== undefined && deviceMetricsTelemetryData.airUtilTx !== null && !isNaN(deviceMetricsTelemetryData.airUtilTx)) {
+        if (
+          deviceMetricsTelemetryData.airUtilTx !== undefined &&
+          deviceMetricsTelemetryData.airUtilTx !== null &&
+          !isNaN(deviceMetricsTelemetryData.airUtilTx)
+        ) {
           databaseService.insertTelemetry({
-            nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'airUtilTx',
-            timestamp: deviceMetricsTelemetryData.timestamp, value: deviceMetricsTelemetryData.airUtilTx, unit: '%', createdAt: now
+            nodeId,
+            nodeNum: Number(nodeInfo.num),
+            telemetryType: 'airUtilTx',
+            timestamp: deviceMetricsTelemetryData.timestamp,
+            value: deviceMetricsTelemetryData.airUtilTx,
+            unit: '%',
+            createdAt: now,
           });
         }
 
-        if (deviceMetricsTelemetryData.uptimeSeconds !== undefined && deviceMetricsTelemetryData.uptimeSeconds !== null && !isNaN(deviceMetricsTelemetryData.uptimeSeconds)) {
+        if (
+          deviceMetricsTelemetryData.uptimeSeconds !== undefined &&
+          deviceMetricsTelemetryData.uptimeSeconds !== null &&
+          !isNaN(deviceMetricsTelemetryData.uptimeSeconds)
+        ) {
           databaseService.insertTelemetry({
-            nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'uptimeSeconds',
-            timestamp: deviceMetricsTelemetryData.timestamp, value: deviceMetricsTelemetryData.uptimeSeconds, unit: 's', createdAt: now
+            nodeId,
+            nodeNum: Number(nodeInfo.num),
+            telemetryType: 'uptimeSeconds',
+            timestamp: deviceMetricsTelemetryData.timestamp,
+            value: deviceMetricsTelemetryData.uptimeSeconds,
+            unit: 's',
+            createdAt: now,
           });
         }
       }
@@ -2882,9 +3236,10 @@ class MeshtasticManager {
         // Save if it has changed OR if 10+ minutes have passed since last save
         const latestSnrTelemetry = databaseService.getLatestTelemetryForType(nodeId, 'snr_remote');
         const tenMinutesMs = 10 * 60 * 1000;
-        const shouldSaveSnr = !latestSnrTelemetry ||
-                              latestSnrTelemetry.value !== nodeInfo.snr ||
-                              (now - latestSnrTelemetry.timestamp) >= tenMinutesMs;
+        const shouldSaveSnr =
+          !latestSnrTelemetry ||
+          latestSnrTelemetry.value !== nodeInfo.snr ||
+          now - latestSnrTelemetry.timestamp >= tenMinutesMs;
 
         if (shouldSaveSnr) {
           databaseService.insertTelemetry({
@@ -2894,11 +3249,18 @@ class MeshtasticManager {
             timestamp,
             value: nodeInfo.snr,
             unit: 'dB',
-            createdAt: now
+            createdAt: now,
           });
-          const reason = !latestSnrTelemetry ? 'initial' :
-                        latestSnrTelemetry.value !== nodeInfo.snr ? 'changed' : 'periodic';
-          logger.debug(`📊 Saved remote SNR telemetry from NodeInfo: ${nodeInfo.snr} dB (${reason}, previous: ${latestSnrTelemetry?.value || 'N/A'})`);
+          const reason = !latestSnrTelemetry
+            ? 'initial'
+            : latestSnrTelemetry.value !== nodeInfo.snr
+            ? 'changed'
+            : 'periodic';
+          logger.debug(
+            `📊 Saved remote SNR telemetry from NodeInfo: ${nodeInfo.snr} dB (${reason}, previous: ${
+              latestSnrTelemetry?.value || 'N/A'
+            })`
+          );
         }
       }
     } catch (error) {
@@ -2927,7 +3289,7 @@ class MeshtasticManager {
           longName: user.longName,
           shortName: user.shortName,
           hwModel: user.hwModel,
-          lastHeard: Date.now() / 1000
+          lastHeard: Date.now() / 1000,
         };
 
         databaseService.upsertNode(nodeData);
@@ -2974,13 +3336,14 @@ class MeshtasticManager {
         logger.debug(`📊 Device metrics: battery=${deviceMetrics.batteryLevel}%, voltage=${deviceMetrics.voltage}V`);
       } else if (telemetry.variant?.case === 'environmentMetrics' && telemetry.variant.value) {
         const envMetrics = telemetry.variant.value;
-        logger.debug(`🌡️ Environment metrics: temp=${envMetrics.temperature}°C, humidity=${envMetrics.relativeHumidity}%`);
+        logger.debug(
+          `🌡️ Environment metrics: temp=${envMetrics.temperature}°C, humidity=${envMetrics.relativeHumidity}%`
+        );
       }
     } catch (error) {
       logger.error('❌ Error processing Telemetry protobuf:', error);
     }
   }
-
 
   // @ts-ignore - Legacy function kept for backward compatibility
   private saveNodesFromData(nodeIds: string[], readableText: string[], text: string): void {
@@ -3010,13 +3373,12 @@ class MeshtasticManager {
           longitude: possibleName.longitude,
           altitude: possibleName.altitude,
           createdAt: Date.now(),
-          updatedAt: Date.now()
+          updatedAt: Date.now(),
         };
 
         // Save to database immediately
         databaseService.upsertNode(nodeData);
         logger.debug(`Saved node: ${nodeData.longName} (${nodeData.nodeId})`);
-
       } catch (error) {
         logger.error(`Failed to process node ${nodeId}:`, error);
       }
@@ -3059,8 +3421,8 @@ class MeshtasticManager {
         type: 'channelConfig',
         data: {
           channels: validChannels,
-          message: `Found Meshtastic channels: ${validChannels.join(', ')}`
-        }
+          message: `Found Meshtastic channels: ${validChannels.join(', ')}`,
+        },
       };
     }
 
@@ -3074,8 +3436,8 @@ class MeshtasticManager {
         type: 'channelConfig',
         data: {
           channels: ['Primary'],
-          message: 'Created default Primary channel'
-        }
+          message: 'Created default Primary channel',
+        },
       };
     }
 
@@ -3089,7 +3451,7 @@ class MeshtasticManager {
         try {
           databaseService.upsertChannel({
             id: i, // Use index as channel ID
-            name: channelName
+            name: channelName,
           });
         } catch (error) {
           logger.error(`Failed to save channel ${channelName}:`, error);
@@ -3110,7 +3472,7 @@ class MeshtasticManager {
       voltage: undefined,
       latitude: undefined,
       longitude: undefined,
-      altitude: undefined
+      altitude: undefined,
     };
 
     // Find the position of this node ID in the binary data
@@ -3167,8 +3529,13 @@ class MeshtasticManager {
       if (result.longName && !result.shortName) {
         // Look for a separate short name in readableText
         for (const text of readableText) {
-          if (text !== result.longName && text.length >= 2 && text.length <= 8 &&
-              this.isValidNodeName(text) && text !== nodeId) {
+          if (
+            text !== result.longName &&
+            text.length >= 2 &&
+            text.length <= 8 &&
+            this.isValidNodeName(text) &&
+            text !== nodeId
+          ) {
             result.shortName = text.trim();
             break;
           }
@@ -3219,10 +3586,7 @@ class MeshtasticManager {
       const nodeInfo = protobufService.decodeNodeInfo(data);
       if (nodeInfo && nodeInfo.position) {
         logger.debug(`🗺️ Extracted position from NodeInfo during config parsing for ${nodeId}`);
-        const coords = protobufService.convertCoordinates(
-          nodeInfo.position.latitude_i,
-          nodeInfo.position.longitude_i
-        );
+        const coords = protobufService.convertCoordinates(nodeInfo.position.latitude_i, nodeInfo.position.longitude_i);
         result.latitude = coords.latitude;
         result.longitude = coords.longitude;
         result.altitude = nodeInfo.position.altitude;
@@ -3260,7 +3624,8 @@ class MeshtasticManager {
         if (fieldNumber > 0 && fieldNumber < 50) {
           offset++;
 
-          if (wireType === 2) { // Length-delimited field (strings, embedded messages)
+          if (wireType === 2) {
+            // Length-delimited field (strings, embedded messages)
             if (offset < data.length) {
               const length = data[offset];
               offset++;
@@ -3274,17 +3639,21 @@ class MeshtasticManager {
 
                   // Debug: log raw bytes for troubleshooting Unicode issues
                   if (fieldData.length <= 10) {
-                    const hex = Array.from(fieldData).map(b => b.toString(16).padStart(2, '0')).join(' ');
+                    const hex = Array.from(fieldData)
+                      .map(b => b.toString(16).padStart(2, '0'))
+                      .join(' ');
                     logger.debug(`Field ${fieldNumber} raw bytes for "${str}": [${hex}]`);
                   }
 
                   // Parse based on actual protobuf field numbers (Meshtastic User message schema)
-                  if (fieldNumber === 2) { // longName field
+                  if (fieldNumber === 2) {
+                    // longName field
                     if (this.isValidNodeName(str) && str !== nodeId && str.length >= 3) {
                       result.longName = str;
                       logger.debug(`Extracted longName from protobuf field 2: ${str}`);
                     }
-                  } else if (fieldNumber === 3) { // shortName field
+                  } else if (fieldNumber === 3) {
+                    // shortName field
                     // For shortName, count actual Unicode characters, not bytes
                     const unicodeLength = Array.from(str).length;
                     if (unicodeLength >= 1 && unicodeLength <= 4 && this.isValidNodeName(str)) {
@@ -3301,7 +3670,8 @@ class MeshtasticManager {
                 offset += length;
               }
             }
-          } else if (wireType === 0) { // Varint (numbers)
+          } else if (wireType === 0) {
+            // Varint (numbers)
             let value = 0;
             let shift = 0;
             let hasMore = true;
@@ -3309,7 +3679,7 @@ class MeshtasticManager {
             while (offset < data.length && hasMore) {
               const byte = data[offset];
               hasMore = (byte & 0x80) !== 0;
-              value |= (byte & 0x7F) << shift;
+              value |= (byte & 0x7f) << shift;
               shift += 7;
               offset++;
 
@@ -3381,7 +3751,13 @@ class MeshtasticManager {
 
   private parseEmbeddedTelemetry(data: Uint8Array, result: any): void {
     // Parse embedded protobuf messages that may contain position data
-    logger.debug(`🔍 parseEmbeddedTelemetry called with ${data.length} bytes: [${Array.from(data.slice(0, Math.min(20, data.length))).map(b => b.toString(16).padStart(2, '0')).join(' ')}${data.length > 20 ? '...' : ''}]`);
+    logger.debug(
+      `🔍 parseEmbeddedTelemetry called with ${data.length} bytes: [${Array.from(
+        data.slice(0, Math.min(20, data.length))
+      )
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join(' ')}${data.length > 20 ? '...' : ''}]`
+    );
 
     // Strategy 1: Look for encoded integer patterns that could be coordinates
     // Meshtastic encodes lat/lng as integers * 10^7
@@ -3424,7 +3800,8 @@ class MeshtasticManager {
 
         offset++;
 
-        if (wireType === 0) { // Varint - this is where position data lives!
+        if (wireType === 0) {
+          // Varint - this is where position data lives!
           let value = 0;
           let shift = 0;
           let hasMore = true;
@@ -3432,7 +3809,7 @@ class MeshtasticManager {
           while (offset < data.length && hasMore && shift < 64) {
             const byte = data[offset];
             hasMore = (byte & 0x80) !== 0;
-            value |= (byte & 0x7F) << shift;
+            value |= (byte & 0x7f) << shift;
             shift += 7;
             offset++;
 
@@ -3470,8 +3847,8 @@ class MeshtasticManager {
             // Battery level
             result.batteryLevel = value;
           }
-
-        } else if (wireType === 2) { // Length-delimited - could contain nested position message
+        } else if (wireType === 2) {
+          // Length-delimited - could contain nested position message
           if (offset < data.length) {
             const length = data[offset];
             offset++;
@@ -3486,7 +3863,8 @@ class MeshtasticManager {
               offset += length;
             }
           }
-        } else if (wireType === 5) { // Fixed32 - float values
+        } else if (wireType === 5) {
+          // Fixed32 - float values
           if (offset + 4 <= data.length) {
             const floatVal = new DataView(data.buffer, data.byteOffset + offset, 4).getFloat32(0, true);
 
@@ -3533,23 +3911,26 @@ class MeshtasticManager {
         const fieldNumber = tag >> 3;
         const wireType = tag & 0x07;
 
-        if (fieldNumber > 0 && fieldNumber < 100) { // Reasonable field numbers
+        if (fieldNumber > 0 && fieldNumber < 100) {
+          // Reasonable field numbers
           offset++;
 
-          if (wireType === 0) { // Varint
+          if (wireType === 0) {
+            // Varint
             let value = 0;
             let shift = 0;
             while (offset < data.length && (data[offset] & 0x80) !== 0) {
-              value |= (data[offset] & 0x7F) << shift;
+              value |= (data[offset] & 0x7f) << shift;
               shift += 7;
               offset++;
             }
             if (offset < data.length) {
-              value |= (data[offset] & 0x7F) << shift;
+              value |= (data[offset] & 0x7f) << shift;
               offset++;
               fields[fieldNumber] = value;
             }
-          } else if (wireType === 2) { // Length-delimited
+          } else if (wireType === 2) {
+            // Length-delimited
             if (offset < data.length) {
               const length = data[offset];
               offset++;
@@ -3592,31 +3973,36 @@ class MeshtasticManager {
               user: {
                 id: fields[1],
                 longName: fields[2] || `Node ${fields[1]}`,
-                shortName: fields[3] || (fields[2] ? fields[2].substring(0, 4) : 'UNK')
+                shortName: fields[3] || (fields[2] ? fields[2].substring(0, 4) : 'UNK'),
               },
-              lastHeard: Date.now() / 1000
-            }
+              lastHeard: Date.now() / 1000,
+            },
           };
         }
 
         // Look for message-like data
         for (const [, value] of Object.entries(fields)) {
-          if (typeof value === 'string' && value.length > 2 && value.length < 200 &&
-              !value.startsWith('!') && /[A-Za-z]/.test(value)) {
+          if (
+            typeof value === 'string' &&
+            value.length > 2 &&
+            value.length < 200 &&
+            !value.startsWith('!') &&
+            /[A-Za-z]/.test(value)
+          ) {
             return {
               type: 'packet',
               data: {
                 id: `msg_${Date.now()}`,
                 from: 0,
-                to: 0xFFFFFFFF,
+                to: 0xffffffff,
                 fromNodeId: 'unknown',
                 toNodeId: '!ffffffff',
                 text: value,
                 channel: 0,
                 timestamp: Date.now(),
                 rxTime: Date.now(),
-                createdAt: Date.now()
-              }
+                createdAt: Date.now(),
+              },
             };
           }
         }
@@ -3646,15 +4032,15 @@ class MeshtasticManager {
           data: {
             id: `${fromNodeId}_${Date.now()}`,
             from: fromNodeNum,
-            to: 0xFFFFFFFF, // Broadcast by default
+            to: 0xffffffff, // Broadcast by default
             fromNodeId: fromNodeId,
             toNodeId: '!ffffffff',
             text: messageText,
             channel: 0, // Default channel
             timestamp: Date.now(),
             rxTime: Date.now(),
-            createdAt: Date.now()
-          }
+            createdAt: Date.now(),
+          },
         };
       }
     }
@@ -3683,14 +4069,14 @@ class MeshtasticManager {
             id: nodeId,
             longName: names.longName || `Node ${nodeNum}`,
             shortName: names.shortName || names.longName.substring(0, 4) || 'UNK',
-            hwModel: telemetry.hwModel
+            hwModel: telemetry.hwModel,
           },
           lastHeard: Date.now() / 1000,
           snr: telemetry.snr,
           rssi: telemetry.rssi,
-          position: telemetry.position
+          position: telemetry.position,
           // Note: deviceMetrics are NOT included - telemetry is only saved from TELEMETRY_APP packets
-        }
+        },
       };
     }
     return null;
@@ -3716,10 +4102,12 @@ class MeshtasticManager {
     const printableText = text.match(/[\x20-\x7E]{3,}/g);
     if (printableText) {
       for (const candidate of printableText) {
-        if (candidate.length >= 3 &&
-            candidate.length <= 200 &&
-            !candidate.startsWith('!') &&
-            !candidate.match(/^[0-9A-F]{8}$/)) {
+        if (
+          candidate.length >= 3 &&
+          candidate.length <= 200 &&
+          !candidate.startsWith('!') &&
+          !candidate.match(/^[0-9A-F]{8}$/)
+        ) {
           return candidate.trim();
         }
       }
@@ -3765,12 +4153,13 @@ class MeshtasticManager {
       const nameMatches = part.match(/([\p{L}\p{N}\p{S}\p{P}\s\-_.]{2,31})/gu);
 
       if (nameMatches) {
-        const validNames = nameMatches.filter(match =>
-          match.trim().length >= 2 &&
-          match.trim().length <= 30 &&
-          /[A-Za-z0-9]/.test(match) && // Must contain alphanumeric
-          !match.match(/^[0-9A-F]+$/) && // Not just hex
-          !match.startsWith('!') // Not a node ID
+        const validNames = nameMatches.filter(
+          match =>
+            match.trim().length >= 2 &&
+            match.trim().length <= 30 &&
+            /[A-Za-z0-9]/.test(match) && // Must contain alphanumeric
+            !match.match(/^[0-9A-F]+$/) && // Not just hex
+            !match.startsWith('!') // Not a node ID
         );
 
         if (validNames.length > 0 && !longName) {
@@ -3797,7 +4186,7 @@ class MeshtasticManager {
       snr: undefined,
       rssi: undefined,
       position: undefined,
-      deviceMetrics: undefined
+      deviceMetrics: undefined,
     };
 
     // Parse protobuf structure looking for telemetry fields
@@ -3816,7 +4205,8 @@ class MeshtasticManager {
         if (fieldNumber > 0 && fieldNumber < 100) {
           offset++;
 
-          if (wireType === 0) { // Varint (integers)
+          if (wireType === 0) {
+            // Varint (integers)
             let value = 0;
             let shift = 0;
             let hasMore = true;
@@ -3824,7 +4214,7 @@ class MeshtasticManager {
             while (offset < data.length && hasMore && shift < 64) {
               const byte = data[offset];
               hasMore = (byte & 0x80) !== 0;
-              value |= (byte & 0x7F) << shift;
+              value |= (byte & 0x7f) << shift;
               shift += 7;
               offset++;
 
@@ -3870,8 +4260,8 @@ class MeshtasticManager {
               // Hardware model
               telemetry.hwModel = value;
             }
-
-          } else if (wireType === 1) { // Fixed64 (double)
+          } else if (wireType === 1) {
+            // Fixed64 (double)
             if (offset + 8 <= data.length) {
               const value = new DataView(data.buffer, data.byteOffset + offset, 8);
               const doubleVal = value.getFloat64(0, true); // little endian
@@ -3890,8 +4280,8 @@ class MeshtasticManager {
 
               offset += 8;
             }
-
-          } else if (wireType === 5) { // Fixed32 (float)
+          } else if (wireType === 5) {
+            // Fixed32 (float)
             if (offset + 4 <= data.length) {
               const value = new DataView(data.buffer, data.byteOffset + offset, 4);
               const floatVal = value.getFloat32(0, true); // little endian
@@ -3921,8 +4311,8 @@ class MeshtasticManager {
 
               offset += 4;
             }
-
-          } else if (wireType === 2) { // Length-delimited (embedded messages, strings)
+          } else if (wireType === 2) {
+            // Length-delimited (embedded messages, strings)
             if (offset < data.length) {
               const length = data[offset];
               offset++;
@@ -3952,7 +4342,6 @@ class MeshtasticManager {
     return telemetry;
   }
 
-
   // @ts-ignore - Legacy function kept for backward compatibility
   private async processPacket(packet: any): Promise<void> {
     // Handle the new packet structure from enhanced protobuf parsing
@@ -3961,7 +4350,7 @@ class MeshtasticManager {
       const fromNodeId = packet.fromNodeId || 'unknown';
       const toNodeId = packet.toNodeId || '!ffffffff';
       const fromNodeNum = packet.from || packet.fromNodeNum || 0;
-      const toNodeNum = packet.to || packet.toNodeNum || 0xFFFFFFFF;
+      const toNodeNum = packet.to || packet.toNodeNum || 0xffffffff;
 
       // Make sure fromNode exists in database (including unknown nodes)
       const existingFromNode = databaseService.getNode(fromNodeNum);
@@ -3975,12 +4364,18 @@ class MeshtasticManager {
           hwModel: 0,
           lastHeard: Date.now() / 1000,
           createdAt: Date.now(),
-          updatedAt: Date.now()
+          updatedAt: Date.now(),
         };
         logger.debug(`Creating missing fromNode: ${fromNodeId} (${fromNodeNum})`);
         logger.debug(`DEBUG nodeData values: nodeNum=${nodeData.nodeNum}, nodeId="${nodeData.nodeId}"`);
-        logger.debug(`DEBUG nodeData types: nodeNum type=${typeof nodeData.nodeNum}, nodeId type=${typeof nodeData.nodeId}`);
-        logger.debug(`DEBUG validation check: nodeNum undefined? ${nodeData.nodeNum === undefined}, nodeNum null? ${nodeData.nodeNum === null}, nodeId falsy? ${!nodeData.nodeId}`);
+        logger.debug(
+          `DEBUG nodeData types: nodeNum type=${typeof nodeData.nodeNum}, nodeId type=${typeof nodeData.nodeId}`
+        );
+        logger.debug(
+          `DEBUG validation check: nodeNum undefined? ${nodeData.nodeNum === undefined}, nodeNum null? ${
+            nodeData.nodeNum === null
+          }, nodeId falsy? ${!nodeData.nodeId}`
+        );
 
         // Force output with console.error to bypass any buffering
         logger.error(`FORCE DEBUG: nodeData:`, JSON.stringify(nodeData));
@@ -4002,7 +4397,7 @@ class MeshtasticManager {
           hwModel: 0,
           lastHeard: Date.now() / 1000,
           createdAt: Date.now(),
-          updatedAt: Date.now()
+          updatedAt: Date.now(),
         };
         logger.debug(`Creating missing toNode: ${toNodeId} (${toNodeNum})`);
         databaseService.upsertNode(nodeData);
@@ -4010,7 +4405,7 @@ class MeshtasticManager {
 
       // Determine if this is a direct message or a channel message
       const isDirectMessage = toNodeNum !== 4294967295;
-      const channelIndex = isDirectMessage ? -1 : (packet.channel || 0);
+      const channelIndex = isDirectMessage ? -1 : packet.channel || 0;
 
       const message = {
         id: packet.id || `${fromNodeId}_${Date.now()}`,
@@ -4023,15 +4418,21 @@ class MeshtasticManager {
         portnum: packet.portnum,
         timestamp: packet.timestamp || Date.now(),
         rxTime: packet.rxTime || packet.timestamp || Date.now(),
-        createdAt: packet.createdAt || Date.now()
+        createdAt: packet.createdAt || Date.now(),
       };
 
       try {
         databaseService.insertMessage(message);
         if (isDirectMessage) {
-          logger.debug('Saved direct message to database:', message.text.substring(0, 50) + (message.text.length > 50 ? '...' : ''));
+          logger.debug(
+            'Saved direct message to database:',
+            message.text.substring(0, 50) + (message.text.length > 50 ? '...' : '')
+          );
         } else {
-          logger.debug('Saved channel message to database:', message.text.substring(0, 50) + (message.text.length > 50 ? '...' : ''));
+          logger.debug(
+            'Saved channel message to database:',
+            message.text.substring(0, 50) + (message.text.length > 50 ? '...' : '')
+          );
         }
 
         // Send push notification for new message
@@ -4059,7 +4460,7 @@ class MeshtasticManager {
       // It is only saved from actual TELEMETRY_APP packets in processTelemetryMessageProtobuf()
       lastHeard: Math.min(nodeInfo.lastHeard || Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)), // Cap at current time to prevent future timestamps
       snr: nodeInfo.snr,
-      rssi: nodeInfo.rssi
+      rssi: nodeInfo.rssi,
     };
 
     try {
@@ -4096,7 +4497,7 @@ class MeshtasticManager {
       role: ch.role,
       uplinkEnabled: ch.uplinkEnabled,
       downlinkEnabled: ch.downlinkEnabled,
-      positionPrecision: ch.positionPrecision
+      positionPrecision: ch.positionPrecision,
     }));
 
     const localNode = this.localNodeInfo as any;
@@ -4116,7 +4517,7 @@ class MeshtasticManager {
       // Ensure modemPreset is explicitly set (Proto3 default is 0 = LONG_FAST)
       modemPreset: loraConfig.modemPreset !== undefined ? loraConfig.modemPreset : 0,
       // Ensure channelNum is explicitly set (Proto3 default is 0)
-      channelNum: loraConfig.channelNum !== undefined ? loraConfig.channelNum : 0
+      channelNum: loraConfig.channelNum !== undefined ? loraConfig.channelNum : 0,
     };
 
     // Apply same Proto3 handling to MQTT config
@@ -4126,7 +4527,7 @@ class MeshtasticManager {
       enabled: mqttConfig.enabled !== undefined ? mqttConfig.enabled : false,
       encryptionEnabled: mqttConfig.encryptionEnabled !== undefined ? mqttConfig.encryptionEnabled : false,
       jsonEnabled: mqttConfig.jsonEnabled !== undefined ? mqttConfig.jsonEnabled : false,
-      tlsEnabled: mqttConfig.tlsEnabled !== undefined ? mqttConfig.tlsEnabled : false
+      tlsEnabled: mqttConfig.tlsEnabled !== undefined ? mqttConfig.tlsEnabled : false,
     };
 
     logger.debug('🔍 loraConfig being used:', JSON.stringify(loraConfigWithDefaults, null, 2));
@@ -4149,7 +4550,7 @@ class MeshtasticManager {
       12: 'TH',
       13: 'LORA_24',
       14: 'UA_433',
-      15: 'UA_868'
+      15: 'UA_868',
     };
 
     // Map modem preset enum values to strings
@@ -4162,12 +4563,18 @@ class MeshtasticManager {
       5: 'Short Slow',
       6: 'Short Fast',
       7: 'Long Moderate',
-      8: 'Short Turbo'
+      8: 'Short Turbo',
     };
 
     // Convert enum values to human-readable strings
-    const regionValue = typeof loraConfigWithDefaults.region === 'number' ? regionMap[loraConfigWithDefaults.region] || `Unknown (${loraConfigWithDefaults.region})` : loraConfigWithDefaults.region || 'Unknown';
-    const modemPresetValue = typeof loraConfigWithDefaults.modemPreset === 'number' ? modemPresetMap[loraConfigWithDefaults.modemPreset] || `Unknown (${loraConfigWithDefaults.modemPreset})` : loraConfigWithDefaults.modemPreset || 'Unknown';
+    const regionValue =
+      typeof loraConfigWithDefaults.region === 'number'
+        ? regionMap[loraConfigWithDefaults.region] || `Unknown (${loraConfigWithDefaults.region})`
+        : loraConfigWithDefaults.region || 'Unknown';
+    const modemPresetValue =
+      typeof loraConfigWithDefaults.modemPreset === 'number'
+        ? modemPresetMap[loraConfigWithDefaults.modemPreset] || `Unknown (${loraConfigWithDefaults.modemPreset})`
+        : loraConfigWithDefaults.modemPreset || 'Unknown';
 
     return {
       basic: {
@@ -4176,7 +4583,7 @@ class MeshtasticManager {
         connected: this.isConnected,
         nodeId: localNode?.nodeId || null,
         nodeName: localNode?.longName || null,
-        firmwareVersion: localNode?.firmwareVersion || null
+        firmwareVersion: localNode?.firmwareVersion || null,
       },
       radio: {
         region: regionValue,
@@ -4189,8 +4596,12 @@ class MeshtasticManager {
         channelNum: loraConfigWithDefaults.channelNum !== undefined ? loraConfigWithDefaults.channelNum : 'Unknown',
         frequency: 'Unknown',
         txEnabled: loraConfigWithDefaults.txEnabled !== undefined ? loraConfigWithDefaults.txEnabled : 'Unknown',
-        sx126xRxBoostedGain: loraConfigWithDefaults.sx126xRxBoostedGain !== undefined ? loraConfigWithDefaults.sx126xRxBoostedGain : 'Unknown',
-        configOkToMqtt: loraConfigWithDefaults.configOkToMqtt !== undefined ? loraConfigWithDefaults.configOkToMqtt : 'Unknown'
+        sx126xRxBoostedGain:
+          loraConfigWithDefaults.sx126xRxBoostedGain !== undefined
+            ? loraConfigWithDefaults.sx126xRxBoostedGain
+            : 'Unknown',
+        configOkToMqtt:
+          loraConfigWithDefaults.configOkToMqtt !== undefined ? loraConfigWithDefaults.configOkToMqtt : 'Unknown',
       },
       mqtt: {
         enabled: mqttConfigWithDefaults.enabled,
@@ -4199,30 +4610,48 @@ class MeshtasticManager {
         encryption: mqttConfigWithDefaults.encryptionEnabled,
         json: mqttConfigWithDefaults.jsonEnabled,
         tls: mqttConfigWithDefaults.tlsEnabled,
-        rootTopic: mqttConfigWithDefaults.root || 'msh'
+        rootTopic: mqttConfigWithDefaults.root || 'msh',
       },
-      channels: channels.length > 0 ? channels : [
-        { index: 0, name: 'Primary', psk: 'None', uplinkEnabled: true, downlinkEnabled: true }
-      ],
+      channels:
+        channels.length > 0
+          ? channels
+          : [{ index: 0, name: 'Primary', psk: 'None', uplinkEnabled: true, downlinkEnabled: true }],
       // Raw LoRa config for export/import functionality - now includes Proto3 defaults
-      lora: Object.keys(loraConfigWithDefaults).length > 0 ? loraConfigWithDefaults : undefined
+      lora: Object.keys(loraConfigWithDefaults).length > 0 ? loraConfigWithDefaults : undefined,
     };
   }
 
-  async sendTextMessage(text: string, channel: number = 0, destination?: number, replyId?: number, emoji?: number, userId?: number): Promise<number> {
+  async sendTextMessage(
+    text: string,
+    channel: number = 0,
+    destination?: number,
+    replyId?: number,
+    emoji?: number,
+    userId?: number
+  ): Promise<number> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
     }
 
     try {
       // Use the new protobuf service to create a proper text message
-      const { data: textMessageData, messageId } = meshtasticProtobufService.createTextMessage(text, destination, channel, replyId, emoji);
+      const { data: textMessageData, messageId } = meshtasticProtobufService.createTextMessage(
+        text,
+        destination,
+        channel,
+        replyId,
+        emoji
+      );
 
       await this.transport.send(textMessageData);
 
       // Log message sending at INFO level for production visibility
       const destinationInfo = destination ? `node !${destination.toString(16).padStart(8, '0')}` : `channel ${channel}`;
-      logger.info(`📤 Sent message to ${destinationInfo}: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}" (ID: ${messageId})`);
+      logger.info(
+        `📤 Sent message to ${destinationInfo}: "${text.substring(0, 50)}${
+          text.length > 50 ? '...' : ''
+        }" (ID: ${messageId})`
+      );
       logger.debug('Message sent successfully:', text, 'with ID:', messageId);
 
       // Save sent message to database for UI display
@@ -4260,7 +4689,7 @@ class MeshtasticManager {
           requestId: messageId, // Save requestId for routing error matching
           wantAck: 1, // Request acknowledgment for this message
           deliveryState: 'pending', // Initial delivery state
-          createdAt: Date.now()
+          createdAt: Date.now(),
         };
 
         databaseService.insertMessage(message);
@@ -4292,7 +4721,11 @@ class MeshtasticManager {
     try {
       const tracerouteData = meshtasticProtobufService.createTracerouteMessage(destination, channel);
 
-      logger.info(`🔍 Traceroute packet created: ${tracerouteData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}`);
+      logger.info(
+        `🔍 Traceroute packet created: ${tracerouteData.length} bytes for dest=${destination} (0x${destination.toString(
+          16
+        )}), channel=${channel}`
+      );
 
       await this.transport.send(tracerouteData);
 
@@ -4308,7 +4741,9 @@ class MeshtasticManager {
       }
 
       databaseService.recordTracerouteRequest(this.localNodeInfo.nodeNum, destination);
-      logger.info(`📤 Traceroute request sent from ${this.localNodeInfo.nodeId} to !${destination.toString(16).padStart(8, '0')}`);
+      logger.info(
+        `📤 Traceroute request sent from ${this.localNodeInfo.nodeId} to !${destination.toString(16).padStart(8, '0')}`
+      );
     } catch (error) {
       logger.error('Error sending traceroute:', error);
       throw error;
@@ -4319,7 +4754,10 @@ class MeshtasticManager {
    * Send a position request to a specific node
    * This will request the destination node to send back its position
    */
-  async sendPositionRequest(destination: number, channel: number = 0): Promise<{ packetId: number; requestId: number }> {
+  async sendPositionRequest(
+    destination: number,
+    channel: number = 0
+  ): Promise<{ packetId: number; requestId: number }> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
     }
@@ -4331,19 +4769,30 @@ class MeshtasticManager {
     try {
       // Get local node's position from database for position exchange
       const localNode = databaseService.getNode(this.localNodeInfo.nodeNum);
-      const localPosition = (localNode?.latitude && localNode?.longitude) ? {
-        latitude: localNode.latitude,
-        longitude: localNode.longitude,
-        altitude: localNode.altitude
-      } : undefined;
+      const localPosition =
+        localNode?.latitude && localNode?.longitude
+          ? {
+              latitude: localNode.latitude,
+              longitude: localNode.longitude,
+              altitude: localNode.altitude,
+            }
+          : undefined;
 
-      const { data: positionRequestData, packetId, requestId } = meshtasticProtobufService.createPositionRequestMessage(
-        destination,
-        channel,
-        localPosition
+      const {
+        data: positionRequestData,
+        packetId,
+        requestId,
+      } = meshtasticProtobufService.createPositionRequestMessage(destination, channel, localPosition);
+
+      logger.info(
+        `📍 Position exchange packet created: ${
+          positionRequestData.length
+        } bytes for dest=${destination} (0x${destination.toString(
+          16
+        )}), channel=${channel}, packetId=${packetId}, requestId=${requestId}, position=${
+          localPosition ? `${localPosition.latitude},${localPosition.longitude}` : 'none'
+        }`
       );
-
-      logger.info(`📍 Position exchange packet created: ${positionRequestData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, packetId=${packetId}, requestId=${requestId}, position=${localPosition ? `${localPosition.latitude},${localPosition.longitude}` : 'none'}`);
 
       await this.transport.send(positionRequestData);
 
@@ -4352,13 +4801,17 @@ class MeshtasticManager {
       if (virtualNodeServer) {
         try {
           await virtualNodeServer.broadcastToClients(positionRequestData);
-          logger.info(`📡 Broadcasted outgoing position exchange to virtual node clients (${positionRequestData.length} bytes)`);
+          logger.info(
+            `📡 Broadcasted outgoing position exchange to virtual node clients (${positionRequestData.length} bytes)`
+          );
         } catch (error) {
           logger.error('Virtual node: Failed to broadcast outgoing position exchange:', error);
         }
       }
 
-      logger.info(`📤 Position exchange sent from ${this.localNodeInfo.nodeId} to !${destination.toString(16).padStart(8, '0')}`);
+      logger.info(
+        `📤 Position exchange sent from ${this.localNodeInfo.nodeId} to !${destination.toString(16).padStart(8, '0')}`
+      );
       return { packetId, requestId };
     } catch (error) {
       logger.error('Error sending position exchange:', error);
@@ -4380,13 +4833,18 @@ class MeshtasticManager {
     }
 
     try {
-      const { data: telemetryRequestData, packetId, requestId } =
-        meshtasticProtobufService.createTelemetryRequestMessage(
-          this.localNodeInfo.nodeNum,
-          0 // Channel 0 for local node communication
-        );
+      const {
+        data: telemetryRequestData,
+        packetId,
+        requestId,
+      } = meshtasticProtobufService.createTelemetryRequestMessage(
+        this.localNodeInfo.nodeNum,
+        0 // Channel 0 for local node communication
+      );
 
-      logger.info(`📊 LocalStats request packet created: ${telemetryRequestData.length} bytes for local node ${this.localNodeInfo.nodeId}, packetId=${packetId}, requestId=${requestId}`);
+      logger.info(
+        `📊 LocalStats request packet created: ${telemetryRequestData.length} bytes for local node ${this.localNodeInfo.nodeId}, packetId=${packetId}, requestId=${requestId}`
+      );
 
       await this.transport.send(telemetryRequestData);
 
@@ -4395,7 +4853,9 @@ class MeshtasticManager {
       if (virtualNodeServer) {
         try {
           await virtualNodeServer.broadcastToClients(telemetryRequestData);
-          logger.info(`📡 Broadcasted outgoing LocalStats request to virtual node clients (${telemetryRequestData.length} bytes)`);
+          logger.info(
+            `📡 Broadcasted outgoing LocalStats request to virtual node clients (${telemetryRequestData.length} bytes)`
+          );
         } catch (error) {
           logger.error('Virtual node: Failed to broadcast outgoing LocalStats request:', error);
         }
@@ -4453,7 +4913,11 @@ class MeshtasticManager {
   /**
    * Send notifications for new message (Web Push + Apprise)
    */
-  private async sendMessagePushNotification(message: any, messageText: string, isDirectMessage: boolean): Promise<void> {
+  private async sendMessagePushNotification(
+    message: any,
+    messageText: string,
+    isDirectMessage: boolean
+  ): Promise<void> {
     try {
       // Skip if no notification services are available
       const serviceStatus = notificationService.getServiceStatus();
@@ -4462,7 +4926,8 @@ class MeshtasticManager {
       }
 
       // Skip non-text messages (telemetry, traceroutes, etc.)
-      if (message.portnum !== 1) { // 1 = TEXT_MESSAGE_APP
+      if (message.portnum !== 1) {
+        // 1 = TEXT_MESSAGE_APP
         return;
       }
 
@@ -4493,19 +4958,22 @@ class MeshtasticManager {
       }
 
       // Send notifications (Web Push + Apprise) with filtering to all subscribed users
-      const result = await notificationService.broadcast({
-        title,
-        body
-      }, {
-        messageText,
-        channelId: message.channel,
-        isDirectMessage
-      });
+      const result = await notificationService.broadcast(
+        {
+          title,
+          body,
+        },
+        {
+          messageText,
+          channelId: message.channel,
+          isDirectMessage,
+        }
+      );
 
       logger.debug(
         `📤 Sent notifications: ${result.total.sent} delivered, ${result.total.failed} failed, ${result.total.filtered} filtered ` +
-        `(Push: ${result.webPush.sent}/${result.webPush.failed}/${result.webPush.filtered}, ` +
-        `Apprise: ${result.apprise.sent}/${result.apprise.failed}/${result.apprise.filtered})`
+          `(Push: ${result.webPush.sent}/${result.webPush.failed}/${result.webPush.filtered}, ` +
+          `Apprise: ${result.apprise.sent}/${result.apprise.failed}/${result.apprise.filtered})`
       );
     } catch (error) {
       logger.error('❌ Error sending message push notification:', error);
@@ -4513,7 +4981,16 @@ class MeshtasticManager {
     }
   }
 
-  private async checkAutoAcknowledge(message: any, messageText: string, channelIndex: number, isDirectMessage: boolean, fromNum: number, packetId?: number, rxSnr?: number, rxRssi?: number): Promise<void> {
+  private async checkAutoAcknowledge(
+    message: any,
+    messageText: string,
+    channelIndex: number,
+    isDirectMessage: boolean,
+    fromNum: number,
+    packetId?: number,
+    rxSnr?: number,
+    rxRssi?: number
+  ): Promise<void> {
     try {
       // Get auto-acknowledge settings from database
       const autoAckEnabled = databaseService.getSetting('autoAckEnabled');
@@ -4530,7 +5007,10 @@ class MeshtasticManager {
 
       // Parse enabled channels (comma-separated list of channel indices)
       const enabledChannels = autoAckChannels
-        ? autoAckChannels.split(',').map(c => parseInt(c.trim())).filter(n => !isNaN(n))
+        ? autoAckChannels
+            .split(',')
+            .map(c => parseInt(c.trim()))
+            .filter(n => !isNaN(n))
         : [];
       const dmEnabled = autoAckDirectMessages === 'true';
 
@@ -4562,7 +5042,11 @@ class MeshtasticManager {
       if (autoAckSkipIncompleteNodes === 'true') {
         const fromNode = databaseService.getNode(fromNum);
         if (fromNode && !isNodeComplete(fromNode)) {
-          logger.debug(`⏭️  Skipping auto-acknowledge for incomplete node ${fromNode.nodeId || fromNum} (missing proper name or hwModel)`);
+          logger.debug(
+            `⏭️  Skipping auto-acknowledge for incomplete node ${
+              fromNode.nodeId || fromNum
+            } (missing proper name or hwModel)`
+          );
           return;
         }
       }
@@ -4605,10 +5089,9 @@ class MeshtasticManager {
       // Get auto-acknowledge message template
       // Use the direct message template for 0 hops if available, otherwise fall back to standard template
       const autoAckMessageDirect = databaseService.getSetting('autoAckMessageDirect') || '';
-      const autoAckMessageStandard = databaseService.getSetting('autoAckMessage') || '🤖 Copy, {NUMBER_HOPS} hops at {TIME}';
-      const autoAckMessage = (hopsTraveled === 0 && autoAckMessageDirect)
-        ? autoAckMessageDirect
-        : autoAckMessageStandard;
+      const autoAckMessageStandard =
+        databaseService.getSetting('autoAckMessage') || '🤖 Copy, {NUMBER_HOPS} hops at {TIME}';
+      const autoAckMessage = hopsTraveled === 0 && autoAckMessageDirect ? autoAckMessageDirect : autoAckMessageStandard;
 
       // Format timestamp according to user preferences
       const timestamp = new Date(message.timestamp);
@@ -4622,26 +5105,40 @@ class MeshtasticManager {
       const receivedTime = formatTime(timestamp, timeFormat as '12' | '24');
 
       // Replace tokens in the message template
-      let ackText = await this.replaceAcknowledgementTokens(autoAckMessage, message.fromNodeId, fromNum, hopsTraveled, receivedDate, receivedTime, channelIndex, isDirectMessage, rxSnr, rxRssi);
+      let ackText = await this.replaceAcknowledgementTokens(
+        autoAckMessage,
+        message.fromNodeId,
+        fromNum,
+        hopsTraveled,
+        receivedDate,
+        receivedTime,
+        channelIndex,
+        isDirectMessage,
+        rxSnr,
+        rxRssi
+      );
 
       // Check if we should always use DM
       const autoAckUseDM = databaseService.getSetting('autoAckUseDM');
       const alwaysUseDM = autoAckUseDM === 'true';
 
       // Don't make it a reply if we're changing channels (DM when triggered by channel message)
-      const replyId = (alwaysUseDM && !isDirectMessage) ? undefined : packetId;
+      const replyId = alwaysUseDM && !isDirectMessage ? undefined : packetId;
 
       // Format target for logging
-      const target = (alwaysUseDM || isDirectMessage)
-        ? `!${fromNum.toString(16).padStart(8, '0')}`
-        : `channel ${channelIndex}`;
+      const target =
+        alwaysUseDM || isDirectMessage ? `!${fromNum.toString(16).padStart(8, '0')}` : `channel ${channelIndex}`;
 
-      logger.debug(`🤖 Auto-acknowledging message from ${message.fromNodeId}: "${messageText}" with "${ackText}" ${alwaysUseDM ? '(via DM)' : ''}`);
+      logger.debug(
+        `🤖 Auto-acknowledging message from ${message.fromNodeId}: "${messageText}" with "${ackText}" ${
+          alwaysUseDM ? '(via DM)' : ''
+        }`
+      );
 
       // Use message queue to send auto-acknowledge with rate limiting and retry logic
       messageQueueService.enqueue(
         ackText,
-        (alwaysUseDM || isDirectMessage) ? fromNum : 0, // destination: node number for DM, 0 for channel
+        alwaysUseDM || isDirectMessage ? fromNum : 0, // destination: node number for DM, 0 for channel
         replyId, // replyId
         () => {
           logger.info(`✅ Auto-acknowledge delivered to ${target}`);
@@ -4649,7 +5146,7 @@ class MeshtasticManager {
         (reason: string) => {
           logger.warn(`❌ Auto-acknowledge failed to ${target}: ${reason}`);
         },
-        (alwaysUseDM || isDirectMessage) ? undefined : channelIndex // channel: undefined for DM, channel number for channel
+        alwaysUseDM || isDirectMessage ? undefined : channelIndex // channel: undefined for DM, channel number for channel
       );
     } catch (error) {
       logger.error('❌ Error in auto-acknowledge:', error);
@@ -4669,16 +5166,16 @@ class MeshtasticManager {
       logger.error(`🚫 Invalid script path: ${scriptPath}`);
       return null;
     }
-    
+
     const env = getEnvironmentConfig();
-    
+
     let scriptsDir: string;
-    
+
     if (env.isDevelopment) {
       // In development, use relative path from project root
       const projectRoot = path.resolve(process.cwd());
       scriptsDir = path.join(projectRoot, 'data', 'scripts');
-      
+
       // Ensure directory exists
       if (!fs.existsSync(scriptsDir)) {
         fs.mkdirSync(scriptsDir, { recursive: true });
@@ -4688,25 +5185,33 @@ class MeshtasticManager {
       // In production, use absolute path
       scriptsDir = '/data/scripts';
     }
-    
+
     const filename = path.basename(scriptPath);
     const resolvedPath = path.join(scriptsDir, filename);
-    
+
     // Additional security: ensure resolved path is within scripts directory
     const normalizedResolved = path.normalize(resolvedPath);
     const normalizedScriptsDir = path.normalize(scriptsDir);
-    
+
     if (!normalizedResolved.startsWith(normalizedScriptsDir)) {
       logger.error(`🚫 Script path resolves outside scripts directory: ${scriptPath}`);
       return null;
     }
-    
-    logger.debug(`📂 Resolved script path: ${scriptPath} -> ${normalizedResolved} (exists: ${fs.existsSync(normalizedResolved)})`);
-    
+
+    logger.debug(
+      `📂 Resolved script path: ${scriptPath} -> ${normalizedResolved} (exists: ${fs.existsSync(normalizedResolved)})`
+    );
+
     return normalizedResolved;
   }
 
-  private async checkAutoResponder(messageText: string, channelIndex: number, isDirectMessage: boolean, fromNum: number, packetId?: number): Promise<void> {
+  private async checkAutoResponder(
+    messageText: string,
+    channelIndex: number,
+    isDirectMessage: boolean,
+    fromNum: number,
+    packetId?: number
+  ): Promise<void> {
     try {
       // Get auto-responder settings from database
       const autoResponderEnabled = databaseService.getSetting('autoResponderEnabled');
@@ -4729,7 +5234,11 @@ class MeshtasticManager {
       if (autoResponderSkipIncompleteNodes === 'true') {
         const fromNode = databaseService.getNode(fromNum);
         if (fromNode && !isNodeComplete(fromNode)) {
-          logger.debug(`⏭️  Skipping auto-responder for incomplete node ${fromNode.nodeId || fromNum} (missing proper name or hwModel)`);
+          logger.debug(
+            `⏭️  Skipping auto-responder for incomplete node ${
+              fromNode.nodeId || fromNum
+            } (missing proper name or hwModel)`
+          );
           return;
         }
       }
@@ -4753,26 +5262,38 @@ class MeshtasticManager {
         return;
       }
 
-      logger.info(`🤖 Auto-responder checking message on ${isDirectMessage ? 'DM' : `channel ${channelIndex}`}: "${messageText}"`);
+      logger.info(
+        `🤖 Auto-responder checking message on ${isDirectMessage ? 'DM' : `channel ${channelIndex}`}: "${messageText}"`
+      );
 
       // Try to match message against triggers
       for (const trigger of triggers) {
         // Filter trigger by channel - default to 'dm' if not specified for backward compatibility
         const triggerChannel = trigger.channel ?? 'dm';
 
-        logger.info(`🤖 Checking trigger "${trigger.trigger}" (channel: ${triggerChannel}) against message on ${isDirectMessage ? 'DM' : `channel ${channelIndex}`}`);
+        logger.info(
+          `🤖 Checking trigger "${trigger.trigger}" (channel: ${triggerChannel}) against message on ${
+            isDirectMessage ? 'DM' : `channel ${channelIndex}`
+          }`
+        );
 
         // Check if this trigger applies to the current message
         if (isDirectMessage) {
           // For DMs, only match triggers configured for DM
           if (triggerChannel !== 'dm') {
-            logger.info(`⏭️  Skipping trigger "${trigger.trigger}" - configured for channel ${triggerChannel}, but message is DM`);
+            logger.info(
+              `⏭️  Skipping trigger "${trigger.trigger}" - configured for channel ${triggerChannel}, but message is DM`
+            );
             continue;
           }
         } else {
           // For channel messages, only match triggers configured for this specific channel
           if (triggerChannel !== channelIndex) {
-            logger.info(`⏭️  Skipping trigger "${trigger.trigger}" - configured for ${triggerChannel === 'dm' ? 'DM' : `channel ${triggerChannel}`}, but message is on channel ${channelIndex}`);
+            logger.info(
+              `⏭️  Skipping trigger "${trigger.trigger}" - configured for ${
+                triggerChannel === 'dm' ? 'DM' : `channel ${triggerChannel}`
+              }, but message is on channel ${channelIndex}`
+            );
             continue;
           }
         }
@@ -4814,12 +5335,9 @@ class MeshtasticManager {
               }
 
               if (endPos !== -1) {
-                const paramName = colonPos !== -1
-                  ? patternStr.substring(startPos, colonPos)
-                  : patternStr.substring(startPos, endPos);
-                const paramPattern = colonPos !== -1
-                  ? patternStr.substring(colonPos + 1, endPos)
-                  : undefined;
+                const paramName =
+                  colonPos !== -1 ? patternStr.substring(startPos, colonPos) : patternStr.substring(startPos, endPos);
+                const paramPattern = colonPos !== -1 ? patternStr.substring(colonPos + 1, endPos) : undefined;
 
                 if (!params.find(p => p.name === paramName)) {
                   params.push({ name: paramName, pattern: paramPattern });
@@ -4864,7 +5382,7 @@ class MeshtasticManager {
                   replacements.push({
                     start: startPos,
                     end: endPos + 1,
-                    replacement: `(${paramRegex})`
+                    replacement: `(${paramRegex})`,
                   });
                 }
                 i = endPos + 1;
@@ -4908,7 +5426,9 @@ class MeshtasticManager {
         }
 
         if (matchedPattern) {
-          logger.debug(`🤖 Auto-responder triggered by: "${messageText}" matching pattern: "${matchedPattern}" (from trigger: "${trigger.trigger}")`);
+          logger.debug(
+            `🤖 Auto-responder triggered by: "${messageText}" matching pattern: "${matchedPattern}" (from trigger: "${trigger.trigger}")`
+          );
 
           let responseText: string;
 
@@ -4932,7 +5452,7 @@ class MeshtasticManager {
                 signal: controller.signal,
                 headers: {
                   'User-Agent': 'MeshMonitor/2.0',
-                }
+                },
               });
 
               clearTimeout(timeout);
@@ -4945,7 +5465,6 @@ class MeshtasticManager {
 
               responseText = await response.text();
               logger.debug(`📥 HTTP response received: ${responseText.substring(0, 50)}...`);
-
             } catch (error: any) {
               if (error.name === 'AbortError') {
                 logger.debug('⏭️  HTTP request timed out after 5 seconds');
@@ -4954,7 +5473,6 @@ class MeshtasticManager {
               }
               return;
             }
-
           } else if (trigger.responseType === 'script') {
             // Script execution
             const scriptPath = trigger.response;
@@ -4985,11 +5503,11 @@ class MeshtasticManager {
             // Determine interpreter based on file extension
             const ext = scriptPath.split('.').pop()?.toLowerCase();
             let interpreter: string;
-            
+
             // In development, use system interpreters (node, python, sh)
             // In production, use absolute paths
             const isDev = process.env.NODE_ENV !== 'production';
-            
+
             switch (ext) {
               case 'js':
               case 'mjs':
@@ -5013,7 +5531,7 @@ class MeshtasticManager {
 
               // Prepare environment variables
               const scriptEnv: Record<string, string> = {
-                ...process.env as Record<string, string>,
+                ...(process.env as Record<string, string>),
                 MESSAGE: messageText,
                 FROM_NODE: String(fromNum),
                 PACKET_ID: String(packetId),
@@ -5085,7 +5603,8 @@ class MeshtasticManager {
 
               // For scripts with multiple responses, send each one
               const triggerChannel = trigger.channel ?? 'dm';
-              const target = triggerChannel === 'dm' ? `!${fromNum.toString(16).padStart(8, '0')}` : `channel ${triggerChannel}`;
+              const target =
+                triggerChannel === 'dm' ? `!${fromNum.toString(16).padStart(8, '0')}` : `channel ${triggerChannel}`;
               logger.debug(`🤖 Enqueueing ${scriptResponses.length} script response(s) to ${target}`);
 
               scriptResponses.forEach((resp, index) => {
@@ -5095,20 +5614,21 @@ class MeshtasticManager {
                 messageQueueService.enqueue(
                   truncated,
                   triggerChannel === 'dm' ? fromNum : 0, // destination: node number for DM, 0 for channel
-                  (trigger.verifyResponse && isFirstMessage) ? packetId : undefined,
+                  trigger.verifyResponse && isFirstMessage ? packetId : undefined,
                   () => {
                     logger.info(`✅ Script response ${index + 1}/${scriptResponses.length} delivered to ${target}`);
                   },
                   (reason: string) => {
-                    logger.warn(`❌ Script response ${index + 1}/${scriptResponses.length} failed to ${target}: ${reason}`);
+                    logger.warn(
+                      `❌ Script response ${index + 1}/${scriptResponses.length} failed to ${target}: ${reason}`
+                    );
                   },
-                  triggerChannel === 'dm' ? undefined : triggerChannel as number // channel: undefined for DM, channel number for channel
+                  triggerChannel === 'dm' ? undefined : (triggerChannel as number) // channel: undefined for DM, channel number for channel
                 );
               });
 
               // Script responses queued, return early
               return;
-
             } catch (error: any) {
               if (error.killed && error.signal === 'SIGTERM') {
                 logger.error('⏭️  Script execution timed out after 10 seconds');
@@ -5119,7 +5639,6 @@ class MeshtasticManager {
               }
               return;
             }
-
           } else {
             // Text trigger - use static response
             responseText = trigger.response;
@@ -5151,7 +5670,8 @@ class MeshtasticManager {
 
           // Enqueue all messages for delivery with retry logic
           const triggerChannel = trigger.channel ?? 'dm';
-          const target = triggerChannel === 'dm' ? `!${fromNum.toString(16).padStart(8, '0')}` : `channel ${triggerChannel}`;
+          const target =
+            triggerChannel === 'dm' ? `!${fromNum.toString(16).padStart(8, '0')}` : `channel ${triggerChannel}`;
           logger.debug(`🤖 Enqueueing ${messagesToSend.length} auto-response message(s) to ${target}`);
 
           messagesToSend.forEach((msg, index) => {
@@ -5159,14 +5679,14 @@ class MeshtasticManager {
             messageQueueService.enqueue(
               msg,
               triggerChannel === 'dm' ? fromNum : 0, // destination: node number for DM, 0 for channel
-              (trigger.verifyResponse && isFirstMessage) ? packetId : undefined, // Only reply to original for first message if verifyResponse is enabled
+              trigger.verifyResponse && isFirstMessage ? packetId : undefined, // Only reply to original for first message if verifyResponse is enabled
               () => {
                 logger.info(`✅ Auto-response ${index + 1}/${messagesToSend.length} delivered to ${target}`);
               },
               (reason: string) => {
                 logger.warn(`❌ Auto-response ${index + 1}/${messagesToSend.length} failed to ${target}: ${reason}`);
               },
-              triggerChannel === 'dm' ? undefined : triggerChannel as number // channel: undefined for DM, channel number for channel
+              triggerChannel === 'dm' ? undefined : (triggerChannel as number) // channel: undefined for DM, channel number for channel
             );
           });
 
@@ -5174,7 +5694,6 @@ class MeshtasticManager {
           return;
         }
       }
-
     } catch (error) {
       logger.error('❌ Error in auto-responder:', error);
     }
@@ -5220,7 +5739,8 @@ class MeshtasticManager {
 
       // 1. Try to break on line break
       const lastNewline = chunk.lastIndexOf('\n');
-      if (lastNewline > chunk.length * 0.5) { // Only if we're using at least 50% of the space
+      if (lastNewline > chunk.length * 0.5) {
+        // Only if we're using at least 50% of the space
         breakPoint = lastNewline + 1;
       }
 
@@ -5251,7 +5771,8 @@ class MeshtasticManager {
       // 4. Try to break on space
       if (breakPoint === -1) {
         const lastSpace = chunk.lastIndexOf(' ');
-        if (lastSpace > chunk.length * 0.3) { // Only if we're using at least 30% of the space
+        if (lastSpace > chunk.length * 0.3) {
+          // Only if we're using at least 30% of the space
           breakPoint = lastSpace + 1;
         }
       }
@@ -5328,6 +5849,12 @@ class MeshtasticManager {
         return;
       }
 
+      // RACE CONDITION PROTECTION: Check if we're already welcoming this node
+      if (this.welcomingNodes.has(nodeNum)) {
+        logger.debug(`⏭️  Skipping auto-welcome for ${nodeId} - already being welcomed in parallel`);
+        return;
+      }
+
       // Check if we've already welcomed this node
       const node = databaseService.getNode(nodeNum);
       if (!node) {
@@ -5338,67 +5865,97 @@ class MeshtasticManager {
       // Skip if node has already been welcomed (nodes should only be welcomed once)
       // Use explicit null/undefined check to handle edge case where welcomedAt might be 0
       if (node.welcomedAt !== null && node.welcomedAt !== undefined) {
-        logger.debug(`⏭️  Skipping auto-welcome for ${nodeId} - already welcomed previously`);
+        logger.debug(
+          `⏭️  Skipping auto-welcome for ${nodeId} - already welcomed at ${new Date(node.welcomedAt).toISOString()}`
+        );
         return;
       }
 
-      // Check if we should wait for name
-      const autoWelcomeWaitForName = databaseService.getSetting('autoWelcomeWaitForName');
-      if (autoWelcomeWaitForName === 'true') {
-        // Check if node has a proper name (not default "Node !xxxxxxxx")
-        if (!node.longName || node.longName.startsWith('Node !')) {
-          logger.debug(`⏭️  Skipping auto-welcome for ${nodeId} - waiting for proper name (current: ${node.longName})`);
+      // RACE CONDITION PROTECTION: Mark that we're welcoming this node
+      // This prevents duplicate welcomes if multiple packets arrive before database is updated
+      this.welcomingNodes.add(nodeNum);
+      logger.debug(`🔒 Locked auto-welcome for ${nodeId} to prevent duplicates`);
+
+      try {
+        // Check if we should wait for name
+        const autoWelcomeWaitForName = databaseService.getSetting('autoWelcomeWaitForName');
+        if (autoWelcomeWaitForName === 'true') {
+          // Check if node has a proper name (not default "Node !xxxxxxxx")
+          if (!node.longName || node.longName.startsWith('Node !')) {
+            logger.debug(
+              `⏭️  Skipping auto-welcome for ${nodeId} - waiting for proper name (current: ${node.longName})`
+            );
+            return;
+          }
+          if (!node.shortName || node.shortName === nodeId.substring(1, 5)) {
+            logger.debug(
+              `⏭️  Skipping auto-welcome for ${nodeId} - waiting for proper short name (current: ${node.shortName})`
+            );
+            return;
+          }
+        }
+
+        // Check if node exceeds maximum hop count
+        const autoWelcomeMaxHops = databaseService.getSetting('autoWelcomeMaxHops');
+        const maxHops = autoWelcomeMaxHops ? parseInt(autoWelcomeMaxHops) : 5; // Default to 5 hops
+        if (node.hopsAway !== undefined && node.hopsAway > maxHops) {
+          logger.debug(
+            `⏭️  Skipping auto-welcome for ${nodeId} - too far away (${node.hopsAway} hops > ${maxHops} max)`
+          );
           return;
         }
-        if (!node.shortName || node.shortName === nodeId.substring(1, 5)) {
-          logger.debug(`⏭️  Skipping auto-welcome for ${nodeId} - waiting for proper short name (current: ${node.shortName})`);
-          return;
+
+        // Get welcome message template
+        const autoWelcomeMessage =
+          databaseService.getSetting('autoWelcomeMessage') || 'Welcome {LONG_NAME} ({SHORT_NAME}) to the mesh!';
+
+        // Replace tokens in the message template
+        const welcomeText = await this.replaceWelcomeTokens(autoWelcomeMessage, nodeNum, nodeId);
+
+        // Get target (DM or channel)
+        const autoWelcomeTarget = databaseService.getSetting('autoWelcomeTarget') || '0';
+
+        let destination: number | undefined;
+        let channel: number;
+
+        if (autoWelcomeTarget === 'dm') {
+          // Send as direct message
+          destination = nodeNum;
+          channel = 0;
+        } else {
+          // Send to channel
+          destination = undefined;
+          channel = parseInt(autoWelcomeTarget);
         }
+
+        logger.info(
+          `👋 Sending auto-welcome to ${nodeId} (${node.longName}): "${welcomeText}" ${
+            autoWelcomeTarget === 'dm' ? '(via DM)' : `(channel ${channel})`
+          }`
+        );
+
+        await this.sendTextMessage(welcomeText, channel, destination);
+
+        // Mark node as welcomed using atomic check-and-set operation
+        // This ensures the node is only marked if it hasn't been marked already
+        const wasMarked = databaseService.markNodeAsWelcomedIfNotAlready(nodeNum, nodeId);
+        if (wasMarked) {
+          logger.info(`✅ Node ${nodeId} welcomed successfully and marked in database`);
+        } else {
+          logger.warn(`⚠️  Node ${nodeId} was already marked as welcomed by another process`);
+        }
+      } finally {
+        // RACE CONDITION PROTECTION: Always remove from tracking set
+        // Use a small delay to ensure database write has completed
+        setTimeout(() => {
+          this.welcomingNodes.delete(nodeNum);
+          logger.debug(`🔓 Unlocked auto-welcome tracking for ${nodeId}`);
+        }, 100);
       }
-
-      // Check if node exceeds maximum hop count
-      const autoWelcomeMaxHops = databaseService.getSetting('autoWelcomeMaxHops');
-      const maxHops = autoWelcomeMaxHops ? parseInt(autoWelcomeMaxHops) : 5; // Default to 5 hops
-      if (node.hopsAway !== undefined && node.hopsAway > maxHops) {
-        logger.debug(`⏭️  Skipping auto-welcome for ${nodeId} - too far away (${node.hopsAway} hops > ${maxHops} max)`);
-        return;
-      }
-
-      // Get welcome message template
-      const autoWelcomeMessage = databaseService.getSetting('autoWelcomeMessage') || 'Welcome {LONG_NAME} ({SHORT_NAME}) to the mesh!';
-
-      // Replace tokens in the message template
-      const welcomeText = await this.replaceWelcomeTokens(autoWelcomeMessage, nodeNum, nodeId);
-
-      // Get target (DM or channel)
-      const autoWelcomeTarget = databaseService.getSetting('autoWelcomeTarget') || '0';
-
-      let destination: number | undefined;
-      let channel: number;
-
-      if (autoWelcomeTarget === 'dm') {
-        // Send as direct message
-        destination = nodeNum;
-        channel = 0;
-      } else {
-        // Send to channel
-        destination = undefined;
-        channel = parseInt(autoWelcomeTarget);
-      }
-
-      logger.info(`👋 Sending auto-welcome to ${nodeId} (${node.longName}): "${welcomeText}" ${autoWelcomeTarget === 'dm' ? '(via DM)' : `(channel ${channel})`}`);
-
-      await this.sendTextMessage(welcomeText, channel, destination);
-
-      // Mark node as welcomed
-      databaseService.upsertNode({
-        nodeNum: nodeNum,
-        nodeId: nodeId,
-        welcomedAt: Date.now()
-      });
-      logger.debug(`✅ Marked ${nodeId} as welcomed`);
     } catch (error) {
       logger.error('❌ Error in auto-welcome:', error);
+      // Ensure we remove from tracking set even on error
+      this.welcomingNodes.delete(nodeNum);
     }
   }
 
@@ -5490,7 +6047,8 @@ class MeshtasticManager {
 
   async sendAutoAnnouncement(): Promise<void> {
     try {
-      const message = databaseService.getSetting('autoAnnounceMessage') || 'MeshMonitor {VERSION} online for {DURATION} {FEATURES}';
+      const message =
+        databaseService.getSetting('autoAnnounceMessage') || 'MeshMonitor {VERSION} online for {DURATION} {FEATURES}';
       const channelIndex = parseInt(databaseService.getSetting('autoAnnounceChannelIndex') || '0');
 
       // Replace tokens
@@ -5559,7 +6117,9 @@ class MeshtasticManager {
       const maxNodeAgeHours = parseInt(databaseService.getSetting('maxNodeAgeHours') || '24');
       const maxNodeAgeDays = maxNodeAgeHours / 24;
       const nodes = databaseService.getActiveNodes(maxNodeAgeDays);
-      logger.info(`📢 Token replacement - NODECOUNT: ${nodes.length} active nodes (maxNodeAgeHours: ${maxNodeAgeHours})`);
+      logger.info(
+        `📢 Token replacement - NODECOUNT: ${nodes.length} active nodes (maxNodeAgeHours: ${maxNodeAgeHours})`
+      );
       result = result.replace(/{NODECOUNT}/g, nodes.length.toString());
     }
 
@@ -5569,14 +6129,27 @@ class MeshtasticManager {
       const maxNodeAgeDays = maxNodeAgeHours / 24;
       const nodes = databaseService.getActiveNodes(maxNodeAgeDays);
       const directCount = nodes.filter((n: any) => n.hopsAway === 0).length;
-      logger.info(`📢 Token replacement - DIRECTCOUNT: ${directCount} direct nodes out of ${nodes.length} active nodes`);
+      logger.info(
+        `📢 Token replacement - DIRECTCOUNT: ${directCount} direct nodes out of ${nodes.length} active nodes`
+      );
       result = result.replace(/{DIRECTCOUNT}/g, directCount.toString());
     }
 
     return result;
   }
 
-  private async replaceAcknowledgementTokens(message: string, nodeId: string, fromNum: number, numberHops: number, date: string, time: string, channelIndex: number, isDirectMessage: boolean, rxSnr?: number, rxRssi?: number): Promise<string> {
+  private async replaceAcknowledgementTokens(
+    message: string,
+    nodeId: string,
+    fromNum: number,
+    numberHops: number,
+    date: string,
+    time: string,
+    channelIndex: number,
+    isDirectMessage: boolean,
+    rxSnr?: number,
+    rxRssi?: number
+  ): Promise<string> {
     let result = message;
 
     // {NODE_ID} - Sender node ID
@@ -5686,17 +6259,13 @@ class MeshtasticManager {
 
     // {SNR} - Signal-to-Noise Ratio
     if (result.includes('{SNR}')) {
-      const snrValue = (rxSnr !== undefined && rxSnr !== null && rxSnr !== 0)
-        ? rxSnr.toFixed(1)
-        : 'N/A';
+      const snrValue = rxSnr !== undefined && rxSnr !== null && rxSnr !== 0 ? rxSnr.toFixed(1) : 'N/A';
       result = result.replace(/{SNR}/g, snrValue);
     }
 
     // {RSSI} - Received Signal Strength Indicator
     if (result.includes('{RSSI}')) {
-      const rssiValue = (rxRssi !== undefined && rxRssi !== null && rxRssi !== 0)
-        ? rxRssi.toString()
-        : 'N/A';
+      const rssiValue = rxRssi !== undefined && rxRssi !== null && rxRssi !== 0 ? rxRssi.toString() : 'N/A';
       result = result.replace(/{RSSI}/g, rssiValue);
     }
 
@@ -5708,7 +6277,7 @@ class MeshtasticManager {
       } else {
         const channel = databaseService.getChannelById(channelIndex);
         // Use channel name if available and not empty, otherwise fall back to channel number
-        channelName = (channel?.name && channel.name.trim()) ? channel.name.trim() : channelIndex.toString();
+        channelName = channel?.name && channel.name.trim() ? channel.name.trim() : channelIndex.toString();
       }
       result = result.replace(/{CHANNEL}/g, channelName);
     }
@@ -5752,7 +6321,7 @@ class MeshtasticManager {
       // Extract session passkey if present
       if (adminMsg.sessionPasskey && adminMsg.sessionPasskey.length > 0) {
         this.sessionPasskey = new Uint8Array(adminMsg.sessionPasskey);
-        this.sessionPasskeyExpiry = Date.now() + (290 * 1000); // 290 seconds (10 second buffer before 300s expiry)
+        this.sessionPasskeyExpiry = Date.now() + 290 * 1000; // 290 seconds (10 second buffer before 300s expiry)
         logger.debug('🔑 Session passkey received and stored (expires in 290 seconds)');
       }
 
@@ -5788,7 +6357,11 @@ class MeshtasticManager {
 
     try {
       const getSessionKeyRequest = protobufService.createGetSessionKeyRequest();
-      const adminPacket = protobufService.createAdminPacket(getSessionKeyRequest, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum); // send to local node
+      const adminPacket = protobufService.createAdminPacket(
+        getSessionKeyRequest,
+        this.localNodeInfo?.nodeNum || 0,
+        this.localNodeInfo?.nodeNum
+      ); // send to local node
 
       await this.transport.send(adminPacket);
       logger.debug('🔑 Requested session passkey from device (via SESSIONKEY_CONFIG)');
@@ -5818,7 +6391,7 @@ class MeshtasticManager {
     return {
       major: parseInt(match[1], 10),
       minor: parseInt(match[2], 10),
-      patch: parseInt(match[3], 10)
+      patch: parseInt(match[3], 10),
     };
   }
 
@@ -5877,7 +6450,11 @@ class MeshtasticManager {
       // (there's a known bug where session keys don't work properly over TCP)
       logger.debug('⭐ Attempting to send favorite without session key (local TCP admin)');
       const setFavoriteMsg = protobufService.createSetFavoriteNodeMessage(nodeNum, new Uint8Array()); // empty passkey
-      const adminPacket = protobufService.createAdminPacket(setFavoriteMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum); // send to local node
+      const adminPacket = protobufService.createAdminPacket(
+        setFavoriteMsg,
+        this.localNodeInfo?.nodeNum || 0,
+        this.localNodeInfo?.nodeNum
+      ); // send to local node
 
       await this.transport.send(adminPacket);
       logger.debug(`⭐ Sent set_favorite_node for ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')})`);
@@ -5905,7 +6482,11 @@ class MeshtasticManager {
       // (there's a known bug where session keys don't work properly over TCP)
       logger.debug('☆ Attempting to remove favorite without session key (local TCP admin)');
       const removeFavoriteMsg = protobufService.createRemoveFavoriteNodeMessage(nodeNum, new Uint8Array()); // empty passkey
-      const adminPacket = protobufService.createAdminPacket(removeFavoriteMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum); // send to local node
+      const adminPacket = protobufService.createAdminPacket(
+        removeFavoriteMsg,
+        this.localNodeInfo?.nodeNum || 0,
+        this.localNodeInfo?.nodeNum
+      ); // send to local node
 
       await this.transport.send(adminPacket);
       logger.debug(`☆ Sent remove_favorite_node for ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')})`);
@@ -5931,12 +6512,20 @@ class MeshtasticManager {
     try {
       // For local TCP connections, try sending without session passkey first
       // (there's a known bug where session keys don't work properly over TCP)
-      logger.info(`🗑️ Attempting to remove node ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')}) from device NodeDB`);
+      logger.info(
+        `🗑️ Attempting to remove node ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')}) from device NodeDB`
+      );
       const removeNodeMsg = protobufService.createRemoveNodeMessage(nodeNum, new Uint8Array()); // empty passkey
-      const adminPacket = protobufService.createAdminPacket(removeNodeMsg, this.localNodeInfo.nodeNum, this.localNodeInfo.nodeNum); // send to local node
+      const adminPacket = protobufService.createAdminPacket(
+        removeNodeMsg,
+        this.localNodeInfo.nodeNum,
+        this.localNodeInfo.nodeNum
+      ); // send to local node
 
       await this.transport.send(adminPacket);
-      logger.info(`✅ Sent remove_by_nodenum admin command for node ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')})`);
+      logger.info(
+        `✅ Sent remove_by_nodenum admin command for node ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')})`
+      );
     } catch (error) {
       logger.error('❌ Error sending remove node admin message:', error);
       throw error;
@@ -5955,7 +6544,11 @@ class MeshtasticManager {
     try {
       logger.debug(`⚙️ Requesting config type ${configType} from device`);
       const getConfigMsg = protobufService.createGetConfigRequest(configType);
-      const adminPacket = protobufService.createAdminPacket(getConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+      const adminPacket = protobufService.createAdminPacket(
+        getConfigMsg,
+        this.localNodeInfo?.nodeNum || 0,
+        this.localNodeInfo?.nodeNum
+      );
 
       await this.transport.send(adminPacket);
       logger.debug(`⚙️ Sent get_config_request for config type ${configType}`);
@@ -5977,7 +6570,11 @@ class MeshtasticManager {
     try {
       logger.debug(`⚙️ Requesting module config type ${configType} from device`);
       const getModuleConfigMsg = protobufService.createGetModuleConfigRequest(configType);
-      const adminPacket = protobufService.createAdminPacket(getModuleConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+      const adminPacket = protobufService.createAdminPacket(
+        getModuleConfigMsg,
+        this.localNodeInfo?.nodeNum || 0,
+        this.localNodeInfo?.nodeNum
+      );
 
       await this.transport.send(adminPacket);
       logger.debug(`⚙️ Sent get_module_config_request for config type ${configType}`);
@@ -5998,19 +6595,19 @@ class MeshtasticManager {
 
     // All module config types from admin.proto ModuleConfigType enum
     const moduleConfigTypes = [
-      0,  // MQTT_CONFIG
-      1,  // SERIAL_CONFIG
-      2,  // EXTNOTIF_CONFIG
-      3,  // STOREFORWARD_CONFIG
-      4,  // RANGETEST_CONFIG
-      5,  // TELEMETRY_CONFIG
-      6,  // CANNEDMSG_CONFIG
-      7,  // AUDIO_CONFIG
-      8,  // REMOTEHARDWARE_CONFIG
-      9,  // NEIGHBORINFO_CONFIG
+      0, // MQTT_CONFIG
+      1, // SERIAL_CONFIG
+      2, // EXTNOTIF_CONFIG
+      3, // STOREFORWARD_CONFIG
+      4, // RANGETEST_CONFIG
+      5, // TELEMETRY_CONFIG
+      6, // CANNEDMSG_CONFIG
+      7, // AUDIO_CONFIG
+      8, // REMOTEHARDWARE_CONFIG
+      9, // NEIGHBORINFO_CONFIG
       10, // AMBIENTLIGHTING_CONFIG
       11, // DETECTIONSENSOR_CONFIG
-      12  // PAXCOUNTER_CONFIG
+      12, // PAXCOUNTER_CONFIG
     ];
 
     logger.info('📦 Requesting all module configs for complete backup...');
@@ -6043,7 +6640,11 @@ class MeshtasticManager {
       // NOTE: Session passkeys are only required for REMOTE admin operations (admin messages sent to other nodes via mesh).
       // For local TCP connections to the device itself, no session passkey is needed.
       const rebootMsg = protobufService.createRebootMessage(seconds);
-      const adminPacket = protobufService.createAdminPacket(rebootMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+      const adminPacket = protobufService.createAdminPacket(
+        rebootMsg,
+        this.localNodeInfo?.nodeNum || 0,
+        this.localNodeInfo?.nodeNum
+      );
 
       await this.transport.send(adminPacket);
       logger.debug('⚙️ Sent reboot admin message (local operation, no session passkey required)');
@@ -6067,7 +6668,11 @@ class MeshtasticManager {
       // NOTE: Session passkeys are only required for REMOTE admin operations (admin messages sent to other nodes via mesh).
       // For local TCP connections to the device itself, no session passkey is needed.
       const purgeMsg = protobufService.createPurgeNodeDbMessage(seconds);
-      const adminPacket = protobufService.createAdminPacket(purgeMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+      const adminPacket = protobufService.createAdminPacket(
+        purgeMsg,
+        this.localNodeInfo?.nodeNum || 0,
+        this.localNodeInfo?.nodeNum
+      );
 
       await this.transport.send(adminPacket);
       logger.debug('⚙️ Sent purge node database admin message (local operation, no session passkey required)');
@@ -6088,7 +6693,11 @@ class MeshtasticManager {
     try {
       logger.debug('⚙️ Sending device config:', JSON.stringify(config));
       const setConfigMsg = protobufService.createSetDeviceConfigMessage(config, new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+      const adminPacket = protobufService.createAdminPacket(
+        setConfigMsg,
+        this.localNodeInfo?.nodeNum || 0,
+        this.localNodeInfo?.nodeNum
+      );
 
       await this.transport.send(adminPacket);
       logger.debug('⚙️ Sent set_device_config admin message');
@@ -6109,7 +6718,11 @@ class MeshtasticManager {
     try {
       logger.debug('⚙️ Sending LoRa config:', JSON.stringify(config));
       const setConfigMsg = protobufService.createSetLoRaConfigMessage(config, new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+      const adminPacket = protobufService.createAdminPacket(
+        setConfigMsg,
+        this.localNodeInfo?.nodeNum || 0,
+        this.localNodeInfo?.nodeNum
+      );
 
       await this.transport.send(adminPacket);
       logger.debug('⚙️ Sent set_lora_config admin message');
@@ -6124,14 +6737,17 @@ class MeshtasticManager {
    * @param channelIndex The channel index (0-7)
    * @param config Channel configuration
    */
-  async setChannelConfig(channelIndex: number, config: {
-    name?: string;
-    psk?: string;
-    role?: number;
-    uplinkEnabled?: boolean;
-    downlinkEnabled?: boolean;
-    positionPrecision?: number;
-  }): Promise<void> {
+  async setChannelConfig(
+    channelIndex: number,
+    config: {
+      name?: string;
+      psk?: string;
+      role?: number;
+      uplinkEnabled?: boolean;
+      downlinkEnabled?: boolean;
+      positionPrecision?: number;
+    }
+  ): Promise<void> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
     }
@@ -6143,7 +6759,11 @@ class MeshtasticManager {
     try {
       logger.debug(`⚙️ Sending channel ${channelIndex} config:`, JSON.stringify(config));
       const setChannelMsg = protobufService.createSetChannelMessage(channelIndex, config, new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(setChannelMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+      const adminPacket = protobufService.createAdminPacket(
+        setChannelMsg,
+        this.localNodeInfo?.nodeNum || 0,
+        this.localNodeInfo?.nodeNum
+      );
 
       await this.transport.send(adminPacket);
       logger.debug(`⚙️ Sent set_channel admin message for channel ${channelIndex}`);
@@ -6168,14 +6788,20 @@ class MeshtasticManager {
       // Per Meshtastic docs: Set fixed position coordinates FIRST, THEN set fixedPosition flag
       // If lat/long provided, send position update first
       if (latitude !== undefined && longitude !== undefined) {
-        logger.debug(`⚙️ Setting fixed position coordinates FIRST: lat=${latitude}, lon=${longitude}, alt=${altitude || 0}`);
+        logger.debug(
+          `⚙️ Setting fixed position coordinates FIRST: lat=${latitude}, lon=${longitude}, alt=${altitude || 0}`
+        );
         const setPositionMsg = protobufService.createSetFixedPositionMessage(
           latitude,
           longitude,
           altitude || 0,
           new Uint8Array()
         );
-        const positionPacket = protobufService.createAdminPacket(setPositionMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+        const positionPacket = protobufService.createAdminPacket(
+          setPositionMsg,
+          this.localNodeInfo?.nodeNum || 0,
+          this.localNodeInfo?.nodeNum
+        );
 
         await this.transport.send(positionPacket);
         logger.debug('⚙️ Sent set_fixed_position admin message');
@@ -6187,7 +6813,11 @@ class MeshtasticManager {
       // Then send position configuration (fixedPosition flag, broadcast intervals, etc.)
       logger.debug('⚙️ Sending position config:', JSON.stringify(positionConfig));
       const setConfigMsg = protobufService.createSetPositionConfigMessage(positionConfig, new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+      const adminPacket = protobufService.createAdminPacket(
+        setConfigMsg,
+        this.localNodeInfo?.nodeNum || 0,
+        this.localNodeInfo?.nodeNum
+      );
 
       await this.transport.send(adminPacket);
       logger.debug('⚙️ Sent set_position_config admin message');
@@ -6208,7 +6838,11 @@ class MeshtasticManager {
     try {
       logger.debug('⚙️ Sending MQTT config:', JSON.stringify(config));
       const setConfigMsg = protobufService.createSetMQTTConfigMessage(config, new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+      const adminPacket = protobufService.createAdminPacket(
+        setConfigMsg,
+        this.localNodeInfo?.nodeNum || 0,
+        this.localNodeInfo?.nodeNum
+      );
 
       await this.transport.send(adminPacket);
       logger.debug('⚙️ Sent set_mqtt_config admin message (direct, no transaction)');
@@ -6229,7 +6863,11 @@ class MeshtasticManager {
     try {
       logger.debug('⚙️ Sending NeighborInfo config:', JSON.stringify(config));
       const setConfigMsg = protobufService.createSetNeighborInfoConfigMessage(config, new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+      const adminPacket = protobufService.createAdminPacket(
+        setConfigMsg,
+        this.localNodeInfo?.nodeNum || 0,
+        this.localNodeInfo?.nodeNum
+      );
 
       await this.transport.send(adminPacket);
       logger.debug('⚙️ Sent set_neighborinfo_config admin message (direct, no transaction)');
@@ -6250,7 +6888,11 @@ class MeshtasticManager {
     try {
       logger.debug(`⚙️ Setting node owner: "${longName}" (${shortName}), isUnmessagable: ${isUnmessagable}`);
       const setOwnerMsg = protobufService.createSetOwnerMessage(longName, shortName, isUnmessagable, new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(setOwnerMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+      const adminPacket = protobufService.createAdminPacket(
+        setOwnerMsg,
+        this.localNodeInfo?.nodeNum || 0,
+        this.localNodeInfo?.nodeNum
+      );
 
       await this.transport.send(adminPacket);
       logger.debug('⚙️ Sent set_owner admin message (direct, no transaction)');
@@ -6271,7 +6913,11 @@ class MeshtasticManager {
     try {
       logger.info('⚙️ Beginning edit settings transaction');
       const beginMsg = protobufService.createBeginEditSettingsMessage(new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(beginMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+      const adminPacket = protobufService.createAdminPacket(
+        beginMsg,
+        this.localNodeInfo?.nodeNum || 0,
+        this.localNodeInfo?.nodeNum
+      );
 
       await this.transport.send(adminPacket);
       logger.info('⚙️ Sent begin_edit_settings admin message');
@@ -6292,7 +6938,11 @@ class MeshtasticManager {
     try {
       logger.info('⚙️ Committing edit settings to persist configuration');
       const commitMsg = protobufService.createCommitEditSettingsMessage(new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(commitMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+      const adminPacket = protobufService.createAdminPacket(
+        commitMsg,
+        this.localNodeInfo?.nodeNum || 0,
+        this.localNodeInfo?.nodeNum
+      );
 
       await this.transport.send(adminPacket);
       logger.info('⚙️ Sent commit_edit_settings admin message');
@@ -6305,18 +6955,26 @@ class MeshtasticManager {
     }
   }
 
-  getConnectionStatus(): { connected: boolean; nodeResponsive: boolean; configuring: boolean; nodeIp: string; userDisconnected?: boolean } {
+  getConnectionStatus(): {
+    connected: boolean;
+    nodeResponsive: boolean;
+    configuring: boolean;
+    nodeIp: string;
+    userDisconnected?: boolean;
+  } {
     // Node is responsive if we have localNodeInfo (received MyNodeInfo from device)
     const nodeResponsive = this.localNodeInfo !== null;
     // Node is configuring if connected but initial config capture not complete
     const configuring = this.isConnected && !this.configCaptureComplete;
-    logger.debug(`🔍 getConnectionStatus called: isConnected=${this.isConnected}, nodeResponsive=${nodeResponsive}, configuring=${configuring}, userDisconnected=${this.userDisconnectedState}`);
+    logger.debug(
+      `🔍 getConnectionStatus called: isConnected=${this.isConnected}, nodeResponsive=${nodeResponsive}, configuring=${configuring}, userDisconnected=${this.userDisconnectedState}`
+    );
     return {
       connected: this.isConnected,
       nodeResponsive,
       configuring,
       nodeIp: this.getConfig().nodeIp,
-      userDisconnected: this.userDisconnectedState
+      userDisconnected: this.userDisconnectedState,
     };
   }
 
@@ -6328,7 +6986,7 @@ class MeshtasticManager {
         nodeId: dbNodes[0].nodeId,
         longName: dbNodes[0].longName,
         role: dbNodes[0].role,
-        hopsAway: dbNodes[0].hopsAway
+        hopsAway: dbNodes[0].hopsAway,
       });
     }
     return dbNodes.map(node => {
@@ -6341,18 +6999,18 @@ class MeshtasticManager {
           id: node.nodeId,
           longName: node.longName || '',
           shortName: node.shortName || '',
-          hwModel: node.hwModel
+          hwModel: node.hwModel,
         },
         deviceMetrics: {
           batteryLevel: node.batteryLevel,
           voltage: node.voltage,
           channelUtilization: node.channelUtilization,
           airUtilTx: node.airUtilTx,
-          uptimeSeconds: uptimeTelemetry?.value
+          uptimeSeconds: uptimeTelemetry?.value,
         },
         lastHeard: node.lastHeard,
         snr: node.snr,
-        rssi: node.rssi
+        rssi: node.rssi,
       };
 
       // Add role if it exists
@@ -6401,7 +7059,7 @@ class MeshtasticManager {
         deviceInfo.position = {
           latitude: node.latitude,
           longitude: node.longitude,
-          altitude: node.altitude
+          altitude: node.altitude,
         };
       }
 
@@ -6435,9 +7093,14 @@ class MeshtasticManager {
       // - DMs: only 'confirmed' counts (received by target)
       // - Channel messages: 'delivered' counts (transmitted to mesh)
       // - undefined/failed: not acknowledged
-      acknowledged: msg.channel === -1
-        ? ((msg as any).deliveryState === 'confirmed' ? true : undefined)
-        : ((msg as any).deliveryState === 'delivered' || (msg as any).deliveryState === 'confirmed' ? true : undefined)
+      acknowledged:
+        msg.channel === -1
+          ? (msg as any).deliveryState === 'confirmed'
+            ? true
+            : undefined
+          : (msg as any).deliveryState === 'delivered' || (msg as any).deliveryState === 'confirmed'
+          ? true
+          : undefined,
     }));
   }
 
