@@ -14,6 +14,7 @@ import NotificationsTab from './components/NotificationsTab';
 import UsersTab from './components/UsersTab';
 import AuditLogTab from './components/AuditLogTab';
 import { SecurityTab } from './components/SecurityTab';
+import AdminCommandsTab from './components/AdminCommandsTab';
 import Dashboard from './components/Dashboard';
 import NodesTab from './components/NodesTab';
 import MessagesTab from './components/MessagesTab';
@@ -4369,6 +4370,9 @@ function App() {
         {activeTab === 'notifications' && <NotificationsTab isAdmin={authStatus?.user?.isAdmin || false} />}
         {activeTab === 'users' && <UsersTab />}
         {activeTab === 'audit' && <AuditLogTab />}
+        {activeTab === 'admin' && authStatus?.user?.isAdmin && (
+          <AdminCommandsTab nodes={nodes} currentNodeId={currentNodeId} channels={channels} onChannelsUpdated={fetchChannels} />
+        )}
         {activeTab === 'security' && (
           <SecurityTab onTabChange={setActiveTab} onSelectDMNode={setSelectedDMNode} setNewMessage={setNewMessage} />
         )}

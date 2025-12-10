@@ -9,6 +9,7 @@ import databaseService, { DbMessage } from '../services/database.js';
 import { MeshMessage } from '../types/message.js';
 import meshtasticManager from './meshtasticManager.js';
 import meshtasticProtobufService from './meshtasticProtobufService.js';
+import protobufService from './protobufService.js';
 import { VirtualNodeServer } from './virtualNodeServer.js';
 
 // Make meshtasticManager available globally for routes that need it
@@ -1403,6 +1404,14 @@ apiRouter.get('/channels/:id/export', requirePermission('channel_0', 'read'), (r
     });
 
     // Create export data with metadata
+    // Normalize boolean values to ensure consistent export format (handle any numeric 0/1 values)
+    const normalizeBoolean = (value: any): boolean => {
+      if (typeof value === 'boolean') return value;
+      if (typeof value === 'number') return value !== 0;
+      if (typeof value === 'string') return value.toLowerCase() === 'true' || value === '1';
+      return !!value;
+    };
+
     const exportData = {
       version: '1.0',
       exportedAt: new Date().toISOString(),
@@ -1411,8 +1420,8 @@ apiRouter.get('/channels/:id/export', requirePermission('channel_0', 'read'), (r
         name: channel.name,
         psk: channel.psk,
         role: channel.role,
-        uplinkEnabled: channel.uplinkEnabled,
-        downlinkEnabled: channel.downlinkEnabled,
+        uplinkEnabled: normalizeBoolean(channel.uplinkEnabled),
+        downlinkEnabled: normalizeBoolean(channel.downlinkEnabled),
         positionPrecision: channel.positionPrecision,
       },
     };
@@ -1421,7 +1430,8 @@ apiRouter.get('/channels/:id/export', requirePermission('channel_0', 'read'), (r
     const filename = `meshmonitor-channel-${channel.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}-${Date.now()}.json`;
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('Content-Type', 'application/json');
-    res.json(exportData);
+    // Use pretty-printed JSON for consistency with other exports
+    res.send(JSON.stringify(exportData, null, 2));
   } catch (error) {
     logger.error('Error exporting channel:', error);
     res.status(500).json({ error: 'Failed to export channel' });
@@ -1555,13 +1565,34 @@ apiRouter.post('/channels/:slotId/import', requirePermission('channel_0', 'write
     }
 
     // Prepare the imported channel data
+    // Normalize boolean values - handle both boolean (true/false) and numeric (1/0) formats
+    const normalizeBoolean = (value: any, defaultValue: boolean = true): boolean => {
+      if (value === undefined || value === null) {
+        return defaultValue;
+      }
+      // Handle boolean values
+      if (typeof value === 'boolean') {
+        return value;
+      }
+      // Handle numeric values (0/1)
+      if (typeof value === 'number') {
+        return value !== 0;
+      }
+      // Handle string values ("true"/"false", "1"/"0")
+      if (typeof value === 'string') {
+        return value.toLowerCase() === 'true' || value === '1';
+      }
+      // Default to truthy check
+      return !!value;
+    };
+
     const importedChannelData = {
       id: slotId,
       name,
       psk: psk || undefined,
       role: role !== null && role !== undefined ? role : undefined,
-      uplinkEnabled: uplinkEnabled !== undefined ? uplinkEnabled : true,
-      downlinkEnabled: downlinkEnabled !== undefined ? downlinkEnabled : true,
+      uplinkEnabled: normalizeBoolean(uplinkEnabled, true),
+      downlinkEnabled: normalizeBoolean(downlinkEnabled, true),
       positionPrecision: positionPrecision !== null && positionPrecision !== undefined ? positionPrecision : undefined,
     };
 
@@ -4170,6 +4201,814 @@ apiRouter.post('/device/reboot', requirePermission('configuration', 'write'), as
   } catch (error) {
     logger.error('Error rebooting device:', error);
     res.status(500).json({ error: 'Failed to reboot device' });
+  }
+});
+
+// Admin commands endpoint - requires admin role
+// Admin load config endpoint - requires admin role
+apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
+  try {
+    const { nodeNum, configType, channelIndex } = req.body;
+
+    if (!configType) {
+      return res.status(400).json({ error: 'configType is required' });
+    }
+
+    const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (meshtasticManager.getLocalNodeInfo()?.nodeNum || 0);
+    const localNodeNum = meshtasticManager.getLocalNodeInfo()?.nodeNum || 0;
+    const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
+
+    let config: any = null;
+
+    try {
+      if (isLocalNode) {
+        // Local node - use existing config or request it
+        let currentConfig = meshtasticManager.getCurrentConfig();
+        
+        if (!currentConfig || (!currentConfig.deviceConfig && !currentConfig.moduleConfig)) {
+          // Try to request the config
+          logger.info('Config not available, requesting from device...');
+          try {
+            await meshtasticManager.requestConfig(5); // Request LoRa config (most common)
+            // Wait a bit for response
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          } catch (error) {
+            logger.warn('Failed to request config:', error);
+          }
+          
+          // Check again
+          const retryConfig = meshtasticManager.getCurrentConfig();
+          if (!retryConfig || (!retryConfig.deviceConfig && !retryConfig.moduleConfig)) {
+            return res.status(404).json({ error: 'Device configuration not yet loaded. Please ensure the device is connected and try again in a few seconds.' });
+          }
+          // Use the retried config
+          currentConfig = retryConfig;
+        }
+        
+        const finalConfig = currentConfig;
+        
+        switch (configType) {
+          case 'device':
+            if (finalConfig.deviceConfig?.device) {
+              config = {
+                role: finalConfig.deviceConfig.device.role,
+                nodeInfoBroadcastSecs: finalConfig.deviceConfig.device.nodeInfoBroadcastSecs
+              };
+            } else {
+              return res.status(404).json({ error: 'Device config not available. The device may not have sent its configuration yet.' });
+            }
+            break;
+          case 'lora':
+            if (finalConfig.deviceConfig?.lora) {
+              config = {
+                usePreset: finalConfig.deviceConfig.lora.usePreset,
+                modemPreset: finalConfig.deviceConfig.lora.modemPreset,
+                bandwidth: finalConfig.deviceConfig.lora.bandwidth,
+                spreadFactor: finalConfig.deviceConfig.lora.spreadFactor,
+                codingRate: finalConfig.deviceConfig.lora.codingRate,
+                frequencyOffset: finalConfig.deviceConfig.lora.frequencyOffset,
+                overrideFrequency: finalConfig.deviceConfig.lora.overrideFrequency,
+                region: finalConfig.deviceConfig.lora.region,
+                hopLimit: finalConfig.deviceConfig.lora.hopLimit,
+                txPower: finalConfig.deviceConfig.lora.txPower,
+                channelNum: finalConfig.deviceConfig.lora.channelNum,
+                sx126xRxBoostedGain: finalConfig.deviceConfig.lora.sx126xRxBoostedGain
+              };
+            } else {
+              return res.status(404).json({ error: 'LoRa config not available. The device may not have sent its configuration yet.' });
+            }
+            break;
+          case 'position':
+            if (finalConfig.deviceConfig?.position) {
+              config = {
+                positionBroadcastSecs: finalConfig.deviceConfig.position.positionBroadcastSecs,
+                positionBroadcastSmartEnabled: finalConfig.deviceConfig.position.positionBroadcastSmartEnabled,
+                fixedPosition: finalConfig.deviceConfig.position.fixedPosition,
+                fixedLatitude: finalConfig.deviceConfig.position.fixedLatitude,
+                fixedLongitude: finalConfig.deviceConfig.position.fixedLongitude,
+                fixedAltitude: finalConfig.deviceConfig.position.fixedAltitude
+              };
+            } else {
+              return res.status(404).json({ error: 'Position config not available. The device may not have sent its configuration yet.' });
+            }
+            break;
+          case 'mqtt':
+            if (finalConfig.moduleConfig?.mqtt) {
+              config = {
+                enabled: finalConfig.moduleConfig.mqtt.enabled || false,
+                address: finalConfig.moduleConfig.mqtt.address || '',
+                username: finalConfig.moduleConfig.mqtt.username || '',
+                password: finalConfig.moduleConfig.mqtt.password || '',
+                encryptionEnabled: finalConfig.moduleConfig.mqtt.encryptionEnabled !== false,
+                jsonEnabled: finalConfig.moduleConfig.mqtt.jsonEnabled || false,
+                root: finalConfig.moduleConfig.mqtt.root || ''
+              };
+            } else {
+              // MQTT config might not exist if it's not configured, return empty config
+              config = {
+                enabled: false,
+                address: '',
+                username: '',
+                password: '',
+                encryptionEnabled: true,
+                jsonEnabled: false,
+                root: ''
+              };
+            }
+            break;
+        }
+      } else {
+        // Remote node - request config with session passkey
+        logger.info(`Requesting ${configType} config from remote node ${destinationNodeNum}`);
+        
+        // Map config types to their numeric values
+        const configTypeMap: { [key: string]: { type: number; isModule: boolean } } = {
+          'device': { type: 0, isModule: false },  // DEVICE_CONFIG
+          'lora': { type: 5, isModule: false },      // LORA_CONFIG
+          'position': { type: 6, isModule: false }, // POSITION_CONFIG
+          'mqtt': { type: 0, isModule: true }        // MQTT_CONFIG (module)
+        };
+
+        const configInfo = configTypeMap[configType];
+        if (!configInfo) {
+          return res.status(400).json({ error: `Unknown config type: ${configType}` });
+        }
+
+        // Request config from remote node
+        const remoteConfig = await meshtasticManager.requestRemoteConfig(
+          destinationNodeNum,
+          configInfo.type,
+          configInfo.isModule
+        );
+
+        if (!remoteConfig) {
+          return res.status(404).json({ error: `Config type '${configType}' not received from remote node ${destinationNodeNum}. The node may not be reachable or may not have responded.` });
+        }
+
+        // Format the response based on config type
+        switch (configType) {
+          case 'device':
+            config = {
+              role: remoteConfig.role,
+              nodeInfoBroadcastSecs: remoteConfig.nodeInfoBroadcastSecs
+            };
+            break;
+          case 'lora':
+            config = {
+              usePreset: remoteConfig.usePreset,
+              modemPreset: remoteConfig.modemPreset,
+              bandwidth: remoteConfig.bandwidth,
+              spreadFactor: remoteConfig.spreadFactor,
+              codingRate: remoteConfig.codingRate,
+              frequencyOffset: remoteConfig.frequencyOffset,
+              overrideFrequency: remoteConfig.overrideFrequency,
+              region: remoteConfig.region,
+              hopLimit: remoteConfig.hopLimit,
+              txPower: remoteConfig.txPower,
+              channelNum: remoteConfig.channelNum,
+              sx126xRxBoostedGain: remoteConfig.sx126xRxBoostedGain
+            };
+            break;
+          case 'position':
+            config = {
+              positionBroadcastSecs: remoteConfig.positionBroadcastSecs,
+              positionBroadcastSmartEnabled: remoteConfig.positionBroadcastSmartEnabled,
+              fixedPosition: remoteConfig.fixedPosition,
+              fixedLatitude: remoteConfig.fixedLatitude,
+              fixedLongitude: remoteConfig.fixedLongitude,
+              fixedAltitude: remoteConfig.fixedAltitude
+            };
+            break;
+          case 'mqtt':
+            config = {
+              enabled: remoteConfig.enabled || false,
+              address: remoteConfig.address || '',
+              username: remoteConfig.username || '',
+              password: remoteConfig.password || '',
+              encryptionEnabled: remoteConfig.encryptionEnabled !== false,
+              jsonEnabled: remoteConfig.jsonEnabled || false,
+              root: remoteConfig.root || ''
+            };
+            break;
+        }
+      }
+
+      // Handle channel config (works for both local and remote)
+      if (configType === 'channel') {
+        if (channelIndex === undefined) {
+          return res.status(400).json({ error: 'channelIndex is required for channel config' });
+        }
+        if (isLocalNode) {
+          // Request channel config
+          await meshtasticManager.requestConfig(0); // CHANNEL_CONFIG = 0
+          // Note: Channel config loading requires waiting for response, which is complex
+          // For now, return a placeholder
+          config = {
+            name: '',
+            psk: '',
+            role: channelIndex === 0 ? 1 : 0,
+            uplinkEnabled: false,
+            downlinkEnabled: false,
+            positionPrecision: 32
+          };
+        } else {
+          // Remote node channel config not yet supported
+          return res.status(501).json({ error: 'Channel config loading from remote nodes is not yet supported' });
+        }
+      }
+
+      if (!config && configType !== 'channel') {
+        return res.status(400).json({ error: `Unknown config type: ${configType}` });
+      }
+
+      res.json({ config });
+    } catch (error: any) {
+      logger.error(`Error loading ${configType} config:`, error);
+      res.status(500).json({ error: `Failed to load ${configType} config: ${error.message}` });
+    }
+  } catch (error: any) {
+    logger.error('Error in load-config endpoint:', error);
+    res.status(500).json({ error: error.message || 'Failed to load config' });
+  }
+});
+
+// Admin ensure session passkey endpoint - requires admin role
+// This ensures we have a valid session passkey before making multiple requests
+apiRouter.post('/admin/ensure-session-passkey', requireAdmin(), async (req, res) => {
+  try {
+    const { nodeNum } = req.body;
+
+    const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (meshtasticManager.getLocalNodeInfo()?.nodeNum || 0);
+    const localNodeNum = meshtasticManager.getLocalNodeInfo()?.nodeNum || 0;
+    const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
+
+    if (isLocalNode) {
+      // Local node doesn't need session passkey
+      return res.json({ success: true, message: 'Local node does not require session passkey' });
+    }
+
+    // Check if we already have a valid session passkey
+    let sessionPasskey = meshtasticManager.getSessionPasskey(destinationNodeNum);
+    if (!sessionPasskey) {
+      logger.debug(`Requesting session passkey for remote node ${destinationNodeNum}`);
+      sessionPasskey = await meshtasticManager.requestRemoteSessionPasskey(destinationNodeNum);
+      if (!sessionPasskey) {
+        return res.status(500).json({ error: `Failed to obtain session passkey for remote node ${destinationNodeNum}` });
+      }
+    }
+
+    return res.json({ success: true, message: 'Session passkey available' });
+  } catch (error: any) {
+    logger.error('Error ensuring session passkey:', error);
+    res.status(500).json({ error: error.message || 'Failed to ensure session passkey' });
+  }
+});
+
+// Admin get channel endpoint - requires admin role
+apiRouter.post('/admin/get-channel', requireAdmin(), async (req, res) => {
+  try {
+    const { nodeNum, channelIndex } = req.body;
+
+    if (channelIndex === undefined) {
+      return res.status(400).json({ error: 'channelIndex is required' });
+    }
+
+    const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (meshtasticManager.getLocalNodeInfo()?.nodeNum || 0);
+    const localNodeNum = meshtasticManager.getLocalNodeInfo()?.nodeNum || 0;
+    const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
+
+    if (isLocalNode) {
+      // For local node, get from database
+      const channel = databaseService.getChannelById(channelIndex);
+      if (channel) {
+        return res.json({ channel: {
+          name: channel.name || '',
+          psk: channel.psk || '',
+          role: channel.role !== undefined ? channel.role : (channelIndex === 0 ? 1 : 0),
+          uplinkEnabled: channel.uplinkEnabled !== undefined ? channel.uplinkEnabled : false,
+          downlinkEnabled: channel.downlinkEnabled !== undefined ? channel.downlinkEnabled : false,
+          positionPrecision: channel.positionPrecision !== undefined ? channel.positionPrecision : 32
+        }});
+      } else {
+        return res.json({ channel: {
+          name: '',
+          psk: '',
+          role: channelIndex === 0 ? 1 : 0,
+          uplinkEnabled: false,
+          downlinkEnabled: false,
+          positionPrecision: 32
+        }});
+      }
+    } else {
+      // For remote node, request channel
+      const channel = await meshtasticManager.requestRemoteChannel(destinationNodeNum, channelIndex);
+      if (channel) {
+        // Convert channel response to our format
+        // Protobuf may use snake_case or camelCase depending on how it's decoded
+        const settings = channel.settings || {};
+        
+        // Handle both camelCase and snake_case field names
+        const name = settings.name || '';
+        const psk = settings.psk;
+        const pskString = psk ? (Buffer.isBuffer(psk) ? Buffer.from(psk).toString('base64') : (typeof psk === 'string' ? psk : Buffer.from(psk).toString('base64'))) : '';
+        
+        // Handle both camelCase and snake_case for boolean fields
+        const uplinkEnabled = settings.uplinkEnabled !== undefined ? settings.uplinkEnabled : 
+                             (settings.uplink_enabled !== undefined ? settings.uplink_enabled : true);
+        const downlinkEnabled = settings.downlinkEnabled !== undefined ? settings.downlinkEnabled : 
+                               (settings.downlink_enabled !== undefined ? settings.downlink_enabled : true);
+        
+        // Handle module settings (may be moduleSettings or module_settings)
+        const moduleSettings = settings.moduleSettings || settings.module_settings || {};
+        const positionPrecision = moduleSettings.positionPrecision !== undefined ? moduleSettings.positionPrecision :
+                                 (moduleSettings.position_precision !== undefined ? moduleSettings.position_precision : 32);
+        
+        logger.debug(`📡 Converting channel ${channelIndex} from remote node ${destinationNodeNum}`, {
+          name,
+          hasPsk: !!psk,
+          role: channel.role,
+          uplinkEnabled,
+          downlinkEnabled,
+          positionPrecision,
+          settingsKeys: Object.keys(settings),
+          moduleSettingsKeys: Object.keys(moduleSettings)
+        });
+        
+        return res.json({ channel: {
+          name: name,
+          psk: pskString,
+          role: channel.role !== undefined ? channel.role : (channelIndex === 0 ? 1 : 0),
+          uplinkEnabled: uplinkEnabled,
+          downlinkEnabled: downlinkEnabled,
+          positionPrecision: positionPrecision
+        }});
+      } else {
+        // Channel not received - could be timeout, doesn't exist, or not configured
+        // Return 404 but with a more descriptive message
+        logger.debug(`⚠️ Channel ${channelIndex} not received from remote node ${destinationNodeNum} (timeout or not configured)`);
+        return res.status(404).json({ error: `Channel ${channelIndex} not received from remote node ${destinationNodeNum}. The channel may not exist, may be disabled, or the request timed out.` });
+      }
+    }
+  } catch (error: any) {
+    logger.error('Error getting channel:', error);
+    res.status(500).json({ error: error.message || 'Failed to get channel' });
+  }
+});
+
+// Admin load owner endpoint - requires admin role
+apiRouter.post('/admin/load-owner', requireAdmin(), async (req, res) => {
+  try {
+    const { nodeNum } = req.body;
+
+    const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (meshtasticManager.getLocalNodeInfo()?.nodeNum || 0);
+    const localNodeNum = meshtasticManager.getLocalNodeInfo()?.nodeNum || 0;
+    const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
+
+    if (isLocalNode) {
+      // For local node, get from local node info
+      const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+      if (localNodeInfo) {
+        return res.json({ owner: {
+          longName: localNodeInfo.longName || '' ,
+          shortName: localNodeInfo.shortName || '' ,
+          isUnmessagable: false // Not available in local node info
+        }});
+      } else {
+        return res.status(404).json({ error: 'Local node information not available' });
+      }
+    } else {
+      // For remote node, request owner info
+      const owner = await meshtasticManager.requestRemoteOwner(destinationNodeNum);
+      if (owner) {
+        return res.json({ owner: {
+          longName: owner.longName || '' ,
+          shortName: owner.shortName || '' ,
+          isUnmessagable: owner.isUnmessagable || false
+        }});
+      } else {
+        return res.status(404).json({ error: `Owner info not received from remote node ${destinationNodeNum}` });
+      }
+    }
+  } catch (error: any) {
+    logger.error('Error getting owner:', error);
+    res.status(500).json({ error: error.message || 'Failed to get owner info' });
+  }
+});
+
+// Admin commands endpoint - requires admin role
+// Admin endpoint: Export configuration for remote nodes
+apiRouter.post('/admin/export-config', requireAdmin(), async (req, res) => {
+  try {
+    const { nodeNum, channelIds, includeLoraConfig } = req.body;
+
+    if (!Array.isArray(channelIds)) {
+      return res.status(400).json({ error: 'channelIds must be an array' });
+    }
+
+    const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (meshtasticManager.getLocalNodeInfo()?.nodeNum || 0);
+    const localNodeNum = meshtasticManager.getLocalNodeInfo()?.nodeNum || 0;
+    const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
+
+    const channelUrlService = (await import('./services/channelUrlService.js')).default;
+
+    // Get channels from local or remote node
+    const channels = [];
+    for (const channelId of channelIds) {
+      if (isLocalNode) {
+        const channel = databaseService.getChannelById(channelId);
+        if (channel) {
+          channels.push({
+            psk: channel.psk ? channel.psk : 'none',
+            name: channel.name,
+            uplinkEnabled: channel.uplinkEnabled,
+            downlinkEnabled: channel.downlinkEnabled,
+            positionPrecision: channel.positionPrecision,
+          });
+        }
+      } else {
+        // For remote node, fetch channel
+        const channel = await meshtasticManager.requestRemoteChannel(destinationNodeNum, channelId);
+        if (channel) {
+          const settings = channel.settings || {};
+          const name = settings.name || '';
+          const psk = settings.psk;
+          let pskString = '';
+          if (psk) {
+            if (Buffer.isBuffer(psk)) {
+              pskString = psk.toString('base64');
+            } else if (psk instanceof Uint8Array) {
+              pskString = Buffer.from(psk).toString('base64');
+            } else if (typeof psk === 'string') {
+              pskString = psk;
+            } else {
+              try {
+                pskString = Buffer.from(psk as any).toString('base64');
+              } catch (e) {
+                logger.warn(`Failed to convert PSK for channel ${channelId}:`, e);
+              }
+            }
+          }
+          const moduleSettings = settings.moduleSettings || settings.module_settings || {};
+          channels.push({
+            psk: pskString && pskString !== 'AQ==' ? pskString : 'none',
+            name: name,
+            uplinkEnabled: settings.uplinkEnabled !== undefined ? settings.uplinkEnabled : 
+                          (settings.uplink_enabled !== undefined ? settings.uplink_enabled : true),
+            downlinkEnabled: settings.downlinkEnabled !== undefined ? settings.downlinkEnabled : 
+                            (settings.downlink_enabled !== undefined ? settings.downlink_enabled : true),
+            positionPrecision: moduleSettings.positionPrecision !== undefined ? moduleSettings.positionPrecision :
+                              (moduleSettings.position_precision !== undefined ? moduleSettings.position_precision : 32),
+          });
+        }
+      }
+    }
+
+    if (channels.length === 0) {
+      return res.status(400).json({ error: 'No valid channels selected' });
+    }
+
+    // Get LoRa config if requested
+    let loraConfig = undefined;
+    if (includeLoraConfig) {
+      if (isLocalNode) {
+        const deviceConfig = await meshtasticManager.getDeviceConfig();
+        if (deviceConfig?.lora) {
+          loraConfig = {
+            usePreset: deviceConfig.lora.usePreset,
+            modemPreset: deviceConfig.lora.modemPreset,
+            bandwidth: deviceConfig.lora.bandwidth,
+            spreadFactor: deviceConfig.lora.spreadFactor,
+            codingRate: deviceConfig.lora.codingRate,
+            frequencyOffset: deviceConfig.lora.frequencyOffset,
+            region: deviceConfig.lora.region,
+            hopLimit: deviceConfig.lora.hopLimit,
+            txEnabled: true,
+            txPower: deviceConfig.lora.txPower,
+            channelNum: deviceConfig.lora.channelNum,
+            sx126xRxBoostedGain: deviceConfig.lora.sx126xRxBoostedGain,
+            configOkToMqtt: deviceConfig.lora.configOkToMqtt,
+          };
+        }
+      } else {
+        // For remote node, fetch LoRa config
+        const loraConfigData = await meshtasticManager.requestRemoteConfig(destinationNodeNum, 5, false); // LORA_CONFIG = 5
+        if (loraConfigData) {
+          loraConfig = {
+            usePreset: loraConfigData.usePreset,
+            modemPreset: loraConfigData.modemPreset,
+            bandwidth: loraConfigData.bandwidth,
+            spreadFactor: loraConfigData.spreadFactor,
+            codingRate: loraConfigData.codingRate,
+            frequencyOffset: loraConfigData.frequencyOffset,
+            region: loraConfigData.region,
+            hopLimit: loraConfigData.hopLimit,
+            txEnabled: true,
+            txPower: loraConfigData.txPower,
+            channelNum: loraConfigData.channelNum,
+            sx126xRxBoostedGain: loraConfigData.sx126xRxBoostedGain,
+            configOkToMqtt: loraConfigData.configOkToMqtt,
+          };
+        }
+      }
+    }
+
+    const url = channelUrlService.encodeUrl(channels, loraConfig);
+
+    if (!url) {
+      return res.status(500).json({ error: 'Failed to encode URL' });
+    }
+
+    res.json({ url });
+  } catch (error) {
+    logger.error('Error exporting configuration:', error);
+    res.status(500).json({ error: 'Failed to export configuration' });
+  }
+});
+
+// Admin endpoint: Import configuration for remote nodes
+apiRouter.post('/admin/import-config', requireAdmin(), async (req, res) => {
+  try {
+    const { nodeNum, url: configUrl } = req.body;
+
+    if (!configUrl || typeof configUrl !== 'string') {
+      return res.status(400).json({ error: 'URL is required' });
+    }
+
+    const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (meshtasticManager.getLocalNodeInfo()?.nodeNum || 0);
+    const localNodeNum = meshtasticManager.getLocalNodeInfo()?.nodeNum || 0;
+    const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
+
+    logger.info(`📥 Importing configuration from URL to node ${destinationNodeNum}: ${configUrl}`);
+
+    const channelUrlService = (await import('./services/channelUrlService.js')).default;
+
+    // Decode the URL to get channels and lora config
+    const decoded = channelUrlService.decodeUrl(configUrl);
+
+    if (!decoded || (!decoded.channels && !decoded.loraConfig)) {
+      return res.status(400).json({ error: 'Invalid or empty configuration URL' });
+    }
+
+    logger.info(`📥 Decoded ${decoded.channels?.length || 0} channels, LoRa config: ${!!decoded.loraConfig}`);
+
+    const importedChannels = [];
+    let loraImported = false;
+    let requiresReboot = false;
+
+    if (isLocalNode) {
+      // Use existing local import logic
+      try {
+        await meshtasticManager.beginEditSettings();
+      } catch (error) {
+        logger.error(`❌ Failed to begin edit settings transaction:`, error);
+        throw new Error('Failed to start configuration transaction');
+      }
+
+      // Import channels
+      if (decoded.channels && decoded.channels.length > 0) {
+        for (let i = 0; i < decoded.channels.length; i++) {
+          const channel = decoded.channels[i];
+          try {
+            let role = channel.role;
+            if (role === undefined) {
+              role = i === 0 ? 1 : 2;
+            }
+            await meshtasticManager.setChannelConfig(i, {
+              name: channel.name || '',
+              psk: channel.psk === 'none' ? undefined : channel.psk,
+              role: role,
+              uplinkEnabled: channel.uplinkEnabled,
+              downlinkEnabled: channel.downlinkEnabled,
+              positionPrecision: channel.positionPrecision,
+            });
+            importedChannels.push({ index: i, name: channel.name || '(unnamed)' });
+          } catch (error) {
+            logger.error(`❌ Failed to import channel ${i}:`, error);
+          }
+        }
+      }
+
+      // Import LoRa config
+      if (decoded.loraConfig) {
+        try {
+          const loraConfigToImport = {
+            ...decoded.loraConfig,
+            txEnabled: true,
+          };
+          await meshtasticManager.setLoRaConfig(loraConfigToImport);
+          loraImported = true;
+          requiresReboot = true;
+        } catch (error) {
+          logger.error(`❌ Failed to import LoRa config:`, error);
+        }
+      }
+
+      await meshtasticManager.commitEditSettings();
+    } else {
+      // For remote node, use admin commands via meshtasticManager
+      // Ensure session passkey
+      let sessionPasskey = meshtasticManager.getSessionPasskey(destinationNodeNum);
+      if (!sessionPasskey) {
+        sessionPasskey = await meshtasticManager.requestRemoteSessionPasskey(destinationNodeNum);
+        if (!sessionPasskey) {
+          throw new Error(`Failed to obtain session passkey for remote node ${destinationNodeNum}`);
+        }
+      }
+
+      // Import channels using admin commands
+      if (decoded.channels && decoded.channels.length > 0) {
+        for (let i = 0; i < decoded.channels.length; i++) {
+          const channel = decoded.channels[i];
+          try {
+            let role = channel.role;
+            if (role === undefined) {
+              role = i === 0 ? 1 : 2;
+            }
+            const adminMessage = protobufService.createSetChannelMessage(i, {
+              name: channel.name || '',
+              psk: channel.psk === 'none' ? undefined : channel.psk,
+              role: role,
+              uplinkEnabled: channel.uplinkEnabled,
+              downlinkEnabled: channel.downlinkEnabled,
+              positionPrecision: channel.positionPrecision,
+            }, sessionPasskey);
+            await meshtasticManager.sendAdminCommand(adminMessage, destinationNodeNum);
+            importedChannels.push({ index: i, name: channel.name || '(unnamed)' });
+            // Small delay between channel updates for remote nodes
+            await new Promise(resolve => setTimeout(resolve, 500));
+          } catch (error) {
+            logger.error(`❌ Failed to import channel ${i}:`, error);
+          }
+        }
+      }
+
+      // Import LoRa config using admin command
+      if (decoded.loraConfig) {
+        try {
+          const loraConfigToImport = {
+            ...decoded.loraConfig,
+            txEnabled: true,
+          };
+          const adminMessage = protobufService.createSetLoRaConfigMessage(loraConfigToImport, sessionPasskey);
+          await meshtasticManager.sendAdminCommand(adminMessage, destinationNodeNum);
+          loraImported = true;
+          requiresReboot = true;
+        } catch (error) {
+          logger.error(`❌ Failed to import LoRa config:`, error);
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      imported: {
+        channels: importedChannels.length,
+        channelDetails: importedChannels,
+        loraConfig: loraImported,
+      },
+      requiresReboot,
+    });
+  } catch (error: any) {
+    logger.error('Error importing configuration:', error);
+    res.status(500).json({ error: error.message || 'Failed to import configuration' });
+  }
+});
+
+apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
+  try {
+    const { command, nodeNum, ...params } = req.body;
+
+    if (!command) {
+      return res.status(400).json({ error: 'Command is required' });
+    }
+
+    const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (meshtasticManager.getLocalNodeInfo()?.nodeNum || 0);
+    const localNodeNum = meshtasticManager.getLocalNodeInfo()?.nodeNum || 0;
+    const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
+
+    // Get or request session passkey for remote nodes
+    let sessionPasskey: Uint8Array | null = null;
+    if (!isLocalNode) {
+      sessionPasskey = meshtasticManager.getSessionPasskey(destinationNodeNum);
+      if (!sessionPasskey) {
+        logger.debug(`Requesting session passkey for remote node ${destinationNodeNum}`);
+        sessionPasskey = await meshtasticManager.requestRemoteSessionPasskey(destinationNodeNum);
+        if (!sessionPasskey) {
+          return res.status(500).json({ error: `Failed to obtain session passkey for remote node ${destinationNodeNum}` });
+        }
+      }
+    }
+
+    let adminMessage: Uint8Array;
+
+    // Create the appropriate admin message based on command type
+    switch (command) {
+      case 'reboot':
+        adminMessage = protobufService.createRebootMessage(params.seconds || 5, sessionPasskey || undefined);
+        break;
+      case 'setOwner':
+        if (!params.longName || !params.shortName) {
+          return res.status(400).json({ error: 'longName and shortName are required for setOwner' });
+        }
+        adminMessage = protobufService.createSetOwnerMessage(
+          params.longName,
+          params.shortName,
+          params.isUnmessagable,
+          sessionPasskey || undefined
+        );
+        break;
+      case 'setChannel':
+        if (params.channelIndex === undefined || !params.config) {
+          return res.status(400).json({ error: 'channelIndex and config are required for setChannel' });
+        }
+        adminMessage = protobufService.createSetChannelMessage(
+          params.channelIndex,
+          params.config,
+          sessionPasskey || undefined
+        );
+        break;
+      case 'setDeviceConfig':
+        if (!params.config) {
+          return res.status(400).json({ error: 'config is required for setDeviceConfig' });
+        }
+        adminMessage = protobufService.createSetDeviceConfigMessage(params.config, sessionPasskey || undefined);
+        break;
+      case 'setLoRaConfig':
+        if (!params.config) {
+          return res.status(400).json({ error: 'config is required for setLoRaConfig' });
+        }
+        adminMessage = protobufService.createSetLoRaConfigMessage(params.config, sessionPasskey || undefined);
+        break;
+      case 'setPositionConfig':
+        if (!params.config) {
+          return res.status(400).json({ error: 'config is required for setPositionConfig' });
+        }
+        adminMessage = protobufService.createSetPositionConfigMessage(params.config, sessionPasskey || undefined);
+        break;
+      case 'setMQTTConfig':
+        if (!params.config) {
+          return res.status(400).json({ error: 'config is required for setMQTTConfig' });
+        }
+        adminMessage = protobufService.createSetMQTTConfigMessage(params.config, sessionPasskey || undefined);
+        break;
+      case 'setNeighborInfoConfig':
+        if (!params.config) {
+          return res.status(400).json({ error: 'config is required for setNeighborInfoConfig' });
+        }
+        adminMessage = protobufService.createSetNeighborInfoConfigMessage(params.config, sessionPasskey || undefined);
+        break;
+      case 'setFixedPosition':
+        if (params.latitude === undefined || params.longitude === undefined) {
+          return res.status(400).json({ error: 'latitude and longitude are required for setFixedPosition' });
+        }
+        adminMessage = protobufService.createSetFixedPositionMessage(
+          params.latitude,
+          params.longitude,
+          params.altitude || 0,
+          sessionPasskey || undefined
+        );
+        break;
+      case 'purgeNodeDb':
+        adminMessage = protobufService.createPurgeNodeDbMessage(params.seconds || 0, sessionPasskey || undefined);
+        break;
+      case 'beginEditSettings':
+        adminMessage = protobufService.createBeginEditSettingsMessage(sessionPasskey || undefined);
+        break;
+      case 'commitEditSettings':
+        adminMessage = protobufService.createCommitEditSettingsMessage(sessionPasskey || undefined);
+        break;
+      case 'removeNode':
+        if (params.nodeNum === undefined) {
+          return res.status(400).json({ error: 'nodeNum is required for removeNode' });
+        }
+        adminMessage = protobufService.createRemoveNodeMessage(params.nodeNum, sessionPasskey || undefined);
+        break;
+      case 'setFavoriteNode':
+        if (params.nodeNum === undefined) {
+          return res.status(400).json({ error: 'nodeNum is required for setFavoriteNode' });
+        }
+        adminMessage = protobufService.createSetFavoriteNodeMessage(params.nodeNum, sessionPasskey || undefined);
+        break;
+      case 'removeFavoriteNode':
+        if (params.nodeNum === undefined) {
+          return res.status(400).json({ error: 'nodeNum is required for removeFavoriteNode' });
+        }
+        adminMessage = protobufService.createRemoveFavoriteNodeMessage(params.nodeNum, sessionPasskey || undefined);
+        break;
+      default:
+        return res.status(400).json({ error: `Unknown command: ${command}` });
+    }
+
+    // Send the admin command
+    await meshtasticManager.sendAdminCommand(adminMessage, destinationNodeNum);
+
+    res.json({ 
+      success: true, 
+      message: `Admin command '${command}' sent to node ${destinationNodeNum}` 
+    });
+  } catch (error: any) {
+    logger.error('Error executing admin command:', error);
+    res.status(500).json({ error: error.message || 'Failed to execute admin command' });
   }
 });
 

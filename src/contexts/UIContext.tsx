@@ -90,7 +90,7 @@ interface UIProviderProps {
 }
 
 // Valid tab types for hash validation
-const VALID_TABS: TabType[] = ['nodes', 'channels', 'messages', 'info', 'settings', 'automation', 'dashboard', 'configuration', 'notifications', 'users', 'audit', 'security', 'themes'];
+const VALID_TABS: TabType[] = ['nodes', 'channels', 'messages', 'info', 'settings', 'automation', 'dashboard', 'configuration', 'notifications', 'users', 'audit', 'security', 'themes', 'admin'];
 
 // Helper to get tab from URL hash
 const getTabFromHash = (): TabType => {

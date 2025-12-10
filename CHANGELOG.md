@@ -6,6 +6,60 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Added
+- **Admin Commands Tab** ([#911](https://github.com/Yeraze/meshmonitor/pull/911)): Comprehensive remote node management and administrative commands
+  - **New Admin Tab**: Dedicated interface for managing both local and remote Meshtastic nodes
+  - **Node Selection**: Search and select any node in the mesh network (local or remote)
+  - **Device Management Commands**:
+    - **Reboot Device**: Reboot with configurable delay (0-60 seconds)
+    - **Factory Reset**: Complete device reset to factory defaults
+    - **Set Owner**: Configure node owner information (long name, short name, unmessagable status)
+    - **Set Device Config**: Configure device role (CLIENT, CLIENT_MUTE, ROUTER) and node info broadcast interval
+    - **Set LoRa Config**: Full LoRa radio configuration including presets, bandwidth, spread factor, coding rate, region, hop limit, TX power, and more
+    - **Set Position Config**: Configure position broadcasting (interval, smart position, fixed position with coordinates)
+    - **Set MQTT Config**: Configure MQTT broker settings (address, credentials, encryption, JSON mode, root topic)
+  - **Channel Management**:
+    - **Load Channels**: Fetch and display all channels from remote nodes
+    - **Edit Channels**: Modify channel settings (name, PSK, role, uplink/downlink, position precision)
+    - **Import Channels**: Import channel configurations from Meshtastic URLs
+    - **Export Channels**: Export channel configurations to Meshtastic URLs with QR codes
+  - **Configuration Import/Export**:
+    - **Full Configuration Import**: Import complete device configuration (channels + LoRa settings) from Meshtastic URLs
+    - **Full Configuration Export**: Export complete device configuration to Meshtastic URLs with QR codes
+    - Works seamlessly with both local and remote nodes
+  - **Remote Node Support**:
+    - **Session Passkey Management**: Automatic session passkey handling for remote node authentication
+    - **Per-Node Configuration Storage**: Isolated configuration storage prevents data conflicts between nodes
+    - **Remote Channel Loading**: Load and manage channels from nodes not directly connected to MeshMonitor
+    - **Remote Config Loading**: Fetch device, LoRa, and position configurations from remote nodes
+  - **Database Management**:
+    - **Purge Node Database**: Remove all nodes from the device's node database
+  - **UI Features**:
+    - Consistent styling matching Device Configuration page
+    - Real-time loading states and progress indicators
+    - Comprehensive error handling with user-friendly messages
+    - Confirmation dialogs for destructive operations
+    - Search functionality for node selection
+  - **Security**: Admin-only access with proper authentication and session management
+  - **Backend API**: New `/api/admin/*` endpoints for remote node operations
+    - `/api/admin/commands` - Generic admin command execution
+    - `/api/admin/load-config` - Load device/LoRa/position config from remote nodes
+    - `/api/admin/get-channel` - Fetch individual channel from remote node
+    - `/api/admin/export-config` - Export configuration for remote nodes
+    - `/api/admin/import-config` - Import configuration to remote nodes
+    - `/api/admin/ensure-session-passkey` - Manage remote node authentication
+  - **Protobuf Enhancements**: Improved AdminMessage decoding with proper nested object conversion
+  - **Boolean Normalization**: Consistent boolean handling for channel uplink/downlink settings across local and remote nodes
+
+### Fixed
+- **Channel Import**: Fixed boolean normalization for `uplinkEnabled` and `downlinkEnabled` to default to `true` (enabled) for consistency with local node behavior
+- **Export Modal**: Fixed `useEffect` dependency array to prevent unwanted resets of user channel selections
+- **Error Handling**: Fixed `handleLoadChannels` and `handleLoadLoRaConfig` to properly re-throw errors for `Promise.all` rejection handling
+- **Config Structure**: Fixed remote node configuration loading to correctly assign `getConfigResponse` without incorrect object spreading
+- **Protobuf Root**: Added explicit null checks for `getProtobufRoot()` with informative error messages
+- **Button States**: Fixed Edit, Export, and Import channel buttons to properly disable when no node is selected
+- **API Authentication**: Added `credentials: 'include'` to admin API calls to ensure session cookies are sent
+
 ## [2.18.1] - 2025-11-15
 
 ### Added

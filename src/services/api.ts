@@ -447,12 +447,37 @@ class ApiService {
     return response.json();
   }
 
-  async encodeChannelUrl(channelIds: number[], includeLoraConfig: boolean): Promise<string> {
+
+  async importConfig(url: string, nodeNum?: number): Promise<{ success: boolean; imported: { channels: number; channelDetails: any[]; loraConfig: boolean }; requiresReboot?: boolean }> {
     await this.ensureBaseUrl();
-    const response = await fetch(`${this.baseUrl}/api/channels/encode-url`, {
+    // Use admin endpoint if nodeNum is provided (for remote nodes), otherwise use standard endpoint
+    const endpoint = nodeNum !== undefined ? '/api/admin/import-config' : '/api/channels/import-config';
+    const body = nodeNum !== undefined ? { url, nodeNum } : { url };
+    const response = await fetch(`${this.baseUrl}${endpoint}`, {
       method: 'POST',
       headers: this.getHeadersWithCsrf(),
-      body: JSON.stringify({ channelIds, includeLoraConfig }),
+      credentials: 'include', // Include cookies for session management
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to import configuration');
+    }
+
+    return response.json();
+  }
+
+  async encodeChannelUrl(channelIds: number[], includeLoraConfig: boolean, nodeNum?: number): Promise<string> {
+    await this.ensureBaseUrl();
+    // Use admin endpoint if nodeNum is provided (for remote nodes), otherwise use standard endpoint
+    const endpoint = nodeNum !== undefined ? '/api/admin/export-config' : '/api/channels/encode-url';
+    const body = nodeNum !== undefined ? { channelIds, includeLoraConfig, nodeNum } : { channelIds, includeLoraConfig };
+    const response = await fetch(`${this.baseUrl}${endpoint}`, {
+      method: 'POST',
+      headers: this.getHeadersWithCsrf(),
+      credentials: 'include', // Include cookies for session management
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -462,22 +487,6 @@ class ApiService {
 
     const result = await response.json();
     return result.url;
-  }
-
-  async importConfig(url: string): Promise<{ success: boolean; imported: { channels: number; channelDetails: any[]; loraConfig: boolean }; requiresReboot?: boolean }> {
-    await this.ensureBaseUrl();
-    const response = await fetch(`${this.baseUrl}/api/channels/import-config`, {
-      method: 'POST',
-      headers: this.getHeadersWithCsrf(),
-      body: JSON.stringify({ url }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to import configuration');
-    }
-
-    return response.json();
   }
 
   async getMessages(limit: number = 100): Promise<MeshMessage[]> {
