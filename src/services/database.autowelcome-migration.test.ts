@@ -441,7 +441,7 @@ describe('DatabaseService - Auto Welcome Migration', () => {
 
       // Node should not be marked
       const node = dbService.getNode(456789);
-      expect(node?.welcomedAt).toBeUndefined();
+      expect(node?.welcomedAt).toBeNull();
     });
 
     it('should return false for non-existent node', () => {

@@ -1665,7 +1665,7 @@ class DatabaseService {
           publicKey = COALESCE(?, publicKey),
           hasPKC = COALESCE(?, hasPKC),
           lastPKIPacket = COALESCE(?, lastPKIPacket),
-          welcomedAt = COALESCE(?, welcomedAt),
+          welcomedAt = COALESCE(welcomedAt, ?),
           keyIsLowEntropy = COALESCE(?, keyIsLowEntropy),
           duplicateKeyDetected = COALESCE(?, duplicateKeyDetected),
           keySecurityIssueDetails = COALESCE(?, keySecurityIssueDetails),
