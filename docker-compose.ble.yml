@@ -16,7 +16,6 @@ services:
     #   dockerfile: Dockerfile
     container_name: meshmonitor-ble-bridge
     privileged: true  # Required for BLE hardware access
-    network_mode: host  # Allows localhost TCP communication with meshmonitor
     restart: unless-stopped
     volumes:
       - /var/run/dbus:/var/run/dbus  # Required for D-Bus/Bluetooth access
@@ -36,8 +35,8 @@ services:
   # Override meshmonitor service to connect to BLE bridge
   meshmonitor:
     environment:
-      # Configure MeshMonitor to connect to the BLE bridge
-      - MESHTASTIC_NODE_IP=localhost
+      # Configure MeshMonitor to connect to the BLE bridge via Docker service name
+      - MESHTASTIC_NODE_IP=meshmonitor-ble-bridge
       - MESHTASTIC_NODE_PORT=4403
     depends_on:
       ble-bridge:

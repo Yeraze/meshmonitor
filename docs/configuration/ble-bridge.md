@@ -111,7 +111,6 @@ services:
     image: ghcr.io/yeraze/meshtastic-ble-bridge:latest
     container_name: meshmonitor-ble-bridge
     privileged: true  # Required for BLE hardware access
-    network_mode: host  # Allows localhost TCP communication
     restart: unless-stopped
     volumes:
       - /var/run/dbus:/var/run/dbus  # Required for D-Bus/Bluetooth
@@ -129,11 +128,9 @@ The BLE bridge requires `privileged: true` to access Bluetooth hardware. This gr
 
 **Security Note:** Privileged mode should only be used on trusted systems. For production, consider using device-specific capabilities instead.
 
-#### Host Networking
+#### Docker Networking
 
-Using `network_mode: host` allows the BLE bridge to listen on `localhost:4403`, making it accessible to MeshMonitor without complex container networking.
-
-**Alternative:** For isolated networking, see [Advanced Networking](#advanced-networking) below.
+The BLE bridge and MeshMonitor communicate using Docker's internal networking. MeshMonitor connects to the BLE bridge using its container name (`meshmonitor-ble-bridge`) as the hostname.
 
 #### Volume Mounts
 
@@ -148,11 +145,11 @@ When using the overlay, MeshMonitor automatically configures itself:
 
 ```yaml
 environment:
-  - MESHTASTIC_NODE_IP=localhost
+  - MESHTASTIC_NODE_IP=meshmonitor-ble-bridge
   - MESHTASTIC_NODE_PORT=4403
 ```
 
-The BLE bridge acts as a transparent TCP proxy on port 4403.
+The BLE bridge acts as a transparent TCP proxy on port 4403. MeshMonitor connects to it using Docker's internal DNS, which resolves the container name to the correct IP.
 
 ## Pairing Your Device
 
