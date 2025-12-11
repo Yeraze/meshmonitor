@@ -511,6 +511,8 @@ import linkPreviewRoutes from './routes/linkPreviewRoutes.js';
 import scriptContentRoutes from './routes/scriptContentRoutes.js';
 import apiTokenRoutes from './routes/apiTokenRoutes.js';
 import v1Router from './routes/v1/index.js';
+import aggregateRoutes from './routes/aggregateRoutes.js';
+import instanceRoutes from './routes/instanceRoutes.js';
 
 // CSRF token endpoint (must be before CSRF protection middleware)
 apiRouter.get('/csrf-token', csrfTokenEndpoint);
@@ -576,6 +578,12 @@ apiRouter.use('/upgrade', upgradeRoutes);
 
 // Message routes (requires appropriate write permissions)
 apiRouter.use('/messages', optionalAuth(), messageRoutes);
+
+// MeshManager aggregation routes (optional auth - supports API key)
+apiRouter.use('/aggregate', aggregateRoutes);
+
+// MeshManager instance metadata route (optional auth - supports API key)
+apiRouter.use('/instance', instanceRoutes);
 
 // Link preview routes
 apiRouter.use('/', linkPreviewRoutes);
