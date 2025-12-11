@@ -161,8 +161,8 @@
   "nodes.plugged_in": "Branché",
   "nodes.battery_level": "Niveau de batterie",
   "nodes.hops_away": "Sauts de distance",
-  "nodes.hop": "saut",
-  "nodes.hop_plural": "sauts",
+  "nodes.hop_one": "saut",
+  "nodes.hop_other": "sauts",
   "nodes.via_mqtt": "Connecté via MQTT",
 
   "messages.title": "Messages",

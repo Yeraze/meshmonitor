@@ -161,8 +161,8 @@
   "nodes.plugged_in": "Conectado",
   "nodes.battery_level": "Nivel de batería",
   "nodes.hops_away": "Saltos de distancia",
-  "nodes.hop": "salto",
-  "nodes.hop_plural": "saltos",
+  "nodes.hop_one": "salto",
+  "nodes.hop_other": "saltos",
   "nodes.via_mqtt": "Conectado vía MQTT",
 
   "messages.title": "Mensajes",

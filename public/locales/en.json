@@ -189,8 +189,8 @@
   "nodes.plugged_in": "Plugged In",
   "nodes.battery_level": "Battery Level",
   "nodes.hops_away": "Hops Away",
-  "nodes.hop": "hop",
-  "nodes.hop_plural": "hops",
+  "nodes.hop_one": "hop",
+  "nodes.hop_other": "hops",
   "nodes.via_mqtt": "Connected via MQTT",
 
   "messages.title": "Messages",
