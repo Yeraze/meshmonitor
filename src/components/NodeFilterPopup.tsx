@@ -20,6 +20,8 @@ export const NodeFilterPopup: React.FC<NodeFilterPopupProps> = ({ isOpen, onClos
     setChannelFilter,
     showIncompleteNodes,
     setShowIncompleteNodes,
+    showIgnoredNodes,
+    setShowIgnoredNodes,
   } = useUI();
   const { channels } = useChannels();
 
@@ -109,6 +111,21 @@ export const NodeFilterPopup: React.FC<NodeFilterPopupProps> = ({ isOpen, onClos
                   {' '}{t('node_filter.secure_channel_warning')}
                 </span>
               )}
+            </div>
+          </div>
+
+          {/* Ignored Nodes Filter */}
+          <div className="filter-section">
+            <label className="filter-checkbox-label">
+              <input
+                type="checkbox"
+                checked={!showIgnoredNodes}
+                onChange={(e) => setShowIgnoredNodes(!e.target.checked)}
+              />
+              <span>{t('node_filter.hide_ignored')}</span>
+            </label>
+            <div className="filter-help-text">
+              {t('node_filter.ignored_help')}
             </div>
           </div>
         </div>

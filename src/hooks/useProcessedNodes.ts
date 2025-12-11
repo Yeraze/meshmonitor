@@ -30,6 +30,7 @@ export interface NodeFilters {
   maxHops: number;
   showPKI: boolean;
   showUnknown: boolean;
+  showIgnored: boolean;
   deviceRoles: number[];
   channels: number[];
 }
@@ -48,6 +49,7 @@ export const DEFAULT_NODE_FILTERS: NodeFilters = {
   maxHops: 10,
   showPKI: false,
   showUnknown: false,
+  showIgnored: false,
   deviceRoles: [],
   channels: [],
 };

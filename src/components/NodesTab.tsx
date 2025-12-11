@@ -43,7 +43,6 @@ interface NodesTabProps {
   shouldShowData: () => boolean;
   centerMapOnNode: (node: DeviceInfo) => void;
   toggleFavorite: (node: DeviceInfo, event: React.MouseEvent) => Promise<void>;
-  toggleIgnored: (node: DeviceInfo, event: React.MouseEvent) => Promise<void>;
   setActiveTab: React.Dispatch<React.SetStateAction<TabType>>;
   setSelectedDMNode: (nodeId: string) => void;
   markerRefs: React.MutableRefObject<Map<string, LeafletMarker>>;
@@ -78,7 +77,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   shouldShowData,
   centerMapOnNode,
   toggleFavorite,
-  toggleIgnored,
   setActiveTab,
   setSelectedDMNode,
   markerRefs,
@@ -895,25 +893,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                         onClick={handleFavoriteClick(node)}
                       >
                         {node.isFavorite ? '⭐' : '☆'}
-                      </button>
-                      <button
-                        className="ignore-button"
-                        title={node.isIgnored ? t('nodes.remove_ignored') : t('nodes.add_ignored')}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleIgnored(node, e);
-                        }}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          cursor: 'pointer',
-                          padding: '0.25rem',
-                          fontSize: '1.2rem',
-                          opacity: node.isIgnored ? 1 : 0.5,
-                          transition: 'opacity 0.2s'
-                        }}
-                      >
-                        🚫
                       </button>
                       <div className="node-name-text">
                         <div className="node-longname">
