@@ -837,6 +837,7 @@ export class MeshtasticProtobufService {
     snr?: number;
     lastHeard?: number;
     hopsAway?: number;
+    viaMqtt?: boolean;
     isFavorite?: boolean;
     isIgnored?: boolean;
   }): Promise<Uint8Array | null> {
@@ -908,6 +909,7 @@ export class MeshtasticProtobufService {
         snr: info.snr,
         lastHeard: info.lastHeard,
         hopsAway: info.hopsAway,
+        viaMqtt: info.viaMqtt,
         isFavorite: info.isFavorite,
         isIgnored: info.isIgnored,
       });
