@@ -12,6 +12,16 @@ vi.mock('leaflet', () => ({
   },
 }));
 
+// Mock react-leaflet hooks
+vi.mock('react-leaflet', () => ({
+  useMap: () => ({
+    dragging: {
+      disable: vi.fn(),
+      enable: vi.fn(),
+    },
+  }),
+}));
+
 import MapLegend from './MapLegend';
 
 describe('MapLegend', () => {
