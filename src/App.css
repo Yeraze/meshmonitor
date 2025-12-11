@@ -616,54 +616,6 @@ body {
   max-width: 200px; /* Prevent header from becoming too wide */
 }
 
-/* Warning and Update Banners */
-.warning-banner,
-.update-banner {
-  position: fixed;
-  left: var(--sidebar-width);
-  right: 0;
-  padding: 8px 16px;
-  text-align: center;
-  font-size: 14px;
-  font-weight: 500;
-  z-index: 9999;
-  box-sizing: border-box;
-}
-
-.warning-banner {
-  top: var(--header-height);
-  background-color: var(--ctp-red);
-  color: var(--ctp-crust);
-  border-bottom: 2px solid var(--ctp-maroon);
-}
-
-.update-banner {
-  background-color: var(--ctp-blue);
-  color: var(--ctp-crust);
-  border-bottom: 2px solid var(--ctp-sapphire);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.banner-dismiss {
-  background: none;
-  border: none;
-  color: white;
-  font-size: 20px;
-  line-height: 1;
-  cursor: pointer;
-  padding: 4px 8px;
-  opacity: 0.8;
-  transition: opacity 0.2s ease;
-  flex-shrink: 0;
-  margin-right: 8px;
-}
-
-.banner-dismiss:hover {
-  opacity: 1;
-}
-
 .connection-status {
   display: flex;
   align-items: center;
@@ -1531,15 +1483,6 @@ body {
   /* Adjust filter popup for sidebar on mobile */
   .filter-popup-overlay {
     left: var(--sidebar-width);
-  }
-
-  /* Adjust banners for mobile */
-  .warning-banner,
-  .update-banner {
-    font-size: 13px;
-    padding-top: 6px;
-    padding-bottom: 6px;
-    padding-left: 12px;
   }
 
   /* Hide logo, node name, and connection text on mobile */

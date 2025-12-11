@@ -26,6 +26,7 @@ import AutoWelcomeSection from './components/AutoWelcomeSection';
 import AutoResponderSection from './components/AutoResponderSection';
 import { ToastProvider, useToast } from './components/ToastContainer';
 import { RebootModal } from './components/RebootModal';
+import { AppBanners } from './components/AppBanners';
 // import { version } from '../package.json' // Removed - footer no longer displayed
 import { type TemperatureUnit } from './utils/temperature';
 // calculateDistance and formatDistance moved to useTraceroutePaths hook
@@ -3849,134 +3850,20 @@ function App() {
         </div>
       </header>
 
-      {/* Default Password Warning Banner */}
-      {isDefaultPassword && (
-        <div className="warning-banner">
-          ⚠️ Security Warning: The admin account is using the default password. Please change it immediately in the
-          Users tab.
-        </div>
-      )}
-
-      {/* TX Disabled Warning Banner */}
-      {isTxDisabled && (
-        <div
-          className="warning-banner"
-          style={{
-            top: isDefaultPassword ? 'calc(var(--header-height) + var(--banner-height))' : 'var(--header-height)',
-          }}
-        >
-          ⚠️ Transmit Disabled: Your device cannot send messages. TX is currently disabled in the LoRa configuration.
-          Enable it via the Meshtastic app or re-import your configuration.
-        </div>
-      )}
-
-      {/* Configuration Issue Warning Banners */}
-      {configIssues.map((issue, index) => {
-        // Calculate how many banners are above this one
-        const bannersAbove = [isDefaultPassword, isTxDisabled].filter(Boolean).length + index;
-        const topOffset =
-          bannersAbove === 0
-            ? 'var(--header-height)'
-            : `calc(var(--header-height) + (var(--banner-height) * ${bannersAbove}))`;
-
-        return (
-          <div key={issue.type} className="warning-banner" style={{ top: topOffset }}>
-            ⚠️ Configuration Error: {issue.message}{' '}
-            <a
-              href={issue.docsUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ color: 'inherit', textDecoration: 'underline' }}
-            >
-              Learn more →
-            </a>
-          </div>
-        );
-      })}
-
-      {/* Don't show banner until images are confirmed ready - no point notifying users about builds in progress */}
-
-      {updateAvailable &&
-        (() => {
-          // Calculate total warning banners above the update banner
-          const warningBannersCount = [isDefaultPassword, isTxDisabled].filter(Boolean).length + configIssues.length;
-          const topOffset =
-            warningBannersCount === 0
-              ? 'var(--header-height)'
-              : `calc(var(--header-height) + (var(--banner-height) * ${warningBannersCount}))`;
-
-          return (
-            <div className="update-banner" style={{ top: topOffset }}>
-              <div
-                style={{
-                  flex: 1,
-                  textAlign: 'center',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '1rem',
-                }}
-              >
-                {upgradeInProgress ? (
-                  <>
-                    <span>⚙️ Upgrading to {latestVersion}...</span>
-                    <span style={{ fontSize: '0.9em', opacity: 0.9 }}>{upgradeStatus}</span>
-                    {upgradeProgress > 0 && (
-                      <span style={{ fontSize: '0.9em', opacity: 0.9 }}>({upgradeProgress}%)</span>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <span>🔔 Update Available: Version {latestVersion} is now available.</span>
-                    <a
-                      href={releaseUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        color: 'white',
-                        textDecoration: 'underline',
-                        fontWeight: '600',
-                      }}
-                    >
-                      View Release Notes →
-                    </a>
-                    {upgradeEnabled && (
-                      <button
-                        onClick={handleUpgrade}
-                        style={{
-                          padding: '0.4rem 1rem',
-                          backgroundColor: '#10b981',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                          fontWeight: '600',
-                          fontSize: '0.9em',
-                          transition: 'background-color 0.2s',
-                        }}
-                        onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#059669')}
-                        onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#10b981')}
-                        title="Automatically upgrade to the latest version"
-                      >
-                        Upgrade Now
-                      </button>
-                    )}
-                  </>
-                )}
-              </div>
-              {!upgradeInProgress && (
-                <button
-                  className="banner-dismiss"
-                  onClick={() => setUpdateAvailable(false)}
-                  aria-label="Dismiss update notification"
-                  title="Dismiss"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-          );
-        })()}
+      <AppBanners
+        isDefaultPassword={isDefaultPassword}
+        isTxDisabled={isTxDisabled}
+        configIssues={configIssues}
+        updateAvailable={updateAvailable}
+        latestVersion={latestVersion}
+        releaseUrl={releaseUrl}
+        upgradeEnabled={upgradeEnabled}
+        upgradeInProgress={upgradeInProgress}
+        upgradeStatus={upgradeStatus}
+        upgradeProgress={upgradeProgress}
+        onUpgrade={handleUpgrade}
+        onDismissUpdate={() => setUpdateAvailable(false)}
+      />
 
       <LoginModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />
       <RebootModal isOpen={showRebootModal} onClose={handleRebootModalClose} />
