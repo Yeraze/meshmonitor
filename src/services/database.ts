@@ -2780,12 +2780,47 @@ class DatabaseService {
 
     // Check if node filter is enabled
     const filterEnabled = this.isAutoTracerouteNodeFilterEnabled();
-    const allowedNodes = filterEnabled ? this.getAutoTracerouteNodes() : [];
 
-    // Build the node filter clause
+    // Get all filter settings
+    const specificNodes = this.getAutoTracerouteNodes();
+    const filterChannels = this.getTracerouteFilterChannels();
+    const filterRoles = this.getTracerouteFilterRoles();
+    const filterHwModels = this.getTracerouteFilterHwModels();
+    const filterNameRegex = this.getTracerouteFilterNameRegex();
+
+    // Build the node filter clause using UNION logic
+    // Each filter ADDS nodes to the eligible set
     let nodeFilterClause = '';
-    if (filterEnabled && allowedNodes.length > 0) {
-      nodeFilterClause = `AND n.nodeNum IN (${allowedNodes.join(',')})`;
+    if (filterEnabled) {
+      const filterConditions: string[] = [];
+
+      // Add specific node numbers
+      if (specificNodes.length > 0) {
+        filterConditions.push(`n.nodeNum IN (${specificNodes.join(',')})`);
+      }
+
+      // Add nodes matching channel filter
+      if (filterChannels.length > 0) {
+        filterConditions.push(`n.channel IN (${filterChannels.join(',')})`);
+      }
+
+      // Add nodes matching role filter
+      if (filterRoles.length > 0) {
+        filterConditions.push(`n.role IN (${filterRoles.join(',')})`);
+      }
+
+      // Add nodes matching hardware model filter
+      if (filterHwModels.length > 0) {
+        filterConditions.push(`n.hwModel IN (${filterHwModels.join(',')})`);
+      }
+
+      // If we have any SQL-based filters, combine them with OR (union logic)
+      // Regex filter will be applied in JavaScript after the query
+      if (filterConditions.length > 0) {
+        nodeFilterClause = `AND (${filterConditions.join(' OR ')})`;
+      }
+      // If no SQL filters but we have a regex (not default), we'll filter all nodes by regex
+      // If no filters at all and regex is default '.*', all nodes are eligible
     }
 
     // Get all nodes that are eligible for traceroute based on their status
@@ -2818,7 +2853,7 @@ class DatabaseService {
       ORDER BY n.lastHeard DESC
     `);
 
-    const eligibleNodes = stmt.all(
+    let eligibleNodes = stmt.all(
       localNodeNum,
       localNodeNum,
       localNodeNum,
@@ -2826,6 +2861,21 @@ class DatabaseService {
       localNodeNum,
       now - TWENTY_FOUR_HOURS_MS
     ) as DbNode[];
+
+    // Apply regex name filter in JavaScript (SQLite doesn't support regex natively)
+    // Only filter if it's not the default '.*' which matches everything
+    if (filterEnabled && filterNameRegex && filterNameRegex !== '.*') {
+      try {
+        const regex = new RegExp(filterNameRegex, 'i');
+        eligibleNodes = eligibleNodes.filter(node => {
+          const name = node.longName || node.shortName || node.nodeId || '';
+          return regex.test(name);
+        });
+      } catch (e) {
+        // Invalid regex, log and continue with unfiltered results
+        logger.warn(`Invalid traceroute filter regex: ${filterNameRegex}`, e);
+      }
+    }
 
     if (eligibleNodes.length === 0) {
       return null;
@@ -2928,6 +2978,100 @@ class DatabaseService {
   setAutoTracerouteNodeFilterEnabled(enabled: boolean): void {
     this.setSetting('tracerouteNodeFilterEnabled', enabled ? 'true' : 'false');
     logger.debug(`✅ Auto-traceroute node filter ${enabled ? 'enabled' : 'disabled'}`);
+  }
+
+  // Advanced traceroute filter settings (stored as JSON in settings table)
+  getTracerouteFilterChannels(): number[] {
+    const value = this.getSetting('tracerouteFilterChannels');
+    if (!value) return [];
+    try {
+      return JSON.parse(value);
+    } catch {
+      return [];
+    }
+  }
+
+  setTracerouteFilterChannels(channels: number[]): void {
+    this.setSetting('tracerouteFilterChannels', JSON.stringify(channels));
+    logger.debug(`✅ Set traceroute filter channels: ${channels.join(', ') || 'none'}`);
+  }
+
+  getTracerouteFilterRoles(): number[] {
+    const value = this.getSetting('tracerouteFilterRoles');
+    if (!value) return [];
+    try {
+      return JSON.parse(value);
+    } catch {
+      return [];
+    }
+  }
+
+  setTracerouteFilterRoles(roles: number[]): void {
+    this.setSetting('tracerouteFilterRoles', JSON.stringify(roles));
+    logger.debug(`✅ Set traceroute filter roles: ${roles.join(', ') || 'none'}`);
+  }
+
+  getTracerouteFilterHwModels(): number[] {
+    const value = this.getSetting('tracerouteFilterHwModels');
+    if (!value) return [];
+    try {
+      return JSON.parse(value);
+    } catch {
+      return [];
+    }
+  }
+
+  setTracerouteFilterHwModels(hwModels: number[]): void {
+    this.setSetting('tracerouteFilterHwModels', JSON.stringify(hwModels));
+    logger.debug(`✅ Set traceroute filter hardware models: ${hwModels.join(', ') || 'none'}`);
+  }
+
+  getTracerouteFilterNameRegex(): string {
+    const value = this.getSetting('tracerouteFilterNameRegex');
+    // Default to '.*' (match all) if not set
+    return value || '.*';
+  }
+
+  setTracerouteFilterNameRegex(regex: string): void {
+    this.setSetting('tracerouteFilterNameRegex', regex);
+    logger.debug(`✅ Set traceroute filter name regex: ${regex}`);
+  }
+
+  // Get all traceroute filter settings at once
+  getTracerouteFilterSettings(): {
+    enabled: boolean;
+    nodeNums: number[];
+    filterChannels: number[];
+    filterRoles: number[];
+    filterHwModels: number[];
+    filterNameRegex: string;
+  } {
+    return {
+      enabled: this.isAutoTracerouteNodeFilterEnabled(),
+      nodeNums: this.getAutoTracerouteNodes(),
+      filterChannels: this.getTracerouteFilterChannels(),
+      filterRoles: this.getTracerouteFilterRoles(),
+      filterHwModels: this.getTracerouteFilterHwModels(),
+      filterNameRegex: this.getTracerouteFilterNameRegex(),
+    };
+  }
+
+  // Set all traceroute filter settings at once
+  setTracerouteFilterSettings(settings: {
+    enabled: boolean;
+    nodeNums: number[];
+    filterChannels: number[];
+    filterRoles: number[];
+    filterHwModels: number[];
+    filterNameRegex: string;
+  }): void {
+    this.setAutoTracerouteNodeFilterEnabled(settings.enabled);
+    this.setAutoTracerouteNodes(settings.nodeNums);
+    this.setTracerouteFilterChannels(settings.filterChannels);
+    this.setTracerouteFilterRoles(settings.filterRoles);
+    this.setTracerouteFilterHwModels(settings.filterHwModels);
+    this.setTracerouteFilterNameRegex(settings.filterNameRegex);
+    logger.debug('✅ Updated all traceroute filter settings');
   }
 
   getTelemetryByType(telemetryType: string, limit: number = 100): DbTelemetry[] {

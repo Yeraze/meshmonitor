@@ -3470,9 +3470,8 @@ apiRouter.post('/settings/traceroute-interval', requirePermission('settings', 'w
 // Get auto-traceroute node filter settings
 apiRouter.get('/settings/traceroute-nodes', requirePermission('settings', 'read'), (_req, res) => {
   try {
-    const enabled = databaseService.isAutoTracerouteNodeFilterEnabled();
-    const nodeNums = databaseService.getAutoTracerouteNodes();
-    res.json({ enabled, nodeNums });
+    const settings = databaseService.getTracerouteFilterSettings();
+    res.json(settings);
   } catch (error) {
     logger.error('Error fetching auto-traceroute node filter:', error);
     res.status(500).json({ error: 'Failed to fetch auto-traceroute node filter' });
@@ -3482,7 +3481,7 @@ apiRouter.get('/settings/traceroute-nodes', requirePermission('settings', 'read'
 // Update auto-traceroute node filter settings
 apiRouter.post('/settings/traceroute-nodes', requirePermission('settings', 'write'), (req, res) => {
   try {
-    const { enabled, nodeNums } = req.body;
+    const { enabled, nodeNums, filterChannels, filterRoles, filterHwModels, filterNameRegex } = req.body;
 
     // Validate input
     if (typeof enabled !== 'boolean') {
@@ -3500,11 +3499,65 @@ apiRouter.post('/settings/traceroute-nodes', requirePermission('settings', 'writ
       }
     }
 
-    // Update settings
-    databaseService.setAutoTracerouteNodeFilterEnabled(enabled);
-    databaseService.setAutoTracerouteNodes(nodeNums);
+    // Validate optional filter arrays
+    const validateIntArray = (arr: unknown, name: string): number[] => {
+      if (arr === undefined || arr === null) return [];
+      if (!Array.isArray(arr)) {
+        throw new Error(`Invalid ${name} value. Must be an array.`);
+      }
+      for (const item of arr) {
+        if (!Number.isInteger(item) || item < 0) {
+          throw new Error(`All ${name} values must be non-negative integers.`);
+        }
+      }
+      return arr as number[];
+    };
 
-    res.json({ success: true, enabled, nodeNums });
+    let validatedChannels: number[];
+    let validatedRoles: number[];
+    let validatedHwModels: number[];
+    try {
+      validatedChannels = validateIntArray(filterChannels, 'filterChannels');
+      validatedRoles = validateIntArray(filterRoles, 'filterRoles');
+      validatedHwModels = validateIntArray(filterHwModels, 'filterHwModels');
+    } catch (error) {
+      return res.status(400).json({ error: (error as Error).message });
+    }
+
+    // Validate regex if provided
+    let validatedRegex = '.*';
+    if (filterNameRegex !== undefined && filterNameRegex !== null) {
+      if (typeof filterNameRegex !== 'string') {
+        return res.status(400).json({ error: 'Invalid filterNameRegex value. Must be a string.' });
+      }
+      // Test that regex is valid
+      try {
+        new RegExp(filterNameRegex);
+        validatedRegex = filterNameRegex;
+      } catch {
+        return res.status(400).json({ error: 'Invalid filterNameRegex value. Must be a valid regular expression.' });
+      }
+    }
+
+    // Update all settings
+    databaseService.setTracerouteFilterSettings({
+      enabled,
+      nodeNums,
+      filterChannels: validatedChannels,
+      filterRoles: validatedRoles,
+      filterHwModels: validatedHwModels,
+      filterNameRegex: validatedRegex,
+    });
+
+    res.json({
+      success: true,
+      enabled,
+      nodeNums,
+      filterChannels: validatedChannels,
+      filterRoles: validatedRoles,
+      filterHwModels: validatedHwModels,
+      filterNameRegex: validatedRegex,
+    });
   } catch (error) {
     logger.error('Error updating auto-traceroute node filter:', error);
     res.status(500).json({ error: 'Failed to update auto-traceroute node filter' });
