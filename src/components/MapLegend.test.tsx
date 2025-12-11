@@ -96,11 +96,15 @@ describe('MapLegend', () => {
     it('should have proper CSS class for map overlay', () => {
       const { container } = render(<MapLegend />);
 
-      const legendContainer = container.firstChild as HTMLElement;
-      expect(legendContainer).toBeInTheDocument();
+      // MapLegend is wrapped in DraggableOverlay, so look for the wrapper class
+      const overlayContainer = container.firstChild as HTMLElement;
+      expect(overlayContainer).toBeInTheDocument();
+      expect(overlayContainer).toHaveClass('draggable-overlay');
+      expect(overlayContainer).toHaveClass('map-legend-wrapper');
 
-      // Should have the map-legend class
-      expect(legendContainer).toHaveClass('map-legend');
+      // The inner map-legend element should also exist
+      const legendElement = container.querySelector('.map-legend');
+      expect(legendElement).toBeInTheDocument();
     });
 
     it('should have legend title with proper class', () => {

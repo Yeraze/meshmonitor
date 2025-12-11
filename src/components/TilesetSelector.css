@@ -1,16 +1,12 @@
 .tileset-selector {
-  position: absolute;
-  bottom: 20px;
-  right: 10px;
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 8px;
-  padding: 12px 16px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   display: flex;
   align-items: center;
   gap: 12px;
-  z-index: 1000;
-  backdrop-filter: blur(4px);
+  padding: 12px 16px;
+}
+
+.tileset-selector.collapsed {
+  padding: 8px 12px;
 }
 
 .tileset-selector-label {
@@ -112,15 +108,9 @@
   color: white;
 }
 
-.tileset-selector.collapsed {
-  padding: 8px 12px;
-  bottom: 10px;
-  right: 10px;
-}
-
 /* Hide on mobile devices */
 @media (max-width: 768px) {
-  .tileset-selector {
+  .tileset-selector-wrapper {
     display: none;
   }
 }
@@ -128,7 +118,6 @@
 /* Responsive adjustments for smaller desktop screens */
 @media (max-width: 1024px) {
   .tileset-selector {
-    bottom: 10px;
     padding: 8px 12px;
   }
 
