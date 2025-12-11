@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { useMap } from 'react-leaflet';
 import { getHopColor } from '../utils/mapIcons';
+import { DraggableOverlay } from './DraggableOverlay';
 import './MapLegend.css';
 
 interface LegendItem {
@@ -11,124 +11,17 @@ interface LegendItem {
   translate?: boolean;
 }
 
+// Default position: top-right, below the Features checkbox panel, right-aligned with it
+// Map container starts at top: 60px (header)
+// Features panel is at right: 10px (relative to map), height ~250px when expanded
+// Legend is ~100px wide (including drag handle)
+const getDefaultPosition = () => ({
+  x: window.innerWidth - 100 - 10, // right-align: viewport - legend width - 10px margin (same as Features)
+  y: 60 + 10 + 250 + 20 // header + features top + features height + gap = 340
+});
+
 const MapLegend: React.FC = () => {
   const { t } = useTranslation();
-  const map = useMap();
-
-  // Position state with localStorage persistence
-  const [position, setPosition] = useState(() => {
-    const saved = localStorage.getItem('mapLegendPosition');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        return { x: parsed.x ?? 10, y: parsed.y ?? 10 };
-      } catch {
-        return { x: 10, y: 10 };
-      }
-    }
-    return { x: 10, y: 10 };
-  });
-
-  // Drag state
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const legendRef = useRef<HTMLDivElement>(null);
-
-  // Save position to localStorage
-  useEffect(() => {
-    localStorage.setItem('mapLegendPosition', JSON.stringify(position));
-  }, [position]);
-
-  // Drag handlers
-  const handleDragStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation(); // Prevent map panning
-    
-    // Disable Leaflet map dragging
-    if (map) {
-      map.dragging.disable();
-    }
-    
-    const mapContainer = document.querySelector('.map-container');
-    if (!mapContainer) return;
-    
-    const rect = mapContainer.getBoundingClientRect();
-    const legend = legendRef.current;
-    if (!legend) return;
-    
-    // Calculate the initial mouse position relative to the map container
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-    
-    // Calculate the offset from the legend's current position
-    setIsDragging(true);
-    setDragStart({
-      x: mouseX - position.x,
-      y: mouseY - position.y,
-    });
-  }, [position, map]);
-
-  const handleDragMove = useCallback((e: MouseEvent) => {
-    if (!isDragging) return;
-    
-    e.preventDefault();
-    e.stopPropagation(); // Prevent map panning
-    
-    const mapContainer = document.querySelector('.map-container');
-    if (!mapContainer) return;
-    
-    const rect = mapContainer.getBoundingClientRect();
-    const legend = legendRef.current;
-    if (!legend) return;
-    
-    const legendRect = legend.getBoundingClientRect();
-    const maxX = rect.width - legendRect.width - 10;
-    const maxY = rect.height - legendRect.height - 10;
-    
-    // Calculate new position relative to map container
-    const newX = Math.max(10, Math.min(maxX, e.clientX - dragStart.x - rect.left));
-    const newY = Math.max(10, Math.min(maxY, e.clientY - dragStart.y - rect.top));
-    
-    setPosition({ x: newX, y: newY });
-  }, [isDragging, dragStart]);
-
-  const handleDragEnd = useCallback(() => {
-    setIsDragging(false);
-    
-    // Re-enable Leaflet map dragging
-    if (map) {
-      map.dragging.enable();
-    }
-  }, [map]);
-
-  // Global mouse event listeners for drag
-  useEffect(() => {
-    if (isDragging) {
-      // Disable map dragging when we start dragging
-      if (map) {
-        map.dragging.disable();
-      }
-      
-      // Store options to ensure exact match for removeEventListener
-      const mousemoveOptions = { passive: false } as AddEventListenerOptions;
-      document.addEventListener('mousemove', handleDragMove, mousemoveOptions);
-      document.addEventListener('mouseup', handleDragEnd);
-      document.body.style.cursor = 'grabbing';
-      document.body.style.userSelect = 'none';
-      
-      return () => {
-        document.removeEventListener('mousemove', handleDragMove, mousemoveOptions);
-        document.removeEventListener('mouseup', handleDragEnd);
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
-        
-        // Re-enable map dragging when done
-        if (map) {
-          map.dragging.enable();
-        }
-      };
-    }
-  }, [isDragging, handleDragMove, handleDragEnd, map]);
 
   const legendItems: LegendItem[] = [
     { hops: '0', color: getHopColor(0), label: 'map.legend.local', translate: true },
@@ -141,30 +34,24 @@ const MapLegend: React.FC = () => {
   ];
 
   return (
-    <div
-      ref={legendRef}
-      className="map-legend"
-      style={{
-        left: `${position.x}px`,
-        top: `${position.y}px`,
-        right: 'auto',
-        cursor: isDragging ? 'grabbing' : 'grab',
-      }}
-      onMouseDown={handleDragStart}
-      onDragStart={(e) => e.preventDefault()} // Prevent default drag behavior
-      onClick={(e) => e.stopPropagation()} // Prevent map clicks
+    <DraggableOverlay
+      id="map-legend"
+      defaultPosition={getDefaultPosition()}
+      className="map-legend-wrapper"
     >
-      <span className="legend-title">{t('map.legend.hops')}</span>
-      {legendItems.map((item, index) => (
-        <div key={index} className="legend-item">
-          <div
-            className="legend-dot"
-            style={{ backgroundColor: item.color }}
-          />
-          <span className="legend-label">{item.translate ? t(item.label) : item.label}</span>
-        </div>
-      ))}
-    </div>
+      <div className="map-legend">
+        <span className="legend-title">{t('map.legend.hops')}</span>
+        {legendItems.map((item, index) => (
+          <div key={index} className="legend-item">
+            <div
+              className="legend-dot"
+              style={{ backgroundColor: item.color }}
+            />
+            <span className="legend-label">{item.translate ? t(item.label) : item.label}</span>
+          </div>
+        ))}
+      </div>
+    </DraggableOverlay>
   );
 };
 

@@ -6017,20 +6017,65 @@ body {
   left: 0;
   right: 0;
   width: 100%;
-  height: 35%;
+  /* height is now set dynamically via inline style */
   z-index: 2;
   background: var(--bg-primary);
   border-top: 2px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
 }
 
-/* Adjust map container when packet monitor is visible */
+/* Resize handle at top of packet monitor */
+.packet-monitor-resize-handle {
+  position: absolute;
+  top: -4px;
+  left: 0;
+  right: 0;
+  height: 8px;
+  cursor: ns-resize;
+  background: transparent;
+  z-index: 10;
+  transition: background 0.2s ease;
+}
+
+.packet-monitor-resize-handle:hover,
+.packet-monitor-container.resizing .packet-monitor-resize-handle {
+  background: var(--primary-color, #4a9eff);
+}
+
+.packet-monitor-resize-handle::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 40px;
+  height: 4px;
+  background: var(--border-color);
+  border-radius: 2px;
+  transition: background 0.2s ease;
+}
+
+.packet-monitor-resize-handle:hover::before,
+.packet-monitor-container.resizing .packet-monitor-resize-handle::before {
+  background: var(--primary-color, #4a9eff);
+}
+
+/* During resize, prevent pointer events on content */
+.packet-monitor-container.resizing .packet-monitor-panel {
+  pointer-events: none;
+}
+
+/* Adjust map container when packet monitor is visible - height now set dynamically */
 .map-container.with-packet-monitor {
-  height: 65%;
+  /* height is now set dynamically via inline style */
+  transition: height 0.05s ease-out;
 }
 
 /* Adjust node list sidebar when packet monitor is visible */
 .nodes-split-view:has(.packet-monitor-container) .nodes-sidebar {
-  max-height: calc(65% - 32px);
+  /* Use a reasonable max-height that works with dynamic sizing */
+  max-height: calc(100% - 200px);
 }
 
 /* Hide packet monitor toggle on mobile */

@@ -29,7 +29,7 @@ interface TriggerUpgradeResponse {
 
 interface UpgradeStatus {
   upgradeId: string;
-  status: 'pending' | 'backing_up' | 'downloading' | 'restarting' | 'health_check' | 'complete' | 'failed' | 'rolling_back';
+  status: 'pending' | 'backing_up' | 'downloading' | 'restarting' | 'health_check' | 'cleanup' | 'complete' | 'failed' | 'rolling_back';
   targetVersion: string;
   startTime: string;
   endTime?: string;
@@ -225,6 +225,7 @@ const AutoUpgradeTestSection: React.FC<AutoUpgradeTestSectionProps> = ({ baseUrl
       downloading: { label: t('auto_upgrade_test.status_downloading'), icon: '⬇️', color: '#3b82f6' },
       restarting: { label: t('auto_upgrade_test.status_restarting'), icon: '🔄', color: '#f59e0b' },
       health_check: { label: t('auto_upgrade_test.status_health_check'), icon: '🏥', color: '#f59e0b' },
+      cleanup: { label: t('auto_upgrade_test.status_cleanup'), icon: '🧹', color: '#f59e0b' },
       complete: { label: t('auto_upgrade_test.status_complete'), icon: '✅', color: '#10b981' },
       failed: { label: t('auto_upgrade_test.status_failed'), icon: '❌', color: '#ef4444' },
       rolling_back: { label: t('auto_upgrade_test.status_rolling_back'), icon: '↩️', color: '#f59e0b' }

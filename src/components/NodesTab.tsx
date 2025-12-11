@@ -15,6 +15,7 @@ import { useTelemetryNodes, useDeviceConfig } from '../hooks/useServerData';
 import { useUI } from '../contexts/UIContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useResizable } from '../hooks/useResizable';
 import MapLegend from './MapLegend';
 import ZoomHandler from './ZoomHandler';
 import MapResizeHandler from './MapResizeHandler';
@@ -171,6 +172,19 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     // Load from localStorage
     const saved = localStorage.getItem('showPacketMonitor');
     return saved === 'true';
+  });
+
+  // Packet Monitor resizable height (default 35% of viewport, min 150px, max 70%)
+  const {
+    size: packetMonitorHeight,
+    isResizing: isPacketMonitorResizing,
+    handleMouseDown: handlePacketMonitorResizeStart,
+    handleTouchStart: handlePacketMonitorTouchStart
+  } = useResizable({
+    id: 'packet-monitor-height',
+    defaultHeight: Math.round(window.innerHeight * 0.35),
+    minHeight: 150,
+    maxHeight: Math.round(window.innerHeight * 0.7)
   });
 
   // Track if packet logging is enabled on the server
@@ -1018,7 +1032,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
       </div>
 
       {/* Right Side - Map and Optional Packet Monitor */}
-      <div className={`map-container ${showPacketMonitor && canViewPacketMonitor ? 'with-packet-monitor' : ''}`}>
+      <div
+        className={`map-container ${showPacketMonitor && canViewPacketMonitor ? 'with-packet-monitor' : ''}`}
+        style={showPacketMonitor && canViewPacketMonitor ? { height: `calc(100% - ${packetMonitorHeight}px)` } : undefined}
+      >
         {shouldShowData() ? (
           <>
             <div
@@ -1437,7 +1454,16 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
       {/* Packet Monitor Panel (Desktop Only) */}
       {showPacketMonitor && canViewPacketMonitor && (
-        <div className="packet-monitor-container">
+        <div
+          className={`packet-monitor-container ${isPacketMonitorResizing ? 'resizing' : ''}`}
+          style={{ height: `${packetMonitorHeight}px` }}
+        >
+          <div
+            className="packet-monitor-resize-handle"
+            onMouseDown={handlePacketMonitorResizeStart}
+            onTouchStart={handlePacketMonitorTouchStart}
+            title="Drag to resize"
+          />
           <PacketMonitorPanel
             onClose={() => setShowPacketMonitor(false)}
             onNodeClick={handlePacketNodeClick}
