@@ -1819,6 +1819,22 @@ class DatabaseService {
   }
 
   /**
+   * Atomically mark a specific node as welcomed if not already welcomed.
+   * This prevents race conditions where multiple processes try to welcome the same node.
+   * Returns true if the node was marked, false if already welcomed.
+   */
+  markNodeAsWelcomedIfNotAlready(nodeNum: number, nodeId: string): boolean {
+    const now = Date.now();
+    const stmt = this.db.prepare(`
+      UPDATE nodes
+      SET welcomedAt = ?, updatedAt = ?
+      WHERE nodeNum = ? AND nodeId = ? AND welcomedAt IS NULL
+    `);
+    const result = stmt.run(now, now, nodeNum, nodeId);
+    return result.changes > 0;
+  }
+
+  /**
    * Get nodes with key security issues (low-entropy or duplicate keys)
    */
   getNodesWithKeySecurityIssues(): DbNode[] {
