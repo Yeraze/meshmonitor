@@ -3907,11 +3907,11 @@ body {
     height: 100%;
   }
 
-  /* Adjust map controls on mobile to not overlap with floating sidebar */
+  /* Adjust map controls on mobile - keep in upper right, no dragging */
   .map-controls {
     top: 16px;
     right: 8px;
-    left: 56px;
+    left: auto;
     max-width: calc(100vw - 64px);
     padding: 0.5rem;
   }

@@ -374,14 +374,19 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
   // Drag handlers for sidebar
   const handleDragStart = useCallback((e: React.MouseEvent) => {
-    if (isNodeListCollapsed) return;
+    if (isNodeListCollapsed || isTouchDevice) return; // Disable drag on mobile
+    // Don't start drag if clicking on interactive elements
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'BUTTON') {
+      return;
+    }
     e.preventDefault();
     setIsDragging(true);
     setDragStart({
       x: e.clientX - sidebarPosition.x,
       y: e.clientY - sidebarPosition.y,
     });
-  }, [isNodeListCollapsed, sidebarPosition]);
+  }, [isNodeListCollapsed, sidebarPosition, isTouchDevice]);
 
   const handleDragMove = useCallback((e: MouseEvent) => {
     if (!isDragging) return;
@@ -406,7 +411,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
   // Resize handlers for sidebar
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
-    if (isNodeListCollapsed) return;
+    if (isNodeListCollapsed || isTouchDevice) return; // Disable resize on mobile
     e.preventDefault();
     e.stopPropagation();
     setIsResizing(true);
@@ -418,7 +423,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
       width: sidebarSize.width || 350,
       height: sidebarSize.height || currentHeight,
     });
-  }, [isNodeListCollapsed, sidebarSize]);
+  }, [isNodeListCollapsed, sidebarSize, isTouchDevice]);
 
   const handleResizeMove = useCallback((e: MouseEvent) => {
     if (!isResizing) return;
@@ -481,7 +486,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
   // Map controls drag handlers
   const handleMapControlsDragStart = useCallback((e: React.MouseEvent) => {
-    if (isMapControlsCollapsed) return;
+    if (isMapControlsCollapsed || isTouchDevice) return; // Disable drag on mobile
     e.preventDefault();
     e.stopPropagation();
     setIsDraggingMapControls(true);
@@ -489,7 +494,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
       x: e.clientX - mapControlsPosition.x,
       y: e.clientY - mapControlsPosition.y,
     });
-  }, [isMapControlsCollapsed, mapControlsPosition]);
+  }, [isMapControlsCollapsed, mapControlsPosition, isTouchDevice]);
 
   const handleMapControlsDragMove = useCallback((e: MouseEvent) => {
     if (!isDraggingMapControls) return;
@@ -761,10 +766,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
           maxHeight: isNodeListCollapsed ? undefined : (sidebarSize.height ? `${sidebarSize.height}px` : 'calc(100% - 32px)'),
         }}
       >
-        <div 
+        <div
           className="sidebar-header"
           onMouseDown={handleDragStart}
-          style={{ cursor: isNodeListCollapsed ? 'default' : 'grab' }}
+          style={{ cursor: (isNodeListCollapsed || isTouchDevice) ? 'default' : 'grab' }}
         >
           <button
             className="collapse-nodes-btn"
@@ -1041,7 +1046,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
             <div
               ref={mapControlsRef}
               className={`map-controls ${isMapControlsCollapsed ? 'collapsed' : ''}`}
-              style={{
+              style={isTouchDevice ? undefined : {
                 left: isMapControlsCollapsed ? undefined : `${mapControlsPosition.x}px`,
                 top: isMapControlsCollapsed ? undefined : `${mapControlsPosition.y}px`,
                 right: isMapControlsCollapsed ? undefined : 'auto',
@@ -1058,7 +1063,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               <div
                 className="map-controls-header"
                 style={{
-                  cursor: isMapControlsCollapsed ? 'default' : (isDraggingMapControls ? 'grabbing' : 'grab'),
+                  cursor: (isMapControlsCollapsed || isTouchDevice) ? 'default' : (isDraggingMapControls ? 'grabbing' : 'grab'),
                 }}
                 onMouseDown={handleMapControlsDragStart}
               >
