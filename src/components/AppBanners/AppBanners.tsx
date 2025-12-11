@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import './AppBanners.css';
 
 interface ConfigIssue {
@@ -37,13 +38,14 @@ export const AppBanners: React.FC<AppBannersProps> = ({
   onUpgrade,
   onDismissUpdate,
 }) => {
+  const { t } = useTranslation();
+
   return (
     <>
       {/* Default Password Warning Banner */}
       {isDefaultPassword && (
         <div className="warning-banner">
-          ⚠️ Security Warning: The admin account is using the default password. Please change it immediately in the
-          Users tab.
+          ⚠️ {t('banners.default_password_warning')}
         </div>
       )}
 
@@ -55,8 +57,7 @@ export const AppBanners: React.FC<AppBannersProps> = ({
             top: isDefaultPassword ? 'calc(var(--header-height) + var(--banner-height))' : 'var(--header-height)',
           }}
         >
-          ⚠️ Transmit Disabled: Your device cannot send messages. TX is currently disabled in the LoRa configuration.
-          Enable it via the Meshtastic app or re-import your configuration.
+          ⚠️ {t('banners.tx_disabled')}
         </div>
       )}
 
@@ -71,14 +72,14 @@ export const AppBanners: React.FC<AppBannersProps> = ({
 
         return (
           <div key={issue.type} className="warning-banner" style={{ top: topOffset }}>
-            ⚠️ Configuration Error: {issue.message}{' '}
+            ⚠️ {t('banners.config_error')}: {issue.message}{' '}
             <a
               href={issue.docsUrl}
               target="_blank"
               rel="noopener noreferrer"
               style={{ color: 'inherit', textDecoration: 'underline' }}
             >
-              Learn more →
+              {t('banners.learn_more')} →
             </a>
           </div>
         );
@@ -108,7 +109,7 @@ export const AppBanners: React.FC<AppBannersProps> = ({
               >
                 {upgradeInProgress ? (
                   <>
-                    <span>⚙️ Upgrading to {latestVersion}...</span>
+                    <span>⚙️ {t('banners.upgrading_to', { version: latestVersion })}</span>
                     <span style={{ fontSize: '0.9em', opacity: 0.9 }}>{upgradeStatus}</span>
                     {upgradeProgress > 0 && (
                       <span style={{ fontSize: '0.9em', opacity: 0.9 }}>({upgradeProgress}%)</span>
@@ -116,7 +117,7 @@ export const AppBanners: React.FC<AppBannersProps> = ({
                   </>
                 ) : (
                   <>
-                    <span>🔔 Update Available: Version {latestVersion} is now available.</span>
+                    <span>🔔 {t('banners.update_available', { version: latestVersion })}</span>
                     <a
                       href={releaseUrl}
                       target="_blank"
@@ -127,7 +128,7 @@ export const AppBanners: React.FC<AppBannersProps> = ({
                         fontWeight: '600',
                       }}
                     >
-                      View Release Notes →
+                      {t('banners.view_release_notes')} →
                     </a>
                     {upgradeEnabled && (
                       <button
@@ -144,7 +145,7 @@ export const AppBanners: React.FC<AppBannersProps> = ({
                           opacity: upgradeInProgress ? 0.6 : 1,
                         }}
                       >
-                        Upgrade Now
+                        {t('banners.upgrade_now')}
                       </button>
                     )}
                   </>

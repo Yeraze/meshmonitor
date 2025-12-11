@@ -22,6 +22,15 @@
   "nav.expand_sidebar": "Seitenleiste erweitern",
   "nav.collapse_sidebar": "Seitenleiste einklappen",
 
+  "banners.default_password_warning": "Sicherheitswarnung: Das Admin-Konto verwendet das Standardpasswort. Bitte ändern Sie es sofort im Benutzer-Tab.",
+  "banners.tx_disabled": "Übertragung deaktiviert: Ihr Gerät kann keine Nachrichten senden. TX ist derzeit in den LoRa-Einstellungen deaktiviert. Aktivieren Sie es über die Meshtastic-App oder importieren Sie Ihre Konfiguration neu.",
+  "banners.config_error": "Konfigurationsfehler",
+  "banners.learn_more": "Mehr erfahren",
+  "banners.upgrading_to": "Upgrade auf {{version}}...",
+  "banners.update_available": "Update verfügbar: Version {{version}} verfügbar.",
+  "banners.view_release_notes": "Release-Hinweise anzeigen",
+  "banners.upgrade_now": "Jetzt upgraden",
+
   "common.save": "Speichern",
   "common.cancel": "Abbrechen",
   "common.delete": "Löschen",

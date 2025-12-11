@@ -23,6 +23,15 @@
   "nav.expand_sidebar": "Expand sidebar",
   "nav.collapse_sidebar": "Collapse sidebar",
 
+  "banners.default_password_warning": "Security Warning: The admin account is using the default password. Please change it immediately in the Users tab.",
+  "banners.tx_disabled": "Transmit Disabled: Your device cannot send messages. TX is currently disabled in the LoRa configuration. Enable it via the Meshtastic app or re-import your configuration.",
+  "banners.config_error": "Configuration Error",
+  "banners.learn_more": "Learn more",
+  "banners.upgrading_to": "Upgrading to {{version}}...",
+  "banners.update_available": "Update Available: Version {{version}} is now available.",
+  "banners.view_release_notes": "View Release Notes",
+  "banners.upgrade_now": "Upgrade Now",
+
   "common.save": "Save",
   "common.cancel": "Cancel",
   "common.delete": "Delete",

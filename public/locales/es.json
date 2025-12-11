@@ -22,6 +22,15 @@
   "nav.expand_sidebar": "Expandir barra lateral",
   "nav.collapse_sidebar": "Contraer barra lateral",
 
+  "banners.default_password_warning": "Advertencia de Seguridad: La cuenta de administrador está usando la contraseña predeterminada. Por favor cámbiala inmediatamente en la pestaña Usuarios.",
+  "banners.tx_disabled": "Transmisión Deshabilitada: Tu dispositivo no puede enviar mensajes. TX está actualmente deshabilitado en la configuración LoRa. Actívalo vía la app de Meshtastic o reimporta tu configuración.",
+  "banners.config_error": "Error de Configuración",
+  "banners.learn_more": "Más información",
+  "banners.upgrading_to": "Actualizando a {{version}}...",
+  "banners.update_available": "Actualización Disponible: Versión {{version}} disponible.",
+  "banners.view_release_notes": "Ver Notas de Lanzamiento",
+  "banners.upgrade_now": "Actualizar Ahora",
+
   "common.save": "Guardar",
   "common.cancel": "Cancelar",
   "common.delete": "Eliminar",
