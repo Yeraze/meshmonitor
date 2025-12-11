@@ -42,6 +42,7 @@ interface NodesTabProps {
   shouldShowData: () => boolean;
   centerMapOnNode: (node: DeviceInfo) => void;
   toggleFavorite: (node: DeviceInfo, event: React.MouseEvent) => Promise<void>;
+  toggleIgnored: (node: DeviceInfo, event: React.MouseEvent) => Promise<void>;
   setActiveTab: React.Dispatch<React.SetStateAction<TabType>>;
   setSelectedDMNode: (nodeId: string) => void;
   markerRefs: React.MutableRefObject<Map<string, LeafletMarker>>;
@@ -76,6 +77,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   shouldShowData,
   centerMapOnNode,
   toggleFavorite,
+  toggleIgnored,
   setActiveTab,
   setSelectedDMNode,
   markerRefs,
@@ -181,6 +183,42 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     return saved === 'true';
   });
 
+  // Nodes sidebar position and size state
+  const [sidebarPosition, setSidebarPosition] = useState(() => {
+    const saved = localStorage.getItem('nodesSidebarPosition');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return { x: parsed.x ?? 16, y: parsed.y ?? 16 };
+      } catch {
+        return { x: 16, y: 16 };
+      }
+    }
+    return { x: 16, y: 16 };
+  });
+
+  const [sidebarSize, setSidebarSize] = useState(() => {
+    const saved = localStorage.getItem('nodesSidebarSize');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return { width: parsed.width ?? 350, height: parsed.height ?? null };
+      } catch {
+        return { width: 350, height: null };
+      }
+    }
+    return { width: 350, height: null };
+  });
+
+  // Drag state
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const sidebarRef = useRef<HTMLDivElement>(null);
+
+  // Resize state
+  const [isResizing, setIsResizing] = useState(false);
+  const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0 });
+
   // Save packet monitor preference to localStorage
   useEffect(() => {
     localStorage.setItem('showPacketMonitor', showPacketMonitor.toString());
@@ -190,6 +228,40 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   useEffect(() => {
     localStorage.setItem('isMapControlsCollapsed', isMapControlsCollapsed.toString());
   }, [isMapControlsCollapsed]);
+
+  // Save sidebar position to localStorage
+  useEffect(() => {
+    localStorage.setItem('nodesSidebarPosition', JSON.stringify(sidebarPosition));
+  }, [sidebarPosition]);
+
+  // Save sidebar size to localStorage
+  useEffect(() => {
+    localStorage.setItem('nodesSidebarSize', JSON.stringify(sidebarSize));
+  }, [sidebarSize]);
+
+  // Map controls position state with localStorage persistence
+  const [mapControlsPosition, setMapControlsPosition] = useState(() => {
+    const saved = localStorage.getItem('mapControlsPosition');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return { x: parsed.x ?? 10, y: parsed.y ?? 10 };
+      } catch {
+        return { x: 10, y: 10 };
+      }
+    }
+    return { x: 10, y: 10 };
+  });
+
+  // Map controls drag state
+  const [isDraggingMapControls, setIsDraggingMapControls] = useState(false);
+  const [mapControlsDragStart, setMapControlsDragStart] = useState({ x: 0, y: 0 });
+  const mapControlsRef = useRef<HTMLDivElement>(null);
+
+  // Save map controls position to localStorage
+  useEffect(() => {
+    localStorage.setItem('mapControlsPosition', JSON.stringify(mapControlsPosition));
+  }, [mapControlsPosition]);
 
   // Check if user has permission to view packet monitor - needs at least one channel and messages permission
   const hasAnyChannelPermission = () => {
@@ -270,7 +342,12 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
   // Simple toggle callbacks
   const handleCollapseNodeList = useCallback(() => {
-    setIsNodeListCollapsed(!isNodeListCollapsed);
+    const willBeCollapsed = !isNodeListCollapsed;
+    setIsNodeListCollapsed(willBeCollapsed);
+    // Reset position to default when collapsing (will be restored when expanding)
+    if (willBeCollapsed) {
+      // Don't reset position - keep it for when user expands again
+    }
   }, [isNodeListCollapsed, setIsNodeListCollapsed]);
 
   const handleToggleFilterPopup = useCallback(() => {
@@ -280,6 +357,166 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   const handleToggleSortDirection = useCallback(() => {
     setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
   }, [sortDirection, setSortDirection]);
+
+  // Drag handlers for sidebar
+  const handleDragStart = useCallback((e: React.MouseEvent) => {
+    if (isNodeListCollapsed) return;
+    e.preventDefault();
+    setIsDragging(true);
+    setDragStart({
+      x: e.clientX - sidebarPosition.x,
+      y: e.clientY - sidebarPosition.y,
+    });
+  }, [isNodeListCollapsed, sidebarPosition]);
+
+  const handleDragMove = useCallback((e: MouseEvent) => {
+    if (!isDragging) return;
+    
+    const splitView = document.querySelector('.nodes-split-view');
+    if (!splitView) return;
+    
+    const rect = splitView.getBoundingClientRect();
+    const sidebarWidth = sidebarSize.width || 350;
+    const maxX = rect.width - sidebarWidth - 20; // Leave some margin
+    const maxY = rect.height - 100; // Minimum height for header
+    
+    const newX = Math.max(0, Math.min(maxX, e.clientX - dragStart.x));
+    const newY = Math.max(0, Math.min(maxY, e.clientY - dragStart.y));
+    
+    setSidebarPosition({ x: newX, y: newY });
+  }, [isDragging, dragStart, sidebarSize]);
+
+  const handleDragEnd = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  // Resize handlers for sidebar
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    if (isNodeListCollapsed) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setIsResizing(true);
+    const sidebar = sidebarRef.current;
+    const currentHeight = sidebar ? sidebar.offsetHeight : 0;
+    setResizeStart({
+      x: e.clientX,
+      y: e.clientY,
+      width: sidebarSize.width || 350,
+      height: sidebarSize.height || currentHeight,
+    });
+  }, [isNodeListCollapsed, sidebarSize]);
+
+  const handleResizeMove = useCallback((e: MouseEvent) => {
+    if (!isResizing) return;
+    
+    const splitView = document.querySelector('.nodes-split-view');
+    if (!splitView) return;
+    
+    const rect = splitView.getBoundingClientRect();
+    const deltaX = e.clientX - resizeStart.x;
+    const deltaY = e.clientY - resizeStart.y;
+    
+    const minWidth = 250;
+    const maxWidth = Math.min(800, rect.width - sidebarPosition.x - 20);
+    const minHeight = 200;
+    const maxHeight = rect.height - sidebarPosition.y - 20;
+    
+    const newWidth = Math.max(minWidth, Math.min(maxWidth, resizeStart.width + deltaX));
+    // Always set height when resizing (user is explicitly resizing)
+    const newHeight = Math.max(minHeight, Math.min(maxHeight, resizeStart.height + deltaY));
+    
+    setSidebarSize({ width: newWidth, height: newHeight });
+  }, [isResizing, resizeStart, sidebarPosition]);
+
+  const handleResizeEnd = useCallback(() => {
+    setIsResizing(false);
+  }, []);
+
+  // Global mouse event listeners for drag and resize
+  useEffect(() => {
+    if (isDragging) {
+      document.addEventListener('mousemove', handleDragMove);
+      document.addEventListener('mouseup', handleDragEnd);
+      document.body.style.cursor = 'grabbing';
+      document.body.style.userSelect = 'none';
+      
+      return () => {
+        document.removeEventListener('mousemove', handleDragMove);
+        document.removeEventListener('mouseup', handleDragEnd);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      };
+    }
+  }, [isDragging, handleDragMove, handleDragEnd]);
+
+  useEffect(() => {
+    if (isResizing) {
+      document.addEventListener('mousemove', handleResizeMove);
+      document.addEventListener('mouseup', handleResizeEnd);
+      document.body.style.cursor = 'nwse-resize';
+      document.body.style.userSelect = 'none';
+      
+      return () => {
+        document.removeEventListener('mousemove', handleResizeMove);
+        document.removeEventListener('mouseup', handleResizeEnd);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      };
+    }
+  }, [isResizing, handleResizeMove, handleResizeEnd]);
+
+  // Map controls drag handlers
+  const handleMapControlsDragStart = useCallback((e: React.MouseEvent) => {
+    if (isMapControlsCollapsed) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingMapControls(true);
+    setMapControlsDragStart({
+      x: e.clientX - mapControlsPosition.x,
+      y: e.clientY - mapControlsPosition.y,
+    });
+  }, [isMapControlsCollapsed, mapControlsPosition]);
+
+  const handleMapControlsDragMove = useCallback((e: MouseEvent) => {
+    if (!isDraggingMapControls) return;
+    
+    const mapContainer = document.querySelector('.map-container');
+    if (!mapContainer) return;
+    
+    const rect = mapContainer.getBoundingClientRect();
+    const controls = mapControlsRef.current;
+    if (!controls) return;
+    
+    const controlsRect = controls.getBoundingClientRect();
+    const maxX = rect.width - controlsRect.width - 10;
+    const maxY = rect.height - controlsRect.height - 10;
+    
+    const newX = Math.max(10, Math.min(maxX, e.clientX - mapControlsDragStart.x - rect.left));
+    const newY = Math.max(10, Math.min(maxY, e.clientY - mapControlsDragStart.y - rect.top));
+    
+    setMapControlsPosition({ x: newX, y: newY });
+  }, [isDraggingMapControls, mapControlsDragStart]);
+
+  const handleMapControlsDragEnd = useCallback(() => {
+    setIsDraggingMapControls(false);
+  }, []);
+
+  // Global mouse event listeners for map controls drag
+  useEffect(() => {
+    if (isDraggingMapControls) {
+      document.addEventListener('mousemove', handleMapControlsDragMove);
+      document.addEventListener('mouseup', handleMapControlsDragEnd);
+      document.body.style.cursor = 'grabbing';
+      document.body.style.userSelect = 'none';
+      
+      return () => {
+        document.removeEventListener('mousemove', handleMapControlsDragMove);
+        document.removeEventListener('mouseup', handleMapControlsDragEnd);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      };
+    }
+  }, [isDraggingMapControls, handleMapControlsDragMove, handleMapControlsDragEnd]);
 
   const handleCollapseMapControls = useCallback(() => {
     setIsMapControlsCollapsed(!isMapControlsCollapsed);
@@ -499,12 +736,27 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   return (
     <div className="nodes-split-view">
       {/* Floating Node List Panel */}
-      <div className={`nodes-sidebar ${isNodeListCollapsed ? 'collapsed' : ''}`}>
-        <div className="sidebar-header">
+      <div
+        ref={sidebarRef}
+        className={`nodes-sidebar ${isNodeListCollapsed ? 'collapsed' : ''}`}
+        style={{
+          left: isNodeListCollapsed ? undefined : `${sidebarPosition.x}px`,
+          top: isNodeListCollapsed ? undefined : `${sidebarPosition.y}px`,
+          width: isNodeListCollapsed ? undefined : `${sidebarSize.width}px`,
+          height: isNodeListCollapsed ? undefined : (sidebarSize.height ? `${sidebarSize.height}px` : 'auto'),
+          maxHeight: isNodeListCollapsed ? undefined : (sidebarSize.height ? `${sidebarSize.height}px` : 'calc(100% - 32px)'),
+        }}
+      >
+        <div 
+          className="sidebar-header"
+          onMouseDown={handleDragStart}
+          style={{ cursor: isNodeListCollapsed ? 'default' : 'grab' }}
+        >
           <button
             className="collapse-nodes-btn"
             onClick={handleCollapseNodeList}
             title={isNodeListCollapsed ? 'Expand node list' : 'Collapse node list'}
+            onMouseDown={(e) => e.stopPropagation()}
           >
             {isNodeListCollapsed ? '▶' : '◀'}
           </button>
@@ -625,6 +877,25 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       >
                         {node.isFavorite ? '⭐' : '☆'}
                       </button>
+                      <button
+                        className="ignore-button"
+                        title={node.isIgnored ? t('nodes.remove_ignored') : t('nodes.add_ignored')}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleIgnored(node, e);
+                        }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          padding: '0.25rem',
+                          fontSize: '1.2rem',
+                          opacity: node.isIgnored ? 1 : 0.5,
+                          transition: 'opacity 0.2s'
+                        }}
+                      >
+                        {node.isIgnored ? '🚫' : '🚫'}
+                      </button>
                       <div className="node-name-text">
                         <div className="node-longname">
                           {node.user?.longName || `Node ${node.nodeNum}`}
@@ -737,23 +1008,51 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
           )}
         </div>
         )}
+        {!isNodeListCollapsed && (
+          <div
+            className="sidebar-resize-handle"
+            onMouseDown={handleResizeStart}
+            title="Drag to resize"
+          />
+        )}
       </div>
 
       {/* Right Side - Map and Optional Packet Monitor */}
       <div className={`map-container ${showPacketMonitor && canViewPacketMonitor ? 'with-packet-monitor' : ''}`}>
         {shouldShowData() ? (
           <>
-            <div className={`map-controls ${isMapControlsCollapsed ? 'collapsed' : ''}`}>
+            <div
+              ref={mapControlsRef}
+              className={`map-controls ${isMapControlsCollapsed ? 'collapsed' : ''}`}
+              style={{
+                left: isMapControlsCollapsed ? undefined : `${mapControlsPosition.x}px`,
+                top: isMapControlsCollapsed ? undefined : `${mapControlsPosition.y}px`,
+                right: isMapControlsCollapsed ? undefined : 'auto',
+              }}
+            >
               <button
                 className="map-controls-collapse-btn"
                 onClick={handleCollapseMapControls}
                 title={isMapControlsCollapsed ? 'Expand controls' : 'Collapse controls'}
+                onMouseDown={(e) => e.stopPropagation()}
               >
                 {isMapControlsCollapsed ? '▼' : '▲'}
               </button>
+              <div
+                className="map-controls-header"
+                style={{
+                  cursor: isMapControlsCollapsed ? 'default' : (isDraggingMapControls ? 'grabbing' : 'grab'),
+                }}
+                onMouseDown={handleMapControlsDragStart}
+              >
+                {!isMapControlsCollapsed && (
+                  <div className="map-controls-title">
+                    Features
+                  </div>
+                )}
+              </div>
               {!isMapControlsCollapsed && (
                 <>
-                  <div className="map-controls-title">Features</div>
                   <label className="map-control-item">
                     <input
                       type="checkbox"

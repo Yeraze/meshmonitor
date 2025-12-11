@@ -28,6 +28,7 @@ export interface DeviceInfo {
   isMobile?: boolean
   mobile?: number // Database field: 0 = not mobile, 1 = mobile (moved >100m)
   isFavorite?: boolean
+  isIgnored?: boolean
   keyIsLowEntropy?: boolean
   duplicateKeyDetected?: boolean
   keySecurityIssueDetails?: string

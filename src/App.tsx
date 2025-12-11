@@ -58,6 +58,7 @@ import UserMenu from './components/UserMenu';
 // Track pending favorite requests outside component to persist across remounts
 // Maps nodeNum -> expected isFavorite state
 const pendingFavoriteRequests = new Map<number, boolean>();
+const pendingIgnoredRequests = new Map<number, boolean>();
 import TracerouteHistoryModal from './components/TracerouteHistoryModal';
 import RouteSegmentTraceroutesModal from './components/RouteSegmentTraceroutesModal';
 
@@ -1882,22 +1883,37 @@ function App() {
 
       // Process nodes data
       if (data.nodes) {
-        const pendingRequests = pendingFavoriteRequests;
+        const pendingFavorite = pendingFavoriteRequests;
+        const pendingIgnored = pendingIgnoredRequests;
 
-        if (pendingRequests.size === 0) {
+        if (pendingFavorite.size === 0 && pendingIgnored.size === 0) {
           setNodes(data.nodes as DeviceInfo[]);
         } else {
           setNodes(
             (data.nodes as DeviceInfo[]).map((serverNode: DeviceInfo) => {
-              const pendingState = pendingRequests.get(serverNode.nodeNum);
-              if (pendingState !== undefined) {
-                if (serverNode.isFavorite === pendingState) {
-                  pendingRequests.delete(serverNode.nodeNum);
-                  return serverNode;
+              let updatedNode = { ...serverNode };
+              
+              // Handle pending favorite requests
+              const pendingFavoriteState = pendingFavorite.get(serverNode.nodeNum);
+              if (pendingFavoriteState !== undefined) {
+                if (serverNode.isFavorite === pendingFavoriteState) {
+                  pendingFavorite.delete(serverNode.nodeNum);
+                } else {
+                  updatedNode.isFavorite = pendingFavoriteState;
                 }
-                return { ...serverNode, isFavorite: pendingState };
               }
-              return serverNode;
+              
+              // Handle pending ignored requests
+              const pendingIgnoredState = pendingIgnored.get(serverNode.nodeNum);
+              if (pendingIgnoredState !== undefined) {
+                if (serverNode.isIgnored === pendingIgnoredState) {
+                  pendingIgnored.delete(serverNode.nodeNum);
+                } else {
+                  updatedNode.isIgnored = pendingIgnoredState;
+                }
+              }
+              
+              return updatedNode;
             })
           );
         }
@@ -3059,8 +3075,6 @@ function App() {
   const toggleFavorite = async (node: DeviceInfo, event: React.MouseEvent) => {
     event.stopPropagation(); // Prevent node selection when clicking star
 
-    console.log('[FAVORITE] Toggle called for node:', node.nodeNum, 'current:', node.isFavorite);
-
     if (!node.user?.id) {
       logger.error('Cannot toggle favorite: node has no user ID');
       return;
@@ -3068,7 +3082,6 @@ function App() {
 
     // Prevent multiple rapid clicks on the same node
     if (pendingFavoriteRequests.has(node.nodeNum)) {
-      console.log('[FAVORITE] Already pending for node:', node.nodeNum);
       return;
     }
 
@@ -3076,30 +3089,17 @@ function App() {
     const originalFavoriteStatus = node.isFavorite;
     const newFavoriteStatus = !originalFavoriteStatus;
 
-    console.log('[FAVORITE] Will update to:', newFavoriteStatus);
-
     try {
       // Mark this request as pending with the expected new state
       pendingFavoriteRequests.set(node.nodeNum, newFavoriteStatus);
-      console.log(
-        '[FAVORITE] Set pending for node:',
-        node.nodeNum,
-        'Map size:',
-        pendingFavoriteRequests.size,
-        'Map contents:',
-        Array.from(pendingFavoriteRequests.entries())
-      );
 
-      console.log('[FAVORITE] About to call setNodes...');
       // Optimistically update the UI - use flushSync to force immediate render
       // This prevents the polling from overwriting the optimistic update before it renders
       flushSync(() => {
         setNodes(prevNodes => {
-          console.log('[FAVORITE] setNodes callback executing, prevNodes length:', prevNodes.length);
           const updated = prevNodes.map(n =>
             n.nodeNum === node.nodeNum ? { ...n, isFavorite: newFavoriteStatus } : n
           );
-          console.log('[FAVORITE] setNodes callback complete');
           return updated;
         });
       });
@@ -3153,6 +3153,91 @@ function App() {
       showToast(t('toast.failed_update_favorite'), 'error');
     }
     // Note: On success, the polling logic will remove from pendingFavoriteRequests
+    // when it detects the server has caught up
+  };
+
+  // Function to toggle node ignored status
+  const toggleIgnored = async (node: DeviceInfo, event: React.MouseEvent) => {
+    event.stopPropagation(); // Prevent node selection when clicking ignore button
+
+    if (!node.user?.id) {
+      logger.error('Cannot toggle ignored: node has no user ID');
+      return;
+    }
+
+    // Prevent multiple rapid clicks on the same node
+    if (pendingIgnoredRequests.has(node.nodeNum)) {
+      return;
+    }
+
+    // Store the original state before any updates
+    const originalIgnoredStatus = node.isIgnored;
+    const newIgnoredStatus = !originalIgnoredStatus;
+
+    try {
+      // Mark this request as pending with the expected new state
+      pendingIgnoredRequests.set(node.nodeNum, newIgnoredStatus);
+
+      // Optimistically update the UI - use flushSync to force immediate render
+      // This prevents the polling from overwriting the optimistic update before it renders
+      flushSync(() => {
+        setNodes(prevNodes => {
+          const updated = prevNodes.map(n =>
+            n.nodeNum === node.nodeNum ? { ...n, isIgnored: newIgnoredStatus } : n
+          );
+          return updated;
+        });
+      });
+
+      // Send update to backend (with device sync enabled by default)
+      const response = await authFetch(`${baseUrl}/api/nodes/${node.user.id}/ignored`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          isIgnored: newIgnoredStatus,
+          syncToDevice: true, // Enable two-way sync to Meshtastic device
+        }),
+      });
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          showToast(t('toast.insufficient_permissions_ignored'), 'error');
+          // Revert to original state using the saved original value
+          setNodes(prevNodes =>
+            prevNodes.map(n => (n.nodeNum === node.nodeNum ? { ...n, isIgnored: originalIgnoredStatus } : n))
+          );
+          return;
+        }
+        throw new Error('Failed to update ignored status');
+      }
+
+      const result = await response.json();
+
+      // Log the result including device sync status
+      let statusMessage = `${newIgnoredStatus ? '🚫' : '✅'} Node ${node.user.id} ignored status updated`;
+      if (result.deviceSync) {
+        if (result.deviceSync.status === 'success') {
+          statusMessage += ' (synced to device ✓)';
+        } else if (result.deviceSync.status === 'failed') {
+          // Only show error for actual failures (not firmware compatibility)
+          statusMessage += ` (device sync failed: ${result.deviceSync.error || 'unknown error'})`;
+        }
+        // 'skipped' status (e.g., pre-2.7 firmware) is not shown to user - logged on server only
+      }
+      logger.debug(statusMessage);
+    } catch (error) {
+      logger.error('Error toggling ignored:', error);
+      // Revert to original state using the saved original value
+      setNodes(prevNodes =>
+        prevNodes.map(n => (n.nodeNum === node.nodeNum ? { ...n, isIgnored: originalIgnoredStatus } : n))
+      );
+      // Remove from pending on error since we reverted
+      pendingIgnoredRequests.delete(node.nodeNum);
+      showToast(t('toast.failed_update_ignored'), 'error');
+    }
+    // Note: On success, the polling logic will remove from pendingIgnoredRequests
     // when it detects the server has caught up
   };
 
@@ -4111,6 +4196,7 @@ function App() {
             shouldShowData={shouldShowData}
             centerMapOnNode={centerMapOnNode}
             toggleFavorite={toggleFavorite}
+            toggleIgnored={toggleIgnored}
             setActiveTab={setActiveTab}
             setSelectedDMNode={setSelectedDMNode}
             markerRefs={markerRefs}

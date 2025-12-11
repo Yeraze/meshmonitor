@@ -166,16 +166,29 @@ router.get('/check-config-issues', (req: Request, res: Response) => {
 
     // Check for ALLOWED_ORIGINS misconfiguration
     // Issue: Current origin is not in ALLOWED_ORIGINS list
-    if (currentOrigin && config.allowedOriginsProvided) {
+    // Use the same logic as CORS middleware - include development localhost origins
+    if (currentOrigin) {
       try {
         const origin = new URL(currentOrigin).origin;
-        if (!config.allowedOrigins.includes(origin)) {
-          issues.push({
-            type: 'allowed_origins',
-            severity: 'error',
-            message: `Your current origin (${origin}) is not in ALLOWED_ORIGINS. CORS will block authentication. Add ${origin} to ALLOWED_ORIGINS.`,
-            docsUrl: 'https://meshmonitor.org/faq.html#i-see-a-blank-white-screen-when-accessing-meshmonitor'
-          });
+        // Build the same allowed origins list as CORS middleware
+        const allowedOrigins = [...config.allowedOrigins];
+        // Always allow localhost in development (same as CORS middleware)
+        if (config.isDevelopment) {
+          allowedOrigins.push('http://localhost:3000', 'http://localhost:5173', 'http://localhost:8080');
+        }
+        
+        // Only show error if origin is not in the processed list AND we're in production
+        // In development, localhost origins are automatically allowed
+        if (!allowedOrigins.includes(origin) && !allowedOrigins.includes('*')) {
+          // Only show error in production, or if explicitly provided origins don't match
+          if (config.allowedOriginsProvided && !config.isDevelopment) {
+            issues.push({
+              type: 'allowed_origins',
+              severity: 'error',
+              message: `Your current origin (${origin}) is not in ALLOWED_ORIGINS. CORS will block authentication. Add ${origin} to ALLOWED_ORIGINS.`,
+              docsUrl: 'https://meshmonitor.org/faq.html#i-see-a-blank-white-screen-when-accessing-meshmonitor'
+            });
+          }
         }
       } catch (error) {
         // Invalid URL, skip check

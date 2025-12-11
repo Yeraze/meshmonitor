@@ -180,6 +180,8 @@
   "nodes.descending": "Descending",
   "nodes.add_favorite": "Add to favorites",
   "nodes.remove_favorite": "Remove from favorites",
+  "nodes.add_ignored": "Add to ignored",
+  "nodes.remove_ignored": "Remove from ignored",
   "nodes.node_role": "Node Role",
   "nodes.send_dm": "Send Direct Message",
   "nodes.snr": "Signal-to-Noise Ratio",
@@ -620,6 +622,8 @@
   "toast.purged_node_device": "Purged {{node}} from device and database - {{messages}} messages, {{traceroutes}} traceroutes, {{telemetry}} telemetry records",
   "toast.insufficient_permissions_favorites": "Insufficient permissions to update favorites",
   "toast.failed_update_favorite": "Failed to update favorite status. Please try again.",
+  "toast.insufficient_permissions_ignored": "Insufficient permissions to update ignored status",
+  "toast.failed_update_ignored": "Failed to update ignored status. Please try again.",
 
   "roles.client": "Client",
   "roles.client_mute": "Client Mute",
