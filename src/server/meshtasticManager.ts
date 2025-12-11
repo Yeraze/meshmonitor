@@ -112,6 +112,9 @@ class MeshtasticManager {
   private favoritesSupportCache: boolean | null = null;  // Cache firmware support check result
   private cachedAutoAckRegex: { pattern: string; regex: RegExp } | null = null;  // Cached compiled regex
 
+  // Auto-welcome tracking to prevent race conditions
+  private welcomingNodes: Set<number> = new Set();  // Track nodes currently being welcomed
+
   // Virtual Node Server - Message capture for initialization sequence
   private initConfigCache: Array<{ type: string; data: Uint8Array }> = [];  // Store raw FromRadio messages with type metadata during init
   private isCapturingInitConfig = false;  // Flag to track when we're capturing messages
@@ -5391,6 +5394,12 @@ class MeshtasticManager {
         return;
       }
 
+      // RACE CONDITION PROTECTION: Check if we're already welcoming this node
+      if (this.welcomingNodes.has(nodeNum)) {
+        logger.debug(`⏭️  Skipping auto-welcome for ${nodeId} - already being welcomed in parallel`);
+        return;
+      }
+
       // Check if we've already welcomed this node
       const node = databaseService.getNode(nodeNum);
       if (!node) {
@@ -5401,65 +5410,80 @@ class MeshtasticManager {
       // Skip if node has already been welcomed (nodes should only be welcomed once)
       // Use explicit null/undefined check to handle edge case where welcomedAt might be 0
       if (node.welcomedAt !== null && node.welcomedAt !== undefined) {
-        logger.debug(`⏭️  Skipping auto-welcome for ${nodeId} - already welcomed previously`);
+        logger.debug(`⏭️  Skipping auto-welcome for ${nodeId} - already welcomed at ${new Date(node.welcomedAt).toISOString()}`);
         return;
       }
 
-      // Check if we should wait for name
-      const autoWelcomeWaitForName = databaseService.getSetting('autoWelcomeWaitForName');
-      if (autoWelcomeWaitForName === 'true') {
-        // Check if node has a proper name (not default "Node !xxxxxxxx")
-        if (!node.longName || node.longName.startsWith('Node !')) {
-          logger.debug(`⏭️  Skipping auto-welcome for ${nodeId} - waiting for proper name (current: ${node.longName})`);
+      // RACE CONDITION PROTECTION: Mark that we're welcoming this node
+      // This prevents duplicate welcomes if multiple packets arrive before database is updated
+      this.welcomingNodes.add(nodeNum);
+      logger.debug(`🔒 Locked auto-welcome for ${nodeId} to prevent duplicates`);
+
+      try {
+        // Check if we should wait for name
+        const autoWelcomeWaitForName = databaseService.getSetting('autoWelcomeWaitForName');
+        if (autoWelcomeWaitForName === 'true') {
+          // Check if node has a proper name (not default "Node !xxxxxxxx")
+          if (!node.longName || node.longName.startsWith('Node !')) {
+            logger.debug(`⏭️  Skipping auto-welcome for ${nodeId} - waiting for proper name (current: ${node.longName})`);
+            return;
+          }
+          if (!node.shortName || node.shortName === nodeId.substring(1, 5)) {
+            logger.debug(`⏭️  Skipping auto-welcome for ${nodeId} - waiting for proper short name (current: ${node.shortName})`);
+            return;
+          }
+        }
+
+        // Check if node exceeds maximum hop count
+        const autoWelcomeMaxHops = databaseService.getSetting('autoWelcomeMaxHops');
+        const maxHops = autoWelcomeMaxHops ? parseInt(autoWelcomeMaxHops) : 5; // Default to 5 hops
+        if (node.hopsAway !== undefined && node.hopsAway > maxHops) {
+          logger.debug(`⏭️  Skipping auto-welcome for ${nodeId} - too far away (${node.hopsAway} hops > ${maxHops} max)`);
           return;
         }
-        if (!node.shortName || node.shortName === nodeId.substring(1, 5)) {
-          logger.debug(`⏭️  Skipping auto-welcome for ${nodeId} - waiting for proper short name (current: ${node.shortName})`);
-          return;
+
+        // Get welcome message template
+        const autoWelcomeMessage = databaseService.getSetting('autoWelcomeMessage') || 'Welcome {LONG_NAME} ({SHORT_NAME}) to the mesh!';
+
+        // Replace tokens in the message template
+        const welcomeText = await this.replaceWelcomeTokens(autoWelcomeMessage, nodeNum, nodeId);
+
+        // Get target (DM or channel)
+        const autoWelcomeTarget = databaseService.getSetting('autoWelcomeTarget') || '0';
+
+        let destination: number | undefined;
+        let channel: number;
+
+        if (autoWelcomeTarget === 'dm') {
+          // Send as direct message
+          destination = nodeNum;
+          channel = 0;
+        } else {
+          // Send to channel
+          destination = undefined;
+          channel = parseInt(autoWelcomeTarget);
         }
+
+        logger.info(`👋 Sending auto-welcome to ${nodeId} (${node.longName}): "${welcomeText}" ${autoWelcomeTarget === 'dm' ? '(via DM)' : `(channel ${channel})`}`);
+
+        await this.sendTextMessage(welcomeText, channel, destination);
+
+        // Mark node as welcomed using atomic check-and-set operation
+        // This ensures the node is only marked if it hasn't been marked already
+        const wasMarked = databaseService.markNodeAsWelcomedIfNotAlready(nodeNum, nodeId);
+        if (wasMarked) {
+          logger.info(`✅ Node ${nodeId} welcomed successfully and marked in database`);
+        } else {
+          logger.warn(`⚠️  Node ${nodeId} was already marked as welcomed by another process`);
+        }
+      } finally {
+        // RACE CONDITION PROTECTION: Always remove from tracking set
+        // Use a small delay to ensure database write has completed
+        setTimeout(() => {
+          this.welcomingNodes.delete(nodeNum);
+          logger.debug(`🔓 Unlocked auto-welcome tracking for ${nodeId}`);
+        }, 100);
       }
-
-      // Check if node exceeds maximum hop count
-      const autoWelcomeMaxHops = databaseService.getSetting('autoWelcomeMaxHops');
-      const maxHops = autoWelcomeMaxHops ? parseInt(autoWelcomeMaxHops) : 5; // Default to 5 hops
-      if (node.hopsAway !== undefined && node.hopsAway > maxHops) {
-        logger.debug(`⏭️  Skipping auto-welcome for ${nodeId} - too far away (${node.hopsAway} hops > ${maxHops} max)`);
-        return;
-      }
-
-      // Get welcome message template
-      const autoWelcomeMessage = databaseService.getSetting('autoWelcomeMessage') || 'Welcome {LONG_NAME} ({SHORT_NAME}) to the mesh!';
-
-      // Replace tokens in the message template
-      const welcomeText = await this.replaceWelcomeTokens(autoWelcomeMessage, nodeNum, nodeId);
-
-      // Get target (DM or channel)
-      const autoWelcomeTarget = databaseService.getSetting('autoWelcomeTarget') || '0';
-
-      let destination: number | undefined;
-      let channel: number;
-
-      if (autoWelcomeTarget === 'dm') {
-        // Send as direct message
-        destination = nodeNum;
-        channel = 0;
-      } else {
-        // Send to channel
-        destination = undefined;
-        channel = parseInt(autoWelcomeTarget);
-      }
-
-      logger.info(`👋 Sending auto-welcome to ${nodeId} (${node.longName}): "${welcomeText}" ${autoWelcomeTarget === 'dm' ? '(via DM)' : `(channel ${channel})`}`);
-
-      await this.sendTextMessage(welcomeText, channel, destination);
-
-      // Mark node as welcomed
-      databaseService.upsertNode({
-        nodeNum: nodeNum,
-        nodeId: nodeId,
-        welcomedAt: Date.now()
-      });
-      logger.debug(`✅ Marked ${nodeId} as welcomed`);
     } catch (error) {
       logger.error('❌ Error in auto-welcome:', error);
     }
