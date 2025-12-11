@@ -21,6 +21,7 @@ export const AVAILABLE_LANGUAGES = [
   { code: 'es', name: 'Spanish', nativeName: 'Español' },
   { code: 'de', name: 'German', nativeName: 'Deutsch' },
   { code: 'fr', name: 'French', nativeName: 'Français' },
+  { code: 'ru', name: 'Russian', nativeName: 'Русский' },
 ];
 
 i18n
