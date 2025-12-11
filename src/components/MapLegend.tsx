@@ -109,13 +109,15 @@ const MapLegend: React.FC = () => {
         map.dragging.disable();
       }
       
-      document.addEventListener('mousemove', handleDragMove, { passive: false });
+      // Store options to ensure exact match for removeEventListener
+      const mousemoveOptions = { passive: false } as AddEventListenerOptions;
+      document.addEventListener('mousemove', handleDragMove, mousemoveOptions);
       document.addEventListener('mouseup', handleDragEnd);
       document.body.style.cursor = 'grabbing';
       document.body.style.userSelect = 'none';
       
       return () => {
-        document.removeEventListener('mousemove', handleDragMove);
+        document.removeEventListener('mousemove', handleDragMove, mousemoveOptions);
         document.removeEventListener('mouseup', handleDragEnd);
         document.body.style.cursor = '';
         document.body.style.userSelect = '';

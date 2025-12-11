@@ -894,7 +894,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                           transition: 'opacity 0.2s'
                         }}
                       >
-                        {node.isIgnored ? '🚫' : '🚫'}
+                        🚫
                       </button>
                       <div className="node-name-text">
                         <div className="node-longname">

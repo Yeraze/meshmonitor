@@ -2410,7 +2410,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             {(() => {
               const selectedNode = nodeManagementNodeNum !== null ? nodeOptions.find(n => n.nodeNum === nodeManagementNodeNum) : null;
               const isCurrentlyFavorite = selectedNode?.isFavorite ?? false;
-              const isDisabled = isExecuting || nodeManagementNodeNum === null || selectedNodeNum === null;
+              const isDisabled = isExecuting || nodeManagementNodeNum === null;
               
               return (
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -2459,7 +2459,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             {(() => {
               const selectedNode = nodeManagementNodeNum !== null ? nodeOptions.find(n => n.nodeNum === nodeManagementNodeNum) : null;
               const isCurrentlyIgnored = selectedNode?.isIgnored ?? false;
-              const isDisabled = isExecuting || nodeManagementNodeNum === null || selectedNodeNum === null;
+              const isDisabled = isExecuting || nodeManagementNodeNum === null;
               
               return (
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
