@@ -1,6 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { getHopColor } from '../utils/mapIcons';
+import { DraggableOverlay } from './DraggableOverlay';
 import './MapLegend.css';
 
 interface LegendItem {
@@ -9,6 +10,15 @@ interface LegendItem {
   label: string;
   translate?: boolean;
 }
+
+// Default position: top-right, below the Features checkbox panel, right-aligned with it
+// Map container starts at top: 60px (header)
+// Features panel is at right: 10px (relative to map), height ~250px when expanded
+// Legend is ~100px wide (including drag handle)
+const getDefaultPosition = () => ({
+  x: window.innerWidth - 100 - 10, // right-align: viewport - legend width - 10px margin (same as Features)
+  y: 60 + 10 + 250 + 20 // header + features top + features height + gap = 340
+});
 
 const MapLegend: React.FC = () => {
   const { t } = useTranslation();
@@ -24,18 +34,24 @@ const MapLegend: React.FC = () => {
   ];
 
   return (
-    <div className="map-legend">
-      <span className="legend-title">{t('map.legend.hops')}</span>
-      {legendItems.map((item, index) => (
-        <div key={index} className="legend-item">
-          <div
-            className="legend-dot"
-            style={{ backgroundColor: item.color }}
-          />
-          <span className="legend-label">{item.translate ? t(item.label) : item.label}</span>
-        </div>
-      ))}
-    </div>
+    <DraggableOverlay
+      id="map-legend"
+      defaultPosition={getDefaultPosition()}
+      className="map-legend-wrapper"
+    >
+      <div className="map-legend">
+        <span className="legend-title">{t('map.legend.hops')}</span>
+        {legendItems.map((item, index) => (
+          <div key={index} className="legend-item">
+            <div
+              className="legend-dot"
+              style={{ backgroundColor: item.color }}
+            />
+            <span className="legend-label">{item.translate ? t(item.label) : item.label}</span>
+          </div>
+        ))}
+      </div>
+    </DraggableOverlay>
   );
 };
 
