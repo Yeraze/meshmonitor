@@ -21,14 +21,17 @@ router.use(requireAuth());
 
 /**
  * GET /api/upgrade/status
- * Check if upgrade functionality is enabled
+ * Check if upgrade functionality is enabled and if an upgrade is in progress
  */
-router.get('/status', (_req: Request, res: Response) => {
+router.get('/status', async (_req: Request, res: Response) => {
   try {
+    const activeUpgrade = await upgradeService.getActiveUpgrade();
+
     return res.json({
       enabled: upgradeService.isEnabled(),
       deploymentMethod: upgradeService.getDeploymentMethod(),
-      currentVersion: packageJson.version
+      currentVersion: packageJson.version,
+      activeUpgrade: activeUpgrade || null
     });
   } catch (error) {
     logger.error('Error checking upgrade status:', error);

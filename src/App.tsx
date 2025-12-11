@@ -990,6 +990,29 @@ function App() {
           } else {
             setUpdateAvailable(false);
           }
+
+          // If auto-upgrade was triggered by the server, check for active upgrade status
+          // This handles the case when auto-upgrade immediate is enabled
+          if (data.autoUpgradeTriggered && !upgradeInProgress) {
+            logger.info('Auto-upgrade was triggered by server, checking for active upgrade...');
+            // The upgrade status will be picked up by the checkUpgradeStatus effect
+            // but we can also immediately fetch it here
+            try {
+              const statusResponse = await authFetch(`${baseUrl}/api/upgrade/status`);
+              if (statusResponse.ok) {
+                const statusData = await statusResponse.json();
+                if (statusData.activeUpgrade) {
+                  setUpgradeInProgress(true);
+                  setUpgradeId(statusData.activeUpgrade.upgradeId);
+                  setUpgradeStatus(statusData.activeUpgrade.currentStep);
+                  setUpgradeProgress(statusData.activeUpgrade.progress);
+                  pollUpgradeStatus(statusData.activeUpgrade.upgradeId);
+                }
+              }
+            } catch (statusError) {
+              logger.debug('Failed to fetch upgrade status after auto-upgrade trigger:', statusError);
+            }
+          }
         } else if (response.status == 404) {
           clearInterval(interval);
         }
@@ -1006,7 +1029,7 @@ function App() {
     return () => clearInterval(interval);
   }, [baseUrl]);
 
-  // Check if auto-upgrade is enabled
+  // Check if auto-upgrade is enabled and if an upgrade is already in progress
   useEffect(() => {
     const checkUpgradeStatus = async () => {
       try {
@@ -1014,6 +1037,20 @@ function App() {
         if (response.ok) {
           const data = await response.json();
           setUpgradeEnabled(data.enabled && data.deploymentMethod === 'docker');
+
+          // If an upgrade is already in progress (e.g., auto-upgrade was triggered),
+          // set the upgrade state and start polling for status
+          if (data.activeUpgrade && !upgradeInProgress) {
+            logger.info('Active upgrade detected, resuming progress tracking');
+            setUpgradeInProgress(true);
+            setUpgradeId(data.activeUpgrade.upgradeId);
+            setUpgradeStatus(data.activeUpgrade.currentStep);
+            setUpgradeProgress(data.activeUpgrade.progress);
+            setLatestVersion(data.activeUpgrade.toVersion);
+            setUpdateAvailable(true);
+            // Start polling for status updates
+            pollUpgradeStatus(data.activeUpgrade.upgradeId);
+          }
         }
       } catch (error) {
         logger.debug('Auto-upgrade not available:', error);
