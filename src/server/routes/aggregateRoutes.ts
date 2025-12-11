@@ -90,11 +90,12 @@ router.get('/summary', (_req: Request, res: Response) => {
     
     let lastUpdate: string;
     if (messages.length > 0 && nodes.length > 0) {
-      const lastMessageTime = messages[0].timestamp;
+      // Messages use milliseconds, nodes use milliseconds for updatedAt
+      const lastMessageTime = messages[0].rxTime || messages[0].timestamp;
       const lastNodeTime = Math.max(...nodes.map(n => n.updatedAt || 0));
       lastUpdate = new Date(Math.max(lastMessageTime, lastNodeTime)).toISOString();
     } else if (messages.length > 0) {
-      lastUpdate = new Date(messages[0].timestamp).toISOString();
+      lastUpdate = new Date(messages[0].rxTime || messages[0].timestamp).toISOString();
     } else if (nodes.length > 0) {
       lastUpdate = new Date(Math.max(...nodes.map(n => n.updatedAt || 0))).toISOString();
     } else {
@@ -140,7 +141,7 @@ router.get('/nodes', (_req: Request, res: Response) => {
         channelUtilization: node.channelUtilization,
         airUtilTx: node.airUtilTx,
       },
-      lastSeen: node.lastHeard ? new Date(node.lastHeard).toISOString() : undefined,
+      lastSeen: node.lastHeard ? new Date(node.lastHeard * 1000).toISOString() : undefined,
       hardwareModel: node.hwModel,
       firmwareVersion: node.firmwareVersion,
       role: node.role,
@@ -199,7 +200,9 @@ router.get('/messages', (req: Request, res: Response) => {
     if (channel !== undefined) {
       messages = databaseService.getMessagesByChannel(channel, limit + offset);
     } else if (since) {
-      messages = databaseService.getMessagesAfterTimestamp(since);
+      // Convert ISO 8601 to milliseconds timestamp
+      const sinceTimestamp = new Date(since).getTime();
+      messages = databaseService.getMessagesAfterTimestamp(sinceTimestamp);
       messages = messages.slice(0, limit + offset);
     } else {
       messages = databaseService.getMessages(limit + offset);
@@ -220,7 +223,7 @@ router.get('/messages', (req: Request, res: Response) => {
       to: msg.toNodeId !== '!00000000' ? msg.toNodeId : undefined,
       text: msg.text,
       channel: msg.channel,
-      timestamp: new Date(msg.timestamp).toISOString(),
+      timestamp: new Date(msg.rxTime || msg.timestamp).toISOString(),
       packetId: msg.requestId,
       hopLimit: msg.hopLimit,
       hopStart: msg.hopStart,
@@ -285,12 +288,14 @@ router.get('/stats', (_req: Request, res: Response) => {
 
     // Get first and last message timestamps
     const messages = databaseService.getMessages(1);
-    const lastMessageTime = messages.length > 0 ? new Date(messages[0].timestamp).toISOString() : undefined;
+    const lastMessageTime = messages.length > 0 
+      ? new Date(messages[0].rxTime || messages[0].timestamp).toISOString() 
+      : undefined;
 
-    // Get first message (oldest)
+    // Get first message (oldest) - need to get all and find oldest
     const allMessages = databaseService.getMessages(10000);
     const firstMessageTime = allMessages.length > 0 
-      ? new Date(allMessages[allMessages.length - 1].timestamp).toISOString() 
+      ? new Date(allMessages[allMessages.length - 1].rxTime || allMessages[allMessages.length - 1].timestamp).toISOString() 
       : undefined;
 
     res.json({
