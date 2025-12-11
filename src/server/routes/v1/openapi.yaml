@@ -49,6 +49,8 @@ tags:
     description: Network-wide statistics and topology
   - name: Packets
     description: Raw packet log data from the mesh network
+  - name: Solar
+    description: Solar production estimates from forecast.solar
 
 security:
   - BearerAuth: []
@@ -666,6 +668,75 @@ components:
           example: true
         data:
           $ref: '#/components/schemas/Packet'
+
+    SolarEstimate:
+      type: object
+      properties:
+        timestamp:
+          type: integer
+          description: Unix timestamp (seconds) for the estimate period
+          example: 1699560000
+        datetime:
+          type: string
+          format: date-time
+          description: ISO 8601 datetime string
+          example: "2024-11-09T14:00:00.000Z"
+        wattHours:
+          type: number
+          description: Estimated watt-hours of solar production for this period
+          example: 450.5
+        fetchedAt:
+          type: integer
+          description: Unix timestamp when this estimate was fetched from forecast.solar
+          example: 1699557600
+
+    SolarListResponse:
+      type: object
+      required:
+        - success
+        - count
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        count:
+          type: integer
+          description: Number of estimates returned
+          example: 24
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/SolarEstimate'
+
+    SolarRangeResponse:
+      type: object
+      required:
+        - success
+        - count
+        - start
+        - end
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        count:
+          type: integer
+          description: Number of estimates returned
+          example: 24
+        start:
+          type: integer
+          description: Start timestamp of the requested range
+          example: 1699520400
+        end:
+          type: integer
+          description: End timestamp of the requested range
+          example: 1699606800
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/SolarEstimate'
 
 paths:
   /:
@@ -1304,6 +1375,89 @@ paths:
                 $ref: '#/components/schemas/Error'
         '404':
           description: Packet not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /solar:
+    get:
+      tags:
+        - Solar
+      summary: Get solar production estimates
+      description: |
+        Retrieve recent solar production estimates from forecast.solar.
+        Solar monitoring must be enabled and configured in MeshMonitor settings.
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of estimates to return
+          required: false
+          schema:
+            type: integer
+            default: 100
+            minimum: 1
+            maximum: 1000
+      responses:
+        '200':
+          description: Solar estimates retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SolarListResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /solar/range:
+    get:
+      tags:
+        - Solar
+      summary: Get solar estimates for a time range
+      description: Retrieve solar production estimates for a specific time period
+      parameters:
+        - name: start
+          in: query
+          description: Start timestamp (Unix seconds)
+          required: true
+          schema:
+            type: integer
+        - name: end
+          in: query
+          description: End timestamp (Unix seconds)
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Solar estimates retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SolarRangeResponse'
+        '400':
+          description: Bad request (invalid timestamps)
           content:
             application/json:
               schema:
