@@ -85,6 +85,8 @@ interface UIContextType {
   setShowNodeFilterPopup: React.Dispatch<React.SetStateAction<boolean>>;
   isNodeListCollapsed: boolean;
   setIsNodeListCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
+  showIgnoredNodes: boolean;
+  setShowIgnoredNodes: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 const UIContext = createContext<UIContextType | undefined>(undefined);
@@ -164,6 +166,8 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   const [isNodeListCollapsed, setIsNodeListCollapsed] = useState<boolean>(() => {
     return window.innerWidth <= 768;
   });
+  // Default to hiding ignored nodes
+  const [showIgnoredNodes, setShowIgnoredNodes] = useState<boolean>(false);
 
   // Sync activeTab to URL hash when activeTab changes
   useEffect(() => {
@@ -266,6 +270,8 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
         setShowNodeFilterPopup,
         isNodeListCollapsed,
         setIsNodeListCollapsed,
+        showIgnoredNodes,
+        setShowIgnoredNodes,
       }}
     >
       {children}

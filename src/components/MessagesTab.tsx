@@ -120,6 +120,7 @@ export interface MessagesTabProps {
   handleSenderClick: (nodeId: string, event: React.MouseEvent) => void;
   handleSendTapback: (emoji: string, message: MeshMessage) => void;
   getRecentTraceroute: (nodeId: string) => TracerouteData | null;
+  toggleIgnored: (node: DeviceInfo, event: React.MouseEvent) => Promise<void>;
 
   // Modal controls
   setShowTracerouteHistoryModal: (show: boolean) => void;
@@ -177,6 +178,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   handleSenderClick,
   handleSendTapback,
   getRecentTraceroute,
+  toggleIgnored,
   setShowTracerouteHistoryModal,
   setShowPurgeDataModal,
   setEmojiPickerMessage,
@@ -824,6 +826,24 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                   >
                     📍 {t('messages.exchange_position')}
                     {positionLoading === selectedDMNode && <span className="spinner"></span>}
+                  </button>
+                )}
+                {hasPermission('messages', 'write') && selectedNode && (
+                  <button
+                    onClick={(e) => toggleIgnored(selectedNode, e)}
+                    className={selectedNode.isIgnored ? 'traceroute-btn' : 'danger-btn'}
+                    style={{
+                      backgroundColor: selectedNode.isIgnored ? '#28a745' : '#6c757d',
+                      color: 'white',
+                      border: 'none',
+                      padding: '0.5rem 1rem',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontWeight: 'bold',
+                    }}
+                    title={selectedNode.isIgnored ? t('messages.unignore_node_title') : t('messages.ignore_node_title')}
+                  >
+                    {selectedNode.isIgnored ? t('messages.unignore_node') : t('messages.ignore_node')}
                   </button>
                 )}
                 {hasPermission('messages', 'write') && (

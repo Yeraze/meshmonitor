@@ -129,6 +129,7 @@ function App() {
     maxHops: number;
     showPKI: boolean;
     showUnknown: boolean;
+    showIgnored: boolean;
     deviceRoles: number[];
     channels: number[];
   }
@@ -152,6 +153,10 @@ function App() {
         if (!parsed.deviceRoles) {
           parsed.deviceRoles = [];
         }
+        // Add showIgnored if it doesn't exist (backward compatibility)
+        if (parsed.showIgnored === undefined) {
+          parsed.showIgnored = false;
+        }
         return parsed;
       } catch (e) {
         logger.error('Failed to parse saved node filters:', e);
@@ -168,6 +173,7 @@ function App() {
       maxHops: 10,
       showPKI: false,
       showUnknown: false,
+      showIgnored: false,
       deviceRoles: [] as number[], // Empty array means show all roles
       channels: [] as number[],
     };
@@ -3058,6 +3064,13 @@ function App() {
         if (!isShowMode && matches) return false;
       }
 
+      // Ignored nodes filter - hide ignored nodes by default
+      // When showIgnored is false (default): hide ignored nodes
+      // When showIgnored is true: show ignored nodes
+      if (!nodeFilters.showIgnored && node.isIgnored) {
+        return false;
+      }
+
       // Device role filter
       if (nodeFilters.deviceRoles.length > 0) {
         const role = typeof node.user?.role === 'number' ? node.user.role : parseInt(node.user?.role || '0');
@@ -3470,6 +3483,18 @@ function App() {
                   <span>Unknown nodes</span>
                 </span>
               </label>
+
+              <label className="filter-checkbox">
+                <input
+                  type="checkbox"
+                  checked={nodeFilters.showIgnored}
+                  onChange={e => setNodeFilters({ ...nodeFilters, showIgnored: e.target.checked })}
+                />
+                <span className="filter-label-with-icon">
+                  <span className="filter-icon">🚫</span>
+                  <span>Show ignored nodes</span>
+                </span>
+              </label>
             </div>
 
             <div className="filter-section">
@@ -3660,6 +3685,7 @@ function App() {
                   maxHops: 10,
                   showPKI: false,
                   showUnknown: false,
+                  showIgnored: false,
                   deviceRoles: [],
                   channels: [],
                 })
@@ -4233,7 +4259,6 @@ function App() {
             shouldShowData={shouldShowData}
             centerMapOnNode={centerMapOnNode}
             toggleFavorite={toggleFavorite}
-            toggleIgnored={toggleIgnored}
             setActiveTab={setActiveTab}
             setSelectedDMNode={setSelectedDMNode}
             markerRefs={markerRefs}
@@ -4330,6 +4355,7 @@ function App() {
             setEmojiPickerMessage={setEmojiPickerMessage}
             shouldShowData={shouldShowData}
             dmMessagesContainerRef={dmMessagesContainerRef}
+            toggleIgnored={toggleIgnored}
           />
         )}
         {activeTab === 'info' && (
