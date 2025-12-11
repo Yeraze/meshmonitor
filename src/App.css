@@ -2763,7 +2763,49 @@ body {
   z-index: 1000;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   backdrop-filter: blur(10px);
-  transition: width 0.3s ease, transform 0.3s ease;
+  transition: width 0.3s ease, transform 0.3s ease, left 0s, top 0s;
+  /* Allow dynamic positioning - transition disabled for position to enable smooth dragging */
+}
+
+/* Resize handle for nodes sidebar */
+.sidebar-resize-handle {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 20px;
+  height: 20px;
+  cursor: nwse-resize;
+  z-index: 1001;
+  background: linear-gradient(
+    -45deg,
+    transparent 0%,
+    transparent 30%,
+    var(--ctp-overlay1) 30%,
+    var(--ctp-overlay1) 35%,
+    transparent 35%,
+    transparent 65%,
+    var(--ctp-overlay1) 65%,
+    var(--ctp-overlay1) 70%,
+    transparent 70%
+  );
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.sidebar-resize-handle:hover {
+  opacity: 1;
+  background: linear-gradient(
+    -45deg,
+    transparent 0%,
+    transparent 30%,
+    var(--ctp-blue) 30%,
+    var(--ctp-blue) 35%,
+    transparent 35%,
+    transparent 65%,
+    var(--ctp-blue) 65%,
+    var(--ctp-blue) 70%,
+    transparent 70%
+  );
 }
 
 /* Messages sidebar - blocking left panel on desktop */
@@ -2797,11 +2839,16 @@ body {
 .nodes-sidebar.collapsed {
   width: auto;
   max-width: 60px;
-  top: 0;
-  left: 0;
+  top: 0 !important;
+  left: 0 !important;
+  /* Override dynamic positioning when collapsed */
 }
 
 .nodes-sidebar.collapsed .nodes-list {
+  display: none;
+}
+
+.nodes-sidebar.collapsed .sidebar-resize-handle {
   display: none;
 }
 
@@ -2820,6 +2867,12 @@ body {
   background: var(--ctp-mantle);
   flex-shrink: 0;
   position: relative;
+  user-select: none;
+  /* Prevent text selection while dragging */
+}
+
+.sidebar-header:active {
+  cursor: grabbing;
 }
 
 .sidebar-header-content {
@@ -4493,6 +4546,9 @@ body {
   padding: 0.75rem;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  user-select: none;
+  transition: left 0s, top 0s, right 0s;
+  /* Disable transition for position to enable smooth dragging */
 }
 
 .map-control-item {
@@ -4517,14 +4573,22 @@ body {
 }
 
 /* Map controls title */
+.map-controls-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
 .map-controls-title {
   font-size: 0.95rem;
   font-weight: 600;
   color: var(--ctp-mauve);
-  margin-bottom: 0.5rem;
   padding-right: 28px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  flex: 1;
 }
 
 /* Map controls collapse button */
@@ -4546,6 +4610,8 @@ body {
   transition: all 0.2s ease;
   padding: 0;
   line-height: 1;
+  z-index: 10;
+  /* Position relative to map-controls container, not header */
 }
 
 .map-controls-collapse-btn:hover {
@@ -4565,6 +4631,10 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  top: 10px !important;
+  right: 10px !important;
+  left: auto !important;
+  /* Override dynamic positioning when collapsed */
 }
 
 /* Center the collapse button when collapsed */

@@ -19,6 +19,8 @@ interface NodeOption {
   longName: string;
   shortName: string;
   isLocal: boolean;
+  isFavorite?: boolean;
+  isIgnored?: boolean;
 }
 
 const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeId, channels: _channels = [], onChannelsUpdated: _onChannelsUpdated }) => {
@@ -29,6 +31,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
+  const nodeManagementSearchRef = useRef<HTMLDivElement>(null);
   // Store channels for remote nodes
   const [remoteNodeChannels, setRemoteNodeChannels] = useState<Channel[]>([]);
 
@@ -98,6 +101,11 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   const [isLoadingLoRaConfig, setIsLoadingLoRaConfig] = useState(false);
   const [isLoadingPositionConfig, setIsLoadingPositionConfig] = useState(false);
   const [isLoadingMQTTConfig, setIsLoadingMQTTConfig] = useState(false);
+
+  // Node management state (favorites/ignored)
+  const [nodeManagementNodeNum, setNodeManagementNodeNum] = useState<number | null>(null);
+  const [showNodeManagementSearch, setShowNodeManagementSearch] = useState(false);
+  const [nodeManagementSearchQuery, setNodeManagementSearchQuery] = useState('');
   const [isLoadingChannels, setIsLoadingChannels] = useState(false);
   const [channelLoadProgress, setChannelLoadProgress] = useState<string>('');
 
@@ -119,7 +127,9 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         nodeId: localNodeId,
         longName: localNode.user?.longName || localNode.longName || 'Local Node',
         shortName: localNode.user?.shortName || localNode.shortName || 'LOCAL',
-        isLocal: true
+        isLocal: true,
+        isFavorite: localNode.isFavorite ?? false,
+        isIgnored: localNode.isIgnored ?? false
       });
     }
 
@@ -141,7 +151,9 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           nodeId: nodeId,
           longName: longName || `Node ${nodeId}`,
           shortName: shortName || (nodeId.startsWith('!') ? nodeId.substring(1, 5) : nodeId.substring(0, 4)),
-          isLocal: false
+          isLocal: false,
+          isFavorite: node.isFavorite ?? false,
+          isIgnored: node.isIgnored ?? false
         });
       });
 
@@ -172,19 +184,41 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     });
   }, [nodeOptions, searchQuery]);
 
+  // Filter nodes for node management section
+  const filteredNodesForManagement = useMemo(() => {
+    if (!nodeManagementSearchQuery.trim()) {
+      return nodeOptions;
+    }
+    const lowerSearch = nodeManagementSearchQuery.toLowerCase().trim();
+    return nodeOptions.filter(node => {
+      const longName = node.longName.toLowerCase();
+      const shortName = node.shortName.toLowerCase();
+      const nodeId = node.nodeId.toLowerCase();
+      const nodeNumHex = node.nodeNum.toString(16).padStart(8, '0');
+      return longName.includes(lowerSearch) ||
+             shortName.includes(lowerSearch) ||
+             nodeId.includes(lowerSearch) ||
+             nodeNumHex.includes(lowerSearch) ||
+             node.nodeNum.toString().includes(lowerSearch);
+    });
+  }, [nodeOptions, nodeManagementSearchQuery]);
+
   // Close search dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
         setShowSearch(false);
       }
+      if (nodeManagementSearchRef.current && !nodeManagementSearchRef.current.contains(event.target as Node)) {
+        setShowNodeManagementSearch(false);
+      }
     };
 
-    if (showSearch) {
+    if (showSearch || showNodeManagementSearch) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-  }, [showSearch]);
+  }, [showSearch, showNodeManagementSearch]);
 
   const handleNodeSelect = (nodeNum: number) => {
     setSelectedNodeNum(nodeNum);
@@ -742,6 +776,86 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     } catch (error) {
       // Error already handled by executeCommand (toast shown)
       console.error('Purge node DB command failed:', error);
+    }
+  };
+
+  const handleSetFavoriteNode = async () => {
+    if (nodeManagementNodeNum === null) {
+      showToast('Please select a node to favorite', 'error');
+      return;
+    }
+    try {
+      await executeCommand('setFavoriteNode', { nodeNum: nodeManagementNodeNum });
+      showToast(`Node ${nodeManagementNodeNum} set as favorite`, 'success');
+      // Optimistically update local state
+      setNodeOptions(prev => prev.map(node => 
+        node.nodeNum === nodeManagementNodeNum 
+          ? { ...node, isFavorite: true }
+          : node
+      ));
+    } catch (error) {
+      // Error already handled by executeCommand (toast shown)
+      console.error('Set favorite node command failed:', error);
+    }
+  };
+
+  const handleRemoveFavoriteNode = async () => {
+    if (nodeManagementNodeNum === null) {
+      showToast('Please select a node to unfavorite', 'error');
+      return;
+    }
+    try {
+      await executeCommand('removeFavoriteNode', { nodeNum: nodeManagementNodeNum });
+      showToast(`Node ${nodeManagementNodeNum} removed from favorites`, 'success');
+      // Optimistically update local state
+      setNodeOptions(prev => prev.map(node => 
+        node.nodeNum === nodeManagementNodeNum 
+          ? { ...node, isFavorite: false }
+          : node
+      ));
+    } catch (error) {
+      // Error already handled by executeCommand (toast shown)
+      console.error('Remove favorite node command failed:', error);
+    }
+  };
+
+  const handleSetIgnoredNode = async () => {
+    if (nodeManagementNodeNum === null) {
+      showToast('Please select a node to ignore', 'error');
+      return;
+    }
+    try {
+      await executeCommand('setIgnoredNode', { nodeNum: nodeManagementNodeNum });
+      showToast(`Node ${nodeManagementNodeNum} set as ignored`, 'success');
+      // Optimistically update local state
+      setNodeOptions(prev => prev.map(node => 
+        node.nodeNum === nodeManagementNodeNum 
+          ? { ...node, isIgnored: true }
+          : node
+      ));
+    } catch (error) {
+      // Error already handled by executeCommand (toast shown)
+      console.error('Set ignored node command failed:', error);
+    }
+  };
+
+  const handleRemoveIgnoredNode = async () => {
+    if (nodeManagementNodeNum === null) {
+      showToast('Please select a node to un-ignore', 'error');
+      return;
+    }
+    try {
+      await executeCommand('removeIgnoredNode', { nodeNum: nodeManagementNodeNum });
+      showToast(`Node ${nodeManagementNodeNum} removed from ignored list`, 'success');
+      // Optimistically update local state
+      setNodeOptions(prev => prev.map(node => 
+        node.nodeNum === nodeManagementNodeNum 
+          ? { ...node, isIgnored: false }
+          : node
+      ));
+    } catch (error) {
+      // Error already handled by executeCommand (toast shown)
+      console.error('Remove ignored node command failed:', error);
     }
   };
 
@@ -2165,6 +2279,234 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             {(isLoadingChannels || isLoadingLoRaConfig) ? 'Loading...' : '📤 Export Configuration'}
           </button>
         </div>
+      </div>
+
+      {/* Node Favorites & Ignored Section */}
+      <div className="settings-section" style={{ marginTop: '2rem' }}>
+        <h3>Node Favorites & Ignored</h3>
+        <p style={{ color: 'var(--ctp-subtext0)', marginBottom: '1.5rem' }}>
+          Manage favorite and ignored nodes on the target device. Favorites are prioritized in the node list, while ignored nodes are hidden from normal operations.
+        </p>
+        
+        <div className="setting-item">
+          <label>
+            Select Node
+            <span className="setting-description">
+              Choose a node to manage its favorite or ignored status on the target device.
+            </span>
+          </label>
+          <div ref={nodeManagementSearchRef} style={{ position: 'relative', width: '100%', maxWidth: '600px' }}>
+            <input
+              type="text"
+              className="setting-input"
+              placeholder={nodeManagementNodeNum !== null 
+                ? nodeOptions.find(n => n.nodeNum === nodeManagementNodeNum)?.longName || `Node ${nodeManagementNodeNum}`
+                : "Search for a node to manage..."}
+              value={nodeManagementSearchQuery}
+              onChange={(e) => {
+                setNodeManagementSearchQuery(e.target.value);
+                setShowNodeManagementSearch(true);
+              }}
+              onFocus={() => setShowNodeManagementSearch(true)}
+              disabled={isExecuting || nodeOptions.length === 0}
+              style={{ width: '100%' }}
+            />
+            {showNodeManagementSearch && filteredNodesForManagement.length > 0 && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                right: 0,
+                marginTop: '4px',
+                background: 'var(--ctp-base)',
+                border: '2px solid var(--ctp-surface2)',
+                borderRadius: '8px',
+                maxHeight: '300px',
+                overflowY: 'auto',
+                zIndex: 1000,
+                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
+              }}>
+                {filteredNodesForManagement.map(node => (
+                  <div
+                    key={node.nodeNum}
+                    onClick={() => {
+                      setNodeManagementNodeNum(node.nodeNum);
+                      setShowNodeManagementSearch(false);
+                      setNodeManagementSearchQuery(node.longName);
+                    }}
+                    style={{
+                      padding: '0.75rem 1rem',
+                      cursor: 'pointer',
+                      borderBottom: '1px solid var(--ctp-surface1)',
+                      transition: 'background 0.1s',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = 'var(--ctp-surface0)'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: '500', color: 'var(--ctp-text)', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <span>{node.longName}</span>
+                        {node.isLocal && <span style={{ color: 'var(--ctp-blue)', fontSize: '0.85rem' }}>(Local)</span>}
+                        {node.isFavorite && (
+                          <span style={{ 
+                            backgroundColor: 'var(--ctp-yellow)', 
+                            color: 'var(--ctp-base)', 
+                            padding: '0.125rem 0.5rem', 
+                            borderRadius: '4px', 
+                            fontSize: '0.75rem',
+                            fontWeight: '600'
+                          }}>
+                            ⭐ Favorite
+                          </span>
+                        )}
+                        {node.isIgnored && (
+                          <span style={{ 
+                            backgroundColor: 'var(--ctp-red)', 
+                            color: 'var(--ctp-base)', 
+                            padding: '0.125rem 0.5rem', 
+                            borderRadius: '4px', 
+                            fontSize: '0.75rem',
+                            fontWeight: '600'
+                          }}>
+                            🚫 Ignored
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: '0.85rem', color: 'var(--ctp-subtext0)', marginTop: '0.25rem' }}>
+                        {node.shortName && node.shortName !== node.longName && `${node.shortName} • `}
+                        {node.nodeId}
+                      </div>
+                    </div>
+                    {nodeManagementNodeNum === node.nodeNum && (
+                      <span style={{ color: 'var(--ctp-blue)', fontSize: '1.2rem' }}>✓</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          {nodeManagementNodeNum !== null && (() => {
+            const selectedNode = nodeOptions.find(n => n.nodeNum === nodeManagementNodeNum);
+            return (
+              <div style={{ marginTop: '0.75rem', fontSize: '0.875rem', color: 'var(--ctp-subtext0)' }}>
+                Selected: {selectedNode?.longName || `Node ${nodeManagementNodeNum}`}
+                {selectedNode && (
+                  <span style={{ marginLeft: '0.5rem' }}>
+                    {selectedNode.isFavorite && <span style={{ color: 'var(--ctp-yellow)' }}>⭐ Favorite</span>}
+                    {selectedNode.isIgnored && <span style={{ color: 'var(--ctp-red)', marginLeft: '0.5rem' }}>🚫 Ignored</span>}
+                  </span>
+                )}
+              </div>
+            );
+          })()}
+        </div>
+
+        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '1.5rem' }}>
+          <div style={{ flex: 1, minWidth: '200px' }}>
+            <h4 style={{ marginBottom: '0.75rem', color: 'var(--ctp-text)' }}>⭐ Favorites</h4>
+            {(() => {
+              const selectedNode = nodeManagementNodeNum !== null ? nodeOptions.find(n => n.nodeNum === nodeManagementNodeNum) : null;
+              const isCurrentlyFavorite = selectedNode?.isFavorite ?? false;
+              const isDisabled = isExecuting || nodeManagementNodeNum === null;
+              
+              return (
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={handleSetFavoriteNode}
+                    disabled={isDisabled || isCurrentlyFavorite}
+                    style={{
+                      flex: 1,
+                      padding: '0.75rem 1rem',
+                      backgroundColor: isCurrentlyFavorite ? 'var(--ctp-surface1)' : 'var(--ctp-yellow)',
+                      color: isCurrentlyFavorite ? 'var(--ctp-subtext0)' : 'var(--ctp-base)',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: (isDisabled || isCurrentlyFavorite) ? 'not-allowed' : 'pointer',
+                      fontSize: '0.9rem',
+                      fontWeight: '500',
+                      opacity: (isDisabled || isCurrentlyFavorite) ? 0.6 : 1
+                    }}
+                  >
+                    {isCurrentlyFavorite ? '✓ Already Favorite' : 'Set as Favorite'}
+                  </button>
+                  <button
+                    onClick={handleRemoveFavoriteNode}
+                    disabled={isDisabled || !isCurrentlyFavorite}
+                    style={{
+                      flex: 1,
+                      padding: '0.75rem 1rem',
+                      backgroundColor: !isCurrentlyFavorite ? 'var(--ctp-surface1)' : 'var(--ctp-surface2)',
+                      color: 'var(--ctp-text)',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: (isDisabled || !isCurrentlyFavorite) ? 'not-allowed' : 'pointer',
+                      fontSize: '0.9rem',
+                      fontWeight: '500',
+                      opacity: (isDisabled || !isCurrentlyFavorite) ? 0.6 : 1
+                    }}
+                  >
+                    Remove Favorite
+                  </button>
+                </div>
+              );
+            })()}
+          </div>
+          <div style={{ flex: 1, minWidth: '200px' }}>
+            <h4 style={{ marginBottom: '0.75rem', color: 'var(--ctp-text)' }}>🚫 Ignored</h4>
+            {(() => {
+              const selectedNode = nodeManagementNodeNum !== null ? nodeOptions.find(n => n.nodeNum === nodeManagementNodeNum) : null;
+              const isCurrentlyIgnored = selectedNode?.isIgnored ?? false;
+              const isDisabled = isExecuting || nodeManagementNodeNum === null;
+              
+              return (
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={handleSetIgnoredNode}
+                    disabled={isDisabled || isCurrentlyIgnored}
+                    style={{
+                      flex: 1,
+                      padding: '0.75rem 1rem',
+                      backgroundColor: isCurrentlyIgnored ? 'var(--ctp-surface1)' : 'var(--ctp-red)',
+                      color: isCurrentlyIgnored ? 'var(--ctp-subtext0)' : 'var(--ctp-base)',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: (isDisabled || isCurrentlyIgnored) ? 'not-allowed' : 'pointer',
+                      fontSize: '0.9rem',
+                      fontWeight: '500',
+                      opacity: (isDisabled || isCurrentlyIgnored) ? 0.6 : 1
+                    }}
+                  >
+                    {isCurrentlyIgnored ? '✓ Already Ignored' : 'Set as Ignored'}
+                  </button>
+                  <button
+                    onClick={handleRemoveIgnoredNode}
+                    disabled={isDisabled || !isCurrentlyIgnored}
+                    style={{
+                      flex: 1,
+                      padding: '0.75rem 1rem',
+                      backgroundColor: !isCurrentlyIgnored ? 'var(--ctp-surface1)' : 'var(--ctp-surface2)',
+                      color: 'var(--ctp-text)',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: (isDisabled || !isCurrentlyIgnored) ? 'not-allowed' : 'pointer',
+                      fontSize: '0.9rem',
+                      fontWeight: '500',
+                      opacity: (isDisabled || !isCurrentlyIgnored) ? 0.6 : 1
+                    }}
+                  >
+                    Remove Ignored
+                  </button>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+        <p style={{ marginTop: '1rem', fontSize: '0.85rem', color: 'var(--ctp-subtext1)', fontStyle: 'italic' }}>
+          Note: These commands require firmware version 2.7.0 or higher. The target device must be selected in the "Target Node" section above.
+        </p>
       </div>
 
       {/* Channel Edit Modal */}

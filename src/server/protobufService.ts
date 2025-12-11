@@ -617,6 +617,72 @@ class ProtobufService {
   }
 
   /**
+   * Create an AdminMessage to set a node as ignored
+   * @param nodeNum The node number to ignore
+   * @param sessionPasskey The session passkey from the device
+   */
+  createSetIgnoredNodeMessage(nodeNum: number, sessionPasskey?: Uint8Array): Uint8Array {
+    try {
+      const root = getProtobufRoot();
+      const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
+      if (!AdminMessage) {
+        throw new Error('AdminMessage type not found in loaded proto files');
+      }
+
+      const adminMsgData: any = {
+        setIgnoredNode: nodeNum
+      };
+
+      // Only include sessionPasskey if provided
+      if (sessionPasskey && sessionPasskey.length > 0) {
+        adminMsgData.sessionPasskey = sessionPasskey;
+      }
+
+      const adminMsg = AdminMessage.create(adminMsgData);
+
+      const encoded = AdminMessage.encode(adminMsg).finish();
+      logger.debug(`⚙️ Created SetIgnoredNode admin message for node ${nodeNum}`);
+      return encoded;
+    } catch (error) {
+      logger.error('Failed to create SetIgnoredNode message:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create an AdminMessage to remove a node from ignored list
+   * @param nodeNum The node number to un-ignore
+   * @param sessionPasskey The session passkey from the device
+   */
+  createRemoveIgnoredNodeMessage(nodeNum: number, sessionPasskey?: Uint8Array): Uint8Array {
+    try {
+      const root = getProtobufRoot();
+      const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
+      if (!AdminMessage) {
+        throw new Error('AdminMessage type not found in loaded proto files');
+      }
+
+      const adminMsgData: any = {
+        removeIgnoredNode: nodeNum
+      };
+
+      // Only include sessionPasskey if provided
+      if (sessionPasskey && sessionPasskey.length > 0) {
+        adminMsgData.sessionPasskey = sessionPasskey;
+      }
+
+      const adminMsg = AdminMessage.create(adminMsgData);
+
+      const encoded = AdminMessage.encode(adminMsg).finish();
+      logger.debug(`⚙️ Created RemoveIgnoredNode admin message for node ${nodeNum}`);
+      return encoded;
+    } catch (error) {
+      logger.error('Failed to create RemoveIgnoredNode message:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Create an AdminMessage to remove a node from the device NodeDB
    * @param nodeNum The node number to remove from the device
    * @param sessionPasskey Optional session passkey for authentication

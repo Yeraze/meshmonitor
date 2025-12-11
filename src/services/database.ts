@@ -35,6 +35,7 @@ import { migration as perChannelPermissionsMigration } from '../server/migration
 import { migration as apiTokensMigration } from '../server/migrations/025_add_api_tokens.js';
 import { migration as cascadeForeignKeysMigration } from '../server/migrations/028_add_cascade_to_foreign_keys.js';
 import { migration as userMapPreferencesMigration } from '../server/migrations/030_add_user_map_preferences.js';
+import { migration as isIgnoredMigration } from '../server/migrations/033_add_is_ignored_to_nodes.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Configuration constants for traceroute history
@@ -65,6 +66,7 @@ export interface DbNode {
   firmwareVersion?: string;
   channel?: number;
   isFavorite?: boolean;
+  isIgnored?: boolean;
   mobile?: number; // 0 = not mobile, 1 = mobile (moved >100m)
   rebootCount?: number;
   publicKey?: string;
@@ -401,6 +403,7 @@ class DatabaseService {
     this.runAutoWelcomeMigration();
     this.runUserMapPreferencesMigration();
     this.runInactiveNodeNotificationMigration();
+    this.runIsIgnoredMigration();
     this.ensureAutomationDefaults();
     this.isInitialized = true;
   }
@@ -1038,6 +1041,25 @@ class DatabaseService {
       logger.debug('✅ User map preferences migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run user map preferences migration:', error);
+      throw error;
+    }
+  }
+
+  private runIsIgnoredMigration(): void {
+    const migrationKey = 'migration_033_is_ignored';
+    try {
+      const currentStatus = this.getSetting(migrationKey);
+      if (currentStatus === 'completed') {
+        logger.debug('✅ isIgnored migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 033: Add isIgnored column to nodes table...');
+      isIgnoredMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ isIgnored migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run isIgnored migration:', error);
       throw error;
     }
   }
@@ -3241,6 +3263,26 @@ class DatabaseService {
     }
 
     logger.debug(`${isFavorite ? '⭐' : '☆'} Node ${nodeNum} favorite status set to: ${isFavorite} (${result.changes} row updated)`);
+  }
+
+  // Ignored operations
+  setNodeIgnored(nodeNum: number, isIgnored: boolean): void {
+    const now = Date.now();
+    const stmt = this.db.prepare(`
+      UPDATE nodes SET
+        isIgnored = ?,
+        updatedAt = ?
+      WHERE nodeNum = ?
+    `);
+    const result = stmt.run(isIgnored ? 1 : 0, now, nodeNum);
+
+    if (result.changes === 0) {
+      const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
+      logger.warn(`⚠️ Failed to update ignored status for node ${nodeId} (${nodeNum}): node not found in database`);
+      throw new Error(`Node ${nodeId} not found`);
+    }
+
+    logger.debug(`${isIgnored ? '🚫' : '✅'} Node ${nodeNum} ignored status set to: ${isIgnored} (${result.changes} row updated)`);
   }
 
   // Authentication and Authorization

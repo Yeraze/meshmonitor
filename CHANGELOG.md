@@ -50,8 +50,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
     - `/api/admin/ensure-session-passkey` - Manage remote node authentication
   - **Protobuf Enhancements**: Improved AdminMessage decoding with proper nested object conversion
   - **Boolean Normalization**: Consistent boolean handling for channel uplink/downlink settings across local and remote nodes
+- **Node Favorites & Ignored Management** ([#940](https://github.com/Yeraze/meshmonitor/issues/940)): Complete support for managing favorite and ignored nodes
+  - **Local Node Management**: Toggle favorite and ignored status directly from the nodes page
+  - **Remote Node Management**: Manage favorite and ignored nodes on remote devices via Admin Commands tab
+  - **Device Synchronization**: Two-way sync between MeshMonitor database and Meshtastic device
+  - **Database Migration**: Automatic migration to add `isIgnored` column to nodes table
+  - **Optimistic UI Updates**: Immediate visual feedback with proper polling reconciliation
+  - **Firmware Compatibility**: Gracefully handles devices running firmware < 2.7.0 (feature requires 2.7.0+)
+  - **API Endpoints**: New `/api/nodes/:nodeId/favorite` and `/api/nodes/:nodeId/ignored` endpoints
+- **Draggable UI Components** ([#940](https://github.com/Yeraze/meshmonitor/issues/940)): Enhanced user experience with movable and resizable interface elements
+  - **Nodes Sidebar**: Draggable and resizable nodes list with position and size persistence
+  - **Map Legend**: Draggable Hops legend that doesn't interfere with map panning
+  - **Map Controls**: Draggable Features box with improved positioning
+  - **localStorage Persistence**: All component positions and sizes saved across sessions
+  - **Smooth Interactions**: Proper event handling to prevent conflicts with Leaflet map controls
 
 ### Fixed
+- **Auto-Upgrade**: Fixed version check endpoint to prevent multiple upgrade triggers when an upgrade is already in progress
+  - Added pre-check using `isUpgradeInProgress()` before calling `triggerUpgrade()`
+  - Prevents unnecessary upgrade attempts when polling the version check endpoint frequently
+  - Handles race conditions where an upgrade might start between the check and trigger call
+  - Made `isUpgradeInProgress()` public to allow external status checks
+- **Protobuf Error Messages**: Fixed `requestRemoteOwner()` to provide clear error message when protobuf definitions are not loaded
+  - Added explicit null check for `getProtobufRoot()` before use
+  - Now matches the error handling pattern used in `requestRemoteSessionPasskey()` and `requestRemoteChannel()`
+  - Provides informative "Protobuf definitions not loaded" error instead of misleading "AdminMessage type not found"
 - **Channel Import**: Fixed boolean normalization for `uplinkEnabled` and `downlinkEnabled` to default to `true` (enabled) for consistency with local node behavior
 - **Export Modal**: Fixed `useEffect` dependency array to prevent unwanted resets of user channel selections
 - **Error Handling**: Fixed `handleLoadChannels` and `handleLoadLoRaConfig` to properly re-throw errors for `Promise.all` rejection handling
@@ -59,6 +82,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **Protobuf Root**: Added explicit null checks for `getProtobufRoot()` with informative error messages
 - **Button States**: Fixed Edit, Export, and Import channel buttons to properly disable when no node is selected
 - **API Authentication**: Added `credentials: 'include'` to admin API calls to ensure session cookies are sent
+- **Hop Count Calculation**: Fixed `hopCount` assignment to verify `routeArray` is actually an array before accessing `.length`
+  - Prevents `undefined` hopCount values for malformed route data
+  - Added `Array.isArray()` check in all traceroute endpoints
+- **Race Condition in Remote Requests**: Fixed data clearing order in `requestRemoteConfig`, `requestRemoteChannel`, and `requestRemoteOwner`
+  - Data is now cleared *before* sending requests instead of after
+  - Prevents race conditions where incoming responses are immediately deleted, causing polling timeouts
+- **Tapback Routing**: Fixed tapback emoji reactions to respect `alwaysUseDM` flag
+  - Tapbacks now correctly route via DM when `alwaysUseDM` is enabled, matching message reply behavior
+- **CORS Configuration**: Fixed development environment CORS check to correctly recognize localhost origins
+  - Prevents false positive CORS error banners in development mode
 
 ## [2.18.1] - 2025-11-15
 

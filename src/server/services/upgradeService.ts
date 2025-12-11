@@ -318,8 +318,9 @@ class UpgradeService {
   /**
    * Check if an upgrade is currently in progress
    * Also cleans up stale upgrades that have been stuck for too long
+   * @public - Made public to allow external code to check upgrade status before triggering
    */
-  private async isUpgradeInProgress(): Promise<boolean> {
+  async isUpgradeInProgress(): Promise<boolean> {
     try {
       // First, clean up any stale upgrades (stuck for more than 30 minutes)
       const STALE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes

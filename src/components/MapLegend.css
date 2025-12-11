@@ -6,6 +6,9 @@
   gap: 4px;
   font-family: system-ui, -apple-system, sans-serif;
   font-size: 12px;
+  user-select: none;
+  transition: left 0s, top 0s;
+  /* Disable transition for position to enable smooth dragging */
 }
 
 .legend-title {
@@ -13,6 +16,18 @@
   color: #333;
   margin-bottom: 2px;
   font-size: 11px;
+  cursor: grab;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.legend-title:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.legend-title:active {
+  cursor: grabbing;
 }
 
 .legend-item {

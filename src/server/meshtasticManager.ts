@@ -2728,6 +2728,15 @@ class MeshtasticManager {
         }
       }
 
+      // Always sync isIgnored from device to keep in sync with changes made while offline
+      // This ensures ignored nodes are updated when reconnecting
+      if (nodeInfo.isIgnored !== undefined) {
+        nodeData.isIgnored = nodeInfo.isIgnored;
+        if (existingNode && existingNode.isIgnored !== nodeInfo.isIgnored) {
+          logger.debug(`🚫 Updating ignored status for node ${nodeId} from ${existingNode.isIgnored} to ${nodeInfo.isIgnored}`);
+        }
+      }
+
       // Add user information if available
       if (nodeInfo.user) {
         nodeData.longName = nodeInfo.user.longName;
@@ -4647,11 +4656,12 @@ class MeshtasticManager {
         logger.debug(`🤖 Auto-acknowledging with tapback ${hopEmoji} (${hopsTraveled} hops) to ${target}`);
 
         // Send tapback reaction using sendTextMessage with emoji flag
+        // Use same routing logic as message reply: respect alwaysUseDM flag
         try {
           await this.sendTextMessage(
             hopEmoji,
-            isDirectMessage ? 0 : channelIndex,
-            isDirectMessage ? fromNum : undefined,
+            (alwaysUseDM || isDirectMessage) ? 0 : channelIndex,
+            (alwaysUseDM || isDirectMessage) ? fromNum : undefined,
             packetId, // replyId - react to the original message
             1 // emoji flag = 1 for tapback/reaction
           );
@@ -6166,6 +6176,62 @@ class MeshtasticManager {
   }
 
   /**
+   * Send admin message to set a node as ignored on the device
+   */
+  async sendIgnoredNode(nodeNum: number): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    // Check firmware version support (ignored nodes use same version as favorites)
+    if (!this.supportsFavorites()) {
+      throw new Error('FIRMWARE_NOT_SUPPORTED');
+    }
+
+    try {
+      // For local TCP connections, try sending without session passkey first
+      // (there's a known bug where session keys don't work properly over TCP)
+      logger.debug('🚫 Attempting to set ignored node without session key (local TCP admin)');
+      const setIgnoredMsg = protobufService.createSetIgnoredNodeMessage(nodeNum, new Uint8Array()); // empty passkey
+      const adminPacket = protobufService.createAdminPacket(setIgnoredMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum); // send to local node
+
+      await this.transport.send(adminPacket);
+      logger.debug(`🚫 Sent set_ignored_node for ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')})`);
+    } catch (error) {
+      logger.error('❌ Error sending ignored node admin message:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Send admin message to remove a node from ignored list on the device
+   */
+  async sendRemoveIgnoredNode(nodeNum: number): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    // Check firmware version support (ignored nodes use same version as favorites)
+    if (!this.supportsFavorites()) {
+      throw new Error('FIRMWARE_NOT_SUPPORTED');
+    }
+
+    try {
+      // For local TCP connections, try sending without session passkey first
+      // (there's a known bug where session keys don't work properly over TCP)
+      logger.debug('✅ Attempting to remove ignored node without session key (local TCP admin)');
+      const removeIgnoredMsg = protobufService.createRemoveIgnoredNodeMessage(nodeNum, new Uint8Array()); // empty passkey
+      const adminPacket = protobufService.createAdminPacket(removeIgnoredMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum); // send to local node
+
+      await this.transport.send(adminPacket);
+      logger.debug(`✅ Sent remove_ignored_node for ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')})`);
+    } catch (error) {
+      logger.error('❌ Error sending remove ignored node admin message:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Send admin message to remove a node from the device NodeDB
    * This sends the remove_by_nodenum admin command to completely delete a node from the device
    */
@@ -6287,12 +6353,9 @@ class MeshtasticManager {
       const adminMsg = AdminMessage.create(adminMsgData);
       const encoded = AdminMessage.encode(adminMsg).finish();
 
-      // Send the request
-      const adminPacket = protobufService.createAdminPacket(encoded, destinationNodeNum, this.localNodeInfo.nodeNum);
-      await this.transport.send(adminPacket);
-      logger.debug(`📡 Requested ${isModuleConfig ? 'module' : 'device'} config type ${configType} from remote node ${destinationNodeNum}`);
-
       // Clear any existing config for this type before requesting (to ensure fresh data)
+      // This must happen BEFORE sending to prevent race conditions where responses arrive
+      // and get immediately deleted, causing polling loops to timeout
       // Map config types to their keys
       if (isModuleConfig) {
         const moduleConfigMap: { [key: number]: string } = {
@@ -6320,6 +6383,11 @@ class MeshtasticManager {
           }
         }
       }
+
+      // Send the request
+      const adminPacket = protobufService.createAdminPacket(encoded, destinationNodeNum, this.localNodeInfo.nodeNum);
+      await this.transport.send(adminPacket);
+      logger.debug(`📡 Requested ${isModuleConfig ? 'module' : 'device'} config type ${configType} from remote node ${destinationNodeNum}`);
 
       // Wait for the response (config responses can take time, especially over mesh)
       // Remote nodes may take longer due to mesh routing
@@ -6412,16 +6480,18 @@ class MeshtasticManager {
       });
       const encoded = AdminMessage.encode(adminMsg).finish();
 
-      // Send the request
-      const adminPacket = protobufService.createAdminPacket(encoded, destinationNodeNum, this.localNodeInfo.nodeNum);
-      await this.transport.send(adminPacket);
-      logger.debug(`📡 Requested channel ${channelIndex} from remote node ${destinationNodeNum}`);
-
       // Clear any existing channel for this index before requesting (to ensure fresh data)
+      // This must happen BEFORE sending to prevent race conditions where responses arrive
+      // and get immediately deleted, causing polling loops to timeout
       const nodeChannels = this.remoteNodeChannels.get(destinationNodeNum);
       if (nodeChannels) {
         nodeChannels.delete(channelIndex);
       }
+
+      // Send the request
+      const adminPacket = protobufService.createAdminPacket(encoded, destinationNodeNum, this.localNodeInfo.nodeNum);
+      await this.transport.send(adminPacket);
+      logger.debug(`📡 Requested channel ${channelIndex} from remote node ${destinationNodeNum}`);
       
       // Wait for the response
       // Use longer timeout for mesh routing - responses can take longer over mesh
@@ -6485,7 +6555,10 @@ class MeshtasticManager {
 
       // Create the owner request message with session passkey
       const root = getProtobufRoot();
-      const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
+      if (!root) {
+        throw new Error('Protobuf definitions not loaded. Please ensure protobuf definitions are initialized.');
+      }
+      const AdminMessage = root.lookupType('meshtastic.AdminMessage');
       if (!AdminMessage) {
         throw new Error('AdminMessage type not found');
       }
@@ -6496,13 +6569,15 @@ class MeshtasticManager {
       });
       const encoded = AdminMessage.encode(adminMsg).finish();
 
+      // Clear any existing owner for this node before requesting (to ensure fresh data)
+      // This must happen BEFORE sending to prevent race conditions where responses arrive
+      // and get immediately deleted, causing polling loops to timeout
+      this.remoteNodeOwners.delete(destinationNodeNum);
+
       // Send the request
       const adminPacket = protobufService.createAdminPacket(encoded, destinationNodeNum, this.localNodeInfo.nodeNum);
       await this.transport.send(adminPacket);
       logger.debug(`📡 Requested owner info from remote node ${destinationNodeNum}`);
-
-      // Clear any existing owner for this node before requesting (to ensure fresh data)
-      this.remoteNodeOwners.delete(destinationNodeNum);
       
       // Wait for the response
       const maxWaitTime = 3000; // 3 seconds
@@ -6947,6 +7022,11 @@ class MeshtasticManager {
       // Add isFavorite if it exists
       if (node.isFavorite !== null && node.isFavorite !== undefined) {
         deviceInfo.isFavorite = Boolean(node.isFavorite);
+      }
+
+      // Add isIgnored if it exists
+      if (node.isIgnored !== null && node.isIgnored !== undefined) {
+        deviceInfo.isIgnored = Boolean(node.isIgnored);
       }
 
       // Add channel if it exists

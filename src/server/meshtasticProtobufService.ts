@@ -838,6 +838,7 @@ export class MeshtasticProtobufService {
     lastHeard?: number;
     hopsAway?: number;
     isFavorite?: boolean;
+    isIgnored?: boolean;
   }): Promise<Uint8Array | null> {
     const root = getProtobufRoot();
     if (!root) {
@@ -908,6 +909,7 @@ export class MeshtasticProtobufService {
         lastHeard: info.lastHeard,
         hopsAway: info.hopsAway,
         isFavorite: info.isFavorite,
+        isIgnored: info.isIgnored,
       });
 
       const fromRadio = FromRadio.create({
