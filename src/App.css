@@ -1,5 +1,5 @@
 /* Catppuccin Latte (Light) */
-:root[data-theme="latte"] {
+:root[data-theme='latte'] {
   --ctp-base: #eff1f5;
   --ctp-mantle: #e6e9ef;
   --ctp-crust: #dce0e8;
@@ -34,7 +34,7 @@
 }
 
 /* Catppuccin Frappé (Medium) */
-:root[data-theme="frappe"] {
+:root[data-theme='frappe'] {
   --ctp-base: #303446;
   --ctp-mantle: #292c3c;
   --ctp-crust: #232634;
@@ -69,7 +69,7 @@
 }
 
 /* Catppuccin Macchiato (Medium-Dark) */
-:root[data-theme="macchiato"] {
+:root[data-theme='macchiato'] {
   --ctp-base: #24273a;
   --ctp-mantle: #1e2030;
   --ctp-crust: #181926;
@@ -105,7 +105,7 @@
 
 /* Catppuccin Mocha (Dark) - Default */
 :root,
-:root[data-theme="mocha"] {
+:root[data-theme='mocha'] {
   --ctp-base: #1e1e2e;
   --ctp-mantle: #181825;
   --ctp-crust: #11111b;
@@ -140,7 +140,7 @@
 }
 
 /* Nord - Cool blue-gray theme */
-:root[data-theme="nord"] {
+:root[data-theme='nord'] {
   --ctp-base: #2e3440;
   --ctp-mantle: #3b4252;
   --ctp-crust: #434c5e;
@@ -175,7 +175,7 @@
 }
 
 /* Dracula - Popular purple/pink dark theme */
-:root[data-theme="dracula"] {
+:root[data-theme='dracula'] {
   --ctp-base: #282a36;
   --ctp-mantle: #21222c;
   --ctp-crust: #191a21;
@@ -210,7 +210,7 @@
 }
 
 /* Solarized Dark - Classic professional dark theme */
-:root[data-theme="solarized-dark"] {
+:root[data-theme='solarized-dark'] {
   --ctp-base: #002b36;
   --ctp-mantle: #073642;
   --ctp-crust: #073642;
@@ -245,7 +245,7 @@
 }
 
 /* Solarized Light - Classic professional light theme */
-:root[data-theme="solarized-light"] {
+:root[data-theme='solarized-light'] {
   --ctp-base: #fdf6e3;
   --ctp-mantle: #eee8d5;
   --ctp-crust: #eee8d5;
@@ -280,7 +280,7 @@
 }
 
 /* Gruvbox Dark - Warm retro dark theme */
-:root[data-theme="gruvbox-dark"] {
+:root[data-theme='gruvbox-dark'] {
   --ctp-base: #282828;
   --ctp-mantle: #1d2021;
   --ctp-crust: #1d2021;
@@ -315,7 +315,7 @@
 }
 
 /* Gruvbox Light - Warm retro light theme */
-:root[data-theme="gruvbox-light"] {
+:root[data-theme='gruvbox-light'] {
   --ctp-base: #fbf1c7;
   --ctp-mantle: #f9f5d7;
   --ctp-crust: #f2e5bc;
@@ -350,7 +350,7 @@
 }
 
 /* High Contrast Dark - Maximum contrast for dark mode */
-:root[data-theme="high-contrast-dark"] {
+:root[data-theme='high-contrast-dark'] {
   --ctp-base: #000000;
   --ctp-mantle: #0a0a0a;
   --ctp-crust: #0f0f0f;
@@ -385,7 +385,7 @@
 }
 
 /* High Contrast Light - Maximum contrast for light mode */
-:root[data-theme="high-contrast-light"] {
+:root[data-theme='high-contrast-light'] {
   --ctp-base: #ffffff;
   --ctp-mantle: #f5f5f5;
   --ctp-crust: #e8e8e8;
@@ -420,7 +420,7 @@
 }
 
 /* Protanopia - Red-blind friendly (blue/yellow contrast) */
-:root[data-theme="protanopia"] {
+:root[data-theme='protanopia'] {
   --ctp-base: #1a1d23;
   --ctp-mantle: #151820;
   --ctp-crust: #0f1116;
@@ -455,7 +455,7 @@
 }
 
 /* Deuteranopia - Green-blind friendly (blue/yellow contrast) */
-:root[data-theme="deuteranopia"] {
+:root[data-theme='deuteranopia'] {
   --ctp-base: #1a1d23;
   --ctp-mantle: #151820;
   --ctp-crust: #0f1116;
@@ -490,7 +490,7 @@
 }
 
 /* Tritanopia - Blue-blind friendly (red/cyan contrast) */
-:root[data-theme="tritanopia"] {
+:root[data-theme='tritanopia'] {
   --ctp-base: #1a1d23;
   --ctp-mantle: #151820;
   --ctp-crust: #0f1116;
@@ -531,9 +531,8 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans',
+    'Droid Sans', 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background: var(--ctp-base);
@@ -1078,7 +1077,9 @@ body {
   padding: 2rem;
 }
 
-.connection-panel, .nodes-panel, .messages-panel {
+.connection-panel,
+.nodes-panel,
+.messages-panel {
   background: var(--ctp-surface0);
   border-radius: 12px;
   padding: 1.5rem;
@@ -1086,7 +1087,9 @@ body {
   border: 1px solid var(--ctp-surface1);
 }
 
-.connection-panel h2, .nodes-panel h2, .messages-panel h2 {
+.connection-panel h2,
+.nodes-panel h2,
+.messages-panel h2 {
   margin-top: 0;
   margin-bottom: 1rem;
   color: var(--ctp-subtext1);
@@ -1280,7 +1283,8 @@ body {
   font-size: 0.9rem;
 }
 
-.no-nodes, .no-messages {
+.no-nodes,
+.no-messages {
   text-align: center;
   color: var(--ctp-overlay1);
   padding: 2rem;
@@ -1886,7 +1890,7 @@ body {
   border-color: var(--ctp-blue);
 }
 
-.mqtt-toggle input[type="checkbox"] {
+.mqtt-toggle input[type='checkbox'] {
   width: 16px;
   height: 16px;
   accent-color: var(--ctp-blue);
@@ -1903,11 +1907,13 @@ body {
   margin-top: 2rem;
 }
 
-.channel-selector, .dm-selector {
+.channel-selector,
+.dm-selector {
   margin-bottom: 1.5rem;
 }
 
-.channel-select, .node-select {
+.channel-select,
+.node-select {
   padding: 0.5rem 1rem;
   border: 2px solid var(--ctp-surface1);
   border-radius: 8px;
@@ -1919,7 +1925,8 @@ body {
   transition: border-color 0.2s;
 }
 
-.channel-select:focus, .node-select:focus {
+.channel-select:focus,
+.node-select:focus {
   outline: none;
   border-color: var(--ctp-lavender);
 }
@@ -2392,7 +2399,8 @@ body {
 }
 
 @keyframes pulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 0.6;
   }
   50% {
@@ -2437,7 +2445,10 @@ body {
   opacity: 1;
 }
 
-.reply-button, .emoji-button, .emoji-picker-button, .delete-button {
+.reply-button,
+.emoji-button,
+.emoji-picker-button,
+.delete-button {
   background: var(--ctp-surface2);
   color: var(--ctp-text);
   border: 1px solid var(--ctp-overlay0);
@@ -2449,7 +2460,9 @@ body {
   white-space: nowrap;
 }
 
-.emoji-button, .emoji-picker-button, .delete-button {
+.emoji-button,
+.emoji-picker-button,
+.delete-button {
   padding: 0.25rem 0.4rem;
   font-size: 0.9rem;
   line-height: 1;
@@ -2460,7 +2473,10 @@ body {
   justify-content: center;
 }
 
-.reply-button:hover, .emoji-button:hover, .emoji-picker-button:hover, .delete-button:hover {
+.reply-button:hover,
+.emoji-button:hover,
+.emoji-picker-button:hover,
+.delete-button:hover {
   background: var(--ctp-surface1);
   border-color: var(--ctp-overlay1);
   transform: scale(1.1);
@@ -2472,7 +2488,8 @@ body {
   color: var(--ctp-base);
 }
 
-.emoji-button:active, .emoji-picker-button:active {
+.emoji-button:active,
+.emoji-picker-button:active {
   transform: scale(0.95);
 }
 
@@ -2862,7 +2879,7 @@ body {
 }
 
 .sidebar-header {
-  padding: 1rem;
+  padding: 1rem 1rem 0 1rem;
   border-bottom: 1px solid var(--ctp-surface2);
   background: var(--ctp-mantle);
   flex-shrink: 0;
@@ -2880,7 +2897,7 @@ body {
   flex-direction: column;
   align-items: flex-start;
   gap: 0.5rem;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0;
 }
 
 .sidebar-header h3 {
@@ -3125,7 +3142,7 @@ body {
   background: var(--ctp-surface0);
 }
 
-.filter-checkbox input[type="checkbox"] {
+.filter-checkbox input[type='checkbox'] {
   cursor: pointer;
   width: 18px;
   height: 18px;
@@ -3164,7 +3181,7 @@ body {
   background: var(--ctp-surface0);
 }
 
-.filter-radio input[type="radio"] {
+.filter-radio input[type='radio'] {
   cursor: pointer;
   width: 16px;
   height: 16px;
@@ -3188,7 +3205,7 @@ body {
   min-width: 40px;
 }
 
-.filter-range-input input[type="number"] {
+.filter-range-input input[type='number'] {
   flex: 1;
   background: var(--ctp-surface0);
   border: 1px solid var(--ctp-surface2);
@@ -3285,7 +3302,8 @@ body {
 }
 
 .node-controls {
-  padding: 0 0.75rem 0.75rem 0.75rem;
+  padding: 0.75rem 0 0.75rem 0;
+  width: 100%;
 }
 
 /* Desktop - ensure controls have enough room */
@@ -3308,6 +3326,7 @@ body {
   font-size: 0.9rem;
   width: 100%;
   transition: border-color 0.2s;
+  box-sizing: border-box;
 }
 
 .filter-input-small:focus {
@@ -4193,7 +4212,8 @@ body {
 }
 
 @keyframes pulse-dot {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
     transform: scale(1);
   }
@@ -4305,8 +4325,12 @@ body {
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 /* Node Popup Styles */
@@ -4559,7 +4583,7 @@ body {
   user-select: none;
 }
 
-.map-control-item input[type="checkbox"] {
+.map-control-item input[type='checkbox'] {
   cursor: pointer;
   width: 18px;
   height: 18px;
@@ -5466,7 +5490,7 @@ body {
   .user-name {
     display: none;
   }
-  
+
   .user-menu-dropdown {
     right: -8px;
   }
@@ -5668,7 +5692,7 @@ body {
   user-select: none;
 }
 
-.permission-actions input[type="checkbox"] {
+.permission-actions input[type='checkbox'] {
   width: 18px;
   height: 18px;
   cursor: pointer;
