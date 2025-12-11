@@ -532,8 +532,8 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                           >
                             {packet.portnum_name || packet.portnum}
                           </td>
-                          <td className="channel" style={{ width: '50px' }}>
-                            {packet.channel ?? t('common.na')}
+                          <td className="channel" style={{ width: '50px' }} title={packet.encrypted && packet.channel !== undefined && packet.channel > 7 ? `Channel hash: ${packet.channel}` : undefined}>
+                            {packet.encrypted && packet.channel !== undefined && packet.channel > 7 ? '??' : (packet.channel ?? t('common.na'))}
                           </td>
                           <td className="snr" style={{ width: '60px' }}>
                             {packet.snr !== null && packet.snr !== undefined ? `${packet.snr.toFixed(1)}` : t('common.na')}
@@ -573,7 +573,61 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                 </button>
               </div>
               <div className="packet-detail-body">
-                <pre className="packet-json">{JSON.stringify(selectedPacket, null, 2)}</pre>
+                {(() => {
+                  // Parse metadata if available
+                  let parsedMetadata: Record<string, unknown> | null = null;
+                  if (selectedPacket.metadata) {
+                    try {
+                      parsedMetadata = JSON.parse(selectedPacket.metadata);
+                    } catch (e) {
+                      // Ignore parse errors
+                    }
+                  }
+
+                  // Build display object with packet fields and expanded metadata
+                  const displayData: Record<string, unknown> = {
+                    id: selectedPacket.id,
+                    packet_id: selectedPacket.packet_id,
+                    timestamp: selectedPacket.timestamp,
+                    from_node: selectedPacket.from_node,
+                    from_node_id: selectedPacket.from_node_id,
+                    from_node_longName: selectedPacket.from_node_longName,
+                    to_node: selectedPacket.to_node,
+                    to_node_id: selectedPacket.to_node_id,
+                    to_node_longName: selectedPacket.to_node_longName,
+                    channel: selectedPacket.channel,
+                    portnum: selectedPacket.portnum,
+                    portnum_name: selectedPacket.portnum_name,
+                    encrypted: selectedPacket.encrypted,
+                    snr: selectedPacket.snr,
+                    rssi: selectedPacket.rssi,
+                    hop_limit: selectedPacket.hop_limit,
+                    hop_start: selectedPacket.hop_start,
+                    payload_size: selectedPacket.payload_size,
+                    want_ack: selectedPacket.want_ack,
+                    priority: selectedPacket.priority,
+                    payload_preview: selectedPacket.payload_preview,
+                  };
+
+                  // Add metadata fields (decoded_payload, rx_time, via_mqtt, etc.)
+                  if (parsedMetadata) {
+                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                    const { decoded_payload, ...otherMetadata } = parsedMetadata as Record<string, unknown>;
+                    // Add other metadata fields
+                    Object.assign(displayData, otherMetadata);
+                    // Add decoded payload last so it appears at the bottom
+                    if (decoded_payload) {
+                      displayData.decoded_payload = decoded_payload;
+                    }
+                  }
+
+                  // Remove undefined values for cleaner display
+                  const cleanedData = Object.fromEntries(
+                    Object.entries(displayData).filter(([, v]) => v !== undefined && v !== null)
+                  );
+
+                  return <pre className="packet-json">{JSON.stringify(cleanedData, null, 2)}</pre>;
+                })()}
               </div>
             </div>
           </div>,
