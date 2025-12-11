@@ -573,6 +573,7 @@ export class VirtualNodeServer extends EventEmitter {
           snr: node.snr,
           lastHeard: node.lastHeard,
           hopsAway: node.hopsAway,
+          viaMqtt: node.viaMqtt ? true : false,
           isFavorite: node.isFavorite ? true : false,
         });
 

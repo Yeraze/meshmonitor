@@ -1,9 +1,52 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { MeshtasticProtobufService } from './meshtasticProtobufService';
+import { loadProtobufDefinitions, getProtobufRoot } from './protobufLoader';
+import { existsSync } from 'fs';
+import { join } from 'path';
+
+// Check if protobufs submodule is available
+const protobufPath = join(process.cwd(), 'protobufs', 'meshtastic', 'mesh.proto');
+const hasProtobufs = existsSync(protobufPath);
 
 describe('MeshtasticProtobufService', () => {
   // Use the singleton instance
   const service = MeshtasticProtobufService.getInstance();
+
+  // Track if protobuf initialization succeeded
+  let protobufInitialized = false;
+
+  // Initialize protobuf definitions before running createNodeInfo tests
+  // Only if protobufs submodule is available
+  beforeAll(async () => {
+    if (hasProtobufs) {
+      try {
+        await service.initialize();
+        // Also load protobufs directly for decoding in tests
+        await loadProtobufDefinitions();
+        protobufInitialized = true;
+      } catch {
+        // Protobufs not available, tests will be skipped
+        protobufInitialized = false;
+      }
+    }
+  });
+
+  // Helper function to decode FromRadio message
+  function decodeFromRadio(data: Uint8Array): any {
+    const root = getProtobufRoot();
+    if (!root) return null;
+    const FromRadio = root.lookupType('meshtastic.FromRadio');
+    const decoded = FromRadio.decode(data);
+    return FromRadio.toObject(decoded);
+  }
+
+  // Helper to check if protobuf tests should run
+  function requireProtobufs() {
+    if (!hasProtobufs || !protobufInitialized) {
+      return false;
+    }
+    return true;
+  }
 
   describe('normalizePortNum', () => {
     describe('number inputs', () => {
@@ -209,6 +252,124 @@ describe('MeshtasticProtobufService', () => {
       // Both string and number should return the same name
       expect(service.getPortNumName('TRACEROUTE_APP')).toBe(service.getPortNumName(70));
       expect(service.getPortNumName('ADMIN_APP')).toBe(service.getPortNumName(6));
+    });
+  });
+
+  describe('createNodeInfo', () => {
+    it('should create NodeInfo with viaMqtt=true', async () => {
+      const result = await service.createNodeInfo({
+        nodeNum: 123456789,
+        user: {
+          id: '!075bcd15',
+          longName: 'MQTT Test Node',
+          shortName: 'MQTT',
+          hwModel: 255,
+        },
+        viaMqtt: true,
+        isFavorite: false,
+      });
+
+      expect(result).not.toBeNull();
+      expect(result).toBeInstanceOf(Uint8Array);
+
+      // Decode and verify viaMqtt is set
+      const decoded = decodeFromRadio(result!);
+      expect(decoded).not.toBeNull();
+      expect(decoded.nodeInfo).toBeDefined();
+      expect(decoded.nodeInfo.viaMqtt).toBe(true);
+      expect(decoded.nodeInfo.num).toBe(123456789);
+    });
+
+    it('should create NodeInfo with viaMqtt=false', async () => {
+      const result = await service.createNodeInfo({
+        nodeNum: 987654321,
+        user: {
+          id: '!3ade68b1',
+          longName: 'LoRa Test Node',
+          shortName: 'LORA',
+          hwModel: 43,
+        },
+        viaMqtt: false,
+        isFavorite: true,
+      });
+
+      expect(result).not.toBeNull();
+      expect(result).toBeInstanceOf(Uint8Array);
+
+      // Decode and verify viaMqtt is false
+      const decoded = decodeFromRadio(result!);
+      expect(decoded).not.toBeNull();
+      expect(decoded.nodeInfo).toBeDefined();
+      expect(decoded.nodeInfo.viaMqtt).toBe(false);
+      expect(decoded.nodeInfo.isFavorite).toBe(true);
+    });
+
+    it('should create NodeInfo without viaMqtt when not provided', async () => {
+      const result = await service.createNodeInfo({
+        nodeNum: 111222333,
+        user: {
+          id: '!06a0b8d5',
+          longName: 'No MQTT Field',
+          shortName: 'NONE',
+        },
+        // viaMqtt not provided
+      });
+
+      expect(result).not.toBeNull();
+      expect(result).toBeInstanceOf(Uint8Array);
+
+      // Decode and verify nodeInfo exists
+      const decoded = decodeFromRadio(result!);
+      expect(decoded).not.toBeNull();
+      expect(decoded.nodeInfo).toBeDefined();
+      expect(decoded.nodeInfo.num).toBe(111222333);
+      // viaMqtt should be undefined or false when not provided
+      expect(decoded.nodeInfo.viaMqtt).toBeFalsy();
+    });
+
+    it('should include all NodeInfo fields correctly', async () => {
+      const result = await service.createNodeInfo({
+        nodeNum: 444555666,
+        user: {
+          id: '!1a7f8e12',
+          longName: 'Full Test Node',
+          shortName: 'FULL',
+          hwModel: 14,
+          role: 1,
+        },
+        position: {
+          latitude: 40.7128,
+          longitude: -74.006,
+          altitude: 10,
+          time: 1702300000,
+        },
+        deviceMetrics: {
+          batteryLevel: 85,
+          voltage: 4.1,
+          channelUtilization: 2.5,
+          airUtilTx: 1.2,
+        },
+        snr: 8.5,
+        lastHeard: 1702300100,
+        hopsAway: 2,
+        viaMqtt: true,
+        isFavorite: true,
+      });
+
+      expect(result).not.toBeNull();
+
+      const decoded = decodeFromRadio(result!);
+      expect(decoded.nodeInfo).toBeDefined();
+      expect(decoded.nodeInfo.num).toBe(444555666);
+      expect(decoded.nodeInfo.viaMqtt).toBe(true);
+      expect(decoded.nodeInfo.isFavorite).toBe(true);
+      expect(decoded.nodeInfo.hopsAway).toBe(2);
+      expect(decoded.nodeInfo.snr).toBeCloseTo(8.5, 1);
+      expect(decoded.nodeInfo.lastHeard).toBe(1702300100);
+      expect(decoded.nodeInfo.user).toBeDefined();
+      expect(decoded.nodeInfo.user.longName).toBe('Full Test Node');
+      expect(decoded.nodeInfo.position).toBeDefined();
+      expect(decoded.nodeInfo.deviceMetrics).toBeDefined();
     });
   });
 });
