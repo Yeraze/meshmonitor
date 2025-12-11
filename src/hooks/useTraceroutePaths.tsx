@@ -122,7 +122,8 @@ export function useTraceroutePaths({
     // Calculate segment usage counts and collect SNR values with timestamps
     const segmentUsage = new Map<string, number>();
     const segmentSNRs = new Map<string, Array<{ snr: number; timestamp: number }>>();
-    // Track segments that have MQTT hops (0.0 dB SNR indicates MQTT traversal)
+    // Track segments that have MQTT/unknown hops (-128 raw SNR = -32 scaled indicates MQTT/unknown)
+    // Note: -128 (INT8_MIN) is the Meshtastic sentinel value for unknown SNR (MQTT gateways, older firmware)
     const segmentHasMqtt = new Map<string, boolean>();
     const segmentsList: Array<{
       key: string;
@@ -209,8 +210,9 @@ export function useTraceroutePaths({
               segmentSNRs.set(segmentKey, []);
             }
             segmentSNRs.get(segmentKey)!.push({ snr: snrValue, timestamp });
-            // Mark segment as MQTT if SNR is 0.0 dB (indicates MQTT traversal)
-            if (snrValue === 0) {
+            // Mark segment as MQTT/unknown if SNR is -32 dB (raw -128 / 4 = -32)
+            // -128 (INT8_MIN) is Meshtastic's sentinel value for unknown SNR (MQTT gateways, older firmware)
+            if (snrValue === -32) {
               segmentHasMqtt.set(segmentKey, true);
             }
           }
@@ -254,8 +256,9 @@ export function useTraceroutePaths({
               segmentSNRs.set(segmentKey, []);
             }
             segmentSNRs.get(segmentKey)!.push({ snr: snrValue, timestamp });
-            // Mark segment as MQTT if SNR is 0.0 dB (indicates MQTT traversal)
-            if (snrValue === 0) {
+            // Mark segment as MQTT/unknown if SNR is -32 dB (raw -128 / 4 = -32)
+            // -128 (INT8_MIN) is Meshtastic's sentinel value for unknown SNR (MQTT gateways, older firmware)
+            if (snrValue === -32) {
               segmentHasMqtt.set(segmentKey, true);
             }
           }
