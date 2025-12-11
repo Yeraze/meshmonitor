@@ -31,6 +31,16 @@
   "banners.view_release_notes": "Voir les notes de version",
   "banners.upgrade_now": "Mettre à jour maintenant",
 
+  "purgeModal.title": "⚠️ Purger les données de {{nodeName}}",
+  "purgeModal.warning": "Ces actions ne peuvent pas être annulées. Toutes les données de ce nœud seront supprimées définitivement.",
+  "purgeModal.purgeMessages": "🗑️ Purger tous les messages",
+  "purgeModal.purgeTraceroutes": "🗺️ Purger les traceroutes",
+  "purgeModal.purgeTelemetry": "📊 Purger la télémétrie",
+  "purgeModal.deleteNodeTitle": "Supprimer complètement le nœud :",
+  "purgeModal.deleteNodeDescription": "Choisissez comment supprimer le nœud - de la base de données locale uniquement, ou à la fois de l'appareil et de la base de données.",
+  "purgeModal.deleteLocal": "❌ Supprimer le nœud (Base de données locale uniquement)",
+  "purgeModal.deleteDevice": "🗑️ Purger de l'appareil ET de la base de données",
+
   "common.save": "Enregistrer",
   "common.cancel": "Annuler",
   "common.delete": "Supprimer",

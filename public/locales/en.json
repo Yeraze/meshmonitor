@@ -32,6 +32,16 @@
   "banners.view_release_notes": "View Release Notes",
   "banners.upgrade_now": "Upgrade Now",
 
+  "purgeModal.title": "⚠️ Purge Data for {{nodeName}}",
+  "purgeModal.warning": "These actions cannot be undone. All data for this node will be permanently deleted.",
+  "purgeModal.purgeMessages": "🗑️ Purge All Messages",
+  "purgeModal.purgeTraceroutes": "🗺️ Purge Traceroutes",
+  "purgeModal.purgeTelemetry": "📊 Purge Telemetry",
+  "purgeModal.deleteNodeTitle": "Delete Node Completely:",
+  "purgeModal.deleteNodeDescription": "Choose how to delete the node - from local database only, or from both the device and database.",
+  "purgeModal.deleteLocal": "❌ Delete Node (Local Database Only)",
+  "purgeModal.deleteDevice": "🗑️ Purge from Device AND Database",
+
   "common.save": "Save",
   "common.cancel": "Cancel",
   "common.delete": "Delete",

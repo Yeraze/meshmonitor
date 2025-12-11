@@ -27,6 +27,7 @@ import AutoResponderSection from './components/AutoResponderSection';
 import { ToastProvider, useToast } from './components/ToastContainer';
 import { RebootModal } from './components/RebootModal';
 import { AppBanners } from './components/AppBanners';
+import { PurgeDataModal } from './components/PurgeDataModal';
 // import { version } from '../package.json' // Removed - footer no longer displayed
 import { type TemperatureUnit } from './utils/temperature';
 // calculateDistance and formatDistance moved to useTraceroutePaths hook
@@ -3908,143 +3909,17 @@ function App() {
         />
       )}
 
-      {/* Purge Data Modal */}
-      {showPurgeDataModal && selectedDMNode && (
-        <div className="modal-overlay" onClick={() => setShowPurgeDataModal(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px' }}>
-            <div className="modal-header">
-              <h2>⚠️ Purge Data for {getNodeName(selectedDMNode)}</h2>
-              <button className="modal-close" onClick={() => setShowPurgeDataModal(false)}>
-                &times;
-              </button>
-            </div>
-            <div className="modal-body">
-              <p style={{ marginBottom: '1.5rem', color: '#dc3545', fontWeight: 'bold' }}>
-                These actions cannot be undone. All data for this node will be permanently deleted.
-              </p>
-              <div style={{ display: 'flex', flexDirection: 'row', gap: '0.75rem', flexWrap: 'wrap' }}>
-                <button
-                  onClick={() => {
-                    const selectedNode = nodes.find(n => n.user?.id === selectedDMNode);
-                    if (selectedNode) {
-                      handlePurgeDirectMessages(selectedNode.nodeNum);
-                      setShowPurgeDataModal(false);
-                    }
-                  }}
-                  className="danger-btn"
-                  style={{
-                    backgroundColor: '#dc3545',
-                    color: 'white',
-                    border: 'none',
-                    padding: '0.75rem 1rem',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontWeight: 'bold',
-                    fontSize: '1rem',
-                  }}
-                >
-                  🗑️ Purge All Messages
-                </button>
-                <button
-                  onClick={() => {
-                    const selectedNode = nodes.find(n => n.user?.id === selectedDMNode);
-                    if (selectedNode) {
-                      handlePurgeNodeTraceroutes(selectedNode.nodeNum);
-                      setShowPurgeDataModal(false);
-                    }
-                  }}
-                  className="danger-btn"
-                  style={{
-                    backgroundColor: '#dc3545',
-                    color: 'white',
-                    border: 'none',
-                    padding: '0.75rem 1rem',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontWeight: 'bold',
-                    fontSize: '1rem',
-                  }}
-                >
-                  🗺️ Purge Traceroutes
-                </button>
-                <button
-                  onClick={() => {
-                    const selectedNode = nodes.find(n => n.user?.id === selectedDMNode);
-                    if (selectedNode) {
-                      handlePurgeNodeTelemetry(selectedNode.nodeNum);
-                      setShowPurgeDataModal(false);
-                    }
-                  }}
-                  className="danger-btn"
-                  style={{
-                    backgroundColor: '#dc3545',
-                    color: 'white',
-                    border: 'none',
-                    padding: '0.75rem 1rem',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontWeight: 'bold',
-                    fontSize: '1rem',
-                  }}
-                >
-                  📊 Purge Telemetry
-                </button>
-              </div>
-              <hr style={{ margin: '1.5rem 0', borderColor: '#dee2e6' }} />
-              <p style={{ marginBottom: '1rem', fontWeight: 'bold' }}>Delete Node Completely:</p>
-              <p style={{ marginBottom: '1rem', fontSize: '0.9rem', color: '#6c757d' }}>
-                Choose how to delete the node - from local database only, or from both the device and database.
-              </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                <button
-                  onClick={() => {
-                    const selectedNode = nodes.find(n => n.user?.id === selectedDMNode);
-                    if (selectedNode) {
-                      handleDeleteNode(selectedNode.nodeNum);
-                    }
-                  }}
-                  className="danger-btn"
-                  style={{
-                    backgroundColor: '#721c24',
-                    color: 'white',
-                    border: 'none',
-                    padding: '0.75rem 1rem',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontWeight: 'bold',
-                    fontSize: '1rem',
-                    width: '100%',
-                  }}
-                >
-                  ❌ Delete Node (Local Database Only)
-                </button>
-                <button
-                  onClick={() => {
-                    const selectedNode = nodes.find(n => n.user?.id === selectedDMNode);
-                    if (selectedNode) {
-                      handlePurgeNodeFromDevice(selectedNode.nodeNum);
-                    }
-                  }}
-                  className="danger-btn"
-                  style={{
-                    backgroundColor: '#5a0a0a',
-                    color: 'white',
-                    border: 'none',
-                    padding: '0.75rem 1rem',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontWeight: 'bold',
-                    fontSize: '1rem',
-                    width: '100%',
-                  }}
-                >
-                  🗑️ Purge from Device AND Database
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <PurgeDataModal
+        isOpen={showPurgeDataModal}
+        selectedNode={selectedDMNode ? nodes.find(n => n.user?.id === selectedDMNode) || null : null}
+        onClose={() => setShowPurgeDataModal(false)}
+        onPurgeMessages={handlePurgeDirectMessages}
+        onPurgeTraceroutes={handlePurgeNodeTraceroutes}
+        onPurgeTelemetry={handlePurgeNodeTelemetry}
+        onDeleteNode={handleDeleteNode}
+        onPurgeFromDevice={handlePurgeNodeFromDevice}
+        getNodeName={getNodeName}
+      />
 
       {selectedRouteSegment && (
         <RouteSegmentTraceroutesModal

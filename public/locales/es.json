@@ -31,6 +31,16 @@
   "banners.view_release_notes": "Ver Notas de Lanzamiento",
   "banners.upgrade_now": "Actualizar Ahora",
 
+  "purgeModal.title": "⚠️ Purgar Datos de {{nodeName}}",
+  "purgeModal.warning": "Estas acciones no se pueden deshacer. Todos los datos de este nodo se eliminarán permanentemente.",
+  "purgeModal.purgeMessages": "🗑️ Purgar Todos los Mensajes",
+  "purgeModal.purgeTraceroutes": "🗺️ Purgar Traceroutes",
+  "purgeModal.purgeTelemetry": "📊 Purgar Telemetría",
+  "purgeModal.deleteNodeTitle": "Eliminar Nodo Completamente:",
+  "purgeModal.deleteNodeDescription": "Elige cómo eliminar el nodo - solo de la base de datos local, o tanto del dispositivo como de la base de datos.",
+  "purgeModal.deleteLocal": "❌ Eliminar Nodo (Solo Base de Datos Local)",
+  "purgeModal.deleteDevice": "🗑️ Purgar del Dispositivo Y Base de Datos",
+
   "common.save": "Guardar",
   "common.cancel": "Cancelar",
   "common.delete": "Eliminar",

@@ -1,0 +1,1 @@
+export { PurgeDataModal } from './PurgeDataModal';
