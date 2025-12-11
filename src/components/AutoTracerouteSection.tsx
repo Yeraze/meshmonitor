@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
+import { DEVICE_ROLES } from '../utils/deviceRole';
+import { getHardwareModelName } from '../utils/hardwareModel';
 
 interface AutoTracerouteSectionProps {
   intervalMinutes: number;
@@ -16,12 +18,23 @@ interface Node {
   shortName?: string;
   lastHeard?: number;
   role?: number;
+  hwModel?: number;
+  channel?: number;
   user?: {
     id: string;
     longName: string;
     shortName: string;
     role?: string;
   };
+}
+
+interface FilterSettings {
+  enabled: boolean;
+  nodeNums: number[];
+  filterChannels: number[];
+  filterRoles: number[];
+  filterHwModels: number[];
+  filterNameRegex: string;
 }
 
 const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
@@ -40,10 +53,25 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
   // Node filter states
   const [filterEnabled, setFilterEnabled] = useState(false);
   const [selectedNodeNums, setSelectedNodeNums] = useState<number[]>([]);
+  const [filterChannels, setFilterChannels] = useState<number[]>([]);
+  const [filterRoles, setFilterRoles] = useState<number[]>([]);
+  const [filterHwModels, setFilterHwModels] = useState<number[]>([]);
+  const [filterNameRegex, setFilterNameRegex] = useState('.*');
+
   const [availableNodes, setAvailableNodes] = useState<Node[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [initialFilterEnabled, setInitialFilterEnabled] = useState(false);
-  const [initialSelectedNodes, setInitialSelectedNodes] = useState<number[]>([]);
+
+  // Initial state tracking for change detection
+  const [initialSettings, setInitialSettings] = useState<FilterSettings | null>(null);
+
+  // Expanded sections state
+  const [expandedSections, setExpandedSections] = useState({
+    nodes: false,
+    channels: false,
+    roles: false,
+    hwModels: false,
+    regex: false,
+  });
 
   // Update local state when props change
   useEffect(() => {
@@ -73,11 +101,14 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
       try {
         const response = await csrfFetch(`${baseUrl}/api/settings/traceroute-nodes`);
         if (response.ok) {
-          const data = await response.json();
+          const data: FilterSettings = await response.json();
           setFilterEnabled(data.enabled);
-          setSelectedNodeNums(data.nodeNums);
-          setInitialFilterEnabled(data.enabled);
-          setInitialSelectedNodes(data.nodeNums);
+          setSelectedNodeNums(data.nodeNums || []);
+          setFilterChannels(data.filterChannels || []);
+          setFilterRoles(data.filterRoles || []);
+          setFilterHwModels(data.filterHwModels || []);
+          setFilterNameRegex(data.filterNameRegex || '.*');
+          setInitialSettings(data);
         }
       } catch (error) {
         console.error('Failed to fetch filter settings:', error);
@@ -88,13 +119,122 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
 
   // Check if any settings have changed
   useEffect(() => {
+    if (!initialSettings) return;
+
     const currentInterval = localEnabled ? localInterval : 0;
     const intervalChanged = currentInterval !== intervalMinutes;
-    const filterEnabledChanged = filterEnabled !== initialFilterEnabled;
-    const nodesChanged = JSON.stringify([...selectedNodeNums].sort()) !== JSON.stringify([...initialSelectedNodes].sort());
-    const changed = intervalChanged || filterEnabledChanged || nodesChanged;
+    const filterEnabledChanged = filterEnabled !== initialSettings.enabled;
+    const nodesChanged = JSON.stringify([...selectedNodeNums].sort()) !== JSON.stringify([...(initialSettings.nodeNums || [])].sort());
+    const channelsChanged = JSON.stringify([...filterChannels].sort()) !== JSON.stringify([...(initialSettings.filterChannels || [])].sort());
+    const rolesChanged = JSON.stringify([...filterRoles].sort()) !== JSON.stringify([...(initialSettings.filterRoles || [])].sort());
+    const hwModelsChanged = JSON.stringify([...filterHwModels].sort()) !== JSON.stringify([...(initialSettings.filterHwModels || [])].sort());
+    const regexChanged = filterNameRegex !== (initialSettings.filterNameRegex || '.*');
+
+    const changed = intervalChanged || filterEnabledChanged || nodesChanged || channelsChanged || rolesChanged || hwModelsChanged || regexChanged;
     setHasChanges(changed);
-  }, [localEnabled, localInterval, intervalMinutes, filterEnabled, selectedNodeNums, initialFilterEnabled, initialSelectedNodes]);
+  }, [localEnabled, localInterval, intervalMinutes, filterEnabled, selectedNodeNums, filterChannels, filterRoles, filterHwModels, filterNameRegex, initialSettings]);
+
+  // Helper to get role from node (could be at top level or in user object)
+  const getNodeRole = (node: Node): number | undefined => {
+    if (node.role !== undefined && node.role !== null) return node.role;
+    if (node.user?.role !== undefined && node.user?.role !== null) {
+      // user.role might be a string like "0" or "1"
+      return typeof node.user.role === 'string' ? parseInt(node.user.role) : undefined;
+    }
+    return undefined;
+  };
+
+  // Helper to get hwModel from node (could be at top level or in user object)
+  const getNodeHwModel = (node: Node): number | undefined => {
+    if (node.hwModel !== undefined && node.hwModel !== null) return node.hwModel;
+    // hwModel is in user object in the API response
+    const userAny = node.user as { hwModel?: number } | undefined;
+    if (userAny?.hwModel !== undefined && userAny?.hwModel !== null) return userAny.hwModel;
+    return undefined;
+  };
+
+  // Get unique values from nodes for filter options
+  const availableChannels = useMemo(() => {
+    const channels = new Set<number>();
+    availableNodes.forEach(node => {
+      if (node.channel !== undefined && node.channel !== null) {
+        channels.add(node.channel);
+      }
+    });
+    return Array.from(channels).sort((a, b) => a - b);
+  }, [availableNodes]);
+
+  const availableRolesInNodes = useMemo(() => {
+    const roles = new Set<number>();
+    availableNodes.forEach(node => {
+      const role = getNodeRole(node);
+      if (role !== undefined) {
+        roles.add(role);
+      }
+    });
+    return Array.from(roles).sort((a, b) => a - b);
+  }, [availableNodes]);
+
+  const availableHwModelsInNodes = useMemo(() => {
+    const models = new Set<number>();
+    availableNodes.forEach(node => {
+      const hwModel = getNodeHwModel(node);
+      if (hwModel !== undefined) {
+        models.add(hwModel);
+      }
+    });
+    return Array.from(models).sort((a, b) => a - b);
+  }, [availableNodes]);
+
+  // Count nodes matching current filters (for preview)
+  const matchingNodesCount = useMemo(() => {
+    if (!filterEnabled) return availableNodes.length;
+
+    const matchingNodeNums = new Set<number>();
+
+    // Add specific nodes
+    selectedNodeNums.forEach(num => matchingNodeNums.add(num));
+
+    // Add nodes matching channel filter
+    if (filterChannels.length > 0) {
+      availableNodes.filter(n => filterChannels.includes(n.channel ?? -1))
+        .forEach(n => matchingNodeNums.add(n.nodeNum));
+    }
+
+    // Add nodes matching role filter
+    if (filterRoles.length > 0) {
+      availableNodes.filter(n => {
+        const role = getNodeRole(n);
+        return role !== undefined && filterRoles.includes(role);
+      }).forEach(n => matchingNodeNums.add(n.nodeNum));
+    }
+
+    // Add nodes matching hardware model filter
+    if (filterHwModels.length > 0) {
+      availableNodes.filter(n => {
+        const hwModel = getNodeHwModel(n);
+        return hwModel !== undefined && filterHwModels.includes(hwModel);
+      }).forEach(n => matchingNodeNums.add(n.nodeNum));
+    }
+
+    // Add nodes matching regex (if not default)
+    if (filterNameRegex && filterNameRegex !== '.*') {
+      try {
+        const regex = new RegExp(filterNameRegex, 'i');
+        availableNodes.filter(n => {
+          const name = n.longName || n.user?.longName || n.shortName || n.user?.shortName || n.nodeId || '';
+          return regex.test(name);
+        }).forEach(n => matchingNodeNums.add(n.nodeNum));
+      } catch {
+        // Invalid regex, ignore
+      }
+    } else if (filterNameRegex === '.*') {
+      // Match all - add all nodes
+      availableNodes.forEach(n => matchingNodeNums.add(n.nodeNum));
+    }
+
+    return matchingNodeNums.size;
+  }, [filterEnabled, selectedNodeNums, filterChannels, filterRoles, filterHwModels, filterNameRegex, availableNodes]);
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -124,7 +264,11 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           enabled: filterEnabled,
-          nodeNums: selectedNodeNums
+          nodeNums: selectedNodeNums,
+          filterChannels,
+          filterRoles,
+          filterHwModels,
+          filterNameRegex,
         })
       });
 
@@ -138,8 +282,14 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
 
       // Update parent state and local tracking after successful API calls
       onIntervalChange(intervalToSave);
-      setInitialFilterEnabled(filterEnabled);
-      setInitialSelectedNodes(selectedNodeNums);
+      setInitialSettings({
+        enabled: filterEnabled,
+        nodeNums: selectedNodeNums,
+        filterChannels,
+        filterRoles,
+        filterHwModels,
+        filterNameRegex,
+      });
 
       setHasChanges(false);
       showToast(t('automation.auto_traceroute.settings_saved_restart'), 'success');
@@ -152,7 +302,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
   };
 
   // Filter nodes based on search term
-  const filteredNodes = React.useMemo(() => {
+  const filteredNodes = useMemo(() => {
     if (!searchTerm.trim()) {
       return availableNodes;
     }
@@ -176,15 +326,43 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
   };
 
   const handleSelectAll = () => {
-    // Add all filtered nodes to selection (preserving any already selected)
     const newSelection = new Set([...selectedNodeNums, ...filteredNodes.map(n => n.nodeNum)]);
     setSelectedNodeNums(Array.from(newSelection));
   };
 
   const handleDeselectAll = () => {
-    // Remove only the filtered nodes from selection
     const filteredNums = new Set(filteredNodes.map(n => n.nodeNum));
     setSelectedNodeNums(selectedNodeNums.filter(num => !filteredNums.has(num)));
+  };
+
+  const toggleSection = (section: keyof typeof expandedSections) => {
+    setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  const toggleArrayValue = (_arr: number[], value: number, setter: React.Dispatch<React.SetStateAction<number[]>>) => {
+    setter(prev => prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]);
+  };
+
+  // Styles for collapsible sections
+  const sectionHeaderStyle: React.CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '0.5rem 0.75rem',
+    background: 'var(--ctp-surface0)',
+    border: '1px solid var(--ctp-surface2)',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    marginBottom: '0.5rem',
+  };
+
+  const badgeStyle: React.CSSProperties = {
+    background: 'var(--ctp-blue)',
+    color: 'var(--ctp-base)',
+    padding: '0.1rem 0.5rem',
+    borderRadius: '10px',
+    fontSize: '11px',
+    fontWeight: '600',
   };
 
   return (
@@ -218,7 +396,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
             }}
             title={t('automation.view_docs')}
           >
-            ❓
+            ?
           </a>
         </h2>
         <button
@@ -274,7 +452,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
             <label htmlFor="nodeFilter" style={{ margin: 0, cursor: 'pointer' }}>
               {t('automation.auto_traceroute.limit_to_nodes')}
               <span className="setting-description" style={{ display: 'block', marginTop: '0.25rem' }}>
-                {t('automation.auto_traceroute.limit_to_nodes_description')}
+                {t('automation.auto_traceroute.filter_description')}
               </span>
             </label>
           </div>
@@ -288,98 +466,244 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
               border: '1px solid var(--ctp-surface2)',
               borderRadius: '6px'
             }}>
-              {/* Search bar */}
-              <input
-                type="text"
-                placeholder={t('automation.auto_traceroute.search_nodes')}
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '0.5rem',
-                  marginBottom: '0.75rem',
-                  background: 'var(--ctp-base)',
-                  border: '1px solid var(--ctp-surface2)',
-                  borderRadius: '4px',
-                  color: 'var(--ctp-text)'
-                }}
-              />
-
-              {/* Select/Deselect buttons */}
-              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
-                <button
-                  onClick={handleSelectAll}
-                  className="btn-secondary"
-                  style={{ padding: '0.4rem 0.8rem', fontSize: '12px' }}
-                >
-                  {t('common.select_all')}
-                </button>
-                <button
-                  onClick={handleDeselectAll}
-                  className="btn-secondary"
-                  style={{ padding: '0.4rem 0.8rem', fontSize: '12px' }}
-                >
-                  {t('common.deselect_all')}
-                </button>
+              {/* Matching nodes preview */}
+              <div style={{
+                marginBottom: '1rem',
+                padding: '0.5rem 0.75rem',
+                background: 'var(--ctp-surface1)',
+                borderRadius: '4px',
+                fontSize: '13px'
+              }}>
+                {t('automation.auto_traceroute.matching_nodes', { count: matchingNodesCount })} / {availableNodes.length} {t('common.total')}
               </div>
 
-              {/* Node list */}
-              <div style={{
-                maxHeight: '300px',
-                overflowY: 'auto',
-                border: '1px solid var(--ctp-surface2)',
-                borderRadius: '4px',
-                background: 'var(--ctp-base)'
-              }}>
-                {filteredNodes.length === 0 ? (
-                  <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--ctp-subtext0)' }}>
-                    {searchTerm ? t('automation.auto_traceroute.no_nodes_match') : t('automation.auto_traceroute.no_nodes_available')}
-                  </div>
-                ) : (
-                  filteredNodes.map(node => (
-                    <div
-                      key={node.nodeNum}
+              {/* Specific Nodes Filter */}
+              <div style={{ marginBottom: '0.5rem' }}>
+                <div
+                  style={sectionHeaderStyle}
+                  onClick={() => toggleSection('nodes')}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span>{expandedSections.nodes ? '▼' : '▶'}</span>
+                    {t('automation.auto_traceroute.specific_nodes')}
+                    {selectedNodeNums.length > 0 && (
+                      <span style={badgeStyle}>{selectedNodeNums.length}</span>
+                    )}
+                  </span>
+                </div>
+                {expandedSections.nodes && (
+                  <div style={{ padding: '0.5rem', background: 'var(--ctp-base)', borderRadius: '4px' }}>
+                    <input
+                      type="text"
+                      placeholder={t('automation.auto_traceroute.search_nodes')}
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
                       style={{
-                        padding: '0.5rem 0.75rem',
-                        borderBottom: '1px solid var(--ctp-surface1)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        cursor: 'pointer',
-                        transition: 'background 0.1s'
+                        width: '100%',
+                        padding: '0.5rem',
+                        marginBottom: '0.5rem',
+                        background: 'var(--ctp-surface0)',
+                        border: '1px solid var(--ctp-surface2)',
+                        borderRadius: '4px',
+                        color: 'var(--ctp-text)'
                       }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--ctp-surface0)'}
-                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                      onClick={() => handleNodeToggle(node.nodeNum)}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedNodeNums.includes(node.nodeNum)}
-                        onChange={() => handleNodeToggle(node.nodeNum)}
-                        style={{ width: 'auto', margin: 0, marginRight: '0.75rem', cursor: 'pointer' }}
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: '500', color: 'var(--ctp-text)' }}>
-                          {node.user?.longName || node.longName || node.user?.shortName || node.shortName || node.user?.id || node.nodeId || 'Unknown'}
-                        </div>
-                        {(node.user?.longName || node.longName || node.user?.shortName || node.shortName) && (
-                          <div style={{ fontSize: '12px', color: 'var(--ctp-subtext0)' }}>
-                            {node.user?.id || node.nodeId}
-                          </div>
-                        )}
-                      </div>
+                    />
+                    <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                      <button onClick={handleSelectAll} className="btn-secondary" style={{ padding: '0.3rem 0.6rem', fontSize: '11px' }}>
+                        {t('common.select_all')}
+                      </button>
+                      <button onClick={handleDeselectAll} className="btn-secondary" style={{ padding: '0.3rem 0.6rem', fontSize: '11px' }}>
+                        {t('common.deselect_all')}
+                      </button>
                     </div>
-                  ))
+                    <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--ctp-surface2)', borderRadius: '4px' }}>
+                      {filteredNodes.length === 0 ? (
+                        <div style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--ctp-subtext0)', fontSize: '12px' }}>
+                          {searchTerm ? t('automation.auto_traceroute.no_nodes_match') : t('automation.auto_traceroute.no_nodes_available')}
+                        </div>
+                      ) : (
+                        filteredNodes.map(node => (
+                          <div
+                            key={node.nodeNum}
+                            style={{
+                              padding: '0.4rem 0.6rem',
+                              borderBottom: '1px solid var(--ctp-surface1)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              cursor: 'pointer',
+                              fontSize: '12px'
+                            }}
+                            onClick={() => handleNodeToggle(node.nodeNum)}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedNodeNums.includes(node.nodeNum)}
+                              onChange={() => handleNodeToggle(node.nodeNum)}
+                              style={{ width: 'auto', margin: 0, marginRight: '0.5rem', cursor: 'pointer' }}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            <span style={{ color: 'var(--ctp-text)' }}>
+                              {node.user?.longName || node.longName || node.user?.shortName || node.shortName || node.nodeId || 'Unknown'}
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
                 )}
               </div>
 
-              {/* Selection count */}
-              <div style={{ marginTop: '0.75rem', fontSize: '13px', color: 'var(--ctp-subtext0)' }}>
-                {t('automation.auto_traceroute.selected_count', { count: selectedNodeNums.length })}
-                {selectedNodeNums.length === 0 && filterEnabled && (
-                  <span style={{ color: 'var(--ctp-yellow)', marginLeft: '0.5rem' }}>
-                    ({t('automation.auto_traceroute.all_nodes_eligible')})
+              {/* Channel Filter */}
+              <div style={{ marginBottom: '0.5rem' }}>
+                <div
+                  style={sectionHeaderStyle}
+                  onClick={() => toggleSection('channels')}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span>{expandedSections.channels ? '▼' : '▶'}</span>
+                    {t('automation.auto_traceroute.filter_by_channel')}
+                    {filterChannels.length > 0 && (
+                      <span style={badgeStyle}>{filterChannels.length}</span>
+                    )}
                   </span>
+                </div>
+                {expandedSections.channels && (
+                  <div style={{ padding: '0.5rem', background: 'var(--ctp-base)', borderRadius: '4px', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    {availableChannels.length === 0 ? (
+                      <span style={{ color: 'var(--ctp-subtext0)', fontSize: '12px' }}>{t('automation.auto_traceroute.no_channels')}</span>
+                    ) : (
+                      availableChannels.map(channel => (
+                        <label key={channel} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer', fontSize: '12px' }}>
+                          <input
+                            type="checkbox"
+                            checked={filterChannels.includes(channel)}
+                            onChange={() => toggleArrayValue(filterChannels, channel, setFilterChannels)}
+                            style={{ width: 'auto', margin: 0 }}
+                          />
+                          Ch {channel} ({availableNodes.filter(n => n.channel === channel).length})
+                        </label>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Role Filter */}
+              <div style={{ marginBottom: '0.5rem' }}>
+                <div
+                  style={sectionHeaderStyle}
+                  onClick={() => toggleSection('roles')}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span>{expandedSections.roles ? '▼' : '▶'}</span>
+                    {t('automation.auto_traceroute.filter_by_role')}
+                    {filterRoles.length > 0 && (
+                      <span style={badgeStyle}>{filterRoles.length}</span>
+                    )}
+                  </span>
+                </div>
+                {expandedSections.roles && (
+                  <div style={{ padding: '0.5rem', background: 'var(--ctp-base)', borderRadius: '4px', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    {availableRolesInNodes.length === 0 ? (
+                      <span style={{ color: 'var(--ctp-subtext0)', fontSize: '12px' }}>{t('automation.auto_traceroute.no_roles_available')}</span>
+                    ) : (
+                      availableRolesInNodes.map(roleNum => {
+                        const count = availableNodes.filter(n => getNodeRole(n) === roleNum).length;
+                        const roleName = DEVICE_ROLES[roleNum] || `Role ${roleNum}`;
+                        return (
+                          <label key={roleNum} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer', fontSize: '12px' }}>
+                            <input
+                              type="checkbox"
+                              checked={filterRoles.includes(roleNum)}
+                              onChange={() => toggleArrayValue(filterRoles, roleNum, setFilterRoles)}
+                              style={{ width: 'auto', margin: 0 }}
+                            />
+                            {roleName} ({count})
+                          </label>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Hardware Model Filter */}
+              <div style={{ marginBottom: '0.5rem' }}>
+                <div
+                  style={sectionHeaderStyle}
+                  onClick={() => toggleSection('hwModels')}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span>{expandedSections.hwModels ? '▼' : '▶'}</span>
+                    {t('automation.auto_traceroute.filter_by_hardware')}
+                    {filterHwModels.length > 0 && (
+                      <span style={badgeStyle}>{filterHwModels.length}</span>
+                    )}
+                  </span>
+                </div>
+                {expandedSections.hwModels && (
+                  <div style={{ padding: '0.5rem', background: 'var(--ctp-base)', borderRadius: '4px', maxHeight: '200px', overflowY: 'auto' }}>
+                    {availableHwModelsInNodes.length === 0 ? (
+                      <span style={{ color: 'var(--ctp-subtext0)', fontSize: '12px' }}>{t('automation.auto_traceroute.no_hardware_available')}</span>
+                    ) : (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                        {availableHwModelsInNodes.map(hwModel => {
+                          const count = availableNodes.filter(n => getNodeHwModel(n) === hwModel).length;
+                          return (
+                            <label key={hwModel} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer', fontSize: '12px' }}>
+                              <input
+                                type="checkbox"
+                                checked={filterHwModels.includes(hwModel)}
+                                onChange={() => toggleArrayValue(filterHwModels, hwModel, setFilterHwModels)}
+                                style={{ width: 'auto', margin: 0 }}
+                              />
+                              {getHardwareModelName(hwModel)} ({count})
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Name Regex Filter */}
+              <div style={{ marginBottom: '0.5rem' }}>
+                <div
+                  style={sectionHeaderStyle}
+                  onClick={() => toggleSection('regex')}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span>{expandedSections.regex ? '▼' : '▶'}</span>
+                    {t('automation.auto_traceroute.filter_by_name')}
+                    {filterNameRegex !== '.*' && (
+                      <span style={badgeStyle}>1</span>
+                    )}
+                  </span>
+                </div>
+                {expandedSections.regex && (
+                  <div style={{ padding: '0.5rem', background: 'var(--ctp-base)', borderRadius: '4px' }}>
+                    <input
+                      type="text"
+                      value={filterNameRegex}
+                      onChange={(e) => setFilterNameRegex(e.target.value)}
+                      placeholder=".*"
+                      style={{
+                        width: '100%',
+                        padding: '0.5rem',
+                        marginBottom: '0.25rem',
+                        background: 'var(--ctp-surface0)',
+                        border: '1px solid var(--ctp-surface2)',
+                        borderRadius: '4px',
+                        color: 'var(--ctp-text)',
+                        fontFamily: 'monospace',
+                        fontSize: '12px'
+                      }}
+                    />
+                    <div style={{ fontSize: '11px', color: 'var(--ctp-subtext0)' }}>
+                      {t('automation.auto_traceroute.regex_help')}
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
