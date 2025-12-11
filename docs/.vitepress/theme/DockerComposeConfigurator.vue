@@ -411,7 +411,6 @@ const dockerComposeYaml = computed(() => {
     lines.push('    image: ghcr.io/yeraze/meshtastic-ble-bridge:latest')
     lines.push('    container_name: meshmonitor-ble-bridge')
     lines.push('    privileged: true')
-    lines.push('    network_mode: host')
     lines.push('    restart: unless-stopped')
     lines.push('    volumes:')
     lines.push('      - /var/run/dbus:/var/run/dbus')
