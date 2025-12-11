@@ -1298,13 +1298,15 @@ class MeshtasticManager {
         const portnum = meshPacket.decoded?.portnum ?? 0;
         const portnumName = meshtasticProtobufService.getPortNumName(portnum);
 
-        // Generate payload preview
+        // Generate payload preview and store decoded payload
         let payloadPreview = null;
+        let decodedPayload: any = null;
         if (isEncrypted) {
           payloadPreview = '🔒 <ENCRYPTED>';
         } else if (meshPacket.decoded?.payload) {
           try {
-            const processedPayload = meshtasticProtobufService.processPayload(portnum, meshPacket.decoded.payload);
+            decodedPayload = meshtasticProtobufService.processPayload(portnum, meshPacket.decoded.payload);
+            const processedPayload = decodedPayload;
             if (portnum === 1 && typeof processedPayload === 'string') {
               // TEXT_MESSAGE - show first 100 chars
               payloadPreview = processedPayload.substring(0, 100);
@@ -1381,6 +1383,11 @@ class MeshtasticManager {
         if (isEncrypted && meshPacket.encrypted) {
           // Convert Uint8Array to hex string for storage
           metadata.encrypted_payload = Buffer.from(meshPacket.encrypted).toString('hex');
+        }
+
+        // Include decoded payload for non-encrypted packets
+        if (decodedPayload !== null) {
+          metadata.decoded_payload = decodedPayload;
         }
 
         packetLogService.logPacket({
