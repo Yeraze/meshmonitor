@@ -13,6 +13,7 @@ import traceroutesRouter from './traceroutes.js';
 import messagesRouter from './messages.js';
 import networkRouter from './network.js';
 import packetsRouter from './packets.js';
+import solarRouter from './solar.js';
 import docsRouter from './docs.js';
 
 const router = express.Router();
@@ -35,7 +36,8 @@ router.get('/', (_req, res) => {
       traceroutes: '/api/v1/traceroutes',
       messages: '/api/v1/messages',
       network: '/api/v1/network',
-      packets: '/api/v1/packets'
+      packets: '/api/v1/packets',
+      solar: '/api/v1/solar'
     }
   });
 });
@@ -47,5 +49,6 @@ router.use('/traceroutes', traceroutesRouter);
 router.use('/messages', messagesRouter);
 router.use('/network', networkRouter);
 router.use('/packets', packetsRouter);
+router.use('/solar', solarRouter);
 
 export default router;
