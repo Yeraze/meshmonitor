@@ -92,6 +92,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
   - Tapbacks now correctly route via DM when `alwaysUseDM` is enabled, matching message reply behavior
 - **CORS Configuration**: Fixed development environment CORS check to correctly recognize localhost origins
   - Prevents false positive CORS error banners in development mode
+- **Remote Node Favorite/Ignored Management** ([#950](https://github.com/Yeraze/meshmonitor/issues/950)): Fixed incorrect status display and management for remote nodes
+  - Added separate state tracking for remote node favorite/ignored status
+  - UI now correctly displays and manages favorite/ignored status for remote nodes independently from local node status
+  - Fixed button disable conditions to allow management of remote nodes even when local node has different status
+  - Remote node status is cleared when switching target nodes to prevent stale data
+  - Prevents incorrect UI state and disabled buttons when managing favorite/ignored status on remote devices
+>>>>>>> 8a2086e (docs: update CHANGELOG for remote node favorite/ignored fix (#950))
 
 ## [2.18.1] - 2025-11-15
 

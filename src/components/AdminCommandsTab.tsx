@@ -108,6 +108,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   const [nodeManagementSearchQuery, setNodeManagementSearchQuery] = useState('');
   const [isLoadingChannels, setIsLoadingChannels] = useState(false);
   const [channelLoadProgress, setChannelLoadProgress] = useState<string>('');
+  // Track remote node favorite/ignored status separately (key: nodeNum, value: {isFavorite, isIgnored})
+  const [remoteNodeStatus, setRemoteNodeStatus] = useState<Map<number, { isFavorite: boolean; isIgnored: boolean }>>(new Map());
 
   useEffect(() => {
     // Build node options list
@@ -219,6 +221,13 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [showSearch, showNodeManagementSearch]);
+
+  // Clear remote node status when switching target nodes (since status is per-remote-device)
+  useEffect(() => {
+    setRemoteNodeStatus(new Map());
+    // Also clear node management selection when switching target nodes
+    setNodeManagementNodeNum(null);
+  }, [selectedNodeNum]);
 
   const handleNodeSelect = (nodeNum: number) => {
     setSelectedNodeNum(nodeNum);
@@ -687,6 +696,11 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     }
   };
 
+  // Determine if we're managing a remote node (not the local node)
+  // Calculate this once per render to avoid recalculating in handlers
+  const localNodeNum = nodeOptions.find(n => n.isLocal)?.nodeNum;
+  const isManagingRemoteNode = selectedNodeNum !== null && selectedNodeNum !== localNodeNum && selectedNodeNum !== 0;
+
   const executeCommand = async (command: string, params: any = {}) => {
     if (selectedNodeNum === null) {
       showToast('Please select a node', 'error');
@@ -787,12 +801,21 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     try {
       await executeCommand('setFavoriteNode', { nodeNum: nodeManagementNodeNum });
       showToast(`Node ${nodeManagementNodeNum} set as favorite`, 'success');
-      // Optimistically update local state
-      setNodeOptions(prev => prev.map(node => 
-        node.nodeNum === nodeManagementNodeNum 
-          ? { ...node, isFavorite: true }
-          : node
-      ));
+      // Optimistically update state - use remote status if managing remote node, otherwise local
+      if (isManagingRemoteNode) {
+        setRemoteNodeStatus(prev => {
+          const newMap = new Map(prev);
+          const current = newMap.get(nodeManagementNodeNum) || { isFavorite: false, isIgnored: false };
+          newMap.set(nodeManagementNodeNum, { ...current, isFavorite: true });
+          return newMap;
+        });
+      } else {
+        setNodeOptions(prev => prev.map(node => 
+          node.nodeNum === nodeManagementNodeNum 
+            ? { ...node, isFavorite: true }
+            : node
+        ));
+      }
     } catch (error) {
       // Error already handled by executeCommand (toast shown)
       console.error('Set favorite node command failed:', error);
@@ -807,12 +830,21 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     try {
       await executeCommand('removeFavoriteNode', { nodeNum: nodeManagementNodeNum });
       showToast(`Node ${nodeManagementNodeNum} removed from favorites`, 'success');
-      // Optimistically update local state
-      setNodeOptions(prev => prev.map(node => 
-        node.nodeNum === nodeManagementNodeNum 
-          ? { ...node, isFavorite: false }
-          : node
-      ));
+      // Optimistically update state - use remote status if managing remote node, otherwise local
+      if (isManagingRemoteNode) {
+        setRemoteNodeStatus(prev => {
+          const newMap = new Map(prev);
+          const current = newMap.get(nodeManagementNodeNum) || { isFavorite: false, isIgnored: false };
+          newMap.set(nodeManagementNodeNum, { ...current, isFavorite: false });
+          return newMap;
+        });
+      } else {
+        setNodeOptions(prev => prev.map(node => 
+          node.nodeNum === nodeManagementNodeNum 
+            ? { ...node, isFavorite: false }
+            : node
+        ));
+      }
     } catch (error) {
       // Error already handled by executeCommand (toast shown)
       console.error('Remove favorite node command failed:', error);
@@ -827,12 +859,21 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     try {
       await executeCommand('setIgnoredNode', { nodeNum: nodeManagementNodeNum });
       showToast(`Node ${nodeManagementNodeNum} set as ignored`, 'success');
-      // Optimistically update local state
-      setNodeOptions(prev => prev.map(node => 
-        node.nodeNum === nodeManagementNodeNum 
-          ? { ...node, isIgnored: true }
-          : node
-      ));
+      // Optimistically update state - use remote status if managing remote node, otherwise local
+      if (isManagingRemoteNode) {
+        setRemoteNodeStatus(prev => {
+          const newMap = new Map(prev);
+          const current = newMap.get(nodeManagementNodeNum) || { isFavorite: false, isIgnored: false };
+          newMap.set(nodeManagementNodeNum, { ...current, isIgnored: true });
+          return newMap;
+        });
+      } else {
+        setNodeOptions(prev => prev.map(node => 
+          node.nodeNum === nodeManagementNodeNum 
+            ? { ...node, isIgnored: true }
+            : node
+        ));
+      }
     } catch (error) {
       // Error already handled by executeCommand (toast shown)
       console.error('Set ignored node command failed:', error);
@@ -847,12 +888,21 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     try {
       await executeCommand('removeIgnoredNode', { nodeNum: nodeManagementNodeNum });
       showToast(`Node ${nodeManagementNodeNum} removed from ignored list`, 'success');
-      // Optimistically update local state
-      setNodeOptions(prev => prev.map(node => 
-        node.nodeNum === nodeManagementNodeNum 
-          ? { ...node, isIgnored: false }
-          : node
-      ));
+      // Optimistically update state - use remote status if managing remote node, otherwise local
+      if (isManagingRemoteNode) {
+        setRemoteNodeStatus(prev => {
+          const newMap = new Map(prev);
+          const current = newMap.get(nodeManagementNodeNum) || { isFavorite: false, isIgnored: false };
+          newMap.set(nodeManagementNodeNum, { ...current, isIgnored: false });
+          return newMap;
+        });
+      } else {
+        setNodeOptions(prev => prev.map(node => 
+          node.nodeNum === nodeManagementNodeNum 
+            ? { ...node, isIgnored: false }
+            : node
+        ));
+      }
     } catch (error) {
       // Error already handled by executeCommand (toast shown)
       console.error('Remove ignored node command failed:', error);
@@ -2390,13 +2440,22 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           </div>
           {nodeManagementNodeNum !== null && (() => {
             const selectedNode = nodeOptions.find(n => n.nodeNum === nodeManagementNodeNum);
+            // When managing a remote node, only use remote status (don't fall back to local status)
+            // When managing local node, use local status from nodeOptions
+            const remoteStatus = isManagingRemoteNode ? remoteNodeStatus.get(nodeManagementNodeNum) : null;
+            const isFavorite = isManagingRemoteNode 
+              ? (remoteStatus?.isFavorite ?? false)  // Remote: only use remote status, default to false
+              : (selectedNode?.isFavorite ?? false);  // Local: use local status
+            const isIgnored = isManagingRemoteNode 
+              ? (remoteStatus?.isIgnored ?? false)    // Remote: only use remote status, default to false
+              : (selectedNode?.isIgnored ?? false);   // Local: use local status
             return (
               <div style={{ marginTop: '0.75rem', fontSize: '0.875rem', color: 'var(--ctp-subtext0)' }}>
                 Selected: {selectedNode?.longName || `Node ${nodeManagementNodeNum}`}
-                {selectedNode && (
+                {(isFavorite || isIgnored) && (
                   <span style={{ marginLeft: '0.5rem' }}>
-                    {selectedNode.isFavorite && <span style={{ color: 'var(--ctp-yellow)' }}>⭐ Favorite</span>}
-                    {selectedNode.isIgnored && <span style={{ color: 'var(--ctp-red)', marginLeft: '0.5rem' }}>🚫 Ignored</span>}
+                    {isFavorite && <span style={{ color: 'var(--ctp-yellow)' }}>⭐ Favorite</span>}
+                    {isIgnored && <span style={{ color: 'var(--ctp-red)', marginLeft: '0.5rem' }}>🚫 Ignored</span>}
                   </span>
                 )}
               </div>
@@ -2409,7 +2468,12 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             <h4 style={{ marginBottom: '0.75rem', color: 'var(--ctp-text)' }}>⭐ Favorites</h4>
             {(() => {
               const selectedNode = nodeManagementNodeNum !== null ? nodeOptions.find(n => n.nodeNum === nodeManagementNodeNum) : null;
-              const isCurrentlyFavorite = selectedNode?.isFavorite ?? false;
+              // When managing a remote node, only use remote status (don't fall back to local status)
+              // When managing local node, use local status from nodeOptions
+              const remoteStatus = isManagingRemoteNode && nodeManagementNodeNum !== null ? remoteNodeStatus.get(nodeManagementNodeNum) : null;
+              const isCurrentlyFavorite = isManagingRemoteNode
+                ? (remoteStatus?.isFavorite ?? false)  // Remote: only use remote status, default to false
+                : (selectedNode?.isFavorite ?? false); // Local: use local status
               const isDisabled = isExecuting || nodeManagementNodeNum === null;
               
               return (
@@ -2458,7 +2522,12 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             <h4 style={{ marginBottom: '0.75rem', color: 'var(--ctp-text)' }}>🚫 Ignored</h4>
             {(() => {
               const selectedNode = nodeManagementNodeNum !== null ? nodeOptions.find(n => n.nodeNum === nodeManagementNodeNum) : null;
-              const isCurrentlyIgnored = selectedNode?.isIgnored ?? false;
+              // When managing a remote node, only use remote status (don't fall back to local status)
+              // When managing local node, use local status from nodeOptions
+              const remoteStatus = isManagingRemoteNode && nodeManagementNodeNum !== null ? remoteNodeStatus.get(nodeManagementNodeNum) : null;
+              const isCurrentlyIgnored = isManagingRemoteNode
+                ? (remoteStatus?.isIgnored ?? false)   // Remote: only use remote status, default to false
+                : (selectedNode?.isIgnored ?? false);   // Local: use local status
               const isDisabled = isExecuting || nodeManagementNodeNum === null;
               
               return (
