@@ -2250,6 +2250,7 @@
   "auto_upgrade_test.status_downloading": "Pulling Image",
   "auto_upgrade_test.status_restarting": "Recreating Container",
   "auto_upgrade_test.status_health_check": "Health Check",
+  "auto_upgrade_test.status_cleanup": "Cleaning Up Old Images",
   "auto_upgrade_test.status_complete": "Complete",
   "auto_upgrade_test.status_failed": "Failed",
   "auto_upgrade_test.status_rolling_back": "Rolling Back",
