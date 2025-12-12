@@ -49,6 +49,8 @@ tags:
     description: Network-wide statistics and topology
   - name: Packets
     description: Raw packet log data from the mesh network
+  - name: Solar
+    description: Solar production estimates from forecast.solar
 
 security:
   - BearerAuth: []
@@ -365,6 +367,75 @@ components:
         data:
           $ref: '#/components/schemas/Message'
 
+    SendMessageRequest:
+      type: object
+      required:
+        - text
+      properties:
+        text:
+          type: string
+          description: The message text to send
+          example: "Hello from the API!"
+          minLength: 1
+          maxLength: 237
+        channel:
+          type: integer
+          description: Channel number to send to (0-7). Required if toNodeId is not specified.
+          minimum: 0
+          maximum: 7
+          example: 0
+        toNodeId:
+          type: string
+          description: Node ID for direct message (e.g., "!a1b2c3d4"). Required if channel is not specified.
+          pattern: '^![0-9a-fA-F]{1,8}$'
+          example: "!a1b2c3d4"
+        replyId:
+          type: integer
+          description: Request ID of the message being replied to (optional)
+          example: 123456789
+
+    SendMessageResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          required:
+            - messageId
+            - requestId
+            - deliveryState
+          properties:
+            messageId:
+              type: string
+              description: Unique message ID for tracking (format nodeNum_requestId)
+              example: "2715451348_123456789"
+            requestId:
+              type: integer
+              description: Request ID for matching delivery acknowledgments
+              example: 123456789
+            deliveryState:
+              type: string
+              description: Current delivery state
+              enum: [pending, delivered, confirmed, failed]
+              example: "pending"
+            text:
+              type: string
+              description: The message text that was sent
+              example: "Hello from the API!"
+            channel:
+              type: integer
+              description: Channel the message was sent to (-1 for direct messages)
+              example: 0
+            toNodeId:
+              type: string
+              description: Destination node ID or "broadcast" for channel messages
+              example: "broadcast"
+
     Traceroute:
       type: object
       properties:
@@ -666,6 +737,75 @@ components:
           example: true
         data:
           $ref: '#/components/schemas/Packet'
+
+    SolarEstimate:
+      type: object
+      properties:
+        timestamp:
+          type: integer
+          description: Unix timestamp (seconds) for the estimate period
+          example: 1699560000
+        datetime:
+          type: string
+          format: date-time
+          description: ISO 8601 datetime string
+          example: "2024-11-09T14:00:00.000Z"
+        wattHours:
+          type: number
+          description: Estimated watt-hours of solar production for this period
+          example: 450.5
+        fetchedAt:
+          type: integer
+          description: Unix timestamp when this estimate was fetched from forecast.solar
+          example: 1699557600
+
+    SolarListResponse:
+      type: object
+      required:
+        - success
+        - count
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        count:
+          type: integer
+          description: Number of estimates returned
+          example: 24
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/SolarEstimate'
+
+    SolarRangeResponse:
+      type: object
+      required:
+        - success
+        - count
+        - start
+        - end
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        count:
+          type: integer
+          description: Number of estimates returned
+          example: 24
+        start:
+          type: integer
+          description: Start timestamp of the requested range
+          example: 1699520400
+        end:
+          type: integer
+          description: End timestamp of the requested range
+          example: 1699606800
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/SolarEstimate'
 
 paths:
   /:
@@ -1004,6 +1144,117 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - Messages
+      summary: Send a message
+      description: |
+        Send a new message to a channel or directly to a node.
+
+        **Permission Requirements:**
+        - Channel messages require `channel_X:write` permission (where X is the channel number)
+        - Direct messages require `messages:write` permission
+
+        **Usage:**
+        - Provide `channel` for broadcast messages to a channel
+        - Provide `toNodeId` for direct messages to a specific node
+        - Do not provide both `channel` and `toNodeId`
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessageRequest'
+            examples:
+              channelMessage:
+                summary: Send to a channel
+                value:
+                  text: "Hello from the API!"
+                  channel: 0
+              directMessage:
+                summary: Send direct message
+                value:
+                  text: "Private message via API"
+                  toNodeId: "!a1b2c3d4"
+              replyMessage:
+                summary: Reply to a message
+                value:
+                  text: "This is a reply"
+                  channel: 0
+                  replyId: 123456789
+      responses:
+        '201':
+          description: Message sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendMessageResponse'
+        '400':
+          description: Bad request (invalid parameters)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                missingText:
+                  summary: Missing text
+                  value:
+                    success: false
+                    error: "Bad Request"
+                    message: "Message text is required"
+                bothChannelAndNode:
+                  summary: Both channel and toNodeId provided
+                  value:
+                    success: false
+                    error: "Bad Request"
+                    message: "Provide either channel OR toNodeId, not both"
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - insufficient permissions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Forbidden"
+                  message:
+                    type: string
+                    example: "Insufficient permissions"
+                  required:
+                    type: object
+                    properties:
+                      resource:
+                        type: string
+                        example: "channel_0"
+                      action:
+                        type: string
+                        example: "write"
+        '503':
+          description: Service unavailable - not connected to Meshtastic node
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                success: false
+                error: "Service Unavailable"
+                message: "Not connected to Meshtastic node"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /messages/{messageId}:
     get:
@@ -1304,6 +1555,89 @@ paths:
                 $ref: '#/components/schemas/Error'
         '404':
           description: Packet not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /solar:
+    get:
+      tags:
+        - Solar
+      summary: Get solar production estimates
+      description: |
+        Retrieve recent solar production estimates from forecast.solar.
+        Solar monitoring must be enabled and configured in MeshMonitor settings.
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of estimates to return
+          required: false
+          schema:
+            type: integer
+            default: 100
+            minimum: 1
+            maximum: 1000
+      responses:
+        '200':
+          description: Solar estimates retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SolarListResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /solar/range:
+    get:
+      tags:
+        - Solar
+      summary: Get solar estimates for a time range
+      description: Retrieve solar production estimates for a specific time period
+      parameters:
+        - name: start
+          in: query
+          description: Start timestamp (Unix seconds)
+          required: true
+          schema:
+            type: integer
+        - name: end
+          in: query
+          description: End timestamp (Unix seconds)
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Solar estimates retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SolarRangeResponse'
+        '400':
+          description: Bad request (invalid timestamps)
           content:
             application/json:
               schema:

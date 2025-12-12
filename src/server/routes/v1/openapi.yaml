@@ -367,6 +367,75 @@ components:
         data:
           $ref: '#/components/schemas/Message'
 
+    SendMessageRequest:
+      type: object
+      required:
+        - text
+      properties:
+        text:
+          type: string
+          description: The message text to send
+          example: "Hello from the API!"
+          minLength: 1
+          maxLength: 237
+        channel:
+          type: integer
+          description: Channel number to send to (0-7). Required if toNodeId is not specified.
+          minimum: 0
+          maximum: 7
+          example: 0
+        toNodeId:
+          type: string
+          description: Node ID for direct message (e.g., "!a1b2c3d4"). Required if channel is not specified.
+          pattern: '^![0-9a-fA-F]{1,8}$'
+          example: "!a1b2c3d4"
+        replyId:
+          type: integer
+          description: Request ID of the message being replied to (optional)
+          example: 123456789
+
+    SendMessageResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          required:
+            - messageId
+            - requestId
+            - deliveryState
+          properties:
+            messageId:
+              type: string
+              description: Unique message ID for tracking (format nodeNum_requestId)
+              example: "2715451348_123456789"
+            requestId:
+              type: integer
+              description: Request ID for matching delivery acknowledgments
+              example: 123456789
+            deliveryState:
+              type: string
+              description: Current delivery state
+              enum: [pending, delivered, confirmed, failed]
+              example: "pending"
+            text:
+              type: string
+              description: The message text that was sent
+              example: "Hello from the API!"
+            channel:
+              type: integer
+              description: Channel the message was sent to (-1 for direct messages)
+              example: 0
+            toNodeId:
+              type: string
+              description: Destination node ID or "broadcast" for channel messages
+              example: "broadcast"
+
     Traceroute:
       type: object
       properties:
@@ -1069,6 +1138,117 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - Messages
+      summary: Send a message
+      description: |
+        Send a new message to a channel or directly to a node.
+
+        **Permission Requirements:**
+        - Channel messages require `channel_X:write` permission (where X is the channel number)
+        - Direct messages require `messages:write` permission
+
+        **Usage:**
+        - Provide `channel` for broadcast messages to a channel
+        - Provide `toNodeId` for direct messages to a specific node
+        - Do not provide both `channel` and `toNodeId`
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessageRequest'
+            examples:
+              channelMessage:
+                summary: Send to a channel
+                value:
+                  text: "Hello from the API!"
+                  channel: 0
+              directMessage:
+                summary: Send direct message
+                value:
+                  text: "Private message via API"
+                  toNodeId: "!a1b2c3d4"
+              replyMessage:
+                summary: Reply to a message
+                value:
+                  text: "This is a reply"
+                  channel: 0
+                  replyId: 123456789
+      responses:
+        '201':
+          description: Message sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendMessageResponse'
+        '400':
+          description: Bad request (invalid parameters)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                missingText:
+                  summary: Missing text
+                  value:
+                    success: false
+                    error: "Bad Request"
+                    message: "Message text is required"
+                bothChannelAndNode:
+                  summary: Both channel and toNodeId provided
+                  value:
+                    success: false
+                    error: "Bad Request"
+                    message: "Provide either channel OR toNodeId, not both"
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - insufficient permissions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Forbidden"
+                  message:
+                    type: string
+                    example: "Insufficient permissions"
+                  required:
+                    type: object
+                    properties:
+                      resource:
+                        type: string
+                        example: "channel_0"
+                      action:
+                        type: string
+                        example: "write"
+        '503':
+          description: Service unavailable - not connected to Meshtastic node
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                success: false
+                error: "Service Unavailable"
+                message: "Not connected to Meshtastic node"
         '500':
           description: Internal server error
           content:
