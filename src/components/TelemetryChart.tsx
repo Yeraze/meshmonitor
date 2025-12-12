@@ -72,6 +72,9 @@ const TELEMETRY_LABEL_KEYS: Record<string, string> = {
   pressure: 'telemetry.barometric_pressure',
   ch1Voltage: 'telemetry.ch1_voltage',
   ch1Current: 'telemetry.ch1_current',
+  paxcounterWifi: 'telemetry.paxcounter_wifi',
+  paxcounterBle: 'telemetry.paxcounter_ble',
+  paxcounterUptime: 'telemetry.paxcounter_uptime',
 };
 
 // Fallback labels (used when translation is not available or for sorting/filtering)
@@ -85,6 +88,9 @@ const TELEMETRY_LABELS: Record<string, string> = {
   pressure: 'Barometric Pressure',
   ch1Voltage: 'Channel 1 Voltage',
   ch1Current: 'Channel 1 Current',
+  paxcounterWifi: 'Paxcounter WiFi',
+  paxcounterBle: 'Paxcounter BLE',
+  paxcounterUptime: 'Paxcounter Uptime',
 };
 
 // Export for external use (returns English labels for sorting/filtering compatibility)
@@ -100,6 +106,9 @@ const TELEMETRY_COLORS: Record<string, string> = {
   pressure: '#a28dff',
   ch1Voltage: '#d084d8',
   ch1Current: '#ff6b9d',
+  paxcounterWifi: '#ff9500',
+  paxcounterBle: '#17c0fa',
+  paxcounterUptime: '#9c88ff',
 };
 
 const getColor = (type: string): string => TELEMETRY_COLORS[type] || '#8884d8';

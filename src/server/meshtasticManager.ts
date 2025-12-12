@@ -1355,6 +1355,10 @@ class MeshtasticManager {
                 telemetryType = 'Host';
               }
               payloadPreview = `[Telemetry: ${telemetryType}]`;
+            } else if (portnum === 34) {
+              // PAXCOUNTER - show WiFi and BLE counts
+              const pax = processedPayload as any;
+              payloadPreview = `[Paxcounter: WiFi=${pax.wifi || 0}, BLE=${pax.ble || 0}]`;
             } else if (portnum === 70) {
               // TRACEROUTE
               payloadPreview = '[Traceroute]';
@@ -1473,6 +1477,9 @@ class MeshtasticManager {
             break;
           case 4: // NODEINFO_APP
             await this.processNodeInfoMessageProtobuf(meshPacket, processedPayload as any);
+            break;
+          case 34: // PAXCOUNTER_APP
+            await this.processPaxcounterMessageProtobuf(meshPacket, processedPayload as any);
             break;
           case 67: // TELEMETRY_APP
             await this.processTelemetryMessageProtobuf(meshPacket, processedPayload as any);
@@ -2119,6 +2126,66 @@ class MeshtasticManager {
       logger.debug(`📊 Updated node telemetry and saved to telemetry table: ${nodeId}`);
     } catch (error) {
       logger.error('❌ Error processing telemetry message:', error);
+    }
+  }
+
+  /**
+   * Process paxcounter message
+   * Paxcounter counts nearby WiFi and BLE devices
+   */
+  private async processPaxcounterMessageProtobuf(meshPacket: any, paxcount: any): Promise<void> {
+    try {
+      logger.debug('📊 Processing paxcounter message');
+
+      const fromNum = Number(meshPacket.from);
+      const nodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
+      // Use server receive time instead of packet time to avoid issues with nodes having incorrect time offsets
+      const now = Date.now();
+      const timestamp = now;
+
+      // Track PKI encryption
+      this.trackPKIEncryption(meshPacket, fromNum);
+
+      const nodeData: any = {
+        nodeNum: fromNum,
+        nodeId: nodeId,
+        lastHeard: meshPacket.rxTime ? Number(meshPacket.rxTime) : Date.now() / 1000
+      };
+
+      // Only include SNR/RSSI if they have valid values
+      if (meshPacket.rxSnr && meshPacket.rxSnr !== 0) {
+        nodeData.snr = meshPacket.rxSnr;
+      }
+      if (meshPacket.rxRssi && meshPacket.rxRssi !== 0) {
+        nodeData.rssi = meshPacket.rxRssi;
+      }
+
+      logger.debug(`📡 Paxcounter: wifi=${paxcount.wifi}, ble=${paxcount.ble}, uptime=${paxcount.uptime}`);
+
+      // Save paxcounter metrics as telemetry
+      if (paxcount.wifi !== undefined && paxcount.wifi !== null && !isNaN(paxcount.wifi)) {
+        databaseService.insertTelemetry({
+          nodeId, nodeNum: fromNum, telemetryType: 'paxcounterWifi',
+          timestamp, value: paxcount.wifi, unit: 'devices', createdAt: now
+        });
+      }
+      if (paxcount.ble !== undefined && paxcount.ble !== null && !isNaN(paxcount.ble)) {
+        databaseService.insertTelemetry({
+          nodeId, nodeNum: fromNum, telemetryType: 'paxcounterBle',
+          timestamp, value: paxcount.ble, unit: 'devices', createdAt: now
+        });
+      }
+      if (paxcount.uptime !== undefined && paxcount.uptime !== null && !isNaN(paxcount.uptime)) {
+        databaseService.insertTelemetry({
+          nodeId, nodeNum: fromNum, telemetryType: 'paxcounterUptime',
+          timestamp, value: paxcount.uptime, unit: 's', createdAt: now
+        });
+      }
+
+      databaseService.upsertNode(nodeData);
+      logger.debug(`📡 Updated node with paxcounter data: ${nodeId}`);
+    } catch (error) {
+      logger.error('❌ Error processing paxcounter message:', error);
     }
   }
 

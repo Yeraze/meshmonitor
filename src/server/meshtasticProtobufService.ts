@@ -585,6 +585,11 @@ export class MeshtasticProtobufService {
           const routing = Routing.decode(payload);
           return routing;
 
+        case 34: // PAXCOUNTER_APP
+          const Paxcount = root.lookupType('meshtastic.Paxcount');
+          const paxcount = Paxcount.decode(payload);
+          return paxcount;
+
         case 67: // TELEMETRY_APP
           const Telemetry = root.lookupType('meshtastic.Telemetry');
           const telemetry = Telemetry.decode(payload);
