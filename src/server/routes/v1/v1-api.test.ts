@@ -647,4 +647,128 @@ describe('POST /api/v1/messages', () => {
 
     expect(response.body.data.text).toBe('Trimmed message');
   });
+
+  it('should accept short node IDs (1-8 hex chars)', async () => {
+    const response = await request(app)
+      .post('/api/v1/messages')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .send({
+        text: 'Short node ID test',
+        toNodeId: '!abc'
+      })
+      .expect(201);
+
+    expect(response.body).toHaveProperty('success', true);
+    expect(response.body.data).toHaveProperty('toNodeId', '!abc');
+  });
+
+  it('should reject whitespace-only text', async () => {
+    const response = await request(app)
+      .post('/api/v1/messages')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .send({
+        text: '   ',
+        channel: 0
+      })
+      .expect(400);
+
+    expect(response.body).toHaveProperty('success', false);
+    expect(response.body).toHaveProperty('error', 'Bad Request');
+  });
+});
+
+describe('POST /api/v1/messages - Permission Tests', () => {
+  it('should reject channel message without channel permission', async () => {
+    // Override permissionModel.check to deny channel_0:write
+    const databaseService = await import('../../../services/database.js');
+    vi.mocked(databaseService.default.permissionModel.check).mockImplementation(
+      (userId: number, resource: string, action: string) => {
+        if (resource === 'channel_0' && action === 'write') return false;
+        return true;
+      }
+    );
+
+    const response = await request(app)
+      .post('/api/v1/messages')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .send({
+        text: 'Should be denied',
+        channel: 0
+      })
+      .expect(403);
+
+    expect(response.body).toHaveProperty('success', false);
+    expect(response.body).toHaveProperty('error', 'Forbidden');
+    expect(response.body).toHaveProperty('required');
+    expect(response.body.required).toHaveProperty('resource', 'channel_0');
+    expect(response.body.required).toHaveProperty('action', 'write');
+  });
+
+  it('should reject direct message without messages permission', async () => {
+    // Override permissionModel.check to deny messages:write
+    const databaseService = await import('../../../services/database.js');
+    vi.mocked(databaseService.default.permissionModel.check).mockImplementation(
+      (userId: number, resource: string, action: string) => {
+        if (resource === 'messages' && action === 'write') return false;
+        return true;
+      }
+    );
+
+    const response = await request(app)
+      .post('/api/v1/messages')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .send({
+        text: 'Should be denied',
+        toNodeId: '!a1b2c3d4'
+      })
+      .expect(403);
+
+    expect(response.body).toHaveProperty('success', false);
+    expect(response.body).toHaveProperty('error', 'Forbidden');
+    expect(response.body).toHaveProperty('required');
+    expect(response.body.required).toHaveProperty('resource', 'messages');
+  });
+});
+
+describe('POST /api/v1/messages - Error Handling', () => {
+  it('should return 503 when not connected to node', async () => {
+    // Mock sendTextMessage to throw a "Not connected" error
+    const meshtasticManager = await import('../../meshtasticManager.js');
+    vi.mocked(meshtasticManager.default.sendTextMessage).mockRejectedValueOnce(
+      new Error('Not connected to Meshtastic device')
+    );
+
+    const response = await request(app)
+      .post('/api/v1/messages')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .send({
+        text: 'Test message',
+        channel: 0
+      })
+      .expect(503);
+
+    expect(response.body).toHaveProperty('success', false);
+    expect(response.body).toHaveProperty('error', 'Service Unavailable');
+    expect(response.body.message).toContain('Not connected');
+  });
+
+  it('should return 500 for generic errors', async () => {
+    // Mock sendTextMessage to throw a generic error
+    const meshtasticManager = await import('../../meshtasticManager.js');
+    vi.mocked(meshtasticManager.default.sendTextMessage).mockRejectedValueOnce(
+      new Error('Something went wrong')
+    );
+
+    const response = await request(app)
+      .post('/api/v1/messages')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .send({
+        text: 'Test message',
+        channel: 0
+      })
+      .expect(500);
+
+    expect(response.body).toHaveProperty('success', false);
+    expect(response.body).toHaveProperty('error', 'Internal Server Error');
+  });
 });

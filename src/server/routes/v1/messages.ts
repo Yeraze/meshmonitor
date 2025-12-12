@@ -9,6 +9,7 @@ import databaseService from '../../../services/database.js';
 import meshtasticManager from '../../meshtasticManager.js';
 import { hasPermission } from '../../auth/authMiddleware.js';
 import { ResourceType } from '../../../types/permission.js';
+import { messageLimiter } from '../../middleware/rateLimiters.js';
 import { logger } from '../../../utils/logger.js';
 
 const router = express.Router();
@@ -118,7 +119,7 @@ router.get('/:messageId', (req: Request, res: Response) => {
  * - requestId: number - Request ID for matching delivery acknowledgments
  * - deliveryState: string - Initial delivery state ("pending")
  */
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', messageLimiter, async (req: Request, res: Response) => {
   try {
     const { text, channel, toNodeId, replyId } = req.body;
 
