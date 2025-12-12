@@ -101,6 +101,39 @@ The Settings tab allows you to customize MeshMonitor's behavior and manage your 
 
 **Effect**: Helps organize and analyze large networks by grouping nodes by their functional role in the mesh.
 
+### Ignored Nodes Filter
+
+**Description**: Filter nodes that you have manually marked as "ignored." Ignored nodes are hidden from the node list by default to reduce clutter from nodes you don't want to track.
+
+**Location**: Node List filter panel (identified by 🚫 icon)
+
+**Default**: Unchecked (ignored nodes are hidden)
+
+**Behavior**:
+- **Unchecked** (default): Ignored nodes are hidden from the node list
+- **Checked**: Ignored nodes are shown in the node list
+
+**How to Ignore a Node**:
+1. Select a node in the Node List to open its details
+2. In the Node Details page, click the "Ignore Node" button (next to "Purge Data")
+3. The node will be marked as ignored and hidden from the list
+
+**How to Un-ignore a Node**:
+1. Enable "Show ignored nodes" in the filter panel
+2. Find the ignored node in the list and select it
+3. In the Node Details page, click the "Un-ignore Node" button (green button)
+4. The node will be unmarked and appear normally
+
+**Use Cases**:
+- Hide nodes you're not interested in tracking (e.g., nodes outside your area of interest)
+- Reduce clutter in large mesh networks
+- Temporarily hide problematic nodes while troubleshooting
+- Focus on a subset of nodes that matter to you
+
+**Effect**: Ignored nodes are hidden from the main Node List by default. They continue to receive data and can be shown again at any time by enabling the "Show ignored nodes" filter. This is a per-node setting stored in the database.
+
+**Note**: Ignoring a node does not affect message delivery or network functionality - it only hides the node from the UI.
+
 ### Security Filter
 
 **Description**: Filter nodes based on detected security issues, allowing you to focus on nodes with security problems or hide them from view.
