@@ -1451,6 +1451,8 @@
   "notifications.server_events_startup": "Server startup (includes version and enabled features)",
   "notifications.server_events_disconnect": "Node disconnection (when connection to Meshtastic node is lost)",
   "notifications.server_events_reconnect": "Node reconnection (when connection is restored)",
+  "notifications.prefix_with_node_name": "🏷️ Prefix Notifications with Node Name",
+  "notifications.prefix_with_node_name_description": "All notification messages will include the locally connected node name at the beginning, e.g., \"[NodeName] Message text\"",
   "notifications.channels_label": "Channels:",
   "notifications.no_channels": "No channels available",
   "notifications.channel_fallback": "Channel {{id}}",

@@ -34,7 +34,7 @@ import { duplicateKeySchedulerService } from './services/duplicateKeySchedulerSe
 import { solarMonitoringService } from './services/solarMonitoringService.js';
 import { inactiveNodeNotificationService } from './services/inactiveNodeNotificationService.js';
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
-import { getUserNotificationPreferences, saveUserNotificationPreferences } from './utils/notificationFiltering.js';
+import { getUserNotificationPreferences, saveUserNotificationPreferences, applyNodeNamePrefix } from './utils/notificationFiltering.js';
 import { upgradeService } from './services/upgradeService.js';
 
 const require = createRequire(import.meta.url);
@@ -5716,9 +5716,17 @@ apiRouter.post('/push/test', requireAdmin(), async (req, res) => {
   try {
     const userId = req.session?.userId;
 
+    // Get local node name for prefix
+    const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+    const localNodeName = localNodeInfo?.longName || null;
+
+    // Apply prefix if user has it enabled
+    const baseBody = 'This is a test push notification from MeshMonitor';
+    const body = applyNodeNamePrefix(userId, baseBody, localNodeName);
+
     const result = await pushNotificationService.sendToUser(userId, {
       title: 'Test Notification',
-      body: 'This is a test push notification from MeshMonitor',
+      body,
       icon: '/logo.png',
       badge: '/logo.png',
       tag: 'test-notification',
@@ -5787,6 +5795,7 @@ apiRouter.post('/push/preferences', requireAuth(), async (req, res) => {
       notifyOnTraceroute,
       notifyOnInactiveNode,
       notifyOnServerEvents,
+      prefixWithNodeName,
       monitoredNodes,
       whitelist,
       blacklist,
@@ -5828,6 +5837,7 @@ apiRouter.post('/push/preferences', requireAuth(), async (req, res) => {
       notifyOnTraceroute,
       notifyOnInactiveNode: notifyOnInactiveNode ?? false,
       notifyOnServerEvents: notifyOnServerEvents ?? false,
+      prefixWithNodeName: prefixWithNodeName ?? false,
       monitoredNodes: monitoredNodes ?? [],
       whitelist,
       blacklist,
@@ -5869,11 +5879,21 @@ apiRouter.get('/apprise/status', requireAdmin(), async (_req, res) => {
 });
 
 // Send test Apprise notification (admin only)
-apiRouter.post('/apprise/test', requireAdmin(), async (_req, res) => {
+apiRouter.post('/apprise/test', requireAdmin(), async (req, res) => {
   try {
+    const userId = req.session?.userId;
+
+    // Get local node name for prefix
+    const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+    const localNodeName = localNodeInfo?.longName || null;
+
+    // Apply prefix if user has it enabled
+    const baseBody = 'This is a test notification from MeshMonitor via Apprise';
+    const body = applyNodeNamePrefix(userId, baseBody, localNodeName);
+
     const success = await appriseNotificationService.sendNotification({
       title: 'Test Notification',
-      body: 'This is a test notification from MeshMonitor via Apprise',
+      body,
       type: 'info',
     });
 

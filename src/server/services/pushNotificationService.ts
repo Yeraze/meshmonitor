@@ -2,7 +2,8 @@ import webpush from 'web-push';
 import { getEnvironmentConfig } from '../config/environment.js';
 import { logger } from '../../utils/logger.js';
 import databaseService, { DbPushSubscription } from '../../services/database.js';
-import { getUserNotificationPreferences, shouldFilterNotification as shouldFilterNotificationUtil } from '../utils/notificationFiltering.js';
+import { getUserNotificationPreferences, shouldFilterNotification as shouldFilterNotificationUtil, applyNodeNamePrefix } from '../utils/notificationFiltering.js';
+import meshtasticManager from '../meshtasticManager.js';
 
 export interface PushNotificationPayload {
   title: string;
@@ -386,6 +387,10 @@ class PushNotificationService {
 
     logger.info(`📢 Broadcasting push notification to ${subscriptions.length} subscriptions with filtering`);
 
+    // Get local node name for prefix
+    const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+    const localNodeName = localNodeInfo?.longName || null;
+
     for (const subscription of subscriptions) {
       // Get user preferences
       const userId = subscription.userId;
@@ -397,7 +402,13 @@ class PushNotificationService {
         continue;
       }
 
-      const success = await this.sendToSubscription(subscription, payload);
+      // Apply node name prefix if user has it enabled
+      const prefixedBody = applyNodeNamePrefix(userId, payload.body, localNodeName);
+      const notificationPayload = prefixedBody !== payload.body
+        ? { ...payload, body: prefixedBody }
+        : payload;
+
+      const success = await this.sendToSubscription(subscription, notificationPayload);
       if (success) {
         sent++;
       } else {
@@ -459,6 +470,10 @@ class PushNotificationService {
 
     logger.info(`📢 Broadcasting ${preferenceKey} notification to ${subscriptions.length} subscriptions${targetUserId ? ` (target user: ${targetUserId})` : ''}`);
 
+    // Get local node name for prefix
+    const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+    const localNodeName = localNodeInfo?.longName || null;
+
     for (const subscription of subscriptions) {
       const userId = subscription.userId;
 
@@ -481,7 +496,13 @@ class PushNotificationService {
         continue;
       }
 
-      const success = await this.sendToSubscription(subscription, payload);
+      // Apply node name prefix if user has it enabled
+      const prefixedBody = applyNodeNamePrefix(userId, payload.body, localNodeName);
+      const notificationPayload = prefixedBody !== payload.body
+        ? { ...payload, body: prefixedBody }
+        : payload;
+
+      const success = await this.sendToSubscription(subscription, notificationPayload);
       if (success) {
         sent++;
       } else {
