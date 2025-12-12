@@ -316,6 +316,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     }
   }, []); // Empty deps - function never changes
 
+  // Utility to prevent mousedown from triggering drag on form elements
+  // Firefox handles select/input mousedown differently, which can trigger panel drag
+  const stopPropagation = useCallback((e: React.MouseEvent) => e.stopPropagation(), []);
+
   // Stable callback factories for node item interactions
   const handleNodeClick = useCallback((node: DeviceInfo) => {
     return () => {
@@ -831,6 +835,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               placeholder={t('nodes.filter_placeholder')}
               value={nodesNodeFilter}
               onChange={(e) => setNodesNodeFilter(e.target.value)}
+              onMouseDown={stopPropagation}
               className="filter-input-small"
             />
             <div className="sort-controls">
@@ -852,6 +857,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               <select
                 value={sortField}
                 onChange={(e) => setSortField(e.target.value as any)}
+                onMouseDown={stopPropagation}
                 className="sort-dropdown"
                 title={t('nodes.sort_by')}
               >
