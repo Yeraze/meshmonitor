@@ -8,6 +8,7 @@ import { formatTime, formatDate } from '../utils/datetime.js';
 import { logger } from '../utils/logger.js';
 import { getEnvironmentConfig } from './config/environment.js';
 import { notificationService } from './services/notificationService.js';
+import { serverEventNotificationService } from './services/serverEventNotificationService.js';
 import packetLogService from './services/packetLogService.js';
 import { messageQueueService } from './messageQueueService.js';
 import { normalizeTriggerPatterns } from '../utils/autoResponderUtils.js';
@@ -222,10 +223,13 @@ class MeshtasticManager {
   }
 
   private async handleConnected(): Promise<void> {
-    logger.debug('✅ TCP connection established, requesting configuration...');
+    logger.debug('TCP connection established, requesting configuration...');
     this.isConnected = true;
     // Clear localNodeInfo so node will be marked as not responsive until it sends MyNodeInfo
     this.localNodeInfo = null;
+
+    // Notify server event service of connection (handles initial vs reconnect logic)
+    serverEventNotificationService.notifyNodeConnected();
 
     try {
       // Enable message capture for virtual node server
@@ -292,19 +296,22 @@ class MeshtasticManager {
   }
 
   private handleDisconnected(): void {
-    logger.debug('🔌 TCP connection lost');
+    logger.debug('TCP connection lost');
     this.isConnected = false;
     // Clear localNodeInfo so node will be marked as not responsive
     this.localNodeInfo = null;
     // Clear favorites support cache on disconnect
     this.favoritesSupportCache = null;
 
+    // Notify server event service of disconnection
+    serverEventNotificationService.notifyNodeDisconnected();
+
     // Only auto-reconnect if not in user-disconnected state
     if (this.userDisconnectedState) {
-      logger.debug('⏸️  User-initiated disconnect active, skipping auto-reconnect');
+      logger.debug('User-initiated disconnect active, skipping auto-reconnect');
     } else {
       // Transport will handle automatic reconnection
-      logger.debug('🔄 Auto-reconnection will be attempted by transport');
+      logger.debug('Auto-reconnection will be attempted by transport');
     }
   }
 
@@ -7221,6 +7228,10 @@ class MeshtasticManager {
   async userDisconnect(): Promise<void> {
     logger.debug('🔌 User-initiated disconnect requested');
     this.userDisconnectedState = true;
+
+    // Notify about disconnect before actually disconnecting
+    // This ensures users get notified even for user-initiated disconnects
+    serverEventNotificationService.notifyNodeDisconnected();
 
     if (this.transport) {
       try {
