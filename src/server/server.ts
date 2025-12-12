@@ -33,6 +33,7 @@ import { systemRestoreService } from './services/systemRestoreService.js';
 import { duplicateKeySchedulerService } from './services/duplicateKeySchedulerService.js';
 import { solarMonitoringService } from './services/solarMonitoringService.js';
 import { inactiveNodeNotificationService } from './services/inactiveNodeNotificationService.js';
+import { serverEventNotificationService } from './services/serverEventNotificationService.js';
 import { getUserNotificationPreferences, saveUserNotificationPreferences } from './utils/notificationFiltering.js';
 import { upgradeService } from './services/upgradeService.js';
 
@@ -5785,6 +5786,7 @@ apiRouter.post('/push/preferences', requireAuth(), async (req, res) => {
       notifyOnNewNode,
       notifyOnTraceroute,
       notifyOnInactiveNode,
+      notifyOnServerEvents,
       monitoredNodes,
       whitelist,
       blacklist,
@@ -5825,6 +5827,7 @@ apiRouter.post('/push/preferences', requireAuth(), async (req, res) => {
       notifyOnNewNode,
       notifyOnTraceroute,
       notifyOnInactiveNode: notifyOnInactiveNode ?? false,
+      notifyOnServerEvents: notifyOnServerEvents ?? false,
       monitoredNodes: monitoredNodes ?? [],
       whitelist,
       blacklist,
@@ -6879,6 +6882,19 @@ migrateAutoResponderTriggers();
 const server = app.listen(PORT, () => {
   logger.debug(`MeshMonitor server running on port ${PORT}`);
   logger.debug(`Environment: ${env.nodeEnv}`);
+
+  // Send server start notification
+  const enabledFeatures: string[] = [];
+  if (env.oidcEnabled) enabledFeatures.push('OIDC');
+  if (env.enableVirtualNode) enabledFeatures.push('Virtual Node');
+  if (env.accessLogEnabled) enabledFeatures.push('Access Logging');
+  if (pushNotificationService.isAvailable()) enabledFeatures.push('Web Push');
+  if (appriseNotificationService.isAvailable()) enabledFeatures.push('Apprise');
+
+  serverEventNotificationService.notifyServerStart({
+    version: packageJson.version,
+    features: enabledFeatures,
+  });
 
   // Log environment variable sources in development
   if (env.isDevelopment) {

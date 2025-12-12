@@ -20,6 +20,7 @@ interface NotificationPreferences {
   notifyOnNewNode: boolean;
   notifyOnTraceroute: boolean;
   notifyOnInactiveNode: boolean;
+  notifyOnServerEvents: boolean;
   monitoredNodes: string[];
   whitelist: string[];
   blacklist: string[];
@@ -51,6 +52,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
     notifyOnNewNode: true,
     notifyOnTraceroute: true,
     notifyOnInactiveNode: false,
+    notifyOnServerEvents: false,
     monitoredNodes: [],
     whitelist: ['Hi', 'Help'],
     blacklist: ['Test', 'Copy']
@@ -801,6 +803,56 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                         </span>
                       )}
                     </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Server Events Notifications */}
+              <div style={{
+                padding: '12px',
+                backgroundColor: '#252535',
+                borderRadius: '6px',
+                marginBottom: '16px',
+                border: '2px solid #3a3a3a'
+              }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', margin: 0 }}>
+                  <input
+                    type="checkbox"
+                    checked={preferences.notifyOnServerEvents}
+                    onChange={(e) => {
+                      setPreferences(prev => ({
+                        ...prev,
+                        notifyOnServerEvents: e.target.checked
+                      }));
+                    }}
+                    style={{ width: '18px', height: '18px' }}
+                  />
+                  <span style={{ fontWeight: '500' }}>{t('notifications.notify_on_server_events')}</span>
+                </label>
+
+                {preferences.notifyOnServerEvents && (
+                  <div style={{
+                    marginLeft: '28px',
+                    marginTop: '12px',
+                    padding: '12px',
+                    background: 'var(--ctp-surface0)',
+                    border: '1px solid var(--ctp-surface2)',
+                    borderRadius: '6px'
+                  }}>
+                    <p style={{ marginBottom: '0.5rem', fontSize: '0.9em', color: 'var(--ctp-subtext0)' }}>
+                      {t('notifications.server_events_description')}
+                    </p>
+                    <ul style={{
+                      margin: '0.5rem 0 0 1.5rem',
+                      padding: 0,
+                      fontSize: '0.85em',
+                      color: 'var(--ctp-subtext1)',
+                      listStyleType: 'disc'
+                    }}>
+                      <li>{t('notifications.server_events_startup')}</li>
+                      <li>{t('notifications.server_events_disconnect')}</li>
+                      <li>{t('notifications.server_events_reconnect')}</li>
+                    </ul>
                   </div>
                 )}
               </div>
