@@ -22,6 +22,7 @@ export const AVAILABLE_LANGUAGES = [
   { code: 'de', name: 'German', nativeName: 'Deutsch' },
   { code: 'fr', name: 'French', nativeName: 'Français' },
   { code: 'ru', name: 'Russian', nativeName: 'Русский' },
+  { code: 'zh_Hans', name: 'Chinese (Simplified)', nativeName: '简体中文' },
 ];
 
 i18n
