@@ -413,7 +413,13 @@ const AuditLogTab: React.FC = () => {
                             <div className="detail-section">
                               <strong>{t('audit.details')}:</strong>
                               <pre className="detail-pre">
-                                {log.details ? JSON.stringify(JSON.parse(log.details), null, 2) : t('audit.na')}
+                                {log.details ? (() => {
+                                  try {
+                                    return JSON.stringify(JSON.parse(log.details), null, 2);
+                                  } catch {
+                                    return log.details;
+                                  }
+                                })() : t('audit.na')}
                               </pre>
                             </div>
                             {(log.valueBefore || log.valueAfter) && (
@@ -422,7 +428,13 @@ const AuditLogTab: React.FC = () => {
                                   <div className="detail-section before">
                                     <strong>{t('audit.value_before')}</strong>
                                     <pre className="detail-pre">
-                                      {JSON.stringify(JSON.parse(log.valueBefore), null, 2)}
+                                      {(() => {
+                                        try {
+                                          return JSON.stringify(JSON.parse(log.valueBefore), null, 2);
+                                        } catch {
+                                          return log.valueBefore;
+                                        }
+                                      })()}
                                     </pre>
                                   </div>
                                 )}
@@ -430,7 +442,13 @@ const AuditLogTab: React.FC = () => {
                                   <div className="detail-section after">
                                     <strong>{t('audit.value_after')}</strong>
                                     <pre className="detail-pre">
-                                      {JSON.stringify(JSON.parse(log.valueAfter), null, 2)}
+                                      {(() => {
+                                        try {
+                                          return JSON.stringify(JSON.parse(log.valueAfter), null, 2);
+                                        } catch {
+                                          return log.valueAfter;
+                                        }
+                                      })()}
                                     </pre>
                                   </div>
                                 )}
