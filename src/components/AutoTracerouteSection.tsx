@@ -35,6 +35,11 @@ interface FilterSettings {
   filterRoles: number[];
   filterHwModels: number[];
   filterNameRegex: string;
+  filterNodesEnabled: boolean;
+  filterChannelsEnabled: boolean;
+  filterRolesEnabled: boolean;
+  filterHwModelsEnabled: boolean;
+  filterRegexEnabled: boolean;
 }
 
 const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
@@ -57,6 +62,13 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
   const [filterRoles, setFilterRoles] = useState<number[]>([]);
   const [filterHwModels, setFilterHwModels] = useState<number[]>([]);
   const [filterNameRegex, setFilterNameRegex] = useState('.*');
+
+  // Individual filter enabled flags
+  const [filterNodesEnabled, setFilterNodesEnabled] = useState(true);
+  const [filterChannelsEnabled, setFilterChannelsEnabled] = useState(true);
+  const [filterRolesEnabled, setFilterRolesEnabled] = useState(true);
+  const [filterHwModelsEnabled, setFilterHwModelsEnabled] = useState(true);
+  const [filterRegexEnabled, setFilterRegexEnabled] = useState(true);
 
   const [availableNodes, setAvailableNodes] = useState<Node[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -108,6 +120,12 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
           setFilterRoles(data.filterRoles || []);
           setFilterHwModels(data.filterHwModels || []);
           setFilterNameRegex(data.filterNameRegex || '.*');
+          // Load individual filter enabled flags (default to true for backward compatibility)
+          setFilterNodesEnabled(data.filterNodesEnabled !== false);
+          setFilterChannelsEnabled(data.filterChannelsEnabled !== false);
+          setFilterRolesEnabled(data.filterRolesEnabled !== false);
+          setFilterHwModelsEnabled(data.filterHwModelsEnabled !== false);
+          setFilterRegexEnabled(data.filterRegexEnabled !== false);
           setInitialSettings(data);
         }
       } catch (error) {
@@ -130,9 +148,18 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
     const hwModelsChanged = JSON.stringify([...filterHwModels].sort()) !== JSON.stringify([...(initialSettings.filterHwModels || [])].sort());
     const regexChanged = filterNameRegex !== (initialSettings.filterNameRegex || '.*');
 
-    const changed = intervalChanged || filterEnabledChanged || nodesChanged || channelsChanged || rolesChanged || hwModelsChanged || regexChanged;
+    // Check individual filter enabled flag changes
+    const filterNodesEnabledChanged = filterNodesEnabled !== (initialSettings.filterNodesEnabled !== false);
+    const filterChannelsEnabledChanged = filterChannelsEnabled !== (initialSettings.filterChannelsEnabled !== false);
+    const filterRolesEnabledChanged = filterRolesEnabled !== (initialSettings.filterRolesEnabled !== false);
+    const filterHwModelsEnabledChanged = filterHwModelsEnabled !== (initialSettings.filterHwModelsEnabled !== false);
+    const filterRegexEnabledChanged = filterRegexEnabled !== (initialSettings.filterRegexEnabled !== false);
+
+    const changed = intervalChanged || filterEnabledChanged || nodesChanged || channelsChanged || rolesChanged || hwModelsChanged || regexChanged ||
+      filterNodesEnabledChanged || filterChannelsEnabledChanged || filterRolesEnabledChanged || filterHwModelsEnabledChanged || filterRegexEnabledChanged;
     setHasChanges(changed);
-  }, [localEnabled, localInterval, intervalMinutes, filterEnabled, selectedNodeNums, filterChannels, filterRoles, filterHwModels, filterNameRegex, initialSettings]);
+  }, [localEnabled, localInterval, intervalMinutes, filterEnabled, selectedNodeNums, filterChannels, filterRoles, filterHwModels, filterNameRegex, initialSettings,
+      filterNodesEnabled, filterChannelsEnabled, filterRolesEnabled, filterHwModelsEnabled, filterRegexEnabled]);
 
   // Helper to get role from node (could be at top level or in user object)
   const getNodeRole = (node: Node): number | undefined => {
@@ -192,33 +219,35 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
 
     const matchingNodeNums = new Set<number>();
 
-    // Add specific nodes
-    selectedNodeNums.forEach(num => matchingNodeNums.add(num));
+    // Add specific nodes (only if this filter is enabled)
+    if (filterNodesEnabled) {
+      selectedNodeNums.forEach(num => matchingNodeNums.add(num));
+    }
 
-    // Add nodes matching channel filter
-    if (filterChannels.length > 0) {
+    // Add nodes matching channel filter (only if this filter is enabled)
+    if (filterChannelsEnabled && filterChannels.length > 0) {
       availableNodes.filter(n => filterChannels.includes(n.channel ?? -1))
         .forEach(n => matchingNodeNums.add(n.nodeNum));
     }
 
-    // Add nodes matching role filter
-    if (filterRoles.length > 0) {
+    // Add nodes matching role filter (only if this filter is enabled)
+    if (filterRolesEnabled && filterRoles.length > 0) {
       availableNodes.filter(n => {
         const role = getNodeRole(n);
         return role !== undefined && filterRoles.includes(role);
       }).forEach(n => matchingNodeNums.add(n.nodeNum));
     }
 
-    // Add nodes matching hardware model filter
-    if (filterHwModels.length > 0) {
+    // Add nodes matching hardware model filter (only if this filter is enabled)
+    if (filterHwModelsEnabled && filterHwModels.length > 0) {
       availableNodes.filter(n => {
         const hwModel = getNodeHwModel(n);
         return hwModel !== undefined && filterHwModels.includes(hwModel);
       }).forEach(n => matchingNodeNums.add(n.nodeNum));
     }
 
-    // Add nodes matching regex (if not default)
-    if (filterNameRegex && filterNameRegex !== '.*') {
+    // Add nodes matching regex (only if this filter is enabled and regex is not default)
+    if (filterRegexEnabled && filterNameRegex && filterNameRegex !== '.*') {
       try {
         const regex = new RegExp(filterNameRegex, 'i');
         availableNodes.filter(n => {
@@ -228,13 +257,14 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
       } catch {
         // Invalid regex, ignore
       }
-    } else if (filterNameRegex === '.*') {
+    } else if (filterRegexEnabled && filterNameRegex === '.*') {
       // Match all - add all nodes
       availableNodes.forEach(n => matchingNodeNums.add(n.nodeNum));
     }
 
     return matchingNodeNums.size;
-  }, [filterEnabled, selectedNodeNums, filterChannels, filterRoles, filterHwModels, filterNameRegex, availableNodes]);
+  }, [filterEnabled, selectedNodeNums, filterChannels, filterRoles, filterHwModels, filterNameRegex, availableNodes,
+      filterNodesEnabled, filterChannelsEnabled, filterRolesEnabled, filterHwModelsEnabled, filterRegexEnabled]);
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -269,6 +299,11 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
           filterRoles,
           filterHwModels,
           filterNameRegex,
+          filterNodesEnabled,
+          filterChannelsEnabled,
+          filterRolesEnabled,
+          filterHwModelsEnabled,
+          filterRegexEnabled,
         })
       });
 
@@ -289,6 +324,11 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
         filterRoles,
         filterHwModels,
         filterNameRegex,
+        filterNodesEnabled,
+        filterChannelsEnabled,
+        filterRolesEnabled,
+        filterHwModelsEnabled,
+        filterRegexEnabled,
       });
 
       setHasChanges(false);
@@ -478,15 +518,25 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
               </div>
 
               {/* Specific Nodes Filter */}
-              <div style={{ marginBottom: '0.5rem' }}>
+              <div style={{ marginBottom: '0.5rem', opacity: filterNodesEnabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>
                 <div
                   style={sectionHeaderStyle}
                   onClick={() => toggleSection('nodes')}
                 >
                   <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={filterNodesEnabled}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        setFilterNodesEnabled(e.target.checked);
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
+                    />
                     <span>{expandedSections.nodes ? '▼' : '▶'}</span>
                     {t('automation.auto_traceroute.specific_nodes')}
-                    {selectedNodeNums.length > 0 && (
+                    {filterNodesEnabled && selectedNodeNums.length > 0 && (
                       <span style={badgeStyle}>{selectedNodeNums.length}</span>
                     )}
                   </span>
@@ -554,15 +604,25 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
               </div>
 
               {/* Channel Filter */}
-              <div style={{ marginBottom: '0.5rem' }}>
+              <div style={{ marginBottom: '0.5rem', opacity: filterChannelsEnabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>
                 <div
                   style={sectionHeaderStyle}
                   onClick={() => toggleSection('channels')}
                 >
                   <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={filterChannelsEnabled}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        setFilterChannelsEnabled(e.target.checked);
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
+                    />
                     <span>{expandedSections.channels ? '▼' : '▶'}</span>
                     {t('automation.auto_traceroute.filter_by_channel')}
-                    {filterChannels.length > 0 && (
+                    {filterChannelsEnabled && filterChannels.length > 0 && (
                       <span style={badgeStyle}>{filterChannels.length}</span>
                     )}
                   </span>
@@ -589,15 +649,25 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
               </div>
 
               {/* Role Filter */}
-              <div style={{ marginBottom: '0.5rem' }}>
+              <div style={{ marginBottom: '0.5rem', opacity: filterRolesEnabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>
                 <div
                   style={sectionHeaderStyle}
                   onClick={() => toggleSection('roles')}
                 >
                   <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={filterRolesEnabled}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        setFilterRolesEnabled(e.target.checked);
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
+                    />
                     <span>{expandedSections.roles ? '▼' : '▶'}</span>
                     {t('automation.auto_traceroute.filter_by_role')}
-                    {filterRoles.length > 0 && (
+                    {filterRolesEnabled && filterRoles.length > 0 && (
                       <span style={badgeStyle}>{filterRoles.length}</span>
                     )}
                   </span>
@@ -628,15 +698,25 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
               </div>
 
               {/* Hardware Model Filter */}
-              <div style={{ marginBottom: '0.5rem' }}>
+              <div style={{ marginBottom: '0.5rem', opacity: filterHwModelsEnabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>
                 <div
                   style={sectionHeaderStyle}
                   onClick={() => toggleSection('hwModels')}
                 >
                   <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={filterHwModelsEnabled}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        setFilterHwModelsEnabled(e.target.checked);
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
+                    />
                     <span>{expandedSections.hwModels ? '▼' : '▶'}</span>
                     {t('automation.auto_traceroute.filter_by_hardware')}
-                    {filterHwModels.length > 0 && (
+                    {filterHwModelsEnabled && filterHwModels.length > 0 && (
                       <span style={badgeStyle}>{filterHwModels.length}</span>
                     )}
                   </span>
@@ -668,15 +748,25 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
               </div>
 
               {/* Name Regex Filter */}
-              <div style={{ marginBottom: '0.5rem' }}>
+              <div style={{ marginBottom: '0.5rem', opacity: filterRegexEnabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>
                 <div
                   style={sectionHeaderStyle}
                   onClick={() => toggleSection('regex')}
                 >
                   <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={filterRegexEnabled}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        setFilterRegexEnabled(e.target.checked);
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
+                    />
                     <span>{expandedSections.regex ? '▼' : '▶'}</span>
                     {t('automation.auto_traceroute.filter_by_name')}
-                    {filterNameRegex !== '.*' && (
+                    {filterRegexEnabled && filterNameRegex !== '.*' && (
                       <span style={badgeStyle}>1</span>
                     )}
                   </span>
