@@ -36,6 +36,8 @@ import { migration as apiTokensMigration } from '../server/migrations/025_add_ap
 import { migration as cascadeForeignKeysMigration } from '../server/migrations/028_add_cascade_to_foreign_keys.js';
 import { migration as userMapPreferencesMigration } from '../server/migrations/030_add_user_map_preferences.js';
 import { migration as isIgnoredMigration } from '../server/migrations/033_add_is_ignored_to_nodes.js';
+import { migration as notifyOnServerEventsMigration } from '../server/migrations/034_add_notify_on_server_events.js';
+import { migration as prefixWithNodeNameMigration } from '../server/migrations/035_add_prefix_with_node_name.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Configuration constants for traceroute history
@@ -404,6 +406,8 @@ class DatabaseService {
     this.runUserMapPreferencesMigration();
     this.runInactiveNodeNotificationMigration();
     this.runIsIgnoredMigration();
+    this.runNotifyOnServerEventsMigration();
+    this.runPrefixWithNodeNameMigration();
     this.ensureAutomationDefaults();
     this.isInitialized = true;
   }
@@ -1060,6 +1064,44 @@ class DatabaseService {
       logger.debug('✅ isIgnored migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run isIgnored migration:', error);
+      throw error;
+    }
+  }
+
+  private runNotifyOnServerEventsMigration(): void {
+    const migrationKey = 'migration_034_notify_on_server_events';
+    try {
+      const currentStatus = this.getSetting(migrationKey);
+      if (currentStatus === 'completed') {
+        logger.debug('✅ Notify on server events migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 034: Add notify_on_server_events column...');
+      notifyOnServerEventsMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Notify on server events migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run notify on server events migration:', error);
+      throw error;
+    }
+  }
+
+  private runPrefixWithNodeNameMigration(): void {
+    const migrationKey = 'migration_035_prefix_with_node_name';
+    try {
+      const currentStatus = this.getSetting(migrationKey);
+      if (currentStatus === 'completed') {
+        logger.debug('✅ Prefix with node name migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 035: Add prefix_with_node_name column...');
+      prefixWithNodeNameMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Prefix with node name migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run prefix with node name migration:', error);
       throw error;
     }
   }
