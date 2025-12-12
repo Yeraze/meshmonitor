@@ -3482,7 +3482,10 @@ apiRouter.get('/settings/traceroute-nodes', requirePermission('settings', 'read'
 // Update auto-traceroute node filter settings
 apiRouter.post('/settings/traceroute-nodes', requirePermission('settings', 'write'), (req, res) => {
   try {
-    const { enabled, nodeNums, filterChannels, filterRoles, filterHwModels, filterNameRegex } = req.body;
+    const {
+      enabled, nodeNums, filterChannels, filterRoles, filterHwModels, filterNameRegex,
+      filterNodesEnabled, filterChannelsEnabled, filterRolesEnabled, filterHwModelsEnabled, filterRegexEnabled
+    } = req.body;
 
     // Validate input
     if (typeof enabled !== 'boolean') {
@@ -3540,6 +3543,30 @@ apiRouter.post('/settings/traceroute-nodes', requirePermission('settings', 'writ
       }
     }
 
+    // Validate individual filter enabled flags (optional booleans, default to true)
+    const validateOptionalBoolean = (value: unknown, name: string): boolean | undefined => {
+      if (value === undefined) return undefined;
+      if (typeof value !== 'boolean') {
+        throw new Error(`Invalid ${name} value. Must be a boolean.`);
+      }
+      return value;
+    };
+
+    let validatedFilterNodesEnabled: boolean | undefined;
+    let validatedFilterChannelsEnabled: boolean | undefined;
+    let validatedFilterRolesEnabled: boolean | undefined;
+    let validatedFilterHwModelsEnabled: boolean | undefined;
+    let validatedFilterRegexEnabled: boolean | undefined;
+    try {
+      validatedFilterNodesEnabled = validateOptionalBoolean(filterNodesEnabled, 'filterNodesEnabled');
+      validatedFilterChannelsEnabled = validateOptionalBoolean(filterChannelsEnabled, 'filterChannelsEnabled');
+      validatedFilterRolesEnabled = validateOptionalBoolean(filterRolesEnabled, 'filterRolesEnabled');
+      validatedFilterHwModelsEnabled = validateOptionalBoolean(filterHwModelsEnabled, 'filterHwModelsEnabled');
+      validatedFilterRegexEnabled = validateOptionalBoolean(filterRegexEnabled, 'filterRegexEnabled');
+    } catch (error) {
+      return res.status(400).json({ error: (error as Error).message });
+    }
+
     // Update all settings
     databaseService.setTracerouteFilterSettings({
       enabled,
@@ -3548,16 +3575,19 @@ apiRouter.post('/settings/traceroute-nodes', requirePermission('settings', 'writ
       filterRoles: validatedRoles,
       filterHwModels: validatedHwModels,
       filterNameRegex: validatedRegex,
+      filterNodesEnabled: validatedFilterNodesEnabled,
+      filterChannelsEnabled: validatedFilterChannelsEnabled,
+      filterRolesEnabled: validatedFilterRolesEnabled,
+      filterHwModelsEnabled: validatedFilterHwModelsEnabled,
+      filterRegexEnabled: validatedFilterRegexEnabled,
     });
+
+    // Get the updated settings to return (includes resolved default values)
+    const updatedSettings = databaseService.getTracerouteFilterSettings();
 
     res.json({
       success: true,
-      enabled,
-      nodeNums,
-      filterChannels: validatedChannels,
-      filterRoles: validatedRoles,
-      filterHwModels: validatedHwModels,
-      filterNameRegex: validatedRegex,
+      ...updatedSettings,
     });
   } catch (error) {
     logger.error('Error updating auto-traceroute node filter:', error);
