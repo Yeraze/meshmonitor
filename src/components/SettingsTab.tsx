@@ -629,6 +629,30 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       </div>
       <div className="settings-content">
         <div className="settings-section">
+          <h3>{t('settings.language')}</h3>
+          <div className="setting-item">
+            <label htmlFor="language">
+              {t('settings.languageDescription')}
+            </label>
+            <LanguageSelector
+              value={language}
+              onChange={onLanguageChange}
+            />
+          </div>
+          <p className="setting-description" style={{ marginTop: '0.5rem' }}>
+            {t('settings.language_contribute')}{' '}
+            <a
+              href="https://hosted.weblate.org/projects/meshmonitor/meshmonitor/"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: 'var(--accent-color)' }}
+            >
+              Weblate
+            </a>
+          </p>
+        </div>
+
+        <div className="settings-section">
           <h3>{t('settings.node_display')}</h3>
           <div className="setting-item">
             <label htmlFor="maxNodeAge">
@@ -900,16 +924,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                 </optgroup>
               )}
             </select>
-          </div>
-          <div className="setting-item">
-            <label htmlFor="language">
-              {t('settings.language')}
-              <span className="setting-description">{t('settings.languageDescription')}</span>
-            </label>
-            <LanguageSelector
-              value={language}
-              onChange={onLanguageChange}
-            />
           </div>
         </div>
 
