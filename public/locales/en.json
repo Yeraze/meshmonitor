@@ -841,6 +841,9 @@
   "telemetry.uptime_seconds": "Uptime",
   "telemetry.ch1_voltage": "Channel 1 Voltage",
   "telemetry.ch1_current": "Channel 1 Current",
+  "telemetry.paxcounter_wifi": "Paxcounter WiFi",
+  "telemetry.paxcounter_ble": "Paxcounter BLE",
+  "telemetry.paxcounter_uptime": "Paxcounter Uptime",
 
   "map.satellite": "Satellite",
   "map.terrain": "Terrain",
