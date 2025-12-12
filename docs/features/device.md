@@ -479,7 +479,7 @@ Predefined radio settings that balance range, speed, and reliability. All nodes 
 - **EU_868**: European Union (868MHz)
 - **CN**: China
 - **JP**: Japan
-- **ANZ**: Australia/New Zealand
+- **ANZ**: Australia/New Zealand (915MHz)
 - **KR**: Korea
 - **TW**: Taiwan
 - **RU**: Russia
@@ -489,6 +489,17 @@ Predefined radio settings that balance range, speed, and reliability. All nodes 
 - **LORA_24**: WLAN Band (2.4GHz)
 - **UA_433**: Ukraine (433MHz)
 - **UA_868**: Ukraine (868MHz)
+- **MY_433**: Malaysia (433MHz)
+- **MY_919**: Malaysia (919MHz
+- **SG_923**: Singapore
+- **PH_433**: Philippines (433MHz)
+- **PH_868**: Philippines (868MHz)
+- **PH_915**: Philippines (915MHz)
+- **ANZ_433**: Australia / New Zealand (433MHz)
+- **KZ_433**: Kazakhstan (433MHz)
+- **KZ_863**: Kazakhstan (863MHz)
+- **NP_865**: Nepal (865MHz)
+- **BR_902**: Brazil (902MHz)
 
 **Side Effects**:
 - Incorrect region may violate local regulations
