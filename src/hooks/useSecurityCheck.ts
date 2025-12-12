@@ -8,7 +8,7 @@
 import { useState, useEffect } from 'react';
 import { logger } from '../utils/logger';
 
-interface ConfigIssue {
+export interface ConfigIssue {
   type: string;
   severity: 'warning' | 'error' | 'info';
   message: string;

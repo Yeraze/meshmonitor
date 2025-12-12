@@ -1,13 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+import type { ConfigIssue } from '../../hooks/useSecurityCheck';
 import './AppBanners.css';
-
-interface ConfigIssue {
-  type: 'cookie_secure' | 'allowed_origins';
-  severity: 'error' | 'warning';
-  message: string;
-  docsUrl: string;
-}
 
 interface AppBannersProps {
   isDefaultPassword: boolean;
