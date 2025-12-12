@@ -1,6 +1,7 @@
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
-import { getUserNotificationPreferences, getUsersWithServiceEnabled, shouldFilterNotification as shouldFilterNotificationUtil } from '../utils/notificationFiltering.js';
+import { getUserNotificationPreferences, getUsersWithServiceEnabled, shouldFilterNotification as shouldFilterNotificationUtil, applyNodeNamePrefix } from '../utils/notificationFiltering.js';
+import meshtasticManager from '../meshtasticManager.js';
 
 export interface AppriseNotificationPayload {
   title: string;
@@ -211,6 +212,10 @@ class AppriseNotificationService {
       return { sent: 0, failed: 0, filtered: 0 };
     }
 
+    // Get local node name for prefix
+    const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+    const localNodeName = localNodeInfo?.longName || null;
+
     // Per-user filtering
     for (const userId of users) {
       // Import and use shared filter logic
@@ -221,7 +226,13 @@ class AppriseNotificationService {
         continue;
       }
 
-      const success = await this.sendNotification(payload);
+      // Apply node name prefix if user has it enabled
+      const prefixedBody = applyNodeNamePrefix(userId, payload.body, localNodeName);
+      const notificationPayload = prefixedBody !== payload.body
+        ? { ...payload, body: prefixedBody }
+        : payload;
+
+      const success = await this.sendNotification(notificationPayload);
       if (success) {
         sent++;
       } else {
@@ -291,6 +302,10 @@ class AppriseNotificationService {
     const users = getUsersWithServiceEnabled('apprise');
     logger.info(`📢 Broadcasting ${preferenceKey} notification to ${users.length} Apprise users${targetUserId ? ` (target user: ${targetUserId})` : ''}`);
 
+    // Get local node name for prefix
+    const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+    const localNodeName = localNodeInfo?.longName || null;
+
     for (const userId of users) {
       // If targetUserId is specified, only send to that user
       if (targetUserId !== undefined && userId !== targetUserId) {
@@ -305,7 +320,13 @@ class AppriseNotificationService {
         continue;
       }
 
-      const success = await this.sendNotification(payload);
+      // Apply node name prefix if user has it enabled
+      const prefixedBody = applyNodeNamePrefix(userId, payload.body, localNodeName);
+      const notificationPayload = prefixedBody !== payload.body
+        ? { ...payload, body: prefixedBody }
+        : payload;
+
+      const success = await this.sendNotification(notificationPayload);
       if (success) {
         sent++;
       } else {

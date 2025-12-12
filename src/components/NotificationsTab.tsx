@@ -21,6 +21,7 @@ interface NotificationPreferences {
   notifyOnTraceroute: boolean;
   notifyOnInactiveNode: boolean;
   notifyOnServerEvents: boolean;
+  prefixWithNodeName: boolean;
   monitoredNodes: string[];
   whitelist: string[];
   blacklist: string[];
@@ -53,6 +54,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
     notifyOnTraceroute: true,
     notifyOnInactiveNode: false,
     notifyOnServerEvents: false,
+    prefixWithNodeName: false,
     monitoredNodes: [],
     whitelist: ['Hi', 'Help'],
     blacklist: ['Test', 'Copy']
@@ -853,6 +855,45 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                       <li>{t('notifications.server_events_disconnect')}</li>
                       <li>{t('notifications.server_events_reconnect')}</li>
                     </ul>
+                  </div>
+                )}
+              </div>
+
+              {/* Prefix with Node Name */}
+              <div style={{
+                padding: '12px',
+                backgroundColor: '#252535',
+                borderRadius: '6px',
+                marginBottom: '16px',
+                border: '2px solid #3a3a3a'
+              }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', margin: 0 }}>
+                  <input
+                    type="checkbox"
+                    checked={preferences.prefixWithNodeName}
+                    onChange={(e) => {
+                      setPreferences(prev => ({
+                        ...prev,
+                        prefixWithNodeName: e.target.checked
+                      }));
+                    }}
+                    style={{ width: '18px', height: '18px' }}
+                  />
+                  <span style={{ fontWeight: '500' }}>{t('notifications.prefix_with_node_name')}</span>
+                </label>
+
+                {preferences.prefixWithNodeName && (
+                  <div style={{
+                    marginLeft: '28px',
+                    marginTop: '12px',
+                    padding: '12px',
+                    background: 'var(--ctp-surface0)',
+                    border: '1px solid var(--ctp-surface2)',
+                    borderRadius: '6px'
+                  }}>
+                    <p style={{ marginBottom: '0', fontSize: '0.9em', color: 'var(--ctp-subtext0)' }}>
+                      {t('notifications.prefix_with_node_name_description')}
+                    </p>
                   </div>
                 )}
               </div>
