@@ -87,6 +87,22 @@ services:
       - COMPOSE_PROJECT_DIR=/compose  # Path to docker-compose files
 ```
 
+### Disabling Version Check
+
+If you want to completely disable the version check (and hide the "Update Available" banner), set the `VERSION_CHECK_DISABLED` environment variable:
+
+```yaml
+services:
+  meshmonitor:
+    environment:
+      - VERSION_CHECK_DISABLED=true  # Disable version check and update banner
+```
+
+This is useful for:
+- Air-gapped deployments without internet access
+- Environments where you manage updates through other means (CI/CD, Kubernetes operators, etc.)
+- Development or testing environments where you don't want update notifications
+
 ## Using the Upgrade Feature
 
 ### Step 1: Check for Updates

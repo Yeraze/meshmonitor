@@ -166,6 +166,7 @@ See the [Push Notifications guide](/features/notifications) for setup instructio
 | `SYSTEM_BACKUP_DIR` | Directory for full system backups | `/data/system-backups` |
 | `RESTORE_FROM_BACKUP` | Path to backup file to restore on startup | None |
 | `AUTO_UPGRADE_ENABLED` | Enable automatic upgrades in Kubernetes | `false` |
+| `VERSION_CHECK_DISABLED` | Disable version check and hide update banner | `false` |
 | `APPRISE_CONFIG_DIR` | Directory for Apprise notification configuration | None |
 | `DUPLICATE_KEY_SCAN_INTERVAL_HOURS` | Hours between duplicate encryption key scans | `24` |
 
