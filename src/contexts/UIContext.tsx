@@ -11,8 +11,12 @@ interface UIContextType {
   setError: React.Dispatch<React.SetStateAction<string | null>>;
   tracerouteLoading: string | null;
   setTracerouteLoading: React.Dispatch<React.SetStateAction<string | null>>;
-  nodeFilter: string;
+  nodeFilter: string; // Deprecated - kept for backward compatibility, use nodesNodeFilter or messagesNodeFilter instead
   setNodeFilter: React.Dispatch<React.SetStateAction<string>>;
+  nodesNodeFilter: string;
+  setNodesNodeFilter: React.Dispatch<React.SetStateAction<string>>;
+  messagesNodeFilter: string;
+  setMessagesNodeFilter: React.Dispatch<React.SetStateAction<string>>;
   securityFilter: 'all' | 'flaggedOnly' | 'hideFlagged';
   setSecurityFilter: React.Dispatch<React.SetStateAction<'all' | 'flaggedOnly' | 'hideFlagged'>>;
   channelFilter: number | 'all';
@@ -117,7 +121,9 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   const [showMqttMessages, setShowMqttMessages] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [tracerouteLoading, setTracerouteLoading] = useState<string | null>(null);
-  const [nodeFilter, setNodeFilter] = useState<string>('');
+  const [nodeFilter, setNodeFilter] = useState<string>(''); // Deprecated - kept for backward compatibility
+  const [nodesNodeFilter, setNodesNodeFilter] = useState<string>('');
+  const [messagesNodeFilter, setMessagesNodeFilter] = useState<string>('');
   const [securityFilter, setSecurityFilter] = useState<'all' | 'flaggedOnly' | 'hideFlagged'>('all');
   const [channelFilter, setChannelFilter] = useState<number | 'all'>('all');
   // Default to showing incomplete nodes (true), but can be toggled to hide them
@@ -198,6 +204,10 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
         setTracerouteLoading,
         nodeFilter,
         setNodeFilter,
+        nodesNodeFilter,
+        setNodesNodeFilter,
+        messagesNodeFilter,
+        setMessagesNodeFilter,
         securityFilter,
         setSecurityFilter,
         channelFilter,

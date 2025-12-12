@@ -85,8 +85,10 @@ export interface MessagesTabProps {
   ) => Promise<void>;
 
   // UI state
-  nodeFilter: string;
+  nodeFilter: string; // Deprecated - use messagesNodeFilter instead
   setNodeFilter: (filter: string) => void;
+  messagesNodeFilter: string;
+  setMessagesNodeFilter: (filter: string) => void;
   dmFilter: 'all' | 'unread' | 'recent';
   setDmFilter: (filter: 'all' | 'unread' | 'recent') => void;
   securityFilter: 'all' | 'flaggedOnly' | 'hideFlagged';
@@ -151,8 +153,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   setReplyingTo,
   unreadCountsData,
   markMessagesAsRead,
-  nodeFilter,
-  setNodeFilter,
+  nodeFilter: _nodeFilter, // Deprecated - kept for backward compatibility
+  messagesNodeFilter,
+  setMessagesNodeFilter,
+  setNodeFilter: _setNodeFilter, // Deprecated - kept for backward compatibility
   dmFilter,
   setDmFilter,
   securityFilter,
@@ -303,8 +307,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
       const nodeChannel = node.channel ?? 0;
       if (nodeChannel !== channelFilter) return false;
     }
-    if (!nodeFilter) return true;
-    const searchTerm = nodeFilter.toLowerCase();
+    if (!messagesNodeFilter) return true;
+    const searchTerm = messagesNodeFilter.toLowerCase();
     return (
       node.user?.longName?.toLowerCase().includes(searchTerm) ||
       node.user?.shortName?.toLowerCase().includes(searchTerm) ||
@@ -348,8 +352,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
               <input
                 type="text"
                 placeholder={t('messages.filter_placeholder')}
-                value={nodeFilter}
-                onChange={e => setNodeFilter(e.target.value)}
+                value={messagesNodeFilter}
+                onChange={e => setMessagesNodeFilter(e.target.value)}
                 className="filter-input-small"
               />
               <div className="sort-controls">
@@ -524,8 +528,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
             {sortedNodesWithMessages
               .filter(node => {
                 if (!showIncompleteNodes && !isNodeComplete(node)) return false;
-                if (!nodeFilter) return true;
-                const searchTerm = nodeFilter.toLowerCase();
+                if (!messagesNodeFilter) return true;
+                const searchTerm = messagesNodeFilter.toLowerCase();
                 return (
                   node.user?.longName?.toLowerCase().includes(searchTerm) ||
                   node.user?.shortName?.toLowerCase().includes(searchTerm) ||
