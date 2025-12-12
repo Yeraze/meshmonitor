@@ -104,6 +104,7 @@ export interface DbMessage {
   hopLimit?: number;
   replyId?: number;
   emoji?: number;
+  viaMqtt?: boolean;
   createdAt: number;
 }
 
@@ -1485,6 +1486,18 @@ class DatabaseService {
       }
     }
 
+    // Add viaMqtt column to messages table for MQTT message filtering
+    try {
+      this.db.exec(`
+        ALTER TABLE messages ADD COLUMN viaMqtt BOOLEAN DEFAULT 0;
+      `);
+      logger.debug('✅ Added viaMqtt column to messages table');
+    } catch (error: any) {
+      if (!error.message?.includes('duplicate column')) {
+        logger.debug('⚠️ viaMqtt column on messages already exists or other error:', error.message);
+      }
+    }
+
     try {
       this.db.exec(`
         ALTER TABLE telemetry ADD COLUMN packetTimestamp INTEGER;
@@ -1969,8 +1982,8 @@ class DatabaseService {
       INSERT OR IGNORE INTO messages (
         id, fromNodeNum, toNodeNum, fromNodeId, toNodeId,
         text, channel, portnum, timestamp, rxTime, hopStart, hopLimit, replyId, emoji,
-        requestId, ackFailed, routingErrorReceived, deliveryState, wantAck, createdAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        requestId, ackFailed, routingErrorReceived, deliveryState, wantAck, viaMqtt, createdAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -1993,6 +2006,7 @@ class DatabaseService {
       (messageData as any).routingErrorReceived ?? 0,
       (messageData as any).deliveryState ?? null,
       (messageData as any).wantAck ?? 0,
+      messageData.viaMqtt ? 1 : 0,
       messageData.createdAt
     );
   }

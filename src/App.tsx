@@ -714,12 +714,17 @@ function App() {
 
   // Function to detect MQTT/bridge messages that should be filtered
   const isMqttBridgeMessage = (msg: MeshMessage): boolean => {
+    // Primary check: use the viaMqtt field from the packet if available
+    if (msg.viaMqtt === true) {
+      return true;
+    }
+
     // Filter messages from unknown senders
     if (msg.from === 'unknown' || msg.fromNodeId === 'unknown') {
       return true;
     }
 
-    // Filter MQTT-related text patterns
+    // Filter MQTT-related text patterns (fallback for older messages without viaMqtt)
     const mqttPatterns = [
       'mqtt.',
       'areyoumeshingwith.us',
