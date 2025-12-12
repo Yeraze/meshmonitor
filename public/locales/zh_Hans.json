@@ -1,0 +1,14 @@
+{
+    "nav.nodes": "",
+    "nav.messages": "",
+    "nav.channels": "",
+    "nav.info": "",
+    "nav.dashboard": "",
+    "nav.settings": "设置",
+    "nav.configuration": "设备",
+    "nav.notifications": "通知",
+    "nav.users": "用户",
+    "nav.admin_commands": "管理员指令",
+    "nav.audit": "检查日志",
+    "nav.security": "安全"
+}
