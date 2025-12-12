@@ -357,6 +357,10 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
         co2: 'CO₂',
         co2Temperature: 'CO₂ Sensor Temperature',
         co2Humidity: 'CO₂ Sensor Humidity',
+        // Paxcounter metrics
+        paxcounterWifi: 'Paxcounter WiFi',
+        paxcounterBle: 'Paxcounter BLE',
+        paxcounterUptime: 'Paxcounter Uptime',
       };
       return labels[type] || type;
     };
@@ -407,6 +411,10 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
         co2: '#ed8796', // Red for CO2 (important air quality indicator)
         co2Temperature: '#f5a97f', // Peach
         co2Humidity: '#91d7e3', // Sky blue
+        // Paxcounter metrics
+        paxcounterWifi: '#ff9500', // Orange
+        paxcounterBle: '#17c0fa', // Cyan
+        paxcounterUptime: '#9c88ff', // Purple
       };
       return colors[type] || '#8884d8';
     };
