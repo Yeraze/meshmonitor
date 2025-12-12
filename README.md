@@ -141,6 +141,7 @@ This starts both the React dev server (port 5173) and the Express API server (po
 - React 19 with TypeScript
 - Vite 7 (build tool)
 - CSS3 with Catppuccin theme
+- Translation support crowdsourced by [Weblate](https://hosted.weblate.org/projects/meshmonitor/)
 
 **Backend:**
 - Node.js with Express 5
@@ -195,4 +196,4 @@ This project is licensed under the BSD-3-Clause License - see the [LICENSE](LICE
 
 **MeshMonitor** - Monitor your mesh, beautifully. 🌐✨
 
-_This application was entirely vibe coded with [Claude Code](https://claude.ai/code)._
+_This application is brought to you with help from [Claude Code](https://claude.ai/code)._
