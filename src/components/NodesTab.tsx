@@ -252,17 +252,24 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   }, [sidebarSize]);
 
   // Map controls position state with localStorage persistence
+  // Default position is upper-right (x calculated from viewport width - panel width - margin)
+  const getDefaultMapControlsPosition = () => ({
+    x: window.innerWidth - 200 - 10, // right-align: viewport - estimated panel width (~200px) - 10px margin
+    y: 10
+  });
+
   const [mapControlsPosition, setMapControlsPosition] = useState(() => {
     const saved = localStorage.getItem('mapControlsPosition');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        return { x: parsed.x ?? 10, y: parsed.y ?? 10 };
+        const defaultPos = getDefaultMapControlsPosition();
+        return { x: parsed.x ?? defaultPos.x, y: parsed.y ?? defaultPos.y };
       } catch {
-        return { x: 10, y: 10 };
+        return getDefaultMapControlsPosition();
       }
     }
-    return { x: 10, y: 10 };
+    return getDefaultMapControlsPosition();
   });
 
   // Map controls drag state
