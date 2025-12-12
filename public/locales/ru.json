@@ -264,5 +264,8 @@
     "messages.last_traced": "Последний раз трассировалась {{time}}",
     "messages.security_issue_title": "Проблема безопасности",
     "messages.issue_details": "Детали проблемы",
-    "messages.low_entropy_warning": "Этот узел использует известный криптографический ключ с низкой энтропией. "
+    "messages.low_entropy_warning": "Этот узел использует известный криптографический ключ с низкой энтропией. ",
+    "settings.language": "Язык",
+    "settings.languageDescription": "Выберите предпочитаемый язык",
+    "settings.language_contribute": "Не видите свой язык? Помогите перевести MeshMonitor на"
 }

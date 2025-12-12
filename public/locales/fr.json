@@ -258,6 +258,7 @@
   "settings.title": "Paramètres",
   "settings.language": "Langue",
   "settings.languageDescription": "Choisissez votre langue préférée",
+  "settings.language_contribute": "Votre langue n'est pas disponible ? Aidez à traduire MeshMonitor sur",
   "settings.temperature_unit": "Unité de température",
   "settings.distance_unit": "Unité de distance",
   "settings.time_format": "Format de l'heure",
