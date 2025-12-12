@@ -121,8 +121,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   } = useTelemetryNodes();
 
   const {
-    nodeFilter,
-    setNodeFilter,
+    nodesNodeFilter,
+    setNodesNodeFilter,
     securityFilter,
     channelFilter,
     showIncompleteNodes,
@@ -373,9 +373,22 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   // Drag handlers for sidebar
   const handleDragStart = useCallback((e: React.MouseEvent) => {
     if (isNodeListCollapsed || isTouchDevice) return; // Disable drag on mobile
-    // Don't start drag if clicking on interactive elements
+    // Don't start drag if clicking on an input, button, select, or anything inside node-controls
+    // Check this FIRST before doing anything else
     const target = e.target as HTMLElement;
-    if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'BUTTON') {
+    const isInteractiveElement = 
+      target.tagName === 'INPUT' || 
+      target.tagName === 'BUTTON' || 
+      target.tagName === 'SELECT' || 
+      target.tagName === 'OPTION' ||
+      target.closest('.node-controls') !== null ||
+      target.closest('input') !== null ||
+      target.closest('button') !== null ||
+      target.closest('select') !== null;
+    
+    if (isInteractiveElement) {
+      // Don't prevent default - allow normal interaction
+      e.stopPropagation();
       return;
     }
     e.preventDefault();
@@ -763,6 +776,18 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
           height: isNodeListCollapsed ? undefined : (sidebarSize.height ? `${sidebarSize.height}px` : 'auto'),
           maxHeight: isNodeListCollapsed ? undefined : (sidebarSize.height ? `${sidebarSize.height}px` : 'calc(100% - 32px)'),
         }}
+        onMouseDown={(e) => {
+          // If clicking on node-controls or any interactive element, don't let the drag handler run
+          const target = e.target as HTMLElement;
+          if (
+            target.closest('.node-controls') ||
+            target.tagName === 'INPUT' ||
+            target.tagName === 'BUTTON' ||
+            target.tagName === 'SELECT'
+          ) {
+            e.stopPropagation();
+          }
+        }}
       >
         <div
           className="sidebar-header"
@@ -804,14 +829,22 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
             <input
               type="text"
               placeholder={t('nodes.filter_placeholder')}
-              value={nodeFilter}
-              onChange={(e) => setNodeFilter(e.target.value)}
+              value={nodesNodeFilter}
+              onChange={(e) => setNodesNodeFilter(e.target.value)}
               className="filter-input-small"
             />
             <div className="sort-controls">
               <button
                 className="filter-popup-btn"
-                onClick={handleToggleFilterPopup}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.nativeEvent.stopImmediatePropagation();
+                  handleToggleFilterPopup();
+                }}
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  e.nativeEvent.stopImmediatePropagation();
+                }}
                 title={t('nodes.filter_title')}
               >
                 {t('common.filter')}
@@ -833,7 +866,15 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               </select>
               <button
                 className="sort-direction-btn"
-                onClick={handleToggleSortDirection}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.nativeEvent.stopImmediatePropagation();
+                  handleToggleSortDirection();
+                }}
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  e.nativeEvent.stopImmediatePropagation();
+                }}
                 title={sortDirection === 'asc' ? t('nodes.ascending') : t('nodes.descending')}
               >
                 {sortDirection === 'asc' ? '↑' : '↓'}
@@ -842,7 +883,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
           </div>
           )}
         </div>
-
         {!isNodeListCollapsed && (
         <div className="nodes-list">
           {shouldShowData() ? (() => {
@@ -996,7 +1036,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               </>
             ) : (
               <div className="no-data">
-                {securityFilter !== 'all' ? 'No nodes match security filter' : (nodeFilter ? 'No nodes match filter' : 'No nodes detected')}
+                {securityFilter !== 'all' ? 'No nodes match security filter' : (nodesNodeFilter ? 'No nodes match filter' : 'No nodes detected')}
               </div>
             );
           })() : (

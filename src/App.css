@@ -3302,8 +3302,13 @@ body {
 }
 
 .node-controls {
-  padding: 0.75rem 0 0.75rem 0;
+  padding: 0 0.75rem 0.75rem 0.75rem;
   width: 100%;
+  user-select: auto; /* Allow text selection in controls */
+  pointer-events: auto; /* Ensure controls are interactive */
+  position: relative;
+  z-index: 10; /* Ensure controls are above other elements */
+  isolation: isolate; /* Create a new stacking context */
 }
 
 /* Desktop - ensure controls have enough room */
@@ -3327,6 +3332,9 @@ body {
   width: 100%;
   transition: border-color 0.2s;
   box-sizing: border-box;
+  user-select: text; /* Allow text selection in input */
+  pointer-events: auto; /* Ensure input is interactive */
+  cursor: text; /* Show text cursor */
 }
 
 .filter-input-small:focus {

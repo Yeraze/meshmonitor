@@ -4471,21 +4471,45 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
         // Local node - use existing config or request it
         let currentConfig = meshtasticManager.getCurrentConfig();
         
-        if (!currentConfig || (!currentConfig.deviceConfig && !currentConfig.moduleConfig)) {
-          // Try to request the config
-          logger.info('Config not available, requesting from device...');
+        // Map config types to their numeric values (same as remote node mapping)
+        const configTypeMap: { [key: string]: { type: number; isModule: boolean } } = {
+          'device': { type: 0, isModule: false },  // DEVICE_CONFIG
+          'lora': { type: 5, isModule: false },      // LORA_CONFIG
+          'position': { type: 6, isModule: false }, // POSITION_CONFIG
+          'mqtt': { type: 0, isModule: true }        // MQTT_CONFIG (module)
+        };
+
+        const configInfo = configTypeMap[configType];
+        if (!configInfo && configType !== 'channel') {
+          return res.status(400).json({ error: `Unknown config type: ${configType}` });
+        }
+
+        // Check if we need to request the specific config type
+        let needsRequest = false;
+        if (configType === 'device' && !currentConfig?.deviceConfig?.device) needsRequest = true;
+        if (configType === 'lora' && !currentConfig?.deviceConfig?.lora) needsRequest = true;
+        if (configType === 'position' && !currentConfig?.deviceConfig?.position) needsRequest = true;
+        if (configType === 'mqtt' && !currentConfig?.moduleConfig?.mqtt) needsRequest = true;
+        
+        if (needsRequest && configInfo) {
+          // Try to request the specific config type
+          logger.info(`Config type '${configType}' not available, requesting from device...`);
           try {
-            await meshtasticManager.requestConfig(5); // Request LoRa config (most common)
+            if (configInfo.isModule) {
+              await meshtasticManager.requestModuleConfig(configInfo.type);
+            } else {
+              await meshtasticManager.requestConfig(configInfo.type);
+            }
             // Wait a bit for response
             await new Promise(resolve => setTimeout(resolve, 1000));
           } catch (error) {
-            logger.warn('Failed to request config:', error);
+            logger.warn(`Failed to request ${configType} config:`, error);
           }
           
           // Check again
           const retryConfig = meshtasticManager.getCurrentConfig();
-          if (!retryConfig || (!retryConfig.deviceConfig && !retryConfig.moduleConfig)) {
-            return res.status(404).json({ error: 'Device configuration not yet loaded. Please ensure the device is connected and try again in a few seconds.' });
+          if (!retryConfig) {
+            return res.status(404).json({ error: `Device configuration not yet loaded. Please ensure the device is connected and try again in a few seconds.` });
           }
           // Use the retried config
           currentConfig = retryConfig;

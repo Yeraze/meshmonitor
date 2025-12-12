@@ -4657,7 +4657,8 @@ class MeshtasticManager {
         : `channel ${channelIndex}`;
 
       // Send tapback with hop count emoji if enabled
-      if (autoAckTapbackEnabled && packetId) {
+      // Note: packetId can be 0 (valid unsigned integer), so check for null/undefined explicitly
+      if (autoAckTapbackEnabled && packetId != null) {
         // Hop count emojis: *️⃣ for 0 (direct), 1️⃣-7️⃣ for 1-7+ hops
         const HOP_COUNT_EMOJIS = ['*️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣'];
         const hopEmojiIndex = Math.min(hopsTraveled, 7); // Cap at 7 for 7+ hops
@@ -5421,33 +5422,37 @@ class MeshtasticManager {
         return;
       }
 
+      // Check all conditions BEFORE acquiring the lock
+      // This allows subsequent calls to re-evaluate conditions if they change
+      // Check if we should wait for name
+      const autoWelcomeWaitForName = databaseService.getSetting('autoWelcomeWaitForName');
+      if (autoWelcomeWaitForName === 'true') {
+        // Check if node has a proper name (not default "Node !xxxxxxxx")
+        if (!node.longName || node.longName.startsWith('Node !')) {
+          logger.debug(`⏭️  Skipping auto-welcome for ${nodeId} - waiting for proper name (current: ${node.longName})`);
+          return;
+        }
+        if (!node.shortName || node.shortName === nodeId.substring(1, 5)) {
+          logger.debug(`⏭️  Skipping auto-welcome for ${nodeId} - waiting for proper short name (current: ${node.shortName})`);
+          return;
+        }
+      }
+
+      // Check if node exceeds maximum hop count
+      const autoWelcomeMaxHops = databaseService.getSetting('autoWelcomeMaxHops');
+      const maxHops = autoWelcomeMaxHops ? parseInt(autoWelcomeMaxHops) : 5; // Default to 5 hops
+      if (node.hopsAway !== undefined && node.hopsAway > maxHops) {
+        logger.debug(`⏭️  Skipping auto-welcome for ${nodeId} - too far away (${node.hopsAway} hops > ${maxHops} max)`);
+        return;
+      }
+
       // RACE CONDITION PROTECTION: Mark that we're welcoming this node
       // This prevents duplicate welcomes if multiple packets arrive before database is updated
+      // Lock is added AFTER all conditions are satisfied to allow re-evaluation on subsequent calls
       this.welcomingNodes.add(nodeNum);
       logger.debug(`🔒 Locked auto-welcome for ${nodeId} to prevent duplicates`);
 
       try {
-        // Check if we should wait for name
-        const autoWelcomeWaitForName = databaseService.getSetting('autoWelcomeWaitForName');
-        if (autoWelcomeWaitForName === 'true') {
-          // Check if node has a proper name (not default "Node !xxxxxxxx")
-          if (!node.longName || node.longName.startsWith('Node !')) {
-            logger.debug(`⏭️  Skipping auto-welcome for ${nodeId} - waiting for proper name (current: ${node.longName})`);
-            return;
-          }
-          if (!node.shortName || node.shortName === nodeId.substring(1, 5)) {
-            logger.debug(`⏭️  Skipping auto-welcome for ${nodeId} - waiting for proper short name (current: ${node.shortName})`);
-            return;
-          }
-        }
-
-        // Check if node exceeds maximum hop count
-        const autoWelcomeMaxHops = databaseService.getSetting('autoWelcomeMaxHops');
-        const maxHops = autoWelcomeMaxHops ? parseInt(autoWelcomeMaxHops) : 5; // Default to 5 hops
-        if (node.hopsAway !== undefined && node.hopsAway > maxHops) {
-          logger.debug(`⏭️  Skipping auto-welcome for ${nodeId} - too far away (${node.hopsAway} hops > ${maxHops} max)`);
-          return;
-        }
 
         // Get welcome message template
         const autoWelcomeMessage = databaseService.getSetting('autoWelcomeMessage') || 'Welcome {LONG_NAME} ({SHORT_NAME}) to the mesh!';
@@ -5483,13 +5488,16 @@ class MeshtasticManager {
         } else {
           logger.warn(`⚠️  Node ${nodeId} was already marked as welcomed by another process`);
         }
-      } finally {
-        // RACE CONDITION PROTECTION: Always remove from tracking set
-        // Use a small delay to ensure database write has completed
-        setTimeout(() => {
-          this.welcomingNodes.delete(nodeNum);
-          logger.debug(`🔓 Unlocked auto-welcome tracking for ${nodeId}`);
-        }, 100);
+
+        // RACE CONDITION PROTECTION: Release lock immediately after atomic database operation
+        // The atomic operation completes synchronously, so no delay is needed
+        this.welcomingNodes.delete(nodeNum);
+        logger.debug(`🔓 Unlocked auto-welcome tracking for ${nodeId}`);
+      } catch (error) {
+        // Release lock on error as well
+        this.welcomingNodes.delete(nodeNum);
+        logger.debug(`🔓 Unlocked auto-welcome tracking for ${nodeId} (error case)`);
+        throw error;
       }
     } catch (error) {
       logger.error('❌ Error in auto-welcome:', error);

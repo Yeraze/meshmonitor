@@ -432,8 +432,11 @@ function App() {
     setError,
     tracerouteLoading,
     setTracerouteLoading,
-    nodeFilter,
-    setNodeFilter,
+    nodeFilter: _nodeFilter, // Deprecated - kept for backward compatibility
+    setNodeFilter: _setNodeFilter, // Deprecated
+    nodesNodeFilter,
+    messagesNodeFilter,
+    setMessagesNodeFilter,
     securityFilter,
     setSecurityFilter,
     channelFilter,
@@ -2987,7 +2990,11 @@ function App() {
       return node.lastHeard >= cutoffTime;
     });
 
-    const textFiltered = filterNodes(ageFiltered, nodeFilter);
+    // Only apply nodesNodeFilter when Nodes tab is active
+    // Messages tab will apply its own messagesNodeFilter
+    const textFiltered = activeTab === 'nodes' 
+      ? filterNodes(ageFiltered, nodesNodeFilter)
+      : ageFiltered;
 
     // Apply advanced filters
     const advancedFiltered = textFiltered.filter(node => {
@@ -3103,7 +3110,8 @@ function App() {
   }, [
     nodes,
     maxNodeAgeHours,
-    nodeFilter,
+    activeTab,
+    nodesNodeFilter,
     sortField,
     sortDirection,
     nodeFilters,
@@ -4323,8 +4331,10 @@ function App() {
             setReplyingTo={setReplyingTo}
             unreadCountsData={unreadCountsData}
             markMessagesAsRead={markMessagesAsRead}
-            nodeFilter={nodeFilter}
-            setNodeFilter={setNodeFilter}
+            nodeFilter={_nodeFilter} // Deprecated - kept for backward compatibility
+            setNodeFilter={_setNodeFilter} // Deprecated
+            messagesNodeFilter={messagesNodeFilter}
+            setMessagesNodeFilter={setMessagesNodeFilter}
             dmFilter={dmFilter}
             setDmFilter={setDmFilter}
             securityFilter={securityFilter}
