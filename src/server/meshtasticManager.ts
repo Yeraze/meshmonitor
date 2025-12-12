@@ -1607,6 +1607,7 @@ class MeshtasticManager {
           hopLimit: hopLimit,
           replyId: replyId && replyId > 0 ? replyId : undefined,
           emoji: emoji,
+          viaMqtt: meshPacket.viaMqtt === true, // Capture whether message was received via MQTT bridge
           requestId: context?.virtualNodeRequestId, // For Virtual Node messages, preserve packet ID for ACK matching
           wantAck: context?.virtualNodeRequestId ? 1 : undefined, // Expect ACK for Virtual Node messages
           deliveryState: context?.virtualNodeRequestId ? 'pending' : undefined, // Track delivery for Virtual Node messages
@@ -7192,6 +7193,7 @@ class MeshtasticManager {
       hopLimit: msg.hopLimit,
       replyId: msg.replyId,
       emoji: msg.emoji,
+      viaMqtt: Boolean(msg.viaMqtt),
       // Include delivery tracking fields
       requestId: (msg as any).requestId,
       wantAck: Boolean((msg as any).wantAck),

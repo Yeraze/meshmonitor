@@ -22,6 +22,7 @@ export interface MeshMessage {
   hopLimit?: number
   replyId?: number
   emoji?: number
+  viaMqtt?: boolean  // Whether message was received via MQTT bridge
   // Enhanced delivery tracking
   deliveryState?: MessageDeliveryState
   wantAck?: boolean  // Whether message requested acknowledgment
