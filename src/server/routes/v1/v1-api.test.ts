@@ -70,7 +70,18 @@ vi.mock('../../../services/database.js', () => {
           return null;
         })
       },
+      permissionModel: {
+        check: vi.fn((userId: number, resource: string, action: string) => {
+          // Grant all permissions for test user
+          return true;
+        })
+      },
       auditLog: vi.fn(),
+      getSetting: vi.fn((key: string) => {
+        if (key === 'localNodeNum') return '2715451348';
+        if (key === 'localNodeId') return '!a1b2c3d4';
+        return null;
+      }),
       // Nodes methods
       getAllNodes: vi.fn(() => testNodes),
       getActiveNodes: vi.fn(() => testNodes.slice(0, 2)),
@@ -85,6 +96,18 @@ vi.mock('../../../services/database.js', () => {
       getTelemetryCount: vi.fn(() => testTelemetry.length),
       // Traceroutes methods
       getAllTraceroutes: vi.fn(() => testTraceroutes)
+    }
+  };
+});
+
+// Mock meshtasticManager
+vi.mock('../../meshtasticManager.js', () => {
+  return {
+    default: {
+      sendTextMessage: vi.fn(async (text: string, channel: number, destination?: number, replyId?: number, emoji?: number, userId?: number) => {
+        // Simulate returning a message ID
+        return 123456789;
+      })
     }
   };
 });
@@ -468,5 +491,160 @@ describe('API Response Format Consistency', () => {
     expect(response.body).toHaveProperty('success', false);
     expect(response.body).toHaveProperty('error');
     expect(response.body).toHaveProperty('message');
+  });
+});
+
+describe('POST /api/v1/messages', () => {
+  it('should send a channel message successfully', async () => {
+    const response = await request(app)
+      .post('/api/v1/messages')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .send({
+        text: 'Hello from API test!',
+        channel: 0
+      })
+      .expect(201);
+
+    expect(response.body).toHaveProperty('success', true);
+    expect(response.body.data).toHaveProperty('messageId');
+    expect(response.body.data).toHaveProperty('requestId', 123456789);
+    expect(response.body.data).toHaveProperty('deliveryState', 'pending');
+    expect(response.body.data).toHaveProperty('text', 'Hello from API test!');
+    expect(response.body.data).toHaveProperty('channel', 0);
+    expect(response.body.data).toHaveProperty('toNodeId', 'broadcast');
+  });
+
+  it('should send a direct message successfully', async () => {
+    const response = await request(app)
+      .post('/api/v1/messages')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .send({
+        text: 'Private message via API',
+        toNodeId: '!a1b2c3d4'
+      })
+      .expect(201);
+
+    expect(response.body).toHaveProperty('success', true);
+    expect(response.body.data).toHaveProperty('messageId');
+    expect(response.body.data).toHaveProperty('requestId', 123456789);
+    expect(response.body.data).toHaveProperty('deliveryState', 'pending');
+    expect(response.body.data).toHaveProperty('channel', -1);
+    expect(response.body.data).toHaveProperty('toNodeId', '!a1b2c3d4');
+  });
+
+  it('should reject request without text', async () => {
+    const response = await request(app)
+      .post('/api/v1/messages')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .send({
+        channel: 0
+      })
+      .expect(400);
+
+    expect(response.body).toHaveProperty('success', false);
+    expect(response.body).toHaveProperty('error', 'Bad Request');
+    expect(response.body.message).toContain('text');
+  });
+
+  it('should reject request with empty text', async () => {
+    const response = await request(app)
+      .post('/api/v1/messages')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .send({
+        text: '',
+        channel: 0
+      })
+      .expect(400);
+
+    expect(response.body).toHaveProperty('success', false);
+    expect(response.body).toHaveProperty('error', 'Bad Request');
+  });
+
+  it('should reject request with both channel and toNodeId', async () => {
+    const response = await request(app)
+      .post('/api/v1/messages')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .send({
+        text: 'Test message',
+        channel: 0,
+        toNodeId: '!a1b2c3d4'
+      })
+      .expect(400);
+
+    expect(response.body).toHaveProperty('success', false);
+    expect(response.body).toHaveProperty('error', 'Bad Request');
+    expect(response.body.message).toContain('either channel OR toNodeId');
+  });
+
+  it('should reject request without channel or toNodeId', async () => {
+    const response = await request(app)
+      .post('/api/v1/messages')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .send({
+        text: 'Test message'
+      })
+      .expect(400);
+
+    expect(response.body).toHaveProperty('success', false);
+    expect(response.body).toHaveProperty('error', 'Bad Request');
+    expect(response.body.message).toContain('Either channel or toNodeId is required');
+  });
+
+  it('should reject invalid channel number', async () => {
+    const response = await request(app)
+      .post('/api/v1/messages')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .send({
+        text: 'Test message',
+        channel: 10
+      })
+      .expect(400);
+
+    expect(response.body).toHaveProperty('success', false);
+    expect(response.body).toHaveProperty('error', 'Bad Request');
+    expect(response.body.message).toContain('between 0 and 7');
+  });
+
+  it('should reject invalid toNodeId format', async () => {
+    const response = await request(app)
+      .post('/api/v1/messages')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .send({
+        text: 'Test message',
+        toNodeId: 'invalid_node_id'
+      })
+      .expect(400);
+
+    expect(response.body).toHaveProperty('success', false);
+    expect(response.body).toHaveProperty('error', 'Bad Request');
+    expect(response.body.message).toContain('hex string starting with !');
+  });
+
+  it('should support optional replyId', async () => {
+    const response = await request(app)
+      .post('/api/v1/messages')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .send({
+        text: 'This is a reply',
+        channel: 0,
+        replyId: 987654321
+      })
+      .expect(201);
+
+    expect(response.body).toHaveProperty('success', true);
+    expect(response.body.data).toHaveProperty('messageId');
+  });
+
+  it('should trim whitespace from message text', async () => {
+    const response = await request(app)
+      .post('/api/v1/messages')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .send({
+        text: '  Trimmed message  ',
+        channel: 0
+      })
+      .expect(201);
+
+    expect(response.body.data.text).toBe('Trimmed message');
   });
 });
