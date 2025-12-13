@@ -5937,6 +5937,18 @@ apiRouter.get('/apprise/status', requireAdmin(), async (_req, res) => {
 apiRouter.post('/apprise/test', requireAdmin(), async (req, res) => {
   try {
     const userId = req.session?.userId;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Not authenticated' });
+    }
+
+    // Get user's Apprise URLs from their preferences
+    const prefs = getUserNotificationPreferences(userId);
+    if (!prefs || !prefs.appriseUrls || prefs.appriseUrls.length === 0) {
+      return res.json({
+        success: false,
+        message: 'No Apprise URLs configured in your notification preferences',
+      });
+    }
 
     // Get local node name for prefix
     const localNodeInfo = meshtasticManager.getLocalNodeInfo();
@@ -5946,16 +5958,20 @@ apiRouter.post('/apprise/test', requireAdmin(), async (req, res) => {
     const baseBody = 'This is a test notification from MeshMonitor via Apprise';
     const body = applyNodeNamePrefix(userId, baseBody, localNodeName);
 
-    const success = await appriseNotificationService.sendNotification({
-      title: 'Test Notification',
-      body,
-      type: 'info',
-    });
+    // Send to user's configured URLs
+    const success = await appriseNotificationService.sendNotificationToUrls(
+      {
+        title: 'Test Notification',
+        body,
+        type: 'info',
+      },
+      prefs.appriseUrls
+    );
 
     if (success) {
       res.json({ success: true, message: 'Test notification sent successfully' });
     } else {
-      res.json({ success: false, message: 'Apprise not available or no URLs configured' });
+      res.json({ success: false, message: 'Failed to send notification - check your Apprise URLs' });
     }
   } catch (error: any) {
     logger.error('Error sending test Apprise notification:', error);
