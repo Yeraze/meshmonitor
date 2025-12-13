@@ -41,6 +41,11 @@ export async function loadProtobufDefinitions(): Promise<protobuf.Root> {
     await root.load(apponlyProtoPath);
     logger.debug('✅ Loaded apponly.proto for ChannelSet support');
 
+    // Load paxcount.proto for PAXCOUNTER_APP support
+    const paxcountProtoPath = path.join(protoRoot, 'meshtastic/paxcount.proto');
+    await root.load(paxcountProtoPath);
+    logger.debug('✅ Loaded paxcount.proto for Paxcount support');
+
     logger.debug('✅ Successfully loaded Meshtastic protobuf definitions');
     return root;
   } catch (error) {
