@@ -6884,6 +6884,27 @@ class MeshtasticManager {
   }
 
   /**
+   * Set network configuration (NTP server, etc.)
+   */
+  async setNetworkConfig(config: any): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    try {
+      logger.debug('⚙️ Sending network config:', JSON.stringify(config));
+      const setConfigMsg = protobufService.createSetNetworkConfigMessage(config, new Uint8Array());
+      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+
+      await this.transport.send(adminPacket);
+      logger.debug('⚙️ Sent set_network_config admin message');
+    } catch (error) {
+      logger.error('❌ Error sending network config:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Set channel configuration
    * @param channelIndex The channel index (0-7)
    * @param config Channel configuration

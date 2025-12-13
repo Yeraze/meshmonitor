@@ -146,3 +146,70 @@ export const REGION_MAP: Record<string, number> = {
   'ANZ': 6, 'KR': 7, 'TW': 8, 'RU': 9, 'IN': 10, 'NZ_865': 11,
   'TH': 12, 'LORA_24': 13, 'UA_433': 14, 'UA_868': 15
 };
+
+// Timezone presets in POSIX TZ format
+// Format: STDoffset[DST[offset][,start[/time],end[/time]]]
+// See: https://www.gnu.org/software/libc/manual/html_node/TZ-Variable.html
+export interface TimezonePreset {
+  label: string;
+  value: string;
+  region: string;
+}
+
+export const TIMEZONE_PRESETS: TimezonePreset[] = [
+  // Americas - North
+  { label: 'Hawaii (HST)', value: 'HST10', region: 'Americas' },
+  { label: 'Alaska (AKST/AKDT)', value: 'AKST9AKDT,M3.2.0,M11.1.0', region: 'Americas' },
+  { label: 'Pacific (PST/PDT)', value: 'PST8PDT,M3.2.0,M11.1.0', region: 'Americas' },
+  { label: 'Mountain (MST/MDT)', value: 'MST7MDT,M3.2.0,M11.1.0', region: 'Americas' },
+  { label: 'Arizona (MST)', value: 'MST7', region: 'Americas' },
+  { label: 'Central (CST/CDT)', value: 'CST6CDT,M3.2.0,M11.1.0', region: 'Americas' },
+  { label: 'Eastern (EST/EDT)', value: 'EST5EDT,M3.2.0,M11.1.0', region: 'Americas' },
+  { label: 'Atlantic (AST/ADT)', value: 'AST4ADT,M3.2.0,M11.1.0', region: 'Americas' },
+  { label: 'Newfoundland (NST/NDT)', value: 'NST3:30NDT,M3.2.0,M11.1.0', region: 'Americas' },
+
+  // Americas - Central & South
+  { label: 'Mexico City (CST/CDT)', value: 'CST6CDT,M4.1.0,M10.5.0', region: 'Americas' },
+  { label: 'Colombia (COT)', value: 'COT5', region: 'Americas' },
+  { label: 'Peru (PET)', value: 'PET5', region: 'Americas' },
+  { label: 'Chile (CLT/CLST)', value: 'CLT4CLST,M9.1.0,M4.1.0', region: 'Americas' },
+  { label: 'Argentina (ART)', value: 'ART3', region: 'Americas' },
+  { label: 'Brazil - Sao Paulo (BRT)', value: 'BRT3', region: 'Americas' },
+
+  // Europe
+  { label: 'UK/Ireland (GMT/BST)', value: 'GMT0BST,M3.5.0/1,M10.5.0', region: 'Europe' },
+  { label: 'Western Europe (WET/WEST)', value: 'WET0WEST,M3.5.0/1,M10.5.0', region: 'Europe' },
+  { label: 'Central Europe (CET/CEST)', value: 'CET-1CEST,M3.5.0,M10.5.0/3', region: 'Europe' },
+  { label: 'Eastern Europe (EET/EEST)', value: 'EET-2EEST,M3.5.0/3,M10.5.0/4', region: 'Europe' },
+  { label: 'Moscow (MSK)', value: 'MSK-3', region: 'Europe' },
+  { label: 'Turkey (TRT)', value: 'TRT-3', region: 'Europe' },
+
+  // Africa
+  { label: 'West Africa (WAT)', value: 'WAT-1', region: 'Africa' },
+  { label: 'Central Africa (CAT)', value: 'CAT-2', region: 'Africa' },
+  { label: 'East Africa (EAT)', value: 'EAT-3', region: 'Africa' },
+  { label: 'South Africa (SAST)', value: 'SAST-2', region: 'Africa' },
+
+  // Asia
+  { label: 'Gulf/Dubai (GST)', value: 'GST-4', region: 'Asia' },
+  { label: 'Pakistan (PKT)', value: 'PKT-5', region: 'Asia' },
+  { label: 'India (IST)', value: 'IST-5:30', region: 'Asia' },
+  { label: 'Nepal (NPT)', value: 'NPT-5:45', region: 'Asia' },
+  { label: 'Bangladesh (BST)', value: 'BST-6', region: 'Asia' },
+  { label: 'Thailand/Vietnam (ICT)', value: 'ICT-7', region: 'Asia' },
+  { label: 'China/Hong Kong (CST)', value: 'CST-8', region: 'Asia' },
+  { label: 'Singapore (SGT)', value: 'SGT-8', region: 'Asia' },
+  { label: 'Philippines (PHT)', value: 'PHT-8', region: 'Asia' },
+  { label: 'Japan (JST)', value: 'JST-9', region: 'Asia' },
+  { label: 'Korea (KST)', value: 'KST-9', region: 'Asia' },
+
+  // Oceania
+  { label: 'Western Australia (AWST)', value: 'AWST-8', region: 'Oceania' },
+  { label: 'Central Australia (ACST/ACDT)', value: 'ACST-9:30ACDT,M10.1.0,M4.1.0/3', region: 'Oceania' },
+  { label: 'Eastern Australia (AEST/AEDT)', value: 'AEST-10AEDT,M10.1.0,M4.1.0/3', region: 'Oceania' },
+  { label: 'Queensland (AEST)', value: 'AEST-10', region: 'Oceania' },
+  { label: 'New Zealand (NZST/NZDT)', value: 'NZST-12NZDT,M9.5.0,M4.1.0/3', region: 'Oceania' },
+
+  // UTC/GMT
+  { label: 'UTC (Coordinated Universal Time)', value: 'UTC0', region: 'UTC' },
+];

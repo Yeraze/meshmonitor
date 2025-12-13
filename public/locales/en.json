@@ -2021,6 +2021,14 @@
   "device_config.device_role_description": "Defines how your node behaves on the mesh network.",
   "device_config.node_info_broadcast": "Node Info Broadcast Interval (seconds)",
   "device_config.node_info_broadcast_description": "How often to broadcast node info. Range: 3600-4294967295 (default: 10800 = 3 hours, minimum: 3600 = 1 hour)",
+  "device_config.timezone": "Device Timezone",
+  "device_config.timezone_description": "POSIX timezone definition for the device's local time display. Select a preset or enter a custom value.",
+  "device_config.timezone_not_set": "Not Set (uses UTC)",
+  "device_config.custom_timezone": "Custom POSIX timezone",
+  "device_config.timezone_search_placeholder": "Search or enter custom timezone...",
+  "device_config.timezone_custom_hint": "Press Enter to use a custom POSIX timezone value",
+  "device_config.timezone_clear": "Clear timezone (use UTC)",
+  "device_config.timezone_use_custom": "Use custom value",
   "device_config.save_button": "Save Device Config",
 
   "common.more_info": "For more information",
@@ -2044,6 +2052,16 @@
   "neighbor_info.interval": "Update Interval (seconds)",
   "neighbor_info.interval_description": "How often to send neighbor info (minimum: 14400 = 4 hours)",
   "neighbor_info.save_button": "Save NeighborInfo Config",
+
+  "network_config.title": "Network Configuration",
+  "network_config.view_docs": "View Network Configuration Documentation",
+  "network_config.ntp_server": "NTP Server",
+  "network_config.ntp_server_description": "Custom NTP server address (default: meshtastic.pool.ntp.org). Maximum 33 characters.",
+  "network_config.save_button": "Save Network Config",
+
+  "config.network_saved": "Network configuration saved",
+  "config.network_saved_toast": "Network configuration saved! Device will reboot to apply changes.",
+  "config.network_failed": "Failed to save network configuration",
 
   "lora_config.title": "LoRa Radio Configuration",
   "lora_config.view_docs": "View LoRa Configuration Documentation",

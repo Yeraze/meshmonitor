@@ -10,6 +10,7 @@ import LoRaConfigSection from './configuration/LoRaConfigSection';
 import PositionConfigSection from './configuration/PositionConfigSection';
 import MQTTConfigSection from './configuration/MQTTConfigSection';
 import NeighborInfoSection from './configuration/NeighborInfoSection';
+import NetworkConfigSection from './configuration/NetworkConfigSection';
 import ChannelsConfigSection from './configuration/ChannelsConfigSection';
 import BackupManagementSection from './configuration/BackupManagementSection';
 import { ImportConfigModal } from './configuration/ImportConfigModal';
@@ -36,6 +37,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   const [isUnmessagable, setIsUnmessagable] = useState(false);
   const [role, setRole] = useState<number>(0);
   const [nodeInfoBroadcastSecs, setNodeInfoBroadcastSecs] = useState(3600);
+  const [tzdef, setTzdef] = useState('');
 
   // LoRa Config State
   const [usePreset, setUsePreset] = useState(true);
@@ -71,6 +73,11 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   // NeighborInfo Config State
   const [neighborInfoEnabled, setNeighborInfoEnabled] = useState(false);
   const [neighborInfoInterval, setNeighborInfoInterval] = useState(14400);
+
+  // Network Config State - store full config to avoid wiping fields when saving
+  const [wifiEnabled, setWifiEnabled] = useState(false);
+  const [ntpServer, setNtpServer] = useState('');
+  const [fullNetworkConfig, setFullNetworkConfig] = useState<any>(null);
 
   // UI State
   const [isSaving, setIsSaving] = useState(false);
@@ -108,6 +115,9 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           }
           if (config.deviceConfig.device.nodeInfoBroadcastSecs !== undefined) {
             setNodeInfoBroadcastSecs(config.deviceConfig.device.nodeInfoBroadcastSecs);
+          }
+          if (config.deviceConfig.device.tzdef !== undefined) {
+            setTzdef(config.deviceConfig.device.tzdef);
           }
         }
 
@@ -187,6 +197,13 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           setNeighborInfoEnabled(config.moduleConfig.neighborInfo.enabled || false);
           setNeighborInfoInterval(config.moduleConfig.neighborInfo.updateInterval || 14400);
         }
+
+        // Populate Network config - store full config to preserve all fields when saving
+        if (config.deviceConfig?.network) {
+          setFullNetworkConfig(config.deviceConfig.network);
+          setWifiEnabled(config.deviceConfig.network.wifiEnabled || false);
+          setNtpServer(config.deviceConfig.network.ntpServer || '');
+        }
       } catch (error) {
         logger.error('Error fetching configuration:', error);
         setStatusMessage(t('config.load_warning'));
@@ -247,7 +264,8 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
 
       await apiService.setDeviceConfig({
         role,
-        nodeInfoBroadcastSecs: validNodeInfoBroadcastSecs
+        nodeInfoBroadcastSecs: validNodeInfoBroadcastSecs,
+        tzdef
       });
       setStatusMessage(t('config.device_config_saved'));
       showToast(t('config.device_config_saved_toast'), 'success');
@@ -418,6 +436,31 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
       const errorMsg = error instanceof Error ? error.message : t('config.neighbor_failed');
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`${t('config.neighbor_failed')}: ${errorMsg}`, 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveNetworkConfig = async () => {
+    setIsSaving(true);
+    setStatusMessage('');
+    try {
+      // Pass the full network config with updated NTP server to preserve all other fields
+      const updatedConfig = {
+        ...fullNetworkConfig,
+        ntpServer
+      };
+      await apiService.setNetworkConfig(updatedConfig);
+      // Update stored full config with the new values
+      setFullNetworkConfig(updatedConfig);
+      setStatusMessage(t('config.network_saved'));
+      showToast(t('config.network_saved_toast'), 'success');
+      onConfigChangeTriggeringReboot?.();
+    } catch (error) {
+      logger.error('Error saving Network config:', error);
+      const errorMsg = error instanceof Error ? error.message : t('config.network_failed');
+      setStatusMessage(`Error: ${errorMsg}`);
+      showToast(`${t('config.network_failed')}: ${errorMsg}`, 'error');
     } finally {
       setIsSaving(false);
     }
@@ -616,6 +659,8 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           setRole={setRole}
           nodeInfoBroadcastSecs={nodeInfoBroadcastSecs}
           setNodeInfoBroadcastSecs={setNodeInfoBroadcastSecs}
+          tzdef={tzdef}
+          setTzdef={setTzdef}
           isSaving={isSaving}
           onSave={handleSaveDeviceConfig}
         />
@@ -692,6 +737,14 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           setNeighborInfoInterval={setNeighborInfoInterval}
           isSaving={isSaving}
           onSave={handleSaveNeighborInfoConfig}
+        />
+
+        <NetworkConfigSection
+          wifiEnabled={wifiEnabled}
+          ntpServer={ntpServer}
+          setNtpServer={setNtpServer}
+          isSaving={isSaving}
+          onSave={handleSaveNetworkConfig}
         />
 
         <ChannelsConfigSection

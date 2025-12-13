@@ -794,6 +794,23 @@ class ApiService {
     return response.json();
   }
 
+  async setNetworkConfig(config: any) {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/config/network`, {
+      method: 'POST',
+      headers: this.getHeadersWithCsrf(),
+      credentials: 'include',
+      body: JSON.stringify(config),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to set network configuration');
+    }
+
+    return response.json();
+  }
+
   async setLoRaConfig(config: any) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/lora`, {

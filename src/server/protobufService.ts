@@ -838,6 +838,9 @@ class ProtobufService {
       if (config.nodeInfoBroadcastSecs !== undefined) {
         deviceConfig.nodeInfoBroadcastSecs = config.nodeInfoBroadcastSecs;
       }
+      if (config.tzdef !== undefined) {
+        deviceConfig.tzdef = config.tzdef;
+      }
 
       logger.debug('⚙️ Sending device config:', JSON.stringify(deviceConfig));
 
@@ -923,6 +926,83 @@ class ProtobufService {
       return encoded;
     } catch (error) {
       logger.error('Failed to create SetLoRaConfig message:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create an AdminMessage to set network configuration (NTP server, etc.)
+   * @param config Network config object
+   * @param sessionPasskey Optional session passkey for authentication
+   */
+  createSetNetworkConfigMessage(config: any, sessionPasskey?: Uint8Array): Uint8Array {
+    try {
+      const root = getProtobufRoot();
+      const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
+      const Config = root?.lookupType('meshtastic.Config');
+      if (!AdminMessage || !Config) {
+        throw new Error('Required proto types not found');
+      }
+
+      // Build network config object - include ALL fields to avoid wiping existing config
+      // NetworkConfig fields: wifiEnabled, wifiSsid, wifiPsk, ntpServer, ethEnabled,
+      // addressMode, ipv4Config, rsyslogServer, enabledProtocols, ipv6Enabled
+      const networkConfig: any = {};
+
+      // Boolean fields - must explicitly include to preserve values
+      if (config.wifiEnabled !== undefined) {
+        networkConfig.wifiEnabled = config.wifiEnabled;
+      }
+      if (config.wifiSsid !== undefined) {
+        networkConfig.wifiSsid = config.wifiSsid;
+      }
+      if (config.wifiPsk !== undefined) {
+        networkConfig.wifiPsk = config.wifiPsk;
+      }
+      if (config.ntpServer !== undefined) {
+        networkConfig.ntpServer = config.ntpServer;
+      }
+      if (config.ethEnabled !== undefined) {
+        networkConfig.ethEnabled = config.ethEnabled;
+      }
+      if (config.addressMode !== undefined) {
+        networkConfig.addressMode = config.addressMode;
+      }
+      if (config.ipv4Config !== undefined) {
+        networkConfig.ipv4Config = config.ipv4Config;
+      }
+      if (config.rsyslogServer !== undefined) {
+        networkConfig.rsyslogServer = config.rsyslogServer;
+      }
+      if (config.enabledProtocols !== undefined) {
+        networkConfig.enabledProtocols = config.enabledProtocols;
+      }
+      if (config.ipv6Enabled !== undefined) {
+        networkConfig.ipv6Enabled = config.ipv6Enabled;
+      }
+
+      logger.debug('⚙️ Sending network config:', JSON.stringify(networkConfig));
+
+      const configMsg = Config.create({
+        network: networkConfig
+      });
+
+      const adminMsgData: any = {
+        setConfig: configMsg
+      };
+
+      // Only include sessionPasskey if provided
+      if (sessionPasskey && sessionPasskey.length > 0) {
+        adminMsgData.sessionPasskey = sessionPasskey;
+      }
+
+      const adminMsg = AdminMessage.create(adminMsgData);
+
+      const encoded = AdminMessage.encode(adminMsg).finish();
+      logger.debug('⚙️ Created SetNetworkConfig admin message');
+      return encoded;
+    } catch (error) {
+      logger.error('Failed to create SetNetworkConfig message:', error);
       throw error;
     }
   }
