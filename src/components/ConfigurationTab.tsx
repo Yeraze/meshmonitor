@@ -74,9 +74,10 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   const [neighborInfoEnabled, setNeighborInfoEnabled] = useState(false);
   const [neighborInfoInterval, setNeighborInfoInterval] = useState(14400);
 
-  // Network Config State
+  // Network Config State - store full config to avoid wiping fields when saving
   const [wifiEnabled, setWifiEnabled] = useState(false);
   const [ntpServer, setNtpServer] = useState('');
+  const [fullNetworkConfig, setFullNetworkConfig] = useState<any>(null);
 
   // UI State
   const [isSaving, setIsSaving] = useState(false);
@@ -197,8 +198,9 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           setNeighborInfoInterval(config.moduleConfig.neighborInfo.updateInterval || 14400);
         }
 
-        // Populate Network config
+        // Populate Network config - store full config to preserve all fields when saving
         if (config.deviceConfig?.network) {
+          setFullNetworkConfig(config.deviceConfig.network);
           setWifiEnabled(config.deviceConfig.network.wifiEnabled || false);
           setNtpServer(config.deviceConfig.network.ntpServer || '');
         }
@@ -443,9 +445,14 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
     setIsSaving(true);
     setStatusMessage('');
     try {
-      await apiService.setNetworkConfig({
+      // Pass the full network config with updated NTP server to preserve all other fields
+      const updatedConfig = {
+        ...fullNetworkConfig,
         ntpServer
-      });
+      };
+      await apiService.setNetworkConfig(updatedConfig);
+      // Update stored full config with the new values
+      setFullNetworkConfig(updatedConfig);
       setStatusMessage(t('config.network_saved'));
       showToast(t('config.network_saved_toast'), 'success');
       onConfigChangeTriggeringReboot?.();
