@@ -12,6 +12,7 @@ export interface NotificationFilterContext {
   messageText: string;
   channelId: number;
   isDirectMessage: boolean;
+  viaMqtt?: boolean;
 }
 
 export interface BroadcastResult {

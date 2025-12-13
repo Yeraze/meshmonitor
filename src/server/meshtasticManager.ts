@@ -4609,7 +4609,8 @@ class MeshtasticManager {
       }, {
         messageText,
         channelId: message.channel,
-        isDirectMessage
+        isDirectMessage,
+        viaMqtt: message.viaMqtt === true
       });
 
       logger.debug(

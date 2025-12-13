@@ -247,6 +247,7 @@ class AppriseNotificationService {
       messageText: string;
       channelId: number;
       isDirectMessage: boolean;
+      viaMqtt?: boolean;
     }
   ): Promise<{ sent: number; failed: number; filtered: number }> {
     if (!this.isAvailable()) {
@@ -337,6 +338,7 @@ class AppriseNotificationService {
       messageText: string;
       channelId: number;
       isDirectMessage: boolean;
+      viaMqtt?: boolean;
     }
   ): boolean {
     // Check if user has Apprise enabled

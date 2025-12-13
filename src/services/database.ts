@@ -39,6 +39,7 @@ import { migration as isIgnoredMigration } from '../server/migrations/033_add_is
 import { migration as notifyOnServerEventsMigration } from '../server/migrations/034_add_notify_on_server_events.js';
 import { migration as prefixWithNodeNameMigration } from '../server/migrations/035_add_prefix_with_node_name.js';
 import { migration as perUserAppriseUrlsMigration } from '../server/migrations/036_add_per_user_apprise_urls.js';
+import { migration as notifyOnMqttMigration } from '../server/migrations/037_add_notify_on_mqtt.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Configuration constants for traceroute history
@@ -411,6 +412,7 @@ class DatabaseService {
     this.runNotifyOnServerEventsMigration();
     this.runPrefixWithNodeNameMigration();
     this.runPerUserAppriseUrlsMigration();
+    this.runNotifyOnMqttMigration();
     this.ensureAutomationDefaults();
     this.isInitialized = true;
   }
@@ -1124,6 +1126,25 @@ class DatabaseService {
       logger.debug('✅ Per-user Apprise URLs migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run per-user Apprise URLs migration:', error);
+      throw error;
+    }
+  }
+
+  private runNotifyOnMqttMigration(): void {
+    const migrationKey = 'migration_037_notify_on_mqtt';
+    try {
+      const currentStatus = this.getSetting(migrationKey);
+      if (currentStatus === 'completed') {
+        logger.debug('✅ Notify on MQTT migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 037: Add notify_on_mqtt column...');
+      notifyOnMqttMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Notify on MQTT migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run notify on MQTT migration:', error);
       throw error;
     }
   }
