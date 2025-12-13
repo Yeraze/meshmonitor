@@ -3883,10 +3883,12 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
 
     // Handle auto-welcome being enabled for the first time
     if ('autoWelcomeEnabled' in filteredSettings) {
+      // Check if the setting changed from disabled (not 'true') to enabled ('true')
       const wasEnabled = currentSettings['autoWelcomeEnabled'] === 'true';
       const nowEnabled = filteredSettings['autoWelcomeEnabled'] === 'true';
       
       // If changing from disabled to enabled, mark existing nodes as welcomed
+      // This prevents a "thundering herd" of welcome messages when the feature is first enabled
       if (!wasEnabled && nowEnabled) {
         logger.info('👋 Auto-welcome being enabled - marking existing nodes as welcomed...');
         const markedCount = databaseService.handleAutoWelcomeEnabled();

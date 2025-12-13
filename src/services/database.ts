@@ -406,7 +406,7 @@ class DatabaseService {
     this.runAPITokensMigration();
     this.runCascadeForeignKeysMigration();
     // NOTE: Auto-welcome migration is now handled when the feature is first enabled
-    // See handleAutoWelcomeEnabled() which is called from the settings endpoint
+    // See handleAutoWelcomeEnabled() which is called from the settings POST endpoint in server.ts
     this.runUserMapPreferencesMigration();
     this.runInactiveNodeNotificationMigration();
     this.runIsIgnoredMigration();
@@ -997,11 +997,11 @@ class DatabaseService {
    * 
    * This function is kept for backwards compatibility with installations that
    * already ran this migration (migration_017_auto_welcome_existing_nodes would
-   * be marked as completed).
+   * be marked as completed). Do not call this function in new code.
    * 
    * @deprecated Use handleAutoWelcomeEnabled() instead
    */
-  // @ts-expect-error - Keeping for backwards compatibility but no longer used
+  // @ts-ignore - Function kept for backwards compatibility but intentionally unused
   private runAutoWelcomeMigration(): void {
     try {
       const migrationKey = 'migration_017_auto_welcome_existing_nodes';
