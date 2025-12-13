@@ -3,6 +3,7 @@ import { useTranslation, Trans } from 'react-i18next';
 import api from '../services/api';
 import { logger } from '../utils/logger';
 import { Channel } from '../types/device';
+import { useToast } from './ToastContainer';
 
 interface VapidStatus {
   configured: boolean;
@@ -34,6 +35,7 @@ interface NotificationsTabProps {
 
 const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
   const { t } = useTranslation();
+  const { showToast } = useToast();
   const [vapidStatus, setVapidStatus] = useState<VapidStatus | null>(null);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isSubscribing, setIsSubscribing] = useState(false);
@@ -241,9 +243,10 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
       await api.post('/api/push/preferences', prefs);
       setPreferences(prefs);
       logger.info('Notification preferences saved');
+      showToast(t('notifications.preferences_saved'), 'success');
     } catch (error) {
       logger.error('Failed to save preferences:', error);
-      alert(t('notifications.alert_save_failed'));
+      showToast(t('notifications.alert_save_failed'), 'error');
     } finally {
       setIsSavingPreferences(false);
     }
