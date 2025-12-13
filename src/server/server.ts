@@ -4370,6 +4370,17 @@ apiRouter.post('/config/device', requirePermission('configuration', 'write'), as
   }
 });
 
+apiRouter.post('/config/network', requirePermission('configuration', 'write'), async (req, res) => {
+  try {
+    const config = req.body;
+    await meshtasticManager.setNetworkConfig(config);
+    res.json({ success: true, message: 'Network configuration sent' });
+  } catch (error) {
+    logger.error('Error setting network config:', error);
+    res.status(500).json({ error: 'Failed to set network configuration' });
+  }
+});
+
 apiRouter.post('/config/lora', requirePermission('configuration', 'write'), async (req, res) => {
   try {
     const config = req.body;
