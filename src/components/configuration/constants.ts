@@ -90,7 +90,7 @@ export const REGION_OPTIONS: RegionOption[] = [
   { value: 3, label: 'EU_868 - European Union 868MHz' },
   { value: 4, label: 'CN - China' },
   { value: 5, label: 'JP - Japan' },
-  { value: 6, label: 'ANZ - Australia / New Zealand' },
+  { value: 6, label: 'ANZ - Australia / New Zealand 915MHz' },
   { value: 7, label: 'KR - Korea' },
   { value: 8, label: 'TW - Taiwan' },
   { value: 9, label: 'RU - Russia' },
@@ -99,7 +99,18 @@ export const REGION_OPTIONS: RegionOption[] = [
   { value: 12, label: 'TH - Thailand' },
   { value: 13, label: 'LORA_24 - WLAN Band' },
   { value: 14, label: 'UA_433 - Ukraine 433MHz' },
-  { value: 15, label: 'UA_868 - Ukraine 868MHz' }
+  { value: 15, label: 'UA_868 - Ukraine 868MHz' },
+  { value: 16, label: 'MY_433 - Malaysia 433MHz' },
+  { value: 17, label: 'MY_919 - Malaysia 919MHz' },
+  { value: 18, label: 'SG_923 - Singapore' },
+  { value: 19, label: 'PH_433 - Philippines 433MHz' },
+  { value: 20, label: 'PH_868 - Philippines 868MHz' },
+  { value: 21, label: 'PH_915 - Philippines 915MHz' },
+  { value: 22, label: 'ANZ_433 - Australia / New Zealand 433MHz' },
+  { value: 23, label: 'KZ_433 - Kazakhstan 433MHz' },
+  { value: 24, label: 'KZ_863 - Kazakhstan 863MHz' },
+  { value: 25, label: 'NP_865 - Nepal 865MHz' },
+  { value: 26, label: 'BR_902 - Brazil 902MHz' }
 ];
 
 // Mapping from string role names to numeric values
