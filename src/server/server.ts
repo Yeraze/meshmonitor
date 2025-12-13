@@ -5799,6 +5799,7 @@ apiRouter.get('/push/preferences', requireAuth(), async (req, res) => {
         monitoredNodes: [],
         whitelist: ['Hi', 'Help'],
         blacklist: ['Test', 'Copy'],
+        appriseUrls: [],
       });
     }
   } catch (error: any) {
@@ -5829,6 +5830,7 @@ apiRouter.post('/push/preferences', requireAuth(), async (req, res) => {
       monitoredNodes,
       whitelist,
       blacklist,
+      appriseUrls,
     } = req.body;
 
     // Validate input
@@ -5857,6 +5859,14 @@ apiRouter.post('/push/preferences', requireAuth(), async (req, res) => {
       return res.status(400).json({ error: 'monitoredNodes must be an array of strings' });
     }
 
+    // Validate appriseUrls is an array of strings if provided
+    if (appriseUrls !== undefined && !Array.isArray(appriseUrls)) {
+      return res.status(400).json({ error: 'appriseUrls must be an array' });
+    }
+    if (appriseUrls && appriseUrls.some((url: any) => typeof url !== 'string')) {
+      return res.status(400).json({ error: 'appriseUrls must be an array of strings' });
+    }
+
     const prefs = {
       enableWebPush,
       enableApprise,
@@ -5871,6 +5881,7 @@ apiRouter.post('/push/preferences', requireAuth(), async (req, res) => {
       monitoredNodes: monitoredNodes ?? [],
       whitelist,
       blacklist,
+      appriseUrls: appriseUrls ?? [],
     };
 
     const success = saveUserNotificationPreferences(userId, prefs);

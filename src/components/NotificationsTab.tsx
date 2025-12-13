@@ -25,6 +25,7 @@ interface NotificationPreferences {
   monitoredNodes: string[];
   whitelist: string[];
   blacklist: string[];
+  appriseUrls: string[];
 }
 
 interface NotificationsTabProps {
@@ -57,7 +58,8 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
     prefixWithNodeName: false,
     monitoredNodes: [],
     whitelist: ['Hi', 'Help'],
-    blacklist: ['Test', 'Copy']
+    blacklist: ['Test', 'Copy'],
+    appriseUrls: []
   });
   const [whitelistText, setWhitelistText] = useState('Hi\nHelp');
   const [blacklistText, setBlacklistText] = useState('Test\nCopy');
@@ -184,22 +186,10 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
       setWhitelistText(response.whitelist.join('\n'));
       setBlacklistText(response.blacklist.join('\n'));
       setSelectedMonitoredNodes(response.monitoredNodes || []);
-
-      // Load Apprise URLs if Apprise is enabled
-      if (response.enableApprise) {
-        loadAppriseUrls();
-      }
+      // Set Apprise URLs from preferences (now per-user)
+      setAppriseUrls((response.appriseUrls || []).join('\n'));
     } catch (_error) {
       logger.debug('No saved preferences, using defaults');
-    }
-  };
-
-  const loadAppriseUrls = async () => {
-    try {
-      const response = await api.get<{ urls: string[] }>('/api/apprise/urls');
-      setAppriseUrls(response.urls.join('\n'));
-    } catch (_error) {
-      logger.debug('No saved Apprise URLs, using empty');
     }
   };
 
@@ -233,22 +223,24 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
         .filter(w => w.length > 0)
         .slice(0, 100);
 
+      // Parse appriseUrls from textarea
+      const parsedAppriseUrls = appriseUrls
+        .split('\n')
+        .map(url => url.trim())
+        .filter(url => url.length > 0);
+
       const prefs: NotificationPreferences = {
         ...preferences,
         notifyOnInactiveNode: preferences.notifyOnInactiveNode,
         monitoredNodes: selectedMonitoredNodes,
         whitelist,
-        blacklist
+        blacklist,
+        appriseUrls: parsedAppriseUrls
       };
 
       await api.post('/api/push/preferences', prefs);
       setPreferences(prefs);
       logger.info('Notification preferences saved');
-
-      // Load Apprise URLs if Apprise was just enabled
-      if (prefs.enableApprise) {
-        loadAppriseUrls();
-      }
     } catch (error) {
       logger.error('Failed to save preferences:', error);
       alert(t('notifications.alert_save_failed'));
@@ -403,7 +395,13 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
         .map(url => url.trim())
         .filter(url => url.length > 0);
 
-      await api.post('/api/apprise/configure', { urls });
+      // Save as part of user preferences (per-user Apprise URLs)
+      const updatedPrefs = {
+        ...preferences,
+        appriseUrls: urls
+      };
+      await api.post('/api/push/preferences', updatedPrefs);
+      setPreferences(updatedPrefs);
       logger.info('Apprise URLs configured successfully');
       setAppriseTestStatus('✅ Configuration saved');
       const timeout = setTimeout(() => setAppriseTestStatus(''), 3000);

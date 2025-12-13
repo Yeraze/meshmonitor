@@ -38,6 +38,7 @@ import { migration as userMapPreferencesMigration } from '../server/migrations/0
 import { migration as isIgnoredMigration } from '../server/migrations/033_add_is_ignored_to_nodes.js';
 import { migration as notifyOnServerEventsMigration } from '../server/migrations/034_add_notify_on_server_events.js';
 import { migration as prefixWithNodeNameMigration } from '../server/migrations/035_add_prefix_with_node_name.js';
+import { migration as perUserAppriseUrlsMigration } from '../server/migrations/036_add_per_user_apprise_urls.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Configuration constants for traceroute history
@@ -409,6 +410,7 @@ class DatabaseService {
     this.runIsIgnoredMigration();
     this.runNotifyOnServerEventsMigration();
     this.runPrefixWithNodeNameMigration();
+    this.runPerUserAppriseUrlsMigration();
     this.ensureAutomationDefaults();
     this.isInitialized = true;
   }
@@ -1103,6 +1105,25 @@ class DatabaseService {
       logger.debug('✅ Prefix with node name migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run prefix with node name migration:', error);
+      throw error;
+    }
+  }
+
+  private runPerUserAppriseUrlsMigration(): void {
+    const migrationKey = 'migration_036_per_user_apprise_urls';
+    try {
+      const currentStatus = this.getSetting(migrationKey);
+      if (currentStatus === 'completed') {
+        logger.debug('✅ Per-user Apprise URLs migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 036: Add per-user apprise_urls column...');
+      perUserAppriseUrlsMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Per-user Apprise URLs migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run per-user Apprise URLs migration:', error);
       throw error;
     }
   }
