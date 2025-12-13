@@ -386,6 +386,10 @@
   "settings.miles": "Miles",
   "settings.12_hour": "12 Hour",
   "settings.24_hour": "24 Hour",
+  "settings.reset_ui_positions": "Reset UI Positions",
+  "settings.reset_ui_positions_description": "Reset the positions of draggable UI elements (Node List, Map Features, Hop Legend, Tile Selector) to their default locations.",
+  "settings.reset_ui_positions_button": "Reset Positions",
+  "settings.reset_ui_positions_success": "UI positions have been reset. Refresh the page to see the changes.",
 
   "configuration.title": "Device Configuration",
   "configuration.node_identity": "Node Identity",
