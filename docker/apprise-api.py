@@ -108,6 +108,7 @@ class AppriseHandler(BaseHTTPRequestHandler):
             title = data.get('title', 'MeshMonitor')
             body_text = data.get('body', '')
             notify_type = data.get('type', 'info')
+            inline_urls = data.get('urls', None)  # Per-user inline URLs
 
             if not body_text:
                 self.send_json_response(400, {'error': 'Body is required'})
@@ -123,35 +124,73 @@ class AppriseHandler(BaseHTTPRequestHandler):
             }
             apprise_type = type_map.get(notify_type, apprise.NotifyType.INFO)
 
-            # Check if any URLs are configured
-            if len(apobj) == 0:
-                self.send_json_response(400, {
-                    'success': False,
-                    'error': 'No notification URLs configured',
-                    'urls_configured': 0
-                })
-                return
-
             try:
-                # Send notification
-                result = apobj.notify(
-                    title=title,
-                    body=body_text,
-                    notify_type=apprise_type
-                )
+                # Use per-user inline URLs if provided, otherwise fall back to global config
+                if inline_urls and isinstance(inline_urls, list) and len(inline_urls) > 0:
+                    # Create a temporary Apprise object for this request
+                    temp_apobj = apprise.Apprise()
+                    loaded_count = 0
+                    for url in inline_urls:
+                        if url and isinstance(url, str) and url.strip():
+                            if temp_apobj.add(url.strip()):
+                                loaded_count += 1
 
-                if result:
-                    self.send_json_response(200, {
-                        'success': True,
-                        'message': 'Notification sent',
-                        'sent_to': len(apobj)
-                    })
+                    if loaded_count == 0:
+                        self.send_json_response(400, {
+                            'success': False,
+                            'error': 'No valid notification URLs in request',
+                            'urls_provided': len(inline_urls)
+                        })
+                        return
+
+                    # Send notification using temporary Apprise object
+                    result = temp_apobj.notify(
+                        title=title,
+                        body=body_text,
+                        notify_type=apprise_type
+                    )
+
+                    if result:
+                        self.send_json_response(200, {
+                            'success': True,
+                            'message': 'Notification sent',
+                            'sent_to': loaded_count
+                        })
+                    else:
+                        self.send_json_response(500, {
+                            'success': False,
+                            'error': 'Failed to send notification (check logs for details)',
+                            'urls_provided': len(inline_urls)
+                        })
                 else:
-                    self.send_json_response(500, {
-                        'success': False,
-                        'error': 'Failed to send notification (check logs for details)',
-                        'urls_configured': len(apobj)
-                    })
+                    # Fall back to global config (legacy behavior)
+                    if len(apobj) == 0:
+                        self.send_json_response(400, {
+                            'success': False,
+                            'error': 'No notification URLs configured',
+                            'urls_configured': 0
+                        })
+                        return
+
+                    # Send notification using global Apprise object
+                    result = apobj.notify(
+                        title=title,
+                        body=body_text,
+                        notify_type=apprise_type
+                    )
+
+                    if result:
+                        self.send_json_response(200, {
+                            'success': True,
+                            'message': 'Notification sent',
+                            'sent_to': len(apobj)
+                        })
+                    else:
+                        self.send_json_response(500, {
+                            'success': False,
+                            'error': 'Failed to send notification (check logs for details)',
+                            'urls_configured': len(apobj)
+                        })
             except Exception as e:
                 self.send_json_response(500, {
                     'success': False,
