@@ -990,6 +990,18 @@ class DatabaseService {
     }
   }
 
+  /**
+   * DEPRECATED: This migration is no longer called during database initialization.
+   * It was replaced by handleAutoWelcomeEnabled() which is called when the feature
+   * is first enabled via the settings endpoint.
+   * 
+   * This function is kept for backwards compatibility with installations that
+   * already ran this migration (migration_017_auto_welcome_existing_nodes would
+   * be marked as completed).
+   * 
+   * @deprecated Use handleAutoWelcomeEnabled() instead
+   */
+  // @ts-expect-error - Keeping for backwards compatibility but no longer used
   private runAutoWelcomeMigration(): void {
     try {
       const migrationKey = 'migration_017_auto_welcome_existing_nodes';
