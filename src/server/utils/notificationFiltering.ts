@@ -21,6 +21,7 @@ export interface NotificationPreferences {
   monitoredNodes: string[];
   whitelist: string[];
   blacklist: string[];
+  appriseUrls: string[];
 }
 
 /**
@@ -50,7 +51,8 @@ export function getUserNotificationPreferences(userId: number): NotificationPref
         prefix_with_node_name,
         monitored_nodes,
         whitelist,
-        blacklist
+        blacklist,
+        apprise_urls
       FROM user_notification_preferences
       WHERE user_id = ?
     `);
@@ -72,7 +74,8 @@ export function getUserNotificationPreferences(userId: number): NotificationPref
         prefixWithNodeName: row.prefix_with_node_name !== undefined ? Boolean(row.prefix_with_node_name) : false,
         monitoredNodes: row.monitored_nodes ? JSON.parse(row.monitored_nodes) : [],
         whitelist: row.whitelist ? JSON.parse(row.whitelist) : [],
-        blacklist: row.blacklist ? JSON.parse(row.blacklist) : []
+        blacklist: row.blacklist ? JSON.parse(row.blacklist) : [],
+        appriseUrls: row.apprise_urls ? JSON.parse(row.apprise_urls) : []
       };
     }
 
@@ -95,7 +98,8 @@ export function getUserNotificationPreferences(userId: number): NotificationPref
         prefixWithNodeName: false, // Default to disabled
         monitoredNodes: [], // Default to empty array
         whitelist: oldPrefs.whitelist || [],
-        blacklist: oldPrefs.blacklist || []
+        blacklist: oldPrefs.blacklist || [],
+        appriseUrls: [] // Default to empty array
       };
     }
 
@@ -128,9 +132,9 @@ export function saveUserNotificationPreferences(
         enabled_channels, enable_direct_messages, notify_on_emoji,
         notify_on_new_node, notify_on_traceroute,
         notify_on_inactive_node, notify_on_server_events, prefix_with_node_name,
-        monitored_nodes, whitelist, blacklist,
+        monitored_nodes, whitelist, blacklist, apprise_urls,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(user_id) DO UPDATE SET
         enable_web_push = excluded.enable_web_push,
         enable_apprise = excluded.enable_apprise,
@@ -145,6 +149,7 @@ export function saveUserNotificationPreferences(
         monitored_nodes = excluded.monitored_nodes,
         whitelist = excluded.whitelist,
         blacklist = excluded.blacklist,
+        apprise_urls = excluded.apprise_urls,
         updated_at = excluded.updated_at
     `);
 
@@ -163,6 +168,7 @@ export function saveUserNotificationPreferences(
       JSON.stringify(preferences.monitoredNodes),
       JSON.stringify(preferences.whitelist),
       JSON.stringify(preferences.blacklist),
+      JSON.stringify(preferences.appriseUrls || []),
       now,
       now
     );

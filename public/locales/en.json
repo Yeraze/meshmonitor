@@ -448,6 +448,7 @@
   "notifications.failed_test": "Failed to send test notification",
   "notifications.failed_subscribe": "Failed to subscribe to push notifications",
   "notifications.failed_unsubscribe": "Failed to unsubscribe",
+  "notifications.preferences_saved": "Notification preferences saved",
   "notifications.alert_save_failed": "Failed to save notification preferences",
   "notifications.alert_not_supported": "Push notifications are not supported in your browser",
   "notifications.alert_permission_failed": "Failed to request notification permission. Please try again.",

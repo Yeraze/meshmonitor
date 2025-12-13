@@ -2,7 +2,7 @@
  * Apprise Notification Service Tests
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
 import Database from 'better-sqlite3';
 import databaseService from '../../services/database.js';
 
@@ -14,6 +14,17 @@ vi.mock('../../services/database.js', () => ({
     setSetting: vi.fn()
   }
 }));
+
+// Mock meshtasticManager for tests that need it
+vi.mock('../meshtasticManager.js', () => ({
+  default: {
+    getLocalNodeInfo: vi.fn(() => ({ longName: 'TestNode' }))
+  }
+}));
+
+// Mock global fetch
+const mockFetch = vi.fn() as MockInstance;
+vi.stubGlobal('fetch', mockFetch);
 
 describe('AppriseNotificationService', () => {
   let db: Database.Database;
@@ -43,8 +54,16 @@ describe('AppriseNotificationService', () => {
         enable_apprise BOOLEAN DEFAULT 0,
         enabled_channels TEXT,
         enable_direct_messages BOOLEAN DEFAULT 1,
+        notify_on_emoji BOOLEAN DEFAULT 1,
+        notify_on_new_node BOOLEAN DEFAULT 1,
+        notify_on_traceroute BOOLEAN DEFAULT 1,
+        notify_on_inactive_node BOOLEAN DEFAULT 0,
+        notify_on_server_events BOOLEAN DEFAULT 0,
+        prefix_with_node_name BOOLEAN DEFAULT 0,
+        monitored_nodes TEXT,
         whitelist TEXT,
         blacklist TEXT,
+        apprise_urls TEXT,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -531,6 +550,355 @@ describe('AppriseNotificationService', () => {
         const scheme = url.split(':')[0];
         expect(validSchemes).not.toContain(scheme);
       });
+    });
+  });
+
+  describe('Multi-User Per-URL Notifications', () => {
+    beforeEach(() => {
+      // Create multiple test users with different Apprise URLs
+      db.prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)').run('user1', 'hash1');
+      db.prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)').run('user2', 'hash2');
+      db.prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)').run('user3', 'hash3');
+
+      // Reset mock fetch
+      mockFetch.mockReset();
+    });
+
+    it('should store different Apprise URLs for each user', () => {
+      const now = Date.now();
+
+      // User 1 has Discord URL
+      db.prepare(`
+        INSERT INTO user_notification_preferences
+        (user_id, enable_apprise, enabled_channels, enable_direct_messages, apprise_urls, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(1, 1, JSON.stringify([0]), 1, JSON.stringify(['discord://webhook1/token1']), now, now);
+
+      // User 2 has Slack URL
+      db.prepare(`
+        INSERT INTO user_notification_preferences
+        (user_id, enable_apprise, enabled_channels, enable_direct_messages, apprise_urls, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(2, 1, JSON.stringify([0]), 1, JSON.stringify(['slack://token_a/token_b/token_c']), now, now);
+
+      // User 3 has multiple URLs
+      db.prepare(`
+        INSERT INTO user_notification_preferences
+        (user_id, enable_apprise, enabled_channels, enable_direct_messages, apprise_urls, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(3, 1, JSON.stringify([0]), 1, JSON.stringify(['tgram://bot/chat', 'mailto://user@example.com']), now, now);
+
+      // Verify each user has their own URLs
+      const prefs1 = db.prepare('SELECT apprise_urls FROM user_notification_preferences WHERE user_id = ?').get(1) as any;
+      const prefs2 = db.prepare('SELECT apprise_urls FROM user_notification_preferences WHERE user_id = ?').get(2) as any;
+      const prefs3 = db.prepare('SELECT apprise_urls FROM user_notification_preferences WHERE user_id = ?').get(3) as any;
+
+      expect(JSON.parse(prefs1.apprise_urls)).toEqual(['discord://webhook1/token1']);
+      expect(JSON.parse(prefs2.apprise_urls)).toEqual(['slack://token_a/token_b/token_c']);
+      expect(JSON.parse(prefs3.apprise_urls)).toEqual(['tgram://bot/chat', 'mailto://user@example.com']);
+    });
+
+    it('should query users with Apprise enabled and URLs configured', () => {
+      const now = Date.now();
+
+      // User 1: Apprise enabled with URLs
+      db.prepare(`
+        INSERT INTO user_notification_preferences
+        (user_id, enable_apprise, enabled_channels, apprise_urls, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(1, 1, JSON.stringify([0]), JSON.stringify(['discord://test']), now, now);
+
+      // User 2: Apprise enabled but NO URLs (should be filtered)
+      db.prepare(`
+        INSERT INTO user_notification_preferences
+        (user_id, enable_apprise, enabled_channels, apprise_urls, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(2, 1, JSON.stringify([0]), JSON.stringify([]), now, now);
+
+      // User 3: Apprise disabled (should be filtered)
+      db.prepare(`
+        INSERT INTO user_notification_preferences
+        (user_id, enable_apprise, enabled_channels, apprise_urls, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(3, 0, JSON.stringify([0]), JSON.stringify(['slack://test']), now, now);
+
+      // Query users who can receive notifications
+      const stmt = db.prepare(`
+        SELECT user_id, apprise_urls
+        FROM user_notification_preferences
+        WHERE enable_apprise = 1
+      `);
+      const rows = stmt.all() as any[];
+
+      // Filter to those with actual URLs
+      const usersWithUrls = rows.filter(row => {
+        const urls = JSON.parse(row.apprise_urls || '[]');
+        return urls.length > 0;
+      });
+
+      expect(usersWithUrls.length).toBe(1);
+      expect(usersWithUrls[0].user_id).toBe(1);
+    });
+
+    it('should correctly identify which URLs belong to which user during broadcast', () => {
+      const now = Date.now();
+
+      // Set up users with different URLs and channel preferences
+      db.prepare(`
+        INSERT INTO user_notification_preferences
+        (user_id, enable_apprise, enabled_channels, enable_direct_messages, apprise_urls, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(1, 1, JSON.stringify([0, 1]), 1, JSON.stringify(['discord://user1/token']), now, now);
+
+      db.prepare(`
+        INSERT INTO user_notification_preferences
+        (user_id, enable_apprise, enabled_channels, enable_direct_messages, apprise_urls, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(2, 1, JSON.stringify([0]), 1, JSON.stringify(['slack://user2/token']), now, now);
+
+      // Simulate broadcast logic
+      const usersWithApprise = db.prepare(`
+        SELECT user_id, enabled_channels, apprise_urls
+        FROM user_notification_preferences
+        WHERE enable_apprise = 1
+      `).all() as any[];
+
+      const channelId = 1; // Only user 1 has channel 1 enabled
+      const usersToNotify: { userId: number; urls: string[] }[] = [];
+
+      for (const user of usersWithApprise) {
+        const enabledChannels = JSON.parse(user.enabled_channels || '[]');
+        const urls = JSON.parse(user.apprise_urls || '[]');
+
+        // Check if user wants notifications for this channel
+        if (enabledChannels.includes(channelId) && urls.length > 0) {
+          usersToNotify.push({ userId: user.user_id, urls });
+        }
+      }
+
+      // Only user 1 should receive notification (has channel 1 enabled)
+      expect(usersToNotify.length).toBe(1);
+      expect(usersToNotify[0].userId).toBe(1);
+      expect(usersToNotify[0].urls).toEqual(['discord://user1/token']);
+    });
+
+    it('should handle users with multiple Apprise URLs', () => {
+      const now = Date.now();
+
+      // User with multiple notification services
+      const multipleUrls = [
+        'discord://webhook/token',
+        'slack://a/b/c',
+        'tgram://bot/chat',
+        'mailto://user@example.com'
+      ];
+
+      db.prepare(`
+        INSERT INTO user_notification_preferences
+        (user_id, enable_apprise, enabled_channels, apprise_urls, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(1, 1, JSON.stringify([0]), JSON.stringify(multipleUrls), now, now);
+
+      const prefs = db.prepare('SELECT apprise_urls FROM user_notification_preferences WHERE user_id = ?').get(1) as any;
+      const urls = JSON.parse(prefs.apprise_urls);
+
+      expect(urls.length).toBe(4);
+      expect(urls).toEqual(multipleUrls);
+    });
+
+    it('should isolate users so one user cannot receive anothers notifications', () => {
+      const now = Date.now();
+
+      // User 1: Only wants channel 0
+      db.prepare(`
+        INSERT INTO user_notification_preferences
+        (user_id, enable_apprise, enabled_channels, enable_direct_messages, apprise_urls, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(1, 1, JSON.stringify([0]), 0, JSON.stringify(['discord://user1']), now, now);
+
+      // User 2: Only wants channel 1
+      db.prepare(`
+        INSERT INTO user_notification_preferences
+        (user_id, enable_apprise, enabled_channels, enable_direct_messages, apprise_urls, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(2, 1, JSON.stringify([1]), 0, JSON.stringify(['slack://user2']), now, now);
+
+      // Simulate a message on channel 0
+      const messageContext = {
+        channelId: 0,
+        isDirectMessage: false
+      };
+
+      const allUsers = db.prepare(`
+        SELECT user_id, enabled_channels, apprise_urls
+        FROM user_notification_preferences
+        WHERE enable_apprise = 1
+      `).all() as any[];
+
+      const recipientsForChannel0 = allUsers.filter(user => {
+        const channels = JSON.parse(user.enabled_channels || '[]');
+        return channels.includes(messageContext.channelId);
+      });
+
+      // Only user 1 should receive channel 0 messages
+      expect(recipientsForChannel0.length).toBe(1);
+      expect(recipientsForChannel0[0].user_id).toBe(1);
+      expect(JSON.parse(recipientsForChannel0[0].apprise_urls)).toEqual(['discord://user1']);
+
+      // Simulate a message on channel 1
+      const recipientsForChannel1 = allUsers.filter(user => {
+        const channels = JSON.parse(user.enabled_channels || '[]');
+        return channels.includes(1);
+      });
+
+      // Only user 2 should receive channel 1 messages
+      expect(recipientsForChannel1.length).toBe(1);
+      expect(recipientsForChannel1[0].user_id).toBe(2);
+      expect(JSON.parse(recipientsForChannel1[0].apprise_urls)).toEqual(['slack://user2']);
+    });
+
+    it('should correctly apply user-specific whitelist/blacklist filters', () => {
+      const now = Date.now();
+
+      // User 1: Blacklists "test"
+      db.prepare(`
+        INSERT INTO user_notification_preferences
+        (user_id, enable_apprise, enabled_channels, blacklist, whitelist, apprise_urls, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(1, 1, JSON.stringify([0]), JSON.stringify(['test']), JSON.stringify([]), JSON.stringify(['discord://user1']), now, now);
+
+      // User 2: Whitelists "test" (should still receive)
+      db.prepare(`
+        INSERT INTO user_notification_preferences
+        (user_id, enable_apprise, enabled_channels, blacklist, whitelist, apprise_urls, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(2, 1, JSON.stringify([0]), JSON.stringify([]), JSON.stringify(['test']), JSON.stringify(['slack://user2']), now, now);
+
+      const messageText = 'this is a test message';
+
+      // Simulate filter logic for each user
+      const allUsers = db.prepare(`
+        SELECT user_id, whitelist, blacklist, apprise_urls
+        FROM user_notification_preferences
+        WHERE enable_apprise = 1
+      `).all() as any[];
+
+      const recipientsAfterFilter = allUsers.filter(user => {
+        const whitelist = JSON.parse(user.whitelist || '[]') as string[];
+        const blacklist = JSON.parse(user.blacklist || '[]') as string[];
+        const msgLower = messageText.toLowerCase();
+
+        // Whitelist takes priority
+        const isWhitelisted = whitelist.some(w => msgLower.includes(w.toLowerCase()));
+        if (isWhitelisted) return true;
+
+        // Then check blacklist
+        const isBlacklisted = blacklist.some(b => msgLower.includes(b.toLowerCase()));
+        if (isBlacklisted) return false;
+
+        return true;
+      });
+
+      // User 1 should be filtered (blacklisted "test")
+      // User 2 should receive (whitelisted "test")
+      expect(recipientsAfterFilter.length).toBe(1);
+      expect(recipientsAfterFilter[0].user_id).toBe(2);
+    });
+
+    it('should update user Apprise URLs without affecting other users', () => {
+      const now = Date.now();
+
+      // Initial setup
+      db.prepare(`
+        INSERT INTO user_notification_preferences
+        (user_id, enable_apprise, apprise_urls, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(1, 1, JSON.stringify(['discord://original1']), now, now);
+
+      db.prepare(`
+        INSERT INTO user_notification_preferences
+        (user_id, enable_apprise, apprise_urls, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(2, 1, JSON.stringify(['slack://original2']), now, now);
+
+      // Update user 1's URLs
+      db.prepare(`
+        UPDATE user_notification_preferences
+        SET apprise_urls = ?, updated_at = ?
+        WHERE user_id = ?
+      `).run(JSON.stringify(['discord://new1', 'tgram://new1b']), Date.now(), 1);
+
+      // Verify user 1 was updated
+      const prefs1 = db.prepare('SELECT apprise_urls FROM user_notification_preferences WHERE user_id = ?').get(1) as any;
+      expect(JSON.parse(prefs1.apprise_urls)).toEqual(['discord://new1', 'tgram://new1b']);
+
+      // Verify user 2 was NOT affected
+      const prefs2 = db.prepare('SELECT apprise_urls FROM user_notification_preferences WHERE user_id = ?').get(2) as any;
+      expect(JSON.parse(prefs2.apprise_urls)).toEqual(['slack://original2']);
+    });
+
+    it('should handle empty apprise_urls array correctly', () => {
+      const now = Date.now();
+
+      db.prepare(`
+        INSERT INTO user_notification_preferences
+        (user_id, enable_apprise, apprise_urls, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(1, 1, JSON.stringify([]), now, now);
+
+      const prefs = db.prepare('SELECT apprise_urls FROM user_notification_preferences WHERE user_id = ?').get(1) as any;
+      const urls = JSON.parse(prefs.apprise_urls || '[]');
+
+      expect(urls).toEqual([]);
+      expect(urls.length).toBe(0);
+    });
+
+    it('should handle null apprise_urls correctly', () => {
+      const now = Date.now();
+
+      db.prepare(`
+        INSERT INTO user_notification_preferences
+        (user_id, enable_apprise, apprise_urls, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(1, 1, null, now, now);
+
+      const prefs = db.prepare('SELECT apprise_urls FROM user_notification_preferences WHERE user_id = ?').get(1) as any;
+      const urls = prefs.apprise_urls ? JSON.parse(prefs.apprise_urls) : [];
+
+      expect(urls).toEqual([]);
+    });
+
+    it('should correctly track notification results per user', () => {
+      // Simulate broadcast results
+      const broadcastResults = {
+        sent: 0,
+        failed: 0,
+        filtered: 0
+      };
+
+      const users = [
+        { id: 1, urls: ['discord://1'], shouldReceive: true, sendSuccess: true },
+        { id: 2, urls: ['slack://2'], shouldReceive: true, sendSuccess: false }, // API failure
+        { id: 3, urls: [], shouldReceive: false }, // No URLs - filtered
+        { id: 4, urls: ['tgram://4'], shouldReceive: false } // Channel mismatch - filtered
+      ];
+
+      for (const user of users) {
+        if (!user.shouldReceive || user.urls.length === 0) {
+          broadcastResults.filtered++;
+          continue;
+        }
+
+        if (user.sendSuccess) {
+          broadcastResults.sent++;
+        } else {
+          broadcastResults.failed++;
+        }
+      }
+
+      expect(broadcastResults.sent).toBe(1);
+      expect(broadcastResults.failed).toBe(1);
+      expect(broadcastResults.filtered).toBe(2);
     });
   });
 });
