@@ -990,63 +990,6 @@ class DatabaseService {
     }
   }
 
-  /**
-   * DEPRECATED: This migration is no longer called during database initialization.
-   * It was replaced by handleAutoWelcomeEnabled() which is called when the feature
-   * is first enabled via the settings endpoint.
-   * 
-   * This function is kept for backwards compatibility with installations that
-   * already ran this migration (migration_017_auto_welcome_existing_nodes would
-   * be marked as completed). Do not call this function in new code.
-   * 
-   * @deprecated Use handleAutoWelcomeEnabled() instead
-   */
-  // @ts-ignore - Function kept for backwards compatibility but intentionally unused
-  private runAutoWelcomeMigration(): void {
-    try {
-      const migrationKey = 'migration_017_auto_welcome_existing_nodes';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Auto-welcome existing nodes migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 017: Mark existing nodes as already welcomed...');
-
-      // Get all existing nodes
-      const stmt = this.db.prepare('SELECT nodeNum, nodeId, createdAt FROM nodes WHERE welcomedAt IS NULL');
-      const nodes = stmt.all() as Array<{ nodeNum: number; nodeId: string; createdAt?: number }>;
-
-      if (nodes.length === 0) {
-        logger.debug('No existing nodes to mark as welcomed');
-      } else {
-        logger.debug(`📊 Marking ${nodes.length} existing nodes as welcomed to prevent thundering herd...`);
-
-        // Mark all existing nodes as already welcomed
-        // Use their createdAt timestamp if available, otherwise use current timestamp
-        const updateStmt = this.db.prepare('UPDATE nodes SET welcomedAt = ? WHERE nodeNum = ?');
-        const currentTime = Date.now();
-
-        let markedCount = 0;
-        for (const node of nodes) {
-          // Use the node's createdAt time if available, otherwise use current time
-          const welcomedAt = node.createdAt || currentTime;
-          updateStmt.run(welcomedAt, node.nodeNum);
-          markedCount++;
-        }
-
-        logger.debug(`✅ Marked ${markedCount} existing nodes as welcomed`);
-      }
-
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Auto-welcome existing nodes migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run auto-welcome existing nodes migration:', error);
-      throw error;
-    }
-  }
-
   private runUserMapPreferencesMigration(): void {
     const migrationKey = 'migration_030_user_map_preferences';
 
