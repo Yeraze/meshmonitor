@@ -226,5 +226,26 @@
       "Easy to update when adding new scripts",
       "Multi-pattern trigger support"
     ]
+  },
+  {
+    "name": "MM-Weather",
+    "filename": "index.js",
+    "icon": "🌦️",
+    "description": "Weather bot that uses nodes lat/long to pull current data from api.weather.gov. Falls back to local instance GPS info if none was provided by the requesting node.",
+    "language": "JavaScript",
+    "tags": ["Weather", "Node.js", "API", "GPS"],
+    "githubPath": "Yoss101/MM-Weather",
+    "exampleTrigger": "wthr, weather",
+    "requirements": [
+      "Node.js (included in MeshMonitor)",
+      "Internet connection for api.weather.gov"
+    ],
+    "author": "Yoss101",
+    "features": [
+      "Uses node's GPS coordinates for location",
+      "Falls back to local instance GPS if node has none",
+      "Powered by api.weather.gov (US National Weather Service)",
+      "No API key required"
+    ]
   }
 ]
