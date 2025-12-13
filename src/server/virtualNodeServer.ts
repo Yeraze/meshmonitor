@@ -408,9 +408,20 @@ export class VirtualNodeServer extends EventEmitter {
         // Client is requesting config with a specific ID
         logger.info(`Virtual node: Client ${clientId} requesting config with ID ${toRadio.wantConfigId}`);
         await this.sendInitialConfig(clientId, toRadio.wantConfigId);
+      } else if (toRadio.heartbeat) {
+        // Handle heartbeat locally - don't forward to physical node
+        // Heartbeats are just keep-alive signals between client and VNS
+        logger.debug(`Virtual node: Received heartbeat from ${clientId}, handling locally`);
+        // No response needed for heartbeat - it just keeps the connection alive
+      } else if (toRadio.disconnect) {
+        // Handle disconnect request locally - don't forward to physical node
+        logger.info(`Virtual node: Client ${clientId} requested disconnect`);
+        // The socket close will be handled by the 'close' event handler
       } else {
-        // Forward other message types (heartbeats, etc.) to physical node
-        logger.info(`Virtual node: Forwarding other message type from ${clientId} to physical node`);
+        // Forward other message types to physical node only if they require it
+        // Log the message type for debugging
+        const messageType = Object.keys(toRadio).filter(k => k !== 'payloadVariant' && toRadio[k as keyof typeof toRadio] !== undefined);
+        logger.info(`Virtual node: Forwarding message type [${messageType.join(', ')}] from ${clientId} to physical node`);
         this.queueMessage(clientId, payload);
       }
     } catch (error) {
