@@ -932,6 +932,26 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         </div>
 
         <div className="settings-section">
+          <h3>{t('settings.reset_ui_positions')}</h3>
+          <p className="setting-description">{t('settings.reset_ui_positions_description')}</p>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => {
+              // Clear all draggable UI element positions from localStorage
+              localStorage.removeItem('nodesSidebarPosition');
+              localStorage.removeItem('nodesSidebarSize');
+              localStorage.removeItem('mapControlsPosition');
+              localStorage.removeItem('draggable_position_map-legend');
+              localStorage.removeItem('draggable_position_tileset-selector');
+              showToast(t('settings.reset_ui_positions_success'), 'success');
+            }}
+          >
+            {t('settings.reset_ui_positions_button')}
+          </button>
+        </div>
+
+        <div className="settings-section">
           <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, cursor: 'pointer' }}>
               <input

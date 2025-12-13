@@ -252,24 +252,30 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   }, [sidebarSize]);
 
   // Map controls position state with localStorage persistence
-  // Default position is upper-right (x calculated from viewport width - panel width - margin)
-  const getDefaultMapControlsPosition = () => ({
-    x: window.innerWidth - 200 - 10, // right-align: viewport - estimated panel width (~200px) - 10px margin
-    y: 10
-  });
+  // Position is relative to the map container (absolute positioning)
+  // We use a special value of -1 to indicate "use CSS default (right: 10px)"
+  const MAP_CONTROLS_DEFAULT_POSITION = { x: -1, y: 10 };
 
   const [mapControlsPosition, setMapControlsPosition] = useState(() => {
     const saved = localStorage.getItem('mapControlsPosition');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        const defaultPos = getDefaultMapControlsPosition();
-        return { x: parsed.x ?? defaultPos.x, y: parsed.y ?? defaultPos.y };
+        // If x or y is invalid, use defaults
+        if (typeof parsed.x === 'number' && typeof parsed.y === 'number') {
+          // Sanity check: if position seems unreasonable, reset to default
+          // This handles migration from old viewport-based positions
+          if (parsed.x > 2000 || parsed.x < -100 || parsed.y > 2000 || parsed.y < -100) {
+            localStorage.removeItem('mapControlsPosition');
+            return MAP_CONTROLS_DEFAULT_POSITION;
+          }
+          return { x: parsed.x, y: parsed.y };
+        }
       } catch {
-        return getDefaultMapControlsPosition();
+        // Ignore parse errors
       }
     }
-    return getDefaultMapControlsPosition();
+    return MAP_CONTROLS_DEFAULT_POSITION;
   });
 
   // Map controls drag state
@@ -277,9 +283,51 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   const [mapControlsDragStart, setMapControlsDragStart] = useState({ x: 0, y: 0 });
   const mapControlsRef = useRef<HTMLDivElement>(null);
 
-  // Save map controls position to localStorage
+  // Save map controls position to localStorage (only if not default)
   useEffect(() => {
-    localStorage.setItem('mapControlsPosition', JSON.stringify(mapControlsPosition));
+    if (mapControlsPosition.x !== -1) {
+      localStorage.setItem('mapControlsPosition', JSON.stringify(mapControlsPosition));
+    }
+  }, [mapControlsPosition]);
+
+  // Constrain map controls position to stay within the map container on mount and window resize
+  useEffect(() => {
+    const constrainMapControlsPosition = () => {
+      // Skip constraint for default position (x = -1 means use CSS right: 10px)
+      if (mapControlsPosition.x === -1) return;
+
+      const mapContainer = document.querySelector('.map-container');
+      const controls = mapControlsRef.current;
+      if (!mapContainer || !controls) return;
+
+      const containerRect = mapContainer.getBoundingClientRect();
+      const controlsRect = controls.getBoundingClientRect();
+      const padding = 10;
+
+      // Calculate max bounds relative to container
+      const maxX = containerRect.width - controlsRect.width - padding;
+      const maxY = containerRect.height - controlsRect.height - padding;
+
+      // Check if current position is out of bounds
+      const constrainedX = Math.max(padding, Math.min(mapControlsPosition.x, maxX));
+      const constrainedY = Math.max(padding, Math.min(mapControlsPosition.y, maxY));
+
+      // Update position if it was out of bounds
+      if (constrainedX !== mapControlsPosition.x || constrainedY !== mapControlsPosition.y) {
+        setMapControlsPosition({ x: constrainedX, y: constrainedY });
+      }
+    };
+
+    // Run on mount after a short delay to ensure elements are rendered
+    const timeoutId = setTimeout(constrainMapControlsPosition, 100);
+
+    // Run on window resize
+    window.addEventListener('resize', constrainMapControlsPosition);
+
+    return () => {
+      clearTimeout(timeoutId);
+      window.removeEventListener('resize', constrainMapControlsPosition);
+    };
   }, [mapControlsPosition]);
 
   // Check if user has permission to view packet monitor - needs at least one channel and messages permission
@@ -511,10 +559,29 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     if (isMapControlsCollapsed || isTouchDevice) return; // Disable drag on mobile
     e.preventDefault();
     e.stopPropagation();
+
+    // If position is default (-1), calculate actual position from element
+    let currentX = mapControlsPosition.x;
+    let currentY = mapControlsPosition.y;
+
+    if (currentX === -1) {
+      // Convert from CSS right: 10px to left-based coordinates
+      const mapContainer = document.querySelector('.map-container');
+      const controls = mapControlsRef.current;
+      if (mapContainer && controls) {
+        const containerRect = mapContainer.getBoundingClientRect();
+        const controlsRect = controls.getBoundingClientRect();
+        currentX = controlsRect.left - containerRect.left;
+        currentY = controlsRect.top - containerRect.top;
+        // Update the position to be explicit
+        setMapControlsPosition({ x: currentX, y: currentY });
+      }
+    }
+
     setIsDraggingMapControls(true);
     setMapControlsDragStart({
-      x: e.clientX - mapControlsPosition.x,
-      y: e.clientY - mapControlsPosition.y,
+      x: e.clientX - currentX,
+      y: e.clientY - currentY,
     });
   }, [isMapControlsCollapsed, mapControlsPosition, isTouchDevice]);
 
@@ -1078,11 +1145,15 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
             <div
               ref={mapControlsRef}
               className={`map-controls ${isMapControlsCollapsed ? 'collapsed' : ''}`}
-              style={isTouchDevice ? undefined : {
-                left: isMapControlsCollapsed ? undefined : `${mapControlsPosition.x}px`,
-                top: isMapControlsCollapsed ? undefined : `${mapControlsPosition.y}px`,
-                right: isMapControlsCollapsed ? undefined : 'auto',
-              }}
+              style={isTouchDevice ? undefined : (
+                // If collapsed, don't apply any position styles (use CSS defaults)
+                // If position is default (-1), don't apply left (CSS will use right: 10px)
+                isMapControlsCollapsed ? undefined : {
+                  left: mapControlsPosition.x === -1 ? undefined : `${mapControlsPosition.x}px`,
+                  top: `${mapControlsPosition.y}px`,
+                  right: mapControlsPosition.x === -1 ? undefined : 'auto',
+                }
+              )}
             >
               <button
                 className="map-controls-collapse-btn"
