@@ -1438,6 +1438,7 @@
   "notifications.sources_title": "Notification Sources",
   "notifications.direct_messages": "Direct Messages",
   "notifications.emoji_reactions": "Emoji Reactions",
+  "notifications.mqtt_messages": "MQTT Messages",
   "notifications.new_nodes": "Newly Found Nodes",
   "notifications.traceroutes": "Successful Traceroutes",
   "notifications.notify_on_inactive_node": "Notify on Inactive Nodes",

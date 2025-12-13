@@ -18,6 +18,7 @@ interface NotificationPreferences {
   enabledChannels: number[];
   enableDirectMessages: boolean;
   notifyOnEmoji: boolean;
+  notifyOnMqtt: boolean;
   notifyOnNewNode: boolean;
   notifyOnTraceroute: boolean;
   notifyOnInactiveNode: boolean;
@@ -53,6 +54,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
     enabledChannels: [],
     enableDirectMessages: true,
     notifyOnEmoji: true,
+    notifyOnMqtt: true,
     notifyOnNewNode: true,
     notifyOnTraceroute: true,
     notifyOnInactiveNode: false,
@@ -604,6 +606,30 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                     style={{ width: '18px', height: '18px' }}
                   />
                   <span style={{ fontWeight: '500' }}>😀 {t('notifications.emoji_reactions')}</span>
+                </label>
+              </div>
+
+              {/* MQTT Messages Toggle */}
+              <div style={{
+                padding: '12px',
+                backgroundColor: '#252535',
+                borderRadius: '6px',
+                marginBottom: '16px',
+                border: '2px solid #3a3a3a'
+              }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', margin: 0 }}>
+                  <input
+                    type="checkbox"
+                    checked={preferences.notifyOnMqtt}
+                    onChange={(e) => {
+                      setPreferences(prev => ({
+                        ...prev,
+                        notifyOnMqtt: e.target.checked
+                      }));
+                    }}
+                    style={{ width: '18px', height: '18px' }}
+                  />
+                  <span style={{ fontWeight: '500' }}>📡 {t('notifications.mqtt_messages')}</span>
                 </label>
               </div>
 

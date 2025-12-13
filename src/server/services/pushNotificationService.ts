@@ -378,6 +378,7 @@ class PushNotificationService {
       messageText: string;
       channelId: number;
       isDirectMessage: boolean;
+      viaMqtt?: boolean;
     }
   ): Promise<{ sent: number; failed: number; filtered: number }> {
     const subscriptions = this.getAllSubscriptions();
@@ -435,6 +436,7 @@ class PushNotificationService {
       messageText: string;
       channelId: number;
       isDirectMessage: boolean;
+      viaMqtt?: boolean;
     }
   ): boolean {
     // Anonymous users get all notifications (no filtering) - they've opted in by subscribing
