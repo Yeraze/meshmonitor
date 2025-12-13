@@ -405,7 +405,8 @@ class DatabaseService {
     this.runPerChannelPermissionsMigration();
     this.runAPITokensMigration();
     this.runCascadeForeignKeysMigration();
-    this.runAutoWelcomeMigration();
+    // NOTE: Auto-welcome migration is now handled when the feature is first enabled
+    // See handleAutoWelcomeEnabled() which is called from the settings endpoint
     this.runUserMapPreferencesMigration();
     this.runInactiveNodeNotificationMigration();
     this.runIsIgnoredMigration();
@@ -1929,6 +1930,35 @@ class DatabaseService {
     `);
     const result = stmt.run(now, now, nodeNum, nodeId);
     return result.changes > 0;
+  }
+
+  /**
+   * Handle auto-welcome being enabled for the first time.
+   * This marks all existing nodes as welcomed to prevent a "thundering herd" of welcome messages.
+   * Should only be called when autoWelcomeEnabled changes from disabled to enabled.
+   */
+  handleAutoWelcomeEnabled(): number {
+    const migrationKey = 'auto_welcome_first_enabled';
+    const migrationCompleted = this.getSetting(migrationKey);
+
+    // If migration already ran, don't run it again
+    if (migrationCompleted === 'completed') {
+      logger.debug('✅ Auto-welcome first-enable migration already completed');
+      return 0;
+    }
+
+    logger.info('👋 Auto-welcome enabled for the first time - marking existing nodes as welcomed...');
+    const markedCount = this.markAllNodesAsWelcomed();
+    
+    if (markedCount > 0) {
+      logger.info(`✅ Marked ${markedCount} existing node(s) as welcomed to prevent spam`);
+    } else {
+      logger.debug('No existing nodes to mark as welcomed');
+    }
+
+    // Mark migration as completed so it doesn't run again
+    this.setSetting(migrationKey, 'completed');
+    return markedCount;
   }
 
   /**

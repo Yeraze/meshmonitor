@@ -395,15 +395,10 @@ setTimeout(async () => {
       }
     }
 
-    // Mark all existing nodes as welcomed BEFORE connecting to prevent thundering herd
-    // This must run before connect() so nodes in the DB are marked before new packets arrive
-    const autoWelcomeEnabled = databaseService.getSetting('autoWelcomeEnabled');
-    if (autoWelcomeEnabled === 'true') {
-      const markedCount = databaseService.markAllNodesAsWelcomed();
-      if (markedCount > 0) {
-        logger.info(`👋 Marked ${markedCount} existing node(s) as welcomed to prevent spam on startup`);
-      }
-    }
+    // NOTE: We no longer mark existing nodes as welcomed on startup.
+    // This is now handled when autoWelcomeEnabled is first changed to 'true'
+    // via the settings endpoint. This prevents welcoming existing nodes when
+    // the feature is enabled after nodes are already in the database.
 
     await meshtasticManager.connect();
     logger.debug('Meshtastic manager connected successfully');
@@ -3885,6 +3880,21 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
 
     // Save to database
     databaseService.setSettings(filteredSettings);
+
+    // Handle auto-welcome being enabled for the first time
+    if ('autoWelcomeEnabled' in filteredSettings) {
+      const wasEnabled = currentSettings['autoWelcomeEnabled'] === 'true';
+      const nowEnabled = filteredSettings['autoWelcomeEnabled'] === 'true';
+      
+      // If changing from disabled to enabled, mark existing nodes as welcomed
+      if (!wasEnabled && nowEnabled) {
+        logger.info('👋 Auto-welcome being enabled - marking existing nodes as welcomed...');
+        const markedCount = databaseService.handleAutoWelcomeEnabled();
+        if (markedCount > 0) {
+          logger.info(`✅ Marked ${markedCount} existing node(s) as welcomed to prevent spam`);
+        }
+      }
+    }
 
     // Apply traceroute interval if changed
     if ('tracerouteIntervalMinutes' in filteredSettings) {
