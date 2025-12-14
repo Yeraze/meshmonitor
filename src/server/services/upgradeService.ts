@@ -374,6 +374,7 @@ class UpgradeService {
 
   /**
    * Get the currently active upgrade, if any
+   * Also syncs with the upgrade status file written by the watchdog sidecar
    * @returns The active upgrade details or null if no upgrade is in progress
    */
   async getActiveUpgrade(): Promise<{
@@ -400,6 +401,45 @@ class UpgradeService {
 
       if (!row) {
         return null;
+      }
+
+      // Check status file from watchdog sidecar to sync state after container restart
+      // The watchdog writes 'complete', 'ready', or 'failed' after the upgrade finishes
+      // but the database may still show 'restarting' or 'health_check' if the old container
+      // never had a chance to update it before being replaced
+      try {
+        if (fs.existsSync(UPGRADE_STATUS_FILE)) {
+          const fileStatus = fs.readFileSync(UPGRADE_STATUS_FILE, 'utf-8').trim().toLowerCase();
+
+          // If the watchdog has marked the upgrade complete or ready, sync to database
+          if (fileStatus === 'complete' || fileStatus === 'ready') {
+            logger.info(`🔄 Syncing upgrade status from file: ${row.status} -> complete`);
+            databaseService.db.prepare(
+              `UPDATE upgrade_history
+               SET status = ?, completedAt = ?, currentStep = ?
+               WHERE id = ?`
+            ).run('complete', Date.now(), 'Upgrade complete', row.id);
+
+            // No active upgrade anymore
+            return null;
+          }
+
+          // If the watchdog has marked it failed, sync to database
+          if (fileStatus === 'failed') {
+            logger.info(`🔄 Syncing upgrade status from file: ${row.status} -> failed`);
+            databaseService.db.prepare(
+              `UPDATE upgrade_history
+               SET status = ?, completedAt = ?, errorMessage = ?
+               WHERE id = ?`
+            ).run('failed', Date.now(), 'Upgrade failed (detected from watchdog status)', row.id);
+
+            // No active upgrade anymore
+            return null;
+          }
+        }
+      } catch (fileError) {
+        // Ignore file read errors - continue with database status
+        logger.debug('Could not read upgrade status file:', fileError);
       }
 
       return {
