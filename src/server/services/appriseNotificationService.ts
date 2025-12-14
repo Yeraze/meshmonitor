@@ -370,8 +370,23 @@ class AppriseNotificationService {
     logger.info(`📢 Broadcasting ${preferenceKey} notification to ${users.length} Apprise users${targetUserId ? ` (target user: ${targetUserId})` : ''}`);
 
     // Get local node name for prefix
+    // First try the live connection, then fall back to database (for startup before connection)
+    let localNodeName: string | null = null;
     const localNodeInfo = meshtasticManager.getLocalNodeInfo();
-    const localNodeName = localNodeInfo?.longName || null;
+    if (localNodeInfo?.longName) {
+      localNodeName = localNodeInfo.longName;
+    } else {
+      // Fall back to database - get localNodeNum from settings and look up the node
+      const localNodeNumStr = databaseService.getSetting('localNodeNum');
+      if (localNodeNumStr) {
+        const localNodeNum = parseInt(localNodeNumStr, 10);
+        const localNode = databaseService.getNode(localNodeNum);
+        if (localNode?.longName) {
+          localNodeName = localNode.longName;
+          logger.debug(`📢 Using node name from database for Apprise prefix: ${localNodeName}`);
+        }
+      }
+    }
 
     for (const userId of users) {
       // If targetUserId is specified, only send to that user
