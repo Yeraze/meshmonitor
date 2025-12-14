@@ -1129,6 +1129,8 @@
   "settings.solar_fetch_now": "Fetch Estimates Now",
   "settings.solar_fetching": "Fetching...",
   "settings.solar_fetch_description": "Manually trigger a solar estimate fetch from Forecast.Solar. Estimates are automatically fetched every hour at :05 past the hour.",
+  "settings.solar_fetch_success": "Solar estimates fetched successfully",
+  "settings.solar_fetch_failed": "Failed to fetch solar estimates",
   "settings.settings_management": "Settings Management",
   "settings.settings_management_description": "Changes are not applied until saved. Settings are stored on the server and persist across all browsers.",
   "settings.saving": "Saving...",
@@ -1260,6 +1262,8 @@
   "dashboard.widget.traceroute.show_map": "Show map",
   "dashboard.widget.traceroute.hide_map": "Hide map",
   "dashboard.widget.traceroute.no_position_warning": "Some nodes have no position data",
+  "dashboard.show_solar": "Show solar overlay",
+  "dashboard.hide_solar": "Hide solar overlay",
 
   "info.title": "Device Information & Configuration",
   "info.connection_status": "Connection Status",
@@ -1924,6 +1928,8 @@
   "telemetry.add_favorite": "Add to favorites",
   "telemetry.more_options": "More options",
   "telemetry.purge_data": "Purge Data",
+  "telemetry.show_solar": "Show solar overlay",
+  "telemetry.hide_solar": "Hide solar overlay",
 
   "node_details.title": "Node Details",
   "node_details.expand": "Expand node details",

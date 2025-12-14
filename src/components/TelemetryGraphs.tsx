@@ -9,6 +9,7 @@ import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { useTelemetry, useSolarEstimates, type TelemetryData } from '../hooks/useTelemetry';
 import { useFavorites, useToggleFavorite } from '../hooks/useFavorites';
 import { formatChartAxisTimestamp } from '../utils/datetime';
+import { useSettings } from '../contexts/SettingsContext';
 
 interface TelemetryGraphsProps {
   nodeId: string;
@@ -36,16 +37,28 @@ const getMinTimestamp = (data: TelemetryData[]): number => {
   return minTime;
 };
 
+// Telemetry types that should show solar by default (power/environmental)
+const SOLAR_DEFAULT_ON_TYPES = new Set([
+  'batteryLevel', 'voltage', 'ch1Voltage', 'ch1Current',
+  'ch2Voltage', 'ch2Current', 'ch3Voltage', 'ch3Current',
+  'ch4Voltage', 'ch4Current', 'ch5Voltage', 'ch5Current',
+  'ch6Voltage', 'ch6Current', 'ch7Voltage', 'ch7Current',
+  'ch8Voltage', 'ch8Current', 'temperature', 'humidity', 'pressure',
+]);
+
 const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
   ({ nodeId, temperatureUnit = 'C', telemetryHours = 24, baseUrl = '' }) => {
     const { t } = useTranslation();
     const csrfFetch = useCsrfFetch();
     const { showToast } = useToast();
+    const { solarMonitoringEnabled } = useSettings();
     const [openMenu, setOpenMenu] = useState<string | null>(null);
     const [menuPosition, setMenuPosition] = useState<{
       x: number;
       y: number;
     } | null>(null);
+    // Track solar visibility per telemetry type
+    const [solarVisibility, setSolarVisibility] = useState<Map<string, boolean>>(new Map());
 
     // Fetch telemetry data using TanStack Query
     const {
@@ -154,6 +167,25 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
       },
       [toggleFavoriteMutation, nodeId, favorites]
     );
+
+    // Get solar visibility for a telemetry type (defaults based on type)
+    const getSolarVisibility = useCallback((type: string): boolean => {
+      if (solarVisibility.has(type)) {
+        return solarVisibility.get(type)!;
+      }
+      // Default: enabled for power/environmental, disabled for others
+      return SOLAR_DEFAULT_ON_TYPES.has(type);
+    }, [solarVisibility]);
+
+    // Toggle solar visibility for a telemetry type
+    const handleToggleSolar = useCallback((type: string) => {
+      setSolarVisibility(prev => {
+        const next = new Map(prev);
+        const currentValue = prev.has(type) ? prev.get(type)! : SOLAR_DEFAULT_ON_TYPES.has(type);
+        next.set(type, !currentValue);
+        return next;
+      });
+    }, []);
 
     // Handle menu open/close
     const handleMenuClick = (event: React.MouseEvent<HTMLButtonElement>, telemetryType: string) => {
@@ -503,6 +535,16 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
                     {label} {unit && `(${unit})`}
                   </h4>
                   <div className="graph-actions">
+                    {solarMonitoringEnabled && (
+                      <button
+                        className={`solar-toggle-btn ${getSolarVisibility(type) ? 'active' : ''}`}
+                        onClick={() => handleToggleSolar(type)}
+                        aria-label={getSolarVisibility(type) ? t('telemetry.hide_solar') : t('telemetry.show_solar')}
+                        title={getSolarVisibility(type) ? t('telemetry.hide_solar') : t('telemetry.show_solar')}
+                      >
+                        {getSolarVisibility(type) ? '\u2600' : '\u263C'}
+                      </button>
+                    )}
                     <button
                       className={`favorite-btn ${favorites.has(type) ? 'favorited' : ''}`}
                       onClick={createToggleFavorite(type)}
@@ -571,7 +613,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
                         });
                       }}
                     />
-                    {solarEstimates.size > 0 && (
+                    {getSolarVisibility(type) && solarEstimates.size > 0 && (
                       <Area
                         yAxisId="right"
                         type="monotone"

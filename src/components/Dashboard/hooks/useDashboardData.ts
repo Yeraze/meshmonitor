@@ -15,6 +15,7 @@ interface SettingsResponse {
   telemetryFavorites?: string;
   telemetryCustomOrder?: string;
   dashboardWidgets?: string;
+  dashboardSolarVisibility?: string;
 }
 
 interface UseDashboardDataResult {
@@ -25,6 +26,8 @@ interface UseDashboardDataResult {
   nodes: Map<string, NodeInfo>;
   customWidgets: CustomWidget[];
   setCustomWidgets: React.Dispatch<React.SetStateAction<CustomWidget[]>>;
+  solarVisibility: Record<string, boolean>;
+  setSolarVisibility: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
@@ -48,14 +51,16 @@ export function useDashboardData(options?: UseDashboardDataOptions): UseDashboar
   const [localFavorites, setLocalFavorites] = useState<FavoriteChart[] | null>(null);
   const [localCustomOrder, setLocalCustomOrder] = useState<string[] | null>(null);
   const [localCustomWidgets, setLocalCustomWidgets] = useState<CustomWidget[] | null>(null);
+  const [localSolarVisibility, setLocalSolarVisibility] = useState<Record<string, boolean> | null>(null);
 
-  // Fetch settings (favorites, custom order, widgets)
+  // Fetch settings (favorites, custom order, widgets, solar visibility)
   const settingsQuery = useQuery({
     queryKey: dashboardQueryKeys.settings,
     queryFn: async (): Promise<{
       favorites: FavoriteChart[];
       customOrder: string[];
       widgets: CustomWidget[];
+      solarVisibility: Record<string, boolean>;
     }> => {
       const settings = await api.get<SettingsResponse>('/api/settings');
 
@@ -71,10 +76,15 @@ export function useDashboardData(options?: UseDashboardDataOptions): UseDashboar
         ? JSON.parse(settings.dashboardWidgets)
         : [];
 
+      const solarVisibilityObj: Record<string, boolean> = settings.dashboardSolarVisibility
+        ? JSON.parse(settings.dashboardSolarVisibility)
+        : {};
+
       return {
         favorites: favoritesArray,
         customOrder: serverCustomOrder,
         widgets: widgetsArray,
+        solarVisibility: solarVisibilityObj,
       };
     },
     enabled,
@@ -145,6 +155,10 @@ export function useDashboardData(options?: UseDashboardDataOptions): UseDashboar
     return localCustomWidgets ?? settingsQuery.data?.widgets ?? [];
   }, [localCustomWidgets, settingsQuery.data?.widgets]);
 
+  const solarVisibility = useMemo(() => {
+    return localSolarVisibility ?? settingsQuery.data?.solarVisibility ?? {};
+  }, [localSolarVisibility, settingsQuery.data?.solarVisibility]);
+
   const nodes = useMemo(() => {
     return nodesQuery.data ?? new Map<string, NodeInfo>();
   }, [nodesQuery.data]);
@@ -177,6 +191,13 @@ export function useDashboardData(options?: UseDashboardDataOptions): UseDashboar
       return typeof value === 'function' ? value(currentValue) : value;
     });
   }, [settingsQuery.data?.widgets]);
+
+  const setSolarVisibility = useCallback((value: React.SetStateAction<Record<string, boolean>>) => {
+    setLocalSolarVisibility(prev => {
+      const currentValue = prev ?? settingsQuery.data?.solarVisibility ?? {};
+      return typeof value === 'function' ? value(currentValue) : value;
+    });
+  }, [settingsQuery.data?.solarVisibility]);
 
   // Combined loading state - only true on initial load
   const loading = (settingsQuery.isLoading || nodesQuery.isLoading) && !settingsQuery.data;
@@ -212,6 +233,8 @@ export function useDashboardData(options?: UseDashboardDataOptions): UseDashboar
     nodes,
     customWidgets,
     setCustomWidgets,
+    solarVisibility,
+    setSolarVisibility,
     loading,
     error,
     refresh,

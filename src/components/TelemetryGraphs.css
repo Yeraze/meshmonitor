@@ -60,7 +60,8 @@
 }
 
 .favorite-btn,
-.graph-menu-btn {
+.graph-menu-btn,
+.solar-toggle-btn {
   background: none;
   border: none;
   font-size: 1.2rem;
@@ -76,11 +77,13 @@
 }
 
 .favorite-btn:hover,
-.graph-menu-btn:hover {
+.graph-menu-btn:hover,
+.solar-toggle-btn:hover {
   color: var(--ctp-yellow);
 }
 
-.favorite-btn.favorited {
+.favorite-btn.favorited,
+.solar-toggle-btn.active {
   color: var(--ctp-yellow);
 }
 

@@ -3698,6 +3698,7 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
       'telemetryFavorites',
       'telemetryCustomOrder',
       'dashboardWidgets',
+      'dashboardSolarVisibility',
       'autoAckEnabled',
       'autoAckRegex',
       'autoAckMessage',
