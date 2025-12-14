@@ -537,6 +537,9 @@ function App() {
   // Position exchange loading state (separate from traceroute loading)
   const [positionLoading, setPositionLoading] = useState<string | null>(null);
 
+  // NodeInfo exchange loading state (for key exchange / user info request)
+  const [nodeInfoLoading, setNodeInfoLoading] = useState<string | null>(null);
+
   // Play notification sound using Web Audio API
   const playNotificationSound = useCallback(() => {
     try {
@@ -2333,6 +2336,46 @@ function App() {
     }
   };
 
+  const handleExchangeNodeInfo = async (nodeId: string) => {
+    if (connectionStatus !== 'connected') {
+      return;
+    }
+
+    // Prevent duplicate requests (debounce logic)
+    if (nodeInfoLoading === nodeId) {
+      logger.debug(`🔑 NodeInfo exchange already in progress for ${nodeId}`);
+      return;
+    }
+
+    try {
+      // Set loading state
+      setNodeInfoLoading(nodeId);
+
+      // Convert nodeId to node number for backend
+      const nodeNumStr = nodeId.replace('!', '');
+      const nodeNum = parseInt(nodeNumStr, 16);
+
+      // Use direct fetch with CSRF token
+      await authFetch(`${baseUrl}/api/nodeinfo/request`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ destination: nodeNum }),
+      });
+
+      logger.debug(`🔑 NodeInfo request sent to ${nodeId}`);
+
+      // Clear loading state after 30 seconds
+      setTimeout(() => {
+        setNodeInfoLoading(null);
+      }, 30000);
+    } catch (error) {
+      logger.error('Failed to send nodeinfo request:', error);
+      setNodeInfoLoading(null);
+    }
+  };
+
   const handleSendDirectMessage = async (destinationNodeId: string) => {
     if (!newMessage.trim() || connectionStatus !== 'connected') {
       return;
@@ -4113,6 +4156,7 @@ function App() {
             setIsMessagesNodeListCollapsed={setIsMessagesNodeListCollapsed}
             tracerouteLoading={tracerouteLoading}
             positionLoading={positionLoading}
+            nodeInfoLoading={nodeInfoLoading}
             timeFormat={timeFormat}
             dateFormat={dateFormat}
             temperatureUnit={temperatureUnit}
@@ -4123,6 +4167,7 @@ function App() {
             handleSendDirectMessage={handleSendDirectMessage}
             handleTraceroute={handleTraceroute}
             handleExchangePosition={handleExchangePosition}
+            handleExchangeNodeInfo={handleExchangeNodeInfo}
             handleDeleteMessage={handleDeleteMessage}
             handleSenderClick={handleSenderClick}
             handleSendTapback={handleSendTapback}
@@ -4133,6 +4178,7 @@ function App() {
             shouldShowData={shouldShowData}
             dmMessagesContainerRef={dmMessagesContainerRef}
             toggleIgnored={toggleIgnored}
+            toggleFavorite={toggleFavorite}
           />
         )}
         {activeTab === 'info' && (

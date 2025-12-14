@@ -808,6 +808,55 @@ class MeshtasticManager {
           }
           logger.info(`📊 Current actualDeviceConfig.lora.hopLimit=${this.actualDeviceConfig?.lora?.hopLimit}`);
           logger.debug('📊 Merged actualDeviceConfig now has:', Object.keys(this.actualDeviceConfig));
+
+          // Extract local node's public key from security config and save to database
+          if (parsed.data.security && parsed.data.security.publicKey) {
+            const publicKeyBytes = parsed.data.security.publicKey;
+            if (publicKeyBytes && publicKeyBytes.length > 0) {
+              const publicKeyBase64 = Buffer.from(publicKeyBytes).toString('base64');
+              logger.info(`🔐 Received local node public key from security config: ${publicKeyBase64.substring(0, 20)}...`);
+
+              // Get local node info to update database
+              const localNodeNum = this.localNodeInfo?.nodeNum;
+              const localNodeId = this.localNodeInfo?.nodeId;
+              if (localNodeNum && localNodeId) {
+                // Import and check for low-entropy key
+                import('../services/lowEntropyKeyService.js').then(({ checkLowEntropyKey }) => {
+                  const isLowEntropy = checkLowEntropyKey(publicKeyBase64, 'base64');
+                  const updateData: any = {
+                    nodeNum: localNodeNum,
+                    nodeId: localNodeId,
+                    publicKey: publicKeyBase64,
+                    hasPKC: true
+                  };
+
+                  if (isLowEntropy) {
+                    updateData.keyIsLowEntropy = true;
+                    updateData.keySecurityIssueDetails = 'Known low-entropy key detected - this key is compromised and should be regenerated';
+                    logger.warn(`⚠️ Low-entropy key detected for local node ${localNodeId}!`);
+                  } else {
+                    updateData.keyIsLowEntropy = false;
+                    updateData.keySecurityIssueDetails = undefined;
+                  }
+
+                  databaseService.upsertNode(updateData);
+                  logger.info(`💾 Saved local node public key to database for ${localNodeId}`);
+                }).catch((err) => {
+                  // If low entropy check fails, still save the key
+                  databaseService.upsertNode({
+                    nodeNum: localNodeNum,
+                    nodeId: localNodeId,
+                    publicKey: publicKeyBase64,
+                    hasPKC: true
+                  });
+                  logger.warn(`⚠️ Could not check low-entropy key status:`, err);
+                  logger.info(`💾 Saved local node public key to database for ${localNodeId}`);
+                });
+              } else {
+                logger.warn(`⚠️ Received security config with public key but local node info not yet available`);
+              }
+            }
+          }
           break;
         case 'moduleConfig':
           logger.info('⚙️ Received Module Config with keys:', Object.keys(parsed.data));
@@ -1025,6 +1074,7 @@ class MeshtasticManager {
       databaseService.upsertNode(nodeData);
       logger.debug(`📱 Stored basic local node info with rebootCount: ${myNodeInfo.rebootCount}, waiting for NodeInfo for names (${nodeId})`);
     }
+    // Note: Local node's public key is extracted from security config when received
   }
 
   getLocalNodeInfo(): { nodeNum: number; nodeId: string; longName: string; shortName: string; hwModel?: number } | null {
@@ -1843,7 +1893,7 @@ class MeshtasticManager {
         // Convert Uint8Array to base64 for storage
         nodeData.publicKey = Buffer.from(user.publicKey).toString('base64');
         nodeData.hasPKC = true;
-        logger.debug(`🔐 Captured public key for ${nodeId} (${user.longName}): ${nodeData.publicKey.substring(0, 16)}...`);
+        logger.info(`🔐 Received NodeInfo with public key for ${nodeId} (${user.longName}): ${nodeData.publicKey.substring(0, 20)}... (${user.publicKey.length} bytes)`);
 
         // Check for key security issues
         const { checkLowEntropyKey } = await import('../services/lowEntropyKeyService.js');
@@ -4477,6 +4527,71 @@ class MeshtasticManager {
   }
 
   /**
+   * Send a NodeInfo request to a specific node (Exchange User Info)
+   * This will request the destination node to send back its user information
+   * Similar to "Exchange User Info" feature in mobile apps - triggers key exchange
+   */
+  async sendNodeInfoRequest(destination: number, channel: number = 0): Promise<{ packetId: number; requestId: number }> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    if (!this.localNodeInfo) {
+      throw new Error('Local node information not available');
+    }
+
+    try {
+      // Get local node's user info from database for exchange
+      const localNode = databaseService.getNode(this.localNodeInfo.nodeNum);
+      // Decode base64 public key to Uint8Array
+      let publicKeyBytes: Uint8Array | undefined;
+      if (localNode?.publicKey) {
+        try {
+          publicKeyBytes = new Uint8Array(Buffer.from(localNode.publicKey, 'base64'));
+          logger.info(`🔐 Including public key in NodeInfo exchange: ${localNode.publicKey.substring(0, 20)}... (${publicKeyBytes.length} bytes)`);
+        } catch (err) {
+          logger.warn('⚠️ Failed to decode public key from base64:', err);
+        }
+      }
+      const localUserInfo = localNode ? {
+        id: this.localNodeInfo.nodeId,
+        longName: localNode.longName || 'Unknown',
+        shortName: localNode.shortName || '????',
+        hwModel: localNode.hwModel,
+        role: localNode.role,
+        publicKey: publicKeyBytes
+      } : undefined;
+
+      const { data: nodeInfoRequestData, packetId, requestId } = meshtasticProtobufService.createNodeInfoRequestMessage(
+        destination,
+        channel,
+        localUserInfo
+      );
+
+      logger.info(`📇 NodeInfo exchange packet created: ${nodeInfoRequestData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, packetId=${packetId}, requestId=${requestId}, userInfo=${localUserInfo ? localUserInfo.longName : 'none'}`);
+
+      await this.transport.send(nodeInfoRequestData);
+
+      // Broadcast to virtual node clients (including packet monitor)
+      const virtualNodeServer = (global as any).virtualNodeServer;
+      if (virtualNodeServer) {
+        try {
+          await virtualNodeServer.broadcastToClients(nodeInfoRequestData);
+          logger.info(`📡 Broadcasted outgoing NodeInfo exchange to virtual node clients (${nodeInfoRequestData.length} bytes)`);
+        } catch (error) {
+          logger.error('Virtual node: Failed to broadcast outgoing NodeInfo exchange:', error);
+        }
+      }
+
+      logger.info(`📤 NodeInfo exchange sent from ${this.localNodeInfo.nodeId} to !${destination.toString(16).padStart(8, '0')}`);
+      return { packetId, requestId };
+    } catch (error) {
+      logger.error('Error sending NodeInfo exchange:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Request LocalStats from the local node
    * This requests mesh statistics from the directly connected device
    */
@@ -6033,18 +6148,17 @@ class MeshtasticManager {
         }
       }
 
-      // Process owner responses from remote nodes
+      // Process owner responses from both local and remote nodes
       if (adminMsg.getOwnerResponse) {
         logger.debug('⚙️ Received GetOwnerResponse from node', fromNum);
-        if (isRemoteNode) {
-          // Store owner for remote node
-          this.remoteNodeOwners.set(fromNum, adminMsg.getOwnerResponse);
-          logger.debug(`📊 Stored owner response from remote node ${fromNum}`, {
-            longName: adminMsg.getOwnerResponse.longName,
-            shortName: adminMsg.getOwnerResponse.shortName,
-            isUnmessagable: adminMsg.getOwnerResponse.isUnmessagable
-          });
-        }
+        // Store owner response (both local and remote nodes go into remoteNodeOwners for simplicity)
+        this.remoteNodeOwners.set(fromNum, adminMsg.getOwnerResponse);
+        logger.debug(`📊 Stored owner response from node ${fromNum}`, {
+          longName: adminMsg.getOwnerResponse.longName,
+          shortName: adminMsg.getOwnerResponse.shortName,
+          isUnmessagable: adminMsg.getOwnerResponse.isUnmessagable,
+          hasPublicKey: !!(adminMsg.getOwnerResponse.publicKey && adminMsg.getOwnerResponse.publicKey.length > 0)
+        });
       }
       if (adminMsg.getDeviceMetadataResponse) {
         logger.debug('⚙️ Received GetDeviceMetadataResponse');

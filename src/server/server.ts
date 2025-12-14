@@ -541,6 +541,7 @@ if (!env.isProduction) {
       note: 'The rate limiter uses req.ip to identify clients',
     });
   });
+
 }
 
 // Authentication routes
@@ -2207,6 +2208,70 @@ apiRouter.post('/position/request', requirePermission('messages', 'write'), asyn
   } catch (error) {
     logger.error('Error sending position request:', error);
     res.status(500).json({ error: 'Failed to send position request' });
+  }
+});
+
+// NodeInfo request endpoint (Exchange User Info - triggers key exchange)
+apiRouter.post('/nodeinfo/request', requirePermission('messages', 'write'), async (req, res) => {
+  try {
+    const { destination } = req.body;
+    if (!destination) {
+      return res.status(400).json({ error: 'Destination node number is required' });
+    }
+
+    const destinationNum = typeof destination === 'string' ? parseInt(destination, 16) : destination;
+
+    // Look up the node to get its channel
+    const node = databaseService.getNode(destinationNum);
+    const channel = node?.channel ?? 0; // Default to 0 if node not found or channel not set
+
+    const { packetId, requestId } = await meshtasticManager.sendNodeInfoRequest(destinationNum, channel);
+
+    // Get local node info to create system message
+    const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+    logger.info(
+      `📇 localNodeInfo for system message: ${
+        localNodeInfo ? `nodeId=${localNodeInfo.nodeId}, nodeNum=${localNodeInfo.nodeNum}` : 'NULL'
+      }`
+    );
+
+    if (localNodeInfo) {
+      // Create a system message to record the nodeinfo request using the actual packet ID and requestId
+      const messageId = `${packetId}`;
+      const timestamp = Date.now();
+
+      // For DMs (channel 0), store as channel -1 to show in DM conversation
+      const messageChannel = channel === 0 ? -1 : channel;
+
+      logger.info(
+        `📇 Inserting nodeinfo request system message to database: ${messageId} (channel: ${messageChannel}, packetId: ${packetId}, requestId: ${requestId})`
+      );
+      databaseService.insertMessage({
+        id: messageId,
+        fromNodeNum: localNodeInfo.nodeNum,
+        toNodeNum: destinationNum,
+        fromNodeId: localNodeInfo.nodeId,
+        toNodeId: `!${destinationNum.toString(16).padStart(8, '0')}`,
+        text: 'User info exchange requested',
+        channel: messageChannel,
+        portnum: 1, // TEXT_MESSAGE_APP so it shows in DM view (DM filter requires portnum === 1)
+        requestId: requestId, // Store requestId for ACK matching
+        timestamp: timestamp,
+        rxTime: timestamp,
+        createdAt: timestamp,
+      });
+      logger.info(`📇 NodeInfo request system message inserted successfully`);
+    } else {
+      logger.warn(`⚠️ Could not create system message for nodeinfo request - localNodeInfo is null`);
+    }
+
+    res.json({
+      success: true,
+      message: `NodeInfo request sent to ${destinationNum.toString(16)} on channel ${channel}`,
+    });
+  } catch (error) {
+    logger.error('Error sending nodeinfo request:', error);
+    res.status(500).json({ error: 'Failed to send nodeinfo request' });
   }
 });
 
@@ -4894,13 +4959,20 @@ apiRouter.post('/admin/load-owner', requireAdmin(), async (req, res) => {
     const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
 
     if (isLocalNode) {
-      // For local node, get from local node info
+      // For local node, use cached info and database (public key is obtained from security config at connection)
       const localNodeInfo = meshtasticManager.getLocalNodeInfo();
       if (localNodeInfo) {
+        // Get the public key from database if available (stored from security config)
+        let publicKeyBase64: string | undefined;
+        if (localNodeInfo.nodeNum) {
+          const nodeData = databaseService.getNode(localNodeInfo.nodeNum);
+          publicKeyBase64 = nodeData?.publicKey || undefined;
+        }
         return res.json({ owner: {
           longName: localNodeInfo.longName || '' ,
           shortName: localNodeInfo.shortName || '' ,
-          isUnmessagable: false // Not available in local node info
+          isUnmessagable: false,
+          publicKey: publicKeyBase64
         }});
       } else {
         return res.status(404).json({ error: 'Local node information not available' });
