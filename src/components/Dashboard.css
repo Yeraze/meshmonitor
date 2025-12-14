@@ -312,6 +312,13 @@
   min-width: 0;
 }
 
+.dashboard-chart-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
 .dashboard-remove-btn {
   background: none;
   border: none;
@@ -331,6 +338,31 @@
 
 .dashboard-remove-btn:hover {
   color: var(--ctp-red);
+}
+
+/* Solar toggle button */
+.solar-toggle-btn {
+  background: none;
+  border: none;
+  color: var(--ctp-surface2);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s ease;
+  flex-shrink: 0;
+}
+
+.solar-toggle-btn:hover {
+  color: var(--ctp-yellow);
+}
+
+.solar-toggle-btn.active {
+  color: var(--ctp-yellow);
 }
 
 .dashboard-no-data {

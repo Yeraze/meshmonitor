@@ -10,6 +10,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import TelemetryGraphs from './TelemetryGraphs';
 import { ToastProvider } from './ToastContainer';
 import { CsrfProvider } from '../contexts/CsrfContext';
+import { SettingsProvider } from '../contexts/SettingsContext';
 
 // Create a new QueryClient for each test
 const createTestQueryClient = () =>
@@ -30,7 +31,9 @@ let testQueryClient: QueryClient;
 const TestWrapper = ({ children }: { children: React.ReactNode }) => (
   <QueryClientProvider client={testQueryClient}>
     <CsrfProvider>
-      <ToastProvider>{children}</ToastProvider>
+      <SettingsProvider>
+        <ToastProvider>{children}</ToastProvider>
+      </SettingsProvider>
     </CsrfProvider>
   </QueryClientProvider>
 );

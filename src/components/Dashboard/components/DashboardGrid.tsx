@@ -52,6 +52,11 @@ interface DashboardGridProps {
 
   // Permissions
   canEdit?: boolean;
+
+  // Solar monitoring
+  solarMonitoringEnabled?: boolean;
+  getSolarVisibility?: (nodeId: string, telemetryType: string) => boolean;
+  onToggleSolar?: (nodeId: string, telemetryType: string, show: boolean) => void;
 }
 
 const DashboardGrid: React.FC<DashboardGridProps> = ({
@@ -76,6 +81,9 @@ const DashboardGrid: React.FC<DashboardGridProps> = ({
   favoritesCount,
   filteredCount,
   canEdit = true,
+  solarMonitoringEnabled = false,
+  getSolarVisibility,
+  onToggleSolar,
 }) => {
   const { t } = useTranslation();
 
@@ -157,6 +165,9 @@ const DashboardGrid: React.FC<DashboardGridProps> = ({
                   solarEstimates={solarEstimates}
                   onRemove={onRemoveFavorite}
                   onDataLoaded={onDataLoaded}
+                  showSolar={getSolarVisibility ? getSolarVisibility(favorite.nodeId, favorite.telemetryType) : true}
+                  onToggleSolar={onToggleSolar}
+                  solarMonitoringEnabled={solarMonitoringEnabled}
                 />
               );
             })}

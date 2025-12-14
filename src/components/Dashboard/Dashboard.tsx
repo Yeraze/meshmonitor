@@ -11,6 +11,16 @@ import AddWidgetModal from '../AddWidgetModal';
 import { DashboardHeader, DashboardFilters, DashboardGrid } from './components';
 import { useDashboardData, useDashboardFilters, useCustomWidgets } from './hooks';
 import { type DashboardProps } from './types';
+import { useSettings } from '../../contexts/SettingsContext';
+
+// Telemetry types that should show solar by default (power/environmental)
+const SOLAR_DEFAULT_ON_TYPES = new Set([
+  'batteryLevel', 'voltage', 'ch1Voltage', 'ch1Current',
+  'ch2Voltage', 'ch2Current', 'ch3Voltage', 'ch3Current',
+  'ch4Voltage', 'ch4Current', 'ch5Voltage', 'ch5Current',
+  'ch6Voltage', 'ch6Current', 'ch7Voltage', 'ch7Current',
+  'ch8Voltage', 'ch8Current', 'temperature', 'humidity', 'pressure',
+]);
 
 const Dashboard: React.FC<DashboardProps> = React.memo(
   ({
@@ -23,6 +33,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(
   }) => {
     const { t } = useTranslation();
     const csrfFetch = useCsrfFetch();
+    const { solarMonitoringEnabled } = useSettings();
 
     // Modal state
     const [showAddWidgetModal, setShowAddWidgetModal] = useState(false);
@@ -39,9 +50,44 @@ const Dashboard: React.FC<DashboardProps> = React.memo(
       nodes,
       customWidgets,
       setCustomWidgets,
+      solarVisibility,
+      setSolarVisibility,
       loading,
       error,
     } = useDashboardData();
+
+    // Get solar visibility for a specific chart (uses type-based default if not set)
+    const getSolarVisibility = useCallback((nodeId: string, telemetryType: string): boolean => {
+      const key = `${nodeId}-${telemetryType}`;
+      if (key in solarVisibility) {
+        return solarVisibility[key];
+      }
+      // Default based on telemetry type
+      return SOLAR_DEFAULT_ON_TYPES.has(telemetryType);
+    }, [solarVisibility]);
+
+    // Toggle solar visibility for a specific chart and save to server
+    const handleToggleSolar = useCallback(async (nodeId: string, telemetryType: string, show: boolean) => {
+      const key = `${nodeId}-${telemetryType}`;
+      const newSolarVisibility = {
+        ...solarVisibility,
+        [key]: show,
+      };
+
+      // Update local state immediately
+      setSolarVisibility(newSolarVisibility);
+
+      // Save to server
+      try {
+        await csrfFetch(`${baseUrl}/api/settings`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dashboardSolarVisibility: JSON.stringify(newSolarVisibility) }),
+        });
+      } catch (err) {
+        logger.error('Error saving solar visibility:', err);
+      }
+    }, [solarVisibility, setSolarVisibility, csrfFetch, baseUrl]);
 
     // Filters hook
     const {
@@ -254,6 +300,9 @@ const Dashboard: React.FC<DashboardProps> = React.memo(
             favoritesCount={favorites.length}
             filteredCount={filteredAndSortedFavorites.length}
             canEdit={canEdit}
+            solarMonitoringEnabled={solarMonitoringEnabled}
+            getSolarVisibility={getSolarVisibility}
+            onToggleSolar={handleToggleSolar}
           />
         )}
 

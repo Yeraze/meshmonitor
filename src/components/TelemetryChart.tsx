@@ -59,6 +59,9 @@ interface TelemetryChartProps {
   solarEstimates: Map<number, number>;
   onRemove: (nodeId: string, telemetryType: string) => void;
   onDataLoaded?: (key: string, data: TelemetryData[]) => void;
+  showSolar?: boolean;
+  onToggleSolar?: (nodeId: string, telemetryType: string, show: boolean) => void;
+  solarMonitoringEnabled?: boolean;
 }
 
 // Translation keys for telemetry types
@@ -217,6 +220,9 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
     solarEstimates,
     onRemove,
     onDataLoaded,
+    showSolar = true,
+    onToggleSolar,
+    solarMonitoringEnabled = false,
   }) => {
     const { t } = useTranslation();
 
@@ -253,6 +259,12 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
     const handleRemoveClick = useCallback(() => {
       onRemove(favorite.nodeId, favorite.telemetryType);
     }, [favorite.nodeId, favorite.telemetryType, onRemove]);
+
+    const handleSolarToggle = useCallback(() => {
+      if (onToggleSolar) {
+        onToggleSolar(favorite.nodeId, favorite.telemetryType, !showSolar);
+      }
+    }, [favorite.nodeId, favorite.telemetryType, showSolar, onToggleSolar]);
 
     const style = {
       transform: CSS.Transform.toString(transform),
@@ -341,9 +353,21 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
           >
             {nodeName} - {label} {unit && `(${unit})`}
           </h3>
-          <button className="dashboard-remove-btn" onClick={handleRemoveClick} aria-label={t('dashboard.remove_from_dashboard')}>
-            ✕
-          </button>
+          <div className="dashboard-chart-actions">
+            {solarMonitoringEnabled && (
+              <button
+                className={`solar-toggle-btn ${showSolar ? 'active' : ''}`}
+                onClick={handleSolarToggle}
+                aria-label={showSolar ? t('dashboard.hide_solar') : t('dashboard.show_solar')}
+                title={showSolar ? t('dashboard.hide_solar') : t('dashboard.show_solar')}
+              >
+                {showSolar ? '\u2600' : '\u263C'}
+              </button>
+            )}
+            <button className="dashboard-remove-btn" onClick={handleRemoveClick} aria-label={t('dashboard.remove_from_dashboard')}>
+              ✕
+            </button>
+          </div>
         </div>
 
         <ResponsiveContainer width="100%" height={200}>
@@ -377,7 +401,7 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
                 });
               }}
             />
-            {solarEstimates.size > 0 && (
+            {showSolar && solarEstimates.size > 0 && (
               <Area
                 yAxisId="right"
                 type="monotone"
