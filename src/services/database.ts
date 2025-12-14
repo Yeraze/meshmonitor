@@ -2933,12 +2933,11 @@ class DatabaseService {
             AND (n.lastTracerouteRequest IS NULL OR n.lastTracerouteRequest < ?)
           )
           OR
-          -- Category 2: Traceroute exists, and requested > 24 hours ago
+          -- Category 2: Traceroute exists, and (never requested OR requested > expiration hours ago)
           (
             (SELECT COUNT(*) FROM traceroutes t
              WHERE t.fromNodeNum = ? AND t.toNodeNum = n.nodeNum) > 0
-            AND n.lastTracerouteRequest IS NOT NULL
-            AND n.lastTracerouteRequest < ?
+            AND (n.lastTracerouteRequest IS NULL OR n.lastTracerouteRequest < ?)
           )
         )
       ORDER BY n.lastHeard DESC
