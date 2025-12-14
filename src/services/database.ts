@@ -405,7 +405,8 @@ class DatabaseService {
     this.runPerChannelPermissionsMigration();
     this.runAPITokensMigration();
     this.runCascadeForeignKeysMigration();
-    this.runAutoWelcomeMigration();
+    // NOTE: Auto-welcome migration is now handled when the feature is first enabled
+    // See handleAutoWelcomeEnabled() which is called from the settings POST endpoint in server.ts
     this.runUserMapPreferencesMigration();
     this.runInactiveNodeNotificationMigration();
     this.runIsIgnoredMigration();
@@ -985,51 +986,6 @@ class DatabaseService {
       logger.debug('✅ CASCADE foreign keys migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run CASCADE foreign keys migration:', error);
-      throw error;
-    }
-  }
-
-  private runAutoWelcomeMigration(): void {
-    try {
-      const migrationKey = 'migration_017_auto_welcome_existing_nodes';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Auto-welcome existing nodes migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 017: Mark existing nodes as already welcomed...');
-
-      // Get all existing nodes
-      const stmt = this.db.prepare('SELECT nodeNum, nodeId, createdAt FROM nodes WHERE welcomedAt IS NULL');
-      const nodes = stmt.all() as Array<{ nodeNum: number; nodeId: string; createdAt?: number }>;
-
-      if (nodes.length === 0) {
-        logger.debug('No existing nodes to mark as welcomed');
-      } else {
-        logger.debug(`📊 Marking ${nodes.length} existing nodes as welcomed to prevent thundering herd...`);
-
-        // Mark all existing nodes as already welcomed
-        // Use their createdAt timestamp if available, otherwise use current timestamp
-        const updateStmt = this.db.prepare('UPDATE nodes SET welcomedAt = ? WHERE nodeNum = ?');
-        const currentTime = Date.now();
-
-        let markedCount = 0;
-        for (const node of nodes) {
-          // Use the node's createdAt time if available, otherwise use current time
-          const welcomedAt = node.createdAt || currentTime;
-          updateStmt.run(welcomedAt, node.nodeNum);
-          markedCount++;
-        }
-
-        logger.debug(`✅ Marked ${markedCount} existing nodes as welcomed`);
-      }
-
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Auto-welcome existing nodes migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run auto-welcome existing nodes migration:', error);
       throw error;
     }
   }
@@ -1929,6 +1885,35 @@ class DatabaseService {
     `);
     const result = stmt.run(now, now, nodeNum, nodeId);
     return result.changes > 0;
+  }
+
+  /**
+   * Handle auto-welcome being enabled for the first time.
+   * This marks all existing nodes as welcomed to prevent a "thundering herd" of welcome messages.
+   * Should only be called when autoWelcomeEnabled changes from disabled to enabled.
+   */
+  handleAutoWelcomeEnabled(): number {
+    const migrationKey = 'auto_welcome_first_enabled';
+    const migrationCompleted = this.getSetting(migrationKey);
+
+    // If migration already ran, don't run it again
+    if (migrationCompleted === 'completed') {
+      logger.debug('✅ Auto-welcome first-enable migration already completed');
+      return 0;
+    }
+
+    logger.info('👋 Auto-welcome enabled for the first time - marking existing nodes as welcomed...');
+    const markedCount = this.markAllNodesAsWelcomed();
+    
+    if (markedCount > 0) {
+      logger.info(`✅ Marked ${markedCount} existing node(s) as welcomed to prevent spam`);
+    } else {
+      logger.debug('No existing nodes to mark as welcomed');
+    }
+
+    // Mark migration as completed so it doesn't run again
+    this.setSetting(migrationKey, 'completed');
+    return markedCount;
   }
 
   /**
