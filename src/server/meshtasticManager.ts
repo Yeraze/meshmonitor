@@ -1098,6 +1098,29 @@ class MeshtasticManager {
   }
 
   /**
+   * Get the local node's security keys (public and private)
+   * Private key is only available for the local node from the security config
+   * Returns base64-encoded keys
+   */
+  getSecurityKeys(): { publicKey: string | null; privateKey: string | null } {
+    const security = this.actualDeviceConfig?.security;
+    let publicKey: string | null = null;
+    let privateKey: string | null = null;
+
+    if (security) {
+      // Convert Uint8Array to base64 if present
+      if (security.publicKey && security.publicKey.length > 0) {
+        publicKey = Buffer.from(security.publicKey).toString('base64');
+      }
+      if (security.privateKey && security.privateKey.length > 0) {
+        privateKey = Buffer.from(security.privateKey).toString('base64');
+      }
+    }
+
+    return { publicKey, privateKey };
+  }
+
+  /**
    * Get the current device configuration
    */
   getCurrentConfig(): { deviceConfig: any; moduleConfig: any; localNodeInfo: any } {
