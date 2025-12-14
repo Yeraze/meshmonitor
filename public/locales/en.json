@@ -1792,6 +1792,8 @@
   "automation.auto_traceroute.schedule_description": "Set the traceroute schedule using cron expression",
   "automation.auto_traceroute.interval": "Traceroute Interval (minutes)",
   "automation.auto_traceroute.interval_description": "How often to automatically send traceroutes to nodes. Default: 3 minutes",
+  "automation.auto_traceroute.expiration_hours": "Re-traceroute After (hours)",
+  "automation.auto_traceroute.expiration_hours_description": "How long to wait before tracerouting a node again. Default: 24 hours. Range: 1-168 hours (1 week)",
   "automation.auto_traceroute.target_selection": "Target Selection",
   "automation.auto_traceroute.target_selection_description": "Configure which nodes to traceroute",
   "automation.auto_traceroute.favorites_only": "Favorites Only",

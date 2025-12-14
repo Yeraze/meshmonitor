@@ -534,11 +534,21 @@ const createTestDatabase = () => {
       this.db.exec('DELETE FROM settings');
     }
 
+    getTracerouteExpirationHours(): number {
+      const value = this.getSetting('tracerouteExpirationHours');
+      return value !== null ? parseInt(value, 10) : 24;
+    }
+
+    setTracerouteExpirationHours(hours: number): void {
+      this.setSetting('tracerouteExpirationHours', hours.toString());
+    }
+
     // Traceroute node selection
     getNodeNeedingTraceroute(localNodeNum: number): DbNode | null {
       const now = Date.now();
       const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
-      const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+      const expirationHours = this.getTracerouteExpirationHours();
+      const EXPIRATION_MS = expirationHours * 60 * 60 * 1000;
 
       // Get all nodes that are eligible for traceroute based on their status
       const stmt = this.db.prepare(`
@@ -555,12 +565,11 @@ const createTestDatabase = () => {
               AND (n.lastTracerouteRequest IS NULL OR n.lastTracerouteRequest < ?)
             )
             OR
-            -- Category 2: Traceroute exists, and requested > 24 hours ago
+            -- Category 2: Traceroute exists, and (never requested OR requested > expiration hours ago)
             (
               (SELECT COUNT(*) FROM traceroutes t
                WHERE t.fromNodeNum = ? AND t.toNodeNum = n.nodeNum) > 0
-              AND n.lastTracerouteRequest IS NOT NULL
-              AND n.lastTracerouteRequest < ?
+              AND (n.lastTracerouteRequest IS NULL OR n.lastTracerouteRequest < ?)
             )
           )
         ORDER BY n.lastHeard DESC
@@ -572,7 +581,7 @@ const createTestDatabase = () => {
         localNodeNum,
         now - THREE_HOURS_MS,
         localNodeNum,
-        now - TWENTY_FOUR_HOURS_MS
+        now - EXPIRATION_MS
       ) as DbNode[];
 
       if (eligibleNodes.length === 0) {
@@ -1481,6 +1490,85 @@ describe('DatabaseService - Extended Coverage', () => {
       const node = db.getNode(1);
       expect(node.lastTracerouteRequest).toBeDefined();
       expect(node.lastTracerouteRequest).toBeGreaterThan(0);
+    });
+
+    it('should use configurable expiration hours for traceroute with existing traceroute', () => {
+      const now = Date.now();
+
+      // Create local node (999)
+      db.upsertNode({
+        nodeNum: 999,
+        nodeId: '!local',
+        longName: 'Local Node',
+        lastHeard: now / 1000
+      });
+
+      // Set a shorter expiration of 12 hours
+      db.setTracerouteExpirationHours(12);
+
+      const THIRTEEN_HOURS_AGO = now - (13 * 60 * 60 * 1000);
+      const TEN_HOURS_AGO = now - (10 * 60 * 60 * 1000);
+
+      // Node 1: request 13 hours ago (should be eligible with 12hr expiration)
+      db.upsertNode({
+        nodeNum: 1,
+        nodeId: '!node1',
+        longName: 'Node 1',
+        lastHeard: now / 1000,
+        lastTracerouteRequest: THIRTEEN_HOURS_AGO
+      });
+
+      // Node 2: request 10 hours ago (should NOT be eligible with 12hr expiration)
+      db.upsertNode({
+        nodeNum: 2,
+        nodeId: '!node2',
+        longName: 'Node 2',
+        lastHeard: now / 1000,
+        lastTracerouteRequest: TEN_HOURS_AGO
+      });
+
+      // Create traceroute records for both nodes (from local node 999)
+      db.insertTraceroute({
+        fromNodeNum: 999,
+        toNodeNum: 1,
+        fromNodeId: '!local',
+        toNodeId: '!node1',
+        route: '[1]',
+        routeBack: '[999]',
+        snrTowards: '[0]',
+        snrBack: '[0]',
+        timestamp: THIRTEEN_HOURS_AGO,
+        createdAt: THIRTEEN_HOURS_AGO
+      });
+
+      db.insertTraceroute({
+        fromNodeNum: 999,
+        toNodeNum: 2,
+        fromNodeId: '!local',
+        toNodeId: '!node2',
+        route: '[2]',
+        routeBack: '[999]',
+        snrTowards: '[0]',
+        snrBack: '[0]',
+        timestamp: TEN_HOURS_AGO,
+        createdAt: TEN_HOURS_AGO
+      });
+
+      // With 12 hour expiration, only node1 should be eligible
+      const selected = db.getNodeNeedingTraceroute(999);
+      expect(selected).toBeTruthy();
+      expect(selected.nodeId).toBe('!node1');
+
+      // Verify the setting was applied correctly
+      expect(db.getTracerouteExpirationHours()).toBe(12);
+    });
+
+    it('should default to 24 hours expiration when not set', () => {
+      // Ensure no setting exists
+      db.deleteAllSettings();
+
+      // Should return 24 hours as default
+      expect(db.getTracerouteExpirationHours()).toBe(24);
     });
   });
 

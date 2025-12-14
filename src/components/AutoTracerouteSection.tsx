@@ -40,6 +40,7 @@ interface FilterSettings {
   filterRolesEnabled: boolean;
   filterHwModelsEnabled: boolean;
   filterRegexEnabled: boolean;
+  expirationHours: number;
 }
 
 const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
@@ -69,6 +70,9 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
   const [filterRolesEnabled, setFilterRolesEnabled] = useState(true);
   const [filterHwModelsEnabled, setFilterHwModelsEnabled] = useState(true);
   const [filterRegexEnabled, setFilterRegexEnabled] = useState(true);
+
+  // Expiration hours - how long before re-tracerouting a node
+  const [expirationHours, setExpirationHours] = useState(24);
 
   const [availableNodes, setAvailableNodes] = useState<Node[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -126,6 +130,8 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
           setFilterRolesEnabled(data.filterRolesEnabled !== false);
           setFilterHwModelsEnabled(data.filterHwModelsEnabled !== false);
           setFilterRegexEnabled(data.filterRegexEnabled !== false);
+          // Load expiration hours (default to 24 if not set)
+          setExpirationHours(data.expirationHours || 24);
           setInitialSettings(data);
         }
       } catch (error) {
@@ -155,11 +161,15 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
     const filterHwModelsEnabledChanged = filterHwModelsEnabled !== (initialSettings.filterHwModelsEnabled !== false);
     const filterRegexEnabledChanged = filterRegexEnabled !== (initialSettings.filterRegexEnabled !== false);
 
+    // Check expiration hours change
+    const expirationHoursChanged = expirationHours !== (initialSettings.expirationHours || 24);
+
     const changed = intervalChanged || filterEnabledChanged || nodesChanged || channelsChanged || rolesChanged || hwModelsChanged || regexChanged ||
-      filterNodesEnabledChanged || filterChannelsEnabledChanged || filterRolesEnabledChanged || filterHwModelsEnabledChanged || filterRegexEnabledChanged;
+      filterNodesEnabledChanged || filterChannelsEnabledChanged || filterRolesEnabledChanged || filterHwModelsEnabledChanged || filterRegexEnabledChanged ||
+      expirationHoursChanged;
     setHasChanges(changed);
   }, [localEnabled, localInterval, intervalMinutes, filterEnabled, selectedNodeNums, filterChannels, filterRoles, filterHwModels, filterNameRegex, initialSettings,
-      filterNodesEnabled, filterChannelsEnabled, filterRolesEnabled, filterHwModelsEnabled, filterRegexEnabled]);
+      filterNodesEnabled, filterChannelsEnabled, filterRolesEnabled, filterHwModelsEnabled, filterRegexEnabled, expirationHours]);
 
   // Helper to get role from node (could be at top level or in user object)
   const getNodeRole = (node: Node): number | undefined => {
@@ -304,6 +314,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
           filterRolesEnabled,
           filterHwModelsEnabled,
           filterRegexEnabled,
+          expirationHours,
         })
       });
 
@@ -329,6 +340,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
         filterRolesEnabled,
         filterHwModelsEnabled,
         filterRegexEnabled,
+        expirationHours,
       });
 
       setHasChanges(false);
@@ -473,6 +485,25 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
             max="60"
             value={localInterval}
             onChange={(e) => setLocalInterval(parseInt(e.target.value))}
+            disabled={!localEnabled}
+            className="setting-input"
+          />
+        </div>
+
+        <div className="setting-item" style={{ marginTop: '1rem' }}>
+          <label htmlFor="expirationHours">
+            {t('automation.auto_traceroute.expiration_hours')}
+            <span className="setting-description">
+              {t('automation.auto_traceroute.expiration_hours_description')}
+            </span>
+          </label>
+          <input
+            id="expirationHours"
+            type="number"
+            min="1"
+            max="168"
+            value={expirationHours}
+            onChange={(e) => setExpirationHours(parseInt(e.target.value) || 24)}
             disabled={!localEnabled}
             className="setting-input"
           />

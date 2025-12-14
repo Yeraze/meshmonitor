@@ -3560,7 +3560,8 @@ apiRouter.post('/settings/traceroute-nodes', requirePermission('settings', 'writ
   try {
     const {
       enabled, nodeNums, filterChannels, filterRoles, filterHwModels, filterNameRegex,
-      filterNodesEnabled, filterChannelsEnabled, filterRolesEnabled, filterHwModelsEnabled, filterRegexEnabled
+      filterNodesEnabled, filterChannelsEnabled, filterRolesEnabled, filterHwModelsEnabled, filterRegexEnabled,
+      expirationHours
     } = req.body;
 
     // Validate input
@@ -3643,6 +3644,15 @@ apiRouter.post('/settings/traceroute-nodes', requirePermission('settings', 'writ
       return res.status(400).json({ error: (error as Error).message });
     }
 
+    // Validate expirationHours (optional, must be a positive integer between 1 and 168)
+    let validatedExpirationHours: number | undefined;
+    if (expirationHours !== undefined) {
+      if (!Number.isInteger(expirationHours) || expirationHours < 1 || expirationHours > 168) {
+        return res.status(400).json({ error: 'Invalid expirationHours value. Must be an integer between 1 and 168.' });
+      }
+      validatedExpirationHours = expirationHours;
+    }
+
     // Update all settings
     databaseService.setTracerouteFilterSettings({
       enabled,
@@ -3656,6 +3666,7 @@ apiRouter.post('/settings/traceroute-nodes', requirePermission('settings', 'writ
       filterRolesEnabled: validatedFilterRolesEnabled,
       filterHwModelsEnabled: validatedFilterHwModelsEnabled,
       filterRegexEnabled: validatedFilterRegexEnabled,
+      expirationHours: validatedExpirationHours,
     });
 
     // Get the updated settings to return (includes resolved default values)

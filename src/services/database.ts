@@ -2859,7 +2859,8 @@ class DatabaseService {
   getNodeNeedingTraceroute(localNodeNum: number): DbNode | null {
     const now = Date.now();
     const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
-    const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+    const expirationHours = this.getTracerouteExpirationHours();
+    const EXPIRATION_MS = expirationHours * 60 * 60 * 1000;
 
     // Check if node filter is enabled
     const filterEnabled = this.isAutoTracerouteNodeFilterEnabled();
@@ -2878,41 +2879,6 @@ class DatabaseService {
     const filterHwModelsEnabled = this.isTracerouteFilterHwModelsEnabled();
     const filterRegexEnabled = this.isTracerouteFilterRegexEnabled();
 
-    // Build the node filter clause using UNION logic
-    // Each filter ADDS nodes to the eligible set
-    let nodeFilterClause = '';
-    if (filterEnabled) {
-      const filterConditions: string[] = [];
-
-      // Add specific node numbers (only if this filter is enabled)
-      if (filterNodesEnabled && specificNodes.length > 0) {
-        filterConditions.push(`n.nodeNum IN (${specificNodes.join(',')})`);
-      }
-
-      // Add nodes matching channel filter (only if this filter is enabled)
-      if (filterChannelsEnabled && filterChannels.length > 0) {
-        filterConditions.push(`n.channel IN (${filterChannels.join(',')})`);
-      }
-
-      // Add nodes matching role filter (only if this filter is enabled)
-      if (filterRolesEnabled && filterRoles.length > 0) {
-        filterConditions.push(`n.role IN (${filterRoles.join(',')})`);
-      }
-
-      // Add nodes matching hardware model filter (only if this filter is enabled)
-      if (filterHwModelsEnabled && filterHwModels.length > 0) {
-        filterConditions.push(`n.hwModel IN (${filterHwModels.join(',')})`);
-      }
-
-      // If we have any SQL-based filters, combine them with OR (union logic)
-      // Regex filter will be applied in JavaScript after the query
-      if (filterConditions.length > 0) {
-        nodeFilterClause = `AND (${filterConditions.join(' OR ')})`;
-      }
-      // If no SQL filters but we have a regex (not default), we'll filter all nodes by regex
-      // If no filters at all and regex is default '.*', all nodes are eligible
-    }
-
     // Get all nodes that are eligible for traceroute based on their status
     // Two categories:
     // 1. Nodes with no successful traceroute: retry every 3 hours
@@ -2923,7 +2889,6 @@ class DatabaseService {
          WHERE t.fromNodeNum = ? AND t.toNodeNum = n.nodeNum) as hasTraceroute
       FROM nodes n
       WHERE n.nodeNum != ?
-        ${nodeFilterClause}
         AND (
           -- Category 1: No traceroute exists, and (never requested OR requested > 3 hours ago)
           (
@@ -2932,12 +2897,11 @@ class DatabaseService {
             AND (n.lastTracerouteRequest IS NULL OR n.lastTracerouteRequest < ?)
           )
           OR
-          -- Category 2: Traceroute exists, and requested > 24 hours ago
+          -- Category 2: Traceroute exists, and (never requested OR requested > expiration hours ago)
           (
             (SELECT COUNT(*) FROM traceroutes t
              WHERE t.fromNodeNum = ? AND t.toNodeNum = n.nodeNum) > 0
-            AND n.lastTracerouteRequest IS NOT NULL
-            AND n.lastTracerouteRequest < ?
+            AND (n.lastTracerouteRequest IS NULL OR n.lastTracerouteRequest < ?)
           )
         )
       ORDER BY n.lastHeard DESC
@@ -2949,22 +2913,75 @@ class DatabaseService {
       localNodeNum,
       now - THREE_HOURS_MS,
       localNodeNum,
-      now - TWENTY_FOUR_HOURS_MS
+      now - EXPIRATION_MS
     ) as DbNode[];
 
-    // Apply regex name filter in JavaScript (SQLite doesn't support regex natively)
-    // Only filter if the regex filter is enabled and it's not the default '.*' which matches everything
-    if (filterEnabled && filterRegexEnabled && filterNameRegex && filterNameRegex !== '.*') {
-      try {
-        const regex = new RegExp(filterNameRegex, 'i');
-        eligibleNodes = eligibleNodes.filter(node => {
-          const name = node.longName || node.shortName || node.nodeId || '';
-          return regex.test(name);
-        });
-      } catch (e) {
-        // Invalid regex, log and continue with unfiltered results
-        logger.warn(`Invalid traceroute filter regex: ${filterNameRegex}`, e);
+    // Apply filters using UNION logic (node is eligible if it matches ANY enabled filter)
+    // If filterEnabled is true but no individual filters are enabled, all nodes pass
+    if (filterEnabled) {
+      // Build regex matcher if enabled
+      let regexMatcher: RegExp | null = null;
+      if (filterRegexEnabled && filterNameRegex && filterNameRegex !== '.*') {
+        try {
+          regexMatcher = new RegExp(filterNameRegex, 'i');
+        } catch (e) {
+          logger.warn(`Invalid traceroute filter regex: ${filterNameRegex}`, e);
+        }
       }
+
+      // Check if ANY filter is actually configured
+      const hasAnyFilter =
+        (filterNodesEnabled && specificNodes.length > 0) ||
+        (filterChannelsEnabled && filterChannels.length > 0) ||
+        (filterRolesEnabled && filterRoles.length > 0) ||
+        (filterHwModelsEnabled && filterHwModels.length > 0) ||
+        (filterRegexEnabled && regexMatcher !== null);
+
+      // Only filter if at least one filter is configured
+      if (hasAnyFilter) {
+        eligibleNodes = eligibleNodes.filter(node => {
+          // UNION logic: node passes if it matches ANY enabled filter
+          // Check specific nodes filter
+          if (filterNodesEnabled && specificNodes.length > 0) {
+            if (specificNodes.includes(node.nodeNum)) {
+              return true;
+            }
+          }
+
+          // Check channel filter
+          if (filterChannelsEnabled && filterChannels.length > 0) {
+            if (node.channel !== undefined && filterChannels.includes(node.channel)) {
+              return true;
+            }
+          }
+
+          // Check role filter
+          if (filterRolesEnabled && filterRoles.length > 0) {
+            if (node.role !== undefined && filterRoles.includes(node.role)) {
+              return true;
+            }
+          }
+
+          // Check hardware model filter
+          if (filterHwModelsEnabled && filterHwModels.length > 0) {
+            if (node.hwModel !== undefined && filterHwModels.includes(node.hwModel)) {
+              return true;
+            }
+          }
+
+          // Check regex name filter
+          if (filterRegexEnabled && regexMatcher !== null) {
+            const name = node.longName || node.shortName || node.nodeId || '';
+            if (regexMatcher.test(name)) {
+              return true;
+            }
+          }
+
+          // Node didn't match any enabled filter
+          return false;
+        });
+      }
+      // If hasAnyFilter is false, all nodes pass (no filtering applied)
     }
 
     if (eligibleNodes.length === 0) {
@@ -3183,6 +3200,29 @@ class DatabaseService {
     logger.debug(`✅ Set traceroute filter regex enabled: ${enabled}`);
   }
 
+  // Get the traceroute expiration hours (how long to wait before re-tracerouting a node)
+  getTracerouteExpirationHours(): number {
+    const value = this.getSetting('tracerouteExpirationHours');
+    if (value === null) {
+      return 24; // Default to 24 hours
+    }
+    const hours = parseInt(value, 10);
+    // Validate range (1-168 hours, i.e., 1 hour to 1 week)
+    if (isNaN(hours) || hours < 1 || hours > 168) {
+      return 24;
+    }
+    return hours;
+  }
+
+  setTracerouteExpirationHours(hours: number): void {
+    // Validate range (1-168 hours, i.e., 1 hour to 1 week)
+    if (hours < 1 || hours > 168) {
+      throw new Error('Traceroute expiration hours must be between 1 and 168 (1 week)');
+    }
+    this.setSetting('tracerouteExpirationHours', hours.toString());
+    logger.debug(`✅ Set traceroute expiration hours to: ${hours}`);
+  }
+
   // Get all traceroute filter settings at once
   getTracerouteFilterSettings(): {
     enabled: boolean;
@@ -3196,6 +3236,7 @@ class DatabaseService {
     filterRolesEnabled: boolean;
     filterHwModelsEnabled: boolean;
     filterRegexEnabled: boolean;
+    expirationHours: number;
   } {
     return {
       enabled: this.isAutoTracerouteNodeFilterEnabled(),
@@ -3209,6 +3250,7 @@ class DatabaseService {
       filterRolesEnabled: this.isTracerouteFilterRolesEnabled(),
       filterHwModelsEnabled: this.isTracerouteFilterHwModelsEnabled(),
       filterRegexEnabled: this.isTracerouteFilterRegexEnabled(),
+      expirationHours: this.getTracerouteExpirationHours(),
     };
   }
 
@@ -3225,6 +3267,7 @@ class DatabaseService {
     filterRolesEnabled?: boolean;
     filterHwModelsEnabled?: boolean;
     filterRegexEnabled?: boolean;
+    expirationHours?: number;
   }): void {
     this.setAutoTracerouteNodeFilterEnabled(settings.enabled);
     this.setAutoTracerouteNodes(settings.nodeNums);
@@ -3247,6 +3290,9 @@ class DatabaseService {
     }
     if (settings.filterRegexEnabled !== undefined) {
       this.setTracerouteFilterRegexEnabled(settings.filterRegexEnabled);
+    }
+    if (settings.expirationHours !== undefined) {
+      this.setTracerouteExpirationHours(settings.expirationHours);
     }
     logger.debug('✅ Updated all traceroute filter settings');
   }
