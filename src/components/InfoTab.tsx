@@ -482,13 +482,13 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
           const txTotal = localStats.numPacketsTx || 0;
           const txDropped = localStats.numTxDropped || 0;
           const txRelay = localStats.numTxRelay || 0;
-          const txRelayCanceled = localStats.numTxRelayCanceled || 0;
-          const txDirect = Math.max(0, txTotal - txDropped - txRelay - txRelayCanceled);
+          // Note: numTxRelayCanceled is NOT part of numPacketsTx - it counts packets
+          // that were never transmitted because another node relayed first
+          const txDirect = Math.max(0, txTotal - txDropped - txRelay);
           const txData: ChartDataEntry[] = [
             { name: t('info.tx_direct'), value: txDirect, color: '#89b4fa' },
             { name: t('info.tx_relay_short'), value: txRelay, color: '#a6e3a1' },
             { name: t('info.tx_dropped_short'), value: txDropped, color: '#f38ba8' },
-            { name: t('info.tx_canceled_short'), value: txRelayCanceled, color: '#fab387' },
           ];
           return (
             <PacketStatsChart
