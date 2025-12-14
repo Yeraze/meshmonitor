@@ -2523,9 +2523,11 @@ apiRouter.get('/telemetry/available/nodes', requirePermission('info', 'read'), (
           nodesWithWeather.push(node.nodeId);
         }
 
-        // Check if node has estimated position telemetry
+        // Check if node has estimated position telemetry AND doesn't have real GPS coordinates
+        // Only show uncertainty circle for nodes currently using estimated position
         const hasEstimatedPosition = telemetryTypes.some(t => estimatedPositionTypes.has(t));
-        if (hasEstimatedPosition) {
+        const hasRealPosition = !!(node.latitude && node.longitude);
+        if (hasEstimatedPosition && !hasRealPosition) {
           nodesWithEstimatedPosition.push(node.nodeId);
         }
       }
@@ -2792,8 +2794,10 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
               nodesWithWeather.push(node.nodeId);
             }
 
+            // Only show uncertainty circle for nodes currently using estimated position
             const hasEstimatedPosition = telemetryTypes.some(t => estimatedPositionTypes.has(t));
-            if (hasEstimatedPosition) {
+            const hasRealPosition = !!(node.latitude && node.longitude);
+            if (hasEstimatedPosition && !hasRealPosition) {
               nodesWithEstimatedPosition.push(node.nodeId);
             }
           }
