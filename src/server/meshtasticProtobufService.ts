@@ -188,6 +188,88 @@ export class MeshtasticProtobufService {
   }
 
   /**
+   * Create a NodeInfo request ToRadio using proper protobuf encoding
+   * This sends a User message with wantResponse=true to request the destination node's user info
+   * Similar to "Exchange User Info" feature in mobile apps - triggers key exchange
+   */
+  createNodeInfoRequestMessage(
+    destination: number,
+    channel?: number,
+    userInfo?: { id: string; longName: string; shortName: string; hwModel?: number; role?: number; publicKey?: Uint8Array }
+  ): { data: Uint8Array; packetId: number; requestId: number } {
+    const root = getProtobufRoot();
+    if (!root) {
+      logger.error('❌ Protobuf definitions not loaded');
+      return { data: new Uint8Array(), packetId: 0, requestId: 0 };
+    }
+
+    try {
+      // Generate a unique packet ID (Meshtastic uses 32-bit unsigned integers)
+      const packetId = Math.floor(Math.random() * 0xffffffff);
+      const requestId = Math.floor(Math.random() * 0xffffffff);
+
+      // Create User message for nodeinfo exchange
+      // According to Meshtastic protocol: send your user info with wantResponse=true to exchange user info
+      const User = root.lookupType('meshtastic.User');
+      const userData: any = {};
+
+      if (userInfo) {
+        // Send actual user info for exchange
+        userData.id = userInfo.id;
+        userData.longName = userInfo.longName;
+        userData.shortName = userInfo.shortName;
+        if (userInfo.hwModel !== undefined) {
+          userData.hwModel = userInfo.hwModel;
+        }
+        if (userInfo.role !== undefined) {
+          userData.role = userInfo.role;
+        }
+        if (userInfo.publicKey && userInfo.publicKey.length > 0) {
+          userData.publicKey = userInfo.publicKey;
+        }
+      }
+      // If no user info provided, send empty user (fallback behavior)
+
+      const userMessage = User.create(userData);
+
+      // Encode the User as payload
+      const payload = User.encode(userMessage).finish();
+
+      // Create the Data message with NODEINFO_APP portnum
+      const Data = root.lookupType('meshtastic.Data');
+      const dataMessage = Data.create({
+        portnum: 4, // NODEINFO_APP
+        payload: payload,
+        dest: destination,
+        wantResponse: true, // Request nodeinfo exchange from destination
+        requestId: requestId
+      });
+
+      // Create the MeshPacket with explicit ID
+      const MeshPacket = root.lookupType('meshtastic.MeshPacket');
+      const meshPacket = MeshPacket.create({
+        id: packetId,
+        to: destination,
+        channel: channel || 0,
+        decoded: dataMessage,
+        wantAck: true, // We want to know if the message was delivered
+        hopLimit: 3 // Default hop limit for nodeinfo exchange
+      });
+
+      // Create the ToRadio message
+      const ToRadio = root.lookupType('meshtastic.ToRadio');
+      const toRadio = ToRadio.create({
+        packet: meshPacket
+      });
+
+      return { data: ToRadio.encode(toRadio).finish(), packetId, requestId };
+    } catch (error) {
+      logger.error('❌ Failed to create nodeinfo exchange message:', error);
+      return { data: new Uint8Array(), packetId: 0, requestId: 0 };
+    }
+  }
+
+  /**
    * Create a telemetry request ToRadio to request LocalStats from a node
    * This sends an empty telemetry packet with wantResponse=true to request stats
    */

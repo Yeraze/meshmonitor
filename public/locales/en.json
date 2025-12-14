@@ -265,6 +265,8 @@
   "messages.history_title": "View traceroute history for this node",
   "messages.exchange_position": "Exchange Position",
   "messages.exchange_position_title": "Request position exchange with this node",
+  "messages.exchange_user_info": "Exchange User Info",
+  "messages.exchange_user_info_title": "Request user info exchange with this node (triggers key exchange)",
   "messages.purge_data": "Purge Data",
   "messages.ignore_node": "Ignore Node",
   "messages.ignore_node_title": "Ignore this node (hide from map node list)",

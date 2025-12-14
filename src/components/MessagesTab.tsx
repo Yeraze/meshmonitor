@@ -102,6 +102,7 @@ export interface MessagesTabProps {
   // Loading states
   tracerouteLoading: string | null;
   positionLoading: string | null;
+  nodeInfoLoading: string | null;
 
   // Settings
   timeFormat: TimeFormat;
@@ -118,11 +119,13 @@ export interface MessagesTabProps {
   handleSendDirectMessage: (destinationNodeId: string) => Promise<void>;
   handleTraceroute: (nodeId: string) => Promise<void>;
   handleExchangePosition: (nodeId: string) => Promise<void>;
+  handleExchangeNodeInfo: (nodeId: string) => Promise<void>;
   handleDeleteMessage: (message: MeshMessage) => Promise<void>;
   handleSenderClick: (nodeId: string, event: React.MouseEvent) => void;
   handleSendTapback: (emoji: string, message: MeshMessage) => void;
   getRecentTraceroute: (nodeId: string) => TracerouteData | null;
   toggleIgnored: (node: DeviceInfo, event: React.MouseEvent) => Promise<void>;
+  toggleFavorite: (node: DeviceInfo, event: React.MouseEvent) => Promise<void>;
 
   // Modal controls
   setShowTracerouteHistoryModal: (show: boolean) => void;
@@ -168,6 +171,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   setIsMessagesNodeListCollapsed,
   tracerouteLoading,
   positionLoading,
+  nodeInfoLoading,
   timeFormat,
   dateFormat,
   temperatureUnit,
@@ -178,11 +182,13 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   handleSendDirectMessage,
   handleTraceroute,
   handleExchangePosition,
+  handleExchangeNodeInfo,
   handleDeleteMessage,
   handleSenderClick,
   handleSendTapback,
   getRecentTraceroute,
   toggleIgnored,
+  toggleFavorite,
   setShowTracerouteHistoryModal,
   setShowPurgeDataModal,
   setEmojiPickerMessage,
@@ -830,6 +836,35 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                   >
                     📍 {t('messages.exchange_position')}
                     {positionLoading === selectedDMNode && <span className="spinner"></span>}
+                  </button>
+                )}
+                {hasPermission('messages', 'write') && (
+                  <button
+                    onClick={() => handleExchangeNodeInfo(selectedDMNode)}
+                    disabled={connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode}
+                    className="traceroute-btn"
+                    title={t('messages.exchange_user_info_title')}
+                  >
+                    🔑 {t('messages.exchange_user_info')}
+                    {nodeInfoLoading === selectedDMNode && <span className="spinner"></span>}
+                  </button>
+                )}
+                {hasPermission('messages', 'write') && selectedNode && (
+                  <button
+                    onClick={(e) => toggleFavorite(selectedNode, e)}
+                    className="traceroute-btn"
+                    style={{
+                      backgroundColor: selectedNode.isFavorite ? '#f5a623' : '#6c757d',
+                      color: 'white',
+                      border: 'none',
+                      padding: '0.5rem 1rem',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontWeight: 'bold',
+                    }}
+                    title={selectedNode.isFavorite ? t('nodes.remove_from_favorites') : t('nodes.add_to_favorites')}
+                  >
+                    {selectedNode.isFavorite ? `⭐ ${t('nodes.remove_favorite')}` : `☆ ${t('nodes.add_favorite')}`}
                   </button>
                 )}
                 {hasPermission('messages', 'write') && selectedNode && (
