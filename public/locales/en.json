@@ -1377,6 +1377,11 @@
   "info.device_config_unavailable": "Device configuration not available. Ensure connection is established.",
   "info.local_telemetry": "Local Node Telemetry",
 
+  "info.secrets": "Secrets",
+  "info.public_key": "Public Key:",
+  "info.private_key": "Private Key:",
+  "info.secrets_unavailable": "Security keys not available",
+
   "config.loading": "Loading configuration...",
   "config.warning_title": "WARNING",
   "config.warning_text": "Modifying these settings can break your Meshtastic node configuration.",

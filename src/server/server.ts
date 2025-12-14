@@ -2658,6 +2658,18 @@ apiRouter.get('/device/tx-status', optionalAuth(), async (_req, res) => {
   }
 });
 
+// Get security keys (public and private) for the local node
+// Private key is sensitive - requires authentication
+apiRouter.get('/device/security-keys', requireAuth(), async (_req, res) => {
+  try {
+    const keys = meshtasticManager.getSecurityKeys();
+    res.json(keys);
+  } catch (error) {
+    logger.error('Error getting security keys:', error);
+    res.status(500).json({ error: 'Failed to get security keys' });
+  }
+});
+
 // Consolidated polling endpoint - reduces multiple API calls to one
 apiRouter.get('/poll', optionalAuth(), async (req, res) => {
   logger.info('🔔 [POLL] Endpoint called');

@@ -156,6 +156,8 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
   const [serverInfo, setServerInfo] = useState<any>(null);
   const [loadingServerInfo, setLoadingServerInfo] = useState(false);
   const [localStats, setLocalStats] = useState<any>(null);
+  const [securityKeys, setSecurityKeys] = useState<{ publicKey: string | null; privateKey: string | null } | null>(null);
+  const [loadingSecurityKeys, setLoadingSecurityKeys] = useState(false);
 
   const fetchVirtualNodeStatus = async () => {
     if (connectionStatus !== 'connected') return;
@@ -243,6 +245,20 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
     }
   };
 
+  const fetchSecurityKeys = async () => {
+    if (connectionStatus !== 'connected' || !isAuthenticated) return;
+
+    setLoadingSecurityKeys(true);
+    try {
+      const keys = await apiService.getSecurityKeys();
+      setSecurityKeys(keys);
+    } catch (error) {
+      logger.error('Error fetching security keys:', error);
+    } finally {
+      setLoadingSecurityKeys(false);
+    }
+  };
+
   const handleClearRecordHolder = async () => {
     setShowConfirmDialog(true);
   };
@@ -286,6 +302,11 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
     const interval = setInterval(fetchLocalStats, 60000); // Refresh every minute
     return () => clearInterval(interval);
   }, [connectionStatus, currentNodeId]);
+
+  useEffect(() => {
+    fetchSecurityKeys();
+    // Only fetch once when connected and authenticated - keys don't change frequently
+  }, [connectionStatus, isAuthenticated]);
 
   // Helper function to format uptime
   const formatUptime = (uptimeSeconds: number): string => {
@@ -373,6 +394,56 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
                 <p><strong>{t('info.mqtt_json')}</strong> {deviceConfig.mqtt?.json ? t('common.enabled') : t('common.disabled')}</p>
                 <p><strong>{t('info.mqtt_tls')}</strong> {deviceConfig.mqtt?.tls ? t('common.yes') : t('common.no')}</p>
                 <p><strong>{t('info.mqtt_root_topic')}</strong> {deviceConfig.mqtt?.rootTopic || 'msh'}</p>
+              </div>
+            )}
+
+            {isAuthenticated && (
+              <div className="info-section">
+                <h3>{t('info.secrets')}</h3>
+                {loadingSecurityKeys && <p>{t('common.loading_indicator')}</p>}
+                {!loadingSecurityKeys && securityKeys && (
+                  <>
+                    <div style={{ marginBottom: '0.75rem' }}>
+                      <p><strong>{t('info.public_key')}</strong></p>
+                      <input
+                        type="text"
+                        readOnly
+                        value={securityKeys.publicKey || t('info.not_available')}
+                        style={{
+                          width: '100%',
+                          padding: '0.5rem',
+                          fontSize: '0.85rem',
+                          fontFamily: 'monospace',
+                          backgroundColor: 'var(--ctp-surface0)',
+                          border: '1px solid var(--ctp-surface2)',
+                          borderRadius: '4px',
+                          color: 'var(--ctp-text)'
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <p><strong>{t('info.private_key')}</strong></p>
+                      <input
+                        type="text"
+                        readOnly
+                        value={securityKeys.privateKey || t('info.not_available')}
+                        style={{
+                          width: '100%',
+                          padding: '0.5rem',
+                          fontSize: '0.85rem',
+                          fontFamily: 'monospace',
+                          backgroundColor: 'var(--ctp-surface0)',
+                          border: '1px solid var(--ctp-surface2)',
+                          borderRadius: '4px',
+                          color: 'var(--ctp-text)'
+                        }}
+                      />
+                    </div>
+                  </>
+                )}
+                {!loadingSecurityKeys && !securityKeys && (
+                  <p className="no-data">{t('info.secrets_unavailable')}</p>
+                )}
               </div>
             )}
           </>
