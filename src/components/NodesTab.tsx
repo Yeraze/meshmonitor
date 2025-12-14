@@ -98,6 +98,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setShowMqttNodes,
     showAnimations,
     setShowAnimations,
+    showEstimatedPositions,
+    setShowEstimatedPositions,
     animatedNodes,
     triggerNodeAnimation,
     mapCenterTarget,
@@ -1226,6 +1228,14 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                     />
                     <span>Show Animations</span>
                   </label>
+                  <label className="map-control-item">
+                    <input
+                      type="checkbox"
+                      checked={showEstimatedPositions}
+                      onChange={(e) => setShowEstimatedPositions(e.target.checked)}
+                    />
+                    <span>Show Estimated Positions</span>
+                  </label>
                   {canViewPacketMonitor && packetLogEnabled && (
                     <label className="map-control-item packet-monitor-toggle">
                       <input
@@ -1267,7 +1277,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               <SpiderfierController ref={spiderfierRef} zoomLevel={mapZoom} />
               <MapLegend />
               {nodesWithPosition
-                .filter(node => (showMqttNodes || !node.viaMqtt) && (showIncompleteNodes || isNodeComplete(node)))
+                .filter(node => (showMqttNodes || !node.viaMqtt) && (showIncompleteNodes || isNodeComplete(node)) && (showEstimatedPositions || !node.user?.id || !nodesWithEstimatedPosition.has(node.user.id)))
                 .map(node => {
                 const roleNum = typeof node.user?.role === 'string'
                   ? parseInt(node.user.role, 10)
@@ -1411,7 +1421,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               })}
 
               {/* Draw uncertainty circles for estimated positions */}
-              {nodesWithPosition
+              {showEstimatedPositions && nodesWithPosition
                 .filter(node => node.user?.id && nodesWithEstimatedPosition.has(node.user.id))
                 .map(node => {
                   // Calculate radius based on precision bits (higher precision = smaller circle)

@@ -33,6 +33,8 @@ interface MapContextType {
   setShowMqttNodes: (show: boolean) => void;
   showAnimations: boolean;
   setShowAnimations: (show: boolean) => void;
+  showEstimatedPositions: boolean;
+  setShowEstimatedPositions: (show: boolean) => void;
   animatedNodes: Set<string>;
   triggerNodeAnimation: (nodeId: string) => void;
   mapCenterTarget: [number, number] | null;
@@ -67,6 +69,7 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const [showMotion, setShowMotionState] = useState<boolean>(true);
   const [showMqttNodes, setShowMqttNodesState] = useState<boolean>(true);
   const [showAnimations, setShowAnimationsState] = useState<boolean>(false);
+  const [showEstimatedPositions, setShowEstimatedPositionsState] = useState<boolean>(true);
   const [animatedNodes, setAnimatedNodes] = useState<Set<string>>(new Set());
   const [mapCenterTarget, setMapCenterTarget] = useState<[number, number] | null>(null);
   const [mapCenter, setMapCenter] = useState<[number, number] | null>(() => {
@@ -125,6 +128,11 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const setShowAnimations = React.useCallback((value: boolean) => {
     setShowAnimationsState(value);
     savePreferenceToServer({ showAnimations: value });
+  }, []);
+
+  const setShowEstimatedPositions = React.useCallback((value: boolean) => {
+    setShowEstimatedPositionsState(value);
+    savePreferenceToServer({ showEstimatedPositions: value });
   }, []);
 
   // Helper function to save preference to server
@@ -192,6 +200,9 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
             if (preferences.showAnimations !== undefined) {
               setShowAnimationsState(preferences.showAnimations);
             }
+            if (preferences.showEstimatedPositions !== undefined) {
+              setShowEstimatedPositionsState(preferences.showEstimatedPositions);
+            }
           }
           // If preferences is null (anonymous user), initial defaults are already set
         }
@@ -247,6 +258,8 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
         setShowMqttNodes,
         showAnimations,
         setShowAnimations,
+        showEstimatedPositions,
+        setShowEstimatedPositions,
         animatedNodes,
         triggerNodeAnimation,
         mapCenterTarget,
