@@ -491,6 +491,115 @@ setTimeout(() => {
   }
 }, 5000); // Wait 5 seconds after startup
 
+// ==========================================
+// Scheduled Auto-Upgrade Check
+// ==========================================
+// Check for updates every 4 hours server-side to enable unattended upgrades
+// This allows auto-upgrade to work without requiring a frontend to be open
+const AUTO_UPGRADE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
+
+async function checkForAutoUpgrade(): Promise<void> {
+  // Skip if version check is disabled
+  if (env.versionCheckDisabled) {
+    return;
+  }
+
+  // Skip if auto-upgrade is not enabled
+  if (!upgradeService.isEnabled()) {
+    return;
+  }
+
+  // Skip if autoUpgradeImmediate is not enabled
+  const autoUpgradeImmediate = databaseService.getSetting('autoUpgradeImmediate') === 'true';
+  if (!autoUpgradeImmediate) {
+    return;
+  }
+
+  try {
+    logger.debug('🔄 Running scheduled auto-upgrade check...');
+
+    // Fetch latest release from GitHub
+    const response = await fetch('https://api.github.com/repos/Yeraze/meshmonitor/releases/latest');
+
+    if (!response.ok) {
+      logger.warn(`GitHub API returned ${response.status} for scheduled version check`);
+      return;
+    }
+
+    const release = await response.json();
+    const currentVersion = packageJson.version;
+    const latestVersionRaw = release.tag_name;
+
+    // Strip 'v' prefix from version strings for comparison
+    const latestVersion = latestVersionRaw.replace(/^v/, '');
+    const current = currentVersion.replace(/^v/, '');
+
+    // Simple semantic version comparison
+    const isNewerVersion = compareVersions(latestVersion, current) > 0;
+
+    if (!isNewerVersion) {
+      logger.debug(`✓ Already on latest version (${currentVersion})`);
+      return;
+    }
+
+    // Check if Docker image exists for this version
+    const imageReady = await checkDockerImageExists(latestVersion, release.published_at);
+
+    if (!imageReady) {
+      logger.debug(`⏳ Update available (${latestVersion}) but Docker image not ready yet`);
+      return;
+    }
+
+    // Check if an upgrade is already in progress
+    const inProgress = await upgradeService.isUpgradeInProgress();
+    if (inProgress) {
+      logger.debug('ℹ️ Scheduled auto-upgrade skipped: upgrade already in progress');
+      return;
+    }
+
+    // Trigger the upgrade
+    logger.info(`🚀 Scheduled auto-upgrade: triggering upgrade to ${latestVersion}`);
+    const upgradeResult = await upgradeService.triggerUpgrade(
+      { targetVersion: latestVersion, backup: true },
+      currentVersion,
+      'system-scheduled-auto-upgrade'
+    );
+
+    if (upgradeResult.success) {
+      logger.info(`✅ Scheduled auto-upgrade triggered successfully: ${upgradeResult.upgradeId}`);
+      databaseService.auditLog(
+        null,
+        'auto_upgrade_triggered',
+        'system',
+        `Scheduled auto-upgrade initiated: ${currentVersion} → ${latestVersion}`,
+        null
+      );
+    } else {
+      if (upgradeResult.message === 'An upgrade is already in progress') {
+        logger.debug('ℹ️ Scheduled auto-upgrade skipped: upgrade started by another process');
+      } else {
+        logger.warn(`⚠️ Scheduled auto-upgrade failed to trigger: ${upgradeResult.message}`);
+      }
+    }
+  } catch (error) {
+    logger.error('❌ Error during scheduled auto-upgrade check:', error);
+  }
+}
+
+// Schedule periodic auto-upgrade check (every 4 hours)
+setInterval(() => {
+  checkForAutoUpgrade().catch(error => {
+    logger.error('Error in scheduled auto-upgrade check:', error);
+  });
+}, AUTO_UPGRADE_CHECK_INTERVAL_MS);
+
+// Run initial auto-upgrade check after a delay to allow system to stabilize
+setTimeout(() => {
+  checkForAutoUpgrade().catch(error => {
+    logger.error('Error in initial auto-upgrade check:', error);
+  });
+}, 60 * 1000); // Wait 1 minute after startup
+
 // Create router for API routes
 const apiRouter = express.Router();
 
