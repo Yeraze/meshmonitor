@@ -2859,7 +2859,8 @@ class DatabaseService {
   getNodeNeedingTraceroute(localNodeNum: number): DbNode | null {
     const now = Date.now();
     const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
-    const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+    const expirationHours = this.getTracerouteExpirationHours();
+    const EXPIRATION_MS = expirationHours * 60 * 60 * 1000;
 
     // Check if node filter is enabled
     const filterEnabled = this.isAutoTracerouteNodeFilterEnabled();
@@ -2949,7 +2950,7 @@ class DatabaseService {
       localNodeNum,
       now - THREE_HOURS_MS,
       localNodeNum,
-      now - TWENTY_FOUR_HOURS_MS
+      now - EXPIRATION_MS
     ) as DbNode[];
 
     // Apply regex name filter in JavaScript (SQLite doesn't support regex natively)
@@ -3183,6 +3184,29 @@ class DatabaseService {
     logger.debug(`✅ Set traceroute filter regex enabled: ${enabled}`);
   }
 
+  // Get the traceroute expiration hours (how long to wait before re-tracerouting a node)
+  getTracerouteExpirationHours(): number {
+    const value = this.getSetting('tracerouteExpirationHours');
+    if (value === null) {
+      return 24; // Default to 24 hours
+    }
+    const hours = parseInt(value, 10);
+    // Validate range (1-168 hours, i.e., 1 hour to 1 week)
+    if (isNaN(hours) || hours < 1 || hours > 168) {
+      return 24;
+    }
+    return hours;
+  }
+
+  setTracerouteExpirationHours(hours: number): void {
+    // Validate range (1-168 hours, i.e., 1 hour to 1 week)
+    if (hours < 1 || hours > 168) {
+      throw new Error('Traceroute expiration hours must be between 1 and 168 (1 week)');
+    }
+    this.setSetting('tracerouteExpirationHours', hours.toString());
+    logger.debug(`✅ Set traceroute expiration hours to: ${hours}`);
+  }
+
   // Get all traceroute filter settings at once
   getTracerouteFilterSettings(): {
     enabled: boolean;
@@ -3196,6 +3220,7 @@ class DatabaseService {
     filterRolesEnabled: boolean;
     filterHwModelsEnabled: boolean;
     filterRegexEnabled: boolean;
+    expirationHours: number;
   } {
     return {
       enabled: this.isAutoTracerouteNodeFilterEnabled(),
@@ -3209,6 +3234,7 @@ class DatabaseService {
       filterRolesEnabled: this.isTracerouteFilterRolesEnabled(),
       filterHwModelsEnabled: this.isTracerouteFilterHwModelsEnabled(),
       filterRegexEnabled: this.isTracerouteFilterRegexEnabled(),
+      expirationHours: this.getTracerouteExpirationHours(),
     };
   }
 
@@ -3225,6 +3251,7 @@ class DatabaseService {
     filterRolesEnabled?: boolean;
     filterHwModelsEnabled?: boolean;
     filterRegexEnabled?: boolean;
+    expirationHours?: number;
   }): void {
     this.setAutoTracerouteNodeFilterEnabled(settings.enabled);
     this.setAutoTracerouteNodes(settings.nodeNums);
@@ -3247,6 +3274,9 @@ class DatabaseService {
     }
     if (settings.filterRegexEnabled !== undefined) {
       this.setTracerouteFilterRegexEnabled(settings.filterRegexEnabled);
+    }
+    if (settings.expirationHours !== undefined) {
+      this.setTracerouteExpirationHours(settings.expirationHours);
     }
     logger.debug('✅ Updated all traceroute filter settings');
   }
