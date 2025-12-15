@@ -4881,6 +4881,42 @@ body {
   margin-top: 1rem;
 }
 
+.settings-button {
+  background: var(--ctp-surface2);
+  color: var(--ctp-text);
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s, transform 0.1s, opacity 0.2s;
+  white-space: nowrap;
+}
+
+.settings-button:hover:not(:disabled) {
+  background: var(--ctp-surface1);
+  transform: translateY(-1px);
+}
+
+.settings-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.settings-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.settings-button-primary {
+  background: var(--ctp-green);
+  color: var(--ctp-base);
+}
+
+.settings-button-primary:hover:not(:disabled) {
+  background: var(--ctp-teal);
+}
+
 .save-button {
   background: var(--ctp-green);
   color: var(--ctp-base);

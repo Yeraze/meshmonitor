@@ -80,7 +80,7 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      const response = await csrfFetch('/api/settings', {
+      const response = await csrfFetch(`${baseUrl}/api/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -159,19 +159,52 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
   };
 
   return (
-    <div className="settings-card" style={{ marginTop: '1rem' }}>
-      <div className="settings-card-header">
-        <div className="settings-card-header-left">
-          <h3 className="settings-card-title">
-            {t('automation.timer_triggers.title', 'Timer Triggers')}
-          </h3>
-          <p className="settings-card-description">
-            {t('automation.timer_triggers.description', 'Schedule scripts to run automatically using cron expressions')}
-          </p>
-        </div>
+    <>
+      <div className="automation-section-header" style={{
+        display: 'flex',
+        alignItems: 'center',
+        marginBottom: '1.5rem',
+        padding: '1rem 1.25rem',
+        background: 'var(--ctp-surface1)',
+        border: '1px solid var(--ctp-surface2)',
+        borderRadius: '8px'
+      }}>
+        <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          {t('automation.timer_triggers.section_title', 'Timed Events')}
+          <a
+            href="https://meshmonitor.org/features/automation#timer-triggers"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              fontSize: '1.2rem',
+              color: '#89b4fa',
+              textDecoration: 'none',
+              marginLeft: '0.5rem'
+            }}
+            title={t('automation.timer_triggers.view_docs', 'View documentation')}
+          >
+            ?
+          </a>
+        </h2>
+        <button
+          onClick={handleSave}
+          disabled={!hasChanges || isSaving}
+          className="btn-primary"
+          style={{
+            padding: '0.5rem 1.5rem',
+            fontSize: '14px',
+            opacity: hasChanges ? 1 : 0.5,
+            cursor: hasChanges ? 'pointer' : 'not-allowed'
+          }}
+        >
+          {isSaving ? t('common.saving') : t('automation.save_changes')}
+        </button>
       </div>
 
-      <div className="settings-card-content">
+      <div className="settings-section">
+        <p style={{ marginBottom: '1rem', color: '#666', lineHeight: '1.5', marginLeft: '1.75rem' }}>
+          {t('automation.timer_triggers.description', 'Schedule scripts to run automatically using cron expressions')}
+        </p>
         {/* Add New Timer Form */}
         <div style={{
           padding: '1rem',
@@ -367,7 +400,7 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
           </div>
         )}
       </div>
-    </div>
+    </>
   );
 };
 
