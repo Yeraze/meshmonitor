@@ -126,7 +126,7 @@ jobs:
             LICENSE
 
       - name: Upload release artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: release-artifacts
           path: meshmonitor-*.tar.gz
