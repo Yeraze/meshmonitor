@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import apiService from '../services/api';
 import { useToast } from './ToastContainer';
 import { ROLE_OPTIONS, MODEM_PRESET_OPTIONS, REGION_OPTIONS } from './configuration/constants';
@@ -24,6 +25,7 @@ interface NodeOption {
 }
 
 const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeId, channels: _channels = [], onChannelsUpdated: _onChannelsUpdated }) => {
+  const { t } = useTranslation();
   const { showToast } = useToast();
   const [selectedNodeNum, setSelectedNodeNum] = useState<number | null>(null);
   const [isExecuting, setIsExecuting] = useState(false);
@@ -127,8 +129,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       options.push({
         nodeNum: localNode.nodeNum,
         nodeId: localNodeId,
-        longName: localNode.user?.longName || localNode.longName || 'Local Node',
-        shortName: localNode.user?.shortName || localNode.shortName || 'LOCAL',
+        longName: localNode.user?.longName || localNode.longName || t('admin_commands.local_node_fallback'),
+        shortName: localNode.user?.shortName || localNode.shortName || t('admin_commands.local_node_short'),
         isLocal: true,
         isFavorite: localNode.isFavorite ?? false,
         isIgnored: localNode.isIgnored ?? false
@@ -244,7 +246,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
   const handleLoadDeviceConfig = async () => {
     if (selectedNodeNum === null) {
-      showToast('Please select a node', 'error');
+      showToast(t('admin_commands.please_select_node'), 'error');
       return;
     }
 
@@ -259,10 +261,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         const config = result.config;
         if (config.role !== undefined) setDeviceRole(config.role);
         if (config.nodeInfoBroadcastSecs !== undefined) setNodeInfoBroadcastSecs(config.nodeInfoBroadcastSecs);
-        showToast('Device config loaded successfully', 'success');
+        showToast(t('admin_commands.device_config_loaded'), 'success');
       }
     } catch (error: any) {
-      showToast(error.message || 'Failed to load device config', 'error');
+      showToast(error.message || t('admin_commands.failed_load_device_config'), 'error');
     } finally {
       setIsLoadingDeviceConfig(false);
     }
@@ -270,7 +272,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
   const handleLoadLoRaConfig = async () => {
     if (selectedNodeNum === null) {
-      const error = new Error('Please select a node');
+      const error = new Error(t('admin_commands.please_select_node'));
       showToast(error.message, 'error');
       throw error;
     }
@@ -296,12 +298,12 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         if (config.txPower !== undefined) setTxPower(config.txPower);
         if (config.channelNum !== undefined) setChannelNum(config.channelNum);
         if (config.sx126xRxBoostedGain !== undefined) setSx126xRxBoostedGain(config.sx126xRxBoostedGain);
-        showToast('LoRa config loaded successfully', 'success');
+        showToast(t('admin_commands.lora_config_loaded'), 'success');
       } else {
-        throw new Error('No configuration data received');
+        throw new Error(t('admin_commands.no_config_data'));
       }
     } catch (error: any) {
-      showToast(error.message || 'Failed to load LoRa config', 'error');
+      showToast(error.message || t('admin_commands.failed_load_lora_config'), 'error');
       throw error; // Re-throw so Promise.all() can catch it
     } finally {
       setIsLoadingLoRaConfig(false);
@@ -310,7 +312,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
   const handleLoadPositionConfig = async () => {
     if (selectedNodeNum === null) {
-      showToast('Please select a node', 'error');
+      showToast(t('admin_commands.please_select_node'), 'error');
       return;
     }
 
@@ -333,10 +335,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         if (config.fixedLatitude !== undefined) setFixedLatitude(config.fixedLatitude);
         if (config.fixedLongitude !== undefined) setFixedLongitude(config.fixedLongitude);
         if (config.fixedAltitude !== undefined) setFixedAltitude(config.fixedAltitude);
-        showToast('Position config loaded successfully', 'success');
+        showToast(t('admin_commands.position_config_loaded'), 'success');
       }
     } catch (error: any) {
-      showToast(error.message || 'Failed to load position config', 'error');
+      showToast(error.message || t('admin_commands.failed_load_position_config'), 'error');
     } finally {
       setIsLoadingPositionConfig(false);
     }
@@ -344,7 +346,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
   const handleLoadMQTTConfig = async () => {
     if (selectedNodeNum === null) {
-      showToast('Please select a node', 'error');
+      showToast(t('admin_commands.please_select_node'), 'error');
       return;
     }
 
@@ -364,10 +366,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         if (config.encryptionEnabled !== undefined) setMqttEncryptionEnabled(config.encryptionEnabled);
         if (config.jsonEnabled !== undefined) setMqttJsonEnabled(config.jsonEnabled);
         if (config.root !== undefined) setMqttRoot(config.root || '');
-        showToast('MQTT config loaded successfully', 'success');
+        showToast(t('admin_commands.mqtt_config_loaded'), 'success');
       }
     } catch (error: any) {
-      showToast(error.message || 'Failed to load MQTT config', 'error');
+      showToast(error.message || t('admin_commands.failed_load_mqtt_config'), 'error');
     } finally {
       setIsLoadingMQTTConfig(false);
     }
@@ -375,7 +377,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
   const handleLoadChannels = async () => {
     if (selectedNodeNum === null) {
-      const error = new Error('Please select a node');
+      const error = new Error(t('admin_commands.please_select_node'));
       showToast(error.message, 'error');
       throw error;
     }
@@ -449,7 +451,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           const isPrimary = ch.role === 1;
           return hasName || hasPsk || isPrimary;
         }).length;
-        showToast(`Loaded ${loadedCount} channels from local node`, 'success');
+        showToast(t('admin_commands.channels_loaded_local', { count: loadedCount }), 'success');
       } else {
         // For remote node, request all 8 channels in parallel (like Meshtastic app does)
         // This is much faster than sequential requests
@@ -464,7 +466,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             nodeNum: selectedNodeNum
           });
         } catch (error: any) {
-          const err = new Error(`Failed to obtain session passkey: ${error.message}`);
+          const err = new Error(t('admin_commands.failed_session_passkey', { error: error.message }));
           showToast(err.message, 'error');
           setIsLoadingChannels(false);
           throw err; // Re-throw so Promise.all() can catch it
@@ -685,11 +687,11 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           return hasName || hasPsk || isPrimary;
         }).length;
         setChannelLoadProgress('');
-        showToast(`Loaded ${loadedCount} channels from remote node`, 'success');
+        showToast(t('admin_commands.channels_loaded_remote', { count: loadedCount }), 'success');
       }
     } catch (error: any) {
       setChannelLoadProgress('');
-      showToast(error.message || 'Failed to load channels', 'error');
+      showToast(error.message || t('admin_commands.failed_load_channels'), 'error');
       throw error; // Re-throw so Promise.all() can catch it
     } finally {
       setIsLoadingChannels(false);
@@ -703,8 +705,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
   const executeCommand = async (command: string, params: any = {}) => {
     if (selectedNodeNum === null) {
-      showToast('Please select a node', 'error');
-      throw new Error('No node selected');
+      showToast(t('admin_commands.please_select_node'), 'error');
+      throw new Error(t('admin_commands.no_node_selected'));
     }
 
     setIsExecuting(true);
@@ -714,10 +716,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         nodeNum: selectedNodeNum,
         ...params
       });
-      showToast(result.message || `Command '${command}' executed successfully`, 'success');
+      showToast(result.message || t('admin_commands.command_executed', { command }), 'success');
       return result;
     } catch (error: any) {
-      showToast(error.message || 'Failed to execute command', 'error');
+      showToast(error.message || t('admin_commands.failed_execute_command'), 'error');
       console.error('Admin command error:', error);
       throw error;
     } finally {
@@ -726,7 +728,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   };
 
   const handleReboot = async () => {
-    if (!confirm(`Are you sure you want to reboot the device? It will reboot in ${rebootSeconds} seconds.`)) {
+    if (!confirm(t('admin_commands.reboot_confirmation', { seconds: rebootSeconds }))) {
       return;
     }
     try {
@@ -739,7 +741,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
   const handleLoadOwner = async () => {
     if (selectedNodeNum === null) {
-      showToast('Please select a node', 'error');
+      showToast(t('admin_commands.please_select_node'), 'error');
       return;
     }
 
@@ -753,12 +755,12 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         setOwnerLongName(result.owner.longName || '');
         setOwnerShortName(result.owner.shortName || '');
         setOwnerIsUnmessagable(result.owner.isUnmessagable || false);
-        showToast('Owner info loaded successfully', 'success');
+        showToast(t('admin_commands.owner_info_loaded'), 'success');
       } else {
-        showToast('No owner information available', 'warning');
+        showToast(t('admin_commands.no_owner_info'), 'warning');
       }
     } catch (error: any) {
-      showToast(error.message || 'Failed to load owner info', 'error');
+      showToast(error.message || t('admin_commands.failed_load_owner_info'), 'error');
     } finally {
       setIsLoadingOwner(false);
     }
@@ -766,7 +768,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
   const handleSetOwner = async () => {
     if (!ownerLongName.trim() || !ownerShortName.trim()) {
-      showToast('Long name and short name are required', 'error');
+      showToast(t('admin_commands.long_short_name_required'), 'error');
       return;
     }
     try {
@@ -782,7 +784,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   };
 
   const handlePurgeNodeDb = async () => {
-    if (!confirm('Are you sure you want to purge the node database? This will remove all nodes from the device.')) {
+    if (!confirm(t('admin_commands.purge_confirmation'))) {
       return;
     }
     try {
@@ -795,12 +797,12 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
   const handleSetFavoriteNode = async () => {
     if (nodeManagementNodeNum === null) {
-      showToast('Please select a node to favorite', 'error');
+      showToast(t('admin_commands.please_select_node_to_favorite'), 'error');
       return;
     }
     try {
       await executeCommand('setFavoriteNode', { nodeNum: nodeManagementNodeNum });
-      showToast(`Node ${nodeManagementNodeNum} set as favorite`, 'success');
+      showToast(t('admin_commands.node_set_favorite', { nodeNum: nodeManagementNodeNum }), 'success');
       // Optimistically update state - use remote status if managing remote node, otherwise local
       if (isManagingRemoteNode) {
         setRemoteNodeStatus(prev => {
@@ -824,12 +826,12 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
   const handleRemoveFavoriteNode = async () => {
     if (nodeManagementNodeNum === null) {
-      showToast('Please select a node to unfavorite', 'error');
+      showToast(t('admin_commands.please_select_node_to_unfavorite'), 'error');
       return;
     }
     try {
       await executeCommand('removeFavoriteNode', { nodeNum: nodeManagementNodeNum });
-      showToast(`Node ${nodeManagementNodeNum} removed from favorites`, 'success');
+      showToast(t('admin_commands.node_removed_favorite', { nodeNum: nodeManagementNodeNum }), 'success');
       // Optimistically update state - use remote status if managing remote node, otherwise local
       if (isManagingRemoteNode) {
         setRemoteNodeStatus(prev => {
@@ -853,12 +855,12 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
   const handleSetIgnoredNode = async () => {
     if (nodeManagementNodeNum === null) {
-      showToast('Please select a node to ignore', 'error');
+      showToast(t('admin_commands.please_select_node_to_ignore'), 'error');
       return;
     }
     try {
       await executeCommand('setIgnoredNode', { nodeNum: nodeManagementNodeNum });
-      showToast(`Node ${nodeManagementNodeNum} set as ignored`, 'success');
+      showToast(t('admin_commands.node_set_ignored', { nodeNum: nodeManagementNodeNum }), 'success');
       // Optimistically update state - use remote status if managing remote node, otherwise local
       if (isManagingRemoteNode) {
         setRemoteNodeStatus(prev => {
@@ -882,12 +884,12 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
   const handleRemoveIgnoredNode = async () => {
     if (nodeManagementNodeNum === null) {
-      showToast('Please select a node to un-ignore', 'error');
+      showToast(t('admin_commands.please_select_node_to_unignore'), 'error');
       return;
     }
     try {
       await executeCommand('removeIgnoredNode', { nodeNum: nodeManagementNodeNum });
-      showToast(`Node ${nodeManagementNodeNum} removed from ignored list`, 'success');
+      showToast(t('admin_commands.node_removed_ignored', { nodeNum: nodeManagementNodeNum }), 'success');
       // Optimistically update state - use remote status if managing remote node, otherwise local
       if (isManagingRemoteNode) {
         setRemoteNodeStatus(prev => {
@@ -996,7 +998,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
   const handleRoleChange = (newRole: number) => {
     if (newRole === 2) {
-      const confirmed = window.confirm('Setting device to ROUTER mode will make it always rebroadcast packets. This is typically used for infrastructure nodes. Continue?');
+      const confirmed = window.confirm(t('admin_commands.router_mode_confirmation'));
       if (!confirmed) {
         setIsRoleDropdownOpen(false);
         return;
@@ -1134,7 +1136,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     if (editingChannelSlot === null) return;
     
     if (channelName.length > 11) {
-      showToast('Channel name must be 11 characters or less', 'error');
+      showToast(t('admin_commands.channel_name_max_length'), 'error');
       return;
     }
     
@@ -1174,7 +1176,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
   const handleExportChannel = async (channelId: number) => {
     if (selectedNodeNum === null) {
-      showToast('Please select a node', 'error');
+      showToast(t('admin_commands.please_select_node_export'), 'error');
       return;
     }
 
@@ -1185,7 +1187,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       if (isLocalNode) {
         // For local node, use the standard export endpoint
         await apiService.exportChannel(channelId);
-        showToast(`Channel ${channelId} exported successfully`, 'success');
+        showToast(t('admin_commands.channel_exported_successfully', { channelId }), 'success');
       } else {
         // For remote node, get channel data and export it manually
         const channel = await apiService.post<{ channel?: any }>('/api/admin/get-channel', {
@@ -1236,7 +1238,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         a.click();
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
-        showToast(`Channel ${channelId} exported successfully`, 'success');
+        showToast(t('admin_commands.channel_exported_successfully', { channelId }), 'success');
       }
     } catch (error: any) {
       showToast(error.message || 'Failed to export channel', 'error');
@@ -1264,7 +1266,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
   const handleImportChannel = async () => {
     if (!importFileContent || importSlotId === null || selectedNodeNum === null) {
-      showToast('Please select a file and a channel slot', 'error');
+      showToast(t('admin_commands.please_select_file_and_slot'), 'error');
       return;
     }
 
@@ -1274,14 +1276,14 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       const importData = JSON.parse(importFileContent);
 
       if (!importData.channel) {
-        throw new Error('Invalid import format. Expected channel object');
+        throw new Error(t('admin_commands.invalid_import_format'));
       }
 
       const channelData = importData.channel;
 
       // Validate required fields
       if (channelData.name && channelData.name.length > 11) {
-        showToast('Channel name must be 11 characters or less', 'error');
+        showToast(t('admin_commands.channel_name_max_length'), 'error');
         return;
       }
 
@@ -1318,7 +1320,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           downlinkEnabled: normalizeBoolean(channelData.downlinkEnabled, true)
         };
         await apiService.importChannel(importSlotId, normalizedChannelData);
-        showToast(`Channel ${importSlotId} imported successfully`, 'success');
+        showToast(t('admin_commands.channel_imported_successfully', { importSlotId }), 'success');
         // Refresh channels
         if (_onChannelsUpdated) {
           _onChannelsUpdated();
@@ -1336,7 +1338,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             positionPrecision: channelData.positionPrecision !== undefined ? channelData.positionPrecision : 32
           }
         });
-        showToast(`Channel ${importSlotId} imported successfully`, 'success');
+        showToast(t('admin_commands.channel_imported_successfully', { importSlotId }), 'success');
         // Refresh the imported channel
         await new Promise(resolve => setTimeout(resolve, 1500));
         await handleLoadSingleChannel(importSlotId);
@@ -1358,33 +1360,33 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   const selectedNode = nodeOptions.find(n => n.nodeNum === selectedNodeNum);
 
   // Show loading state if nodes haven't loaded yet
-  if (!nodes || nodes.length === 0) {
-    return (
-      <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
-        <h2 style={{ marginBottom: '1.5rem', color: 'var(--ctp-text)' }}>Admin Commands</h2>
-        <p style={{ color: 'var(--ctp-subtext0)' }}>Loading nodes...</p>
-      </div>
-    );
-  }
+  // if (!nodes || nodes.length === 0) {
+  //   return (
+  //     <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
+  //       <h2 style={{ marginBottom: '1.5rem', color: 'var(--ctp-text)' }}>{t('admin_commands.title')}</h2>
+  //       <p style={{ color: 'var(--ctp-subtext0)' }}>{t('admin_commands.loading_nodes')}</p>
+  //     </div>
+  //   );
+  // }
 
   return (
     <div className="tab-content">
       
       {/* Node Selection Section */}
       <div className="settings-section">
-        <h3>Target Node</h3>
+        <h3>{t('admin_commands.target_node')}</h3>
         <div className="setting-item">
           <label>
-            Select the node to send admin commands to
+            {t('admin_commands.select_node_description')}
             <span className="setting-description">
-              Choose a local or remote node. Remote nodes will automatically request a session passkey.
+              {t('admin_commands.select_node_help')}
             </span>
           </label>
           <div ref={searchRef} style={{ position: 'relative', width: '100%', maxWidth: '600px' }}>
             <input
               type="text"
               className="setting-input"
-              placeholder={selectedNode ? selectedNode.longName : "Search for a node..."}
+              placeholder={selectedNode ? selectedNode.longName : t('admin_commands.search_node_placeholder')}
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
@@ -1427,7 +1429,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                   >
                     <div>
                       <div style={{ fontWeight: '500', color: 'var(--ctp-text)' }}>
-                        {node.longName} {node.isLocal && <span style={{ color: 'var(--ctp-blue)' }}>(Local)</span>}
+                        {node.longName} {node.isLocal && <span style={{ color: 'var(--ctp-blue)' }}>({t('admin_commands.local_node_indicator')})</span>}
                       </div>
                       <div style={{ fontSize: '0.85rem', color: 'var(--ctp-subtext0)', marginTop: '0.25rem' }}>
                         {node.shortName && node.shortName !== node.longName && `${node.shortName} • `}
@@ -1445,9 +1447,9 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           {selectedNode && (
             <div style={{ marginTop: '0.75rem', fontSize: '0.875rem', color: 'var(--ctp-subtext0)' }}>
               {selectedNode.isLocal ? (
-                <span>✓ Local node - no session passkey required</span>
+                <span>{t('admin_commands.local_node_no_passkey')}</span>
               ) : (
-                <span>✓ Remote node - session passkey will be requested automatically</span>
+                <span>{t('admin_commands.remote_node_passkey')}</span>
               )}
             </div>
           )}
@@ -1458,7 +1460,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       {/* Set Owner Command Section */}
       <div className="settings-section">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', paddingBottom: '0.75rem', borderBottom: '2px solid var(--ctp-surface2)' }}>
-          <h3 style={{ margin: 0, borderBottom: 'none', paddingBottom: 0 }}>Set Owner</h3>
+          <h3 style={{ margin: 0, borderBottom: 'none', paddingBottom: 0 }}>{t('admin_commands.set_owner')}</h3>
           <button
             onClick={handleLoadOwner}
             disabled={isLoadingOwner || selectedNodeNum === null}
@@ -1468,14 +1470,14 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               cursor: (isLoadingOwner || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
             }}
           >
-            {isLoadingOwner ? 'Loading...' : 'Load'}
+            {isLoadingOwner ? t('common.loading') : t('common.load')}
           </button>
         </div>
         <div className="setting-item">
           <label>
-            Long Name
+            {t('admin_commands.long_name')}
             <span className="setting-description">
-              The long name for the device owner.
+              {t('admin_commands.long_name_description')}
             </span>
           </label>
           <input
@@ -1483,15 +1485,15 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             value={ownerLongName}
             onChange={(e) => setOwnerLongName(e.target.value)}
             disabled={isExecuting}
-            placeholder="Device owner long name"
+            placeholder={t('admin_commands.long_name_placeholder')}
             className="setting-input"
           />
         </div>
         <div className="setting-item">
           <label>
-            Short Name
+            {t('admin_commands.short_name')}
             <span className="setting-description">
-              The short name for the device owner (max 4 characters).
+              {t('admin_commands.short_name_description')}
             </span>
           </label>
           <input
@@ -1499,7 +1501,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             value={ownerShortName}
             onChange={(e) => setOwnerShortName(e.target.value)}
             disabled={isExecuting}
-            placeholder="Device owner short name (max 4 chars)"
+            placeholder={t('admin_commands.short_name_placeholder')}
             maxLength={4}
             className="setting-input"
           />
@@ -1514,8 +1516,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               style={{ width: 'auto', margin: 0, flexShrink: 0 }}
             />
             <div style={{ flex: 1 }}>
-              <div>Mark as Unmessagable</div>
-              <span className="setting-description">Prevent other nodes from sending messages to this device</span>
+              <div>{t('admin_commands.mark_unmessagable')}</div>
+              <span className="setting-description">{t('admin_commands.mark_unmessagable_description')}</span>
             </div>
           </label>
         </div>
@@ -1528,14 +1530,14 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             cursor: (isExecuting || !ownerLongName.trim() || !ownerShortName.trim() || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
           }}
         >
-          {isExecuting ? 'Saving...' : 'Set Owner'}
+          {isExecuting ? t('common.saving') : t('admin_commands.set_owner_button')}
         </button>
       </div>
 
       {/* Device Config Section */}
       <div className="settings-section">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', paddingBottom: '0.75rem', borderBottom: '2px solid var(--ctp-surface2)' }}>
-          <h3 style={{ margin: 0, borderBottom: 'none', paddingBottom: 0 }}>Device Configuration</h3>
+          <h3 style={{ margin: 0, borderBottom: 'none', paddingBottom: 0 }}>{t('admin_commands.device_configuration')}</h3>
           <button
             onClick={handleLoadDeviceConfig}
             disabled={isLoadingDeviceConfig || selectedNodeNum === null}
@@ -1545,14 +1547,14 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               cursor: (isLoadingDeviceConfig || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
             }}
           >
-            {isLoadingDeviceConfig ? 'Loading...' : 'Load'}
+            {isLoadingDeviceConfig ? t('common.loading') : t('common.load')}
           </button>
         </div>
         <div className="setting-item">
           <label>
-            Device Role
+            {t('admin_commands.device_role')}
             <span className="setting-description">
-              Set the device role. ROUTER mode makes the device always rebroadcast packets for infrastructure use.
+              {t('admin_commands.device_role_description')}
             </span>
           </label>
           <div style={{ position: 'relative' }}>
@@ -1640,9 +1642,9 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         </div>
         <div className="setting-item">
           <label>
-            Node Info Broadcast Interval (seconds)
+            {t('admin_commands.node_info_broadcast')}
             <span className="setting-description">
-              How often the device broadcasts node information. Minimum: 3600 seconds (1 hour).
+              {t('admin_commands.node_info_broadcast_description')}
             </span>
           </label>
           <input
@@ -1665,14 +1667,14 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             cursor: (isExecuting || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
           }}
         >
-          {isExecuting ? 'Saving...' : 'Save Device Config'}
+          {isExecuting ? t('common.saving') : t('admin_commands.save_device_config')}
         </button>
       </div>
 
       {/* LoRa Config Section */}
       <div className="settings-section">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', paddingBottom: '0.75rem', borderBottom: '2px solid var(--ctp-surface2)' }}>
-          <h3 style={{ margin: 0, borderBottom: 'none', paddingBottom: 0 }}>LoRa Radio Configuration</h3>
+          <h3 style={{ margin: 0, borderBottom: 'none', paddingBottom: 0 }}>{t('admin_commands.lora_configuration')}</h3>
           <button
             onClick={handleLoadLoRaConfig}
             disabled={isLoadingLoRaConfig || selectedNodeNum === null}
@@ -1682,7 +1684,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               cursor: (isLoadingLoRaConfig || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
             }}
           >
-            {isLoadingLoRaConfig ? 'Loading...' : 'Load'}
+            {isLoadingLoRaConfig ? t('common.loading') : t('common.load')}
           </button>
         </div>
         <div className="setting-item">
@@ -1695,14 +1697,14 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               style={{ width: 'auto', margin: 0, flexShrink: 0 }}
             />
             <div style={{ flex: 1 }}>
-              <div>Use Modem Preset</div>
-              <span className="setting-description">Use a predefined modem preset instead of manual settings</span>
+              <div>{t('admin_commands.use_modem_preset')}</div>
+              <span className="setting-description">{t('admin_commands.use_modem_preset_description')}</span>
             </div>
           </label>
         </div>
         {usePreset ? (
           <div className="setting-item">
-            <label>Modem Preset</label>
+            <label>{t('admin_commands.modem_preset')}</label>
             <select
               value={modemPreset}
               onChange={(e) => setModemPreset(Number(e.target.value))}
@@ -1720,7 +1722,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         ) : (
           <>
             <div className="setting-item">
-              <label>Bandwidth (kHz)</label>
+              <label>{t('admin_commands.bandwidth')}</label>
               <input
                 type="number"
                 value={bandwidth}
@@ -1731,7 +1733,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               />
             </div>
             <div className="setting-item">
-              <label>Spread Factor</label>
+              <label>{t('admin_commands.spread_factor')}</label>
               <input
                 type="number"
                 min="7"
@@ -1853,14 +1855,14 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             cursor: (isExecuting || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
           }}
         >
-          {isExecuting ? 'Saving...' : 'Save LoRa Config'}
+          {isExecuting ? t('common.saving') : t('admin_commands.save_lora_config')}
         </button>
       </div>
 
       {/* Position Config Section */}
       <div className="settings-section">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', paddingBottom: '0.75rem', borderBottom: '2px solid var(--ctp-surface2)' }}>
-          <h3 style={{ margin: 0, borderBottom: 'none', paddingBottom: 0 }}>Position Configuration</h3>
+          <h3 style={{ margin: 0, borderBottom: 'none', paddingBottom: 0 }}>{t('admin_commands.position_configuration')}</h3>
           <button
             onClick={handleLoadPositionConfig}
             disabled={isLoadingPositionConfig || selectedNodeNum === null}
@@ -1870,13 +1872,13 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               cursor: (isLoadingPositionConfig || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
             }}
           >
-            {isLoadingPositionConfig ? 'Loading...' : 'Load'}
+            {isLoadingPositionConfig ? t('common.loading') : t('common.load')}
           </button>
         </div>
         <div className="setting-item">
           <label>
-            Position Broadcast Interval (seconds)
-            <span className="setting-description">How often the device broadcasts its position. Minimum: 32 seconds.</span>
+            {t('admin_commands.position_broadcast_interval')}
+            <span className="setting-description">{t('admin_commands.position_broadcast_interval_description')}</span>
           </label>
           <input
             type="number"
@@ -1899,8 +1901,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               style={{ width: 'auto', margin: 0, flexShrink: 0 }}
             />
             <div style={{ flex: 1 }}>
-              <div>Smart Position Broadcast</div>
-              <span className="setting-description">Only broadcast position when it changes significantly</span>
+              <div>{t('admin_commands.smart_position_broadcast')}</div>
+              <span className="setting-description">{t('admin_commands.smart_position_broadcast_description')}</span>
             </div>
           </label>
         </div>
@@ -1914,8 +1916,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               style={{ width: 'auto', margin: 0, flexShrink: 0 }}
             />
             <div style={{ flex: 1 }}>
-              <div>Fixed Position</div>
-              <span className="setting-description">Use a fixed position instead of GPS</span>
+              <div>{t('admin_commands.fixed_position')}</div>
+              <span className="setting-description">{t('admin_commands.fixed_position_description')}</span>
             </div>
           </label>
         </div>
@@ -1981,14 +1983,14 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             cursor: (isExecuting || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
           }}
         >
-          {isExecuting ? 'Saving...' : 'Save Position Config'}
+          {isExecuting ? t('common.saving') : t('admin_commands.save_position_config')}
         </button>
       </div>
 
       {/* MQTT Config Section */}
       <div className="settings-section">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', paddingBottom: '0.75rem', borderBottom: '2px solid var(--ctp-surface2)' }}>
-          <h3 style={{ margin: 0, borderBottom: 'none', paddingBottom: 0 }}>MQTT Configuration</h3>
+          <h3 style={{ margin: 0, borderBottom: 'none', paddingBottom: 0 }}>{t('admin_commands.mqtt_configuration')}</h3>
           <button
             onClick={handleLoadMQTTConfig}
             disabled={isLoadingMQTTConfig || selectedNodeNum === null}
@@ -1998,7 +2000,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               cursor: (isLoadingMQTTConfig || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
             }}
           >
-            {isLoadingMQTTConfig ? 'Loading...' : 'Load'}
+            {isLoadingMQTTConfig ? t('common.loading') : t('common.load')}
           </button>
         </div>
         <div className="setting-item">
@@ -2011,8 +2013,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               style={{ width: 'auto', margin: 0, flexShrink: 0 }}
             />
             <div style={{ flex: 1 }}>
-              <div>Enable MQTT</div>
-              <span className="setting-description">Enable MQTT broker connection</span>
+              <div>{t('admin_commands.enable_mqtt')}</div>
+              <span className="setting-description">{t('admin_commands.enable_mqtt_description')}</span>
             </div>
           </label>
         </div>
@@ -2020,8 +2022,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           <>
             <div className="setting-item">
               <label>
-                Server Address
-                <span className="setting-description">MQTT broker address (e.g., mqtt.meshtastic.org)</span>
+                {t('admin_commands.server_address')}
+                <span className="setting-description">{t('admin_commands.server_address_description')}</span>
               </label>
               <input
                 type="text"
@@ -2101,8 +2103,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                   style={{ width: 'auto', margin: 0, flexShrink: 0 }}
                 />
                 <div style={{ flex: 1 }}>
-                  <div>JSON Enabled</div>
-                  <span className="setting-description">Send messages in JSON format</span>
+                  <div>{t('admin_commands.json_enabled')}</div>
+                  <span className="setting-description">{t('admin_commands.json_enabled_description')}</span>
                 </div>
               </label>
             </div>
@@ -2117,14 +2119,14 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             cursor: (isExecuting || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
           }}
         >
-          {isExecuting ? 'Saving...' : 'Save MQTT Config'}
+          {isExecuting ? t('common.saving') : t('admin_commands.save_mqtt_config')}
         </button>
       </div>
 
       {/* Channel Config Section */}
       <div className="settings-section">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', paddingBottom: '0.75rem', borderBottom: '2px solid var(--ctp-surface2)' }}>
-          <h3 style={{ margin: 0, borderBottom: 'none', paddingBottom: 0 }}>Channel Configuration</h3>
+          <h3 style={{ margin: 0, borderBottom: 'none', paddingBottom: 0 }}>{t('admin_commands.channel_configuration')}</h3>
           <button
             onClick={handleLoadChannels}
             disabled={isLoadingChannels || selectedNodeNum === null}
@@ -2134,11 +2136,11 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               cursor: (isLoadingChannels || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
             }}
           >
-            {isLoadingChannels ? (channelLoadProgress || 'Loading channels...') : 'Load'}
+            {isLoadingChannels ? (channelLoadProgress || t('admin_commands.loading_channels')) : t('common.load')}
           </button>
         </div>
         <p className="setting-description" style={{ marginBottom: '1rem' }}>
-          Configure channels for the selected node. Each channel slot can be configured independently.
+          {t('admin_commands.channel_config_description')}
         </p>
 
         <div style={{ display: 'grid', gap: '1rem' }}>
@@ -2179,22 +2181,22 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
                   <div>
                     <h4 style={{ margin: 0, color: 'var(--ctp-text)' }}>
-                      Channel {index}: {channel ? (
+                      {t('admin_commands.channel_slot', { index })}: {channel ? (
                         <>
-                          {channel.name && channel.name.trim().length > 0 ? channel.name : <span style={{ color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>Unnamed</span>}
-                          {channel.role === 1 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-blue)', fontSize: '0.8rem' }}>★ Primary</span>}
-                          {channel.role === 2 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-green)', fontSize: '0.8rem' }}>● Secondary</span>}
-                          {channel.role === 0 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-overlay0)', fontSize: '0.8rem' }}>⊘ Disabled</span>}
+                          {channel.name && channel.name.trim().length > 0 ? channel.name : <span style={{ color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>{t('admin_commands.unnamed')}</span>}
+                          {channel.role === 1 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-blue)', fontSize: '0.8rem' }}>★ {t('admin_commands.primary')}</span>}
+                          {channel.role === 2 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-green)', fontSize: '0.8rem' }}>● {t('admin_commands.secondary')}</span>}
+                          {channel.role === 0 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-overlay0)', fontSize: '0.8rem' }}>⊘ {t('admin_commands.disabled')}</span>}
                         </>
-                      ) : <span style={{ color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>Empty</span>}
+                      ) : <span style={{ color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>{t('admin_commands.empty')}</span>}
                     </h4>
                     {channel && (
                       <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: 'var(--ctp-subtext1)' }}>
-                        <div>{channel.psk && channel.psk !== 'AQ==' ? '🔒 Encrypted' : '🔓 Unencrypted'}</div>
+                        <div>{channel.psk && channel.psk !== 'AQ==' ? `🔒 ${t('admin_commands.encrypted')}` : `🔓 ${t('admin_commands.unencrypted')}`}</div>
                         <div>
-                          {channel.uplinkEnabled ? '↑ Uplink ' : ''}
-                          {channel.downlinkEnabled ? '↓ Downlink' : ''}
-                          {!channel.uplinkEnabled && !channel.downlinkEnabled && 'No bridge'}
+                          {channel.uplinkEnabled ? `↑ ${t('admin_commands.uplink')} ` : ''}
+                          {channel.downlinkEnabled ? `↓ ${t('admin_commands.downlink')}` : ''}
+                          {!channel.uplinkEnabled && !channel.downlinkEnabled && t('admin_commands.no_bridge')}
                         </div>
                       </div>
                     )}
@@ -2214,7 +2216,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                         opacity: (isExecuting || selectedNodeNum === null) ? 0.5 : 1
                       }}
                     >
-                      ✏️ Edit
+                      ✏️ {t('common.edit')}
                     </button>
                     {channel && (
                       <button
@@ -2231,7 +2233,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                           opacity: (isExecuting || selectedNodeNum === null) ? 0.5 : 1
                         }}
                       >
-                        📥 Export
+                        📥 {t('common.export')}
                       </button>
                     )}
                     <button
@@ -2248,7 +2250,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                         opacity: (isExecuting || selectedNodeNum === null) ? 0.5 : 1
                       }}
                     >
-                      📤 Import
+                      📤 {t('common.import')}
                     </button>
                   </div>
                 </div>
@@ -2260,9 +2262,9 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
       {/* Import/Export Configuration Section */}
       <div className="settings-section" style={{ marginTop: '2rem', marginBottom: '2rem' }}>
-        <h3>Configuration Import/Export</h3>
+        <h3>{t('admin_commands.config_import_export')}</h3>
         <p style={{ color: 'var(--ctp-subtext0)', marginBottom: '1rem' }}>
-          Import or export channel configurations and device settings in Meshtastic URL format. These URLs are compatible with the official Meshtastic apps.
+          {t('admin_commands.config_import_export_description')}
         </p>
         <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
           <button
@@ -2280,12 +2282,12 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               opacity: (selectedNodeNum === null || isExecuting) ? 0.5 : 1
             }}
           >
-            📥 Import Configuration
+            📥 {t('admin_commands.import_configuration')}
           </button>
           <button
             onClick={async () => {
               if (selectedNodeNum === null) {
-                showToast('Please select a node', 'error');
+                showToast(t('admin_commands.please_select_node'), 'error');
                 return;
               }
 
@@ -2295,7 +2297,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               // For remote nodes, load channels and LoRa config before opening modal
               if (!isLocalNode) {
                 try {
-                  showToast('Loading remote node configuration...', 'info');
+                  showToast(t('admin_commands.loading_remote_config'), 'info');
                   
                   // Load channels and LoRa config in parallel
                   await Promise.all([
@@ -2303,9 +2305,9 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                     handleLoadLoRaConfig()
                   ]);
                   
-                  showToast('Configuration loaded successfully', 'success');
+                  showToast(t('admin_commands.config_loaded_success'), 'success');
                 } catch (error: any) {
-                  showToast(error.message || 'Failed to load configuration', 'error');
+                  showToast(error.message || t('admin_commands.failed_load_config'), 'error');
                   return; // Don't open modal if loading failed
                 }
               }
@@ -2326,23 +2328,23 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               opacity: (selectedNodeNum === null || isExecuting || isLoadingChannels || isLoadingLoRaConfig) ? 0.5 : 1
             }}
           >
-            {(isLoadingChannels || isLoadingLoRaConfig) ? 'Loading...' : '📤 Export Configuration'}
+            {(isLoadingChannels || isLoadingLoRaConfig) ? t('common.loading') : `📤 ${t('admin_commands.export_configuration')}`}
           </button>
         </div>
       </div>
 
       {/* Node Favorites & Ignored Section */}
       <div className="settings-section" style={{ marginTop: '2rem' }}>
-        <h3>Node Favorites & Ignored</h3>
+        <h3>{t('admin_commands.node_favorites_ignored')}</h3>
         <p style={{ color: 'var(--ctp-subtext0)', marginBottom: '1.5rem' }}>
-          Manage favorite and ignored nodes on the target device. Favorites are prioritized in the node list, while ignored nodes are hidden from normal operations.
+          {t('admin_commands.node_favorites_ignored_description')}
         </p>
         
         <div className="setting-item">
           <label>
-            Select Node
+            {t('admin_commands.select_node_to_manage')}
             <span className="setting-description">
-              Choose a node to manage its favorite or ignored status on the target device.
+              {t('admin_commands.select_node_to_manage_description')}
             </span>
           </label>
           <div ref={nodeManagementSearchRef} style={{ position: 'relative', width: '100%', maxWidth: '600px' }}>
@@ -2350,8 +2352,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               type="text"
               className="setting-input"
               placeholder={nodeManagementNodeNum !== null 
-                ? nodeOptions.find(n => n.nodeNum === nodeManagementNodeNum)?.longName || `Node ${nodeManagementNodeNum}`
-                : "Search for a node to manage..."}
+                ? nodeOptions.find(n => n.nodeNum === nodeManagementNodeNum)?.longName || t('admin_commands.node_fallback', { nodeNum: nodeManagementNodeNum })
+                : t('admin_commands.search_node_to_manage')}
               value={nodeManagementSearchQuery}
               onChange={(e) => {
                 setNodeManagementSearchQuery(e.target.value);
@@ -2399,7 +2401,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: '500', color: 'var(--ctp-text)', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                         <span>{node.longName}</span>
-                        {node.isLocal && <span style={{ color: 'var(--ctp-blue)', fontSize: '0.85rem' }}>(Local)</span>}
+                        {node.isLocal && <span style={{ color: 'var(--ctp-blue)', fontSize: '0.85rem' }}>({t('admin_commands.local_node_indicator')})</span>}
                         {node.isFavorite && (
                           <span style={{ 
                             backgroundColor: 'var(--ctp-yellow)', 
@@ -2409,7 +2411,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                             fontSize: '0.75rem',
                             fontWeight: '600'
                           }}>
-                            ⭐ Favorite
+                            ⭐ {t('admin_commands.favorite')}
                           </span>
                         )}
                         {node.isIgnored && (
@@ -2421,7 +2423,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                             fontSize: '0.75rem',
                             fontWeight: '600'
                           }}>
-                            🚫 Ignored
+                            🚫 {t('admin_commands.ignored')}
                           </span>
                         )}
                       </div>
@@ -2451,11 +2453,11 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               : (selectedNode?.isIgnored ?? false);   // Local: use local status
             return (
               <div style={{ marginTop: '0.75rem', fontSize: '0.875rem', color: 'var(--ctp-subtext0)' }}>
-                Selected: {selectedNode?.longName || `Node ${nodeManagementNodeNum}`}
+                {t('admin_commands.selected')}: {selectedNode?.longName || t('admin_commands.node_fallback', { nodeNum: nodeManagementNodeNum })}
                 {(isFavorite || isIgnored) && (
                   <span style={{ marginLeft: '0.5rem' }}>
-                    {isFavorite && <span style={{ color: 'var(--ctp-yellow)' }}>⭐ Favorite</span>}
-                    {isIgnored && <span style={{ color: 'var(--ctp-red)', marginLeft: '0.5rem' }}>🚫 Ignored</span>}
+                    {isFavorite && <span style={{ color: 'var(--ctp-yellow)' }}>⭐ {t('admin_commands.favorite')}</span>}
+                    {isIgnored && <span style={{ color: 'var(--ctp-red)', marginLeft: '0.5rem' }}>🚫 {t('admin_commands.ignored')}</span>}
                   </span>
                 )}
               </div>
@@ -2465,7 +2467,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '1.5rem' }}>
           <div style={{ flex: 1, minWidth: '200px' }}>
-            <h4 style={{ marginBottom: '0.75rem', color: 'var(--ctp-text)' }}>⭐ Favorites</h4>
+            <h4 style={{ marginBottom: '0.75rem', color: 'var(--ctp-text)' }}>⭐ {t('admin_commands.favorites')}</h4>
             {(() => {
               const selectedNode = nodeManagementNodeNum !== null ? nodeOptions.find(n => n.nodeNum === nodeManagementNodeNum) : null;
               // When managing a remote node, only use remote status (don't fall back to local status)
@@ -2494,7 +2496,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                       opacity: (isDisabled || isCurrentlyFavorite) ? 0.6 : 1
                     }}
                   >
-                    {isCurrentlyFavorite ? '✓ Already Favorite' : 'Set as Favorite'}
+                    {isCurrentlyFavorite ? t('admin_commands.already_favorite') : t('admin_commands.set_as_favorite')}
                   </button>
                   <button
                     onClick={handleRemoveFavoriteNode}
@@ -2512,14 +2514,14 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                       opacity: (isDisabled || !isCurrentlyFavorite) ? 0.6 : 1
                     }}
                   >
-                    Remove Favorite
+                    {t('admin_commands.remove_favorite')}
                   </button>
                 </div>
               );
             })()}
           </div>
           <div style={{ flex: 1, minWidth: '200px' }}>
-            <h4 style={{ marginBottom: '0.75rem', color: 'var(--ctp-text)' }}>🚫 Ignored</h4>
+            <h4 style={{ marginBottom: '0.75rem', color: 'var(--ctp-text)' }}>🚫 {t('admin_commands.ignored_nodes')}</h4>
             {(() => {
               const selectedNode = nodeManagementNodeNum !== null ? nodeOptions.find(n => n.nodeNum === nodeManagementNodeNum) : null;
               // When managing a remote node, only use remote status (don't fall back to local status)
@@ -2548,7 +2550,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                       opacity: (isDisabled || isCurrentlyIgnored) ? 0.6 : 1
                     }}
                   >
-                    {isCurrentlyIgnored ? '✓ Already Ignored' : 'Set as Ignored'}
+                    {isCurrentlyIgnored ? t('admin_commands.already_ignored') : t('admin_commands.set_as_ignored')}
                   </button>
                   <button
                     onClick={handleRemoveIgnoredNode}
@@ -2566,7 +2568,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                       opacity: (isDisabled || !isCurrentlyIgnored) ? 0.6 : 1
                     }}
                   >
-                    Remove Ignored
+                    {t('admin_commands.remove_ignored')}
                   </button>
                 </div>
               );
@@ -2574,7 +2576,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           </div>
         </div>
         <p style={{ marginTop: '1rem', fontSize: '0.85rem', color: 'var(--ctp-subtext1)', fontStyle: 'italic' }}>
-          Note: These commands require firmware version 2.7.0 or higher. The target device must be selected in the "Target Node" section above.
+          {t('admin_commands.firmware_requirement_note')}
         </p>
       </div>
 
@@ -2612,13 +2614,13 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             onClick={(e) => e.stopPropagation()}
           >
             <h3 style={{ marginTop: 0, marginBottom: '1.5rem', color: 'var(--ctp-text)' }}>
-              Edit Channel {editingChannelSlot}
+              {t('admin_commands.edit_channel', { slot: editingChannelSlot })}
             </h3>
             
             <div className="setting-item">
               <label>
-                Channel Name
-                <span className="setting-description">Channel name (max 11 characters, optional)</span>
+                {t('admin_commands.channel_name')}
+                <span className="setting-description">{t('admin_commands.channel_name_description')}</span>
               </label>
               <input
                 type="text"
@@ -2626,7 +2628,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                 value={channelName}
                 onChange={(e) => setChannelName(e.target.value)}
                 disabled={isExecuting}
-                placeholder="Channel name"
+                placeholder={t('admin_commands.channel_name_placeholder')}
                 className="setting-input"
                 style={{ width: '100%' }}
               />
@@ -2634,15 +2636,15 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
             <div className="setting-item">
               <label>
-                Pre-Shared Key (PSK)
-                <span className="setting-description">Base64-encoded PSK for channel encryption (leave empty for no encryption)</span>
+                {t('admin_commands.psk')}
+                <span className="setting-description">{t('admin_commands.psk_description')}</span>
               </label>
               <input
                 type="text"
                 value={channelPsk}
                 onChange={(e) => setChannelPsk(e.target.value)}
                 disabled={isExecuting}
-                placeholder="Base64 PSK"
+                placeholder={t('admin_commands.psk_placeholder')}
                 className="setting-input"
                 style={{ width: '100%' }}
               />
@@ -2650,8 +2652,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
             <div className="setting-item">
               <label>
-                Channel Role
-                <span className="setting-description">1 = Primary, 2 = Secondary, 0 = Disabled</span>
+                {t('admin_commands.channel_role')}
+                <span className="setting-description">{t('admin_commands.channel_role_description')}</span>
               </label>
               <select
                 value={channelRole}
@@ -2660,9 +2662,9 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                 className="setting-input"
                 style={{ width: '100%' }}
               >
-                <option value={1}>Primary</option>
-                <option value={2}>Secondary</option>
-                <option value={0}>Disabled</option>
+                <option value={1}>{t('admin_commands.primary')}</option>
+                <option value={2}>{t('admin_commands.secondary')}</option>
+                <option value={0}>{t('admin_commands.disabled')}</option>
               </select>
             </div>
 
@@ -2676,8 +2678,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                   style={{ width: 'auto', margin: 0, flexShrink: 0 }}
                 />
                 <div style={{ flex: 1 }}>
-                  <div>Uplink Enabled</div>
-                  <span className="setting-description">Allow sending messages on this channel</span>
+                  <div>{t('admin_commands.uplink_enabled')}</div>
+                  <span className="setting-description">{t('admin_commands.uplink_enabled_description')}</span>
                 </div>
               </label>
             </div>
@@ -2692,16 +2694,16 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                   style={{ width: 'auto', margin: 0, flexShrink: 0 }}
                 />
                 <div style={{ flex: 1 }}>
-                  <div>Downlink Enabled</div>
-                  <span className="setting-description">Allow receiving messages on this channel</span>
+                  <div>{t('admin_commands.downlink_enabled')}</div>
+                  <span className="setting-description">{t('admin_commands.downlink_enabled_description')}</span>
                 </div>
               </label>
             </div>
 
             <div className="setting-item">
               <label>
-                Position Precision
-                <span className="setting-description">Position precision bits (32 = full precision)</span>
+                {t('admin_commands.position_precision')}
+                <span className="setting-description">{t('admin_commands.position_precision_description')}</span>
               </label>
               <input
                 type="number"
@@ -2725,7 +2727,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                   cursor: (isExecuting || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
                 }}
               >
-                {isExecuting ? 'Saving...' : 'Save Channel'}
+                {isExecuting ? t('common.saving') : t('admin_commands.save_channel')}
               </button>
               <button
                 onClick={() => {
@@ -2744,7 +2746,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                   fontWeight: 'bold'
                 }}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
             </div>
           </div>
@@ -2780,12 +2782,12 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 style={{ marginTop: 0 }}>Import Channel {importSlotId}</h3>
+            <h3 style={{ marginTop: 0 }}>{t('admin_commands.import_channel', { slot: importSlotId })}</h3>
 
             <div className="setting-item">
               <label htmlFor="import-file">
-                Select JSON File
-                <span className="setting-description">Select a channel export file (.json) to import</span>
+                {t('admin_commands.select_json_file')}
+                <span className="setting-description">{t('admin_commands.select_json_file_description')}</span>
               </label>
               <input
                 ref={fileInputRef}
@@ -2803,7 +2805,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
             {importFileContent && (
               <div style={{ marginTop: '1rem' }}>
-                <label>Preview:</label>
+                <label>{t('admin_commands.preview')}:</label>
                 <pre
                   style={{
                     backgroundColor: 'var(--ctp-surface0)',
@@ -2834,7 +2836,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                   opacity: (isExecuting || !importFileContent) ? 0.6 : 1
                 }}
               >
-                {isExecuting ? 'Importing...' : 'Import Channel'}
+                {isExecuting ? t('admin_commands.importing') : t('admin_commands.import_channel_button')}
               </button>
               <button
                 onClick={() => setShowImportModal(false)}
@@ -2849,7 +2851,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                   cursor: isExecuting ? 'not-allowed' : 'pointer'
                 }}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
             </div>
           </div>
@@ -2860,17 +2862,17 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
       {/* Reboot and Purge Command Section - Moved to bottom, matching Device page style */}
       <div className="settings-section danger-zone" style={{ marginTop: '2rem', marginBottom: '2rem' }}>
-        <h2 style={{ color: '#ff4444', marginTop: 0 }}>⚠️ WARNING</h2>
+        <h2 style={{ color: '#ff4444', marginTop: 0 }}>⚠️ {t('admin_commands.warning')}</h2>
         <p style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>
-          Modifying these settings can break your Meshtastic node configuration.
+          {t('admin_commands.warning_message')}
         </p>
         <p>
-          These settings directly modify the configuration of your target Meshtastic device. Incorrect settings may cause communication issues, network problems, or require a factory reset. Only modify these settings if you understand what you are doing.
+          {t('admin_commands.warning_description')}
         </p>
         <div style={{ marginTop: '1.5rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--ctp-text)' }}>
-              Reboot Delay (seconds):
+              {t('admin_commands.reboot_delay_label')}:
               <input
                 type="number"
                 min="0"
@@ -2897,7 +2899,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                 opacity: (isExecuting || selectedNodeNum === null) ? 0.6 : 1
               }}
             >
-              🔄 Reboot Device
+              🔄 {t('admin_commands.reboot_device')}
             </button>
           </div>
           <button
@@ -2915,7 +2917,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               opacity: (isExecuting || selectedNodeNum === null) ? 0.6 : 1
             }}
           >
-            🗑️ Purge Node Database
+            🗑️ {t('admin_commands.purge_node_database')}
           </button>
         </div>
       </div>
@@ -2926,7 +2928,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           isOpen={showConfigImportModal}
           onClose={() => setShowConfigImportModal(false)}
           onImportSuccess={async () => {
-            showToast('Configuration imported successfully', 'success');
+            showToast(t('admin_commands.configuration_imported_success'), 'success');
             setShowConfigImportModal(false);
             // Refresh channels if local node
             const localNodeNum = nodeOptions.find(n => n.isLocal)?.nodeNum;
