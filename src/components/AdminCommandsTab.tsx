@@ -6,6 +6,7 @@ import { ROLE_OPTIONS, MODEM_PRESET_OPTIONS, REGION_OPTIONS } from './configurat
 import type { Channel } from '../types/device';
 import { ImportConfigModal } from './configuration/ImportConfigModal';
 import { ExportConfigModal } from './configuration/ExportConfigModal';
+import SectionNav from './SectionNav';
 
 interface AdminCommandsTabProps {
   nodes: any[];
@@ -1371,9 +1372,20 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
   return (
     <div className="tab-content">
-      
+      <SectionNav items={[
+        { id: 'admin-target-node', label: t('admin_commands.target_node', 'Target Node') },
+        { id: 'admin-set-owner', label: t('admin_commands.set_owner', 'Set Owner') },
+        { id: 'admin-device-config', label: t('admin_commands.device_configuration', 'Device Config') },
+        { id: 'admin-lora-config', label: t('admin_commands.lora_configuration', 'LoRa Config') },
+        { id: 'admin-position-config', label: t('admin_commands.position_configuration', 'Position') },
+        { id: 'admin-mqtt-config', label: t('admin_commands.mqtt_configuration', 'MQTT') },
+        { id: 'admin-channel-config', label: t('admin_commands.channel_configuration', 'Channels') },
+        { id: 'admin-import-export', label: t('admin_commands.config_import_export', 'Import/Export') },
+        { id: 'admin-node-management', label: t('admin_commands.node_favorites_ignored', 'Node Management') },
+      ]} />
+
       {/* Node Selection Section */}
-      <div className="settings-section">
+      <div id="admin-target-node" className="settings-section">
         <h3>{t('admin_commands.target_node')}</h3>
         <div className="setting-item">
           <label>
@@ -1458,7 +1470,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
       <div className="settings-content">
       {/* Set Owner Command Section */}
-      <div className="settings-section">
+      <div id="admin-set-owner" className="settings-section">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', paddingBottom: '0.75rem', borderBottom: '2px solid var(--ctp-surface2)' }}>
           <h3 style={{ margin: 0, borderBottom: 'none', paddingBottom: 0 }}>{t('admin_commands.set_owner')}</h3>
           <button
@@ -1535,7 +1547,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       </div>
 
       {/* Device Config Section */}
-      <div className="settings-section">
+      <div id="admin-device-config" className="settings-section">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', paddingBottom: '0.75rem', borderBottom: '2px solid var(--ctp-surface2)' }}>
           <h3 style={{ margin: 0, borderBottom: 'none', paddingBottom: 0 }}>{t('admin_commands.device_configuration')}</h3>
           <button
@@ -1672,7 +1684,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       </div>
 
       {/* LoRa Config Section */}
-      <div className="settings-section">
+      <div id="admin-lora-config" className="settings-section">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', paddingBottom: '0.75rem', borderBottom: '2px solid var(--ctp-surface2)' }}>
           <h3 style={{ margin: 0, borderBottom: 'none', paddingBottom: 0 }}>{t('admin_commands.lora_configuration')}</h3>
           <button
@@ -1860,7 +1872,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       </div>
 
       {/* Position Config Section */}
-      <div className="settings-section">
+      <div id="admin-position-config" className="settings-section">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', paddingBottom: '0.75rem', borderBottom: '2px solid var(--ctp-surface2)' }}>
           <h3 style={{ margin: 0, borderBottom: 'none', paddingBottom: 0 }}>{t('admin_commands.position_configuration')}</h3>
           <button
@@ -1988,7 +2000,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       </div>
 
       {/* MQTT Config Section */}
-      <div className="settings-section">
+      <div id="admin-mqtt-config" className="settings-section">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', paddingBottom: '0.75rem', borderBottom: '2px solid var(--ctp-surface2)' }}>
           <h3 style={{ margin: 0, borderBottom: 'none', paddingBottom: 0 }}>{t('admin_commands.mqtt_configuration')}</h3>
           <button
@@ -2124,7 +2136,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       </div>
 
       {/* Channel Config Section */}
-      <div className="settings-section">
+      <div id="admin-channel-config" className="settings-section">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', paddingBottom: '0.75rem', borderBottom: '2px solid var(--ctp-surface2)' }}>
           <h3 style={{ margin: 0, borderBottom: 'none', paddingBottom: 0 }}>{t('admin_commands.channel_configuration')}</h3>
           <button
@@ -2261,7 +2273,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       </div>
 
       {/* Import/Export Configuration Section */}
-      <div className="settings-section" style={{ marginTop: '2rem', marginBottom: '2rem' }}>
+      <div id="admin-import-export" className="settings-section" style={{ marginTop: '2rem', marginBottom: '2rem' }}>
         <h3>{t('admin_commands.config_import_export')}</h3>
         <p style={{ color: 'var(--ctp-subtext0)', marginBottom: '1rem' }}>
           {t('admin_commands.config_import_export_description')}
@@ -2334,7 +2346,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       </div>
 
       {/* Node Favorites & Ignored Section */}
-      <div className="settings-section" style={{ marginTop: '2rem' }}>
+      <div id="admin-node-management" className="settings-section" style={{ marginTop: '2rem' }}>
         <h3>{t('admin_commands.node_favorites_ignored')}</h3>
         <p style={{ color: 'var(--ctp-subtext0)', marginBottom: '1.5rem' }}>
           {t('admin_commands.node_favorites_ignored_description')}
