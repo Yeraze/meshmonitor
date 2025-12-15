@@ -59,6 +59,13 @@ jobs:
           mkdir -p binaries
           curl -L -o binaries/node-x86_64-pc-windows-msvc.exe https://nodejs.org/dist/v20.11.1/win-x64/node.exe
 
+      - name: Copy server files to desktop resources
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path desktop/resources/server
+          Copy-Item -Path dist/server/* -Destination desktop/resources/server -Recurse
+          Copy-Item -Path node_modules -Destination desktop/resources/server/node_modules -Recurse
+
       - name: Run Rust linting
         working-directory: desktop/src-tauri
         run: cargo clippy --all-targets --all-features -- -D warnings
@@ -105,11 +112,12 @@ jobs:
         working-directory: desktop/src-tauri
         run: cargo fmt --all -- --check
 
-      - name: Create placeholder binary for Clippy
-        working-directory: desktop/src-tauri
+      - name: Create placeholder files for Clippy
         run: |
-          mkdir -p binaries
-          touch binaries/node-x86_64-unknown-linux-gnu
+          mkdir -p desktop/src-tauri/binaries
+          touch desktop/src-tauri/binaries/node-x86_64-unknown-linux-gnu
+          mkdir -p desktop/resources
+          touch desktop/resources/.placeholder
 
       - name: Run Clippy
         working-directory: desktop/src-tauri
