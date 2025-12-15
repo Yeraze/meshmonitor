@@ -1,0 +1,35 @@
+[package]
+name = "meshmonitor-desktop"
+version = "0.1.0"
+description = "MeshMonitor Desktop - System tray application for Meshtastic monitoring"
+authors = ["MeshMonitor Contributors"]
+edition = "2021"
+license = "BSD-3-Clause"
+repository = "https://github.com/yeraze/meshmonitor"
+
+[lib]
+name = "meshmonitor_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-shell = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-fs = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dirs = "5"
+uuid = { version = "1", features = ["v4"] }
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-single-instance = "2"
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

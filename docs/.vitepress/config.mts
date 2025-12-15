@@ -56,6 +56,7 @@ export default defineConfig({
           text: 'Configuration',
           items: [
             { text: 'Overview', link: '/configuration/' },
+            { text: '🖥️ Desktop App', link: '/configuration/desktop' },
             { text: '⚡ Docker Compose Configurator', link: '/configurator' },
             { text: 'Using meshtasticd', link: '/configuration/meshtasticd' },
             { text: 'BLE Bridge', link: '/configuration/ble-bridge' },
