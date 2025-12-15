@@ -53,6 +53,12 @@ jobs:
         working-directory: desktop
         run: npm install
 
+      - name: Download Node.js binary for bundling
+        working-directory: desktop/src-tauri
+        run: |
+          mkdir -p binaries
+          curl -L -o binaries/node-x86_64-pc-windows-msvc.exe https://nodejs.org/dist/v20.11.1/win-x64/node.exe
+
       - name: Run Rust linting
         working-directory: desktop/src-tauri
         run: cargo clippy --all-targets --all-features -- -D warnings
@@ -98,6 +104,12 @@ jobs:
       - name: Check Rust formatting
         working-directory: desktop/src-tauri
         run: cargo fmt --all -- --check
+
+      - name: Create placeholder binary for Clippy
+        working-directory: desktop/src-tauri
+        run: |
+          mkdir -p binaries
+          touch binaries/node-x86_64-unknown-linux-gnu
 
       - name: Run Clippy
         working-directory: desktop/src-tauri
