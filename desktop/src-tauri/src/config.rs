@@ -112,8 +112,8 @@ pub fn get_logs_path() -> Result<PathBuf, String> {
 
 /// Generate a random session secret
 fn generate_secret() -> String {
-    uuid::Uuid::new_v4().to_string().replace("-", "") +
-    &uuid::Uuid::new_v4().to_string().replace("-", "")
+    uuid::Uuid::new_v4().to_string().replace("-", "")
+        + &uuid::Uuid::new_v4().to_string().replace("-", "")
 }
 
 #[cfg(test)]
