@@ -64,6 +64,7 @@ jobs:
         run: |
           mkdir desktop\resources
           mkdir desktop\resources\server
+          echo. > desktop\resources\.placeholder
           xcopy /E /I /Y dist\server desktop\resources\server
           robocopy node_modules desktop\resources\server\node_modules /E /NFL /NDL /NJH /NJS /NC /NS /NP
           if %ERRORLEVEL% leq 7 exit /b 0
