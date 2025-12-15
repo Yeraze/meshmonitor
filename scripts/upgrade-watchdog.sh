@@ -358,8 +358,6 @@ wait_for_health() {
     health_path="${base_url}/api/health"
   fi
 
-  log "Health endpoint: http://$CONTAINER_NAME:3001${health_path}"
-
   while [ $elapsed -lt $max_wait ]; do
     # Check if container is running
     if ! docker ps --filter "name=$CONTAINER_NAME" --filter "status=running" | grep -q "$CONTAINER_NAME"; then
@@ -369,11 +367,31 @@ wait_for_health() {
       continue
     fi
 
-    # Try to check health endpoint using container name
-    # The upgrader runs in a separate container, so localhost won't work
-    # Use the container name instead to reach the main meshmonitor container
-    if wget -q -O /dev/null --timeout=5 "http://$CONTAINER_NAME:3001${health_path}" 2>/dev/null || \
-       curl -sf "http://$CONTAINER_NAME:3001${health_path}" >/dev/null 2>&1; then
+    # Get container IP directly from Docker inspect - more reliable than DNS after recreation
+    # Try multiple networks as the container might be on different networks
+    local container_ip=""
+    container_ip=$(docker inspect --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$CONTAINER_NAME" 2>/dev/null | head -n1)
+
+    # If no IP yet, wait for container to get network assigned
+    if [ -z "$container_ip" ]; then
+      log_warn "Container has no IP assigned yet..."
+      sleep 5
+      elapsed=$((elapsed + 5))
+      continue
+    fi
+
+    local health_url="http://${container_ip}:3001${health_path}"
+
+    # Only log URL on first attempt or if it changed
+    if [ "$elapsed" -eq 0 ] || [ -z "$last_health_url" ] || [ "$health_url" != "$last_health_url" ]; then
+      log "Health endpoint: $health_url"
+      last_health_url="$health_url"
+    fi
+
+    # Try to check health endpoint using container IP directly
+    # This is more reliable than container name DNS after recreation
+    if wget -q -O /dev/null --timeout=5 "$health_url" 2>/dev/null || \
+       curl -sf "$health_url" >/dev/null 2>&1; then
       log_success "Health check passed"
       return 0
     fi
