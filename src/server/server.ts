@@ -3922,6 +3922,7 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
       'autoResponderEnabled',
       'autoResponderTriggers',
       'autoResponderSkipIncompleteNodes',
+      'timerTriggers',
       'preferredSortField',
       'preferredSortDirection',
       'timeFormat',
@@ -4054,6 +4055,51 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
       }
     }
 
+    // Validate timerTriggers JSON
+    if ('timerTriggers' in filteredSettings) {
+      try {
+        const triggers = JSON.parse(filteredSettings.timerTriggers);
+
+        // Validate that it's an array
+        if (!Array.isArray(triggers)) {
+          return res.status(400).json({ error: 'timerTriggers must be an array' });
+        }
+
+        // Validate each timer trigger
+        for (const trigger of triggers) {
+          if (!trigger.id || !trigger.name || !trigger.cronExpression || !trigger.scriptPath) {
+            return res
+              .status(400)
+              .json({ error: 'Each timer trigger must have id, name, cronExpression, and scriptPath fields' });
+          }
+
+          // Validate cron expression format (basic validation - detailed validation happens in scheduler)
+          if (typeof trigger.cronExpression !== 'string' || trigger.cronExpression.trim().length === 0) {
+            return res.status(400).json({ error: 'cronExpression must be a non-empty string' });
+          }
+
+          // Validate enabled is boolean
+          if (trigger.enabled !== undefined && typeof trigger.enabled !== 'boolean') {
+            return res.status(400).json({ error: 'enabled must be a boolean' });
+          }
+
+          // Validate script paths
+          if (!trigger.scriptPath.startsWith('/data/scripts/')) {
+            return res.status(400).json({ error: 'Timer script path must start with /data/scripts/' });
+          }
+          if (trigger.scriptPath.includes('..')) {
+            return res.status(400).json({ error: 'Timer script path cannot contain ..' });
+          }
+          const ext = trigger.scriptPath.split('.').pop()?.toLowerCase();
+          if (!ext || !['js', 'mjs', 'py', 'sh'].includes(ext)) {
+            return res.status(400).json({ error: 'Timer script must have .js, .mjs, .py, or .sh extension' });
+          }
+        }
+      } catch (error) {
+        return res.status(400).json({ error: 'Invalid JSON format for timerTriggers' });
+      }
+    }
+
     // Validate customTilesets JSON
     if ('customTilesets' in filteredSettings) {
       try {
@@ -4157,6 +4203,11 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
     const announceSettingsChanged = announceSettings.some(key => key in filteredSettings);
     if (announceSettingsChanged) {
       meshtasticManager.restartAnnounceScheduler();
+    }
+
+    // Restart timer scheduler if timer triggers changed
+    if ('timerTriggers' in filteredSettings) {
+      meshtasticManager.restartTimerScheduler();
     }
 
     // Audit log with before/after values
