@@ -60,11 +60,12 @@ jobs:
           curl -L -o binaries/node-x86_64-pc-windows-msvc.exe https://nodejs.org/dist/v20.11.1/win-x64/node.exe
 
       - name: Copy server files to desktop resources
-        shell: pwsh
+        shell: cmd
         run: |
-          New-Item -ItemType Directory -Force -Path desktop/resources/server
-          Copy-Item -Path dist/server/* -Destination desktop/resources/server -Recurse
-          Copy-Item -Path node_modules -Destination desktop/resources/server/node_modules -Recurse
+          mkdir desktop\resources\server
+          xcopy /E /I /Y dist\server desktop\resources\server
+          robocopy node_modules desktop\resources\server\node_modules /E /NFL /NDL /NJH /NJS /NC /NS /NP
+          if %ERRORLEVEL% leq 7 exit /b 0
 
       - name: Run Rust linting
         working-directory: desktop/src-tauri
