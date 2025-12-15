@@ -501,7 +501,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     const now = Date.now();
     const newTileset: CustomTileset = {
       ...tileset,
-      id: `custom-${crypto.randomUUID()}`,
+      id: `custom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       createdAt: now,
       updatedAt: now
     };

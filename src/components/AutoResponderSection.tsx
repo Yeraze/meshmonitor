@@ -112,7 +112,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
     setIsImporting(true);
     try {
       const fileContent = await file.arrayBuffer();
-      const response = await csrfFetch('/api/scripts/import', {
+      const response = await csrfFetch(`${baseUrl}/api/scripts/import`, {
         method: 'POST',
         headers: {
           'x-filename': file.name,
@@ -148,7 +148,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
 
     setIsExporting(true);
     try {
-      const response = await csrfFetch('/api/scripts/export', {
+      const response = await csrfFetch(`${baseUrl}/api/scripts/export`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ scripts: scriptsToExport })
@@ -182,7 +182,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
   const handleDeleteScript = async (filename: string) => {
     setIsDeleting(filename);
     try {
-      const response = await csrfFetch(`/api/scripts/${encodeURIComponent(filename)}`, {
+      const response = await csrfFetch(`${baseUrl}/api/scripts/${encodeURIComponent(filename)}`, {
         method: 'DELETE'
       });
 

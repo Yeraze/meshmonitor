@@ -120,7 +120,7 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
     }
 
     const newTrigger: TimerTrigger = {
-      id: crypto.randomUUID(),
+      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       name: newName.trim(),
       cronExpression: newCronExpression.trim(),
       scriptPath: newScriptPath,
