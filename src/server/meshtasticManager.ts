@@ -676,6 +676,7 @@ class MeshtasticManager {
       name: string;
       cronExpression: string;
       scriptPath: string;
+      channel?: number; // Channel index (0-7) to send script output to
       enabled: boolean;
       lastRun?: number;
       lastResult?: 'success' | 'error';
@@ -705,7 +706,7 @@ class MeshtasticManager {
       // Schedule the cron job
       const job = cron.schedule(trigger.cronExpression, async () => {
         logger.info(`⏱️ Timer "${trigger.name}" triggered (cron: ${trigger.cronExpression})`);
-        await this.executeTimerScript(trigger.id, trigger.name, trigger.scriptPath);
+        await this.executeTimerScript(trigger.id, trigger.name, trigger.scriptPath, trigger.channel ?? 0);
       });
 
       this.timerCronJobs.set(trigger.id, job);
@@ -724,9 +725,9 @@ class MeshtasticManager {
   }
 
   /**
-   * Execute a timer trigger script
+   * Execute a timer trigger script and send output to specified channel
    */
-  private async executeTimerScript(triggerId: string, triggerName: string, scriptPath: string): Promise<void> {
+  private async executeTimerScript(triggerId: string, triggerName: string, scriptPath: string, channel: number): Promise<void> {
     const startTime = Date.now();
 
     // Validate script path
@@ -812,9 +813,60 @@ class MeshtasticManager {
       const duration = Date.now() - startTime;
       logger.info(`⏱️ Timer "${triggerName}" completed successfully in ${duration}ms`);
 
-      // Log stdout if present (for debugging)
-      if (stdout) {
+      // Parse JSON output and send messages to channel
+      if (stdout && stdout.trim()) {
         logger.debug(`⏱️ Timer script stdout: ${stdout.substring(0, 200)}${stdout.length > 200 ? '...' : ''}`);
+
+        // Try to parse as JSON (same format as Auto-Responder scripts)
+        let scriptOutput;
+        try {
+          scriptOutput = JSON.parse(stdout.trim());
+        } catch (parseError) {
+          logger.debug(`⏱️ Timer script output is not JSON, ignoring: ${stdout.substring(0, 100)}`);
+          this.updateTimerTriggerResult(triggerId, 'success');
+          return;
+        }
+
+        // Support both single response and multiple responses
+        let scriptResponses: string[];
+        if (scriptOutput.responses && Array.isArray(scriptOutput.responses)) {
+          // Multiple responses format: { "responses": ["msg1", "msg2", "msg3"] }
+          scriptResponses = scriptOutput.responses.filter((r: any) => typeof r === 'string');
+          if (scriptResponses.length === 0) {
+            logger.warn(`⏱️ Timer script 'responses' array contains no valid strings`);
+            this.updateTimerTriggerResult(triggerId, 'success');
+            return;
+          }
+          logger.debug(`⏱️ Timer script returned ${scriptResponses.length} responses`);
+        } else if (scriptOutput.response && typeof scriptOutput.response === 'string') {
+          // Single response format: { "response": "msg" }
+          scriptResponses = [scriptOutput.response];
+          logger.debug(`⏱️ Timer script response: ${scriptOutput.response.substring(0, 50)}...`);
+        } else {
+          logger.debug(`⏱️ Timer script output has no 'response' or 'responses' field, ignoring`);
+          this.updateTimerTriggerResult(triggerId, 'success');
+          return;
+        }
+
+        // Send each response to the specified channel
+        logger.info(`⏱️ Enqueueing ${scriptResponses.length} timer response(s) to channel ${channel}`);
+
+        scriptResponses.forEach((resp, index) => {
+          const truncated = this.truncateMessageForMeshtastic(resp, 200);
+
+          messageQueueService.enqueue(
+            truncated,
+            0, // destination: 0 for channel broadcast
+            undefined, // no reply-to packet ID for timer messages
+            () => {
+              logger.info(`✅ Timer response ${index + 1}/${scriptResponses.length} delivered to channel ${channel}`);
+            },
+            (reason: string) => {
+              logger.warn(`❌ Timer response ${index + 1}/${scriptResponses.length} failed to channel ${channel}: ${reason}`);
+            },
+            channel // channel number
+          );
+        });
       }
 
       this.updateTimerTriggerResult(triggerId, 'success');

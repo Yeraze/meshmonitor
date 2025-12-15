@@ -5,15 +5,18 @@ import { TimerTrigger } from './auto-responder/types';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { getFileIcon } from './auto-responder/utils';
+import { Channel } from '../types/device';
 
 interface TimerTriggersSectionProps {
   triggers: TimerTrigger[];
+  channels: Channel[];
   baseUrl: string;
   onTriggersChange: (triggers: TimerTrigger[]) => void;
 }
 
 const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
   triggers,
+  channels,
   baseUrl,
   onTriggersChange,
 }) => {
@@ -31,6 +34,7 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
   const [newName, setNewName] = useState('');
   const [newCronExpression, setNewCronExpression] = useState('0 */6 * * *');
   const [newScriptPath, setNewScriptPath] = useState('');
+  const [newChannel, setNewChannel] = useState<number>(0);
   const [cronError, setCronError] = useState<string | null>(null);
 
   // Update local state when props change
@@ -120,6 +124,7 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
       name: newName.trim(),
       cronExpression: newCronExpression.trim(),
       scriptPath: newScriptPath,
+      channel: newChannel,
       enabled: true,
     };
 
@@ -127,6 +132,7 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
     setNewName('');
     setNewCronExpression('0 */6 * * *');
     setNewScriptPath('');
+    setNewChannel(0);
     showToast(t('automation.timer_triggers.added', 'Timer trigger added'), 'success');
   };
 
@@ -256,6 +262,27 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
               </select>
             </div>
 
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <label style={{ minWidth: '120px', fontSize: '0.9rem' }}>
+                {t('automation.timer_triggers.channel', 'Channel:')}
+              </label>
+              <select
+                value={newChannel}
+                onChange={(e) => setNewChannel(Number(e.target.value))}
+                className="setting-input"
+                style={{ flex: 1 }}
+              >
+                {channels.map((channel) => (
+                  <option key={channel.id} value={channel.id}>
+                    Channel {channel.id}: {channel.name}
+                  </option>
+                ))}
+              </select>
+              <div style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
+                {t('automation.timer_triggers.channel_help', 'Script output will be sent to this channel')}
+              </div>
+            </div>
+
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
               <button
                 onClick={handleAddTrigger}
@@ -285,6 +312,7 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
                 trigger={trigger}
                 isEditing={editingId === trigger.id}
                 availableScripts={availableScripts}
+                channels={channels}
                 onStartEdit={() => setEditingId(trigger.id)}
                 onCancelEdit={() => setEditingId(null)}
                 onSaveEdit={(updates) => {
@@ -348,6 +376,7 @@ interface TimerTriggerItemProps {
   trigger: TimerTrigger;
   isEditing: boolean;
   availableScripts: string[];
+  channels: Channel[];
   onStartEdit: () => void;
   onCancelEdit: () => void;
   onSaveEdit: (updates: Partial<TimerTrigger>) => void;
@@ -361,6 +390,7 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
   trigger,
   isEditing,
   availableScripts,
+  channels,
   onStartEdit,
   onCancelEdit,
   onSaveEdit,
@@ -372,6 +402,7 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
   const [editName, setEditName] = useState(trigger.name);
   const [editCronExpression, setEditCronExpression] = useState(trigger.cronExpression);
   const [editScriptPath, setEditScriptPath] = useState(trigger.scriptPath);
+  const [editChannel, setEditChannel] = useState(trigger.channel ?? 0);
   const [editCronError, setEditCronError] = useState<string | null>(null);
   const [showRemoveModal, setShowRemoveModal] = useState(false);
 
@@ -380,6 +411,7 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
       setEditName(trigger.name);
       setEditCronExpression(trigger.cronExpression);
       setEditScriptPath(trigger.scriptPath);
+      setEditChannel(trigger.channel ?? 0);
     }
   }, [isEditing, trigger]);
 
@@ -399,6 +431,7 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
       name: editName.trim(),
       cronExpression: editCronExpression.trim(),
       scriptPath: editScriptPath,
+      channel: editChannel,
     });
   };
 
@@ -472,6 +505,21 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
                 })}
               </select>
             </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold' }}>Channel:</label>
+              <select
+                value={editChannel}
+                onChange={(e) => setEditChannel(Number(e.target.value))}
+                className="setting-input"
+                style={{ flex: 1 }}
+              >
+                {channels.map((channel) => (
+                  <option key={channel.id} value={channel.id}>
+                    Channel {channel.id}: {channel.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
             <button
@@ -514,7 +562,7 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
               {trigger.cronExpression}
             </div>
             <div style={{ fontSize: '0.8rem', color: 'var(--ctp-subtext0)', marginTop: '0.25rem' }}>
-              {getFileIcon(filename)} {filename}
+              {getFileIcon(filename)} {filename} → Ch {trigger.channel ?? 0}: {channels.find(c => c.id === (trigger.channel ?? 0))?.name || `Channel ${trigger.channel ?? 0}`}
             </div>
             {trigger.lastRun && (
               <div style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)', marginTop: '0.25rem' }}>

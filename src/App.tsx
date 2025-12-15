@@ -4348,6 +4348,7 @@ function App() {
               />
               <TimerTriggersSection
                 triggers={timerTriggers}
+                channels={channels}
                 baseUrl={baseUrl}
                 onTriggersChange={setTimerTriggers}
               />
