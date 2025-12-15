@@ -1807,6 +1807,7 @@
   "automation.auto_traceroute.search_nodes": "Search nodes...",
   "automation.auto_traceroute.no_nodes_match": "No nodes match your search",
   "automation.auto_traceroute.no_nodes_available": "No nodes available",
+  "automation.auto_traceroute.no_nodes_match_filters": "No nodes match current filters",
   "automation.auto_traceroute.selected_count": "Selected: {{count}} node(s)",
   "automation.auto_traceroute.all_nodes_eligible": "All nodes eligible when none selected",
   "automation.auto_traceroute.settings_saved_restart": "Settings saved! Container restart required for changes to take effect.",
