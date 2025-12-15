@@ -62,6 +62,7 @@ jobs:
       - name: Copy server files to desktop resources
         shell: cmd
         run: |
+          mkdir desktop\resources
           mkdir desktop\resources\server
           xcopy /E /I /Y dist\server desktop\resources\server
           robocopy node_modules desktop\resources\server\node_modules /E /NFL /NDL /NJH /NJS /NC /NS /NP
