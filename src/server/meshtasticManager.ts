@@ -80,6 +80,7 @@ class MeshtasticManager {
   private localStatsIntervalMinutes: number = 5;  // Default 5 minutes
   private announceInterval: NodeJS.Timeout | null = null;
   private announceCronJob: cron.ScheduledTask | null = null;
+  private timerCronJobs: Map<string, cron.ScheduledTask> = new Map();
   private serverStartTime: number = Date.now();
   private localNodeInfo: {
     nodeNum: number;
@@ -285,6 +286,9 @@ class MeshtasticManager {
 
         // Start automatic announcement scheduler
         this.startAnnounceScheduler();
+
+        // Start timer trigger scheduler
+        this.startTimerScheduler();
 
         logger.debug(`✅ Configuration complete: ${databaseService.getNodeCount()} nodes, ${databaseService.getChannelCount()} channels`);
       }, 5000);
@@ -646,6 +650,260 @@ class MeshtasticManager {
 
     if (this.isConnected) {
       this.startAnnounceScheduler();
+    }
+  }
+
+  /**
+   * Start timer trigger schedulers based on saved settings
+   */
+  private startTimerScheduler(): void {
+    // Stop all existing timer cron jobs
+    this.timerCronJobs.forEach((job, id) => {
+      job.stop();
+      logger.debug(`⏱️ Stopped timer cron job: ${id}`);
+    });
+    this.timerCronJobs.clear();
+
+    // Load timer triggers from settings
+    const timerTriggersJson = databaseService.getSetting('timerTriggers');
+    if (!timerTriggersJson) {
+      logger.debug('⏱️ No timer triggers configured');
+      return;
+    }
+
+    let timerTriggers: Array<{
+      id: string;
+      name: string;
+      cronExpression: string;
+      scriptPath: string;
+      channel?: number; // Channel index (0-7) to send script output to
+      enabled: boolean;
+      lastRun?: number;
+      lastResult?: 'success' | 'error';
+      lastError?: string;
+    }>;
+
+    try {
+      timerTriggers = JSON.parse(timerTriggersJson);
+    } catch (e) {
+      logger.error('⏱️ Failed to parse timerTriggers setting:', e);
+      return;
+    }
+
+    // Schedule each enabled timer
+    for (const trigger of timerTriggers) {
+      if (!trigger.enabled) {
+        logger.debug(`⏱️ Timer "${trigger.name}" is disabled, skipping`);
+        continue;
+      }
+
+      // Validate cron expression
+      if (!cron.validate(trigger.cronExpression)) {
+        logger.error(`⏱️ Invalid cron expression for timer "${trigger.name}": ${trigger.cronExpression}`);
+        continue;
+      }
+
+      // Schedule the cron job
+      const job = cron.schedule(trigger.cronExpression, async () => {
+        logger.info(`⏱️ Timer "${trigger.name}" triggered (cron: ${trigger.cronExpression})`);
+        await this.executeTimerScript(trigger.id, trigger.name, trigger.scriptPath, trigger.channel ?? 0);
+      });
+
+      this.timerCronJobs.set(trigger.id, job);
+      logger.info(`⏱️ Scheduled timer "${trigger.name}" with cron: ${trigger.cronExpression}`);
+    }
+
+    logger.info(`⏱️ Timer scheduler started with ${this.timerCronJobs.size} active timer(s)`);
+  }
+
+  /**
+   * Restart timer scheduler (called when settings change)
+   */
+  restartTimerScheduler(): void {
+    logger.debug('⏱️ Restarting timer scheduler due to settings change');
+    this.startTimerScheduler();
+  }
+
+  /**
+   * Execute a timer trigger script and send output to specified channel
+   */
+  private async executeTimerScript(triggerId: string, triggerName: string, scriptPath: string, channel: number): Promise<void> {
+    const startTime = Date.now();
+
+    // Validate script path
+    if (!scriptPath.startsWith('/data/scripts/') || scriptPath.includes('..')) {
+      logger.error(`⏱️ Invalid script path for timer "${triggerName}": ${scriptPath}`);
+      this.updateTimerTriggerResult(triggerId, 'error', 'Invalid script path');
+      return;
+    }
+
+    // Resolve script path
+    const resolvedPath = this.resolveScriptPath(scriptPath);
+    if (!resolvedPath) {
+      logger.error(`⏱️ Failed to resolve script path for timer "${triggerName}": ${scriptPath}`);
+      this.updateTimerTriggerResult(triggerId, 'error', 'Failed to resolve script path');
+      return;
+    }
+
+    // Check if file exists
+    if (!fs.existsSync(resolvedPath)) {
+      logger.error(`⏱️ Script file not found for timer "${triggerName}": ${resolvedPath}`);
+      this.updateTimerTriggerResult(triggerId, 'error', 'Script file not found');
+      return;
+    }
+
+    logger.info(`⏱️ Executing timer script: ${scriptPath} -> ${resolvedPath}`);
+
+    // Determine interpreter based on file extension
+    const ext = scriptPath.split('.').pop()?.toLowerCase();
+    let interpreter: string;
+    const isDev = process.env.NODE_ENV !== 'production';
+
+    switch (ext) {
+      case 'js':
+      case 'mjs':
+        interpreter = isDev ? 'node' : '/usr/local/bin/node';
+        break;
+      case 'py':
+        interpreter = isDev ? 'python' : '/usr/bin/python';
+        break;
+      case 'sh':
+        interpreter = isDev ? 'sh' : '/bin/sh';
+        break;
+      default:
+        logger.error(`⏱️ Unsupported script extension for timer "${triggerName}": ${ext}`);
+        this.updateTimerTriggerResult(triggerId, 'error', `Unsupported script extension: ${ext}`);
+        return;
+    }
+
+    try {
+      const { execFile } = await import('child_process');
+      const { promisify } = await import('util');
+      const execFileAsync = promisify(execFile);
+
+      // Prepare environment variables for timer scripts
+      const scriptEnv: Record<string, string> = {
+        ...process.env as Record<string, string>,
+        TIMER_NAME: triggerName,
+        TIMER_ID: triggerId,
+        TIMER_SCRIPT: scriptPath,
+      };
+
+      // Add MeshMonitor node location if available
+      const localNodeInfo = this.getLocalNodeInfo();
+      if (localNodeInfo) {
+        const mmNode = databaseService.getNode(localNodeInfo.nodeNum);
+        if (mmNode?.latitude != null && mmNode?.longitude != null) {
+          scriptEnv.MM_LAT = String(mmNode.latitude);
+          scriptEnv.MM_LON = String(mmNode.longitude);
+        }
+      }
+
+      // Execute script with 30-second timeout (longer than auto-responder for scheduled tasks)
+      const { stdout, stderr } = await execFileAsync(interpreter, [resolvedPath], {
+        timeout: 30000,
+        env: scriptEnv,
+        maxBuffer: 1024 * 1024, // 1MB max output
+      });
+
+      if (stderr) {
+        logger.debug(`⏱️ Timer script stderr: ${stderr}`);
+      }
+
+      const duration = Date.now() - startTime;
+      logger.info(`⏱️ Timer "${triggerName}" completed successfully in ${duration}ms`);
+
+      // Parse JSON output and send messages to channel
+      if (stdout && stdout.trim()) {
+        logger.debug(`⏱️ Timer script stdout: ${stdout.substring(0, 200)}${stdout.length > 200 ? '...' : ''}`);
+
+        // Try to parse as JSON (same format as Auto-Responder scripts)
+        let scriptOutput;
+        try {
+          scriptOutput = JSON.parse(stdout.trim());
+        } catch (parseError) {
+          logger.debug(`⏱️ Timer script output is not JSON, ignoring: ${stdout.substring(0, 100)}`);
+          this.updateTimerTriggerResult(triggerId, 'success');
+          return;
+        }
+
+        // Support both single response and multiple responses
+        let scriptResponses: string[];
+        if (scriptOutput.responses && Array.isArray(scriptOutput.responses)) {
+          // Multiple responses format: { "responses": ["msg1", "msg2", "msg3"] }
+          scriptResponses = scriptOutput.responses.filter((r: any) => typeof r === 'string');
+          if (scriptResponses.length === 0) {
+            logger.warn(`⏱️ Timer script 'responses' array contains no valid strings`);
+            this.updateTimerTriggerResult(triggerId, 'success');
+            return;
+          }
+          logger.debug(`⏱️ Timer script returned ${scriptResponses.length} responses`);
+        } else if (scriptOutput.response && typeof scriptOutput.response === 'string') {
+          // Single response format: { "response": "msg" }
+          scriptResponses = [scriptOutput.response];
+          logger.debug(`⏱️ Timer script response: ${scriptOutput.response.substring(0, 50)}...`);
+        } else {
+          logger.debug(`⏱️ Timer script output has no 'response' or 'responses' field, ignoring`);
+          this.updateTimerTriggerResult(triggerId, 'success');
+          return;
+        }
+
+        // Send each response to the specified channel
+        logger.info(`⏱️ Enqueueing ${scriptResponses.length} timer response(s) to channel ${channel}`);
+
+        scriptResponses.forEach((resp, index) => {
+          const truncated = this.truncateMessageForMeshtastic(resp, 200);
+
+          messageQueueService.enqueue(
+            truncated,
+            0, // destination: 0 for channel broadcast
+            undefined, // no reply-to packet ID for timer messages
+            () => {
+              logger.info(`✅ Timer response ${index + 1}/${scriptResponses.length} delivered to channel ${channel}`);
+            },
+            (reason: string) => {
+              logger.warn(`❌ Timer response ${index + 1}/${scriptResponses.length} failed to channel ${channel}: ${reason}`);
+            },
+            channel // channel number
+          );
+        });
+      }
+
+      this.updateTimerTriggerResult(triggerId, 'success');
+
+    } catch (error: any) {
+      const duration = Date.now() - startTime;
+      const errorMessage = error.message || 'Unknown error';
+      logger.error(`⏱️ Timer "${triggerName}" failed after ${duration}ms: ${errorMessage}`);
+      this.updateTimerTriggerResult(triggerId, 'error', errorMessage);
+    }
+  }
+
+  /**
+   * Update timer trigger result in settings
+   */
+  private updateTimerTriggerResult(triggerId: string, result: 'success' | 'error', errorMessage?: string): void {
+    try {
+      const timerTriggersJson = databaseService.getSetting('timerTriggers');
+      if (!timerTriggersJson) return;
+
+      const timerTriggers = JSON.parse(timerTriggersJson);
+      const trigger = timerTriggers.find((t: any) => t.id === triggerId);
+
+      if (trigger) {
+        trigger.lastRun = Date.now();
+        trigger.lastResult = result;
+        if (result === 'error' && errorMessage) {
+          trigger.lastError = errorMessage;
+        } else {
+          delete trigger.lastError;
+        }
+
+        databaseService.setSetting('timerTriggers', JSON.stringify(timerTriggers));
+        logger.debug(`⏱️ Updated timer trigger ${triggerId} result: ${result}`);
+      }
+    } catch (e) {
+      logger.error('⏱️ Failed to update timer trigger result:', e);
     }
   }
 

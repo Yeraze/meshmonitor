@@ -876,6 +876,209 @@ Auto Responder uses Meshtastic's messaging system. For more information:
 - [Meshtastic Messaging Documentation](https://meshtastic.org/docs/overview/mesh-algo#messaging)
 - [Meshtastic Text Messages](https://meshtastic.org/docs/configuration/module/canned-message)
 
+## Timer Triggers (Timed Events) {#timer-triggers}
+
+Schedule scripts to run automatically at specified times using cron expressions. This feature allows you to automate recurring tasks like sending daily status updates, weather reports, or network statistics to your mesh network.
+
+### How It Works
+
+Timer Triggers execute scripts from `/data/scripts/` on a schedule defined by cron expressions. When a timer fires, the associated script runs and its output is sent to a specified channel on your mesh network.
+
+### Configuration
+
+**Adding a Timer**:
+1. Navigate to the Automation settings (Info tab)
+2. Scroll to the "Timed Events" section
+3. Fill out the timer configuration:
+   - **Name**: A descriptive name for your timer (e.g., "Daily Weather Report")
+   - **Schedule**: A cron expression defining when to run
+   - **Script**: Select a script from `/data/scripts/`
+   - **Channel**: The channel to send script output to
+4. Click "Add Timer"
+5. Click "Save" to persist your changes
+
+**Timer Properties**:
+
+Each timer has:
+- **Name**: Human-readable identifier for the timer
+- **Cron Expression**: Standard 5-field cron format (minute hour day month weekday)
+- **Script**: Path to the script in `/data/scripts/`
+- **Channel**: Channel index (0-7) where output is sent
+- **Enabled**: Toggle to enable/disable individual timers
+- **Last Run**: Timestamp of last execution (shown in timer list)
+- **Last Result**: Success or error status of last execution
+
+### Cron Expression Format
+
+Timer schedules use standard 5-field cron syntax:
+
+```
+┌───────────── minute (0-59)
+│ ┌───────────── hour (0-23)
+│ │ ┌───────────── day of month (1-31)
+│ │ │ ┌───────────── month (1-12)
+│ │ │ │ ┌───────────── day of week (0-6) (Sunday=0)
+│ │ │ │ │
+* * * * *
+```
+
+**Common Examples**:
+- `0 */6 * * *` - Every 6 hours at minute 0
+- `0 9 * * *` - Every day at 9:00 AM
+- `30 8,20 * * *` - 8:30 AM and 8:30 PM daily
+- `0 12 * * 1` - Every Monday at noon
+- `0 0 1 * *` - First day of every month at midnight
+- `*/15 * * * *` - Every 15 minutes
+
+**Cron Helper**: Use [crontab.guru](https://crontab.guru/) to build and validate cron expressions.
+
+### Script Requirements
+
+Timer trigger scripts follow the same requirements as Auto Responder scripts:
+
+- Located in `/data/scripts/` directory
+- Supported extensions: `.js`, `.mjs`, `.py`, `.sh`
+- Must output valid JSON to stdout with a `response` or `responses` field
+- 10-second execution timeout
+- Execute with container user permissions
+
+**JSON Output Format**:
+
+**Single Response:**
+```json
+{
+  "response": "Your message text (max 200 chars)"
+}
+```
+
+**Multiple Responses:**
+```json
+{
+  "responses": [
+    "First message",
+    "Second message",
+    "Third message"
+  ]
+}
+```
+
+### Example Timer Configurations
+
+**Daily Weather Report**:
+```
+Name: Daily Weather
+Schedule: 0 8 * * *
+Script: weather.py
+Channel: 0 (Primary)
+```
+
+Sends weather information to the primary channel every morning at 8 AM.
+
+**Hourly Network Status**:
+```
+Name: Network Stats
+Schedule: 0 * * * *
+Script: network-stats.js
+Channel: 2 (LongFast)
+```
+
+Reports network statistics every hour on the hour.
+
+**Weekly Summary**:
+```
+Name: Weekly Summary
+Schedule: 0 18 * * 0
+Script: weekly-report.py
+Channel: 0 (Primary)
+```
+
+Sends a weekly summary every Sunday at 6 PM.
+
+### Example Scripts
+
+**Simple Status Script (status.js)**:
+```javascript
+#!/usr/bin/env node
+
+const now = new Date();
+const response = {
+  response: `Network status check: ${now.toLocaleString()}`
+};
+
+console.log(JSON.stringify(response));
+```
+
+**Weather Script (daily-weather.py)**:
+```python
+#!/usr/bin/env python3
+import json
+import urllib.request
+
+try:
+    url = "https://wttr.in/YourCity?format=3"
+    with urllib.request.urlopen(url, timeout=5) as response:
+        weather = response.read().decode('utf-8').strip()
+    output = {"response": weather}
+except Exception as e:
+    output = {"response": "Weather unavailable"}
+
+print(json.dumps(output))
+```
+
+### Managing Timers
+
+**Enable/Disable**: Click the "Enable" or "Disable" button on any timer to toggle its active state without removing it.
+
+**Edit Timer**: Click "Edit" to modify any timer property, then "Save" to apply changes.
+
+**Remove Timer**: Click "Remove" and confirm to delete a timer.
+
+**Save Changes**: After adding, editing, or removing timers, click the "Save" button in the header to persist changes.
+
+### Side Effects
+
+- **Network Traffic**: Each timer execution sends messages to the mesh network
+- **Airtime Usage**: Timer outputs consume LoRa airtime
+- **Script Execution**: Scripts run in the container with 10-second timeout
+- **Queue Processing**: Multi-response scripts queue messages with 30-second intervals
+
+### Use Cases
+
+- **Scheduled Announcements**: Daily mesh status updates or community messages
+- **Weather Reports**: Automatic weather information at specified times
+- **Network Statistics**: Periodic reports on node counts, connectivity, etc.
+- **Maintenance Reminders**: Weekly or monthly maintenance notifications
+- **Data Collection**: Scheduled sensor readings or API queries
+- **Heartbeat Messages**: Regular "alive" messages to verify system operation
+
+### Best Practices
+
+- **Timing**: Spread timers across different times to avoid congestion
+- **Frequency**: Use appropriate intervals - hourly or daily for most use cases
+- **Script Testing**: Test scripts manually via Auto Responder before scheduling
+- **Timezone**: Cron expressions use the container's timezone (set via TZ environment variable)
+- **Logging**: Check container logs (`docker logs meshmonitor`) to monitor timer execution
+- **Channel Selection**: Choose appropriate channels for scheduled content
+
+### Troubleshooting
+
+**Timer Not Running**:
+- Verify the timer is enabled (green "ENABLED" badge)
+- Check the cron expression with [crontab.guru](https://crontab.guru/)
+- Ensure changes were saved (click "Save" in header)
+- Check container logs for errors
+
+**Script Errors**:
+- Verify script exists in `/data/scripts/`
+- Ensure script has execute permissions (`chmod +x`)
+- Check script outputs valid JSON format
+- Review container logs for execution errors
+
+**Messages Not Appearing**:
+- Verify the selected channel is correct
+- Check that the script returns a `response` field
+- Ensure response text is under 200 characters
+
 ## Configuration Storage
 
 All automation settings are stored on the MeshMonitor server and persist across container restarts and browser sessions. Changes made by any user with appropriate permissions will affect all users accessing the system.

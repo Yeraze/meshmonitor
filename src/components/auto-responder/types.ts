@@ -12,6 +12,18 @@ export interface AutoResponderTrigger {
   channel?: number | 'dm'; // Channel index (0-7) or 'dm' for direct messages (default: 'dm')
 }
 
+export interface TimerTrigger {
+  id: string;
+  name: string; // Human-readable name for this timer
+  cronExpression: string; // Cron expression (e.g., "0 */6 * * *")
+  scriptPath: string; // Path to script in /data/scripts/
+  channel: number; // Channel index (0-7) to send script output to
+  enabled: boolean; // Whether this timer is active
+  lastRun?: number; // Unix timestamp of last execution
+  lastResult?: 'success' | 'error'; // Result of last execution
+  lastError?: string; // Error message if last run failed
+}
+
 export interface AutoResponderSectionProps {
   enabled: boolean;
   triggers: AutoResponderTrigger[];

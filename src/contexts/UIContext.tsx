@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { TabType, SortField, SortDirection } from '../types/ui';
-import { AutoResponderTrigger } from '../components/auto-responder/types';
+import { AutoResponderTrigger, TimerTrigger } from '../components/auto-responder/types';
 
 interface UIContextType {
   activeTab: TabType;
@@ -85,6 +85,8 @@ interface UIContextType {
   setAutoResponderTriggers: React.Dispatch<React.SetStateAction<AutoResponderTrigger[]>>;
   autoResponderSkipIncompleteNodes: boolean;
   setAutoResponderSkipIncompleteNodes: React.Dispatch<React.SetStateAction<boolean>>;
+  timerTriggers: TimerTrigger[];
+  setTimerTriggers: React.Dispatch<React.SetStateAction<TimerTrigger[]>>;
   showNodeFilterPopup: boolean;
   setShowNodeFilterPopup: React.Dispatch<React.SetStateAction<boolean>>;
   isNodeListCollapsed: boolean;
@@ -167,6 +169,7 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   const [autoResponderEnabled, setAutoResponderEnabled] = useState<boolean>(false);
   const [autoResponderTriggers, setAutoResponderTriggers] = useState<AutoResponderTrigger[]>([]);
   const [autoResponderSkipIncompleteNodes, setAutoResponderSkipIncompleteNodes] = useState<boolean>(false);
+  const [timerTriggers, setTimerTriggers] = useState<TimerTrigger[]>([]);
   const [showNodeFilterPopup, setShowNodeFilterPopup] = useState<boolean>(false);
   // Start with node list collapsed on mobile devices (screens <= 768px)
   const [isNodeListCollapsed, setIsNodeListCollapsed] = useState<boolean>(() => {
@@ -276,6 +279,8 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
         setAutoResponderTriggers,
         autoResponderSkipIncompleteNodes,
         setAutoResponderSkipIncompleteNodes,
+        timerTriggers,
+        setTimerTriggers,
         showNodeFilterPopup,
         setShowNodeFilterPopup,
         isNodeListCollapsed,

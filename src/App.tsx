@@ -24,6 +24,7 @@ import AutoTracerouteSection from './components/AutoTracerouteSection';
 import AutoAnnounceSection from './components/AutoAnnounceSection';
 import AutoWelcomeSection from './components/AutoWelcomeSection';
 import AutoResponderSection from './components/AutoResponderSection';
+import TimerTriggersSection from './components/TimerTriggersSection';
 import { ToastProvider, useToast } from './components/ToastContainer';
 import { RebootModal } from './components/RebootModal';
 import { AppBanners } from './components/AppBanners';
@@ -504,6 +505,8 @@ function App() {
     setAutoResponderTriggers,
     autoResponderSkipIncompleteNodes,
     setAutoResponderSkipIncompleteNodes,
+    timerTriggers,
+    setTimerTriggers,
     showNodeFilterPopup,
     setShowNodeFilterPopup,
     showIncompleteNodes,
@@ -931,6 +934,15 @@ function App() {
 
           if (settings.autoResponderSkipIncompleteNodes !== undefined) {
             setAutoResponderSkipIncompleteNodes(settings.autoResponderSkipIncompleteNodes === 'true');
+          }
+
+          if (settings.timerTriggers) {
+            try {
+              const triggers = JSON.parse(settings.timerTriggers);
+              setTimerTriggers(triggers);
+            } catch (e) {
+              console.error('Failed to parse timerTriggers:', e);
+            }
           }
 
           // Hide incomplete nodes setting
@@ -4333,6 +4345,12 @@ function App() {
                 onEnabledChange={setAutoResponderEnabled}
                 onTriggersChange={setAutoResponderTriggers}
                 onSkipIncompleteNodesChange={setAutoResponderSkipIncompleteNodes}
+              />
+              <TimerTriggersSection
+                triggers={timerTriggers}
+                channels={channels}
+                baseUrl={baseUrl}
+                onTriggersChange={setTimerTriggers}
               />
             </div>
           </div>
