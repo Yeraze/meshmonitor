@@ -22,7 +22,6 @@
     "nav.audit_log": "审计日志",
     "nav.expand_sidebar": "展开侧边栏",
     "nav.collapse_sidebar": "收起侧边栏",
-
     "banners.default_password_warning": "安全警告：管理员账户正在使用默认密码。请立即在用户标签页中更改。",
     "banners.tx_disabled": "传输已禁用：您的设备无法发送消息。当前在LoRa配置中已禁用TX功能。请通过Meshtastic应用程序启用该功能或重新导入您的配置。",
     "banners.config_error": "配置错误",
@@ -31,7 +30,6 @@
     "banners.update_available": "更新可用：版本 {{version}} 现在可用。",
     "banners.view_release_notes": "查看发布说明",
     "banners.upgrade_now": "立即升级",
-
     "purgeModal.title": "⚠️ 为 {{nodeName}} 清除数据",
     "purgeModal.warning": "这些操作不可撤销。该节点的所有数据将被永久删除。",
     "purgeModal.purgeMessages": "🗑️ 清除所有消息",
@@ -41,7 +39,6 @@
     "purgeModal.deleteNodeDescription": "选择删除节点的范围——仅本地数据库，或同时从设备与数据库删除。",
     "purgeModal.deleteLocal": "❌ 删除节点（仅本地数据库）",
     "purgeModal.deleteDevice": "🗑️ 从设备和数据库中清除",
-
     "common.save": "保存",
     "common.cancel": "取消",
     "common.delete": "删除",
@@ -128,7 +125,6 @@
     "common.minutes_ago": "{{count}} 分钟前",
     "common.hours_ago": "{{count}} 小时前",
     "common.days_ago": "{{count}} 天前",
-
     "auth.login": "登录",
     "auth.username": "用户名",
     "auth.password": "密码",
@@ -152,7 +148,6 @@
     "auth.logging_in": "登录中...",
     "auth.oidc_failed": "启动 OIDC 登录失败",
     "auth.local_disabled_no_oidc": "本地认证已禁用且未配置 OIDC。请联系管理员。",
-
     "nodes.title": "节点",
     "nodes.map": "地图视图",
     "nodes.list": "节点列表",
@@ -211,7 +206,6 @@
     "nodes.hop_one": "跳",
     "nodes.hop_other": "跳",
     "nodes.via_mqtt": "通过 MQTT 连接",
-
     "messages.title": "消息",
     "messages.send_direct_message": "发送私信",
     "messages.reply_to_message": "回复此消息",
@@ -281,7 +275,6 @@
     "messages.shared_key_with": "此密钥与以下节点共享：",
     "messages.switch_to_title": "切换到 {{name}}",
     "messages.select_from_list": "从列表选择一个会话以查看消息",
-
     "channels.title": "频道",
     "channels.title_with_count": "频道（{{count}}）",
     "channels.select_channel": "选择频道",
@@ -330,7 +323,6 @@
     "channels.purge_messages_title": "清除此频道的所有消息",
     "channels.purge_all_messages": "清除全部消息",
     "channels.cannot_undo": "该操作无法撤销",
-
     "dashboard.title": "遥测仪表盘",
     "dashboard.add_widget": "添加小部件",
     "dashboard.remove_widget": "移除小部件",
@@ -346,7 +338,6 @@
     "dashboard.widget_type": "小部件类型",
     "dashboard.select_node": "选择节点",
     "dashboard.select_metric": "选择指标",
-
     "settings.title": "设置",
     "settings.language": "语言",
     "settings.languageDescription": "选择您的首选语言",
@@ -431,7 +422,6 @@
     "configuration.node_info_broadcast_min": "节点信息广播间隔已调整到最小值 3600 秒（1 小时）",
     "configuration.position_broadcast_min": "位置广播间隔已调整到最小值 32 秒",
     "configuration.neighbor_info_min": "NeighborInfo 间隔已调整到最小值 14400 秒（4 小时）",
-
     "notifications.title": "通知",
     "notifications.enable_web_push": "启用 Web 推送通知",
     "notifications.enable_apprise": "启用 Apprise 通知",
@@ -462,7 +452,6 @@
     "notifications.alert_subscribe_failed": "订阅推送通知失败：{{error}}",
     "notifications.alert_unsubscribe_failed": "取消推送订阅失败",
     "notifications.alert_update_email_failed": "更新联系邮箱失败",
-
     "users.title": "用户",
     "users.create_user": "创建用户",
     "users.username": "用户名",
@@ -495,7 +484,6 @@
     "users.insufficient_deactivate": "权限不足，无法停用用户",
     "users.user_created": "用户创建成功",
     "users.deactivate_confirm": "停用用户？",
-
     "audit.title": "审计日志",
     "audit.loading": "正在加载审计日志...",
     "audit.no_permission": "你没有查看审计日志的权限。",
@@ -534,7 +522,6 @@
     "audit.page": "第 {{current}} / {{total}} 页",
     "audit.previous": "上一页",
     "audit.next": "下一页",
-
     "security.title": "安全扫描器",
     "security.description": "监测加密密钥安全问题，包括低熵和重复密钥",
     "security.loading": "正在加载安全数据...",
@@ -590,7 +577,6 @@
     "security.minutes_ago": "{{count}} 分钟前",
     "security.hours_ago": "{{count}} 小时前",
     "security.days_ago": "{{count}} 天前",
-
     "errors.generic": "发生错误",
     "errors.failed_operation": "操作失败",
     "errors.invalid_input": "无效输入",
@@ -607,7 +593,6 @@
     "errors.failed_save": "保存失败",
     "errors.failed_delete": "删除失败",
     "errors.failed_update": "更新失败",
-
     "toast.api_token_generated": "API 令牌生成成功",
     "toast.api_token_revoked": "API 令牌撤销成功",
     "toast.api_token_copied": "令牌已复制到剪贴板",
@@ -656,7 +641,6 @@
     "toast.failed_update_favorite": "更新收藏状态失败。请重试。",
     "toast.insufficient_permissions_ignored": "权限不足，无法更新忽略状态",
     "toast.failed_update_ignored": "更新忽略状态失败。请重试。",
-
     "roles.client": "客户端",
     "roles.client_mute": "客户端静音",
     "roles.router": "路由",
@@ -670,7 +654,6 @@
     "roles.tak_tracker": "TAK 追踪器",
     "roles.router_late": "路由（延迟）",
     "roles.client_base": "客户端（基站）",
-
     "hardware.unset": "未设置",
     "hardware.tlora_v2": "TLORA V2",
     "hardware.tlora_v1": "TLORA V1",
@@ -788,7 +771,6 @@
     "hardware.t_watch_ultra": "T-Watch Ultra",
     "hardware.thinknode_m3": "ThinkNode M3",
     "hardware.private_hw": "Private Hardware",
-
     "automation.title": "自动化",
     "automation.auto_acknowledge": "自动确认",
     "automation.auto_announce": "自动宣布",
@@ -804,7 +786,6 @@
     "automation.edit_rule": "编辑规则",
     "automation.delete_rule": "删除规则",
     "automation.test_rule": "测试规则",
-
     "filters.node_incomplete": "显示信息不完整的节点",
     "filters.node_mobile": "移动节点",
     "filters.node_with_telemetry": "含遥测",
@@ -812,7 +793,6 @@
     "filters.node_with_pkc": "支持 PKC",
     "filters.favorites_only": "仅收藏",
     "filters.online_only": "仅在线",
-
     "modals.add_widget": "添加小部件",
     "modals.confirm_delete": "确认删除",
     "modals.confirm_title": "确定吗？",
@@ -831,7 +811,6 @@
     "modals.change_password": "修改密码",
     "modals.reboot_device": "重启设备",
     "modals.confirm_reboot": "确定要重启设备吗？",
-
     "telemetry.battery_level": "电池电量",
     "telemetry.voltage": "电压",
     "telemetry.channel_utilization": "频道占用",
@@ -851,7 +830,6 @@
     "telemetry.paxcounter_wifi": "Paxcounter Wi-Fi",
     "telemetry.paxcounter_ble": "Paxcounter BLE",
     "telemetry.paxcounter_uptime": "Paxcounter 运行时间",
-
     "map.satellite": "卫星",
     "map.terrain": "地形",
     "map.street": "街道",
@@ -863,7 +841,6 @@
     "map.zoom_out": "缩小",
     "map.legend.hops": "跳数：",
     "map.legend.local": "本地",
-
     "traceroute_history.title": "路由追踪历史",
     "traceroute_history.from": "起点",
     "traceroute_history.to": "终点",
@@ -876,7 +853,6 @@
     "traceroute_history.failed_hidden": "（隐藏 {{count}} 次失败）",
     "traceroute_history.forward": "正向",
     "traceroute_history.return": "返回",
-
     "node_filter.title": "节点筛选",
     "node_filter.security_status": "安全状态",
     "node_filter.all_nodes": "所有节点",
@@ -890,7 +866,6 @@
     "node_filter.secure_channel_warning": "建议用于安全频道。",
     "node_filter.hide_ignored": "隐藏已忽略",
     "node_filter.ignored_help": "可在“节点详情”页面取消忽略节点。",
-
     "relay_modal.title_ack": "消息确认",
     "relay_modal.title_relay": "消息转发信息",
     "relay_modal.acknowledged": "已确认",
@@ -899,12 +874,10 @@
     "relay_modal.potential_relays": "可能的转发节点",
     "relay_modal.no_matches": "未找到与转发字节 {{byte}} 匹配的节点。转发节点可能尚未在节点数据库中。",
     "relay_modal.multiple_matches_note": "提示：有多个节点共享相同最低字节。实际转发节点为其中之一。",
-
     "route_segment.title": "使用此段的路由追踪",
     "route_segment.segment": "段",
     "route_segment.no_traceroutes": "未找到使用此段的路由追踪。",
     "route_segment.showing_count": "显示使用此段的 {{count}} 次路由追踪",
-
     "reboot.title": "设备重启",
     "reboot.rebooting": "设备重启中...",
     "reboot.rebooting_please_wait": "设备重启中...请稍候",
@@ -917,7 +890,6 @@
     "reboot.error_reload": "重启验证时出错。请重新加载页面。",
     "reboot.elapsed": "已用时：{{seconds}} 秒",
     "reboot.do_not_close": "请勿关闭此窗口或刷新页面。",
-
     "packet_monitor.title": "Mesh 流量监视",
     "packet_monitor.no_permission": "需要 channels:read 和 messages:read 权限才能查看数据包日志。",
     "packet_monitor.count": "{{shown}} 条显示 / 共 {{total}} 条",
@@ -965,7 +937,6 @@
     "packet_monitor.settings.note": "说明",
     "packet_monitor.settings.cleanup_note": "每 15 分钟自动清理一次以执行这些限制。",
     "packet_monitor.settings.no_permission": "需要 settings:write 权限才能修改数据包监视设置。",
-
     "info.about": "关于",
     "info.version": "版本：",
     "info.connected_node": "已连接节点",
@@ -976,7 +947,6 @@
     "info.has_bluetooth": "具备蓝牙",
     "info.num_bands": "频段数量",
     "info.reboot_count": "重启次数：",
-
     "time.seconds_ago": "{{count}} 秒前",
     "time.seconds_ago_plural": "{{count}} 秒前",
     "time.minutes_ago": "{{count}} 分钟前",
@@ -987,7 +957,6 @@
     "time.days_ago_plural": "{{count}} 天前",
     "time.just_now": "刚刚",
     "time.never": "从未",
-
     "user_menu.logged_in_as": "登录身份：{{name}}",
     "user_menu.administrator": "管理员",
     "user_menu.oidc_account": "OIDC 账号",
@@ -997,7 +966,6 @@
     "user_menu.api_token_management": "API 令牌管理",
     "user_menu.logging_out": "正在退出...",
     "user_menu.logout": "退出登录",
-
     "change_password.title": "修改密码",
     "change_password.current_password": "当前密码",
     "change_password.new_password": "新密码",
@@ -1010,7 +978,6 @@
     "change_password.failed": "修改密码失败",
     "change_password.success": "密码修改成功！",
     "change_password.changing": "正在修改...",
-
     "api_token.title": "API 令牌",
     "api_token.description": "生成 API 令牌以访问 MeshMonitor REST API v1。",
     "api_token.view_docs": "查看 API 文档",
@@ -1038,7 +1005,6 @@
     "api_token.usage_title": "使用 API 令牌",
     "api_token.usage_instruction": "在 Authorization 头中携带该令牌：",
     "api_token.view_api_docs": "查看 API 文档",
-
     "settings.node_display": "节点显示",
     "settings.max_node_age_label": "活跃节点最大时长（小时）",
     "settings.max_node_age_description": "超过此时间的节点不会显示在节点列表中",
@@ -1115,9 +1081,7 @@
     "settings.packet_monitor": "数据包监视",
     "settings.packet_monitor_desktop_only": "（仅桌面）",
     "settings.packet_monitor_description": "配置网格流量监视器以显示网络上所有数据包。需要 channels:read 与 messages:read 权限。",
-    "settings.hide_incomplete_nodes": "隐藏信息不完整的节点",
     "settings.hide_incomplete_description": "隐藏缺少名称或硬件信息的节点。在安全频道（自定义 PSK）建议启用，避免显示未验证的节点。",
-    "settings.solar_monitoring": "太阳能监测",
     "settings.solar_monitoring_description": "配置太阳能监测以估算产能。感谢 {{link}} 提供 Solar Estimates API！",
     "settings.solar_latitude": "纬度",
     "settings.solar_latitude_description": "地球南北位置（-90 南至 +90 北）",
@@ -1165,7 +1129,6 @@
     "settings.save_failed": "保存设置失败。请重试。",
     "settings.reset_success": "设置已恢复默认！",
     "settings.reset_failed": "重置设置失败。请重试。",
-
     "settings.confirm_reset_title": "确定要将所有设置恢复默认吗？",
     "settings.confirm_reset_defaults": "默认值：",
     "settings.confirm_reset_max_age": "最大节点时长：24 小时",
@@ -1181,47 +1144,37 @@
     "settings.confirm_reset_max_packets": "最大数据包数：1000",
     "settings.confirm_reset_packet_age": "数据包保留时长：24 小时",
     "settings.confirm_reset_affects": "这将影响访问本系统的所有浏览器。",
-
     "settings.confirm_purge_nodes_title": "确定要清除所有节点和路由追踪历史吗？",
     "settings.confirm_purge_nodes_impact": "影响：",
     "settings.confirm_purge_nodes_item1": "所有节点信息将被删除",
     "settings.confirm_purge_nodes_item2": "所有路由追踪历史将被删除",
     "settings.confirm_purge_nodes_item3": "将触发节点刷新以重新填充列表",
     "settings.confirm_cannot_undo": "该操作不可撤销！",
-
     "settings.confirm_purge_telemetry_title": "确定要清除所有遥测数据吗？",
     "settings.confirm_purge_telemetry_item1": "所有历史遥测记录将被删除",
     "settings.confirm_purge_telemetry_item2": "遥测图表将不再显示历史数据",
     "settings.confirm_purge_telemetry_item3": "当前节点状态（电池、电压）将保留",
     "settings.confirm_purge_telemetry_item4": "新的遥测数据会继续收集",
-
     "settings.confirm_purge_messages_title": "确定要清除所有消息吗？",
     "settings.confirm_purge_messages_item1": "所有频道消息将被删除",
     "settings.confirm_purge_messages_item2": "所有私信将被删除",
     "settings.confirm_purge_messages_item3": "新消息仍会继续接收",
-
     "settings.confirm_purge_traceroutes_title": "确定要重置所有路由追踪吗？",
     "settings.confirm_purge_traceroutes_item1": "所有保存的路由追踪将被删除",
     "settings.confirm_purge_traceroutes_item2": "所有路由追踪历史将被删除",
     "settings.confirm_purge_traceroutes_item3": "所有路由段（包括记录保持者）将被删除",
     "settings.confirm_purge_traceroutes_item4": "新的路由追踪会继续收集",
-
     "settings.confirm_restart_title": "确定要 {{action}} MeshMonitor 吗？",
     "settings.confirm_restart_docker": "容器将自动重启，期间约 10-30 秒不可用。",
     "settings.confirm_restart_manual": "MeshMonitor 将关闭，需要手动重新启动。",
-
     "settings.restart_action": "重启",
     "settings.shutdown_action": "关闭",
     "settings.restart_failed": "{{action}} 失败。请重试。",
-
-    "dashboard.loading": "正在加载仪表盘...",
     "dashboard.error": "错误：{{error}}",
-    "dashboard.title": "遥测仪表盘",
     "dashboard.subtitle_with_data": "展示最近 {{days}} 天的收藏遥测",
     "dashboard.subtitle_empty": "添加小部件或在“节点”标签页星标遥测",
     "dashboard.add_widget_title": "添加小部件",
     "dashboard.add_widget_button": "+ 添加小部件",
-    "dashboard.days_to_view": "查看天数：",
     "dashboard.search_placeholder": "搜索节点或遥测类型...",
     "dashboard.all_nodes": "所有节点",
     "dashboard.all_types": "所有类型",
@@ -1241,14 +1194,12 @@
     "dashboard.chart_count_plural": "{{shown}} / {{total}} 个图表",
     "dashboard.empty_title": "尚无小部件或收藏",
     "dashboard.empty_description": "点击上方 “+ 添加小部件” 或在“节点”标签页星标遥测图表",
-
     "dashboard.widget.node_status.title": "节点状态",
     "dashboard.widget.node_status.description": "监控所选节点的状态与连通性",
     "dashboard.widget.node_status.search_placeholder": "搜索以添加节点...",
     "dashboard.widget.node_status.remove_node": "移除节点",
     "dashboard.widget.node_status.empty": "尚未配置节点。",
     "dashboard.widget.node_status.empty_editable": "在上方搜索并添加要监控的节点。",
-
     "dashboard.widget.traceroute.title": "路由追踪",
     "dashboard.widget.traceroute.description": "查看所选节点最近一次路由追踪",
     "dashboard.widget.traceroute.select_node": "选择节点...",
@@ -1272,17 +1223,12 @@
     "info.node_address": "节点地址：",
     "info.node_id": "节点 ID：",
     "info.node_name": "节点名称：",
-    "info.firmware_version": "固件版本：",
     "info.connection_status_label": "连接状态：",
     "info.uptime": "运行时长：",
     "info.uses_tls": "使用 TLS：",
-    "info.reboot_count": "重启次数：",
     "info.not_available": "不可用",
-
     "info.lora_config": "LoRa 无线配置",
     "info.device_role": "设备角色：",
-    "info.region": "区域：",
-    "info.modem_preset": "调制解调器预设：",
     "info.channel_number": "频道号：",
     "info.frequency": "频率：",
     "info.hop_limit": "跳数限制：",
@@ -1290,7 +1236,6 @@
     "info.tx_enabled": "开启发射：",
     "info.boosted_rx_gain": "接收增益增强：",
     "info.unknown": "未知",
-
     "info.mqtt_config": "MQTT 配置",
     "info.mqtt_enabled": "已启用：",
     "info.mqtt_server": "服务器：",
@@ -1301,12 +1246,9 @@
     "info.mqtt_root_topic": "根主题：",
     "info.not_configured": "未配置",
     "info.not_set": "未设置",
-
     "info.app_info": "应用信息",
-    "info.version": "版本：",
     "info.timezone": "时区：",
     "info.timezone_default": "（默认）",
-
     "info.virtual_node": "虚拟节点服务器",
     "info.virtual_node_status": "状态：",
     "info.server_running": "服务器运行：",
@@ -1319,7 +1261,6 @@
     "info.virtual_node_description": "虚拟节点服务器允许多个 Meshtastic 移动应用同时连接，降低物理节点负载。",
     "info.virtual_node_note": "注意：为安全起见，管理员命令被阻止。配置细节见 .env.example。",
     "info.virtual_node_unavailable": "虚拟节点状态不可用",
-
     "info.network_stats": "网络统计",
     "info.total_nodes": "节点总数：",
     "info.total_channels": "频道总数：",
@@ -1343,7 +1284,6 @@
     "info.tx_canceled_short": "取消",
     "info.packet_stats_unavailable": "数据包统计不可用。该设备正在发送 HostMetrics（基于 Linux 的设备）而非 LocalStats。",
     "info.na": "不适用",
-
     "info.host_metrics": "主机系统指标",
     "info.host_metrics_description": "基于 Linux 设备的遥测",
     "info.host_uptime": "主机运行时长：",
@@ -1352,18 +1292,15 @@
     "info.disk_free_2": "磁盘可用 (2)：",
     "info.disk_free_3": "磁盘可用 (3)：",
     "info.load_average": "负载平均值：",
-
     "info.recent_activity": "近期活动",
     "info.last_message": "最后消息：",
     "info.most_active_node": "最活跃节点：",
-
     "info.longest_route": "最长活跃路由段",
     "info.distance": "距离：",
     "info.from": "起点：",
     "info.to": "终点：",
     "info.last_seen": "最近在线：",
     "info.no_active_routes": "未找到活跃路由段",
-
     "info.record_holder": "记录保持路由段",
     "info.achieved": "达成时间：",
     "info.no_record_holder": "尚未设置记录保持者",
@@ -1373,7 +1310,6 @@
     "info.record_cleared": "记录保持者已清除",
     "info.record_clear_permission": "权限不足，无法清除记录保持者",
     "info.record_clear_failed": "清除记录保持者失败。请重试。",
-
     "info.device_config_unavailable": "设备配置不可用。请确保连接已建立。",
     "info.local_telemetry": "本地节点遥测",
 
@@ -1392,7 +1328,6 @@
     "config.import_export_description": "以 Meshtastic URL 格式导入或导出频道配置和设备设置。这些 URL 与官方 Meshtastic 应用兼容。",
     "config.import_config": "导入配置",
     "config.export_config": "导出配置",
-
     "config.reboot_confirm": "确定要重启设备吗？\n\n设备将重启，约 30-60 秒内不可用。",
     "config.rebooting": "设备重启中... 可能需要最长 60 秒。",
     "config.rebooting_toast": "设备重启中...",
@@ -1403,45 +1338,35 @@
     "config.reboot_sent": "已发送重启命令！设备将在 5 秒后重启。",
     "config.reboot_sent_toast": "已发送重启命令！",
     "config.reboot_failed": "重启设备失败",
-
     "config.purge_confirm": "确定要清除节点数据库吗？\n\n这将永久删除设备中存储的所有节点信息。\n此操作不可撤销！\n\n设备将在收到网格节点信息后自动重建数据库。",
     "config.purge_success": "节点数据库清除成功！",
     "config.purge_failed": "清除节点数据库失败",
-
     "config.node_info_adjusted": "节点信息广播间隔已调整到最小值 3600 秒（1 小时）",
     "config.device_config_saved": "设备配置保存成功！设备将重启...",
     "config.device_config_saved_toast": "设备配置已保存！设备将重启...",
     "config.device_config_failed": "保存设备配置失败",
-
     "config.node_names_saved": "节点名称保存成功！设备将重启...",
     "config.node_names_saved_toast": "节点名称已保存！设备将重启...",
     "config.node_names_failed": "保存节点名称失败",
-
     "config.hop_limit_adjusted": "跳数限制已调整到有效范围（1-7）",
     "config.lora_saved": "LoRa 配置保存成功！设备将重启...",
     "config.lora_saved_toast": "LoRa 配置已保存！设备将重启...",
     "config.lora_failed": "保存 LoRa 配置失败",
-
     "config.position_interval_adjusted": "位置广播间隔已调整到最小值 32 秒",
     "config.latitude_range_error": "纬度必须介于 -90 与 90 之间",
     "config.longitude_range_error": "经度必须介于 -180 与 180 之间",
     "config.position_saved": "位置配置保存成功！设备将重启...",
     "config.position_saved_toast": "位置配置已保存！设备将重启...",
     "config.position_failed": "保存位置配置失败",
-
     "config.mqtt_saved": "MQTT 配置保存成功！设备将重启...",
     "config.mqtt_saved_toast": "MQTT 配置已保存！设备将重启...",
     "config.mqtt_failed": "保存 MQTT 配置失败",
-
     "config.neighbor_interval_adjusted": "NeighborInfo 间隔已调整到最小值 14400 秒（4 小时）",
     "config.neighbor_saved": "NeighborInfo 配置保存成功！设备将重启...",
     "config.neighbor_saved_toast": "NeighborInfo 配置已保存！设备将重启...",
     "config.neighbor_failed": "保存 NeighborInfo 配置失败",
-
     "config.import_success": "配置导入成功",
     "config.load_warning": "警告：无法加载当前配置。已显示默认值。",
-
-    "notifications.title": "通知",
     "notifications.services_title": "通知服务",
     "notifications.services_description": "启用或禁用通知服务。两个服务使用相同的过滤偏好。",
     "notifications.webpush_title": "Web 推送通知",
@@ -1482,7 +1407,6 @@
     "notifications.saving": "保存中...",
     "notifications.save_preferences": "保存偏好",
     "notifications.save_failed": "保存通知偏好失败",
-
     "notifications.webpush_config_title": "Web 推送配置",
     "notifications.https_required_title": "需要 HTTPS",
     "notifications.https_required_text": "HTTP 下不可使用推送通知。",
@@ -1494,7 +1418,6 @@
     "notifications.current_connection": "当前连接：",
     "notifications.https_help_title": "需要 HTTPS 配置帮助？",
     "notifications.https_help_link": "DuckDNS 免费 HTTPS 的入门指南",
-
     "notifications.browser_support": "浏览器支持",
     "notifications.notifications_api": "Notifications API：",
     "notifications.service_workers": "Service Workers：",
@@ -1511,7 +1434,6 @@
     "notifications.not_subscribed": "未订阅",
     "notifications.supported": "支持",
     "notifications.not_supported": "不支持",
-
     "notifications.ios_title": "iOS 用户：需要安装",
     "notifications.ios_text": "在 iOS（iPhone/iPad）上，推送通知需要 HTTPS 且需安装为 PWA：",
     "notifications.ios_step1": "需要 HTTPS：",
@@ -1521,7 +1443,6 @@
     "notifications.ios_step4": "下滑并点击“添加到主屏幕”",
     "notifications.ios_step5": "从主屏幕打开 MeshMonitor",
     "notifications.ios_step6": "返回此处启用通知",
-
     "notifications.setup_title": "通知设置",
     "notifications.setup_description": "按以下步骤启用推送通知：",
     "notifications.step1_title": "步骤 1：启用通知",
@@ -1533,7 +1454,6 @@
     "notifications.permission_chrome_desc": "点击地址栏锁图标 → 站点设置 → 通知",
     "notifications.permission_safari": "Safari：",
     "notifications.permission_safari_desc": "Safari → 设置 → 网站 → 通知",
-
     "notifications.step2_title": "步骤 2：订阅通知",
     "notifications.step2_description": "订阅以接收新消息的推送通知。",
     "notifications.subscribing": "订阅中...",
@@ -1543,14 +1463,12 @@
     "notifications.unsubscribe": "取消订阅",
     "notifications.unsubscribe_failed": "取消推送订阅失败",
     "notifications.subscription_debug": "调试：",
-
     "notifications.test_title": "测试通知",
     "notifications.test_description": "发送测试通知以确认功能正常。",
     "notifications.send_test": "发送测试通知",
     "notifications.test_sending": "发送中...",
     "notifications.test_sent": "已发送：{{sent}}，失败：{{failed}}",
     "notifications.test_failed": "发送测试通知失败",
-
     "notifications.vapid_title": "VAPID 配置（管理员）",
     "notifications.vapid_status": "状态：",
     "notifications.vapid_configured": "已配置",
@@ -1562,7 +1480,6 @@
     "notifications.updating": "更新中...",
     "notifications.update_contact_email": "更新联系邮箱",
     "notifications.update_failed": "更新联系邮箱失败",
-
     "notifications.apprise_config_title": "Apprise 配置",
     "notifications.apprise_config_description": "配置 Apprise 将通知发送到 Discord、Slack、邮件、短信等外部服务。Apprise 基于 HTTP，<strong>无需 HTTPS</strong>！",
     "notifications.apprise_about": "关于 Apprise：",
@@ -1580,7 +1497,6 @@
     "notifications.config_save_failed": "保存配置失败",
     "notifications.connection_test_failed": "连接测试失败",
     "notifications.test_notification_sending": "正在发送测试通知...",
-
     "notifications.push_not_supported": "你的浏览器不支持推送通知",
     "notifications.permission_request_failed": "请求通知权限失败。请重试。",
     "notifications.grant_permission_first": "请先授予通知权限",
@@ -1620,46 +1536,29 @@
     "notifications.see_docs": "查看",
     "notifications.full_list": "支持服务的完整列表",
     "notifications.save_config": "保存配置",
-
-    "users.title": "用户",
     "users.add_user": "添加用户",
     "users.user_details": "用户详情",
-    "users.loading": "正在加载用户...",
     "users.access_denied": "访问被拒绝。需要管理员权限。",
-    "users.failed_load": "加载用户失败",
     "users.failed_load_permissions": "加载权限失败",
-    "users.permissions_updated": "权限更新成功",
     "users.insufficient_permissions_update": "权限不足，无法更新用户权限",
     "users.failed_update_permissions": "更新权限失败。请重试。",
-    "users.admin_removed": "已移除管理员权限",
-    "users.admin_granted": "已授予管理员权限",
-    "users.failed_admin_status": "更新管理员状态失败",
-    "users.password_unlocked": "允许修改密码",
-    "users.password_locked": "禁止修改密码",
-    "users.failed_password_lock": "更新密码锁定状态失败",
     "users.password_fields_required": "两个密码字段均为必填",
-    "users.password_min_length": "密码至少 8 个字符",
     "users.passwords_not_match": "两次输入的密码不一致",
     "users.password_updated": "密码更新成功",
     "users.insufficient_permissions_password": "权限不足，无法设置密码",
     "users.failed_set_password": "设置密码失败。请重试。",
     "users.user_deactivated": "用户 {{username}} 已停用",
     "users.insufficient_permissions_deactivate": "权限不足，无法停用用户",
-    "users.failed_deactivate": "停用用户失败。请重试。",
     "users.username_password_required": "用户名和密码均为必填",
-    "users.user_created": "用户创建成功",
-    "users.failed_create": "创建用户失败",
     "users.special_user": "特殊用户",
     "users.anonymous_hint": "定义未认证用户的权限",
     "users.inactive": "未激活",
     "users.active": "已激活",
     "users.remove_admin": "移除管理员",
     "users.make_admin": "设为管理员",
-    "users.set_password": "设置密码",
     "users.password_locked_hint": "此账户已禁止修改密码",
     "users.deactivate_user": "停用用户",
     "users.cannot_deactivate_anonymous": "无法停用匿名用户",
-    "users.permissions": "权限",
     "users.channel_primary": "频道 0（主频道）",
     "users.channel_n": "频道 {{n}}",
     "users.can_control_connection": "可控制连接",
@@ -1670,29 +1569,21 @@
     "users.create_new_user": "创建新用户",
     "users.username_label": "用户名",
     "users.password_label": "密码",
-    "users.display_name": "显示名称",
-    "users.email": "电子邮箱",
     "users.administrator": "管理员",
-    "users.create_user": "创建用户",
     "users.set_password_for": "为 {{username}} 设置密码",
-    "users.new_password": "新密码",
-    "users.confirm_password": "确认密码",
     "users.at_least_8_chars": "至少 8 个字符",
     "users.reenter_password": "再次输入密码",
-    "users.deactivate_confirm": "停用用户？",
     "users.deactivate_confirm_text": "确定要停用用户 <strong>{{username}}</strong> 吗？",
     "users.deactivate_warning": "这将撤销其对 MeshMonitor 的访问。",
     "users.auth_provider": "认证提供者",
     "users.password_locked_yes": "是（禁用修改密码）",
     "users.full_name": "全名",
-
     "automation.save_changes": "保存更改",
     "automation.saving": "保存中...",
     "automation.settings_saved": "设置保存成功！",
     "automation.settings_save_failed": "保存设置失败。请重试。",
     "automation.insufficient_permissions": "权限不足，无法保存设置",
     "automation.view_docs": "查看文档",
-
     "automation.auto_ack.title": "自动确认",
     "automation.auto_ack.description": "启用后，匹配正则模式的消息将自动按模板回复。",
     "automation.auto_ack.tokens_info": "可使用 {NODE_ID}、{NUMBER_HOPS}、{DATE}、{TIME}、{SNR}、{RSSI} 等动态变量。",
@@ -1732,7 +1623,6 @@
     "automation.auto_ack.hop_emojis": "跳数字体",
     "automation.auto_ack.reply_with_message": "文本回复",
     "automation.auto_ack.reply_with_message_description": "使用下方模板发送自定义文本回复。",
-
     "automation.auto_welcome.title": "自动欢迎",
     "automation.auto_welcome.description": "启用后，当新节点加入网格时自动发送欢迎消息。",
     "automation.auto_welcome.tokens_info": "可使用 {LONG_NAME}、{SHORT_NAME}、{VERSION}、{DURATION}、{FEATURES}、{NODECOUNT}、{DIRECTCOUNT} 等变量。",
@@ -1747,7 +1637,6 @@
     "automation.auto_welcome.message_description": "发送给新节点的欢迎内容。",
     "automation.auto_welcome.sample_preview": "示例预览",
     "automation.auto_welcome.sample_preview_description": "展示代入示例值后的欢迎消息效果",
-
     "automation.auto_announce.title": "自动宣布",
     "automation.auto_announce.description": "启用后，按设定间隔自动向指定频道广播公告。可使用 {VERSION}、{DURATION}、{FEATURES}、{NODECOUNT}、{DIRECTCOUNT} 等变量。",
     "automation.auto_announce.channel": "频道",
@@ -1784,7 +1673,6 @@
     "automation.auto_announce.feature_acknowledge": "🤖 自动确认 - 自动消息回复",
     "automation.auto_announce.feature_announce": "📢 自动宣布 - 定期公告",
     "automation.auto_announce.feature_welcome": "👋 自动欢迎 - 新节点问候",
-
     "automation.auto_traceroute.title": "自动路由追踪",
     "automation.auto_traceroute.description": "启用后按设定间隔对所有活跃节点发送路由追踪，保持最新拓扑。更改需重启容器生效。",
     "automation.auto_traceroute.schedule": "计划",
@@ -1823,7 +1711,6 @@
     "automation.auto_traceroute.regex_invalid": "正则模式无效",
     "automation.auto_traceroute.test_regex": "测试",
     "automation.auto_traceroute.clear_filter": "清除",
-
     "theme_management.title": "自定义主题",
     "theme_management.description": "创建并管理应用的自定义配色主题",
     "theme_management.create_new": "创建新主题",
@@ -1835,7 +1722,6 @@
     "theme_management.active": "已启用",
     "theme_management.apply": "应用",
     "theme_management.clone": "克隆",
-
     "theme_editor.edit_title": "编辑主题",
     "theme_editor.create_title": "创建自定义主题",
     "theme_editor.import": "导入",
@@ -1857,7 +1743,6 @@
     "theme_editor.save_failed": "保存主题失败：{{error}}",
     "theme_editor.invalid_file": "无效的主题文件：\n{{errors}}",
     "theme_editor.import_failed": "导入主题失败：{{error}}",
-
     "theme_gallery.title": "主题库",
     "theme_gallery.description": "从 {{count}} 个精心设计的主题中选择（包含无障碍选项）。点击任意主题卡片即可立即预览！",
     "theme_gallery.category_all": "全部主题",
@@ -1881,12 +1766,10 @@
     "theme_gallery.tritanopia_desc": "适用于蓝色盲（罕见，约 0.001%）",
     "theme_gallery.persistence_title": "主题持久化",
     "theme_gallery.persistence_desc": "你的主题选择会自动保存并在各会话间保持。所有主题在各页面和组件上均可无缝使用。",
-
     "tileset.map_style": "地图样式",
     "tileset.custom": "自定义",
     "tileset.collapse": "收起瓦片集选择器",
     "tileset.expand": "展开瓦片集选择器",
-
     "tileset_manager.title": "自定义瓦片服务器",
     "tileset_manager.description": "为离线地图或自定义样式添加自定义瓦片服务器。",
     "tileset_manager.setup_guide": "查看设置指南",
@@ -1921,7 +1804,6 @@
     "tileset_manager.save_failed": "保存自定义瓦片集失败，请重试。",
     "tileset_manager.delete_confirm": "确定要删除此自定义瓦片集吗？",
     "tileset_manager.delete_failed": "删除自定义瓦片集失败，请重试。",
-
     "telemetry.loading": "正在加载遥测数据...",
     "telemetry.load_failed": "加载遥测数据失败",
     "telemetry.no_data": "该节点暂无遥测数据",
@@ -1960,19 +1842,15 @@
     "node_details.connection": "连接",
     "node_details.via_mqtt": "通过 MQTT",
     "node_details.last_heard": "最近在线",
-
     "messages.hops_one": "{{count}} 跳",
     "messages.hops_other": "{{count}} 跳",
-
     "link_preview.loading": "正在加载预览...",
     "link_preview.image_alt": "链接预览",
-
     "message_status.failed": "发送失败 - 路由错误或超过最大重试次数",
     "message_status.confirmed": "目标节点已接收",
     "message_status.delivered": "已发送到网络",
     "message_status.pending": "发送中...",
     "message_status.timeout": "未收到确认（超时）",
-
     "auto_responder.title": "自动回复",
     "auto_responder.view_docs": "查看自动回复文档",
     "auto_responder.description": "对匹配触发模式的消息自动回复。支持文本回复、HTTP Webhook 以及自定义脚本执行。脚本需放在 /data/scripts/（生产环境），可使用 Node.js（.js, .mjs）、Python（.py）或 Shell（.sh）。回复会被截断至 200 字符。",
@@ -2027,7 +1905,6 @@
     "auto_responder.invalid_response": "无效的回复",
     "auto_responder.settings_saved": "自动回复设置已保存",
     "auto_responder.settings_save_failed": "保存自动回复设置失败",
-
     "device_config.title": "设备配置",
     "device_config.view_docs": "查看设备配置文档",
     "device_config.router_warning": "确定吗？\n\n将设备角色设置为 ROUTER 一般不推荐。ROUTER 模式会让设备转发所有数据包，大幅增加功耗和空口占用。\n\n点击“确定”确认更改，或取消保持当前设置。",
@@ -2044,9 +1921,7 @@
     "device_config.timezone_clear": "清除时区（使用 UTC）",
     "device_config.timezone_use_custom": "使用自定义值",
     "device_config.save_button": "保存设备配置",
-
     "common.more_info": "了解更多信息",
-
     "node_identity.title": "节点身份",
     "node_identity.view_docs": "查看节点身份文档",
     "node_identity.long_name": "长名称",
@@ -2058,7 +1933,6 @@
     "node_identity.unmessageable": "不可接收消息",
     "node_identity.unmessageable_description": "阻止他人向此节点发送私信",
     "node_identity.save_button": "保存节点名称",
-
     "neighbor_info.title": "邻居信息",
     "neighbor_info.view_docs": "查看邻居信息文档",
     "neighbor_info.enable": "启用 Neighbor Info",
@@ -2104,7 +1978,6 @@
     "lora_config.rx_boosted_gain": "RX 增强增益（SX126x）",
     "lora_config.rx_boosted_gain_description": "为 SX126x 收音机启用增强接收增益（提升灵敏度但增加功耗）",
     "lora_config.save_button": "保存 LoRa 配置",
-
     "channels_config.title": "频道配置",
     "channels_config.view_docs": "查看 Meshtastic 频道文档",
     "channels_config.description": "Meshtastic 设备最多支持 8 个频道（0-7）。频道 0 通常是主频道。你可以配置频道名称、加密密钥（PSK）以及上行/下行设置。",
@@ -2155,7 +2028,6 @@
     "channels_config.toast_channel_imported": "频道已成功导入到槽位 {{slot}}！",
     "channels_config.toast_import_failed": "导入频道失败",
     "channels_config.toast_key_generated": "已生成新的 AES256 密钥",
-
     "mqtt_config.title": "MQTT 模块",
     "mqtt_config.view_docs": "查看 MQTT 配置文档",
     "mqtt_config.enable": "启用 MQTT",
@@ -2173,7 +2045,6 @@
     "mqtt_config.json_enabled": "启用JSON",
     "mqtt_config.json_description": "在MQTT上发送/接收JSON数据包",
     "mqtt_config.save_button": "保存MQTT设置",
-
     "position_config.title": "位置广播",
     "position_config.view_docs": "查看位置配置文档",
     "position_config.broadcast_interval": "位置广播间隔（秒）",
@@ -2190,7 +2061,6 @@
     "position_config.altitude": "高度（米）",
     "position_config.altitude_description": "海拔高度（米）",
     "position_config.save_button": "保存位置配置",
-
     "export_config.title": "导出 Meshtastic 配置",
     "export_config.description": "选择要包含在导出 URL 中的频道和设置。该 URL 与官方 Meshtastic 应用兼容。",
     "export_config.select_channels": "选择频道",
@@ -2213,7 +2083,6 @@
     "export_config.qr_code": "二维码",
     "export_config.scan_qr_description": "使用 Meshtastic 移动应用扫描以导入配置",
     "export_config.close": "关闭",
-
     "import_config.title": "导入 Meshtastic 配置",
     "import_config.url_label": "Meshtastic 配置 URL",
     "import_config.url_placeholder": "https://meshtastic.org/e/#...",
@@ -2249,7 +2118,6 @@
     "import_config.cancel": "取消",
     "import_config.importing": "导入中...",
     "import_config.import_selected": "导入所选",
-
     "backup_management.title": "设备备份管理",
     "backup_management.about_title": "关于设备备份",
     "backup_management.about_description": "设备备份以 YAML 格式导出完整的 Meshtastic 配置，兼容 Meshtastic CLI 的 --export-config 命令。备份包含所有设备设置、模块配置和频道设置。用于固件更新后的恢复或克隆配置到另一设备。",
@@ -2288,7 +2156,6 @@
     "backup_management.toast_download_failed": "下载备份失败：{{error}}",
     "backup_management.toast_deleted": "备份删除成功",
     "backup_management.toast_delete_failed": "删除备份失败：{{error}}",
-
     "system_backup.title": "系统备份管理",
     "system_backup.about_title": "关于系统备份",
     "system_backup.about_description": "系统备份导出完整的 MeshMonitor 数据库，包括消息历史、节点信息、遥测数据、用户账号和系统设置。每个备份是包含校验和与版本元数据的 JSON 文件集合。用于灾难恢复、服务器迁移或数据库回滚。",
@@ -2327,7 +2194,6 @@
     "system_backup.toast_deleted": "系统备份删除成功",
     "system_backup.toast_delete_failed": "删除系统备份失败：{{error}}",
     "system_backup.confirm_delete": "确定要删除系统备份“{{dirname}}”吗？",
-
     "auto_upgrade_test.title": "自动升级测试",
     "auto_upgrade_test.description_intro": "测试你的自动升级配置以确保所有组件设置正确。",
     "auto_upgrade_test.config_test_name": "配置测试",
