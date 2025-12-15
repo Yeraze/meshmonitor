@@ -16,6 +16,7 @@ import BackupManagementSection from './configuration/BackupManagementSection';
 import { ImportConfigModal } from './configuration/ImportConfigModal';
 import { ExportConfigModal } from './configuration/ExportConfigModal';
 import { ROLE_MAP, PRESET_MAP, REGION_MAP } from './configuration/constants';
+import SectionNav from './SectionNav';
 
 interface ConfigurationTabProps {
   baseUrl?: string; // Optional, not used in component but passed from App.tsx
@@ -539,7 +540,21 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
 
   return (
     <div className="tab-content">
-      <div className="settings-section danger-zone" style={{ marginBottom: '2rem' }}>
+      <SectionNav items={[
+        { id: 'config-danger', label: t('config.warning_title', 'Warning') },
+        { id: 'config-import-export', label: t('config.import_export_title', 'Import/Export') },
+        { id: 'config-node-identity', label: t('config.node_identity', 'Node Identity') },
+        { id: 'config-device', label: t('config.device_config', 'Device') },
+        { id: 'config-lora', label: t('config.lora_config', 'LoRa') },
+        { id: 'config-position', label: t('config.position_config', 'Position') },
+        { id: 'config-mqtt', label: t('config.mqtt_config', 'MQTT') },
+        { id: 'config-neighbor', label: t('config.neighbor_info', 'Neighbor Info') },
+        { id: 'config-network', label: t('config.network_config', 'Network') },
+        { id: 'config-channels', label: t('config.channels', 'Channels') },
+        { id: 'config-backup', label: t('config.backup_management', 'Backup') },
+      ]} />
+
+      <div id="config-danger" className="settings-section danger-zone" style={{ marginBottom: '2rem' }}>
         <h2 style={{ color: '#ff4444', marginTop: 0 }}>⚠️ {t('config.warning_title')}</h2>
         <p style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>
           {t('config.warning_text')}
@@ -586,7 +601,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
       </div>
 
       {/* Import/Export Configuration Section */}
-      <div className="settings-section" style={{ marginBottom: '2rem' }}>
+      <div id="config-import-export" className="settings-section" style={{ marginBottom: '2rem' }}>
         <h3>{t('config.import_export_title')}</h3>
         <p style={{ color: 'var(--ctp-subtext0)', marginBottom: '1rem' }}>
           {t('config.import_export_description')}
@@ -643,116 +658,134 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
       )}
 
       <div className="settings-content">
-        <NodeIdentitySection
-          longName={longName}
-          shortName={shortName}
-          isUnmessagable={isUnmessagable}
-          setLongName={setLongName}
-          setShortName={setShortName}
-          setIsUnmessagable={setIsUnmessagable}
-          isSaving={isSaving}
-          onSave={handleSaveNodeOwner}
-        />
+        <div id="config-node-identity">
+          <NodeIdentitySection
+            longName={longName}
+            shortName={shortName}
+            isUnmessagable={isUnmessagable}
+            setLongName={setLongName}
+            setShortName={setShortName}
+            setIsUnmessagable={setIsUnmessagable}
+            isSaving={isSaving}
+            onSave={handleSaveNodeOwner}
+          />
+        </div>
 
-        <DeviceConfigSection
-          role={role}
-          setRole={setRole}
-          nodeInfoBroadcastSecs={nodeInfoBroadcastSecs}
-          setNodeInfoBroadcastSecs={setNodeInfoBroadcastSecs}
-          tzdef={tzdef}
-          setTzdef={setTzdef}
-          isSaving={isSaving}
-          onSave={handleSaveDeviceConfig}
-        />
+        <div id="config-device">
+          <DeviceConfigSection
+            role={role}
+            setRole={setRole}
+            nodeInfoBroadcastSecs={nodeInfoBroadcastSecs}
+            setNodeInfoBroadcastSecs={setNodeInfoBroadcastSecs}
+            tzdef={tzdef}
+            setTzdef={setTzdef}
+            isSaving={isSaving}
+            onSave={handleSaveDeviceConfig}
+          />
+        </div>
 
-        <LoRaConfigSection
-          usePreset={usePreset}
-          setUsePreset={setUsePreset}
-          modemPreset={modemPreset}
-          setModemPreset={setModemPreset}
-          bandwidth={bandwidth}
-          setBandwidth={setBandwidth}
-          spreadFactor={spreadFactor}
-          setSpreadFactor={setSpreadFactor}
-          codingRate={codingRate}
-          setCodingRate={setCodingRate}
-          frequencyOffset={frequencyOffset}
-          setFrequencyOffset={setFrequencyOffset}
-          overrideFrequency={overrideFrequency}
-          setOverrideFrequency={setOverrideFrequency}
-          region={region}
-          setRegion={setRegion}
-          hopLimit={hopLimit}
-          setHopLimit={setHopLimit}
-          txPower={txPower}
-          setTxPower={setTxPower}
-          channelNum={channelNum}
-          setChannelNum={setChannelNum}
-          sx126xRxBoostedGain={sx126xRxBoostedGain}
-          setSx126xRxBoostedGain={setSx126xRxBoostedGain}
-          isSaving={isSaving}
-          onSave={handleSaveLoRaConfig}
-        />
+        <div id="config-lora">
+          <LoRaConfigSection
+            usePreset={usePreset}
+            setUsePreset={setUsePreset}
+            modemPreset={modemPreset}
+            setModemPreset={setModemPreset}
+            bandwidth={bandwidth}
+            setBandwidth={setBandwidth}
+            spreadFactor={spreadFactor}
+            setSpreadFactor={setSpreadFactor}
+            codingRate={codingRate}
+            setCodingRate={setCodingRate}
+            frequencyOffset={frequencyOffset}
+            setFrequencyOffset={setFrequencyOffset}
+            overrideFrequency={overrideFrequency}
+            setOverrideFrequency={setOverrideFrequency}
+            region={region}
+            setRegion={setRegion}
+            hopLimit={hopLimit}
+            setHopLimit={setHopLimit}
+            txPower={txPower}
+            setTxPower={setTxPower}
+            channelNum={channelNum}
+            setChannelNum={setChannelNum}
+            sx126xRxBoostedGain={sx126xRxBoostedGain}
+            setSx126xRxBoostedGain={setSx126xRxBoostedGain}
+            isSaving={isSaving}
+            onSave={handleSaveLoRaConfig}
+          />
+        </div>
 
-        <PositionConfigSection
-          positionBroadcastSecs={positionBroadcastSecs}
-          setPositionBroadcastSecs={setPositionBroadcastSecs}
-          positionSmartEnabled={positionSmartEnabled}
-          setPositionSmartEnabled={setPositionSmartEnabled}
-          fixedPosition={fixedPosition}
-          setFixedPosition={setFixedPosition}
-          fixedLatitude={fixedLatitude}
-          setFixedLatitude={setFixedLatitude}
-          fixedLongitude={fixedLongitude}
-          setFixedLongitude={setFixedLongitude}
-          fixedAltitude={fixedAltitude}
-          setFixedAltitude={setFixedAltitude}
-          isSaving={isSaving}
-          onSave={handleSavePositionConfig}
-        />
+        <div id="config-position">
+          <PositionConfigSection
+            positionBroadcastSecs={positionBroadcastSecs}
+            setPositionBroadcastSecs={setPositionBroadcastSecs}
+            positionSmartEnabled={positionSmartEnabled}
+            setPositionSmartEnabled={setPositionSmartEnabled}
+            fixedPosition={fixedPosition}
+            setFixedPosition={setFixedPosition}
+            fixedLatitude={fixedLatitude}
+            setFixedLatitude={setFixedLatitude}
+            fixedLongitude={fixedLongitude}
+            setFixedLongitude={setFixedLongitude}
+            fixedAltitude={fixedAltitude}
+            setFixedAltitude={setFixedAltitude}
+            isSaving={isSaving}
+            onSave={handleSavePositionConfig}
+          />
+        </div>
 
-        <MQTTConfigSection
-          mqttEnabled={mqttEnabled}
-          setMqttEnabled={setMqttEnabled}
-          mqttAddress={mqttAddress}
-          setMqttAddress={setMqttAddress}
-          mqttUsername={mqttUsername}
-          setMqttUsername={setMqttUsername}
-          mqttPassword={mqttPassword}
-          setMqttPassword={setMqttPassword}
-          mqttEncryptionEnabled={mqttEncryptionEnabled}
-          setMqttEncryptionEnabled={setMqttEncryptionEnabled}
-          mqttJsonEnabled={mqttJsonEnabled}
-          setMqttJsonEnabled={setMqttJsonEnabled}
-          mqttRoot={mqttRoot}
-          setMqttRoot={setMqttRoot}
-          isSaving={isSaving}
-          onSave={handleSaveMQTTConfig}
-        />
+        <div id="config-mqtt">
+          <MQTTConfigSection
+            mqttEnabled={mqttEnabled}
+            setMqttEnabled={setMqttEnabled}
+            mqttAddress={mqttAddress}
+            setMqttAddress={setMqttAddress}
+            mqttUsername={mqttUsername}
+            setMqttUsername={setMqttUsername}
+            mqttPassword={mqttPassword}
+            setMqttPassword={setMqttPassword}
+            mqttEncryptionEnabled={mqttEncryptionEnabled}
+            setMqttEncryptionEnabled={setMqttEncryptionEnabled}
+            mqttJsonEnabled={mqttJsonEnabled}
+            setMqttJsonEnabled={setMqttJsonEnabled}
+            mqttRoot={mqttRoot}
+            setMqttRoot={setMqttRoot}
+            isSaving={isSaving}
+            onSave={handleSaveMQTTConfig}
+          />
+        </div>
 
-        <NeighborInfoSection
-          neighborInfoEnabled={neighborInfoEnabled}
-          setNeighborInfoEnabled={setNeighborInfoEnabled}
-          neighborInfoInterval={neighborInfoInterval}
-          setNeighborInfoInterval={setNeighborInfoInterval}
-          isSaving={isSaving}
-          onSave={handleSaveNeighborInfoConfig}
-        />
+        <div id="config-neighbor">
+          <NeighborInfoSection
+            neighborInfoEnabled={neighborInfoEnabled}
+            setNeighborInfoEnabled={setNeighborInfoEnabled}
+            neighborInfoInterval={neighborInfoInterval}
+            setNeighborInfoInterval={setNeighborInfoInterval}
+            isSaving={isSaving}
+            onSave={handleSaveNeighborInfoConfig}
+          />
+        </div>
 
-        <NetworkConfigSection
-          wifiEnabled={wifiEnabled}
-          ntpServer={ntpServer}
-          setNtpServer={setNtpServer}
-          isSaving={isSaving}
-          onSave={handleSaveNetworkConfig}
-        />
+        <div id="config-network">
+          <NetworkConfigSection
+            wifiEnabled={wifiEnabled}
+            ntpServer={ntpServer}
+            setNtpServer={setNtpServer}
+            isSaving={isSaving}
+            onSave={handleSaveNetworkConfig}
+          />
+        </div>
 
-        <ChannelsConfigSection
-          channels={channels}
-          onChannelsUpdated={onChannelsUpdated}
-        />
+        <div id="config-channels">
+          <ChannelsConfigSection
+            channels={channels}
+            onChannelsUpdated={onChannelsUpdated}
+          />
+        </div>
 
-        <BackupManagementSection />
+        <div id="config-backup">
+          <BackupManagementSection />
+        </div>
       </div>
 
       {/* Import/Export Modals */}

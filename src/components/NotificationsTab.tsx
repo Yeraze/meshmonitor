@@ -4,6 +4,7 @@ import api from '../services/api';
 import { logger } from '../utils/logger';
 import { Channel } from '../types/device';
 import { useToast } from './ToastContainer';
+import SectionNav from './SectionNav';
 
 interface VapidStatus {
   configured: boolean;
@@ -469,10 +470,16 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
     <div className="tab-content">
       <h2>{t('notifications.title')}</h2>
 
+      <SectionNav items={[
+        { id: 'notif-services', label: t('notifications.services_title', 'Services') },
+        { id: 'notif-webpush', label: t('notifications.webpush_title', 'Web Push') },
+        { id: 'notif-apprise', label: t('notifications.apprise_title', 'Apprise') },
+      ]} />
+
       {/* ========================================
           SECTION 1: Notification Services & Filtering (Top)
           ======================================== */}
-      <div className="settings-section">
+      <div id="notif-services" className="settings-section">
         <h3>🔔 {t('notifications.services_title')}</h3>
         <p style={{ marginBottom: '24px', color: '#666' }}>
           {t('notifications.services_description')}
@@ -1068,7 +1075,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
           SECTION 2: Web Push Configuration (only shown if enabled)
           ======================================== */}
       {preferences.enableWebPush && (
-      <div className="settings-section">
+      <div id="notif-webpush" className="settings-section">
         <h3>📱 {t('notifications.webpush_config_title')}</h3>
 
         {/* HTTPS Warning */}
@@ -1279,7 +1286,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
           SECTION 3: Apprise Configuration (only shown if enabled)
           ======================================== */}
       {preferences.enableApprise && (
-      <div className="settings-section">
+      <div id="notif-apprise" className="settings-section">
         <h3>🔔 {t('notifications.apprise_config_title')}</h3>
         <p style={{ marginBottom: '20px', color: '#666' }}><Trans i18nKey="notifications.apprise_config_description" components={{ strong: <strong /> }} /></p>
 

@@ -16,6 +16,7 @@ import { CustomTilesetManager } from './CustomTilesetManager';
 import { type Theme, useSettings } from '../contexts/SettingsContext';
 import { useUI } from '../contexts/UIContext';
 import { LanguageSelector } from './LanguageSelector';
+import SectionNav from './SectionNav';
 
 type DistanceUnit = 'km' | 'mi';
 type TimeFormat = '12' | '24';
@@ -627,8 +628,18 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         >
           ❤️ {t('settings.support')}</a>
       </div>
+      <SectionNav items={[
+        { id: 'settings-language', label: t('settings.language') },
+        { id: 'settings-node-display', label: t('settings.node_display') },
+        { id: 'settings-display-prefs', label: t('settings.display_prefs') },
+        { id: 'settings-packet-monitor', label: t('settings.packet_monitor') },
+        { id: 'settings-solar', label: t('settings.solar_monitoring') },
+        { id: 'settings-backup', label: t('settings.system_backup', 'System Backup') },
+        { id: 'settings-management', label: t('settings.settings_management') },
+        { id: 'settings-danger', label: t('settings.danger_zone') },
+      ]} />
       <div className="settings-content">
-        <div className="settings-section">
+        <div id="settings-language" className="settings-section">
           <h3>{t('settings.language')}</h3>
           <div className="setting-item">
             <label htmlFor="language">
@@ -652,7 +663,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           </p>
         </div>
 
-        <div className="settings-section">
+        <div id="settings-node-display" className="settings-section">
           <h3>{t('settings.node_display')}</h3>
           <div className="setting-item">
             <label htmlFor="maxNodeAge">
@@ -716,7 +727,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           </div>
         </div>
 
-        <div className="settings-section">
+        <div id="settings-display-prefs" className="settings-section">
           <h3>{t('settings.display_prefs')}</h3>
           <div className="setting-item">
             <label htmlFor="preferredSortField">
@@ -951,7 +962,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           </button>
         </div>
 
-        <div className="settings-section">
+        <div id="settings-packet-monitor" className="settings-section">
           <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, cursor: 'pointer' }}>
               <input
@@ -993,7 +1004,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           </p>
         </div>
 
-        <div className="settings-section">
+        <div id="settings-solar" className="settings-section">
           <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, cursor: 'pointer' }}>
               <input
@@ -1096,11 +1107,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           )}
         </div>
 
-        <SystemBackupSection />
+        <div id="settings-backup">
+          <SystemBackupSection />
+        </div>
 
         <AutoUpgradeTestSection baseUrl={baseUrl} />
 
-        <div className="settings-section">
+        <div id="settings-management" className="settings-section">
           <h3>{t('settings.settings_management')}</h3>
           <p className="setting-description">{t('settings.settings_management_description')}</p>
           <div className="settings-buttons">
@@ -1121,7 +1134,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           </div>
         </div>
 
-        <div className="settings-section danger-zone">
+        <div id="settings-danger" className="settings-section danger-zone">
           <h3>⚠️ {t('settings.danger_zone')}</h3>
           <p className="danger-zone-description">{t('settings.danger_zone_description')}</p>
 

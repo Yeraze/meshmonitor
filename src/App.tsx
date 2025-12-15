@@ -25,6 +25,7 @@ import AutoAnnounceSection from './components/AutoAnnounceSection';
 import AutoWelcomeSection from './components/AutoWelcomeSection';
 import AutoResponderSection from './components/AutoResponderSection';
 import TimerTriggersSection from './components/TimerTriggersSection';
+import SectionNav from './components/SectionNav';
 import { ToastProvider, useToast } from './components/ToastContainer';
 import { RebootModal } from './components/RebootModal';
 import { AppBanners } from './components/AppBanners';
@@ -4274,84 +4275,104 @@ function App() {
         )}
         {activeTab === 'automation' && (
           <div className="settings-tab">
+            <SectionNav items={[
+              { id: 'auto-welcome', label: t('automation.welcome.title', 'Auto Welcome') },
+              { id: 'auto-traceroute', label: t('automation.traceroute.title', 'Auto Traceroute') },
+              { id: 'auto-acknowledge', label: t('automation.acknowledge.title', 'Auto Acknowledge') },
+              { id: 'auto-announce', label: t('automation.announce.title', 'Auto Announce') },
+              { id: 'auto-responder', label: t('automation.auto_responder.title', 'Auto Responder') },
+              { id: 'timer-triggers', label: t('automation.timer_triggers.title', 'Timer Triggers') },
+            ]} />
             <div className="settings-content">
-              <AutoWelcomeSection
-                enabled={autoWelcomeEnabled}
-                message={autoWelcomeMessage}
-                target={autoWelcomeTarget}
-                waitForName={autoWelcomeWaitForName}
-                maxHops={autoWelcomeMaxHops}
-                channels={channels}
-                baseUrl={baseUrl}
-                onEnabledChange={setAutoWelcomeEnabled}
-                onMessageChange={setAutoWelcomeMessage}
-                onTargetChange={setAutoWelcomeTarget}
-                onWaitForNameChange={setAutoWelcomeWaitForName}
-                onMaxHopsChange={setAutoWelcomeMaxHops}
-              />
-              <AutoTracerouteSection
-                intervalMinutes={tracerouteIntervalMinutes}
-                baseUrl={baseUrl}
-                onIntervalChange={setTracerouteIntervalMinutes}
-              />
-              <AutoAcknowledgeSection
-                enabled={autoAckEnabled}
-                regex={autoAckRegex}
-                message={autoAckMessage}
-                messageDirect={autoAckMessageDirect}
-                channels={channels}
-                enabledChannels={autoAckChannels}
-                directMessagesEnabled={autoAckDirectMessages}
-                useDM={autoAckUseDM}
-                skipIncompleteNodes={autoAckSkipIncompleteNodes}
-                tapbackEnabled={autoAckTapbackEnabled}
-                replyEnabled={autoAckReplyEnabled}
-                baseUrl={baseUrl}
-                onEnabledChange={setAutoAckEnabled}
-                onRegexChange={setAutoAckRegex}
-                onMessageChange={setAutoAckMessage}
-                onMessageDirectChange={setAutoAckMessageDirect}
-                onChannelsChange={setAutoAckChannels}
-                onDirectMessagesChange={setAutoAckDirectMessages}
-                onUseDMChange={setAutoAckUseDM}
-                onSkipIncompleteNodesChange={setAutoAckSkipIncompleteNodes}
-                onTapbackEnabledChange={setAutoAckTapbackEnabled}
-                onReplyEnabledChange={setAutoAckReplyEnabled}
-              />
-              <AutoAnnounceSection
-                enabled={autoAnnounceEnabled}
-                intervalHours={autoAnnounceIntervalHours}
-                message={autoAnnounceMessage}
-                channelIndex={autoAnnounceChannelIndex}
-                announceOnStart={autoAnnounceOnStart}
-                useSchedule={autoAnnounceUseSchedule}
-                schedule={autoAnnounceSchedule}
-                channels={channels}
-                baseUrl={baseUrl}
-                onEnabledChange={setAutoAnnounceEnabled}
-                onIntervalChange={setAutoAnnounceIntervalHours}
-                onMessageChange={setAutoAnnounceMessage}
-                onChannelChange={setAutoAnnounceChannelIndex}
-                onAnnounceOnStartChange={setAutoAnnounceOnStart}
-                onUseScheduleChange={setAutoAnnounceUseSchedule}
-                onScheduleChange={setAutoAnnounceSchedule}
-              />
-              <AutoResponderSection
-                enabled={autoResponderEnabled}
-                triggers={autoResponderTriggers}
-                channels={channels}
-                skipIncompleteNodes={autoResponderSkipIncompleteNodes}
-                baseUrl={baseUrl}
-                onEnabledChange={setAutoResponderEnabled}
-                onTriggersChange={setAutoResponderTriggers}
-                onSkipIncompleteNodesChange={setAutoResponderSkipIncompleteNodes}
-              />
-              <TimerTriggersSection
-                triggers={timerTriggers}
-                channels={channels}
-                baseUrl={baseUrl}
-                onTriggersChange={setTimerTriggers}
-              />
+              <div id="auto-welcome">
+                <AutoWelcomeSection
+                  enabled={autoWelcomeEnabled}
+                  message={autoWelcomeMessage}
+                  target={autoWelcomeTarget}
+                  waitForName={autoWelcomeWaitForName}
+                  maxHops={autoWelcomeMaxHops}
+                  channels={channels}
+                  baseUrl={baseUrl}
+                  onEnabledChange={setAutoWelcomeEnabled}
+                  onMessageChange={setAutoWelcomeMessage}
+                  onTargetChange={setAutoWelcomeTarget}
+                  onWaitForNameChange={setAutoWelcomeWaitForName}
+                  onMaxHopsChange={setAutoWelcomeMaxHops}
+                />
+              </div>
+              <div id="auto-traceroute">
+                <AutoTracerouteSection
+                  intervalMinutes={tracerouteIntervalMinutes}
+                  baseUrl={baseUrl}
+                  onIntervalChange={setTracerouteIntervalMinutes}
+                />
+              </div>
+              <div id="auto-acknowledge">
+                <AutoAcknowledgeSection
+                  enabled={autoAckEnabled}
+                  regex={autoAckRegex}
+                  message={autoAckMessage}
+                  messageDirect={autoAckMessageDirect}
+                  channels={channels}
+                  enabledChannels={autoAckChannels}
+                  directMessagesEnabled={autoAckDirectMessages}
+                  useDM={autoAckUseDM}
+                  skipIncompleteNodes={autoAckSkipIncompleteNodes}
+                  tapbackEnabled={autoAckTapbackEnabled}
+                  replyEnabled={autoAckReplyEnabled}
+                  baseUrl={baseUrl}
+                  onEnabledChange={setAutoAckEnabled}
+                  onRegexChange={setAutoAckRegex}
+                  onMessageChange={setAutoAckMessage}
+                  onMessageDirectChange={setAutoAckMessageDirect}
+                  onChannelsChange={setAutoAckChannels}
+                  onDirectMessagesChange={setAutoAckDirectMessages}
+                  onUseDMChange={setAutoAckUseDM}
+                  onSkipIncompleteNodesChange={setAutoAckSkipIncompleteNodes}
+                  onTapbackEnabledChange={setAutoAckTapbackEnabled}
+                  onReplyEnabledChange={setAutoAckReplyEnabled}
+                />
+              </div>
+              <div id="auto-announce">
+                <AutoAnnounceSection
+                  enabled={autoAnnounceEnabled}
+                  intervalHours={autoAnnounceIntervalHours}
+                  message={autoAnnounceMessage}
+                  channelIndex={autoAnnounceChannelIndex}
+                  announceOnStart={autoAnnounceOnStart}
+                  useSchedule={autoAnnounceUseSchedule}
+                  schedule={autoAnnounceSchedule}
+                  channels={channels}
+                  baseUrl={baseUrl}
+                  onEnabledChange={setAutoAnnounceEnabled}
+                  onIntervalChange={setAutoAnnounceIntervalHours}
+                  onMessageChange={setAutoAnnounceMessage}
+                  onChannelChange={setAutoAnnounceChannelIndex}
+                  onAnnounceOnStartChange={setAutoAnnounceOnStart}
+                  onUseScheduleChange={setAutoAnnounceUseSchedule}
+                  onScheduleChange={setAutoAnnounceSchedule}
+                />
+              </div>
+              <div id="auto-responder">
+                <AutoResponderSection
+                  enabled={autoResponderEnabled}
+                  triggers={autoResponderTriggers}
+                  channels={channels}
+                  skipIncompleteNodes={autoResponderSkipIncompleteNodes}
+                  baseUrl={baseUrl}
+                  onEnabledChange={setAutoResponderEnabled}
+                  onTriggersChange={setAutoResponderTriggers}
+                  onSkipIncompleteNodesChange={setAutoResponderSkipIncompleteNodes}
+                />
+              </div>
+              <div id="timer-triggers">
+                <TimerTriggersSection
+                  triggers={timerTriggers}
+                  channels={channels}
+                  baseUrl={baseUrl}
+                  onTriggersChange={setTimerTriggers}
+                />
+              </div>
             </div>
           </div>
         )}
