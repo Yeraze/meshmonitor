@@ -113,9 +113,7 @@ fn open_data_folder() {
         }
         #[cfg(target_os = "macos")]
         {
-            let _ = std::process::Command::new("open")
-                .arg(data_path)
-                .spawn();
+            let _ = std::process::Command::new("open").arg(data_path).spawn();
         }
         #[cfg(target_os = "linux")]
         {

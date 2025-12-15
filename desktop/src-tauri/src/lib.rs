@@ -50,7 +50,10 @@ pub fn start_backend<R: Runtime>(app: &AppHandle<R>) -> Result<Child, String> {
         .env("MESHTASTIC_TCP_PORT", config.meshtastic_port.to_string())
         .env("DATABASE_PATH", db_path.to_string_lossy().to_string())
         .env("SESSION_SECRET", &config.session_secret)
-        .env("ALLOWED_ORIGINS", format!("http://localhost:{}", config.web_port));
+        .env(
+            "ALLOWED_ORIGINS",
+            format!("http://localhost:{}", config.web_port),
+        );
 
     // On Windows, hide the console window
     #[cfg(windows)]
@@ -60,7 +63,9 @@ pub fn start_backend<R: Runtime>(app: &AppHandle<R>) -> Result<Child, String> {
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
 
-    let child = cmd.spawn().map_err(|e| format!("Failed to start backend: {}", e))?;
+    let child = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to start backend: {}", e))?;
 
     println!("Backend started with PID: {}", child.id());
     Ok(child)
@@ -96,7 +101,10 @@ pub fn get_web_url() -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn restart_backend<R: Runtime>(app: AppHandle<R>, state: tauri::State<'_, BackendState>) -> Result<(), String> {
+pub fn restart_backend<R: Runtime>(
+    app: AppHandle<R>,
+    state: tauri::State<'_, BackendState>,
+) -> Result<(), String> {
     // Stop existing backend
     stop_backend(&state);
 

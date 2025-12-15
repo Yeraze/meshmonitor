@@ -1,9 +1,7 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use meshmonitor_desktop_lib::{
-    config::Config, start_backend, stop_backend, tray, BackendState,
-};
+use meshmonitor_desktop_lib::{config::Config, start_backend, stop_backend, tray, BackendState};
 use std::sync::Mutex;
 use tauri::Manager;
 

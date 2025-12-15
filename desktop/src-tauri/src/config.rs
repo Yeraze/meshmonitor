@@ -39,8 +39,7 @@ impl Config {
         if config_path.exists() {
             let content = fs::read_to_string(&config_path)
                 .map_err(|e| format!("Failed to read config: {}", e))?;
-            serde_json::from_str(&content)
-                .map_err(|e| format!("Failed to parse config: {}", e))
+            serde_json::from_str(&content).map_err(|e| format!("Failed to parse config: {}", e))
         } else {
             let config = Config::default();
             config.save()?;
@@ -61,8 +60,7 @@ impl Config {
         let content = serde_json::to_string_pretty(self)
             .map_err(|e| format!("Failed to serialize config: {}", e))?;
 
-        fs::write(&config_path, content)
-            .map_err(|e| format!("Failed to write config: {}", e))
+        fs::write(&config_path, content).map_err(|e| format!("Failed to write config: {}", e))
     }
 
     /// Check if first-run setup is needed
@@ -79,15 +77,14 @@ impl Config {
 
 /// Get the configuration file path
 pub fn get_config_path() -> Result<PathBuf, String> {
-    let config_dir = dirs::config_dir()
-        .ok_or_else(|| "Could not find config directory".to_string())?;
+    let config_dir =
+        dirs::config_dir().ok_or_else(|| "Could not find config directory".to_string())?;
     Ok(config_dir.join("MeshMonitor").join("config.json"))
 }
 
 /// Get the data directory path
 pub fn get_data_path() -> Result<PathBuf, String> {
-    let data_dir = dirs::data_dir()
-        .ok_or_else(|| "Could not find data directory".to_string())?;
+    let data_dir = dirs::data_dir().ok_or_else(|| "Could not find data directory".to_string())?;
     let meshmonitor_data = data_dir.join("MeshMonitor");
 
     // Ensure directory exists
@@ -105,8 +102,7 @@ pub fn get_database_path() -> Result<PathBuf, String> {
 /// Get the logs directory path
 pub fn get_logs_path() -> Result<PathBuf, String> {
     let logs_dir = get_data_path()?.join("logs");
-    fs::create_dir_all(&logs_dir)
-        .map_err(|e| format!("Failed to create logs directory: {}", e))?;
+    fs::create_dir_all(&logs_dir).map_err(|e| format!("Failed to create logs directory: {}", e))?;
     Ok(logs_dir)
 }
 
