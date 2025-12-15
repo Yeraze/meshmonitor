@@ -43,6 +43,7 @@ export default defineConfig({
             { text: 'Device Configuration', link: '/features/device' },
             { text: 'Admin Commands', link: '/features/admin-commands' },
             { text: 'Push Notifications', link: '/features/notifications' },
+            { text: 'Packet Monitor', link: '/features/packet-monitor' },
             { text: '🌍 Translations', link: '/features/translations' },
             { text: '🎨 Theme Gallery', link: '/THEME_GALLERY' },
             { text: '🌐 Site Gallery', link: '/site-gallery' },
