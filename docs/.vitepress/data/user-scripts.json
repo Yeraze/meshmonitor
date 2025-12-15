@@ -247,5 +247,27 @@
       "Powered by api.weather.gov (US National Weather Service)",
       "No API key required"
     ]
+  },
+  {
+    "name": "MeshManager Solar Forecast",
+    "filename": "solar-forecast.py",
+    "icon": "☀️",
+    "description": "Query MeshManager's solar forecast API and return an abbreviated summary with today's solar production forecast, percentage of historical average, and nodes at risk of low battery.",
+    "language": "Python",
+    "tags": ["Solar", "Forecast", "MeshManager", "Battery", "Monitoring"],
+    "githubPath": "Yeraze/meshmanager/main/examples/auto-responder-scripts/solar-forecast.py",
+    "exampleTrigger": "solar, forecast, sun",
+    "requirements": [
+      "Python 3.6+",
+      "MeshManager instance accessible via network",
+      "MESHMANAGER_URL environment variable"
+    ],
+    "author": "Yeraze",
+    "features": [
+      "Solar production forecast for today",
+      "Percentage of historical average output",
+      "Identifies nodes at risk of low battery",
+      "Formatted for mesh network 200-char limit"
+    ]
   }
 ]
