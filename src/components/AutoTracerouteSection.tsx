@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
@@ -223,9 +223,9 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
     return Array.from(models).sort((a, b) => a - b);
   }, [availableNodes]);
 
-  // Count nodes matching current filters (for preview)
-  const matchingNodesCount = useMemo(() => {
-    if (!filterEnabled) return availableNodes.length;
+  // Get nodes matching current filters (for preview)
+  const matchingNodes = useMemo(() => {
+    if (!filterEnabled) return availableNodes;
 
     const matchingNodeNums = new Set<number>();
 
@@ -272,9 +272,40 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
       availableNodes.forEach(n => matchingNodeNums.add(n.nodeNum));
     }
 
-    return matchingNodeNums.size;
+    // Return full node objects for matching node nums
+    return availableNodes.filter(n => matchingNodeNums.has(n.nodeNum));
   }, [filterEnabled, selectedNodeNums, filterChannels, filterRoles, filterHwModels, filterNameRegex, availableNodes,
       filterNodesEnabled, filterChannelsEnabled, filterRolesEnabled, filterHwModelsEnabled, filterRegexEnabled]);
+
+  // Debounced matching nodes for preview (1 second delay)
+  const [debouncedMatchingNodes, setDebouncedMatchingNodes] = useState<Node[]>([]);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    // Clear any existing timer
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    // Set new timer for 1 second delay
+    debounceTimerRef.current = setTimeout(() => {
+      setDebouncedMatchingNodes(matchingNodes);
+    }, 1000);
+
+    // Cleanup on unmount or when matchingNodes changes
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, [matchingNodes]);
+
+  // Initialize debounced nodes on first render
+  useEffect(() => {
+    if (debouncedMatchingNodes.length === 0 && matchingNodes.length > 0) {
+      setDebouncedMatchingNodes(matchingNodes);
+    }
+  }, [matchingNodes, debouncedMatchingNodes.length]);
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -535,18 +566,12 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
               padding: '1rem',
               background: 'var(--ctp-surface0)',
               border: '1px solid var(--ctp-surface2)',
-              borderRadius: '6px'
+              borderRadius: '6px',
+              display: 'flex',
+              gap: '1rem'
             }}>
-              {/* Matching nodes preview */}
-              <div style={{
-                marginBottom: '1rem',
-                padding: '0.5rem 0.75rem',
-                background: 'var(--ctp-surface1)',
-                borderRadius: '4px',
-                fontSize: '13px'
-              }}>
-                {t('automation.auto_traceroute.matching_nodes', { count: matchingNodesCount })} / {availableNodes.length} {t('common.total')}
-              </div>
+              {/* Left column: Filter settings */}
+              <div style={{ flex: 1, minWidth: 0 }}>
 
               {/* Specific Nodes Filter */}
               <div style={{ marginBottom: '0.5rem', opacity: filterNodesEnabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>
@@ -826,6 +851,64 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                     </div>
                   </div>
                 )}
+              </div>
+              </div>
+
+              {/* Right column: Matching nodes preview */}
+              <div style={{
+                width: '280px',
+                flexShrink: 0,
+                background: 'var(--ctp-base)',
+                border: '1px solid var(--ctp-surface2)',
+                borderRadius: '6px',
+                display: 'flex',
+                flexDirection: 'column'
+              }}>
+                <div style={{
+                  padding: '0.5rem 0.75rem',
+                  borderBottom: '1px solid var(--ctp-surface2)',
+                  background: 'var(--ctp-surface1)',
+                  borderRadius: '6px 6px 0 0',
+                  fontSize: '13px',
+                  fontWeight: 500
+                }}>
+                  {t('automation.auto_traceroute.matching_nodes', { count: debouncedMatchingNodes.length })} / {availableNodes.length} {t('common.total')}
+                </div>
+                <div style={{
+                  flex: 1,
+                  overflowY: 'auto',
+                  maxHeight: '400px',
+                  padding: '0.25rem'
+                }}>
+                  {debouncedMatchingNodes.length === 0 ? (
+                    <div style={{
+                      padding: '1rem',
+                      textAlign: 'center',
+                      color: 'var(--ctp-subtext0)',
+                      fontSize: '12px'
+                    }}>
+                      {t('automation.auto_traceroute.no_nodes_match_filters')}
+                    </div>
+                  ) : (
+                    debouncedMatchingNodes.map(node => (
+                      <div
+                        key={node.nodeNum}
+                        style={{
+                          padding: '0.35rem 0.5rem',
+                          borderBottom: '1px solid var(--ctp-surface1)',
+                          fontSize: '12px',
+                          color: 'var(--ctp-text)',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis'
+                        }}
+                        title={node.user?.longName || node.longName || node.user?.shortName || node.shortName || node.nodeId || 'Unknown'}
+                      >
+                        {node.user?.longName || node.longName || node.user?.shortName || node.shortName || node.nodeId || 'Unknown'}
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             </div>
           )}
