@@ -182,10 +182,6 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
     try {
       const response = await api.get<NotificationPreferences>('/api/push/preferences');
 
-      if (response.enabledChannels.length === 0 && channels.length > 0) {
-        response.enabledChannels = channels.map(c => c.id);
-      }
-
       setPreferences(response);
       setWhitelistText(response.whitelist.join('\n'));
       setBlacklistText(response.blacklist.join('\n'));
