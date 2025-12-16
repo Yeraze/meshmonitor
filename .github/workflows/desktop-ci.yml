@@ -122,15 +122,6 @@ jobs:
           mkdir -p desktop/resources
           touch desktop/resources/.placeholder
 
-          # Copy icon.png to required sizes for tauri::generate_context!()
-          # (For lint only - actual build uses properly sized icons)
-          cd desktop/src-tauri/icons
-          cp icon.png 32x32.png
-          cp icon.png 128x128.png
-          cp icon.png 128x128@2x.png
-          # Create placeholder icns (macOS icon format) - not needed for Windows build
-          touch icon.icns
-
       - name: Run Clippy
         working-directory: desktop/src-tauri
         run: cargo clippy --all-targets --all-features -- -D warnings
