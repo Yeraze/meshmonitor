@@ -40,6 +40,8 @@ import { migration as notifyOnServerEventsMigration } from '../server/migrations
 import { migration as prefixWithNodeNameMigration } from '../server/migrations/035_add_prefix_with_node_name.js';
 import { migration as perUserAppriseUrlsMigration } from '../server/migrations/036_add_per_user_apprise_urls.js';
 import { migration as notifyOnMqttMigration } from '../server/migrations/037_add_notify_on_mqtt.js';
+import { migration as recalculateEstimatedPositionsMigration } from '../server/migrations/038_recalculate_estimated_positions.js';
+import { migration as recalculateEstimatedPositionsFixMigration } from '../server/migrations/039_recalculate_estimated_positions_fix.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Configuration constants for traceroute history
@@ -414,6 +416,8 @@ class DatabaseService {
     this.runPrefixWithNodeNameMigration();
     this.runPerUserAppriseUrlsMigration();
     this.runNotifyOnMqttMigration();
+    this.runRecalculateEstimatedPositionsMigration();
+    this.runRecalculateEstimatedPositionsFixMigration();
     this.ensureAutomationDefaults();
     this.isInitialized = true;
   }
@@ -1101,6 +1105,44 @@ class DatabaseService {
       logger.debug('✅ Notify on MQTT migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run notify on MQTT migration:', error);
+      throw error;
+    }
+  }
+
+  private runRecalculateEstimatedPositionsMigration(): void {
+    const migrationKey = 'migration_038_recalculate_estimated_positions';
+    try {
+      const currentStatus = this.getSetting(migrationKey);
+      if (currentStatus === 'completed') {
+        logger.debug('✅ Recalculate estimated positions migration already completed');
+        return;
+      }
+
+      logger.info('Running migration 038: Recalculate estimated positions...');
+      recalculateEstimatedPositionsMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.info('✅ Recalculate estimated positions migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run recalculate estimated positions migration:', error);
+      throw error;
+    }
+  }
+
+  private runRecalculateEstimatedPositionsFixMigration(): void {
+    const migrationKey = 'migration_039_recalculate_estimated_positions_fix';
+    try {
+      const currentStatus = this.getSetting(migrationKey);
+      if (currentStatus === 'completed') {
+        logger.debug('✅ Recalculate estimated positions fix migration already completed');
+        return;
+      }
+
+      logger.info('Running migration 039: Recalculate estimated positions (fix route order)...');
+      recalculateEstimatedPositionsFixMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.info('✅ Recalculate estimated positions fix migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run recalculate estimated positions fix migration:', error);
       throw error;
     }
   }
@@ -2653,6 +2695,77 @@ class DatabaseService {
     }
 
     return positionMap;
+  }
+
+  /**
+   * Get recent estimated positions for a specific node.
+   * Returns position estimates with timestamps for time-weighted averaging.
+   * @param nodeNum - The node number to get estimates for
+   * @param limit - Maximum number of estimates to return (default 10)
+   * @returns Array of { latitude, longitude, timestamp } sorted by timestamp descending
+   */
+  getRecentEstimatedPositions(nodeNum: number, limit: number = 10): Array<{ latitude: number; longitude: number; timestamp: number }> {
+    const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
+
+    // Get the most recent estimated positions by pairing lat/lon with matching timestamps
+    const query = `
+      SELECT lat.value as latitude, lon.value as longitude, lat.timestamp as timestamp
+      FROM telemetry lat
+      INNER JOIN telemetry lon ON lat.nodeId = lon.nodeId AND lat.timestamp = lon.timestamp
+      WHERE lat.nodeId = ?
+        AND lat.telemetryType = 'estimated_latitude'
+        AND lon.telemetryType = 'estimated_longitude'
+      ORDER BY lat.timestamp DESC
+      LIMIT ?
+    `;
+
+    const stmt = this.db.prepare(query);
+    const results = stmt.all(nodeId, limit) as Array<{ latitude: number; longitude: number; timestamp: number }>;
+
+    return results;
+  }
+
+  /**
+   * Get all traceroutes for position recalculation.
+   * Returns traceroutes with route data, ordered by timestamp for chronological processing.
+   */
+  getAllTraceroutesForRecalculation(): Array<{
+    id: number;
+    fromNodeNum: number;
+    toNodeNum: number;
+    route: string | null;
+    snrTowards: string | null;
+    timestamp: number;
+  }> {
+    const query = `
+      SELECT id, fromNodeNum, toNodeNum, route, snrTowards, timestamp
+      FROM traceroutes
+      WHERE route IS NOT NULL AND route != '[]'
+      ORDER BY timestamp ASC
+    `;
+
+    const stmt = this.db.prepare(query);
+    return stmt.all() as Array<{
+      id: number;
+      fromNodeNum: number;
+      toNodeNum: number;
+      route: string | null;
+      snrTowards: string | null;
+      timestamp: number;
+    }>;
+  }
+
+  /**
+   * Delete all estimated position telemetry records.
+   * Used during migration to force recalculation with new algorithm.
+   */
+  deleteAllEstimatedPositions(): number {
+    const stmt = this.db.prepare(`
+      DELETE FROM telemetry
+      WHERE telemetryType IN ('estimated_latitude', 'estimated_longitude')
+    `);
+    const result = stmt.run();
+    return result.changes;
   }
 
   getTelemetryByNodeAveraged(nodeId: string, sinceTimestamp?: number, intervalMinutes?: number, maxHours?: number): DbTelemetry[] {
