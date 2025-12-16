@@ -291,7 +291,7 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
 
         {/* Public Key */}
         {publicKey && (
-          <div className="node-detail-card node-detail-card-wide">
+          <div className="node-detail-card node-detail-card-2col">
             <div className="node-detail-label">{t('node_details.public_key')}</div>
             <div className="node-detail-value node-detail-public-key" title={publicKey}>
               {publicKey}

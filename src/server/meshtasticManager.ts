@@ -7521,7 +7521,8 @@ class MeshtasticManager {
           id: node.nodeId,
           longName: node.longName || '',
           shortName: node.shortName || '',
-          hwModel: node.hwModel
+          hwModel: node.hwModel,
+          publicKey: node.publicKey
         },
         deviceMetrics: {
           batteryLevel: node.batteryLevel,
