@@ -30,12 +30,10 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": [
-      "../resources/*"
-    ],
-    "externalBin": [
-      "binaries/node"
-    ],
+    "resources": {
+      "../resources/server": "server",
+      "../resources/binaries": "binaries"
+    },
     "windows": {
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",
