@@ -146,6 +146,7 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
   const { deviceMetrics, snr, rssi, lastHeard, hopsAway, viaMqtt, user, firmwareVersion } = node;
   const hwModel = user?.hwModel;
   const role = user?.role;
+  const publicKey = user?.publicKey;
   const hardwareImageUrl = getHardwareImageUrl(hwModel);
 
   return (
@@ -284,6 +285,16 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
             <div className="node-detail-label">{t('node_details.firmware')}</div>
             <div className="node-detail-value">
               {firmwareVersion}
+            </div>
+          </div>
+        )}
+
+        {/* Public Key */}
+        {publicKey && (
+          <div className="node-detail-card node-detail-card-wide">
+            <div className="node-detail-label">{t('node_details.public_key')}</div>
+            <div className="node-detail-value node-detail-public-key" title={publicKey}>
+              {publicKey}
             </div>
           </div>
         )}

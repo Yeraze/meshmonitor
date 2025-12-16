@@ -1962,6 +1962,7 @@
   "node_details.connection": "Connection",
   "node_details.via_mqtt": "Via MQTT",
   "node_details.last_heard": "Last Heard",
+  "node_details.public_key": "Public Key",
 
   "messages.hops_one": "{{count}} hop",
   "messages.hops_other": "{{count}} hops",

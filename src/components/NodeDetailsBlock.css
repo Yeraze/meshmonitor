@@ -121,6 +121,20 @@
   color: var(--ctp-red);
 }
 
+/* Wide card styling - spans full width */
+.node-detail-card-wide {
+  grid-column: 1 / -1;
+}
+
+/* Public key styling */
+.node-detail-public-key {
+  font-family: monospace;
+  font-size: 0.85rem;
+  word-break: break-all;
+  user-select: all;
+  cursor: text;
+}
+
 /* Hardware Image Styling */
 .node-detail-card-hardware {
   /* Make hardware card larger to accommodate image */
