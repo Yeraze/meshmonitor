@@ -98,7 +98,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
   - Fixed button disable conditions to allow management of remote nodes even when local node has different status
   - Remote node status is cleared when switching target nodes to prevent stale data
   - Prevents incorrect UI state and disabled buttons when managing favorite/ignored status on remote devices
->>>>>>> 8a2086e (docs: update CHANGELOG for remote node favorite/ignored fix (#950))
 
 ## [2.18.1] - 2025-11-15
 
