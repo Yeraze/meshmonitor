@@ -120,7 +120,10 @@ const updateHash = (tab: TabType) => {
 export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   // Initialize activeTab from URL hash, or default to 'nodes'
   const [activeTab, setActiveTab] = useState<TabType>(() => getTabFromHash());
-  const [showMqttMessages, setShowMqttMessages] = useState<boolean>(false);
+  const [showMqttMessagesState, setShowMqttMessagesState] = useState<boolean>(() => {
+    const saved = localStorage.getItem('showMqttMessages');
+    return saved !== null ? saved === 'true' : false; // Default to false
+  });
   const [error, setError] = useState<string | null>(null);
   const [tracerouteLoading, setTracerouteLoading] = useState<string | null>(null);
   const [nodeFilter, setNodeFilter] = useState<string>(''); // Deprecated - kept for backward compatibility
@@ -178,6 +181,15 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   // Default to hiding ignored nodes
   const [showIgnoredNodes, setShowIgnoredNodes] = useState<boolean>(false);
 
+  // Wrapper setter for showMqttMessages that persists to localStorage
+  const setShowMqttMessages = React.useCallback((value: React.SetStateAction<boolean>) => {
+    setShowMqttMessagesState(prevValue => {
+      const newValue = typeof value === 'function' ? value(prevValue) : value;
+      localStorage.setItem('showMqttMessages', newValue.toString());
+      return newValue;
+    });
+  }, []);
+
   // Sync activeTab to URL hash when activeTab changes
   useEffect(() => {
     updateHash(activeTab);
@@ -199,7 +211,7 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
       value={{
         activeTab,
         setActiveTab,
-        showMqttMessages,
+        showMqttMessages: showMqttMessagesState,
         setShowMqttMessages,
         error,
         setError,
