@@ -47,7 +47,7 @@ jobs:
         run: npm ci
 
       - name: Build main project (server + frontend)
-        run: npm run build
+        run: npm run build && npm run build:server
 
       - name: Install desktop dependencies
         working-directory: desktop
