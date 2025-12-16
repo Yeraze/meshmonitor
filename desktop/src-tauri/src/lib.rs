@@ -1,10 +1,12 @@
 pub mod config;
 pub mod tray;
 
-use config::Config;
 use std::process::Child;
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager, Runtime};
+
+// Re-export Config for use in main.rs commands
+pub use config::Config;
 
 /// Global state for the backend process
 pub struct BackendState {
@@ -82,38 +84,5 @@ pub fn stop_backend(state: &BackendState) {
     }
 }
 
-/// Tauri commands exposed to the frontend
-
-#[tauri::command]
-pub fn get_config() -> Result<Config, String> {
-    Config::load()
-}
-
-#[tauri::command]
-pub fn save_config(config: Config) -> Result<(), String> {
-    config.save()
-}
-
-#[tauri::command]
-pub fn get_web_url() -> Result<String, String> {
-    let config = Config::load()?;
-    Ok(format!("http://localhost:{}", config.web_port))
-}
-
-#[tauri::command]
-pub fn restart_backend<R: Runtime>(
-    app: AppHandle<R>,
-    state: tauri::State<'_, BackendState>,
-) -> Result<(), String> {
-    // Stop existing backend
-    stop_backend(&state);
-
-    // Start new backend
-    let child = start_backend(&app)?;
-
-    // Store in state
-    let mut process = state.process.lock().unwrap();
-    *process = Some(child);
-
-    Ok(())
-}
+// Note: Tauri commands are defined in main.rs to avoid E0255 duplicate symbol errors
+// that occur when #[tauri::command] is used in a library crate with generate_handler![]

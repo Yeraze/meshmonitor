@@ -1,9 +1,42 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use meshmonitor_desktop_lib::{config::Config, start_backend, stop_backend, tray, BackendState};
+use meshmonitor_desktop_lib::{start_backend, stop_backend, tray, BackendState, Config};
 use std::sync::Mutex;
-use tauri::Manager;
+use tauri::{AppHandle, Manager};
+
+// Tauri commands must be defined in the binary crate to avoid E0255 duplicate symbol errors
+
+#[tauri::command]
+fn get_config() -> Result<Config, String> {
+    Config::load()
+}
+
+#[tauri::command]
+fn save_config(config: Config) -> Result<(), String> {
+    config.save()
+}
+
+#[tauri::command]
+fn get_web_url() -> Result<String, String> {
+    let config = Config::load()?;
+    Ok(format!("http://localhost:{}", config.web_port))
+}
+
+#[tauri::command]
+fn restart_backend(app: AppHandle, state: tauri::State<'_, BackendState>) -> Result<(), String> {
+    // Stop existing backend
+    stop_backend(&state);
+
+    // Start new backend
+    let child = start_backend(&app)?;
+
+    // Store in state
+    let mut process = state.process.lock().unwrap();
+    *process = Some(child);
+
+    Ok(())
+}
 
 fn main() {
     tauri::Builder::default()
@@ -63,10 +96,10 @@ fn main() {
             }
         })
         .invoke_handler(tauri::generate_handler![
-            meshmonitor_desktop_lib::get_config,
-            meshmonitor_desktop_lib::save_config,
-            meshmonitor_desktop_lib::get_web_url,
-            meshmonitor_desktop_lib::restart_backend,
+            get_config,
+            save_config,
+            get_web_url,
+            restart_backend,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
