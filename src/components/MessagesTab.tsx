@@ -135,6 +135,9 @@ export interface MessagesTabProps {
   // Helper function
   shouldShowData: () => boolean;
 
+  // Navigation
+  handleShowOnMap: (nodeId: string) => void;
+
   // Refs from parent for scroll handling
   dmMessagesContainerRef: React.RefObject<HTMLDivElement | null>;
 }
@@ -193,6 +196,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   setShowPurgeDataModal,
   setEmojiPickerMessage,
   shouldShowData,
+  handleShowOnMap,
   dmMessagesContainerRef,
 }) => {
   const { t } = useTranslation();
@@ -883,6 +887,15 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                     title={selectedNode.isIgnored ? t('messages.unignore_node_title') : t('messages.ignore_node_title')}
                   >
                     {selectedNode.isIgnored ? t('messages.unignore_node') : t('messages.ignore_node')}
+                  </button>
+                )}
+                {selectedNode?.position?.latitude != null && selectedNode?.position?.longitude != null && (
+                  <button
+                    onClick={() => handleShowOnMap(selectedDMNode)}
+                    className="traceroute-btn"
+                    title={t('messages.show_on_map_title')}
+                  >
+                    🗺️ {t('messages.show_on_map')}
                   </button>
                 )}
                 {hasPermission('messages', 'write') && (

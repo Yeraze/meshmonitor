@@ -4192,6 +4192,14 @@ function App() {
             dmMessagesContainerRef={dmMessagesContainerRef}
             toggleIgnored={toggleIgnored}
             toggleFavorite={toggleFavorite}
+            handleShowOnMap={(nodeId: string) => {
+              const node = nodes.find((n) => n.user?.id === nodeId);
+              if (node?.position?.latitude != null && node?.position?.longitude != null) {
+                setSelectedNodeId(nodeId);
+                setMapCenterTarget([node.position.latitude, node.position.longitude]);
+                setActiveTab('nodes');
+              }
+            }}
           />
         )}
         {activeTab === 'info' && (
@@ -4463,6 +4471,19 @@ function App() {
                   }}
                 >
                   💬 Direct Message
+                </button>
+              )}
+              {node.user?.id && node.position?.latitude != null && node.position?.longitude != null && (
+                <button
+                  className="popup-dm-btn"
+                  onClick={() => {
+                    setSelectedNodeId(node.user!.id);
+                    setMapCenterTarget([node.position!.latitude!, node.position!.longitude!]);
+                    setActiveTab('nodes');
+                    setNodePopup(null);
+                  }}
+                >
+                  🗺️ Show on Map
                 </button>
               )}
             </div>
