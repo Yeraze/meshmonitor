@@ -6,6 +6,7 @@ export interface DeviceInfo {
     shortName?: string
     hwModel?: number
     role?: string
+    publicKey?: string
   }
   position?: {
     latitude: number
