@@ -4783,7 +4783,8 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
           'device': { type: 0, isModule: false },  // DEVICE_CONFIG
           'lora': { type: 5, isModule: false },      // LORA_CONFIG
           'position': { type: 6, isModule: false }, // POSITION_CONFIG
-          'mqtt': { type: 0, isModule: true }        // MQTT_CONFIG (module)
+          'mqtt': { type: 0, isModule: true },        // MQTT_CONFIG (module)
+          'security': { type: 7, isModule: false }  // SECURITY_CONFIG
         };
 
         const configInfo = configTypeMap[configType];
@@ -4797,6 +4798,7 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
         if (configType === 'lora' && !currentConfig?.deviceConfig?.lora) needsRequest = true;
         if (configType === 'position' && !currentConfig?.deviceConfig?.position) needsRequest = true;
         if (configType === 'mqtt' && !currentConfig?.moduleConfig?.mqtt) needsRequest = true;
+        if (configType === 'security' && !currentConfig?.deviceConfig?.security) needsRequest = true;
         
         if (needsRequest && configInfo) {
           // Try to request the specific config type
@@ -4849,7 +4851,9 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
                 hopLimit: finalConfig.deviceConfig.lora.hopLimit,
                 txPower: finalConfig.deviceConfig.lora.txPower,
                 channelNum: finalConfig.deviceConfig.lora.channelNum,
-                sx126xRxBoostedGain: finalConfig.deviceConfig.lora.sx126xRxBoostedGain
+                sx126xRxBoostedGain: finalConfig.deviceConfig.lora.sx126xRxBoostedGain,
+                ignoreMqtt: finalConfig.deviceConfig.lora.ignoreMqtt,
+                configOkToMqtt: finalConfig.deviceConfig.lora.configOkToMqtt
               };
             } else {
               return res.status(404).json({ error: 'LoRa config not available. The device may not have sent its configuration yet.' });
@@ -4893,6 +4897,26 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
               };
             }
             break;
+          case 'security':
+            if (finalConfig.deviceConfig?.security) {
+              // Convert admin keys from Uint8Array to base64 strings for UI
+              const adminKeys = finalConfig.deviceConfig.security.adminKey || [];
+              config = {
+                adminKeys: adminKeys.map((key: Uint8Array) => {
+                  if (key instanceof Uint8Array || Buffer.isBuffer(key)) {
+                    return Buffer.from(key).toString('base64');
+                  }
+                  return key;
+                }),
+                isManaged: finalConfig.deviceConfig.security.isManaged,
+                serialEnabled: finalConfig.deviceConfig.security.serialEnabled,
+                debugLogApiEnabled: finalConfig.deviceConfig.security.debugLogApiEnabled,
+                adminChannelEnabled: finalConfig.deviceConfig.security.adminChannelEnabled
+              };
+            } else {
+              return res.status(404).json({ error: 'Security config not available. The device may not have sent its configuration yet.' });
+            }
+            break;
         }
       } else {
         // Remote node - request config with session passkey
@@ -4903,7 +4927,8 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
           'device': { type: 0, isModule: false },  // DEVICE_CONFIG
           'lora': { type: 5, isModule: false },      // LORA_CONFIG
           'position': { type: 6, isModule: false }, // POSITION_CONFIG
-          'mqtt': { type: 0, isModule: true }        // MQTT_CONFIG (module)
+          'mqtt': { type: 0, isModule: true },        // MQTT_CONFIG (module)
+          'security': { type: 7, isModule: false }  // SECURITY_CONFIG
         };
 
         const configInfo = configTypeMap[configType];
@@ -4943,7 +4968,9 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
               hopLimit: remoteConfig.hopLimit,
               txPower: remoteConfig.txPower,
               channelNum: remoteConfig.channelNum,
-              sx126xRxBoostedGain: remoteConfig.sx126xRxBoostedGain
+              sx126xRxBoostedGain: remoteConfig.sx126xRxBoostedGain,
+              ignoreMqtt: remoteConfig.ignoreMqtt,
+              configOkToMqtt: remoteConfig.configOkToMqtt
             };
             break;
           case 'position':
@@ -4965,6 +4992,22 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
               encryptionEnabled: remoteConfig.encryptionEnabled !== false,
               jsonEnabled: remoteConfig.jsonEnabled || false,
               root: remoteConfig.root || ''
+            };
+            break;
+          case 'security':
+            // Convert admin keys from Uint8Array to base64 strings for UI
+            const adminKeys = remoteConfig.adminKey || [];
+            config = {
+              adminKeys: adminKeys.map((key: any) => {
+                if (key instanceof Uint8Array || Buffer.isBuffer(key)) {
+                  return Buffer.from(key).toString('base64');
+                }
+                return key;
+              }),
+              isManaged: remoteConfig.isManaged,
+              serialEnabled: remoteConfig.serialEnabled,
+              debugLogApiEnabled: remoteConfig.debugLogApiEnabled,
+              adminChannelEnabled: remoteConfig.adminChannelEnabled
             };
             break;
         }
@@ -5540,6 +5583,12 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
           return res.status(400).json({ error: 'config is required for setNeighborInfoConfig' });
         }
         adminMessage = protobufService.createSetNeighborInfoConfigMessage(params.config, sessionPasskey || undefined);
+        break;
+      case 'setSecurityConfig':
+        if (!params.config) {
+          return res.status(400).json({ error: 'config is required for setSecurityConfig' });
+        }
+        adminMessage = protobufService.createSetSecurityConfigMessage(params.config, sessionPasskey || undefined);
         break;
       case 'setFixedPosition':
         if (params.latitude === undefined || params.longitude === undefined) {
@@ -6125,9 +6174,12 @@ apiRouter.post('/push/preferences', requireAuth(), async (req, res) => {
       !Array.isArray(enabledChannels) ||
       typeof enableDirectMessages !== 'boolean' ||
       typeof notifyOnEmoji !== 'boolean' ||
+      typeof notifyOnMqtt !== 'boolean' ||
       typeof notifyOnNewNode !== 'boolean' ||
       typeof notifyOnTraceroute !== 'boolean' ||
       typeof notifyOnInactiveNode !== 'boolean' ||
+      typeof notifyOnServerEvents !== 'boolean' ||
+      typeof prefixWithNodeName !== 'boolean' ||
       !Array.isArray(whitelist) ||
       !Array.isArray(blacklist)
     ) {

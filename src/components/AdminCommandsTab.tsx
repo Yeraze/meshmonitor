@@ -62,6 +62,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   const [txPower, setTxPower] = useState<number>(0);
   const [channelNum, setChannelNum] = useState<number>(0);
   const [sx126xRxBoostedGain, setSx126xRxBoostedGain] = useState<boolean>(false);
+  const [ignoreMqtt, setIgnoreMqtt] = useState<boolean>(false);
+  const [configOkToMqtt, setConfigOkToMqtt] = useState<boolean>(false);
 
   // Position Config state
   const [positionBroadcastSecs, setPositionBroadcastSecs] = useState(900);
@@ -79,6 +81,13 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   const [mqttEncryptionEnabled, setMqttEncryptionEnabled] = useState(true);
   const [mqttJsonEnabled, setMqttJsonEnabled] = useState(false);
   const [mqttRoot, setMqttRoot] = useState('');
+
+  // Security Config state
+  const [adminKeys, setAdminKeys] = useState<string[]>(['']);
+  const [isManaged, setIsManaged] = useState<boolean>(false);
+  const [serialEnabled, setSerialEnabled] = useState<boolean>(false);
+  const [debugLogApiEnabled, setDebugLogApiEnabled] = useState<boolean>(false);
+  const [adminChannelEnabled, setAdminChannelEnabled] = useState<boolean>(false);
 
   // Channel Config state - for editing a specific channel
   const [editingChannelSlot, setEditingChannelSlot] = useState<number | null>(null);
@@ -104,6 +113,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   const [isLoadingLoRaConfig, setIsLoadingLoRaConfig] = useState(false);
   const [isLoadingPositionConfig, setIsLoadingPositionConfig] = useState(false);
   const [isLoadingMQTTConfig, setIsLoadingMQTTConfig] = useState(false);
+  const [isLoadingSecurityConfig, setIsLoadingSecurityConfig] = useState(false);
 
   // Node management state (favorites/ignored)
   const [nodeManagementNodeNum, setNodeManagementNodeNum] = useState<number | null>(null);
@@ -299,6 +309,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         if (config.txPower !== undefined) setTxPower(config.txPower);
         if (config.channelNum !== undefined) setChannelNum(config.channelNum);
         if (config.sx126xRxBoostedGain !== undefined) setSx126xRxBoostedGain(config.sx126xRxBoostedGain);
+        if (config.ignoreMqtt !== undefined) setIgnoreMqtt(config.ignoreMqtt);
+        if (config.configOkToMqtt !== undefined) setConfigOkToMqtt(config.configOkToMqtt);
         showToast(t('admin_commands.lora_config_loaded'), 'success');
       } else {
         throw new Error(t('admin_commands.no_config_data'));
@@ -934,7 +946,9 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       hopLimit: validHopLimit,
       txPower,
       channelNum,
-      sx126xRxBoostedGain
+      sx126xRxBoostedGain,
+      ignoreMqtt,
+      configOkToMqtt
     };
 
     if (usePreset) {
@@ -995,6 +1009,84 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       // Error already handled by executeCommand (toast shown)
       console.error('Set MQTT config command failed:', error);
     }
+  };
+
+  const handleLoadSecurityConfig = async () => {
+    if (selectedNodeNum === null) {
+      showToast(t('admin_commands.please_select_node'), 'error');
+      return;
+    }
+
+    setIsLoadingSecurityConfig(true);
+    try {
+      const result = await apiService.post<{ config: any }>('/api/admin/load-config', {
+        nodeNum: selectedNodeNum,
+        configType: 'security'
+      });
+      
+      if (result?.config) {
+        const config = result.config;
+        if (config.adminKeys !== undefined) {
+          // Set admin keys, but only add empty field if we have fewer than 3 keys (max 3)
+          if (config.adminKeys.length === 0) {
+            setAdminKeys(['']);
+          } else if (config.adminKeys.length < 3) {
+            setAdminKeys([...config.adminKeys, '']);
+          } else {
+            setAdminKeys(config.adminKeys.slice(0, 3)); // Ensure max 3 keys
+          }
+        }
+        if (config.isManaged !== undefined) setIsManaged(config.isManaged);
+        if (config.serialEnabled !== undefined) setSerialEnabled(config.serialEnabled);
+        if (config.debugLogApiEnabled !== undefined) setDebugLogApiEnabled(config.debugLogApiEnabled);
+        if (config.adminChannelEnabled !== undefined) setAdminChannelEnabled(config.adminChannelEnabled);
+        showToast(t('admin_commands.security_config_loaded'), 'success');
+      }
+    } catch (error: any) {
+      showToast(error.message || t('admin_commands.failed_load_security_config'), 'error');
+    } finally {
+      setIsLoadingSecurityConfig(false);
+    }
+  };
+
+  const handleSetSecurityConfig = async () => {
+    // Filter out empty admin keys
+    const validAdminKeys = adminKeys.filter(key => key && key.trim().length > 0);
+    
+    const config: any = {
+      adminKeys: validAdminKeys,
+      isManaged,
+      serialEnabled,
+      debugLogApiEnabled,
+      adminChannelEnabled
+    };
+
+    try {
+      await executeCommand('setSecurityConfig', { config });
+    } catch (error) {
+      // Error already handled by executeCommand (toast shown)
+      console.error('Set security config command failed:', error);
+    }
+  };
+
+  const handleAdminKeyChange = (index: number, value: string) => {
+    const newKeys = [...adminKeys];
+    newKeys[index] = value;
+    // Add a new empty field if the last field is being filled, but only if we have fewer than 3 keys (max 3)
+    if (index === adminKeys.length - 1 && value.trim().length > 0 && adminKeys.length < 3) {
+      newKeys.push('');
+    }
+    // Ensure we never exceed 3 keys
+    setAdminKeys(newKeys.slice(0, 3));
+  };
+
+  const handleRemoveAdminKey = (index: number) => {
+    const newKeys = adminKeys.filter((_, i) => i !== index);
+    // Ensure at least one field remains
+    if (newKeys.length === 0) {
+      newKeys.push('');
+    }
+    setAdminKeys(newKeys);
   };
 
   const handleRoleChange = (newRole: number) => {
@@ -1379,6 +1471,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         { id: 'admin-lora-config', label: t('admin_commands.lora_configuration', 'LoRa Config') },
         { id: 'admin-position-config', label: t('admin_commands.position_configuration', 'Position') },
         { id: 'admin-mqtt-config', label: t('admin_commands.mqtt_configuration', 'MQTT') },
+        { id: 'admin-security-config', label: t('admin_commands.security_configuration', 'Security') },
         { id: 'admin-channel-config', label: t('admin_commands.channel_configuration', 'Channels') },
         { id: 'admin-import-export', label: t('admin_commands.config_import_export', 'Import/Export') },
         { id: 'admin-node-management', label: t('admin_commands.node_favorites_ignored', 'Node Management') },
@@ -1858,6 +1951,36 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             </div>
           </label>
         </div>
+        <div className="setting-item">
+          <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+            <input
+              type="checkbox"
+              checked={ignoreMqtt}
+              onChange={(e) => setIgnoreMqtt(e.target.checked)}
+              disabled={isExecuting}
+              style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+            />
+            <div style={{ flex: 1 }}>
+              <div>{t('admin_commands.ignore_mqtt')}</div>
+              <span className="setting-description">{t('admin_commands.ignore_mqtt_description')}</span>
+            </div>
+          </label>
+        </div>
+        <div className="setting-item">
+          <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+            <input
+              type="checkbox"
+              checked={configOkToMqtt}
+              onChange={(e) => setConfigOkToMqtt(e.target.checked)}
+              disabled={isExecuting}
+              style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+            />
+            <div style={{ flex: 1 }}>
+              <div>{t('admin_commands.config_ok_to_mqtt')}</div>
+              <span className="setting-description">{t('admin_commands.config_ok_to_mqtt_description')}</span>
+            </div>
+          </label>
+        </div>
         <button
           className="save-button"
           onClick={handleSetLoRaConfig}
@@ -2132,6 +2255,141 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           }}
         >
           {isExecuting ? t('common.saving') : t('admin_commands.save_mqtt_config')}
+        </button>
+      </div>
+
+      {/* Security Config Section */}
+      <div id="admin-security-config" className="settings-section">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', paddingBottom: '0.75rem', borderBottom: '2px solid var(--ctp-surface2)' }}>
+          <h3 style={{ margin: 0, borderBottom: 'none', paddingBottom: 0 }}>{t('admin_commands.security_configuration')}</h3>
+          <button
+            onClick={handleLoadSecurityConfig}
+            disabled={isLoadingSecurityConfig || selectedNodeNum === null}
+            className="save-button"
+            style={{
+              opacity: (isLoadingSecurityConfig || selectedNodeNum === null) ? 0.5 : 1,
+              cursor: (isLoadingSecurityConfig || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
+            }}
+          >
+            {isLoadingSecurityConfig ? t('common.loading') : t('common.load')}
+          </button>
+        </div>
+        
+        <div className="setting-item">
+          <label>
+            {t('admin_commands.admin_keys')}
+            <span className="setting-description">
+              {t('admin_commands.admin_keys_description')}
+            </span>
+          </label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {adminKeys.map((key, index) => (
+              <div key={index} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <input
+                  type="text"
+                  value={key}
+                  onChange={(e) => handleAdminKeyChange(index, e.target.value)}
+                  disabled={isExecuting}
+                  placeholder={t('admin_commands.admin_key_placeholder') || 'base64:... or hex string'}
+                  className="setting-input"
+                  style={{ flex: 1, fontFamily: 'monospace', fontSize: '0.875rem' }}
+                />
+                {adminKeys.length > 1 && (
+                  <button
+                    onClick={() => handleRemoveAdminKey(index)}
+                    disabled={isExecuting}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      background: 'var(--ctp-red)',
+                      color: 'var(--ctp-base)',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: isExecuting ? 'not-allowed' : 'pointer',
+                      opacity: isExecuting ? 0.5 : 1
+                    }}
+                  >
+                    {t('common.remove') || 'Remove'}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="setting-item">
+          <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+            <input
+              type="checkbox"
+              checked={isManaged}
+              onChange={(e) => setIsManaged(e.target.checked)}
+              disabled={isExecuting}
+              style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+            />
+            <div style={{ flex: 1 }}>
+              <div>{t('admin_commands.is_managed')}</div>
+              <span className="setting-description">{t('admin_commands.is_managed_description')}</span>
+            </div>
+          </label>
+        </div>
+
+        <div className="setting-item">
+          <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+            <input
+              type="checkbox"
+              checked={serialEnabled}
+              onChange={(e) => setSerialEnabled(e.target.checked)}
+              disabled={isExecuting}
+              style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+            />
+            <div style={{ flex: 1 }}>
+              <div>{t('admin_commands.serial_enabled')}</div>
+              <span className="setting-description">{t('admin_commands.serial_enabled_description')}</span>
+            </div>
+          </label>
+        </div>
+
+        <div className="setting-item">
+          <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+            <input
+              type="checkbox"
+              checked={debugLogApiEnabled}
+              onChange={(e) => setDebugLogApiEnabled(e.target.checked)}
+              disabled={isExecuting}
+              style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+            />
+            <div style={{ flex: 1 }}>
+              <div>{t('admin_commands.debug_log_api_enabled')}</div>
+              <span className="setting-description">{t('admin_commands.debug_log_api_enabled_description')}</span>
+            </div>
+          </label>
+        </div>
+
+        <div className="setting-item">
+          <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+            <input
+              type="checkbox"
+              checked={adminChannelEnabled}
+              onChange={(e) => setAdminChannelEnabled(e.target.checked)}
+              disabled={isExecuting}
+              style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+            />
+            <div style={{ flex: 1 }}>
+              <div>{t('admin_commands.admin_channel_enabled')}</div>
+              <span className="setting-description">{t('admin_commands.admin_channel_enabled_description')}</span>
+            </div>
+          </label>
+        </div>
+
+        <button
+          className="save-button"
+          onClick={handleSetSecurityConfig}
+          disabled={isExecuting || selectedNodeNum === null}
+          style={{
+            opacity: (isExecuting || selectedNodeNum === null) ? 0.5 : 1,
+            cursor: (isExecuting || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
+          }}
+        >
+          {isExecuting ? t('common.saving') : t('admin_commands.save_security_config')}
         </button>
       </div>
 
