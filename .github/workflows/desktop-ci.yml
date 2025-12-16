@@ -46,9 +46,17 @@ jobs:
       - name: Install main project dependencies
         run: npm ci
 
-      - name: Build main project (server + frontend)
+      - name: Build frontend
+        run: npm run build
+
+      - name: Build server (TypeScript)
+        run: npx tsc --project tsconfig.server.json
+
+      - name: Copy OpenAPI spec
         shell: bash
-        run: npm run build && npm run build:server
+        run: |
+          mkdir -p dist/server/routes/v1
+          cp src/server/routes/v1/openapi.yaml dist/server/routes/v1/
 
       - name: Install desktop dependencies
         working-directory: desktop
