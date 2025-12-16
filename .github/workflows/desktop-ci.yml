@@ -69,6 +69,7 @@ jobs:
           mkdir desktop\resources\server
           mkdir desktop\resources\binaries
           xcopy /E /I /Y dist\server desktop\resources\server
+          copy package.json desktop\resources\server\package.json
           robocopy node_modules desktop\resources\server\node_modules /E /NFL /NDL /NJH /NJS /NC /NS /NP
           if %ERRORLEVEL% leq 7 exit /b 0
 

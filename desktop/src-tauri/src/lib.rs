@@ -37,15 +37,20 @@ pub fn start_backend<R: Runtime>(app: &AppHandle<R>) -> Result<Child, String> {
         .join("binaries")
         .join(if cfg!(windows) { "node.exe" } else { "node" });
 
+    // Get the server directory for current working directory
+    let server_dir = resource_path.join("server");
+
     println!("Starting MeshMonitor backend...");
     println!("  Node path: {:?}", node_path);
     println!("  Server path: {:?}", server_path);
+    println!("  Server dir: {:?}", server_dir);
     println!("  Database: {:?}", db_path);
     println!("  Logs: {:?}", logs_path);
 
     // Build environment variables
     let mut cmd = std::process::Command::new(&node_path);
     cmd.arg(&server_path)
+        .current_dir(&server_dir)
         .env("NODE_ENV", "production")
         .env("PORT", config.web_port.to_string())
         .env("MESHTASTIC_NODE_IP", &config.meshtastic_ip)
