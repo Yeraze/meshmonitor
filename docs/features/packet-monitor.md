@@ -4,7 +4,7 @@ The Packet Monitor is a diagnostic tool that displays raw Meshtastic packets as 
 
 ## Accessing the Packet Monitor
 
-The Packet Monitor is available in the Admin tab and requires appropriate permissions to view.
+The Packet Monitor appears at the bottom of the Map tab once enabled in Settings. It requires appropriate permissions to view.
 
 ## What the Packet Monitor Shows
 
