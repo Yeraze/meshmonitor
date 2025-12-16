@@ -6371,9 +6371,25 @@ class MeshtasticManager {
             });
           }
           const nodeConfig = this.remoteNodeConfigs.get(fromNum)!;
-          // getConfigResponse is a Config object with device, lora, position fields
-          // Assign it directly (don't spread, as it already has the correct structure)
-          nodeConfig.deviceConfig = adminMsg.getConfigResponse;
+          // getConfigResponse is a Config object with device, lora, position, security fields
+          // Merge the response into existing deviceConfig to preserve other config types
+          // Only update fields that are present in the response
+          const configResponse = adminMsg.getConfigResponse;
+          if (configResponse) {
+            // Merge each config field if it exists in the response
+            if (configResponse.device !== undefined) {
+              nodeConfig.deviceConfig.device = configResponse.device;
+            }
+            if (configResponse.lora !== undefined) {
+              nodeConfig.deviceConfig.lora = configResponse.lora;
+            }
+            if (configResponse.position !== undefined) {
+              nodeConfig.deviceConfig.position = configResponse.position;
+            }
+            if (configResponse.security !== undefined) {
+              nodeConfig.deviceConfig.security = configResponse.security;
+            }
+          }
           nodeConfig.lastUpdated = Date.now();
           logger.debug(`📊 Stored config response from remote node ${fromNum}, keys:`, Object.keys(nodeConfig.deviceConfig));
         }
@@ -6891,7 +6907,8 @@ class MeshtasticManager {
         const deviceConfigMap: { [key: number]: string } = {
           0: 'device',
           5: 'lora',
-          6: 'position'
+          6: 'position',
+          7: 'security'  // SECURITY_CONFIG
         };
         const configKey = deviceConfigMap[configType];
         if (configKey) {
