@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MeshMonitor Setup</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e4e4e7;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 32px;
+            width: 100%;
+            max-width: 400px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .logo {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+
+        .logo h1 {
+            font-size: 24px;
+            font-weight: 600;
+            color: #67e8f9;
+        }
+
+        .logo p {
+            font-size: 14px;
+            color: #a1a1aa;
+            margin-top: 4px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 8px;
+            color: #d4d4d8;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(0, 0, 0, 0.3);
+            color: #fff;
+            font-size: 16px;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #67e8f9;
+            box-shadow: 0 0 0 3px rgba(103, 232, 249, 0.2);
+        }
+
+        input::placeholder {
+            color: #71717a;
+        }
+
+        .hint {
+            font-size: 12px;
+            color: #71717a;
+            margin-top: 6px;
+        }
+
+        .row {
+            display: flex;
+            gap: 12px;
+        }
+
+        .row .form-group {
+            flex: 1;
+        }
+
+        .row .form-group.small {
+            flex: 0 0 100px;
+        }
+
+        button {
+            width: 100%;
+            padding: 14px 24px;
+            border-radius: 8px;
+            border: none;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        button.primary {
+            background: linear-gradient(135deg, #0891b2 0%, #06b6d4 100%);
+            color: #fff;
+        }
+
+        button.primary:hover {
+            background: linear-gradient(135deg, #0e7490 0%, #0891b2 100%);
+            transform: translateY(-1px);
+        }
+
+        button.primary:active {
+            transform: translateY(0);
+        }
+
+        button.primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .error {
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #fca5a5;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .success {
+            background: rgba(34, 197, 94, 0.2);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            color: #86efac;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .divider {
+            height: 1px;
+            background: rgba(255, 255, 255, 0.1);
+            margin: 24px 0;
+        }
+
+        .advanced-toggle {
+            text-align: center;
+            margin-bottom: 16px;
+        }
+
+        .advanced-toggle button {
+            background: none;
+            color: #67e8f9;
+            font-size: 14px;
+            padding: 8px;
+            width: auto;
+        }
+
+        .advanced-toggle button:hover {
+            text-decoration: underline;
+        }
+
+        .advanced-options {
+            display: none;
+        }
+
+        .advanced-options.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">
+            <h1>MeshMonitor</h1>
+            <p>Desktop Setup</p>
+        </div>
+
+        <div id="error" class="error"></div>
+        <div id="success" class="success"></div>
+
+        <form id="setupForm">
+            <div class="form-group">
+                <label for="meshtasticIp">Meshtastic Node IP Address</label>
+                <input
+                    type="text"
+                    id="meshtasticIp"
+                    name="meshtasticIp"
+                    placeholder="192.168.1.100"
+                    required
+                >
+                <p class="hint">The IP address of your Meshtastic device with TCP enabled</p>
+            </div>
+
+            <div class="advanced-toggle">
+                <button type="button" id="advancedBtn">Advanced Options</button>
+            </div>
+
+            <div id="advancedOptions" class="advanced-options">
+                <div class="row">
+                    <div class="form-group">
+                        <label for="meshtasticPort">Meshtastic Port</label>
+                        <input
+                            type="number"
+                            id="meshtasticPort"
+                            name="meshtasticPort"
+                            value="4403"
+                            min="1"
+                            max="65535"
+                        >
+                    </div>
+                    <div class="form-group">
+                        <label for="webPort">Web UI Port</label>
+                        <input
+                            type="number"
+                            id="webPort"
+                            name="webPort"
+                            value="8080"
+                            min="1"
+                            max="65535"
+                        >
+                    </div>
+                </div>
+            </div>
+
+            <button type="submit" class="primary" id="submitBtn">
+                Start MeshMonitor
+            </button>
+        </form>
+    </div>
+
+    <script>
+        const { invoke } = window.__TAURI__.core;
+
+        const form = document.getElementById('setupForm');
+        const errorDiv = document.getElementById('error');
+        const successDiv = document.getElementById('success');
+        const submitBtn = document.getElementById('submitBtn');
+        const advancedBtn = document.getElementById('advancedBtn');
+        const advancedOptions = document.getElementById('advancedOptions');
+
+        // Load existing config
+        async function loadConfig() {
+            try {
+                const config = await invoke('get_config');
+                document.getElementById('meshtasticIp').value = config.meshtastic_ip || '';
+                document.getElementById('meshtasticPort').value = config.meshtastic_port || 4403;
+                document.getElementById('webPort').value = config.web_port || 8080;
+            } catch (e) {
+                console.error('Failed to load config:', e);
+            }
+        }
+
+        // Toggle advanced options
+        advancedBtn.addEventListener('click', () => {
+            advancedOptions.classList.toggle('show');
+            advancedBtn.textContent = advancedOptions.classList.contains('show')
+                ? 'Hide Advanced Options'
+                : 'Advanced Options';
+        });
+
+        // Handle form submission
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            errorDiv.style.display = 'none';
+            successDiv.style.display = 'none';
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner"></span>Starting...';
+
+            const meshtasticIp = document.getElementById('meshtasticIp').value.trim();
+            const meshtasticPort = parseInt(document.getElementById('meshtasticPort').value, 10);
+            const webPort = parseInt(document.getElementById('webPort').value, 10);
+
+            // Basic validation
+            if (!meshtasticIp) {
+                showError('Please enter the Meshtastic node IP address');
+                resetButton();
+                return;
+            }
+
+            // IP address validation
+            const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$/;
+            if (!ipPattern.test(meshtasticIp)) {
+                showError('Please enter a valid IP address (e.g., 192.168.1.100)');
+                resetButton();
+                return;
+            }
+
+            try {
+                // Get existing config to preserve session_secret
+                const existingConfig = await invoke('get_config');
+
+                // Save config
+                const config = {
+                    meshtastic_ip: meshtasticIp,
+                    meshtastic_port: meshtasticPort,
+                    web_port: webPort,
+                    auto_start: false,
+                    session_secret: existingConfig.session_secret,
+                    setup_completed: true
+                };
+
+                await invoke('save_config', { config });
+
+                successDiv.textContent = 'Configuration saved! Starting MeshMonitor...';
+                successDiv.style.display = 'block';
+
+                // Restart backend with new config
+                await invoke('restart_backend');
+
+                // Open web UI in browser after a short delay
+                setTimeout(async () => {
+                    const url = await invoke('get_web_url');
+                    window.__TAURI__.opener.openUrl(url);
+
+                    // Close the setup window
+                    window.__TAURI__.window.getCurrentWindow().close();
+                }, 2000);
+
+            } catch (e) {
+                showError('Failed to save configuration: ' + e);
+                resetButton();
+            }
+        });
+
+        function showError(message) {
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+        }
+
+        function resetButton() {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Start MeshMonitor';
+        }
+
+        // Load config on page load
+        loadConfig();
+    </script>
+</body>
+</html>

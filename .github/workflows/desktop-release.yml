@@ -1,0 +1,160 @@
+name: Desktop Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g., v1.0.0)'
+        required: true
+        type: string
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: 'desktop/src-tauri'
+
+      - name: Install main project dependencies
+        run: npm ci
+
+      - name: Build main project (server + frontend)
+        run: npm run build
+
+      - name: Download Node.js for bundling
+        run: |
+          $nodeVersion = "v20.10.0"
+          $nodeUrl = "https://nodejs.org/dist/$nodeVersion/node-$nodeVersion-win-x64.zip"
+          Invoke-WebRequest -Uri $nodeUrl -OutFile node.zip
+          Expand-Archive -Path node.zip -DestinationPath node-extracted
+          New-Item -ItemType Directory -Force -Path "desktop/src-tauri/binaries"
+          Copy-Item "node-extracted/node-$nodeVersion-win-x64/node.exe" "desktop/src-tauri/binaries/node.exe"
+        shell: pwsh
+
+      - name: Copy server files to Tauri resources
+        run: |
+          New-Item -ItemType Directory -Force -Path "desktop/src-tauri/server"
+          Copy-Item -Recurse "dist/server/*" "desktop/src-tauri/server/"
+          Copy-Item -Recurse "node_modules" "desktop/src-tauri/server/node_modules"
+        shell: pwsh
+
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm install
+
+      - name: Build Tauri app (release)
+        working-directory: desktop
+        run: npm run tauri:build
+
+      - name: Get version from tag
+        id: get_version
+        run: |
+          $tag = "${{ github.event.release.tag_name || inputs.tag }}"
+          $version = $tag -replace '^v', ''
+          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+          echo "TAG=$tag" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      - name: Rename installer with version
+        run: |
+          $version = "${{ steps.get_version.outputs.VERSION }}"
+          $msiPath = Get-ChildItem -Path "desktop/src-tauri/target/release/bundle/msi/*.msi" | Select-Object -First 1
+          if ($msiPath) {
+            $newName = "MeshMonitor-Desktop-${version}-x64.msi"
+            $destination = "desktop/src-tauri/target/release/bundle/msi/$newName"
+            Copy-Item $msiPath.FullName $destination
+            echo "MSI_PATH=$destination" >> $env:GITHUB_OUTPUT
+            echo "MSI_NAME=$newName" >> $env:GITHUB_OUTPUT
+          }
+
+          $exePath = Get-ChildItem -Path "desktop/src-tauri/target/release/bundle/nsis/*.exe" | Select-Object -First 1
+          if ($exePath) {
+            $newName = "MeshMonitor-Desktop-${version}-x64-setup.exe"
+            $destination = "desktop/src-tauri/target/release/bundle/nsis/$newName"
+            Copy-Item $exePath.FullName $destination
+            echo "EXE_PATH=$destination" >> $env:GITHUB_OUTPUT
+            echo "EXE_NAME=$newName" >> $env:GITHUB_OUTPUT
+          }
+        id: rename_artifacts
+        shell: pwsh
+
+      - name: Generate checksums
+        run: |
+          $version = "${{ steps.get_version.outputs.VERSION }}"
+          $checksumFile = "desktop-checksums-${version}.txt"
+
+          $msiPath = "${{ steps.rename_artifacts.outputs.MSI_PATH }}"
+          $exePath = "${{ steps.rename_artifacts.outputs.EXE_PATH }}"
+
+          if ($msiPath -and (Test-Path $msiPath)) {
+            $hash = Get-FileHash -Path $msiPath -Algorithm SHA256
+            "$($hash.Hash)  ${{ steps.rename_artifacts.outputs.MSI_NAME }}" | Out-File -Append $checksumFile
+          }
+
+          if ($exePath -and (Test-Path $exePath)) {
+            $hash = Get-FileHash -Path $exePath -Algorithm SHA256
+            "$($hash.Hash)  ${{ steps.rename_artifacts.outputs.EXE_NAME }}" | Out-File -Append $checksumFile
+          }
+
+          echo "CHECKSUM_FILE=$checksumFile" >> $env:GITHUB_OUTPUT
+        id: checksums
+        shell: pwsh
+
+      - name: Upload MSI to release
+        if: steps.rename_artifacts.outputs.MSI_PATH
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.get_version.outputs.TAG }}
+          files: ${{ steps.rename_artifacts.outputs.MSI_PATH }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload EXE to release
+        if: steps.rename_artifacts.outputs.EXE_PATH
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.get_version.outputs.TAG }}
+          files: ${{ steps.rename_artifacts.outputs.EXE_PATH }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload checksums to release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.get_version.outputs.TAG }}
+          files: ${{ steps.checksums.outputs.CHECKSUM_FILE }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifacts for debugging
+        uses: actions/upload-artifact@v4
+        with:
+          name: meshmonitor-desktop-windows-release
+          path: |
+            desktop/src-tauri/target/release/bundle/msi/*.msi
+            desktop/src-tauri/target/release/bundle/nsis/*.exe
+          retention-days: 30

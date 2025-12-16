@@ -1,0 +1,127 @@
+name: Desktop CI
+
+on:
+  push:
+    branches:
+      - main
+      - 'feature/desktop*'
+    paths:
+      - 'desktop/**'
+      - '.github/workflows/desktop-ci.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'desktop/**'
+      - '.github/workflows/desktop-ci.yml'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: 'desktop/src-tauri'
+
+      - name: Install main project dependencies
+        run: npm ci
+
+      - name: Build main project (server + frontend)
+        run: npm run build
+
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm install
+
+      - name: Download Node.js binary for bundling
+        working-directory: desktop/src-tauri
+        run: |
+          mkdir -p binaries
+          curl -L -o binaries/node-x86_64-pc-windows-msvc.exe https://nodejs.org/dist/v20.11.1/win-x64/node.exe
+
+      - name: Copy server files to desktop resources
+        shell: cmd
+        run: |
+          mkdir desktop\resources
+          mkdir desktop\resources\server
+          echo. > desktop\resources\.placeholder
+          xcopy /E /I /Y dist\server desktop\resources\server
+          robocopy node_modules desktop\resources\server\node_modules /E /NFL /NDL /NJH /NJS /NC /NS /NP
+          if %ERRORLEVEL% leq 7 exit /b 0
+
+      - name: Run Rust linting
+        working-directory: desktop/src-tauri
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Run Rust tests
+        working-directory: desktop/src-tauri
+        run: cargo test --verbose
+
+      - name: Build Tauri app (debug)
+        working-directory: desktop
+        run: npm run tauri:build -- --debug
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: meshmonitor-desktop-windows-debug
+          path: desktop/src-tauri/target/debug/bundle/
+          retention-days: 7
+          if-no-files-found: warn
+
+  lint-rust:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Install system dependencies for Tauri
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libgtk-3-dev
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: 'desktop/src-tauri'
+
+      - name: Check Rust formatting
+        working-directory: desktop/src-tauri
+        run: cargo fmt --all -- --check
+
+      - name: Create placeholder files for Clippy
+        run: |
+          mkdir -p desktop/src-tauri/binaries
+          touch desktop/src-tauri/binaries/node-x86_64-unknown-linux-gnu
+          mkdir -p desktop/resources
+          touch desktop/resources/.placeholder
+
+      - name: Run Clippy
+        working-directory: desktop/src-tauri
+        run: cargo clippy --all-targets --all-features -- -D warnings
