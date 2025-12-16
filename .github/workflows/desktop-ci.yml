@@ -122,11 +122,12 @@ jobs:
           mkdir -p desktop/resources
           touch desktop/resources/.placeholder
 
-          # Generate required icon sizes from icon.png for tauri::generate_context!()
+          # Copy icon.png to required sizes for tauri::generate_context!()
+          # (For lint only - actual build uses properly sized icons)
           cd desktop/src-tauri/icons
-          convert icon.png -resize 32x32 32x32.png
-          convert icon.png -resize 128x128 128x128.png
-          convert icon.png -resize 256x256 128x128@2x.png
+          cp icon.png 32x32.png
+          cp icon.png 128x128.png
+          cp icon.png 128x128@2x.png
           # Create placeholder icns (macOS icon format) - not needed for Windows build
           touch icon.icns
 
