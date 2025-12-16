@@ -931,6 +931,91 @@ class ProtobufService {
   }
 
   /**
+   * Create an AdminMessage to set security configuration (admin keys, etc.)
+   * @param config Security config object with adminKeys (array of base64 or hex strings), isManaged, serialEnabled, etc.
+   * @param sessionPasskey Optional session passkey for authentication
+   */
+  createSetSecurityConfigMessage(config: any, sessionPasskey?: Uint8Array): Uint8Array {
+    try {
+      const root = getProtobufRoot();
+      const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
+      const Config = root?.lookupType('meshtastic.Config');
+      if (!AdminMessage || !Config) {
+        throw new Error('Required proto types not found');
+      }
+
+      const securityConfigData: any = {};
+
+      // Handle admin keys - convert from base64/hex strings to Uint8Array
+      // Maximum of 3 admin keys allowed (per protobuf config.options)
+      if (config.adminKeys && Array.isArray(config.adminKeys)) {
+        const validKeys = config.adminKeys
+          .filter((key: string) => key && key.trim().length > 0)
+          .slice(0, 3); // Enforce max 3 keys
+        
+        if (config.adminKeys.length > 3) {
+          logger.warn(`⚠️ More than 3 admin keys provided (${config.adminKeys.length}), only using first 3`);
+        }
+        
+        securityConfigData.adminKey = validKeys.map((key: string) => {
+            const trimmed = key.trim();
+            try {
+              // Try base64 first
+              if (trimmed.startsWith('base64:')) {
+                return Buffer.from(trimmed.substring(7), 'base64');
+              }
+              // Try hex
+              if (trimmed.startsWith('0x') || /^[0-9a-fA-F]{64}$/.test(trimmed)) {
+                const hex = trimmed.startsWith('0x') ? trimmed.substring(2) : trimmed;
+                return Buffer.from(hex, 'hex');
+              }
+              // Try base64 without prefix
+              return Buffer.from(trimmed, 'base64');
+            } catch (error) {
+              logger.error(`Failed to parse admin key "${trimmed}":`, error);
+              throw new Error(`Invalid admin key format: ${trimmed}. Use base64 or hex format.`);
+            }
+          });
+      }
+
+      if (config.isManaged !== undefined) securityConfigData.isManaged = config.isManaged;
+      if (config.serialEnabled !== undefined) securityConfigData.serialEnabled = config.serialEnabled;
+      if (config.debugLogApiEnabled !== undefined) securityConfigData.debugLogApiEnabled = config.debugLogApiEnabled;
+      if (config.adminChannelEnabled !== undefined) securityConfigData.adminChannelEnabled = config.adminChannelEnabled;
+
+      // Note: public_key and private_key are typically read-only and should not be set via admin messages
+      // They are managed by the device itself
+
+      logger.debug('Security config data being sent to device:', JSON.stringify({
+        ...securityConfigData,
+        adminKey: securityConfigData.adminKey ? `${securityConfigData.adminKey.length} key(s)` : 'none'
+      }, null, 2));
+
+      const configMsg = Config.create({
+        security: securityConfigData
+      });
+
+      const adminMsgData: any = {
+        setConfig: configMsg
+      };
+
+      // Only include sessionPasskey if provided
+      if (sessionPasskey && sessionPasskey.length > 0) {
+        adminMsgData.sessionPasskey = sessionPasskey;
+      }
+
+      const adminMsg = AdminMessage.create(adminMsgData);
+
+      const encoded = AdminMessage.encode(adminMsg).finish();
+      logger.debug('⚙️ Created SetSecurityConfig admin message');
+      return encoded;
+    } catch (error) {
+      logger.error('Failed to create SetSecurityConfig message:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Create an AdminMessage to set network configuration (NTP server, etc.)
    * @param config Network config object
    * @param sessionPasskey Optional session passkey for authentication

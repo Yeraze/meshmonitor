@@ -253,7 +253,9 @@ class MeshtasticManager {
 
       // Setup event handlers
       this.transport.on('connect', () => {
-        this.handleConnected();
+        this.handleConnected().catch((error) => {
+          logger.error('Error in handleConnected:', error);
+        });
       });
 
       this.transport.on('message', (data: Uint8Array) => {
@@ -261,7 +263,9 @@ class MeshtasticManager {
       });
 
       this.transport.on('disconnect', () => {
-        this.handleDisconnected();
+        this.handleDisconnected().catch((error) => {
+          logger.error('Error in handleDisconnected:', error);
+        });
       });
 
       this.transport.on('error', (error: Error) => {
@@ -288,7 +292,7 @@ class MeshtasticManager {
     this.localNodeInfo = null;
 
     // Notify server event service of connection (handles initial vs reconnect logic)
-    serverEventNotificationService.notifyNodeConnected();
+    await serverEventNotificationService.notifyNodeConnected();
 
     try {
       // Enable message capture for virtual node server
@@ -357,7 +361,7 @@ class MeshtasticManager {
     }
   }
 
-  private handleDisconnected(): void {
+  private async handleDisconnected(): Promise<void> {
     logger.debug('TCP connection lost');
     this.isConnected = false;
     // Clear localNodeInfo so node will be marked as not responsive
@@ -366,7 +370,10 @@ class MeshtasticManager {
     this.favoritesSupportCache = null;
 
     // Notify server event service of disconnection
-    serverEventNotificationService.notifyNodeDisconnected();
+    // Skip notification if this is a user-initiated disconnect (already notified in userDisconnect())
+    if (!this.userDisconnectedState) {
+      await serverEventNotificationService.notifyNodeDisconnected();
+    }
 
     // Only auto-reconnect if not in user-disconnected state
     if (this.userDisconnectedState) {
@@ -1789,7 +1796,8 @@ class MeshtasticManager {
         }
 
         // Include decoded payload for non-encrypted packets
-        if (decodedPayload !== null) {
+        // Use loose equality to exclude both null and undefined
+        if (decodedPayload != null) {
           metadata.decoded_payload = decodedPayload;
         }
 
@@ -7087,7 +7095,8 @@ class MeshtasticManager {
             const deviceConfigMap: { [key: number]: string } = {
               0: 'device',
               5: 'lora',
-              6: 'position'
+              6: 'position',
+              7: 'security'  // SECURITY_CONFIG
             };
             const configKey = deviceConfigMap[configType];
             if (configKey && nodeConfig.deviceConfig?.[configKey]) {
@@ -7810,7 +7819,7 @@ class MeshtasticManager {
 
     // Notify about disconnect before actually disconnecting
     // This ensures users get notified even for user-initiated disconnects
-    serverEventNotificationService.notifyNodeDisconnected();
+    await serverEventNotificationService.notifyNodeDisconnected();
 
     if (this.transport) {
       try {
@@ -7832,6 +7841,20 @@ class MeshtasticManager {
       clearInterval(this.announceInterval);
       this.announceInterval = null;
     }
+
+    // Stop announce cron job if active
+    if (this.announceCronJob) {
+      this.announceCronJob.stop();
+      this.announceCronJob = null;
+      logger.debug('📢 Stopped announce cron job');
+    }
+
+    // Stop all timer cron jobs
+    this.timerCronJobs.forEach((job, id) => {
+      job.stop();
+      logger.debug(`⏱️ Stopped timer cron job: ${id}`);
+    });
+    this.timerCronJobs.clear();
 
     logger.debug('✅ User disconnect completed');
   }
