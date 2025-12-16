@@ -69,7 +69,10 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const [showMotion, setShowMotionState] = useState<boolean>(true);
   const [showMqttNodes, setShowMqttNodesState] = useState<boolean>(true);
   const [showAnimations, setShowAnimationsState] = useState<boolean>(false);
-  const [showEstimatedPositions, setShowEstimatedPositionsState] = useState<boolean>(true);
+  const [showEstimatedPositions, setShowEstimatedPositionsState] = useState<boolean>(() => {
+    const saved = localStorage.getItem('showEstimatedPositions');
+    return saved !== null ? saved === 'true' : true; // Default to true
+  });
   const [animatedNodes, setAnimatedNodes] = useState<Set<string>>(new Set());
   const [mapCenterTarget, setMapCenterTarget] = useState<[number, number] | null>(null);
   const [mapCenter, setMapCenter] = useState<[number, number] | null>(() => {
@@ -132,6 +135,7 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
 
   const setShowEstimatedPositions = React.useCallback((value: boolean) => {
     setShowEstimatedPositionsState(value);
+    localStorage.setItem('showEstimatedPositions', value.toString());
     savePreferenceToServer({ showEstimatedPositions: value });
   }, []);
 
