@@ -136,6 +136,64 @@ class MeshtasticManager {
         return await this.sendTextMessage(text, 0, destination, replyId);
       }
     });
+
+    // Check if we need to recalculate estimated positions from historical traceroutes
+    this.checkAndRecalculatePositions();
+  }
+
+  /**
+   * Check if estimated position recalculation is needed and perform it.
+   * This is triggered by migration 038 which deletes old estimates and sets a flag.
+   */
+  private checkAndRecalculatePositions(): void {
+    try {
+      const recalculateFlag = databaseService.getSetting('recalculate_estimated_positions');
+      if (recalculateFlag !== 'pending') {
+        return;
+      }
+
+      logger.info('📍 Recalculating estimated positions from historical traceroutes...');
+
+      // Get all traceroutes with route data
+      const traceroutes = databaseService.getAllTraceroutesForRecalculation();
+      logger.info(`Found ${traceroutes.length} traceroutes to process for position estimation`);
+
+      let processedCount = 0;
+      for (const traceroute of traceroutes) {
+        try {
+          // Parse route array from JSON
+          const route = traceroute.route ? JSON.parse(traceroute.route) : [];
+          if (!Array.isArray(route) || route.length === 0) {
+            continue;
+          }
+
+          // Build the full route path: fromNode (requester/origin) -> route intermediates -> toNode (destination)
+          const fullRoute = [traceroute.fromNodeNum, ...route, traceroute.toNodeNum];
+
+          // Parse SNR array if available
+          let snrArray: number[] | undefined;
+          if (traceroute.snrTowards) {
+            const snrData = JSON.parse(traceroute.snrTowards);
+            if (Array.isArray(snrData) && snrData.length > 0) {
+              snrArray = snrData;
+            }
+          }
+
+          // Process the traceroute for position estimation
+          this.estimateIntermediatePositions(fullRoute, traceroute.timestamp, snrArray);
+          processedCount++;
+        } catch (err) {
+          logger.debug(`Skipping traceroute ${traceroute.id} due to error: ${err}`);
+        }
+      }
+
+      logger.info(`✅ Processed ${processedCount} traceroutes for position estimation`);
+
+      // Clear the flag
+      databaseService.setSetting('recalculate_estimated_positions', 'completed');
+    } catch (error) {
+      logger.error('❌ Error recalculating estimated positions:', error);
+    }
   }
 
   /**
@@ -2813,9 +2871,10 @@ class MeshtasticManager {
 
       // Calculate and store route segment distances, and estimate positions for nodes without GPS
       try {
-        // Build the full route path: fromNode (responder) -> route intermediates -> toNode (requester)
-        // Use route because it contains intermediate hops from fromNum to toNum
-        const fullRoute = [fromNum, ...route, toNum];
+        // Build the full route path: toNode (requester) -> route intermediates -> fromNode (responder)
+        // route contains intermediate hops from requester toward responder
+        // So the full path is: requester -> route[0] -> route[1] -> ... -> route[N-1] -> responder
+        const fullRoute = [toNum, ...route, fromNum];
 
         // Calculate distance for each consecutive pair of nodes
         for (let i = 0; i < fullRoute.length - 1; i++) {
@@ -2859,13 +2918,13 @@ class MeshtasticManager {
         }
 
         // Estimate positions for intermediate nodes without GPS
-        // Process forward route (responder -> requester)
-        this.estimateIntermediatePositions(fullRoute, timestamp);
+        // Process forward route (responder -> requester) with SNR weighting
+        this.estimateIntermediatePositions(fullRoute, timestamp, snrTowards);
 
-        // Process return route if it exists (requester -> responder)
+        // Process return route if it exists (requester -> responder) with SNR weighting
         if (routeBack.length > 0) {
           const fullReturnRoute = [toNum, ...routeBack, fromNum];
-          this.estimateIntermediatePositions(fullReturnRoute, timestamp);
+          this.estimateIntermediatePositions(fullReturnRoute, timestamp, snrBack);
         }
       } catch (error) {
         logger.error('❌ Error calculating route segment distances:', error);
@@ -2967,11 +3026,31 @@ class MeshtasticManager {
 
   /**
    * Estimate positions for nodes in a traceroute path that don't have GPS data
-   * by calculating the median (midpoint) between their neighbors
+   * by calculating a weighted average between neighbors in the direction of the destination.
+   *
+   * Route structure: [destination, hop1, hop2, ..., hopN, requester]
+   * - Index 0 = destination (traceroute target)
+   * - Index N-1 = requester (source of traceroute)
+   *
+   * For intermediate nodes, we estimate position based on:
+   * - Primary anchor: The neighbor toward the destination (lower index)
+   * - Secondary anchor: The destination itself OR another known node toward destination
+   *
+   * This avoids using the requester as an anchor, since the requester may be
+   * geographically far from the actual path to the destination.
+   *
+   * @param routePath - Array of node numbers in the route (full path including endpoints)
+   * @param timestamp - Timestamp for the telemetry record
+   * @param snrArray - Optional array of SNR values (raw, divide by 4 to get dB) for each hop
    */
-  private estimateIntermediatePositions(routePath: number[], timestamp: number): void {
+  private estimateIntermediatePositions(routePath: number[], timestamp: number, snrArray?: number[]): void {
+    // Time decay constant: half-life of 24 hours (in milliseconds)
+    // After 24 hours, an old estimate has half the weight of a new one
+    const HALF_LIFE_MS = 24 * 60 * 60 * 1000;
+    const DECAY_CONSTANT = Math.LN2 / HALF_LIFE_MS;
+
     try {
-      // For each node in the path (excluding endpoints)
+      // For each intermediate node (excluding endpoints)
       for (let i = 1; i < routePath.length - 1; i++) {
         const nodeNum = routePath[i];
         const prevNodeNum = routePath[i - 1];
@@ -2994,41 +3073,121 @@ class MeshtasticManager {
           node = databaseService.getNode(nodeNum);
         }
 
-        // Only estimate if this node lacks position but both neighbors have position
-        if (node && (!node.latitude || !node.longitude) &&
-            prevNode?.latitude && prevNode?.longitude &&
-            nextNode?.latitude && nextNode?.longitude) {
-
-          // Calculate midpoint (median) between the two neighbors
-          const estimatedLat = (prevNode.latitude + nextNode.latitude) / 2;
-          const estimatedLon = (prevNode.longitude + nextNode.longitude) / 2;
-
-          const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
-          const now = Date.now();
-
-          // Store estimated position as telemetry with a special type prefix
-          databaseService.insertTelemetry({
-            nodeId,
-            nodeNum,
-            telemetryType: 'estimated_latitude',
-            timestamp,
-            value: estimatedLat,
-            unit: '° (est)',
-            createdAt: now
-          });
-
-          databaseService.insertTelemetry({
-            nodeId,
-            nodeNum,
-            telemetryType: 'estimated_longitude',
-            timestamp,
-            value: estimatedLon,
-            unit: '° (est)',
-            createdAt: now
-          });
-
-          logger.debug(`📍 Estimated position for ${nodeId} (${node.longName || nodeId}): ${estimatedLat.toFixed(6)}, ${estimatedLon.toFixed(6)} (midpoint between neighbors)`);
+        // Skip if node doesn't exist or has actual GPS position data
+        if (!node || (node.latitude && node.longitude)) {
+          continue;
         }
+
+        // Use immediate neighbors in the traceroute as anchor points
+        // prevNode is the neighbor at index i-1 (toward start of route)
+        // nextNode is the neighbor at index i+1 (toward end of route)
+        const prevHasPosition = prevNode?.latitude && prevNode?.longitude;
+        const nextHasPosition = nextNode?.latitude && nextNode?.longitude;
+
+        // Need both neighbors to have positions for estimation
+        if (!prevHasPosition || !nextHasPosition) {
+          continue;
+        }
+
+        const snrA = snrArray?.[i - 1]; // SNR from prevNode to this node
+        const snrB = snrArray?.[i]; // SNR from this node to nextNode
+
+        let newEstimateLat: number;
+        let newEstimateLon: number;
+        let weightingMethod = 'midpoint';
+
+        // Apply SNR weighting if we have the data
+        if (snrA !== undefined && snrB !== undefined) {
+          // Convert raw SNR to dB (divide by 4)
+          const snrADb = snrA / 4;
+          const snrBDb = snrB / 4;
+
+          // Use exponential weighting: 10^(SNR/10) gives relative signal strength
+          // Higher SNR = stronger signal = likely closer to that node
+          const weightA = Math.pow(10, snrADb / 10);
+          const weightB = Math.pow(10, snrBDb / 10);
+          const totalWeight = weightA + weightB;
+
+          if (totalWeight > 0) {
+            newEstimateLat = (prevNode.latitude! * weightA + nextNode.latitude! * weightB) / totalWeight;
+            newEstimateLon = (prevNode.longitude! * weightA + nextNode.longitude! * weightB) / totalWeight;
+            weightingMethod = `SNR-weighted (prev: ${snrADb.toFixed(1)}dB, next: ${snrBDb.toFixed(1)}dB)`;
+          } else {
+            // Fall back to midpoint if weights are invalid
+            newEstimateLat = (prevNode.latitude! + nextNode.latitude!) / 2;
+            newEstimateLon = (prevNode.longitude! + nextNode.longitude!) / 2;
+          }
+        } else {
+          // Fall back to simple midpoint if no SNR data available
+          newEstimateLat = (prevNode.latitude! + nextNode.latitude!) / 2;
+          newEstimateLon = (prevNode.longitude! + nextNode.longitude!) / 2;
+        }
+
+        // Get previous estimates for time-weighted averaging
+        const previousEstimates = databaseService.getRecentEstimatedPositions(nodeNum, 10);
+        const now = Date.now();
+
+        let finalLat: number;
+        let finalLon: number;
+
+        if (previousEstimates.length > 0) {
+          // Apply exponential time decay weighting
+          // Weight = e^(-decay_constant * age_in_ms)
+          // Newer estimates have higher weights
+          let totalWeight = 0;
+          let weightedLatSum = 0;
+          let weightedLonSum = 0;
+
+          // Add previous estimates with time decay
+          for (const estimate of previousEstimates) {
+            // estimate.timestamp is already in milliseconds (from telemetry table)
+            const ageMs = now - estimate.timestamp;
+            const weight = Math.exp(-DECAY_CONSTANT * ageMs);
+            totalWeight += weight;
+            weightedLatSum += estimate.latitude * weight;
+            weightedLonSum += estimate.longitude * weight;
+          }
+
+          // Add new estimate with weight 1.0 (it's the most recent)
+          const newEstimateWeight = 1.0;
+          totalWeight += newEstimateWeight;
+          weightedLatSum += newEstimateLat * newEstimateWeight;
+          weightedLonSum += newEstimateLon * newEstimateWeight;
+
+          // Calculate weighted average
+          finalLat = weightedLatSum / totalWeight;
+          finalLon = weightedLonSum / totalWeight;
+          weightingMethod += `, aggregated from ${previousEstimates.length + 1} traceroutes`;
+        } else {
+          // No previous estimates, use the new estimate directly
+          finalLat = newEstimateLat;
+          finalLon = newEstimateLon;
+        }
+
+        const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
+
+        // Store estimated position as telemetry with a special type prefix
+        databaseService.insertTelemetry({
+          nodeId,
+          nodeNum,
+          telemetryType: 'estimated_latitude',
+          timestamp,
+          value: finalLat,
+          unit: '° (est)',
+          createdAt: now
+        });
+
+        databaseService.insertTelemetry({
+          nodeId,
+          nodeNum,
+          telemetryType: 'estimated_longitude',
+          timestamp,
+          value: finalLon,
+          unit: '° (est)',
+          createdAt: now
+        });
+
+        logger.debug(`📍 Estimated position for ${nodeId} (${node.longName || nodeId}): ${finalLat.toFixed(6)}, ${finalLon.toFixed(6)} (${weightingMethod})`);
       }
     } catch (error) {
       logger.error('❌ Error estimating intermediate positions:', error);
