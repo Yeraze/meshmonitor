@@ -126,6 +126,26 @@ const ScriptManagement: React.FC<ScriptManagementProps> = ({
                 </button>
               </>
             )}
+            <a
+              href="https://meshmonitor.org/user-scripts.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                padding: '0.5rem 1rem',
+                fontSize: '0.875rem',
+                background: 'var(--ctp-mauve)',
+                color: 'var(--ctp-base)',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                textDecoration: 'none',
+                display: 'inline-flex',
+                alignItems: 'center'
+              }}
+            >
+              Script Gallery
+            </a>
           </div>
 
           {availableScripts.length === 0 ? (
