@@ -28,6 +28,7 @@ const SectionNav: React.FC<SectionNavProps> = ({ items }) => {
       {items.map((item) => (
         <button
           key={item.id}
+          type="button"
           className="section-nav-item"
           onClick={() => scrollToSection(item.id)}
         >

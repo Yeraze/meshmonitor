@@ -136,72 +136,80 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     localStorage.setItem('adminCommandsExpandedSections', JSON.stringify(expandedSections));
   }, [expandedSections]);
 
-  const toggleSection = (sectionId: string) => {
+  // Use ref to access current expanded sections without recreating the component
+  const expandedSectionsRef = useRef(expandedSections);
+  expandedSectionsRef.current = expandedSections;
+
+  const toggleSection = useCallback((sectionId: string) => {
     setExpandedSections(prev => ({ ...prev, [sectionId]: !prev[sectionId] }));
-  };
+  }, []);
 
-  // Collapsible section component
-  const CollapsibleSection: React.FC<{
-    id: string;
-    title: string;
-    children: React.ReactNode;
-    defaultExpanded?: boolean;
-    headerActions?: React.ReactNode;
-    className?: string;
-    nested?: boolean;
-  }> = ({ id, title, children, defaultExpanded, headerActions, className = '', nested = false }) => {
-    const isExpanded = expandedSections[id] ?? defaultExpanded ?? false;
+  // Stable CollapsibleSection wrapper - uses refs to avoid recreating on state changes
+  const CollapsibleSection = useMemo(() => {
+    const Component: React.FC<{
+      id: string;
+      title: string;
+      children: React.ReactNode;
+      defaultExpanded?: boolean;
+      headerActions?: React.ReactNode;
+      className?: string;
+      nested?: boolean;
+    }> = ({ id, title, children, defaultExpanded, headerActions, className = '', nested = false }) => {
+      // Read from ref to get current value without causing re-creation
+      const isExpanded = expandedSectionsRef.current[id] ?? defaultExpanded ?? false;
 
-    return (
-      <div id={id} className={`settings-section ${className}`} style={{
-        marginLeft: nested ? '1.5rem' : '0',
-        marginTop: nested ? '0.5rem' : '0'
-      }}>
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            padding: '0.75rem 1rem',
-            background: 'var(--ctp-surface0)',
-            border: '1px solid var(--ctp-surface2)',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            marginBottom: isExpanded ? '1rem' : '0.5rem',
-            transition: 'all 0.2s ease',
-          }}
-          onClick={() => toggleSection(id)}
-          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--ctp-surface1)'}
-          onMouseLeave={(e) => e.currentTarget.style.background = 'var(--ctp-surface0)'}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1 }}>
-            <span style={{ 
-              fontSize: '0.875rem',
-              transition: 'transform 0.2s ease',
-              transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
-              display: 'inline-block'
-            }}>
-              ▶
-            </span>
-            <h3 style={{ margin: 0, borderBottom: 'none', paddingBottom: 0, flex: 1 }}>{title}</h3>
+      return (
+        <div id={id} className={`settings-section ${className}`} style={{
+          marginLeft: nested ? '1.5rem' : '0',
+          marginTop: nested ? '0.5rem' : '0'
+        }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '0.75rem 1rem',
+              background: 'var(--ctp-surface0)',
+              border: '1px solid var(--ctp-surface2)',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              marginBottom: isExpanded ? '1rem' : '0.5rem',
+              transition: 'all 0.2s ease',
+            }}
+            onClick={() => toggleSection(id)}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--ctp-surface1)'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'var(--ctp-surface0)'}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1 }}>
+              <span style={{
+                fontSize: '0.875rem',
+                transition: 'transform 0.2s ease',
+                transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                display: 'inline-block'
+              }}>
+                ▶
+              </span>
+              <h3 style={{ margin: 0, borderBottom: 'none', paddingBottom: 0, flex: 1 }}>{title}</h3>
+            </div>
+            {headerActions && (
+              <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', gap: '0.5rem' }}>
+                {headerActions}
+              </div>
+            )}
           </div>
-          {headerActions && (
-            <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', gap: '0.5rem' }}>
-              {headerActions}
+          {isExpanded && (
+            <div style={{
+              padding: '0 0.5rem',
+              overflow: 'visible'
+            }}>
+              {children}
             </div>
           )}
         </div>
-        {isExpanded && (
-          <div style={{
-            padding: '0 0.5rem',
-            overflow: 'visible'
-          }}>
-            {children}
-          </div>
-        )}
-      </div>
-    );
-  };
+      );
+    };
+    return Component;
+  }, [toggleSection]);
 
   // Memoize node options building
   const nodeOptionsMemo = useMemo(() => {
@@ -3171,4 +3179,5 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   );
 };
 
-export default AdminCommandsTab;
+// Memoize to prevent re-renders from parent's statusTick timer
+export default React.memo(AdminCommandsTab);

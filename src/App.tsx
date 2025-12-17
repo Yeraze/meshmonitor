@@ -1887,7 +1887,7 @@ function App() {
     }
   };
 
-  const fetchChannels = async (providedBaseUrl?: string) => {
+  const fetchChannels = useCallback(async (providedBaseUrl?: string) => {
     // Use the provided baseUrl or fall back to the state value
     const urlBase = providedBaseUrl !== undefined ? providedBaseUrl : baseUrl;
     try {
@@ -1935,7 +1935,7 @@ function App() {
     } catch (error) {
       logger.error('Error fetching channels:', error);
     }
-  };
+  }, [baseUrl, authFetch, selectedChannel, setSelectedChannel, setChannels]);
 
   // Process poll data from usePoll hook - handles all data processing from consolidated /api/poll endpoint
   const processPollData = useCallback(
