@@ -15,6 +15,8 @@ interface LoRaConfigSectionProps {
   txPower: number;
   channelNum: number;
   sx126xRxBoostedGain: boolean;
+  ignoreMqtt: boolean;
+  configOkToMqtt: boolean;
   setUsePreset: (value: boolean) => void;
   setModemPreset: (value: number) => void;
   setBandwidth: (value: number) => void;
@@ -27,6 +29,8 @@ interface LoRaConfigSectionProps {
   setTxPower: (value: number) => void;
   setChannelNum: (value: number) => void;
   setSx126xRxBoostedGain: (value: boolean) => void;
+  setIgnoreMqtt: (value: boolean) => void;
+  setConfigOkToMqtt: (value: boolean) => void;
   isSaving: boolean;
   onSave: () => Promise<void>;
 }
@@ -44,6 +48,8 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
   txPower,
   channelNum,
   sx126xRxBoostedGain,
+  ignoreMqtt,
+  configOkToMqtt,
   setUsePreset,
   setModemPreset,
   setBandwidth,
@@ -56,6 +62,8 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
   setTxPower,
   setChannelNum,
   setSx126xRxBoostedGain,
+  setIgnoreMqtt,
+  setConfigOkToMqtt,
   isSaving,
   onSave
 }) => {
@@ -336,6 +344,36 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
           <div style={{ flex: 1 }}>
             <div>{t('lora_config.rx_boosted_gain')}</div>
             <span className="setting-description">{t('lora_config.rx_boosted_gain_description')}</span>
+          </div>
+        </label>
+      </div>
+      <div className="setting-item">
+        <label htmlFor="ignoreMqtt" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+          <input
+            id="ignoreMqtt"
+            type="checkbox"
+            checked={ignoreMqtt}
+            onChange={(e) => setIgnoreMqtt(e.target.checked)}
+            style={{ marginTop: '0.2rem', flexShrink: 0 }}
+          />
+          <div style={{ flex: 1 }}>
+            <div>{t('lora_config.ignore_mqtt')}</div>
+            <span className="setting-description">{t('lora_config.ignore_mqtt_description')}</span>
+          </div>
+        </label>
+      </div>
+      <div className="setting-item">
+        <label htmlFor="configOkToMqtt" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+          <input
+            id="configOkToMqtt"
+            type="checkbox"
+            checked={configOkToMqtt}
+            onChange={(e) => setConfigOkToMqtt(e.target.checked)}
+            style={{ marginTop: '0.2rem', flexShrink: 0 }}
+          />
+          <div style={{ flex: 1 }}>
+            <div>{t('lora_config.ok_to_mqtt')}</div>
+            <span className="setting-description">{t('lora_config.ok_to_mqtt_description')}</span>
           </div>
         </label>
       </div>
