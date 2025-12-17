@@ -126,6 +126,11 @@
   grid-column: 1 / -1;
 }
 
+/* 2-column card styling - spans 2 columns */
+.node-detail-card-2col {
+  grid-column: span 2;
+}
+
 /* Public key styling */
 .node-detail-public-key {
   font-family: monospace;
@@ -177,7 +182,8 @@
     font-size: 1rem;
   }
 
-  .node-detail-card-hardware {
+  .node-detail-card-hardware,
+  .node-detail-card-2col {
     grid-column: span 1;
   }
 

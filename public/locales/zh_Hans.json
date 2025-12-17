@@ -383,7 +383,6 @@
     "settings.reset_ui_positions_description": "将可拖拽的界面元素（节点列表、地图功能、跳数图例、瓦片选择器）恢复到默认位置。",
     "settings.reset_ui_positions_button": "重置位置",
     "settings.reset_ui_positions_success": "界面位置已重置。刷新页面以查看更改。",
-
     "configuration.title": "设备配置",
     "configuration.node_identity": "节点身份",
     "configuration.long_name": "长名称",
@@ -1217,7 +1216,6 @@
     "dashboard.widget.traceroute.no_position_warning": "部分节点没有位置信息",
     "dashboard.show_solar": "显示太阳能覆盖",
     "dashboard.hide_solar": "隐藏太阳能覆盖",
-
     "info.title": "设备信息与配置",
     "info.connection_status": "连接状态",
     "info.node_address": "节点地址：",
@@ -1312,12 +1310,10 @@
     "info.record_clear_failed": "清除记录保持者失败。请重试。",
     "info.device_config_unavailable": "设备配置不可用。请确保连接已建立。",
     "info.local_telemetry": "本地节点遥测",
-
     "info.secrets": "安全密钥",
     "info.public_key": "公钥：",
     "info.private_key": "私钥：",
     "info.secrets_unavailable": "安全密钥不可用",
-
     "config.loading": "正在加载配置...",
     "config.warning_title": "警告",
     "config.warning_text": "修改这些设置可能会破坏 Meshtastic 节点配置。",
@@ -1818,9 +1814,8 @@
     "telemetry.add_favorite": "加入收藏",
     "telemetry.more_options": "更多选项",
     "telemetry.purge_data": "清除数据",
-  "telemetry.show_solar": "显示太阳能覆盖",
-  "telemetry.hide_solar": "隐藏太阳能覆盖",
-
+    "telemetry.show_solar": "显示太阳能覆盖",
+    "telemetry.hide_solar": "隐藏太阳能覆盖",
     "node_details.title": "节点详情",
     "node_details.expand": "展开节点详情",
     "node_details.collapse": "收起节点详情",
@@ -1940,17 +1935,14 @@
     "neighbor_info.interval": "NeighborInfo 间隔（秒）",
     "neighbor_info.interval_description": "范围：14400-4294967295（默认：3600 = 1 小时，最小：14400 秒）",
     "neighbor_info.save_button": "保存 NeighborInfo 配置",
-
     "network_config.title": "网络配置",
     "network_config.view_docs": "查看网络配置文档",
     "network_config.ntp_server": "NTP 服务器",
     "network_config.ntp_server_description": "自定义 NTP 服务器地址（默认：meshtastic.pool.ntp.org）。最多 33 个字符。",
     "network_config.save_button": "保存网络配置",
-
     "config.network_saved": "网络配置已保存",
     "config.network_saved_toast": "网络配置已保存！设备将重启以应用更改。",
     "config.network_failed": "保存网络配置失败",
-  
     "lora_config.title": "LoRa 配置",
     "lora_config.view_docs": "查看 Meshtastic LoRa 配置文档",
     "lora_config.use_preset": "使用预设",
@@ -2239,7 +2231,6 @@
     "auto_upgrade_test.immediate_upgrade_description": "当检测到新版本且启用自动升级时，自动开始升级而无需手动确认。请谨慎使用——有新版本时会立即升级。",
     "auto_upgrade_test.setting_saved": "自动升级设置已保存",
     "auto_upgrade_test.setting_save_failed": "保存自动升级设置失败",
-
     "admin_commands.title": "管理员指令",
     "admin_commands.loading_nodes": "正在加载节点...",
     "admin_commands.target_node": "目标节点",
@@ -2250,7 +2241,6 @@
     "admin_commands.local_node_no_passkey": "✓ 本地节点 - 无需会话密钥",
     "admin_commands.remote_node_passkey": "✓ 远程节点 - 将自动请求会话密钥",
     "admin_commands.please_select_node": "请选择一个节点",
-
     "admin_commands.set_owner": "节点身份",
     "admin_commands.long_name": "长名称",
     "admin_commands.long_name_description": "设备所有者的长名称。",
@@ -2261,14 +2251,12 @@
     "admin_commands.mark_unmessagable": "标记为不可接收消息",
     "admin_commands.mark_unmessagable_description": "阻止其他节点向此设备发送消息",
     "admin_commands.set_owner_button": "设置所有者",
-
     "admin_commands.device_configuration": "设备配置",
     "admin_commands.device_role": "设备角色",
     "admin_commands.device_role_description": "设置设备角色。路由模式使设备始终转发数据包，用于基础设施。",
     "admin_commands.node_info_broadcast": "节点信息广播间隔（秒）",
     "admin_commands.node_info_broadcast_description": "设备广播节点信息的频率。最小值：3600秒（1小时）。",
     "admin_commands.save_device_config": "保存设备配置",
-
     "admin_commands.lora_configuration": "LoRa 无线配置",
     "admin_commands.use_modem_preset": "使用调制解调器预设",
     "admin_commands.use_modem_preset_description": "使用预定义的调制解调器预设而不是手动设置",
@@ -2285,7 +2273,6 @@
     "admin_commands.sx126x_rx_boosted_gain": "SX126x RX 增强增益",
     "admin_commands.sx126x_rx_boosted_gain_description": "为SX126x无线电启用增强RX增益",
     "admin_commands.save_lora_config": "保存LoRa配置",
-
     "admin_commands.position_configuration": "位置配置",
     "admin_commands.position_broadcast_interval": "位置广播间隔（秒）",
     "admin_commands.position_broadcast_interval_description": "设备广播其位置的频率。最小值：32秒。",
@@ -2300,7 +2287,6 @@
     "admin_commands.altitude": "海拔（米）",
     "admin_commands.altitude_description": "海拔高度",
     "admin_commands.save_position_config": "保存位置配置",
-
     "admin_commands.mqtt_configuration": "MQTT配置",
     "admin_commands.enable_mqtt": "启用MQTT",
     "admin_commands.enable_mqtt_description": "启用MQTT代理连接",
@@ -2317,11 +2303,9 @@
     "admin_commands.json_enabled": "启用JSON",
     "admin_commands.json_enabled_description": "以JSON格式发送消息",
     "admin_commands.save_mqtt_config": "保存MQTT配置",
-
     "admin_commands.channel_configuration": "频道配置",
     "admin_commands.load_channels": "加载频道",
     "admin_commands.loading_channels": "正在加载频道...",
-
     "admin_commands.device_config_loaded": "设备配置加载成功",
     "admin_commands.failed_load_device_config": "加载设备配置失败",
     "admin_commands.lora_config_loaded": "LoRa配置加载成功",
@@ -2342,7 +2326,6 @@
     "admin_commands.failed_execute_command": "执行指令失败",
     "admin_commands.owner_info_loaded": "所有者信息加载成功",
     "admin_commands.no_owner_info": "无可用的所有者信息",
-
     "admin_commands.channel_config_description": "为选定的节点配置频道。每个频道槽可以独立配置。",
     "admin_commands.channel_slot": "频道 {{index}}",
     "admin_commands.unnamed": "未命名",
@@ -2355,7 +2338,6 @@
     "admin_commands.uplink": "上行",
     "admin_commands.downlink": "下行",
     "admin_commands.no_bridge": "无桥接",
-
     "admin_commands.config_import_export": "配置导入/导出",
     "admin_commands.config_import_export_description": "以Meshtastic URL格式导入或导出频道配置和设备设置。这些URL与官方Meshtastic应用兼容。",
     "admin_commands.import_configuration": "导入配置",
@@ -2363,7 +2345,6 @@
     "admin_commands.loading_remote_config": "正在加载远程节点配置...",
     "admin_commands.config_loaded_success": "配置加载成功",
     "admin_commands.failed_load_config": "加载配置失败",
-
     "admin_commands.node_favorites_ignored": "节点收藏和忽略",
     "admin_commands.node_favorites_ignored_description": "管理目标设备上的收藏和忽略节点。收藏节点在节点列表中优先显示，而忽略节点在正常操作中隐藏。",
     "admin_commands.select_node_to_manage": "选择节点",
@@ -2382,7 +2363,6 @@
     "admin_commands.set_as_ignored": "设为忽略",
     "admin_commands.remove_ignored": "移除忽略",
     "admin_commands.firmware_requirement_note": "注意：这些命令需要固件版本2.7.0或更高。必须在上面的\"目标节点\"部分选择目标设备。",
-
     "admin_commands.failed_load_owner_info": "加载所有者信息失败",
     "admin_commands.long_short_name_required": "长名称和短名称为必填项",
     "admin_commands.please_select_node_to_favorite": "请选择要收藏的节点",
@@ -2407,8 +2387,10 @@
     "admin_commands.please_select_file_and_slot": "请选择文件和频道槽位",
     "admin_commands.invalid_import_format": "导入格式无效。需要频道对象",
     "admin_commands.configuration_imported_success": "配置导入成功",
-    "admin_commands.warning_message":"修改这些设置可能会破坏您的Meshtastic节点配置。",
-    "admin_commands.warning_description":"这些设置会直接修改目标Meshtastic设备的配置。错误的设置可能会导致通信问题、网络故障，或者需要恢复出厂设置。请务必在了解自己在做什么的情况下修改这些设置。",
-
-    "common.load": "加载"
+    "admin_commands.warning_message": "修改这些设置可能会破坏您的Meshtastic节点配置。",
+    "admin_commands.warning_description": "这些设置会直接修改目标Meshtastic设备的配置。错误的设置可能会导致通信问题、网络故障，或者需要恢复出厂设置。请务必在了解自己在做什么的情况下修改这些设置。",
+    "common.load": "加载",
+    "notifications.mqtt_messages": "MQTT消息",
+    "automation.auto_traceroute.no_nodes_match_filters": "没有与当前筛选器匹配的节点",
+    "node_details.public_key": "公钥"
 }

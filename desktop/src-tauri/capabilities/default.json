@@ -7,16 +7,6 @@
     "core:default",
     "opener:default",
     "fs:default",
-    {
-      "identifier": "shell:allow-execute",
-      "allow": [
-        {
-          "name": "binaries/node",
-          "sidecar": true,
-          "args": true
-        }
-      ]
-    },
     "shell:allow-open"
   ]
 }

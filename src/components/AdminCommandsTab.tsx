@@ -79,6 +79,13 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   // Loading state for all configs
   const [isLoadingAllConfigs, setIsLoadingAllConfigs] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState<{ current: number; total: number; configType: string } | null>(null);
+  // Individual loading states (for backward compatibility with existing handlers)
+  const [isLoadingOwner, setIsLoadingOwner] = useState(false);
+  const [isLoadingDeviceConfig, setIsLoadingDeviceConfig] = useState(false);
+  const [isLoadingLoRaConfig, setIsLoadingLoRaConfig] = useState(false);
+  const [isLoadingPositionConfig, setIsLoadingPositionConfig] = useState(false);
+  const [isLoadingMQTTConfig, setIsLoadingMQTTConfig] = useState(false);
+  const [isLoadingSecurityConfig, setIsLoadingSecurityConfig] = useState(false);
 
   // Node management state (favorites/ignored)
   const [nodeManagementNodeNum, setNodeManagementNodeNum] = useState<number | null>(null);
@@ -1072,7 +1079,6 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       console.error('Set MQTT config command failed:', error);
     }
   };
-
 
   const handleSetSecurityConfig = useCallback(async () => {
     // Filter out empty admin keys

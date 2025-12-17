@@ -261,6 +261,8 @@
   "messages.dm_placeholder": "Send direct message to {{name}}...",
   "messages.traceroute_button": "Traceroute",
   "messages.traceroute_title": "Run traceroute to this node",
+  "messages.show_on_map": "Show on Map",
+  "messages.show_on_map_title": "Show this node on the map",
   "messages.history_button": "Show History",
   "messages.history_title": "View traceroute history for this node",
   "messages.exchange_position": "Exchange Position",
