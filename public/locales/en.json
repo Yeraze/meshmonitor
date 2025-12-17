@@ -2410,6 +2410,7 @@
   "admin_commands.device_configuration": "Device Configuration",
   "admin_commands.device_role": "Device Role",
   "admin_commands.device_role_description": "Set the device role. ROUTER mode makes the device always rebroadcast packets for infrastructure use.",
+  "admin_commands.device_role_options": "Device Role Options",
   "admin_commands.node_info_broadcast": "Node Info Broadcast Interval (seconds)",
   "admin_commands.node_info_broadcast_description": "How often the device broadcasts node information. Minimum: 3600 seconds (1 hour).",
   "admin_commands.save_device_config": "Save Device Config",

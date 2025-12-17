@@ -9,6 +9,9 @@ import { ExportConfigModal } from './configuration/ExportConfigModal';
 import SectionNav from './SectionNav';
 import { validatePositionConfig, validateAdminKey, validateAdminKeys } from '../utils/adminCommandsValidation';
 
+// Type-safe device role enum - only valid role values from ROLE_OPTIONS
+export type DeviceRole = 0 | 1 | 2 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
+
 interface AdminCommandsTabProps {
   nodes: any[];
   currentNodeId: string;
@@ -46,9 +49,12 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   const [ownerIsUnmessagable, setOwnerIsUnmessagable] = useState(false);
 
   // Device Config state
-  const [deviceRole, setDeviceRole] = useState<number>(0);
+  const [deviceRole, setDeviceRole] = useState<DeviceRole>(0);
   const [nodeInfoBroadcastSecs, setNodeInfoBroadcastSecs] = useState(3600);
   const [isRoleDropdownOpen, setIsRoleDropdownOpen] = useState(false);
+  const roleDropdownRef = useRef<HTMLDivElement>(null);
+  const roleMenuRef = useRef<HTMLDivElement>(null);
+  const [focusedRoleIndex, setFocusedRoleIndex] = useState<number | null>(null);
 
   // LoRa Config state
   const [usePreset, setUsePreset] = useState(true);
@@ -128,6 +134,29 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   // Validation error state
   const [positionConfigErrors, setPositionConfigErrors] = useState<Record<string, string>>({});
   const [adminKeyErrors, setAdminKeyErrors] = useState<Record<string, string>>({});
+
+  // Close role dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        isRoleDropdownOpen &&
+        roleDropdownRef.current &&
+        roleMenuRef.current &&
+        !roleDropdownRef.current.contains(event.target as Node) &&
+        !roleMenuRef.current.contains(event.target as Node)
+      ) {
+        setIsRoleDropdownOpen(false);
+        setFocusedRoleIndex(null);
+      }
+    };
+
+    if (isRoleDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [isRoleDropdownOpen]);
 
   useEffect(() => {
     // Build node options list
@@ -275,7 +304,17 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       
       if (result?.config) {
         const config = result.config;
-        if (config.role !== undefined) setDeviceRole(config.role);
+        if (config.role !== undefined) {
+          // Validate role is a valid DeviceRole value
+          const validRoles: DeviceRole[] = [0, 1, 2, 5, 6, 7, 8, 9, 10, 11, 12];
+          const role = config.role as number;
+          if (validRoles.includes(role as DeviceRole)) {
+            setDeviceRole(role as DeviceRole);
+          } else {
+            console.warn(`Invalid device role value: ${role}, defaulting to 0 (CLIENT)`);
+            setDeviceRole(0);
+          }
+        }
         if (config.nodeInfoBroadcastSecs !== undefined) setNodeInfoBroadcastSecs(config.nodeInfoBroadcastSecs);
         showToast(t('admin_commands.device_config_loaded'), 'success');
       }
@@ -1149,7 +1188,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     setAdminKeys(newKeys);
   };
 
-  const handleRoleChange = (newRole: number) => {
+  const handleRoleChange = (newRole: DeviceRole) => {
     if (newRole === 2) {
       const confirmed = window.confirm(t('admin_commands.router_mode_confirmation'));
       if (!confirmed) {
@@ -1159,6 +1198,70 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     }
     setDeviceRole(newRole);
     setIsRoleDropdownOpen(false);
+    setFocusedRoleIndex(null);
+  };
+
+  // Keyboard navigation for role dropdown
+  const handleRoleDropdownKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!isRoleDropdownOpen) {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        setIsRoleDropdownOpen(true);
+        setFocusedRoleIndex(0);
+      }
+      return;
+    }
+
+    switch (e.key) {
+      case 'Escape':
+        e.preventDefault();
+        setIsRoleDropdownOpen(false);
+        setFocusedRoleIndex(null);
+        roleDropdownRef.current?.focus();
+        break;
+      case 'Enter':
+      case ' ':
+        e.preventDefault();
+        if (focusedRoleIndex !== null && ROLE_OPTIONS[focusedRoleIndex]) {
+          handleRoleChange(ROLE_OPTIONS[focusedRoleIndex].value as DeviceRole);
+        }
+        break;
+      case 'ArrowDown':
+        e.preventDefault();
+        setFocusedRoleIndex(prev => {
+          const next = prev === null ? 0 : Math.min(prev + 1, ROLE_OPTIONS.length - 1);
+          // Scroll into view
+          const menuItem = roleMenuRef.current?.children[next] as HTMLElement;
+          if (menuItem) {
+            menuItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          }
+          return next;
+        });
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setFocusedRoleIndex(prev => {
+          const next = prev === null ? ROLE_OPTIONS.length - 1 : Math.max(prev - 1, 0);
+          // Scroll into view
+          const menuItem = roleMenuRef.current?.children[next] as HTMLElement;
+          if (menuItem) {
+            menuItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          }
+          return next;
+        });
+        break;
+      case 'Home':
+        e.preventDefault();
+        setFocusedRoleIndex(0);
+        roleMenuRef.current?.children[0]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        break;
+      case 'End':
+        e.preventDefault();
+        const lastIndex = ROLE_OPTIONS.length - 1;
+        setFocusedRoleIndex(lastIndex);
+        roleMenuRef.current?.children[lastIndex]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        break;
+    }
   };
 
 
@@ -1724,8 +1827,16 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           </label>
           <div style={{ position: 'relative' }}>
             <div
+              ref={roleDropdownRef}
               onClick={() => setIsRoleDropdownOpen(!isRoleDropdownOpen)}
+              onKeyDown={handleRoleDropdownKeyDown}
               className="setting-input config-custom-dropdown"
+              role="combobox"
+              aria-expanded={isRoleDropdownOpen}
+              aria-haspopup="listbox"
+              aria-controls="role-dropdown-menu"
+              aria-label={t('admin_commands.device_role') || 'Device Role'}
+              tabIndex={0}
               style={{
                 cursor: 'pointer',
                 display: 'flex',
@@ -1734,7 +1845,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                 padding: '0.75rem',
                 minHeight: '80px',
                 width: '100%',
-                maxWidth: '800px'
+                maxWidth: '800px',
+                outline: 'none'
               }}
             >
               <div style={{ flex: 1 }}>
@@ -1752,7 +1864,11 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             </div>
             {isRoleDropdownOpen && (
               <div
+                ref={roleMenuRef}
+                id="role-dropdown-menu"
                 className="config-custom-dropdown-menu"
+                role="listbox"
+                aria-label={t('admin_commands.device_role_options') || 'Device Role Options'}
                 style={{
                   position: 'absolute',
                   top: '100%',
@@ -1768,24 +1884,40 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                   boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
                 }}
               >
-                {ROLE_OPTIONS.map(option => (
+                {ROLE_OPTIONS.map((option, index) => (
                   <div
                     key={option.value}
-                    onClick={() => handleRoleChange(option.value)}
+                    role="option"
+                    aria-selected={option.value === deviceRole}
+                    onClick={() => handleRoleChange(option.value as DeviceRole)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        handleRoleChange(option.value as DeviceRole);
+                      }
+                    }}
+                    tabIndex={-1}
                     style={{
                       padding: '0.75rem 1rem',
                       cursor: 'pointer',
                       borderBottom: '1px solid var(--ctp-surface1)',
-                      background: option.value === deviceRole ? 'var(--ctp-surface0)' : 'transparent',
-                      transition: 'background 0.2s'
+                      background: option.value === deviceRole 
+                        ? 'var(--ctp-surface0)' 
+                        : focusedRoleIndex === index 
+                          ? 'var(--ctp-surface0)' 
+                          : 'transparent',
+                      transition: 'background 0.2s',
+                      outline: focusedRoleIndex === index ? '2px solid var(--ctp-blue)' : 'none',
+                      outlineOffset: '-2px'
                     }}
                     onMouseEnter={(e) => {
+                      setFocusedRoleIndex(index);
                       if (option.value !== deviceRole) {
                         e.currentTarget.style.background = 'var(--ctp-surface0)';
                       }
                     }}
                     onMouseLeave={(e) => {
-                      if (option.value !== deviceRole) {
+                      if (option.value !== deviceRole && focusedRoleIndex !== index) {
                         e.currentTarget.style.background = 'transparent';
                       }
                     }}
