@@ -44,6 +44,13 @@ Running a public MeshMonitor instance? We'd love to feature it! **[File an issue
 
 ---
 
+### Milwaukee City Mesh
+- **URL**: [mkemesh.my.id](https://mkemesh.my.id)
+- **Network**: [Meshconsin](https://meshconsin.org/)
+- **Description**: Monitoring Milwaukee City mesh network.
+
+---
+
 ## About the Site Gallery
 
 The Site Gallery showcases MeshMonitor instances that are publicly accessible. These sites demonstrate:
