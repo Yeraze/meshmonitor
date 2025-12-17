@@ -85,6 +85,19 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   const [showNodeManagementSearch, setShowNodeManagementSearch] = useState(false);
   const [nodeManagementSearchQuery, setNodeManagementSearchQuery] = useState('');
   const [isLoadingChannels, setIsLoadingChannels] = useState(false);
+
+  // Per-section loading status: 'idle' | 'loading' | 'success' | 'error'
+  const [sectionLoadStatus, setSectionLoadStatus] = useState<Record<string, 'idle' | 'loading' | 'success' | 'error'>>({
+    device: 'idle',
+    lora: 'idle',
+    position: 'idle',
+    mqtt: 'idle',
+    security: 'idle',
+    bluetooth: 'idle',
+    neighborinfo: 'idle',
+    owner: 'idle',
+    channels: 'idle'
+  });
   // Track remote node favorite/ignored status separately (key: nodeNum, value: {isFavorite, isIgnored})
   const [remoteNodeStatus, setRemoteNodeStatus] = useState<Map<number, { isFavorite: boolean; isIgnored: boolean }>>(new Map());
 
@@ -245,10 +258,23 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       setSearchQuery(selected.longName);
     }
     setShowSearch(false);
-    
+
     // Always clear remote node channels when switching nodes
     // They will be populated when Load is clicked
     setRemoteNodeChannels([]);
+
+    // Reset section load statuses when switching nodes
+    setSectionLoadStatus({
+      device: 'idle',
+      lora: 'idle',
+      position: 'idle',
+      mqtt: 'idle',
+      security: 'idle',
+      bluetooth: 'idle',
+      neighborinfo: 'idle',
+      owner: 'idle',
+      channels: 'idle'
+    });
   }, [nodeOptions]);
 
   const handleLoadAllConfigs = async () => {
@@ -259,6 +285,18 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
     setIsLoadingAllConfigs(true);
     setLoadingProgress(null);
+    // Reset all section statuses to loading
+    setSectionLoadStatus({
+      device: 'loading',
+      lora: 'loading',
+      position: 'loading',
+      mqtt: 'loading',
+      security: 'loading',
+      bluetooth: 'loading',
+      neighborinfo: 'loading',
+      owner: 'loading',
+      channels: 'loading'
+    });
     const errors: string[] = [];
     const loaded: string[] = [];
     const totalConfigs = 9; // device, lora, position, mqtt, security, bluetooth, neighborinfo, owner, channels
@@ -267,25 +305,31 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       // Load all config types sequentially to avoid conflicts and timeouts
       const loadConfig = async (configType: string, step: number, loadFn: (result: any) => void) => {
         setLoadingProgress({ current: step, total: totalConfigs, configType });
+        setSectionLoadStatus(prev => ({ ...prev, [configType]: 'loading' }));
         try {
-          const result = await apiService.post<{ config: any }>('/api/admin/load-config', { 
-            nodeNum: selectedNodeNum, 
-            configType 
+          const result = await apiService.post<{ config: any }>('/api/admin/load-config', {
+            nodeNum: selectedNodeNum,
+            configType
           });
           if (result?.config) {
             loadFn(result);
             loaded.push(configType);
+            setSectionLoadStatus(prev => ({ ...prev, [configType]: 'success' }));
+          } else {
+            setSectionLoadStatus(prev => ({ ...prev, [configType]: 'error' }));
           }
         } catch (_err) {
           errors.push(configType);
+          setSectionLoadStatus(prev => ({ ...prev, [configType]: 'error' }));
         }
       };
 
       const loadOwner = async (step: number) => {
         setLoadingProgress({ current: step, total: totalConfigs, configType: 'owner' });
+        setSectionLoadStatus(prev => ({ ...prev, owner: 'loading' }));
         try {
-          const result = await apiService.post<{ owner: any }>('/api/admin/load-owner', { 
-            nodeNum: selectedNodeNum 
+          const result = await apiService.post<{ owner: any }>('/api/admin/load-owner', {
+            nodeNum: selectedNodeNum
           });
           if (result?.owner) {
             const owner = result.owner;
@@ -295,9 +339,13 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               isUnmessagable: owner.isUnmessagable
             });
             loaded.push('owner');
+            setSectionLoadStatus(prev => ({ ...prev, owner: 'success' }));
+          } else {
+            setSectionLoadStatus(prev => ({ ...prev, owner: 'error' }));
           }
         } catch (_err) {
           errors.push('owner');
+          setSectionLoadStatus(prev => ({ ...prev, owner: 'error' }));
         }
       };
 
@@ -563,9 +611,11 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           
           setRemoteNodeChannels(loadedChannels);
           loaded.push('channels');
+          setSectionLoadStatus(prev => ({ ...prev, channels: 'success' }));
         }
       } catch (_err) {
         errors.push('channels');
+        setSectionLoadStatus(prev => ({ ...prev, channels: 'error' }));
       }
 
       // Show summary toast
@@ -584,6 +634,144 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     }
   };
 
+  // Individual section load handlers
+  const handleLoadSingleConfig = async (configType: string) => {
+    if (selectedNodeNum === null) {
+      showToast(t('admin_commands.please_select_node'), 'error');
+      return;
+    }
+
+    setSectionLoadStatus(prev => ({ ...prev, [configType]: 'loading' }));
+
+    try {
+      if (configType === 'owner') {
+        const result = await apiService.post<{ owner: any }>('/api/admin/load-owner', {
+          nodeNum: selectedNodeNum
+        });
+        if (result?.owner) {
+          setOwnerConfig({
+            longName: result.owner.longName,
+            shortName: result.owner.shortName,
+            isUnmessagable: result.owner.isUnmessagable
+          });
+          setSectionLoadStatus(prev => ({ ...prev, owner: 'success' }));
+          showToast(t('admin_commands.config_loaded_success', { configType: t('admin_commands.owner_config_short', 'Owner') }), 'success');
+        } else {
+          setSectionLoadStatus(prev => ({ ...prev, owner: 'error' }));
+          showToast(t('admin_commands.config_load_failed', { configType: t('admin_commands.owner_config_short', 'Owner') }), 'error');
+        }
+        return;
+      }
+
+      if (configType === 'channels') {
+        await handleLoadChannels();
+        return;
+      }
+
+      const result = await apiService.post<{ config: any }>('/api/admin/load-config', {
+        nodeNum: selectedNodeNum,
+        configType
+      });
+
+      if (result?.config) {
+        const config = result.config;
+        switch (configType) {
+          case 'device':
+            setDeviceConfig({
+              role: config.role,
+              nodeInfoBroadcastSecs: config.nodeInfoBroadcastSecs
+            });
+            break;
+          case 'lora':
+            setLoRaConfig({
+              usePreset: config.usePreset,
+              modemPreset: config.modemPreset,
+              bandwidth: config.bandwidth,
+              spreadFactor: config.spreadFactor,
+              codingRate: config.codingRate,
+              frequencyOffset: config.frequencyOffset,
+              overrideFrequency: config.overrideFrequency,
+              region: config.region,
+              hopLimit: config.hopLimit,
+              txPower: config.txPower,
+              channelNum: config.channelNum,
+              sx126xRxBoostedGain: config.sx126xRxBoostedGain,
+              ignoreMqtt: config.ignoreMqtt,
+              configOkToMqtt: config.configOkToMqtt
+            });
+            break;
+          case 'position':
+            setPositionConfig({
+              positionBroadcastSecs: config.positionBroadcastSecs,
+              positionSmartEnabled: config.positionBroadcastSmartEnabled ?? config.positionSmartEnabled,
+              fixedPosition: config.fixedPosition,
+              fixedLatitude: config.fixedLatitude,
+              fixedLongitude: config.fixedLongitude,
+              fixedAltitude: config.fixedAltitude,
+              gpsUpdateInterval: config.gpsUpdateInterval,
+              rxGpio: config.rxGpio,
+              txGpio: config.txGpio,
+              broadcastSmartMinimumDistance: config.broadcastSmartMinimumDistance,
+              broadcastSmartMinimumIntervalSecs: config.broadcastSmartMinimumIntervalSecs,
+              gpsEnGpio: config.gpsEnGpio,
+              gpsMode: config.gpsMode
+            });
+            if (config.positionFlags !== undefined) {
+              setPositionFlags(decodePositionFlags(config.positionFlags));
+            }
+            break;
+          case 'mqtt':
+            setMQTTConfig({
+              enabled: config.enabled,
+              address: config.address,
+              username: config.username,
+              password: config.password,
+              encryptionEnabled: config.encryptionEnabled,
+              jsonEnabled: config.jsonEnabled,
+              root: config.root
+            });
+            break;
+          case 'security':
+            if (config.adminKeys !== undefined) {
+              const keys = config.adminKeys.length === 0 ? [''] : (config.adminKeys.length < 3 ? [...config.adminKeys, ''] : config.adminKeys.slice(0, 3));
+              setSecurityConfig({ adminKeys: keys });
+            }
+            const securityUpdates: Record<string, unknown> = {};
+            if (config.isManaged !== undefined) securityUpdates.isManaged = config.isManaged;
+            if (config.serialEnabled !== undefined) securityUpdates.serialEnabled = config.serialEnabled;
+            if (config.debugLogApiEnabled !== undefined) securityUpdates.debugLogApiEnabled = config.debugLogApiEnabled;
+            if (config.adminChannelEnabled !== undefined) securityUpdates.adminChannelEnabled = config.adminChannelEnabled;
+            if (Object.keys(securityUpdates).length > 0) {
+              setSecurityConfig(securityUpdates);
+            }
+            break;
+          case 'bluetooth':
+            setBluetoothConfig({
+              enabled: config.enabled,
+              mode: config.mode,
+              fixedPin: config.fixedPin
+            });
+            break;
+          case 'neighborinfo':
+            setNeighborInfoConfig({
+              enabled: config.enabled,
+              updateInterval: config.updateInterval,
+              transmitOverLora: config.transmitOverLora
+            });
+            break;
+        }
+        setSectionLoadStatus(prev => ({ ...prev, [configType]: 'success' }));
+        showToast(t('admin_commands.config_loaded_success', { configType: t(`admin_commands.${configType}_config_short`, configType) }), 'success');
+      } else {
+        setSectionLoadStatus(prev => ({ ...prev, [configType]: 'error' }));
+        showToast(t('admin_commands.config_load_failed', { configType: t(`admin_commands.${configType}_config_short`, configType) }), 'error');
+      }
+    } catch (error: any) {
+      setSectionLoadStatus(prev => ({ ...prev, [configType]: 'error' }));
+      showToast(error.message || t('admin_commands.config_load_failed', { configType }), 'error');
+    }
+  };
+
   // Legacy handlers - redirect to handleLoadAllConfigs
 
   const handleLoadChannels = async () => {
@@ -594,6 +782,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     }
 
     setIsLoadingChannels(true);
+    setSectionLoadStatus(prev => ({ ...prev, channels: 'loading' }));
     try {
       const localNodeNum = nodes.find(n => (n.user?.id || n.nodeId) === currentNodeId)?.nodeNum;
       const isLocalNode = selectedNodeNum === localNodeNum || selectedNodeNum === 0;
@@ -628,6 +817,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         setRemoteNodeChannels(loadedChannels);
         const loadedCount = countLoadedChannels(loadedChannels);
         showToast(t('admin_commands.channels_loaded_local', { count: loadedCount }), 'success');
+        setSectionLoadStatus(prev => ({ ...prev, channels: 'success' }));
       } else {
         // For remote node, request all 8 channels in parallel (like Meshtastic app does)
         // This is much faster than sequential requests
@@ -777,9 +967,11 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         // Count channels that have actual data (name, PSK, or are primary channel)
         const loadedCount = countLoadedChannels(loadedChannels);
         showToast(t('admin_commands.channels_loaded_remote', { count: loadedCount }), 'success');
+        setSectionLoadStatus(prev => ({ ...prev, channels: 'success' }));
       }
     } catch (error: any) {
       showToast(error.message || t('admin_commands.failed_load_channels'), 'error');
+      setSectionLoadStatus(prev => ({ ...prev, channels: 'error' }));
       throw error; // Re-throw so Promise.all() can catch it
     } finally {
       setIsLoadingChannels(false);
@@ -1542,6 +1734,36 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   //   );
   // }
 
+  // Helper to render section load button with status indicator
+  const renderSectionLoadButton = (configType: string, label: string) => {
+    const status = sectionLoadStatus[configType];
+    const isLoading = status === 'loading';
+
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+        <button
+          onClick={() => handleLoadSingleConfig(configType)}
+          disabled={isLoading || selectedNodeNum === null || isLoadingAllConfigs}
+          className="save-button"
+          style={{
+            padding: '0.5rem 1rem',
+            fontSize: '0.875rem',
+            opacity: (isLoading || selectedNodeNum === null || isLoadingAllConfigs) ? 0.5 : 1,
+            cursor: (isLoading || selectedNodeNum === null || isLoadingAllConfigs) ? 'not-allowed' : 'pointer'
+          }}
+        >
+          {isLoading ? t('common.loading') : t('admin_commands.load_section', { section: label })}
+        </button>
+        {status === 'success' && (
+          <span style={{ color: 'var(--ctp-green)', fontSize: '1rem' }} title={t('admin_commands.section_loaded')}>✓</span>
+        )}
+        {status === 'error' && (
+          <span style={{ color: 'var(--ctp-red)', fontSize: '1rem' }} title={t('admin_commands.section_load_failed')}>✗</span>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="tab-content">
       <SectionNav items={[
@@ -1589,7 +1811,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                 borderRadius: '8px',
                 maxHeight: '300px',
                 overflowY: 'auto',
-                zIndex: 1000,
+                zIndex: 9999,
                 boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
               }}>
                 {filteredNodes.map(node => (
@@ -1677,6 +1899,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           title={t('admin_commands.lora_configuration')}
           nested={true}
         >
+          {renderSectionLoadButton('lora', t('admin_commands.lora_config_short', 'LoRa'))}
         <div className="setting-item">
           <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
             <input
@@ -1888,6 +2111,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         <p className="setting-description" style={{ marginBottom: '1rem' }}>
           {t('admin_commands.security_config_description')}
         </p>
+        {renderSectionLoadButton('security', t('admin_commands.security_config_short', 'Security'))}
         <div className="setting-item">
           <label>
             {t('admin_commands.admin_keys')}
@@ -2008,6 +2232,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         <p className="setting-description" style={{ marginBottom: '1rem' }}>
           {t('admin_commands.channel_config_description')}
         </p>
+        {renderSectionLoadButton('channels', t('admin_commands.channels_config_short', 'Channels'))}
 
         <div style={{ display: 'grid', gap: '1rem' }}>
           {Array.from({ length: 8 }, (_, index) => {
@@ -2317,7 +2542,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                 borderRadius: '8px',
                 maxHeight: '300px',
                 overflowY: 'auto',
-                zIndex: 1000,
+                zIndex: 9999,
                 boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
               }}>
                 {filteredNodesForManagement.map(node => (
