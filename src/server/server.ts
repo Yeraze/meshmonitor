@@ -4900,8 +4900,6 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
                 positionBroadcastSecs: finalConfig.deviceConfig.position.positionBroadcastSecs,
                 positionBroadcastSmartEnabled: finalConfig.deviceConfig.position.positionBroadcastSmartEnabled,
                 fixedPosition: finalConfig.deviceConfig.position.fixedPosition,
-                fixedLatitude: finalConfig.deviceConfig.position.fixedLatitude,
-                fixedLongitude: finalConfig.deviceConfig.position.fixedLongitude,
                 fixedAltitude: finalConfig.deviceConfig.position.fixedAltitude,
                 gpsUpdateInterval: finalConfig.deviceConfig.position.gpsUpdateInterval,
                 positionFlags: finalConfig.deviceConfig.position.positionFlags,
@@ -4910,8 +4908,23 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
                 broadcastSmartMinimumDistance: finalConfig.deviceConfig.position.broadcastSmartMinimumDistance,
                 broadcastSmartMinimumIntervalSecs: finalConfig.deviceConfig.position.broadcastSmartMinimumIntervalSecs,
                 gpsEnGpio: finalConfig.deviceConfig.position.gpsEnGpio,
-                gpsMode: finalConfig.deviceConfig.position.gpsMode
+                gpsMode: finalConfig.deviceConfig.position.gpsMode,
+                // Fixed lat/lng are not in PositionConfig protobuf - they're stored as the node's position
+                // When fixedPosition is true, fetch from database
+                fixedLatitude: 0,
+                fixedLongitude: 0
               };
+              // If fixedPosition is enabled, get the coordinates from the node's stored position
+              if (finalConfig.deviceConfig.position.fixedPosition && localNodeNum) {
+                const nodeData = databaseService.getNode(localNodeNum);
+                if (nodeData?.latitude && nodeData?.longitude) {
+                  config.fixedLatitude = nodeData.latitude;
+                  config.fixedLongitude = nodeData.longitude;
+                }
+                if (nodeData?.altitude) {
+                  config.fixedAltitude = nodeData.altitude;
+                }
+              }
             } else {
               return res.status(404).json({ error: 'Position config not available. The device may not have sent its configuration yet.' });
             }
@@ -5088,8 +5101,6 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
               positionBroadcastSecs: remoteConfig.positionBroadcastSecs,
               positionBroadcastSmartEnabled: remoteConfig.positionBroadcastSmartEnabled,
               fixedPosition: remoteConfig.fixedPosition,
-              fixedLatitude: remoteConfig.fixedLatitude,
-              fixedLongitude: remoteConfig.fixedLongitude,
               fixedAltitude: remoteConfig.fixedAltitude,
               gpsUpdateInterval: remoteConfig.gpsUpdateInterval,
               positionFlags: remoteConfig.positionFlags,
@@ -5098,8 +5109,22 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
               broadcastSmartMinimumDistance: remoteConfig.broadcastSmartMinimumDistance,
               broadcastSmartMinimumIntervalSecs: remoteConfig.broadcastSmartMinimumIntervalSecs,
               gpsEnGpio: remoteConfig.gpsEnGpio,
-              gpsMode: remoteConfig.gpsMode
+              gpsMode: remoteConfig.gpsMode,
+              // Fixed lat/lng are not in PositionConfig protobuf - they're stored as the node's position
+              fixedLatitude: 0,
+              fixedLongitude: 0
             };
+            // If fixedPosition is enabled, get the coordinates from the node's stored position
+            if (remoteConfig.fixedPosition) {
+              const nodeData = databaseService.getNode(destinationNodeNum);
+              if (nodeData?.latitude && nodeData?.longitude) {
+                config.fixedLatitude = nodeData.latitude;
+                config.fixedLongitude = nodeData.longitude;
+              }
+              if (nodeData?.altitude) {
+                config.fixedAltitude = nodeData.altitude;
+              }
+            }
             break;
           case 'mqtt':
             config = {
