@@ -117,6 +117,7 @@ export interface MessagesTabProps {
 
   // Handlers
   handleSendDirectMessage: (destinationNodeId: string) => Promise<void>;
+  handleResendMessage: (message: MeshMessage) => Promise<void>;
   handleTraceroute: (nodeId: string) => Promise<void>;
   handleExchangePosition: (nodeId: string) => Promise<void>;
   handleExchangeNodeInfo: (nodeId: string) => Promise<void>;
@@ -183,6 +184,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   baseUrl,
   hasPermission,
   handleSendDirectMessage,
+  handleResendMessage,
   handleTraceroute,
   handleExchangePosition,
   handleExchangeNodeInfo,
@@ -700,16 +702,26 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                           <div className={`message-bubble ${isMine ? 'mine' : 'theirs'}`}>
                             {hasPermission('messages', 'write') && (
                               <div className="message-actions">
-                                <button
-                                  className="reply-button"
-                                  onClick={() => {
-                                    setReplyingTo(msg);
-                                    dmMessageInputRef.current?.focus();
-                                  }}
-                                  title={t('messages.reply_button_title')}
-                                >
-                                  ↩
-                                </button>
+                                {isMine ? (
+                                  <button
+                                    className="resend-button"
+                                    onClick={() => handleResendMessage(msg)}
+                                    title={t('messages.resend_button_title')}
+                                  >
+                                    ↻
+                                  </button>
+                                ) : (
+                                  <button
+                                    className="reply-button"
+                                    onClick={() => {
+                                      setReplyingTo(msg);
+                                      dmMessageInputRef.current?.focus();
+                                    }}
+                                    title={t('messages.reply_button_title')}
+                                  >
+                                    ↩
+                                  </button>
+                                )}
                                 <button
                                   className="emoji-picker-button"
                                   onClick={() => setEmojiPickerMessage(msg)}
