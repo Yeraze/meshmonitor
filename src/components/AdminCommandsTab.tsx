@@ -1237,9 +1237,11 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     };
 
     if (configState.position.fixedPosition) {
-      config.fixedLatitude = configState.position.fixedLatitude;
-      config.fixedLongitude = configState.position.fixedLongitude;
-      config.fixedAltitude = configState.position.fixedAltitude;
+      // Backend expects latitude/longitude/altitude (not fixedLatitude/fixedLongitude)
+      // It will send setFixedPosition admin message before setting the config
+      config.latitude = configState.position.fixedLatitude;
+      config.longitude = configState.position.fixedLongitude;
+      config.altitude = configState.position.fixedAltitude;
     }
 
     // Only include GPIO pins if they're set (not undefined)
