@@ -6275,6 +6275,8 @@ apiRouter.get('/push/preferences', requireAuth(), async (req, res) => {
         notifyOnNewNode: true,
         notifyOnTraceroute: true,
         notifyOnInactiveNode: false,
+        notifyOnServerEvents: false,
+        prefixWithNodeName: false,
         monitoredNodes: [],
         whitelist: ['Hi', 'Help'],
         blacklist: ['Test', 'Copy'],
