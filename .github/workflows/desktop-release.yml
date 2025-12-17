@@ -90,17 +90,9 @@ jobs:
         shell: pwsh
 
       - name: Rename installer with version
+        id: rename_artifacts
         run: |
           $version = "${{ steps.get_version.outputs.VERSION }}"
-          $msiPath = Get-ChildItem -Path "desktop/src-tauri/target/release/bundle/msi/*.msi" | Select-Object -First 1
-          if ($msiPath) {
-            $newName = "MeshMonitor-Desktop-${version}-x64.msi"
-            $destination = "desktop/src-tauri/target/release/bundle/msi/$newName"
-            Copy-Item $msiPath.FullName $destination
-            echo "MSI_PATH=$destination" >> $env:GITHUB_OUTPUT
-            echo "MSI_NAME=$newName" >> $env:GITHUB_OUTPUT
-          }
-
           $exePath = Get-ChildItem -Path "desktop/src-tauri/target/release/bundle/nsis/*.exe" | Select-Object -First 1
           if ($exePath) {
             $newName = "MeshMonitor-Desktop-${version}-x64-setup.exe"
@@ -109,21 +101,14 @@ jobs:
             echo "EXE_PATH=$destination" >> $env:GITHUB_OUTPUT
             echo "EXE_NAME=$newName" >> $env:GITHUB_OUTPUT
           }
-        id: rename_artifacts
         shell: pwsh
 
       - name: Generate checksums
+        id: checksums
         run: |
           $version = "${{ steps.get_version.outputs.VERSION }}"
           $checksumFile = "desktop-checksums-${version}.txt"
-
-          $msiPath = "${{ steps.rename_artifacts.outputs.MSI_PATH }}"
           $exePath = "${{ steps.rename_artifacts.outputs.EXE_PATH }}"
-
-          if ($msiPath -and (Test-Path $msiPath)) {
-            $hash = Get-FileHash -Path $msiPath -Algorithm SHA256
-            "$($hash.Hash)  ${{ steps.rename_artifacts.outputs.MSI_NAME }}" | Out-File -Append $checksumFile
-          }
 
           if ($exePath -and (Test-Path $exePath)) {
             $hash = Get-FileHash -Path $exePath -Algorithm SHA256
@@ -131,17 +116,7 @@ jobs:
           }
 
           echo "CHECKSUM_FILE=$checksumFile" >> $env:GITHUB_OUTPUT
-        id: checksums
         shell: pwsh
-
-      - name: Upload MSI to release
-        if: steps.rename_artifacts.outputs.MSI_PATH
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ steps.get_version.outputs.TAG }}
-          files: ${{ steps.rename_artifacts.outputs.MSI_PATH }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload EXE to release
         if: steps.rename_artifacts.outputs.EXE_PATH
@@ -164,7 +139,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: meshmonitor-desktop-windows-release
-          path: |
-            desktop/src-tauri/target/release/bundle/msi/*.msi
-            desktop/src-tauri/target/release/bundle/nsis/*.exe
+          path: desktop/src-tauri/target/release/bundle/nsis/*.exe
           retention-days: 30
