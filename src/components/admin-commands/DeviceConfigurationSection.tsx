@@ -68,6 +68,12 @@ interface DeviceConfigurationSectionProps {
   // Common
   isExecuting: boolean;
   selectedNodeNum: number | null;
+
+  // Section header actions (load buttons)
+  ownerHeaderActions?: React.ReactNode;
+  deviceHeaderActions?: React.ReactNode;
+  positionHeaderActions?: React.ReactNode;
+  bluetoothHeaderActions?: React.ReactNode;
 }
 
 export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProps> = ({
@@ -117,6 +123,10 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
   onSaveBluetoothConfig,
   isExecuting,
   selectedNodeNum,
+  ownerHeaderActions,
+  deviceHeaderActions,
+  positionHeaderActions,
+  bluetoothHeaderActions,
 }) => {
   const { t } = useTranslation();
 
@@ -131,6 +141,7 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
         title={t('admin_commands.set_owner')}
         defaultExpanded={true}
         nested={true}
+        headerActions={ownerHeaderActions}
       >
         <div className="setting-item">
           <label>
@@ -198,6 +209,7 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
         id="admin-device-config"
         title={t('admin_commands.device_configuration')}
         nested={true}
+        headerActions={deviceHeaderActions}
       >
         <div className="setting-item">
           <label>
@@ -325,6 +337,7 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
         id="admin-position-config"
         title={t('admin_commands.position_configuration')}
         nested={true}
+        headerActions={positionHeaderActions}
       >
         <div className="setting-item">
           <label>
@@ -676,6 +689,7 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
         id="admin-bluetooth-config"
         title={t('admin_commands.bluetooth_configuration', 'Bluetooth Configuration')}
         nested={true}
+        headerActions={bluetoothHeaderActions}
       >
         <div className="setting-item">
           <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>

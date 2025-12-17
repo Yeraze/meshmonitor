@@ -4781,10 +4781,12 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
         // Map config types to their numeric values (same as remote node mapping)
         const configTypeMap: { [key: string]: { type: number; isModule: boolean } } = {
           'device': { type: 0, isModule: false },  // DEVICE_CONFIG
+          'position': { type: 1, isModule: false }, // POSITION_CONFIG
           'lora': { type: 5, isModule: false },      // LORA_CONFIG
-          'position': { type: 1, isModule: false }, // POSITION_CONFIG (was incorrectly 6)
+          'bluetooth': { type: 6, isModule: false }, // BLUETOOTH_CONFIG
+          'security': { type: 7, isModule: false },  // SECURITY_CONFIG
           'mqtt': { type: 0, isModule: true },        // MQTT_CONFIG (module)
-          'security': { type: 7, isModule: false }  // SECURITY_CONFIG
+          'neighborinfo': { type: 9, isModule: true } // NEIGHBORINFO_CONFIG (module)
         };
 
         const configInfo = configTypeMap[configType];

@@ -34,6 +34,10 @@ interface ModuleConfigurationSectionProps {
   // Common
   isExecuting: boolean;
   selectedNodeNum: number | null;
+
+  // Section header actions (load buttons)
+  mqttHeaderActions?: React.ReactNode;
+  neighborInfoHeaderActions?: React.ReactNode;
 }
 
 export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProps> = ({
@@ -54,6 +58,8 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
   onSaveNeighborInfoConfig,
   isExecuting,
   selectedNodeNum,
+  mqttHeaderActions,
+  neighborInfoHeaderActions,
 }) => {
   const { t } = useTranslation();
 
@@ -67,6 +73,7 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
         id="admin-mqtt-config"
         title={t('admin_commands.mqtt_configuration')}
         nested={true}
+        headerActions={mqttHeaderActions}
       >
         <div className="setting-item">
           <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
@@ -193,6 +200,7 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
         id="admin-neighborinfo-config"
         title={t('admin_commands.neighborinfo_configuration', 'Neighbor Info Configuration')}
         nested={true}
+        headerActions={neighborInfoHeaderActions}
       >
         <div className="setting-item">
           <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>

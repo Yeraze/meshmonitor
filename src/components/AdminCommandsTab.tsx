@@ -490,6 +490,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           
           setRemoteNodeChannels(loadedChannels);
           loaded.push('channels');
+          setSectionLoadStatus(prev => ({ ...prev, channels: 'success' }));
         } else {
           // For remote node, request all 8 channels in parallel
           const loadedChannels: Channel[] = [];
@@ -1734,32 +1735,50 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   //   );
   // }
 
-  // Helper to render section load button with status indicator
-  const renderSectionLoadButton = (configType: string, label: string) => {
+  // Helper to render section load button with status indicator (for header)
+  const renderSectionLoadButton = (configType: string) => {
     const status = sectionLoadStatus[configType];
     const isLoading = status === 'loading';
+    const isDisabled = isLoading || selectedNodeNum === null || isLoadingAllConfigs;
 
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
-        <button
-          onClick={() => handleLoadSingleConfig(configType)}
-          disabled={isLoading || selectedNodeNum === null || isLoadingAllConfigs}
-          className="save-button"
-          style={{
-            padding: '0.5rem 1rem',
-            fontSize: '0.875rem',
-            opacity: (isLoading || selectedNodeNum === null || isLoadingAllConfigs) ? 0.5 : 1,
-            cursor: (isLoading || selectedNodeNum === null || isLoadingAllConfigs) ? 'not-allowed' : 'pointer'
-          }}
-        >
-          {isLoading ? t('common.loading') : t('admin_commands.load_section', { section: label })}
-        </button>
+      <div
+        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+        onClick={(e) => e.stopPropagation()} // Prevent header toggle when clicking button
+      >
+        {isLoading && (
+          <span
+            style={{
+              width: '1rem',
+              height: '1rem',
+              border: '2px solid var(--ctp-surface2)',
+              borderTopColor: 'var(--ctp-blue)',
+              borderRadius: '50%',
+              animation: 'spin 1s linear infinite',
+              display: 'inline-block'
+            }}
+            title={t('common.loading')}
+          />
+        )}
         {status === 'success' && (
-          <span style={{ color: 'var(--ctp-green)', fontSize: '1rem' }} title={t('admin_commands.section_loaded')}>✓</span>
+          <span style={{ color: 'var(--ctp-green)', fontSize: '1rem', fontWeight: 'bold' }} title={t('admin_commands.section_loaded')}>✓</span>
         )}
         {status === 'error' && (
-          <span style={{ color: 'var(--ctp-red)', fontSize: '1rem' }} title={t('admin_commands.section_load_failed')}>✗</span>
+          <span style={{ color: 'var(--ctp-red)', fontSize: '1rem', fontWeight: 'bold' }} title={t('admin_commands.section_load_failed')}>✗</span>
         )}
+        <button
+          onClick={() => handleLoadSingleConfig(configType)}
+          disabled={isDisabled}
+          className="save-button"
+          style={{
+            padding: '0.25rem 0.75rem',
+            fontSize: '0.8rem',
+            opacity: isDisabled ? 0.5 : 1,
+            cursor: isDisabled ? 'not-allowed' : 'pointer'
+          }}
+        >
+          {t('admin_commands.load_button', 'Load')}
+        </button>
       </div>
     );
   };
@@ -1898,8 +1917,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           id="admin-lora-config"
           title={t('admin_commands.lora_configuration')}
           nested={true}
+          headerActions={renderSectionLoadButton('lora')}
         >
-          {renderSectionLoadButton('lora', t('admin_commands.lora_config_short', 'LoRa'))}
         <div className="setting-item">
           <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
             <input
@@ -2107,11 +2126,11 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           id="admin-security-config"
           title={t('admin_commands.security_configuration')}
           nested={true}
+          headerActions={renderSectionLoadButton('security')}
         >
         <p className="setting-description" style={{ marginBottom: '1rem' }}>
           {t('admin_commands.security_config_description')}
         </p>
-        {renderSectionLoadButton('security', t('admin_commands.security_config_short', 'Security'))}
         <div className="setting-item">
           <label>
             {t('admin_commands.admin_keys')}
@@ -2228,11 +2247,11 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           id="admin-channel-config"
           title={t('admin_commands.channel_configuration')}
           nested={true}
+          headerActions={renderSectionLoadButton('channels')}
         >
         <p className="setting-description" style={{ marginBottom: '1rem' }}>
           {t('admin_commands.channel_config_description')}
         </p>
-        {renderSectionLoadButton('channels', t('admin_commands.channels_config_short', 'Channels'))}
 
         <div style={{ display: 'grid', gap: '1rem' }}>
           {Array.from({ length: 8 }, (_, index) => {
@@ -2400,6 +2419,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         onSaveBluetoothConfig={handleSetBluetoothConfig}
         isExecuting={isExecuting}
         selectedNodeNum={selectedNodeNum}
+        ownerHeaderActions={renderSectionLoadButton('owner')}
+        deviceHeaderActions={renderSectionLoadButton('device')}
+        positionHeaderActions={renderSectionLoadButton('position')}
+        bluetoothHeaderActions={renderSectionLoadButton('bluetooth')}
       />
 
       {/* Module Configuration Section */}
@@ -2421,6 +2444,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         onSaveNeighborInfoConfig={handleSetNeighborInfoConfig}
         isExecuting={isExecuting}
         selectedNodeNum={selectedNodeNum}
+        mqttHeaderActions={renderSectionLoadButton('mqtt')}
+        neighborInfoHeaderActions={renderSectionLoadButton('neighborinfo')}
       />
 
       {/* Import/Export Configuration Section */}

@@ -2,6 +2,26 @@
 
 ## Current Sprint
 
+### Admin Commands UI Improvements (#1081)
+
+**Completed:**
+- [x] Fix z-index issue where Danger Zone appears on top of node search dropdown
+  - Increased z-index from 1000 to 9999 for dropdown overlays
+- [x] Add per-section Load buttons with success/failure indicators
+  - Added load buttons to LoRa, Security, and Channels sections
+  - Added section load status tracking (idle/loading/success/error)
+  - Added visual feedback (✓/✗) after loading each section
+  - Added handleLoadSingleConfig function for individual section loading
+- [x] Add new translation keys for section load buttons and status messages
+- [x] TypeScript compiles without errors
+- [x] Build succeeds
+- [x] System tests pass
+- [x] PR #1083 created
+
+**Remaining from Issue #1081:**
+- [ ] Fix 404's on POST to /api/admin/get-channel (Issue #1081 item 2)
+- [ ] Fix focus cycling in admin command input fields (Issue #1081 item 4)
+
 ### MQTT Traceroute Visualization (#893)
 
 **Completed:**
