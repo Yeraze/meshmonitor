@@ -66,11 +66,17 @@ jobs:
         shell: cmd
         run: |
           mkdir desktop\resources
-          mkdir desktop\resources\server
+          mkdir desktop\resources\dist
           mkdir desktop\resources\binaries
-          xcopy /E /I /Y dist\server desktop\resources\server
-          copy package.json desktop\resources\server\package.json
-          robocopy node_modules desktop\resources\server\node_modules /E /NFL /NDL /NJH /NJS /NC /NS /NP
+          xcopy /E /I /Y dist\server desktop\resources\dist\server
+          xcopy /E /I /Y dist\services desktop\resources\dist\services
+          xcopy /E /I /Y dist\utils desktop\resources\dist\utils
+          xcopy /E /I /Y dist\types desktop\resources\dist\types
+          xcopy /E /I /Y dist\config desktop\resources\dist\config
+          xcopy /E /I /Y dist\constants desktop\resources\dist\constants
+          xcopy /E /I /Y dist\contexts desktop\resources\dist\contexts
+          copy package.json desktop\resources\dist\package.json
+          robocopy node_modules desktop\resources\dist\node_modules /E /NFL /NDL /NJH /NJS /NC /NS /NP
           if %ERRORLEVEL% leq 7 exit /b 0
 
       - name: Download Node.js binary for bundling
@@ -125,9 +131,9 @@ jobs:
 
       - name: Create placeholder files for Clippy
         run: |
-          mkdir -p desktop/resources/server
+          mkdir -p desktop/resources/dist/server
           mkdir -p desktop/resources/binaries
-          touch desktop/resources/server/.placeholder
+          touch desktop/resources/dist/server/.placeholder
           touch desktop/resources/binaries/.placeholder
 
       - name: Run Clippy

@@ -48,7 +48,7 @@ pub fn start_backend<R: Runtime>(app: &AppHandle<R>) -> Result<Child, String> {
         .resource_dir()
         .map_err(|e| format!("Failed to get resource dir: {}", e))?;
 
-    let server_path = resource_path.join("server").join("server.js");
+    let server_path = resource_path.join("dist").join("server").join("server.js");
 
     // Get the sidecar binary path for Node.js
     let node_path = app
@@ -58,8 +58,8 @@ pub fn start_backend<R: Runtime>(app: &AppHandle<R>) -> Result<Child, String> {
         .join("binaries")
         .join(if cfg!(windows) { "node.exe" } else { "node" });
 
-    // Get the server directory for current working directory
-    let server_dir = resource_path.join("server");
+    // Get the dist directory for current working directory (server.js imports ../services/, ../utils/, etc.)
+    let server_dir = resource_path.join("dist");
 
     // Log all paths for debugging
     log_to_file(&logs_path, &format!("Node path: {:?}", node_path));
@@ -83,7 +83,7 @@ pub fn start_backend<R: Runtime>(app: &AppHandle<R>) -> Result<Child, String> {
     }
     log_to_file(&logs_path, "Server.js exists: OK");
 
-    // Check for package.json
+    // Check for package.json (in dist/ directory)
     let package_json_path = server_dir.join("package.json");
     if !package_json_path.exists() {
         let msg = format!("ERROR: package.json not found at {:?}", package_json_path);
@@ -92,7 +92,7 @@ pub fn start_backend<R: Runtime>(app: &AppHandle<R>) -> Result<Child, String> {
     }
     log_to_file(&logs_path, "package.json exists: OK");
 
-    // Check for node_modules
+    // Check for node_modules (in dist/ directory)
     let node_modules_path = server_dir.join("node_modules");
     if !node_modules_path.exists() {
         let msg = format!("ERROR: node_modules not found at {:?}", node_modules_path);
@@ -100,6 +100,15 @@ pub fn start_backend<R: Runtime>(app: &AppHandle<R>) -> Result<Child, String> {
         return Err(msg);
     }
     log_to_file(&logs_path, "node_modules exists: OK");
+
+    // Check for services directory (sibling to server/)
+    let services_path = server_dir.join("services");
+    if !services_path.exists() {
+        let msg = format!("ERROR: services not found at {:?}", services_path);
+        log_to_file(&logs_path, &msg);
+        return Err(msg);
+    }
+    log_to_file(&logs_path, "services directory exists: OK");
 
     println!("Starting MeshMonitor backend...");
     println!("  Node path: {:?}", node_path);
