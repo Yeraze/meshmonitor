@@ -2070,6 +2070,8 @@
   "neighbor_info.enable_description": "Broadcast neighbor information to the mesh",
   "neighbor_info.interval": "Update Interval (seconds)",
   "neighbor_info.interval_description": "How often to send neighbor info (minimum: 14400 = 4 hours)",
+  "neighbor_info.transmit_over_lora": "Transmit over LoRa",
+  "neighbor_info.transmit_over_lora_description": "Broadcast neighbor info over LoRa in addition to MQTT and Phone API. Not available on channels with default key/name.",
   "neighbor_info.save_button": "Save NeighborInfo Config",
 
   "network_config.title": "Network Configuration",

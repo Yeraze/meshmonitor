@@ -74,6 +74,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   // NeighborInfo Config State
   const [neighborInfoEnabled, setNeighborInfoEnabled] = useState(false);
   const [neighborInfoInterval, setNeighborInfoInterval] = useState(14400);
+  const [neighborInfoTransmitOverLora, setNeighborInfoTransmitOverLora] = useState(false);
 
   // Network Config State - store full config to avoid wiping fields when saving
   const [wifiEnabled, setWifiEnabled] = useState(false);
@@ -197,6 +198,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         if (config.moduleConfig?.neighborInfo) {
           setNeighborInfoEnabled(config.moduleConfig.neighborInfo.enabled || false);
           setNeighborInfoInterval(config.moduleConfig.neighborInfo.updateInterval || 14400);
+          setNeighborInfoTransmitOverLora(config.moduleConfig.neighborInfo.transmitOverLora || false);
         }
 
         // Populate Network config - store full config to preserve all fields when saving
@@ -427,7 +429,8 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
 
       await apiService.setNeighborInfoConfig({
         enabled: neighborInfoEnabled,
-        updateInterval: validInterval
+        updateInterval: validInterval,
+        transmitOverLora: neighborInfoTransmitOverLora
       });
       setStatusMessage(t('config.neighbor_saved'));
       showToast(t('config.neighbor_saved_toast'), 'success');
@@ -761,6 +764,8 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
             setNeighborInfoEnabled={setNeighborInfoEnabled}
             neighborInfoInterval={neighborInfoInterval}
             setNeighborInfoInterval={setNeighborInfoInterval}
+            neighborInfoTransmitOverLora={neighborInfoTransmitOverLora}
+            setNeighborInfoTransmitOverLora={setNeighborInfoTransmitOverLora}
             isSaving={isSaving}
             onSave={handleSaveNeighborInfoConfig}
           />
