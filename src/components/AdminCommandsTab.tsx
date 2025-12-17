@@ -7,6 +7,7 @@ import type { Channel } from '../types/device';
 import { ImportConfigModal } from './configuration/ImportConfigModal';
 import { ExportConfigModal } from './configuration/ExportConfigModal';
 import SectionNav from './SectionNav';
+import { validatePositionConfig, validateAdminKey, validateAdminKeys } from '../utils/adminCommandsValidation';
 
 interface AdminCommandsTabProps {
   nodes: any[];
@@ -123,6 +124,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   const [channelLoadProgress, setChannelLoadProgress] = useState<string>('');
   // Track remote node favorite/ignored status separately (key: nodeNum, value: {isFavorite, isIgnored})
   const [remoteNodeStatus, setRemoteNodeStatus] = useState<Map<number, { isFavorite: boolean; isIgnored: boolean }>>(new Map());
+
+  // Validation error state
+  const [positionConfigErrors, setPositionConfigErrors] = useState<Record<string, string>>({});
+  const [adminKeyErrors, setAdminKeyErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     // Build node options list
@@ -338,16 +343,29 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       
       if (result?.config) {
         const config = result.config;
-        if (config.positionBroadcastSecs !== undefined) setPositionBroadcastSecs(config.positionBroadcastSecs);
-        if (config.positionBroadcastSmartEnabled !== undefined) {
+        // Clear previous validation errors when loading new config
+        setPositionConfigErrors({});
+        
+        if (config.positionBroadcastSecs !== undefined && config.positionBroadcastSecs !== null) {
+          setPositionBroadcastSecs(config.positionBroadcastSecs);
+        }
+        if (config.positionBroadcastSmartEnabled !== undefined && config.positionBroadcastSmartEnabled !== null) {
           setPositionSmartEnabled(config.positionBroadcastSmartEnabled);
-        } else if (config.positionSmartEnabled !== undefined) {
+        } else if (config.positionSmartEnabled !== undefined && config.positionSmartEnabled !== null) {
           setPositionSmartEnabled(config.positionSmartEnabled);
         }
-        if (config.fixedPosition !== undefined) setFixedPosition(config.fixedPosition);
-        if (config.fixedLatitude !== undefined) setFixedLatitude(config.fixedLatitude);
-        if (config.fixedLongitude !== undefined) setFixedLongitude(config.fixedLongitude);
-        if (config.fixedAltitude !== undefined) setFixedAltitude(config.fixedAltitude);
+        if (config.fixedPosition !== undefined && config.fixedPosition !== null) {
+          setFixedPosition(config.fixedPosition);
+        }
+        if (config.fixedLatitude !== undefined && config.fixedLatitude !== null) {
+          setFixedLatitude(config.fixedLatitude);
+        }
+        if (config.fixedLongitude !== undefined && config.fixedLongitude !== null) {
+          setFixedLongitude(config.fixedLongitude);
+        }
+        if (config.fixedAltitude !== undefined && config.fixedAltitude !== null) {
+          setFixedAltitude(config.fixedAltitude);
+        }
         showToast(t('admin_commands.position_config_loaded'), 'success');
       }
     } catch (error: any) {
@@ -972,6 +990,25 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   };
 
   const handleSetPositionConfig = async () => {
+    // Validate position config
+    const validationConfig: any = {
+      positionBroadcastSecs,
+    };
+
+    if (fixedPosition) {
+      validationConfig.fixedLatitude = fixedLatitude;
+      validationConfig.fixedLongitude = fixedLongitude;
+      validationConfig.fixedAltitude = fixedAltitude;
+    }
+
+    const validation = validatePositionConfig(validationConfig);
+    setPositionConfigErrors(validation.errors);
+
+    if (!validation.isValid) {
+      showToast(t('admin_commands.validation_errors') || 'Please fix validation errors before saving', 'error');
+      return;
+    }
+
     const config: any = {
       positionBroadcastSecs: Math.max(32, positionBroadcastSecs),
       positionSmartEnabled,
@@ -986,6 +1023,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
     try {
       await executeCommand('setPositionConfig', { config });
+      // Clear errors on successful save
+      setPositionConfigErrors({});
     } catch (error) {
       // Error already handled by executeCommand (toast shown)
       console.error('Set position config command failed:', error);
@@ -1053,6 +1092,15 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     // Filter out empty admin keys
     const validAdminKeys = adminKeys.filter(key => key && key.trim().length > 0);
     
+    // Validate admin keys
+    const validation = validateAdminKeys(validAdminKeys);
+    setAdminKeyErrors(validation.errors);
+
+    if (!validation.isValid) {
+      showToast(t('admin_commands.admin_key_validation_errors') || 'Please fix admin key validation errors before saving', 'error');
+      return;
+    }
+    
     const config: any = {
       adminKeys: validAdminKeys,
       isManaged,
@@ -1063,6 +1111,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
     try {
       await executeCommand('setSecurityConfig', { config });
+      // Clear errors on successful save
+      setAdminKeyErrors({});
     } catch (error) {
       // Error already handled by executeCommand (toast shown)
       console.error('Set security config command failed:', error);
@@ -1078,6 +1128,16 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     }
     // Ensure we never exceed 3 keys
     setAdminKeys(newKeys.slice(0, 3));
+
+    // Real-time validation
+    const validation = validateAdminKey(value);
+    const newErrors = { ...adminKeyErrors };
+    if (validation.isValid) {
+      delete newErrors[`adminKey_${index}`];
+    } else if (validation.error) {
+      newErrors[`adminKey_${index}`] = validation.error;
+    }
+    setAdminKeyErrors(newErrors);
   };
 
   const handleRemoveAdminKey = (index: number) => {
@@ -2020,11 +2080,27 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             min="32"
             max="4294967295"
             value={positionBroadcastSecs}
-            onChange={(e) => setPositionBroadcastSecs(parseInt(e.target.value))}
+            onChange={(e) => {
+              setPositionBroadcastSecs(parseInt(e.target.value) || 0);
+              // Clear error when user starts typing
+              if (positionConfigErrors.positionBroadcastSecs) {
+                const newErrors = { ...positionConfigErrors };
+                delete newErrors.positionBroadcastSecs;
+                setPositionConfigErrors(newErrors);
+              }
+            }}
             disabled={isExecuting}
             className="setting-input"
-            style={{ width: '200px' }}
+            style={{ 
+              width: '200px',
+              borderColor: positionConfigErrors.positionBroadcastSecs ? 'var(--ctp-red)' : undefined
+            }}
           />
+          {positionConfigErrors.positionBroadcastSecs && (
+            <div style={{ color: 'var(--ctp-red)', fontSize: '0.875rem', marginTop: '0.25rem' }}>
+              {positionConfigErrors.positionBroadcastSecs}
+            </div>
+          )}
         </div>
         <div className="setting-item">
           <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
@@ -2069,11 +2145,27 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                 min="-90"
                 max="90"
                 value={fixedLatitude}
-                onChange={(e) => setFixedLatitude(parseFloat(e.target.value))}
+                onChange={(e) => {
+                  setFixedLatitude(parseFloat(e.target.value) || 0);
+                  // Clear error when user starts typing
+                  if (positionConfigErrors.fixedLatitude) {
+                    const newErrors = { ...positionConfigErrors };
+                    delete newErrors.fixedLatitude;
+                    setPositionConfigErrors(newErrors);
+                  }
+                }}
                 disabled={isExecuting}
                 className="setting-input"
-                style={{ width: '200px' }}
+                style={{ 
+                  width: '200px',
+                  borderColor: positionConfigErrors.fixedLatitude ? 'var(--ctp-red)' : undefined
+                }}
               />
+              {positionConfigErrors.fixedLatitude && (
+                <div style={{ color: 'var(--ctp-red)', fontSize: '0.875rem', marginTop: '0.25rem' }}>
+                  {positionConfigErrors.fixedLatitude}
+                </div>
+              )}
             </div>
             <div className="setting-item">
               <label>
@@ -2086,11 +2178,27 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                 min="-180"
                 max="180"
                 value={fixedLongitude}
-                onChange={(e) => setFixedLongitude(parseFloat(e.target.value))}
+                onChange={(e) => {
+                  setFixedLongitude(parseFloat(e.target.value) || 0);
+                  // Clear error when user starts typing
+                  if (positionConfigErrors.fixedLongitude) {
+                    const newErrors = { ...positionConfigErrors };
+                    delete newErrors.fixedLongitude;
+                    setPositionConfigErrors(newErrors);
+                  }
+                }}
                 disabled={isExecuting}
                 className="setting-input"
-                style={{ width: '200px' }}
+                style={{ 
+                  width: '200px',
+                  borderColor: positionConfigErrors.fixedLongitude ? 'var(--ctp-red)' : undefined
+                }}
               />
+              {positionConfigErrors.fixedLongitude && (
+                <div style={{ color: 'var(--ctp-red)', fontSize: '0.875rem', marginTop: '0.25rem' }}>
+                  {positionConfigErrors.fixedLongitude}
+                </div>
+              )}
             </div>
             <div className="setting-item">
               <label>
@@ -2101,11 +2209,27 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                 type="number"
                 step="1"
                 value={fixedAltitude}
-                onChange={(e) => setFixedAltitude(parseInt(e.target.value))}
+                onChange={(e) => {
+                  setFixedAltitude(parseInt(e.target.value) || 0);
+                  // Clear error when user starts typing
+                  if (positionConfigErrors.fixedAltitude) {
+                    const newErrors = { ...positionConfigErrors };
+                    delete newErrors.fixedAltitude;
+                    setPositionConfigErrors(newErrors);
+                  }
+                }}
                 disabled={isExecuting}
                 className="setting-input"
-                style={{ width: '200px' }}
+                style={{ 
+                  width: '200px',
+                  borderColor: positionConfigErrors.fixedAltitude ? 'var(--ctp-red)' : undefined
+                }}
               />
+              {positionConfigErrors.fixedAltitude && (
+                <div style={{ color: 'var(--ctp-red)', fontSize: '0.875rem', marginTop: '0.25rem' }}>
+                  {positionConfigErrors.fixedAltitude}
+                </div>
+              )}
             </div>
           </>
         )}
@@ -2284,32 +2408,63 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           </label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             {adminKeys.map((key, index) => (
-              <div key={index} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                <input
-                  type="text"
-                  value={key}
-                  onChange={(e) => handleAdminKeyChange(index, e.target.value)}
-                  disabled={isExecuting}
-                  placeholder={t('admin_commands.admin_key_placeholder') || 'base64:... or hex string'}
-                  className="setting-input"
-                  style={{ flex: 1, fontFamily: 'monospace', fontSize: '0.875rem' }}
-                />
-                {adminKeys.length > 1 && (
-                  <button
-                    onClick={() => handleRemoveAdminKey(index)}
+              <div key={index} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <input
+                    type="text"
+                    value={key}
+                    onChange={(e) => handleAdminKeyChange(index, e.target.value)}
                     disabled={isExecuting}
-                    style={{
-                      padding: '0.5rem 1rem',
-                      background: 'var(--ctp-red)',
-                      color: 'var(--ctp-base)',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: isExecuting ? 'not-allowed' : 'pointer',
-                      opacity: isExecuting ? 0.5 : 1
+                    placeholder={t('admin_commands.admin_key_placeholder') || 'base64:... or hex string'}
+                    className="setting-input"
+                    style={{ 
+                      flex: 1, 
+                      fontFamily: 'monospace', 
+                      fontSize: '0.875rem',
+                      borderColor: adminKeyErrors[`adminKey_${index}`] ? 'var(--ctp-red)' : undefined
                     }}
-                  >
-                    {t('common.remove') || 'Remove'}
-                  </button>
+                  />
+                  {adminKeys.length > 1 && (
+                    <button
+                      onClick={() => {
+                        handleRemoveAdminKey(index);
+                        // Clear error when removing key
+                        const newErrors = { ...adminKeyErrors };
+                        delete newErrors[`adminKey_${index}`];
+                        // Reindex remaining errors
+                        const reindexedErrors: Record<string, string> = {};
+                        Object.keys(newErrors).forEach((key) => {
+                          const match = key.match(/^adminKey_(\d+)$/);
+                          if (match) {
+                            const oldIndex = parseInt(match[1]);
+                            if (oldIndex > index) {
+                              reindexedErrors[`adminKey_${oldIndex - 1}`] = newErrors[key];
+                            } else if (oldIndex < index) {
+                              reindexedErrors[key] = newErrors[key];
+                            }
+                          }
+                        });
+                        setAdminKeyErrors(reindexedErrors);
+                      }}
+                      disabled={isExecuting}
+                      style={{
+                        padding: '0.5rem 1rem',
+                        background: 'var(--ctp-red)',
+                        color: 'var(--ctp-base)',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: isExecuting ? 'not-allowed' : 'pointer',
+                        opacity: isExecuting ? 0.5 : 1
+                      }}
+                    >
+                      {t('common.remove') || 'Remove'}
+                    </button>
+                  )}
+                </div>
+                {adminKeyErrors[`adminKey_${index}`] && (
+                  <div style={{ color: 'var(--ctp-red)', fontSize: '0.875rem', marginLeft: '0.5rem' }}>
+                    {adminKeyErrors[`adminKey_${index}`]}
+                  </div>
                 )}
               </div>
             ))}

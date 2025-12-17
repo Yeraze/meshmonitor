@@ -2449,6 +2449,8 @@
   "admin_commands.altitude": "Altitude (meters)",
   "admin_commands.altitude_description": "Fixed altitude above sea level",
   "admin_commands.save_position_config": "Save Position Config",
+  "admin_commands.validation_errors": "Please fix validation errors before saving",
+  "admin_commands.admin_key_validation_errors": "Please fix admin key validation errors before saving",
 
   "admin_commands.mqtt_configuration": "MQTT Configuration",
   "admin_commands.enable_mqtt": "Enable MQTT",
