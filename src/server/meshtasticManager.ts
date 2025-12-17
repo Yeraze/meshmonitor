@@ -6,6 +6,7 @@ import { TcpTransport } from './tcpTransport.js';
 import { calculateDistance } from '../utils/distance.js';
 import { formatTime, formatDate } from '../utils/datetime.js';
 import { logger } from '../utils/logger.js';
+import { calculateLoRaFrequency } from '../utils/loraFrequency.js';
 import { getEnvironmentConfig } from './config/environment.js';
 import { notificationService } from './services/notificationService.js';
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
@@ -1417,6 +1418,15 @@ class MeshtasticManager {
   }
 
   /**
+   * Get cached remote node config
+   * @param nodeNum The remote node number
+   * @returns The cached config for the remote node, or null if not available
+   */
+  getRemoteNodeConfig(nodeNum: number): { deviceConfig: any; moduleConfig: any; lastUpdated: number } | null {
+    return this.remoteNodeConfigs.get(nodeNum) || null;
+  }
+
+  /**
    * Get the actual device configuration received from the node
    * Used for backup/export functionality
    */
@@ -2097,7 +2107,7 @@ class MeshtasticManager {
         const nodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
         // Use server receive time instead of packet time to avoid issues with nodes having incorrect time offsets
         const now = Date.now();
-        const timestamp = now;
+        const timestamp = now; // Store in milliseconds (Unix timestamp in ms)
         // Preserve the original packet timestamp for analysis (may be inaccurate if node has wrong time)
         const packetTimestamp = position.time ? Number(position.time) * 1000 : undefined;
 
@@ -2356,7 +2366,7 @@ class MeshtasticManager {
       const nodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
       // Use server receive time instead of packet time to avoid issues with nodes having incorrect time offsets
       const now = Date.now();
-      const timestamp = now;
+      const timestamp = now; // Store in milliseconds (Unix timestamp in ms)
       // Preserve the original packet timestamp for analysis (may be inaccurate if node has wrong time)
       const packetTimestamp = telemetry.time ? Number(telemetry.time) * 1000 : undefined;
 
@@ -2561,7 +2571,7 @@ class MeshtasticManager {
       const nodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
       // Use server receive time instead of packet time to avoid issues with nodes having incorrect time offsets
       const now = Date.now();
-      const timestamp = now;
+      const timestamp = now; // Store in milliseconds (Unix timestamp in ms)
 
       // Track PKI encryption
       this.trackPKIEncryption(meshPacket, fromNum);
@@ -4710,6 +4720,14 @@ class MeshtasticManager {
     return null;
   }
 
+  /**
+   * Calculate LoRa frequency from region and channel number (frequency slot)
+   * Delegates to the utility function for better testability
+   */
+  private calculateLoRaFrequency(region: number, channelNum: number, overrideFrequency: number, frequencyOffset: number): string {
+    return calculateLoRaFrequency(region, channelNum, overrideFrequency, frequencyOffset);
+  }
+
   private buildDeviceConfigFromActual(): any {
     const dbChannels = databaseService.getAllChannels();
     const channels = dbChannels.map(ch => ({
@@ -4736,6 +4754,8 @@ class MeshtasticManager {
       usePreset: loraConfig.usePreset !== undefined ? loraConfig.usePreset : false,
       // Ensure frequencyOffset is explicitly set (Proto3 default is 0)
       frequencyOffset: loraConfig.frequencyOffset !== undefined ? loraConfig.frequencyOffset : 0,
+      // Ensure overrideFrequency is explicitly set (Proto3 default is 0)
+      overrideFrequency: loraConfig.overrideFrequency !== undefined ? loraConfig.overrideFrequency : 0,
       // Ensure modemPreset is explicitly set (Proto3 default is 0 = LONG_FAST)
       modemPreset: loraConfig.modemPreset !== undefined ? loraConfig.modemPreset : 0,
       // Ensure channelNum is explicitly set (Proto3 default is 0)
@@ -4810,7 +4830,12 @@ class MeshtasticManager {
         spreadFactor: loraConfigWithDefaults.spreadFactor || 'Unknown',
         codingRate: loraConfigWithDefaults.codingRate || 'Unknown',
         channelNum: loraConfigWithDefaults.channelNum !== undefined ? loraConfigWithDefaults.channelNum : 'Unknown',
-        frequency: 'Unknown',
+        frequency: this.calculateLoRaFrequency(
+          typeof loraConfigWithDefaults.region === 'number' ? loraConfigWithDefaults.region : 0,
+          loraConfigWithDefaults.channelNum !== undefined ? loraConfigWithDefaults.channelNum : 0,
+          loraConfigWithDefaults.overrideFrequency !== undefined ? loraConfigWithDefaults.overrideFrequency : 0,
+          loraConfigWithDefaults.frequencyOffset !== undefined ? loraConfigWithDefaults.frequencyOffset : 0
+        ),
         txEnabled: loraConfigWithDefaults.txEnabled !== undefined ? loraConfigWithDefaults.txEnabled : 'Unknown',
         sx126xRxBoostedGain: loraConfigWithDefaults.sx126xRxBoostedGain !== undefined ? loraConfigWithDefaults.sx126xRxBoostedGain : 'Unknown',
         configOkToMqtt: loraConfigWithDefaults.configOkToMqtt !== undefined ? loraConfigWithDefaults.configOkToMqtt : 'Unknown'
@@ -6497,18 +6522,23 @@ class MeshtasticManager {
    */
   private async processAdminMessage(payload: Uint8Array, meshPacket: any): Promise<void> {
     try {
-      logger.debug('⚙️ Processing ADMIN_APP message, payload size:', payload.length);
+      const fromNum = meshPacket.from ? Number(meshPacket.from) : 0;
+      logger.info(`⚙️ Processing ADMIN_APP message from node ${fromNum}, payload size: ${payload.length}`);
       const adminMsg = protobufService.decodeAdminMessage(payload);
       if (!adminMsg) {
         logger.error('⚙️ Failed to decode admin message');
         return;
       }
 
-      logger.debug('⚙️ Decoded admin message keys:', Object.keys(adminMsg));
+      logger.info('⚙️ Decoded admin message keys:', Object.keys(adminMsg));
+      logger.info('⚙️ Decoded admin message has getConfigResponse:', !!adminMsg.getConfigResponse);
+      if (adminMsg.getConfigResponse) {
+        logger.info('⚙️ getConfigResponse type:', typeof adminMsg.getConfigResponse);
+        logger.info('⚙️ getConfigResponse keys:', Object.keys(adminMsg.getConfigResponse || {}));
+      }
 
       // Extract session passkey from ALL admin responses (per research findings)
       if (adminMsg.sessionPasskey && adminMsg.sessionPasskey.length > 0) {
-        const fromNum = meshPacket.from ? Number(meshPacket.from) : 0;
         const localNodeNum = this.localNodeInfo?.nodeNum || 0;
         
         if (fromNum === localNodeNum || fromNum === 0) {
@@ -6527,13 +6557,13 @@ class MeshtasticManager {
       }
 
       // Process config responses from remote nodes
-      const fromNum = meshPacket.from ? Number(meshPacket.from) : 0;
       const localNodeNum = this.localNodeInfo?.nodeNum || 0;
       const isRemoteNode = fromNum !== 0 && fromNum !== localNodeNum;
 
       if (adminMsg.getConfigResponse) {
-        logger.debug('⚙️ Received GetConfigResponse from node', fromNum);
-        logger.debug('⚙️ GetConfigResponse structure:', JSON.stringify(Object.keys(adminMsg.getConfigResponse || {})));
+        logger.info(`⚙️ Received GetConfigResponse from node ${fromNum}`);
+        logger.info('⚙️ GetConfigResponse structure:', JSON.stringify(Object.keys(adminMsg.getConfigResponse || {})));
+        logger.info('⚙️ GetConfigResponse position field present:', !!adminMsg.getConfigResponse.position);
         if (isRemoteNode) {
           // Store config for remote node
           // getConfigResponse is a Config object containing device, lora, position, etc.
@@ -6545,11 +6575,25 @@ class MeshtasticManager {
             });
           }
           const nodeConfig = this.remoteNodeConfigs.get(fromNum)!;
-          // getConfigResponse is a Config object with device, lora, position fields
-          // Assign it directly (don't spread, as it already has the correct structure)
-          nodeConfig.deviceConfig = adminMsg.getConfigResponse;
+          // getConfigResponse is a Config object with device, lora, position, security, bluetooth, etc. fields
+          // Merge ALL fields from the response into existing deviceConfig to preserve other config types
+          const configResponse = adminMsg.getConfigResponse;
+          if (configResponse) {
+            // Merge all config fields that exist in the response
+            // This includes: device, lora, position, security, bluetooth, network, display, power, etc.
+            Object.keys(configResponse).forEach((key) => {
+              // Skip internal protobuf fields
+              if (key !== 'payloadVariant' && configResponse[key] !== undefined) {
+                nodeConfig.deviceConfig[key] = configResponse[key];
+              }
+            });
+          }
           nodeConfig.lastUpdated = Date.now();
-          logger.debug(`📊 Stored config response from remote node ${fromNum}, keys:`, Object.keys(nodeConfig.deviceConfig));
+          logger.info(`📊 Stored config response from remote node ${fromNum}, keys:`, Object.keys(nodeConfig.deviceConfig));
+          logger.info(`📊 Position config stored:`, !!nodeConfig.deviceConfig.position);
+          if (nodeConfig.deviceConfig.position) {
+            logger.info(`📊 Position config details:`, JSON.stringify(Object.keys(nodeConfig.deviceConfig.position)));
+          }
         }
       }
 
@@ -6568,10 +6612,19 @@ class MeshtasticManager {
           }
           const nodeConfig = this.remoteNodeConfigs.get(fromNum)!;
           // getModuleConfigResponse is a ModuleConfig object with mqtt, neighborInfo, etc. fields
-          // Assign it directly (don't spread, as it already has the correct structure)
-          nodeConfig.moduleConfig = adminMsg.getModuleConfigResponse;
+          // Merge individual fields instead of replacing entire object (like we do for deviceConfig)
+          const moduleConfigResponse = adminMsg.getModuleConfigResponse;
+          if (moduleConfigResponse) {
+            // Merge all module config fields that exist in the response
+            Object.keys(moduleConfigResponse).forEach((key) => {
+              // Skip internal protobuf fields
+              if (key !== 'payloadVariant' && moduleConfigResponse[key] !== undefined) {
+                nodeConfig.moduleConfig[key] = moduleConfigResponse[key];
+              }
+            });
+          }
           nodeConfig.lastUpdated = Date.now();
-          logger.debug(`📊 Stored module config response from remote node ${fromNum}, keys:`, Object.keys(nodeConfig.moduleConfig));
+          logger.info(`📊 Stored module config response from remote node ${fromNum}, keys:`, Object.keys(nodeConfig.moduleConfig));
         }
       }
 
@@ -7064,8 +7117,10 @@ class MeshtasticManager {
       } else {
         const deviceConfigMap: { [key: number]: string } = {
           0: 'device',
+          1: 'position',  // POSITION_CONFIG (was incorrectly 6)
           5: 'lora',
-          6: 'position'
+          6: 'bluetooth',  // BLUETOOTH_CONFIG (for completeness)
+          7: 'security'  // SECURITY_CONFIG
         };
         const configKey = deviceConfigMap[configType];
         if (configKey) {
@@ -7102,15 +7157,16 @@ class MeshtasticManager {
             };
             const configKey = moduleConfigMap[configType];
             if (configKey && nodeConfig.moduleConfig?.[configKey]) {
-              logger.debug(`✅ Received ${configKey} config from remote node ${destinationNodeNum}`);
+              logger.info(`✅ Received ${configKey} config from remote node ${destinationNodeNum}`);
               return nodeConfig.moduleConfig[configKey];
             }
           } else {
             // Map device config types to their keys
             const deviceConfigMap: { [key: number]: string } = {
               0: 'device',
+              1: 'position',  // POSITION_CONFIG (was incorrectly 6)
               5: 'lora',
-              6: 'position',
+              6: 'bluetooth',  // BLUETOOTH_CONFIG (for completeness)
               7: 'security'  // SECURITY_CONFIG
             };
             const configKey = deviceConfigMap[configType];

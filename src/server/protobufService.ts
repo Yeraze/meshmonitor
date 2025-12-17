@@ -757,6 +757,94 @@ class ProtobufService {
         }
       }
       
+      // If there's a getConfigResponse, ensure the nested Config object is properly converted
+      if (adminMsg.getConfigResponse) {
+        const Config = root?.lookupType('meshtastic.Config');
+        if (Config) {
+          try {
+            // Check if it's already a plain object (has direct property access)
+            // Protobuf message objects have methods like .toJSON(), .encode(), etc.
+            const isPlainObject = !adminMsg.getConfigResponse.encode && !adminMsg.getConfigResponse.toJSON;
+            
+            if (isPlainObject) {
+              // Already a plain object, but ensure nested objects are converted
+              // Re-encode and decode to ensure all nested fields are properly converted
+              const configMessage = Config.create(adminMsg.getConfigResponse);
+              const configEncoded = Config.encode(configMessage).finish();
+              const configDecoded = Config.decode(configEncoded);
+              adminMsg.getConfigResponse = Config.toObject(configDecoded, {
+                longs: String,
+                enums: Number,
+                bytes: Buffer,
+                defaults: true,
+                arrays: true,
+                objects: true,
+                oneofs: true
+              });
+            } else {
+              // It's a protobuf message object, convert it to a plain object
+              adminMsg.getConfigResponse = Config.toObject(adminMsg.getConfigResponse, {
+                longs: String,
+                enums: Number,
+                bytes: Buffer,
+                defaults: true,
+                arrays: true,
+                objects: true,
+                oneofs: true
+              });
+            }
+            logger.debug('⚙️ Converted getConfigResponse to plain object, keys:', Object.keys(adminMsg.getConfigResponse || {}));
+          } catch (error) {
+            logger.error('Failed to convert getConfigResponse:', error);
+            // If conversion fails, try to use the object as-is (might already be a plain object)
+          }
+        }
+      }
+      
+      // If there's a getModuleConfigResponse, ensure the nested ModuleConfig object is properly converted
+      if (adminMsg.getModuleConfigResponse) {
+        const ModuleConfig = root?.lookupType('meshtastic.ModuleConfig');
+        if (ModuleConfig) {
+          try {
+            // Check if it's already a plain object (has direct property access)
+            // Protobuf message objects have methods like .toJSON(), .encode(), etc.
+            const isPlainObject = !adminMsg.getModuleConfigResponse.encode && !adminMsg.getModuleConfigResponse.toJSON;
+            
+            if (isPlainObject) {
+              // Already a plain object, but ensure nested objects are converted
+              // Re-encode and decode to ensure all nested fields are properly converted
+              const moduleConfigMessage = ModuleConfig.create(adminMsg.getModuleConfigResponse);
+              const moduleConfigEncoded = ModuleConfig.encode(moduleConfigMessage).finish();
+              const moduleConfigDecoded = ModuleConfig.decode(moduleConfigEncoded);
+              adminMsg.getModuleConfigResponse = ModuleConfig.toObject(moduleConfigDecoded, {
+                longs: String,
+                enums: Number,
+                bytes: Buffer,
+                defaults: true,
+                arrays: true,
+                objects: true,
+                oneofs: true
+              });
+            } else {
+              // It's a protobuf message object, convert it to a plain object
+              adminMsg.getModuleConfigResponse = ModuleConfig.toObject(adminMsg.getModuleConfigResponse, {
+                longs: String,
+                enums: Number,
+                bytes: Buffer,
+                defaults: true,
+                arrays: true,
+                objects: true,
+                oneofs: true
+              });
+            }
+            logger.debug('⚙️ Converted getModuleConfigResponse to plain object, keys:', Object.keys(adminMsg.getModuleConfigResponse || {}));
+          } catch (error) {
+            logger.error('Failed to convert getModuleConfigResponse:', error);
+            // If conversion fails, try to use the object as-is (might already be a plain object)
+          }
+        }
+      }
+      
       logger.debug('⚙️ Decoded AdminMessage:', JSON.stringify(adminMsg, null, 2));
       return adminMsg;
     } catch (error) {
@@ -1194,8 +1282,27 @@ class ProtobufService {
         throw new Error('Required proto types not found');
       }
 
+      // Build position config object, ensuring all fields are properly mapped
+      // protobufjs uses camelCase for field names (converts from snake_case automatically)
+      const positionConfigData: any = {};
+      
+      if (config.positionBroadcastSecs !== undefined) positionConfigData.positionBroadcastSecs = config.positionBroadcastSecs;
+      if (config.positionBroadcastSmartEnabled !== undefined) positionConfigData.positionBroadcastSmartEnabled = config.positionBroadcastSmartEnabled;
+      if (config.fixedPosition !== undefined) positionConfigData.fixedPosition = config.fixedPosition;
+      if (config.fixedLatitude !== undefined) positionConfigData.fixedLatitude = config.fixedLatitude;
+      if (config.fixedLongitude !== undefined) positionConfigData.fixedLongitude = config.fixedLongitude;
+      if (config.fixedAltitude !== undefined) positionConfigData.fixedAltitude = config.fixedAltitude;
+      if (config.gpsUpdateInterval !== undefined) positionConfigData.gpsUpdateInterval = config.gpsUpdateInterval;
+      if (config.positionFlags !== undefined) positionConfigData.positionFlags = config.positionFlags;
+      if (config.rxGpio !== undefined) positionConfigData.rxGpio = config.rxGpio;
+      if (config.txGpio !== undefined) positionConfigData.txGpio = config.txGpio;
+      if (config.broadcastSmartMinimumDistance !== undefined) positionConfigData.broadcastSmartMinimumDistance = config.broadcastSmartMinimumDistance;
+      if (config.broadcastSmartMinimumIntervalSecs !== undefined) positionConfigData.broadcastSmartMinimumIntervalSecs = config.broadcastSmartMinimumIntervalSecs;
+      if (config.gpsEnGpio !== undefined) positionConfigData.gpsEnGpio = config.gpsEnGpio;
+      if (config.gpsMode !== undefined) positionConfigData.gpsMode = config.gpsMode;
+
       const configMsg = Config.create({
-        position: config
+        position: positionConfigData
       });
 
       const adminMsgData: any = {
@@ -1210,7 +1317,13 @@ class ProtobufService {
       const adminMsg = AdminMessage.create(adminMsgData);
 
       const encoded = AdminMessage.encode(adminMsg).finish();
-      logger.debug('⚙️ Created SetPositionConfig admin message');
+      logger.info('⚙️ Created SetPositionConfig admin message');
+      logger.info('⚙️ Position config data:', JSON.stringify(positionConfigData, null, 2));
+      logger.info('⚙️ Smart broadcast enabled:', positionConfigData.positionBroadcastSmartEnabled);
+      if (positionConfigData.positionBroadcastSmartEnabled) {
+        logger.info('⚙️ Smart broadcast minimum distance:', positionConfigData.broadcastSmartMinimumDistance);
+        logger.info('⚙️ Smart broadcast minimum interval:', positionConfigData.broadcastSmartMinimumIntervalSecs);
+      }
       return encoded;
     } catch (error) {
       logger.error('Failed to create SetPositionConfig message:', error);
@@ -1292,6 +1405,131 @@ class ProtobufService {
       return encoded;
     } catch (error) {
       logger.error('Failed to create SetNeighborInfoConfig message:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Generic method to create a set config message for any device config type
+   * @param configType The config type name (e.g., 'power', 'display', 'bluetooth', etc.)
+   * @param config The config object
+   * @param sessionPasskey Optional session passkey for authentication
+   */
+  createSetDeviceConfigMessageGeneric(configType: string, config: any, sessionPasskey?: Uint8Array): Uint8Array {
+    try {
+      const root = getProtobufRoot();
+      const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
+      const Config = root?.lookupType('meshtastic.Config');
+      if (!AdminMessage || !Config) {
+        throw new Error('Required proto types not found');
+      }
+
+      // Map config type names to protobuf field names
+      const configFieldMap: { [key: string]: string } = {
+        'power': 'power',
+        'display': 'display',
+        'bluetooth': 'bluetooth',
+        'sessionkey': 'sessionkey',
+        'deviceui': 'deviceui'
+      };
+
+      const fieldName = configFieldMap[configType];
+      if (!fieldName) {
+        throw new Error(`Unknown device config type: ${configType}`);
+      }
+
+      const configData: any = {};
+      // Copy all properties from config to configData
+      Object.keys(config).forEach(key => {
+        if (config[key] !== undefined) {
+          configData[key] = config[key];
+        }
+      });
+
+      const configMsg = Config.create({
+        [fieldName]: configData
+      });
+
+      const adminMsgData: any = {
+        setConfig: configMsg
+      };
+
+      if (sessionPasskey && sessionPasskey.length > 0) {
+        adminMsgData.sessionPasskey = sessionPasskey;
+      }
+
+      const adminMsg = AdminMessage.create(adminMsgData);
+      const encoded = AdminMessage.encode(adminMsg).finish();
+      logger.debug(`⚙️ Created Set${configType.charAt(0).toUpperCase() + configType.slice(1)}Config admin message`);
+      return encoded;
+    } catch (error) {
+      logger.error(`Failed to create Set${configType}Config message:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Generic method to create a set module config message for any module config type
+   * @param configType The config type name (e.g., 'serial', 'extnotif', etc.)
+   * @param config The config object
+   * @param sessionPasskey Optional session passkey for authentication
+   */
+  createSetModuleConfigMessageGeneric(configType: string, config: any, sessionPasskey?: Uint8Array): Uint8Array {
+    try {
+      const root = getProtobufRoot();
+      const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
+      const ModuleConfig = root?.lookupType('meshtastic.ModuleConfig');
+      if (!AdminMessage || !ModuleConfig) {
+        throw new Error('Required proto types not found');
+      }
+
+      // Map config type names to protobuf field names
+      const configFieldMap: { [key: string]: string } = {
+        'serial': 'serial',
+        'extnotif': 'externalNotification',
+        'storeforward': 'storeForward',
+        'rangetest': 'rangeTest',
+        'telemetry': 'telemetry',
+        'cannedmsg': 'cannedMessage',
+        'audio': 'audio',
+        'remotehardware': 'remoteHardware',
+        'neighborinfo': 'neighborInfo',
+        'ambientlighting': 'ambientLighting',
+        'detectionsensor': 'detectionSensor',
+        'paxcounter': 'paxcounter'
+      };
+
+      const fieldName = configFieldMap[configType];
+      if (!fieldName) {
+        throw new Error(`Unknown module config type: ${configType}`);
+      }
+
+      const configData: any = {};
+      // Copy all properties from config to configData
+      Object.keys(config).forEach(key => {
+        if (config[key] !== undefined) {
+          configData[key] = config[key];
+        }
+      });
+
+      const moduleConfigMsg = ModuleConfig.create({
+        [fieldName]: configData
+      });
+
+      const adminMsgData: any = {
+        setModuleConfig: moduleConfigMsg
+      };
+
+      if (sessionPasskey && sessionPasskey.length > 0) {
+        adminMsgData.sessionPasskey = sessionPasskey;
+      }
+
+      const adminMsg = AdminMessage.create(adminMsgData);
+      const encoded = AdminMessage.encode(adminMsg).finish();
+      logger.debug(`⚙️ Created Set${configType.charAt(0).toUpperCase() + configType.slice(1)}Config admin message`);
+      return encoded;
+    } catch (error) {
+      logger.error(`Failed to create Set${configType}Config message:`, error);
       throw error;
     }
   }
