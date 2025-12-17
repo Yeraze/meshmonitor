@@ -42,10 +42,15 @@ jobs:
       - name: Install main project dependencies
         run: npm ci
 
-      - name: Build main project (server + frontend)
+      - name: Build main project (frontend)
+        run: npm run build
+
+      - name: Build server (Windows-compatible)
         run: |
-          npm run build
-          npm run build:server
+          npx tsc --project tsconfig.server.json
+          New-Item -ItemType Directory -Force -Path "dist/server/routes/v1"
+          Copy-Item "src/server/routes/v1/openapi.yaml" "dist/server/routes/v1/"
+        shell: pwsh
 
       - name: Download Node.js for bundling
         run: |
