@@ -72,6 +72,7 @@ export interface ChannelsTabProps {
 
   // Handlers
   handleSendMessage: (channel: number) => Promise<void>;
+  handleResendMessage: (message: MeshMessage) => Promise<void>;
   handleDeleteMessage: (message: MeshMessage) => Promise<void>;
   handleSendTapback: (emoji: string, message: MeshMessage) => void;
   handlePurgeChannelMessages: (channelId: number) => Promise<void>;
@@ -116,6 +117,7 @@ export default function ChannelsTab({
   dateFormat,
   hasPermission,
   handleSendMessage,
+  handleResendMessage,
   handleDeleteMessage,
   handleSendTapback,
   handlePurgeChannelMessages,
@@ -439,16 +441,26 @@ export default function ChannelsTab({
                                   <div className={`message-bubble ${isMine ? 'mine' : 'theirs'}`}>
                                     {hasPermission(`channel_${selectedChannel}` as ResourceType, 'write') && (
                                       <div className="message-actions">
-                                        <button
-                                          className="reply-button"
-                                          onClick={() => {
-                                            setReplyingTo(msg);
-                                            channelMessageInputRef.current?.focus();
-                                          }}
-                                          title={t('channels.reply_button_title')}
-                                        >
-                                          ↩
-                                        </button>
+                                        {isMine ? (
+                                          <button
+                                            className="resend-button"
+                                            onClick={() => handleResendMessage(msg)}
+                                            title={t('channels.resend_button_title')}
+                                          >
+                                            ↻
+                                          </button>
+                                        ) : (
+                                          <button
+                                            className="reply-button"
+                                            onClick={() => {
+                                              setReplyingTo(msg);
+                                              channelMessageInputRef.current?.focus();
+                                            }}
+                                            title={t('channels.reply_button_title')}
+                                          >
+                                            ↩
+                                          </button>
+                                        )}
                                         <button
                                           className="emoji-picker-button"
                                           onClick={() => setEmojiPickerMessage(msg)}

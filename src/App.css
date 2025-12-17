@@ -2389,6 +2389,7 @@ body {
 }
 
 .reply-button,
+.resend-button,
 .emoji-button,
 .emoji-picker-button,
 .delete-button {
@@ -2417,6 +2418,7 @@ body {
 }
 
 .reply-button:hover,
+.resend-button:hover,
 .emoji-button:hover,
 .emoji-picker-button:hover,
 .delete-button:hover {

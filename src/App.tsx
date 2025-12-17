@@ -2928,6 +2928,119 @@ function App() {
     }
   };
 
+  // Resend a message (for own messages)
+  const handleResendMessage = async (message: MeshMessage) => {
+    if (!message.text?.trim() || connectionStatus !== 'connected') {
+      return;
+    }
+
+    // Determine if this is a DM or channel message
+    const isDM = message.channel === -1;
+    const messageChannel = message.channel;
+    const destinationNodeId = message.to || message.toNodeId;
+
+    // Create a temporary message ID for immediate display
+    const tempId = `temp_${Date.now()}_${Math.random()}`;
+    const nodeId = localNodeIdRef.current || currentNodeId || 'me';
+    const sentMessage: MeshMessage = {
+      id: tempId,
+      from: nodeId,
+      to: isDM ? destinationNodeId : '!ffffffff',
+      fromNodeId: nodeId,
+      toNodeId: isDM ? destinationNodeId : '!ffffffff',
+      text: message.text,
+      channel: messageChannel,
+      timestamp: new Date(),
+      isLocalMessage: true,
+      acknowledged: false,
+      portnum: isDM ? 1 : undefined,
+    };
+
+    // Add message to local state immediately
+    if (isDM) {
+      setMessages(prev => [...prev, sentMessage]);
+    } else {
+      setMessages(prev => [...prev, sentMessage]);
+      setChannelMessages(prev => ({
+        ...prev,
+        [messageChannel]: [...(prev[messageChannel] || []), sentMessage],
+      }));
+    }
+
+    // Add to pending acknowledgments
+    setPendingMessages(prev => {
+      const updated = new Map(prev).set(tempId, sentMessage);
+      pendingMessagesRef.current = updated;
+      return updated;
+    });
+
+    // Scroll to bottom after sending
+    setTimeout(() => {
+      if (isDM) {
+        if (dmMessagesContainerRef.current) {
+          dmMessagesContainerRef.current.scrollTop = dmMessagesContainerRef.current.scrollHeight;
+        }
+      } else {
+        if (channelMessagesContainerRef.current) {
+          channelMessagesContainerRef.current.scrollTop = channelMessagesContainerRef.current.scrollHeight;
+          setIsChannelScrolledToBottom(true);
+        }
+      }
+    }, 50);
+
+    try {
+      const endpoint = isDM ? `${baseUrl}/api/messages/dm` : `${baseUrl}/api/messages/send`;
+      const body = isDM
+        ? { text: message.text, destination: destinationNodeId }
+        : { text: message.text, channel: messageChannel };
+
+      const response = await authFetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (response.ok) {
+        setTimeout(() => refetchPoll(), 1000);
+      } else {
+        const errorData = await response.json();
+        setError(`Failed to resend message: ${errorData.error}`);
+
+        // Remove the message from local state if sending failed
+        setMessages(prev => prev.filter(msg => msg.id !== tempId));
+        if (!isDM) {
+          setChannelMessages(prev => ({
+            ...prev,
+            [messageChannel]: prev[messageChannel]?.filter(msg => msg.id !== tempId) || [],
+          }));
+        }
+        setPendingMessages(prev => {
+          const updated = new Map(prev);
+          updated.delete(tempId);
+          pendingMessagesRef.current = updated;
+          return updated;
+        });
+      }
+    } catch (err) {
+      setError(`Failed to resend message: ${err instanceof Error ? err.message : 'Unknown error'}`);
+
+      // Remove the message from local state if sending failed
+      setMessages(prev => prev.filter(msg => msg.id !== tempId));
+      if (!isDM) {
+        setChannelMessages(prev => ({
+          ...prev,
+          [messageChannel]: prev[messageChannel]?.filter(msg => msg.id !== tempId) || [],
+        }));
+      }
+      setPendingMessages(prev => {
+        const updated = new Map(prev);
+        updated.delete(tempId);
+        pendingMessagesRef.current = updated;
+        return updated;
+      });
+    }
+  };
+
   // Use imported helpers with current nodes state
   const getNodeName = (nodeId: string): string => {
     const node = nodes.find(n => n.user?.id === nodeId);
@@ -4124,6 +4237,7 @@ function App() {
             dateFormat={dateFormat}
             hasPermission={hasPermission}
             handleSendMessage={handleSendMessage}
+            handleResendMessage={handleResendMessage}
             handleDeleteMessage={handleDeleteMessage}
             handleSendTapback={handleSendTapback}
             handlePurgeChannelMessages={handlePurgeChannelMessages}
@@ -4178,6 +4292,7 @@ function App() {
             baseUrl={baseUrl}
             hasPermission={hasPermission}
             handleSendDirectMessage={handleSendDirectMessage}
+            handleResendMessage={handleResendMessage}
             handleTraceroute={handleTraceroute}
             handleExchangePosition={handleExchangePosition}
             handleExchangeNodeInfo={handleExchangeNodeInfo}
