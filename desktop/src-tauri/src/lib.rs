@@ -126,14 +126,8 @@ pub fn start_backend<R: Runtime>(app: &AppHandle<R>) -> Result<Child, String> {
     let stderr_file = File::create(&stderr_log_path)
         .map_err(|e| format!("Failed to create stderr log: {}", e))?;
 
-    log_to_file(
-        &logs_path,
-        &format!("Stdout log: {:?}", stdout_log_path),
-    );
-    log_to_file(
-        &logs_path,
-        &format!("Stderr log: {:?}", stderr_log_path),
-    );
+    log_to_file(&logs_path, &format!("Stdout log: {:?}", stdout_log_path));
+    log_to_file(&logs_path, &format!("Stderr log: {:?}", stderr_log_path));
 
     // Build environment variables
     let mut cmd = std::process::Command::new(&node_path);
@@ -153,10 +147,7 @@ pub fn start_backend<R: Runtime>(app: &AppHandle<R>) -> Result<Child, String> {
         );
 
     log_to_file(&logs_path, "Environment variables set");
-    log_to_file(
-        &logs_path,
-        &format!("PORT: {}", config.web_port),
-    );
+    log_to_file(&logs_path, &format!("PORT: {}", config.web_port));
     log_to_file(
         &logs_path,
         &format!("MESHTASTIC_NODE_IP: {}", config.meshtastic_ip),

@@ -76,7 +76,16 @@ jobs:
           xcopy /E /I /Y dist\constants desktop\resources\dist\constants
           xcopy /E /I /Y dist\contexts desktop\resources\dist\contexts
           xcopy /E /I /Y dist\assets desktop\resources\dist\assets
+          xcopy /E /I /Y dist\locales desktop\resources\dist\locales
+          xcopy /E /I /Y dist\pmtiles desktop\resources\dist\pmtiles
           copy dist\index.html desktop\resources\dist\index.html
+          copy dist\logo.png desktop\resources\dist\logo.png
+          copy dist\logo-original.png desktop\resources\dist\logo-original.png
+          copy dist\favicon.ico desktop\resources\dist\favicon.ico
+          copy dist\favicon-16x16.png desktop\resources\dist\favicon-16x16.png
+          copy dist\favicon-32x32.png desktop\resources\dist\favicon-32x32.png
+          copy dist\cors-detection.js desktop\resources\dist\cors-detection.js
+          copy dist\cors-error.html desktop\resources\dist\cors-error.html
           copy package.json desktop\resources\package.json
           robocopy node_modules desktop\resources\dist\node_modules /E /NFL /NDL /NJH /NJS /NC /NS /NP
           if %ERRORLEVEL% leq 7 exit /b 0

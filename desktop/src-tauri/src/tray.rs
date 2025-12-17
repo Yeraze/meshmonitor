@@ -19,7 +19,13 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> Result<(), Box<dyn std::err
     // Build menu
     let menu = Menu::with_items(
         app,
-        &[&open_item, &settings_item, &logs_item, &data_item, &quit_item],
+        &[
+            &open_item,
+            &settings_item,
+            &logs_item,
+            &data_item,
+            &quit_item,
+        ],
     )?;
 
     // Build tray icon
