@@ -22,7 +22,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["msi", "nsis"],
+    "targets": ["nsis"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -32,7 +32,8 @@
     ],
     "resources": {
       "../resources/dist": "dist",
-      "../resources/binaries": "binaries"
+      "../resources/binaries": "binaries",
+      "../resources/package.json": "package.json"
     },
     "windows": {
       "certificateThumbprint": null,

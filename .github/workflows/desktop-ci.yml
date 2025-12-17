@@ -75,7 +75,7 @@ jobs:
           xcopy /E /I /Y dist\config desktop\resources\dist\config
           xcopy /E /I /Y dist\constants desktop\resources\dist\constants
           xcopy /E /I /Y dist\contexts desktop\resources\dist\contexts
-          copy package.json desktop\resources\dist\package.json
+          copy package.json desktop\resources\package.json
           robocopy node_modules desktop\resources\dist\node_modules /E /NFL /NDL /NJH /NJS /NC /NS /NP
           if %ERRORLEVEL% leq 7 exit /b 0
 
@@ -135,6 +135,7 @@ jobs:
           mkdir -p desktop/resources/binaries
           touch desktop/resources/dist/server/.placeholder
           touch desktop/resources/binaries/.placeholder
+          echo '{"name":"meshmonitor","version":"0.0.0"}' > desktop/resources/package.json
 
       - name: Run Clippy
         working-directory: desktop/src-tauri
