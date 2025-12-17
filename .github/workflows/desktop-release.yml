@@ -43,7 +43,9 @@ jobs:
         run: npm ci
 
       - name: Build main project (server + frontend)
-        run: npm run build
+        run: |
+          npm run build
+          npm run build:server
 
       - name: Download Node.js for bundling
         run: |
