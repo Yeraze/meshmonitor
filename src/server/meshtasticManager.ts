@@ -1213,6 +1213,10 @@ class MeshtasticManager {
               parsed.data.neighborInfo.enabled = false;
               logger.info('📊 Set neighborInfo.enabled to false (was undefined - Proto3 default)');
             }
+            if (parsed.data.neighborInfo.transmitOverLora === undefined) {
+              parsed.data.neighborInfo.transmitOverLora = false;
+              logger.info('📊 Set neighborInfo.transmitOverLora to false (was undefined - Proto3 default)');
+            }
 
             // Ensure numeric fields have explicit values (Proto3 omits 0)
             if (parsed.data.neighborInfo.updateInterval === undefined) {
@@ -1532,7 +1536,8 @@ class MeshtasticManager {
         ...moduleConfig.neighborInfo,
         // IMPORTANT: Proto3 omits boolean false and numeric 0 values from JSON serialization
         enabled: moduleConfig.neighborInfo.enabled !== undefined ? moduleConfig.neighborInfo.enabled : false,
-        updateInterval: moduleConfig.neighborInfo.updateInterval !== undefined ? moduleConfig.neighborInfo.updateInterval : 0
+        updateInterval: moduleConfig.neighborInfo.updateInterval !== undefined ? moduleConfig.neighborInfo.updateInterval : 0,
+        transmitOverLora: moduleConfig.neighborInfo.transmitOverLora !== undefined ? moduleConfig.neighborInfo.transmitOverLora : false
       };
 
       moduleConfig = {
@@ -1540,7 +1545,7 @@ class MeshtasticManager {
         neighborInfo: neighborInfoConfigWithDefaults
       };
 
-      logger.info(`[CONFIG] Returning NeighborInfo config with enabled=${neighborInfoConfigWithDefaults.enabled}, updateInterval=${neighborInfoConfigWithDefaults.updateInterval}`);
+      logger.info(`[CONFIG] Returning NeighborInfo config with enabled=${neighborInfoConfigWithDefaults.enabled}, updateInterval=${neighborInfoConfigWithDefaults.updateInterval}, transmitOverLora=${neighborInfoConfigWithDefaults.transmitOverLora}`);
     }
 
     // Apply Proto3 defaults to position config if it exists

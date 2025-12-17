@@ -1934,6 +1934,8 @@
     "neighbor_info.enable_description": "向网格广播邻居信息",
     "neighbor_info.interval": "NeighborInfo 间隔（秒）",
     "neighbor_info.interval_description": "范围：14400-4294967295（默认：3600 = 1 小时，最小：14400 秒）",
+    "neighbor_info.transmit_over_lora": "通过 LoRa 传输",
+    "neighbor_info.transmit_over_lora_description": "除 MQTT 和手机 API 外，还通过 LoRa 广播邻居信息。在使用默认密钥/名称的频道上不可用。",
     "neighbor_info.save_button": "保存 NeighborInfo 配置",
     "network_config.title": "网络配置",
     "network_config.view_docs": "查看网络配置文档",

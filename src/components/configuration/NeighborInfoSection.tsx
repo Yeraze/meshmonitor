@@ -4,8 +4,10 @@ import { useTranslation } from 'react-i18next';
 interface NeighborInfoSectionProps {
   neighborInfoEnabled: boolean;
   neighborInfoInterval: number;
+  neighborInfoTransmitOverLora: boolean;
   setNeighborInfoEnabled: (value: boolean) => void;
   setNeighborInfoInterval: (value: number) => void;
+  setNeighborInfoTransmitOverLora: (value: boolean) => void;
   isSaving: boolean;
   onSave: () => Promise<void>;
 }
@@ -13,8 +15,10 @@ interface NeighborInfoSectionProps {
 const NeighborInfoSection: React.FC<NeighborInfoSectionProps> = ({
   neighborInfoEnabled,
   neighborInfoInterval,
+  neighborInfoTransmitOverLora,
   setNeighborInfoEnabled,
   setNeighborInfoInterval,
+  setNeighborInfoTransmitOverLora,
   isSaving,
   onSave
 }) => {
@@ -54,21 +58,38 @@ const NeighborInfoSection: React.FC<NeighborInfoSectionProps> = ({
         </label>
       </div>
       {neighborInfoEnabled && (
-        <div className="setting-item">
-          <label htmlFor="neighborInfoInterval">
-            {t('neighbor_info.interval')}
-            <span className="setting-description">{t('neighbor_info.interval_description')}</span>
-          </label>
-          <input
-            id="neighborInfoInterval"
-            type="number"
-            min="14400"
-            max="86400"
-            value={neighborInfoInterval}
-            onChange={(e) => setNeighborInfoInterval(parseInt(e.target.value))}
-            className="setting-input"
-          />
-        </div>
+        <>
+          <div className="setting-item">
+            <label htmlFor="neighborInfoInterval">
+              {t('neighbor_info.interval')}
+              <span className="setting-description">{t('neighbor_info.interval_description')}</span>
+            </label>
+            <input
+              id="neighborInfoInterval"
+              type="number"
+              min="14400"
+              max="86400"
+              value={neighborInfoInterval}
+              onChange={(e) => setNeighborInfoInterval(parseInt(e.target.value))}
+              className="setting-input"
+            />
+          </div>
+          <div className="setting-item">
+            <label htmlFor="neighborInfoTransmitOverLora" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+              <input
+                id="neighborInfoTransmitOverLora"
+                type="checkbox"
+                checked={neighborInfoTransmitOverLora}
+                onChange={(e) => setNeighborInfoTransmitOverLora(e.target.checked)}
+                style={{ marginTop: '0.2rem', flexShrink: 0 }}
+              />
+              <div style={{ flex: 1 }}>
+                <div>{t('neighbor_info.transmit_over_lora')}</div>
+                <span className="setting-description">{t('neighbor_info.transmit_over_lora_description')}</span>
+              </div>
+            </label>
+          </div>
+        </>
       )}
       <button
         className="save-button"
