@@ -22,6 +22,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -58,15 +60,16 @@ jobs:
           $nodeUrl = "https://nodejs.org/dist/$nodeVersion/node-$nodeVersion-win-x64.zip"
           Invoke-WebRequest -Uri $nodeUrl -OutFile node.zip
           Expand-Archive -Path node.zip -DestinationPath node-extracted
-          New-Item -ItemType Directory -Force -Path "desktop/src-tauri/binaries"
-          Copy-Item "node-extracted/node-$nodeVersion-win-x64/node.exe" "desktop/src-tauri/binaries/node.exe"
+          New-Item -ItemType Directory -Force -Path "desktop/resources/binaries"
+          Copy-Item "node-extracted/node-$nodeVersion-win-x64/node.exe" "desktop/resources/binaries/node.exe"
         shell: pwsh
 
       - name: Copy server files to Tauri resources
         run: |
-          New-Item -ItemType Directory -Force -Path "desktop/src-tauri/server"
-          Copy-Item -Recurse "dist/server/*" "desktop/src-tauri/server/"
-          Copy-Item -Recurse "node_modules" "desktop/src-tauri/server/node_modules"
+          New-Item -ItemType Directory -Force -Path "desktop/resources/dist"
+          Copy-Item -Recurse "dist/server/*" "desktop/resources/dist/"
+          Copy-Item -Recurse "node_modules" "desktop/resources/dist/node_modules"
+          Copy-Item "package.json" "desktop/resources/package.json"
         shell: pwsh
 
       - name: Install desktop dependencies
