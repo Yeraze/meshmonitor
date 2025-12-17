@@ -194,7 +194,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         {isExpanded && (
           <div style={{
             padding: '0 0.5rem',
-            overflow: 'hidden'
+            overflow: 'visible'
           }}>
             {children}
           </div>
@@ -2539,7 +2539,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               {t('admin_commands.select_node_to_manage_description')}
             </span>
           </label>
-          <div ref={nodeManagementSearchRef} style={{ position: 'relative', width: '100%', maxWidth: '600px' }}>
+          <div ref={nodeManagementSearchRef} style={{ position: 'relative', width: '100%', maxWidth: '600px', zIndex: 100 }}>
             <input
               type="text"
               className="setting-input"
