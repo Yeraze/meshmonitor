@@ -1347,6 +1347,15 @@ class MeshtasticManager {
   }
 
   /**
+   * Get cached remote node config
+   * @param nodeNum The remote node number
+   * @returns The cached config for the remote node, or null if not available
+   */
+  getRemoteNodeConfig(nodeNum: number): { deviceConfig: any; moduleConfig: any; lastUpdated: number } | null {
+    return this.remoteNodeConfigs.get(nodeNum) || null;
+  }
+
+  /**
    * Get the actual device configuration received from the node
    * Used for backup/export functionality
    */
@@ -4536,6 +4545,85 @@ class MeshtasticManager {
     return null;
   }
 
+  /**
+   * Calculate LoRa frequency from region and channel number (frequency slot)
+   *
+   * Meshtastic uses dynamic frequency slots based on:
+   * - Region (defines the ISM band, e.g., 902-928 MHz for US)
+   * - Bandwidth (125kHz, 250kHz, 500kHz) - affects number of available slots
+   * - Channel number (frequency slot) - determines the specific frequency
+   *
+   * Frequency spacing is determined by bandwidth: narrower bandwidth allows more slots.
+   * For US region with LongFast preset (250kHz BW): 104 slots with 0.25 MHz spacing
+   *
+   * References:
+   * - https://meshtastic.org/docs/overview/radio-settings/
+   * - https://meshtastic.org/docs/settings/channel
+   */
+  private calculateLoRaFrequency(region: number, channelNum: number, overrideFrequency: number, frequencyOffset: number): string {
+    // If overrideFrequency is set (non-zero), use it (takes precedence over calculated frequency)
+    if (overrideFrequency && overrideFrequency > 0) {
+      const freq = overrideFrequency + (frequencyOffset || 0);
+      return `${freq.toFixed(3)} MHz`;
+    }
+
+    // Frequency lookup table for Meshtastic frequency slots
+    // Format: region -> [baseFreq (MHz), slotSpacing (MHz), maxSlots]
+    // Note: Spacing depends on bandwidth - these values are for common presets (typically 250kHz BW)
+    // References: https://meshtastic.org/docs/overview/radio-settings/
+    // US region: 104 slots (0-103) for 250kHz BW, verified: slot 18=906.375, slot 20=906.875 (LongFast)
+    // EU_433: 5 slots (0-4) for LongFast, default slot 4 = 433.875 MHz (band: 433-434 MHz)
+    // EU_868: 1 slot for LongFast, default slot 1 = 869.525 MHz (band: 869.40-869.65 MHz)
+    const regionFrequencyParams: { [key: number]: [number, number, number] } = {
+      1: [901.875, 0.25, 104],   // US: 901.875-927.875 MHz, 104 slots (250kHz BW), spacing=0.25 MHz
+      2: [433.075, 0.2, 5],      // EU_433: 433-434 MHz, 5 slots (0-4) with LongFast, default slot 4=433.875 MHz
+      3: [869.325, 0.2, 1],      // EU_868: 869.40-869.65 MHz, 1 slot (LongFast), slot 1=869.525 MHz
+      4: [470.0, 0.2, 95],      // CN: 470.0-489.8 MHz, 95 channels
+      5: [920.6, 0.2, 15],      // JP: 920.6-923.4 MHz, 15 channels
+      6: [915.0, 0.2, 72],      // ANZ: 915.0-927.8 MHz, 72 channels
+      7: [920.9, 0.2, 15],      // KR: 920.9-923.7 MHz, 15 channels
+      8: [920.6, 0.2, 15],      // TW: 920.6-923.4 MHz, 15 channels
+      9: [433.175, 0.2, 7],     // RU: 433.175-434.575 MHz, 7 channels
+      10: [865.0625, 0.2, 15],  // IN: 865.0625-867.8625 MHz, 15 channels
+      11: [865.0, 0.2, 15],     // NZ_865: 865.0-867.8 MHz, 15 channels
+      12: [920.6, 0.2, 15],     // TH: 920.6-923.4 MHz, 15 channels
+      13: [2400.0, 0.2, 15],    // LORA_24: 2400.0-2402.8 MHz, 15 channels
+      14: [433.175, 0.2, 7],    // UA_433: 433.175-434.575 MHz, 7 channels
+      15: [863.275, 0.2, 7],    // UA_868: 863.275-864.575 MHz, 7 channels
+      16: [433.175, 0.2, 7],    // MY_433: 433.175-434.575 MHz, 7 channels
+      17: [919.0, 0.2, 15],     // MY_919: 919.0-921.8 MHz, 15 channels
+      18: [923.0, 0.2, 15],     // SG_923: 923.0-925.8 MHz, 15 channels
+      19: [433.175, 0.2, 7],    // PH_433: 433.175-434.575 MHz, 7 channels
+      20: [863.275, 0.2, 7],    // PH_868: 863.275-864.575 MHz, 7 channels
+      21: [915.0, 0.2, 72],     // PH_915: 915.0-927.8 MHz, 72 channels
+      22: [433.175, 0.2, 7],    // ANZ_433: 433.175-434.575 MHz, 7 channels
+      23: [433.175, 0.2, 7],    // KZ_433: 433.175-434.575 MHz, 7 channels
+      24: [863.0, 0.2, 7],      // KZ_863: 863.0-864.4 MHz, 7 channels
+      25: [865.0, 0.2, 15],     // NP_865: 865.0-867.8 MHz, 15 channels
+      26: [902.0, 0.2, 72]      // BR_902: 902.0-914.8 MHz, 72 channels
+    };
+
+    if (!region || region === 0) {
+      return 'Unknown';
+    }
+
+    const params = regionFrequencyParams[region];
+    if (!params) {
+      return 'Unknown';
+    }
+
+    const [baseFreq, channelSpacing, maxChannels] = params;
+
+    // Validate channel number
+    if (channelNum < 0 || channelNum >= maxChannels) {
+      return 'Invalid channel';
+    }
+
+    // Calculate frequency: baseFreq + (channelNum * channelSpacing) + frequencyOffset
+    const calculatedFreq = baseFreq + (channelNum * channelSpacing) + (frequencyOffset || 0);
+    return `${calculatedFreq.toFixed(3)} MHz`;
+  }
+
   private buildDeviceConfigFromActual(): any {
     const dbChannels = databaseService.getAllChannels();
     const channels = dbChannels.map(ch => ({
@@ -4562,6 +4650,8 @@ class MeshtasticManager {
       usePreset: loraConfig.usePreset !== undefined ? loraConfig.usePreset : false,
       // Ensure frequencyOffset is explicitly set (Proto3 default is 0)
       frequencyOffset: loraConfig.frequencyOffset !== undefined ? loraConfig.frequencyOffset : 0,
+      // Ensure overrideFrequency is explicitly set (Proto3 default is 0)
+      overrideFrequency: loraConfig.overrideFrequency !== undefined ? loraConfig.overrideFrequency : 0,
       // Ensure modemPreset is explicitly set (Proto3 default is 0 = LONG_FAST)
       modemPreset: loraConfig.modemPreset !== undefined ? loraConfig.modemPreset : 0,
       // Ensure channelNum is explicitly set (Proto3 default is 0)
@@ -4636,7 +4726,12 @@ class MeshtasticManager {
         spreadFactor: loraConfigWithDefaults.spreadFactor || 'Unknown',
         codingRate: loraConfigWithDefaults.codingRate || 'Unknown',
         channelNum: loraConfigWithDefaults.channelNum !== undefined ? loraConfigWithDefaults.channelNum : 'Unknown',
-        frequency: 'Unknown',
+        frequency: this.calculateLoRaFrequency(
+          typeof loraConfigWithDefaults.region === 'number' ? loraConfigWithDefaults.region : 0,
+          loraConfigWithDefaults.channelNum !== undefined ? loraConfigWithDefaults.channelNum : 0,
+          loraConfigWithDefaults.overrideFrequency !== undefined ? loraConfigWithDefaults.overrideFrequency : 0,
+          loraConfigWithDefaults.frequencyOffset !== undefined ? loraConfigWithDefaults.frequencyOffset : 0
+        ),
         txEnabled: loraConfigWithDefaults.txEnabled !== undefined ? loraConfigWithDefaults.txEnabled : 'Unknown',
         sx126xRxBoostedGain: loraConfigWithDefaults.sx126xRxBoostedGain !== undefined ? loraConfigWithDefaults.sx126xRxBoostedGain : 'Unknown',
         configOkToMqtt: loraConfigWithDefaults.configOkToMqtt !== undefined ? loraConfigWithDefaults.configOkToMqtt : 'Unknown'
@@ -6323,18 +6418,23 @@ class MeshtasticManager {
    */
   private async processAdminMessage(payload: Uint8Array, meshPacket: any): Promise<void> {
     try {
-      logger.debug('⚙️ Processing ADMIN_APP message, payload size:', payload.length);
+      const fromNum = meshPacket.from ? Number(meshPacket.from) : 0;
+      logger.info(`⚙️ Processing ADMIN_APP message from node ${fromNum}, payload size: ${payload.length}`);
       const adminMsg = protobufService.decodeAdminMessage(payload);
       if (!adminMsg) {
         logger.error('⚙️ Failed to decode admin message');
         return;
       }
 
-      logger.debug('⚙️ Decoded admin message keys:', Object.keys(adminMsg));
+      logger.info('⚙️ Decoded admin message keys:', Object.keys(adminMsg));
+      logger.info('⚙️ Decoded admin message has getConfigResponse:', !!adminMsg.getConfigResponse);
+      if (adminMsg.getConfigResponse) {
+        logger.info('⚙️ getConfigResponse type:', typeof adminMsg.getConfigResponse);
+        logger.info('⚙️ getConfigResponse keys:', Object.keys(adminMsg.getConfigResponse || {}));
+      }
 
       // Extract session passkey from ALL admin responses (per research findings)
       if (adminMsg.sessionPasskey && adminMsg.sessionPasskey.length > 0) {
-        const fromNum = meshPacket.from ? Number(meshPacket.from) : 0;
         const localNodeNum = this.localNodeInfo?.nodeNum || 0;
         
         if (fromNum === localNodeNum || fromNum === 0) {
@@ -6353,13 +6453,13 @@ class MeshtasticManager {
       }
 
       // Process config responses from remote nodes
-      const fromNum = meshPacket.from ? Number(meshPacket.from) : 0;
       const localNodeNum = this.localNodeInfo?.nodeNum || 0;
       const isRemoteNode = fromNum !== 0 && fromNum !== localNodeNum;
 
       if (adminMsg.getConfigResponse) {
-        logger.debug('⚙️ Received GetConfigResponse from node', fromNum);
-        logger.debug('⚙️ GetConfigResponse structure:', JSON.stringify(Object.keys(adminMsg.getConfigResponse || {})));
+        logger.info(`⚙️ Received GetConfigResponse from node ${fromNum}`);
+        logger.info('⚙️ GetConfigResponse structure:', JSON.stringify(Object.keys(adminMsg.getConfigResponse || {})));
+        logger.info('⚙️ GetConfigResponse position field present:', !!adminMsg.getConfigResponse.position);
         if (isRemoteNode) {
           // Store config for remote node
           // getConfigResponse is a Config object containing device, lora, position, etc.
@@ -6371,27 +6471,25 @@ class MeshtasticManager {
             });
           }
           const nodeConfig = this.remoteNodeConfigs.get(fromNum)!;
-          // getConfigResponse is a Config object with device, lora, position, security fields
-          // Merge the response into existing deviceConfig to preserve other config types
-          // Only update fields that are present in the response
+          // getConfigResponse is a Config object with device, lora, position, security, bluetooth, etc. fields
+          // Merge ALL fields from the response into existing deviceConfig to preserve other config types
           const configResponse = adminMsg.getConfigResponse;
           if (configResponse) {
-            // Merge each config field if it exists in the response
-            if (configResponse.device !== undefined) {
-              nodeConfig.deviceConfig.device = configResponse.device;
-            }
-            if (configResponse.lora !== undefined) {
-              nodeConfig.deviceConfig.lora = configResponse.lora;
-            }
-            if (configResponse.position !== undefined) {
-              nodeConfig.deviceConfig.position = configResponse.position;
-            }
-            if (configResponse.security !== undefined) {
-              nodeConfig.deviceConfig.security = configResponse.security;
-            }
+            // Merge all config fields that exist in the response
+            // This includes: device, lora, position, security, bluetooth, network, display, power, etc.
+            Object.keys(configResponse).forEach((key) => {
+              // Skip internal protobuf fields
+              if (key !== 'payloadVariant' && configResponse[key] !== undefined) {
+                nodeConfig.deviceConfig[key] = configResponse[key];
+              }
+            });
           }
           nodeConfig.lastUpdated = Date.now();
-          logger.debug(`📊 Stored config response from remote node ${fromNum}, keys:`, Object.keys(nodeConfig.deviceConfig));
+          logger.info(`📊 Stored config response from remote node ${fromNum}, keys:`, Object.keys(nodeConfig.deviceConfig));
+          logger.info(`📊 Position config stored:`, !!nodeConfig.deviceConfig.position);
+          if (nodeConfig.deviceConfig.position) {
+            logger.info(`📊 Position config details:`, JSON.stringify(Object.keys(nodeConfig.deviceConfig.position)));
+          }
         }
       }
 
@@ -6410,10 +6508,19 @@ class MeshtasticManager {
           }
           const nodeConfig = this.remoteNodeConfigs.get(fromNum)!;
           // getModuleConfigResponse is a ModuleConfig object with mqtt, neighborInfo, etc. fields
-          // Assign it directly (don't spread, as it already has the correct structure)
-          nodeConfig.moduleConfig = adminMsg.getModuleConfigResponse;
+          // Merge individual fields instead of replacing entire object (like we do for deviceConfig)
+          const moduleConfigResponse = adminMsg.getModuleConfigResponse;
+          if (moduleConfigResponse) {
+            // Merge all module config fields that exist in the response
+            Object.keys(moduleConfigResponse).forEach((key) => {
+              // Skip internal protobuf fields
+              if (key !== 'payloadVariant' && moduleConfigResponse[key] !== undefined) {
+                nodeConfig.moduleConfig[key] = moduleConfigResponse[key];
+              }
+            });
+          }
           nodeConfig.lastUpdated = Date.now();
-          logger.debug(`📊 Stored module config response from remote node ${fromNum}, keys:`, Object.keys(nodeConfig.moduleConfig));
+          logger.info(`📊 Stored module config response from remote node ${fromNum}, keys:`, Object.keys(nodeConfig.moduleConfig));
         }
       }
 
@@ -6906,8 +7013,9 @@ class MeshtasticManager {
       } else {
         const deviceConfigMap: { [key: number]: string } = {
           0: 'device',
+          1: 'position',  // POSITION_CONFIG (was incorrectly 6)
           5: 'lora',
-          6: 'position',
+          6: 'bluetooth',  // BLUETOOTH_CONFIG (for completeness)
           7: 'security'  // SECURITY_CONFIG
         };
         const configKey = deviceConfigMap[configType];
@@ -6945,15 +7053,16 @@ class MeshtasticManager {
             };
             const configKey = moduleConfigMap[configType];
             if (configKey && nodeConfig.moduleConfig?.[configKey]) {
-              logger.debug(`✅ Received ${configKey} config from remote node ${destinationNodeNum}`);
+              logger.info(`✅ Received ${configKey} config from remote node ${destinationNodeNum}`);
               return nodeConfig.moduleConfig[configKey];
             }
           } else {
             // Map device config types to their keys
             const deviceConfigMap: { [key: number]: string } = {
               0: 'device',
+              1: 'position',  // POSITION_CONFIG (was incorrectly 6)
               5: 'lora',
-              6: 'position',
+              6: 'bluetooth',  // BLUETOOTH_CONFIG (for completeness)
               7: 'security'  // SECURITY_CONFIG
             };
             const configKey = deviceConfigMap[configType];

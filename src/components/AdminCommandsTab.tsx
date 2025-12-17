@@ -72,6 +72,24 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   const [fixedLatitude, setFixedLatitude] = useState<number>(0);
   const [fixedLongitude, setFixedLongitude] = useState<number>(0);
   const [fixedAltitude, setFixedAltitude] = useState<number>(0);
+  const [gpsUpdateInterval, setGpsUpdateInterval] = useState<number>(30);
+  const [rxGpio, setRxGpio] = useState<number | undefined>(undefined);
+  const [txGpio, setTxGpio] = useState<number | undefined>(undefined);
+  const [broadcastSmartMinimumDistance, setBroadcastSmartMinimumDistance] = useState<number>(50);
+  const [broadcastSmartMinimumIntervalSecs, setBroadcastSmartMinimumIntervalSecs] = useState<number>(30);
+  const [gpsEnGpio, setGpsEnGpio] = useState<number | undefined>(undefined);
+  const [gpsMode, setGpsMode] = useState<number>(1); // 0=DISABLED, 1=ENABLED, 2=NOT_PRESENT
+  // Position flags checkboxes
+  const [positionFlagAltitude, setPositionFlagAltitude] = useState(false);
+  const [positionFlagAltitudeMsl, setPositionFlagAltitudeMsl] = useState(false);
+  const [positionFlagGeoidalSeparation, setPositionFlagGeoidalSeparation] = useState(false);
+  const [positionFlagDop, setPositionFlagDop] = useState(false);
+  const [positionFlagHvdop, setPositionFlagHvdop] = useState(false);
+  const [positionFlagSatinview, setPositionFlagSatinview] = useState(false);
+  const [positionFlagSeqNo, setPositionFlagSeqNo] = useState(false);
+  const [positionFlagTimestamp, setPositionFlagTimestamp] = useState(false);
+  const [positionFlagHeading, setPositionFlagHeading] = useState(false);
+  const [positionFlagSpeed, setPositionFlagSpeed] = useState(false);
 
   // MQTT Config state
   const [mqttEnabled, setMqttEnabled] = useState(false);
@@ -88,6 +106,16 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   const [serialEnabled, setSerialEnabled] = useState<boolean>(false);
   const [debugLogApiEnabled, setDebugLogApiEnabled] = useState<boolean>(false);
   const [adminChannelEnabled, setAdminChannelEnabled] = useState<boolean>(false);
+
+  // Bluetooth Config state
+  const [bluetoothEnabled, setBluetoothEnabled] = useState<boolean>(false);
+  const [bluetoothMode, setBluetoothMode] = useState<number>(0); // 0=RANDOM_PIN, 1=FIXED_PIN, 2=NO_PIN
+  const [bluetoothFixedPin, setBluetoothFixedPin] = useState<number>(0);
+
+  // Neighbor Info Config state
+  const [neighborInfoEnabled, setNeighborInfoEnabled] = useState<boolean>(false);
+  const [neighborInfoUpdateInterval, setNeighborInfoUpdateInterval] = useState<number>(14400); // Minimum 4 hours
+  const [neighborInfoTransmitOverLora, setNeighborInfoTransmitOverLora] = useState<boolean>(false);
 
   // Channel Config state - for editing a specific channel
   const [editingChannelSlot, setEditingChannelSlot] = useState<number | null>(null);
@@ -107,22 +135,119 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   const [importFileContent, setImportFileContent] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Loading states for each section
-  const [isLoadingOwner, setIsLoadingOwner] = useState(false);
-  const [isLoadingDeviceConfig, setIsLoadingDeviceConfig] = useState(false);
-  const [isLoadingLoRaConfig, setIsLoadingLoRaConfig] = useState(false);
-  const [isLoadingPositionConfig, setIsLoadingPositionConfig] = useState(false);
-  const [isLoadingMQTTConfig, setIsLoadingMQTTConfig] = useState(false);
-  const [isLoadingSecurityConfig, setIsLoadingSecurityConfig] = useState(false);
+  // Loading state for all configs
+  const [isLoadingAllConfigs, setIsLoadingAllConfigs] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState<{ current: number; total: number; configType: string } | null>(null);
 
   // Node management state (favorites/ignored)
   const [nodeManagementNodeNum, setNodeManagementNodeNum] = useState<number | null>(null);
   const [showNodeManagementSearch, setShowNodeManagementSearch] = useState(false);
   const [nodeManagementSearchQuery, setNodeManagementSearchQuery] = useState('');
   const [isLoadingChannels, setIsLoadingChannels] = useState(false);
-  const [channelLoadProgress, setChannelLoadProgress] = useState<string>('');
   // Track remote node favorite/ignored status separately (key: nodeNum, value: {isFavorite, isIgnored})
   const [remoteNodeStatus, setRemoteNodeStatus] = useState<Map<number, { isFavorite: boolean; isIgnored: boolean }>>(new Map());
+
+  // Collapsible sections state - persist to localStorage
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>(() => {
+    const stored = localStorage.getItem('adminCommandsExpandedSections');
+    if (stored) {
+      try {
+        return JSON.parse(stored);
+      } catch {
+        return {};
+      }
+    }
+    // Default: expand main sections, collapse sub-sections
+    return {
+      'radio-config': false,
+      'device-config': false,
+      'module-config': false,
+      // Sub-sections
+      'admin-set-owner': false,
+      'admin-device-config': false,
+      'admin-position-config': false,
+      'admin-bluetooth-config': false,
+      'admin-security-config': false,
+      'admin-mqtt-config': false,
+      'admin-neighborinfo-config': false,
+      'admin-channel-config': false,
+      'admin-import-export': false,
+      'admin-node-management': false,
+      'admin-reboot-purge': false,
+    };
+  });
+
+  // Persist expanded sections to localStorage
+  useEffect(() => {
+    localStorage.setItem('adminCommandsExpandedSections', JSON.stringify(expandedSections));
+  }, [expandedSections]);
+
+  const toggleSection = (sectionId: string) => {
+    setExpandedSections(prev => ({ ...prev, [sectionId]: !prev[sectionId] }));
+  };
+
+  // Collapsible section component
+  const CollapsibleSection: React.FC<{
+    id: string;
+    title: string;
+    children: React.ReactNode;
+    defaultExpanded?: boolean;
+    headerActions?: React.ReactNode;
+    className?: string;
+    nested?: boolean;
+  }> = ({ id, title, children, defaultExpanded, headerActions, className = '', nested = false }) => {
+    const isExpanded = expandedSections[id] ?? defaultExpanded ?? false;
+
+    return (
+      <div id={id} className={`settings-section ${className}`} style={{
+        marginLeft: nested ? '1.5rem' : '0',
+        marginTop: nested ? '0.5rem' : '0'
+      }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '0.75rem 1rem',
+            background: 'var(--ctp-surface0)',
+            border: '1px solid var(--ctp-surface2)',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            marginBottom: isExpanded ? '1rem' : '0.5rem',
+            transition: 'all 0.2s ease',
+          }}
+          onClick={() => toggleSection(id)}
+          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--ctp-surface1)'}
+          onMouseLeave={(e) => e.currentTarget.style.background = 'var(--ctp-surface0)'}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1 }}>
+            <span style={{ 
+              fontSize: '0.875rem',
+              transition: 'transform 0.2s ease',
+              transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+              display: 'inline-block'
+            }}>
+              ▶
+            </span>
+            <h3 style={{ margin: 0, borderBottom: 'none', paddingBottom: 0, flex: 1 }}>{title}</h3>
+          </div>
+          {headerActions && (
+            <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', gap: '0.5rem' }}>
+              {headerActions}
+            </div>
+          )}
+        </div>
+        {isExpanded && (
+          <div style={{
+            padding: '0 0.5rem',
+            overflow: 'hidden'
+          }}>
+            {children}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   useEffect(() => {
     // Build node options list
@@ -255,47 +380,63 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     setRemoteNodeChannels([]);
   };
 
-  const handleLoadDeviceConfig = async () => {
+  const handleLoadAllConfigs = async () => {
     if (selectedNodeNum === null) {
       showToast(t('admin_commands.please_select_node'), 'error');
       return;
     }
 
-    setIsLoadingDeviceConfig(true);
+    setIsLoadingAllConfigs(true);
+    setLoadingProgress(null);
+    const errors: string[] = [];
+    const loaded: string[] = [];
+    const totalConfigs = 9; // device, lora, position, mqtt, security, bluetooth, neighborinfo, owner, channels
+
     try {
-      const result = await apiService.post<{ config: any }>('/api/admin/load-config', {
-        nodeNum: selectedNodeNum,
-        configType: 'device'
-      });
-      
-      if (result?.config) {
+      // Load all config types sequentially to avoid conflicts and timeouts
+      const loadConfig = async (configType: string, step: number, loadFn: (result: any) => void) => {
+        setLoadingProgress({ current: step, total: totalConfigs, configType });
+        try {
+          const result = await apiService.post<{ config: any }>('/api/admin/load-config', { 
+            nodeNum: selectedNodeNum, 
+            configType 
+          });
+          if (result?.config) {
+            loadFn(result);
+            loaded.push(configType);
+          }
+        } catch (_err) {
+          errors.push(configType);
+        }
+      };
+
+      const loadOwner = async (step: number) => {
+        setLoadingProgress({ current: step, total: totalConfigs, configType: 'owner' });
+        try {
+          const result = await apiService.post<{ owner: any }>('/api/admin/load-owner', { 
+            nodeNum: selectedNodeNum 
+          });
+          if (result?.owner) {
+            const owner = result.owner;
+            if (owner.longName !== undefined) setOwnerLongName(owner.longName);
+            if (owner.shortName !== undefined) setOwnerShortName(owner.shortName);
+            if (owner.isUnmessagable !== undefined) setOwnerIsUnmessagable(owner.isUnmessagable);
+            loaded.push('owner');
+          }
+        } catch (_err) {
+          errors.push('owner');
+        }
+      };
+
+      // Load configs sequentially with small delays between requests
+      await loadConfig('device', 1, (result) => {
         const config = result.config;
         if (config.role !== undefined) setDeviceRole(config.role);
         if (config.nodeInfoBroadcastSecs !== undefined) setNodeInfoBroadcastSecs(config.nodeInfoBroadcastSecs);
-        showToast(t('admin_commands.device_config_loaded'), 'success');
-      }
-    } catch (error: any) {
-      showToast(error.message || t('admin_commands.failed_load_device_config'), 'error');
-    } finally {
-      setIsLoadingDeviceConfig(false);
-    }
-  };
-
-  const handleLoadLoRaConfig = async () => {
-    if (selectedNodeNum === null) {
-      const error = new Error(t('admin_commands.please_select_node'));
-      showToast(error.message, 'error');
-      throw error;
-    }
-
-    setIsLoadingLoRaConfig(true);
-    try {
-      const result = await apiService.post<{ config: any }>('/api/admin/load-config', {
-        nodeNum: selectedNodeNum,
-        configType: 'lora'
       });
-      
-      if (result?.config) {
+      await new Promise(resolve => setTimeout(resolve, 200)); // Small delay between requests
+
+      await loadConfig('lora', 2, (result) => {
         const config = result.config;
         if (config.usePreset !== undefined) setUsePreset(config.usePreset);
         if (config.modemPreset !== undefined) setModemPreset(config.modemPreset);
@@ -311,32 +452,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         if (config.sx126xRxBoostedGain !== undefined) setSx126xRxBoostedGain(config.sx126xRxBoostedGain);
         if (config.ignoreMqtt !== undefined) setIgnoreMqtt(config.ignoreMqtt);
         if (config.configOkToMqtt !== undefined) setConfigOkToMqtt(config.configOkToMqtt);
-        showToast(t('admin_commands.lora_config_loaded'), 'success');
-      } else {
-        throw new Error(t('admin_commands.no_config_data'));
-      }
-    } catch (error: any) {
-      showToast(error.message || t('admin_commands.failed_load_lora_config'), 'error');
-      throw error; // Re-throw so Promise.all() can catch it
-    } finally {
-      setIsLoadingLoRaConfig(false);
-    }
-  };
-
-  const handleLoadPositionConfig = async () => {
-    if (selectedNodeNum === null) {
-      showToast(t('admin_commands.please_select_node'), 'error');
-      return;
-    }
-
-    setIsLoadingPositionConfig(true);
-    try {
-      const result = await apiService.post<{ config: any }>('/api/admin/load-config', {
-        nodeNum: selectedNodeNum,
-        configType: 'position'
       });
-      
-      if (result?.config) {
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      await loadConfig('position', 3, (result) => {
         const config = result.config;
         if (config.positionBroadcastSecs !== undefined) setPositionBroadcastSecs(config.positionBroadcastSecs);
         if (config.positionBroadcastSmartEnabled !== undefined) {
@@ -348,45 +467,328 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         if (config.fixedLatitude !== undefined) setFixedLatitude(config.fixedLatitude);
         if (config.fixedLongitude !== undefined) setFixedLongitude(config.fixedLongitude);
         if (config.fixedAltitude !== undefined) setFixedAltitude(config.fixedAltitude);
-        showToast(t('admin_commands.position_config_loaded'), 'success');
-      }
-    } catch (error: any) {
-      showToast(error.message || t('admin_commands.failed_load_position_config'), 'error');
-    } finally {
-      setIsLoadingPositionConfig(false);
-    }
-  };
-
-  const handleLoadMQTTConfig = async () => {
-    if (selectedNodeNum === null) {
-      showToast(t('admin_commands.please_select_node'), 'error');
-      return;
-    }
-
-    setIsLoadingMQTTConfig(true);
-    try {
-      const result = await apiService.post<{ config: any }>('/api/admin/load-config', {
-        nodeNum: selectedNodeNum,
-        configType: 'mqtt'
+        if (config.gpsUpdateInterval !== undefined) setGpsUpdateInterval(config.gpsUpdateInterval);
+        if (config.positionFlags !== undefined) {
+          setPositionFlagAltitude((config.positionFlags & 0x0001) !== 0);
+          setPositionFlagAltitudeMsl((config.positionFlags & 0x0002) !== 0);
+          setPositionFlagGeoidalSeparation((config.positionFlags & 0x0004) !== 0);
+          setPositionFlagDop((config.positionFlags & 0x0008) !== 0);
+          setPositionFlagHvdop((config.positionFlags & 0x0010) !== 0);
+          setPositionFlagSatinview((config.positionFlags & 0x0020) !== 0);
+          setPositionFlagSeqNo((config.positionFlags & 0x0040) !== 0);
+          setPositionFlagTimestamp((config.positionFlags & 0x0080) !== 0);
+          setPositionFlagHeading((config.positionFlags & 0x0100) !== 0);
+          setPositionFlagSpeed((config.positionFlags & 0x0200) !== 0);
+        }
+        if (config.rxGpio !== undefined) setRxGpio(config.rxGpio);
+        if (config.txGpio !== undefined) setTxGpio(config.txGpio);
+        if (config.broadcastSmartMinimumDistance !== undefined) setBroadcastSmartMinimumDistance(config.broadcastSmartMinimumDistance);
+        if (config.broadcastSmartMinimumIntervalSecs !== undefined) setBroadcastSmartMinimumIntervalSecs(config.broadcastSmartMinimumIntervalSecs);
+        if (config.gpsEnGpio !== undefined) setGpsEnGpio(config.gpsEnGpio);
+        if (config.gpsMode !== undefined) setGpsMode(config.gpsMode);
       });
-      
-      if (result?.config) {
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      await loadConfig('mqtt', 4, (result) => {
         const config = result.config;
         if (config.enabled !== undefined) setMqttEnabled(config.enabled);
-        if (config.address !== undefined) setMqttAddress(config.address || '');
-        if (config.username !== undefined) setMqttUsername(config.username || '');
-        if (config.password !== undefined) setMqttPassword(config.password || '');
+        if (config.address !== undefined) setMqttAddress(config.address);
+        if (config.username !== undefined) setMqttUsername(config.username);
+        if (config.password !== undefined) setMqttPassword(config.password);
         if (config.encryptionEnabled !== undefined) setMqttEncryptionEnabled(config.encryptionEnabled);
         if (config.jsonEnabled !== undefined) setMqttJsonEnabled(config.jsonEnabled);
-        if (config.root !== undefined) setMqttRoot(config.root || '');
-        showToast(t('admin_commands.mqtt_config_loaded'), 'success');
+        if (config.root !== undefined) setMqttRoot(config.root);
+      });
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      await loadConfig('security', 5, (result) => {
+        const config = result.config;
+        if (config.adminKeys !== undefined) {
+          if (config.adminKeys.length === 0) {
+            setAdminKeys(['']);
+          } else if (config.adminKeys.length < 3) {
+            setAdminKeys([...config.adminKeys, '']);
+          } else {
+            setAdminKeys(config.adminKeys.slice(0, 3));
+          }
+        }
+        if (config.isManaged !== undefined) setIsManaged(config.isManaged);
+        if (config.serialEnabled !== undefined) setSerialEnabled(config.serialEnabled);
+        if (config.debugLogApiEnabled !== undefined) setDebugLogApiEnabled(config.debugLogApiEnabled);
+        if (config.adminChannelEnabled !== undefined) setAdminChannelEnabled(config.adminChannelEnabled);
+      });
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      await loadConfig('bluetooth', 6, (result) => {
+        const config = result.config;
+        if (config.enabled !== undefined) setBluetoothEnabled(config.enabled);
+        if (config.mode !== undefined) setBluetoothMode(config.mode);
+        if (config.fixedPin !== undefined) setBluetoothFixedPin(config.fixedPin);
+      });
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      await loadConfig('neighborinfo', 7, (result) => {
+        const config = result.config;
+        if (config.enabled !== undefined) setNeighborInfoEnabled(config.enabled);
+        if (config.updateInterval !== undefined) setNeighborInfoUpdateInterval(config.updateInterval);
+        if (config.transmitOverLora !== undefined) setNeighborInfoTransmitOverLora(config.transmitOverLora);
+      });
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      // Load owner info
+      await loadOwner(8);
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      // Load channels (extracted logic to avoid duplicate loading state and toasts)
+      setLoadingProgress({ current: 9, total: totalConfigs, configType: 'channels' });
+      try {
+        const localNodeNum = nodes.find(n => (n.user?.id || n.nodeId) === currentNodeId)?.nodeNum;
+        const isLocalNode = selectedNodeNum === localNodeNum || selectedNodeNum === 0;
+        
+        if (isLocalNode) {
+          // For local node, load channels from database
+          const loadedChannels: Channel[] = [];
+          const now = Date.now();
+          
+          for (let index = 0; index < 8; index++) {
+            try {
+              const channel = await apiService.post<{ channel?: any }>('/api/admin/get-channel', {
+                nodeNum: selectedNodeNum,
+                channelIndex: index
+              });
+              
+              if (channel?.channel) {
+                const ch = channel.channel;
+                loadedChannels.push({
+                  id: index,
+                  name: ch.name || '',
+                  psk: ch.psk || '',
+                  role: ch.role !== undefined ? ch.role : (index === 0 ? 1 : 0),
+                  uplinkEnabled: ch.uplinkEnabled !== undefined ? ch.uplinkEnabled : false,
+                  downlinkEnabled: ch.downlinkEnabled !== undefined ? ch.downlinkEnabled : false,
+                  positionPrecision: ch.positionPrecision !== undefined ? ch.positionPrecision : 32,
+                  createdAt: now,
+                  updatedAt: now
+                });
+              } else {
+                loadedChannels.push({
+                  id: index,
+                  name: '',
+                  psk: '',
+                  role: index === 0 ? 1 : 0,
+                  uplinkEnabled: false,
+                  downlinkEnabled: false,
+                  positionPrecision: 32,
+                  createdAt: now,
+                  updatedAt: now
+                });
+              }
+            } catch (_error) {
+              loadedChannels.push({
+                id: index,
+                name: '',
+                psk: '',
+                role: index === 0 ? 1 : 0,
+                uplinkEnabled: false,
+                downlinkEnabled: false,
+                positionPrecision: 32,
+                createdAt: now,
+                updatedAt: now
+              });
+            }
+          }
+          
+          setRemoteNodeChannels(loadedChannels);
+          loaded.push('channels');
+        } else {
+          // For remote node, request all 8 channels in parallel
+          const loadedChannels: Channel[] = [];
+          const now = Date.now();
+          
+          // First, ensure we have a session passkey
+          try {
+            await apiService.post('/api/admin/ensure-session-passkey', {
+              nodeNum: selectedNodeNum
+            });
+          } catch (error: any) {
+            throw new Error(t('admin_commands.failed_session_passkey', { error: error.message }));
+          }
+          
+          // Send all requests in parallel
+          const channelRequests = Array.from({ length: 8 }, (_, index) => 
+            apiService.post<{ channel?: any }>('/api/admin/get-channel', {
+              nodeNum: selectedNodeNum,
+              channelIndex: index
+            }).then(result => ({ index, result, error: null }))
+              .catch(error => ({ index, result: null, error }))
+          );
+          
+          let results = await Promise.allSettled(channelRequests);
+          const failedChannels: number[] = [];
+          const maxRetries = 2;
+          let retryCount = 0;
+          
+          const processResults = (results: PromiseSettledResult<any>[], useResultIndex: boolean = false): void => {
+            results.forEach((settled, arrayIndex) => {
+              let index: number;
+              if (useResultIndex && settled.status === 'fulfilled') {
+                index = settled.value.index;
+              } else {
+                index = arrayIndex;
+              }
+              
+              if (settled.status === 'fulfilled') {
+                const { result, error } = settled.value;
+                
+                if (error) {
+                  const isRetryableError = error.message?.includes('404') || 
+                                         error.message?.includes('not received') ||
+                                         error.message?.includes('timeout');
+                  if (isRetryableError && retryCount < maxRetries) {
+                    failedChannels.push(index);
+                  }
+                  const existingIndex = loadedChannels.findIndex(ch => ch.id === index);
+                  if (existingIndex === -1) {
+                    loadedChannels.push({
+                      id: index,
+                      name: '',
+                      psk: '',
+                      role: index === 0 ? 1 : 0,
+                      uplinkEnabled: false,
+                      downlinkEnabled: false,
+                      positionPrecision: 32,
+                      createdAt: now,
+                      updatedAt: now
+                    });
+                  }
+                } else if (result?.channel) {
+                  const ch = result.channel;
+                  let role = ch.role;
+                  if (typeof role === 'string') {
+                    const roleMap: { [key: string]: number } = {
+                      'DISABLED': 0,
+                      'PRIMARY': 1,
+                      'SECONDARY': 2
+                    };
+                    role = roleMap[role] !== undefined ? roleMap[role] : (index === 0 ? 1 : 0);
+                  } else if (role === undefined || role === null) {
+                    role = index === 0 ? 1 : 0;
+                  }
+                  
+                  const hasData = (ch.name && ch.name.trim().length > 0) || (ch.psk && ch.psk.length > 0);
+                  if (role === 0 && hasData) {
+                    role = index === 0 ? 1 : 2;
+                  }
+                  
+                  const existingIndex = loadedChannels.findIndex(ch => ch.id === index);
+                  const channelData = {
+                    id: index,
+                    name: ch.name || '',
+                    psk: ch.psk || '',
+                    role: role,
+                    uplinkEnabled: ch.uplinkEnabled !== undefined ? ch.uplinkEnabled : false,
+                    downlinkEnabled: ch.downlinkEnabled !== undefined ? ch.downlinkEnabled : false,
+                    positionPrecision: ch.positionPrecision !== undefined ? ch.positionPrecision : 32,
+                    createdAt: now,
+                    updatedAt: now
+                  };
+                  
+                  if (existingIndex !== -1) {
+                    loadedChannels[existingIndex] = channelData;
+                  } else {
+                    loadedChannels.push(channelData);
+                  }
+                } else {
+                  if (retryCount < maxRetries) {
+                    failedChannels.push(index);
+                  }
+                  const existingIndex = loadedChannels.findIndex(ch => ch.id === index);
+                  if (existingIndex === -1) {
+                    loadedChannels.push({
+                      id: index,
+                      name: '',
+                      psk: '',
+                      role: index === 0 ? 1 : 0,
+                      uplinkEnabled: false,
+                      downlinkEnabled: false,
+                      positionPrecision: 32,
+                      createdAt: now,
+                      updatedAt: now
+                    });
+                  }
+                }
+              } else {
+                if (!useResultIndex) {
+                  if (retryCount < maxRetries) {
+                    failedChannels.push(index);
+                  }
+                  const existingIndex = loadedChannels.findIndex(ch => ch.id === index);
+                  if (existingIndex === -1) {
+                    loadedChannels.push({
+                      id: index,
+                      name: '',
+                      psk: '',
+                      role: index === 0 ? 1 : 0,
+                      uplinkEnabled: false,
+                      downlinkEnabled: false,
+                      positionPrecision: 32,
+                      createdAt: now,
+                      updatedAt: now
+                    });
+                  }
+                }
+              }
+            });
+          };
+          
+          processResults(results, false);
+          
+          // Retry failed channels
+          while (failedChannels.length > 0 && retryCount < maxRetries) {
+            retryCount++;
+            const channelsToRetry = [...new Set(failedChannels)];
+            failedChannels.length = 0;
+            
+            if (channelsToRetry.length > 0) {
+              await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+              
+              const retryRequests = channelsToRetry.map(index => 
+                apiService.post<{ channel?: any }>('/api/admin/get-channel', {
+                  nodeNum: selectedNodeNum,
+                  channelIndex: index
+                }).then(result => ({ index, result, error: null }))
+                  .catch(error => ({ index, result: null, error }))
+              );
+              
+              const retryResults = await Promise.allSettled(retryRequests);
+              processResults(retryResults, true);
+            }
+          }
+          
+          setRemoteNodeChannels(loadedChannels);
+          loaded.push('channels');
+        }
+      } catch (_err) {
+        errors.push('channels');
+      }
+
+      // Show summary toast
+      if (loaded.length > 0 && errors.length === 0) {
+        showToast(t('admin_commands.all_configs_loaded', { count: loaded.length }), 'success');
+      } else if (loaded.length > 0 && errors.length > 0) {
+        showToast(t('admin_commands.configs_partially_loaded', { loaded: loaded.length, errors: errors.length }), 'warning');
+      } else {
+        showToast(t('admin_commands.failed_load_all_configs'), 'error');
       }
     } catch (error: any) {
-      showToast(error.message || t('admin_commands.failed_load_mqtt_config'), 'error');
+      showToast(error.message || t('admin_commands.failed_load_all_configs'), 'error');
     } finally {
-      setIsLoadingMQTTConfig(false);
+      setIsLoadingAllConfigs(false);
+      setLoadingProgress(null);
     }
   };
+
+  // Legacy handlers - redirect to handleLoadAllConfigs
 
   const handleLoadChannels = async () => {
     if (selectedNodeNum === null) {
@@ -471,8 +873,6 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         const loadedChannels: Channel[] = [];
         const now = Date.now();
         
-        setChannelLoadProgress('Requesting session passkey...');
-        
         // First, ensure we have a session passkey (prevents conflicts from parallel requests)
         try {
           await apiService.post('/api/admin/ensure-session-passkey', {
@@ -484,8 +884,6 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           setIsLoadingChannels(false);
           throw err; // Re-throw so Promise.all() can catch it
         }
-        
-        setChannelLoadProgress('Requesting all channels...');
         
         // Send all requests in parallel (now they can all use the same session passkey)
         const channelRequests = Array.from({ length: 8 }, (_, index) => 
@@ -671,7 +1069,6 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           failedChannels.length = 0; // Clear for this retry round
           
           if (channelsToRetry.length > 0) {
-            setChannelLoadProgress(`Retrying ${channelsToRetry.length} failed channel(s) (attempt ${retryCount}/${maxRetries})...`);
             
             // Wait a bit before retrying (exponential backoff)
             await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
@@ -699,11 +1096,9 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           const isPrimary = ch.role === 1;
           return hasName || hasPsk || isPrimary;
         }).length;
-        setChannelLoadProgress('');
         showToast(t('admin_commands.channels_loaded_remote', { count: loadedCount }), 'success');
       }
     } catch (error: any) {
-      setChannelLoadProgress('');
       showToast(error.message || t('admin_commands.failed_load_channels'), 'error');
       throw error; // Re-throw so Promise.all() can catch it
     } finally {
@@ -752,32 +1147,6 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     }
   };
 
-  const handleLoadOwner = async () => {
-    if (selectedNodeNum === null) {
-      showToast(t('admin_commands.please_select_node'), 'error');
-      return;
-    }
-
-    setIsLoadingOwner(true);
-    try {
-      const result = await apiService.post<{ owner?: any }>('/api/admin/load-owner', {
-        nodeNum: selectedNodeNum
-      });
-      
-      if (result?.owner) {
-        setOwnerLongName(result.owner.longName || '');
-        setOwnerShortName(result.owner.shortName || '');
-        setOwnerIsUnmessagable(result.owner.isUnmessagable || false);
-        showToast(t('admin_commands.owner_info_loaded'), 'success');
-      } else {
-        showToast(t('admin_commands.no_owner_info'), 'warning');
-      }
-    } catch (error: any) {
-      showToast(error.message || t('admin_commands.failed_load_owner_info'), 'error');
-    } finally {
-      setIsLoadingOwner(false);
-    }
-  };
 
   const handleSetOwner = async () => {
     if (!ownerLongName.trim() || !ownerShortName.trim()) {
@@ -972,10 +1341,28 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   };
 
   const handleSetPositionConfig = async () => {
+    // Calculate position flags from checkboxes
+    let flags = 0;
+    if (positionFlagAltitude) flags |= 0x0001;
+    if (positionFlagAltitudeMsl) flags |= 0x0002;
+    if (positionFlagGeoidalSeparation) flags |= 0x0004;
+    if (positionFlagDop) flags |= 0x0008;
+    if (positionFlagHvdop) flags |= 0x0010;
+    if (positionFlagSatinview) flags |= 0x0020;
+    if (positionFlagSeqNo) flags |= 0x0040;
+    if (positionFlagTimestamp) flags |= 0x0080;
+    if (positionFlagHeading) flags |= 0x0100;
+    if (positionFlagSpeed) flags |= 0x0200;
+
     const config: any = {
       positionBroadcastSecs: Math.max(32, positionBroadcastSecs),
-      positionSmartEnabled,
-      fixedPosition
+      positionBroadcastSmartEnabled: positionSmartEnabled,
+      fixedPosition,
+      gpsUpdateInterval,
+      positionFlags: flags,
+      broadcastSmartMinimumDistance,
+      broadcastSmartMinimumIntervalSecs,
+      gpsMode
     };
 
     if (fixedPosition) {
@@ -983,6 +1370,11 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       config.fixedLongitude = fixedLongitude;
       config.fixedAltitude = fixedAltitude;
     }
+
+    // Only include GPIO pins if they're set (not undefined)
+    if (rxGpio !== undefined) config.rxGpio = rxGpio;
+    if (txGpio !== undefined) config.txGpio = txGpio;
+    if (gpsEnGpio !== undefined) config.gpsEnGpio = gpsEnGpio;
 
     try {
       await executeCommand('setPositionConfig', { config });
@@ -1011,43 +1403,6 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     }
   };
 
-  const handleLoadSecurityConfig = async () => {
-    if (selectedNodeNum === null) {
-      showToast(t('admin_commands.please_select_node'), 'error');
-      return;
-    }
-
-    setIsLoadingSecurityConfig(true);
-    try {
-      const result = await apiService.post<{ config: any }>('/api/admin/load-config', {
-        nodeNum: selectedNodeNum,
-        configType: 'security'
-      });
-      
-      if (result?.config) {
-        const config = result.config;
-        if (config.adminKeys !== undefined) {
-          // Set admin keys, but only add empty field if we have fewer than 3 keys (max 3)
-          if (config.adminKeys.length === 0) {
-            setAdminKeys(['']);
-          } else if (config.adminKeys.length < 3) {
-            setAdminKeys([...config.adminKeys, '']);
-          } else {
-            setAdminKeys(config.adminKeys.slice(0, 3)); // Ensure max 3 keys
-          }
-        }
-        if (config.isManaged !== undefined) setIsManaged(config.isManaged);
-        if (config.serialEnabled !== undefined) setSerialEnabled(config.serialEnabled);
-        if (config.debugLogApiEnabled !== undefined) setDebugLogApiEnabled(config.debugLogApiEnabled);
-        if (config.adminChannelEnabled !== undefined) setAdminChannelEnabled(config.adminChannelEnabled);
-        showToast(t('admin_commands.security_config_loaded'), 'success');
-      }
-    } catch (error: any) {
-      showToast(error.message || t('admin_commands.failed_load_security_config'), 'error');
-    } finally {
-      setIsLoadingSecurityConfig(false);
-    }
-  };
 
   const handleSetSecurityConfig = async () => {
     // Filter out empty admin keys
@@ -1066,6 +1421,36 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     } catch (error) {
       // Error already handled by executeCommand (toast shown)
       console.error('Set security config command failed:', error);
+    }
+  };
+
+  const handleSetBluetoothConfig = async () => {
+    const config: any = {
+      enabled: bluetoothEnabled,
+      mode: bluetoothMode,
+      fixedPin: bluetoothMode === 1 ? bluetoothFixedPin : undefined
+    };
+
+    try {
+      await executeCommand('setBluetoothConfig', { config });
+    } catch (error) {
+      // Error already handled by executeCommand (toast shown)
+      console.error('Set Bluetooth config command failed:', error);
+    }
+  };
+
+  const handleSetNeighborInfoConfig = async () => {
+    const config: any = {
+      enabled: neighborInfoEnabled,
+      updateInterval: neighborInfoUpdateInterval,
+      transmitOverLora: neighborInfoTransmitOverLora
+    };
+
+    try {
+      await executeCommand('setNeighborInfoConfig', { config });
+    } catch (error) {
+      // Error already handled by executeCommand (toast shown)
+      console.error('Set NeighborInfo config command failed:', error);
     }
   };
 
@@ -1466,13 +1851,9 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     <div className="tab-content">
       <SectionNav items={[
         { id: 'admin-target-node', label: t('admin_commands.target_node', 'Target Node') },
-        { id: 'admin-set-owner', label: t('admin_commands.set_owner', 'Set Owner') },
-        { id: 'admin-device-config', label: t('admin_commands.device_configuration', 'Device Config') },
-        { id: 'admin-lora-config', label: t('admin_commands.lora_configuration', 'LoRa Config') },
-        { id: 'admin-position-config', label: t('admin_commands.position_configuration', 'Position') },
-        { id: 'admin-mqtt-config', label: t('admin_commands.mqtt_configuration', 'MQTT') },
-        { id: 'admin-security-config', label: t('admin_commands.security_configuration', 'Security') },
-        { id: 'admin-channel-config', label: t('admin_commands.channel_configuration', 'Channels') },
+        { id: 'radio-config', label: t('admin_commands.radio_configuration', 'Radio Configuration') },
+        { id: 'device-config', label: t('admin_commands.device_configuration', 'Device Configuration') },
+        { id: 'module-config', label: t('admin_commands.module_configuration', 'Module Configuration') },
         { id: 'admin-import-export', label: t('admin_commands.config_import_export', 'Import/Export') },
         { id: 'admin-node-management', label: t('admin_commands.node_favorites_ignored', 'Node Management') },
       ]} />
@@ -1559,239 +1940,48 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             </div>
           )}
         </div>
-      </div>
-
-      <div className="settings-content">
-      {/* Set Owner Command Section */}
-      <div id="admin-set-owner" className="settings-section">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', paddingBottom: '0.75rem', borderBottom: '2px solid var(--ctp-surface2)' }}>
-          <h3 style={{ margin: 0, borderBottom: 'none', paddingBottom: 0 }}>{t('admin_commands.set_owner')}</h3>
-          <button
-            onClick={handleLoadOwner}
-            disabled={isLoadingOwner || selectedNodeNum === null}
-            className="save-button"
-            style={{
-              opacity: (isLoadingOwner || selectedNodeNum === null) ? 0.5 : 1,
-              cursor: (isLoadingOwner || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
-            }}
-          >
-            {isLoadingOwner ? t('common.loading') : t('common.load')}
-          </button>
-        </div>
-        <div className="setting-item">
-          <label>
-            {t('admin_commands.long_name')}
-            <span className="setting-description">
-              {t('admin_commands.long_name_description')}
-            </span>
-          </label>
-          <input
-            type="text"
-            value={ownerLongName}
-            onChange={(e) => setOwnerLongName(e.target.value)}
-            disabled={isExecuting}
-            placeholder={t('admin_commands.long_name_placeholder')}
-            className="setting-input"
-          />
-        </div>
-        <div className="setting-item">
-          <label>
-            {t('admin_commands.short_name')}
-            <span className="setting-description">
-              {t('admin_commands.short_name_description')}
-            </span>
-          </label>
-          <input
-            type="text"
-            value={ownerShortName}
-            onChange={(e) => setOwnerShortName(e.target.value)}
-            disabled={isExecuting}
-            placeholder={t('admin_commands.short_name_placeholder')}
-            maxLength={4}
-            className="setting-input"
-          />
-        </div>
-        <div className="setting-item">
-          <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
-            <input
-              type="checkbox"
-              checked={ownerIsUnmessagable}
-              onChange={(e) => setOwnerIsUnmessagable(e.target.checked)}
-              disabled={isExecuting}
-              style={{ width: 'auto', margin: 0, flexShrink: 0 }}
-            />
-            <div style={{ flex: 1 }}>
-              <div>{t('admin_commands.mark_unmessagable')}</div>
-              <span className="setting-description">{t('admin_commands.mark_unmessagable_description')}</span>
-            </div>
-          </label>
-        </div>
-        <button
-          className="save-button"
-          onClick={handleSetOwner}
-          disabled={isExecuting || !ownerLongName.trim() || !ownerShortName.trim() || selectedNodeNum === null}
-          style={{
-            opacity: (isExecuting || !ownerLongName.trim() || !ownerShortName.trim() || selectedNodeNum === null) ? 0.5 : 1,
-            cursor: (isExecuting || !ownerLongName.trim() || !ownerShortName.trim() || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
-          }}
-        >
-          {isExecuting ? t('common.saving') : t('admin_commands.set_owner_button')}
-        </button>
-      </div>
-
-      {/* Device Config Section */}
-      <div id="admin-device-config" className="settings-section">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', paddingBottom: '0.75rem', borderBottom: '2px solid var(--ctp-surface2)' }}>
-          <h3 style={{ margin: 0, borderBottom: 'none', paddingBottom: 0 }}>{t('admin_commands.device_configuration')}</h3>
-          <button
-            onClick={handleLoadDeviceConfig}
-            disabled={isLoadingDeviceConfig || selectedNodeNum === null}
-            className="save-button"
-            style={{
-              opacity: (isLoadingDeviceConfig || selectedNodeNum === null) ? 0.5 : 1,
-              cursor: (isLoadingDeviceConfig || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
-            }}
-          >
-            {isLoadingDeviceConfig ? t('common.loading') : t('common.load')}
-          </button>
-        </div>
-        <div className="setting-item">
-          <label>
-            {t('admin_commands.device_role')}
-            <span className="setting-description">
-              {t('admin_commands.device_role_description')}
-            </span>
-          </label>
-          <div style={{ position: 'relative' }}>
-            <div
-              onClick={() => setIsRoleDropdownOpen(!isRoleDropdownOpen)}
-              className="setting-input config-custom-dropdown"
+        {selectedNode && (
+          <div style={{ marginTop: '1rem' }}>
+            <button
+              onClick={handleLoadAllConfigs}
+              disabled={isLoadingAllConfigs || selectedNodeNum === null}
+              className="save-button"
               style={{
-                cursor: 'pointer',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                padding: '0.75rem',
-                minHeight: '80px',
                 width: '100%',
-                maxWidth: '800px'
+                maxWidth: '600px',
+                opacity: (isLoadingAllConfigs || selectedNodeNum === null) ? 0.5 : 1,
+                cursor: (isLoadingAllConfigs || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
               }}
             >
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 'bold', fontSize: '1.1em', color: 'var(--ctp-text)', marginBottom: '0.5rem' }}>
-                  {ROLE_OPTIONS.find(opt => opt.value === deviceRole)?.name || 'CLIENT'}
-                </div>
-                <div style={{ fontSize: '0.9em', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem', lineHeight: '1.4' }}>
-                  {ROLE_OPTIONS.find(opt => opt.value === deviceRole)?.shortDesc || ''}
-                </div>
-                <div style={{ fontSize: '0.85em', color: 'var(--ctp-subtext1)', fontStyle: 'italic', lineHeight: '1.4' }}>
-                  {ROLE_OPTIONS.find(opt => opt.value === deviceRole)?.description || ''}
-                </div>
-              </div>
-              <span style={{ fontSize: '1.2em', marginLeft: '1rem', flexShrink: 0 }}>{isRoleDropdownOpen ? '▲' : '▼'}</span>
-            </div>
-            {isRoleDropdownOpen && (
-              <div
-                className="config-custom-dropdown-menu"
-                style={{
-                  position: 'absolute',
-                  top: '100%',
-                  left: 0,
-                  width: '100%',
-                  maxWidth: '800px',
-                  background: 'var(--ctp-base)',
-                  border: '2px solid var(--ctp-surface2)',
-                  borderRadius: '8px',
-                  maxHeight: '500px',
-                  overflowY: 'auto',
-                  zIndex: 1000,
-                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
-                }}
-              >
-                {ROLE_OPTIONS.map(option => (
-                  <div
-                    key={option.value}
-                    onClick={() => handleRoleChange(option.value)}
-                    style={{
-                      padding: '0.75rem 1rem',
-                      cursor: 'pointer',
-                      borderBottom: '1px solid var(--ctp-surface1)',
-                      background: option.value === deviceRole ? 'var(--ctp-surface0)' : 'transparent',
-                      transition: 'background 0.2s'
-                    }}
-                    onMouseEnter={(e) => {
-                      if (option.value !== deviceRole) {
-                        e.currentTarget.style.background = 'var(--ctp-surface0)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (option.value !== deviceRole) {
-                        e.currentTarget.style.background = 'transparent';
-                      }
-                    }}
-                  >
-                    <div style={{ fontWeight: 'bold', fontSize: '1em', color: 'var(--ctp-text)', marginBottom: '0.4rem' }}>
-                      {option.name}
-                    </div>
-                    <div style={{ fontSize: '0.9em', color: 'var(--ctp-subtext0)', marginBottom: '0.3rem', lineHeight: '1.4' }}>
-                      {option.shortDesc}
-                    </div>
-                    <div style={{ fontSize: '0.85em', color: 'var(--ctp-subtext1)', fontStyle: 'italic', lineHeight: '1.4' }}>
-                      {option.description}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+              {isLoadingAllConfigs && loadingProgress ? (
+                <span>
+                  {t('admin_commands.loading_config_progress', {
+                    current: loadingProgress.current,
+                    total: loadingProgress.total,
+                    configType: t(`admin_commands.${loadingProgress.configType}_config_short`, loadingProgress.configType)
+                  })}
+                </span>
+              ) : isLoadingAllConfigs ? (
+                t('common.loading')
+              ) : (
+                t('admin_commands.load_all_configs', 'Load All Config')
+              )}
+            </button>
           </div>
-        </div>
-        <div className="setting-item">
-          <label>
-            {t('admin_commands.node_info_broadcast')}
-            <span className="setting-description">
-              {t('admin_commands.node_info_broadcast_description')}
-            </span>
-          </label>
-          <input
-            type="number"
-            min="3600"
-            max="4294967295"
-            value={nodeInfoBroadcastSecs}
-            onChange={(e) => setNodeInfoBroadcastSecs(parseInt(e.target.value))}
-            disabled={isExecuting}
-            className="setting-input"
-            style={{ width: '200px' }}
-          />
-        </div>
-        <button
-          className="save-button"
-          onClick={handleSetDeviceConfig}
-          disabled={isExecuting || selectedNodeNum === null}
-          style={{
-            opacity: (isExecuting || selectedNodeNum === null) ? 0.5 : 1,
-            cursor: (isExecuting || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
-          }}
-        >
-          {isExecuting ? t('common.saving') : t('admin_commands.save_device_config')}
-        </button>
+        )}
       </div>
 
-      {/* LoRa Config Section */}
-      <div id="admin-lora-config" className="settings-section">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', paddingBottom: '0.75rem', borderBottom: '2px solid var(--ctp-surface2)' }}>
-          <h3 style={{ margin: 0, borderBottom: 'none', paddingBottom: 0 }}>{t('admin_commands.lora_configuration')}</h3>
-          <button
-            onClick={handleLoadLoRaConfig}
-            disabled={isLoadingLoRaConfig || selectedNodeNum === null}
-            className="save-button"
-            style={{
-              opacity: (isLoadingLoRaConfig || selectedNodeNum === null) ? 0.5 : 1,
-              cursor: (isLoadingLoRaConfig || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
-            }}
-          >
-            {isLoadingLoRaConfig ? t('common.loading') : t('common.load')}
-          </button>
-        </div>
+      {/* Radio Configuration Section */}
+      <CollapsibleSection
+        id="radio-config"
+        title={t('admin_commands.radio_configuration', 'Radio Configuration')}
+      >
+        {/* LoRa Config Section */}
+        <CollapsibleSection
+          id="admin-lora-config"
+          title={t('admin_commands.lora_configuration')}
+          nested={true}
+        >
         <div className="setting-item">
           <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
             <input
@@ -1992,289 +2182,17 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         >
           {isExecuting ? t('common.saving') : t('admin_commands.save_lora_config')}
         </button>
-      </div>
+      </CollapsibleSection>
 
-      {/* Position Config Section */}
-      <div id="admin-position-config" className="settings-section">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', paddingBottom: '0.75rem', borderBottom: '2px solid var(--ctp-surface2)' }}>
-          <h3 style={{ margin: 0, borderBottom: 'none', paddingBottom: 0 }}>{t('admin_commands.position_configuration')}</h3>
-          <button
-            onClick={handleLoadPositionConfig}
-            disabled={isLoadingPositionConfig || selectedNodeNum === null}
-            className="save-button"
-            style={{
-              opacity: (isLoadingPositionConfig || selectedNodeNum === null) ? 0.5 : 1,
-              cursor: (isLoadingPositionConfig || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
-            }}
-          >
-            {isLoadingPositionConfig ? t('common.loading') : t('common.load')}
-          </button>
-        </div>
-        <div className="setting-item">
-          <label>
-            {t('admin_commands.position_broadcast_interval')}
-            <span className="setting-description">{t('admin_commands.position_broadcast_interval_description')}</span>
-          </label>
-          <input
-            type="number"
-            min="32"
-            max="4294967295"
-            value={positionBroadcastSecs}
-            onChange={(e) => setPositionBroadcastSecs(parseInt(e.target.value))}
-            disabled={isExecuting}
-            className="setting-input"
-            style={{ width: '200px' }}
-          />
-        </div>
-        <div className="setting-item">
-          <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
-            <input
-              type="checkbox"
-              checked={positionSmartEnabled}
-              onChange={(e) => setPositionSmartEnabled(e.target.checked)}
-              disabled={isExecuting}
-              style={{ width: 'auto', margin: 0, flexShrink: 0 }}
-            />
-            <div style={{ flex: 1 }}>
-              <div>{t('admin_commands.smart_position_broadcast')}</div>
-              <span className="setting-description">{t('admin_commands.smart_position_broadcast_description')}</span>
-            </div>
-          </label>
-        </div>
-        <div className="setting-item">
-          <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
-            <input
-              type="checkbox"
-              checked={fixedPosition}
-              onChange={(e) => setFixedPosition(e.target.checked)}
-              disabled={isExecuting}
-              style={{ width: 'auto', margin: 0, flexShrink: 0 }}
-            />
-            <div style={{ flex: 1 }}>
-              <div>{t('admin_commands.fixed_position')}</div>
-              <span className="setting-description">{t('admin_commands.fixed_position_description')}</span>
-            </div>
-          </label>
-        </div>
-        {fixedPosition && (
-          <>
-            <div className="setting-item">
-              <label>
-                Latitude
-                <span className="setting-description">Fixed latitude coordinate (-90 to 90)</span>
-              </label>
-              <input
-                type="number"
-                step="0.000001"
-                min="-90"
-                max="90"
-                value={fixedLatitude}
-                onChange={(e) => setFixedLatitude(parseFloat(e.target.value))}
-                disabled={isExecuting}
-                className="setting-input"
-                style={{ width: '200px' }}
-              />
-            </div>
-            <div className="setting-item">
-              <label>
-                Longitude
-                <span className="setting-description">Fixed longitude coordinate (-180 to 180)</span>
-              </label>
-              <input
-                type="number"
-                step="0.000001"
-                min="-180"
-                max="180"
-                value={fixedLongitude}
-                onChange={(e) => setFixedLongitude(parseFloat(e.target.value))}
-                disabled={isExecuting}
-                className="setting-input"
-                style={{ width: '200px' }}
-              />
-            </div>
-            <div className="setting-item">
-              <label>
-                Altitude (meters)
-                <span className="setting-description">Fixed altitude above sea level</span>
-              </label>
-              <input
-                type="number"
-                step="1"
-                value={fixedAltitude}
-                onChange={(e) => setFixedAltitude(parseInt(e.target.value))}
-                disabled={isExecuting}
-                className="setting-input"
-                style={{ width: '200px' }}
-              />
-            </div>
-          </>
-        )}
-        <button
-          className="save-button"
-          onClick={handleSetPositionConfig}
-          disabled={isExecuting || selectedNodeNum === null}
-          style={{
-            opacity: (isExecuting || selectedNodeNum === null) ? 0.5 : 1,
-            cursor: (isExecuting || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
-          }}
+        {/* Security Config Section */}
+        <CollapsibleSection
+          id="admin-security-config"
+          title={t('admin_commands.security_configuration')}
+          nested={true}
         >
-          {isExecuting ? t('common.saving') : t('admin_commands.save_position_config')}
-        </button>
-      </div>
-
-      {/* MQTT Config Section */}
-      <div id="admin-mqtt-config" className="settings-section">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', paddingBottom: '0.75rem', borderBottom: '2px solid var(--ctp-surface2)' }}>
-          <h3 style={{ margin: 0, borderBottom: 'none', paddingBottom: 0 }}>{t('admin_commands.mqtt_configuration')}</h3>
-          <button
-            onClick={handleLoadMQTTConfig}
-            disabled={isLoadingMQTTConfig || selectedNodeNum === null}
-            className="save-button"
-            style={{
-              opacity: (isLoadingMQTTConfig || selectedNodeNum === null) ? 0.5 : 1,
-              cursor: (isLoadingMQTTConfig || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
-            }}
-          >
-            {isLoadingMQTTConfig ? t('common.loading') : t('common.load')}
-          </button>
-        </div>
-        <div className="setting-item">
-          <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
-            <input
-              type="checkbox"
-              checked={mqttEnabled}
-              onChange={(e) => setMqttEnabled(e.target.checked)}
-              disabled={isExecuting}
-              style={{ width: 'auto', margin: 0, flexShrink: 0 }}
-            />
-            <div style={{ flex: 1 }}>
-              <div>{t('admin_commands.enable_mqtt')}</div>
-              <span className="setting-description">{t('admin_commands.enable_mqtt_description')}</span>
-            </div>
-          </label>
-        </div>
-        {mqttEnabled && (
-          <>
-            <div className="setting-item">
-              <label>
-                {t('admin_commands.server_address')}
-                <span className="setting-description">{t('admin_commands.server_address_description')}</span>
-              </label>
-              <input
-                type="text"
-                value={mqttAddress}
-                onChange={(e) => setMqttAddress(e.target.value)}
-                disabled={isExecuting}
-                placeholder="mqtt.meshtastic.org"
-                className="setting-input"
-                style={{ width: '100%', maxWidth: '600px' }}
-              />
-            </div>
-            <div className="setting-item">
-              <label>
-                Username
-                <span className="setting-description">MQTT broker username</span>
-              </label>
-              <input
-                type="text"
-                value={mqttUsername}
-                onChange={(e) => setMqttUsername(e.target.value)}
-                disabled={isExecuting}
-                className="setting-input"
-                style={{ width: '100%', maxWidth: '600px' }}
-              />
-            </div>
-            <div className="setting-item">
-              <label>
-                Password
-                <span className="setting-description">MQTT broker password</span>
-              </label>
-              <input
-                type="password"
-                value={mqttPassword}
-                onChange={(e) => setMqttPassword(e.target.value)}
-                disabled={isExecuting}
-                className="setting-input"
-                style={{ width: '100%', maxWidth: '600px' }}
-              />
-            </div>
-            <div className="setting-item">
-              <label>
-                Root Topic
-                <span className="setting-description">MQTT root topic prefix (e.g., msh/US)</span>
-              </label>
-              <input
-                type="text"
-                value={mqttRoot}
-                onChange={(e) => setMqttRoot(e.target.value)}
-                disabled={isExecuting}
-                placeholder="msh/US"
-                className="setting-input"
-                style={{ width: '100%', maxWidth: '600px' }}
-              />
-            </div>
-            <div className="setting-item">
-              <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
-                <input
-                  type="checkbox"
-                  checked={mqttEncryptionEnabled}
-                  onChange={(e) => setMqttEncryptionEnabled(e.target.checked)}
-                  disabled={isExecuting}
-                  style={{ width: 'auto', margin: 0, flexShrink: 0 }}
-                />
-                <div style={{ flex: 1 }}>
-                  <div>Encryption Enabled</div>
-                  <span className="setting-description">Use TLS encryption for MQTT connection</span>
-                </div>
-              </label>
-            </div>
-            <div className="setting-item">
-              <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
-                <input
-                  type="checkbox"
-                  checked={mqttJsonEnabled}
-                  onChange={(e) => setMqttJsonEnabled(e.target.checked)}
-                  disabled={isExecuting}
-                  style={{ width: 'auto', margin: 0, flexShrink: 0 }}
-                />
-                <div style={{ flex: 1 }}>
-                  <div>{t('admin_commands.json_enabled')}</div>
-                  <span className="setting-description">{t('admin_commands.json_enabled_description')}</span>
-                </div>
-              </label>
-            </div>
-          </>
-        )}
-        <button
-          className="save-button"
-          onClick={handleSetMQTTConfig}
-          disabled={isExecuting || selectedNodeNum === null}
-          style={{
-            opacity: (isExecuting || selectedNodeNum === null) ? 0.5 : 1,
-            cursor: (isExecuting || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
-          }}
-        >
-          {isExecuting ? t('common.saving') : t('admin_commands.save_mqtt_config')}
-        </button>
-      </div>
-
-      {/* Security Config Section */}
-      <div id="admin-security-config" className="settings-section">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', paddingBottom: '0.75rem', borderBottom: '2px solid var(--ctp-surface2)' }}>
-          <h3 style={{ margin: 0, borderBottom: 'none', paddingBottom: 0 }}>{t('admin_commands.security_configuration')}</h3>
-          <button
-            onClick={handleLoadSecurityConfig}
-            disabled={isLoadingSecurityConfig || selectedNodeNum === null}
-            className="save-button"
-            style={{
-              opacity: (isLoadingSecurityConfig || selectedNodeNum === null) ? 0.5 : 1,
-              cursor: (isLoadingSecurityConfig || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
-            }}
-          >
-            {isLoadingSecurityConfig ? t('common.loading') : t('common.load')}
-          </button>
-        </div>
-        
+        <p className="setting-description" style={{ marginBottom: '1rem' }}>
+          {t('admin_commands.security_config_description')}
+        </p>
         <div className="setting-item">
           <label>
             {t('admin_commands.admin_keys')}
@@ -2282,40 +2200,37 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               {t('admin_commands.admin_keys_description')}
             </span>
           </label>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {adminKeys.map((key, index) => (
-              <div key={index} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                <input
-                  type="text"
-                  value={key}
-                  onChange={(e) => handleAdminKeyChange(index, e.target.value)}
+          {adminKeys.map((key, index) => (
+            <div key={index} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
+              <input
+                type="text"
+                value={key}
+                onChange={(e) => handleAdminKeyChange(index, e.target.value)}
+                disabled={isExecuting}
+                placeholder={t('admin_commands.admin_key_placeholder')}
+                className="setting-input"
+                style={{ flex: 1 }}
+              />
+              {adminKeys.length > 1 && (
+                <button
+                  onClick={() => handleRemoveAdminKey(index)}
                   disabled={isExecuting}
-                  placeholder={t('admin_commands.admin_key_placeholder') || 'base64:... or hex string'}
-                  className="setting-input"
-                  style={{ flex: 1, fontFamily: 'monospace', fontSize: '0.875rem' }}
-                />
-                {adminKeys.length > 1 && (
-                  <button
-                    onClick={() => handleRemoveAdminKey(index)}
-                    disabled={isExecuting}
-                    style={{
-                      padding: '0.5rem 1rem',
-                      background: 'var(--ctp-red)',
-                      color: 'var(--ctp-base)',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: isExecuting ? 'not-allowed' : 'pointer',
-                      opacity: isExecuting ? 0.5 : 1
-                    }}
-                  >
-                    {t('common.remove') || 'Remove'}
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
+                  style={{
+                    padding: '0.5rem 1rem',
+                    backgroundColor: 'var(--ctp-red)',
+                    color: 'var(--ctp-base)',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: isExecuting ? 'not-allowed' : 'pointer',
+                    fontSize: '0.875rem'
+                  }}
+                >
+                  {t('common.remove')}
+                </button>
+              )}
+            </div>
+          ))}
         </div>
-
         <div className="setting-item">
           <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
             <input
@@ -2331,7 +2246,6 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             </div>
           </label>
         </div>
-
         <div className="setting-item">
           <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
             <input
@@ -2347,7 +2261,6 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             </div>
           </label>
         </div>
-
         <div className="setting-item">
           <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
             <input
@@ -2363,7 +2276,6 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             </div>
           </label>
         </div>
-
         <div className="setting-item">
           <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
             <input
@@ -2379,7 +2291,6 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             </div>
           </label>
         </div>
-
         <button
           className="save-button"
           onClick={handleSetSecurityConfig}
@@ -2391,24 +2302,14 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         >
           {isExecuting ? t('common.saving') : t('admin_commands.save_security_config')}
         </button>
-      </div>
+      </CollapsibleSection>
 
-      {/* Channel Config Section */}
-      <div id="admin-channel-config" className="settings-section">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', paddingBottom: '0.75rem', borderBottom: '2px solid var(--ctp-surface2)' }}>
-          <h3 style={{ margin: 0, borderBottom: 'none', paddingBottom: 0 }}>{t('admin_commands.channel_configuration')}</h3>
-          <button
-            onClick={handleLoadChannels}
-            disabled={isLoadingChannels || selectedNodeNum === null}
-            className="save-button"
-            style={{
-              opacity: (isLoadingChannels || selectedNodeNum === null) ? 0.5 : 1,
-              cursor: (isLoadingChannels || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
-            }}
-          >
-            {isLoadingChannels ? (channelLoadProgress || t('admin_commands.loading_channels')) : t('common.load')}
-          </button>
-        </div>
+        {/* Channel Config Section */}
+        <CollapsibleSection
+          id="admin-channel-config"
+          title={t('admin_commands.channel_configuration')}
+          nested={true}
+        >
         <p className="setting-description" style={{ marginBottom: '1rem' }}>
           {t('admin_commands.channel_config_description')}
         </p>
@@ -2528,11 +2429,841 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             );
           })}
         </div>
-      </div>
+      </CollapsibleSection>
+      </CollapsibleSection>
+
+      {/* Device Configuration Section */}
+      <CollapsibleSection
+        id="device-config"
+        title={t('admin_commands.device_configuration', 'Device Configuration')}
+      >
+        {/* Set Owner Section */}
+        <CollapsibleSection
+          id="admin-set-owner"
+          title={t('admin_commands.set_owner')}
+          defaultExpanded={true}
+          nested={true}
+        >
+        <div className="setting-item">
+          <label>
+            {t('admin_commands.long_name')}
+            <span className="setting-description">
+              {t('admin_commands.long_name_description')}
+            </span>
+          </label>
+          <input
+            type="text"
+            value={ownerLongName}
+            onChange={(e) => setOwnerLongName(e.target.value)}
+            disabled={isExecuting}
+            placeholder={t('admin_commands.long_name_placeholder')}
+            className="setting-input"
+          />
+        </div>
+        <div className="setting-item">
+          <label>
+            {t('admin_commands.short_name')}
+            <span className="setting-description">
+              {t('admin_commands.short_name_description')}
+            </span>
+          </label>
+          <input
+            type="text"
+            value={ownerShortName}
+            onChange={(e) => setOwnerShortName(e.target.value)}
+            disabled={isExecuting}
+            placeholder={t('admin_commands.short_name_placeholder')}
+            maxLength={4}
+            className="setting-input"
+          />
+        </div>
+        <div className="setting-item">
+          <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+            <input
+              type="checkbox"
+              checked={ownerIsUnmessagable}
+              onChange={(e) => setOwnerIsUnmessagable(e.target.checked)}
+              disabled={isExecuting}
+              style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+            />
+            <div style={{ flex: 1 }}>
+              <div>{t('admin_commands.mark_unmessagable')}</div>
+              <span className="setting-description">{t('admin_commands.mark_unmessagable_description')}</span>
+            </div>
+          </label>
+        </div>
+        <button
+          className="save-button"
+          onClick={handleSetOwner}
+          disabled={isExecuting || !ownerLongName.trim() || !ownerShortName.trim() || selectedNodeNum === null}
+          style={{
+            opacity: (isExecuting || !ownerLongName.trim() || !ownerShortName.trim() || selectedNodeNum === null) ? 0.5 : 1,
+            cursor: (isExecuting || !ownerLongName.trim() || !ownerShortName.trim() || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
+          }}
+        >
+          {isExecuting ? t('common.saving') : t('admin_commands.set_owner_button')}
+        </button>
+      </CollapsibleSection>
+
+      {/* Device Config Section */}
+      <CollapsibleSection
+        id="admin-device-config"
+        title={t('admin_commands.device_configuration')}
+        nested={true}
+      >
+        <div className="setting-item">
+          <label>
+            {t('admin_commands.device_role')}
+            <span className="setting-description">
+              {t('admin_commands.device_role_description')}
+            </span>
+          </label>
+          <div style={{ position: 'relative' }}>
+            <div
+              onClick={() => setIsRoleDropdownOpen(!isRoleDropdownOpen)}
+              className="setting-input config-custom-dropdown"
+              style={{
+                cursor: 'pointer',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '0.75rem',
+                minHeight: '80px',
+                width: '100%',
+                maxWidth: '800px'
+              }}
+            >
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 'bold', fontSize: '1.1em', color: 'var(--ctp-text)', marginBottom: '0.5rem' }}>
+                  {ROLE_OPTIONS.find(opt => opt.value === deviceRole)?.name || 'CLIENT'}
+                </div>
+                <div style={{ fontSize: '0.9em', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem', lineHeight: '1.4' }}>
+                  {ROLE_OPTIONS.find(opt => opt.value === deviceRole)?.shortDesc || ''}
+                </div>
+                <div style={{ fontSize: '0.85em', color: 'var(--ctp-subtext1)', fontStyle: 'italic', lineHeight: '1.4' }}>
+                  {ROLE_OPTIONS.find(opt => opt.value === deviceRole)?.description || ''}
+                </div>
+              </div>
+              <span style={{ fontSize: '1.2em', marginLeft: '1rem', flexShrink: 0 }}>{isRoleDropdownOpen ? '▲' : '▼'}</span>
+            </div>
+            {isRoleDropdownOpen && (
+              <div
+                className="config-custom-dropdown-menu"
+                style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  width: '100%',
+                  maxWidth: '800px',
+                  background: 'var(--ctp-base)',
+                  border: '2px solid var(--ctp-surface2)',
+                  borderRadius: '8px',
+                  maxHeight: '500px',
+                  overflowY: 'auto',
+                  zIndex: 1000,
+                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
+                }}
+              >
+                {ROLE_OPTIONS.map(option => (
+                  <div
+                    key={option.value}
+                    onClick={() => handleRoleChange(option.value)}
+                    style={{
+                      padding: '0.75rem 1rem',
+                      cursor: 'pointer',
+                      borderBottom: '1px solid var(--ctp-surface1)',
+                      background: option.value === deviceRole ? 'var(--ctp-surface0)' : 'transparent',
+                      transition: 'background 0.2s'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (option.value !== deviceRole) {
+                        e.currentTarget.style.background = 'var(--ctp-surface0)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (option.value !== deviceRole) {
+                        e.currentTarget.style.background = 'transparent';
+                      }
+                    }}
+                  >
+                    <div style={{ fontWeight: 'bold', fontSize: '1em', color: 'var(--ctp-text)', marginBottom: '0.4rem' }}>
+                      {option.name}
+                    </div>
+                    <div style={{ fontSize: '0.9em', color: 'var(--ctp-subtext0)', marginBottom: '0.3rem', lineHeight: '1.4' }}>
+                      {option.shortDesc}
+                    </div>
+                    <div style={{ fontSize: '0.85em', color: 'var(--ctp-subtext1)', fontStyle: 'italic', lineHeight: '1.4' }}>
+                      {option.description}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="setting-item">
+          <label>
+            {t('admin_commands.node_info_broadcast')}
+            <span className="setting-description">
+              {t('admin_commands.node_info_broadcast_description')}
+            </span>
+          </label>
+          <input
+            type="number"
+            min="3600"
+            max="4294967295"
+            value={nodeInfoBroadcastSecs}
+            onChange={(e) => setNodeInfoBroadcastSecs(parseInt(e.target.value))}
+            disabled={isExecuting}
+            className="setting-input"
+            style={{ width: '200px' }}
+          />
+        </div>
+        <button
+          className="save-button"
+          onClick={handleSetDeviceConfig}
+          disabled={isExecuting || selectedNodeNum === null}
+          style={{
+            opacity: (isExecuting || selectedNodeNum === null) ? 0.5 : 1,
+            cursor: (isExecuting || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
+          }}
+        >
+          {isExecuting ? t('common.saving') : t('admin_commands.save_device_config')}
+        </button>
+      </CollapsibleSection>
+
+        {/* Position Config Section */}
+        <CollapsibleSection
+          id="admin-position-config"
+          title={t('admin_commands.position_configuration')}
+          nested={true}
+        >
+        <div className="setting-item">
+          <label>
+            {t('admin_commands.position_broadcast_interval')}
+            <span className="setting-description">{t('admin_commands.position_broadcast_interval_description')}</span>
+          </label>
+          <input
+            type="number"
+            min="32"
+            max="4294967295"
+            value={positionBroadcastSecs}
+            onChange={(e) => setPositionBroadcastSecs(parseInt(e.target.value))}
+            disabled={isExecuting}
+            className="setting-input"
+            style={{ width: '200px' }}
+          />
+        </div>
+        <div className="setting-item">
+          <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+            <input
+              type="checkbox"
+              checked={positionSmartEnabled}
+              onChange={(e) => setPositionSmartEnabled(e.target.checked)}
+              disabled={isExecuting}
+              style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+            />
+            <div style={{ flex: 1 }}>
+              <div>{t('admin_commands.smart_position_broadcast')}</div>
+              <span className="setting-description">{t('admin_commands.smart_position_broadcast_description')}</span>
+            </div>
+          </label>
+        </div>
+        <div className="setting-item">
+          <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+            <input
+              type="checkbox"
+              checked={fixedPosition}
+              onChange={(e) => setFixedPosition(e.target.checked)}
+              disabled={isExecuting}
+              style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+            />
+            <div style={{ flex: 1 }}>
+              <div>{t('admin_commands.fixed_position')}</div>
+              <span className="setting-description">{t('admin_commands.fixed_position_description')}</span>
+            </div>
+          </label>
+        </div>
+        {fixedPosition && (
+          <>
+            <div className="setting-item">
+              <label>
+                Latitude
+                <span className="setting-description">Fixed latitude coordinate (-90 to 90)</span>
+              </label>
+              <input
+                type="number"
+                step="0.000001"
+                min="-90"
+                max="90"
+                value={fixedLatitude}
+                onChange={(e) => setFixedLatitude(parseFloat(e.target.value))}
+                disabled={isExecuting}
+                className="setting-input"
+                style={{ width: '200px' }}
+              />
+            </div>
+            <div className="setting-item">
+              <label>
+                Longitude
+                <span className="setting-description">Fixed longitude coordinate (-180 to 180)</span>
+              </label>
+              <input
+                type="number"
+                step="0.000001"
+                min="-180"
+                max="180"
+                value={fixedLongitude}
+                onChange={(e) => setFixedLongitude(parseFloat(e.target.value))}
+                disabled={isExecuting}
+                className="setting-input"
+                style={{ width: '200px' }}
+              />
+            </div>
+            <div className="setting-item">
+              <label>
+                Altitude (meters)
+                <span className="setting-description">Fixed altitude above sea level</span>
+              </label>
+              <input
+                type="number"
+                step="1"
+                value={fixedAltitude}
+                onChange={(e) => setFixedAltitude(parseInt(e.target.value))}
+                disabled={isExecuting}
+                className="setting-input"
+                style={{ width: '200px' }}
+              />
+            </div>
+          </>
+        )}
+        <div className="setting-item">
+          <label>
+            {t('admin_commands.gps_update_interval')}
+            <span className="setting-description">{t('admin_commands.gps_update_interval_description')}</span>
+          </label>
+          <input
+            type="number"
+            min="0"
+            max="4294967295"
+            value={gpsUpdateInterval}
+            onChange={(e) => setGpsUpdateInterval(parseInt(e.target.value))}
+            disabled={isExecuting}
+            className="setting-input"
+            style={{ width: '200px' }}
+          />
+        </div>
+        <div className="setting-item">
+          <label>
+            {t('admin_commands.gps_mode')}
+            <span className="setting-description">{t('admin_commands.gps_mode_description')}</span>
+          </label>
+          <select
+            value={gpsMode}
+            onChange={(e) => setGpsMode(parseInt(e.target.value))}
+            disabled={isExecuting}
+            className="setting-input"
+            style={{ width: '200px' }}
+          >
+            <option value={0}>{t('admin_commands.gps_mode_disabled')}</option>
+            <option value={1}>{t('admin_commands.gps_mode_enabled')}</option>
+            <option value={2}>{t('admin_commands.gps_mode_not_present')}</option>
+          </select>
+        </div>
+        {positionSmartEnabled && (
+          <>
+            <div className="setting-item">
+              <label>
+                {t('admin_commands.broadcast_smart_minimum_distance')}
+                <span className="setting-description">{t('admin_commands.broadcast_smart_minimum_distance_description')}</span>
+              </label>
+              <input
+                type="number"
+                min="0"
+                max="4294967295"
+                value={broadcastSmartMinimumDistance}
+                onChange={(e) => setBroadcastSmartMinimumDistance(parseInt(e.target.value))}
+                disabled={isExecuting}
+                className="setting-input"
+                style={{ width: '200px' }}
+              />
+            </div>
+            <div className="setting-item">
+              <label>
+                {t('admin_commands.broadcast_smart_minimum_interval')}
+                <span className="setting-description">{t('admin_commands.broadcast_smart_minimum_interval_description')}</span>
+              </label>
+              <input
+                type="number"
+                min="0"
+                max="4294967295"
+                value={broadcastSmartMinimumIntervalSecs}
+                onChange={(e) => setBroadcastSmartMinimumIntervalSecs(parseInt(e.target.value))}
+                disabled={isExecuting}
+                className="setting-input"
+                style={{ width: '200px' }}
+              />
+            </div>
+          </>
+        )}
+        <div className="setting-item">
+          <label style={{ fontWeight: 'bold', marginBottom: '0.5rem' }}>
+            {t('admin_commands.position_flags')}
+            <span className="setting-description">{t('admin_commands.position_flags_description')}</span>
+          </label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+            <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem' }}>
+              <input
+                type="checkbox"
+                checked={positionFlagAltitude}
+                onChange={(e) => setPositionFlagAltitude(e.target.checked)}
+                disabled={isExecuting}
+                style={{ width: 'auto', margin: 0 }}
+              />
+              <span>{t('admin_commands.position_flag_altitude')}</span>
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem' }}>
+              <input
+                type="checkbox"
+                checked={positionFlagAltitudeMsl}
+                onChange={(e) => setPositionFlagAltitudeMsl(e.target.checked)}
+                disabled={isExecuting}
+                style={{ width: 'auto', margin: 0 }}
+              />
+              <span>{t('admin_commands.position_flag_altitude_msl')}</span>
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem' }}>
+              <input
+                type="checkbox"
+                checked={positionFlagGeoidalSeparation}
+                onChange={(e) => setPositionFlagGeoidalSeparation(e.target.checked)}
+                disabled={isExecuting}
+                style={{ width: 'auto', margin: 0 }}
+              />
+              <span>{t('admin_commands.position_flag_geoidal_separation')}</span>
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem' }}>
+              <input
+                type="checkbox"
+                checked={positionFlagDop}
+                onChange={(e) => setPositionFlagDop(e.target.checked)}
+                disabled={isExecuting}
+                style={{ width: 'auto', margin: 0 }}
+              />
+              <span>{t('admin_commands.position_flag_dop')}</span>
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem' }}>
+              <input
+                type="checkbox"
+                checked={positionFlagHvdop}
+                onChange={(e) => setPositionFlagHvdop(e.target.checked)}
+                disabled={isExecuting}
+                style={{ width: 'auto', margin: 0 }}
+              />
+              <span>{t('admin_commands.position_flag_hvdop')}</span>
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem' }}>
+              <input
+                type="checkbox"
+                checked={positionFlagSatinview}
+                onChange={(e) => setPositionFlagSatinview(e.target.checked)}
+                disabled={isExecuting}
+                style={{ width: 'auto', margin: 0 }}
+              />
+              <span>{t('admin_commands.position_flag_satinview')}</span>
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem' }}>
+              <input
+                type="checkbox"
+                checked={positionFlagSeqNo}
+                onChange={(e) => setPositionFlagSeqNo(e.target.checked)}
+                disabled={isExecuting}
+                style={{ width: 'auto', margin: 0 }}
+              />
+              <span>{t('admin_commands.position_flag_seq_no')}</span>
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem' }}>
+              <input
+                type="checkbox"
+                checked={positionFlagTimestamp}
+                onChange={(e) => setPositionFlagTimestamp(e.target.checked)}
+                disabled={isExecuting}
+                style={{ width: 'auto', margin: 0 }}
+              />
+              <span>{t('admin_commands.position_flag_timestamp')}</span>
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem' }}>
+              <input
+                type="checkbox"
+                checked={positionFlagHeading}
+                onChange={(e) => setPositionFlagHeading(e.target.checked)}
+                disabled={isExecuting}
+                style={{ width: 'auto', margin: 0 }}
+              />
+              <span>{t('admin_commands.position_flag_heading')}</span>
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem' }}>
+              <input
+                type="checkbox"
+                checked={positionFlagSpeed}
+                onChange={(e) => setPositionFlagSpeed(e.target.checked)}
+                disabled={isExecuting}
+                style={{ width: 'auto', margin: 0 }}
+              />
+              <span>{t('admin_commands.position_flag_speed')}</span>
+            </label>
+          </div>
+        </div>
+        <div className="setting-item">
+          <label style={{ fontWeight: 'bold', marginBottom: '0.5rem' }}>
+            {t('admin_commands.gps_gpio_pins')}
+            <span className="setting-description">{t('admin_commands.gps_gpio_pins_description')}</span>
+          </label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+            <div>
+              <label>
+                {t('admin_commands.gps_rx_gpio')}
+                <input
+                  type="number"
+                  min="0"
+                  max="255"
+                  value={rxGpio ?? ''}
+                  onChange={(e) => setRxGpio(e.target.value ? parseInt(e.target.value) : undefined)}
+                  disabled={isExecuting}
+                  className="setting-input"
+                  style={{ width: '150px', marginLeft: '0.5rem' }}
+                  placeholder={t('admin_commands.optional')}
+                />
+              </label>
+            </div>
+            <div>
+              <label>
+                {t('admin_commands.gps_tx_gpio')}
+                <input
+                  type="number"
+                  min="0"
+                  max="255"
+                  value={txGpio ?? ''}
+                  onChange={(e) => setTxGpio(e.target.value ? parseInt(e.target.value) : undefined)}
+                  disabled={isExecuting}
+                  className="setting-input"
+                  style={{ width: '150px', marginLeft: '0.5rem' }}
+                  placeholder={t('admin_commands.optional')}
+                />
+              </label>
+            </div>
+            <div>
+              <label>
+                {t('admin_commands.gps_en_gpio')}
+                <input
+                  type="number"
+                  min="0"
+                  max="255"
+                  value={gpsEnGpio ?? ''}
+                  onChange={(e) => setGpsEnGpio(e.target.value ? parseInt(e.target.value) : undefined)}
+                  disabled={isExecuting}
+                  className="setting-input"
+                  style={{ width: '150px', marginLeft: '0.5rem' }}
+                  placeholder={t('admin_commands.optional')}
+                />
+              </label>
+            </div>
+          </div>
+        </div>
+        <button
+          className="save-button"
+          onClick={handleSetPositionConfig}
+          disabled={isExecuting || selectedNodeNum === null}
+          style={{
+            opacity: (isExecuting || selectedNodeNum === null) ? 0.5 : 1,
+            cursor: (isExecuting || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
+          }}
+        >
+          {isExecuting ? t('common.saving') : t('admin_commands.save_position_config')}
+        </button>
+      </CollapsibleSection>
+
+        {/* Bluetooth Config Section */}
+        <CollapsibleSection
+          id="admin-bluetooth-config"
+          title={t('admin_commands.bluetooth_configuration', 'Bluetooth Configuration')}
+          nested={true}
+        >
+          <div className="setting-item">
+            <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+              <input
+                type="checkbox"
+                checked={bluetoothEnabled}
+                onChange={(e) => setBluetoothEnabled(e.target.checked)}
+                disabled={isExecuting}
+                style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+              />
+              <div style={{ flex: 1 }}>
+                <div>{t('admin_commands.enable_bluetooth', 'Enable Bluetooth')}</div>
+                <span className="setting-description">{t('admin_commands.enable_bluetooth_description', 'Enable Bluetooth on the device')}</span>
+              </div>
+            </label>
+          </div>
+          {bluetoothEnabled && (
+            <>
+              <div className="setting-item">
+                <label>
+                  {t('admin_commands.bluetooth_pairing_mode', 'Pairing Mode')}
+                  <span className="setting-description">{t('admin_commands.bluetooth_pairing_mode_description', 'Determines the pairing strategy for the device')}</span>
+                </label>
+                <select
+                  value={bluetoothMode}
+                  onChange={(e) => setBluetoothMode(parseInt(e.target.value))}
+                  disabled={isExecuting}
+                  className="setting-input"
+                  style={{ width: '100%', maxWidth: '600px' }}
+                >
+                  <option value={0}>{t('admin_commands.bluetooth_mode_random_pin', 'Random PIN')}</option>
+                  <option value={1}>{t('admin_commands.bluetooth_mode_fixed_pin', 'Fixed PIN')}</option>
+                  <option value={2}>{t('admin_commands.bluetooth_mode_no_pin', 'No PIN')}</option>
+                </select>
+              </div>
+              {bluetoothMode === 1 && (
+                <div className="setting-item">
+                  <label>
+                    {t('admin_commands.bluetooth_fixed_pin', 'Fixed PIN')}
+                    <span className="setting-description">{t('admin_commands.bluetooth_fixed_pin_description', 'PIN code for pairing (required when using Fixed PIN mode)')}</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="999999"
+                    value={bluetoothFixedPin}
+                    onChange={(e) => setBluetoothFixedPin(parseInt(e.target.value) || 0)}
+                    disabled={isExecuting}
+                    className="setting-input"
+                    style={{ width: '100%', maxWidth: '600px' }}
+                    placeholder="123456"
+                  />
+                </div>
+              )}
+            </>
+          )}
+          <button
+            className="save-button"
+            onClick={handleSetBluetoothConfig}
+            disabled={isExecuting || selectedNodeNum === null}
+            style={{
+              opacity: (isExecuting || selectedNodeNum === null) ? 0.5 : 1,
+              cursor: (isExecuting || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
+            }}
+          >
+            {isExecuting ? t('common.saving') : t('admin_commands.save_bluetooth_config', 'Save Bluetooth Config')}
+          </button>
+        </CollapsibleSection>
+      </CollapsibleSection>
+
+      {/* Module Configuration Section */}
+      <CollapsibleSection
+        id="module-config"
+        title={t('admin_commands.module_configuration', 'Module Configuration')}
+      >
+        {/* MQTT Config Section */}
+        <CollapsibleSection
+          id="admin-mqtt-config"
+          title={t('admin_commands.mqtt_configuration')}
+          nested={true}
+        >
+        <div className="setting-item">
+          <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+            <input
+              type="checkbox"
+              checked={mqttEnabled}
+              onChange={(e) => setMqttEnabled(e.target.checked)}
+              disabled={isExecuting}
+              style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+            />
+            <div style={{ flex: 1 }}>
+              <div>{t('admin_commands.enable_mqtt')}</div>
+              <span className="setting-description">{t('admin_commands.enable_mqtt_description')}</span>
+            </div>
+          </label>
+        </div>
+        {mqttEnabled && (
+          <>
+            <div className="setting-item">
+              <label>
+                {t('admin_commands.server_address')}
+                <span className="setting-description">{t('admin_commands.server_address_description')}</span>
+              </label>
+              <input
+                type="text"
+                value={mqttAddress}
+                onChange={(e) => setMqttAddress(e.target.value)}
+                disabled={isExecuting}
+                placeholder="mqtt.meshtastic.org"
+                className="setting-input"
+                style={{ width: '100%', maxWidth: '600px' }}
+              />
+            </div>
+            <div className="setting-item">
+              <label>
+                Username
+                <span className="setting-description">MQTT broker username</span>
+              </label>
+              <input
+                type="text"
+                value={mqttUsername}
+                onChange={(e) => setMqttUsername(e.target.value)}
+                disabled={isExecuting}
+                className="setting-input"
+                style={{ width: '100%', maxWidth: '600px' }}
+              />
+            </div>
+            <div className="setting-item">
+              <label>
+                Password
+                <span className="setting-description">MQTT broker password</span>
+              </label>
+              <input
+                type="password"
+                value={mqttPassword}
+                onChange={(e) => setMqttPassword(e.target.value)}
+                disabled={isExecuting}
+                className="setting-input"
+                style={{ width: '100%', maxWidth: '600px' }}
+              />
+            </div>
+            <div className="setting-item">
+              <label>
+                Root Topic
+                <span className="setting-description">MQTT root topic prefix (e.g., msh/US)</span>
+              </label>
+              <input
+                type="text"
+                value={mqttRoot}
+                onChange={(e) => setMqttRoot(e.target.value)}
+                disabled={isExecuting}
+                placeholder="msh/US"
+                className="setting-input"
+                style={{ width: '100%', maxWidth: '600px' }}
+              />
+            </div>
+            <div className="setting-item">
+              <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+                <input
+                  type="checkbox"
+                  checked={mqttEncryptionEnabled}
+                  onChange={(e) => setMqttEncryptionEnabled(e.target.checked)}
+                  disabled={isExecuting}
+                  style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+                />
+                <div style={{ flex: 1 }}>
+                  <div>Encryption Enabled</div>
+                  <span className="setting-description">Use TLS encryption for MQTT connection</span>
+                </div>
+              </label>
+            </div>
+            <div className="setting-item">
+              <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+                <input
+                  type="checkbox"
+                  checked={mqttJsonEnabled}
+                  onChange={(e) => setMqttJsonEnabled(e.target.checked)}
+                  disabled={isExecuting}
+                  style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+                />
+                <div style={{ flex: 1 }}>
+                  <div>{t('admin_commands.json_enabled')}</div>
+                  <span className="setting-description">{t('admin_commands.json_enabled_description')}</span>
+                </div>
+              </label>
+            </div>
+          </>
+        )}
+        <button
+          className="save-button"
+          onClick={handleSetMQTTConfig}
+          disabled={isExecuting || selectedNodeNum === null}
+          style={{
+            opacity: (isExecuting || selectedNodeNum === null) ? 0.5 : 1,
+            cursor: (isExecuting || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
+          }}
+        >
+          {isExecuting ? t('common.saving') : t('admin_commands.save_mqtt_config')}
+        </button>
+      </CollapsibleSection>
+
+        {/* Neighbor Info Config Section */}
+        <CollapsibleSection
+          id="admin-neighborinfo-config"
+          title={t('admin_commands.neighborinfo_configuration', 'Neighbor Info Configuration')}
+          nested={true}
+        >
+          <div className="setting-item">
+            <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+              <input
+                type="checkbox"
+                checked={neighborInfoEnabled}
+                onChange={(e) => setNeighborInfoEnabled(e.target.checked)}
+                disabled={isExecuting}
+                style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+              />
+              <div style={{ flex: 1 }}>
+                <div>{t('admin_commands.enable_neighbor_info', 'Enable Neighbor Info')}</div>
+                <span className="setting-description">{t('admin_commands.enable_neighbor_info_description', 'Whether the Neighbor Info module is enabled')}</span>
+              </div>
+            </label>
+          </div>
+          {neighborInfoEnabled && (
+            <>
+              <div className="setting-item">
+                <label>
+                  {t('admin_commands.neighbor_info_update_interval', 'Update Interval (seconds)')}
+                  <span className="setting-description">{t('admin_commands.neighbor_info_update_interval_description', 'Interval in seconds of how often we should try to send our Neighbor Info (minimum is 14400, i.e., 4 hours)')}</span>
+                </label>
+                <input
+                  type="number"
+                  min="14400"
+                  value={neighborInfoUpdateInterval}
+                  onChange={(e) => setNeighborInfoUpdateInterval(parseInt(e.target.value) || 14400)}
+                  disabled={isExecuting}
+                  className="setting-input"
+                  style={{ width: '100%', maxWidth: '600px' }}
+                  placeholder="14400"
+                />
+              </div>
+              <div className="setting-item">
+                <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+                  <input
+                    type="checkbox"
+                    checked={neighborInfoTransmitOverLora}
+                    onChange={(e) => setNeighborInfoTransmitOverLora(e.target.checked)}
+                    disabled={isExecuting}
+                    style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div>{t('admin_commands.neighbor_info_transmit_over_lora', 'Transmit Over LoRa')}</div>
+                    <span className="setting-description">{t('admin_commands.neighbor_info_transmit_over_lora_description', 'Whether in addition to sending it to MQTT and the PhoneAPI, our NeighborInfo should be transmitted over LoRa. Note that this is not available on a channel with default key and name.')}</span>
+                  </div>
+                </label>
+              </div>
+            </>
+          )}
+          <button
+            className="save-button"
+            onClick={handleSetNeighborInfoConfig}
+            disabled={isExecuting || selectedNodeNum === null}
+            style={{
+              opacity: (isExecuting || selectedNodeNum === null) ? 0.5 : 1,
+              cursor: (isExecuting || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
+            }}
+          >
+            {isExecuting ? t('common.saving') : t('admin_commands.save_neighbor_info_config', 'Save Neighbor Info Config')}
+          </button>
+        </CollapsibleSection>
+      </CollapsibleSection>
 
       {/* Import/Export Configuration Section */}
-      <div id="admin-import-export" className="settings-section" style={{ marginTop: '2rem', marginBottom: '2rem' }}>
-        <h3>{t('admin_commands.config_import_export')}</h3>
+      <CollapsibleSection
+        id="admin-import-export"
+        title={t('admin_commands.config_import_export')}
+      >
         <p style={{ color: 'var(--ctp-subtext0)', marginBottom: '1rem' }}>
           {t('admin_commands.config_import_export_description')}
         </p>
@@ -2572,7 +3303,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                   // Load channels and LoRa config in parallel
                   await Promise.all([
                     handleLoadChannels(),
-                    handleLoadLoRaConfig()
+                    handleLoadAllConfigs()
                   ]);
                   
                   showToast(t('admin_commands.config_loaded_success'), 'success');
@@ -2585,27 +3316,29 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               // Open the export modal
               setShowConfigExportModal(true);
             }}
-            disabled={selectedNodeNum === null || isExecuting || isLoadingChannels || isLoadingLoRaConfig}
+            disabled={selectedNodeNum === null || isExecuting || isLoadingChannels || isLoadingAllConfigs}
             style={{
               backgroundColor: 'var(--ctp-green)',
               color: '#fff',
               padding: '0.75rem 1.5rem',
               border: 'none',
               borderRadius: '4px',
-              cursor: (selectedNodeNum === null || isExecuting || isLoadingChannels || isLoadingLoRaConfig) ? 'not-allowed' : 'pointer',
+              cursor: (selectedNodeNum === null || isExecuting || isLoadingChannels || isLoadingAllConfigs) ? 'not-allowed' : 'pointer',
               fontSize: '1rem',
               fontWeight: 'bold',
-              opacity: (selectedNodeNum === null || isExecuting || isLoadingChannels || isLoadingLoRaConfig) ? 0.5 : 1
+              opacity: (selectedNodeNum === null || isExecuting || isLoadingChannels || isLoadingAllConfigs) ? 0.5 : 1
             }}
           >
-            {(isLoadingChannels || isLoadingLoRaConfig) ? t('common.loading') : `📤 ${t('admin_commands.export_configuration')}`}
+            {(isLoadingChannels || isLoadingAllConfigs) ? t('common.loading') : `📤 ${t('admin_commands.export_configuration')}`}
           </button>
         </div>
-      </div>
+      </CollapsibleSection>
 
       {/* Node Favorites & Ignored Section */}
-      <div id="admin-node-management" className="settings-section" style={{ marginTop: '2rem' }}>
-        <h3>{t('admin_commands.node_favorites_ignored')}</h3>
+      <CollapsibleSection
+        id="admin-node-management"
+        title={t('admin_commands.node_favorites_ignored')}
+      >
         <p style={{ color: 'var(--ctp-subtext0)', marginBottom: '1.5rem' }}>
           {t('admin_commands.node_favorites_ignored_description')}
         </p>
@@ -2848,7 +3581,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         <p style={{ marginTop: '1rem', fontSize: '0.85rem', color: 'var(--ctp-subtext1)', fontStyle: 'italic' }}>
           {t('admin_commands.firmware_requirement_note')}
         </p>
-      </div>
+      </CollapsibleSection>
 
       {/* Channel Edit Modal */}
       {showChannelEditModal && editingChannelSlot !== null && (
@@ -3128,11 +3861,13 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         </div>
       )}
 
-      </div>
-
       {/* Reboot and Purge Command Section - Moved to bottom, matching Device page style */}
-      <div className="settings-section danger-zone" style={{ marginTop: '2rem', marginBottom: '2rem' }}>
-        <h2 style={{ color: '#ff4444', marginTop: 0 }}>⚠️ {t('admin_commands.warning')}</h2>
+      <CollapsibleSection
+        id="admin-reboot-purge"
+        title={`⚠️ ${t('admin_commands.warning')}`}
+        className="danger-zone"
+      >
+        <h2 style={{ color: '#ff4444', marginTop: 0, marginBottom: '1rem' }}>⚠️ {t('admin_commands.warning')}</h2>
         <p style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>
           {t('admin_commands.warning_message')}
         </p>
@@ -3190,7 +3925,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             🗑️ {t('admin_commands.purge_node_database')}
           </button>
         </div>
-      </div>
+      </CollapsibleSection>
 
       {/* Import/Export Config Modals */}
       {showConfigImportModal && (

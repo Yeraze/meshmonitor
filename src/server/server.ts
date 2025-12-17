@@ -4782,7 +4782,7 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
         const configTypeMap: { [key: string]: { type: number; isModule: boolean } } = {
           'device': { type: 0, isModule: false },  // DEVICE_CONFIG
           'lora': { type: 5, isModule: false },      // LORA_CONFIG
-          'position': { type: 6, isModule: false }, // POSITION_CONFIG
+          'position': { type: 1, isModule: false }, // POSITION_CONFIG (was incorrectly 6)
           'mqtt': { type: 0, isModule: true },        // MQTT_CONFIG (module)
           'security': { type: 7, isModule: false }  // SECURITY_CONFIG
         };
@@ -4794,11 +4794,44 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
 
         // Check if we need to request the specific config type
         let needsRequest = false;
-        if (configType === 'device' && !currentConfig?.deviceConfig?.device) needsRequest = true;
-        if (configType === 'lora' && !currentConfig?.deviceConfig?.lora) needsRequest = true;
-        if (configType === 'position' && !currentConfig?.deviceConfig?.position) needsRequest = true;
-        if (configType === 'mqtt' && !currentConfig?.moduleConfig?.mqtt) needsRequest = true;
-        if (configType === 'security' && !currentConfig?.deviceConfig?.security) needsRequest = true;
+        if (configInfo) {
+          if (configInfo.isModule) {
+            // Module configs
+            const moduleConfigMap: { [key: string]: string } = {
+              'mqtt': 'mqtt',
+              'serial': 'serial',
+              'extnotif': 'externalNotification',
+              'storeforward': 'storeForward',
+              'rangetest': 'rangeTest',
+              'telemetry': 'telemetry',
+              'cannedmsg': 'cannedMessage',
+              'audio': 'audio',
+              'remotehardware': 'remoteHardware',
+              'neighborinfo': 'neighborInfo',
+              'ambientlighting': 'ambientLighting',
+              'detectionsensor': 'detectionSensor',
+              'paxcounter': 'paxcounter'
+            };
+            const moduleKey = moduleConfigMap[configType];
+            if (moduleKey && !currentConfig?.moduleConfig?.[moduleKey]) needsRequest = true;
+          } else {
+            // Device configs
+            const deviceConfigMap: { [key: string]: string } = {
+              'device': 'device',
+              'position': 'position',
+              'power': 'power',
+              'network': 'network',
+              'display': 'display',
+              'lora': 'lora',
+              'bluetooth': 'bluetooth',
+              'security': 'security',
+              'sessionkey': 'sessionkey',
+              'deviceui': 'deviceui'
+            };
+            const deviceKey = deviceConfigMap[configType];
+            if (deviceKey && !currentConfig?.deviceConfig?.[deviceKey]) needsRequest = true;
+          }
+        }
         
         if (needsRequest && configInfo) {
           // Try to request the specific config type
@@ -4867,7 +4900,15 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
                 fixedPosition: finalConfig.deviceConfig.position.fixedPosition,
                 fixedLatitude: finalConfig.deviceConfig.position.fixedLatitude,
                 fixedLongitude: finalConfig.deviceConfig.position.fixedLongitude,
-                fixedAltitude: finalConfig.deviceConfig.position.fixedAltitude
+                fixedAltitude: finalConfig.deviceConfig.position.fixedAltitude,
+                gpsUpdateInterval: finalConfig.deviceConfig.position.gpsUpdateInterval,
+                positionFlags: finalConfig.deviceConfig.position.positionFlags,
+                rxGpio: finalConfig.deviceConfig.position.rxGpio,
+                txGpio: finalConfig.deviceConfig.position.txGpio,
+                broadcastSmartMinimumDistance: finalConfig.deviceConfig.position.broadcastSmartMinimumDistance,
+                broadcastSmartMinimumIntervalSecs: finalConfig.deviceConfig.position.broadcastSmartMinimumIntervalSecs,
+                gpsEnGpio: finalConfig.deviceConfig.position.gpsEnGpio,
+                gpsMode: finalConfig.deviceConfig.position.gpsMode
               };
             } else {
               return res.status(404).json({ error: 'Position config not available. The device may not have sent its configuration yet.' });
@@ -4917,18 +4958,85 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
               return res.status(404).json({ error: 'Security config not available. The device may not have sent its configuration yet.' });
             }
             break;
+          // Additional device configs - return raw config for now
+          case 'power':
+          case 'network':
+          case 'display':
+          case 'bluetooth':
+          case 'sessionkey':
+          case 'deviceui':
+            const deviceConfigKey = configType === 'sessionkey' ? 'sessionkey' : configType;
+            if (finalConfig.deviceConfig?.[deviceConfigKey]) {
+              config = finalConfig.deviceConfig[deviceConfigKey];
+            } else {
+              return res.status(404).json({ error: `${configType} config not available. The device may not have sent its configuration yet.` });
+            }
+            break;
+          // Additional module configs - return raw config for now
+          case 'serial':
+          case 'extnotif':
+          case 'storeforward':
+          case 'rangetest':
+          case 'telemetry':
+          case 'cannedmsg':
+          case 'audio':
+          case 'remotehardware':
+          case 'neighborinfo':
+          case 'ambientlighting':
+          case 'detectionsensor':
+          case 'paxcounter':
+            const moduleConfigMap: { [key: string]: string } = {
+              'serial': 'serial',
+              'extnotif': 'externalNotification',
+              'storeforward': 'storeForward',
+              'rangetest': 'rangeTest',
+              'telemetry': 'telemetry',
+              'cannedmsg': 'cannedMessage',
+              'audio': 'audio',
+              'remotehardware': 'remoteHardware',
+              'neighborinfo': 'neighborInfo',
+              'ambientlighting': 'ambientLighting',
+              'detectionsensor': 'detectionSensor',
+              'paxcounter': 'paxcounter'
+            };
+            const moduleKey = moduleConfigMap[configType];
+            if (moduleKey && finalConfig.moduleConfig?.[moduleKey]) {
+              config = finalConfig.moduleConfig[moduleKey];
+            } else {
+              // Module configs might not exist if not configured, return empty/default config
+              config = { enabled: false };
+            }
+            break;
         }
       } else {
         // Remote node - request config with session passkey
         logger.info(`Requesting ${configType} config from remote node ${destinationNodeNum}`);
         
-        // Map config types to their numeric values
+        // Map config types to their numeric values (same as local node mapping)
         const configTypeMap: { [key: string]: { type: number; isModule: boolean } } = {
           'device': { type: 0, isModule: false },  // DEVICE_CONFIG
-          'lora': { type: 5, isModule: false },      // LORA_CONFIG
-          'position': { type: 6, isModule: false }, // POSITION_CONFIG
-          'mqtt': { type: 0, isModule: true },        // MQTT_CONFIG (module)
-          'security': { type: 7, isModule: false }  // SECURITY_CONFIG
+          'position': { type: 1, isModule: false }, // POSITION_CONFIG
+          'power': { type: 2, isModule: false },    // POWER_CONFIG
+          'network': { type: 3, isModule: false },  // NETWORK_CONFIG
+          'display': { type: 4, isModule: false },  // DISPLAY_CONFIG
+          'lora': { type: 5, isModule: false },     // LORA_CONFIG
+          'bluetooth': { type: 6, isModule: false }, // BLUETOOTH_CONFIG
+          'security': { type: 7, isModule: false }, // SECURITY_CONFIG
+          'sessionkey': { type: 8, isModule: false }, // SESSIONKEY_CONFIG
+          'deviceui': { type: 9, isModule: false }, // DEVICEUI_CONFIG
+          'mqtt': { type: 0, isModule: true },      // MQTT_CONFIG (module)
+          'serial': { type: 1, isModule: true },    // SERIAL_CONFIG (module)
+          'extnotif': { type: 2, isModule: true },  // EXTNOTIF_CONFIG (module)
+          'storeforward': { type: 3, isModule: true }, // STOREFORWARD_CONFIG (module)
+          'rangetest': { type: 4, isModule: true },  // RANGETEST_CONFIG (module)
+          'telemetry': { type: 5, isModule: true }, // TELEMETRY_CONFIG (module)
+          'cannedmsg': { type: 6, isModule: true }, // CANNEDMSG_CONFIG (module)
+          'audio': { type: 7, isModule: true },     // AUDIO_CONFIG (module)
+          'remotehardware': { type: 8, isModule: true }, // REMOTEHARDWARE_CONFIG (module)
+          'neighborinfo': { type: 9, isModule: true }, // NEIGHBORINFO_CONFIG (module)
+          'ambientlighting': { type: 10, isModule: true }, // AMBIENTLIGHTING_CONFIG (module)
+          'detectionsensor': { type: 11, isModule: true }, // DETECTIONSENSOR_CONFIG (module)
+          'paxcounter': { type: 12, isModule: true } // PAXCOUNTER_CONFIG (module)
         };
 
         const configInfo = configTypeMap[configType];
@@ -4980,7 +5088,15 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
               fixedPosition: remoteConfig.fixedPosition,
               fixedLatitude: remoteConfig.fixedLatitude,
               fixedLongitude: remoteConfig.fixedLongitude,
-              fixedAltitude: remoteConfig.fixedAltitude
+              fixedAltitude: remoteConfig.fixedAltitude,
+              gpsUpdateInterval: remoteConfig.gpsUpdateInterval,
+              positionFlags: remoteConfig.positionFlags,
+              rxGpio: remoteConfig.rxGpio,
+              txGpio: remoteConfig.txGpio,
+              broadcastSmartMinimumDistance: remoteConfig.broadcastSmartMinimumDistance,
+              broadcastSmartMinimumIntervalSecs: remoteConfig.broadcastSmartMinimumIntervalSecs,
+              gpsEnGpio: remoteConfig.gpsEnGpio,
+              gpsMode: remoteConfig.gpsMode
             };
             break;
           case 'mqtt':
@@ -5009,6 +5125,30 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
               debugLogApiEnabled: remoteConfig.debugLogApiEnabled,
               adminChannelEnabled: remoteConfig.adminChannelEnabled
             };
+            break;
+          // Additional device configs - return raw config
+          case 'power':
+          case 'network':
+          case 'display':
+          case 'bluetooth':
+          case 'sessionkey':
+          case 'deviceui':
+            config = remoteConfig;
+            break;
+          // Additional module configs - return raw config
+          case 'serial':
+          case 'extnotif':
+          case 'storeforward':
+          case 'rangetest':
+          case 'telemetry':
+          case 'cannedmsg':
+          case 'audio':
+          case 'remotehardware':
+          case 'neighborinfo':
+          case 'ambientlighting':
+          case 'detectionsensor':
+          case 'paxcounter':
+            config = remoteConfig || { enabled: false };
             break;
         }
       }
@@ -5577,6 +5717,12 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
           return res.status(400).json({ error: 'config is required for setMQTTConfig' });
         }
         adminMessage = protobufService.createSetMQTTConfigMessage(params.config, sessionPasskey || undefined);
+        break;
+      case 'setBluetoothConfig':
+        if (!params.config) {
+          return res.status(400).json({ error: 'config is required for setBluetoothConfig' });
+        }
+        adminMessage = protobufService.createSetDeviceConfigMessageGeneric('bluetooth', params.config, sessionPasskey || undefined);
         break;
       case 'setNeighborInfoConfig':
         if (!params.config) {
