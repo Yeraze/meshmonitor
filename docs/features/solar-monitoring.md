@@ -25,11 +25,12 @@ To enable solar monitoring, navigate to **Settings** and configure the following
   - 0° = Horizontal (flat)
   - 90° = Vertical
   - Most installations use 20-40° depending on latitude
-- **Azimuth**: Compass direction your panels face (0-360 degrees)
-  - 0° = North
-  - 90° = East
-  - 180° = South (optimal in Northern Hemisphere)
-  - 270° = West
+- **Azimuth**: Compass direction your panels face (-180 to 180 degrees)
+  - -180° = North
+  - -90° = East
+  - 0° = South (optimal in Northern Hemisphere)
+  - 90° = West
+  - 180° = North
 
 #### Additional Configuration Details
 
