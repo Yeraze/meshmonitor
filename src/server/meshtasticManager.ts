@@ -1046,6 +1046,14 @@ class MeshtasticManager {
               parsed.data.lora.sx126xRxBoostedGain = false;
               logger.info('📊 Set sx126xRxBoostedGain to false (was undefined - Proto3 default)');
             }
+            if (parsed.data.lora.ignoreMqtt === undefined) {
+              parsed.data.lora.ignoreMqtt = false;
+              logger.info('📊 Set ignoreMqtt to false (was undefined - Proto3 default)');
+            }
+            if (parsed.data.lora.configOkToMqtt === undefined) {
+              parsed.data.lora.configOkToMqtt = false;
+              logger.info('📊 Set configOkToMqtt to false (was undefined - Proto3 default)');
+            }
 
             // Ensure numeric fields have explicit values (Proto3 omits 0)
             if (parsed.data.lora.frequencyOffset === undefined) {
@@ -1472,6 +1480,8 @@ class MeshtasticManager {
         // but they're still accessible as properties. Explicitly include them.
         usePreset: deviceConfig.lora.usePreset !== undefined ? deviceConfig.lora.usePreset : false,
         sx126xRxBoostedGain: deviceConfig.lora.sx126xRxBoostedGain !== undefined ? deviceConfig.lora.sx126xRxBoostedGain : false,
+        ignoreMqtt: deviceConfig.lora.ignoreMqtt !== undefined ? deviceConfig.lora.ignoreMqtt : false,
+        configOkToMqtt: deviceConfig.lora.configOkToMqtt !== undefined ? deviceConfig.lora.configOkToMqtt : false,
         frequencyOffset: deviceConfig.lora.frequencyOffset !== undefined ? deviceConfig.lora.frequencyOffset : 0,
         overrideFrequency: deviceConfig.lora.overrideFrequency !== undefined ? deviceConfig.lora.overrideFrequency : 0,
         modemPreset: deviceConfig.lora.modemPreset !== undefined ? deviceConfig.lora.modemPreset : 0,
@@ -1483,7 +1493,7 @@ class MeshtasticManager {
         lora: loraConfigWithDefaults
       };
 
-      logger.info(`[CONFIG] Returning lora config with usePreset=${loraConfigWithDefaults.usePreset}, sx126xRxBoostedGain=${loraConfigWithDefaults.sx126xRxBoostedGain}, frequencyOffset=${loraConfigWithDefaults.frequencyOffset}`);
+      logger.info(`[CONFIG] Returning lora config with usePreset=${loraConfigWithDefaults.usePreset}, sx126xRxBoostedGain=${loraConfigWithDefaults.sx126xRxBoostedGain}, ignoreMqtt=${loraConfigWithDefaults.ignoreMqtt}, configOkToMqtt=${loraConfigWithDefaults.configOkToMqtt}`);
     }
 
     // Apply Proto3 defaults to position config if it exists

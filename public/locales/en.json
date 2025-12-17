@@ -2108,6 +2108,10 @@
   "lora_config.channel_num_description": "LoRa channel number for frequency hopping. Range: 0-255 (default: 0)",
   "lora_config.rx_boosted_gain": "RX Boosted Gain (SX126x)",
   "lora_config.rx_boosted_gain_description": "Enable boosted receive gain for SX126x radios (improves sensitivity but increases power consumption)",
+  "lora_config.ignore_mqtt": "Ignore MQTT",
+  "lora_config.ignore_mqtt_description": "If enabled, the device will not process any packets received via LoRa that originated from MQTT",
+  "lora_config.ok_to_mqtt": "OK to MQTT",
+  "lora_config.ok_to_mqtt_description": "Sets the ok_to_mqtt flag on outgoing packets, allowing them to be forwarded to MQTT by other nodes",
   "lora_config.save_button": "Save LoRa Config",
 
   "channels_config.title": "Channels Configuration",

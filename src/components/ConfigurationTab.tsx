@@ -53,6 +53,8 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   const [txPower, setTxPower] = useState<number>(0);
   const [channelNum, setChannelNum] = useState<number>(0);
   const [sx126xRxBoostedGain, setSx126xRxBoostedGain] = useState<boolean>(false);
+  const [ignoreMqtt, setIgnoreMqtt] = useState<boolean>(false);
+  const [configOkToMqtt, setConfigOkToMqtt] = useState<boolean>(false);
 
   // Position Config State
   const [positionBroadcastSecs, setPositionBroadcastSecs] = useState(900);
@@ -166,6 +168,12 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           }
           if (config.deviceConfig.lora.sx126xRxBoostedGain !== undefined) {
             setSx126xRxBoostedGain(config.deviceConfig.lora.sx126xRxBoostedGain);
+          }
+          if (config.deviceConfig.lora.ignoreMqtt !== undefined) {
+            setIgnoreMqtt(config.deviceConfig.lora.ignoreMqtt);
+          }
+          if (config.deviceConfig.lora.configOkToMqtt !== undefined) {
+            setConfigOkToMqtt(config.deviceConfig.lora.configOkToMqtt);
           }
         }
 
@@ -325,7 +333,9 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         hopLimit: validHopLimit,
         txPower,
         channelNum,
-        sx126xRxBoostedGain
+        sx126xRxBoostedGain,
+        ignoreMqtt,
+        configOkToMqtt
       });
       setStatusMessage(t('config.lora_saved'));
       showToast(t('config.lora_saved_toast'), 'success');
@@ -710,6 +720,10 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
             setChannelNum={setChannelNum}
             sx126xRxBoostedGain={sx126xRxBoostedGain}
             setSx126xRxBoostedGain={setSx126xRxBoostedGain}
+            ignoreMqtt={ignoreMqtt}
+            setIgnoreMqtt={setIgnoreMqtt}
+            configOkToMqtt={configOkToMqtt}
+            setConfigOkToMqtt={setConfigOkToMqtt}
             isSaving={isSaving}
             onSave={handleSaveLoRaConfig}
           />
