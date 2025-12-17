@@ -75,6 +75,8 @@ jobs:
           xcopy /E /I /Y dist\config desktop\resources\dist\config
           xcopy /E /I /Y dist\constants desktop\resources\dist\constants
           xcopy /E /I /Y dist\contexts desktop\resources\dist\contexts
+          xcopy /E /I /Y dist\assets desktop\resources\dist\assets
+          copy dist\index.html desktop\resources\dist\index.html
           copy package.json desktop\resources\package.json
           robocopy node_modules desktop\resources\dist\node_modules /E /NFL /NDL /NJH /NJS /NC /NS /NP
           if %ERRORLEVEL% leq 7 exit /b 0
