@@ -2595,6 +2595,7 @@
   "admin_commands.export_configuration": "Export Configuration",
   "admin_commands.loading_remote_config": "Loading remote node configuration...",
   "admin_commands.config_loaded_success": "Configuration loaded successfully",
+  "admin_commands.config_load_failed": "Failed to load {{configType}} configuration",
   "admin_commands.failed_load_config": "Failed to load configuration",
 
   "admin_commands.node_favorites_ignored": "Node Favorites & Ignored",
@@ -2657,5 +2658,9 @@
   "admin_commands.owner_config_short": "Owner",
   "admin_commands.channels_config_short": "Channels",
   "admin_commands.bluetooth_config_short": "Bluetooth",
-  "admin_commands.neighborinfo_config_short": "Neighbor Info"
+  "admin_commands.neighborinfo_config_short": "Neighbor Info",
+  "admin_commands.load_section": "Load {{section}}",
+  "admin_commands.load_button": "Load",
+  "admin_commands.section_loaded": "Section loaded successfully",
+  "admin_commands.section_load_failed": "Failed to load section"
 }

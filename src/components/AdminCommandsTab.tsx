@@ -85,6 +85,19 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   const [showNodeManagementSearch, setShowNodeManagementSearch] = useState(false);
   const [nodeManagementSearchQuery, setNodeManagementSearchQuery] = useState('');
   const [isLoadingChannels, setIsLoadingChannels] = useState(false);
+
+  // Per-section loading status: 'idle' | 'loading' | 'success' | 'error'
+  const [sectionLoadStatus, setSectionLoadStatus] = useState<Record<string, 'idle' | 'loading' | 'success' | 'error'>>({
+    device: 'idle',
+    lora: 'idle',
+    position: 'idle',
+    mqtt: 'idle',
+    security: 'idle',
+    bluetooth: 'idle',
+    neighborinfo: 'idle',
+    owner: 'idle',
+    channels: 'idle'
+  });
   // Track remote node favorite/ignored status separately (key: nodeNum, value: {isFavorite, isIgnored})
   const [remoteNodeStatus, setRemoteNodeStatus] = useState<Map<number, { isFavorite: boolean; isIgnored: boolean }>>(new Map());
 
@@ -123,72 +136,80 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     localStorage.setItem('adminCommandsExpandedSections', JSON.stringify(expandedSections));
   }, [expandedSections]);
 
-  const toggleSection = (sectionId: string) => {
+  // Use ref to access current expanded sections without recreating the component
+  const expandedSectionsRef = useRef(expandedSections);
+  expandedSectionsRef.current = expandedSections;
+
+  const toggleSection = useCallback((sectionId: string) => {
     setExpandedSections(prev => ({ ...prev, [sectionId]: !prev[sectionId] }));
-  };
+  }, []);
 
-  // Collapsible section component
-  const CollapsibleSection: React.FC<{
-    id: string;
-    title: string;
-    children: React.ReactNode;
-    defaultExpanded?: boolean;
-    headerActions?: React.ReactNode;
-    className?: string;
-    nested?: boolean;
-  }> = ({ id, title, children, defaultExpanded, headerActions, className = '', nested = false }) => {
-    const isExpanded = expandedSections[id] ?? defaultExpanded ?? false;
+  // Stable CollapsibleSection wrapper - uses refs to avoid recreating on state changes
+  const CollapsibleSection = useMemo(() => {
+    const Component: React.FC<{
+      id: string;
+      title: string;
+      children: React.ReactNode;
+      defaultExpanded?: boolean;
+      headerActions?: React.ReactNode;
+      className?: string;
+      nested?: boolean;
+    }> = ({ id, title, children, defaultExpanded, headerActions, className = '', nested = false }) => {
+      // Read from ref to get current value without causing re-creation
+      const isExpanded = expandedSectionsRef.current[id] ?? defaultExpanded ?? false;
 
-    return (
-      <div id={id} className={`settings-section ${className}`} style={{
-        marginLeft: nested ? '1.5rem' : '0',
-        marginTop: nested ? '0.5rem' : '0'
-      }}>
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            padding: '0.75rem 1rem',
-            background: 'var(--ctp-surface0)',
-            border: '1px solid var(--ctp-surface2)',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            marginBottom: isExpanded ? '1rem' : '0.5rem',
-            transition: 'all 0.2s ease',
-          }}
-          onClick={() => toggleSection(id)}
-          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--ctp-surface1)'}
-          onMouseLeave={(e) => e.currentTarget.style.background = 'var(--ctp-surface0)'}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1 }}>
-            <span style={{ 
-              fontSize: '0.875rem',
-              transition: 'transform 0.2s ease',
-              transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
-              display: 'inline-block'
-            }}>
-              ▶
-            </span>
-            <h3 style={{ margin: 0, borderBottom: 'none', paddingBottom: 0, flex: 1 }}>{title}</h3>
+      return (
+        <div id={id} className={`settings-section ${className}`} style={{
+          marginLeft: nested ? '1.5rem' : '0',
+          marginTop: nested ? '0.5rem' : '0'
+        }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '0.75rem 1rem',
+              background: 'var(--ctp-surface0)',
+              border: '1px solid var(--ctp-surface2)',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              marginBottom: isExpanded ? '1rem' : '0.5rem',
+              transition: 'all 0.2s ease',
+            }}
+            onClick={() => toggleSection(id)}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--ctp-surface1)'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'var(--ctp-surface0)'}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1 }}>
+              <span style={{
+                fontSize: '0.875rem',
+                transition: 'transform 0.2s ease',
+                transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                display: 'inline-block'
+              }}>
+                ▶
+              </span>
+              <h3 style={{ margin: 0, borderBottom: 'none', paddingBottom: 0, flex: 1 }}>{title}</h3>
+            </div>
+            {headerActions && (
+              <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', gap: '0.5rem' }}>
+                {headerActions}
+              </div>
+            )}
           </div>
-          {headerActions && (
-            <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', gap: '0.5rem' }}>
-              {headerActions}
+          {isExpanded && (
+            <div style={{
+              padding: '0 0.5rem',
+              overflow: 'visible'
+            }}>
+              {children}
             </div>
           )}
         </div>
-        {isExpanded && (
-          <div style={{
-            padding: '0 0.5rem',
-            overflow: 'hidden'
-          }}>
-            {children}
-          </div>
-        )}
-      </div>
-    );
-  };
+      );
+    };
+    return Component;
+  }, [toggleSection]);
 
   // Memoize node options building
   const nodeOptionsMemo = useMemo(() => {
@@ -245,10 +266,23 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       setSearchQuery(selected.longName);
     }
     setShowSearch(false);
-    
+
     // Always clear remote node channels when switching nodes
     // They will be populated when Load is clicked
     setRemoteNodeChannels([]);
+
+    // Reset section load statuses when switching nodes
+    setSectionLoadStatus({
+      device: 'idle',
+      lora: 'idle',
+      position: 'idle',
+      mqtt: 'idle',
+      security: 'idle',
+      bluetooth: 'idle',
+      neighborinfo: 'idle',
+      owner: 'idle',
+      channels: 'idle'
+    });
   }, [nodeOptions]);
 
   const handleLoadAllConfigs = async () => {
@@ -259,6 +293,18 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
     setIsLoadingAllConfigs(true);
     setLoadingProgress(null);
+    // Reset all section statuses to loading
+    setSectionLoadStatus({
+      device: 'loading',
+      lora: 'loading',
+      position: 'loading',
+      mqtt: 'loading',
+      security: 'loading',
+      bluetooth: 'loading',
+      neighborinfo: 'loading',
+      owner: 'loading',
+      channels: 'loading'
+    });
     const errors: string[] = [];
     const loaded: string[] = [];
     const totalConfigs = 9; // device, lora, position, mqtt, security, bluetooth, neighborinfo, owner, channels
@@ -267,25 +313,31 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       // Load all config types sequentially to avoid conflicts and timeouts
       const loadConfig = async (configType: string, step: number, loadFn: (result: any) => void) => {
         setLoadingProgress({ current: step, total: totalConfigs, configType });
+        setSectionLoadStatus(prev => ({ ...prev, [configType]: 'loading' }));
         try {
-          const result = await apiService.post<{ config: any }>('/api/admin/load-config', { 
-            nodeNum: selectedNodeNum, 
-            configType 
+          const result = await apiService.post<{ config: any }>('/api/admin/load-config', {
+            nodeNum: selectedNodeNum,
+            configType
           });
           if (result?.config) {
             loadFn(result);
             loaded.push(configType);
+            setSectionLoadStatus(prev => ({ ...prev, [configType]: 'success' }));
+          } else {
+            setSectionLoadStatus(prev => ({ ...prev, [configType]: 'error' }));
           }
         } catch (_err) {
           errors.push(configType);
+          setSectionLoadStatus(prev => ({ ...prev, [configType]: 'error' }));
         }
       };
 
       const loadOwner = async (step: number) => {
         setLoadingProgress({ current: step, total: totalConfigs, configType: 'owner' });
+        setSectionLoadStatus(prev => ({ ...prev, owner: 'loading' }));
         try {
-          const result = await apiService.post<{ owner: any }>('/api/admin/load-owner', { 
-            nodeNum: selectedNodeNum 
+          const result = await apiService.post<{ owner: any }>('/api/admin/load-owner', {
+            nodeNum: selectedNodeNum
           });
           if (result?.owner) {
             const owner = result.owner;
@@ -295,9 +347,13 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               isUnmessagable: owner.isUnmessagable
             });
             loaded.push('owner');
+            setSectionLoadStatus(prev => ({ ...prev, owner: 'success' }));
+          } else {
+            setSectionLoadStatus(prev => ({ ...prev, owner: 'error' }));
           }
         } catch (_err) {
           errors.push('owner');
+          setSectionLoadStatus(prev => ({ ...prev, owner: 'error' }));
         }
       };
 
@@ -442,6 +498,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           
           setRemoteNodeChannels(loadedChannels);
           loaded.push('channels');
+          setSectionLoadStatus(prev => ({ ...prev, channels: 'success' }));
         } else {
           // For remote node, request all 8 channels in parallel
           const loadedChannels: Channel[] = [];
@@ -563,9 +620,11 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           
           setRemoteNodeChannels(loadedChannels);
           loaded.push('channels');
+          setSectionLoadStatus(prev => ({ ...prev, channels: 'success' }));
         }
       } catch (_err) {
         errors.push('channels');
+        setSectionLoadStatus(prev => ({ ...prev, channels: 'error' }));
       }
 
       // Show summary toast
@@ -584,6 +643,144 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     }
   };
 
+  // Individual section load handlers
+  const handleLoadSingleConfig = async (configType: string) => {
+    if (selectedNodeNum === null) {
+      showToast(t('admin_commands.please_select_node'), 'error');
+      return;
+    }
+
+    setSectionLoadStatus(prev => ({ ...prev, [configType]: 'loading' }));
+
+    try {
+      if (configType === 'owner') {
+        const result = await apiService.post<{ owner: any }>('/api/admin/load-owner', {
+          nodeNum: selectedNodeNum
+        });
+        if (result?.owner) {
+          setOwnerConfig({
+            longName: result.owner.longName,
+            shortName: result.owner.shortName,
+            isUnmessagable: result.owner.isUnmessagable
+          });
+          setSectionLoadStatus(prev => ({ ...prev, owner: 'success' }));
+          showToast(t('admin_commands.config_loaded_success', { configType: t('admin_commands.owner_config_short', 'Owner') }), 'success');
+        } else {
+          setSectionLoadStatus(prev => ({ ...prev, owner: 'error' }));
+          showToast(t('admin_commands.config_load_failed', { configType: t('admin_commands.owner_config_short', 'Owner') }), 'error');
+        }
+        return;
+      }
+
+      if (configType === 'channels') {
+        await handleLoadChannels();
+        return;
+      }
+
+      const result = await apiService.post<{ config: any }>('/api/admin/load-config', {
+        nodeNum: selectedNodeNum,
+        configType
+      });
+
+      if (result?.config) {
+        const config = result.config;
+        switch (configType) {
+          case 'device':
+            setDeviceConfig({
+              role: config.role,
+              nodeInfoBroadcastSecs: config.nodeInfoBroadcastSecs
+            });
+            break;
+          case 'lora':
+            setLoRaConfig({
+              usePreset: config.usePreset,
+              modemPreset: config.modemPreset,
+              bandwidth: config.bandwidth,
+              spreadFactor: config.spreadFactor,
+              codingRate: config.codingRate,
+              frequencyOffset: config.frequencyOffset,
+              overrideFrequency: config.overrideFrequency,
+              region: config.region,
+              hopLimit: config.hopLimit,
+              txPower: config.txPower,
+              channelNum: config.channelNum,
+              sx126xRxBoostedGain: config.sx126xRxBoostedGain,
+              ignoreMqtt: config.ignoreMqtt,
+              configOkToMqtt: config.configOkToMqtt
+            });
+            break;
+          case 'position':
+            setPositionConfig({
+              positionBroadcastSecs: config.positionBroadcastSecs,
+              positionSmartEnabled: config.positionBroadcastSmartEnabled ?? config.positionSmartEnabled,
+              fixedPosition: config.fixedPosition,
+              fixedLatitude: config.fixedLatitude,
+              fixedLongitude: config.fixedLongitude,
+              fixedAltitude: config.fixedAltitude,
+              gpsUpdateInterval: config.gpsUpdateInterval,
+              rxGpio: config.rxGpio,
+              txGpio: config.txGpio,
+              broadcastSmartMinimumDistance: config.broadcastSmartMinimumDistance,
+              broadcastSmartMinimumIntervalSecs: config.broadcastSmartMinimumIntervalSecs,
+              gpsEnGpio: config.gpsEnGpio,
+              gpsMode: config.gpsMode
+            });
+            if (config.positionFlags !== undefined) {
+              setPositionFlags(decodePositionFlags(config.positionFlags));
+            }
+            break;
+          case 'mqtt':
+            setMQTTConfig({
+              enabled: config.enabled,
+              address: config.address,
+              username: config.username,
+              password: config.password,
+              encryptionEnabled: config.encryptionEnabled,
+              jsonEnabled: config.jsonEnabled,
+              root: config.root
+            });
+            break;
+          case 'security':
+            if (config.adminKeys !== undefined) {
+              const keys = config.adminKeys.length === 0 ? [''] : (config.adminKeys.length < 3 ? [...config.adminKeys, ''] : config.adminKeys.slice(0, 3));
+              setSecurityConfig({ adminKeys: keys });
+            }
+            const securityUpdates: Record<string, unknown> = {};
+            if (config.isManaged !== undefined) securityUpdates.isManaged = config.isManaged;
+            if (config.serialEnabled !== undefined) securityUpdates.serialEnabled = config.serialEnabled;
+            if (config.debugLogApiEnabled !== undefined) securityUpdates.debugLogApiEnabled = config.debugLogApiEnabled;
+            if (config.adminChannelEnabled !== undefined) securityUpdates.adminChannelEnabled = config.adminChannelEnabled;
+            if (Object.keys(securityUpdates).length > 0) {
+              setSecurityConfig(securityUpdates);
+            }
+            break;
+          case 'bluetooth':
+            setBluetoothConfig({
+              enabled: config.enabled,
+              mode: config.mode,
+              fixedPin: config.fixedPin
+            });
+            break;
+          case 'neighborinfo':
+            setNeighborInfoConfig({
+              enabled: config.enabled,
+              updateInterval: config.updateInterval,
+              transmitOverLora: config.transmitOverLora
+            });
+            break;
+        }
+        setSectionLoadStatus(prev => ({ ...prev, [configType]: 'success' }));
+        showToast(t('admin_commands.config_loaded_success', { configType: t(`admin_commands.${configType}_config_short`, configType) }), 'success');
+      } else {
+        setSectionLoadStatus(prev => ({ ...prev, [configType]: 'error' }));
+        showToast(t('admin_commands.config_load_failed', { configType: t(`admin_commands.${configType}_config_short`, configType) }), 'error');
+      }
+    } catch (error: any) {
+      setSectionLoadStatus(prev => ({ ...prev, [configType]: 'error' }));
+      showToast(error.message || t('admin_commands.config_load_failed', { configType }), 'error');
+    }
+  };
+
   // Legacy handlers - redirect to handleLoadAllConfigs
 
   const handleLoadChannels = async () => {
@@ -594,6 +791,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     }
 
     setIsLoadingChannels(true);
+    setSectionLoadStatus(prev => ({ ...prev, channels: 'loading' }));
     try {
       const localNodeNum = nodes.find(n => (n.user?.id || n.nodeId) === currentNodeId)?.nodeNum;
       const isLocalNode = selectedNodeNum === localNodeNum || selectedNodeNum === 0;
@@ -628,6 +826,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         setRemoteNodeChannels(loadedChannels);
         const loadedCount = countLoadedChannels(loadedChannels);
         showToast(t('admin_commands.channels_loaded_local', { count: loadedCount }), 'success');
+        setSectionLoadStatus(prev => ({ ...prev, channels: 'success' }));
       } else {
         // For remote node, request all 8 channels in parallel (like Meshtastic app does)
         // This is much faster than sequential requests
@@ -777,9 +976,11 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         // Count channels that have actual data (name, PSK, or are primary channel)
         const loadedCount = countLoadedChannels(loadedChannels);
         showToast(t('admin_commands.channels_loaded_remote', { count: loadedCount }), 'success');
+        setSectionLoadStatus(prev => ({ ...prev, channels: 'success' }));
       }
     } catch (error: any) {
       showToast(error.message || t('admin_commands.failed_load_channels'), 'error');
+      setSectionLoadStatus(prev => ({ ...prev, channels: 'error' }));
       throw error; // Re-throw so Promise.all() can catch it
     } finally {
       setIsLoadingChannels(false);
@@ -1542,6 +1743,54 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   //   );
   // }
 
+  // Helper to render section load button with status indicator (for header)
+  const renderSectionLoadButton = (configType: string) => {
+    const status = sectionLoadStatus[configType];
+    const isLoading = status === 'loading';
+    const isDisabled = isLoading || selectedNodeNum === null || isLoadingAllConfigs;
+
+    return (
+      <div
+        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+        onClick={(e) => e.stopPropagation()} // Prevent header toggle when clicking button
+      >
+        {isLoading && (
+          <span
+            style={{
+              width: '1rem',
+              height: '1rem',
+              border: '2px solid var(--ctp-surface2)',
+              borderTopColor: 'var(--ctp-blue)',
+              borderRadius: '50%',
+              animation: 'spin 1s linear infinite',
+              display: 'inline-block'
+            }}
+            title={t('common.loading')}
+          />
+        )}
+        {status === 'success' && (
+          <span style={{ color: 'var(--ctp-green)', fontSize: '1rem', fontWeight: 'bold' }} title={t('admin_commands.section_loaded')}>✓</span>
+        )}
+        {status === 'error' && (
+          <span style={{ color: 'var(--ctp-red)', fontSize: '1rem', fontWeight: 'bold' }} title={t('admin_commands.section_load_failed')}>✗</span>
+        )}
+        <button
+          onClick={() => handleLoadSingleConfig(configType)}
+          disabled={isDisabled}
+          className="save-button"
+          style={{
+            padding: '0.25rem 0.75rem',
+            fontSize: '0.8rem',
+            opacity: isDisabled ? 0.5 : 1,
+            cursor: isDisabled ? 'not-allowed' : 'pointer'
+          }}
+        >
+          {t('admin_commands.load_button', 'Load')}
+        </button>
+      </div>
+    );
+  };
+
   return (
     <div className="tab-content">
       <SectionNav items={[
@@ -1589,7 +1838,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                 borderRadius: '8px',
                 maxHeight: '300px',
                 overflowY: 'auto',
-                zIndex: 1000,
+                zIndex: 9999,
                 boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
               }}>
                 {filteredNodes.map(node => (
@@ -1676,6 +1925,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           id="admin-lora-config"
           title={t('admin_commands.lora_configuration')}
           nested={true}
+          headerActions={renderSectionLoadButton('lora')}
         >
         <div className="setting-item">
           <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
@@ -1884,6 +2134,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           id="admin-security-config"
           title={t('admin_commands.security_configuration')}
           nested={true}
+          headerActions={renderSectionLoadButton('security')}
         >
         <p className="setting-description" style={{ marginBottom: '1rem' }}>
           {t('admin_commands.security_config_description')}
@@ -2004,6 +2255,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           id="admin-channel-config"
           title={t('admin_commands.channel_configuration')}
           nested={true}
+          headerActions={renderSectionLoadButton('channels')}
         >
         <p className="setting-description" style={{ marginBottom: '1rem' }}>
           {t('admin_commands.channel_config_description')}
@@ -2175,6 +2427,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         onSaveBluetoothConfig={handleSetBluetoothConfig}
         isExecuting={isExecuting}
         selectedNodeNum={selectedNodeNum}
+        ownerHeaderActions={renderSectionLoadButton('owner')}
+        deviceHeaderActions={renderSectionLoadButton('device')}
+        positionHeaderActions={renderSectionLoadButton('position')}
+        bluetoothHeaderActions={renderSectionLoadButton('bluetooth')}
       />
 
       {/* Module Configuration Section */}
@@ -2196,6 +2452,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         onSaveNeighborInfoConfig={handleSetNeighborInfoConfig}
         isExecuting={isExecuting}
         selectedNodeNum={selectedNodeNum}
+        mqttHeaderActions={renderSectionLoadButton('mqtt')}
+        neighborInfoHeaderActions={renderSectionLoadButton('neighborinfo')}
       />
 
       {/* Import/Export Configuration Section */}
@@ -2289,7 +2547,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               {t('admin_commands.select_node_to_manage_description')}
             </span>
           </label>
-          <div ref={nodeManagementSearchRef} style={{ position: 'relative', width: '100%', maxWidth: '600px' }}>
+          <div ref={nodeManagementSearchRef} style={{ position: 'relative', width: '100%', maxWidth: '600px', zIndex: 100 }}>
             <input
               type="text"
               className="setting-input"
@@ -2317,7 +2575,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                 borderRadius: '8px',
                 maxHeight: '300px',
                 overflowY: 'auto',
-                zIndex: 1000,
+                zIndex: 9999,
                 boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
               }}>
                 {filteredNodesForManagement.map(node => (
@@ -2921,4 +3179,5 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   );
 };
 
-export default AdminCommandsTab;
+// Memoize to prevent re-renders from parent's statusTick timer
+export default React.memo(AdminCommandsTab);
