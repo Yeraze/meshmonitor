@@ -12,11 +12,15 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> Result<(), Box<dyn std::err
     // Create menu items
     let open_item = MenuItem::with_id(app, "open", "Open MeshMonitor", true, None::<&str>)?;
     let settings_item = MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)?;
-    let logs_item = MenuItem::with_id(app, "logs", "Open Data Folder", true, None::<&str>)?;
+    let logs_item = MenuItem::with_id(app, "logs", "View Logs", true, None::<&str>)?;
+    let data_item = MenuItem::with_id(app, "data", "Open Data Folder", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
 
     // Build menu
-    let menu = Menu::with_items(app, &[&open_item, &settings_item, &logs_item, &quit_item])?;
+    let menu = Menu::with_items(
+        app,
+        &[&open_item, &settings_item, &logs_item, &data_item, &quit_item],
+    )?;
 
     // Build tray icon
     let _tray = TrayIconBuilder::new()
@@ -53,6 +57,9 @@ fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, item_id: &str) {
             show_settings_window(app);
         }
         "logs" => {
+            open_logs_folder();
+        }
+        "data" => {
             open_data_folder();
         }
         "quit" => {
@@ -99,6 +106,31 @@ fn show_settings_window<R: Runtime>(app: &AppHandle<R>) {
             Err(e) => {
                 eprintln!("Failed to create settings window: {}", e);
             }
+        }
+    }
+}
+
+/// Open the logs folder in file explorer
+fn open_logs_folder() {
+    if let Ok(logs_path) = crate::config::get_logs_path() {
+        // Ensure the logs directory exists
+        let _ = std::fs::create_dir_all(&logs_path);
+
+        #[cfg(target_os = "windows")]
+        {
+            let _ = std::process::Command::new("explorer")
+                .arg(&logs_path)
+                .spawn();
+        }
+        #[cfg(target_os = "macos")]
+        {
+            let _ = std::process::Command::new("open").arg(&logs_path).spawn();
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let _ = std::process::Command::new("xdg-open")
+                .arg(&logs_path)
+                .spawn();
         }
     }
 }
