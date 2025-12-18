@@ -181,7 +181,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
+          targets: aarch64-apple-darwin
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
@@ -202,8 +202,10 @@ jobs:
 
       - name: Download Node.js for bundling (ARM64)
         run: |
-          NODE_VERSION="v20.10.0"
+          NODE_VERSION="v20.11.1"
+          EXPECTED_SHA256="e0065c61f340e85106a99c4b54746c5cee09d59b08c5712f67f99e92aa44995d"
           curl -L -o node.tar.gz "https://nodejs.org/dist/${NODE_VERSION}/node-${NODE_VERSION}-darwin-arm64.tar.gz"
+          echo "${EXPECTED_SHA256}  node.tar.gz" | shasum -a 256 -c -
           tar -xzf node.tar.gz
           mkdir -p desktop/resources/binaries
           cp "node-${NODE_VERSION}-darwin-arm64/bin/node" desktop/resources/binaries/node

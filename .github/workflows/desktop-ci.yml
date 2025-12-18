@@ -195,9 +195,12 @@ jobs:
 
       - name: Download Node.js binary for bundling
         run: |
-          curl -L -o node.tar.gz "https://nodejs.org/dist/v20.11.1/node-v20.11.1-darwin-arm64.tar.gz"
+          NODE_VERSION="v20.11.1"
+          EXPECTED_SHA256="e0065c61f340e85106a99c4b54746c5cee09d59b08c5712f67f99e92aa44995d"
+          curl -L -o node.tar.gz "https://nodejs.org/dist/${NODE_VERSION}/node-${NODE_VERSION}-darwin-arm64.tar.gz"
+          echo "${EXPECTED_SHA256}  node.tar.gz" | shasum -a 256 -c -
           tar -xzf node.tar.gz
-          cp "node-v20.11.1-darwin-arm64/bin/node" desktop/resources/binaries/node
+          cp "node-${NODE_VERSION}-darwin-arm64/bin/node" desktop/resources/binaries/node
 
       - name: Run Rust linting
         working-directory: desktop/src-tauri
