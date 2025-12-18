@@ -82,6 +82,8 @@ export interface UseTraceroutePathsParams {
   maxNodeAgeHours: number;
   themeColors: ThemeColors;
   callbacks: TracerouteCallbacks;
+  /** Optional set of visible node numbers - when provided, only show route segments where both endpoints are visible */
+  visibleNodeNums?: Set<number>;
 }
 
 /**
@@ -110,6 +112,7 @@ export function useTraceroutePaths({
   maxNodeAgeHours,
   themeColors,
   callbacks,
+  visibleNodeNums,
 }: UseTraceroutePathsParams): UseTraceroutePathsResult {
   // Memoize base traceroute paths (showPaths) - doesn't depend on selectedNodeId
   // This prevents re-rendering markers when clicking to select a node
@@ -274,8 +277,17 @@ export function useTraceroutePaths({
       }
     });
 
+    // Filter segments to only include those where both endpoints are visible
+    // This ensures route segments are hidden when their connected nodes are filtered out
+    const filteredSegments = visibleNodeNums
+      ? segmentsList.filter(segment => {
+          const [nodeNum1, nodeNum2] = segment.nodeNums;
+          return visibleNodeNums.has(nodeNum1) && visibleNodeNums.has(nodeNum2);
+        })
+      : segmentsList;
+
     // Render segments with weighted lines
-    const segmentElements = segmentsList.map(segment => {
+    const segmentElements = filteredSegments.map(segment => {
       const segmentKey = segment.nodeNums.sort().join('-');
       const usage = segmentUsage.get(segmentKey) || 1;
       // Base weight 2, add 1 per usage, max 8
@@ -552,7 +564,7 @@ export function useTraceroutePaths({
     allElements.push(...segmentElements);
 
     return allElements;
-  }, [showPaths, traceroutesDigest, nodesPositionDigest, distanceUnit, maxNodeAgeHours, themeColors.mauve, themeColors.overlay0, callbacks]);
+  }, [showPaths, traceroutesDigest, nodesPositionDigest, distanceUnit, maxNodeAgeHours, themeColors.mauve, themeColors.overlay0, callbacks, visibleNodeNums]);
 
   // Separate memoization for selected node traceroute (showRoute)
   // This can change independently without re-rendering the base map markers
