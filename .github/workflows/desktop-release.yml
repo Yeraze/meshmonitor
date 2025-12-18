@@ -93,6 +93,7 @@ jobs:
           copy dist\cors-detection.js desktop\resources\dist\cors-detection.js
           copy dist\cors-error.html desktop\resources\dist\cors-error.html
           copy package.json desktop\resources\package.json
+          copy package.json desktop\resources\dist\package.json
           robocopy node_modules desktop\resources\dist\node_modules /E /NFL /NDL /NJH /NJS /NC /NS /NP
           if %ERRORLEVEL% leq 7 exit /b 0
 
@@ -244,6 +245,7 @@ jobs:
           cp dist/cors-detection.js desktop/resources/dist/
           cp dist/cors-error.html desktop/resources/dist/
           cp package.json desktop/resources/
+          cp package.json desktop/resources/dist/
           # Copy node_modules
           cp -r node_modules desktop/resources/dist/
 
