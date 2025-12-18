@@ -117,6 +117,101 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
+  build-macos:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: 'desktop/src-tauri'
+
+      - name: Install main project dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Build server (TypeScript)
+        run: npx tsc --project tsconfig.server.json
+
+      - name: Copy OpenAPI spec
+        run: |
+          mkdir -p dist/server/routes/v1
+          cp src/server/routes/v1/openapi.yaml dist/server/routes/v1/
+
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm install
+
+      - name: Prepare desktop resources
+        run: |
+          mkdir -p desktop/resources/dist
+          mkdir -p desktop/resources/binaries
+          cp -r dist/server desktop/resources/dist/
+          cp -r dist/services desktop/resources/dist/
+          cp -r dist/utils desktop/resources/dist/
+          cp -r dist/types desktop/resources/dist/
+          cp -r dist/config desktop/resources/dist/
+          cp -r dist/constants desktop/resources/dist/
+          cp -r dist/contexts desktop/resources/dist/
+          cp -r dist/assets desktop/resources/dist/
+          cp -r dist/locales desktop/resources/dist/
+          cp -r dist/pmtiles desktop/resources/dist/
+          cp -r protobufs desktop/resources/dist/
+          cp dist/index.html desktop/resources/dist/
+          cp dist/logo.png desktop/resources/dist/
+          cp dist/logo-original.png desktop/resources/dist/
+          cp dist/favicon.ico desktop/resources/dist/
+          cp dist/favicon-16x16.png desktop/resources/dist/
+          cp dist/favicon-32x32.png desktop/resources/dist/
+          cp dist/cors-detection.js desktop/resources/dist/
+          cp dist/cors-error.html desktop/resources/dist/
+          cp package.json desktop/resources/
+          cp -r node_modules desktop/resources/dist/
+
+      - name: Download Node.js binary for bundling
+        run: |
+          curl -L -o node.tar.gz "https://nodejs.org/dist/v20.11.1/node-v20.11.1-darwin-arm64.tar.gz"
+          tar -xzf node.tar.gz
+          cp "node-v20.11.1-darwin-arm64/bin/node" desktop/resources/binaries/node
+
+      - name: Run Rust linting
+        working-directory: desktop/src-tauri
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Run Rust tests
+        working-directory: desktop/src-tauri
+        run: cargo test --verbose
+
+      - name: Build Tauri app (debug)
+        working-directory: desktop
+        run: npm run tauri:build -- --debug --bundles app
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: meshmonitor-desktop-macos-debug
+          path: desktop/src-tauri/target/debug/bundle/
+          retention-days: 7
+          if-no-files-found: warn
+
   lint-rust:
     runs-on: ubuntu-latest
 
