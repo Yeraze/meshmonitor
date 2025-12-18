@@ -28,7 +28,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install Rust toolchain
@@ -56,9 +56,14 @@ jobs:
 
       - name: Download Node.js for bundling
         run: |
-          $nodeVersion = "v20.10.0"
+          $nodeVersion = "v24.12.0"
+          $expectedHash = "9c125f61ae947b52e779095830f9cac267846a043ef7192183c84016aaad2812"
           $nodeUrl = "https://nodejs.org/dist/$nodeVersion/node-$nodeVersion-win-x64.zip"
           Invoke-WebRequest -Uri $nodeUrl -OutFile node.zip
+          $actualHash = (Get-FileHash -Path node.zip -Algorithm SHA256).Hash.ToLower()
+          if ($actualHash -ne $expectedHash) {
+            throw "SHA256 checksum mismatch! Expected: $expectedHash, Got: $actualHash"
+          }
           Expand-Archive -Path node.zip -DestinationPath node-extracted
           New-Item -ItemType Directory -Force -Path "desktop/resources/binaries"
           Copy-Item "node-extracted/node-$nodeVersion-win-x64/node.exe" "desktop/resources/binaries/node.exe"
@@ -159,4 +164,152 @@ jobs:
         with:
           name: meshmonitor-desktop-windows-release
           path: desktop/src-tauri/target/release/bundle/nsis/*.exe
+          retention-days: 30
+
+  build-macos:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: 'desktop/src-tauri'
+
+      - name: Install main project dependencies
+        run: npm ci
+
+      - name: Build main project (frontend)
+        run: npm run build
+
+      - name: Build server
+        run: |
+          npx tsc --project tsconfig.server.json
+          mkdir -p dist/server/routes/v1
+          cp src/server/routes/v1/openapi.yaml dist/server/routes/v1/
+
+      - name: Download Node.js for bundling (ARM64)
+        run: |
+          NODE_VERSION="v24.12.0"
+          EXPECTED_SHA256="319f221adc5e44ff0ed57e8a441b2284f02b8dc6fc87b8eb92a6a93643fd8080"
+          curl -L -o node.tar.gz "https://nodejs.org/dist/${NODE_VERSION}/node-${NODE_VERSION}-darwin-arm64.tar.gz"
+          echo "${EXPECTED_SHA256}  node.tar.gz" | shasum -a 256 -c -
+          tar -xzf node.tar.gz
+          mkdir -p desktop/resources/binaries
+          cp "node-${NODE_VERSION}-darwin-arm64/bin/node" desktop/resources/binaries/node
+
+      - name: Copy server files to Tauri resources
+        run: |
+          mkdir -p desktop/resources/dist
+          # Copy server-side compiled code
+          cp -r dist/server desktop/resources/dist/
+          cp -r dist/services desktop/resources/dist/
+          cp -r dist/utils desktop/resources/dist/
+          cp -r dist/types desktop/resources/dist/
+          cp -r dist/config desktop/resources/dist/
+          cp -r dist/constants desktop/resources/dist/
+          cp -r dist/contexts desktop/resources/dist/
+          # Copy frontend assets
+          cp -r dist/assets desktop/resources/dist/
+          cp -r dist/locales desktop/resources/dist/
+          # Copy pmtiles if it exists (may be in public or dist)
+          [ -d dist/pmtiles ] && cp -r dist/pmtiles desktop/resources/dist/ || true
+          [ -d public/pmtiles ] && cp -r public/pmtiles desktop/resources/dist/ || true
+          # Copy protobufs
+          cp -r protobufs desktop/resources/dist/
+          # Copy individual files
+          cp dist/index.html desktop/resources/dist/
+          cp dist/logo.png desktop/resources/dist/
+          cp dist/logo-original.png desktop/resources/dist/
+          cp dist/favicon.ico desktop/resources/dist/
+          cp dist/favicon-16x16.png desktop/resources/dist/
+          cp dist/favicon-32x32.png desktop/resources/dist/
+          cp dist/cors-detection.js desktop/resources/dist/
+          cp dist/cors-error.html desktop/resources/dist/
+          cp package.json desktop/resources/
+          # Copy node_modules
+          cp -r node_modules desktop/resources/dist/
+
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm install
+
+      - name: Build Tauri app (release)
+        working-directory: desktop
+        run: npm run tauri:build -- --bundles dmg
+
+      - name: Get version from tag
+        id: get_version
+        run: |
+          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          VERSION="${TAG#v}"
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "TAG=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Rename DMG with version
+        id: rename_artifacts
+        run: |
+          VERSION="${{ steps.get_version.outputs.VERSION }}"
+          DMG_PATH=$(find desktop/src-tauri/target/release/bundle/dmg -name "*.dmg" | head -1)
+          if [ -n "$DMG_PATH" ]; then
+            NEW_NAME="MeshMonitor-Desktop-${VERSION}-arm64.dmg"
+            DESTINATION="desktop/src-tauri/target/release/bundle/dmg/$NEW_NAME"
+            cp "$DMG_PATH" "$DESTINATION"
+            echo "DMG_PATH=$DESTINATION" >> $GITHUB_OUTPUT
+            echo "DMG_NAME=$NEW_NAME" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate checksums
+        id: checksums
+        run: |
+          VERSION="${{ steps.get_version.outputs.VERSION }}"
+          CHECKSUM_FILE="desktop-checksums-macos-${VERSION}.txt"
+          DMG_PATH="${{ steps.rename_artifacts.outputs.DMG_PATH }}"
+
+          if [ -n "$DMG_PATH" ] && [ -f "$DMG_PATH" ]; then
+            HASH=$(shasum -a 256 "$DMG_PATH" | awk '{print $1}')
+            echo "$HASH  ${{ steps.rename_artifacts.outputs.DMG_NAME }}" >> "$CHECKSUM_FILE"
+          fi
+
+          echo "CHECKSUM_FILE=$CHECKSUM_FILE" >> $GITHUB_OUTPUT
+
+      - name: Upload DMG to release
+        if: steps.rename_artifacts.outputs.DMG_PATH
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.get_version.outputs.TAG }}
+          files: ${{ steps.rename_artifacts.outputs.DMG_PATH }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload checksums to release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.get_version.outputs.TAG }}
+          files: ${{ steps.checksums.outputs.CHECKSUM_FILE }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifacts for debugging
+        uses: actions/upload-artifact@v4
+        with:
+          name: meshmonitor-desktop-macos-release
+          path: desktop/src-tauri/target/release/bundle/dmg/*.dmg
           retention-days: 30
