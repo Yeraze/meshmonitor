@@ -17,6 +17,11 @@ MeshMonitor supports multiple deployment options to fit your infrastructure:
   - Full feature support
   - See [Quick Start](#quick-start-with-docker-compose) below
 
+- **🖥️ Desktop Application** - Standalone app for Windows and macOS
+  - No server required - runs on your computer
+  - System tray integration
+  - See [Desktop Application Guide](/configuration/desktop) for details
+
 - **☸️ Kubernetes/Helm** - Production-grade orchestration
   - Available in our [GitHub repository](https://github.com/yeraze/meshmonitor)
   - See [Deployment Guide](/deployment/DEPLOYMENT_GUIDE) for details
