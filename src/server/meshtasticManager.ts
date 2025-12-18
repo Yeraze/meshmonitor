@@ -6764,7 +6764,8 @@ class MeshtasticManager {
       logger.debug('🔑 Requested session passkey from device (via SESSIONKEY_CONFIG)');
 
       // Wait for the response (admin messages can take time)
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      // Increased from 3s to 5s to allow for slower serial connections
+      await new Promise(resolve => setTimeout(resolve, 5000));
 
       // Check if we received the passkey
       if (!this.isSessionPasskeyValid()) {
@@ -6813,8 +6814,9 @@ class MeshtasticManager {
       await this.transport.send(adminPacket);
       logger.debug(`🔑 Requested session passkey from remote node ${destinationNodeNum} (via getDeviceMetadataRequest)`);
 
-      // Wait for the response (admin messages can take time)
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      // Wait for the response (admin messages can take time, especially over mesh)
+      // Increased from 3s to 15s to allow for multi-hop mesh routing
+      await new Promise(resolve => setTimeout(resolve, 15000));
 
       // Check if we received the passkey
       const passkey = this.getSessionPasskey(destinationNodeNum);
@@ -7155,9 +7157,9 @@ class MeshtasticManager {
 
       // Wait for the response (config responses can take time, especially over mesh)
       // Remote nodes may take longer due to mesh routing
-      // Poll for the response up to 10 seconds
-      const maxWaitTime = 10000; // 10 seconds
-      const pollInterval = 200; // Check every 200ms
+      // Poll for the response up to 20 seconds (increased from 10s for multi-hop mesh)
+      const maxWaitTime = 20000; // 20 seconds
+      const pollInterval = 250; // Check every 250ms
       const maxPolls = maxWaitTime / pollInterval;
       
       for (let i = 0; i < maxPolls; i++) {
@@ -7261,7 +7263,8 @@ class MeshtasticManager {
       
       // Wait for the response
       // Use longer timeout for mesh routing - responses can take longer over mesh
-      const maxWaitTime = 8000; // 8 seconds (longer for mesh routing delays)
+      // Increased from 8s to 16s for multi-hop mesh routing
+      const maxWaitTime = 16000; // 16 seconds
       const pollInterval = 300; // Check every 300ms
       const maxPolls = maxWaitTime / pollInterval;
       
@@ -7346,13 +7349,14 @@ class MeshtasticManager {
       logger.debug(`📡 Requested owner info from remote node ${destinationNodeNum}`);
       
       // Wait for the response
-      const maxWaitTime = 3000; // 3 seconds
-      const pollInterval = 200; // Check every 200ms
+      // Increased from 3s to 10s for multi-hop mesh routing
+      const maxWaitTime = 10000; // 10 seconds
+      const pollInterval = 250; // Check every 250ms
       const maxPolls = maxWaitTime / pollInterval;
-      
+
       for (let i = 0; i < maxPolls; i++) {
         await new Promise(resolve => setTimeout(resolve, pollInterval));
-        
+
         // Check if we have the owner for this remote node
         if (this.remoteNodeOwners.has(destinationNodeNum)) {
           const owner = this.remoteNodeOwners.get(destinationNodeNum);
@@ -7361,7 +7365,7 @@ class MeshtasticManager {
         }
       }
 
-      logger.warn(`⚠️ Owner info not found in response from remote node ${destinationNodeNum} after waiting ${maxWaitTime}ms`);
+      logger.warn(`⚠️ Owner info not found in response from remote node ${destinationNodeNum} after waiting ${maxWaitTime / 1000}s`);
       return null;
     } catch (error) {
       logger.error(`❌ Error requesting owner info from remote node ${destinationNodeNum}:`, error);
