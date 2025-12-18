@@ -10,6 +10,8 @@ interface ExportConfigModalProps {
   channels: Channel[];
   deviceConfig: any;
   nodeNum?: number; // Optional node number for remote nodes
+  onLoadChannels?: () => Promise<void>; // Optional callback to load channels
+  isLoadingChannels?: boolean; // Optional loading state
 }
 
 export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
@@ -17,7 +19,9 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
   onClose,
   channels: _channels,
   deviceConfig,
-  nodeNum
+  nodeNum,
+  onLoadChannels,
+  isLoadingChannels = false
 }) => {
   const { t } = useTranslation();
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -43,29 +47,37 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
         );
         setSelectedChannels(enabledChannelIds);
       } else {
-        // Local node - fetch ALL channels (unfiltered) for export
-        apiService.getAllChannels().then(allChannels => {
-          setChannels(allChannels);
-          // Select only channels that are not disabled (role !== 0)
+        // Local node - use passed channels if available, otherwise fetch from API
+        if (_channels && _channels.length > 0) {
+          setChannels(_channels);
           const enabledChannelIds = new Set(
-            allChannels
-              .filter(ch => ch.role !== 0) // Exclude DISABLED channels
+            _channels
+              .filter(ch => ch.role !== 0)
               .map(ch => ch.id)
           );
           setSelectedChannels(enabledChannelIds);
-        }).catch(err => {
-          setError(`Failed to load channels: ${err.message}`);
-        });
+        } else {
+          // Fetch ALL channels (unfiltered) for export
+          apiService.getAllChannels().then(allChannels => {
+            setChannels(allChannels);
+            // Select only channels that are not disabled (role !== 0)
+            const enabledChannelIds = new Set(
+              allChannels
+                .filter(ch => ch.role !== 0) // Exclude DISABLED channels
+                .map(ch => ch.id)
+            );
+            setSelectedChannels(enabledChannelIds);
+          }).catch(err => {
+            setError(`Failed to load channels: ${err.message}`);
+          });
+        }
       }
       setIncludeLoraConfig(true);
       setCopied(false);
       setError(null);
       setGeneratedUrl(''); // Clear any previous URL
     }
-    // Only re-run when modal opens/closes or node changes, not when channels prop updates
-    // This prevents resetting user's manual channel selections when parent updates channels
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, nodeNum]);
+  }, [isOpen, nodeNum, _channels]);
 
   const generateUrl = useCallback(async () => {
     if (selectedChannels.size === 0) {
@@ -209,8 +221,55 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
         <div style={{ marginBottom: '1rem' }}>
           <h3>{t('export_config.select_channels')}</h3>
           {channels.length === 0 ? (
-            <div style={{ padding: '1rem', background: 'var(--ctp-surface0)', borderRadius: '4px', color: 'var(--ctp-subtext0)' }}>
-              {t('export_config.no_channels')}
+            <div style={{ padding: '1.5rem', background: 'var(--ctp-surface0)', borderRadius: '4px', border: '1px solid var(--ctp-surface2)' }}>
+              <div style={{ color: 'var(--ctp-subtext0)', marginBottom: '1rem' }}>
+                <div style={{ fontWeight: 'bold', color: 'var(--ctp-text)', marginBottom: '0.5rem' }}>
+                  {t('export_config.no_channels_title')}
+                </div>
+                <div style={{ marginBottom: '0.75rem', lineHeight: '1.6' }}>
+                  {nodeNum !== undefined 
+                    ? t('export_config.no_channels_remote_help')
+                    : t('export_config.no_channels_local_help')
+                  }
+                </div>
+                {onLoadChannels && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        await onLoadChannels();
+                        // Channels will be reloaded via useEffect when channels prop updates
+                      } catch (error: any) {
+                        setError(error.message || t('export_config.failed_load_channels'));
+                      }
+                    }}
+                    disabled={isLoadingChannels}
+                    style={{
+                      backgroundColor: isLoadingChannels ? 'var(--ctp-surface1)' : 'var(--ctp-blue)',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '4px',
+                      padding: '0.75rem 1.5rem',
+                      cursor: isLoadingChannels ? 'not-allowed' : 'pointer',
+                      fontSize: '0.875rem',
+                      fontWeight: '500',
+                      opacity: isLoadingChannels ? 0.6 : 1,
+                      transition: 'all 0.2s ease'
+                    }}
+                    onMouseOver={(e) => {
+                      if (!isLoadingChannels) {
+                        e.currentTarget.style.opacity = '0.9';
+                      }
+                    }}
+                    onMouseOut={(e) => {
+                      if (!isLoadingChannels) {
+                        e.currentTarget.style.opacity = '1';
+                      }
+                    }}
+                  >
+                    {isLoadingChannels ? t('common.loading') : t('export_config.load_channels_button')}
+                  </button>
+                )}
+              </div>
             </div>
           ) : (
             channels.map((channel) => (
