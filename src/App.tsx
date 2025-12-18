@@ -42,7 +42,7 @@ import api from './services/api';
 import { logger } from './utils/logger';
 // generateArrowMarkers moved to useTraceroutePaths hook
 import { ROLE_NAMES } from './constants';
-import { getHardwareModelName, getRoleName } from './utils/nodeHelpers';
+import { getHardwareModelName, getRoleName, isNodeComplete } from './utils/nodeHelpers';
 import Sidebar from './components/Sidebar';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
 import { MapProvider, useMapContext } from './contexts/MapContext';
@@ -330,6 +330,8 @@ function App() {
     showPaths,
     showRoute,
     showNeighborInfo,
+    showMqttNodes,
+    showEstimatedPositions,
     setMapCenterTarget,
     traceroutes,
     setTraceroutes,
@@ -363,6 +365,7 @@ function App() {
     setNodesWithTelemetry,
     nodesWithWeatherTelemetry,
     setNodesWithWeatherTelemetry,
+    nodesWithEstimatedPosition,
     setNodesWithEstimatedPosition,
     nodesWithPKC,
     setNodesWithPKC,
@@ -3947,6 +3950,25 @@ function App() {
     [setSelectedNodeId, setMapCenterTarget]
   );
 
+  // Compute visible node numbers for traceroute path filtering
+  // This ensures route segments are hidden when their connected nodes are filtered out (Issue #1102)
+  const visibleNodeNums = useMemo(() => {
+    // Start with processedNodes which already has age, text, and advanced filters applied
+    // Then apply the same map-specific filters used in NodesTab for rendering markers
+    const visibleNodes = processedNodes.filter(node => {
+      // Must have position to be visible on map
+      if (!node.position?.latitude || !node.position?.longitude) return false;
+      // Apply MQTT filter
+      if (!showMqttNodes && node.viaMqtt) return false;
+      // Apply incomplete nodes filter
+      if (!showIncompleteNodes && !isNodeComplete(node)) return false;
+      // Apply estimated positions filter
+      if (!showEstimatedPositions && node.user?.id && nodesWithEstimatedPosition.has(node.user.id)) return false;
+      return true;
+    });
+    return new Set(visibleNodes.map(n => n.nodeNum));
+  }, [processedNodes, showMqttNodes, showIncompleteNodes, showEstimatedPositions, nodesWithEstimatedPosition]);
+
   const { traceroutePathsElements, selectedNodeTraceroute } = useTraceroutePaths({
     showPaths,
     showRoute,
@@ -3958,6 +3980,7 @@ function App() {
     maxNodeAgeHours,
     themeColors,
     callbacks: tracerouteCallbacks,
+    visibleNodeNums,
   });
 
   // If anonymous is disabled and user is not authenticated, show login page
