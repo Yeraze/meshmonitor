@@ -149,6 +149,8 @@ All scripts receive these environment variables:
 |----------|-------------|---------|
 | `MESSAGE` | Full message text received | `"weather miami"` |
 | `FROM_NODE` | Sender's node number | `"123456789"` |
+| `FROM_SHORT_NAME` | Sender's short name (if known) | `"JOHN"` |
+| `FROM_LONG_NAME` | Sender's long name (if known) | `"John Doe"` |
 | `FROM_LAT` | Sender's latitude (if known) | `"25.7617"` |
 | `FROM_LON` | Sender's longitude (if known) | `"-80.1918"` |
 | `MM_LAT` | MeshMonitor node's latitude (if known) | `"25.7617"` |
