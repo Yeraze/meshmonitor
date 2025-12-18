@@ -71,9 +71,10 @@ pub fn start_backend<R: Runtime>(app: &AppHandle<R>) -> Result<Child, String> {
     let server_path = resource_path.join("dist").join("server").join("server.js");
 
     // Get the sidecar binary path for Node.js
-    let node_path = resource_path
-        .join("binaries")
-        .join(if cfg!(windows) { "node.exe" } else { "node" });
+    let node_path =
+        resource_path
+            .join("binaries")
+            .join(if cfg!(windows) { "node.exe" } else { "node" });
 
     // Get the dist directory for current working directory (server.js imports ../services/, ../utils/, etc.)
     let server_dir = resource_path.join("dist");
