@@ -3,9 +3,27 @@ pub mod tray;
 
 use std::fs::{File, OpenOptions};
 use std::io::Write;
+use std::path::PathBuf;
 use std::process::{Child, Stdio};
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager, Runtime};
+
+/// Strip the Windows extended-length path prefix (\\?\) if present.
+/// Node.js doesn't handle this prefix correctly, causing path resolution failures.
+#[cfg(windows)]
+fn strip_extended_length_prefix(path: PathBuf) -> PathBuf {
+    let path_str = path.to_string_lossy();
+    if let Some(stripped) = path_str.strip_prefix(r"\\?\") {
+        PathBuf::from(stripped)
+    } else {
+        path
+    }
+}
+
+#[cfg(not(windows))]
+fn strip_extended_length_prefix(path: PathBuf) -> PathBuf {
+    path
+}
 
 // Re-export Config for use in main.rs commands
 pub use config::Config;
@@ -43,20 +61,20 @@ pub fn start_backend<R: Runtime>(app: &AppHandle<R>) -> Result<Child, String> {
     log_to_file(&logs_path, "=== Starting MeshMonitor backend ===");
 
     // Get the resource directory where the server files are bundled
-    let resource_path = app
-        .path()
-        .resource_dir()
-        .map_err(|e| format!("Failed to get resource dir: {}", e))?;
+    // Strip the \\?\ prefix on Windows as Node.js doesn't handle it correctly
+    let resource_path = strip_extended_length_prefix(
+        app.path()
+            .resource_dir()
+            .map_err(|e| format!("Failed to get resource dir: {}", e))?,
+    );
 
     let server_path = resource_path.join("dist").join("server").join("server.js");
 
     // Get the sidecar binary path for Node.js
-    let node_path = app
-        .path()
-        .resource_dir()
-        .map_err(|e| format!("Failed to get resource dir: {}", e))?
-        .join("binaries")
-        .join(if cfg!(windows) { "node.exe" } else { "node" });
+    let node_path =
+        resource_path
+            .join("binaries")
+            .join(if cfg!(windows) { "node.exe" } else { "node" });
 
     // Get the dist directory for current working directory (server.js imports ../services/, ../utils/, etc.)
     let server_dir = resource_path.join("dist");
