@@ -2249,6 +2249,8 @@ class MeshtasticManager {
       const fromNum = Number(meshPacket.from);
       const nodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
       const timestamp = Date.now();
+      // Extract channel from mesh packet - this tells us which channel the node was heard on
+      const channelIndex = meshPacket.channel !== undefined ? meshPacket.channel : undefined;
       const nodeData: any = {
         nodeNum: fromNum,
         nodeId: nodeId,
@@ -2257,8 +2259,13 @@ class MeshtasticManager {
         hwModel: user.hwModel,
         role: user.role,
         hopsAway: meshPacket.hopsAway,
-        lastHeard: meshPacket.rxTime ? Number(meshPacket.rxTime) : timestamp / 1000
+        lastHeard: meshPacket.rxTime ? Number(meshPacket.rxTime) : timestamp / 1000,
+        channel: channelIndex
       };
+
+      if (channelIndex !== undefined) {
+        logger.debug(`📡 NodeInfo message for ${nodeId}: received on channel ${channelIndex}`);
+      }
 
       // Capture public key if present
       if (user.publicKey && user.publicKey.length > 0) {
