@@ -1,7 +1,15 @@
-# Build stage
-FROM node:24-alpine AS builder
+# Build stage for ARMv7 (Raspberry Pi 2/3 32-bit)
+# Node.js 24 doesn't support ARMv7, so we use Node.js 22 LTS
+FROM node:22-slim AS builder
 
 WORKDIR /app
+
+# Install build dependencies for native modules
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy package files
 COPY package*.json ./
@@ -37,17 +45,19 @@ RUN --mount=type=cache,target=/app/node_modules/.vite \
 RUN --mount=type=cache,target=/app/.tsc-cache \
     npm run build:server
 
-# Production stage
-FROM node:24-alpine
+# Production stage for ARMv7
+FROM node:22-slim
 
 WORKDIR /app
 
 # Install Python and dependencies for Apprise
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
-    py3-pip \
+    python3-pip \
+    python3-venv \
     supervisor \
-    su-exec \
+    gosu \
+    && rm -rf /var/lib/apt/lists/* \
     && python3 -m venv /opt/apprise-venv \
     && /opt/apprise-venv/bin/pip install --no-cache-dir apprise "paho-mqtt<2.0"
 
@@ -76,7 +86,7 @@ RUN mkdir -p /data/apprise-config /data/scripts && chown -R node:node /data
 
 # Create supervisor configuration to run both Node.js and Apprise
 RUN mkdir -p /etc/supervisor/conf.d
-COPY docker/supervisord.conf /etc/supervisord.conf
+COPY docker/supervisord.armv7.conf /etc/supervisord.conf
 
 # Create Apprise API wrapper script
 COPY docker/apprise-api.py /app/apprise-api.py
