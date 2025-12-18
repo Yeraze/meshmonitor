@@ -2485,50 +2485,31 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             📥 {t('admin_commands.import_configuration')}
           </button>
           <button
-            onClick={async () => {
+            onClick={() => {
               if (selectedNodeNum === null) {
                 showToast(t('admin_commands.please_select_node'), 'error');
                 return;
               }
 
-              const localNodeNum = nodeOptions.find(n => n.isLocal)?.nodeNum;
-              const isLocalNode = selectedNodeNum === localNodeNum || selectedNodeNum === 0;
-
-              // For remote nodes, load channels and LoRa config before opening modal
-              if (!isLocalNode) {
-                try {
-                  showToast(t('admin_commands.loading_remote_config'), 'info');
-                  
-                  // Load channels and LoRa config in parallel
-                  await Promise.all([
-                    handleLoadChannels(),
-                    handleLoadAllConfigs()
-                  ]);
-                  
-                  showToast(t('admin_commands.config_loaded_success'), 'success');
-                } catch (error: any) {
-                  showToast(error.message || t('admin_commands.failed_load_config'), 'error');
-                  return; // Don't open modal if loading failed
-                }
-              }
-
-              // Open the export modal
+              // Open the export modal - it will use already loaded channels
+              // If no channels are loaded, the modal will show helpful instructions
               setShowConfigExportModal(true);
             }}
-            disabled={selectedNodeNum === null || isExecuting || isLoadingChannels || isLoadingAllConfigs}
+            disabled={selectedNodeNum === null || isExecuting}
             style={{
               backgroundColor: 'var(--ctp-green)',
               color: '#fff',
               padding: '0.75rem 1.5rem',
               border: 'none',
               borderRadius: '4px',
-              cursor: (selectedNodeNum === null || isExecuting || isLoadingChannels || isLoadingAllConfigs) ? 'not-allowed' : 'pointer',
+              cursor: (selectedNodeNum === null || isExecuting) ? 'not-allowed' : 'pointer',
               fontSize: '1rem',
               fontWeight: 'bold',
-              opacity: (selectedNodeNum === null || isExecuting || isLoadingChannels || isLoadingAllConfigs) ? 0.5 : 1
+              opacity: (selectedNodeNum === null || isExecuting) ? 0.5 : 1
             }}
+            title={t('admin_commands.export_config_tooltip')}
           >
-            {(isLoadingChannels || isLoadingAllConfigs) ? t('common.loading') : `📤 ${t('admin_commands.export_configuration')}`}
+            {`📤 ${t('admin_commands.export_configuration')}`}
           </button>
         </div>
       </CollapsibleSection>
@@ -3175,6 +3156,30 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             }
           }}
           nodeNum={selectedNodeNum !== null ? selectedNodeNum : undefined}
+          onLoadChannels={async () => {
+            if (selectedNodeNum === null) {
+              throw new Error(t('admin_commands.please_select_node'));
+            }
+            
+            // Check if channels are already loaded
+            if (remoteNodeChannels.length > 0) {
+              // Channels already loaded, no need to reload
+              return;
+            }
+            
+            const localNodeNum = nodeOptions.find(n => n.isLocal)?.nodeNum;
+            const isLocalNode = selectedNodeNum === localNodeNum || selectedNodeNum === 0;
+            
+            if (isLocalNode) {
+              // For local nodes, fetch from API
+              const allChannels = await apiService.getAllChannels();
+              setRemoteNodeChannels(allChannels);
+            } else {
+              // For remote nodes, only load channels (not all configs)
+              await handleLoadChannels();
+            }
+          }}
+          isLoadingChannels={isLoadingChannels || isLoadingAllConfigs}
         />
       )}
     </div>
