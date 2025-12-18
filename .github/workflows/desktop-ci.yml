@@ -32,7 +32,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install Rust toolchain
@@ -95,7 +95,14 @@ jobs:
 
       - name: Download Node.js binary for bundling
         working-directory: desktop/resources/binaries
-        run: curl -L -o node.exe https://nodejs.org/dist/v20.11.1/win-x64/node.exe
+        run: |
+          curl -L -o node.exe https://nodejs.org/dist/v24.12.0/win-x64/node.exe
+          $expectedHash = "2ffe3acc0458fdde999f50d11809bbe7c9b7ef204dcf17094e325d26ace101d8"
+          $actualHash = (Get-FileHash -Path node.exe -Algorithm SHA256).Hash.ToLower()
+          if ($actualHash -ne $expectedHash) {
+            throw "SHA256 checksum mismatch! Expected: $expectedHash, Got: $actualHash"
+          }
+        shell: pwsh
 
       - name: Run Rust linting
         working-directory: desktop/src-tauri
@@ -129,7 +136,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install Rust toolchain
@@ -195,8 +202,8 @@ jobs:
 
       - name: Download Node.js binary for bundling
         run: |
-          NODE_VERSION="v20.11.1"
-          EXPECTED_SHA256="e0065c61f340e85106a99c4b54746c5cee09d59b08c5712f67f99e92aa44995d"
+          NODE_VERSION="v24.12.0"
+          EXPECTED_SHA256="319f221adc5e44ff0ed57e8a441b2284f02b8dc6fc87b8eb92a6a93643fd8080"
           curl -L -o node.tar.gz "https://nodejs.org/dist/${NODE_VERSION}/node-${NODE_VERSION}-darwin-arm64.tar.gz"
           echo "${EXPECTED_SHA256}  node.tar.gz" | shasum -a 256 -c -
           tar -xzf node.tar.gz
