@@ -1,7 +1,15 @@
 # Build stage
-FROM node:24-alpine AS builder
+# Use slim (Debian) instead of Alpine to support linux/arm/v7 (Raspberry Pi 2/3 32-bit)
+FROM node:24-slim AS builder
 
 WORKDIR /app
+
+# Install build dependencies for native modules
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy package files
 COPY package*.json ./
@@ -38,16 +46,19 @@ RUN --mount=type=cache,target=/app/.tsc-cache \
     npm run build:server
 
 # Production stage
-FROM node:24-alpine
+# Use slim (Debian) instead of Alpine to support linux/arm/v7 (Raspberry Pi 2/3 32-bit)
+FROM node:24-slim
 
 WORKDIR /app
 
 # Install Python and dependencies for Apprise
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
-    py3-pip \
+    python3-pip \
+    python3-venv \
     supervisor \
-    su-exec \
+    gosu \
+    && rm -rf /var/lib/apt/lists/* \
     && python3 -m venv /opt/apprise-venv \
     && /opt/apprise-venv/bin/pip install --no-cache-dir apprise "paho-mqtt<2.0"
 
