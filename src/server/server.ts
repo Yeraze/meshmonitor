@@ -6988,6 +6988,8 @@ apiRouter.post('/scripts/test', requirePermission('settings', 'read'), async (re
       ...(process.env as Record<string, string>),
       MESSAGE: testMessage,
       FROM_NODE: '12345', // Test node number
+      FROM_SHORT_NAME: 'TEST', // Test short name
+      FROM_LONG_NAME: 'Test Node', // Test long name
       PACKET_ID: '99999', // Test packet ID
       TRIGGER: trigger,
     };

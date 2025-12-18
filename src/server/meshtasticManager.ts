@@ -5781,11 +5781,21 @@ class MeshtasticManager {
                 MATCHED_PATTERN: matchedPattern || '',
               };
 
-              // Add location environment variables for the sender node (FROM_LAT, FROM_LON)
+              // Add sender node information environment variables
               const fromNode = databaseService.getNode(fromNum);
-              if (fromNode?.latitude != null && fromNode?.longitude != null) {
-                scriptEnv.FROM_LAT = String(fromNode.latitude);
-                scriptEnv.FROM_LON = String(fromNode.longitude);
+              if (fromNode) {
+                // Add node names (Issue #1099)
+                if (fromNode.shortName) {
+                  scriptEnv.FROM_SHORT_NAME = fromNode.shortName;
+                }
+                if (fromNode.longName) {
+                  scriptEnv.FROM_LONG_NAME = fromNode.longName;
+                }
+                // Add location (FROM_LAT, FROM_LON)
+                if (fromNode.latitude != null && fromNode.longitude != null) {
+                  scriptEnv.FROM_LAT = String(fromNode.latitude);
+                  scriptEnv.FROM_LON = String(fromNode.longitude);
+                }
               }
 
               // Add location environment variables for the MeshMonitor node (MM_LAT, MM_LON)
