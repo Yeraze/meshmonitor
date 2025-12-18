@@ -13,8 +13,8 @@ use tauri::{AppHandle, Manager, Runtime};
 #[cfg(windows)]
 fn strip_extended_length_prefix(path: PathBuf) -> PathBuf {
     let path_str = path.to_string_lossy();
-    if path_str.starts_with(r"\\?\") {
-        PathBuf::from(&path_str[4..])
+    if let Some(stripped) = path_str.strip_prefix(r"\\?\") {
+        PathBuf::from(stripped)
     } else {
         path
     }
