@@ -164,6 +164,7 @@ jobs:
         run: |
           mkdir -p desktop/resources/dist
           mkdir -p desktop/resources/binaries
+          # Copy server-side compiled code
           cp -r dist/server desktop/resources/dist/
           cp -r dist/services desktop/resources/dist/
           cp -r dist/utils desktop/resources/dist/
@@ -171,10 +172,15 @@ jobs:
           cp -r dist/config desktop/resources/dist/
           cp -r dist/constants desktop/resources/dist/
           cp -r dist/contexts desktop/resources/dist/
+          # Copy frontend assets
           cp -r dist/assets desktop/resources/dist/
           cp -r dist/locales desktop/resources/dist/
-          cp -r dist/pmtiles desktop/resources/dist/
+          # Copy pmtiles if it exists (may be in public or dist)
+          [ -d dist/pmtiles ] && cp -r dist/pmtiles desktop/resources/dist/ || true
+          [ -d public/pmtiles ] && cp -r public/pmtiles desktop/resources/dist/ || true
+          # Copy protobufs
           cp -r protobufs desktop/resources/dist/
+          # Copy individual files
           cp dist/index.html desktop/resources/dist/
           cp dist/logo.png desktop/resources/dist/
           cp dist/logo-original.png desktop/resources/dist/
@@ -184,6 +190,7 @@ jobs:
           cp dist/cors-detection.js desktop/resources/dist/
           cp dist/cors-error.html desktop/resources/dist/
           cp package.json desktop/resources/
+          # Copy node_modules (may take a while)
           cp -r node_modules desktop/resources/dist/
 
       - name: Download Node.js binary for bundling
