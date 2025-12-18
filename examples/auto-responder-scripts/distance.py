@@ -115,11 +115,12 @@ def main():
         from_loc = get_location("FROM_LAT", "FROM_LON")
         mm_loc = get_location("MM_LAT", "MM_LON")
         from_node = os.environ.get("FROM_NODE", "?")
+        short_name = "!{}".format("{0:04x}".format(int(from_node))[4:])
 
         # Check if both locations are available
         if not from_loc:
             output = {
-                "response": "Your location is not available. "
+                "response": f"Hi {short_name}, your location is not available. "
                            "Send a position update first."
             }
             print(json.dumps(output))
@@ -127,7 +128,7 @@ def main():
 
         if not mm_loc:
             output = {
-                "response": "MeshMonitor location not set. "
+                "response": f"Hi {short_name}, MeshMonitor location not set. "
                            "The node needs a GPS fix or manual position."
             }
             print(json.dumps(output))
@@ -145,13 +146,13 @@ def main():
         if dist_km < 1:
             # Less than 1 km - show in meters
             dist_m = dist_km * 1000
-            response = f"Distance: {dist_m:.0f}m ({direction})"
+            response = f"Hi {short_name}, distance: {dist_m:.0f}m ({direction})"
         elif dist_km < 10:
             # Less than 10 km - show one decimal
-            response = f"Distance: {dist_km:.1f}km / {dist_mi:.1f}mi ({direction})"
+            response = f"Hi {short_name}, distance: {dist_km:.1f}km / {dist_mi:.1f}mi ({direction})"
         else:
             # Larger distances - show whole numbers
-            response = f"Distance: {dist_km:.0f}km / {dist_mi:.0f}mi ({direction})"
+            response = f"Hi {short_name}, distance: {dist_km:.0f}km / {dist_mi:.0f}mi ({direction})"
 
         output = {"response": response}
         print(json.dumps(output))
