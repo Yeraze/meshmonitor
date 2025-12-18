@@ -245,6 +245,7 @@ jobs:
           cp dist/cors-detection.js desktop/resources/dist/
           cp dist/cors-error.html desktop/resources/dist/
           cp package.json desktop/resources/
+          cp package.json desktop/resources/dist/
           # Copy node_modules
           cp -r node_modules desktop/resources/dist/
 
