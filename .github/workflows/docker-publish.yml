@@ -3,10 +3,15 @@ name: Docker Build and Publish
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (e.g., 2.21.2-test)'
+        required: true
+        default: 'test'
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   # Build for amd64 and arm64 using Node.js 24 (Alpine)
@@ -36,9 +41,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract version
-        id: version
-        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+      - name: Extract version and image name
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "image=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
       - name: Build and push (amd64, arm64)
         uses: docker/build-push-action@v6
@@ -47,7 +59,7 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}-main
+          tags: ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}-main
           labels: |
             org.opencontainers.image.description=Web tool for monitoring a Meshtastic Node Deployment over TCP/HTTP
           cache-from: type=gha,scope=main
@@ -85,9 +97,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract version
-        id: version
-        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+      - name: Extract version and image name
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "image=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
       - name: Build and push (armv7)
         uses: docker/build-push-action@v6
@@ -96,7 +115,7 @@ jobs:
           file: ./Dockerfile.armv7
           platforms: linux/arm/v7
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}-armv7
+          tags: ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}-armv7
           labels: |
             org.opencontainers.image.description=Web tool for monitoring a Meshtastic Node Deployment over TCP/HTTP
           cache-from: type=gha,scope=armv7
@@ -132,45 +151,53 @@ jobs:
             echo "is_prerelease=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Extract version components
-        id: version
+      - name: Extract version components and image name
+        id: meta
         run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
           MAJOR=$(echo $VERSION | cut -d. -f1)
           MINOR=$(echo $VERSION | cut -d. -f2)
+          IMAGE=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "major=$MAJOR" >> $GITHUB_OUTPUT
           echo "minor=$MAJOR.$MINOR" >> $GITHUB_OUTPUT
+          echo "image=$IMAGE" >> $GITHUB_OUTPUT
 
       - name: Create and push manifest for version tag
         run: |
-          docker buildx imagetools create -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }} \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}-main \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}-armv7
+          docker buildx imagetools create -t ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }} \
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}-main \
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}-armv7
 
       - name: Create and push manifest for minor version tag
+        if: github.event_name == 'release'
         run: |
-          docker buildx imagetools create -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.minor }} \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}-main \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}-armv7
+          docker buildx imagetools create -t ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.minor }} \
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}-main \
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}-armv7
 
       - name: Create and push manifest for major version tag
+        if: github.event_name == 'release'
         run: |
-          docker buildx imagetools create -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.major }} \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}-main \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}-armv7
+          docker buildx imagetools create -t ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.major }} \
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}-main \
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}-armv7
 
       - name: Create and push manifest for latest tag
-        if: steps.check_prerelease.outputs.is_prerelease == 'false'
+        if: github.event_name == 'release' && steps.check_prerelease.outputs.is_prerelease == 'false'
         run: |
-          docker buildx imagetools create -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}-main \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}-armv7
+          docker buildx imagetools create -t ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:latest \
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}-main \
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}-armv7
 
       - name: Clean up intermediate tags
         continue-on-error: true
         run: |
           # Note: GHCR doesn't support deleting tags via API easily
           # The intermediate tags (-main, -armv7) will remain but won't affect users
-          echo "Intermediate tags created: ${{ steps.version.outputs.version }}-main, ${{ steps.version.outputs.version }}-armv7"
+          echo "Intermediate tags created: ${{ steps.meta.outputs.version }}-main, ${{ steps.meta.outputs.version }}-armv7"
           echo "These are combined into the main manifest tags"
