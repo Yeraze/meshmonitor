@@ -1064,7 +1064,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       return;
     }
     try {
-      await executeCommand('setFavoriteNode', { nodeNum: nodeManagementNodeNum });
+      await executeCommand('setFavoriteNode', { favoriteNodeNum: nodeManagementNodeNum });
       showToast(t('admin_commands.node_set_favorite', { nodeNum: nodeManagementNodeNum }), 'success');
       // Optimistically update state - use remote status if managing remote node, otherwise local
       if (isManagingRemoteNode) {
@@ -1093,7 +1093,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       return;
     }
     try {
-      await executeCommand('removeFavoriteNode', { nodeNum: nodeManagementNodeNum });
+      await executeCommand('removeFavoriteNode', { favoriteNodeNum: nodeManagementNodeNum });
       showToast(t('admin_commands.node_removed_favorite', { nodeNum: nodeManagementNodeNum }), 'success');
       // Optimistically update state - use remote status if managing remote node, otherwise local
       if (isManagingRemoteNode) {
@@ -1122,7 +1122,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       return;
     }
     try {
-      await executeCommand('setIgnoredNode', { nodeNum: nodeManagementNodeNum });
+      await executeCommand('setIgnoredNode', { targetNodeNum: nodeManagementNodeNum });
       showToast(t('admin_commands.node_set_ignored', { nodeNum: nodeManagementNodeNum }), 'success');
       // Optimistically update state - use remote status if managing remote node, otherwise local
       if (isManagingRemoteNode) {
@@ -1151,7 +1151,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       return;
     }
     try {
-      await executeCommand('removeIgnoredNode', { nodeNum: nodeManagementNodeNum });
+      await executeCommand('removeIgnoredNode', { targetNodeNum: nodeManagementNodeNum });
       showToast(t('admin_commands.node_removed_ignored', { nodeNum: nodeManagementNodeNum }), 'success');
       // Optimistically update state - use remote status if managing remote node, otherwise local
       if (isManagingRemoteNode) {

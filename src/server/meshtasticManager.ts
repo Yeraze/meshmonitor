@@ -6562,14 +6562,14 @@ class MeshtasticManager {
           // Local node - store in legacy location for backward compatibility
           this.sessionPasskey = new Uint8Array(adminMsg.sessionPasskey);
           this.sessionPasskeyExpiry = Date.now() + (290 * 1000); // 290 seconds (10 second buffer before 300s expiry)
-          logger.debug('🔑 Session passkey received from local node and stored (expires in 290 seconds)');
+          logger.info('🔑 Session passkey received from local node and stored (expires in 290 seconds)');
         } else {
           // Remote node - store per-node
           this.remoteSessionPasskeys.set(fromNum, {
             passkey: new Uint8Array(adminMsg.sessionPasskey),
             expiry: Date.now() + (290 * 1000) // 290 seconds
           });
-          logger.debug(`🔑 Session passkey received from remote node ${fromNum} and stored (expires in 290 seconds)`);
+          logger.info(`🔑 Session passkey received from remote node ${fromNum} and stored (expires in 290 seconds)`);
         }
       }
 
@@ -6808,22 +6808,31 @@ class MeshtasticManager {
         getDeviceMetadataRequest: true
       });
       const encoded = AdminMessage.encode(adminMsg).finish();
-      
+
       const adminPacket = protobufService.createAdminPacket(encoded, destinationNodeNum, this.localNodeInfo.nodeNum);
-      
+
       await this.transport.send(adminPacket);
-      logger.debug(`🔑 Requested session passkey from remote node ${destinationNodeNum} (via getDeviceMetadataRequest)`);
+      logger.info(`🔑 Requested session passkey from remote node ${destinationNodeNum} (via getDeviceMetadataRequest)`);
 
-      // Wait for the response (admin messages can take time, especially over mesh)
-      // Increased from 3s to 15s to allow for multi-hop mesh routing
-      await new Promise(resolve => setTimeout(resolve, 15000));
+      // Poll for the response instead of fixed wait
+      // This allows early exit if response arrives quickly, and longer total wait time
+      const maxWaitTime = 45000; // 45 seconds total
+      const pollInterval = 500; // Check every 500ms
+      const maxPolls = maxWaitTime / pollInterval;
 
-      // Check if we received the passkey
-      const passkey = this.getSessionPasskey(destinationNodeNum);
-      if (!passkey) {
-        logger.debug(`⚠️ No session passkey response received from remote node ${destinationNodeNum}`);
+      for (let i = 0; i < maxPolls; i++) {
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+
+        // Check if we received the passkey
+        const passkey = this.getSessionPasskey(destinationNodeNum);
+        if (passkey) {
+          logger.info(`✅ Session passkey received from remote node ${destinationNodeNum} after ${((i + 1) * pollInterval / 1000).toFixed(1)}s`);
+          return passkey;
+        }
       }
-      return passkey;
+
+      logger.warn(`⚠️ No session passkey response received from remote node ${destinationNodeNum} after ${maxWaitTime / 1000}s`);
+      return null;
     } catch (error) {
       logger.error(`❌ Error requesting session passkey from remote node ${destinationNodeNum}:`, error);
       throw error;
@@ -7086,8 +7095,10 @@ class MeshtasticManager {
     try {
       // Get or request session passkey
       let sessionPasskey = this.getSessionPasskey(destinationNodeNum);
-      if (!sessionPasskey) {
-        logger.debug(`Requesting session passkey for remote node ${destinationNodeNum}`);
+      if (sessionPasskey) {
+        logger.info(`🔑 Using cached session passkey for remote node ${destinationNodeNum}`);
+      } else {
+        logger.info(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one...`);
         sessionPasskey = await this.requestRemoteSessionPasskey(destinationNodeNum);
         if (!sessionPasskey) {
           throw new Error(`Failed to obtain session passkey for remote node ${destinationNodeNum}`);
@@ -7223,8 +7234,10 @@ class MeshtasticManager {
     try {
       // Get or request session passkey
       let sessionPasskey = this.getSessionPasskey(destinationNodeNum);
-      if (!sessionPasskey) {
-        logger.debug(`Requesting session passkey for remote node ${destinationNodeNum}`);
+      if (sessionPasskey) {
+        logger.info(`🔑 Using cached session passkey for remote node ${destinationNodeNum}`);
+      } else {
+        logger.info(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one...`);
         sessionPasskey = await this.requestRemoteSessionPasskey(destinationNodeNum);
         if (!sessionPasskey) {
           throw new Error(`Failed to obtain session passkey for remote node ${destinationNodeNum}`);
@@ -7314,8 +7327,10 @@ class MeshtasticManager {
     try {
       // Get or request session passkey
       let sessionPasskey = this.getSessionPasskey(destinationNodeNum);
-      if (!sessionPasskey) {
-        logger.debug(`Requesting session passkey for remote node ${destinationNodeNum}`);
+      if (sessionPasskey) {
+        logger.info(`🔑 Using cached session passkey for remote node ${destinationNodeNum}`);
+      } else {
+        logger.info(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one...`);
         sessionPasskey = await this.requestRemoteSessionPasskey(destinationNodeNum);
         if (!sessionPasskey) {
           throw new Error(`Failed to obtain session passkey for remote node ${destinationNodeNum}`);
