@@ -2652,49 +2652,42 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           <div style={{ flex: 1, minWidth: '200px' }}>
             <h4 style={{ marginBottom: '0.75rem', color: 'var(--ctp-text)' }}>⭐ {t('admin_commands.favorites')}</h4>
             {(() => {
-              const selectedNode = nodeManagementNodeNum !== null ? nodeOptions.find(n => n.nodeNum === nodeManagementNodeNum) : null;
-              // When managing a remote node, only use remote status (don't fall back to local status)
-              // When managing local node, use local status from nodeOptions
-              const remoteStatus = isManagingRemoteNode && nodeManagementNodeNum !== null ? remoteNodeStatus.get(nodeManagementNodeNum) : null;
-              const isCurrentlyFavorite = isManagingRemoteNode
-                ? (remoteStatus?.isFavorite ?? false)  // Remote: only use remote status, default to false
-                : (selectedNode?.isFavorite ?? false); // Local: use local status
               const isDisabled = isExecuting || nodeManagementNodeNum === null;
-              
+
               return (
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                   <button
                     onClick={handleSetFavoriteNode}
-                    disabled={isDisabled || isCurrentlyFavorite}
+                    disabled={isDisabled}
                     style={{
                       flex: 1,
                       padding: '0.75rem 1rem',
-                      backgroundColor: isCurrentlyFavorite ? 'var(--ctp-surface1)' : 'var(--ctp-yellow)',
-                      color: isCurrentlyFavorite ? 'var(--ctp-subtext0)' : 'var(--ctp-base)',
+                      backgroundColor: 'var(--ctp-yellow)',
+                      color: 'var(--ctp-base)',
                       border: 'none',
                       borderRadius: '4px',
-                      cursor: (isDisabled || isCurrentlyFavorite) ? 'not-allowed' : 'pointer',
+                      cursor: isDisabled ? 'not-allowed' : 'pointer',
                       fontSize: '0.9rem',
                       fontWeight: '500',
-                      opacity: (isDisabled || isCurrentlyFavorite) ? 0.6 : 1
+                      opacity: isDisabled ? 0.6 : 1
                     }}
                   >
-                    {isCurrentlyFavorite ? t('admin_commands.already_favorite') : t('admin_commands.set_as_favorite')}
+                    {t('admin_commands.set_as_favorite')}
                   </button>
                   <button
                     onClick={handleRemoveFavoriteNode}
-                    disabled={isDisabled || !isCurrentlyFavorite}
+                    disabled={isDisabled}
                     style={{
                       flex: 1,
                       padding: '0.75rem 1rem',
-                      backgroundColor: !isCurrentlyFavorite ? 'var(--ctp-surface1)' : 'var(--ctp-surface2)',
+                      backgroundColor: 'var(--ctp-surface2)',
                       color: 'var(--ctp-text)',
                       border: 'none',
                       borderRadius: '4px',
-                      cursor: (isDisabled || !isCurrentlyFavorite) ? 'not-allowed' : 'pointer',
+                      cursor: isDisabled ? 'not-allowed' : 'pointer',
                       fontSize: '0.9rem',
                       fontWeight: '500',
-                      opacity: (isDisabled || !isCurrentlyFavorite) ? 0.6 : 1
+                      opacity: isDisabled ? 0.6 : 1
                     }}
                   >
                     {t('admin_commands.remove_favorite')}
@@ -2706,49 +2699,42 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           <div style={{ flex: 1, minWidth: '200px' }}>
             <h4 style={{ marginBottom: '0.75rem', color: 'var(--ctp-text)' }}>🚫 {t('admin_commands.ignored_nodes')}</h4>
             {(() => {
-              const selectedNode = nodeManagementNodeNum !== null ? nodeOptions.find(n => n.nodeNum === nodeManagementNodeNum) : null;
-              // When managing a remote node, only use remote status (don't fall back to local status)
-              // When managing local node, use local status from nodeOptions
-              const remoteStatus = isManagingRemoteNode && nodeManagementNodeNum !== null ? remoteNodeStatus.get(nodeManagementNodeNum) : null;
-              const isCurrentlyIgnored = isManagingRemoteNode
-                ? (remoteStatus?.isIgnored ?? false)   // Remote: only use remote status, default to false
-                : (selectedNode?.isIgnored ?? false);   // Local: use local status
               const isDisabled = isExecuting || nodeManagementNodeNum === null;
-              
+
               return (
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                   <button
                     onClick={handleSetIgnoredNode}
-                    disabled={isDisabled || isCurrentlyIgnored}
+                    disabled={isDisabled}
                     style={{
                       flex: 1,
                       padding: '0.75rem 1rem',
-                      backgroundColor: isCurrentlyIgnored ? 'var(--ctp-surface1)' : 'var(--ctp-red)',
-                      color: isCurrentlyIgnored ? 'var(--ctp-subtext0)' : 'var(--ctp-base)',
+                      backgroundColor: 'var(--ctp-red)',
+                      color: 'var(--ctp-base)',
                       border: 'none',
                       borderRadius: '4px',
-                      cursor: (isDisabled || isCurrentlyIgnored) ? 'not-allowed' : 'pointer',
+                      cursor: isDisabled ? 'not-allowed' : 'pointer',
                       fontSize: '0.9rem',
                       fontWeight: '500',
-                      opacity: (isDisabled || isCurrentlyIgnored) ? 0.6 : 1
+                      opacity: isDisabled ? 0.6 : 1
                     }}
                   >
-                    {isCurrentlyIgnored ? t('admin_commands.already_ignored') : t('admin_commands.set_as_ignored')}
+                    {t('admin_commands.set_as_ignored')}
                   </button>
                   <button
                     onClick={handleRemoveIgnoredNode}
-                    disabled={isDisabled || !isCurrentlyIgnored}
+                    disabled={isDisabled}
                     style={{
                       flex: 1,
                       padding: '0.75rem 1rem',
-                      backgroundColor: !isCurrentlyIgnored ? 'var(--ctp-surface1)' : 'var(--ctp-surface2)',
+                      backgroundColor: 'var(--ctp-surface2)',
                       color: 'var(--ctp-text)',
                       border: 'none',
                       borderRadius: '4px',
-                      cursor: (isDisabled || !isCurrentlyIgnored) ? 'not-allowed' : 'pointer',
+                      cursor: isDisabled ? 'not-allowed' : 'pointer',
                       fontSize: '0.9rem',
                       fontWeight: '500',
-                      opacity: (isDisabled || !isCurrentlyIgnored) ? 0.6 : 1
+                      opacity: isDisabled ? 0.6 : 1
                     }}
                   >
                     {t('admin_commands.remove_ignored')}
