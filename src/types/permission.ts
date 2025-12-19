@@ -32,7 +32,7 @@ export interface Permission {
   resource: ResourceType;
   canRead: boolean;
   canWrite: boolean;
-  grantedAt: number;        // Unix timestamp
+  grantedAt: number; // Unix timestamp
   grantedBy: number | null; // User ID who granted this permission
 }
 
@@ -77,7 +77,7 @@ export const RESOURCES: readonly ResourceDefinition[] = [
   { id: 'traceroute', name: 'Traceroute', description: 'Initiate traceroute requests to nodes' },
   { id: 'audit', name: 'Audit Log', description: 'View and manage audit logs (admin only)' },
   { id: 'security', name: 'Security', description: 'View security scan results and key management' },
-  { id: 'themes', name: 'Custom Themes', description: 'Create and manage custom color themes' }
+  { id: 'themes', name: 'Custom Themes', description: 'Create and manage custom color themes' },
 ] as const;
 
 // Default permissions for different user types
@@ -101,7 +101,7 @@ export const ADMIN_PERMISSIONS: PermissionSet = {
   traceroute: { read: true, write: true },
   audit: { read: true, write: true },
   security: { read: true, write: true },
-  themes: { read: true, write: true }
+  themes: { read: true, write: true },
 };
 
 export const DEFAULT_USER_PERMISSIONS: PermissionSet = {
@@ -124,5 +124,5 @@ export const DEFAULT_USER_PERMISSIONS: PermissionSet = {
   traceroute: { read: true, write: false },
   audit: { read: false, write: false },
   security: { read: false, write: false },
-  themes: { read: true, write: false }
+  themes: { read: true, write: false },
 };
