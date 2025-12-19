@@ -75,6 +75,11 @@ MeshMonitor supports multiple deployment methods:
   - [Manual Installation Guide](docs/deployment/DEPLOYMENT_GUIDE.md#manual-nodejs-deployment)
   - For development or custom setups
 
+- **🖥️ Desktop Apps** - Native applications for Windows and macOS
+  - Download from [GitHub Releases](https://github.com/Yeraze/meshmonitor/releases)
+  - Runs as a system tray application
+  - Windows (.exe) and macOS (.dmg) installers available
+
 ## Key Features
 
 - **Real-time Mesh Monitoring** - Live node discovery, telemetry, and message tracking
