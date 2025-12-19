@@ -1,0 +1,86 @@
+/* System Status Modal */
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+}
+
+.status-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.status-item strong {
+  color: var(--ctp-subtext0);
+  font-size: 0.875rem;
+}
+
+.status-item span {
+  color: var(--ctp-text);
+  font-size: 1rem;
+}
+
+/* Modal base styles (shared - could be moved to shared CSS) */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10001;
+}
+
+.modal-content {
+  background: var(--ctp-base);
+  border-radius: 8px;
+  padding: 0;
+  max-width: 500px;
+  width: 90%;
+  max-height: 80vh;
+  overflow: auto;
+  border: 1px solid var(--ctp-surface0);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--ctp-surface0);
+}
+
+.modal-header h2 {
+  margin: 0;
+  color: var(--ctp-text);
+  font-size: 1.25rem;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: var(--ctp-subtext0);
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.modal-close:hover {
+  color: var(--ctp-text);
+}
+
+.modal-body {
+  padding: 1.5rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 600px) {
+  .status-grid {
+    grid-template-columns: 1fr;
+  }
+}

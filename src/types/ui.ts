@@ -38,3 +38,53 @@ export interface ChartData {
   time: string;
   solarEstimate?: number; // Solar power estimate in watt-hours
 }
+
+/**
+ * Node popup position and target node
+ */
+export interface NodePopupState {
+  nodeId: string;
+  position: { x: number; y: number };
+}
+
+/**
+ * System status information from the backend
+ */
+export interface SystemStatus {
+  version: string;
+  nodeVersion: string;
+  uptime: string;
+  platform: string;
+  architecture: string;
+  environment: string;
+  memoryUsage: {
+    heapUsed: string;
+    heapTotal: string;
+    rss: string;
+  };
+}
+
+/**
+ * Node filter configuration
+ * Controls which nodes are displayed in the node list based on various criteria
+ */
+export interface NodeFilters {
+  filterMode: 'show' | 'hide';
+  showMqtt: boolean;
+  showTelemetry: boolean;
+  showEnvironment: boolean;
+  powerSource: 'powered' | 'battery' | 'both';
+  showPosition: boolean;
+  minHops: number;
+  maxHops: number;
+  showPKI: boolean;
+  showUnknown: boolean;
+  showIgnored: boolean;
+  deviceRoles: number[];
+  channels: number[];
+}
+
+/**
+ * Security filter options
+ */
+export type SecurityFilter = 'all' | 'flaggedOnly' | 'hideFlagged';
