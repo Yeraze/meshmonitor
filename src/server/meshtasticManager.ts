@@ -4731,8 +4731,8 @@ class MeshtasticManager {
    * Calculate LoRa frequency from region and channel number (frequency slot)
    * Delegates to the utility function for better testability
    */
-  private calculateLoRaFrequency(region: number, channelNum: number, overrideFrequency: number, frequencyOffset: number): string {
-    return calculateLoRaFrequency(region, channelNum, overrideFrequency, frequencyOffset);
+  private calculateLoRaFrequency(region: number, channelNum: number, overrideFrequency: number, frequencyOffset: number, bandwidth: number = 250): string {
+    return calculateLoRaFrequency(region, channelNum, overrideFrequency, frequencyOffset, bandwidth);
   }
 
   private buildDeviceConfigFromActual(): any {
@@ -4841,7 +4841,8 @@ class MeshtasticManager {
           typeof loraConfigWithDefaults.region === 'number' ? loraConfigWithDefaults.region : 0,
           loraConfigWithDefaults.channelNum !== undefined ? loraConfigWithDefaults.channelNum : 0,
           loraConfigWithDefaults.overrideFrequency !== undefined ? loraConfigWithDefaults.overrideFrequency : 0,
-          loraConfigWithDefaults.frequencyOffset !== undefined ? loraConfigWithDefaults.frequencyOffset : 0
+          loraConfigWithDefaults.frequencyOffset !== undefined ? loraConfigWithDefaults.frequencyOffset : 0,
+          typeof loraConfigWithDefaults.bandwidth === 'number' && loraConfigWithDefaults.bandwidth > 0 ? loraConfigWithDefaults.bandwidth : 250
         ),
         txEnabled: loraConfigWithDefaults.txEnabled !== undefined ? loraConfigWithDefaults.txEnabled : 'Unknown',
         sx126xRxBoostedGain: loraConfigWithDefaults.sx126xRxBoostedGain !== undefined ? loraConfigWithDefaults.sx126xRxBoostedGain : 'Unknown',
