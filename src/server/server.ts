@@ -4279,10 +4279,39 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
 
         // Validate each timer trigger
         for (const trigger of triggers) {
-          if (!trigger.id || !trigger.name || !trigger.cronExpression || !trigger.scriptPath) {
+          // Basic required fields
+          if (!trigger.id || !trigger.name || !trigger.cronExpression) {
             return res
               .status(400)
-              .json({ error: 'Each timer trigger must have id, name, cronExpression, and scriptPath fields' });
+              .json({ error: 'Each timer trigger must have id, name, and cronExpression fields' });
+          }
+
+          // Validate response type (default to 'script' for backward compatibility)
+          const responseType = trigger.responseType || 'script';
+          if (responseType !== 'script' && responseType !== 'text') {
+            return res.status(400).json({ error: 'responseType must be "script" or "text"' });
+          }
+
+          // Validate based on response type
+          if (responseType === 'script') {
+            if (!trigger.scriptPath) {
+              return res.status(400).json({ error: 'Script timer triggers must have a scriptPath' });
+            }
+            // Validate script paths
+            if (!trigger.scriptPath.startsWith('/data/scripts/')) {
+              return res.status(400).json({ error: 'Timer script path must start with /data/scripts/' });
+            }
+            if (trigger.scriptPath.includes('..')) {
+              return res.status(400).json({ error: 'Timer script path cannot contain ..' });
+            }
+            const ext = trigger.scriptPath.split('.').pop()?.toLowerCase();
+            if (!ext || !['js', 'mjs', 'py', 'sh'].includes(ext)) {
+              return res.status(400).json({ error: 'Timer script must have .js, .mjs, .py, or .sh extension' });
+            }
+          } else if (responseType === 'text') {
+            if (!trigger.response || typeof trigger.response !== 'string' || trigger.response.trim().length === 0) {
+              return res.status(400).json({ error: 'Text timer triggers must have a non-empty response message' });
+            }
           }
 
           // Validate cron expression format (basic validation - detailed validation happens in scheduler)
@@ -4293,18 +4322,6 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
           // Validate enabled is boolean
           if (trigger.enabled !== undefined && typeof trigger.enabled !== 'boolean') {
             return res.status(400).json({ error: 'enabled must be a boolean' });
-          }
-
-          // Validate script paths
-          if (!trigger.scriptPath.startsWith('/data/scripts/')) {
-            return res.status(400).json({ error: 'Timer script path must start with /data/scripts/' });
-          }
-          if (trigger.scriptPath.includes('..')) {
-            return res.status(400).json({ error: 'Timer script path cannot contain ..' });
-          }
-          const ext = trigger.scriptPath.split('.').pop()?.toLowerCase();
-          if (!ext || !['js', 'mjs', 'py', 'sh'].includes(ext)) {
-            return res.status(400).json({ error: 'Timer script must have .js, .mjs, .py, or .sh extension' });
           }
         }
       } catch (error) {
