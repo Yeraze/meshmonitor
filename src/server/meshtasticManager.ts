@@ -1039,7 +1039,7 @@ class MeshtasticManager {
         if (virtualNodeServer) {
           try {
             await virtualNodeServer.broadcastToClients(data);
-            logger.info(`📡 Broadcasted message to virtual node clients (${data.length} bytes)`);
+            logger.debug(`📡 Broadcasted message to virtual node clients (${data.length} bytes)`);
           } catch (error) {
             logger.error('Virtual node: Failed to broadcast message to clients:', error);
           }
@@ -5018,7 +5018,7 @@ class MeshtasticManager {
       if (virtualNodeServer) {
         try {
           await virtualNodeServer.broadcastToClients(tracerouteData);
-          logger.info(`📡 Broadcasted outgoing traceroute to virtual node clients (${tracerouteData.length} bytes)`);
+          logger.debug(`📡 Broadcasted outgoing traceroute to virtual node clients (${tracerouteData.length} bytes)`);
         } catch (error) {
           logger.error('Virtual node: Failed to broadcast outgoing traceroute:', error);
         }
@@ -5069,7 +5069,7 @@ class MeshtasticManager {
       if (virtualNodeServer) {
         try {
           await virtualNodeServer.broadcastToClients(positionRequestData);
-          logger.info(`📡 Broadcasted outgoing position exchange to virtual node clients (${positionRequestData.length} bytes)`);
+          logger.debug(`📡 Broadcasted outgoing position exchange to virtual node clients (${positionRequestData.length} bytes)`);
         } catch (error) {
           logger.error('Virtual node: Failed to broadcast outgoing position exchange:', error);
         }
@@ -5134,7 +5134,7 @@ class MeshtasticManager {
       if (virtualNodeServer) {
         try {
           await virtualNodeServer.broadcastToClients(nodeInfoRequestData);
-          logger.info(`📡 Broadcasted outgoing NodeInfo exchange to virtual node clients (${nodeInfoRequestData.length} bytes)`);
+          logger.debug(`📡 Broadcasted outgoing NodeInfo exchange to virtual node clients (${nodeInfoRequestData.length} bytes)`);
         } catch (error) {
           logger.error('Virtual node: Failed to broadcast outgoing NodeInfo exchange:', error);
         }
@@ -5177,7 +5177,7 @@ class MeshtasticManager {
       if (virtualNodeServer) {
         try {
           await virtualNodeServer.broadcastToClients(telemetryRequestData);
-          logger.info(`📡 Broadcasted outgoing LocalStats request to virtual node clients (${telemetryRequestData.length} bytes)`);
+          logger.debug(`📡 Broadcasted outgoing LocalStats request to virtual node clients (${telemetryRequestData.length} bytes)`);
         } catch (error) {
           logger.error('Virtual node: Failed to broadcast outgoing LocalStats request:', error);
         }
