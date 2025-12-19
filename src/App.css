@@ -2024,12 +2024,16 @@ body {
   opacity: 0.8;
 }
 
-.encryption-icon.encrypted {
+.encryption-icon.secure {
   color: var(--ctp-green);
 }
 
-.encryption-icon.unencrypted {
+.encryption-icon.default-key {
   color: var(--ctp-yellow);
+}
+
+.encryption-icon.unencrypted {
+  color: var(--ctp-red);
 }
 
 .channel-button.selected .encryption-icon {
@@ -5109,13 +5113,18 @@ body {
   max-width: 65%;
 }
 
-.status-encrypted {
+.status-secure {
   color: var(--ctp-green);
   font-weight: 600;
 }
 
-.status-unencrypted {
+.status-default-key {
   color: var(--ctp-yellow);
+  font-weight: 600;
+}
+
+.status-unencrypted {
+  color: var(--ctp-red);
   font-weight: 600;
 }
 
