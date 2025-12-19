@@ -131,6 +131,7 @@ export interface MessagesTabProps {
   // Modal controls
   setShowTracerouteHistoryModal: (show: boolean) => void;
   setShowPurgeDataModal: (show: boolean) => void;
+  setShowPositionOverrideModal: (show: boolean) => void;
   setEmojiPickerMessage: (message: MeshMessage | null) => void;
 
   // Helper function
@@ -196,6 +197,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   toggleFavorite,
   setShowTracerouteHistoryModal,
   setShowPurgeDataModal,
+  setShowPositionOverrideModal,
   setEmojiPickerMessage,
   shouldShowData,
   handleShowOnMap,
@@ -908,6 +910,24 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                     title={t('messages.show_on_map_title')}
                   >
                     🗺️ {t('messages.show_on_map')}
+                  </button>
+                )}
+                {hasPermission('nodes', 'write') && (
+                  <button
+                    onClick={() => setShowPositionOverrideModal(true)}
+                    className="traceroute-btn"
+                    style={{
+                      backgroundColor: '#6c757d',
+                      color: 'white',
+                      border: 'none',
+                      padding: '0.5rem 1rem',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontWeight: 'bold',
+                    }}
+                    title={t('messages.override_position_title')}
+                  >
+                    📍 {t('messages.override_position')}
                   </button>
                 )}
                 {hasPermission('messages', 'write') && (

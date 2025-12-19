@@ -698,24 +698,41 @@ apiRouter.get('/nodes', optionalAuth(), (_req, res) => {
     // This is much more efficient than querying each node individually
     const estimatedPositions = databaseService.getAllNodesEstimatedPositions();
 
-    // Enhance nodes with estimated positions if no regular position is available
+    // Enhance nodes with position data using priority:
+    // 1. Position override (user-specified)
+    // 2. Regular GPS position
+    // 3. Estimated position
     // Mobile status is now pre-computed in the database during packet processing
     const enhancedNodes = nodes.map(node => {
-      if (!node.user?.id) return { ...node, isMobile: false };
+      if (!node.user?.id) return { ...node, isMobile: false, positionIsOverride: false };
 
-      let enhancedNode = { ...node, isMobile: node.mobile === 1 };
+      let enhancedNode = { ...node, isMobile: node.mobile === 1, positionIsOverride: false };
 
-      // If node doesn't have a regular position, check for estimated position
-      if (!node.position?.latitude && !node.position?.longitude) {
-        // Use batch-loaded estimated positions (O(1) lookup instead of DB query)
-        const estimatedPos = estimatedPositions.get(node.user.id);
-        if (estimatedPos) {
-          enhancedNode.position = {
-            latitude: estimatedPos.latitude,
-            longitude: estimatedPos.longitude,
-            altitude: node.position?.altitude,
-          };
-        }
+      // Priority 1: Check for position override
+      if (node.positionOverrideEnabled === 1 && node.latitudeOverride != null && node.longitudeOverride != null) {
+        enhancedNode.position = {
+          latitude: node.latitudeOverride,
+          longitude: node.longitudeOverride,
+          altitude: node.altitudeOverride ?? node.position?.altitude,
+        };
+        enhancedNode.positionIsOverride = true;
+        return enhancedNode;
+      }
+
+      // Priority 2: Use regular GPS position if available (already set in node.position)
+      if (node.position?.latitude && node.position?.longitude) {
+        return enhancedNode;
+      }
+
+      // Priority 3: If no regular position, check for estimated position
+      // Use batch-loaded estimated positions (O(1) lookup instead of DB query)
+      const estimatedPos = estimatedPositions.get(node.user.id);
+      if (estimatedPos) {
+        enhancedNode.position = {
+          latitude: estimatedPos.latitude,
+          longitude: estimatedPos.longitude,
+          altitude: node.position?.altitude,
+        };
       }
 
       return enhancedNode;
@@ -1127,6 +1144,184 @@ apiRouter.post('/nodes/:nodeId/ignored', requirePermission('nodes', 'write'), as
     logger.error('Error setting node ignored:', error);
     const errorResponse: ApiErrorResponse = {
       error: 'Failed to set node ignored',
+      code: 'INTERNAL_ERROR',
+      details: error instanceof Error ? error.message : 'Unknown error occurred',
+    };
+    res.status(500).json(errorResponse);
+  }
+});
+
+// Get node position override
+apiRouter.get('/nodes/:nodeId/position-override', optionalAuth(), (req, res) => {
+  try {
+    const { nodeId } = req.params;
+
+    // Convert nodeId (hex string like !a1b2c3d4) to nodeNum (integer)
+    const nodeNumStr = nodeId.replace('!', '');
+
+    // Validate hex string format (must be exactly 8 hex characters)
+    if (!/^[0-9a-fA-F]{8}$/.test(nodeNumStr)) {
+      const errorResponse: ApiErrorResponse = {
+        error: 'Invalid nodeId format',
+        code: 'INVALID_NODE_ID',
+        details: 'nodeId must be in format !XXXXXXXX (8 hex characters)',
+      };
+      res.status(400).json(errorResponse);
+      return;
+    }
+
+    const nodeNum = parseInt(nodeNumStr, 16);
+    const override = databaseService.getNodePositionOverride(nodeNum);
+
+    if (!override) {
+      const errorResponse: ApiErrorResponse = {
+        error: 'Node not found',
+        code: 'NODE_NOT_FOUND',
+        details: `Node ${nodeId} not found in database`,
+      };
+      res.status(404).json(errorResponse);
+      return;
+    }
+
+    res.json(override);
+  } catch (error) {
+    logger.error('Error getting node position override:', error);
+    const errorResponse: ApiErrorResponse = {
+      error: 'Failed to get node position override',
+      code: 'INTERNAL_ERROR',
+      details: error instanceof Error ? error.message : 'Unknown error occurred',
+    };
+    res.status(500).json(errorResponse);
+  }
+});
+
+// Set node position override
+apiRouter.post('/nodes/:nodeId/position-override', requirePermission('nodes', 'write'), (req, res) => {
+  try {
+    const { nodeId } = req.params;
+    const { enabled, latitude, longitude, altitude } = req.body;
+
+    // Validate enabled parameter
+    if (typeof enabled !== 'boolean') {
+      const errorResponse: ApiErrorResponse = {
+        error: 'enabled must be a boolean',
+        code: 'INVALID_PARAMETER_TYPE',
+        details: 'Expected boolean value for enabled parameter',
+      };
+      res.status(400).json(errorResponse);
+      return;
+    }
+
+    // Validate coordinates if enabled
+    if (enabled) {
+      if (typeof latitude !== 'number' || latitude < -90 || latitude > 90) {
+        const errorResponse: ApiErrorResponse = {
+          error: 'Invalid latitude',
+          code: 'INVALID_LATITUDE',
+          details: 'Latitude must be a number between -90 and 90',
+        };
+        res.status(400).json(errorResponse);
+        return;
+      }
+
+      if (typeof longitude !== 'number' || longitude < -180 || longitude > 180) {
+        const errorResponse: ApiErrorResponse = {
+          error: 'Invalid longitude',
+          code: 'INVALID_LONGITUDE',
+          details: 'Longitude must be a number between -180 and 180',
+        };
+        res.status(400).json(errorResponse);
+        return;
+      }
+
+      if (altitude !== undefined && typeof altitude !== 'number') {
+        const errorResponse: ApiErrorResponse = {
+          error: 'Invalid altitude',
+          code: 'INVALID_ALTITUDE',
+          details: 'Altitude must be a number',
+        };
+        res.status(400).json(errorResponse);
+        return;
+      }
+    }
+
+    // Convert nodeId (hex string like !a1b2c3d4) to nodeNum (integer)
+    const nodeNumStr = nodeId.replace('!', '');
+
+    // Validate hex string format (must be exactly 8 hex characters)
+    if (!/^[0-9a-fA-F]{8}$/.test(nodeNumStr)) {
+      const errorResponse: ApiErrorResponse = {
+        error: 'Invalid nodeId format',
+        code: 'INVALID_NODE_ID',
+        details: 'nodeId must be in format !XXXXXXXX (8 hex characters)',
+      };
+      res.status(400).json(errorResponse);
+      return;
+    }
+
+    const nodeNum = parseInt(nodeNumStr, 16);
+
+    // Set position override in database
+    databaseService.setNodePositionOverride(
+      nodeNum,
+      enabled,
+      enabled ? latitude : undefined,
+      enabled ? longitude : undefined,
+      enabled ? altitude : undefined
+    );
+
+    res.json({
+      success: true,
+      nodeNum,
+      enabled,
+      latitude: enabled ? latitude : null,
+      longitude: enabled ? longitude : null,
+      altitude: enabled ? altitude : null,
+    });
+  } catch (error) {
+    logger.error('Error setting node position override:', error);
+    const errorResponse: ApiErrorResponse = {
+      error: 'Failed to set node position override',
+      code: 'INTERNAL_ERROR',
+      details: error instanceof Error ? error.message : 'Unknown error occurred',
+    };
+    res.status(500).json(errorResponse);
+  }
+});
+
+// Delete node position override
+apiRouter.delete('/nodes/:nodeId/position-override', requirePermission('nodes', 'write'), (req, res) => {
+  try {
+    const { nodeId } = req.params;
+
+    // Convert nodeId (hex string like !a1b2c3d4) to nodeNum (integer)
+    const nodeNumStr = nodeId.replace('!', '');
+
+    // Validate hex string format (must be exactly 8 hex characters)
+    if (!/^[0-9a-fA-F]{8}$/.test(nodeNumStr)) {
+      const errorResponse: ApiErrorResponse = {
+        error: 'Invalid nodeId format',
+        code: 'INVALID_NODE_ID',
+        details: 'nodeId must be in format !XXXXXXXX (8 hex characters)',
+      };
+      res.status(400).json(errorResponse);
+      return;
+    }
+
+    const nodeNum = parseInt(nodeNumStr, 16);
+
+    // Clear position override in database
+    databaseService.clearNodePositionOverride(nodeNum);
+
+    res.json({
+      success: true,
+      nodeNum,
+      message: 'Position override cleared',
+    });
+  } catch (error) {
+    logger.error('Error clearing node position override:', error);
+    const errorResponse: ApiErrorResponse = {
+      error: 'Failed to clear node position override',
       code: 'INTERNAL_ERROR',
       details: error instanceof Error ? error.message : 'Unknown error occurred',
     };
@@ -2818,24 +3013,41 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       // This is much more efficient than querying each node individually
       const estimatedPositions = databaseService.getAllNodesEstimatedPositions();
 
-      // Enhance nodes with estimated positions if no regular position is available
+      // Enhance nodes with position data using priority:
+      // 1. Position override (user-specified)
+      // 2. Regular GPS position
+      // 3. Estimated position
       // Mobile status is now pre-computed in the database during packet processing
       const enhancedNodes = nodes.map(node => {
-        if (!node.user?.id) return { ...node, isMobile: false };
+        if (!node.user?.id) return { ...node, isMobile: false, positionIsOverride: false };
 
-        let enhancedNode = { ...node, isMobile: node.mobile === 1 };
+        let enhancedNode = { ...node, isMobile: node.mobile === 1, positionIsOverride: false };
 
-        // If node doesn't have a regular position, check for estimated position
-        if (!node.position?.latitude && !node.position?.longitude) {
-          // Use batch-loaded estimated positions (O(1) lookup instead of DB query)
-          const estimatedPos = estimatedPositions.get(node.user.id);
-          if (estimatedPos) {
-            enhancedNode.position = {
-              latitude: estimatedPos.latitude,
-              longitude: estimatedPos.longitude,
-              altitude: node.position?.altitude,
-            };
-          }
+        // Priority 1: Check for position override
+        if (node.positionOverrideEnabled === 1 && node.latitudeOverride != null && node.longitudeOverride != null) {
+          enhancedNode.position = {
+            latitude: node.latitudeOverride,
+            longitude: node.longitudeOverride,
+            altitude: node.altitudeOverride ?? node.position?.altitude,
+          };
+          enhancedNode.positionIsOverride = true;
+          return enhancedNode;
+        }
+
+        // Priority 2: Use regular GPS position if available (already set in node.position)
+        if (node.position?.latitude && node.position?.longitude) {
+          return enhancedNode;
+        }
+
+        // Priority 3: If no regular position, check for estimated position
+        // Use batch-loaded estimated positions (O(1) lookup instead of DB query)
+        const estimatedPos = estimatedPositions.get(node.user.id);
+        if (estimatedPos) {
+          enhancedNode.position = {
+            latitude: estimatedPos.latitude,
+            longitude: estimatedPos.longitude,
+            altitude: node.position?.altitude,
+          };
         }
 
         return enhancedNode;

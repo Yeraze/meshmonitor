@@ -57,6 +57,12 @@ export interface DeviceInfo {
   snr?: number;
   rssi?: number;
   mobile?: number; // Database field: 0 = not mobile, 1 = mobile (moved >100m)
+  // Position override fields
+  positionOverrideEnabled?: number;
+  latitudeOverride?: number;
+  longitudeOverride?: number;
+  altitudeOverride?: number;
+  positionIsOverride?: boolean;
 }
 
 export interface MeshMessage {
@@ -7865,6 +7871,20 @@ class MeshtasticManager {
           longitude: node.longitude,
           altitude: node.altitude
         };
+      }
+
+      // Add position override fields
+      if (node.positionOverrideEnabled !== null && node.positionOverrideEnabled !== undefined) {
+        deviceInfo.positionOverrideEnabled = node.positionOverrideEnabled;
+      }
+      if (node.latitudeOverride !== null && node.latitudeOverride !== undefined) {
+        deviceInfo.latitudeOverride = node.latitudeOverride;
+      }
+      if (node.longitudeOverride !== null && node.longitudeOverride !== undefined) {
+        deviceInfo.longitudeOverride = node.longitudeOverride;
+      }
+      if (node.altitudeOverride !== null && node.altitudeOverride !== undefined) {
+        deviceInfo.altitudeOverride = node.altitudeOverride;
       }
 
       return deviceInfo;

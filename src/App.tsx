@@ -30,6 +30,7 @@ import { ToastProvider, useToast } from './components/ToastContainer';
 import { RebootModal } from './components/RebootModal';
 import { AppBanners } from './components/AppBanners';
 import { PurgeDataModal } from './components/PurgeDataModal';
+import { PositionOverrideModal } from './components/PositionOverrideModal';
 // import { version } from '../package.json' // Removed - footer no longer displayed
 import { type TemperatureUnit } from './utils/temperature';
 // calculateDistance and formatDistance moved to useTraceroutePaths hook
@@ -111,6 +112,7 @@ function App() {
   const [configRefreshTrigger, setConfigRefreshTrigger] = useState(0);
   const [showTracerouteHistoryModal, setShowTracerouteHistoryModal] = useState(false);
   const [showPurgeDataModal, setShowPurgeDataModal] = useState(false);
+  const [showPositionOverrideModal, setShowPositionOverrideModal] = useState(false);
   const [selectedRouteSegment, setSelectedRouteSegment] = useState<{ nodeNum1: number; nodeNum2: number } | null>(null);
   const [emojiPickerMessage, setEmojiPickerMessage] = useState<MeshMessage | null>(null);
 
@@ -2809,6 +2811,31 @@ function App() {
     }
   };
 
+  const handlePositionOverrideSave = async (nodeNum: number, data: { enabled: boolean; latitude?: number; longitude?: number; altitude?: number }) => {
+    const node = nodes.find(n => n.nodeNum === nodeNum);
+    const nodeId = node?.user?.id;
+    if (!nodeId) {
+      throw new Error('Node not found');
+    }
+
+    const response = await authFetch(`${baseUrl}/api/nodes/${nodeId}/position-override`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || 'Failed to save position override');
+    }
+
+    showToast(t('position_override.save_success'), 'success');
+    // Refresh data to get updated position
+    refetchPoll();
+  };
+
   const handleSendMessage = async (channel: number = 0) => {
     if (!newMessage.trim() || connectionStatus !== 'connected') {
       return;
@@ -4152,6 +4179,15 @@ function App() {
         getNodeName={getNodeName}
       />
 
+      <PositionOverrideModal
+        isOpen={showPositionOverrideModal}
+        selectedNode={selectedDMNode ? nodes.find(n => n.user?.id === selectedDMNode) || null : null}
+        onClose={() => setShowPositionOverrideModal(false)}
+        onSave={handlePositionOverrideSave}
+        getNodeName={getNodeName}
+        baseUrl={baseUrl}
+      />
+
       {selectedRouteSegment && (
         <RouteSegmentTraceroutesModal
           nodeNum1={selectedRouteSegment.nodeNum1}
@@ -4325,6 +4361,7 @@ function App() {
             getRecentTraceroute={getRecentTraceroute}
             setShowTracerouteHistoryModal={setShowTracerouteHistoryModal}
             setShowPurgeDataModal={setShowPurgeDataModal}
+            setShowPositionOverrideModal={setShowPositionOverrideModal}
             setEmojiPickerMessage={setEmojiPickerMessage}
             shouldShowData={shouldShowData}
             dmMessagesContainerRef={dmMessagesContainerRef}

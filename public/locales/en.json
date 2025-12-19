@@ -2679,5 +2679,23 @@
   "admin_commands.load_section": "Load {{section}}",
   "admin_commands.load_button": "Load",
   "admin_commands.section_loaded": "Section loaded successfully",
-  "admin_commands.section_load_failed": "Failed to load section"
+  "admin_commands.section_load_failed": "Failed to load section",
+
+  "messages.override_position": "Override Position",
+  "messages.override_position_title": "Set a custom position for this node",
+
+  "position_override.title": "Position Override: {{nodeName}}",
+  "position_override.description": "Override this node's position on the map. When enabled, this custom position will be used instead of the GPS or estimated position for map display and distance calculations.",
+  "position_override.use_position": "Use this custom position",
+  "position_override.latitude": "Latitude",
+  "position_override.latitude_description": "Range: -90 to 90 (decimal degrees)",
+  "position_override.latitude_error": "Latitude must be between -90 and 90",
+  "position_override.longitude": "Longitude",
+  "position_override.longitude_description": "Range: -180 to 180 (decimal degrees)",
+  "position_override.longitude_error": "Longitude must be between -180 and 180",
+  "position_override.altitude": "Altitude (optional)",
+  "position_override.altitude_description": "Elevation above sea level in meters",
+  "position_override.find_coordinates": "Find your GPS coordinates here",
+  "position_override.save_success": "Position override saved successfully",
+  "position_override.save_error": "Failed to save position override"
 }
