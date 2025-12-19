@@ -246,12 +246,12 @@ Before implementing features, review these critical documents:
 
 | Document | When to Read |
 |----------|--------------|
-| [ARCHITECTURE_LESSONS.md](/docs/ARCHITECTURE_LESSONS.md) | **Before ANY** node communication, state management, backup/restore, or async operations |
-| [SYSTEM_ARCHITECTURE.md](/docs/architecture/SYSTEM_ARCHITECTURE.md) | Understanding overall system design |
-| [API_REFERENCE.md](/docs/api/API_REFERENCE.md) | Working with REST API endpoints |
-| [SCHEMA.md](/docs/database/SCHEMA.md) | Database schema and models |
-| [AUTHENTICATION.md](/docs/AUTHENTICATION.md) | Auth implementation details |
-| [FAQ.md](/docs/faq.md) | Common issues and solutions |
+| [ARCHITECTURE_LESSONS.md](/ARCHITECTURE_LESSONS) | **Before ANY** node communication, state management, backup/restore, or async operations |
+| [SYSTEM_ARCHITECTURE.md](/architecture/SYSTEM_ARCHITECTURE) | Understanding overall system design |
+| [API_REFERENCE.md](/api/API_REFERENCE) | Working with REST API endpoints |
+| [SCHEMA.md](/database/SCHEMA) | Database schema and models |
+| [AUTHENTICATION.md](/AUTHENTICATION) | Auth implementation details |
+| [FAQ.md](/faq) | Common issues and solutions |
 
 ---
 
@@ -509,7 +509,7 @@ meshmonitor/
 - **Documentation**: https://meshmonitor.org/
 - **GitHub Issues**: https://github.com/Yeraze/meshmonitor/issues
 - **Discord**: https://discord.gg/aeeQbKN5
-- **FAQ**: /docs/faq.md
+- **FAQ**: [/faq](/faq)
 
 ---
 
