@@ -284,6 +284,20 @@ If macOS prevents you from opening MeshMonitor:
 2. Scroll down to find MeshMonitor with an "Open Anyway" button
 3. Click "Open Anyway" and confirm
 
+### macOS: "Application is Damaged"
+
+If you see "MeshMonitor is damaged and can't be opened" when trying to launch:
+
+This happens because the app isn't code-signed with an Apple Developer certificate. To fix this:
+
+1. Open Terminal
+2. Run: `xattr -cr /Applications/MeshMonitor.app`
+3. Try launching MeshMonitor again
+
+::: tip What does this do?
+The `xattr -cr` command removes macOS quarantine attributes that are added when downloading files from the internet. This is safe for apps you trust.
+:::
+
 ### macOS: App not appearing in menu bar
 
 1. Check if MeshMonitor is running in Activity Monitor
