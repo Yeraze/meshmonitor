@@ -270,6 +270,8 @@
   "messages.exchange_position_title": "Request position exchange with this node",
   "messages.exchange_user_info": "Exchange User Info",
   "messages.exchange_user_info_title": "Request user info exchange with this node (triggers key exchange)",
+  "messages.actions_menu": "Actions",
+  "messages.actions_menu_title": "Node actions menu",
   "messages.purge_data": "Purge Data",
   "messages.ignore_node": "Ignore Node",
   "messages.ignore_node_title": "Ignore this node (hide from map node list)",
