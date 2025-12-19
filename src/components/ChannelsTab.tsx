@@ -19,8 +19,22 @@ import LinkPreview from './LinkPreview';
 import { logger } from '../utils/logger';
 import { MessageStatusIndicator } from './MessageStatusIndicator';
 
-// Default PSK value for unencrypted channels
-const DEFAULT_UNENCRYPTED_PSK = 'AQ==';
+// Default PSK value (publicly known key - not truly secure)
+const DEFAULT_PUBLIC_PSK = 'AQ==';
+
+// Encryption status types
+type EncryptionStatus = 'none' | 'default' | 'secure';
+
+// Helper to determine encryption status
+const getEncryptionStatus = (psk: string | undefined | null): EncryptionStatus => {
+  if (!psk || psk === '') {
+    return 'none'; // No encryption
+  }
+  if (psk === DEFAULT_PUBLIC_PSK) {
+    return 'default'; // Default/public key - not secure
+  }
+  return 'secure'; // Custom key - encrypted
+};
 
 export interface ChannelsTabProps {
   // Data
@@ -238,13 +252,14 @@ export default function ChannelsTab({
                   const channelConfig = channels.find(ch => ch.id === channelId);
                   const displayName = channelConfig?.name || getChannelName(channelId);
                   const unread = unreadCounts[channelId] || 0;
-                  const encrypted = channelConfig?.psk && channelConfig.psk !== DEFAULT_UNENCRYPTED_PSK;
+                  const encryptionStatus = getEncryptionStatus(channelConfig?.psk);
                   const uplink = channelConfig?.uplinkEnabled ? '↑' : '';
                   const downlink = channelConfig?.downlinkEnabled ? '↓' : '';
+                  const encryptionIcon = encryptionStatus === 'secure' ? '🔒' : encryptionStatus === 'default' ? '🔐' : '🔓';
 
                   return (
                     <option key={channelId} value={channelId}>
-                      {encrypted ? '🔒' : '🔓'} {displayName} #{channelId} {uplink}
+                      {encryptionIcon} {displayName} #{channelId} {uplink}
                       {downlink} {unread > 0 ? `(${unread})` : ''}
                     </option>
                   );
@@ -280,15 +295,28 @@ export default function ChannelsTab({
                           <span className="channel-id">#{channelId}</span>
                         </div>
                         <div className="channel-button-indicators">
-                          {channelConfig?.psk && channelConfig.psk !== DEFAULT_UNENCRYPTED_PSK ? (
-                            <span className="encryption-icon encrypted" title={t('channels.encrypted')}>
-                              🔒
-                            </span>
-                          ) : (
-                            <span className="encryption-icon unencrypted" title={t('channels.unencrypted')}>
-                              🔓
-                            </span>
-                          )}
+                          {(() => {
+                            const status = getEncryptionStatus(channelConfig?.psk);
+                            if (status === 'secure') {
+                              return (
+                                <span className="encryption-icon secure" title={t('channels.encrypted_secure')}>
+                                  🔒
+                                </span>
+                              );
+                            } else if (status === 'default') {
+                              return (
+                                <span className="encryption-icon default-key" title={t('channels.encrypted_default')}>
+                                  🔐
+                                </span>
+                              );
+                            } else {
+                              return (
+                                <span className="encryption-icon unencrypted" title={t('channels.unencrypted')}>
+                                  🔓
+                                </span>
+                              );
+                            }
+                          })()}
                           <a
                             href="#"
                             className="channel-info-link"
@@ -610,11 +638,16 @@ export default function ChannelsTab({
                     <div className="info-row">
                       <span className="info-label">{t('channels.encryption')}</span>
                       <span className="info-value">
-                        {selectedChannelConfig.psk && selectedChannelConfig.psk !== DEFAULT_UNENCRYPTED_PSK ? (
-                          <span className="status-encrypted">{t('channels.status_encrypted')}</span>
-                        ) : (
-                          <span className="status-unencrypted">{t('channels.status_unencrypted')}</span>
-                        )}
+                        {(() => {
+                          const status = getEncryptionStatus(selectedChannelConfig.psk);
+                          if (status === 'secure') {
+                            return <span className="status-secure">{t('channels.status_secure')}</span>;
+                          } else if (status === 'default') {
+                            return <span className="status-default-key">{t('channels.status_default_key')}</span>;
+                          } else {
+                            return <span className="status-unencrypted">{t('channels.status_unencrypted')}</span>;
+                          }
+                        })()}
                       </span>
                     </div>
                     {selectedChannelConfig.psk && (
