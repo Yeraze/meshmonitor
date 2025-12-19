@@ -5,7 +5,7 @@
  * Handles the Channels tab with channel selection and messaging.
  */
 
-import React, { useRef } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Channel } from '../types/device';
 import { MeshMessage } from '../types/message';
@@ -147,6 +147,39 @@ export default function ChannelsTab({
 
   // Refs
   const channelMessageInputRef = useRef<HTMLInputElement>(null);
+
+  // State for "Jump to Bottom" button
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+
+  // Handle scroll to detect if user has scrolled up
+  const handleScroll = useCallback(() => {
+    const container = channelMessagesContainerRef.current;
+    if (!container) return;
+
+    // Check if scrolled more than 100px from bottom
+    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+    setShowJumpToBottom(!isNearBottom);
+  }, [channelMessagesContainerRef]);
+
+  // Scroll to bottom function
+  const scrollToBottom = useCallback(() => {
+    const container = channelMessagesContainerRef.current;
+    if (container) {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: 'smooth'
+      });
+    }
+  }, [channelMessagesContainerRef]);
+
+  // Attach scroll listener
+  useEffect(() => {
+    const container = channelMessagesContainerRef.current;
+    if (container) {
+      container.addEventListener('scroll', handleScroll);
+      return () => container.removeEventListener('scroll', handleScroll);
+    }
+  }, [channelMessagesContainerRef, handleScroll]);
 
   // Helper: get channel name
   const getChannelName = (channelNum: number): string => {
@@ -365,9 +398,21 @@ export default function ChannelsTab({
                     marginBottom: '1rem',
                   }}
                 >
-                  <h3 style={{ margin: 0 }}>
+                  <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     {getChannelName(selectedChannel)}
                     <span className="channel-id-label">#{selectedChannel}</span>
+                    <a
+                      href="#"
+                      className="channel-info-link"
+                      onClick={e => {
+                        e.preventDefault();
+                        setChannelInfoModal(selectedChannel);
+                      }}
+                      title={t('channels.show_channel_info')}
+                      style={{ fontSize: '0.8rem' }}
+                    >
+                      {t('channels.info_link')}
+                    </a>
                   </h3>
                   <button
                     className="btn btn-secondary"
@@ -386,7 +431,40 @@ export default function ChannelsTab({
                 </div>
 
                 <div className="channel-conversation">
-                  <div className="messages-container" ref={channelMessagesContainerRef}>
+                  <div className="messages-container" ref={channelMessagesContainerRef} style={{ position: 'relative' }}>
+                    {showJumpToBottom && (
+                      <div
+                        style={{
+                          position: 'sticky',
+                          top: '0.5rem',
+                          zIndex: 10,
+                          display: 'flex',
+                          justifyContent: 'center',
+                          marginBottom: '0.5rem',
+                        }}
+                      >
+                        <button
+                          className="jump-to-bottom-btn"
+                          onClick={scrollToBottom}
+                          style={{
+                            padding: '0.5rem 1rem',
+                            backgroundColor: 'var(--ctp-blue)',
+                            border: 'none',
+                            borderRadius: '20px',
+                            cursor: 'pointer',
+                            fontSize: '0.85rem',
+                            color: 'var(--ctp-base)',
+                            fontWeight: 'bold',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                          }}
+                        >
+                          <span>↓</span> {t('channels.jump_to_bottom', 'Jump to Bottom')}
+                        </button>
+                      </div>
+                    )}
                     {(() => {
                       const messageChannel = selectedChannel;
                       let messagesForChannel = channelMessages[messageChannel] || [];
