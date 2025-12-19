@@ -1929,6 +1929,13 @@
   "tileset_manager.save_failed": "Failed to save custom tileset. Please try again.",
   "tileset_manager.delete_confirm": "Are you sure you want to delete this custom tileset?",
   "tileset_manager.delete_failed": "Failed to delete custom tileset. Please try again.",
+  "tileset_manager.test_button": "Test",
+  "tileset_manager.test_button_title": "Test tile server connection and compatibility",
+  "tileset_manager.testing": "Testing...",
+  "tileset_manager.test_tile_type": "Type",
+  "tileset_manager.test_tile_size": "Size",
+  "tileset_manager.test_matched_layers": "Matched layers",
+  "tileset_manager.test_missing_layers": "Missing layers",
 
   "telemetry.loading": "Loading telemetry data...",
   "telemetry.load_failed": "Failed to load telemetry data",
