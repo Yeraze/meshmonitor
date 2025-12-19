@@ -3019,7 +3019,9 @@ function App() {
     }, 50);
 
     try {
-      const endpoint = isDM ? `${baseUrl}/api/messages/dm` : `${baseUrl}/api/messages/send`;
+      // Use the same endpoint for both DMs and channel messages
+      // DMs include a destination parameter, channel messages include a channel parameter
+      const endpoint = `${baseUrl}/api/messages/send`;
       const body = isDM
         ? { text: message.text, destination: destinationNodeId }
         : { text: message.text, channel: messageChannel };
