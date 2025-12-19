@@ -2739,10 +2739,64 @@ class MeshtasticManager {
 
       // Build the route string
       const BROADCAST_ADDR = 4294967295;
-      const route = routeDiscovery.route || [];
-      const routeBack = routeDiscovery.routeBack || [];
-      const snrTowards = routeDiscovery.snrTowards || [];
-      const snrBack = routeDiscovery.snrBack || [];
+
+      // Filter function to remove invalid/reserved node numbers from route arrays
+      // These values cause issues when displayed and don't represent real nodes:
+      // - 0-3: Reserved per Meshtastic protocol
+      // - 255 (0xff): Reserved for broadcast in some contexts
+      // - 65535 (0xffff): Invalid placeholder value reported by users (Issue #1128)
+      // - 4294967295 (0xffffffff): Broadcast address
+      const isValidRouteNode = (nodeNum: number): boolean => {
+        if (nodeNum <= 3) return false;  // Reserved
+        if (nodeNum === 255) return false;  // 0xff reserved
+        if (nodeNum === 65535) return false;  // 0xffff invalid placeholder
+        if (nodeNum === BROADCAST_ADDR) return false;  // Broadcast
+        return true;
+      };
+
+      const rawRoute = routeDiscovery.route || [];
+      const rawRouteBack = routeDiscovery.routeBack || [];
+      const rawSnrTowards = routeDiscovery.snrTowards || [];
+      const rawSnrBack = routeDiscovery.snrBack || [];
+
+      // Filter route arrays and keep corresponding SNR values in sync
+      const route: number[] = [];
+      const snrTowards: number[] = [];
+      rawRoute.forEach((nodeNum: number, index: number) => {
+        if (isValidRouteNode(nodeNum)) {
+          route.push(nodeNum);
+          if (rawSnrTowards[index] !== undefined) {
+            snrTowards.push(rawSnrTowards[index]);
+          }
+        }
+      });
+
+      const routeBack: number[] = [];
+      const snrBack: number[] = [];
+      rawRouteBack.forEach((nodeNum: number, index: number) => {
+        if (isValidRouteNode(nodeNum)) {
+          routeBack.push(nodeNum);
+          if (rawSnrBack[index] !== undefined) {
+            snrBack.push(rawSnrBack[index]);
+          }
+        }
+      });
+
+      // Add the final hop SNR values (from last intermediate to destination)
+      // These are stored at index [route.length] in the original arrays
+      if (rawSnrTowards.length > rawRoute.length) {
+        snrTowards.push(rawSnrTowards[rawRoute.length]);
+      }
+      if (rawSnrBack.length > rawRouteBack.length) {
+        snrBack.push(rawSnrBack[rawRouteBack.length]);
+      }
+
+      // Log if we filtered any invalid nodes
+      if (route.length !== rawRoute.length || routeBack.length !== rawRouteBack.length) {
+        logger.warn(`🗺️ Filtered invalid node numbers from traceroute: route ${rawRoute.length}→${route.length}, routeBack ${rawRouteBack.length}→${routeBack.length}`);
+        logger.debug(`🗺️ Raw route: ${JSON.stringify(rawRoute)}, Filtered: ${JSON.stringify(route)}`);
+        logger.debug(`🗺️ Raw routeBack: ${JSON.stringify(rawRouteBack)}, Filtered: ${JSON.stringify(routeBack)}`);
+      }
 
       const fromNode = databaseService.getNode(fromNum);
       const fromName = fromNode?.longName || fromNodeId;

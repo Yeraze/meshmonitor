@@ -163,14 +163,31 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
     return date.toLocaleString();
   };
 
+  // Filter function to remove invalid/reserved node numbers from route arrays
+  const isValidRouteNode = (nodeNum: number): boolean => {
+    const BROADCAST_ADDR = 4294967295;
+    if (nodeNum <= 3) return false;  // Reserved
+    if (nodeNum === 255) return false;  // 0xff reserved
+    if (nodeNum === 65535) return false;  // 0xffff invalid placeholder
+    if (nodeNum === BROADCAST_ADDR) return false;  // Broadcast
+    return true;
+  };
+
   const parseRoute = (routeJson: string, snrJson?: string): { nodeNum: number; snr?: number }[] => {
     try {
       const route = JSON.parse(routeJson);
       const snrs = snrJson ? JSON.parse(snrJson) : [];
-      return route.map((nodeNum: number, idx: number) => ({
-        nodeNum,
-        snr: snrs[idx] !== undefined ? snrs[idx] / 4 : undefined,
-      }));
+      // Filter out invalid node numbers and keep corresponding SNRs in sync
+      const result: { nodeNum: number; snr?: number }[] = [];
+      route.forEach((nodeNum: number, idx: number) => {
+        if (isValidRouteNode(nodeNum)) {
+          result.push({
+            nodeNum,
+            snr: snrs[idx] !== undefined ? snrs[idx] / 4 : undefined,
+          });
+        }
+      });
+      return result;
     } catch {
       return [];
     }

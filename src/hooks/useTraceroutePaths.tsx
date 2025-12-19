@@ -99,6 +99,23 @@ export interface UseTraceroutePathsResult {
 const BROADCAST_ADDR = 4294967295;
 
 /**
+ * Filter function to remove invalid/reserved node numbers from route arrays
+ * This provides frontend safety for any invalid data that may exist in the database
+ * Invalid values:
+ * - 0-3: Reserved per Meshtastic protocol
+ * - 255 (0xff): Reserved for broadcast in some contexts
+ * - 65535 (0xffff): Invalid placeholder value that causes display issues
+ * - 4294967295 (0xffffffff): Broadcast address
+ */
+const isValidRouteNode = (nodeNum: number): boolean => {
+  if (nodeNum <= 3) return false;  // Reserved
+  if (nodeNum === 255) return false;  // 0xff reserved
+  if (nodeNum === 65535) return false;  // 0xffff invalid placeholder
+  if (nodeNum === BROADCAST_ADDR) return false;  // Broadcast
+  return true;
+};
+
+/**
  * Hook for computing and rendering traceroute paths on the map
  */
 export function useTraceroutePaths({
@@ -173,9 +190,11 @@ export function useTraceroutePaths({
           return; // Skip this traceroute - no valid route data to display
         }
 
-        // Process forward path
-        const routeForward = JSON.parse(tr.route);
-        const routeBack = JSON.parse(tr.routeBack);
+        // Process forward path - filter out invalid node numbers
+        const rawRouteForward = JSON.parse(tr.route);
+        const rawRouteBack = JSON.parse(tr.routeBack);
+        const routeForward = rawRouteForward.filter(isValidRouteNode);
+        const routeBack = rawRouteBack.filter(isValidRouteNode);
 
         // Note: Empty arrays are valid (direct path with no intermediate hops)
 
@@ -594,8 +613,11 @@ export function useTraceroutePaths({
 
     try {
       // Route arrays are stored exactly as Meshtastic provides them (no backend reversal)
-      const routeForward = JSON.parse(selectedTrace.route);
-      const routeBack = JSON.parse(selectedTrace.routeBack);
+      // Filter out invalid node numbers for safety
+      const rawRouteForward = JSON.parse(selectedTrace.route);
+      const rawRouteBack = JSON.parse(selectedTrace.routeBack);
+      const routeForward = rawRouteForward.filter(isValidRouteNode);
+      const routeBack = rawRouteBack.filter(isValidRouteNode);
 
       const fromNode = nodesPositionDigest.find(n => n.nodeNum === selectedTrace.fromNodeNum);
       const toNode = nodesPositionDigest.find(n => n.nodeNum === selectedTrace.toNodeNum);
