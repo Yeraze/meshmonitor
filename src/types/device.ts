@@ -34,6 +34,12 @@ export interface DeviceInfo {
   duplicateKeyDetected?: boolean
   keySecurityIssueDetails?: string
   channel?: number
+  // Position override fields (positionOverrideEnabled is 0 or 1 from database)
+  positionOverrideEnabled?: number
+  latitudeOverride?: number
+  longitudeOverride?: number
+  altitudeOverride?: number
+  positionIsOverride?: boolean
 }
 
 export interface Channel {
@@ -68,4 +74,9 @@ export interface DbNode extends Partial<DeviceInfo> {
   createdAt?: number
   updatedAt?: number
   lastTracerouteRequest?: number
+  // Position override fields (stored in database)
+  positionOverrideEnabled?: number // 0 or 1 in SQLite
+  latitudeOverride?: number
+  longitudeOverride?: number
+  altitudeOverride?: number
 }

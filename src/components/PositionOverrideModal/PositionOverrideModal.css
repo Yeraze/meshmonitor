@@ -1,0 +1,156 @@
+.position-override-modal {
+  max-width: 500px;
+}
+
+.position-override-loading {
+  text-align: center;
+  padding: 2rem;
+  color: var(--ctp-subtext0);
+}
+
+.position-override-description {
+  margin-bottom: 1.5rem;
+  color: var(--ctp-subtext0);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.position-override-checkbox {
+  margin-bottom: 1.5rem;
+}
+
+.position-override-checkbox label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.position-override-checkbox input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.position-override-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.position-override-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.position-override-field label {
+  font-weight: 500;
+  color: var(--ctp-text);
+}
+
+.position-override-field .field-description {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--ctp-subtext0);
+  font-weight: normal;
+  margin-top: 2px;
+}
+
+.position-override-field input {
+  padding: 0.75rem;
+  border: 1px solid var(--ctp-surface1);
+  border-radius: 4px;
+  background-color: var(--ctp-surface0);
+  color: var(--ctp-text);
+  font-size: 1rem;
+}
+
+.position-override-field input:focus {
+  outline: none;
+  border-color: var(--ctp-blue);
+  box-shadow: 0 0 0 2px rgba(137, 180, 250, 0.2);
+}
+
+.position-override-field input.input-error {
+  border-color: var(--ctp-red);
+}
+
+.position-override-field input.input-error:focus {
+  box-shadow: 0 0 0 2px rgba(243, 139, 168, 0.2);
+}
+
+.position-override-field .error-message {
+  color: var(--ctp-red);
+  font-size: 0.85rem;
+  margin-top: 0.25rem;
+}
+
+.position-override-link {
+  margin-top: 0.5rem;
+}
+
+.position-override-link a {
+  color: var(--ctp-blue);
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.position-override-link a:hover {
+  text-decoration: underline;
+}
+
+.position-override-error {
+  background-color: rgba(243, 139, 168, 0.1);
+  border: 1px solid var(--ctp-red);
+  color: var(--ctp-red);
+  padding: 0.75rem;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+
+.position-override-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.position-override-actions .cancel-btn {
+  background-color: var(--ctp-surface1);
+  color: var(--ctp-text);
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 1rem;
+}
+
+.position-override-actions .cancel-btn:hover:not(:disabled) {
+  background-color: var(--ctp-surface2);
+}
+
+.position-override-actions .save-btn {
+  background-color: var(--ctp-blue);
+  color: var(--ctp-base);
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 1rem;
+}
+
+.position-override-actions .save-btn:hover:not(:disabled) {
+  background-color: var(--ctp-sapphire);
+}
+
+.position-override-actions .save-btn:disabled,
+.position-override-actions .cancel-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

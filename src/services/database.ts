@@ -42,6 +42,7 @@ import { migration as perUserAppriseUrlsMigration } from '../server/migrations/0
 import { migration as notifyOnMqttMigration } from '../server/migrations/037_add_notify_on_mqtt.js';
 import { migration as recalculateEstimatedPositionsMigration } from '../server/migrations/038_recalculate_estimated_positions.js';
 import { migration as recalculateEstimatedPositionsFixMigration } from '../server/migrations/039_recalculate_estimated_positions_fix.js';
+import { migration as positionOverrideMigration } from '../server/migrations/040_add_position_override_to_nodes.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Configuration constants for traceroute history
@@ -88,6 +89,11 @@ export interface DbNode {
   positionGpsAccuracy?: number; // GPS accuracy in meters
   positionHdop?: number; // Horizontal Dilution of Precision
   positionTimestamp?: number; // When this position was received (for upgrade/downgrade logic)
+  // Position override (Migration 040)
+  positionOverrideEnabled?: number; // 0 = disabled, 1 = enabled
+  latitudeOverride?: number; // Override latitude
+  longitudeOverride?: number; // Override longitude
+  altitudeOverride?: number; // Override altitude
   createdAt: number;
   updatedAt: number;
 }
@@ -418,6 +424,7 @@ class DatabaseService {
     this.runNotifyOnMqttMigration();
     this.runRecalculateEstimatedPositionsMigration();
     this.runRecalculateEstimatedPositionsFixMigration();
+    this.runPositionOverrideMigration();
     this.ensureAutomationDefaults();
     this.isInitialized = true;
   }
@@ -1143,6 +1150,26 @@ class DatabaseService {
       logger.info('✅ Recalculate estimated positions fix migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run recalculate estimated positions fix migration:', error);
+      throw error;
+    }
+  }
+
+  private runPositionOverrideMigration(): void {
+    try {
+      const migrationKey = 'migration_040_position_override';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Position override migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 040: Add position override columns to nodes table...');
+      positionOverrideMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Position override migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run position override migration:', error);
       throw error;
     }
   }
@@ -3779,6 +3806,76 @@ class DatabaseService {
     }
 
     logger.debug(`${isIgnored ? '🚫' : '✅'} Node ${nodeNum} ignored status set to: ${isIgnored} (${result.changes} row updated)`);
+  }
+
+  // Position override operations
+  setNodePositionOverride(
+    nodeNum: number,
+    enabled: boolean,
+    latitude?: number,
+    longitude?: number,
+    altitude?: number
+  ): void {
+    const now = Date.now();
+    const stmt = this.db.prepare(`
+      UPDATE nodes SET
+        positionOverrideEnabled = ?,
+        latitudeOverride = ?,
+        longitudeOverride = ?,
+        altitudeOverride = ?,
+        updatedAt = ?
+      WHERE nodeNum = ?
+    `);
+    const result = stmt.run(
+      enabled ? 1 : 0,
+      enabled && latitude !== undefined ? latitude : null,
+      enabled && longitude !== undefined ? longitude : null,
+      enabled && altitude !== undefined ? altitude : null,
+      now,
+      nodeNum
+    );
+
+    if (result.changes === 0) {
+      const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
+      logger.warn(`⚠️ Failed to update position override for node ${nodeId} (${nodeNum}): node not found in database`);
+      throw new Error(`Node ${nodeId} not found`);
+    }
+
+    logger.debug(`📍 Node ${nodeNum} position override ${enabled ? 'enabled' : 'disabled'}${enabled ? ` (${latitude}, ${longitude}, ${altitude}m)` : ''}`);
+  }
+
+  getNodePositionOverride(nodeNum: number): {
+    enabled: boolean;
+    latitude?: number;
+    longitude?: number;
+    altitude?: number;
+  } | null {
+    const stmt = this.db.prepare(`
+      SELECT positionOverrideEnabled, latitudeOverride, longitudeOverride, altitudeOverride
+      FROM nodes
+      WHERE nodeNum = ?
+    `);
+    const row = stmt.get(nodeNum) as {
+      positionOverrideEnabled: number | null;
+      latitudeOverride: number | null;
+      longitudeOverride: number | null;
+      altitudeOverride: number | null;
+    } | undefined;
+
+    if (!row) {
+      return null;
+    }
+
+    return {
+      enabled: row.positionOverrideEnabled === 1,
+      latitude: row.latitudeOverride ?? undefined,
+      longitude: row.longitudeOverride ?? undefined,
+      altitude: row.altitudeOverride ?? undefined,
+    };
+  }
+
+  clearNodePositionOverride(nodeNum: number): void {
+    this.setNodePositionOverride(nodeNum, false);
   }
 
   // Authentication and Authorization
