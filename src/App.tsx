@@ -29,6 +29,7 @@ import SectionNav from './components/SectionNav';
 import { ToastProvider, useToast } from './components/ToastContainer';
 import { RebootModal } from './components/RebootModal';
 import { AppBanners } from './components/AppBanners';
+import { AppHeader } from './components/AppHeader';
 import { PurgeDataModal } from './components/PurgeDataModal';
 import { PositionOverrideModal } from './components/PositionOverrideModal';
 // import { version } from '../package.json' // Removed - footer no longer displayed
@@ -58,7 +59,6 @@ import { usePoll, type PollData } from './hooks/usePoll';
 import { useTraceroutePaths } from './hooks/useTraceroutePaths';
 import LoginModal from './components/LoginModal';
 import LoginPage from './components/LoginPage';
-import UserMenu from './components/UserMenu';
 
 // Track pending favorite requests outside component to persist across remounts
 // Maps nodeNum -> expected isFavorite state
@@ -4020,96 +4020,21 @@ function App() {
   return (
     <div className="app">
       {renderNodeFilterPopup()}
-      <header className="app-header">
-        <div className="header-left">
-          <div className="header-title">
-            <img src={`${baseUrl}/logo.png`} alt="MeshMonitor Logo" className="header-logo" />
-            <h1>MeshMonitor</h1>
-          </div>
-          <div className="node-info">
-            {(() => {
-              // Find the local node from the nodes array
-              // Try by currentNodeId first (available when user has config read permission)
-              let localNode = currentNodeId ? nodes.find(n => n.user?.id === currentNodeId) : null;
-
-              // If currentNodeId isn't available, use localNodeInfo from /api/config
-              // which is accessible to all users including anonymous
-              if (!localNode && deviceInfo?.localNodeInfo) {
-                const { nodeId, longName, shortName } = deviceInfo.localNodeInfo;
-                return (
-                  <span
-                    className="node-address"
-                    title={authStatus?.authenticated ? `Connected to: ${nodeAddress}` : undefined}
-                    style={{ cursor: authStatus?.authenticated ? 'help' : 'default' }}
-                  >
-                    {longName} ({shortName}) - {nodeId}
-                  </span>
-                );
-              }
-
-              if (localNode && localNode.user) {
-                return (
-                  <span
-                    className="node-address"
-                    title={authStatus?.authenticated ? `Connected to: ${nodeAddress}` : undefined}
-                    style={{ cursor: authStatus?.authenticated ? 'help' : 'default' }}
-                  >
-                    {localNode.user.longName} ({localNode.user.shortName}) - {localNode.user.id}
-                  </span>
-                );
-              }
-
-              return <span className="node-address">{nodeAddress}</span>;
-            })()}
-          </div>
-        </div>
-        <div className="header-right" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div className="connection-status-container" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div
-              className="connection-status"
-              onClick={fetchSystemStatus}
-              style={{ cursor: 'pointer' }}
-              title="Click for system status"
-            >
-              <span
-                className={`status-indicator ${
-                  connectionStatus === 'user-disconnected' ? 'disconnected' : connectionStatus
-                }`}
-              ></span>
-              <span>
-                {connectionStatus === 'user-disconnected'
-                  ? 'Disconnected'
-                  : connectionStatus === 'configuring'
-                  ? 'initializing'
-                  : connectionStatus === 'node-offline'
-                  ? 'Node Offline'
-                  : connectionStatus}
-              </span>
-            </div>
-
-            {/* Show disconnect/reconnect buttons based on connection status and permissions */}
-            {hasPermission('connection', 'write') && connectionStatus === 'connected' && (
-              <button onClick={handleDisconnect} className="connection-control-btn" title="Disconnect from node">
-                Disconnect
-              </button>
-            )}
-
-            {hasPermission('connection', 'write') && connectionStatus === 'user-disconnected' && (
-              <button onClick={handleReconnect} className="connection-control-btn reconnect" title="Reconnect to node">
-                Connect
-              </button>
-            )}
-          </div>
-          {authStatus?.authenticated ? (
-            <UserMenu onLogout={() => setActiveTab('nodes')} />
-          ) : (
-            <button className="login-button" onClick={() => setShowLoginModal(true)}>
-              <span>🔒</span>
-              <span>Login</span>
-            </button>
-          )}
-        </div>
-      </header>
+      <AppHeader
+        baseUrl={baseUrl}
+        nodeAddress={nodeAddress}
+        currentNodeId={currentNodeId}
+        nodes={nodes}
+        deviceInfo={deviceInfo}
+        authStatus={authStatus}
+        connectionStatus={connectionStatus}
+        hasPermission={hasPermission}
+        onFetchSystemStatus={fetchSystemStatus}
+        onDisconnect={handleDisconnect}
+        onReconnect={handleReconnect}
+        onShowLoginModal={() => setShowLoginModal(true)}
+        onLogout={() => setActiveTab('nodes')}
+      />
 
       <AppBanners
         isDefaultPassword={isDefaultPassword}

@@ -10,19 +10,13 @@ import { useTelemetry, useSolarEstimates, type TelemetryData } from '../hooks/us
 import { useFavorites, useToggleFavorite } from '../hooks/useFavorites';
 import { formatChartAxisTimestamp } from '../utils/datetime';
 import { useSettings } from '../contexts/SettingsContext';
+import { ChartData } from '../types/ui';
 
 interface TelemetryGraphsProps {
   nodeId: string;
   temperatureUnit?: TemperatureUnit;
   telemetryHours?: number;
   baseUrl?: string;
-}
-
-interface ChartData {
-  timestamp: number;
-  value: number | null; // null for solar-only data points
-  time: string;
-  solarEstimate?: number; // Solar power estimate in watt-hours
 }
 
 /**
@@ -39,11 +33,27 @@ const getMinTimestamp = (data: TelemetryData[]): number => {
 
 // Telemetry types that should show solar by default (power/environmental)
 const SOLAR_DEFAULT_ON_TYPES = new Set([
-  'batteryLevel', 'voltage', 'ch1Voltage', 'ch1Current',
-  'ch2Voltage', 'ch2Current', 'ch3Voltage', 'ch3Current',
-  'ch4Voltage', 'ch4Current', 'ch5Voltage', 'ch5Current',
-  'ch6Voltage', 'ch6Current', 'ch7Voltage', 'ch7Current',
-  'ch8Voltage', 'ch8Current', 'temperature', 'humidity', 'pressure',
+  'batteryLevel',
+  'voltage',
+  'ch1Voltage',
+  'ch1Current',
+  'ch2Voltage',
+  'ch2Current',
+  'ch3Voltage',
+  'ch3Current',
+  'ch4Voltage',
+  'ch4Current',
+  'ch5Voltage',
+  'ch5Current',
+  'ch6Voltage',
+  'ch6Current',
+  'ch7Voltage',
+  'ch7Current',
+  'ch8Voltage',
+  'ch8Current',
+  'temperature',
+  'humidity',
+  'pressure',
 ]);
 
 const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
@@ -169,13 +179,16 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
     );
 
     // Get solar visibility for a telemetry type (defaults based on type)
-    const getSolarVisibility = useCallback((type: string): boolean => {
-      if (solarVisibility.has(type)) {
-        return solarVisibility.get(type)!;
-      }
-      // Default: enabled for power/environmental, disabled for others
-      return SOLAR_DEFAULT_ON_TYPES.has(type);
-    }, [solarVisibility]);
+    const getSolarVisibility = useCallback(
+      (type: string): boolean => {
+        if (solarVisibility.has(type)) {
+          return solarVisibility.get(type)!;
+        }
+        // Default: enabled for power/environmental, disabled for others
+        return SOLAR_DEFAULT_ON_TYPES.has(type);
+      },
+      [solarVisibility]
+    );
 
     // Toggle solar visibility for a telemetry type
     const handleToggleSolar = useCallback((type: string) => {
@@ -212,9 +225,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
 
     // Handle purge data
     const handlePurgeData = async (telemetryType: string) => {
-      const confirmed = window.confirm(
-        t('telemetry.purge_confirm', { type: getTelemetryLabel(telemetryType) })
-      );
+      const confirmed = window.confirm(t('telemetry.purge_confirm', { type: getTelemetryLabel(telemetryType) }));
 
       if (!confirmed) {
         setOpenMenu(null);
@@ -517,9 +528,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
 
     return (
       <div className="telemetry-graphs">
-        <h3 className="telemetry-title">
-          {t('telemetry.title', { count: telemetryHours })}
-        </h3>
+        <h3 className="telemetry-title">{t('telemetry.title', { count: telemetryHours })}</h3>
         <div className="graphs-grid">
           {filteredData.map(([type, data]) => {
             const isTemperature = type === 'temperature';

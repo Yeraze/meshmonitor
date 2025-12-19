@@ -18,9 +18,7 @@ declare module 'better-sqlite3-session-store' {
     new (options: BetterSqlite3SessionStoreOptions): Store;
   }
 
-  function BetterSqlite3SessionStore(
-    session: any
-  ): BetterSqlite3SessionStoreConstructor;
+  function BetterSqlite3SessionStore(session: any): BetterSqlite3SessionStoreConstructor;
 
   export default BetterSqlite3SessionStore;
 }

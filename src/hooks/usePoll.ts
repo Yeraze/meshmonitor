@@ -26,7 +26,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useCsrfFetch } from './useCsrfFetch';
-import type { DeviceInfo, Channel } from '../types/device';
+import type { DeviceInfo, Channel, LocalNodeInfo } from '../types/device';
 import { appBasename } from '../init';
 
 /**
@@ -76,11 +76,7 @@ export interface PollConfig {
     firmwareVersion?: string;
     rebootCount?: number;
   };
-  localNodeInfo?: {
-    nodeId: string;
-    longName?: string;
-    shortName?: string;
-  };
+  localNodeInfo?: LocalNodeInfo;
 }
 
 /**
