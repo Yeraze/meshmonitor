@@ -31,27 +31,13 @@ const FitBounds: React.FC<{ bounds: [[number, number], [number, number]] }> = ({
 
 // TracerouteData interface removed - now using PollTraceroute from useTraceroutes hook
 
+import type { MapNodeInfo } from '../types/device';
+
 /**
  * Extended NodeInfo with position data for map rendering
+ * Re-exported for backward compatibility
  */
-interface NodeInfo {
-  nodeNum: number;
-  user?: {
-    id: string;
-    longName?: string;
-    shortName?: string;
-    hwModel?: number;
-    role?: number | string;
-  };
-  position?: {
-    latitudeI?: number;
-    longitudeI?: number;
-    latitude?: number;
-    longitude?: number;
-  };
-  lastHeard?: number;
-  hopsAway?: number;
-}
+type NodeInfo = MapNodeInfo;
 
 interface TracerouteWidgetProps {
   id: string;

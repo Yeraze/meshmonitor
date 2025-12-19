@@ -21,36 +21,18 @@ import { CSS } from '@dnd-kit/utilities';
 import { useTelemetry, type TelemetryData } from '../hooks/useTelemetry';
 import { type TemperatureUnit, formatTemperature, getTemperatureUnit } from '../utils/temperature';
 import { formatChartAxisTimestamp } from '../utils/datetime';
+import type { TelemetryNodeInfo } from '../types/device';
+import type { ChartData } from '../types/ui';
 
 interface FavoriteChart {
   nodeId: string;
   telemetryType: string;
 }
 
-interface NodeInfo {
-  nodeNum: number;
-  user?: {
-    id: string;
-    longName?: string;
-    shortName?: string;
-    hwModel?: number;
-    role?: number | string;
-  };
-  lastHeard?: number;
-  hopsAway?: number;
-}
-
-interface ChartData {
-  timestamp: number;
-  value: number | null;
-  time: string;
-  solarEstimate?: number;
-}
-
 interface TelemetryChartProps {
   id: string;
   favorite: FavoriteChart;
-  node: NodeInfo | undefined;
+  node: TelemetryNodeInfo | undefined;
   temperatureUnit: TemperatureUnit;
   hours: number;
   baseUrl: string;
@@ -119,7 +101,7 @@ const getColor = (type: string): string => TELEMETRY_COLORS[type] || '#8884d8';
 /**
  * Format node name with both longName and shortName
  */
-const formatNodeName = (node: NodeInfo | undefined, fallbackId: string): string => {
+const formatNodeName = (node: TelemetryNodeInfo | undefined, fallbackId: string): string => {
   if (!node?.user) return fallbackId;
 
   if (node.user.longName && node.user.shortName) {
@@ -227,13 +209,20 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
     const { t } = useTranslation();
 
     // Helper to get translated telemetry label
-    const getTranslatedLabel = useCallback((type: string): string => {
-      const key = TELEMETRY_LABEL_KEYS[type];
-      return key ? t(key) : type;
-    }, [t]);
+    const getTranslatedLabel = useCallback(
+      (type: string): string => {
+        const key = TELEMETRY_LABEL_KEYS[type];
+        return key ? t(key) : type;
+      },
+      [t]
+    );
 
     // Fetch telemetry data using the hook
-    const { data: rawTelemetryData, isLoading, error } = useTelemetry({
+    const {
+      data: rawTelemetryData,
+      isLoading,
+      error,
+    } = useTelemetry({
       nodeId: favorite.nodeId,
       hours,
       baseUrl,
@@ -288,7 +277,11 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
             <h3 className="dashboard-chart-title" title={`${nodeName} - ${label}`}>
               {nodeName} - {label}
             </h3>
-            <button className="dashboard-remove-btn" onClick={handleRemoveClick} aria-label={t('dashboard.remove_from_dashboard')}>
+            <button
+              className="dashboard-remove-btn"
+              onClick={handleRemoveClick}
+              aria-label={t('dashboard.remove_from_dashboard')}
+            >
               ✕
             </button>
           </div>
@@ -308,7 +301,11 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
             <h3 className="dashboard-chart-title" title={`${nodeName} - ${label}`}>
               {nodeName} - {label}
             </h3>
-            <button className="dashboard-remove-btn" onClick={handleRemoveClick} aria-label={t('dashboard.remove_from_dashboard')}>
+            <button
+              className="dashboard-remove-btn"
+              onClick={handleRemoveClick}
+              aria-label={t('dashboard.remove_from_dashboard')}
+            >
               ✕
             </button>
           </div>
@@ -328,7 +325,11 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
             <h3 className="dashboard-chart-title" title={`${nodeName} - ${label}`}>
               {nodeName} - {label}
             </h3>
-            <button className="dashboard-remove-btn" onClick={handleRemoveClick} aria-label={t('dashboard.remove_from_dashboard')}>
+            <button
+              className="dashboard-remove-btn"
+              onClick={handleRemoveClick}
+              aria-label={t('dashboard.remove_from_dashboard')}
+            >
               ✕
             </button>
           </div>
@@ -347,10 +348,7 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
           <div className="dashboard-drag-handle" {...attributes} {...listeners}>
             ⋮⋮
           </div>
-          <h3
-            className="dashboard-chart-title"
-            title={`${nodeName} - ${label} ${unit ? `(${unit})` : ''}`}
-          >
+          <h3 className="dashboard-chart-title" title={`${nodeName} - ${label} ${unit ? `(${unit})` : ''}`}>
             {nodeName} - {label} {unit && `(${unit})`}
           </h3>
           <div className="dashboard-chart-actions">
@@ -364,7 +362,11 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
                 {showSolar ? '\u2600' : '\u263C'}
               </button>
             )}
-            <button className="dashboard-remove-btn" onClick={handleRemoveClick} aria-label={t('dashboard.remove_from_dashboard')}>
+            <button
+              className="dashboard-remove-btn"
+              onClick={handleRemoveClick}
+              aria-label={t('dashboard.remove_from_dashboard')}
+            >
               ✕
             </button>
           </div>
@@ -436,4 +438,4 @@ TelemetryChart.displayName = 'TelemetryChart';
 
 export default TelemetryChart;
 export { getTelemetryLabel, getColor };
-export type { FavoriteChart, NodeInfo };
+export type { FavoriteChart, TelemetryNodeInfo as NodeInfo };

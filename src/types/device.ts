@@ -55,6 +55,54 @@ export interface Channel {
 }
 
 /**
+ * Local node info from device configuration
+ */
+export interface LocalNodeInfo {
+  nodeId: string;
+  longName?: string;
+  shortName?: string;
+}
+
+/**
+ * Basic node user info - common subset used across components
+ */
+export interface NodeUser {
+  id: string;
+  longName?: string;
+  shortName?: string;
+  hwModel?: number;
+  role?: number | string;
+}
+
+/**
+ * Basic node info for UI components (lists, modals, etc.)
+ */
+export interface BasicNodeInfo {
+  nodeNum: number;
+  user?: NodeUser;
+}
+
+/**
+ * Extended node info with telemetry-related fields
+ */
+export interface TelemetryNodeInfo extends BasicNodeInfo {
+  lastHeard?: number;
+  hopsAway?: number;
+}
+
+/**
+ * Node info with position data for map-related components
+ */
+export interface MapNodeInfo extends TelemetryNodeInfo {
+  position?: {
+    latitudeI?: number;
+    longitudeI?: number;
+    latitude?: number;
+    longitude?: number;
+  };
+}
+
+/**
  * Database node type with additional fields
  */
 export interface DbNode extends Partial<DeviceInfo> {

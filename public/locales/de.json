@@ -41,6 +41,18 @@
   "purgeModal.deleteLocal": "❌ Knoten löschen (Nur lokale Datenbank)",
   "purgeModal.deleteDevice": "🗑️ Vom Gerät UND Datenbank löschen",
 
+  "header.connectedTo": "Verbunden mit: {{address}}",
+  "header.clickForStatus": "Klicken für Systemstatus",
+  "header.status.connected": "verbunden",
+  "header.status.disconnected": "Getrennt",
+  "header.status.initializing": "initialisiere",
+  "header.status.nodeOffline": "Knoten Offline",
+  "header.disconnect": "Trennen",
+  "header.disconnectTitle": "Vom Knoten trennen",
+  "header.connect": "Verbinden",
+  "header.connectTitle": "Mit Knoten verbinden",
+  "header.login": "Anmelden",
+
   "common.save": "Speichern",
   "common.cancel": "Abbrechen",
   "common.delete": "Löschen",

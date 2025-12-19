@@ -41,6 +41,18 @@
   "purgeModal.deleteLocal": "❌ Supprimer le nœud (Base de données locale uniquement)",
   "purgeModal.deleteDevice": "🗑️ Purger de l'appareil ET de la base de données",
 
+  "header.connectedTo": "Connecté à : {{address}}",
+  "header.clickForStatus": "Cliquer pour le statut du système",
+  "header.status.connected": "connecté",
+  "header.status.disconnected": "Déconnecté",
+  "header.status.initializing": "initialisation",
+  "header.status.nodeOffline": "Nœud Hors Ligne",
+  "header.disconnect": "Déconnecter",
+  "header.disconnectTitle": "Se déconnecter du nœud",
+  "header.connect": "Connecter",
+  "header.connectTitle": "Se reconnecter au nœud",
+  "header.login": "Connexion",
+
   "common.save": "Enregistrer",
   "common.cancel": "Annuler",
   "common.delete": "Supprimer",

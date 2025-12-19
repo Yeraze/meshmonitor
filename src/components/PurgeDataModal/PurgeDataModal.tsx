@@ -1,19 +1,11 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+import type { BasicNodeInfo } from '../../types/device';
 import './PurgeDataModal.css';
-
-interface Node {
-  nodeNum: number;
-  user?: {
-    id: string;
-    longName?: string;
-    shortName?: string;
-  };
-}
 
 interface PurgeDataModalProps {
   isOpen: boolean;
-  selectedNode: Node | null;
+  selectedNode: BasicNodeInfo | null;
   onClose: () => void;
   onPurgeMessages: (nodeNum: number) => void;
   onPurgeTraceroutes: (nodeNum: number) => void;

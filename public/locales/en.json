@@ -42,6 +42,18 @@
   "purgeModal.deleteLocal": "❌ Delete Node (Local Database Only)",
   "purgeModal.deleteDevice": "🗑️ Purge from Device AND Database",
 
+  "header.connectedTo": "Connected to: {{address}}",
+  "header.clickForStatus": "Click for system status",
+  "header.status.connected": "connected",
+  "header.status.disconnected": "Disconnected",
+  "header.status.initializing": "initializing",
+  "header.status.nodeOffline": "Node Offline",
+  "header.disconnect": "Disconnect",
+  "header.disconnectTitle": "Disconnect from node",
+  "header.connect": "Connect",
+  "header.connectTitle": "Reconnect to node",
+  "header.login": "Login",
+
   "common.save": "Save",
   "common.cancel": "Cancel",
   "common.delete": "Delete",
