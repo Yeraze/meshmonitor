@@ -3777,6 +3777,7 @@ body {
     top: 0;
     background: var(--ctp-base);
     z-index: 10;
+    order: -2; /* Keep header at top when using flexbox order */
   }
 
   /* Messages container should have minimum height and allow scrolling */
@@ -3793,7 +3794,7 @@ body {
     position: sticky;
     bottom: 0;
     background: var(--ctp-base);
-    z-index: 10;
+    z-index: 5; /* Lower than header (z-index: 10) so header stays on top during scroll */
     padding-bottom: env(safe-area-inset-bottom, 0.5rem);
   }
 
@@ -3812,11 +3813,9 @@ body {
     margin-bottom: 0.25rem; /* Reduced from 0.75rem */
   }
 
-  /* Dropdown gets inserted here via JSX order */
-
+  /* Traceroute info stays in natural DOM order (below messages, above node details) */
   .messages-split-view .traceroute-info {
-    order: -1; /* Show after dropdown */
-    margin-bottom: 0.25rem; /* Reduced from 0.75rem */
+    margin-bottom: 0.25rem;
   }
 
   .nodes-sidebar {
@@ -6192,4 +6191,93 @@ body {
 
 .section-nav-item:active {
   transform: scale(0.98);
+}
+
+/* ========================================
+   Node Actions Dropdown Menu
+   ======================================== */
+
+.node-actions-container {
+  position: relative;
+  display: inline-block;
+}
+
+.actions-menu-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.actions-menu-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9999;
+}
+
+.actions-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 220px;
+  background: var(--ctp-base);
+  border: 1px solid var(--ctp-surface1);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  z-index: 10000;
+  padding: 0.5rem 0;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* When dropdown is open, container needs high z-index to escape sticky header stacking context */
+.node-actions-container:has(.actions-menu-dropdown) {
+  z-index: 10000;
+}
+
+/* On mobile, raise the header z-index when actions menu is open */
+@media (max-width: 768px) {
+  .dm-header:has(.actions-menu-dropdown) {
+    z-index: 10001 !important;
+  }
+}
+
+.actions-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.625rem 1rem;
+  background: transparent;
+  border: none;
+  color: var(--ctp-text);
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.actions-menu-item:hover:not(:disabled) {
+  background: var(--ctp-surface0);
+}
+
+.actions-menu-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.actions-menu-item-danger {
+  color: var(--ctp-red);
+}
+
+.actions-menu-item-danger:hover:not(:disabled) {
+  background: rgba(243, 139, 168, 0.1);
+}
+
+.actions-menu-divider {
+  height: 1px;
+  background: var(--ctp-surface1);
+  margin: 0.5rem 0;
 }

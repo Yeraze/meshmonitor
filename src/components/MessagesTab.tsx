@@ -5,7 +5,7 @@
  * Handles the Messages/DM tab with node list and conversation view.
  */
 
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useState } from 'react';
 import { useTranslation, Trans } from 'react-i18next';
 import { DeviceInfo } from '../types/device';
 import { MeshMessage } from '../types/message';
@@ -204,6 +204,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   dmMessagesContainerRef,
 }) => {
   const { t } = useTranslation();
+
+  // Local state for actions menu
+  const [showActionsMenu, setShowActionsMenu] = useState(false);
 
   // Refs
   const dmMessageInputRef = useRef<HTMLInputElement>(null);
@@ -586,14 +589,146 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                     </div>
                   )}
                 </h3>
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => markMessagesAsRead(undefined, undefined, selectedDMNode)}
-                  title={t('messages.mark_read_conversation_title')}
-                  style={{ padding: '0.5rem 1rem', fontSize: '0.9rem', whiteSpace: 'nowrap' }}
-                >
-                  {t('messages.mark_read_button')}
-                </button>
+                {/* Actions Dropdown Menu */}
+                <div className="node-actions-container">
+                  <button
+                    onClick={() => setShowActionsMenu(!showActionsMenu)}
+                    className="btn btn-secondary actions-menu-btn"
+                    title={t('messages.actions_menu_title')}
+                    style={{ padding: '0.5rem 1rem', fontSize: '0.9rem', whiteSpace: 'nowrap' }}
+                  >
+                    {t('messages.actions_menu')} ▼
+                  </button>
+
+                  {showActionsMenu && (
+                    <>
+                      <div className="actions-menu-overlay" onClick={() => setShowActionsMenu(false)} />
+                      <div className="actions-menu-dropdown">
+                        {/* Traceroute Actions */}
+                        {hasPermission('traceroute', 'write') && (
+                          <>
+                            <button
+                              className="actions-menu-item"
+                              onClick={() => {
+                                handleTraceroute(selectedDMNode);
+                                setShowActionsMenu(false);
+                              }}
+                              disabled={connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode}
+                            >
+                              🗺️ {t('messages.traceroute_button')}
+                              {tracerouteLoading === selectedDMNode && <span className="spinner"></span>}
+                            </button>
+                            <button
+                              className="actions-menu-item"
+                              onClick={() => {
+                                setShowTracerouteHistoryModal(true);
+                                setShowActionsMenu(false);
+                              }}
+                            >
+                              📜 {t('messages.history_button')}
+                            </button>
+                          </>
+                        )}
+
+                        {/* Exchange Actions */}
+                        {hasPermission('messages', 'write') && (
+                          <>
+                            <button
+                              className="actions-menu-item"
+                              onClick={() => {
+                                handleExchangePosition(selectedDMNode);
+                                setShowActionsMenu(false);
+                              }}
+                              disabled={connectionStatus !== 'connected' || positionLoading === selectedDMNode}
+                            >
+                              📍 {t('messages.exchange_position')}
+                              {positionLoading === selectedDMNode && <span className="spinner"></span>}
+                            </button>
+                            <button
+                              className="actions-menu-item"
+                              onClick={() => {
+                                handleExchangeNodeInfo(selectedDMNode);
+                                setShowActionsMenu(false);
+                              }}
+                              disabled={connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode}
+                            >
+                              🔑 {t('messages.exchange_user_info')}
+                              {nodeInfoLoading === selectedDMNode && <span className="spinner"></span>}
+                            </button>
+                          </>
+                        )}
+
+                        {/* Node Management */}
+                        {hasPermission('messages', 'write') && selectedNode && (
+                          <>
+                            <div className="actions-menu-divider" />
+                            <button
+                              className="actions-menu-item"
+                              onClick={(e) => {
+                                toggleFavorite(selectedNode, e);
+                                setShowActionsMenu(false);
+                              }}
+                            >
+                              {selectedNode.isFavorite ? `⭐ ${t('nodes.remove_favorite')}` : `☆ ${t('nodes.add_favorite')}`}
+                            </button>
+                            <button
+                              className="actions-menu-item"
+                              onClick={(e) => {
+                                toggleIgnored(selectedNode, e);
+                                setShowActionsMenu(false);
+                              }}
+                            >
+                              {selectedNode.isIgnored ? `👁️ ${t('messages.unignore_node')}` : `🚫 ${t('messages.ignore_node')}`}
+                            </button>
+                          </>
+                        )}
+
+                        {/* Map & Position */}
+                        {(selectedNode?.position?.latitude != null || hasPermission('nodes', 'write')) && (
+                          <div className="actions-menu-divider" />
+                        )}
+                        {selectedNode?.position?.latitude != null && selectedNode?.position?.longitude != null && (
+                          <button
+                            className="actions-menu-item"
+                            onClick={() => {
+                              handleShowOnMap(selectedDMNode);
+                              setShowActionsMenu(false);
+                            }}
+                          >
+                            🗺️ {t('messages.show_on_map')}
+                          </button>
+                        )}
+                        {hasPermission('nodes', 'write') && (
+                          <button
+                            className="actions-menu-item"
+                            onClick={() => {
+                              setShowPositionOverrideModal(true);
+                              setShowActionsMenu(false);
+                            }}
+                          >
+                            📍 {t('messages.override_position')}
+                          </button>
+                        )}
+
+                        {/* Danger Zone */}
+                        {hasPermission('messages', 'write') && (
+                          <>
+                            <div className="actions-menu-divider" />
+                            <button
+                              className="actions-menu-item actions-menu-item-danger"
+                              onClick={() => {
+                                setShowPurgeDataModal(true);
+                                setShowActionsMenu(false);
+                              }}
+                            >
+                              🗑️ {t('messages.purge_data')}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -822,134 +957,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
               </div>
             )}
 
-            {/* Traceroute and Purge Section */}
-            <div style={{ marginTop: '1rem' }}>
-              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                {hasPermission('traceroute', 'write') && (
-                  <>
-                    <button
-                      onClick={() => handleTraceroute(selectedDMNode)}
-                      disabled={connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode}
-                      className="traceroute-btn"
-                      title={t('messages.traceroute_title')}
-                    >
-                      🗺️ {t('messages.traceroute_button')}
-                      {tracerouteLoading === selectedDMNode && <span className="spinner"></span>}
-                    </button>
-                    <button
-                      onClick={() => setShowTracerouteHistoryModal(true)}
-                      className="traceroute-btn"
-                      title={t('messages.history_title')}
-                    >
-                      📜 {t('messages.history_button')}
-                    </button>
-                  </>
-                )}
-                {hasPermission('messages', 'write') && (
-                  <button
-                    onClick={() => handleExchangePosition(selectedDMNode)}
-                    disabled={connectionStatus !== 'connected' || positionLoading === selectedDMNode}
-                    className="traceroute-btn"
-                    title={t('messages.exchange_position_title')}
-                  >
-                    📍 {t('messages.exchange_position')}
-                    {positionLoading === selectedDMNode && <span className="spinner"></span>}
-                  </button>
-                )}
-                {hasPermission('messages', 'write') && (
-                  <button
-                    onClick={() => handleExchangeNodeInfo(selectedDMNode)}
-                    disabled={connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode}
-                    className="traceroute-btn"
-                    title={t('messages.exchange_user_info_title')}
-                  >
-                    🔑 {t('messages.exchange_user_info')}
-                    {nodeInfoLoading === selectedDMNode && <span className="spinner"></span>}
-                  </button>
-                )}
-                {hasPermission('messages', 'write') && selectedNode && (
-                  <button
-                    onClick={(e) => toggleFavorite(selectedNode, e)}
-                    className="traceroute-btn"
-                    style={{
-                      backgroundColor: selectedNode.isFavorite ? '#f5a623' : '#6c757d',
-                      color: 'white',
-                      border: 'none',
-                      padding: '0.5rem 1rem',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      fontWeight: 'bold',
-                    }}
-                    title={selectedNode.isFavorite ? t('nodes.remove_from_favorites') : t('nodes.add_to_favorites')}
-                  >
-                    {selectedNode.isFavorite ? `⭐ ${t('nodes.remove_favorite')}` : `☆ ${t('nodes.add_favorite')}`}
-                  </button>
-                )}
-                {hasPermission('messages', 'write') && selectedNode && (
-                  <button
-                    onClick={(e) => toggleIgnored(selectedNode, e)}
-                    className={selectedNode.isIgnored ? 'traceroute-btn' : 'danger-btn'}
-                    style={{
-                      backgroundColor: selectedNode.isIgnored ? '#28a745' : '#6c757d',
-                      color: 'white',
-                      border: 'none',
-                      padding: '0.5rem 1rem',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      fontWeight: 'bold',
-                    }}
-                    title={selectedNode.isIgnored ? t('messages.unignore_node_title') : t('messages.ignore_node_title')}
-                  >
-                    {selectedNode.isIgnored ? t('messages.unignore_node') : t('messages.ignore_node')}
-                  </button>
-                )}
-                {selectedNode?.position?.latitude != null && selectedNode?.position?.longitude != null && (
-                  <button
-                    onClick={() => handleShowOnMap(selectedDMNode)}
-                    className="traceroute-btn"
-                    title={t('messages.show_on_map_title')}
-                  >
-                    🗺️ {t('messages.show_on_map')}
-                  </button>
-                )}
-                {hasPermission('nodes', 'write') && (
-                  <button
-                    onClick={() => setShowPositionOverrideModal(true)}
-                    className="traceroute-btn"
-                    style={{
-                      backgroundColor: '#6c757d',
-                      color: 'white',
-                      border: 'none',
-                      padding: '0.5rem 1rem',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      fontWeight: 'bold',
-                    }}
-                    title={t('messages.override_position_title')}
-                  >
-                    📍 {t('messages.override_position')}
-                  </button>
-                )}
-                {hasPermission('messages', 'write') && (
-                  <button
-                    onClick={() => setShowPurgeDataModal(true)}
-                    className="danger-btn"
-                    style={{
-                      backgroundColor: '#dc3545',
-                      color: 'white',
-                      border: 'none',
-                      padding: '0.5rem 1rem',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      fontWeight: 'bold',
-                    }}
-                  >
-                    🗑️ {t('messages.purge_data')}
-                  </button>
-                )}
-              </div>
-
-              {/* Traceroute Display */}
+            {/* Traceroute Display */}
               {hasPermission('traceroute', 'write') &&
                 (() => {
                   const recentTrace = getRecentTraceroute(selectedDMNode);
@@ -987,7 +995,6 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                   }
                   return null;
                 })()}
-            </div>
 
             {selectedNode && <NodeDetailsBlock node={selectedNode} timeFormat={timeFormat} dateFormat={dateFormat} />}
 
