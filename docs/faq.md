@@ -4,6 +4,35 @@ This page covers common issues and questions from MeshMonitor users. For develop
 
 ## 🚨 Common Issues
 
+### macOS says MeshMonitor is "damaged" and can't be opened
+
+**Problem:** When trying to open the MeshMonitor Desktop app on macOS, you see an error message saying the app is "damaged" and should be moved to the trash.
+
+**Cause:** This is **not** actual damage. macOS applies a "quarantine" attribute to files downloaded from the internet. For unsigned apps (apps without an Apple Developer certificate), macOS shows this misleading error message as a security measure.
+
+**Solution:** Remove the quarantine attribute using Terminal:
+
+```bash
+# After downloading the DMG
+xattr -d com.apple.quarantine ~/Downloads/MeshMonitor-Desktop-*.dmg
+
+# After installing to Applications
+xattr -dr com.apple.quarantine /Applications/MeshMonitor.app
+```
+
+**Alternative method (GUI):**
+1. Try to open MeshMonitor normally
+2. Go to **System Settings → Privacy & Security**
+3. Scroll down to find the message about MeshMonitor
+4. Click **"Open Anyway"**
+
+**Why isn't it code-signed?**
+Code signing requires an Apple Developer account ($99/year) and ongoing maintenance. As an open-source project, we've chosen to make the app freely available without this cost. The app is safe to use - you can verify this by building it from source yourself.
+
+::: tip
+This is the same issue faced by many open-source macOS applications. The quarantine removal is safe and only affects MeshMonitor, not your system security.
+:::
+
 ### I see a blank white screen when accessing MeshMonitor
 
 **Problem:** You can access MeshMonitor's URL, but the page is completely blank or you see CORS errors in the browser console.
