@@ -272,6 +272,23 @@ jobs:
           mkdir -p desktop/resources/binaries
           cp "node-${NODE_VERSION}-darwin-arm64/bin/node" desktop/resources/binaries/node
 
+      # Sign the bundled Node.js binary so it passes notarization
+      - name: Sign bundled Node.js binary
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          if [ -z "$APPLE_SIGNING_IDENTITY" ]; then
+            echo "APPLE_SIGNING_IDENTITY not set, skipping Node.js signing"
+            exit 0
+          fi
+
+          echo "Signing Node.js binary with identity: $APPLE_SIGNING_IDENTITY"
+          codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" \
+            --timestamp desktop/resources/binaries/node
+
+          echo "Verifying signature..."
+          codesign --verify --verbose=2 desktop/resources/binaries/node
+
       - name: Copy server files to Tauri resources
         run: |
           mkdir -p desktop/resources/dist
