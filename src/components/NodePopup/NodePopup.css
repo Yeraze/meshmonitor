@@ -1,0 +1,84 @@
+/* Node Popup */
+.node-popup {
+  background: var(--ctp-base);
+  border: 1px solid var(--ctp-surface0);
+  border-radius: 8px;
+  padding: 1rem;
+  min-width: 200px;
+  max-width: 300px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.node-popup h4 {
+  margin: 0 0 0.5rem 0;
+  color: var(--ctp-text);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.node-popup .route-endpoints {
+  margin-bottom: 0.5rem;
+  color: var(--ctp-subtext1);
+}
+
+.node-popup .route-endpoints strong {
+  color: var(--ctp-blue);
+}
+
+.node-popup .route-usage {
+  font-size: 0.875rem;
+  color: var(--ctp-subtext0);
+  margin: 0.25rem 0;
+}
+
+.popup-dm-btn {
+  display: block;
+  width: 100%;
+  margin-top: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: var(--ctp-surface0);
+  color: var(--ctp-text);
+  border: 1px solid var(--ctp-surface1);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.popup-dm-btn:hover {
+  background: var(--ctp-surface1);
+  border-color: var(--ctp-surface2);
+}
+
+.popup-dm-btn:first-of-type {
+  margin-top: 0.75rem;
+}
+
+/* Route popup shared styles */
+.route-popup {
+  background: var(--ctp-base);
+  border: 1px solid var(--ctp-surface0);
+  border-radius: 8px;
+  padding: 1rem;
+  min-width: 200px;
+  max-width: 300px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.route-popup h4 {
+  margin: 0 0 0.5rem 0;
+  color: var(--ctp-text);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.route-popup .route-endpoints {
+  margin-bottom: 0.5rem;
+  color: var(--ctp-subtext1);
+}
+
+.route-popup .route-usage {
+  font-size: 0.875rem;
+  color: var(--ctp-subtext0);
+  margin: 0.25rem 0;
+}

@@ -32,19 +32,21 @@ import { AppBanners } from './components/AppBanners';
 import { AppHeader } from './components/AppHeader';
 import { PurgeDataModal } from './components/PurgeDataModal';
 import { PositionOverrideModal } from './components/PositionOverrideModal';
+import { SystemStatusModal } from './components/SystemStatusModal';
+import { NodePopup } from './components/NodePopup';
+import { EmojiPickerModal } from './components/EmojiPickerModal';
+import { AdvancedNodeFilterPopup } from './components/AdvancedNodeFilterPopup';
 // import { version } from '../package.json' // Removed - footer no longer displayed
 import { type TemperatureUnit } from './utils/temperature';
 // calculateDistance and formatDistance moved to useTraceroutePaths hook
-import { formatDateTime } from './utils/datetime';
 import { DeviceInfo, Channel } from './types/device';
 import { MeshMessage } from './types/message';
-import { SortField, SortDirection } from './types/ui';
+import { SortField, SortDirection, NodeFilters } from './types/ui';
 import { ResourceType } from './types/permission';
 import api from './services/api';
 import { logger } from './utils/logger';
 // generateArrowMarkers moved to useTraceroutePaths hook
-import { ROLE_NAMES } from './constants';
-import { getHardwareModelName, getRoleName, isNodeComplete } from './utils/nodeHelpers';
+import { isNodeComplete } from './utils/nodeHelpers';
 import Sidebar from './components/Sidebar';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
 import { MapProvider, useMapContext } from './contexts/MapContext';
@@ -120,26 +122,6 @@ function App() {
   const isMobileViewport = () => window.innerWidth <= 768;
   const [isMessagesNodeListCollapsed, setIsMessagesNodeListCollapsed] = useState(isMobileViewport());
 
-  /**
-   * Node filter configuration interface
-   * Controls which nodes are displayed in the node list based on various criteria
-   */
-  interface NodeFilters {
-    filterMode: 'show' | 'hide';
-    showMqtt: boolean;
-    showTelemetry: boolean;
-    showEnvironment: boolean;
-    powerSource: 'powered' | 'battery' | 'both';
-    showPosition: boolean;
-    minHops: number;
-    maxHops: number;
-    showPKI: boolean;
-    showUnknown: boolean;
-    showIgnored: boolean;
-    deviceRoles: number[];
-    channels: number[];
-  }
-
   // Node list filter options (shared between Map and Messages pages)
   // Load from localStorage on initial render
   const [nodeFilters, setNodeFilters] = useState<NodeFilters>(() => {
@@ -196,46 +178,6 @@ function App() {
 
   // Constants for emoji tapbacks
   const EMOJI_FLAG = 1; // Protobuf flag indicating this is a tapback/reaction
-  const TAPBACK_EMOJIS = [
-    // Common reactions (compatible with Meshtastic OLED displays)
-    { emoji: '👍', title: 'Thumbs up' },
-    { emoji: '👎', title: 'Thumbs down' },
-    { emoji: '❤️', title: 'Heart' },
-    { emoji: '😂', title: 'Laugh' },
-    { emoji: '😢', title: 'Cry' },
-    { emoji: '😮', title: 'Wow' },
-    { emoji: '😡', title: 'Angry' },
-    { emoji: '🎉', title: 'Celebrate' },
-    // Questions and alerts
-    { emoji: '❓', title: 'Question' },
-    { emoji: '❗', title: 'Exclamation' },
-    { emoji: '‼️', title: 'Double exclamation' },
-    // Hop count emojis (for ping/test responses)
-    { emoji: '*️⃣', title: 'Direct (0 hops)' },
-    { emoji: '1️⃣', title: '1 hop' },
-    { emoji: '2️⃣', title: '2 hops' },
-    { emoji: '3️⃣', title: '3 hops' },
-    { emoji: '4️⃣', title: '4 hops' },
-    { emoji: '5️⃣', title: '5 hops' },
-    { emoji: '6️⃣', title: '6 hops' },
-    { emoji: '7️⃣', title: '7+ hops' },
-    // Fun emojis (OLED compatible)
-    { emoji: '💩', title: 'Poop' },
-    { emoji: '👋', title: 'Wave' },
-    { emoji: '🤠', title: 'Cowboy' },
-    { emoji: '🐭', title: 'Mouse' },
-    { emoji: '😈', title: 'Devil' },
-    // Weather (OLED compatible)
-    { emoji: '☀️', title: 'Sunny' },
-    { emoji: '☔', title: 'Rain' },
-    { emoji: '☁️', title: 'Cloudy' },
-    { emoji: '🌫️', title: 'Foggy' },
-    // Additional useful reactions
-    { emoji: '✅', title: 'Check' },
-    { emoji: '❌', title: 'X' },
-    { emoji: '🔥', title: 'Fire' },
-    { emoji: '💯', title: '100' },
-  ] as const;
 
   const channelMessagesContainerRef = useRef<HTMLDivElement>(null);
   const dmMessagesContainerRef = useRef<HTMLDivElement>(null);
@@ -1382,7 +1324,16 @@ function App() {
     } finally {
       setChannelLoadingMore(prev => ({ ...prev, [selectedChannel]: false }));
     }
-  }, [selectedChannel, channelLoadingMore, channelHasMore, channelMessages, setChannelMessages, setChannelHasMore, setChannelLoadingMore, showToast]);
+  }, [
+    selectedChannel,
+    channelLoadingMore,
+    channelHasMore,
+    channelMessages,
+    setChannelMessages,
+    setChannelHasMore,
+    setChannelLoadingMore,
+    showToast,
+  ]);
 
   // Load more direct messages (for infinite scroll)
   const loadMoreDirectMessages = useCallback(async () => {
@@ -1395,8 +1346,9 @@ function App() {
 
     // Get current DM messages from the messages array (channel -1 or direct messages)
     const currentDMs = messages.filter(
-      msg => (msg.fromNodeId === currentNodeId && msg.toNodeId === selectedDMNode) ||
-             (msg.fromNodeId === selectedDMNode && msg.toNodeId === currentNodeId)
+      msg =>
+        (msg.fromNodeId === currentNodeId && msg.toNodeId === selectedDMNode) ||
+        (msg.fromNodeId === selectedDMNode && msg.toNodeId === currentNodeId)
     );
     const offset = currentDMs.length;
     const container = dmMessagesContainerRef.current;
@@ -1440,7 +1392,17 @@ function App() {
     } finally {
       setDmLoadingMore(prev => ({ ...prev, [dmKey]: false }));
     }
-  }, [selectedDMNode, currentNodeId, dmLoadingMore, dmHasMore, messages, setMessages, setDmHasMore, setDmLoadingMore, showToast]);
+  }, [
+    selectedDMNode,
+    currentNodeId,
+    dmLoadingMore,
+    dmHasMore,
+    messages,
+    setMessages,
+    setDmHasMore,
+    setDmLoadingMore,
+    showToast,
+  ]);
 
   // Handle scroll events to track scroll position (throttled for load-more)
   const handleChannelScroll = useCallback(() => {
@@ -1517,8 +1479,9 @@ function App() {
   useEffect(() => {
     if (activeTab === 'messages' && selectedDMNode && currentNodeId) {
       const currentDMMessages = messages.filter(
-        msg => (msg.fromNodeId === currentNodeId && msg.toNodeId === selectedDMNode) ||
-               (msg.fromNodeId === selectedDMNode && msg.toNodeId === currentNodeId)
+        msg =>
+          (msg.fromNodeId === currentNodeId && msg.toNodeId === selectedDMNode) ||
+          (msg.fromNodeId === selectedDMNode && msg.toNodeId === currentNodeId)
       );
       const hasMessages = currentDMMessages.length > 0;
 
@@ -1892,55 +1855,61 @@ function App() {
     }
   };
 
-  const fetchChannels = useCallback(async (providedBaseUrl?: string) => {
-    // Use the provided baseUrl or fall back to the state value
-    const urlBase = providedBaseUrl !== undefined ? providedBaseUrl : baseUrl;
-    try {
-      const channelsResponse = await authFetch(`${urlBase}/api/channels`);
-      if (channelsResponse.ok) {
-        const channelsData = await channelsResponse.json();
+  const fetchChannels = useCallback(
+    async (providedBaseUrl?: string) => {
+      // Use the provided baseUrl or fall back to the state value
+      const urlBase = providedBaseUrl !== undefined ? providedBaseUrl : baseUrl;
+      try {
+        const channelsResponse = await authFetch(`${urlBase}/api/channels`);
+        if (channelsResponse.ok) {
+          const channelsData = await channelsResponse.json();
 
-        // Only update selected channel if this is the first time we're loading channels
-        // and no channel is currently selected, or if the current selected channel no longer exists
-        const currentSelectedChannel = selectedChannelRef.current;
-        logger.debug('🔍 Channel update check:', {
-          channelsLength: channelsData.length,
-          hasSelectedInitialChannel: hasSelectedInitialChannelRef.current,
-          selectedChannelState: selectedChannel,
-          selectedChannelRef: currentSelectedChannel,
-          firstChannelId: channelsData[0]?.id,
-        });
+          // Only update selected channel if this is the first time we're loading channels
+          // and no channel is currently selected, or if the current selected channel no longer exists
+          const currentSelectedChannel = selectedChannelRef.current;
+          logger.debug('🔍 Channel update check:', {
+            channelsLength: channelsData.length,
+            hasSelectedInitialChannel: hasSelectedInitialChannelRef.current,
+            selectedChannelState: selectedChannel,
+            selectedChannelRef: currentSelectedChannel,
+            firstChannelId: channelsData[0]?.id,
+          });
 
-        if (channelsData.length > 0) {
-          if (!hasSelectedInitialChannelRef.current && currentSelectedChannel === -1) {
-            // First time loading channels - select the first one
-            logger.debug('🎯 Setting initial channel to:', channelsData[0].id);
-            setSelectedChannel(channelsData[0].id);
-            selectedChannelRef.current = channelsData[0].id; // Update ref immediately
-            logger.debug('📝 Called setSelectedChannel (initial) with:', channelsData[0].id);
-            hasSelectedInitialChannelRef.current = true;
-          } else {
-            // Check if the currently selected channel still exists
-            const currentChannelExists = channelsData.some((ch: Channel) => ch.id === currentSelectedChannel);
-            logger.debug('🔍 Channel exists check:', { selectedChannel: currentSelectedChannel, currentChannelExists });
-            if (!currentChannelExists && channelsData.length > 0) {
-              // Current channel no longer exists, fallback to first channel
-              logger.debug('⚠️ Current channel no longer exists, falling back to:', channelsData[0].id);
+          if (channelsData.length > 0) {
+            if (!hasSelectedInitialChannelRef.current && currentSelectedChannel === -1) {
+              // First time loading channels - select the first one
+              logger.debug('🎯 Setting initial channel to:', channelsData[0].id);
               setSelectedChannel(channelsData[0].id);
               selectedChannelRef.current = channelsData[0].id; // Update ref immediately
-              logger.debug('📝 Called setSelectedChannel (fallback) with:', channelsData[0].id);
+              logger.debug('📝 Called setSelectedChannel (initial) with:', channelsData[0].id);
+              hasSelectedInitialChannelRef.current = true;
             } else {
-              logger.debug('✅ Keeping current channel selection:', currentSelectedChannel);
+              // Check if the currently selected channel still exists
+              const currentChannelExists = channelsData.some((ch: Channel) => ch.id === currentSelectedChannel);
+              logger.debug('🔍 Channel exists check:', {
+                selectedChannel: currentSelectedChannel,
+                currentChannelExists,
+              });
+              if (!currentChannelExists && channelsData.length > 0) {
+                // Current channel no longer exists, fallback to first channel
+                logger.debug('⚠️ Current channel no longer exists, falling back to:', channelsData[0].id);
+                setSelectedChannel(channelsData[0].id);
+                selectedChannelRef.current = channelsData[0].id; // Update ref immediately
+                logger.debug('📝 Called setSelectedChannel (fallback) with:', channelsData[0].id);
+              } else {
+                logger.debug('✅ Keeping current channel selection:', currentSelectedChannel);
+              }
             }
           }
-        }
 
-        setChannels(channelsData);
+          setChannels(channelsData);
+        }
+      } catch (error) {
+        logger.error('Error fetching channels:', error);
       }
-    } catch (error) {
-      logger.error('Error fetching channels:', error);
-    }
-  }, [baseUrl, authFetch, selectedChannel, setSelectedChannel, setChannels]);
+    },
+    [baseUrl, authFetch, selectedChannel, setSelectedChannel, setChannels]
+  );
 
   // Process poll data from usePoll hook - handles all data processing from consolidated /api/poll endpoint
   const processPollData = useCallback(
@@ -1966,7 +1935,7 @@ function App() {
           setNodes(
             (data.nodes as DeviceInfo[]).map((serverNode: DeviceInfo) => {
               let updatedNode = { ...serverNode };
-              
+
               // Handle pending favorite requests
               const pendingFavoriteState = pendingFavorite.get(serverNode.nodeNum);
               if (pendingFavoriteState !== undefined) {
@@ -1976,7 +1945,7 @@ function App() {
                   updatedNode.isFavorite = pendingFavoriteState;
                 }
               }
-              
+
               // Handle pending ignored requests
               const pendingIgnoredState = pendingIgnored.get(serverNode.nodeNum);
               if (pendingIgnoredState !== undefined) {
@@ -1986,7 +1955,7 @@ function App() {
                   updatedNode.isIgnored = pendingIgnoredState;
                 }
               }
-              
+
               return updatedNode;
             })
           );
@@ -2101,10 +2070,7 @@ function App() {
           const merged: { [key: number]: MeshMessage[] } = {};
 
           // Get all channel IDs from both existing and new messages
-          const allChannelIds = new Set([
-            ...Object.keys(prev).map(Number),
-            ...Object.keys(channelGroups).map(Number)
-          ]);
+          const allChannelIds = new Set([...Object.keys(prev).map(Number), ...Object.keys(channelGroups).map(Number)]);
 
           allChannelIds.forEach(channelId => {
             const existingMsgs = prev[channelId] || [];
@@ -2578,7 +2544,10 @@ function App() {
         showToast(t('toast.failed_delete_message', { error: errorData.message || t('errors.unknown') }), 'error');
       }
     } catch (err) {
-      showToast(t('toast.failed_delete_message', { error: err instanceof Error ? err.message : t('errors.network') }), 'error');
+      showToast(
+        t('toast.failed_delete_message', { error: err instanceof Error ? err.message : t('errors.network') }),
+        'error'
+      );
     }
   };
 
@@ -2614,7 +2583,10 @@ function App() {
         showToast(t('toast.failed_purge_messages', { error: errorData.message || t('errors.unknown') }), 'error');
       }
     } catch (err) {
-      showToast(t('toast.failed_purge_messages', { error: err instanceof Error ? err.message : t('errors.network') }), 'error');
+      showToast(
+        t('toast.failed_purge_messages', { error: err instanceof Error ? err.message : t('errors.network') }),
+        'error'
+      );
     }
   };
 
@@ -2653,7 +2625,10 @@ function App() {
         showToast(t('toast.failed_purge_messages', { error: errorData.message || t('errors.unknown') }), 'error');
       }
     } catch (err) {
-      showToast(t('toast.failed_purge_messages', { error: err instanceof Error ? err.message : t('errors.network') }), 'error');
+      showToast(
+        t('toast.failed_purge_messages', { error: err instanceof Error ? err.message : t('errors.network') }),
+        'error'
+      );
     }
   };
 
@@ -2685,7 +2660,10 @@ function App() {
         showToast(t('toast.failed_purge_traceroutes', { error: errorData.message || t('errors.unknown') }), 'error');
       }
     } catch (err) {
-      showToast(t('toast.failed_purge_traceroutes', { error: err instanceof Error ? err.message : t('errors.network') }), 'error');
+      showToast(
+        t('toast.failed_purge_traceroutes', { error: err instanceof Error ? err.message : t('errors.network') }),
+        'error'
+      );
     }
   };
 
@@ -2719,7 +2697,10 @@ function App() {
         showToast(t('toast.failed_purge_telemetry', { error: errorData.message || t('errors.unknown') }), 'error');
       }
     } catch (err) {
-      showToast(t('toast.failed_purge_telemetry', { error: err instanceof Error ? err.message : t('errors.network') }), 'error');
+      showToast(
+        t('toast.failed_purge_telemetry', { error: err instanceof Error ? err.message : t('errors.network') }),
+        'error'
+      );
     }
   };
 
@@ -2746,7 +2727,12 @@ function App() {
       if (response.ok) {
         const data = await response.json();
         showToast(
-          t('toast.deleted_node', { node: nodeName, messages: data.messagesDeleted, traceroutes: data.traceroutesDeleted, telemetry: data.telemetryDeleted }),
+          t('toast.deleted_node', {
+            node: nodeName,
+            messages: data.messagesDeleted,
+            traceroutes: data.traceroutesDeleted,
+            telemetry: data.telemetryDeleted,
+          }),
           'success'
         );
         // Close the purge data modal if open
@@ -2763,7 +2749,10 @@ function App() {
         showToast(t('toast.failed_delete_node', { error: errorData.message || t('errors.unknown') }), 'error');
       }
     } catch (err) {
-      showToast(t('toast.failed_delete_node', { error: err instanceof Error ? err.message : t('errors.network') }), 'error');
+      showToast(
+        t('toast.failed_delete_node', { error: err instanceof Error ? err.message : t('errors.network') }),
+        'error'
+      );
     }
   };
 
@@ -2790,7 +2779,12 @@ function App() {
       if (response.ok) {
         const data = await response.json();
         showToast(
-          t('toast.purged_node_device', { node: nodeName, messages: data.messagesDeleted, traceroutes: data.traceroutesDeleted, telemetry: data.telemetryDeleted }),
+          t('toast.purged_node_device', {
+            node: nodeName,
+            messages: data.messagesDeleted,
+            traceroutes: data.traceroutesDeleted,
+            telemetry: data.telemetryDeleted,
+          }),
           'success'
         );
         // Close the purge data modal if open
@@ -2807,11 +2801,17 @@ function App() {
         showToast(t('toast.failed_purge_node_device', { error: errorData.message || t('errors.unknown') }), 'error');
       }
     } catch (err) {
-      showToast(t('toast.failed_purge_node_device', { error: err instanceof Error ? err.message : t('errors.network') }), 'error');
+      showToast(
+        t('toast.failed_purge_node_device', { error: err instanceof Error ? err.message : t('errors.network') }),
+        'error'
+      );
     }
   };
 
-  const handlePositionOverrideSave = async (nodeNum: number, data: { enabled: boolean; latitude?: number; longitude?: number; altitude?: number }) => {
+  const handlePositionOverrideSave = async (
+    nodeNum: number,
+    data: { enabled: boolean; latitude?: number; longitude?: number; altitude?: number }
+  ) => {
     const node = nodes.find(n => n.nodeNum === nodeNum);
     const nodeId = node?.user?.id;
     if (!nodeId) {
@@ -3200,9 +3200,7 @@ function App() {
 
     // Only apply nodesNodeFilter when Nodes tab is active
     // Messages tab will apply its own messagesNodeFilter
-    const textFiltered = activeTab === 'nodes' 
-      ? filterNodes(ageFiltered, nodesNodeFilter)
-      : ageFiltered;
+    const textFiltered = activeTab === 'nodes' ? filterNodes(ageFiltered, nodesNodeFilter) : ageFiltered;
 
     // Apply advanced filters
     const advancedFiltered = textFiltered.filter(node => {
@@ -3448,9 +3446,7 @@ function App() {
       // This prevents the polling from overwriting the optimistic update before it renders
       flushSync(() => {
         setNodes(prevNodes => {
-          const updated = prevNodes.map(n =>
-            n.nodeNum === node.nodeNum ? { ...n, isIgnored: newIgnoredStatus } : n
-          );
+          const updated = prevNodes.map(n => (n.nodeNum === node.nodeNum ? { ...n, isIgnored: newIgnoredStatus } : n));
           return updated;
         });
       });
@@ -3547,376 +3543,6 @@ function App() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [nodePopup]);
-
-  const renderNodeFilterPopup = () => {
-    if (!showNodeFilterPopup) return null;
-
-    return (
-      <div className="filter-popup-overlay" onClick={() => setShowNodeFilterPopup(false)}>
-        <div className="filter-popup" onClick={e => e.stopPropagation()}>
-          <div className="filter-popup-header">
-            <h4>Filter Nodes</h4>
-            <button className="filter-popup-close" onClick={() => setShowNodeFilterPopup(false)}>
-              ✕
-            </button>
-          </div>
-          <div className="filter-popup-content">
-            <div className="filter-section">
-              <div className="filter-section-title">Filter Mode</div>
-              <div className="filter-toggle-group">
-                <button
-                  className={`filter-toggle-btn ${nodeFilters.filterMode === 'show' ? 'active' : ''}`}
-                  onClick={() => setNodeFilters({ ...nodeFilters, filterMode: 'show' })}
-                >
-                  Show only
-                </button>
-                <button
-                  className={`filter-toggle-btn ${nodeFilters.filterMode === 'hide' ? 'active' : ''}`}
-                  onClick={() => setNodeFilters({ ...nodeFilters, filterMode: 'hide' })}
-                >
-                  Hide matching
-                </button>
-              </div>
-              <div className="filter-mode-description">
-                {nodeFilters.filterMode === 'show'
-                  ? 'Show only nodes that match all selected filters'
-                  : 'Hide nodes that match any selected filters'}
-              </div>
-            </div>
-
-            <div className="filter-section">
-              <div className="filter-section-title">
-                <span className="filter-icon-wrapper">
-                  <span className="filter-icon">⚠️</span>
-                </span>
-                <span>Security</span>
-              </div>
-              <div className="filter-radio-group">
-                <label className="filter-radio">
-                  <input
-                    type="radio"
-                    name="securityFilter"
-                    value="all"
-                    checked={securityFilter === 'all'}
-                    onChange={e => setSecurityFilter(e.target.value as any)}
-                  />
-                  <span>All Nodes</span>
-                </label>
-                <label className="filter-radio">
-                  <input
-                    type="radio"
-                    name="securityFilter"
-                    value="flaggedOnly"
-                    checked={securityFilter === 'flaggedOnly'}
-                    onChange={e => setSecurityFilter(e.target.value as any)}
-                  />
-                  <span>⚠️ Flagged Only</span>
-                </label>
-                <label className="filter-radio">
-                  <input
-                    type="radio"
-                    name="securityFilter"
-                    value="hideFlagged"
-                    checked={securityFilter === 'hideFlagged'}
-                    onChange={e => setSecurityFilter(e.target.value as any)}
-                  />
-                  <span>Hide Flagged</span>
-                </label>
-              </div>
-            </div>
-
-            <div className="filter-section">
-              <div className="filter-section-title">Node Features</div>
-
-              <label className="filter-checkbox">
-                <input
-                  type="checkbox"
-                  checked={nodeFilters.showTelemetry}
-                  onChange={e => setNodeFilters({ ...nodeFilters, showTelemetry: e.target.checked })}
-                />
-                <span className="filter-label-with-icon">
-                  <span className="filter-icon">📊</span>
-                  <span>Telemetry data</span>
-                </span>
-              </label>
-
-              <label className="filter-checkbox">
-                <input
-                  type="checkbox"
-                  checked={nodeFilters.showEnvironment}
-                  onChange={e => setNodeFilters({ ...nodeFilters, showEnvironment: e.target.checked })}
-                />
-                <span className="filter-label-with-icon">
-                  <span className="filter-icon">☀️</span>
-                  <span>Environment metrics</span>
-                </span>
-              </label>
-
-              <label className="filter-checkbox">
-                <input
-                  type="checkbox"
-                  checked={nodeFilters.showPosition}
-                  onChange={e => setNodeFilters({ ...nodeFilters, showPosition: e.target.checked })}
-                />
-                <span className="filter-label-with-icon">
-                  <span className="filter-icon">📍</span>
-                  <span>Position data</span>
-                </span>
-              </label>
-
-              <label className="filter-checkbox">
-                <input
-                  type="checkbox"
-                  checked={nodeFilters.showPKI}
-                  onChange={e => setNodeFilters({ ...nodeFilters, showPKI: e.target.checked })}
-                />
-                <span className="filter-label-with-icon">
-                  <span className="filter-icon">🔐</span>
-                  <span>Public Key Crypto</span>
-                </span>
-              </label>
-
-              <label className="filter-checkbox">
-                <input
-                  type="checkbox"
-                  checked={nodeFilters.showMqtt}
-                  onChange={e => setNodeFilters({ ...nodeFilters, showMqtt: e.target.checked })}
-                />
-                <span className="filter-label-with-icon">
-                  <span className="filter-icon">🌐</span>
-                  <span>MQTT nodes</span>
-                </span>
-              </label>
-
-              <label className="filter-checkbox">
-                <input
-                  type="checkbox"
-                  checked={nodeFilters.showUnknown}
-                  onChange={e => setNodeFilters({ ...nodeFilters, showUnknown: e.target.checked })}
-                />
-                <span className="filter-label-with-icon">
-                  <span className="filter-icon">❓</span>
-                  <span>Unknown nodes</span>
-                </span>
-              </label>
-
-              <label className="filter-checkbox">
-                <input
-                  type="checkbox"
-                  checked={nodeFilters.showIgnored}
-                  onChange={e => setNodeFilters({ ...nodeFilters, showIgnored: e.target.checked })}
-                />
-                <span className="filter-label-with-icon">
-                  <span className="filter-icon">🚫</span>
-                  <span>Show ignored nodes</span>
-                </span>
-              </label>
-            </div>
-
-            <div className="filter-section">
-              <div className="filter-section-title">
-                <span className="filter-icon-wrapper">
-                  <span className="filter-icon">🔋</span>
-                </span>
-                <span>Power Source</span>
-              </div>
-              <div className="filter-radio-group">
-                <label className="filter-radio">
-                  <input
-                    type="radio"
-                    name="powerSource"
-                    value="both"
-                    checked={nodeFilters.powerSource === 'both'}
-                    onChange={e => setNodeFilters({ ...nodeFilters, powerSource: e.target.value as 'both' })}
-                  />
-                  <span>Both</span>
-                </label>
-                <label className="filter-radio">
-                  <input
-                    type="radio"
-                    name="powerSource"
-                    value="powered"
-                    checked={nodeFilters.powerSource === 'powered'}
-                    onChange={e => setNodeFilters({ ...nodeFilters, powerSource: e.target.value as 'powered' })}
-                  />
-                  <span>🔌 Powered only</span>
-                </label>
-                <label className="filter-radio">
-                  <input
-                    type="radio"
-                    name="powerSource"
-                    value="battery"
-                    checked={nodeFilters.powerSource === 'battery'}
-                    onChange={e => setNodeFilters({ ...nodeFilters, powerSource: e.target.value as 'battery' })}
-                  />
-                  <span>🔋 Battery only</span>
-                </label>
-              </div>
-            </div>
-
-            <div className="filter-section">
-              <div className="filter-section-title">
-                <span className="filter-icon-wrapper">
-                  <span className="filter-icon">🔗</span>
-                </span>
-                <span>Hops Away</span>
-              </div>
-              <div className="filter-range-group">
-                <div className="filter-range-input">
-                  <label>Min:</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="10"
-                    value={nodeFilters.minHops}
-                    onChange={e => setNodeFilters({ ...nodeFilters, minHops: parseInt(e.target.value) || 0 })}
-                  />
-                </div>
-                <div className="filter-range-input">
-                  <label>Max:</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="10"
-                    value={nodeFilters.maxHops}
-                    onChange={e => {
-                      const val = parseInt(e.target.value);
-                      setNodeFilters({ ...nodeFilters, maxHops: isNaN(val) ? 10 : val });
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="filter-section">
-              <div className="filter-section-title">
-                <span className="filter-icon-wrapper">
-                  <span className="filter-icon">👤</span>
-                </span>
-                <span>Device Role</span>
-              </div>
-              <div className="filter-role-group">
-                {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(roleNum => (
-                  <label key={roleNum} className="filter-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={nodeFilters.deviceRoles.length === 0 || nodeFilters.deviceRoles.includes(roleNum)}
-                      onChange={e => {
-                        const allRoles = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-
-                        if (e.target.checked) {
-                          // If all were selected (empty array), keep it empty (already showing all)
-                          if (nodeFilters.deviceRoles.length === 0) {
-                            // Already showing all, do nothing
-                            return;
-                          } else {
-                            // Add this role to the array
-                            const newRoles = [...nodeFilters.deviceRoles, roleNum];
-                            // If all are now selected, set to empty array (show all)
-                            if (newRoles.length === 13) {
-                              setNodeFilters({ ...nodeFilters, deviceRoles: [] });
-                            } else {
-                              setNodeFilters({ ...nodeFilters, deviceRoles: newRoles });
-                            }
-                          }
-                        } else {
-                          // Unchecking a role
-                          if (nodeFilters.deviceRoles.length === 0) {
-                            // All were selected (empty array), now exclude this one
-                            const newRoles = allRoles.filter((r: number) => r !== roleNum);
-                            setNodeFilters({ ...nodeFilters, deviceRoles: newRoles });
-                          } else {
-                            // Remove this role from the array
-                            const newRoles = nodeFilters.deviceRoles.filter((r: number) => r !== roleNum);
-                            setNodeFilters({ ...nodeFilters, deviceRoles: newRoles });
-                          }
-                        }
-                      }}
-                    />
-                    <span>{ROLE_NAMES[roleNum]}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div className="filter-section">
-              <div className="filter-section-title">
-                <span className="filter-icon-wrapper">
-                  <span className="filter-icon">📡</span>
-                </span>
-                <span>Channel</span>
-              </div>
-              <div className="filter-role-group">
-                {(channels || []).map(ch => (
-                  <label key={ch.id} className="filter-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={nodeFilters.channels.length === 0 || nodeFilters.channels.includes(ch.id)}
-                      onChange={e => {
-                        const allChannels = (channels || []).map(c => c.id);
-
-                        if (e.target.checked) {
-                          if (nodeFilters.channels.length === 0) {
-                            return;
-                          } else {
-                            const newChannels = [...nodeFilters.channels, ch.id];
-                            if (newChannels.length === (channels || []).length) {
-                              setNodeFilters({ ...nodeFilters, channels: [] });
-                            } else {
-                              setNodeFilters({ ...nodeFilters, channels: newChannels });
-                            }
-                          }
-                        } else {
-                          if (nodeFilters.channels.length === 0) {
-                            const newChannels = allChannels.filter((c: number) => c !== ch.id);
-                            setNodeFilters({ ...nodeFilters, channels: newChannels });
-                          } else {
-                            const newChannels = nodeFilters.channels.filter((c: number) => c !== ch.id);
-                            setNodeFilters({ ...nodeFilters, channels: newChannels });
-                          }
-                        }
-                      }}
-                    />
-                    <span>
-                      Channel {ch.id}
-                      {ch.name ? ` (${ch.name})` : ''}
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          </div>
-          <div className="filter-popup-actions">
-            <button
-              className="filter-reset-btn"
-              onClick={() =>
-                setNodeFilters({
-                  filterMode: 'show',
-                  showMqtt: false,
-                  showTelemetry: false,
-                  showEnvironment: false,
-                  powerSource: 'both',
-                  showPosition: false,
-                  minHops: 0,
-                  maxHops: 10,
-                  showPKI: false,
-                  showUnknown: false,
-                  showIgnored: false,
-                  deviceRoles: [],
-                  channels: [],
-                })
-              }
-            >
-              Reset All
-            </button>
-            <button className="filter-apply-btn" onClick={() => setShowNodeFilterPopup(false)}>
-              Apply
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   // Removed renderChannelsTab - using ChannelsTab component instead
   // Handler functions removed - using settings context setters directly
@@ -4019,7 +3645,15 @@ function App() {
 
   return (
     <div className="app">
-      {renderNodeFilterPopup()}
+      <AdvancedNodeFilterPopup
+        isOpen={showNodeFilterPopup}
+        nodeFilters={nodeFilters}
+        securityFilter={securityFilter}
+        channels={channels}
+        onNodeFiltersChange={setNodeFilters}
+        onSecurityFilterChange={setSecurityFilter}
+        onClose={() => setShowNodeFilterPopup(false)}
+      />
       <AppHeader
         baseUrl={baseUrl}
         nodeAddress={nodeAddress}
@@ -4055,33 +3689,11 @@ function App() {
       <RebootModal isOpen={showRebootModal} onClose={handleRebootModalClose} />
 
       {/* Emoji Picker Modal */}
-      {emojiPickerMessage && (
-        <div className="modal-overlay" onClick={() => setEmojiPickerMessage(null)}>
-          <div className="emoji-picker-modal" onClick={e => e.stopPropagation()}>
-            <div className="emoji-picker-header">
-              <h3>React with an emoji</h3>
-              <button className="emoji-picker-close" onClick={() => setEmojiPickerMessage(null)} title="Close">
-                ×
-              </button>
-            </div>
-            <div className="emoji-picker-grid">
-              {TAPBACK_EMOJIS.map(({ emoji, title }) => (
-                <button
-                  key={emoji}
-                  className="emoji-picker-item"
-                  onClick={() => {
-                    handleSendTapback(emoji, emojiPickerMessage);
-                    setEmojiPickerMessage(null);
-                  }}
-                  title={title}
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+      <EmojiPickerModal
+        message={emojiPickerMessage}
+        onSelectEmoji={handleSendTapback}
+        onClose={() => setEmojiPickerMessage(null)}
+      />
 
       {showTracerouteHistoryModal && selectedDMNode && (
         <TracerouteHistoryModal
@@ -4296,7 +3908,7 @@ function App() {
             toggleIgnored={toggleIgnored}
             toggleFavorite={toggleFavorite}
             handleShowOnMap={(nodeId: string) => {
-              const node = nodes.find((n) => n.user?.id === nodeId);
+              const node = nodes.find(n => n.user?.id === nodeId);
               if (node?.position?.latitude != null && node?.position?.longitude != null) {
                 setSelectedNodeId(nodeId);
                 setMapCenterTarget([node.position.latitude, node.position.longitude]);
@@ -4386,14 +3998,16 @@ function App() {
         )}
         {activeTab === 'automation' && (
           <div className="settings-tab">
-            <SectionNav items={[
-              { id: 'auto-welcome', label: t('automation.welcome.title', 'Auto Welcome') },
-              { id: 'auto-traceroute', label: t('automation.traceroute.title', 'Auto Traceroute') },
-              { id: 'auto-acknowledge', label: t('automation.acknowledge.title', 'Auto Acknowledge') },
-              { id: 'auto-announce', label: t('automation.announce.title', 'Auto Announce') },
-              { id: 'auto-responder', label: t('automation.auto_responder.title', 'Auto Responder') },
-              { id: 'timer-triggers', label: t('automation.timer_triggers.title', 'Timer Triggers') },
-            ]} />
+            <SectionNav
+              items={[
+                { id: 'auto-welcome', label: t('automation.welcome.title', 'Auto Welcome') },
+                { id: 'auto-traceroute', label: t('automation.traceroute.title', 'Auto Traceroute') },
+                { id: 'auto-acknowledge', label: t('automation.acknowledge.title', 'Auto Acknowledge') },
+                { id: 'auto-announce', label: t('automation.announce.title', 'Auto Announce') },
+                { id: 'auto-responder', label: t('automation.auto_responder.title', 'Auto Responder') },
+                { id: 'timer-triggers', label: t('automation.timer_triggers.title', 'Timer Triggers') },
+              ]}
+            />
             <div className="settings-content">
               <div id="auto-welcome">
                 <AutoWelcomeSection
@@ -4502,7 +4116,12 @@ function App() {
         {activeTab === 'users' && <UsersTab />}
         {activeTab === 'audit' && <AuditLogTab />}
         {activeTab === 'admin' && authStatus?.user?.isAdmin && (
-          <AdminCommandsTab nodes={nodes} currentNodeId={currentNodeId} channels={channels} onChannelsUpdated={fetchChannels} />
+          <AdminCommandsTab
+            nodes={nodes}
+            currentNodeId={currentNodeId}
+            channels={channels}
+            onChannelsUpdated={fetchChannels}
+          />
         )}
         {activeTab === 'security' && (
           <SecurityTab onTabChange={setActiveTab} onSelectDMNode={setSelectedDMNode} setNewMessage={setNewMessage} />
@@ -4510,140 +4129,32 @@ function App() {
       </main>
 
       {/* Node Popup */}
-      {nodePopup &&
-        (() => {
-          const node = nodes.find(n => n.user?.id === nodePopup.nodeId);
-          if (!node) return null;
-
-          return (
-            <div
-              className="route-popup node-popup"
-              style={{
-                position: 'fixed',
-                left: nodePopup.position.x,
-                top: nodePopup.position.y - 10,
-                transform: 'translateX(-50%) translateY(-100%)',
-                zIndex: 1000,
-              }}
-            >
-              <h4>{node.user?.longName || `Node ${node.nodeNum}`}</h4>
-              {node.user?.shortName && (
-                <div className="route-endpoints">
-                  <strong>{node.user.shortName}</strong>
-                </div>
-              )}
-
-              {node.user?.id && <div className="route-usage">ID: {node.user.id}</div>}
-
-              {node.user?.role !== undefined &&
-                (() => {
-                  const roleNum = typeof node.user.role === 'string' ? parseInt(node.user.role, 10) : node.user.role;
-                  const roleName = getRoleName(roleNum);
-                  return roleName ? <div className="route-usage">Role: {roleName}</div> : null;
-                })()}
-
-              {node.user?.hwModel !== undefined &&
-                (() => {
-                  const hwModelName = getHardwareModelName(node.user.hwModel);
-                  return hwModelName ? <div className="route-usage">Hardware: {hwModelName}</div> : null;
-                })()}
-
-              {node.snr != null && <div className="route-usage">SNR: {node.snr.toFixed(1)} dB</div>}
-
-              {node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null && (
-                <div className="route-usage">
-                  {node.deviceMetrics.batteryLevel === 101
-                    ? 'Power: Plugged In'
-                    : `Battery: ${node.deviceMetrics.batteryLevel}%`}
-                </div>
-              )}
-
-              {node.lastHeard && (
-                <div className="route-usage">
-                  Last Seen: {formatDateTime(new Date(node.lastHeard * 1000), timeFormat, dateFormat)}
-                </div>
-              )}
-
-              {node.user?.id && hasPermission('messages', 'read') && (
-                <button
-                  className="popup-dm-btn"
-                  onClick={() => {
-                    setSelectedDMNode(node.user!.id);
-                    setActiveTab('messages');
-                    setNodePopup(null);
-                  }}
-                >
-                  💬 Direct Message
-                </button>
-              )}
-              {node.user?.id && node.position?.latitude != null && node.position?.longitude != null && (
-                <button
-                  className="popup-dm-btn"
-                  onClick={() => {
-                    setSelectedNodeId(node.user!.id);
-                    setMapCenterTarget([node.position!.latitude!, node.position!.longitude!]);
-                    setActiveTab('nodes');
-                    setNodePopup(null);
-                  }}
-                >
-                  🗺️ Show on Map
-                </button>
-              )}
-            </div>
-          );
-        })()}
+      <NodePopup
+        nodePopup={nodePopup}
+        nodes={nodes}
+        timeFormat={timeFormat}
+        dateFormat={dateFormat}
+        hasPermission={hasPermission}
+        onDMNode={nodeId => {
+          setSelectedDMNode(nodeId);
+          setActiveTab('messages');
+        }}
+        onShowOnMap={(node: DeviceInfo) => {
+          if (node.user?.id && node.position?.latitude != null && node.position?.longitude != null) {
+            setSelectedNodeId(node.user.id);
+            setMapCenterTarget([node.position.latitude, node.position.longitude]);
+            setActiveTab('nodes');
+          }
+        }}
+        onClose={() => setNodePopup(null)}
+      />
 
       {/* System Status Modal */}
-      {showStatusModal && systemStatus && (
-        <div className="modal-overlay" onClick={() => setShowStatusModal(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>System Status</h2>
-              <button className="modal-close" onClick={() => setShowStatusModal(false)}>
-                &times;
-              </button>
-            </div>
-            <div className="modal-body">
-              <div className="status-grid">
-                <div className="status-item">
-                  <strong>Version:</strong>
-                  <span>{systemStatus.version}</span>
-                </div>
-                <div className="status-item">
-                  <strong>Node.js Version:</strong>
-                  <span>{systemStatus.nodeVersion}</span>
-                </div>
-                <div className="status-item">
-                  <strong>Uptime:</strong>
-                  <span>{systemStatus.uptime}</span>
-                </div>
-                <div className="status-item">
-                  <strong>Platform:</strong>
-                  <span>
-                    {systemStatus.platform} ({systemStatus.architecture})
-                  </span>
-                </div>
-                <div className="status-item">
-                  <strong>Environment:</strong>
-                  <span>{systemStatus.environment}</span>
-                </div>
-                <div className="status-item">
-                  <strong>Memory (Heap Used):</strong>
-                  <span>{systemStatus.memoryUsage.heapUsed}</span>
-                </div>
-                <div className="status-item">
-                  <strong>Memory (Heap Total):</strong>
-                  <span>{systemStatus.memoryUsage.heapTotal}</span>
-                </div>
-                <div className="status-item">
-                  <strong>Memory (RSS):</strong>
-                  <span>{systemStatus.memoryUsage.rss}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <SystemStatusModal
+        isOpen={showStatusModal}
+        systemStatus={systemStatus}
+        onClose={() => setShowStatusModal(false)}
+      />
     </div>
   );
 }
