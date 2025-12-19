@@ -4267,6 +4267,7 @@ function App() {
             markerRefs={markerRefs}
             traceroutePathsElements={traceroutePathsElements}
             selectedNodeTraceroute={selectedNodeTraceroute}
+            visibleNodeNums={visibleNodeNums}
           />
         )}
         {activeTab === 'channels' && (

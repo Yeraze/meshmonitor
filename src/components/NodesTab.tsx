@@ -48,6 +48,8 @@ interface NodesTabProps {
   markerRefs: React.MutableRefObject<Map<string, LeafletMarker>>;
   traceroutePathsElements: React.ReactNode;
   selectedNodeTraceroute: React.ReactNode;
+  /** Set of visible node numbers for filtering neighbor info segments (Issue #1149) */
+  visibleNodeNums?: Set<number>;
 }
 
 // Helper function to check if a date is today
@@ -82,6 +84,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   markerRefs,
   traceroutePathsElements,
   selectedNodeTraceroute,
+  visibleNodeNums,
 }) => {
   const { t } = useTranslation();
   // Use context hooks
@@ -1463,6 +1466,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               {showNeighborInfo && neighborInfo.length > 0 && neighborInfo.map((ni, idx) => {
                 // Skip if either node doesn't have position
                 if (!ni.nodeLatitude || !ni.nodeLongitude || !ni.neighborLatitude || !ni.neighborLongitude) {
+                  return null;
+                }
+
+                // Filter out segments where either endpoint is not visible (Issue #1149)
+                if (visibleNodeNums && (!visibleNodeNums.has(ni.nodeNum) || !visibleNodeNums.has(ni.neighborNodeNum))) {
                   return null;
                 }
 
