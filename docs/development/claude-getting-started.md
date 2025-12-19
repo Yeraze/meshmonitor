@@ -248,7 +248,7 @@ Before implementing features, review these critical documents:
 |----------|--------------|
 | [ARCHITECTURE_LESSONS.md](/ARCHITECTURE_LESSONS) | **Before ANY** node communication, state management, backup/restore, or async operations |
 | [SYSTEM_ARCHITECTURE.md](/architecture/SYSTEM_ARCHITECTURE) | Understanding overall system design |
-| [API_REFERENCE.md](/api/API_REFERENCE) | Working with REST API endpoints |
+| [API Documentation](/development/api) | Working with REST API endpoints |
 | [SCHEMA.md](/database/SCHEMA) | Database schema and models |
 | [AUTHENTICATION.md](/AUTHENTICATION) | Auth implementation details |
 | [FAQ.md](/faq) | Common issues and solutions |
