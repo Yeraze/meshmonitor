@@ -193,6 +193,7 @@ describe('GET /api/v1/', () => {
       documentation: '/api/v1/docs',
       endpoints: {
         nodes: '/api/v1/nodes',
+        channels: '/api/v1/channels',
         telemetry: '/api/v1/telemetry',
         traceroutes: '/api/v1/traceroutes',
         messages: '/api/v1/messages',
