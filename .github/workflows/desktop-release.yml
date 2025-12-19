@@ -197,11 +197,15 @@ jobs:
       # Import Apple signing certificate into a temporary keychain
       # This step is skipped if APPLE_CERTIFICATE is not set (unsigned build)
       - name: Import Apple signing certificate
-        if: ${{ secrets.APPLE_CERTIFICATE != '' }}
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: |
+          if [ -z "$APPLE_CERTIFICATE" ]; then
+            echo "APPLE_CERTIFICATE not set, skipping certificate import (unsigned build)"
+            exit 0
+          fi
+
           # Create a temporary keychain for signing
           KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
           KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
@@ -232,11 +236,15 @@ jobs:
       # Setup App Store Connect API key for notarization
       # This step is skipped if APPLE_API_KEY_CONTENT is not set
       - name: Setup notarization credentials
-        if: ${{ secrets.APPLE_API_KEY_CONTENT != '' }}
         env:
           APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
         run: |
+          if [ -z "$APPLE_API_KEY_CONTENT" ]; then
+            echo "APPLE_API_KEY_CONTENT not set, skipping notarization setup (unsigned build)"
+            exit 0
+          fi
+
           # Create the private_keys directory where notarytool looks for keys
           mkdir -p ~/private_keys
           echo "$APPLE_API_KEY_CONTENT" > ~/private_keys/AuthKey_${APPLE_API_KEY}.p8
