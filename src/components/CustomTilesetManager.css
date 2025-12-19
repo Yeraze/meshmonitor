@@ -320,3 +320,125 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* URL input row with test button */
+.url-input-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.url-input-row input {
+  flex: 1;
+}
+
+.btn-test {
+  padding: 0.6rem 1rem;
+  background-color: var(--ctp-surface1);
+  border: 1px solid var(--ctp-overlay0);
+  border-radius: 4px;
+  color: var(--ctp-text);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.btn-test:hover:not(:disabled) {
+  background-color: var(--ctp-blue);
+  color: var(--ctp-base);
+  border-color: var(--ctp-blue);
+}
+
+.btn-test:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Test result display */
+.test-result {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+.test-result-success {
+  background-color: rgba(var(--ctp-green-rgb, 166, 227, 161), 0.15);
+  border: 1px solid var(--ctp-green);
+}
+
+.test-result-warning {
+  background-color: rgba(var(--ctp-yellow-rgb, 249, 226, 175), 0.15);
+  border: 1px solid var(--ctp-yellow);
+}
+
+.test-result-error {
+  background-color: rgba(var(--ctp-red-rgb, 243, 139, 168), 0.15);
+  border: 1px solid var(--ctp-red);
+}
+
+.test-result-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
+}
+
+.test-result-icon {
+  font-size: 1rem;
+}
+
+.test-result-message {
+  color: var(--ctp-text);
+}
+
+.test-result-time {
+  color: var(--ctp-subtext0);
+  font-size: 0.85rem;
+  font-weight: normal;
+}
+
+.test-result-detail {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--ctp-overlay0);
+  color: var(--ctp-subtext0);
+  font-size: 0.85rem;
+}
+
+.test-result-layers {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.test-result-layers .layers-matched {
+  color: var(--ctp-green);
+  margin-bottom: 0.25rem;
+}
+
+.test-result-layers .layers-missing {
+  color: var(--ctp-yellow);
+}
+
+.test-result .test-result-warning {
+  margin-top: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  background-color: rgba(var(--ctp-yellow-rgb, 249, 226, 175), 0.1);
+  border-radius: 4px;
+  color: var(--ctp-yellow);
+  font-size: 0.85rem;
+  border: none;
+}
+
+.test-result .test-result-error {
+  margin-top: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  background-color: rgba(var(--ctp-red-rgb, 243, 139, 168), 0.1);
+  border-radius: 4px;
+  color: var(--ctp-red);
+  font-size: 0.85rem;
+  border: none;
+}

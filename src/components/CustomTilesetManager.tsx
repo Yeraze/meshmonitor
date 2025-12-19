@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSettings } from '../contexts/SettingsContext';
 import { validateTileUrl, isVectorTileUrl, type CustomTileset } from '../config/tilesets';
+import { testTileServer, formatTileSize, type TileTestResult } from '../utils/tileServerTest';
 import './CustomTilesetManager.css';
 
 interface FormData {
@@ -28,6 +29,8 @@ export function CustomTilesetManager() {
   const [formData, setFormData] = useState<FormData>(DEFAULT_FORM_DATA);
   const [urlValidation, setUrlValidation] = useState<{ valid: boolean; error?: string } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
+  const [testResult, setTestResult] = useState<TileTestResult | null>(null);
 
   const validateForm = (): boolean => {
     if (!formData.name.trim()) {
@@ -46,11 +49,39 @@ export function CustomTilesetManager() {
 
   const handleUrlChange = (url: string) => {
     setFormData({ ...formData, url });
+    setTestResult(null); // Clear test results when URL changes
     if (url.trim()) {
       const validation = validateTileUrl(url);
       setUrlValidation(validation);
     } else {
       setUrlValidation(null);
+    }
+  };
+
+  const handleTestConnection = async () => {
+    if (!formData.url.trim() || !urlValidation?.valid) {
+      return;
+    }
+
+    setIsTesting(true);
+    setTestResult(null);
+
+    try {
+      const result = await testTileServer(formData.url);
+      setTestResult(result);
+    } catch (error) {
+      console.error('Test failed:', error);
+      setTestResult({
+        success: false,
+        status: 'error',
+        tileType: 'unknown',
+        message: 'Test failed unexpectedly',
+        errors: [error instanceof Error ? error.message : 'Unknown error'],
+        warnings: [],
+        details: {}
+      });
+    } finally {
+      setIsTesting(false);
     }
   };
 
@@ -86,6 +117,7 @@ export function CustomTilesetManager() {
     setEditingId(null);
     setFormData(DEFAULT_FORM_DATA);
     setUrlValidation(null);
+    setTestResult(null);
   };
 
   const handleEdit = (tileset: CustomTileset) => {
@@ -217,20 +249,71 @@ export function CustomTilesetManager() {
             <label htmlFor="tileset-url">
               {t('tileset_manager.field_url')} <span className="required">*</span>
             </label>
-            <input
-              id="tileset-url"
-              type="text"
-              value={formData.url}
-              onChange={(e) => handleUrlChange(e.target.value)}
-              placeholder="https://example.com/{z}/{x}/{y}.png"
-              maxLength={500}
-              required
-              disabled={isSaving}
-              className={urlValidation && !urlValidation.valid ? 'error' : ''}
-            />
+            <div className="url-input-row">
+              <input
+                id="tileset-url"
+                type="text"
+                value={formData.url}
+                onChange={(e) => handleUrlChange(e.target.value)}
+                placeholder="https://example.com/{z}/{x}/{y}.png"
+                maxLength={500}
+                required
+                disabled={isSaving || isTesting}
+                className={urlValidation && !urlValidation.valid ? 'error' : ''}
+              />
+              <button
+                type="button"
+                className="btn-test"
+                onClick={handleTestConnection}
+                disabled={isSaving || isTesting || !urlValidation?.valid}
+                title={t('tileset_manager.test_button_title')}
+              >
+                {isTesting ? t('tileset_manager.testing') : t('tileset_manager.test_button')}
+              </button>
+            </div>
             {urlValidation && urlValidation.error && (
               <div className={`validation-message ${urlValidation.valid ? 'warning' : 'error'}`}>
                 {urlValidation.error}
+              </div>
+            )}
+            {testResult && (
+              <div className={`test-result test-result-${testResult.status}`}>
+                <div className="test-result-header">
+                  <span className="test-result-icon">
+                    {testResult.status === 'success' ? '✅' : testResult.status === 'warning' ? '⚠️' : '❌'}
+                  </span>
+                  <span className="test-result-message">{testResult.message}</span>
+                  {testResult.details.responseTime && (
+                    <span className="test-result-time">({testResult.details.responseTime}ms)</span>
+                  )}
+                </div>
+                {testResult.details.tileSize && (
+                  <div className="test-result-detail">
+                    {t('tileset_manager.test_tile_type')}: {testResult.tileType === 'vector' ? t('tileset_manager.vector') : t('tileset_manager.raster')}
+                    {' • '}
+                    {t('tileset_manager.test_tile_size')}: {formatTileSize(testResult.details.tileSize)}
+                  </div>
+                )}
+                {testResult.details.matchedLayers && testResult.details.matchedLayers.length > 0 && (
+                  <div className="test-result-layers">
+                    <div className="layers-matched">
+                      ✓ {t('tileset_manager.test_matched_layers')}: {testResult.details.matchedLayers.join(', ')}
+                    </div>
+                  </div>
+                )}
+                {testResult.details.missingLayers && testResult.details.missingLayers.length > 0 && (
+                  <div className="test-result-layers">
+                    <div className="layers-missing">
+                      ✗ {t('tileset_manager.test_missing_layers')}: {testResult.details.missingLayers.join(', ')}
+                    </div>
+                  </div>
+                )}
+                {testResult.warnings.map((warning, i) => (
+                  <div key={i} className="test-result-warning">{warning}</div>
+                ))}
+                {testResult.errors.map((error, i) => (
+                  <div key={i} className="test-result-error">{error}</div>
+                ))}
               </div>
             )}
             <small>
