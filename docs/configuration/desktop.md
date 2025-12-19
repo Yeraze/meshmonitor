@@ -37,11 +37,32 @@ The desktop application:
 
 1. Go to the [MeshMonitor Releases](https://github.com/Yeraze/MeshMonitor/releases) page
 2. Download the latest `MeshMonitor-Desktop-x.x.x-arm64.dmg`
-3. Open the DMG file and drag MeshMonitor to your Applications folder
-4. **First launch**: Right-click (or Control-click) MeshMonitor and select "Open"
+3. **Remove quarantine attribute** to prevent "damaged" errors:
+   ```bash
+   xattr -d com.apple.quarantine ~/Downloads/MeshMonitor-Desktop-*.dmg
+   ```
+4. Open the DMG file and drag MeshMonitor to your Applications folder
+5. **Remove quarantine from the app**:
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/MeshMonitor.app
+   ```
+6. **First launch**: Right-click (or Control-click) MeshMonitor and select "Open"
    - macOS will ask you to confirm opening an app from an unidentified developer
    - Click "Open" to proceed
-5. MeshMonitor will appear in your menu bar
+7. MeshMonitor will appear in your menu bar
+
+::: warning macOS Gatekeeper
+MeshMonitor is not code-signed with an Apple Developer certificate. Downloaded apps are marked with a quarantine attribute that causes macOS to show a misleading "damaged" error message. The commands above remove this attribute. This is safe - the app is not actually damaged.
+
+If you prefer not to use the command line, you can also:
+1. Try to open the app normally
+2. Go to **System Settings → Privacy & Security**
+3. Click **"Open Anyway"** next to the MeshMonitor message
+:::
+
+::: tip Why isn't it code-signed?
+Code signing requires an Apple Developer account ($99/year) and ongoing maintenance for notarization. As an open-source project, we've chosen to make the app freely available without this cost. If you're concerned about security, you can build the app from source yourself.
+:::
 
 ::: tip Apple Silicon Native
 The macOS version is compiled natively for Apple Silicon (M1/M2/M3). If you're using an Intel Mac, macOS will automatically run it through Rosetta 2.
