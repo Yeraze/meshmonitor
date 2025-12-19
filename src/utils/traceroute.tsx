@@ -68,9 +68,35 @@ export function formatTracerouteRoute(
     return '(No response received)';
   }
 
+  // Filter function to remove invalid/reserved node numbers from route arrays
+  const BROADCAST_ADDR = 4294967295;
+  const isValidRouteNode = (nodeNum: number): boolean => {
+    if (nodeNum <= 3) return false;  // Reserved
+    if (nodeNum === 255) return false;  // 0xff reserved
+    if (nodeNum === 65535) return false;  // 0xffff invalid placeholder
+    if (nodeNum === BROADCAST_ADDR) return false;  // Broadcast
+    return true;
+  };
+
   try {
-    const routeArray = JSON.parse(route);
-    const snrArray = JSON.parse(snr || '[]');
+    const rawRouteArray = JSON.parse(route);
+    const rawSnrArray = JSON.parse(snr || '[]');
+
+    // Filter out invalid node numbers and keep SNR values in sync
+    const routeArray: number[] = [];
+    const snrArray: number[] = [];
+    rawRouteArray.forEach((nodeNum: number, idx: number) => {
+      if (isValidRouteNode(nodeNum)) {
+        routeArray.push(nodeNum);
+        if (rawSnrArray[idx] !== undefined) {
+          snrArray.push(rawSnrArray[idx]);
+        }
+      }
+    });
+    // Add the final hop SNR if present
+    if (rawSnrArray.length > rawRouteArray.length) {
+      snrArray.push(rawSnrArray[rawRouteArray.length]);
+    }
 
     const pathElements: React.ReactNode[] = [];
     let totalDistanceKm = 0;
