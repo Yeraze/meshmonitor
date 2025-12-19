@@ -322,6 +322,47 @@ jobs:
           # Copy node_modules
           cp -r node_modules desktop/resources/dist/
 
+      # Sign all native binaries in node_modules for notarization
+      - name: Sign native binaries in node_modules
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          if [ -z "$APPLE_SIGNING_IDENTITY" ]; then
+            echo "APPLE_SIGNING_IDENTITY not set, skipping native binary signing"
+            exit 0
+          fi
+
+          echo "Finding and signing native binaries in node_modules..."
+
+          # Find all .node files (native Node.js addons)
+          find desktop/resources/dist/node_modules -name "*.node" -type f | while read -r file; do
+            echo "Signing: $file"
+            codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$file" || true
+          done
+
+          # Find all .bare files (bare modules)
+          find desktop/resources/dist/node_modules -name "*.bare" -type f | while read -r file; do
+            echo "Signing: $file"
+            codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$file" || true
+          done
+
+          # Find esbuild binaries
+          find desktop/resources/dist/node_modules -path "*/bin/esbuild" -type f | while read -r file; do
+            echo "Signing: $file"
+            codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$file" || true
+          done
+
+          # Find any other Mach-O binaries that might need signing
+          find desktop/resources/dist/node_modules -type f \( -perm -u+x -o -name "*.dylib" \) | while read -r file; do
+            # Check if it's a Mach-O binary
+            if file "$file" | grep -q "Mach-O"; then
+              echo "Signing Mach-O binary: $file"
+              codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$file" || true
+            fi
+          done
+
+          echo "Native binary signing complete"
+
       - name: Install desktop dependencies
         working-directory: desktop
         run: npm install
