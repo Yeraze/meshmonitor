@@ -781,7 +781,7 @@ class MeshtasticManager {
       const job = cron.schedule(trigger.cronExpression, async () => {
         logger.info(`⏱️ Timer "${trigger.name}" triggered (cron: ${trigger.cronExpression})`);
         const responseType = trigger.responseType || 'script'; // Default to script for backward compatibility
-        if (responseType === 'text' && trigger.response) {
+        if (responseType === 'text' && trigger.response?.trim()) {
           await this.executeTimerTextMessage(trigger.id, trigger.name, trigger.response, trigger.channel ?? 0);
         } else if (trigger.scriptPath) {
           await this.executeTimerScript(trigger.id, trigger.name, trigger.scriptPath, trigger.channel ?? 0);

@@ -358,15 +358,26 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
                     style={{ width: '100%', minHeight: '60px', resize: 'vertical' }}
                     placeholder={t('automation.timer_triggers.message_placeholder', 'e.g., MeshMonitor {VERSION} - {NODECOUNT} nodes online')}
                   />
-                  <div style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)', marginTop: '0.25rem' }}>
-                    {t('automation.timer_triggers.tokens_help', 'Available tokens:')}
-                    {' '}
-                    {AVAILABLE_TOKENS.map((t, i) => (
-                      <span key={t.token}>
-                        <code style={{ background: 'var(--ctp-surface1)', padding: '0 0.25rem', borderRadius: '2px' }}>{t.token}</code>
-                        {i < AVAILABLE_TOKENS.length - 1 && ', '}
-                      </span>
-                    ))}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: '0.25rem' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)', flex: 1 }}>
+                      {t('automation.timer_triggers.tokens_help', 'Available tokens:')}
+                      {' '}
+                      {AVAILABLE_TOKENS.map((tok, i) => (
+                        <span key={tok.token}>
+                          <code style={{ background: 'var(--ctp-surface1)', padding: '0 0.25rem', borderRadius: '2px' }}>{tok.token}</code>
+                          {i < AVAILABLE_TOKENS.length - 1 && ', '}
+                        </span>
+                      ))}
+                    </div>
+                    <div style={{
+                      fontSize: '0.75rem',
+                      fontWeight: 'bold',
+                      color: newResponse.length > 200 ? 'var(--ctp-red)' : newResponse.length > 150 ? 'var(--ctp-yellow)' : 'var(--ctp-subtext0)',
+                      marginLeft: '0.5rem',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {newResponse.length}/200
+                    </div>
                   </div>
                 </div>
               </div>
@@ -661,8 +672,17 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
                     className="setting-input"
                     style={{ width: '100%', minHeight: '60px', resize: 'vertical' }}
                   />
-                  <div style={{ fontSize: '0.7rem', color: 'var(--ctp-subtext0)', marginTop: '0.25rem' }}>
-                    Tokens: {AVAILABLE_TOKENS.map(tok => tok.token).join(', ')}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.25rem' }}>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--ctp-subtext0)' }}>
+                      Tokens: {AVAILABLE_TOKENS.map(tok => tok.token).join(', ')}
+                    </div>
+                    <div style={{
+                      fontSize: '0.7rem',
+                      fontWeight: 'bold',
+                      color: editResponse.length > 200 ? 'var(--ctp-red)' : editResponse.length > 150 ? 'var(--ctp-yellow)' : 'var(--ctp-subtext0)',
+                    }}>
+                      {editResponse.length}/200
+                    </div>
                   </div>
                 </div>
               </div>
