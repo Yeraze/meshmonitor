@@ -66,7 +66,7 @@ jobs:
           }
           Expand-Archive -Path node.zip -DestinationPath node-extracted
           New-Item -ItemType Directory -Force -Path "desktop/resources/binaries"
-          Copy-Item "node-extracted/node-$nodeVersion-win-x64/node.exe" "desktop/resources/binaries/node.exe"
+          Copy-Item "node-extracted/node-$nodeVersion-win-x64/node-$nodeVersion-win-x64/node.exe" "desktop/resources/binaries/node.exe"
         shell: pwsh
 
       - name: Copy server files to Tauri resources
@@ -194,6 +194,54 @@ jobs:
         with:
           workspaces: 'desktop/src-tauri'
 
+      # Import Apple signing certificate into a temporary keychain
+      # This step is skipped if APPLE_CERTIFICATE is not set (unsigned build)
+      - name: Import Apple signing certificate
+        if: ${{ secrets.APPLE_CERTIFICATE != '' }}
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          # Create a temporary keychain for signing
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
+
+          # Create and configure the keychain
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # Decode and import the certificate
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$KEYCHAIN_PATH" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          rm "$RUNNER_TEMP/certificate.p12"
+
+          # Allow codesign to access the keychain without prompting
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # Add keychain to the search list
+          security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain-db
+
+          # Verify the certificate was imported
+          echo "Available signing identities:"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+      # Setup App Store Connect API key for notarization
+      # This step is skipped if APPLE_API_KEY_CONTENT is not set
+      - name: Setup notarization credentials
+        if: ${{ secrets.APPLE_API_KEY_CONTENT != '' }}
+        env:
+          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+        run: |
+          # Create the private_keys directory where notarytool looks for keys
+          mkdir -p ~/private_keys
+          echo "$APPLE_API_KEY_CONTENT" > ~/private_keys/AuthKey_${APPLE_API_KEY}.p8
+          chmod 600 ~/private_keys/AuthKey_${APPLE_API_KEY}.p8
+
       - name: Install main project dependencies
         run: npm ci
 
@@ -253,8 +301,17 @@ jobs:
         working-directory: desktop
         run: npm install
 
+      # Build the Tauri app with signing and notarization if credentials are available
       - name: Build Tauri app (release)
         working-directory: desktop
+        env:
+          # Code signing - Tauri will use these if present
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          # Notarization credentials
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: npm run tauri:build -- --bundles dmg
 
       - name: Get version from tag
