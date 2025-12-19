@@ -2688,6 +2688,15 @@ class MeshtasticManager {
       const toNum = Number(meshPacket.to);
       const toNodeId = `!${toNum.toString(16).padStart(8, '0')}`;
 
+      // Skip traceroute responses FROM our local node (Issue #1140)
+      // When another node traceroutes us, we capture our own outgoing response.
+      // This response only has the forward path (route), not a meaningful return path (routeBack),
+      // which causes incorrect "direct line" route segments to be displayed on the map.
+      if (this.localNodeInfo && fromNum === this.localNodeInfo.nodeNum) {
+        logger.debug(`🗺️ Skipping traceroute response from local node ${fromNodeId} (our response to someone else's request)`);
+        return;
+      }
+
       logger.info(`🗺️ Traceroute response from ${fromNodeId}:`, JSON.stringify(routeDiscovery, null, 2));
 
       // Ensure from node exists in database (don't overwrite existing names)
