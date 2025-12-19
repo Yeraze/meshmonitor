@@ -5684,11 +5684,14 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
     let sessionPasskey: Uint8Array | null = null;
     if (!isLocalNode) {
       sessionPasskey = meshtasticManager.getSessionPasskey(destinationNodeNum);
-      if (!sessionPasskey) {
-        logger.debug(`Requesting session passkey for remote node ${destinationNodeNum}`);
+      if (sessionPasskey) {
+        logger.info(`🔑 Using cached session passkey for admin command to remote node ${destinationNodeNum}`);
+      } else {
+        logger.info(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one for admin command...`);
         sessionPasskey = await meshtasticManager.requestRemoteSessionPasskey(destinationNodeNum);
         if (!sessionPasskey) {
-          return res.status(500).json({ error: `Failed to obtain session passkey for remote node ${destinationNodeNum}` });
+          logger.error(`❌ Failed to obtain session passkey for remote node ${destinationNodeNum} after 45s`);
+          return res.status(500).json({ error: `Failed to obtain session passkey for remote node ${destinationNodeNum}. The node may be unreachable or not responding.` });
         }
       }
     }
@@ -5790,28 +5793,32 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
         adminMessage = protobufService.createRemoveNodeMessage(params.nodeNum, sessionPasskey || undefined);
         break;
       case 'setFavoriteNode':
-        if (params.nodeNum === undefined) {
-          return res.status(400).json({ error: 'nodeNum is required for setFavoriteNode' });
+        // Use favoriteNodeNum to avoid collision with destination nodeNum
+        if (params.favoriteNodeNum === undefined) {
+          return res.status(400).json({ error: 'favoriteNodeNum is required for setFavoriteNode' });
         }
-        adminMessage = protobufService.createSetFavoriteNodeMessage(params.nodeNum, sessionPasskey || undefined);
+        adminMessage = protobufService.createSetFavoriteNodeMessage(params.favoriteNodeNum, sessionPasskey || undefined);
         break;
       case 'removeFavoriteNode':
-        if (params.nodeNum === undefined) {
-          return res.status(400).json({ error: 'nodeNum is required for removeFavoriteNode' });
+        // Use favoriteNodeNum to avoid collision with destination nodeNum
+        if (params.favoriteNodeNum === undefined) {
+          return res.status(400).json({ error: 'favoriteNodeNum is required for removeFavoriteNode' });
         }
-        adminMessage = protobufService.createRemoveFavoriteNodeMessage(params.nodeNum, sessionPasskey || undefined);
+        adminMessage = protobufService.createRemoveFavoriteNodeMessage(params.favoriteNodeNum, sessionPasskey || undefined);
         break;
       case 'setIgnoredNode':
-        if (params.nodeNum === undefined) {
-          return res.status(400).json({ error: 'nodeNum is required for setIgnoredNode' });
+        // Use targetNodeNum to avoid collision with destination nodeNum
+        if (params.targetNodeNum === undefined) {
+          return res.status(400).json({ error: 'targetNodeNum is required for setIgnoredNode' });
         }
-        adminMessage = protobufService.createSetIgnoredNodeMessage(params.nodeNum, sessionPasskey || undefined);
+        adminMessage = protobufService.createSetIgnoredNodeMessage(params.targetNodeNum, sessionPasskey || undefined);
         break;
       case 'removeIgnoredNode':
-        if (params.nodeNum === undefined) {
-          return res.status(400).json({ error: 'nodeNum is required for removeIgnoredNode' });
+        // Use targetNodeNum to avoid collision with destination nodeNum
+        if (params.targetNodeNum === undefined) {
+          return res.status(400).json({ error: 'targetNodeNum is required for removeIgnoredNode' });
         }
-        adminMessage = protobufService.createRemoveIgnoredNodeMessage(params.nodeNum, sessionPasskey || undefined);
+        adminMessage = protobufService.createRemoveIgnoredNodeMessage(params.targetNodeNum, sessionPasskey || undefined);
         break;
       default:
         return res.status(400).json({ error: `Unknown command: ${command}` });
