@@ -1,11 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { isValidCron } from 'cron-validator';
-import { TimerTrigger } from './auto-responder/types';
+import { TimerTrigger, TimerResponseType } from './auto-responder/types';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { getFileIcon } from './auto-responder/utils';
 import { Channel } from '../types/device';
+
+// Available tokens for text message expansion (same as auto-announce)
+const AVAILABLE_TOKENS = [
+  { token: '{VERSION}', description: 'MeshMonitor version' },
+  { token: '{DURATION}', description: 'Server uptime' },
+  { token: '{FEATURES}', description: 'Enabled features as emojis' },
+  { token: '{NODECOUNT}', description: 'Total active nodes' },
+  { token: '{DIRECTCOUNT}', description: 'Direct nodes (0 hops)' },
+];
 
 interface TimerTriggersSectionProps {
   triggers: TimerTrigger[];
@@ -33,7 +42,9 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
   // New trigger form state
   const [newName, setNewName] = useState('');
   const [newCronExpression, setNewCronExpression] = useState('0 */6 * * *');
+  const [newResponseType, setNewResponseType] = useState<TimerResponseType>('script');
   const [newScriptPath, setNewScriptPath] = useState('');
+  const [newResponse, setNewResponse] = useState('');
   const [newChannel, setNewChannel] = useState<number>(0);
   const [cronError, setCronError] = useState<string | null>(null);
 
@@ -114,8 +125,13 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
       showToast(t('automation.timer_triggers.valid_cron_required', 'Valid cron expression is required'), 'error');
       return;
     }
-    if (!newScriptPath) {
+    // Validate based on response type
+    if (newResponseType === 'script' && !newScriptPath) {
       showToast(t('automation.timer_triggers.script_required', 'Script is required'), 'error');
+      return;
+    }
+    if (newResponseType === 'text' && !newResponse.trim()) {
+      showToast(t('automation.timer_triggers.message_required', 'Message is required'), 'error');
       return;
     }
 
@@ -123,7 +139,9 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
       id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       name: newName.trim(),
       cronExpression: newCronExpression.trim(),
-      scriptPath: newScriptPath,
+      responseType: newResponseType,
+      scriptPath: newResponseType === 'script' ? newScriptPath : undefined,
+      response: newResponseType === 'text' ? newResponse.trim() : undefined,
       channel: newChannel,
       enabled: true,
     };
@@ -131,7 +149,9 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
     setLocalTriggers([...localTriggers, newTrigger]);
     setNewName('');
     setNewCronExpression('0 */6 * * *');
+    setNewResponseType('script');
     setNewScriptPath('');
+    setNewResponse('');
     setNewChannel(0);
     showToast(t('automation.timer_triggers.added', 'Timer trigger added'), 'success');
   };
@@ -270,30 +290,98 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <label style={{ minWidth: '120px', fontSize: '0.9rem' }}>
-                {t('automation.timer_triggers.script', 'Script:')}
+                {t('automation.timer_triggers.response_type', 'Type:')}
               </label>
-              <select
-                value={newScriptPath}
-                onChange={(e) => setNewScriptPath(e.target.value)}
-                className="setting-input"
-                style={{ flex: 1, fontFamily: 'monospace' }}
-              >
-                <option value="">
-                  {availableScripts.length === 0
-                    ? t('automation.timer_triggers.no_scripts', 'No scripts found in /data/scripts/')
-                    : t('automation.timer_triggers.select_script', 'Select a script...')}
-                </option>
-                {availableScripts.map((script) => {
-                  const filename = script.split('/').pop() || script;
-                  const icon = getFileIcon(filename);
-                  return (
-                    <option key={script} value={script}>
-                      {icon} {filename}
-                    </option>
-                  );
-                })}
-              </select>
+              <div style={{ display: 'flex', gap: '1rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="newResponseType"
+                    value="script"
+                    checked={newResponseType === 'script'}
+                    onChange={() => setNewResponseType('script')}
+                  />
+                  {t('automation.timer_triggers.type_script', 'Script')}
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="newResponseType"
+                    value="text"
+                    checked={newResponseType === 'text'}
+                    onChange={() => setNewResponseType('text')}
+                  />
+                  {t('automation.timer_triggers.type_text', 'Text Message')}
+                </label>
+              </div>
             </div>
+
+            {newResponseType === 'script' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <label style={{ minWidth: '120px', fontSize: '0.9rem' }}>
+                  {t('automation.timer_triggers.script', 'Script:')}
+                </label>
+                <select
+                  value={newScriptPath}
+                  onChange={(e) => setNewScriptPath(e.target.value)}
+                  className="setting-input"
+                  style={{ flex: 1, fontFamily: 'monospace' }}
+                >
+                  <option value="">
+                    {availableScripts.length === 0
+                      ? t('automation.timer_triggers.no_scripts', 'No scripts found in /data/scripts/')
+                      : t('automation.timer_triggers.select_script', 'Select a script...')}
+                  </option>
+                  {availableScripts.map((script) => {
+                    const filename = script.split('/').pop() || script;
+                    const icon = getFileIcon(filename);
+                    return (
+                      <option key={script} value={script}>
+                        {icon} {filename}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+            )}
+
+            {newResponseType === 'text' && (
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+                <label style={{ minWidth: '120px', fontSize: '0.9rem', paddingTop: '0.5rem' }}>
+                  {t('automation.timer_triggers.message', 'Message:')}
+                </label>
+                <div style={{ flex: 1 }}>
+                  <textarea
+                    value={newResponse}
+                    onChange={(e) => setNewResponse(e.target.value)}
+                    className="setting-input"
+                    style={{ width: '100%', minHeight: '60px', resize: 'vertical' }}
+                    placeholder={t('automation.timer_triggers.message_placeholder', 'e.g., MeshMonitor {VERSION} - {NODECOUNT} nodes online')}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: '0.25rem' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)', flex: 1 }}>
+                      {t('automation.timer_triggers.tokens_help', 'Available tokens:')}
+                      {' '}
+                      {AVAILABLE_TOKENS.map((tok, i) => (
+                        <span key={tok.token}>
+                          <code style={{ background: 'var(--ctp-surface1)', padding: '0 0.25rem', borderRadius: '2px' }}>{tok.token}</code>
+                          {i < AVAILABLE_TOKENS.length - 1 && ', '}
+                        </span>
+                      ))}
+                    </div>
+                    <div style={{
+                      fontSize: '0.75rem',
+                      fontWeight: 'bold',
+                      color: newResponse.length > 200 ? 'var(--ctp-red)' : newResponse.length > 150 ? 'var(--ctp-yellow)' : 'var(--ctp-subtext0)',
+                      marginLeft: '0.5rem',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {newResponse.length}/200
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <label style={{ minWidth: '120px', fontSize: '0.9rem' }}>
@@ -312,18 +400,18 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
                 ))}
               </select>
               <div style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
-                {t('automation.timer_triggers.channel_help', 'Script output will be sent to this channel')}
+                {t('automation.timer_triggers.channel_help_generic', 'Output will be sent to this channel')}
               </div>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
               <button
                 onClick={handleAddTrigger}
-                disabled={!newName.trim() || !newScriptPath || !!cronError}
+                disabled={!newName.trim() || (newResponseType === 'script' ? !newScriptPath : !newResponse.trim()) || !!cronError}
                 className="settings-button settings-button-primary"
                 style={{
-                  opacity: (!newName.trim() || !newScriptPath || !!cronError) ? 0.5 : 1,
-                  cursor: (!newName.trim() || !newScriptPath || !!cronError) ? 'not-allowed' : 'pointer',
+                  opacity: (!newName.trim() || (newResponseType === 'script' ? !newScriptPath : !newResponse.trim()) || !!cronError) ? 0.5 : 1,
+                  cursor: (!newName.trim() || (newResponseType === 'script' ? !newScriptPath : !newResponse.trim()) || !!cronError) ? 'not-allowed' : 'pointer',
                 }}
               >
                 {t('automation.timer_triggers.add', 'Add Timer')}
@@ -434,7 +522,9 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
 }) => {
   const [editName, setEditName] = useState(trigger.name);
   const [editCronExpression, setEditCronExpression] = useState(trigger.cronExpression);
-  const [editScriptPath, setEditScriptPath] = useState(trigger.scriptPath);
+  const [editResponseType, setEditResponseType] = useState<TimerResponseType>(trigger.responseType || 'script');
+  const [editScriptPath, setEditScriptPath] = useState(trigger.scriptPath || '');
+  const [editResponse, setEditResponse] = useState(trigger.response || '');
   const [editChannel, setEditChannel] = useState(trigger.channel ?? 0);
   const [editCronError, setEditCronError] = useState<string | null>(null);
   const [showRemoveModal, setShowRemoveModal] = useState(false);
@@ -443,7 +533,9 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
     if (isEditing) {
       setEditName(trigger.name);
       setEditCronExpression(trigger.cronExpression);
-      setEditScriptPath(trigger.scriptPath);
+      setEditResponseType(trigger.responseType || 'script');
+      setEditScriptPath(trigger.scriptPath || '');
+      setEditResponse(trigger.response || '');
       setEditChannel(trigger.channel ?? 0);
     }
   }, [isEditing, trigger]);
@@ -459,16 +551,21 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
   }, [editCronExpression, t]);
 
   const handleSave = () => {
-    if (!editName.trim() || !editScriptPath || editCronError) return;
+    const isValid = editName.trim() && !editCronError &&
+      (editResponseType === 'script' ? editScriptPath : editResponse.trim());
+    if (!isValid) return;
     onSaveEdit({
       name: editName.trim(),
       cronExpression: editCronExpression.trim(),
-      scriptPath: editScriptPath,
+      responseType: editResponseType,
+      scriptPath: editResponseType === 'script' ? editScriptPath : undefined,
+      response: editResponseType === 'text' ? editResponse.trim() : undefined,
       channel: editChannel,
     });
   };
 
-  const filename = trigger.scriptPath.split('/').pop() || trigger.scriptPath;
+  const responseType = trigger.responseType || 'script';
+  const filename = trigger.scriptPath ? (trigger.scriptPath.split('/').pop() || trigger.scriptPath) : '';
 
   return (
     <div
@@ -520,24 +617,76 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
               </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold' }}>Script:</label>
-              <select
-                value={editScriptPath}
-                onChange={(e) => setEditScriptPath(e.target.value)}
-                className="setting-input"
-                style={{ flex: 1, fontFamily: 'monospace' }}
-              >
-                {availableScripts.map((script) => {
-                  const fn = script.split('/').pop() || script;
-                  const icon = getFileIcon(fn);
-                  return (
-                    <option key={script} value={script}>
-                      {icon} {fn}
-                    </option>
-                  );
-                })}
-              </select>
+              <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold' }}>Type:</label>
+              <div style={{ display: 'flex', gap: '1rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name={`editResponseType-${trigger.id}`}
+                    value="script"
+                    checked={editResponseType === 'script'}
+                    onChange={() => setEditResponseType('script')}
+                  />
+                  Script
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name={`editResponseType-${trigger.id}`}
+                    value="text"
+                    checked={editResponseType === 'text'}
+                    onChange={() => setEditResponseType('text')}
+                  />
+                  Text Message
+                </label>
+              </div>
             </div>
+            {editResponseType === 'script' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold' }}>Script:</label>
+                <select
+                  value={editScriptPath}
+                  onChange={(e) => setEditScriptPath(e.target.value)}
+                  className="setting-input"
+                  style={{ flex: 1, fontFamily: 'monospace' }}
+                >
+                  {availableScripts.map((script) => {
+                    const fn = script.split('/').pop() || script;
+                    const icon = getFileIcon(fn);
+                    return (
+                      <option key={script} value={script}>
+                        {icon} {fn}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+            )}
+            {editResponseType === 'text' && (
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+                <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold', paddingTop: '0.5rem' }}>Message:</label>
+                <div style={{ flex: 1 }}>
+                  <textarea
+                    value={editResponse}
+                    onChange={(e) => setEditResponse(e.target.value)}
+                    className="setting-input"
+                    style={{ width: '100%', minHeight: '60px', resize: 'vertical' }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.25rem' }}>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--ctp-subtext0)' }}>
+                      Tokens: {AVAILABLE_TOKENS.map(tok => tok.token).join(', ')}
+                    </div>
+                    <div style={{
+                      fontSize: '0.7rem',
+                      fontWeight: 'bold',
+                      color: editResponse.length > 200 ? 'var(--ctp-red)' : editResponse.length > 150 ? 'var(--ctp-yellow)' : 'var(--ctp-subtext0)',
+                    }}>
+                      {editResponse.length}/200
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold' }}>Channel:</label>
               <select
@@ -557,7 +706,7 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
             <button
               onClick={handleSave}
-              disabled={!editName.trim() || !editScriptPath || !!editCronError}
+              disabled={!editName.trim() || (editResponseType === 'script' ? !editScriptPath : !editResponse.trim()) || !!editCronError}
               style={{
                 padding: '0.25rem 0.75rem',
                 fontSize: '12px',
@@ -565,8 +714,8 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
                 color: 'white',
                 border: 'none',
                 borderRadius: '4px',
-                cursor: (!editName.trim() || !editScriptPath || !!editCronError) ? 'not-allowed' : 'pointer',
-                opacity: (!editName.trim() || !editScriptPath || !!editCronError) ? 0.5 : 1,
+                cursor: (!editName.trim() || (editResponseType === 'script' ? !editScriptPath : !editResponse.trim()) || !!editCronError) ? 'not-allowed' : 'pointer',
+                opacity: (!editName.trim() || (editResponseType === 'script' ? !editScriptPath : !editResponse.trim()) || !!editCronError) ? 0.5 : 1,
               }}
             >
               Save
@@ -595,7 +744,12 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
               {trigger.cronExpression}
             </div>
             <div style={{ fontSize: '0.8rem', color: 'var(--ctp-subtext0)', marginTop: '0.25rem' }}>
-              {getFileIcon(filename)} {filename} → Ch {trigger.channel ?? 0}: {channels.find(c => c.id === (trigger.channel ?? 0))?.name || `Channel ${trigger.channel ?? 0}`}
+              {responseType === 'script' ? (
+                <>{getFileIcon(filename)} {filename}</>
+              ) : (
+                <>💬 {trigger.response && trigger.response.length > 40 ? trigger.response.substring(0, 40) + '...' : trigger.response}</>
+              )}
+              {' → Ch '}{trigger.channel ?? 0}: {channels.find(c => c.id === (trigger.channel ?? 0))?.name || `Channel ${trigger.channel ?? 0}`}
             </div>
             {trigger.lastRun && (
               <div style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)', marginTop: '0.25rem' }}>
