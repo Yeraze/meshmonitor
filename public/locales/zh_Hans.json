@@ -2409,5 +2409,20 @@
     "common.load": "加载",
     "notifications.mqtt_messages": "MQTT消息",
     "automation.auto_traceroute.no_nodes_match_filters": "没有与当前筛选器匹配的节点",
-    "node_details.public_key": "公钥"
+    "node_details.public_key": "公钥",
+    "messages.show_on_map": "在地图上显示",
+    "messages.show_on_map_title": "在地图上显示此节点",
+    "export_config.no_channels_title": "没有可用频道",
+    "export_config.no_channels_local_help": "要导出配置，您需要先加载通道数据。单击上面通道配置部分中的“加载所有配置”按钮，然后返回此处进行导出。",
+    "export_config.no_channels_remote_help": "要导出此远程节点的配置，您需要先加载通道数据。单击下面的按钮加载通道，或使用上面通道配置部分中的“加载所有配置”按钮。",
+    "admin_commands.radio_configuration": "无线电配置",
+    "admin_commands.module_configuration": "模块配置",
+    "admin_commands.security_config_description": "配置设备的安全设置，包括管理密钥和访问控制。",
+    "admin_commands.config_coming_soon": "配置UI即将推出。使用“加载”查看当前设置。",
+    "admin_commands.power_configuration": "电源配置",
+    "admin_commands.network_configuration": "网络配置",
+    "admin_commands.display_configuration": "显示配置",
+    "admin_commands.bluetooth_configuration": "蓝牙配置",
+    "admin_commands.enable_bluetooth": "启用蓝牙",
+    "admin_commands.enable_bluetooth_description": "在设备上启用蓝牙"
 }
