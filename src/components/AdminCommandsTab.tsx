@@ -3160,10 +3160,11 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             if (selectedNodeNum === null) {
               throw new Error(t('admin_commands.please_select_node'));
             }
-            
-            // Check if channels are already loaded
-            if (remoteNodeChannels.length > 0) {
-              // Channels already loaded, no need to reload
+
+            // Skip loading if channels were already successfully loaded
+            // This respects manual loading - user can load configs, retry failed ones,
+            // and then export without auto-reloading (fixes #1115)
+            if (sectionLoadStatus.channels === 'success') {
               return;
             }
             
