@@ -66,7 +66,7 @@ jobs:
           }
           Expand-Archive -Path node.zip -DestinationPath node-extracted
           New-Item -ItemType Directory -Force -Path "desktop/resources/binaries"
-          Copy-Item "node-extracted/node-$nodeVersion-win-x64/node-$nodeVersion-win-x64/node.exe" "desktop/resources/binaries/node.exe"
+          Copy-Item "node-extracted/node-$nodeVersion-win-x64/node.exe" "desktop/resources/binaries/node.exe"
         shell: pwsh
 
       - name: Copy server files to Tauri resources
