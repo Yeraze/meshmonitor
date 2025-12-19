@@ -747,8 +747,10 @@ class MeshtasticManager {
       id: string;
       name: string;
       cronExpression: string;
-      scriptPath: string;
-      channel?: number; // Channel index (0-7) to send script output to
+      responseType?: 'script' | 'text'; // 'script' (default) or 'text' message
+      scriptPath?: string; // Path to script in /data/scripts/ (when responseType is 'script')
+      response?: string; // Text message with expansion tokens (when responseType is 'text')
+      channel?: number; // Channel index (0-7) to send output to
       enabled: boolean;
       lastRun?: number;
       lastResult?: 'success' | 'error';
@@ -778,7 +780,15 @@ class MeshtasticManager {
       // Schedule the cron job
       const job = cron.schedule(trigger.cronExpression, async () => {
         logger.info(`⏱️ Timer "${trigger.name}" triggered (cron: ${trigger.cronExpression})`);
-        await this.executeTimerScript(trigger.id, trigger.name, trigger.scriptPath, trigger.channel ?? 0);
+        const responseType = trigger.responseType || 'script'; // Default to script for backward compatibility
+        if (responseType === 'text' && trigger.response) {
+          await this.executeTimerTextMessage(trigger.id, trigger.name, trigger.response, trigger.channel ?? 0);
+        } else if (trigger.scriptPath) {
+          await this.executeTimerScript(trigger.id, trigger.name, trigger.scriptPath, trigger.channel ?? 0);
+        } else {
+          logger.error(`⏱️ Timer "${trigger.name}" has no valid response configured`);
+          this.updateTimerTriggerResult(trigger.id, 'error', 'No response configured');
+        }
       });
 
       this.timerCronJobs.set(trigger.id, job);
@@ -947,6 +957,42 @@ class MeshtasticManager {
       const duration = Date.now() - startTime;
       const errorMessage = error.message || 'Unknown error';
       logger.error(`⏱️ Timer "${triggerName}" failed after ${duration}ms: ${errorMessage}`);
+      this.updateTimerTriggerResult(triggerId, 'error', errorMessage);
+    }
+  }
+
+  /**
+   * Execute a timer trigger text message and send to specified channel
+   * Uses the same token expansion as auto-announce
+   */
+  private async executeTimerTextMessage(triggerId: string, triggerName: string, message: string, channel: number): Promise<void> {
+    try {
+      logger.info(`⏱️ Executing timer text message: "${triggerName}"`);
+
+      // Replace tokens using the same method as auto-announce
+      const expandedMessage = await this.replaceAnnouncementTokens(message);
+      const truncated = this.truncateMessageForMeshtastic(expandedMessage, 200);
+
+      logger.info(`⏱️ Timer "${triggerName}" sending to channel ${channel}: ${truncated.substring(0, 50)}${truncated.length > 50 ? '...' : ''}`);
+
+      messageQueueService.enqueue(
+        truncated,
+        0, // destination: 0 for channel broadcast
+        undefined, // no reply-to packet ID for timer messages
+        () => {
+          logger.info(`✅ Timer "${triggerName}" message delivered to channel ${channel}`);
+        },
+        (reason: string) => {
+          logger.warn(`❌ Timer "${triggerName}" message failed to channel ${channel}: ${reason}`);
+        },
+        channel // channel number
+      );
+
+      this.updateTimerTriggerResult(triggerId, 'success');
+
+    } catch (error: any) {
+      const errorMessage = error.message || 'Unknown error';
+      logger.error(`⏱️ Timer "${triggerName}" text message failed: ${errorMessage}`);
       this.updateTimerTriggerResult(triggerId, 'error', errorMessage);
     }
   }

@@ -12,12 +12,16 @@ export interface AutoResponderTrigger {
   channel?: number | 'dm'; // Channel index (0-7) or 'dm' for direct messages (default: 'dm')
 }
 
+export type TimerResponseType = 'script' | 'text';
+
 export interface TimerTrigger {
   id: string;
   name: string; // Human-readable name for this timer
   cronExpression: string; // Cron expression (e.g., "0 */6 * * *")
-  scriptPath: string; // Path to script in /data/scripts/
-  channel: number; // Channel index (0-7) to send script output to
+  responseType?: TimerResponseType; // 'script' (default) or 'text' message
+  scriptPath?: string; // Path to script in /data/scripts/ (when responseType is 'script')
+  response?: string; // Text message with expansion tokens (when responseType is 'text')
+  channel: number; // Channel index (0-7) to send output to
   enabled: boolean; // Whether this timer is active
   lastRun?: number; // Unix timestamp of last execution
   lastResult?: 'success' | 'error'; // Result of last execution
