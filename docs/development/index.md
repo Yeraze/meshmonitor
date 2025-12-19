@@ -4,13 +4,17 @@ Welcome to the MeshMonitor development documentation. This section covers everyt
 
 ## Getting Started with Development
 
+::: tip Using Claude Code?
+If you're using Claude Code as your AI assistant, check out our **[Claude Code Getting Started Guide](/development/claude-getting-started)** - it includes a ready-to-use prompt to help Claude understand the project and get you set up quickly.
+:::
+
 ### Prerequisites
 
-- Node.js 18 or later
-- npm or pnpm
+- Node.js 20 or later (22+ recommended)
+- npm
 - Git
 - A Meshtastic device or `meshtasticd`
-- SQLite3 (optional, for database inspection)
+- Docker (recommended for development)
 
 ### Development Setup
 
@@ -52,6 +56,9 @@ meshmonitor/
 - **openid-client**: OIDC authentication
 
 ## Development Guides
+
+### [Claude Code Getting Started](/development/claude-getting-started)
+**New contributors start here!** Complete guide for developers using Claude Code, including a ready-to-use prompt, setup instructions, project rules, and common troubleshooting.
 
 ### [Development Setup](/development/setup)
 Complete guide to setting up your local development environment, including Docker and native setups.
@@ -277,6 +284,7 @@ docs(readme): update installation instructions
 
 ## Next Steps
 
+- [Get started with Claude Code](/development/claude-getting-started) - Recommended for new contributors
 - [Set up your development environment](/development/setup)
 - [Understand the architecture](/development/architecture)
 - [Explore the API](/development/api)
