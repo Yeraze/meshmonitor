@@ -7896,6 +7896,29 @@ class MeshtasticManager {
   }
 
   /**
+   * Set generic module configuration
+   * Handles: extnotif, storeforward, rangetest, cannedmsg, audio,
+   * remotehardware, detectionsensor, paxcounter, serial, ambientlighting
+   */
+  async setGenericModuleConfig(moduleType: string, config: any): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    try {
+      logger.debug(`⚙️ Sending ${moduleType} config:`, JSON.stringify(config));
+      const setConfigMsg = protobufService.createSetModuleConfigMessageGeneric(moduleType, config, new Uint8Array());
+      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+
+      await this.transport.send(adminPacket);
+      logger.debug(`⚙️ Sent set_${moduleType}_config admin message`);
+    } catch (error) {
+      logger.error(`❌ Error sending ${moduleType} config:`, error);
+      throw error;
+    }
+  }
+
+  /**
    * Set node owner (long name and short name)
    */
   async setNodeOwner(longName: string, shortName: string, isUnmessagable?: boolean): Promise<void> {
