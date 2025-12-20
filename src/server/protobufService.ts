@@ -929,6 +929,27 @@ class ProtobufService {
       if (config.tzdef !== undefined) {
         deviceConfig.tzdef = config.tzdef;
       }
+      if (config.rebroadcastMode !== undefined) {
+        deviceConfig.rebroadcastMode = config.rebroadcastMode;
+      }
+      if (config.doubleTapAsButtonPress !== undefined) {
+        deviceConfig.doubleTapAsButtonPress = config.doubleTapAsButtonPress;
+      }
+      if (config.disableTripleClick !== undefined) {
+        deviceConfig.disableTripleClick = config.disableTripleClick;
+      }
+      if (config.ledHeartbeatDisabled !== undefined) {
+        deviceConfig.ledHeartbeatDisabled = config.ledHeartbeatDisabled;
+      }
+      if (config.buzzerMode !== undefined) {
+        deviceConfig.buzzerMode = config.buzzerMode;
+      }
+      if (config.buttonGpio !== undefined) {
+        deviceConfig.buttonGpio = config.buttonGpio;
+      }
+      if (config.buzzerGpio !== undefined) {
+        deviceConfig.buzzerGpio = config.buzzerGpio;
+      }
 
       logger.debug('⚙️ Sending device config:', JSON.stringify(deviceConfig));
 

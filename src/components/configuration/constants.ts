@@ -213,3 +213,67 @@ export const TIMEZONE_PRESETS: TimezonePreset[] = [
   // UTC/GMT
   { label: 'UTC (Coordinated Universal Time)', value: 'UTC0', region: 'UTC' },
 ];
+
+// Rebroadcast mode options from protobufs
+export interface RebroadcastModeOption {
+  value: number;
+  name: string;
+  description: string;
+}
+
+export const REBROADCAST_MODE_OPTIONS: RebroadcastModeOption[] = [
+  { value: 0, name: 'ALL', description: 'Rebroadcast any observed packet that was not decoded.' },
+  { value: 1, name: 'ALL_SKIP_DECODING', description: 'Same as ALL but skip decoding of rebroadcast packets. Only for testing.' },
+  { value: 2, name: 'LOCAL_ONLY', description: 'Rebroadcast only packets from our local directly heard nodes.' },
+  { value: 3, name: 'KNOWN_ONLY', description: 'Only rebroadcast from packets in our node database.' },
+  { value: 4, name: 'NONE', description: 'Never rebroadcast any packet. For testing and security.' },
+  { value: 5, name: 'CORE_PORTNUMS_ONLY', description: 'Only rebroadcast core node info and position packets.' }
+];
+
+// Buzzer mode options from protobufs
+export interface BuzzerModeOption {
+  value: number;
+  name: string;
+  description: string;
+}
+
+export const BUZZER_MODE_OPTIONS: BuzzerModeOption[] = [
+  { value: 0, name: 'ALL_ENABLED', description: 'All buzzer sounds enabled.' },
+  { value: 1, name: 'DISABLED', description: 'All buzzer sounds disabled.' },
+  { value: 2, name: 'NOTIFICATIONS_ONLY', description: 'Buzzer only for notifications.' },
+  { value: 3, name: 'SYSTEM_ONLY', description: 'Buzzer only for system sounds.' },
+  { value: 4, name: 'DIRECT_MSG_ONLY', description: 'Buzzer only for direct messages.' }
+];
+
+// GPS mode options from protobufs
+export interface GpsModeOption {
+  value: number;
+  name: string;
+  description: string;
+}
+
+export const GPS_MODE_OPTIONS: GpsModeOption[] = [
+  { value: 0, name: 'DISABLED', description: 'GPS is disabled.' },
+  { value: 1, name: 'ENABLED', description: 'GPS is enabled.' },
+  { value: 2, name: 'NOT_PRESENT', description: 'GPS is not present on this device.' }
+];
+
+// Position flags bitfield
+export interface PositionFlag {
+  value: number;
+  name: string;
+  description: string;
+}
+
+export const POSITION_FLAGS: PositionFlag[] = [
+  { value: 1, name: 'ALTITUDE', description: 'Include altitude in position packets.' },
+  { value: 2, name: 'ALTITUDE_MSL', description: 'Include altitude MSL (mean sea level).' },
+  { value: 4, name: 'GEOIDAL_SEPARATION', description: 'Include geoidal separation.' },
+  { value: 8, name: 'DOP', description: 'Include dilution of precision.' },
+  { value: 16, name: 'HVDOP', description: 'Include horizontal/vertical DOP.' },
+  { value: 32, name: 'SATINVIEW', description: 'Include satellites in view.' },
+  { value: 64, name: 'SEQ_NO', description: 'Include sequence number.' },
+  { value: 128, name: 'TIMESTAMP', description: 'Include timestamp.' },
+  { value: 256, name: 'HEADING', description: 'Include heading.' },
+  { value: 512, name: 'SPEED', description: 'Include speed.' }
+];

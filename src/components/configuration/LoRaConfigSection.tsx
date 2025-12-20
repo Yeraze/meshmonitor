@@ -17,6 +17,9 @@ interface LoRaConfigSectionProps {
   sx126xRxBoostedGain: boolean;
   ignoreMqtt: boolean;
   configOkToMqtt: boolean;
+  txEnabled: boolean;
+  overrideDutyCycle: boolean;
+  paFanDisabled: boolean;
   setUsePreset: (value: boolean) => void;
   setModemPreset: (value: number) => void;
   setBandwidth: (value: number) => void;
@@ -31,6 +34,9 @@ interface LoRaConfigSectionProps {
   setSx126xRxBoostedGain: (value: boolean) => void;
   setIgnoreMqtt: (value: boolean) => void;
   setConfigOkToMqtt: (value: boolean) => void;
+  setTxEnabled: (value: boolean) => void;
+  setOverrideDutyCycle: (value: boolean) => void;
+  setPaFanDisabled: (value: boolean) => void;
   isSaving: boolean;
   onSave: () => Promise<void>;
 }
@@ -50,6 +56,9 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
   sx126xRxBoostedGain,
   ignoreMqtt,
   configOkToMqtt,
+  txEnabled,
+  overrideDutyCycle,
+  paFanDisabled,
   setUsePreset,
   setModemPreset,
   setBandwidth,
@@ -64,6 +73,9 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
   setSx126xRxBoostedGain,
   setIgnoreMqtt,
   setConfigOkToMqtt,
+  setTxEnabled,
+  setOverrideDutyCycle,
+  setPaFanDisabled,
   isSaving,
   onSave
 }) => {
@@ -374,6 +386,51 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
           <div style={{ flex: 1 }}>
             <div>{t('lora_config.ok_to_mqtt')}</div>
             <span className="setting-description">{t('lora_config.ok_to_mqtt_description')}</span>
+          </div>
+        </label>
+      </div>
+      <div className="setting-item">
+        <label htmlFor="txEnabled" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+          <input
+            id="txEnabled"
+            type="checkbox"
+            checked={txEnabled}
+            onChange={(e) => setTxEnabled(e.target.checked)}
+            style={{ marginTop: '0.2rem', flexShrink: 0 }}
+          />
+          <div style={{ flex: 1 }}>
+            <div>{t('lora_config.tx_enabled')}</div>
+            <span className="setting-description">{t('lora_config.tx_enabled_description')}</span>
+          </div>
+        </label>
+      </div>
+      <div className="setting-item">
+        <label htmlFor="overrideDutyCycle" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+          <input
+            id="overrideDutyCycle"
+            type="checkbox"
+            checked={overrideDutyCycle}
+            onChange={(e) => setOverrideDutyCycle(e.target.checked)}
+            style={{ marginTop: '0.2rem', flexShrink: 0 }}
+          />
+          <div style={{ flex: 1 }}>
+            <div>{t('lora_config.override_duty_cycle')}</div>
+            <span className="setting-description" style={{ color: '#ff6b6b' }}>{t('lora_config.override_duty_cycle_description')}</span>
+          </div>
+        </label>
+      </div>
+      <div className="setting-item">
+        <label htmlFor="paFanDisabled" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+          <input
+            id="paFanDisabled"
+            type="checkbox"
+            checked={paFanDisabled}
+            onChange={(e) => setPaFanDisabled(e.target.checked)}
+            style={{ marginTop: '0.2rem', flexShrink: 0 }}
+          />
+          <div style={{ flex: 1 }}>
+            <div>{t('lora_config.pa_fan_disabled')}</div>
+            <span className="setting-description">{t('lora_config.pa_fan_disabled_description')}</span>
           </div>
         </label>
       </div>

@@ -11,6 +11,9 @@ import PositionConfigSection from './configuration/PositionConfigSection';
 import MQTTConfigSection from './configuration/MQTTConfigSection';
 import NeighborInfoSection from './configuration/NeighborInfoSection';
 import NetworkConfigSection from './configuration/NetworkConfigSection';
+import PowerConfigSection from './configuration/PowerConfigSection';
+import DisplayConfigSection from './configuration/DisplayConfigSection';
+import TelemetryConfigSection from './configuration/TelemetryConfigSection';
 import ChannelsConfigSection from './configuration/ChannelsConfigSection';
 import BackupManagementSection from './configuration/BackupManagementSection';
 import { ImportConfigModal } from './configuration/ImportConfigModal';
@@ -39,6 +42,13 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   const [role, setRole] = useState<number>(0);
   const [nodeInfoBroadcastSecs, setNodeInfoBroadcastSecs] = useState(3600);
   const [tzdef, setTzdef] = useState('');
+  const [rebroadcastMode, setRebroadcastMode] = useState(0);
+  const [doubleTapAsButtonPress, setDoubleTapAsButtonPress] = useState(false);
+  const [disableTripleClick, setDisableTripleClick] = useState(false);
+  const [ledHeartbeatDisabled, setLedHeartbeatDisabled] = useState(false);
+  const [buzzerMode, setBuzzerMode] = useState(0);
+  const [buttonGpio, setButtonGpio] = useState(0);
+  const [buzzerGpio, setBuzzerGpio] = useState(0);
 
   // LoRa Config State
   const [usePreset, setUsePreset] = useState(true);
@@ -55,6 +65,9 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   const [sx126xRxBoostedGain, setSx126xRxBoostedGain] = useState<boolean>(false);
   const [ignoreMqtt, setIgnoreMqtt] = useState<boolean>(false);
   const [configOkToMqtt, setConfigOkToMqtt] = useState<boolean>(false);
+  const [txEnabled, setTxEnabled] = useState<boolean>(true);
+  const [overrideDutyCycle, setOverrideDutyCycle] = useState<boolean>(false);
+  const [paFanDisabled, setPaFanDisabled] = useState<boolean>(false);
 
   // Position Config State
   const [positionBroadcastSecs, setPositionBroadcastSecs] = useState(900);
@@ -63,6 +76,14 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   const [fixedLatitude, setFixedLatitude] = useState<number>(0);
   const [fixedLongitude, setFixedLongitude] = useState<number>(0);
   const [fixedAltitude, setFixedAltitude] = useState<number>(0);
+  const [gpsUpdateInterval, setGpsUpdateInterval] = useState(0);
+  const [gpsMode, setGpsMode] = useState(1);
+  const [broadcastSmartMinimumDistance, setBroadcastSmartMinimumDistance] = useState(0);
+  const [broadcastSmartMinimumIntervalSecs, setBroadcastSmartMinimumIntervalSecs] = useState(0);
+  const [positionFlags, setPositionFlags] = useState(0);
+  const [rxGpio, setRxGpio] = useState(0);
+  const [txGpio, setTxGpio] = useState(0);
+  const [gpsEnGpio, setGpsEnGpio] = useState(0);
 
   // MQTT Config State
   const [mqttEnabled, setMqttEnabled] = useState(false);
@@ -72,6 +93,11 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   const [mqttEncryptionEnabled, setMqttEncryptionEnabled] = useState(true);
   const [mqttJsonEnabled, setMqttJsonEnabled] = useState(false);
   const [mqttRoot, setMqttRoot] = useState('');
+  const [mqttTlsEnabled, setMqttTlsEnabled] = useState(false);
+  const [mqttProxyToClientEnabled, setMqttProxyToClientEnabled] = useState(false);
+  const [mqttMapReportingEnabled, setMqttMapReportingEnabled] = useState(false);
+  const [mqttMapPublishIntervalSecs, setMqttMapPublishIntervalSecs] = useState(0);
+  const [mqttMapPositionPrecision, setMqttMapPositionPrecision] = useState(14);
 
   // NeighborInfo Config State
   const [neighborInfoEnabled, setNeighborInfoEnabled] = useState(false);
@@ -80,13 +106,56 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
 
   // Network Config State - store full config to avoid wiping fields when saving
   const [wifiEnabled, setWifiEnabled] = useState(false);
+  const [wifiSsid, setWifiSsid] = useState('');
+  const [wifiPsk, setWifiPsk] = useState('');
   const [ntpServer, setNtpServer] = useState('');
+  const [addressMode, setAddressMode] = useState(0);
+  const [ipv4Address, setIpv4Address] = useState('');
+  const [ipv4Gateway, setIpv4Gateway] = useState('');
+  const [ipv4Subnet, setIpv4Subnet] = useState('');
+  const [ipv4Dns, setIpv4Dns] = useState('');
   const [fullNetworkConfig, setFullNetworkConfig] = useState<any>(null);
+
+  // Power Config State
+  const [isPowerSaving, setIsPowerSaving] = useState(false);
+  const [onBatteryShutdownAfterSecs, setOnBatteryShutdownAfterSecs] = useState(0);
+  const [adcMultiplierOverride, setAdcMultiplierOverride] = useState(0);
+  const [waitBluetoothSecs, setWaitBluetoothSecs] = useState(60);
+  const [sdsSecs, setSdsSecs] = useState(31536000);
+  const [lsSecs, setLsSecs] = useState(300);
+  const [minWakeSecs, setMinWakeSecs] = useState(10);
+  const [deviceBatteryInaAddress, setDeviceBatteryInaAddress] = useState(0);
+
+  // Display Config State
+  const [screenOnSecs, setScreenOnSecs] = useState(60);
+  const [autoScreenCarouselSecs, setAutoScreenCarouselSecs] = useState(0);
+  const [flipScreen, setFlipScreen] = useState(false);
+  const [displayUnits, setDisplayUnits] = useState(0);
+  const [oled, setOled] = useState(0);
+  const [displayMode, setDisplayMode] = useState(0);
+  const [headingBold, setHeadingBold] = useState(false);
+  const [wakeOnTapOrMotion, setWakeOnTapOrMotion] = useState(false);
+  const [compassOrientation, setCompassOrientation] = useState(0);
+
+  // Telemetry Config State
+  const [deviceUpdateInterval, setDeviceUpdateInterval] = useState(900);
+  const [environmentUpdateInterval, setEnvironmentUpdateInterval] = useState(900);
+  const [environmentMeasurementEnabled, setEnvironmentMeasurementEnabled] = useState(false);
+  const [environmentScreenEnabled, setEnvironmentScreenEnabled] = useState(false);
+  const [environmentDisplayFahrenheit, setEnvironmentDisplayFahrenheit] = useState(false);
+  const [airQualityEnabled, setAirQualityEnabled] = useState(false);
+  const [airQualityInterval, setAirQualityInterval] = useState(900);
+  const [powerMeasurementEnabled, setPowerMeasurementEnabled] = useState(false);
+  const [powerUpdateInterval, setPowerUpdateInterval] = useState(900);
+  const [powerScreenEnabled, setPowerScreenEnabled] = useState(false);
 
   // UI State
   const [isSaving, setIsSaving] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [isReloading, setIsReloading] = useState(false);
+  const [configChanges, setConfigChanges] = useState<{ field: string; oldValue: string; newValue: string }[]>([]);
+  const [showChanges, setShowChanges] = useState(false);
 
   // Import/Export Modal State
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -122,6 +191,27 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           }
           if (config.deviceConfig.device.tzdef !== undefined) {
             setTzdef(config.deviceConfig.device.tzdef);
+          }
+          if (config.deviceConfig.device.rebroadcastMode !== undefined) {
+            setRebroadcastMode(config.deviceConfig.device.rebroadcastMode);
+          }
+          if (config.deviceConfig.device.doubleTapAsButtonPress !== undefined) {
+            setDoubleTapAsButtonPress(config.deviceConfig.device.doubleTapAsButtonPress);
+          }
+          if (config.deviceConfig.device.disableTripleClick !== undefined) {
+            setDisableTripleClick(config.deviceConfig.device.disableTripleClick);
+          }
+          if (config.deviceConfig.device.ledHeartbeatDisabled !== undefined) {
+            setLedHeartbeatDisabled(config.deviceConfig.device.ledHeartbeatDisabled);
+          }
+          if (config.deviceConfig.device.buzzerMode !== undefined) {
+            setBuzzerMode(config.deviceConfig.device.buzzerMode);
+          }
+          if (config.deviceConfig.device.buttonGpio !== undefined) {
+            setButtonGpio(config.deviceConfig.device.buttonGpio);
+          }
+          if (config.deviceConfig.device.buzzerGpio !== undefined) {
+            setBuzzerGpio(config.deviceConfig.device.buzzerGpio);
           }
         }
 
@@ -176,6 +266,15 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           if (config.deviceConfig.lora.configOkToMqtt !== undefined) {
             setConfigOkToMqtt(config.deviceConfig.lora.configOkToMqtt);
           }
+          if (config.deviceConfig.lora.txEnabled !== undefined) {
+            setTxEnabled(config.deviceConfig.lora.txEnabled);
+          }
+          if (config.deviceConfig.lora.overrideDutyCycle !== undefined) {
+            setOverrideDutyCycle(config.deviceConfig.lora.overrideDutyCycle);
+          }
+          if (config.deviceConfig.lora.paFanDisabled !== undefined) {
+            setPaFanDisabled(config.deviceConfig.lora.paFanDisabled);
+          }
         }
 
         // Populate position config
@@ -189,6 +288,30 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           if (config.deviceConfig.position.fixedPosition !== undefined) {
             setFixedPosition(config.deviceConfig.position.fixedPosition);
           }
+          if (config.deviceConfig.position.gpsUpdateInterval !== undefined) {
+            setGpsUpdateInterval(config.deviceConfig.position.gpsUpdateInterval);
+          }
+          if (config.deviceConfig.position.gpsMode !== undefined) {
+            setGpsMode(config.deviceConfig.position.gpsMode);
+          }
+          if (config.deviceConfig.position.broadcastSmartMinimumDistance !== undefined) {
+            setBroadcastSmartMinimumDistance(config.deviceConfig.position.broadcastSmartMinimumDistance);
+          }
+          if (config.deviceConfig.position.broadcastSmartMinimumIntervalSecs !== undefined) {
+            setBroadcastSmartMinimumIntervalSecs(config.deviceConfig.position.broadcastSmartMinimumIntervalSecs);
+          }
+          if (config.deviceConfig.position.positionFlags !== undefined) {
+            setPositionFlags(config.deviceConfig.position.positionFlags);
+          }
+          if (config.deviceConfig.position.rxGpio !== undefined) {
+            setRxGpio(config.deviceConfig.position.rxGpio);
+          }
+          if (config.deviceConfig.position.txGpio !== undefined) {
+            setTxGpio(config.deviceConfig.position.txGpio);
+          }
+          if (config.deviceConfig.position.gpsEnGpio !== undefined) {
+            setGpsEnGpio(config.deviceConfig.position.gpsEnGpio);
+          }
         }
 
         // Populate MQTT config
@@ -200,6 +323,11 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           setMqttEncryptionEnabled(config.moduleConfig.mqtt.encryptionEnabled !== false);
           setMqttJsonEnabled(config.moduleConfig.mqtt.jsonEnabled || false);
           setMqttRoot(config.moduleConfig.mqtt.root || '');
+          setMqttTlsEnabled(config.moduleConfig.mqtt.tlsEnabled || false);
+          setMqttProxyToClientEnabled(config.moduleConfig.mqtt.proxyToClientEnabled || false);
+          setMqttMapReportingEnabled(config.moduleConfig.mqtt.mapReportingEnabled || false);
+          setMqttMapPublishIntervalSecs(config.moduleConfig.mqtt.mapReportSettings?.publishIntervalSecs || 0);
+          setMqttMapPositionPrecision(config.moduleConfig.mqtt.mapReportSettings?.positionPrecision ?? 14);
         }
 
         // Populate NeighborInfo config
@@ -213,7 +341,56 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         if (config.deviceConfig?.network) {
           setFullNetworkConfig(config.deviceConfig.network);
           setWifiEnabled(config.deviceConfig.network.wifiEnabled || false);
+          setWifiSsid(config.deviceConfig.network.wifiSsid || '');
+          setWifiPsk(config.deviceConfig.network.wifiPsk || '');
           setNtpServer(config.deviceConfig.network.ntpServer || '');
+          setAddressMode(config.deviceConfig.network.addressMode ?? 0);
+          // Static IP config
+          if (config.deviceConfig.network.ipv4Config) {
+            setIpv4Address(config.deviceConfig.network.ipv4Config.ip || '');
+            setIpv4Gateway(config.deviceConfig.network.ipv4Config.gateway || '');
+            setIpv4Subnet(config.deviceConfig.network.ipv4Config.subnet || '');
+            setIpv4Dns(config.deviceConfig.network.ipv4Config.dns || '');
+          }
+        }
+
+        // Populate Power config
+        if (config.deviceConfig?.power) {
+          setIsPowerSaving(config.deviceConfig.power.isPowerSaving || false);
+          setOnBatteryShutdownAfterSecs(config.deviceConfig.power.onBatteryShutdownAfterSecs || 0);
+          setAdcMultiplierOverride(config.deviceConfig.power.adcMultiplierOverride || 0);
+          setWaitBluetoothSecs(config.deviceConfig.power.waitBluetoothSecs ?? 60);
+          setSdsSecs(config.deviceConfig.power.sdsSecs ?? 31536000);
+          setLsSecs(config.deviceConfig.power.lsSecs ?? 300);
+          setMinWakeSecs(config.deviceConfig.power.minWakeSecs ?? 10);
+          setDeviceBatteryInaAddress(config.deviceConfig.power.deviceBatteryInaAddress || 0);
+        }
+
+        // Populate Display config
+        if (config.deviceConfig?.display) {
+          setScreenOnSecs(config.deviceConfig.display.screenOnSecs ?? 60);
+          setAutoScreenCarouselSecs(config.deviceConfig.display.autoScreenCarouselSecs || 0);
+          setFlipScreen(config.deviceConfig.display.flipScreen || false);
+          setDisplayUnits(config.deviceConfig.display.units ?? 0);
+          setOled(config.deviceConfig.display.oled ?? 0);
+          setDisplayMode(config.deviceConfig.display.displaymode ?? 0);
+          setHeadingBold(config.deviceConfig.display.headingBold || false);
+          setWakeOnTapOrMotion(config.deviceConfig.display.wakeOnTapOrMotion || false);
+          setCompassOrientation(config.deviceConfig.display.compassOrientation ?? 0);
+        }
+
+        // Populate Telemetry config
+        if (config.moduleConfig?.telemetry) {
+          setDeviceUpdateInterval(config.moduleConfig.telemetry.deviceUpdateInterval ?? 900);
+          setEnvironmentUpdateInterval(config.moduleConfig.telemetry.environmentUpdateInterval ?? 900);
+          setEnvironmentMeasurementEnabled(config.moduleConfig.telemetry.environmentMeasurementEnabled || false);
+          setEnvironmentScreenEnabled(config.moduleConfig.telemetry.environmentScreenEnabled || false);
+          setEnvironmentDisplayFahrenheit(config.moduleConfig.telemetry.environmentDisplayFahrenheit || false);
+          setAirQualityEnabled(config.moduleConfig.telemetry.airQualityEnabled || false);
+          setAirQualityInterval(config.moduleConfig.telemetry.airQualityInterval ?? 900);
+          setPowerMeasurementEnabled(config.moduleConfig.telemetry.powerMeasurementEnabled || false);
+          setPowerUpdateInterval(config.moduleConfig.telemetry.powerUpdateInterval ?? 900);
+          setPowerScreenEnabled(config.moduleConfig.telemetry.powerScreenEnabled || false);
         }
       } catch (error) {
         logger.error('Error fetching configuration:', error);
@@ -276,12 +453,18 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
       await apiService.setDeviceConfig({
         role,
         nodeInfoBroadcastSecs: validNodeInfoBroadcastSecs,
-        tzdef
+        tzdef,
+        rebroadcastMode,
+        doubleTapAsButtonPress,
+        disableTripleClick,
+        ledHeartbeatDisabled,
+        buzzerMode,
+        buttonGpio,
+        buzzerGpio
       });
       setStatusMessage(t('config.device_config_saved'));
       showToast(t('config.device_config_saved_toast'), 'success');
-      // Notify parent that config change will trigger reboot
-      onConfigChangeTriggeringReboot?.();
+      // Device config changes don't require reboot
     } catch (error) {
       logger.error('Error saving device config:', error);
       const errorMsg = error instanceof Error ? error.message : t('config.device_config_failed');
@@ -299,7 +482,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
       await apiService.setNodeOwner(longName, shortName, isUnmessagable);
       setStatusMessage(t('config.node_names_saved'));
       showToast(t('config.node_names_saved_toast'), 'success');
-      onConfigChangeTriggeringReboot?.();
+      // Node owner changes don't require reboot
     } catch (error) {
       logger.error('Error saving node owner:', error);
       const errorMsg = error instanceof Error ? error.message : t('config.node_names_failed');
@@ -337,7 +520,10 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         channelNum,
         sx126xRxBoostedGain,
         ignoreMqtt,
-        configOkToMqtt
+        configOkToMqtt,
+        txEnabled,
+        overrideDutyCycle,
+        paFanDisabled
       });
       setStatusMessage(t('config.lora_saved'));
       showToast(t('config.lora_saved_toast'), 'success');
@@ -385,11 +571,19 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         fixedPosition,
         latitude: fixedPosition ? fixedLatitude : undefined,
         longitude: fixedPosition ? fixedLongitude : undefined,
-        altitude: fixedPosition ? fixedAltitude : undefined
+        altitude: fixedPosition ? fixedAltitude : undefined,
+        gpsUpdateInterval,
+        gpsMode,
+        broadcastSmartMinimumDistance,
+        broadcastSmartMinimumIntervalSecs,
+        positionFlags,
+        rxGpio,
+        txGpio,
+        gpsEnGpio
       });
       setStatusMessage(t('config.position_saved'));
       showToast(t('config.position_saved_toast'), 'success');
-      onConfigChangeTriggeringReboot?.();
+      // Position config changes don't require reboot
     } catch (error) {
       logger.error('Error saving position config:', error);
       const errorMsg = error instanceof Error ? error.message : t('config.position_failed');
@@ -411,11 +605,18 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         password: mqttPassword,
         encryptionEnabled: mqttEncryptionEnabled,
         jsonEnabled: mqttJsonEnabled,
-        root: mqttRoot
+        root: mqttRoot,
+        tlsEnabled: mqttTlsEnabled,
+        proxyToClientEnabled: mqttProxyToClientEnabled,
+        mapReportingEnabled: mqttMapReportingEnabled,
+        mapReportSettings: mqttMapReportingEnabled ? {
+          publishIntervalSecs: mqttMapPublishIntervalSecs,
+          positionPrecision: mqttMapPositionPrecision
+        } : undefined
       });
       setStatusMessage(t('config.mqtt_saved'));
       showToast(t('config.mqtt_saved_toast'), 'success');
-      onConfigChangeTriggeringReboot?.();
+      // MQTT config changes don't require reboot
     } catch (error) {
       logger.error('Error saving MQTT config:', error);
       const errorMsg = error instanceof Error ? error.message : t('config.mqtt_failed');
@@ -444,7 +645,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
       });
       setStatusMessage(t('config.neighbor_saved'));
       showToast(t('config.neighbor_saved_toast'), 'success');
-      onConfigChangeTriggeringReboot?.();
+      // NeighborInfo config changes don't require reboot
     } catch (error) {
       logger.error('Error saving NeighborInfo config:', error);
       const errorMsg = error instanceof Error ? error.message : t('config.neighbor_failed');
@@ -459,10 +660,21 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
     setIsSaving(true);
     setStatusMessage('');
     try {
-      // Pass the full network config with updated NTP server to preserve all other fields
+      // Build the full network config with all updated fields
       const updatedConfig = {
         ...fullNetworkConfig,
-        ntpServer
+        wifiEnabled,
+        wifiSsid,
+        wifiPsk,
+        ntpServer,
+        addressMode,
+        // Static IP config - only include if using static address mode
+        ipv4Config: addressMode === 1 ? {
+          ip: ipv4Address,
+          gateway: ipv4Gateway,
+          subnet: ipv4Subnet,
+          dns: ipv4Dns
+        } : fullNetworkConfig?.ipv4Config
       };
       await apiService.setNetworkConfig(updatedConfig);
       // Update stored full config with the new values
@@ -475,6 +687,90 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
       const errorMsg = error instanceof Error ? error.message : t('config.network_failed');
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`${t('config.network_failed')}: ${errorMsg}`, 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSavePowerConfig = async () => {
+    setIsSaving(true);
+    setStatusMessage('');
+    try {
+      await apiService.setPowerConfig({
+        isPowerSaving,
+        onBatteryShutdownAfterSecs,
+        adcMultiplierOverride,
+        waitBluetoothSecs,
+        sdsSecs,
+        lsSecs,
+        minWakeSecs,
+        deviceBatteryInaAddress
+      });
+      setStatusMessage(t('config.power_saved'));
+      showToast(t('config.power_saved_toast'), 'success');
+      // Power config changes don't require reboot
+    } catch (error) {
+      logger.error('Error saving Power config:', error);
+      const errorMsg = error instanceof Error ? error.message : t('config.power_failed');
+      setStatusMessage(`Error: ${errorMsg}`);
+      showToast(`${t('config.power_failed')}: ${errorMsg}`, 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveDisplayConfig = async () => {
+    setIsSaving(true);
+    setStatusMessage('');
+    try {
+      await apiService.setDisplayConfig({
+        screenOnSecs,
+        autoScreenCarouselSecs,
+        flipScreen,
+        units: displayUnits,
+        oled,
+        displaymode: displayMode,
+        headingBold,
+        wakeOnTapOrMotion,
+        compassOrientation
+      });
+      setStatusMessage(t('config.display_saved'));
+      showToast(t('config.display_saved_toast'), 'success');
+      // Display config changes don't require reboot
+    } catch (error) {
+      logger.error('Error saving Display config:', error);
+      const errorMsg = error instanceof Error ? error.message : t('config.display_failed');
+      setStatusMessage(`Error: ${errorMsg}`);
+      showToast(`${t('config.display_failed')}: ${errorMsg}`, 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveTelemetryConfig = async () => {
+    setIsSaving(true);
+    setStatusMessage('');
+    try {
+      await apiService.setTelemetryConfig({
+        deviceUpdateInterval,
+        environmentUpdateInterval,
+        environmentMeasurementEnabled,
+        environmentScreenEnabled,
+        environmentDisplayFahrenheit,
+        airQualityEnabled,
+        airQualityInterval,
+        powerMeasurementEnabled,
+        powerUpdateInterval,
+        powerScreenEnabled
+      });
+      setStatusMessage(t('config.telemetry_saved'));
+      showToast(t('config.telemetry_saved_toast'), 'success');
+      // Telemetry config changes don't require reboot
+    } catch (error) {
+      logger.error('Error saving Telemetry config:', error);
+      const errorMsg = error instanceof Error ? error.message : t('config.telemetry_failed');
+      setStatusMessage(`Error: ${errorMsg}`);
+      showToast(`${t('config.telemetry_failed')}: ${errorMsg}`, 'error');
     } finally {
       setIsSaving(false);
     }
@@ -541,6 +837,296 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
     }
   };
 
+  // Helper to format value for display
+  const formatValue = (value: any): string => {
+    if (value === undefined || value === null) return 'N/A';
+    if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+    if (typeof value === 'number') return value.toString();
+    return String(value);
+  };
+
+  // Reload configuration from device
+  const handleReloadConfig = async () => {
+    setIsReloading(true);
+    setConfigChanges([]);
+    setShowChanges(false);
+
+    try {
+      // Request fresh config from device
+      await apiService.refreshNodes();
+
+      // Wait a moment for device to respond
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Fetch updated config
+      const config = await apiService.getCurrentConfig();
+
+      const changes: { field: string; oldValue: string; newValue: string }[] = [];
+
+      // Update state and track changes for Device Config
+      if (config.deviceConfig?.device) {
+        const device = config.deviceConfig.device;
+        if (device.role !== undefined) {
+          const newRole = typeof device.role === 'string' ? ROLE_MAP[device.role] || 0 : device.role;
+          if (newRole !== role) {
+            changes.push({ field: 'Device: Role', oldValue: formatValue(role), newValue: formatValue(newRole) });
+          }
+          setRole(newRole);
+        }
+        if (device.nodeInfoBroadcastSecs !== undefined && device.nodeInfoBroadcastSecs !== nodeInfoBroadcastSecs) {
+          changes.push({ field: 'Device: Node Info Broadcast (s)', oldValue: formatValue(nodeInfoBroadcastSecs), newValue: formatValue(device.nodeInfoBroadcastSecs) });
+          setNodeInfoBroadcastSecs(device.nodeInfoBroadcastSecs);
+        }
+        if (device.buzzerMode !== undefined && device.buzzerMode !== buzzerMode) {
+          changes.push({ field: 'Device: Buzzer Mode', oldValue: formatValue(buzzerMode), newValue: formatValue(device.buzzerMode) });
+          setBuzzerMode(device.buzzerMode);
+        }
+        if (device.ledHeartbeatDisabled !== undefined && device.ledHeartbeatDisabled !== ledHeartbeatDisabled) {
+          changes.push({ field: 'Device: LED Heartbeat Disabled', oldValue: formatValue(ledHeartbeatDisabled), newValue: formatValue(device.ledHeartbeatDisabled) });
+          setLedHeartbeatDisabled(device.ledHeartbeatDisabled);
+        }
+        if (device.rebroadcastMode !== undefined && device.rebroadcastMode !== rebroadcastMode) {
+          changes.push({ field: 'Device: Rebroadcast Mode', oldValue: formatValue(rebroadcastMode), newValue: formatValue(device.rebroadcastMode) });
+          setRebroadcastMode(device.rebroadcastMode);
+        }
+        if (device.tzdef !== undefined && device.tzdef !== tzdef) {
+          changes.push({ field: 'Device: Timezone', oldValue: formatValue(tzdef), newValue: formatValue(device.tzdef) });
+          setTzdef(device.tzdef);
+        }
+        if (device.doubleTapAsButtonPress !== undefined) setDoubleTapAsButtonPress(device.doubleTapAsButtonPress);
+        if (device.disableTripleClick !== undefined) setDisableTripleClick(device.disableTripleClick);
+        if (device.buttonGpio !== undefined) setButtonGpio(device.buttonGpio);
+        if (device.buzzerGpio !== undefined) setBuzzerGpio(device.buzzerGpio);
+      }
+
+      // Update LoRa Config
+      if (config.deviceConfig?.lora) {
+        const lora = config.deviceConfig.lora;
+        if (lora.usePreset !== undefined && lora.usePreset !== usePreset) {
+          changes.push({ field: 'LoRa: Use Preset', oldValue: formatValue(usePreset), newValue: formatValue(lora.usePreset) });
+          setUsePreset(lora.usePreset);
+        }
+        if (lora.modemPreset !== undefined) {
+          const newPreset = typeof lora.modemPreset === 'string' ? PRESET_MAP[lora.modemPreset] || 0 : lora.modemPreset;
+          if (newPreset !== modemPreset) {
+            changes.push({ field: 'LoRa: Modem Preset', oldValue: formatValue(modemPreset), newValue: formatValue(newPreset) });
+          }
+          setModemPreset(newPreset);
+        }
+        if (lora.region !== undefined) {
+          const newRegion = typeof lora.region === 'string' ? REGION_MAP[lora.region] || 0 : lora.region;
+          if (newRegion !== region) {
+            changes.push({ field: 'LoRa: Region', oldValue: formatValue(region), newValue: formatValue(newRegion) });
+          }
+          setRegion(newRegion);
+        }
+        if (lora.hopLimit !== undefined && lora.hopLimit !== hopLimit) {
+          changes.push({ field: 'LoRa: Hop Limit', oldValue: formatValue(hopLimit), newValue: formatValue(lora.hopLimit) });
+          setHopLimit(lora.hopLimit);
+        }
+        if (lora.txPower !== undefined && lora.txPower !== txPower) {
+          changes.push({ field: 'LoRa: TX Power', oldValue: formatValue(txPower), newValue: formatValue(lora.txPower) });
+          setTxPower(lora.txPower);
+        }
+        if (lora.txEnabled !== undefined && lora.txEnabled !== txEnabled) {
+          changes.push({ field: 'LoRa: TX Enabled', oldValue: formatValue(txEnabled), newValue: formatValue(lora.txEnabled) });
+          setTxEnabled(lora.txEnabled);
+        }
+        // Update remaining LoRa fields without change tracking
+        if (lora.bandwidth !== undefined) setBandwidth(lora.bandwidth);
+        if (lora.spreadFactor !== undefined) setSpreadFactor(lora.spreadFactor);
+        if (lora.codingRate !== undefined) setCodingRate(lora.codingRate);
+        if (lora.frequencyOffset !== undefined) setFrequencyOffset(lora.frequencyOffset);
+        if (lora.overrideFrequency !== undefined) setOverrideFrequency(lora.overrideFrequency);
+        if (lora.channelNum !== undefined) setChannelNum(lora.channelNum);
+        if (lora.sx126xRxBoostedGain !== undefined) setSx126xRxBoostedGain(lora.sx126xRxBoostedGain);
+        if (lora.ignoreMqtt !== undefined) setIgnoreMqtt(lora.ignoreMqtt);
+        if (lora.configOkToMqtt !== undefined) setConfigOkToMqtt(lora.configOkToMqtt);
+        if (lora.overrideDutyCycle !== undefined) setOverrideDutyCycle(lora.overrideDutyCycle);
+        if (lora.paFanDisabled !== undefined) setPaFanDisabled(lora.paFanDisabled);
+      }
+
+      // Update Position Config
+      if (config.deviceConfig?.position) {
+        const pos = config.deviceConfig.position;
+        if (pos.positionBroadcastSecs !== undefined && pos.positionBroadcastSecs !== positionBroadcastSecs) {
+          changes.push({ field: 'Position: Broadcast Interval (s)', oldValue: formatValue(positionBroadcastSecs), newValue: formatValue(pos.positionBroadcastSecs) });
+          setPositionBroadcastSecs(pos.positionBroadcastSecs);
+        }
+        if (pos.positionBroadcastSmartEnabled !== undefined && pos.positionBroadcastSmartEnabled !== positionSmartEnabled) {
+          changes.push({ field: 'Position: Smart Enabled', oldValue: formatValue(positionSmartEnabled), newValue: formatValue(pos.positionBroadcastSmartEnabled) });
+          setPositionSmartEnabled(pos.positionBroadcastSmartEnabled);
+        }
+        if (pos.fixedPosition !== undefined && pos.fixedPosition !== fixedPosition) {
+          changes.push({ field: 'Position: Fixed Position', oldValue: formatValue(fixedPosition), newValue: formatValue(pos.fixedPosition) });
+          setFixedPosition(pos.fixedPosition);
+        }
+        if (pos.gpsMode !== undefined && pos.gpsMode !== gpsMode) {
+          changes.push({ field: 'Position: GPS Mode', oldValue: formatValue(gpsMode), newValue: formatValue(pos.gpsMode) });
+          setGpsMode(pos.gpsMode);
+        }
+        // Update remaining position fields
+        if (pos.gpsUpdateInterval !== undefined) setGpsUpdateInterval(pos.gpsUpdateInterval);
+        if (pos.broadcastSmartMinimumDistance !== undefined) setBroadcastSmartMinimumDistance(pos.broadcastSmartMinimumDistance);
+        if (pos.broadcastSmartMinimumIntervalSecs !== undefined) setBroadcastSmartMinimumIntervalSecs(pos.broadcastSmartMinimumIntervalSecs);
+        if (pos.positionFlags !== undefined) setPositionFlags(pos.positionFlags);
+        if (pos.rxGpio !== undefined) setRxGpio(pos.rxGpio);
+        if (pos.txGpio !== undefined) setTxGpio(pos.txGpio);
+        if (pos.gpsEnGpio !== undefined) setGpsEnGpio(pos.gpsEnGpio);
+      }
+
+      // Update MQTT Config
+      if (config.moduleConfig?.mqtt) {
+        const mqtt = config.moduleConfig.mqtt;
+        if (mqtt.enabled !== undefined && mqtt.enabled !== mqttEnabled) {
+          changes.push({ field: 'MQTT: Enabled', oldValue: formatValue(mqttEnabled), newValue: formatValue(mqtt.enabled) });
+          setMqttEnabled(mqtt.enabled);
+        }
+        if (mqtt.address !== undefined && mqtt.address !== mqttAddress) {
+          changes.push({ field: 'MQTT: Address', oldValue: formatValue(mqttAddress), newValue: formatValue(mqtt.address) });
+          setMqttAddress(mqtt.address);
+        }
+        if (mqtt.encryptionEnabled !== undefined && mqtt.encryptionEnabled !== mqttEncryptionEnabled) {
+          changes.push({ field: 'MQTT: Encryption Enabled', oldValue: formatValue(mqttEncryptionEnabled), newValue: formatValue(mqtt.encryptionEnabled) });
+          setMqttEncryptionEnabled(mqtt.encryptionEnabled);
+        }
+        if (mqtt.tlsEnabled !== undefined && mqtt.tlsEnabled !== mqttTlsEnabled) {
+          changes.push({ field: 'MQTT: TLS Enabled', oldValue: formatValue(mqttTlsEnabled), newValue: formatValue(mqtt.tlsEnabled) });
+          setMqttTlsEnabled(mqtt.tlsEnabled);
+        }
+        // Update remaining MQTT fields
+        if (mqtt.username !== undefined) setMqttUsername(mqtt.username);
+        if (mqtt.password !== undefined) setMqttPassword(mqtt.password);
+        if (mqtt.jsonEnabled !== undefined) setMqttJsonEnabled(mqtt.jsonEnabled);
+        if (mqtt.root !== undefined) setMqttRoot(mqtt.root);
+        if (mqtt.proxyToClientEnabled !== undefined) setMqttProxyToClientEnabled(mqtt.proxyToClientEnabled);
+        if (mqtt.mapReportingEnabled !== undefined) setMqttMapReportingEnabled(mqtt.mapReportingEnabled);
+        if (mqtt.mapReportSettings?.publishIntervalSecs !== undefined) setMqttMapPublishIntervalSecs(mqtt.mapReportSettings.publishIntervalSecs);
+        if (mqtt.mapReportSettings?.positionPrecision !== undefined) setMqttMapPositionPrecision(mqtt.mapReportSettings.positionPrecision);
+      }
+
+      // Update Network Config
+      if (config.deviceConfig?.network) {
+        const net = config.deviceConfig.network;
+        if (net.wifiEnabled !== undefined && net.wifiEnabled !== wifiEnabled) {
+          changes.push({ field: 'Network: WiFi Enabled', oldValue: formatValue(wifiEnabled), newValue: formatValue(net.wifiEnabled) });
+          setWifiEnabled(net.wifiEnabled);
+        }
+        if (net.wifiSsid !== undefined && net.wifiSsid !== wifiSsid) {
+          changes.push({ field: 'Network: WiFi SSID', oldValue: formatValue(wifiSsid), newValue: formatValue(net.wifiSsid) });
+          setWifiSsid(net.wifiSsid);
+        }
+        if (net.addressMode !== undefined && net.addressMode !== addressMode) {
+          changes.push({ field: 'Network: Address Mode', oldValue: formatValue(addressMode), newValue: formatValue(net.addressMode) });
+          setAddressMode(net.addressMode);
+        }
+        // Update remaining network fields
+        if (net.wifiPsk !== undefined) setWifiPsk(net.wifiPsk);
+        if (net.ntpServer !== undefined) setNtpServer(net.ntpServer);
+        if (net.ipv4Config) {
+          if (net.ipv4Config.ip !== undefined) setIpv4Address(net.ipv4Config.ip);
+          if (net.ipv4Config.gateway !== undefined) setIpv4Gateway(net.ipv4Config.gateway);
+          if (net.ipv4Config.subnet !== undefined) setIpv4Subnet(net.ipv4Config.subnet);
+          if (net.ipv4Config.dns !== undefined) setIpv4Dns(net.ipv4Config.dns);
+        }
+        setFullNetworkConfig(net);
+      }
+
+      // Update Power Config
+      if (config.deviceConfig?.power) {
+        const pwr = config.deviceConfig.power;
+        if (pwr.isPowerSaving !== undefined && pwr.isPowerSaving !== isPowerSaving) {
+          changes.push({ field: 'Power: Power Saving', oldValue: formatValue(isPowerSaving), newValue: formatValue(pwr.isPowerSaving) });
+          setIsPowerSaving(pwr.isPowerSaving);
+        }
+        // Update remaining power fields
+        if (pwr.onBatteryShutdownAfterSecs !== undefined) setOnBatteryShutdownAfterSecs(pwr.onBatteryShutdownAfterSecs);
+        if (pwr.adcMultiplierOverride !== undefined) setAdcMultiplierOverride(pwr.adcMultiplierOverride);
+        if (pwr.waitBluetoothSecs !== undefined) setWaitBluetoothSecs(pwr.waitBluetoothSecs);
+        if (pwr.sdsSecs !== undefined) setSdsSecs(pwr.sdsSecs);
+        if (pwr.lsSecs !== undefined) setLsSecs(pwr.lsSecs);
+        if (pwr.minWakeSecs !== undefined) setMinWakeSecs(pwr.minWakeSecs);
+        if (pwr.deviceBatteryInaAddress !== undefined) setDeviceBatteryInaAddress(pwr.deviceBatteryInaAddress);
+      }
+
+      // Update Display Config
+      if (config.deviceConfig?.display) {
+        const disp = config.deviceConfig.display;
+        if (disp.screenOnSecs !== undefined && disp.screenOnSecs !== screenOnSecs) {
+          changes.push({ field: 'Display: Screen On (s)', oldValue: formatValue(screenOnSecs), newValue: formatValue(disp.screenOnSecs) });
+          setScreenOnSecs(disp.screenOnSecs);
+        }
+        if (disp.flipScreen !== undefined && disp.flipScreen !== flipScreen) {
+          changes.push({ field: 'Display: Flip Screen', oldValue: formatValue(flipScreen), newValue: formatValue(disp.flipScreen) });
+          setFlipScreen(disp.flipScreen);
+        }
+        if (disp.units !== undefined && disp.units !== displayUnits) {
+          changes.push({ field: 'Display: Units', oldValue: formatValue(displayUnits), newValue: formatValue(disp.units) });
+          setDisplayUnits(disp.units);
+        }
+        // Update remaining display fields
+        if (disp.autoScreenCarouselSecs !== undefined) setAutoScreenCarouselSecs(disp.autoScreenCarouselSecs);
+        if (disp.oled !== undefined) setOled(disp.oled);
+        if (disp.displaymode !== undefined) setDisplayMode(disp.displaymode);
+        if (disp.headingBold !== undefined) setHeadingBold(disp.headingBold);
+        if (disp.wakeOnTapOrMotion !== undefined) setWakeOnTapOrMotion(disp.wakeOnTapOrMotion);
+        if (disp.compassOrientation !== undefined) setCompassOrientation(disp.compassOrientation);
+      }
+
+      // Update NeighborInfo Config
+      if (config.moduleConfig?.neighborInfo) {
+        const ni = config.moduleConfig.neighborInfo;
+        if (ni.enabled !== undefined && ni.enabled !== neighborInfoEnabled) {
+          changes.push({ field: 'Neighbor Info: Enabled', oldValue: formatValue(neighborInfoEnabled), newValue: formatValue(ni.enabled) });
+          setNeighborInfoEnabled(ni.enabled);
+        }
+        if (ni.updateInterval !== undefined && ni.updateInterval !== neighborInfoInterval) {
+          changes.push({ field: 'Neighbor Info: Interval (s)', oldValue: formatValue(neighborInfoInterval), newValue: formatValue(ni.updateInterval) });
+          setNeighborInfoInterval(ni.updateInterval);
+        }
+        if (ni.transmitOverLora !== undefined) setNeighborInfoTransmitOverLora(ni.transmitOverLora);
+      }
+
+      // Update Telemetry Config
+      if (config.moduleConfig?.telemetry) {
+        const tel = config.moduleConfig.telemetry;
+        if (tel.deviceUpdateInterval !== undefined) setDeviceUpdateInterval(tel.deviceUpdateInterval);
+        if (tel.environmentUpdateInterval !== undefined) setEnvironmentUpdateInterval(tel.environmentUpdateInterval);
+        if (tel.environmentMeasurementEnabled !== undefined) setEnvironmentMeasurementEnabled(tel.environmentMeasurementEnabled);
+        if (tel.environmentScreenEnabled !== undefined) setEnvironmentScreenEnabled(tel.environmentScreenEnabled);
+        if (tel.environmentDisplayFahrenheit !== undefined) setEnvironmentDisplayFahrenheit(tel.environmentDisplayFahrenheit);
+        if (tel.airQualityEnabled !== undefined) setAirQualityEnabled(tel.airQualityEnabled);
+        if (tel.airQualityInterval !== undefined) setAirQualityInterval(tel.airQualityInterval);
+        if (tel.powerMeasurementEnabled !== undefined) setPowerMeasurementEnabled(tel.powerMeasurementEnabled);
+        if (tel.powerUpdateInterval !== undefined) setPowerUpdateInterval(tel.powerUpdateInterval);
+        if (tel.powerScreenEnabled !== undefined) setPowerScreenEnabled(tel.powerScreenEnabled);
+      }
+
+      // Update Node Identity
+      if (config.localNodeInfo) {
+        if (config.localNodeInfo.longName !== undefined) setLongName(config.localNodeInfo.longName);
+        if (config.localNodeInfo.shortName !== undefined) setShortName(config.localNodeInfo.shortName);
+        if (config.localNodeInfo.isUnmessagable !== undefined) setIsUnmessagable(config.localNodeInfo.isUnmessagable);
+      }
+
+      setConfigChanges(changes);
+      if (changes.length > 0) {
+        setShowChanges(true);
+        showToast(t('config.reload_changes_detected', { count: changes.length }), 'info');
+      } else {
+        showToast(t('config.reload_no_changes'), 'success');
+      }
+
+      logger.info(`Config reloaded. ${changes.length} changes detected.`);
+    } catch (error) {
+      logger.error('Error reloading config:', error);
+      const errorMsg = error instanceof Error ? error.message : t('config.reload_failed');
+      showToast(`${t('config.reload_failed')}: ${errorMsg}`, 'error');
+    } finally {
+      setIsReloading(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="tab-content">
@@ -560,6 +1146,9 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         { id: 'config-device', label: t('config.device_config', 'Device') },
         { id: 'config-lora', label: t('config.lora_config', 'LoRa') },
         { id: 'config-position', label: t('config.position_config', 'Position') },
+        { id: 'config-power', label: t('config.power_config', 'Power') },
+        { id: 'config-display', label: t('config.display_config', 'Display') },
+        { id: 'config-telemetry', label: t('config.telemetry_config', 'Telemetry') },
         { id: 'config-mqtt', label: t('config.mqtt_config', 'MQTT') },
         { id: 'config-neighbor', label: t('config.neighbor_info', 'Neighbor Info') },
         { id: 'config-network', label: t('config.network_config', 'Network') },
@@ -610,7 +1199,81 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           >
             🗑️ {t('config.purge_node_db')}
           </button>
+          <button
+            onClick={handleReloadConfig}
+            disabled={isReloading}
+            style={{
+              backgroundColor: 'var(--ctp-teal)',
+              color: '#fff',
+              padding: '0.75rem 1.5rem',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: isReloading ? 'not-allowed' : 'pointer',
+              fontSize: '1rem',
+              fontWeight: 'bold',
+              opacity: isReloading ? 0.6 : 1
+            }}
+          >
+            {isReloading ? (
+              <>
+                <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>🔄</span>
+                {' '}{t('config.reloading')}
+              </>
+            ) : (
+              <>🔃 {t('config.reload_config')}</>
+            )}
+          </button>
         </div>
+        {/* Config Changes Display */}
+        {configChanges.length > 0 && (
+          <div style={{ marginTop: '1rem' }}>
+            <button
+              onClick={() => setShowChanges(!showChanges)}
+              style={{
+                background: 'transparent',
+                border: '1px solid var(--ctp-surface2)',
+                color: 'var(--ctp-text)',
+                padding: '0.5rem 1rem',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}
+            >
+              <span>{showChanges ? '▼' : '▶'}</span>
+              {t('config.changes_detected', { count: configChanges.length })}
+            </button>
+            {showChanges && (
+              <div style={{
+                marginTop: '0.5rem',
+                padding: '1rem',
+                backgroundColor: 'var(--ctp-surface0)',
+                borderRadius: '4px',
+                border: '1px solid var(--ctp-surface2)'
+              }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--ctp-surface2)' }}>
+                      <th style={{ textAlign: 'left', padding: '0.5rem', color: 'var(--ctp-subtext0)' }}>{t('config.field')}</th>
+                      <th style={{ textAlign: 'left', padding: '0.5rem', color: 'var(--ctp-subtext0)' }}>{t('config.old_value')}</th>
+                      <th style={{ textAlign: 'left', padding: '0.5rem', color: 'var(--ctp-subtext0)' }}>{t('config.new_value')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {configChanges.map((change, idx) => (
+                      <tr key={idx} style={{ borderBottom: '1px solid var(--ctp-surface1)' }}>
+                        <td style={{ padding: '0.5rem' }}>{change.field}</td>
+                        <td style={{ padding: '0.5rem', color: 'var(--ctp-red)' }}>{change.oldValue}</td>
+                        <td style={{ padding: '0.5rem', color: 'var(--ctp-green)' }}>{change.newValue}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Import/Export Configuration Section */}
@@ -692,6 +1355,20 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
             setNodeInfoBroadcastSecs={setNodeInfoBroadcastSecs}
             tzdef={tzdef}
             setTzdef={setTzdef}
+            rebroadcastMode={rebroadcastMode}
+            setRebroadcastMode={setRebroadcastMode}
+            doubleTapAsButtonPress={doubleTapAsButtonPress}
+            setDoubleTapAsButtonPress={setDoubleTapAsButtonPress}
+            disableTripleClick={disableTripleClick}
+            setDisableTripleClick={setDisableTripleClick}
+            ledHeartbeatDisabled={ledHeartbeatDisabled}
+            setLedHeartbeatDisabled={setLedHeartbeatDisabled}
+            buzzerMode={buzzerMode}
+            setBuzzerMode={setBuzzerMode}
+            buttonGpio={buttonGpio}
+            setButtonGpio={setButtonGpio}
+            buzzerGpio={buzzerGpio}
+            setBuzzerGpio={setBuzzerGpio}
             isSaving={isSaving}
             onSave={handleSaveDeviceConfig}
           />
@@ -727,6 +1404,12 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
             setIgnoreMqtt={setIgnoreMqtt}
             configOkToMqtt={configOkToMqtt}
             setConfigOkToMqtt={setConfigOkToMqtt}
+            txEnabled={txEnabled}
+            setTxEnabled={setTxEnabled}
+            overrideDutyCycle={overrideDutyCycle}
+            setOverrideDutyCycle={setOverrideDutyCycle}
+            paFanDisabled={paFanDisabled}
+            setPaFanDisabled={setPaFanDisabled}
             isSaving={isSaving}
             onSave={handleSaveLoRaConfig}
           />
@@ -746,8 +1429,99 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
             setFixedLongitude={setFixedLongitude}
             fixedAltitude={fixedAltitude}
             setFixedAltitude={setFixedAltitude}
+            gpsUpdateInterval={gpsUpdateInterval}
+            setGpsUpdateInterval={setGpsUpdateInterval}
+            gpsMode={gpsMode}
+            setGpsMode={setGpsMode}
+            broadcastSmartMinimumDistance={broadcastSmartMinimumDistance}
+            setBroadcastSmartMinimumDistance={setBroadcastSmartMinimumDistance}
+            broadcastSmartMinimumIntervalSecs={broadcastSmartMinimumIntervalSecs}
+            setBroadcastSmartMinimumIntervalSecs={setBroadcastSmartMinimumIntervalSecs}
+            positionFlags={positionFlags}
+            setPositionFlags={setPositionFlags}
+            rxGpio={rxGpio}
+            setRxGpio={setRxGpio}
+            txGpio={txGpio}
+            setTxGpio={setTxGpio}
+            gpsEnGpio={gpsEnGpio}
+            setGpsEnGpio={setGpsEnGpio}
             isSaving={isSaving}
             onSave={handleSavePositionConfig}
+          />
+        </div>
+
+        <div id="config-power">
+          <PowerConfigSection
+            isPowerSaving={isPowerSaving}
+            setIsPowerSaving={setIsPowerSaving}
+            onBatteryShutdownAfterSecs={onBatteryShutdownAfterSecs}
+            setOnBatteryShutdownAfterSecs={setOnBatteryShutdownAfterSecs}
+            adcMultiplierOverride={adcMultiplierOverride}
+            setAdcMultiplierOverride={setAdcMultiplierOverride}
+            waitBluetoothSecs={waitBluetoothSecs}
+            setWaitBluetoothSecs={setWaitBluetoothSecs}
+            sdsSecs={sdsSecs}
+            setSdsSecs={setSdsSecs}
+            lsSecs={lsSecs}
+            setLsSecs={setLsSecs}
+            minWakeSecs={minWakeSecs}
+            setMinWakeSecs={setMinWakeSecs}
+            deviceBatteryInaAddress={deviceBatteryInaAddress}
+            setDeviceBatteryInaAddress={setDeviceBatteryInaAddress}
+            isSaving={isSaving}
+            onSave={handleSavePowerConfig}
+          />
+        </div>
+
+        <div id="config-display">
+          <DisplayConfigSection
+            screenOnSecs={screenOnSecs}
+            setScreenOnSecs={setScreenOnSecs}
+            autoScreenCarouselSecs={autoScreenCarouselSecs}
+            setAutoScreenCarouselSecs={setAutoScreenCarouselSecs}
+            flipScreen={flipScreen}
+            setFlipScreen={setFlipScreen}
+            units={displayUnits}
+            setUnits={setDisplayUnits}
+            oled={oled}
+            setOled={setOled}
+            displayMode={displayMode}
+            setDisplayMode={setDisplayMode}
+            headingBold={headingBold}
+            setHeadingBold={setHeadingBold}
+            wakeOnTapOrMotion={wakeOnTapOrMotion}
+            setWakeOnTapOrMotion={setWakeOnTapOrMotion}
+            compassOrientation={compassOrientation}
+            setCompassOrientation={setCompassOrientation}
+            isSaving={isSaving}
+            onSave={handleSaveDisplayConfig}
+          />
+        </div>
+
+        <div id="config-telemetry">
+          <TelemetryConfigSection
+            deviceUpdateInterval={deviceUpdateInterval}
+            setDeviceUpdateInterval={setDeviceUpdateInterval}
+            environmentUpdateInterval={environmentUpdateInterval}
+            setEnvironmentUpdateInterval={setEnvironmentUpdateInterval}
+            environmentMeasurementEnabled={environmentMeasurementEnabled}
+            setEnvironmentMeasurementEnabled={setEnvironmentMeasurementEnabled}
+            environmentScreenEnabled={environmentScreenEnabled}
+            setEnvironmentScreenEnabled={setEnvironmentScreenEnabled}
+            environmentDisplayFahrenheit={environmentDisplayFahrenheit}
+            setEnvironmentDisplayFahrenheit={setEnvironmentDisplayFahrenheit}
+            airQualityEnabled={airQualityEnabled}
+            setAirQualityEnabled={setAirQualityEnabled}
+            airQualityInterval={airQualityInterval}
+            setAirQualityInterval={setAirQualityInterval}
+            powerMeasurementEnabled={powerMeasurementEnabled}
+            setPowerMeasurementEnabled={setPowerMeasurementEnabled}
+            powerUpdateInterval={powerUpdateInterval}
+            setPowerUpdateInterval={setPowerUpdateInterval}
+            powerScreenEnabled={powerScreenEnabled}
+            setPowerScreenEnabled={setPowerScreenEnabled}
+            isSaving={isSaving}
+            onSave={handleSaveTelemetryConfig}
           />
         </div>
 
@@ -767,6 +1541,16 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
             setMqttJsonEnabled={setMqttJsonEnabled}
             mqttRoot={mqttRoot}
             setMqttRoot={setMqttRoot}
+            tlsEnabled={mqttTlsEnabled}
+            setTlsEnabled={setMqttTlsEnabled}
+            proxyToClientEnabled={mqttProxyToClientEnabled}
+            setProxyToClientEnabled={setMqttProxyToClientEnabled}
+            mapReportingEnabled={mqttMapReportingEnabled}
+            setMapReportingEnabled={setMqttMapReportingEnabled}
+            mapPublishIntervalSecs={mqttMapPublishIntervalSecs}
+            setMapPublishIntervalSecs={setMqttMapPublishIntervalSecs}
+            mapPositionPrecision={mqttMapPositionPrecision}
+            setMapPositionPrecision={setMqttMapPositionPrecision}
             isSaving={isSaving}
             onSave={handleSaveMQTTConfig}
           />
@@ -788,8 +1572,23 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         <div id="config-network">
           <NetworkConfigSection
             wifiEnabled={wifiEnabled}
+            setWifiEnabled={setWifiEnabled}
+            wifiSsid={wifiSsid}
+            setWifiSsid={setWifiSsid}
+            wifiPsk={wifiPsk}
+            setWifiPsk={setWifiPsk}
             ntpServer={ntpServer}
             setNtpServer={setNtpServer}
+            addressMode={addressMode}
+            setAddressMode={setAddressMode}
+            ipv4Address={ipv4Address}
+            setIpv4Address={setIpv4Address}
+            ipv4Gateway={ipv4Gateway}
+            setIpv4Gateway={setIpv4Gateway}
+            ipv4Subnet={ipv4Subnet}
+            setIpv4Subnet={setIpv4Subnet}
+            ipv4Dns={ipv4Dns}
+            setIpv4Dns={setIpv4Dns}
             isSaving={isSaving}
             onSave={handleSaveNetworkConfig}
           />
