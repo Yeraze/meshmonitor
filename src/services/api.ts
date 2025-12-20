@@ -879,6 +879,57 @@ class ApiService {
     return response.json();
   }
 
+  async setPowerConfig(config: any) {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/config/power`, {
+      method: 'POST',
+      headers: this.getHeadersWithCsrf(),
+      credentials: 'include',
+      body: JSON.stringify(config),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to set power configuration');
+    }
+
+    return response.json();
+  }
+
+  async setDisplayConfig(config: any) {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/config/display`, {
+      method: 'POST',
+      headers: this.getHeadersWithCsrf(),
+      credentials: 'include',
+      body: JSON.stringify(config),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to set display configuration');
+    }
+
+    return response.json();
+  }
+
+  async setTelemetryConfig(config: any) {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/config/module/telemetry`, {
+      method: 'POST',
+      headers: this.getHeadersWithCsrf(),
+      credentials: 'include',
+      body: JSON.stringify(config),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to set telemetry configuration');
+    }
+
+    return response.json();
+  }
+
   async setNodeOwner(longName: string, shortName: string, isUnmessagable?: boolean) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/owner`, {

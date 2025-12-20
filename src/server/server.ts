@@ -4930,6 +4930,39 @@ apiRouter.post('/config/neighborinfo', requirePermission('configuration', 'write
   }
 });
 
+apiRouter.post('/config/power', requirePermission('configuration', 'write'), async (req, res) => {
+  try {
+    const config = req.body;
+    await meshtasticManager.setPowerConfig(config);
+    res.json({ success: true, message: 'Power configuration sent' });
+  } catch (error) {
+    logger.error('Error setting power config:', error);
+    res.status(500).json({ error: 'Failed to set power configuration' });
+  }
+});
+
+apiRouter.post('/config/display', requirePermission('configuration', 'write'), async (req, res) => {
+  try {
+    const config = req.body;
+    await meshtasticManager.setDisplayConfig(config);
+    res.json({ success: true, message: 'Display configuration sent' });
+  } catch (error) {
+    logger.error('Error setting display config:', error);
+    res.status(500).json({ error: 'Failed to set display configuration' });
+  }
+});
+
+apiRouter.post('/config/module/telemetry', requirePermission('configuration', 'write'), async (req, res) => {
+  try {
+    const config = req.body;
+    await meshtasticManager.setTelemetryConfig(config);
+    res.json({ success: true, message: 'Telemetry configuration sent' });
+  } catch (error) {
+    logger.error('Error setting telemetry config:', error);
+    res.status(500).json({ error: 'Failed to set telemetry configuration' });
+  }
+});
+
 apiRouter.post('/config/owner', requirePermission('configuration', 'write'), async (req, res) => {
   try {
     const { longName, shortName, isUnmessagable } = req.body;

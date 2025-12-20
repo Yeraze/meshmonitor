@@ -1,14 +1,28 @@
 import React, { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ROLE_OPTIONS, TIMEZONE_PRESETS } from './constants';
+import { ROLE_OPTIONS, TIMEZONE_PRESETS, REBROADCAST_MODE_OPTIONS, BUZZER_MODE_OPTIONS } from './constants';
 
 interface DeviceConfigSectionProps {
   role: number;
   nodeInfoBroadcastSecs: number;
   tzdef: string;
+  rebroadcastMode: number;
+  doubleTapAsButtonPress: boolean;
+  disableTripleClick: boolean;
+  ledHeartbeatDisabled: boolean;
+  buzzerMode: number;
+  buttonGpio: number;
+  buzzerGpio: number;
   setRole: (value: number) => void;
   setNodeInfoBroadcastSecs: (value: number) => void;
   setTzdef: (value: string) => void;
+  setRebroadcastMode: (value: number) => void;
+  setDoubleTapAsButtonPress: (value: boolean) => void;
+  setDisableTripleClick: (value: boolean) => void;
+  setLedHeartbeatDisabled: (value: boolean) => void;
+  setBuzzerMode: (value: number) => void;
+  setButtonGpio: (value: number) => void;
+  setBuzzerGpio: (value: number) => void;
   isSaving: boolean;
   onSave: () => Promise<void>;
 }
@@ -17,9 +31,23 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
   role,
   nodeInfoBroadcastSecs,
   tzdef,
+  rebroadcastMode,
+  doubleTapAsButtonPress,
+  disableTripleClick,
+  ledHeartbeatDisabled,
+  buzzerMode,
+  buttonGpio,
+  buzzerGpio,
   setRole,
   setNodeInfoBroadcastSecs,
   setTzdef,
+  setRebroadcastMode,
+  setDoubleTapAsButtonPress,
+  setDisableTripleClick,
+  setLedHeartbeatDisabled,
+  setBuzzerMode,
+  setButtonGpio,
+  setBuzzerGpio,
   isSaving,
   onSave
 }) => {
@@ -27,6 +55,7 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
   const [isRoleDropdownOpen, setIsRoleDropdownOpen] = useState(false);
   const [isTimezoneDropdownOpen, setIsTimezoneDropdownOpen] = useState(false);
   const [timezoneFilter, setTimezoneFilter] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const handleRoleChange = (newRole: number) => {
     if (newRole === 2) {
@@ -384,6 +413,165 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
           )}
         </div>
       </div>
+
+      {/* Rebroadcast Mode */}
+      <div className="setting-item">
+        <label htmlFor="rebroadcastMode">
+          {t('device_config.rebroadcast_mode')}
+          <span className="setting-description">{t('device_config.rebroadcast_mode_description')}</span>
+        </label>
+        <select
+          id="rebroadcastMode"
+          value={rebroadcastMode}
+          onChange={(e) => setRebroadcastMode(parseInt(e.target.value))}
+          className="setting-input"
+        >
+          {REBROADCAST_MODE_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.name} - {option.description}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Buzzer Mode */}
+      <div className="setting-item">
+        <label htmlFor="buzzerMode">
+          {t('device_config.buzzer_mode')}
+          <span className="setting-description">{t('device_config.buzzer_mode_description')}</span>
+        </label>
+        <select
+          id="buzzerMode"
+          value={buzzerMode}
+          onChange={(e) => setBuzzerMode(parseInt(e.target.value))}
+          className="setting-input"
+        >
+          {BUZZER_MODE_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.name} - {option.description}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Double Tap as Button Press */}
+      <div className="setting-item">
+        <label htmlFor="doubleTapAsButtonPress" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+          <input
+            id="doubleTapAsButtonPress"
+            type="checkbox"
+            checked={doubleTapAsButtonPress}
+            onChange={(e) => setDoubleTapAsButtonPress(e.target.checked)}
+            style={{ marginTop: '0.2rem', flexShrink: 0 }}
+          />
+          <div style={{ flex: 1 }}>
+            <div>{t('device_config.double_tap_as_button')}</div>
+            <span className="setting-description">{t('device_config.double_tap_as_button_description')}</span>
+          </div>
+        </label>
+      </div>
+
+      {/* Disable Triple Click */}
+      <div className="setting-item">
+        <label htmlFor="disableTripleClick" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+          <input
+            id="disableTripleClick"
+            type="checkbox"
+            checked={disableTripleClick}
+            onChange={(e) => setDisableTripleClick(e.target.checked)}
+            style={{ marginTop: '0.2rem', flexShrink: 0 }}
+          />
+          <div style={{ flex: 1 }}>
+            <div>{t('device_config.disable_triple_click')}</div>
+            <span className="setting-description">{t('device_config.disable_triple_click_description')}</span>
+          </div>
+        </label>
+      </div>
+
+      {/* LED Heartbeat Disabled */}
+      <div className="setting-item">
+        <label htmlFor="ledHeartbeatDisabled" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+          <input
+            id="ledHeartbeatDisabled"
+            type="checkbox"
+            checked={ledHeartbeatDisabled}
+            onChange={(e) => setLedHeartbeatDisabled(e.target.checked)}
+            style={{ marginTop: '0.2rem', flexShrink: 0 }}
+          />
+          <div style={{ flex: 1 }}>
+            <div>{t('device_config.led_heartbeat_disabled')}</div>
+            <span className="setting-description">{t('device_config.led_heartbeat_disabled_description')}</span>
+          </div>
+        </label>
+      </div>
+
+      {/* Advanced Section Toggle */}
+      <div className="setting-item">
+        <button
+          type="button"
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          className="advanced-toggle-btn"
+          style={{
+            background: 'transparent',
+            border: '1px solid var(--ctp-surface2)',
+            color: 'var(--ctp-subtext0)',
+            padding: '0.5rem 1rem',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem'
+          }}
+        >
+          <span>{showAdvanced ? '▼' : '▶'}</span>
+          {t('device_config.advanced_settings')}
+        </button>
+      </div>
+
+      {/* Advanced Settings */}
+      {showAdvanced && (
+        <div className="advanced-section" style={{
+          marginLeft: '1rem',
+          paddingLeft: '1rem',
+          borderLeft: '2px solid var(--ctp-surface2)'
+        }}>
+          {/* Button GPIO */}
+          <div className="setting-item">
+            <label htmlFor="buttonGpio">
+              {t('device_config.button_gpio')}
+              <span className="setting-description">{t('device_config.button_gpio_description')}</span>
+            </label>
+            <input
+              id="buttonGpio"
+              type="number"
+              min="0"
+              max="255"
+              value={buttonGpio}
+              onChange={(e) => setButtonGpio(parseInt(e.target.value) || 0)}
+              className="setting-input"
+              style={{ width: '100px' }}
+            />
+          </div>
+
+          {/* Buzzer GPIO */}
+          <div className="setting-item">
+            <label htmlFor="buzzerGpio">
+              {t('device_config.buzzer_gpio')}
+              <span className="setting-description">{t('device_config.buzzer_gpio_description')}</span>
+            </label>
+            <input
+              id="buzzerGpio"
+              type="number"
+              min="0"
+              max="255"
+              value={buzzerGpio}
+              onChange={(e) => setBuzzerGpio(parseInt(e.target.value) || 0)}
+              className="setting-input"
+              style={{ width: '100px' }}
+            />
+          </div>
+        </div>
+      )}
 
       <button
         className="save-button"

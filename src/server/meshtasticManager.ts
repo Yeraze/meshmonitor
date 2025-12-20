@@ -7811,6 +7811,69 @@ class MeshtasticManager {
   }
 
   /**
+   * Set power configuration
+   */
+  async setPowerConfig(config: any): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    try {
+      logger.debug('⚙️ Sending power config:', JSON.stringify(config));
+      const setConfigMsg = protobufService.createSetDeviceConfigMessageGeneric('power', config, new Uint8Array());
+      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+
+      await this.transport.send(adminPacket);
+      logger.debug('⚙️ Sent set_power_config admin message');
+    } catch (error) {
+      logger.error('❌ Error sending power config:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Set display configuration
+   */
+  async setDisplayConfig(config: any): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    try {
+      logger.debug('⚙️ Sending display config:', JSON.stringify(config));
+      const setConfigMsg = protobufService.createSetDeviceConfigMessageGeneric('display', config, new Uint8Array());
+      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+
+      await this.transport.send(adminPacket);
+      logger.debug('⚙️ Sent set_display_config admin message');
+    } catch (error) {
+      logger.error('❌ Error sending display config:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Set telemetry module configuration
+   */
+  async setTelemetryConfig(config: any): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    try {
+      logger.debug('⚙️ Sending telemetry config:', JSON.stringify(config));
+      const setConfigMsg = protobufService.createSetModuleConfigMessageGeneric('telemetry', config, new Uint8Array());
+      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+
+      await this.transport.send(adminPacket);
+      logger.debug('⚙️ Sent set_telemetry_config admin message');
+    } catch (error) {
+      logger.error('❌ Error sending telemetry config:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Set node owner (long name and short name)
    */
   async setNodeOwner(longName: string, shortName: string, isUnmessagable?: boolean): Promise<void> {

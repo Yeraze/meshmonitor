@@ -9,6 +9,11 @@ interface MQTTConfigSectionProps {
   mqttEncryptionEnabled: boolean;
   mqttJsonEnabled: boolean;
   mqttRoot: string;
+  tlsEnabled: boolean;
+  proxyToClientEnabled: boolean;
+  mapReportingEnabled: boolean;
+  mapPublishIntervalSecs: number;
+  mapPositionPrecision: number;
   setMqttEnabled: (value: boolean) => void;
   setMqttAddress: (value: string) => void;
   setMqttUsername: (value: string) => void;
@@ -16,6 +21,11 @@ interface MQTTConfigSectionProps {
   setMqttEncryptionEnabled: (value: boolean) => void;
   setMqttJsonEnabled: (value: boolean) => void;
   setMqttRoot: (value: string) => void;
+  setTlsEnabled: (value: boolean) => void;
+  setProxyToClientEnabled: (value: boolean) => void;
+  setMapReportingEnabled: (value: boolean) => void;
+  setMapPublishIntervalSecs: (value: number) => void;
+  setMapPositionPrecision: (value: number) => void;
   isSaving: boolean;
   onSave: () => Promise<void>;
 }
@@ -28,6 +38,11 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
   mqttEncryptionEnabled,
   mqttJsonEnabled,
   mqttRoot,
+  tlsEnabled,
+  proxyToClientEnabled,
+  mapReportingEnabled,
+  mapPublishIntervalSecs,
+  mapPositionPrecision,
   setMqttEnabled,
   setMqttAddress,
   setMqttUsername,
@@ -35,6 +50,11 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
   setMqttEncryptionEnabled,
   setMqttJsonEnabled,
   setMqttRoot,
+  setTlsEnabled,
+  setProxyToClientEnabled,
+  setMapReportingEnabled,
+  setMapPublishIntervalSecs,
+  setMapPositionPrecision,
   isSaving,
   onSave
 }) => {
@@ -159,6 +179,93 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
               </div>
             </label>
           </div>
+          <div className="setting-item">
+            <label htmlFor="tlsEnabled" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+              <input
+                id="tlsEnabled"
+                type="checkbox"
+                checked={tlsEnabled}
+                onChange={(e) => setTlsEnabled(e.target.checked)}
+                style={{ marginTop: '0.2rem', flexShrink: 0 }}
+              />
+              <div style={{ flex: 1 }}>
+                <div>{t('mqtt_config.tls_enabled')}</div>
+                <span className="setting-description">{t('mqtt_config.tls_description')}</span>
+              </div>
+            </label>
+          </div>
+          <div className="setting-item">
+            <label htmlFor="proxyToClientEnabled" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+              <input
+                id="proxyToClientEnabled"
+                type="checkbox"
+                checked={proxyToClientEnabled}
+                onChange={(e) => setProxyToClientEnabled(e.target.checked)}
+                style={{ marginTop: '0.2rem', flexShrink: 0 }}
+              />
+              <div style={{ flex: 1 }}>
+                <div>{t('mqtt_config.proxy_to_client')}</div>
+                <span className="setting-description">{t('mqtt_config.proxy_to_client_description')}</span>
+              </div>
+            </label>
+          </div>
+          <div className="setting-item">
+            <label htmlFor="mapReportingEnabled" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+              <input
+                id="mapReportingEnabled"
+                type="checkbox"
+                checked={mapReportingEnabled}
+                onChange={(e) => setMapReportingEnabled(e.target.checked)}
+                style={{ marginTop: '0.2rem', flexShrink: 0 }}
+              />
+              <div style={{ flex: 1 }}>
+                <div>{t('mqtt_config.map_reporting')}</div>
+                <span className="setting-description">{t('mqtt_config.map_reporting_description')}</span>
+              </div>
+            </label>
+          </div>
+          {mapReportingEnabled && (
+            <div style={{
+              marginLeft: '1rem',
+              paddingLeft: '1rem',
+              borderLeft: '2px solid var(--ctp-surface2)',
+              marginTop: '0.5rem',
+              marginBottom: '1rem'
+            }}>
+              <div className="setting-item">
+                <label htmlFor="mapPublishIntervalSecs">
+                  {t('mqtt_config.map_publish_interval')}
+                  <span className="setting-description">{t('mqtt_config.map_publish_interval_description')}</span>
+                </label>
+                <input
+                  id="mapPublishIntervalSecs"
+                  type="number"
+                  min="0"
+                  max="4294967295"
+                  value={mapPublishIntervalSecs}
+                  onChange={(e) => setMapPublishIntervalSecs(parseInt(e.target.value) || 0)}
+                  className="setting-input"
+                  style={{ width: '150px' }}
+                />
+              </div>
+              <div className="setting-item">
+                <label htmlFor="mapPositionPrecision">
+                  {t('mqtt_config.map_position_precision')}
+                  <span className="setting-description">{t('mqtt_config.map_position_precision_description')}</span>
+                </label>
+                <input
+                  id="mapPositionPrecision"
+                  type="number"
+                  min="10"
+                  max="19"
+                  value={mapPositionPrecision}
+                  onChange={(e) => setMapPositionPrecision(parseInt(e.target.value) || 0)}
+                  className="setting-input"
+                  style={{ width: '100px' }}
+                />
+              </div>
+            </div>
+          )}
         </>
       )}
       <button
