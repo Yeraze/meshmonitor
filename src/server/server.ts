@@ -4963,6 +4963,29 @@ apiRouter.post('/config/module/telemetry', requirePermission('configuration', 'w
   }
 });
 
+// Generic module config endpoint - handles extnotif, storeforward, rangetest, cannedmsg, audio,
+// remotehardware, detectionsensor, paxcounter, serial, ambientlighting
+apiRouter.post('/config/module/:moduleType', requirePermission('configuration', 'write'), async (req, res) => {
+  try {
+    const { moduleType } = req.params;
+    const config = req.body;
+
+    // Validate moduleType
+    const validModuleTypes = ['extnotif', 'storeforward', 'rangetest', 'cannedmsg', 'audio',
+      'remotehardware', 'detectionsensor', 'paxcounter', 'serial', 'ambientlighting'];
+    if (!validModuleTypes.includes(moduleType)) {
+      res.status(400).json({ error: `Invalid module type: ${moduleType}` });
+      return;
+    }
+
+    await meshtasticManager.setGenericModuleConfig(moduleType, config);
+    res.json({ success: true, message: `${moduleType} configuration sent` });
+  } catch (error) {
+    logger.error(`Error setting ${req.params.moduleType} config:`, error);
+    res.status(500).json({ error: `Failed to set ${req.params.moduleType} configuration` });
+  }
+});
+
 apiRouter.post('/config/owner', requirePermission('configuration', 'write'), async (req, res) => {
   try {
     const { longName, shortName, isUnmessagable } = req.body;

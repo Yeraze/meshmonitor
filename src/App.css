@@ -5900,3 +5900,10 @@ body {
   background: var(--ctp-surface1);
   margin: 0.5rem 0;
 }
+
+/* GPIO Pin Summary sidebar - only show on larger screens */
+@media (min-width: 1200px) {
+  .gpio-summary-sidebar {
+    display: block !important;
+  }
+}

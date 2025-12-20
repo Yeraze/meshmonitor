@@ -14,7 +14,18 @@ import NetworkConfigSection from './configuration/NetworkConfigSection';
 import PowerConfigSection from './configuration/PowerConfigSection';
 import DisplayConfigSection from './configuration/DisplayConfigSection';
 import TelemetryConfigSection from './configuration/TelemetryConfigSection';
+import ExternalNotificationConfigSection from './configuration/ExternalNotificationConfigSection';
+import StoreForwardConfigSection from './configuration/StoreForwardConfigSection';
+import RangeTestConfigSection from './configuration/RangeTestConfigSection';
+import CannedMessageConfigSection from './configuration/CannedMessageConfigSection';
+import AudioConfigSection from './configuration/AudioConfigSection';
+import RemoteHardwareConfigSection from './configuration/RemoteHardwareConfigSection';
+import DetectionSensorConfigSection from './configuration/DetectionSensorConfigSection';
+import PaxcounterConfigSection from './configuration/PaxcounterConfigSection';
+import SerialConfigSection from './configuration/SerialConfigSection';
+import AmbientLightingConfigSection from './configuration/AmbientLightingConfigSection';
 import ChannelsConfigSection from './configuration/ChannelsConfigSection';
+import GpioPinSummary from './configuration/GpioPinSummary';
 import BackupManagementSection from './configuration/BackupManagementSection';
 import { ImportConfigModal } from './configuration/ImportConfigModal';
 import { ExportConfigModal } from './configuration/ExportConfigModal';
@@ -148,6 +159,95 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   const [powerMeasurementEnabled, setPowerMeasurementEnabled] = useState(false);
   const [powerUpdateInterval, setPowerUpdateInterval] = useState(900);
   const [powerScreenEnabled, setPowerScreenEnabled] = useState(false);
+
+  // External Notification Config State
+  const [extNotifEnabled, setExtNotifEnabled] = useState(false);
+  const [extNotifOutputMs, setExtNotifOutputMs] = useState(1000);
+  const [extNotifOutput, setExtNotifOutput] = useState(0);
+  const [extNotifActive, setExtNotifActive] = useState(false);
+  const [extNotifAlertMessage, setExtNotifAlertMessage] = useState(false);
+  const [extNotifAlertMessageVibra, setExtNotifAlertMessageVibra] = useState(false);
+  const [extNotifAlertMessageBuzzer, setExtNotifAlertMessageBuzzer] = useState(false);
+  const [extNotifAlertBell, setExtNotifAlertBell] = useState(false);
+  const [extNotifAlertBellVibra, setExtNotifAlertBellVibra] = useState(false);
+  const [extNotifAlertBellBuzzer, setExtNotifAlertBellBuzzer] = useState(false);
+  const [extNotifUsePwm, setExtNotifUsePwm] = useState(false);
+  const [extNotifNagTimeout, setExtNotifNagTimeout] = useState(0);
+  const [extNotifUseI2sAsBuzzer, setExtNotifUseI2sAsBuzzer] = useState(false);
+  const [extNotifOutputVibra, setExtNotifOutputVibra] = useState(0);
+  const [extNotifOutputBuzzer, setExtNotifOutputBuzzer] = useState(0);
+
+  // Store & Forward Config State
+  const [storeForwardEnabled, setStoreForwardEnabled] = useState(false);
+  const [storeForwardHeartbeat, setStoreForwardHeartbeat] = useState(false);
+  const [storeForwardRecords, setStoreForwardRecords] = useState(0);
+  const [storeForwardHistoryReturnMax, setStoreForwardHistoryReturnMax] = useState(0);
+  const [storeForwardHistoryReturnWindow, setStoreForwardHistoryReturnWindow] = useState(0);
+  const [storeForwardIsServer, setStoreForwardIsServer] = useState(false);
+
+  // Range Test Config State
+  const [rangeTestEnabled, setRangeTestEnabled] = useState(false);
+  const [rangeTestSender, setRangeTestSender] = useState(0);
+  const [rangeTestSave, setRangeTestSave] = useState(false);
+
+  // Canned Message Config State
+  const [cannedMsgEnabled, setCannedMsgEnabled] = useState(false);
+  const [cannedMsgRotary1Enabled, setCannedMsgRotary1Enabled] = useState(false);
+  const [cannedMsgInputbrokerPinA, setCannedMsgInputbrokerPinA] = useState(0);
+  const [cannedMsgInputbrokerPinB, setCannedMsgInputbrokerPinB] = useState(0);
+  const [cannedMsgInputbrokerPinPress, setCannedMsgInputbrokerPinPress] = useState(0);
+  const [cannedMsgInputbrokerEventCw, setCannedMsgInputbrokerEventCw] = useState(0);
+  const [cannedMsgInputbrokerEventCcw, setCannedMsgInputbrokerEventCcw] = useState(0);
+  const [cannedMsgInputbrokerEventPress, setCannedMsgInputbrokerEventPress] = useState(0);
+  const [cannedMsgUpdown1Enabled, setCannedMsgUpdown1Enabled] = useState(false);
+  const [cannedMsgSendBell, setCannedMsgSendBell] = useState(false);
+  const [cannedMsgAllowInputSource, setCannedMsgAllowInputSource] = useState(0);
+
+  // Audio Config State
+  const [audioCodec2Enabled, setAudioCodec2Enabled] = useState(false);
+  const [audioPttPin, setAudioPttPin] = useState(0);
+  const [audioBitrate, setAudioBitrate] = useState(0);
+  const [audioI2sWs, setAudioI2sWs] = useState(0);
+  const [audioI2sSd, setAudioI2sSd] = useState(0);
+  const [audioI2sDin, setAudioI2sDin] = useState(0);
+  const [audioI2sSck, setAudioI2sSck] = useState(0);
+
+  // Remote Hardware Config State
+  const [remoteHardwareEnabled, setRemoteHardwareEnabled] = useState(false);
+  const [remoteHardwareAllowUndefinedPinAccess, setRemoteHardwareAllowUndefinedPinAccess] = useState(false);
+
+  // Detection Sensor Config State
+  const [detectionSensorEnabled, setDetectionSensorEnabled] = useState(false);
+  const [detectionSensorMinimumBroadcastSecs, setDetectionSensorMinimumBroadcastSecs] = useState(0);
+  const [detectionSensorStateBroadcastSecs, setDetectionSensorStateBroadcastSecs] = useState(0);
+  const [detectionSensorSendBell, setDetectionSensorSendBell] = useState(false);
+  const [detectionSensorName, setDetectionSensorName] = useState('');
+  const [detectionSensorMonitorPin, setDetectionSensorMonitorPin] = useState(0);
+  const [detectionSensorDetectionTriggerType, setDetectionSensorDetectionTriggerType] = useState(0);
+  const [detectionSensorUsePullup, setDetectionSensorUsePullup] = useState(false);
+
+  // Paxcounter Config State
+  const [paxcounterEnabled, setPaxcounterEnabled] = useState(false);
+  const [paxcounterUpdateInterval, setPaxcounterUpdateInterval] = useState(0);
+  const [paxcounterWifiThreshold, setPaxcounterWifiThreshold] = useState(-80);
+  const [paxcounterBleThreshold, setPaxcounterBleThreshold] = useState(-80);
+
+  // Serial Config State
+  const [serialEnabled, setSerialEnabled] = useState(false);
+  const [serialEcho, setSerialEcho] = useState(false);
+  const [serialRxd, setSerialRxd] = useState(0);
+  const [serialTxd, setSerialTxd] = useState(0);
+  const [serialBaud, setSerialBaud] = useState(0);
+  const [serialTimeout, setSerialTimeout] = useState(0);
+  const [serialMode, setSerialMode] = useState(0);
+  const [serialOverrideConsoleSerialPort, setSerialOverrideConsoleSerialPort] = useState(false);
+
+  // Ambient Lighting Config State
+  const [ambientLedState, setAmbientLedState] = useState(false);
+  const [ambientCurrent, setAmbientCurrent] = useState(10);
+  const [ambientRed, setAmbientRed] = useState(0);
+  const [ambientGreen, setAmbientGreen] = useState(0);
+  const [ambientBlue, setAmbientBlue] = useState(0);
 
   // UI State
   const [isSaving, setIsSaving] = useState(false);
@@ -391,6 +491,125 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           setPowerMeasurementEnabled(config.moduleConfig.telemetry.powerMeasurementEnabled || false);
           setPowerUpdateInterval(config.moduleConfig.telemetry.powerUpdateInterval ?? 900);
           setPowerScreenEnabled(config.moduleConfig.telemetry.powerScreenEnabled || false);
+        }
+
+        // Populate External Notification config
+        if (config.moduleConfig?.externalNotification) {
+          const extNotif = config.moduleConfig.externalNotification;
+          setExtNotifEnabled(extNotif.enabled || false);
+          setExtNotifOutputMs(extNotif.outputMs ?? 1000);
+          setExtNotifOutput(extNotif.output ?? 0);
+          setExtNotifActive(extNotif.active || false);
+          setExtNotifAlertMessage(extNotif.alertMessage || false);
+          setExtNotifAlertMessageVibra(extNotif.alertMessageVibra || false);
+          setExtNotifAlertMessageBuzzer(extNotif.alertMessageBuzzer || false);
+          setExtNotifAlertBell(extNotif.alertBell || false);
+          setExtNotifAlertBellVibra(extNotif.alertBellVibra || false);
+          setExtNotifAlertBellBuzzer(extNotif.alertBellBuzzer || false);
+          setExtNotifUsePwm(extNotif.usePwm || false);
+          setExtNotifNagTimeout(extNotif.nagTimeout ?? 0);
+          setExtNotifUseI2sAsBuzzer(extNotif.useI2sAsBuzzer || false);
+          setExtNotifOutputVibra(extNotif.outputVibra ?? 0);
+          setExtNotifOutputBuzzer(extNotif.outputBuzzer ?? 0);
+        }
+
+        // Populate Store & Forward config
+        if (config.moduleConfig?.storeForward) {
+          const sf = config.moduleConfig.storeForward;
+          setStoreForwardEnabled(sf.enabled || false);
+          setStoreForwardHeartbeat(sf.heartbeat || false);
+          setStoreForwardRecords(sf.records ?? 0);
+          setStoreForwardHistoryReturnMax(sf.historyReturnMax ?? 0);
+          setStoreForwardHistoryReturnWindow(sf.historyReturnWindow ?? 0);
+          setStoreForwardIsServer(sf.isServer || false);
+        }
+
+        // Populate Range Test config
+        if (config.moduleConfig?.rangeTest) {
+          const rt = config.moduleConfig.rangeTest;
+          setRangeTestEnabled(rt.enabled || false);
+          setRangeTestSender(rt.sender ?? 0);
+          setRangeTestSave(rt.save || false);
+        }
+
+        // Populate Canned Message config
+        if (config.moduleConfig?.cannedMessage) {
+          const cm = config.moduleConfig.cannedMessage;
+          setCannedMsgEnabled(cm.enabled || false);
+          setCannedMsgRotary1Enabled(cm.rotary1Enabled || false);
+          setCannedMsgInputbrokerPinA(cm.inputbrokerPinA ?? 0);
+          setCannedMsgInputbrokerPinB(cm.inputbrokerPinB ?? 0);
+          setCannedMsgInputbrokerPinPress(cm.inputbrokerPinPress ?? 0);
+          setCannedMsgInputbrokerEventCw(cm.inputbrokerEventCw ?? 0);
+          setCannedMsgInputbrokerEventCcw(cm.inputbrokerEventCcw ?? 0);
+          setCannedMsgInputbrokerEventPress(cm.inputbrokerEventPress ?? 0);
+          setCannedMsgUpdown1Enabled(cm.updown1Enabled || false);
+          setCannedMsgSendBell(cm.sendBell || false);
+          setCannedMsgAllowInputSource(cm.allowInputSource ?? 0);
+        }
+
+        // Populate Audio config
+        if (config.moduleConfig?.audio) {
+          const audio = config.moduleConfig.audio;
+          setAudioCodec2Enabled(audio.codec2Enabled || false);
+          setAudioPttPin(audio.pttPin ?? 0);
+          setAudioBitrate(audio.bitrate ?? 0);
+          setAudioI2sWs(audio.i2sWs ?? 0);
+          setAudioI2sSd(audio.i2sSd ?? 0);
+          setAudioI2sDin(audio.i2sDin ?? 0);
+          setAudioI2sSck(audio.i2sSck ?? 0);
+        }
+
+        // Populate Remote Hardware config
+        if (config.moduleConfig?.remoteHardware) {
+          const rh = config.moduleConfig.remoteHardware;
+          setRemoteHardwareEnabled(rh.enabled || false);
+          setRemoteHardwareAllowUndefinedPinAccess(rh.allowUndefinedPinAccess || false);
+        }
+
+        // Populate Detection Sensor config
+        if (config.moduleConfig?.detectionSensor) {
+          const ds = config.moduleConfig.detectionSensor;
+          setDetectionSensorEnabled(ds.enabled || false);
+          setDetectionSensorMinimumBroadcastSecs(ds.minimumBroadcastSecs ?? 0);
+          setDetectionSensorStateBroadcastSecs(ds.stateBroadcastSecs ?? 0);
+          setDetectionSensorSendBell(ds.sendBell || false);
+          setDetectionSensorName(ds.name || '');
+          setDetectionSensorMonitorPin(ds.monitorPin ?? 0);
+          setDetectionSensorDetectionTriggerType(ds.detectionTriggerType ?? 0);
+          setDetectionSensorUsePullup(ds.usePullup || false);
+        }
+
+        // Populate Paxcounter config
+        if (config.moduleConfig?.paxcounter) {
+          const pax = config.moduleConfig.paxcounter;
+          setPaxcounterEnabled(pax.enabled || false);
+          setPaxcounterUpdateInterval(pax.paxcounterUpdateInterval ?? 0);
+          setPaxcounterWifiThreshold(pax.wifiThreshold ?? -80);
+          setPaxcounterBleThreshold(pax.bleThreshold ?? -80);
+        }
+
+        // Populate Serial config
+        if (config.moduleConfig?.serial) {
+          const serial = config.moduleConfig.serial;
+          setSerialEnabled(serial.enabled || false);
+          setSerialEcho(serial.echo || false);
+          setSerialRxd(serial.rxd ?? 0);
+          setSerialTxd(serial.txd ?? 0);
+          setSerialBaud(serial.baud ?? 0);
+          setSerialTimeout(serial.timeout ?? 0);
+          setSerialMode(serial.mode ?? 0);
+          setSerialOverrideConsoleSerialPort(serial.overrideConsoleSerialPort || false);
+        }
+
+        // Populate Ambient Lighting config
+        if (config.moduleConfig?.ambientLighting) {
+          const al = config.moduleConfig.ambientLighting;
+          setAmbientLedState(al.ledState || false);
+          setAmbientCurrent(al.current ?? 10);
+          setAmbientRed(al.red ?? 0);
+          setAmbientGreen(al.green ?? 0);
+          setAmbientBlue(al.blue ?? 0);
         }
       } catch (error) {
         logger.error('Error fetching configuration:', error);
@@ -776,6 +995,255 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
     }
   };
 
+  const handleSaveExternalNotificationConfig = async () => {
+    setIsSaving(true);
+    setStatusMessage('');
+    try {
+      await apiService.setModuleConfig('extnotif', {
+        enabled: extNotifEnabled,
+        outputMs: extNotifOutputMs,
+        output: extNotifOutput,
+        active: extNotifActive,
+        alertMessage: extNotifAlertMessage,
+        alertMessageVibra: extNotifAlertMessageVibra,
+        alertMessageBuzzer: extNotifAlertMessageBuzzer,
+        alertBell: extNotifAlertBell,
+        alertBellVibra: extNotifAlertBellVibra,
+        alertBellBuzzer: extNotifAlertBellBuzzer,
+        usePwm: extNotifUsePwm,
+        nagTimeout: extNotifNagTimeout,
+        useI2sAsBuzzer: extNotifUseI2sAsBuzzer,
+        outputVibra: extNotifOutputVibra,
+        outputBuzzer: extNotifOutputBuzzer
+      });
+      setStatusMessage(t('config.extnotif_saved'));
+      showToast(t('config.extnotif_saved_toast'), 'success');
+    } catch (error) {
+      logger.error('Error saving External Notification config:', error);
+      const errorMsg = error instanceof Error ? error.message : t('config.extnotif_failed');
+      setStatusMessage(`Error: ${errorMsg}`);
+      showToast(`${t('config.extnotif_failed')}: ${errorMsg}`, 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveStoreForwardConfig = async () => {
+    setIsSaving(true);
+    setStatusMessage('');
+    try {
+      await apiService.setModuleConfig('storeforward', {
+        enabled: storeForwardEnabled,
+        heartbeat: storeForwardHeartbeat,
+        records: storeForwardRecords,
+        historyReturnMax: storeForwardHistoryReturnMax,
+        historyReturnWindow: storeForwardHistoryReturnWindow,
+        isServer: storeForwardIsServer
+      });
+      setStatusMessage(t('config.storeforward_saved'));
+      showToast(t('config.storeforward_saved_toast'), 'success');
+    } catch (error) {
+      logger.error('Error saving Store & Forward config:', error);
+      const errorMsg = error instanceof Error ? error.message : t('config.storeforward_failed');
+      setStatusMessage(`Error: ${errorMsg}`);
+      showToast(`${t('config.storeforward_failed')}: ${errorMsg}`, 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveRangeTestConfig = async () => {
+    setIsSaving(true);
+    setStatusMessage('');
+    try {
+      await apiService.setModuleConfig('rangetest', {
+        enabled: rangeTestEnabled,
+        sender: rangeTestSender,
+        save: rangeTestSave
+      });
+      setStatusMessage(t('config.rangetest_saved'));
+      showToast(t('config.rangetest_saved_toast'), 'success');
+    } catch (error) {
+      logger.error('Error saving Range Test config:', error);
+      const errorMsg = error instanceof Error ? error.message : t('config.rangetest_failed');
+      setStatusMessage(`Error: ${errorMsg}`);
+      showToast(`${t('config.rangetest_failed')}: ${errorMsg}`, 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveCannedMessageConfig = async () => {
+    setIsSaving(true);
+    setStatusMessage('');
+    try {
+      await apiService.setModuleConfig('cannedmsg', {
+        enabled: cannedMsgEnabled,
+        rotary1Enabled: cannedMsgRotary1Enabled,
+        inputbrokerPinA: cannedMsgInputbrokerPinA,
+        inputbrokerPinB: cannedMsgInputbrokerPinB,
+        inputbrokerPinPress: cannedMsgInputbrokerPinPress,
+        inputbrokerEventCw: cannedMsgInputbrokerEventCw,
+        inputbrokerEventCcw: cannedMsgInputbrokerEventCcw,
+        inputbrokerEventPress: cannedMsgInputbrokerEventPress,
+        updown1Enabled: cannedMsgUpdown1Enabled,
+        sendBell: cannedMsgSendBell,
+        allowInputSource: cannedMsgAllowInputSource
+      });
+      setStatusMessage(t('config.cannedmsg_saved'));
+      showToast(t('config.cannedmsg_saved_toast'), 'success');
+    } catch (error) {
+      logger.error('Error saving Canned Message config:', error);
+      const errorMsg = error instanceof Error ? error.message : t('config.cannedmsg_failed');
+      setStatusMessage(`Error: ${errorMsg}`);
+      showToast(`${t('config.cannedmsg_failed')}: ${errorMsg}`, 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveAudioConfig = async () => {
+    setIsSaving(true);
+    setStatusMessage('');
+    try {
+      await apiService.setModuleConfig('audio', {
+        codec2Enabled: audioCodec2Enabled,
+        pttPin: audioPttPin,
+        bitrate: audioBitrate,
+        i2sWs: audioI2sWs,
+        i2sSd: audioI2sSd,
+        i2sDin: audioI2sDin,
+        i2sSck: audioI2sSck
+      });
+      setStatusMessage(t('config.audio_saved'));
+      showToast(t('config.audio_saved_toast'), 'success');
+    } catch (error) {
+      logger.error('Error saving Audio config:', error);
+      const errorMsg = error instanceof Error ? error.message : t('config.audio_failed');
+      setStatusMessage(`Error: ${errorMsg}`);
+      showToast(`${t('config.audio_failed')}: ${errorMsg}`, 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveRemoteHardwareConfig = async () => {
+    setIsSaving(true);
+    setStatusMessage('');
+    try {
+      await apiService.setModuleConfig('remotehardware', {
+        enabled: remoteHardwareEnabled,
+        allowUndefinedPinAccess: remoteHardwareAllowUndefinedPinAccess
+      });
+      setStatusMessage(t('config.remotehardware_saved'));
+      showToast(t('config.remotehardware_saved_toast'), 'success');
+    } catch (error) {
+      logger.error('Error saving Remote Hardware config:', error);
+      const errorMsg = error instanceof Error ? error.message : t('config.remotehardware_failed');
+      setStatusMessage(`Error: ${errorMsg}`);
+      showToast(`${t('config.remotehardware_failed')}: ${errorMsg}`, 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveDetectionSensorConfig = async () => {
+    setIsSaving(true);
+    setStatusMessage('');
+    try {
+      await apiService.setModuleConfig('detectionsensor', {
+        enabled: detectionSensorEnabled,
+        minimumBroadcastSecs: detectionSensorMinimumBroadcastSecs,
+        stateBroadcastSecs: detectionSensorStateBroadcastSecs,
+        sendBell: detectionSensorSendBell,
+        name: detectionSensorName,
+        monitorPin: detectionSensorMonitorPin,
+        detectionTriggerType: detectionSensorDetectionTriggerType,
+        usePullup: detectionSensorUsePullup
+      });
+      setStatusMessage(t('config.detectionsensor_saved'));
+      showToast(t('config.detectionsensor_saved_toast'), 'success');
+    } catch (error) {
+      logger.error('Error saving Detection Sensor config:', error);
+      const errorMsg = error instanceof Error ? error.message : t('config.detectionsensor_failed');
+      setStatusMessage(`Error: ${errorMsg}`);
+      showToast(`${t('config.detectionsensor_failed')}: ${errorMsg}`, 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSavePaxcounterConfig = async () => {
+    setIsSaving(true);
+    setStatusMessage('');
+    try {
+      await apiService.setModuleConfig('paxcounter', {
+        enabled: paxcounterEnabled,
+        paxcounterUpdateInterval: paxcounterUpdateInterval,
+        wifiThreshold: paxcounterWifiThreshold,
+        bleThreshold: paxcounterBleThreshold
+      });
+      setStatusMessage(t('config.paxcounter_saved'));
+      showToast(t('config.paxcounter_saved_toast'), 'success');
+    } catch (error) {
+      logger.error('Error saving Paxcounter config:', error);
+      const errorMsg = error instanceof Error ? error.message : t('config.paxcounter_failed');
+      setStatusMessage(`Error: ${errorMsg}`);
+      showToast(`${t('config.paxcounter_failed')}: ${errorMsg}`, 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveSerialConfig = async () => {
+    setIsSaving(true);
+    setStatusMessage('');
+    try {
+      await apiService.setModuleConfig('serial', {
+        enabled: serialEnabled,
+        echo: serialEcho,
+        rxd: serialRxd,
+        txd: serialTxd,
+        baud: serialBaud,
+        timeout: serialTimeout,
+        mode: serialMode,
+        overrideConsoleSerialPort: serialOverrideConsoleSerialPort
+      });
+      setStatusMessage(t('config.serial_saved'));
+      showToast(t('config.serial_saved_toast'), 'success');
+    } catch (error) {
+      logger.error('Error saving Serial config:', error);
+      const errorMsg = error instanceof Error ? error.message : t('config.serial_failed');
+      setStatusMessage(`Error: ${errorMsg}`);
+      showToast(`${t('config.serial_failed')}: ${errorMsg}`, 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveAmbientLightingConfig = async () => {
+    setIsSaving(true);
+    setStatusMessage('');
+    try {
+      await apiService.setModuleConfig('ambientlighting', {
+        ledState: ambientLedState,
+        current: ambientCurrent,
+        red: ambientRed,
+        green: ambientGreen,
+        blue: ambientBlue
+      });
+      setStatusMessage(t('config.ambientlighting_saved'));
+      showToast(t('config.ambientlighting_saved_toast'), 'success');
+    } catch (error) {
+      logger.error('Error saving Ambient Lighting config:', error);
+      const errorMsg = error instanceof Error ? error.message : t('config.ambientlighting_failed');
+      setStatusMessage(`Error: ${errorMsg}`);
+      showToast(`${t('config.ambientlighting_failed')}: ${errorMsg}`, 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleRebootDevice = async () => {
     const confirmed = window.confirm(t('config.reboot_confirm'));
 
@@ -1152,9 +1620,24 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         { id: 'config-mqtt', label: t('config.mqtt_config', 'MQTT') },
         { id: 'config-neighbor', label: t('config.neighbor_info', 'Neighbor Info') },
         { id: 'config-network', label: t('config.network_config', 'Network') },
+        { id: 'config-extnotif', label: t('extnotif_config.title', 'External Notification') },
+        { id: 'config-storeforward', label: t('storeforward_config.title', 'Store & Forward') },
+        { id: 'config-rangetest', label: t('rangetest_config.title', 'Range Test') },
+        { id: 'config-cannedmsg', label: t('cannedmsg_config.title', 'Canned Messages') },
+        { id: 'config-audio', label: t('audio_config.title', 'Audio') },
+        { id: 'config-remotehardware', label: t('remotehardware_config.title', 'Remote Hardware') },
+        { id: 'config-detectionsensor', label: t('detectionsensor_config.title', 'Detection Sensor') },
+        { id: 'config-paxcounter', label: t('paxcounter_config.title', 'Paxcounter') },
+        { id: 'config-serial', label: t('serial_config.title', 'Serial') },
+        { id: 'config-ambientlighting', label: t('ambientlighting_config.title', 'Ambient Lighting') },
         { id: 'config-channels', label: t('config.channels', 'Channels') },
         { id: 'config-backup', label: t('config.backup_management', 'Backup') },
       ]} />
+
+      {/* Two-column layout: main content on left, GPIO summary on right */}
+      <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
+        {/* Main content column */}
+        <div style={{ flex: 1, minWidth: 0 }}>
 
       <div id="config-danger" className="settings-section danger-zone" style={{ marginBottom: '2rem' }}>
         <h2 style={{ color: '#ff4444', marginTop: 0 }}>⚠️ {t('config.warning_title')}</h2>
@@ -1594,6 +2077,214 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           />
         </div>
 
+        <div id="config-extnotif">
+          <ExternalNotificationConfigSection
+            enabled={extNotifEnabled}
+            setEnabled={setExtNotifEnabled}
+            outputMs={extNotifOutputMs}
+            setOutputMs={setExtNotifOutputMs}
+            output={extNotifOutput}
+            setOutput={setExtNotifOutput}
+            active={extNotifActive}
+            setActive={setExtNotifActive}
+            alertMessage={extNotifAlertMessage}
+            setAlertMessage={setExtNotifAlertMessage}
+            alertMessageVibra={extNotifAlertMessageVibra}
+            setAlertMessageVibra={setExtNotifAlertMessageVibra}
+            alertMessageBuzzer={extNotifAlertMessageBuzzer}
+            setAlertMessageBuzzer={setExtNotifAlertMessageBuzzer}
+            alertBell={extNotifAlertBell}
+            setAlertBell={setExtNotifAlertBell}
+            alertBellVibra={extNotifAlertBellVibra}
+            setAlertBellVibra={setExtNotifAlertBellVibra}
+            alertBellBuzzer={extNotifAlertBellBuzzer}
+            setAlertBellBuzzer={setExtNotifAlertBellBuzzer}
+            usePwm={extNotifUsePwm}
+            setUsePwm={setExtNotifUsePwm}
+            nagTimeout={extNotifNagTimeout}
+            setNagTimeout={setExtNotifNagTimeout}
+            useI2sAsBuzzer={extNotifUseI2sAsBuzzer}
+            setUseI2sAsBuzzer={setExtNotifUseI2sAsBuzzer}
+            outputVibra={extNotifOutputVibra}
+            setOutputVibra={setExtNotifOutputVibra}
+            outputBuzzer={extNotifOutputBuzzer}
+            setOutputBuzzer={setExtNotifOutputBuzzer}
+            isSaving={isSaving}
+            onSave={handleSaveExternalNotificationConfig}
+          />
+        </div>
+
+        <div id="config-storeforward">
+          <StoreForwardConfigSection
+            enabled={storeForwardEnabled}
+            setEnabled={setStoreForwardEnabled}
+            heartbeat={storeForwardHeartbeat}
+            setHeartbeat={setStoreForwardHeartbeat}
+            records={storeForwardRecords}
+            setRecords={setStoreForwardRecords}
+            historyReturnMax={storeForwardHistoryReturnMax}
+            setHistoryReturnMax={setStoreForwardHistoryReturnMax}
+            historyReturnWindow={storeForwardHistoryReturnWindow}
+            setHistoryReturnWindow={setStoreForwardHistoryReturnWindow}
+            isServer={storeForwardIsServer}
+            setIsServer={setStoreForwardIsServer}
+            isSaving={isSaving}
+            onSave={handleSaveStoreForwardConfig}
+          />
+        </div>
+
+        <div id="config-rangetest">
+          <RangeTestConfigSection
+            enabled={rangeTestEnabled}
+            setEnabled={setRangeTestEnabled}
+            sender={rangeTestSender}
+            setSender={setRangeTestSender}
+            save={rangeTestSave}
+            setSave={setRangeTestSave}
+            isSaving={isSaving}
+            onSave={handleSaveRangeTestConfig}
+          />
+        </div>
+
+        <div id="config-cannedmsg">
+          <CannedMessageConfigSection
+            enabled={cannedMsgEnabled}
+            setEnabled={setCannedMsgEnabled}
+            rotary1Enabled={cannedMsgRotary1Enabled}
+            setRotary1Enabled={setCannedMsgRotary1Enabled}
+            inputbrokerPinA={cannedMsgInputbrokerPinA}
+            setInputbrokerPinA={setCannedMsgInputbrokerPinA}
+            inputbrokerPinB={cannedMsgInputbrokerPinB}
+            setInputbrokerPinB={setCannedMsgInputbrokerPinB}
+            inputbrokerPinPress={cannedMsgInputbrokerPinPress}
+            setInputbrokerPinPress={setCannedMsgInputbrokerPinPress}
+            inputbrokerEventCw={cannedMsgInputbrokerEventCw}
+            setInputbrokerEventCw={setCannedMsgInputbrokerEventCw}
+            inputbrokerEventCcw={cannedMsgInputbrokerEventCcw}
+            setInputbrokerEventCcw={setCannedMsgInputbrokerEventCcw}
+            inputbrokerEventPress={cannedMsgInputbrokerEventPress}
+            setInputbrokerEventPress={setCannedMsgInputbrokerEventPress}
+            updown1Enabled={cannedMsgUpdown1Enabled}
+            setUpdown1Enabled={setCannedMsgUpdown1Enabled}
+            sendBell={cannedMsgSendBell}
+            setSendBell={setCannedMsgSendBell}
+            allowInputSource={cannedMsgAllowInputSource}
+            setAllowInputSource={setCannedMsgAllowInputSource}
+            isSaving={isSaving}
+            onSave={handleSaveCannedMessageConfig}
+          />
+        </div>
+
+        <div id="config-audio">
+          <AudioConfigSection
+            codec2Enabled={audioCodec2Enabled}
+            setCodec2Enabled={setAudioCodec2Enabled}
+            pttPin={audioPttPin}
+            setPttPin={setAudioPttPin}
+            bitrate={audioBitrate}
+            setBitrate={setAudioBitrate}
+            i2sWs={audioI2sWs}
+            setI2sWs={setAudioI2sWs}
+            i2sSd={audioI2sSd}
+            setI2sSd={setAudioI2sSd}
+            i2sDin={audioI2sDin}
+            setI2sDin={setAudioI2sDin}
+            i2sSck={audioI2sSck}
+            setI2sSck={setAudioI2sSck}
+            isSaving={isSaving}
+            onSave={handleSaveAudioConfig}
+          />
+        </div>
+
+        <div id="config-remotehardware">
+          <RemoteHardwareConfigSection
+            enabled={remoteHardwareEnabled}
+            setEnabled={setRemoteHardwareEnabled}
+            allowUndefinedPinAccess={remoteHardwareAllowUndefinedPinAccess}
+            setAllowUndefinedPinAccess={setRemoteHardwareAllowUndefinedPinAccess}
+            isSaving={isSaving}
+            onSave={handleSaveRemoteHardwareConfig}
+          />
+        </div>
+
+        <div id="config-detectionsensor">
+          <DetectionSensorConfigSection
+            enabled={detectionSensorEnabled}
+            setEnabled={setDetectionSensorEnabled}
+            minimumBroadcastSecs={detectionSensorMinimumBroadcastSecs}
+            setMinimumBroadcastSecs={setDetectionSensorMinimumBroadcastSecs}
+            stateBroadcastSecs={detectionSensorStateBroadcastSecs}
+            setStateBroadcastSecs={setDetectionSensorStateBroadcastSecs}
+            sendBell={detectionSensorSendBell}
+            setSendBell={setDetectionSensorSendBell}
+            name={detectionSensorName}
+            setName={setDetectionSensorName}
+            monitorPin={detectionSensorMonitorPin}
+            setMonitorPin={setDetectionSensorMonitorPin}
+            detectionTriggerType={detectionSensorDetectionTriggerType}
+            setDetectionTriggerType={setDetectionSensorDetectionTriggerType}
+            usePullup={detectionSensorUsePullup}
+            setUsePullup={setDetectionSensorUsePullup}
+            isSaving={isSaving}
+            onSave={handleSaveDetectionSensorConfig}
+          />
+        </div>
+
+        <div id="config-paxcounter">
+          <PaxcounterConfigSection
+            enabled={paxcounterEnabled}
+            setEnabled={setPaxcounterEnabled}
+            paxcounterUpdateInterval={paxcounterUpdateInterval}
+            setPaxcounterUpdateInterval={setPaxcounterUpdateInterval}
+            wifiThreshold={paxcounterWifiThreshold}
+            setWifiThreshold={setPaxcounterWifiThreshold}
+            bleThreshold={paxcounterBleThreshold}
+            setBleThreshold={setPaxcounterBleThreshold}
+            isSaving={isSaving}
+            onSave={handleSavePaxcounterConfig}
+          />
+        </div>
+
+        <div id="config-serial">
+          <SerialConfigSection
+            enabled={serialEnabled}
+            setEnabled={setSerialEnabled}
+            echo={serialEcho}
+            setEcho={setSerialEcho}
+            rxd={serialRxd}
+            setRxd={setSerialRxd}
+            txd={serialTxd}
+            setTxd={setSerialTxd}
+            baud={serialBaud}
+            setBaud={setSerialBaud}
+            timeout={serialTimeout}
+            setTimeout={setSerialTimeout}
+            mode={serialMode}
+            setMode={setSerialMode}
+            overrideConsoleSerialPort={serialOverrideConsoleSerialPort}
+            setOverrideConsoleSerialPort={setSerialOverrideConsoleSerialPort}
+            isSaving={isSaving}
+            onSave={handleSaveSerialConfig}
+          />
+        </div>
+
+        <div id="config-ambientlighting">
+          <AmbientLightingConfigSection
+            ledState={ambientLedState}
+            setLedState={setAmbientLedState}
+            current={ambientCurrent}
+            setCurrent={setAmbientCurrent}
+            red={ambientRed}
+            setRed={setAmbientRed}
+            green={ambientGreen}
+            setGreen={setAmbientGreen}
+            blue={ambientBlue}
+            setBlue={setAmbientBlue}
+            isSaving={isSaving}
+            onSave={handleSaveAmbientLightingConfig}
+          />
+        </div>
+
         <div id="config-channels">
           <ChannelsConfigSection
             channels={channels}
@@ -1604,7 +2295,42 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         <div id="config-backup">
           <BackupManagementSection />
         </div>
-      </div>
+      </div>{/* End settings-content */}
+
+        </div>{/* End main content column */}
+
+        {/* GPIO Pin Summary sidebar - only show on larger screens */}
+        <div className="gpio-summary-sidebar" style={{
+          width: '280px',
+          flexShrink: 0,
+          alignSelf: 'flex-start',
+          position: 'sticky',
+          top: '1rem',
+          display: 'none' // Hidden by default, shown via media query
+        }}>
+          <GpioPinSummary
+            buttonGpio={buttonGpio}
+            buzzerGpio={buzzerGpio}
+            rxGpio={rxGpio}
+            txGpio={txGpio}
+            gpsEnGpio={gpsEnGpio}
+            extNotifOutput={extNotifOutput}
+            extNotifOutputVibra={extNotifOutputVibra}
+            extNotifOutputBuzzer={extNotifOutputBuzzer}
+            cannedMsgInputbrokerPinA={cannedMsgInputbrokerPinA}
+            cannedMsgInputbrokerPinB={cannedMsgInputbrokerPinB}
+            cannedMsgInputbrokerPinPress={cannedMsgInputbrokerPinPress}
+            audioPttPin={audioPttPin}
+            audioI2sWs={audioI2sWs}
+            audioI2sSd={audioI2sSd}
+            audioI2sDin={audioI2sDin}
+            audioI2sSck={audioI2sSck}
+            detectionSensorMonitorPin={detectionSensorMonitorPin}
+            serialRxd={serialRxd}
+            serialTxd={serialTxd}
+          />
+        </div>
+      </div>{/* End two-column layout */}
 
       {/* Import/Export Modals */}
       <ImportConfigModal

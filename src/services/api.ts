@@ -930,6 +930,26 @@ class ApiService {
     return response.json();
   }
 
+  // Generic method to set any module configuration
+  // moduleType should be one of: extnotif, storeforward, rangetest, cannedmsg, audio,
+  // remotehardware, detectionsensor, paxcounter, serial, ambientlighting
+  async setModuleConfig(moduleType: string, config: any) {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/config/module/${moduleType}`, {
+      method: 'POST',
+      headers: this.getHeadersWithCsrf(),
+      credentials: 'include',
+      body: JSON.stringify(config),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || `Failed to set ${moduleType} configuration`);
+    }
+
+    return response.json();
+  }
+
   async setNodeOwner(longName: string, shortName: string, isUnmessagable?: boolean) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/owner`, {
