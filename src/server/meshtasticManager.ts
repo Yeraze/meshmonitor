@@ -2101,7 +2101,7 @@ class MeshtasticManager {
         await this.checkAutoAcknowledge(message, messageText, channelIndex, isDirectMessage, fromNum, meshPacket.id, meshPacket.rxSnr, meshPacket.rxRssi);
 
         // Auto-respond to matching messages
-        await this.checkAutoResponder(messageText, channelIndex, isDirectMessage, fromNum, meshPacket.id);
+        await this.checkAutoResponder(messageText, channelIndex, isDirectMessage, fromNum, meshPacket.id, message.hopStart, message.hopLimit, meshPacket.rxSnr, meshPacket.rxRssi);
       }
     } catch (error) {
       logger.error('❌ Error processing text message:', error);
@@ -5582,7 +5582,7 @@ class MeshtasticManager {
     return normalizedResolved;
   }
 
-  private async checkAutoResponder(messageText: string, channelIndex: number, isDirectMessage: boolean, fromNum: number, packetId?: number): Promise<void> {
+  private async checkAutoResponder(messageText: string, channelIndex: number, isDirectMessage: boolean, fromNum: number, packetId?: number, hopStart?: number | null, hopLimit?: number | null, rxSnr?: number, rxRssi?: number): Promise<void> {
     try {
       // Get auto-responder settings from database
       const autoResponderEnabled = databaseService.getSetting('autoResponderEnabled');
@@ -5788,6 +5788,22 @@ class MeshtasticManager {
 
           let responseText: string;
 
+          // Calculate values for Auto Acknowledge tokens (Issue #1159)
+          const nodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
+          const hopsTraveled =
+            hopStart !== null &&
+            hopStart !== undefined &&
+            hopLimit !== null &&
+            hopLimit !== undefined &&
+            hopStart >= hopLimit
+              ? hopStart - hopLimit
+              : 0;
+          const timestamp = new Date();
+          const dateFormat = databaseService.getSetting('dateFormat') || 'MM/DD/YYYY';
+          const timeFormat = databaseService.getSetting('timeFormat') || '24';
+          const receivedDate = formatDate(timestamp, dateFormat as 'MM/DD/YYYY' | 'DD/MM/YYYY');
+          const receivedTime = formatTime(timestamp, timeFormat as '12' | '24');
+
           if (trigger.responseType === 'http') {
             // HTTP URL trigger - fetch from URL
             let url = trigger.response;
@@ -5821,6 +5837,9 @@ class MeshtasticManager {
 
               responseText = await response.text();
               logger.debug(`📥 HTTP response received: ${responseText.substring(0, 50)}...`);
+
+              // Replace Auto Acknowledge tokens in HTTP response (Issue #1159)
+              responseText = await this.replaceAcknowledgementTokens(responseText, nodeId, fromNum, hopsTraveled, receivedDate, receivedTime, channelIndex, isDirectMessage, rxSnr, rxRssi);
 
             } catch (error: any) {
               if (error.name === 'AbortError') {
@@ -6014,6 +6033,9 @@ class MeshtasticManager {
             Object.entries(extractedParams).forEach(([key, value]) => {
               responseText = responseText.replace(new RegExp(`\\{${key}\\}`, 'g'), value);
             });
+
+            // Replace Auto Acknowledge tokens in text response (Issue #1159)
+            responseText = await this.replaceAcknowledgementTokens(responseText, nodeId, fromNum, hopsTraveled, receivedDate, receivedTime, channelIndex, isDirectMessage, rxSnr, rxRssi);
           }
 
           // Handle multiline responses or truncate as needed
