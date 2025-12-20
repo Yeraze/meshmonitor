@@ -257,8 +257,12 @@ const createTestDatabase = () => {
     getDirectMessages(nodeId1: string, nodeId2: string, limit: number = 100): DbMessage[] {
       const stmt = this.db.prepare(`
         SELECT * FROM messages
-        WHERE (fromNodeId = ? AND toNodeId = ?)
-           OR (fromNodeId = ? AND toNodeId = ?)
+        WHERE portnum = 1
+          AND channel = -1
+          AND (
+            (fromNodeId = ? AND toNodeId = ?)
+            OR (fromNodeId = ? AND toNodeId = ?)
+          )
         ORDER BY timestamp DESC
         LIMIT ?
       `);
@@ -1217,7 +1221,8 @@ describe('DatabaseService - Extended Coverage', () => {
         fromNodeId: '!node1',
         toNodeId: '!node2',
         text: 'Direct 1->2',
-        channel: 0,
+        channel: -1,
+        portnum: 1,
         timestamp: now,
         createdAt: now
       });
@@ -1229,27 +1234,86 @@ describe('DatabaseService - Extended Coverage', () => {
         fromNodeId: '!node2',
         toNodeId: '!node1',
         text: 'Direct 2->1',
-        channel: 0,
+        channel: -1,
+        portnum: 1,
         timestamp: now + 1000,
         createdAt: now
       });
 
       db.insertMessage({
-        id: 'msg-3',
-        fromNodeNum: 1,
+        id: 'another-dm',
+        fromNodeNum: 2,
         toNodeNum: 3,
-        fromNodeId: '!node1',
+        fromNodeId: '!node2',
         toNodeId: '!node3',
-        text: 'Different conversation',
-        channel: 0,
+        text: 'Another DM conversation',
+        channel: -1,
+        portnum: 1,
         timestamp: now + 2000,
+        createdAt: now
+      });
+
+      db.insertMessage({
+        id: 'channel-msg',
+        fromNodeNum: 1,
+        toNodeNum: 2,
+        fromNodeId: '!node1',
+        toNodeId: '!node2',
+        text: 'Channel message',
+        channel: 0,
+        portnum: 1,
+        timestamp: now + 3000,
         createdAt: now
       });
 
       const directMessages = db.getDirectMessages('!node1', '!node2');
       expect(directMessages).toHaveLength(2);
-      expect(directMessages.some((m: DbMessage) => m.text === 'Direct 1->2')).toBe(true);
-      expect(directMessages.some((m: DbMessage) => m.text === 'Direct 2->1')).toBe(true);
+      expect(directMessages.some((m: DbMessage) => m.id === 'msg-1')).toBe(true);
+      expect(directMessages.some((m: DbMessage) => m.id === 'msg-2')).toBe(true);
+      expect(directMessages.some((m: DbMessage) => m.id === 'channel-msg')).toBe(false);
+      expect(directMessages.some((m: DbMessage) => m.id === 'another-dm')).toBe(false);
+    });
+
+    it('should ignore non-text payloads when fetching direct messages', () => {
+      const now = Date.now();
+      const senderId = '!dmTraceSender';
+      const receiverId = '!dmTraceReceiver';
+
+      db.upsertNode({ nodeNum: 101, nodeId: senderId });
+      db.upsertNode({ nodeNum: 102, nodeId: receiverId });
+
+      // Insert a traceroute/system payload (portnum 70) that should be ignored
+      db.insertMessage({
+        id: 'trace-1',
+        fromNodeNum: 101,
+        toNodeNum: 102,
+        fromNodeId: senderId,
+        toNodeId: receiverId,
+        text: 'Traceroute payload',
+        channel: -1,
+        portnum: 70,
+        timestamp: now,
+        createdAt: now
+      });
+
+      // Insert a real DM (portnum 1)
+      db.insertMessage({
+        id: 'dm-1',
+        fromNodeNum: 101,
+        toNodeNum: 102,
+        fromNodeId: senderId,
+        toNodeId: receiverId,
+        text: 'Actual DM',
+        channel: -1,
+        portnum: 1,
+        timestamp: now + 1000,
+        createdAt: now + 1000
+      });
+
+      const directMessages = db.getDirectMessages(senderId, receiverId);
+      expect(directMessages.some((m: DbMessage) => m.id === 'dm-1')).toBe(true);
+      expect(directMessages.some((m: DbMessage) => m.id === 'trace-1')).toBe(false);
+      expect(directMessages.every((m: DbMessage) => m.portnum === 1 && m.channel === -1)).toBe(true);
     });
   });
 

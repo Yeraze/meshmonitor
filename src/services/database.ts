@@ -2143,8 +2143,12 @@ class DatabaseService {
   getDirectMessages(nodeId1: string, nodeId2: string, limit: number = 100, offset: number = 0): DbMessage[] {
     const stmt = this.db.prepare(`
       SELECT * FROM messages
-      WHERE (fromNodeId = ? AND toNodeId = ?)
-         OR (fromNodeId = ? AND toNodeId = ?)
+      WHERE portnum = 1
+        AND channel = -1
+        AND (
+          (fromNodeId = ? AND toNodeId = ?)
+          OR (fromNodeId = ? AND toNodeId = ?)
+        )
       ORDER BY COALESCE(rxTime, timestamp) DESC
       LIMIT ? OFFSET ?
     `);
