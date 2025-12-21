@@ -11,6 +11,44 @@ import type { RequestHandler } from 'express';
 import { dataEventEmitter, type DataEvent } from './dataEventEmitter.js';
 import { logger } from '../../utils/logger.js';
 import { getEnvironmentConfig } from '../config/environment.js';
+import type { DbMessage } from '../../services/database.js';
+
+/**
+ * Transform a DbMessage to the format expected by the client (MeshMessage)
+ * This mirrors the transformation in server.ts transformDbMessageToMeshMessage()
+ */
+function transformMessageForClient(msg: DbMessage): unknown {
+  // Match the format from server.ts transformDbMessageToMeshMessage()
+  // The timestamp needs to be a Date (serialized as ISO string) to match poll API format
+  return {
+    id: msg.id,
+    from: msg.fromNodeId,
+    to: msg.toNodeId,
+    fromNodeId: msg.fromNodeId,
+    toNodeId: msg.toNodeId,
+    text: msg.text,
+    channel: msg.channel,
+    portnum: msg.portnum,
+    timestamp: new Date(msg.rxTime ?? msg.timestamp),  // Convert to Date (serializes as ISO string)
+    hopStart: msg.hopStart,
+    hopLimit: msg.hopLimit,
+    replyId: msg.replyId,
+    emoji: msg.emoji,
+    requestId: (msg as any).requestId,
+    wantAck: Boolean((msg as any).wantAck),
+    ackFailed: Boolean((msg as any).ackFailed),
+    routingErrorReceived: Boolean((msg as any).routingErrorReceived),
+    deliveryState: (msg as any).deliveryState,
+    acknowledged:
+      msg.channel === -1
+        ? (msg as any).deliveryState === 'confirmed'
+          ? true
+          : undefined
+        : (msg as any).deliveryState === 'delivered' || (msg as any).deliveryState === 'confirmed'
+        ? true
+        : undefined,
+  };
+}
 
 // Store the Socket.io server instance for access from other modules
 let io: SocketIOServer | null = null;
@@ -104,7 +142,13 @@ export function initializeWebSocket(
 
     // Subscribe to data events
     const handler = (event: DataEvent) => {
-      socket.emit(event.type, event.data);
+      // Transform message data to client format before emitting
+      if (event.type === 'message:new') {
+        const transformedMessage = transformMessageForClient(event.data as DbMessage);
+        socket.emit(event.type, transformedMessage);
+      } else {
+        socket.emit(event.type, event.data);
+      }
     };
     dataEventEmitter.on('data', handler);
 

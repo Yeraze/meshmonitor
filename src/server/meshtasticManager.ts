@@ -3176,6 +3176,8 @@ class MeshtasticManager {
             const updated = databaseService.updateMessageDeliveryState(requestId, 'delivered');
             if (updated) {
               logger.debug(`💾 Marked message ${requestId} as delivered (transmitted)`);
+              // Emit WebSocket event for real-time delivery status update
+              dataEventEmitter.emitRoutingUpdate({ requestId, status: 'ack' });
             }
             return;
           }
@@ -3186,6 +3188,8 @@ class MeshtasticManager {
             const updated = databaseService.updateMessageDeliveryState(requestId, 'confirmed');
             if (updated) {
               logger.debug(`💾 Marked message ${requestId} as confirmed (received by target)`);
+              // Emit WebSocket event for real-time delivery status update
+              dataEventEmitter.emitRoutingUpdate({ requestId, status: 'ack' });
             }
             // Notify message queue service of successful ACK
             messageQueueService.handleAck(requestId);
@@ -3214,6 +3218,8 @@ class MeshtasticManager {
       if (requestId) {
         logger.info(`❌ Marking message ${requestId} as failed due to routing error: ${errorName}`);
         databaseService.updateMessageDeliveryState(requestId, 'failed');
+        // Emit WebSocket event for real-time delivery failure update
+        dataEventEmitter.emitRoutingUpdate({ requestId, status: 'nak', errorReason: errorName });
         // Notify message queue service of failure
         messageQueueService.handleFailure(requestId, errorName);
       }
