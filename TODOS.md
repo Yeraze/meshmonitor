@@ -2,6 +2,26 @@
 
 ## Current Sprint
 
+### Node List Filter on Messages Page (#1185)
+
+**Completed:**
+- [x] Add new filter options to Messages page dropdown
+  - "By Hops (Nearest First)" - sorts by hop count ascending, ignores favorites
+  - "Favorites Only" - shows only favorite nodes, sorted by hops
+  - "With Position" - shows only nodes with valid GPS position, sorted by hops
+  - "Exclude Infrastructure" - hides Router, Repeater, Router Client, Router Late roles, sorted by hops
+- [x] Add `isInfrastructureNode()` helper function to nodeHelpers.ts (roles 2, 3, 4, 11)
+- [x] Add `hasValidPosition()` helper function to nodeHelpers.ts
+- [x] Update dmFilter type in UIContext.tsx to include new filter values
+- [x] Update MessagesTab.tsx with new filter/sort logic
+- [x] Add translation strings to en.json
+- [x] Build and deploy successful
+
+**Summary:**
+Added 4 new filter options to the Messages page node list, similar to what exists on the Node Map. Users can now filter by hops (nearest first), favorites only, nodes with position, or exclude infrastructure nodes. All new filters sort by hop count ascending.
+
+---
+
 ### Replace GPL-licensed Session Store (#1177)
 
 **Priority: HIGH** - License compatibility issue

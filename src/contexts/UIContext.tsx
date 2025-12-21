@@ -23,8 +23,8 @@ interface UIContextType {
   setChannelFilter: React.Dispatch<React.SetStateAction<number | 'all'>>;
   showIncompleteNodes: boolean;
   setShowIncompleteNodes: React.Dispatch<React.SetStateAction<boolean>>;
-  dmFilter: 'all' | 'unread' | 'recent';
-  setDmFilter: React.Dispatch<React.SetStateAction<'all' | 'unread' | 'recent'>>;
+  dmFilter: 'all' | 'unread' | 'recent' | 'hops' | 'favorites' | 'withPosition' | 'noInfra';
+  setDmFilter: React.Dispatch<React.SetStateAction<'all' | 'unread' | 'recent' | 'hops' | 'favorites' | 'withPosition' | 'noInfra'>>;
   sortField: SortField;
   setSortField: React.Dispatch<React.SetStateAction<SortField>>;
   sortDirection: SortDirection;
@@ -140,7 +140,7 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   // Default to showing incomplete nodes (true), but can be toggled to hide them
   // On secure channels (custom PSK), users may want to hide incomplete nodes
   const [showIncompleteNodes, setShowIncompleteNodes] = useState<boolean>(true);
-  const [dmFilter, setDmFilter] = useState<'all' | 'unread' | 'recent'>('all');
+  const [dmFilter, setDmFilter] = useState<'all' | 'unread' | 'recent' | 'hops' | 'favorites' | 'withPosition' | 'noInfra'>('all');
   const [sortField, setSortField] = useState<SortField>(() => {
     const saved = localStorage.getItem('preferredSortField');
     return (saved as SortField) || 'longName';

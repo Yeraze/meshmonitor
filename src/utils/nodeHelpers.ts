@@ -1,6 +1,38 @@
 import { DeviceInfo } from '../types/device';
 import { ROLE_NAMES, HARDWARE_MODELS } from '../constants/index.js';
 
+/**
+ * Infrastructure node roles (Router, Router Client, Repeater, Router Late)
+ * These roles are typically used for mesh infrastructure and not end-user devices.
+ */
+const INFRASTRUCTURE_ROLES = new Set([2, 3, 4, 11]);
+
+/**
+ * Check if a node has an infrastructure role (Router, Repeater, etc.)
+ * @param node - The device node to check
+ * @returns true if the node has an infrastructure role
+ */
+export const isInfrastructureNode = (node: DeviceInfo): boolean => {
+  const role = node.user?.role;
+  if (role === undefined || role === null) return false;
+  const roleNum = typeof role === 'string' ? parseInt(role, 10) : role;
+  if (isNaN(roleNum)) return false;
+  return INFRASTRUCTURE_ROLES.has(roleNum);
+};
+
+/**
+ * Check if a node has a valid position (non-null latitude and longitude)
+ * @param node - The device node to check
+ * @returns true if the node has valid position coordinates
+ */
+export const hasValidPosition = (node: DeviceInfo): boolean => {
+  return (
+    node.position != null &&
+    node.position.latitude != null &&
+    node.position.longitude != null
+  );
+};
+
 export const getRoleName = (role: number | string | undefined): string | null => {
   if (role === undefined || role === null) return null;
   const roleNum = typeof role === 'string' ? parseInt(role) : role;
