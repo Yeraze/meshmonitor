@@ -211,11 +211,20 @@ recreate_container() {
     log "Stopping existing container..."
     cd "$COMPOSE_PROJECT_DIR" || return 1
 
-    # Use project name if provided to ensure we target the correct compose project
+    # Detect actual project name from container labels - this is more reliable than env var
+    # because the container may have been created with a different project name
+    local detected_project=$(docker inspect --format='{{index .Config.Labels "com.docker.compose.project"}}' "$CONTAINER_NAME" 2>/dev/null || echo "")
     local project_flag=""
-    if [ -n "$COMPOSE_PROJECT_NAME" ]; then
+
+    if [ -n "$detected_project" ]; then
+      project_flag="-p $detected_project"
+      log "Using detected project name: $detected_project"
+      if [ -n "$COMPOSE_PROJECT_NAME" ] && [ "$detected_project" != "$COMPOSE_PROJECT_NAME" ]; then
+        log_warn "Note: COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT_NAME differs from container's project"
+      fi
+    elif [ -n "$COMPOSE_PROJECT_NAME" ]; then
       project_flag="-p $COMPOSE_PROJECT_NAME"
-      log "Using project name: $COMPOSE_PROJECT_NAME"
+      log "Using env project name: $COMPOSE_PROJECT_NAME"
     fi
 
     # Stop container via compose
