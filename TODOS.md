@@ -208,6 +208,22 @@ Implemented infinite scroll for both channel messages and direct messages. When 
 
 ## Completed Tasks
 
+### Auto Announce NodeInfo Broadcasting (#1174)
+
+- [x] Add NodeInfo broadcasting UI to AutoAnnounceSection.tsx
+  - Checkbox to enable NodeInfo broadcasting
+  - Multi-select checkboxes for channel selection (all configured channels)
+  - Configurable delay between channel broadcasts (10-300 seconds)
+- [x] Add translation strings for NodeInfo section
+- [x] Update UIContext with nodeInfoEnabled, nodeInfoChannels, nodeInfoDelaySeconds state
+- [x] Update App.tsx to pass NodeInfo props and load settings
+- [x] Add backend broadcastNodeInfoToChannel method (uses broadcast address 0xFFFFFFFF)
+- [x] Add backend broadcastNodeInfoToChannels method (iterates with delays)
+- [x] Integrate NodeInfo broadcasting into sendAutoAnnouncement scheduler
+- [x] System tests passed (7/7)
+
+**Summary:** Users can now optionally broadcast NodeInfo to selected channels when auto-announce triggers. Useful for users with private primary channels who want to share their node info on secondary public channels.
+
 ### Auto-Traceroute Active Node Filter & Logging (PR #1169)
 
 - [x] Fix `getNodeNeedingTraceroute()` to filter by `maxNodeAgeHours` setting

@@ -69,6 +69,12 @@ interface UIContextType {
   setAutoAnnounceUseSchedule: React.Dispatch<React.SetStateAction<boolean>>;
   autoAnnounceSchedule: string;
   setAutoAnnounceSchedule: React.Dispatch<React.SetStateAction<string>>;
+  autoAnnounceNodeInfoEnabled: boolean;
+  setAutoAnnounceNodeInfoEnabled: React.Dispatch<React.SetStateAction<boolean>>;
+  autoAnnounceNodeInfoChannels: number[];
+  setAutoAnnounceNodeInfoChannels: React.Dispatch<React.SetStateAction<number[]>>;
+  autoAnnounceNodeInfoDelaySeconds: number;
+  setAutoAnnounceNodeInfoDelaySeconds: React.Dispatch<React.SetStateAction<number>>;
   autoWelcomeEnabled: boolean;
   setAutoWelcomeEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   autoWelcomeMessage: string;
@@ -164,6 +170,9 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   const [autoAnnounceOnStart, setAutoAnnounceOnStart] = useState<boolean>(false);
   const [autoAnnounceUseSchedule, setAutoAnnounceUseSchedule] = useState<boolean>(false);
   const [autoAnnounceSchedule, setAutoAnnounceSchedule] = useState<string>('0 */6 * * *');
+  const [autoAnnounceNodeInfoEnabled, setAutoAnnounceNodeInfoEnabled] = useState<boolean>(false);
+  const [autoAnnounceNodeInfoChannels, setAutoAnnounceNodeInfoChannels] = useState<number[]>([]);
+  const [autoAnnounceNodeInfoDelaySeconds, setAutoAnnounceNodeInfoDelaySeconds] = useState<number>(30);
   const [autoWelcomeEnabled, setAutoWelcomeEnabled] = useState<boolean>(false);
   const [autoWelcomeMessage, setAutoWelcomeMessage] = useState<string>('Welcome {LONG_NAME} ({SHORT_NAME}) to the mesh!');
   const [autoWelcomeTarget, setAutoWelcomeTarget] = useState<string>('0');
@@ -275,6 +284,12 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
         setAutoAnnounceUseSchedule,
         autoAnnounceSchedule,
         setAutoAnnounceSchedule,
+        autoAnnounceNodeInfoEnabled,
+        setAutoAnnounceNodeInfoEnabled,
+        autoAnnounceNodeInfoChannels,
+        setAutoAnnounceNodeInfoChannels,
+        autoAnnounceNodeInfoDelaySeconds,
+        setAutoAnnounceNodeInfoDelaySeconds,
         autoWelcomeEnabled,
         setAutoWelcomeEnabled,
         autoWelcomeMessage,
