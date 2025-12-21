@@ -681,26 +681,25 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
                   </span>
                 </label>
                 <div style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '0.5rem',
                   marginTop: '0.5rem',
                   padding: '0.75rem',
                   background: 'var(--ctp-surface1)',
                   borderRadius: '4px'
                 }}>
                   {channels.map((channel, idx) => (
-                    <label
+                    <div
                       key={channel.id}
                       style={{
                         display: 'flex',
+                        flexDirection: 'row',
                         alignItems: 'center',
                         gap: '0.5rem',
-                        cursor: localEnabled ? 'pointer' : 'not-allowed'
+                        marginBottom: idx < channels.length - 1 ? '0.5rem' : 0
                       }}
                     >
                       <input
                         type="checkbox"
+                        id={`nodeinfo-channel-${idx}`}
                         checked={localNodeInfoChannels.includes(idx)}
                         onChange={(e) => {
                           if (e.target.checked) {
@@ -710,13 +709,26 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
                           }
                         }}
                         disabled={!localEnabled}
-                        style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
+                        style={{
+                          width: 'auto',
+                          minWidth: '16px',
+                          margin: 0,
+                          cursor: localEnabled ? 'pointer' : 'not-allowed',
+                          flexShrink: 0
+                        }}
                       />
-                      <span style={{ color: idx === 0 ? 'var(--ctp-yellow)' : 'inherit' }}>
+                      <label
+                        htmlFor={`nodeinfo-channel-${idx}`}
+                        style={{
+                          color: idx === 0 ? 'var(--ctp-yellow)' : 'inherit',
+                          cursor: localEnabled ? 'pointer' : 'not-allowed',
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
                         {channel.name || `Channel ${idx}`}
                         {idx === 0 && ' (Primary)'}
-                      </span>
-                    </label>
+                      </label>
+                    </div>
                   ))}
                 </div>
                 {localNodeInfoChannels.length === 0 && localNodeInfoEnabled && (
