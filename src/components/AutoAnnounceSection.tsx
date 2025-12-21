@@ -23,6 +23,13 @@ interface AutoAnnounceSectionProps {
   onAnnounceOnStartChange: (announceOnStart: boolean) => void;
   onUseScheduleChange: (useSchedule: boolean) => void;
   onScheduleChange: (schedule: string) => void;
+  // NodeInfo broadcasting props
+  nodeInfoEnabled?: boolean;
+  nodeInfoChannels?: number[];
+  nodeInfoDelaySeconds?: number;
+  onNodeInfoEnabledChange?: (enabled: boolean) => void;
+  onNodeInfoChannelsChange?: (channels: number[]) => void;
+  onNodeInfoDelayChange?: (seconds: number) => void;
 }
 
 const DEFAULT_MESSAGE = 'MeshMonitor {VERSION} online for {DURATION} {FEATURES}';
@@ -44,6 +51,13 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
   onAnnounceOnStartChange,
   onUseScheduleChange,
   onScheduleChange,
+  // NodeInfo broadcasting props
+  nodeInfoEnabled = false,
+  nodeInfoChannels = [],
+  nodeInfoDelaySeconds = 30,
+  onNodeInfoEnabledChange,
+  onNodeInfoChannelsChange,
+  onNodeInfoDelayChange,
 }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
@@ -62,6 +76,11 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
   const [lastAnnouncementTime, setLastAnnouncementTime] = useState<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // NodeInfo broadcasting local state
+  const [localNodeInfoEnabled, setLocalNodeInfoEnabled] = useState(nodeInfoEnabled);
+  const [localNodeInfoChannels, setLocalNodeInfoChannels] = useState<number[]>(nodeInfoChannels);
+  const [localNodeInfoDelaySeconds, setLocalNodeInfoDelaySeconds] = useState(nodeInfoDelaySeconds);
+
   // Update local state when props change
   useEffect(() => {
     setLocalEnabled(enabled);
@@ -71,7 +90,10 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
     setLocalAnnounceOnStart(announceOnStart);
     setLocalUseSchedule(useSchedule);
     setLocalSchedule(schedule || '0 */6 * * *');
-  }, [enabled, intervalHours, message, channelIndex, announceOnStart, useSchedule, schedule]);
+    setLocalNodeInfoEnabled(nodeInfoEnabled);
+    setLocalNodeInfoChannels(nodeInfoChannels);
+    setLocalNodeInfoDelaySeconds(nodeInfoDelaySeconds);
+  }, [enabled, intervalHours, message, channelIndex, announceOnStart, useSchedule, schedule, nodeInfoEnabled, nodeInfoChannels, nodeInfoDelaySeconds]);
 
   // Fetch last announcement time
   useEffect(() => {
@@ -106,6 +128,14 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
     }
   }, [localSchedule, localUseSchedule, t]);
 
+  // Helper to compare arrays
+  const arraysEqual = (a: number[], b: number[]) => {
+    if (a.length !== b.length) return false;
+    const sortedA = [...a].sort();
+    const sortedB = [...b].sort();
+    return sortedA.every((val, idx) => val === sortedB[idx]);
+  };
+
   // Check if any settings have changed
   useEffect(() => {
     const changed =
@@ -115,9 +145,12 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
       localChannelIndex !== channelIndex ||
       localAnnounceOnStart !== announceOnStart ||
       localUseSchedule !== useSchedule ||
-      localSchedule !== schedule;
+      localSchedule !== schedule ||
+      localNodeInfoEnabled !== nodeInfoEnabled ||
+      !arraysEqual(localNodeInfoChannels, nodeInfoChannels) ||
+      localNodeInfoDelaySeconds !== nodeInfoDelaySeconds;
     setHasChanges(changed);
-  }, [localEnabled, localInterval, localMessage, localChannelIndex, localAnnounceOnStart, localUseSchedule, localSchedule, enabled, intervalHours, message, channelIndex, announceOnStart, useSchedule, schedule]);
+  }, [localEnabled, localInterval, localMessage, localChannelIndex, localAnnounceOnStart, localUseSchedule, localSchedule, enabled, intervalHours, message, channelIndex, announceOnStart, useSchedule, schedule, localNodeInfoEnabled, localNodeInfoChannels, localNodeInfoDelaySeconds, nodeInfoEnabled, nodeInfoChannels, nodeInfoDelaySeconds]);
 
   const handleSave = async () => {
     // Validate cron expression before saving
@@ -139,7 +172,11 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
           autoAnnounceChannelIndex: localChannelIndex,
           autoAnnounceOnStart: String(localAnnounceOnStart),
           autoAnnounceUseSchedule: String(localUseSchedule),
-          autoAnnounceSchedule: localSchedule
+          autoAnnounceSchedule: localSchedule,
+          // NodeInfo broadcasting settings
+          autoAnnounceNodeInfoEnabled: String(localNodeInfoEnabled),
+          autoAnnounceNodeInfoChannels: JSON.stringify(localNodeInfoChannels),
+          autoAnnounceNodeInfoDelaySeconds: localNodeInfoDelaySeconds
         })
       });
 
@@ -155,6 +192,9 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
       onAnnounceOnStartChange(localAnnounceOnStart);
       onUseScheduleChange(localUseSchedule);
       onScheduleChange(localSchedule);
+      onNodeInfoEnabledChange?.(localNodeInfoEnabled);
+      onNodeInfoChannelsChange?.(localNodeInfoChannels);
+      onNodeInfoDelayChange?.(localNodeInfoDelaySeconds);
 
       setHasChanges(false);
       showToast(t('automation.auto_announce.settings_saved_schedule'), 'success');
@@ -605,6 +645,115 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
             <li>{t('automation.auto_announce.feature_announce')}</li>
             <li>{t('automation.auto_announce.feature_welcome')}</li>
           </ul>
+        </div>
+
+        {/* NodeInfo Broadcasting Section */}
+        <div style={{
+          marginTop: '2rem',
+          padding: '1rem',
+          background: 'var(--ctp-surface0)',
+          border: '1px solid var(--ctp-surface2)',
+          borderRadius: '8px'
+        }}>
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600 }}>
+              <input
+                type="checkbox"
+                checked={localNodeInfoEnabled}
+                onChange={(e) => setLocalNodeInfoEnabled(e.target.checked)}
+                disabled={!localEnabled}
+                style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
+              />
+              {t('automation.auto_announce.nodeinfo_title')}
+            </label>
+            <p style={{ marginTop: '0.5rem', color: 'var(--ctp-subtext0)', fontSize: '0.9rem' }}>
+              {t('automation.auto_announce.nodeinfo_description')}
+            </p>
+          </div>
+
+          {localNodeInfoEnabled && (
+            <>
+              <div className="setting-item" style={{ marginTop: '1rem' }}>
+                <label>
+                  {t('automation.auto_announce.nodeinfo_channels')}
+                  <span className="setting-description">
+                    {t('automation.auto_announce.nodeinfo_channels_description')}
+                  </span>
+                </label>
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.5rem',
+                  marginTop: '0.5rem',
+                  padding: '0.75rem',
+                  background: 'var(--ctp-surface1)',
+                  borderRadius: '4px'
+                }}>
+                  {channels.map((channel, idx) => (
+                    <label
+                      key={channel.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        cursor: localEnabled ? 'pointer' : 'not-allowed'
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={localNodeInfoChannels.includes(idx)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setLocalNodeInfoChannels([...localNodeInfoChannels, idx]);
+                          } else {
+                            setLocalNodeInfoChannels(localNodeInfoChannels.filter(ch => ch !== idx));
+                          }
+                        }}
+                        disabled={!localEnabled}
+                        style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
+                      />
+                      <span style={{ color: idx === 0 ? 'var(--ctp-yellow)' : 'inherit' }}>
+                        {channel.name || `Channel ${idx}`}
+                        {idx === 0 && ' (Primary)'}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                {localNodeInfoChannels.length === 0 && localNodeInfoEnabled && (
+                  <div style={{
+                    marginTop: '0.5rem',
+                    color: 'var(--ctp-yellow)',
+                    fontSize: '0.875rem'
+                  }}>
+                    {t('automation.auto_announce.nodeinfo_no_channels_warning')}
+                  </div>
+                )}
+              </div>
+
+              <div className="setting-item" style={{ marginTop: '1rem' }}>
+                <label htmlFor="nodeInfoDelay">
+                  {t('automation.auto_announce.nodeinfo_delay')}
+                  <span className="setting-description">
+                    {t('automation.auto_announce.nodeinfo_delay_description')}
+                  </span>
+                </label>
+                <input
+                  id="nodeInfoDelay"
+                  type="number"
+                  min="10"
+                  max="300"
+                  value={localNodeInfoDelaySeconds}
+                  onChange={(e) => setLocalNodeInfoDelaySeconds(parseInt(e.target.value) || 30)}
+                  disabled={!localEnabled}
+                  className="setting-input"
+                  style={{ width: '100px' }}
+                />
+                <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-subtext0)' }}>
+                  {t('automation.auto_announce.seconds')}
+                </span>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </>

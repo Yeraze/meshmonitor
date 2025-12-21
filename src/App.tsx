@@ -437,6 +437,12 @@ function App() {
     setAutoAnnounceUseSchedule,
     autoAnnounceSchedule,
     setAutoAnnounceSchedule,
+    autoAnnounceNodeInfoEnabled,
+    setAutoAnnounceNodeInfoEnabled,
+    autoAnnounceNodeInfoChannels,
+    setAutoAnnounceNodeInfoChannels,
+    autoAnnounceNodeInfoDelaySeconds,
+    setAutoAnnounceNodeInfoDelaySeconds,
     autoWelcomeEnabled,
     setAutoWelcomeEnabled,
     autoWelcomeMessage,
@@ -845,6 +851,25 @@ function App() {
 
           if (settings.autoAnnounceSchedule) {
             setAutoAnnounceSchedule(settings.autoAnnounceSchedule);
+          }
+
+          if (settings.autoAnnounceNodeInfoEnabled !== undefined) {
+            setAutoAnnounceNodeInfoEnabled(settings.autoAnnounceNodeInfoEnabled === 'true');
+          }
+
+          if (settings.autoAnnounceNodeInfoChannels) {
+            try {
+              const channels = JSON.parse(settings.autoAnnounceNodeInfoChannels);
+              if (Array.isArray(channels)) {
+                setAutoAnnounceNodeInfoChannels(channels);
+              }
+            } catch (e) {
+              console.error('Failed to parse autoAnnounceNodeInfoChannels:', e);
+            }
+          }
+
+          if (settings.autoAnnounceNodeInfoDelaySeconds !== undefined) {
+            setAutoAnnounceNodeInfoDelaySeconds(parseInt(settings.autoAnnounceNodeInfoDelaySeconds) || 30);
           }
 
           if (settings.autoWelcomeEnabled !== undefined) {
@@ -4076,6 +4101,12 @@ function App() {
                   onAnnounceOnStartChange={setAutoAnnounceOnStart}
                   onUseScheduleChange={setAutoAnnounceUseSchedule}
                   onScheduleChange={setAutoAnnounceSchedule}
+                  nodeInfoEnabled={autoAnnounceNodeInfoEnabled}
+                  nodeInfoChannels={autoAnnounceNodeInfoChannels}
+                  nodeInfoDelaySeconds={autoAnnounceNodeInfoDelaySeconds}
+                  onNodeInfoEnabledChange={setAutoAnnounceNodeInfoEnabled}
+                  onNodeInfoChannelsChange={setAutoAnnounceNodeInfoChannels}
+                  onNodeInfoDelayChange={setAutoAnnounceNodeInfoDelaySeconds}
                 />
               </div>
               <div id="auto-responder">

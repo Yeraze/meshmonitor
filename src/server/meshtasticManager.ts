@@ -5217,6 +5217,54 @@ class MeshtasticManager {
   }
 
   /**
+   * Broadcast NodeInfo to all nodes on a specific channel
+   * Uses the broadcast address (0xFFFFFFFF) to send to all nodes
+   * wantAck is set to false to reduce mesh traffic
+   */
+  async broadcastNodeInfoToChannel(channel: number): Promise<{ packetId: number; requestId: number }> {
+    const BROADCAST_ADDR = 0xFFFFFFFF;
+    logger.info(`📢 Broadcasting NodeInfo on channel ${channel}`);
+    return this.sendNodeInfoRequest(BROADCAST_ADDR, channel);
+  }
+
+  /**
+   * Broadcast NodeInfo to multiple channels with delays between each
+   * Used by auto-announce feature to broadcast on secondary channels
+   */
+  async broadcastNodeInfoToChannels(channels: number[], delaySeconds: number): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      logger.warn('📢 Cannot broadcast NodeInfo - not connected');
+      return;
+    }
+
+    if (channels.length === 0) {
+      logger.debug('📢 No channels selected for NodeInfo broadcast');
+      return;
+    }
+
+    logger.info(`📢 Starting NodeInfo broadcast to ${channels.length} channel(s) with ${delaySeconds}s delay`);
+
+    for (let i = 0; i < channels.length; i++) {
+      const channel = channels[i];
+      try {
+        await this.broadcastNodeInfoToChannel(channel);
+        logger.info(`📢 NodeInfo broadcast sent to channel ${channel} (${i + 1}/${channels.length})`);
+
+        // Wait between broadcasts (except after the last one)
+        if (i < channels.length - 1) {
+          logger.debug(`📢 Waiting ${delaySeconds}s before next channel broadcast...`);
+          await new Promise(resolve => setTimeout(resolve, delaySeconds * 1000));
+        }
+      } catch (error) {
+        logger.error(`❌ Failed to broadcast NodeInfo on channel ${channel}:`, error);
+        // Continue with next channel even if one fails
+      }
+    }
+
+    logger.info(`📢 NodeInfo broadcast complete for all ${channels.length} channel(s)`);
+  }
+
+  /**
    * Request LocalStats from the local node
    * This requests mesh statistics from the directly connected device
    */
@@ -6453,6 +6501,26 @@ class MeshtasticManager {
       // Update last announcement time
       databaseService.setSetting('lastAnnouncementTime', Date.now().toString());
       logger.debug('📢 Last announcement time updated');
+
+      // Check if NodeInfo broadcasting is enabled
+      const nodeInfoEnabled = databaseService.getSetting('autoAnnounceNodeInfoEnabled') === 'true';
+      if (nodeInfoEnabled) {
+        try {
+          const nodeInfoChannelsStr = databaseService.getSetting('autoAnnounceNodeInfoChannels') || '[]';
+          const nodeInfoChannels = JSON.parse(nodeInfoChannelsStr) as number[];
+          const nodeInfoDelaySeconds = parseInt(databaseService.getSetting('autoAnnounceNodeInfoDelaySeconds') || '30');
+
+          if (nodeInfoChannels.length > 0) {
+            logger.info(`📢 NodeInfo broadcasting enabled - will broadcast to ${nodeInfoChannels.length} channel(s)`);
+            // Run NodeInfo broadcasting asynchronously (don't block the announcement)
+            this.broadcastNodeInfoToChannels(nodeInfoChannels, nodeInfoDelaySeconds).catch(error => {
+              logger.error('❌ Error in NodeInfo broadcasting:', error);
+            });
+          }
+        } catch (parseError) {
+          logger.error('❌ Error parsing NodeInfo channels setting:', parseError);
+        }
+      }
     } catch (error) {
       logger.error('❌ Error sending auto-announcement:', error);
     }
