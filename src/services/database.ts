@@ -3030,9 +3030,9 @@ class DatabaseService {
     const EXPIRATION_MS = expirationHours * 60 * 60 * 1000;
 
     // Get maxNodeAgeHours setting to filter only active nodes
+    // lastHeard is stored in seconds (Unix timestamp), so convert cutoff to seconds
     const maxNodeAgeHours = parseInt(this.getSetting('maxNodeAgeHours') || '24');
-    const maxNodeAgeMs = maxNodeAgeHours * 60 * 60 * 1000;
-    const activeNodeCutoff = now - maxNodeAgeMs;
+    const activeNodeCutoff = Math.floor(Date.now() / 1000) - (maxNodeAgeHours * 60 * 60);
 
     // Check if node filter is enabled
     const filterEnabled = this.isAutoTracerouteNodeFilterEnabled();
