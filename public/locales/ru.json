@@ -926,7 +926,7 @@
     "telemetry.paxcounter_ble": "Счетчик прохожих BLE",
     "traceroute_history.showing_count": "Показать {{count}} маршрут(ов)",
     "traceroute_history.forward": "Вперед",
-    "traceroute_history.return": "Назад",
+    "traceroute_history.return": "Вернуться",
     "node_filter.title": "Фильтр узлов",
     "node_filter.security_status": "Состояние безопасности",
     "node_filter.all_nodes": "Все узлы",
