@@ -29,6 +29,9 @@ declare module 'express-session' {
   }
 }
 
+// Cached session middleware for sharing between Express and Socket.io
+let sessionMiddleware: ReturnType<typeof session> | null = null;
+
 /**
  * Get session configuration
  */
@@ -68,4 +71,15 @@ export function getSessionConfig(): session.SessionOptions {
     },
     name: env.sessionCookieName // Custom session cookie name
   };
+}
+
+/**
+ * Get the shared session middleware
+ * Creates and caches the middleware on first call for sharing between Express and Socket.io
+ */
+export function getSessionMiddleware(): ReturnType<typeof session> {
+  if (!sessionMiddleware) {
+    sessionMiddleware = session(getSessionConfig());
+  }
+  return sessionMiddleware;
 }

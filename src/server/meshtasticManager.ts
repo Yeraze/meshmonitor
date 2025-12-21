@@ -11,6 +11,7 @@ import { getEnvironmentConfig } from './config/environment.js';
 import { notificationService } from './services/notificationService.js';
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
 import packetLogService from './services/packetLogService.js';
+import { dataEventEmitter } from './services/dataEventEmitter.js';
 import { messageQueueService } from './messageQueueService.js';
 import { normalizeTriggerPatterns } from '../utils/autoResponderUtils.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
@@ -296,6 +297,13 @@ class MeshtasticManager {
   private async handleConnected(): Promise<void> {
     logger.debug('TCP connection established, requesting configuration...');
     this.isConnected = true;
+
+    // Emit WebSocket event for connection status change
+    dataEventEmitter.emitConnectionStatus({
+      connected: true,
+      reason: 'TCP connection established'
+    });
+
     // Clear localNodeInfo so node will be marked as not responsive until it sends MyNodeInfo
     this.localNodeInfo = null;
 
@@ -372,6 +380,15 @@ class MeshtasticManager {
   private async handleDisconnected(): Promise<void> {
     logger.debug('TCP connection lost');
     this.isConnected = false;
+
+    // Emit WebSocket event for connection status change
+    dataEventEmitter.emitConnectionStatus({
+      connected: false,
+      nodeNum: this.localNodeInfo?.nodeNum,
+      nodeId: this.localNodeInfo?.nodeId,
+      reason: 'TCP connection lost'
+    });
+
     // Clear localNodeInfo so node will be marked as not responsive
     this.localNodeInfo = null;
     // Clear favorites support cache on disconnect
@@ -2095,6 +2112,10 @@ class MeshtasticManager {
           createdAt: Date.now()
         };
         databaseService.insertMessage(message);
+
+        // Emit WebSocket event for real-time updates
+        dataEventEmitter.emitNewMessage(message as any);
+
         if (isDirectMessage) {
           logger.debug(`💾 Saved direct message from ${message.fromNodeId} to ${message.toNodeId}: "${messageText.substring(0, 30)}..." (replyId: ${message.replyId})`);
         } else {
@@ -3004,6 +3025,10 @@ class MeshtasticManager {
       };
 
       databaseService.insertMessage(message);
+
+      // Emit WebSocket event for traceroute message
+      dataEventEmitter.emitNewMessage(message as any);
+
       logger.debug(`💾 Saved traceroute result from ${fromNodeId} (channel: ${channelIndex})`);
 
       // Save to traceroutes table (save raw data including broadcast addresses)
@@ -3025,6 +3050,10 @@ class MeshtasticManager {
       };
 
       databaseService.insertTraceroute(tracerouteRecord);
+
+      // Emit WebSocket event for traceroute completion
+      dataEventEmitter.emitTracerouteComplete(tracerouteRecord as any);
+
       logger.debug(`💾 Saved traceroute record to traceroutes table`);
 
       // If this was an auto-traceroute, mark it as successful in the log
@@ -3147,6 +3176,8 @@ class MeshtasticManager {
             const updated = databaseService.updateMessageDeliveryState(requestId, 'delivered');
             if (updated) {
               logger.debug(`💾 Marked message ${requestId} as delivered (transmitted)`);
+              // Emit WebSocket event for real-time delivery status update
+              dataEventEmitter.emitRoutingUpdate({ requestId, status: 'ack' });
             }
             return;
           }
@@ -3157,6 +3188,8 @@ class MeshtasticManager {
             const updated = databaseService.updateMessageDeliveryState(requestId, 'confirmed');
             if (updated) {
               logger.debug(`💾 Marked message ${requestId} as confirmed (received by target)`);
+              // Emit WebSocket event for real-time delivery status update
+              dataEventEmitter.emitRoutingUpdate({ requestId, status: 'ack' });
             }
             // Notify message queue service of successful ACK
             messageQueueService.handleAck(requestId);
@@ -3185,6 +3218,8 @@ class MeshtasticManager {
       if (requestId) {
         logger.info(`❌ Marking message ${requestId} as failed due to routing error: ${errorName}`);
         databaseService.updateMessageDeliveryState(requestId, 'failed');
+        // Emit WebSocket event for real-time delivery failure update
+        dataEventEmitter.emitRoutingUpdate({ requestId, status: 'nak', errorReason: errorName });
         // Notify message queue service of failure
         messageQueueService.handleFailure(requestId, errorName);
       }
@@ -3578,6 +3613,10 @@ class MeshtasticManager {
 
       // Upsert node first to ensure it exists before inserting telemetry
       databaseService.upsertNode(nodeData);
+
+      // Emit WebSocket event for node update
+      dataEventEmitter.emitNodeUpdate(Number(nodeInfo.num), nodeData);
+
       logger.debug(`🏠 Updated node info: ${nodeData.longName || nodeId}`);
 
       // Now insert position telemetry if we have it (after node exists in database)
@@ -4797,6 +4836,10 @@ class MeshtasticManager {
 
       try {
         databaseService.insertMessage(message);
+
+        // Emit WebSocket event for real-time updates
+        dataEventEmitter.emitNewMessage(message as any);
+
         if (isDirectMessage) {
           logger.debug('Saved direct message to database:', message.text.substring(0, 50) + (message.text.length > 50 ? '...' : ''));
         } else {
@@ -5049,6 +5092,10 @@ class MeshtasticManager {
         };
 
         databaseService.insertMessage(message);
+
+        // Emit WebSocket event for real-time updates (sent message)
+        dataEventEmitter.emitNewMessage(message as any);
+
         logger.debug(`💾 Saved sent message to database: "${text.substring(0, 30)}..."`);
 
         // Automatically mark sent messages as read for the sending user

@@ -137,6 +137,21 @@
   }
 }
 
+/* Update method indicator (WebSocket vs Polling) */
+.update-method-indicator {
+  font-size: 0.85rem;
+  margin-left: 4px;
+  opacity: 0.8;
+}
+
+.update-method-indicator.websocket {
+  color: var(--ctp-green);
+}
+
+.update-method-indicator.polling {
+  color: var(--ctp-yellow);
+}
+
 /* Connection control buttons */
 .connection-control-btn {
   margin-left: 8px;

@@ -64,6 +64,8 @@
     "swagger-ui-express": "^5.0.1",
     "ts-overlapping-marker-spiderfier-leaflet": "^1.0.5",
     "uuid": "^13.0.0",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1",
     "web-push": "^3.6.7",
     "yamljs": "^0.3.0"
   },

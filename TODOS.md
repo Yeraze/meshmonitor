@@ -21,6 +21,43 @@ The `better-sqlite3-session-store` package is GPL-3.0-only licensed, which confl
 
 ---
 
+### WebSocket Real-Time Updates (#1184)
+
+**Completed:**
+- [x] Add socket.io and socket.io-client dependencies to package.json
+- [x] Create dataEventEmitter.ts - server-side event emitter for mesh data changes
+  - Batched telemetry emissions (1 second window) to reduce WebSocket traffic
+  - Typed events: node:updated, message:new, channel:updated, telemetry:batch, connection:status, traceroute:complete, routing:update
+- [x] Create webSocketService.ts - Socket.io server initialization
+  - Share Express session for authentication
+  - Respect BASE_URL for socket.io path
+- [x] Modify server.ts to initialize WebSocket after HTTP server starts
+- [x] Add event emissions to meshtasticManager.ts at key data insertion points
+  - Emit on new text messages
+  - Emit on node info updates
+  - Emit on connection status changes
+  - Emit on traceroute completion
+  - Emit routing updates for ACK/NAK delivery status
+- [x] Create useWebSocket.ts - client hook for WebSocket connection
+  - Automatically update TanStack Query cache when events received
+  - Handle reconnection and error states
+- [x] Create WebSocketContext.tsx - React context for WebSocket state
+  - Only enable WebSocket when user is authenticated
+- [x] Modify usePoll.ts for hybrid polling
+  - Poll every 30 seconds when WebSocket connected (backup)
+  - Poll every 5 seconds when WebSocket disconnected (real-time fallback)
+- [x] Modify App.tsx to integrate WebSocket
+  - Add WebSocketProvider in main.tsx
+  - Pass webSocketConnected to usePoll
+- [x] Add WebSocket/polling status indicator to AppHeader
+- [x] TypeScript compilation successful
+- [x] Build successful (client + server)
+- [x] All 7 system tests passed
+
+**Summary:**
+Implemented Socket.io WebSocket support for real-time mesh data updates. When the WebSocket is connected, the polling interval is reduced from 5 seconds to 30 seconds as real-time updates come via WebSocket. Events are emitted when messages, nodes, channels, or connection status change. Telemetry updates are batched to reduce traffic. Falls back to frequent polling when WebSocket is disconnected.
+
+---
 ### MQTT Traceroute Visualization (#893)
 
 **Completed:**

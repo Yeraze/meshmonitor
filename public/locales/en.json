@@ -53,6 +53,8 @@
   "header.connect": "Connect",
   "header.connectTitle": "Reconnect to node",
   "header.login": "Login",
+  "header.updateMethod": "Updates",
+  "header.polling": "Polling",
 
   "common.save": "Save",
   "common.cancel": "Cancel",
