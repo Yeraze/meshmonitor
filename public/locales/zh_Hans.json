@@ -2976,5 +2976,13 @@
     "gpio_summary.i2s_sck": "I2S SCK（BCLK）",
     "gpio_summary.monitor_pin": "监测引脚",
     "gpio_summary.serial_rx": "串口 RX",
-    "gpio_summary.serial_tx": "串口 TX"
+    "gpio_summary.serial_tx": "串口 TX",
+    "automation.auto_traceroute.status_failed": "",
+    "automation.auto_traceroute.log_destination": "",
+    "automation.auto_traceroute.status_success": "",
+    "automation.auto_traceroute.log_timestamp": "",
+    "automation.auto_traceroute.recent_log": "",
+    "automation.auto_traceroute.status_pending": "",
+    "automation.auto_traceroute.log_status": "",
+    "automation.auto_traceroute.no_log_entries": ""
 }
