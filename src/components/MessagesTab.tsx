@@ -996,6 +996,101 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                   return null;
                 })()}
 
+            {/* Quick Action Buttons */}
+            <div className="dm-action-buttons" style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '0.5rem',
+              marginTop: '1rem',
+              marginBottom: '1rem'
+            }}>
+              {/* Show on Map */}
+              {selectedNode?.position?.latitude != null && selectedNode?.position?.longitude != null && (
+                <button
+                  onClick={() => handleShowOnMap(selectedDMNode)}
+                  style={{
+                    flex: '1 1 auto',
+                    minWidth: '120px',
+                    padding: '0.5rem 1rem',
+                    backgroundColor: 'var(--ctp-blue)',
+                    color: 'var(--ctp-base)',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '0.9rem'
+                  }}
+                >
+                  🗺️ {t('messages.show_on_map')}
+                </button>
+              )}
+
+              {/* Traceroute */}
+              {hasPermission('traceroute', 'write') && (
+                <button
+                  onClick={() => handleTraceroute(selectedDMNode)}
+                  disabled={connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode}
+                  style={{
+                    flex: '1 1 auto',
+                    minWidth: '120px',
+                    padding: '0.5rem 1rem',
+                    backgroundColor: 'var(--ctp-blue)',
+                    color: 'var(--ctp-base)',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode ? 'not-allowed' : 'pointer',
+                    opacity: connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode ? 0.5 : 1,
+                    fontSize: '0.9rem'
+                  }}
+                >
+                  {tracerouteLoading === selectedDMNode ? <span className="spinner"></span> : '📡'} {t('messages.traceroute_button')}
+                </button>
+              )}
+
+              {/* Exchange Node Info */}
+              {hasPermission('messages', 'write') && (
+                <button
+                  onClick={() => handleExchangeNodeInfo(selectedDMNode)}
+                  disabled={connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode}
+                  style={{
+                    flex: '1 1 auto',
+                    minWidth: '120px',
+                    padding: '0.5rem 1rem',
+                    backgroundColor: 'var(--ctp-blue)',
+                    color: 'var(--ctp-base)',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode ? 'not-allowed' : 'pointer',
+                    opacity: connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode ? 0.5 : 1,
+                    fontSize: '0.9rem'
+                  }}
+                >
+                  {nodeInfoLoading === selectedDMNode ? <span className="spinner"></span> : '🔑'} {t('messages.exchange_user_info')}
+                </button>
+              )}
+
+              {/* Exchange Position */}
+              {hasPermission('messages', 'write') && (
+                <button
+                  onClick={() => handleExchangePosition(selectedDMNode)}
+                  disabled={connectionStatus !== 'connected' || positionLoading === selectedDMNode}
+                  style={{
+                    flex: '1 1 auto',
+                    minWidth: '120px',
+                    padding: '0.5rem 1rem',
+                    backgroundColor: 'var(--ctp-blue)',
+                    color: 'var(--ctp-base)',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: connectionStatus !== 'connected' || positionLoading === selectedDMNode ? 'not-allowed' : 'pointer',
+                    opacity: connectionStatus !== 'connected' || positionLoading === selectedDMNode ? 0.5 : 1,
+                    fontSize: '0.9rem'
+                  }}
+                >
+                  {positionLoading === selectedDMNode ? <span className="spinner"></span> : '📍'} {t('messages.exchange_position')}
+                </button>
+              )}
+            </div>
+
             {selectedNode && <NodeDetailsBlock node={selectedNode} timeFormat={timeFormat} dateFormat={dateFormat} />}
 
             {/* Security Details Section */}
