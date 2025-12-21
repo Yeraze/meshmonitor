@@ -5818,7 +5818,10 @@ body {
 
 .node-actions-container {
   position: relative;
-  display: inline-block;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .actions-menu-btn {
