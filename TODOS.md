@@ -2,6 +2,25 @@
 
 ## Current Sprint
 
+### Replace GPL-licensed Session Store (#1177)
+
+**Priority: HIGH** - License compatibility issue
+
+The `better-sqlite3-session-store` package is GPL-3.0-only licensed, which conflicts with MeshMonitor's BSD-3-Clause license. This is actual code being imported and linked, not just data definitions.
+
+**Tasks:**
+- [ ] Write custom SQLite session store using `better-sqlite3` (MIT licensed)
+- [ ] Implement express-session Store interface: `get`, `set`, `destroy`, `touch`
+- [ ] Add session cleanup for expired sessions
+- [ ] Remove `better-sqlite3-session-store` dependency
+- [ ] Update `src/server/auth/sessionConfig.ts` to use new store
+- [ ] Test session persistence across restarts
+- [ ] Run system tests
+
+**Reference:** The existing store is ~72 lines. We already use `better-sqlite3` directly (MIT licensed).
+
+---
+
 ### MQTT Traceroute Visualization (#893)
 
 **Completed:**
