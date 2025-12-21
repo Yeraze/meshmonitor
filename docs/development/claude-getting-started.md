@@ -508,7 +508,7 @@ meshmonitor/
 
 - **Documentation**: https://meshmonitor.org/
 - **GitHub Issues**: https://github.com/Yeraze/meshmonitor/issues
-- **Discord**: https://discord.gg/aeeQbKN5
+- **Discord**: https://discord.gg/SdMfbmTGH
 - **FAQ**: [/faq](/faq)
 
 ---
