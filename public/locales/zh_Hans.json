@@ -2523,5 +2523,16 @@
     "admin_commands.section_load_failed": "部分加载失败",
     "admin_commands.paxcounter_configuration": "客流计数器配置",
     "admin_commands.position_flag_altitude": "包括高度",
-    "admin_commands.position_flag_altitude_msl": "高度为 MSL（平均海平面）"
+    "admin_commands.position_flag_altitude_msl": "高度为 MSL（平均海平面）",
+    "header.clickForStatus": "点击查看系统状态",
+    "header.status.connected": "已连接",
+    "header.status.disconnected": "已断开",
+    "header.status.initializing": "初始化中",
+    "header.status.nodeOffline": "节点已离线",
+    "header.disconnect": "断开",
+    "header.disconnectTitle": "断开与节点的连接",
+    "header.connect": "连接",
+    "header.connectTitle": "重新连接到节点",
+    "header.login": "登入",
+    "messages.actions_menu": "操作"
 }
