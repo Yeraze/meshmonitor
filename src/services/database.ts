@@ -43,6 +43,7 @@ import { migration as notifyOnMqttMigration } from '../server/migrations/037_add
 import { migration as recalculateEstimatedPositionsMigration } from '../server/migrations/038_recalculate_estimated_positions.js';
 import { migration as recalculateEstimatedPositionsFixMigration } from '../server/migrations/039_recalculate_estimated_positions_fix.js';
 import { migration as positionOverrideMigration } from '../server/migrations/040_add_position_override_to_nodes.js';
+import { migration as autoTracerouteLogMigration } from '../server/migrations/041_add_auto_traceroute_log.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Configuration constants for traceroute history
@@ -425,6 +426,7 @@ class DatabaseService {
     this.runRecalculateEstimatedPositionsMigration();
     this.runRecalculateEstimatedPositionsFixMigration();
     this.runPositionOverrideMigration();
+    this.runAutoTracerouteLogMigration();
     this.ensureAutomationDefaults();
     this.isInitialized = true;
   }
@@ -1191,6 +1193,27 @@ class DatabaseService {
       logger.debug('✅ Inactive node notification migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run inactive node notification migration:', error);
+      throw error;
+    }
+  }
+
+  private runAutoTracerouteLogMigration(): void {
+    logger.debug('Running auto-traceroute log migration...');
+    try {
+      const migrationKey = 'migration_041_auto_traceroute_log';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Auto-traceroute log migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 041: Add auto_traceroute_log table...');
+      autoTracerouteLogMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Auto-traceroute log migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run auto-traceroute log migration:', error);
       throw error;
     }
   }
@@ -3006,6 +3029,11 @@ class DatabaseService {
     const expirationHours = this.getTracerouteExpirationHours();
     const EXPIRATION_MS = expirationHours * 60 * 60 * 1000;
 
+    // Get maxNodeAgeHours setting to filter only active nodes
+    // lastHeard is stored in seconds (Unix timestamp), so convert cutoff to seconds
+    const maxNodeAgeHours = parseInt(this.getSetting('maxNodeAgeHours') || '24');
+    const activeNodeCutoff = Math.floor(Date.now() / 1000) - (maxNodeAgeHours * 60 * 60);
+
     // Check if node filter is enabled
     const filterEnabled = this.isAutoTracerouteNodeFilterEnabled();
 
@@ -3024,6 +3052,7 @@ class DatabaseService {
     const filterRegexEnabled = this.isTracerouteFilterRegexEnabled();
 
     // Get all nodes that are eligible for traceroute based on their status
+    // Only consider nodes that have been heard within maxNodeAgeHours (active nodes)
     // Two categories:
     // 1. Nodes with no successful traceroute: retry every 3 hours
     // 2. Nodes with successful traceroute: retry every 24 hours
@@ -3033,6 +3062,7 @@ class DatabaseService {
          WHERE t.fromNodeNum = ? AND t.toNodeNum = n.nodeNum) as hasTraceroute
       FROM nodes n
       WHERE n.nodeNum != ?
+        AND n.lastHeard > ?
         AND (
           -- Category 1: No traceroute exists, and (never requested OR requested > 3 hours ago)
           (
@@ -3054,6 +3084,7 @@ class DatabaseService {
     let eligibleNodes = stmt.all(
       localNodeNum,
       localNodeNum,
+      activeNodeCutoff,
       localNodeNum,
       now - THREE_HOURS_MS,
       localNodeNum,
@@ -3439,6 +3470,78 @@ class DatabaseService {
       this.setTracerouteExpirationHours(settings.expirationHours);
     }
     logger.debug('✅ Updated all traceroute filter settings');
+  }
+
+  // Auto-traceroute log methods
+  logAutoTracerouteAttempt(toNodeNum: number, toNodeName: string | null): number {
+    const now = Date.now();
+    const stmt = this.db.prepare(`
+      INSERT INTO auto_traceroute_log (timestamp, to_node_num, to_node_name, success, created_at)
+      VALUES (?, ?, ?, NULL, ?)
+    `);
+    const result = stmt.run(now, toNodeNum, toNodeName, now);
+
+    // Clean up old entries (keep last 100)
+    const cleanupStmt = this.db.prepare(`
+      DELETE FROM auto_traceroute_log
+      WHERE id NOT IN (
+        SELECT id FROM auto_traceroute_log
+        ORDER BY timestamp DESC
+        LIMIT 100
+      )
+    `);
+    cleanupStmt.run();
+
+    return result.lastInsertRowid as number;
+  }
+
+  updateAutoTracerouteResult(logId: number, success: boolean): void {
+    const stmt = this.db.prepare(`
+      UPDATE auto_traceroute_log SET success = ? WHERE id = ?
+    `);
+    stmt.run(success ? 1 : 0, logId);
+  }
+
+  // Update the most recent pending auto-traceroute for a given destination
+  updateAutoTracerouteResultByNode(toNodeNum: number, success: boolean): void {
+    const stmt = this.db.prepare(`
+      UPDATE auto_traceroute_log
+      SET success = ?
+      WHERE id = (
+        SELECT id FROM auto_traceroute_log
+        WHERE to_node_num = ? AND success IS NULL
+        ORDER BY timestamp DESC
+        LIMIT 1
+      )
+    `);
+    stmt.run(success ? 1 : 0, toNodeNum);
+  }
+
+  getAutoTracerouteLog(limit: number = 10): {
+    id: number;
+    timestamp: number;
+    toNodeNum: number;
+    toNodeName: string | null;
+    success: boolean | null;
+  }[] {
+    const stmt = this.db.prepare(`
+      SELECT id, timestamp, to_node_num as toNodeNum, to_node_name as toNodeName, success
+      FROM auto_traceroute_log
+      ORDER BY timestamp DESC
+      LIMIT ?
+    `);
+    const results = stmt.all(limit) as {
+      id: number;
+      timestamp: number;
+      toNodeNum: number;
+      toNodeName: string | null;
+      success: number | null;
+    }[];
+
+    return results.map(r => ({
+      ...r,
+      success: r.success === null ? null : r.success === 1
+    }));
   }
 
   getTelemetryByType(telemetryType: string, limit: number = 100): DbTelemetry[] {

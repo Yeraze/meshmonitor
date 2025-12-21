@@ -4003,6 +4003,20 @@ apiRouter.post('/settings/traceroute-nodes', requirePermission('settings', 'writ
   }
 });
 
+// Get auto-traceroute log (recent auto-traceroute attempts with success/fail status)
+apiRouter.get('/settings/traceroute-log', requirePermission('settings', 'read'), (_req, res) => {
+  try {
+    const log = databaseService.getAutoTracerouteLog(10);
+    res.json({
+      success: true,
+      log,
+    });
+  } catch (error) {
+    logger.error('Error fetching auto-traceroute log:', error);
+    res.status(500).json({ error: 'Failed to fetch auto-traceroute log' });
+  }
+});
+
 // Helper functions for tile URL validation
 function validateTileUrl(url: string): boolean {
   // Must contain {z}, {x}, {y} placeholders

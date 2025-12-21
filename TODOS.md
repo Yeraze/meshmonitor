@@ -2,6 +2,25 @@
 
 ## Current Sprint
 
+### Auto-Traceroute Active Node Filter & Logging (PR #1169)
+
+**Completed:**
+- [x] Fix `getNodeNeedingTraceroute()` to filter by `maxNodeAgeHours` setting
+- [x] Fix time unit bug: `lastHeard` is seconds, not milliseconds
+- [x] Create migration 041 for `auto_traceroute_log` table
+- [x] Add database functions: `logAutoTracerouteAttempt()`, `updateAutoTracerouteResult()`, `getAutoTracerouteLog()`
+- [x] Add tracking Set in meshtasticManager for pending auto-traceroutes
+- [x] Create API endpoint `GET /api/settings/traceroute-log`
+- [x] Add Recent Auto-Traceroutes section in AutoTracerouteSection.tsx
+- [x] Add translation strings for log section
+- [x] TypeScript typecheck passed
+- [x] PR created (#1169)
+
+**Summary:**
+Fixed auto-traceroute to only target "active" nodes (heard within `maxNodeAgeHours` setting from Settings page). Added a new "Recent Auto-Traceroutes" section in the Automation tab showing the last 10 auto-traceroute attempts with timestamp, destination, and pass/fail status indicators.
+
+---
+
 ### MQTT Traceroute Visualization (#893)
 
 **Completed:**

@@ -43,6 +43,14 @@ interface FilterSettings {
   expirationHours: number;
 }
 
+interface TracerouteLogEntry {
+  id: number;
+  timestamp: number;
+  toNodeNum: number;
+  toNodeName: string | null;
+  success: boolean | null;
+}
+
 const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
   intervalMinutes,
   baseUrl,
@@ -73,6 +81,9 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
 
   // Expiration hours - how long before re-tracerouting a node
   const [expirationHours, setExpirationHours] = useState(24);
+
+  // Auto-traceroute log
+  const [tracerouteLog, setTracerouteLog] = useState<TracerouteLogEntry[]>([]);
 
   const [availableNodes, setAvailableNodes] = useState<Node[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -140,6 +151,33 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
     };
     fetchFilterSettings();
   }, [baseUrl, csrfFetch]);
+
+  // Fetch auto-traceroute log
+  useEffect(() => {
+    const fetchTracerouteLog = async () => {
+      try {
+        const response = await csrfFetch(`${baseUrl}/api/settings/traceroute-log`);
+        if (response.ok) {
+          const data = await response.json();
+          setTracerouteLog(data.log || []);
+        }
+      } catch (error) {
+        console.error('Failed to fetch traceroute log:', error);
+      }
+    };
+
+    // Initial fetch
+    fetchTracerouteLog();
+
+    // Refresh every 30 seconds if auto-traceroute is enabled
+    const intervalId = setInterval(() => {
+      if (localEnabled) {
+        fetchTracerouteLog();
+      }
+    }, 30000);
+
+    return () => clearInterval(intervalId);
+  }, [baseUrl, csrfFetch, localEnabled]);
 
   // Check if any settings have changed
   useEffect(() => {
@@ -913,6 +951,88 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
             </div>
           )}
         </div>
+
+        {/* Auto-Traceroute Log Section */}
+        {localEnabled && (
+          <div className="setting-item" style={{ marginTop: '2rem' }}>
+            <h4 style={{ marginBottom: '0.75rem', color: 'var(--ctp-text)' }}>
+              {t('automation.auto_traceroute.recent_log')}
+            </h4>
+            <div style={{
+              border: '1px solid var(--ctp-surface2)',
+              borderRadius: '6px',
+              overflow: 'hidden',
+              marginLeft: '1.75rem'
+            }}>
+              {tracerouteLog.length === 0 ? (
+                <div style={{
+                  padding: '1rem',
+                  textAlign: 'center',
+                  color: 'var(--ctp-subtext0)',
+                  fontSize: '12px'
+                }}>
+                  {t('automation.auto_traceroute.no_log_entries')}
+                </div>
+              ) : (
+                <table style={{
+                  width: '100%',
+                  borderCollapse: 'collapse',
+                  fontSize: '12px'
+                }}>
+                  <thead>
+                    <tr style={{ background: 'var(--ctp-surface1)' }}>
+                      <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 500 }}>
+                        {t('automation.auto_traceroute.log_timestamp')}
+                      </th>
+                      <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 500 }}>
+                        {t('automation.auto_traceroute.log_destination')}
+                      </th>
+                      <th style={{ padding: '0.5rem 0.75rem', textAlign: 'center', fontWeight: 500 }}>
+                        {t('automation.auto_traceroute.log_status')}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tracerouteLog.map((entry) => (
+                      <tr key={entry.id} style={{ borderTop: '1px solid var(--ctp-surface1)' }}>
+                        <td style={{ padding: '0.4rem 0.75rem', color: 'var(--ctp-subtext0)' }}>
+                          {new Date(entry.timestamp).toLocaleString()}
+                        </td>
+                        <td style={{ padding: '0.4rem 0.75rem', color: 'var(--ctp-text)' }}>
+                          {entry.toNodeName || `!${entry.toNodeNum.toString(16).padStart(8, '0')}`}
+                        </td>
+                        <td style={{ padding: '0.4rem 0.75rem', textAlign: 'center' }}>
+                          {entry.success === null ? (
+                            <span style={{
+                              color: 'var(--ctp-yellow)',
+                              fontSize: '14px'
+                            }} title={t('automation.auto_traceroute.status_pending')}>
+                              ⏳
+                            </span>
+                          ) : entry.success ? (
+                            <span style={{
+                              color: 'var(--ctp-green)',
+                              fontSize: '14px'
+                            }} title={t('automation.auto_traceroute.status_success')}>
+                              ✓
+                            </span>
+                          ) : (
+                            <span style={{
+                              color: 'var(--ctp-red)',
+                              fontSize: '14px'
+                            }} title={t('automation.auto_traceroute.status_failed')}>
+                              ✗
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </>
   );

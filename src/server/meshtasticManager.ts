@@ -88,6 +88,7 @@ class MeshtasticManager {
   private announceInterval: NodeJS.Timeout | null = null;
   private announceCronJob: cron.ScheduledTask | null = null;
   private timerCronJobs: Map<string, cron.ScheduledTask> = new Map();
+  private pendingAutoTraceroutes: Set<number> = new Set(); // Track auto-traceroute targets for logging
   private serverStartTime: number = Date.now();
   private localNodeInfo: {
     nodeNum: number;
@@ -493,7 +494,13 @@ class MeshtasticManager {
           const targetNode = databaseService.getNodeNeedingTraceroute(this.localNodeInfo.nodeNum);
           if (targetNode) {
             const channel = targetNode.channel ?? 0; // Use node's channel, default to 0
-            logger.info(`🗺️ Auto-traceroute: Sending traceroute to ${targetNode.longName || targetNode.nodeId} (${targetNode.nodeId}) on channel ${channel}`);
+            const targetName = targetNode.longName || targetNode.nodeId;
+            logger.info(`🗺️ Auto-traceroute: Sending traceroute to ${targetName} (${targetNode.nodeId}) on channel ${channel}`);
+
+            // Log the auto-traceroute attempt to database
+            databaseService.logAutoTracerouteAttempt(targetNode.nodeNum, targetName);
+            this.pendingAutoTraceroutes.add(targetNode.nodeNum);
+
             await this.sendTraceroute(targetNode.nodeNum, channel);
           } else {
             logger.info('🗺️ Auto-traceroute: No nodes available for traceroute');
@@ -3019,6 +3026,13 @@ class MeshtasticManager {
 
       databaseService.insertTraceroute(tracerouteRecord);
       logger.debug(`💾 Saved traceroute record to traceroutes table`);
+
+      // If this was an auto-traceroute, mark it as successful in the log
+      if (this.pendingAutoTraceroutes.has(fromNum)) {
+        databaseService.updateAutoTracerouteResultByNode(fromNum, true);
+        this.pendingAutoTraceroutes.delete(fromNum);
+        logger.debug(`🗺️ Auto-traceroute to ${fromNodeId} marked as successful`);
+      }
 
       // Send notification for successful traceroute
       notificationService.notifyTraceroute(fromNodeId, toNodeId, routeText)
