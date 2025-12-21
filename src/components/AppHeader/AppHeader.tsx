@@ -19,6 +19,7 @@ interface AppHeaderProps {
   deviceInfo: DeviceInfoProp | null;
   authStatus: AuthStatus | null;
   connectionStatus: ConnectionStatus;
+  webSocketConnected: boolean;
   hasPermission: (resource: ResourceType, action: 'read' | 'write') => boolean;
   onFetchSystemStatus: () => void;
   onDisconnect: () => void;
@@ -35,6 +36,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   deviceInfo,
   authStatus,
   connectionStatus,
+  webSocketConnected,
   hasPermission,
   onFetchSystemStatus,
   onDisconnect,
@@ -103,13 +105,23 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
       </div>
       <div className="header-right">
         <div className="connection-status-container">
-          <div className="connection-status" onClick={onFetchSystemStatus} title={t('header.clickForStatus')}>
+          <div
+            className="connection-status"
+            onClick={onFetchSystemStatus}
+            title={`${t('header.clickForStatus')} | ${t('header.updateMethod')}: ${webSocketConnected ? 'WebSocket' : t('header.polling')}`}
+          >
             <span
               className={`status-indicator ${
                 connectionStatus === 'user-disconnected' ? 'disconnected' : connectionStatus
               }`}
             ></span>
             <span>{getConnectionStatusText()}</span>
+            <span
+              className={`update-method-indicator ${webSocketConnected ? 'websocket' : 'polling'}`}
+              title={webSocketConnected ? 'Real-time via WebSocket' : 'Polling every 5 seconds'}
+            >
+              {webSocketConnected ? '⚡' : '🔄'}
+            </span>
           </div>
 
           {hasPermission('connection', 'write') && connectionStatus === 'connected' && (

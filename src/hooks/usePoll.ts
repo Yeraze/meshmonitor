@@ -160,11 +160,18 @@ export interface PollData {
 interface UsePollOptions {
   /** Base URL for API requests (default: appBasename from init.ts) */
   baseUrl?: string;
-  /** Poll interval in milliseconds (default: 5000) */
+  /** Poll interval in milliseconds (default: 5000, or 30000 when WebSocket connected) */
   pollInterval?: number;
   /** Whether polling is enabled (default: true) */
   enabled?: boolean;
+  /** Whether WebSocket is connected (reduces polling frequency when true) */
+  webSocketConnected?: boolean;
 }
+
+/** Polling interval when WebSocket is connected (30 seconds as backup) */
+const WEBSOCKET_POLL_INTERVAL = 30000;
+/** Polling interval when WebSocket is disconnected (5 seconds for real-time updates) */
+const DEFAULT_POLL_INTERVAL = 5000;
 
 /**
  * Query key for the poll endpoint.
@@ -207,8 +214,18 @@ export const POLL_QUERY_KEY = ['poll'] as const;
  * }
  * ```
  */
-export function usePoll({ baseUrl = appBasename, pollInterval = 5000, enabled = true }: UsePollOptions = {}) {
+export function usePoll({
+  baseUrl = appBasename,
+  pollInterval,
+  enabled = true,
+  webSocketConnected = false
+}: UsePollOptions = {}) {
   const authFetch = useCsrfFetch();
+
+  // Determine the effective poll interval based on WebSocket connection status
+  // When WebSocket is connected, poll less frequently (30s) as a backup
+  // When disconnected, poll frequently (5s) for real-time updates
+  const effectiveInterval = pollInterval ?? (webSocketConnected ? WEBSOCKET_POLL_INTERVAL : DEFAULT_POLL_INTERVAL);
 
   return useQuery({
     queryKey: POLL_QUERY_KEY,
@@ -229,10 +246,11 @@ export function usePoll({ baseUrl = appBasename, pollInterval = 5000, enabled = 
       if (query.state.fetchStatus === 'fetching') {
         return false; // Skip this interval, wait for current request to complete
       }
-      return pollInterval;
+      return effectiveInterval;
     },
-    staleTime: pollInterval - 1000, // Consider stale just before next poll
+    staleTime: effectiveInterval - 1000, // Consider stale just before next poll
     gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
-    refetchOnWindowFocus: false,
+    // Only refetch on window focus when WebSocket is disconnected
+    refetchOnWindowFocus: !webSocketConnected,
   });
 }

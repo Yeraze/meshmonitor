@@ -14,6 +14,7 @@ import PacketMonitorPage from './pages/PacketMonitorPage.tsx';
 import './index.css';
 import { AuthProvider } from './contexts/AuthContext';
 import { CsrfProvider } from './contexts/CsrfContext';
+import { WebSocketProvider } from './contexts/WebSocketContext';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
@@ -27,7 +28,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
               element={
                 <CsrfProvider>
                   <AuthProvider>
-                    <App />
+                    <WebSocketProvider>
+                      <App />
+                    </WebSocketProvider>
                   </AuthProvider>
                 </CsrfProvider>
               }

@@ -1,5 +1,4 @@
 import express from 'express';
-import session from 'express-session';
 import cors from 'cors';
 import helmet from 'helmet';
 import path from 'path';
@@ -17,7 +16,8 @@ import { VirtualNodeServer } from './virtualNodeServer.js';
 import { createRequire } from 'module';
 import { logger } from '../utils/logger.js';
 import { normalizeTriggerPatterns } from '../utils/autoResponderUtils.js';
-import { getSessionConfig } from './auth/sessionConfig.js';
+import { getSessionMiddleware } from './auth/sessionConfig.js';
+import { initializeWebSocket } from './services/webSocketService.js';
 import { initializeOIDC } from './auth/oidcAuth.js';
 import { optionalAuth, requireAuth, requirePermission, requireAdmin, hasPermission } from './auth/authMiddleware.js';
 import { apiLimiter } from './middleware/rateLimiters.js';
@@ -264,8 +264,9 @@ if (accessLogger) {
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true, parameterLimit: 1000 }));
 
-// Session middleware
-app.use(session(getSessionConfig()));
+// Session middleware (shared with WebSocket for authentication)
+const sessionMiddleware = getSessionMiddleware();
+app.use(sessionMiddleware);
 
 // Security: CSRF protection middleware
 import { csrfTokenMiddleware, csrfProtection, csrfTokenEndpoint } from './middleware/csrf.js';
@@ -7781,8 +7782,11 @@ const server = app.listen(PORT, () => {
   logger.debug(`MeshMonitor server running on port ${PORT}`);
   logger.debug(`Environment: ${env.nodeEnv}`);
 
+  // Initialize WebSocket server for real-time updates
+  initializeWebSocket(server, sessionMiddleware);
+
   // Send server start notification
-  const enabledFeatures: string[] = [];
+  const enabledFeatures: string[] = ['WebSocket']; // WebSocket is always enabled
   if (env.oidcEnabled) enabledFeatures.push('OIDC');
   if (env.enableVirtualNode) enabledFeatures.push('Virtual Node');
   if (env.accessLogEnabled) enabledFeatures.push('Access Logging');

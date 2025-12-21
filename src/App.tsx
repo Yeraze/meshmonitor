@@ -55,6 +55,7 @@ import { MessagingProvider, useMessaging } from './contexts/MessagingContext';
 import { UIProvider, useUI } from './contexts/UIContext';
 import { useAuth } from './contexts/AuthContext';
 import { useCsrf } from './contexts/CsrfContext';
+import { useWebSocketConnected } from './contexts/WebSocketContext';
 import { useHealth } from './hooks/useHealth';
 import { useTxStatus } from './hooks/useTxStatus';
 import { usePoll, type PollData } from './hooks/usePoll';
@@ -89,6 +90,7 @@ function App() {
   const { t } = useTranslation();
   const { authStatus, hasPermission } = useAuth();
   const { getToken: getCsrfToken, refreshToken: refreshCsrfToken } = useCsrf();
+  const webSocketConnected = useWebSocketConnected();
   const { showToast } = useToast();
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [isDefaultPassword, setIsDefaultPassword] = useState(false);
@@ -325,11 +327,13 @@ function App() {
 
   // Consolidated polling for nodes, messages, channels, config
   // Enabled only when connected and not in reboot/user-disconnected state
+  // When WebSocket is connected, polling interval is reduced (30s backup) as real-time
+  // updates come via WebSocket. When disconnected, polls every 5s for real-time updates.
   const shouldPoll = connectionStatus === 'connected' && !showRebootModal;
   const { data: pollData, refetch: refetchPoll } = usePoll({
     baseUrl,
-    pollInterval: 5000,
     enabled: shouldPoll,
+    webSocketConnected,
   });
 
   // Get computed CSS color values for Leaflet Polyline components (which don't support CSS variables)
@@ -3687,6 +3691,7 @@ function App() {
         deviceInfo={deviceInfo}
         authStatus={authStatus}
         connectionStatus={connectionStatus}
+        webSocketConnected={webSocketConnected}
         hasPermission={hasPermission}
         onFetchSystemStatus={fetchSystemStatus}
         onDisconnect={handleDisconnect}
