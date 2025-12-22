@@ -1,6 +1,6 @@
 # Build stage for ARMv7 (Raspberry Pi 2/3 32-bit)
 # Node.js 24 doesn't support ARMv7, so we use Node.js 22 LTS
-FROM node:22-slim AS builder
+FROM node:25-slim AS builder
 
 WORKDIR /app
 
@@ -46,7 +46,7 @@ RUN --mount=type=cache,target=/app/.tsc-cache \
     npm run build:server
 
 # Production stage for ARMv7
-FROM node:22-slim
+FROM node:25-slim
 
 WORKDIR /app
 

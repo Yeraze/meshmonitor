@@ -1,4 +1,4 @@
-FROM node:24-alpine
+FROM node:25-alpine
 
 # Install only netcat for healthcheck and port waiting
 RUN apk add --no-cache netcat-openbsd
