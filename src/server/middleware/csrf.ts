@@ -43,6 +43,15 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction) 
     return next();
   }
 
+  // Skip CSRF check for API token authenticated requests (Bearer token)
+  // CSRF protection is for browser-based sessions using cookies
+  // API tokens are not stored in cookies and must be explicitly provided,
+  // so they are inherently protected against CSRF attacks
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return next();
+  }
+
   // Skip CSRF check for endpoints that must be accessible without tokens
   // /csrf-token: Users need this to get a token before they have one
   // /auth/status: Public endpoint for checking auth state

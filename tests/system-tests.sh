@@ -67,6 +67,8 @@ cleanup() {
     rm -f /tmp/meshmonitor-config-import-cookies.txt 2>/dev/null || true
     rm -f /tmp/meshmonitor-backup-test-cookies.txt 2>/dev/null || true
     rm -f /tmp/meshmonitor-restore-test-cookies.txt 2>/dev/null || true
+    rm -f /tmp/meshmonitor-api-test-*.txt 2>/dev/null || true
+    rm -f /tmp/meshmonitor-api-test-*.json 2>/dev/null || true
     rm -f /tmp/vn-test-client.py 2>/dev/null || true
 
     echo -e "${GREEN}✓${NC} Cleanup complete"
@@ -130,6 +132,7 @@ else
     # Set all other results to SKIPPED
     QUICKSTART_RESULT="SKIPPED"
     SECURITY_RESULT="SKIPPED"
+    V1_API_RESULT="SKIPPED"
     REVERSE_PROXY_RESULT="SKIPPED"
     OIDC_RESULT="SKIPPED"
     VIRTUAL_NODE_RESULT="SKIPPED"
@@ -143,6 +146,7 @@ else
     echo -e "Configuration Import:     ${RED}✗ FAILED${NC}"
     echo -e "Quick Start Test:         ${YELLOW}⊘ SKIPPED${NC}"
     echo -e "Security Test:            ${YELLOW}⊘ SKIPPED${NC}"
+    echo -e "V1 API Test:              ${YELLOW}⊘ SKIPPED${NC}"
     echo -e "Reverse Proxy Test:       ${YELLOW}⊘ SKIPPED${NC}"
     echo -e "Reverse Proxy + OIDC:     ${YELLOW}⊘ SKIPPED${NC}"
     echo -e "Virtual Node CLI Test:    ${YELLOW}⊘ SKIPPED${NC}"
@@ -162,7 +166,8 @@ echo ""
 
 # Run Quick Start test - expects device state from Configuration Import
 # (channels: primary, dummyA, dummyB)
-if bash "$SCRIPT_DIR/test-quick-start.sh"; then
+# Set KEEP_ALIVE=true so container stays running for V1 API test
+if KEEP_ALIVE=true bash "$SCRIPT_DIR/test-quick-start.sh"; then
     QUICKSTART_RESULT="PASSED"
     SECURITY_RESULT="PASSED"  # Security test is integrated into Quick Start
     echo ""
@@ -173,6 +178,29 @@ else
     echo ""
     echo -e "${RED}✗ Quick Start test FAILED${NC}"
 fi
+echo ""
+
+echo "=========================================="
+echo -e "${BLUE}Running V1 API Test${NC}"
+echo "=========================================="
+echo ""
+
+# Run V1 API test using the Quick Start container (still running due to KEEP_ALIVE)
+# This tests Bearer token auth and CSRF bypass for API endpoints
+if TEST_EXTERNAL_APP_URL="http://localhost:8083" bash "$SCRIPT_DIR/test-v1-api.sh"; then
+    V1_API_RESULT="PASSED"
+    echo ""
+    echo -e "${GREEN}✓ V1 API test PASSED${NC}"
+else
+    V1_API_RESULT="FAILED"
+    echo ""
+    echo -e "${RED}✗ V1 API test FAILED${NC}"
+fi
+
+# Clean up Quick Start container now that V1 API test is done
+echo ""
+echo -e "${BLUE}Cleaning up Quick Start container...${NC}"
+docker compose -f docker-compose.quick-start-test.yml down -v 2>/dev/null || true
 echo ""
 
 echo "=========================================="
@@ -269,6 +297,12 @@ else
     echo -e "Security Test:            ${RED}✗ FAILED${NC}"
 fi
 
+if [ "$V1_API_RESULT" = "PASSED" ]; then
+    echo -e "V1 API Test:              ${GREEN}✓ PASSED${NC}"
+else
+    echo -e "V1 API Test:              ${RED}✗ FAILED${NC}"
+fi
+
 if [ "$REVERSE_PROXY_RESULT" = "PASSED" ]; then
     echo -e "Reverse Proxy Test:       ${GREEN}✓ PASSED${NC}"
 else
@@ -326,6 +360,12 @@ else
     echo "| Security Test | ❌ FAILED |" >> "$REPORT_FILE"
 fi
 
+if [ "$V1_API_RESULT" = "PASSED" ]; then
+    echo "| V1 API Test | ✅ PASSED |" >> "$REPORT_FILE"
+else
+    echo "| V1 API Test | ❌ FAILED |" >> "$REPORT_FILE"
+fi
+
 if [ "$REVERSE_PROXY_RESULT" = "PASSED" ]; then
     echo "| Reverse Proxy Test | ✅ PASSED |" >> "$REPORT_FILE"
 else
@@ -354,7 +394,7 @@ echo "" >> "$REPORT_FILE"
 
 # Overall result (config import is optional, so only fail if it actually failed, not if skipped)
 REQUIRED_TESTS_PASSED=true
-if [ "$QUICKSTART_RESULT" != "PASSED" ] || [ "$SECURITY_RESULT" != "PASSED" ] || [ "$REVERSE_PROXY_RESULT" != "PASSED" ] || [ "$OIDC_RESULT" != "PASSED" ] || [ "$VIRTUAL_NODE_CLI_RESULT" != "PASSED" ] || [ "$BACKUP_RESTORE_RESULT" != "PASSED" ]; then
+if [ "$QUICKSTART_RESULT" != "PASSED" ] || [ "$SECURITY_RESULT" != "PASSED" ] || [ "$V1_API_RESULT" != "PASSED" ] || [ "$REVERSE_PROXY_RESULT" != "PASSED" ] || [ "$OIDC_RESULT" != "PASSED" ] || [ "$VIRTUAL_NODE_CLI_RESULT" != "PASSED" ] || [ "$BACKUP_RESTORE_RESULT" != "PASSED" ]; then
     REQUIRED_TESTS_PASSED=false
 fi
 
@@ -387,6 +427,12 @@ if [ "$REQUIRED_TESTS_PASSED" = true ]; then
     echo "- Verifies Node IP address visible to authenticated users" >> "$REPORT_FILE"
     echo "- Verifies MQTT configuration visible to authenticated users" >> "$REPORT_FILE"
     echo "- Verifies protected endpoints require authentication" >> "$REPORT_FILE"
+    echo "" >> "$REPORT_FILE"
+    echo "**V1 API Test:**" >> "$REPORT_FILE"
+    echo "- Tests v1 REST API endpoints with Bearer token authentication" >> "$REPORT_FILE"
+    echo "- Verifies Bearer token requests bypass CSRF protection" >> "$REPORT_FILE"
+    echo "- Verifies POST/PUT/DELETE work without CSRF token when using Bearer auth" >> "$REPORT_FILE"
+    echo "- Verifies session-based requests still require CSRF token" >> "$REPORT_FILE"
     echo "" >> "$REPORT_FILE"
     echo "**Reverse Proxy Test:**" >> "$REPORT_FILE"
     echo "- Production deployment with COOKIE_SECURE=true" >> "$REPORT_FILE"
@@ -442,6 +488,9 @@ else
     fi
     if [ "$SECURITY_RESULT" != "PASSED" ]; then
         echo "- **Security Test:** API endpoint security test failed" >> "$REPORT_FILE"
+    fi
+    if [ "$V1_API_RESULT" != "PASSED" ]; then
+        echo "- **V1 API Test:** Bearer token authentication or CSRF bypass test failed" >> "$REPORT_FILE"
     fi
     if [ "$REVERSE_PROXY_RESULT" != "PASSED" ]; then
         echo "- **Reverse Proxy Test:** Production HTTPS deployment test failed" >> "$REPORT_FILE"
