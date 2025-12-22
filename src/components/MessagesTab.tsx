@@ -21,7 +21,7 @@ import {
 import { formatTracerouteRoute } from '../utils/traceroute';
 import { getUtf8ByteLength, formatByteCount } from '../utils/text';
 import { renderMessageWithLinks } from '../utils/linkRenderer';
-import { isNodeComplete } from '../utils/nodeHelpers';
+import { isNodeComplete, isInfrastructureNode, hasValidPosition } from '../utils/nodeHelpers';
 import HopCountDisplay from './HopCountDisplay';
 import LinkPreview from './LinkPreview';
 import NodeDetailsBlock from './NodeDetailsBlock';
@@ -89,8 +89,8 @@ export interface MessagesTabProps {
   setNodeFilter: (filter: string) => void;
   messagesNodeFilter: string;
   setMessagesNodeFilter: (filter: string) => void;
-  dmFilter: 'all' | 'unread' | 'recent';
-  setDmFilter: (filter: 'all' | 'unread' | 'recent') => void;
+  dmFilter: 'all' | 'unread' | 'recent' | 'hops' | 'favorites' | 'withPosition' | 'noInfra';
+  setDmFilter: (filter: 'all' | 'unread' | 'recent' | 'hops' | 'favorites' | 'withPosition' | 'noInfra') => void;
   securityFilter: 'all' | 'flaggedOnly' | 'hideFlagged';
   channelFilter: number | 'all';
   showIncompleteNodes: boolean;
@@ -293,21 +293,50 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
       };
     });
 
-  // Sort and filter nodes
+  // Sort by hops (ascending, 0 first, unknown last)
+  const sortByHops = (a: NodeWithMessages, b: NodeWithMessages): number => {
+    const aHops = a.hopsAway ?? 999;
+    const bHops = b.hopsAway ?? 999;
+    return aHops - bHops;
+  };
+
+  // Default sort: favorites first, then by last message time
+  const sortDefault = (a: NodeWithMessages, b: NodeWithMessages): number => {
+    if (a.isFavorite && !b.isFavorite) return -1;
+    if (!a.isFavorite && b.isFavorite) return 1;
+    return b.lastMessageTime - a.lastMessageTime;
+  };
+
+  // Sort and filter nodes based on dmFilter
   const sortedNodesWithMessages = [...nodesWithMessages]
-    .sort((a, b) => {
-      if (a.isFavorite && !b.isFavorite) return -1;
-      if (!a.isFavorite && b.isFavorite) return 1;
-      return b.lastMessageTime - a.lastMessageTime;
-    })
     .filter(node => {
-      if (dmFilter === 'unread') {
-        return node.unreadCount > 0;
-      } else if (dmFilter === 'recent') {
-        const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
-        return node.lastMessageTime > oneDayAgo;
+      // Apply filter conditions
+      switch (dmFilter) {
+        case 'unread':
+          return node.unreadCount > 0;
+        case 'recent': {
+          const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+          return node.lastMessageTime > oneDayAgo;
+        }
+        case 'favorites':
+          return node.isFavorite === true;
+        case 'withPosition':
+          return hasValidPosition(node);
+        case 'noInfra':
+          return !isInfrastructureNode(node);
+        case 'hops':
+        case 'all':
+        default:
+          return true;
       }
-      return true;
+    })
+    .sort((a, b) => {
+      // For hops-based filters, sort by hops ascending
+      if (['hops', 'favorites', 'withPosition', 'noInfra'].includes(dmFilter)) {
+        return sortByHops(a, b);
+      }
+      // Default sort: favorites first, then by last message time
+      return sortDefault(a, b);
     });
 
   // Filter for display
@@ -376,13 +405,17 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
               <div className="sort-controls">
                 <select
                   value={dmFilter}
-                  onChange={e => setDmFilter(e.target.value as 'all' | 'unread' | 'recent')}
+                  onChange={e => setDmFilter(e.target.value as 'all' | 'unread' | 'recent' | 'hops' | 'favorites' | 'withPosition' | 'noInfra')}
                   className="sort-dropdown"
                   title={t('messages.filter_conversations_title')}
                 >
                   <option value="all">{t('messages.all_conversations')}</option>
                   <option value="unread">{t('messages.unread_only')}</option>
                   <option value="recent">{t('messages.recent_24h')}</option>
+                  <option value="hops">{t('messages.by_hops')}</option>
+                  <option value="favorites">{t('messages.favorites_only')}</option>
+                  <option value="withPosition">{t('messages.with_position')}</option>
+                  <option value="noInfra">{t('messages.exclude_infrastructure')}</option>
                 </select>
               </div>
             </div>
