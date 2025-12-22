@@ -31,7 +31,8 @@ i18n
   .use(initReactI18next)
   .init({
     fallbackLng: 'en',
-    load: 'currentOnly', 
+    load: 'currentOnly',
+    preload: ['en'], // Always load English for fallback when translations are missing
     debug: process.env.NODE_ENV === 'development',
 
     interpolation: {
