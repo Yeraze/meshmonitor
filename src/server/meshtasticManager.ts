@@ -1943,7 +1943,8 @@ class MeshtasticManager {
       const nodeData: any = {
         nodeNum: fromNum,
         nodeId: nodeId,
-        lastHeard: meshPacket.rxTime ? Number(meshPacket.rxTime) : Date.now() / 1000
+        // Cap lastHeard at current time to prevent stale timestamps from node clock issues
+        lastHeard: Math.min(meshPacket.rxTime ? Number(meshPacket.rxTime) : Date.now() / 1000, Date.now() / 1000)
       };
 
       // Only set default name if this is a brand new node
@@ -2255,7 +2256,8 @@ class MeshtasticManager {
             latitude: coords.latitude,
             longitude: coords.longitude,
             altitude: position.altitude,
-            lastHeard: meshPacket.rxTime ? Number(meshPacket.rxTime) : Date.now() / 1000,
+            // Cap lastHeard at current time to prevent stale timestamps from node clock issues
+            lastHeard: Math.min(meshPacket.rxTime ? Number(meshPacket.rxTime) : Date.now() / 1000, Date.now() / 1000),
             positionChannel: channelIndex,
             positionPrecisionBits: precisionBits,
             positionGpsAccuracy: gpsAccuracy,
@@ -2343,7 +2345,8 @@ class MeshtasticManager {
         hwModel: user.hwModel,
         role: user.role,
         hopsAway: meshPacket.hopsAway,
-        lastHeard: meshPacket.rxTime ? Number(meshPacket.rxTime) : timestamp / 1000,
+        // Cap lastHeard at current time to prevent stale timestamps from node clock issues
+        lastHeard: Math.min(meshPacket.rxTime ? Number(meshPacket.rxTime) : timestamp / 1000, Date.now() / 1000),
         channel: channelIndex
       };
 
@@ -2467,7 +2470,8 @@ class MeshtasticManager {
       const nodeData: any = {
         nodeNum: fromNum,
         nodeId: nodeId,
-        lastHeard: meshPacket.rxTime ? Number(meshPacket.rxTime) : Date.now() / 1000
+        // Cap lastHeard at current time to prevent stale timestamps from node clock issues
+        lastHeard: Math.min(meshPacket.rxTime ? Number(meshPacket.rxTime) : Date.now() / 1000, Date.now() / 1000)
       };
 
       // Only include SNR/RSSI if they have valid values
@@ -2670,7 +2674,8 @@ class MeshtasticManager {
       const nodeData: any = {
         nodeNum: fromNum,
         nodeId: nodeId,
-        lastHeard: meshPacket.rxTime ? Number(meshPacket.rxTime) : Date.now() / 1000
+        // Cap lastHeard at current time to prevent stale timestamps from node clock issues
+        lastHeard: Math.min(meshPacket.rxTime ? Number(meshPacket.rxTime) : Date.now() / 1000, Date.now() / 1000)
       };
 
       // Only include SNR/RSSI if they have valid values
