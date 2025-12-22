@@ -2047,6 +2047,7 @@
 
   "messages.hops_one": "{{count}} hop",
   "messages.hops_other": "{{count}} hops",
+  "messages.signal_info": "Signal strength (SNR/RSSI) - Direct message",
 
   "link_preview.loading": "Loading preview...",
   "link_preview.image_alt": "Link preview",

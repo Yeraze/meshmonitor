@@ -137,6 +137,8 @@ export interface RawMessage {
   wantAck?: boolean;
   routingErrorReceived?: boolean;
   requestId?: number;
+  rxSnr?: number;
+  rxRssi?: number;
 }
 
 /**

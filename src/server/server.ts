@@ -1531,6 +1531,8 @@ function transformDbMessageToMeshMessage(msg: DbMessage): MeshMessage {
     hopLimit: msg.hopLimit,
     replyId: msg.replyId,
     emoji: msg.emoji,
+    rxSnr: msg.rxSnr,
+    rxRssi: msg.rxRssi,
     requestId: (msg as any).requestId,
     wantAck: Boolean((msg as any).wantAck),
     ackFailed: Boolean((msg as any).ackFailed),

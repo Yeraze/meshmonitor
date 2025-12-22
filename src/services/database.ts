@@ -116,6 +116,8 @@ export interface DbMessage {
   replyId?: number;
   emoji?: number;
   viaMqtt?: boolean;
+  rxSnr?: number;
+  rxRssi?: number;
   createdAt: number;
 }
 
@@ -1643,6 +1645,28 @@ class DatabaseService {
       }
     }
 
+    try {
+      this.db.exec(`
+        ALTER TABLE messages ADD COLUMN rxSnr REAL;
+      `);
+      logger.debug('✅ Added rxSnr column');
+    } catch (error: any) {
+      if (!error.message?.includes('duplicate column')) {
+        logger.debug('⚠️ rxSnr column already exists or other error:', error.message);
+      }
+    }
+
+    try {
+      this.db.exec(`
+        ALTER TABLE messages ADD COLUMN rxRssi INTEGER;
+      `);
+      logger.debug('✅ Added rxRssi column');
+    } catch (error: any) {
+      if (!error.message?.includes('duplicate column')) {
+        logger.debug('⚠️ rxRssi column already exists or other error:', error.message);
+      }
+    }
+
     logger.debug('Database migrations completed');
   }
 
@@ -2101,8 +2125,8 @@ class DatabaseService {
       INSERT OR IGNORE INTO messages (
         id, fromNodeNum, toNodeNum, fromNodeId, toNodeId,
         text, channel, portnum, timestamp, rxTime, hopStart, hopLimit, replyId, emoji,
-        requestId, ackFailed, routingErrorReceived, deliveryState, wantAck, viaMqtt, createdAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        requestId, ackFailed, routingErrorReceived, deliveryState, wantAck, viaMqtt, rxSnr, rxRssi, createdAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -2126,6 +2150,8 @@ class DatabaseService {
       (messageData as any).deliveryState ?? null,
       (messageData as any).wantAck ?? 0,
       messageData.viaMqtt ? 1 : 0,
+      messageData.rxSnr ?? null,
+      messageData.rxRssi ?? null,
       messageData.createdAt
     );
   }

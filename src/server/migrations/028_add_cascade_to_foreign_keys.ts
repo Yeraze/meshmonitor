@@ -64,6 +64,8 @@ export const migration = {
           viaMqtt BOOLEAN DEFAULT 0,
           relayNode INTEGER,
           ackFromNode INTEGER,
+          rxSnr REAL,
+          rxRssi INTEGER,
           createdAt INTEGER NOT NULL,
           FOREIGN KEY (fromNodeNum) REFERENCES nodes(nodeNum) ON DELETE CASCADE,
           FOREIGN KEY (toNodeNum) REFERENCES nodes(nodeNum) ON DELETE CASCADE
@@ -282,6 +284,8 @@ export const migration = {
           viaMqtt BOOLEAN DEFAULT 0,
           relayNode INTEGER,
           ackFromNode INTEGER,
+          rxSnr REAL,
+          rxRssi INTEGER,
           createdAt INTEGER NOT NULL,
           FOREIGN KEY (fromNodeNum) REFERENCES nodes(nodeNum),
           FOREIGN KEY (toNodeNum) REFERENCES nodes(nodeNum)

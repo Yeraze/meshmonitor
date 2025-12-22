@@ -23,6 +23,8 @@ export interface MeshMessage {
   replyId?: number;
   emoji?: number;
   viaMqtt?: boolean; // Whether message was received via MQTT bridge
+  rxSnr?: number; // SNR of received packet (for direct messages)
+  rxRssi?: number; // RSSI of received packet (for direct messages)
   // Enhanced delivery tracking
   deliveryState?: MessageDeliveryState;
   wantAck?: boolean; // Whether message requested acknowledgment

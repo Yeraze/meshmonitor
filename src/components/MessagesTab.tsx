@@ -820,7 +820,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             <span className="message-from">{getNodeName(msg.from)}</span>
                             <span className="message-time">
                               {formatMessageTime(currentDate, timeFormat, dateFormat)}
-                              <HopCountDisplay hopStart={msg.hopStart} hopLimit={msg.hopLimit} />
+                              <HopCountDisplay hopStart={msg.hopStart} hopLimit={msg.hopLimit} rxSnr={msg.rxSnr} rxRssi={msg.rxRssi} />
                             </span>
                             <span className="traceroute-badge">{t('messages.traceroute_badge')}</span>
                           </div>
@@ -929,7 +929,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             <div className="message-meta">
                               <span className="message-time">
                                 {formatMessageTime(currentDate, timeFormat, dateFormat)}
-                                <HopCountDisplay hopStart={msg.hopStart} hopLimit={msg.hopLimit} />
+                                <HopCountDisplay hopStart={msg.hopStart} hopLimit={msg.hopLimit} rxSnr={msg.rxSnr} rxRssi={msg.rxRssi} />
                               </span>
                             </div>
                           </div>

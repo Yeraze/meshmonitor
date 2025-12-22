@@ -604,7 +604,7 @@ export default function ChannelsTab({
                                     <div className="message-meta">
                                       <span className="message-time">
                                         {formatMessageTime(currentDate, timeFormat, dateFormat)}
-                                        <HopCountDisplay hopStart={msg.hopStart} hopLimit={msg.hopLimit} />
+                                        <HopCountDisplay hopStart={msg.hopStart} hopLimit={msg.hopLimit} rxSnr={msg.rxSnr} rxRssi={msg.rxRssi} />
                                       </span>
                                     </div>
                                   </div>

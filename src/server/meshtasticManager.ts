@@ -76,6 +76,8 @@ export interface MeshMessage {
   channel: number;
   portnum?: number;
   timestamp: Date;
+  rxSnr?: number;
+  rxRssi?: number;
 }
 
 class MeshtasticManager {
@@ -2106,6 +2108,8 @@ class MeshtasticManager {
           replyId: replyId && replyId > 0 ? replyId : undefined,
           emoji: emoji,
           viaMqtt: meshPacket.viaMqtt === true, // Capture whether message was received via MQTT bridge
+          rxSnr: meshPacket.rxSnr ?? (meshPacket as any).rx_snr, // SNR of received packet
+          rxRssi: meshPacket.rxRssi ?? (meshPacket as any).rx_rssi, // RSSI of received packet
           requestId: context?.virtualNodeRequestId, // For Virtual Node messages, preserve packet ID for ACK matching
           wantAck: context?.virtualNodeRequestId ? 1 : undefined, // Expect ACK for Virtual Node messages
           deliveryState: context?.virtualNodeRequestId ? 'pending' : undefined, // Track delivery for Virtual Node messages
@@ -8254,6 +8258,8 @@ class MeshtasticManager {
       replyId: msg.replyId,
       emoji: msg.emoji,
       viaMqtt: Boolean(msg.viaMqtt),
+      rxSnr: msg.rxSnr,
+      rxRssi: msg.rxRssi,
       // Include delivery tracking fields
       requestId: (msg as any).requestId,
       wantAck: Boolean((msg as any).wantAck),
