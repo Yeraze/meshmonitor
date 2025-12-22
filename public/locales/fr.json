@@ -2991,5 +2991,22 @@
     "config.display_failed": "",
     "neighbor_info.transmit_over_lora_description": "",
     "api_token.prefix": "",
-    "channels_config.downlink": ""
+    "channels_config.downlink": "",
+    "automation.auto_announce.nodeinfo_delay_description": "",
+    "automation.auto_announce.seconds": "",
+    "header.polling": "",
+    "header.updateMethod": "",
+    "messages.favorites_only": "",
+    "messages.with_position": "",
+    "automation.auto_announce.nodeinfo_delay": "",
+    "automation.auto_traceroute.sort_by_hops_description": "",
+    "automation.auto_announce.nodeinfo_title": "",
+    "messages.signal_info": "",
+    "automation.auto_announce.nodeinfo_no_channels_warning": "",
+    "messages.by_hops": "",
+    "messages.exclude_infrastructure": "",
+    "automation.auto_announce.nodeinfo_description": "",
+    "automation.auto_announce.nodeinfo_channels": "",
+    "automation.auto_announce.nodeinfo_channels_description": "",
+    "automation.auto_traceroute.sort_by_hops": ""
 }
