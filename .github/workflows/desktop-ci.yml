@@ -118,7 +118,7 @@ jobs:
         run: npm run tauri:build -- --debug
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: meshmonitor-desktop-windows-debug
           path: desktop/src-tauri/target/debug/bundle/
@@ -224,7 +224,7 @@ jobs:
         run: npm run tauri:build -- --debug --bundles app
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: meshmonitor-desktop-macos-debug
           path: desktop/src-tauri/target/debug/bundle/

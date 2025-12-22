@@ -161,7 +161,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifacts for debugging
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: meshmonitor-desktop-windows-release
           path: desktop/src-tauri/target/release/bundle/nsis/*.exe
@@ -433,7 +433,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifacts for debugging
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: meshmonitor-desktop-macos-release
           path: desktop/src-tauri/target/release/bundle/dmg/*.dmg
