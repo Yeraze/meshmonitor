@@ -3885,7 +3885,7 @@ apiRouter.post('/settings/traceroute-nodes', requirePermission('settings', 'writ
     const {
       enabled, nodeNums, filterChannels, filterRoles, filterHwModels, filterNameRegex,
       filterNodesEnabled, filterChannelsEnabled, filterRolesEnabled, filterHwModelsEnabled, filterRegexEnabled,
-      expirationHours
+      expirationHours, sortByHops
     } = req.body;
 
     // Validate input
@@ -3958,12 +3958,14 @@ apiRouter.post('/settings/traceroute-nodes', requirePermission('settings', 'writ
     let validatedFilterRolesEnabled: boolean | undefined;
     let validatedFilterHwModelsEnabled: boolean | undefined;
     let validatedFilterRegexEnabled: boolean | undefined;
+    let validatedSortByHops: boolean | undefined;
     try {
       validatedFilterNodesEnabled = validateOptionalBoolean(filterNodesEnabled, 'filterNodesEnabled');
       validatedFilterChannelsEnabled = validateOptionalBoolean(filterChannelsEnabled, 'filterChannelsEnabled');
       validatedFilterRolesEnabled = validateOptionalBoolean(filterRolesEnabled, 'filterRolesEnabled');
       validatedFilterHwModelsEnabled = validateOptionalBoolean(filterHwModelsEnabled, 'filterHwModelsEnabled');
       validatedFilterRegexEnabled = validateOptionalBoolean(filterRegexEnabled, 'filterRegexEnabled');
+      validatedSortByHops = validateOptionalBoolean(sortByHops, 'sortByHops');
     } catch (error) {
       return res.status(400).json({ error: (error as Error).message });
     }
@@ -3991,6 +3993,7 @@ apiRouter.post('/settings/traceroute-nodes', requirePermission('settings', 'writ
       filterHwModelsEnabled: validatedFilterHwModelsEnabled,
       filterRegexEnabled: validatedFilterRegexEnabled,
       expirationHours: validatedExpirationHours,
+      sortByHops: validatedSortByHops,
     });
 
     // Get the updated settings to return (includes resolved default values)

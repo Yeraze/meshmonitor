@@ -1867,6 +1867,8 @@
   "automation.auto_traceroute.status_success": "Success",
   "automation.auto_traceroute.status_failed": "Failed",
   "automation.auto_traceroute.no_log_entries": "No auto-traceroutes logged yet. Entries will appear here as traceroutes are sent.",
+  "automation.auto_traceroute.sort_by_hops": "Prioritize Closer Nodes",
+  "automation.auto_traceroute.sort_by_hops_description": "When enabled, nodes with fewer hops are tracerouted first. This is useful in dense networks where traceroutes to distant nodes often fail. When disabled, nodes are selected randomly.",
 
   "automation.timer_triggers.section_title": "Timed Events",
   "automation.timer_triggers.description": "Schedule scripts or text messages to run automatically using cron expressions",

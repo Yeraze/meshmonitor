@@ -41,6 +41,7 @@ interface FilterSettings {
   filterHwModelsEnabled: boolean;
   filterRegexEnabled: boolean;
   expirationHours: number;
+  sortByHops: boolean;
 }
 
 interface TracerouteLogEntry {
@@ -81,6 +82,9 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
 
   // Expiration hours - how long before re-tracerouting a node
   const [expirationHours, setExpirationHours] = useState(24);
+
+  // Sort by hops - prioritize closer nodes for traceroute
+  const [sortByHops, setSortByHops] = useState(false);
 
   // Auto-traceroute log
   const [tracerouteLog, setTracerouteLog] = useState<TracerouteLogEntry[]>([]);
@@ -143,6 +147,8 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
           setFilterRegexEnabled(data.filterRegexEnabled !== false);
           // Load expiration hours (default to 24 if not set)
           setExpirationHours(data.expirationHours || 24);
+          // Load sort by hops setting (default to false)
+          setSortByHops(data.sortByHops || false);
           setInitialSettings(data);
         }
       } catch (error) {
@@ -202,12 +208,15 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
     // Check expiration hours change
     const expirationHoursChanged = expirationHours !== (initialSettings.expirationHours || 24);
 
+    // Check sort by hops change
+    const sortByHopsChanged = sortByHops !== (initialSettings.sortByHops || false);
+
     const changed = intervalChanged || filterEnabledChanged || nodesChanged || channelsChanged || rolesChanged || hwModelsChanged || regexChanged ||
       filterNodesEnabledChanged || filterChannelsEnabledChanged || filterRolesEnabledChanged || filterHwModelsEnabledChanged || filterRegexEnabledChanged ||
-      expirationHoursChanged;
+      expirationHoursChanged || sortByHopsChanged;
     setHasChanges(changed);
   }, [localEnabled, localInterval, intervalMinutes, filterEnabled, selectedNodeNums, filterChannels, filterRoles, filterHwModels, filterNameRegex, initialSettings,
-      filterNodesEnabled, filterChannelsEnabled, filterRolesEnabled, filterHwModelsEnabled, filterRegexEnabled, expirationHours]);
+      filterNodesEnabled, filterChannelsEnabled, filterRolesEnabled, filterHwModelsEnabled, filterRegexEnabled, expirationHours, sortByHops]);
 
   // Helper to get role from node (could be at top level or in user object)
   const getNodeRole = (node: Node): number | undefined => {
@@ -384,6 +393,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
           filterHwModelsEnabled,
           filterRegexEnabled,
           expirationHours,
+          sortByHops,
         })
       });
 
@@ -410,6 +420,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
         filterHwModelsEnabled,
         filterRegexEnabled,
         expirationHours,
+        sortByHops,
       });
 
       setHasChanges(false);
@@ -576,6 +587,26 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
             disabled={!localEnabled}
             className="setting-input"
           />
+        </div>
+
+        {/* Sort by Hops Option */}
+        <div className="setting-item" style={{ marginTop: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <input
+              type="checkbox"
+              id="sortByHops"
+              checked={sortByHops}
+              onChange={(e) => setSortByHops(e.target.checked)}
+              disabled={!localEnabled}
+              style={{ width: 'auto', margin: 0, marginRight: '0.5rem', cursor: 'pointer' }}
+            />
+            <label htmlFor="sortByHops" style={{ margin: 0, cursor: 'pointer' }}>
+              {t('automation.auto_traceroute.sort_by_hops')}
+              <span className="setting-description" style={{ display: 'block', marginTop: '0.25rem' }}>
+                {t('automation.auto_traceroute.sort_by_hops_description')}
+              </span>
+            </label>
+          </div>
         </div>
 
         {/* Node Filter Section */}
