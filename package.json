@@ -59,7 +59,7 @@
     "react-i18next": "^16.4.0",
     "react-leaflet": "^5.0.0",
     "react-router-dom": "^7.10.1",
-    "recharts": "^3.5.1",
+    "recharts": "^3.6.0",
     "rotating-file-stream": "^3.2.7",
     "swagger-ui-express": "^5.0.1",
     "ts-overlapping-marker-spiderfier-leaflet": "^1.0.5",
