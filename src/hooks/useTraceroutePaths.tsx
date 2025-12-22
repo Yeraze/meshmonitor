@@ -14,7 +14,7 @@ import React, { useMemo } from 'react';
 import { Popup, Polyline } from 'react-leaflet';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { calculateDistance, formatDistance } from '../utils/distance';
-import { generateArrowMarkers } from '../utils/mapHelpers';
+import { generateCurvedArrowMarkers, generateCurvedPath, getLineWeight } from '../utils/mapHelpers';
 import { logger } from '../utils/logger';
 import type { DistanceUnit } from '../contexts/SettingsContext';
 
@@ -619,6 +619,13 @@ export function useTraceroutePaths({
       const routeForward = rawRouteForward.filter(isValidRouteNode);
       const routeBack = rawRouteBack.filter(isValidRouteNode);
 
+      // Parse SNR data
+      const snrForward = selectedTrace.snrTowards && selectedTrace.snrTowards !== 'null' ? JSON.parse(selectedTrace.snrTowards) : [];
+      const snrBack = selectedTrace.snrBack && selectedTrace.snrBack !== 'null' ? JSON.parse(selectedTrace.snrBack) : [];
+
+
+
+
       const fromNode = nodesPositionDigest.find(n => n.nodeNum === selectedTrace.fromNodeNum);
       const toNode = nodesPositionDigest.find(n => n.nodeNum === selectedTrace.toNodeNum);
       const fromName = fromNode?.user?.longName || fromNode?.user?.shortName || selectedTrace.fromNodeId;
@@ -657,42 +664,86 @@ export function useTraceroutePaths({
             }
           }
 
-          allElements.push(
-            <Polyline
-              key="selected-traceroute-forward"
-              positions={forwardPositions}
-              color={themeColors.red}
-              weight={4}
-              opacity={0.9}
-              dashArray="10, 5"
-            >
-              <Popup>
-                <div className="route-popup">
-                  <h4>Forward Path</h4>
-                  <div className="route-endpoints">
-                    <strong>{fromName}</strong> → <strong>{toName}</strong>
-                  </div>
-                  <div className="route-usage">
-                    Path:{' '}
-                    {forwardSequence
-                      .map(num => {
-                        const n = nodesPositionDigest.find(nd => nd.nodeNum === num);
-                        return n?.user?.longName || n?.user?.shortName || `!${num.toString(16)}`;
-                      })
-                      .join(' → ')}
-                  </div>
-                  {forwardTotalDistanceKm > 0 && (
-                    <div className="route-usage">
-                      Distance: <strong>{formatDistance(forwardTotalDistanceKm, distanceUnit)}</strong>
-                    </div>
-                  )}
-                </div>
-              </Popup>
-            </Polyline>
-          );
+          // Build SNR array for segments
+          const forwardSegmentSnrs: (number | undefined)[] = [];
+          if (forwardSequence.length > 1) {
+             // For each segment (node i -> node i+1), the SNR is usually recorded at the receiving end
+             // The snrForward array corresponds to hops.
+             // We map them to segments.
+             for (let i = 0; i < forwardSequence.length - 1; i++) {
+                // SNR at index i corresponds to the link arriving at node i+1
+                // For the first segment (0 -> 1), use index 0.
+                if (i < snrForward.length) {
+                   forwardSegmentSnrs.push(snrForward[i] / 4);
+                } else {
+                   forwardSegmentSnrs.push(undefined);
+                }
+             }
+          }
+
+          // Render individual curved segments
+          for (let i = 0; i < forwardPositions.length - 1; i++) {
+             const segmentPoints = generateCurvedPath(
+               forwardPositions[i],
+               forwardPositions[i + 1],
+               0.2, // Positive curvature for forward
+               20,
+               true
+             );
+             
+             const weight = getLineWeight(forwardSegmentSnrs[i]);
+             const isMqtt = forwardSegmentSnrs[i] === -32; // Check for MQTT sentinel
+
+             allElements.push(
+               <Polyline
+                 key={`selected-traceroute-forward-seg-${i}`}
+                 positions={segmentPoints}
+                 color={themeColors.red}
+                 weight={weight}
+                 opacity={0.9}
+                 dashArray="10, 5"
+               >
+                 <Popup>
+                   <div className="route-popup">
+                     <h4>Forward Path</h4>
+                     <div className="route-endpoints">
+                       <strong>{fromName}</strong> → <strong>{toName}</strong>
+                     </div>
+                     <div className="route-usage">
+                       Path:{' '}
+                       {forwardSequence
+                         .map(num => {
+                           const n = nodesPositionDigest.find(nd => nd.nodeNum === num);
+                           return n?.user?.longName || n?.user?.shortName || `!${num.toString(16)}`;
+                         })
+                         .join(' → ')}
+                     </div>
+                     {forwardTotalDistanceKm > 0 && (
+                       <div className="route-usage">
+                         Distance: <strong>{formatDistance(forwardTotalDistanceKm, distanceUnit)}</strong>
+                       </div>
+                     )}
+                     {forwardSegmentSnrs[i] !== undefined && (
+                        <div className="route-usage" style={{ marginTop: '8px', borderTop: '1px solid var(--ctp-surface0)', paddingTop: '4px' }}>
+                          Segment SNR: <strong>{forwardSegmentSnrs[i]?.toFixed(1)} dB</strong>
+                          {isMqtt && ' (MQTT)'}
+                        </div>
+                     )}
+                   </div>
+                 </Popup>
+               </Polyline>
+             );
+          }
 
           // Generate arrow markers for forward path
-          const forwardArrows = generateArrowMarkers(forwardPositions, 'forward', themeColors.red, allElements.length);
+          const forwardArrows = generateCurvedArrowMarkers(
+            forwardPositions, 
+            'forward', 
+            themeColors.red, 
+            forwardSegmentSnrs,
+            0.2, 
+            true
+          );
           allElements.push(...forwardArrows);
         }
       }
@@ -730,42 +781,81 @@ export function useTraceroutePaths({
             }
           }
 
-          allElements.push(
-            <Polyline
-              key="selected-traceroute-back"
-              positions={backPositions}
-              color={themeColors.red}
-              weight={4}
-              opacity={0.9}
-              dashArray="5, 10"
-            >
-              <Popup>
-                <div className="route-popup">
-                  <h4>Return Path</h4>
-                  <div className="route-endpoints">
-                    <strong>{toName}</strong> → <strong>{fromName}</strong>
-                  </div>
-                  <div className="route-usage">
-                    Path:{' '}
-                    {backSequence
-                      .map(num => {
-                        const n = nodesPositionDigest.find(nd => nd.nodeNum === num);
-                        return n?.user?.longName || n?.user?.shortName || `!${num.toString(16)}`;
-                      })
-                      .join(' → ')}
-                  </div>
-                  {backTotalDistanceKm > 0 && (
-                    <div className="route-usage">
-                      Distance: <strong>{formatDistance(backTotalDistanceKm, distanceUnit)}</strong>
-                    </div>
-                  )}
-                </div>
-              </Popup>
-            </Polyline>
-          );
+          // Build SNR array for segments
+          const backSegmentSnrs: (number | undefined)[] = [];
+          if (backSequence.length > 1) {
+             for (let i = 0; i < backSequence.length - 1; i++) {
+                if (i < snrBack.length) {
+                   backSegmentSnrs.push(snrBack[i] / 4);
+                } else {
+                   backSegmentSnrs.push(undefined);
+                }
+             }
+          }
+
+          // Render individual curved segments
+          for (let i = 0; i < backPositions.length - 1; i++) {
+             const segmentPoints = generateCurvedPath(
+               backPositions[i],
+               backPositions[i + 1],
+               -0.2, // Negative curvature
+               20,
+               true
+             );
+             
+             const weight = getLineWeight(backSegmentSnrs[i]);
+             const isMqtt = backSegmentSnrs[i] === -32;
+
+             allElements.push(
+               <Polyline
+                 key={`selected-traceroute-back-seg-${i}`}
+                 positions={segmentPoints}
+                 color={themeColors.red}
+                 weight={weight}
+                 opacity={0.9}
+                 dashArray="5, 10"
+               >
+                 <Popup>
+                   <div className="route-popup">
+                     <h4>Return Path</h4>
+                     <div className="route-endpoints">
+                       <strong>{toName}</strong> → <strong>{fromName}</strong>
+                     </div>
+                     <div className="route-usage">
+                       Path:{' '}
+                       {backSequence
+                         .map(num => {
+                           const n = nodesPositionDigest.find(nd => nd.nodeNum === num);
+                           return n?.user?.longName || n?.user?.shortName || `!${num.toString(16)}`;
+                         })
+                         .join(' → ')}
+                     </div>
+                     {backTotalDistanceKm > 0 && (
+                       <div className="route-usage">
+                         Distance: <strong>{formatDistance(backTotalDistanceKm, distanceUnit)}</strong>
+                       </div>
+                     )}
+                     {backSegmentSnrs[i] !== undefined && (
+                        <div className="route-usage" style={{ marginTop: '8px', borderTop: '1px solid var(--ctp-surface0)', paddingTop: '4px' }}>
+                          Segment SNR: <strong>{backSegmentSnrs[i]?.toFixed(1)} dB</strong>
+                          {isMqtt && ' (MQTT)'}
+                        </div>
+                     )}
+                   </div>
+                 </Popup>
+               </Polyline>
+             );
+          }
 
           // Generate arrow markers for back path
-          const backArrows = generateArrowMarkers(backPositions, 'back', themeColors.red, allElements.length);
+          const backArrows = generateCurvedArrowMarkers(
+            backPositions, 
+            'back', 
+            themeColors.red, 
+            backSegmentSnrs,
+            -0.2,
+            true
+          );
           allElements.push(...backArrows);
         }
       }
