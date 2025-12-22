@@ -116,7 +116,7 @@
     "workbox-window": "^7.4.0"
   },
   "optionalDependencies": {
-    "@rollup/rollup-linux-arm-gnueabihf": "^4.53.3",
+    "@rollup/rollup-linux-arm-gnueabihf": "^4.54.0",
     "@rollup/rollup-linux-arm64-musl": "^4.53.3"
   }
 }
