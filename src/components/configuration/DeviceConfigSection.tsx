@@ -122,7 +122,7 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
           }}
           title={t('device_config.view_docs')}
         >
-          ?
+          ❓
         </a>
       </h3>
       <div className="setting-item">

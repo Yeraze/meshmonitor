@@ -101,7 +101,7 @@ const DisplayConfigSection: React.FC<DisplayConfigSectionProps> = ({
       <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         {t('display_config.title')}
         <a
-          href="https://meshtastic.org/docs/configuration/radio/display/"
+          href="https://meshmonitor.org/features/device#display-configuration"
           target="_blank"
           rel="noopener noreferrer"
           style={{
@@ -111,7 +111,7 @@ const DisplayConfigSection: React.FC<DisplayConfigSectionProps> = ({
           }}
           title={t('display_config.view_docs')}
         >
-          ?
+          ❓
         </a>
       </h3>
 

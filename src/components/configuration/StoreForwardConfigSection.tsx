@@ -41,7 +41,7 @@ const StoreForwardConfigSection: React.FC<StoreForwardConfigSectionProps> = ({
       <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         {t('storeforward_config.title')}
         <a
-          href="https://meshtastic.org/docs/configuration/module/store-and-forward/"
+          href="https://meshmonitor.org/features/device#store-and-forward-configuration"
           target="_blank"
           rel="noopener noreferrer"
           style={{
@@ -51,7 +51,7 @@ const StoreForwardConfigSection: React.FC<StoreForwardConfigSectionProps> = ({
           }}
           title={t('storeforward_config.view_docs')}
         >
-          ?
+          ❓
         </a>
       </h3>
 

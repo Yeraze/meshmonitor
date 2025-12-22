@@ -74,7 +74,7 @@ const CannedMessageConfigSection: React.FC<CannedMessageConfigSectionProps> = ({
       <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         {t('cannedmsg_config.title')}
         <a
-          href="https://meshtastic.org/docs/configuration/module/canned-message/"
+          href="https://meshmonitor.org/features/device#canned-message-configuration"
           target="_blank"
           rel="noopener noreferrer"
           style={{
@@ -84,7 +84,7 @@ const CannedMessageConfigSection: React.FC<CannedMessageConfigSectionProps> = ({
           }}
           title={t('cannedmsg_config.view_docs')}
         >
-          ?
+          ❓
         </a>
       </h3>
 

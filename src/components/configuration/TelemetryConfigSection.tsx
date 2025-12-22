@@ -72,7 +72,7 @@ const TelemetryConfigSection: React.FC<TelemetryConfigSectionProps> = ({
       <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         {t('telemetry_config.title')}
         <a
-          href="https://meshtastic.org/docs/configuration/module/telemetry/"
+          href="https://meshmonitor.org/features/device#telemetry-configuration"
           target="_blank"
           rel="noopener noreferrer"
           style={{
@@ -82,7 +82,7 @@ const TelemetryConfigSection: React.FC<TelemetryConfigSectionProps> = ({
           }}
           title={t('telemetry_config.view_docs')}
         >
-          ?
+          ❓
         </a>
       </h3>
 

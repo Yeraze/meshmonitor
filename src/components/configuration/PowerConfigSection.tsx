@@ -65,7 +65,7 @@ const PowerConfigSection: React.FC<PowerConfigSectionProps> = ({
       <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         {t('power_config.title')}
         <a
-          href="https://meshtastic.org/docs/configuration/radio/power/"
+          href="https://meshmonitor.org/features/device#power-configuration"
           target="_blank"
           rel="noopener noreferrer"
           style={{
@@ -75,7 +75,7 @@ const PowerConfigSection: React.FC<PowerConfigSectionProps> = ({
           }}
           title={t('power_config.view_docs')}
         >
-          ?
+          ❓
         </a>
       </h3>
 
