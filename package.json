@@ -101,7 +101,7 @@
     "concurrently": "^9.2.1",
     "eslint": "^9.39.2",
     "eslint-plugin-react-hooks": "^7.0.1",
-    "eslint-plugin-react-refresh": "^0.4.25",
+    "eslint-plugin-react-refresh": "^0.4.26",
     "globals": "^16.5.0",
     "jsdom": "^27.2.0",
     "prismjs": "^1.30.0",
@@ -112,7 +112,7 @@
     "vite": "^7.2.7",
     "vite-plugin-pwa": "^1.1.0",
     "vitepress": "^1.5.0",
-    "vitest": "^4.0.15",
+    "vitest": "^4.0.16",
     "workbox-window": "^7.4.0"
   },
   "optionalDependencies": {
