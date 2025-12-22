@@ -28,6 +28,7 @@ import NodeDetailsBlock from './NodeDetailsBlock';
 import TelemetryGraphs from './TelemetryGraphs';
 import { NodeFilterPopup } from './NodeFilterPopup';
 import { MessageStatusIndicator } from './MessageStatusIndicator';
+import RelayNodeModal from './RelayNodeModal';
 
 // Types for node with message metadata
 interface NodeWithMessages extends DeviceInfo {
@@ -208,6 +209,20 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   // Local state for actions menu
   const [showActionsMenu, setShowActionsMenu] = useState(false);
 
+  // Relay node modal state
+  const [relayModalOpen, setRelayModalOpen] = useState(false);
+  const [selectedRelayNode, setSelectedRelayNode] = useState<number | null>(null);
+  const [selectedRxTime, setSelectedRxTime] = useState<Date | undefined>(undefined);
+
+  // Map nodes to the format expected by RelayNodeModal
+  const mappedNodes = nodes.map(node => ({
+    nodeNum: node.nodeNum,
+    nodeId: node.user?.id || `!${node.nodeNum.toString(16).padStart(8, '0')}`,
+    longName: node.user?.longName || `Node ${node.nodeNum}`,
+    shortName: node.user?.shortName || node.nodeNum.toString(16).substring(0, 4),
+    hopsAway: node.hopsAway,
+  }));
+
   // Refs
   const dmMessageInputRef = useRef<HTMLInputElement>(null);
 
@@ -246,6 +261,18 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
       );
     },
     [messages]
+  );
+
+  // Handle relay node click - opens modal to show potential relay nodes
+  const handleRelayClick = useCallback(
+    (msg: MeshMessage) => {
+      if (msg.relayNode !== undefined && msg.relayNode !== null) {
+        setSelectedRelayNode(msg.relayNode);
+        setSelectedRxTime(msg.timestamp);
+        setRelayModalOpen(true);
+      }
+    },
+    []
   );
 
   // Permission check
@@ -820,7 +847,14 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             <span className="message-from">{getNodeName(msg.from)}</span>
                             <span className="message-time">
                               {formatMessageTime(currentDate, timeFormat, dateFormat)}
-                              <HopCountDisplay hopStart={msg.hopStart} hopLimit={msg.hopLimit} rxSnr={msg.rxSnr} rxRssi={msg.rxRssi} />
+                              <HopCountDisplay
+                                hopStart={msg.hopStart}
+                                hopLimit={msg.hopLimit}
+                                rxSnr={msg.rxSnr}
+                                rxRssi={msg.rxRssi}
+                                relayNode={msg.relayNode}
+                                onClick={() => handleRelayClick(msg)}
+                              />
                             </span>
                             <span className="traceroute-badge">{t('messages.traceroute_badge')}</span>
                           </div>
@@ -929,7 +963,14 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             <div className="message-meta">
                               <span className="message-time">
                                 {formatMessageTime(currentDate, timeFormat, dateFormat)}
-                                <HopCountDisplay hopStart={msg.hopStart} hopLimit={msg.hopLimit} rxSnr={msg.rxSnr} rxRssi={msg.rxRssi} />
+                                <HopCountDisplay
+                                  hopStart={msg.hopStart}
+                                  hopLimit={msg.hopLimit}
+                                  rxSnr={msg.rxSnr}
+                                  rxRssi={msg.rxRssi}
+                                  relayNode={msg.relayNode}
+                                  onClick={() => handleRelayClick(msg)}
+                                />
                               </span>
                             </div>
                           </div>
@@ -1199,6 +1240,25 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
           </div>
         )}
       </div>
+
+      {/* Relay node modal */}
+      {relayModalOpen && selectedRelayNode !== null && (
+        <RelayNodeModal
+          isOpen={relayModalOpen}
+          onClose={() => {
+            setRelayModalOpen(false);
+            setSelectedRelayNode(null);
+          }}
+          relayNode={selectedRelayNode}
+          rxTime={selectedRxTime}
+          nodes={mappedNodes}
+          onNodeClick={(nodeId) => {
+            setRelayModalOpen(false);
+            setSelectedRelayNode(null);
+            handleSenderClick(nodeId, { stopPropagation: () => {} } as React.MouseEvent);
+          }}
+        />
+      )}
     </div>
   );
 };

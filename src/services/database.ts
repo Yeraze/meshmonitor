@@ -113,6 +113,7 @@ export interface DbMessage {
   rxTime?: number;
   hopStart?: number;
   hopLimit?: number;
+  relayNode?: number;
   replyId?: number;
   emoji?: number;
   viaMqtt?: boolean;
@@ -215,6 +216,7 @@ export interface DbPacketLog {
   rssi?: number;
   hop_limit?: number;
   hop_start?: number;
+  relay_node?: number;
   payload_size?: number;
   want_ack?: boolean;
   priority?: number;
@@ -2124,9 +2126,9 @@ class DatabaseService {
     const stmt = this.db.prepare(`
       INSERT OR IGNORE INTO messages (
         id, fromNodeNum, toNodeNum, fromNodeId, toNodeId,
-        text, channel, portnum, timestamp, rxTime, hopStart, hopLimit, replyId, emoji,
+        text, channel, portnum, timestamp, rxTime, hopStart, hopLimit, relayNode, replyId, emoji,
         requestId, ackFailed, routingErrorReceived, deliveryState, wantAck, viaMqtt, rxSnr, rxRssi, createdAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -2142,6 +2144,7 @@ class DatabaseService {
       messageData.rxTime ?? null,
       messageData.hopStart ?? null,
       messageData.hopLimit ?? null,
+      messageData.relayNode ?? null,
       messageData.replyId ?? null,
       messageData.emoji ?? null,
       (messageData as any).requestId ?? null,
@@ -4518,8 +4521,8 @@ class DatabaseService {
       INSERT INTO packet_log (
         packet_id, timestamp, from_node, from_node_id, to_node, to_node_id,
         channel, portnum, portnum_name, encrypted, snr, rssi, hop_limit, hop_start,
-        payload_size, want_ack, priority, payload_preview, metadata
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        relay_node, payload_size, want_ack, priority, payload_preview, metadata
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const result = stmt.run(
@@ -4537,6 +4540,7 @@ class DatabaseService {
       packet.rssi ?? null,
       packet.hop_limit ?? null,
       packet.hop_start ?? null,
+      packet.relay_node ?? null,
       packet.payload_size ?? null,
       packet.want_ack ? 1 : 0,
       packet.priority ?? null,

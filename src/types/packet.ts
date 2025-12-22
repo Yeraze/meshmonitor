@@ -20,6 +20,7 @@ export interface PacketLog {
   rssi?: number;
   hop_limit?: number;
   hop_start?: number;
+  relay_node?: number;
   payload_size?: number;
   want_ack?: boolean;
   priority?: number;

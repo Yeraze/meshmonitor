@@ -16,8 +16,10 @@ import { getUtf8ByteLength, formatByteCount } from '../utils/text';
 import { renderMessageWithLinks } from '../utils/linkRenderer';
 import HopCountDisplay from './HopCountDisplay';
 import LinkPreview from './LinkPreview';
+import RelayNodeModal from './RelayNodeModal';
 import { logger } from '../utils/logger';
 import { MessageStatusIndicator } from './MessageStatusIndicator';
+import { useNodes } from '../hooks/useServerData';
 
 // Default PSK value (publicly known key - not truly secure)
 const DEFAULT_PUBLIC_PSK = 'AQ==';
@@ -144,12 +146,39 @@ export default function ChannelsTab({
   channelMessagesContainerRef,
 }: ChannelsTabProps) {
   const { t } = useTranslation();
+  const { nodes } = useNodes();
 
   // Refs
   const channelMessageInputRef = useRef<HTMLInputElement>(null);
 
   // State for "Jump to Bottom" button
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+
+  // Relay node modal state
+  const [relayModalOpen, setRelayModalOpen] = useState(false);
+  const [selectedRelayNode, setSelectedRelayNode] = useState<number | null>(null);
+  const [selectedRxTime, setSelectedRxTime] = useState<Date | undefined>(undefined);
+
+  // Map nodes to the format expected by RelayNodeModal
+  const mappedNodes = nodes.map(node => ({
+    nodeNum: node.nodeNum,
+    nodeId: node.user?.id || `!${node.nodeNum.toString(16).padStart(8, '0')}`,
+    longName: node.user?.longName || `Node ${node.nodeNum}`,
+    shortName: node.user?.shortName || node.nodeNum.toString(16).substring(0, 4),
+    hopsAway: node.hopsAway,
+  }));
+
+  // Handle relay node click - opens modal to show potential relay nodes
+  const handleRelayClick = useCallback(
+    (msg: MeshMessage) => {
+      if (msg.relayNode !== undefined && msg.relayNode !== null) {
+        setSelectedRelayNode(msg.relayNode);
+        setSelectedRxTime(msg.timestamp);
+        setRelayModalOpen(true);
+      }
+    },
+    []
+  );
 
   // Handle scroll to detect if user has scrolled up
   const handleScroll = useCallback(() => {
@@ -604,7 +633,14 @@ export default function ChannelsTab({
                                     <div className="message-meta">
                                       <span className="message-time">
                                         {formatMessageTime(currentDate, timeFormat, dateFormat)}
-                                        <HopCountDisplay hopStart={msg.hopStart} hopLimit={msg.hopLimit} rxSnr={msg.rxSnr} rxRssi={msg.rxRssi} />
+                                        <HopCountDisplay
+                                          hopStart={msg.hopStart}
+                                          hopLimit={msg.hopLimit}
+                                          rxSnr={msg.rxSnr}
+                                          rxRssi={msg.rxRssi}
+                                          relayNode={msg.relayNode}
+                                          onClick={() => handleRelayClick(msg)}
+                                        />
                                       </span>
                                     </div>
                                   </div>
@@ -834,6 +870,25 @@ export default function ChannelsTab({
             </div>
           );
         })()}
+
+      {/* Relay node modal */}
+      {relayModalOpen && selectedRelayNode !== null && (
+        <RelayNodeModal
+          isOpen={relayModalOpen}
+          onClose={() => {
+            setRelayModalOpen(false);
+            setSelectedRelayNode(null);
+          }}
+          relayNode={selectedRelayNode}
+          rxTime={selectedRxTime}
+          nodes={mappedNodes}
+          onNodeClick={(nodeId) => {
+            setRelayModalOpen(false);
+            setSelectedRelayNode(null);
+            handleSenderClick(nodeId, { stopPropagation: () => {} } as React.MouseEvent);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -8,6 +8,7 @@ interface Node {
   nodeId: string;
   longName: string;
   shortName: string;
+  hopsAway?: number;
 }
 
 interface RelayNodeModalProps {
@@ -39,6 +40,7 @@ const RelayNodeModal: React.FC<RelayNodeModalProps> = ({
   // Otherwise, try to match relay_node:
   //   1. First try exact match (in case relay_node contains full node number)
   //   2. Fall back to matching lowest byte only
+  // Sort results by hopsAway ascending (closest nodes first)
   const matchingNodes = (ackFromNode !== undefined && ackFromNode !== null)
     ? nodes.filter(node => {
         console.log(`[ACK MODE] Comparing node ${node.longName} (${node.nodeNum}) vs ackFromNode=${ackFromNode}`);
@@ -49,7 +51,8 @@ const RelayNodeModal: React.FC<RelayNodeModalProps> = ({
         const exactMatches = nodes.filter(node => node.nodeNum === relayNode);
         if (exactMatches.length > 0) {
           console.log(`[RELAY MODE - EXACT] Found ${exactMatches.length} exact match(es) for relayNode=${relayNode}`);
-          return exactMatches;
+          // Sort by hopsAway (ascending, closest first)
+          return exactMatches.sort((a, b) => (a.hopsAway ?? Infinity) - (b.hopsAway ?? Infinity));
         }
 
         // Fall back to byte matching
@@ -59,7 +62,8 @@ const RelayNodeModal: React.FC<RelayNodeModalProps> = ({
           return lastByte === relayNode;
         });
         console.log(`[RELAY MODE - BYTE] Found ${byteMatches.length} byte match(es) for relayNode=0x${relayNode.toString(16)}`);
-        return byteMatches;
+        // Sort by hopsAway (ascending, closest first)
+        return byteMatches.sort((a, b) => (a.hopsAway ?? Infinity) - (b.hopsAway ?? Infinity));
       })();
 
   const formatDateTime = (date?: Date) => {
@@ -129,6 +133,13 @@ const RelayNodeModal: React.FC<RelayNodeModalProps> = ({
                     <span className="node-name">
                       {node.longName} ({node.shortName})
                     </span>
+                    {node.hopsAway !== undefined && (
+                      <span className="node-hops">
+                        {node.hopsAway === 0
+                          ? t('relay_modal.direct')
+                          : t('relay_modal.hops_away', { count: node.hopsAway })}
+                      </span>
+                    )}
                     <span className="node-id">[{node.nodeId}]</span>
                   </div>
                 ))}

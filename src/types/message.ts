@@ -20,6 +20,7 @@ export interface MeshMessage {
   isLocalMessage?: boolean;
   hopStart?: number;
   hopLimit?: number;
+  relayNode?: number; // Last byte of the node that relayed the message
   replyId?: number;
   emoji?: number;
   viaMqtt?: boolean; // Whether message was received via MQTT bridge
