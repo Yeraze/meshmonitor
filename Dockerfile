@@ -43,11 +43,13 @@ FROM node:24-alpine
 WORKDIR /app
 
 # Install Python and dependencies for Apprise
+# Create python symlink for user scripts that use #!/usr/bin/env python
 RUN apk add --no-cache \
     python3 \
     py3-pip \
     supervisor \
     su-exec \
+    && ln -sf /usr/bin/python3 /usr/bin/python \
     && python3 -m venv /opt/apprise-venv \
     && /opt/apprise-venv/bin/pip install --no-cache-dir apprise "paho-mqtt<2.0"
 
