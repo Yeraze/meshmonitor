@@ -52,7 +52,7 @@
     "node-cron": "^4.2.1",
     "openid-client": "^6.8.1",
     "pbf": "^4.0.1",
-    "protobufjs": "^7.5.4",
+    "protobufjs": "^8.0.0",
     "qrcode": "^1.5.4",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
