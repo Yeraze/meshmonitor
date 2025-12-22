@@ -350,7 +350,44 @@ run_test "Reject request with invalid token" \
 
 echo ""
 echo "=========================================="
-echo "Step 4: Test Response Format Consistency"
+echo "Step 4: Test Bearer Token Without CSRF"
+echo "=========================================="
+echo ""
+
+# These tests verify that Bearer token authenticated requests
+# do NOT require CSRF tokens (which would be needed for session auth)
+
+# Test: POST to messages endpoint without CSRF token (should work with Bearer)
+# Uses channel 3 (gauntlet) for testing per project rules
+run_test "POST /api/v1/messages without CSRF token succeeds with Bearer auth" \
+    "RESPONSE=\$(curl -sS -w '\\n%{http_code}' \
+        -H 'Authorization: Bearer $API_TOKEN' \
+        -H 'Content-Type: application/json' \
+        -X POST '${BASE_URL}/api/v1/messages' \
+        -d '{\"text\": \"API v1 test message\", \"channel\": 3}')
+    HTTP_CODE=\$(echo \"\$RESPONSE\" | tail -n1)
+    BODY=\$(echo \"\$RESPONSE\" | head -n -1)
+    # Should NOT get 403 CSRF error - expect 201 (created) or 503 (not connected)
+    if [ \"\$HTTP_CODE\" = '403' ]; then
+        echo \"  Got 403 Forbidden - CSRF protection incorrectly applied\"
+        echo \"  Response: \$BODY\"
+        exit 1
+    fi
+    # 201 = success, 503 = not connected to node (acceptable in test environment)
+    [ \"\$HTTP_CODE\" = '201' ] || [ \"\$HTTP_CODE\" = '503' ]"
+
+# Test: Verify session-based POST still requires CSRF (control test)
+run_test "POST without Bearer or CSRF token is rejected (403)" \
+    "HTTP_CODE=\$(curl -sS -w '%{http_code}' -o /dev/null \
+        -c '$COOKIE_FILE' -b '$COOKIE_FILE' \
+        -H 'Content-Type: application/json' \
+        -X POST '${BASE_URL}/api/messages/channel/0' \
+        -d '{\"text\": \"Should fail\"}')
+    [ \"\$HTTP_CODE\" = '403' ]"
+
+echo ""
+echo "=========================================="
+echo "Step 5: Test Response Format Consistency"
 echo "=========================================="
 echo ""
 
