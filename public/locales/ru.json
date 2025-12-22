@@ -2990,5 +2990,16 @@
     "messages.with_position": "С позиции",
     "messages.exclude_infrastructure": "Исключить инфраструктуру",
     "messages.by_hops": "По хопам (ближайший первый)",
-    "messages.favorites_only": "Только избранные"
+    "messages.favorites_only": "Только избранные",
+    "automation.auto_announce.nodeinfo_delay_description": "",
+    "automation.auto_announce.seconds": "",
+    "automation.auto_announce.nodeinfo_delay": "",
+    "automation.auto_traceroute.sort_by_hops_description": "",
+    "automation.auto_announce.nodeinfo_title": "",
+    "messages.signal_info": "",
+    "automation.auto_announce.nodeinfo_no_channels_warning": "",
+    "automation.auto_announce.nodeinfo_description": "",
+    "automation.auto_announce.nodeinfo_channels": "",
+    "automation.auto_announce.nodeinfo_channels_description": "",
+    "automation.auto_traceroute.sort_by_hops": ""
 }
