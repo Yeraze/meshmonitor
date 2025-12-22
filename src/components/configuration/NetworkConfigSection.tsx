@@ -62,7 +62,7 @@ const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
       <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         {t('network_config.title')}
         <a
-          href="https://meshtastic.org/docs/configuration/radio/network/"
+          href="https://meshmonitor.org/features/device#network-configuration"
           target="_blank"
           rel="noopener noreferrer"
           style={{
@@ -72,7 +72,7 @@ const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
           }}
           title={t('network_config.view_docs')}
         >
-          ?
+          ❓
         </a>
       </h3>
 

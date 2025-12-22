@@ -638,6 +638,404 @@ Always select the correct region for your location. Using incorrect frequency ba
 
 - [Meshtastic Position Configuration](https://meshtastic.org/docs/configuration/radio/position/)
 
+## Power Configuration
+
+Configure power management and battery settings for your Meshtastic device. These settings control sleep behavior, shutdown thresholds, and power consumption optimization.
+
+### Power Saving Mode
+
+**Description**: Enable power saving features to extend battery life.
+
+**Effect**: When enabled, the device uses various power-saving techniques to reduce power consumption.
+
+**Side Effects**:
+- Reduced responsiveness when waking from sleep
+- Longer wake-up time for messages
+- Extended battery life
+
+**Best Practices**: Enable for battery-powered deployments
+
+### Shutdown After (Battery)
+
+**Description**: Automatically shut down the device after the specified time on battery power.
+
+**Range**: 0-4294967295 seconds (0 = disabled)
+
+**Effect**: Prevents complete battery drain by shutting down before battery is depleted.
+
+**Use Cases**:
+- Protecting LiPo batteries from over-discharge
+- Scheduled operation windows
+- Emergency beacon deployments
+
+**Side Effects**: Device will power off and require manual restart
+
+### ADC Multiplier Override
+
+**Description**: Calibration value for battery voltage reading accuracy.
+
+**Default**: Auto-calculated by firmware
+
+**Effect**: Adjusts the analog-to-digital converter scaling for accurate battery percentage reporting.
+
+**Use Cases**:
+- Correcting inaccurate battery readings
+- Custom battery configurations
+- Hardware with non-standard voltage dividers
+
+**Best Practices**: Only change if battery percentage readings are consistently inaccurate
+
+### Wait Bluetooth Seconds
+
+**Description**: How long to wait for Bluetooth connection before entering sleep mode.
+
+**Range**: 0-4294967295 seconds
+
+**Effect**: Controls the Bluetooth connection window before power-saving sleep.
+
+**Side Effects**: Longer values delay sleep but give more time for Bluetooth connections
+
+### SDS (Deep Sleep) Seconds
+
+**Description**: Duration of super deep sleep periods when no activity is detected.
+
+**Range**: 0-4294967295 seconds
+
+**Effect**: Controls how long the device stays in deepest sleep mode.
+
+**Best Practices**: Use longer periods for solar/battery nodes to maximize power savings
+
+### LS (Light Sleep) Seconds
+
+**Description**: Duration of light sleep periods between active wake cycles.
+
+**Range**: 0-4294967295 seconds
+
+**Effect**: Controls light sleep duration (faster wake-up than deep sleep).
+
+**Best Practices**: Balance between power savings and responsiveness
+
+### Minimum Wake Seconds
+
+**Description**: Minimum time the device stays awake after waking from sleep.
+
+**Range**: 0-4294967295 seconds
+
+**Effect**: Ensures device is active long enough to process messages before returning to sleep.
+
+**Side Effects**: Higher values increase power consumption but improve message handling reliability
+
+### Battery INA Address
+
+**Description**: I2C address for INA battery monitoring chip.
+
+**Default**: Auto-detected
+
+**Effect**: Specifies the I2C address when using external INA battery monitoring hardware.
+
+**Use Cases**: Custom hardware with non-standard I2C addresses
+
+### Related Meshtastic Documentation
+
+- [Meshtastic Power Configuration](https://meshtastic.org/docs/configuration/radio/power/)
+
+## Display Configuration
+
+Configure screen and display settings for Meshtastic devices with integrated screens or external displays.
+
+### Screen On Seconds
+
+**Description**: How long the screen stays on after activity.
+
+**Range**: 0-4294967295 seconds
+
+**Default**: 60 seconds
+
+**Effect**: Controls screen timeout to save power.
+
+**Best Practices**: Lower values for battery-powered devices, higher for powered stations
+
+### Auto Screen Carousel Seconds
+
+**Description**: Time between automatic screen rotations through different display pages.
+
+**Range**: 0-4294967295 seconds (0 = disabled)
+
+**Effect**: Automatically cycles through status screens (node info, telemetry, messages, etc.).
+
+**Use Cases**:
+- Unattended display monitoring
+- Dashboard/kiosk mode
+- Showing all available information automatically
+
+### Flip Screen
+
+**Description**: Rotate display 180 degrees.
+
+**Effect**: Inverts the screen orientation for upside-down mounting.
+
+**Use Cases**: Mounting device in enclosures with inverted display orientation
+
+### Measurement Units
+
+**Description**: Unit system for measurements (metric/imperial).
+
+**Options**:
+- **METRIC**: Distances in km/m, temperatures in Celsius
+- **IMPERIAL**: Distances in mi/ft, temperatures in Fahrenheit
+
+**Effect**: Changes how distance, speed, altitude, and temperature are displayed.
+
+### OLED Type
+
+**Description**: Type of OLED display connected to the device.
+
+**Options**:
+- **AUTO**: Automatically detect display type
+- **SSD1306**: Standard 128x64 OLED (most common)
+- **SH1106**: 132x64 OLED (similar to SSD1306 with offset)
+- **SH1107**: Larger 128x128 OLED
+- **SH1107_128_128**: 128x128 variant
+
+**Effect**: Configures driver for correct display rendering.
+
+**Best Practices**: Use AUTO unless you have display issues, then select your specific model
+
+### Display Mode
+
+**Description**: Color and rendering mode for the display.
+
+**Options**:
+- **DEFAULT**: Standard single-color rendering
+- **TWOCOLOR**: Optimized for displays with two-color sections (e.g., yellow header, blue body)
+- **INVERTED**: Inverted colors (white background, dark text)
+- **COLOR**: Full color mode for color displays
+
+**Effect**: Adjusts rendering for different display types and preferences.
+
+### Heading Bold
+
+**Description**: Render heading/title text in bold.
+
+**Effect**: Makes headers more prominent on the display.
+
+### Wake on Tap or Motion
+
+**Description**: Wake the screen when device detects tap or motion.
+
+**Effect**: Uses accelerometer (if present) to wake display.
+
+**Side Effects**: May cause unwanted wake-ups from vibration; increases power consumption slightly
+
+### Compass Orientation
+
+**Description**: Rotation offset for the compass heading display.
+
+**Options**: 0, 90, 180, 270 degrees
+
+**Effect**: Adjusts compass heading to match physical device orientation.
+
+**Use Cases**: When device is mounted at an angle from its default orientation
+
+### Related Meshtastic Documentation
+
+- [Meshtastic Display Configuration](https://meshtastic.org/docs/configuration/radio/display/)
+
+## Telemetry Configuration
+
+Configure telemetry data collection and broadcasting for environmental sensors, device metrics, and power monitoring.
+
+### Device Telemetry
+
+#### Device Update Interval
+
+**Description**: How often to broadcast device metrics (battery, voltage, uptime, etc.).
+
+**Range**: 0-4294967295 seconds
+
+**Default**: 1800 seconds (30 minutes)
+
+**Effect**: Controls frequency of device health broadcasts.
+
+**Side Effects**:
+- Shorter intervals: More current data, higher network traffic
+- Longer intervals: Less traffic, potentially stale readings
+
+### Environment Telemetry
+
+Configure environmental sensor (temperature, humidity, pressure, etc.) reporting.
+
+#### Environment Measurement Enabled
+
+**Description**: Enable collection of environmental sensor data.
+
+**Effect**: Activates any connected environmental sensors (BME280, BMP280, DHT22, etc.).
+
+**Side Effects**: Increases power consumption when sensors are actively reading
+
+#### Environment Update Interval
+
+**Description**: How often to broadcast environmental sensor data.
+
+**Range**: 0-4294967295 seconds
+
+**Default**: 1800 seconds (30 minutes)
+
+**Effect**: Controls frequency of environment data broadcasts.
+
+#### Environment Screen Enabled
+
+**Description**: Show environmental data on the device screen.
+
+**Effect**: Adds a screen page displaying temperature, humidity, and pressure readings.
+
+#### Display Fahrenheit
+
+**Description**: Show temperature in Fahrenheit instead of Celsius.
+
+**Effect**: Changes temperature display format on device screen.
+
+**Note**: Does not affect the transmitted data (always sent in Celsius internally)
+
+### Air Quality Monitoring
+
+Configure air quality sensor (particulate matter) reporting.
+
+#### Air Quality Enabled
+
+**Description**: Enable air quality sensor data collection.
+
+**Effect**: Activates connected air quality sensors (PM2.5, PM10, etc.).
+
+#### Air Quality Interval
+
+**Description**: How often to broadcast air quality data.
+
+**Range**: 0-4294967295 seconds
+
+**Effect**: Controls frequency of air quality data broadcasts.
+
+### Power Metrics
+
+Configure power monitoring for nodes with power metering hardware.
+
+#### Power Measurement Enabled
+
+**Description**: Enable power consumption/generation monitoring.
+
+**Effect**: Activates power monitoring sensors (INA219, INA226, etc.).
+
+**Use Cases**:
+- Solar power monitoring
+- Battery charge/discharge tracking
+- Power consumption analysis
+
+#### Power Update Interval
+
+**Description**: How often to broadcast power metrics.
+
+**Range**: 0-4294967295 seconds
+
+**Effect**: Controls frequency of power data broadcasts.
+
+#### Power Screen Enabled
+
+**Description**: Show power metrics on the device screen.
+
+**Effect**: Adds a screen page displaying power consumption/generation data.
+
+### Related Meshtastic Documentation
+
+- [Meshtastic Telemetry Module](https://meshtastic.org/docs/configuration/module/telemetry/)
+
+## Network Configuration
+
+Configure network settings including WiFi, NTP, and static IP addresses.
+
+### WiFi Configuration
+
+#### WiFi Enabled
+
+**Description**: Enable WiFi connectivity on the device.
+
+**Effect**: Activates the WiFi radio for network connectivity.
+
+**Side Effects**:
+- Increased power consumption
+- Enables web interface access
+- Required for MQTT over WiFi
+
+#### WiFi SSID
+
+**Description**: Network name to connect to.
+
+**Maximum Length**: 32 characters
+
+**Effect**: Specifies the wireless network for connection.
+
+#### WiFi Password
+
+**Description**: Password for the WiFi network.
+
+**Security**: Stored on device; included in configuration backups
+
+### NTP Configuration
+
+#### NTP Server
+
+**Description**: Network Time Protocol server address for time synchronization.
+
+**Default**: `pool.ntp.org`
+
+**Effect**: Configures where the device gets accurate time when connected to the internet.
+
+**Use Cases**:
+- Accurate timestamps on messages
+- Synchronized logging
+- Time-sensitive applications
+
+### Static IP Configuration
+
+#### Address Mode
+
+**Options**:
+- **DHCP**: Obtain IP address automatically from the network
+- **STATIC**: Use manually configured IP address
+
+**Effect**: Controls how the device obtains its network address.
+
+#### IPv4 Address
+
+**Description**: Static IP address for the device (when using STATIC mode).
+
+**Format**: `192.168.1.100` (dotted decimal)
+
+#### IPv4 Gateway
+
+**Description**: Network gateway address (router IP).
+
+**Format**: `192.168.1.1` (dotted decimal)
+
+#### IPv4 Subnet
+
+**Description**: Network subnet mask.
+
+**Format**: `255.255.255.0` (dotted decimal)
+
+**Common Values**: `255.255.255.0` for /24 networks
+
+#### IPv4 DNS
+
+**Description**: DNS server address for name resolution.
+
+**Format**: `8.8.8.8` (dotted decimal)
+
+**Common Options**: `8.8.8.8` (Google), `1.1.1.1` (Cloudflare)
+
+### Related Meshtastic Documentation
+
+- [Meshtastic Network Configuration](https://meshtastic.org/docs/configuration/radio/network/)
+
 ## MQTT Configuration
 
 ### Enable MQTT
@@ -736,6 +1134,163 @@ Always select the correct region for your location. Using incorrect frequency ba
 ### Related Meshtastic Documentation
 
 - [Meshtastic Neighbor Info Module](https://meshtastic.org/docs/configuration/module/neighbor-info/)
+
+## Canned Message Configuration
+
+Configure pre-defined messages that can be quickly sent using hardware buttons or a rotary encoder on your Meshtastic device.
+
+### Enable Canned Messages
+
+**Description**: Enable the canned message module.
+
+**Effect**: Activates the canned message selection interface on devices with buttons or encoders.
+
+**Use Cases**:
+- Quick responses without typing
+- Emergency messages
+- Status updates while mobile
+
+### Rotary Encoder
+
+**Description**: Enable rotary encoder input for message selection.
+
+**Effect**: Allows using a rotary dial to scroll through canned messages.
+
+**Hardware**: Requires rotary encoder connected to GPIO pins
+
+### Up/Down Buttons
+
+**Description**: Enable up/down button input for message selection.
+
+**Effect**: Allows using physical buttons to navigate canned messages.
+
+### Send Bell
+
+**Description**: Send bell character with messages.
+
+**Effect**: Causes receiving devices to play an alert sound.
+
+**Use Cases**: Emergency messages, urgent alerts
+
+### Allow Input Source
+
+**Description**: Which input source is allowed to trigger canned messages.
+
+**Options**: NONE, UP, DOWN, LEFT, RIGHT, SELECT, BACK, CANCEL
+
+**Effect**: Restricts which hardware inputs can activate canned message sending.
+
+### Advanced GPIO Settings
+
+These settings configure the physical GPIO pin connections for rotary encoders and buttons.
+
+#### Pin A / Pin B
+
+**Description**: GPIO pins for rotary encoder A and B signals.
+
+**Range**: 0-255
+
+**Effect**: Specifies which GPIO pins are connected to the rotary encoder.
+
+**Note**: Consult your device's pinout diagram for available GPIO pins
+
+#### Pin Press
+
+**Description**: GPIO pin for the encoder press/select button.
+
+**Range**: 0-255
+
+**Effect**: Specifies which GPIO pin is connected to the button.
+
+#### Event Mappings
+
+Configure which navigation events are triggered by encoder rotation and button press:
+
+- **Event CW**: Action triggered by clockwise rotation
+- **Event CCW**: Action triggered by counter-clockwise rotation
+- **Event Press**: Action triggered by button press
+
+**Options**: NONE, UP, DOWN, LEFT, RIGHT, SELECT, BACK, CANCEL
+
+### Related Meshtastic Documentation
+
+- [Meshtastic Canned Message Module](https://meshtastic.org/docs/configuration/module/canned-message/)
+
+## Store and Forward Configuration
+
+Configure the store-and-forward module to cache and replay messages for nodes that were offline.
+
+### Enable Store and Forward
+
+**Description**: Enable the store-and-forward module.
+
+**Effect**: Device will cache messages and replay them to nodes that request missed messages.
+
+**Use Cases**:
+- Ensuring message delivery to intermittently connected nodes
+- Mesh networks with mobile nodes
+- Areas with unreliable coverage
+
+### Is Server
+
+**Description**: Configure this node as a store-and-forward server.
+
+**Effect**: When enabled, this node actively stores messages and serves them to requesting clients.
+
+**Best Practices**:
+- Enable on powered, always-on nodes with good mesh coverage
+- Only one or two servers needed per mesh network
+- Choose nodes with stable power and central location
+
+**Side Effects**: Increases memory usage and power consumption
+
+### Heartbeat
+
+**Description**: Send periodic heartbeat messages to indicate server availability.
+
+**Effect**: Broadcasts server presence so clients know a store-and-forward server is available.
+
+**Side Effects**: Adds periodic network traffic
+
+### Records
+
+**Description**: Maximum number of messages to store.
+
+**Range**: 0-65535
+
+**Effect**: Limits how many messages are kept in the cache.
+
+**Best Practices**:
+- Set based on available memory
+- Higher values for longer offline periods
+- Consider message size and available RAM
+
+### History Return Max
+
+**Description**: Maximum number of messages to return in a single history request.
+
+**Range**: 0-255
+
+**Effect**: Limits how many messages are sent at once when a client requests history.
+
+**Best Practices**: Balance between completeness and network congestion
+
+### History Return Window
+
+**Description**: Maximum age of messages to return (in seconds).
+
+**Range**: 0-86400 seconds (up to 24 hours)
+
+**Effect**: Only returns messages newer than this time window.
+
+**Best Practices**:
+- Set based on typical offline duration
+- Longer windows for nodes that go offline for extended periods
+- Shorter windows reduce stale message replay
+
+### Related Meshtastic Documentation
+
+- [Meshtastic Store and Forward Module](https://meshtastic.org/docs/configuration/module/store-and-forward/)
 
 ## Applying Changes
 
