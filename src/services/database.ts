@@ -3189,6 +3189,20 @@ class DatabaseService {
       return null;
     }
 
+    // Check if sort by hops is enabled
+    const sortByHops = this.isTracerouteSortByHopsEnabled();
+
+    if (sortByHops) {
+      // Sort by hopsAway ascending (closer nodes first), with undefined hops at the end
+      eligibleNodes.sort((a, b) => {
+        const hopsA = a.hopsAway ?? Infinity;
+        const hopsB = b.hopsAway ?? Infinity;
+        return hopsA - hopsB;
+      });
+      // Take the first (closest) node
+      return this.normalizeBigInts(eligibleNodes[0]);
+    }
+
     // Randomly select one node from the eligible nodes
     const randomIndex = Math.floor(Math.random() * eligibleNodes.length);
     return this.normalizeBigInts(eligibleNodes[randomIndex]);
@@ -3424,6 +3438,18 @@ class DatabaseService {
     logger.debug(`✅ Set traceroute expiration hours to: ${hours}`);
   }
 
+  // Sort by hops setting - prioritize nodes with fewer hops for traceroute
+  isTracerouteSortByHopsEnabled(): boolean {
+    const value = this.getSetting('tracerouteSortByHops');
+    // Default to false (random selection)
+    return value === 'true';
+  }
+
+  setTracerouteSortByHopsEnabled(enabled: boolean): void {
+    this.setSetting('tracerouteSortByHops', enabled ? 'true' : 'false');
+    logger.debug(`✅ Set traceroute sort by hops: ${enabled}`);
+  }
+
   // Get all traceroute filter settings at once
   getTracerouteFilterSettings(): {
     enabled: boolean;
@@ -3438,6 +3464,7 @@ class DatabaseService {
     filterHwModelsEnabled: boolean;
     filterRegexEnabled: boolean;
     expirationHours: number;
+    sortByHops: boolean;
   } {
     return {
       enabled: this.isAutoTracerouteNodeFilterEnabled(),
@@ -3452,6 +3479,7 @@ class DatabaseService {
       filterHwModelsEnabled: this.isTracerouteFilterHwModelsEnabled(),
       filterRegexEnabled: this.isTracerouteFilterRegexEnabled(),
       expirationHours: this.getTracerouteExpirationHours(),
+      sortByHops: this.isTracerouteSortByHopsEnabled(),
     };
   }
 
@@ -3469,6 +3497,7 @@ class DatabaseService {
     filterHwModelsEnabled?: boolean;
     filterRegexEnabled?: boolean;
     expirationHours?: number;
+    sortByHops?: boolean;
   }): void {
     this.setAutoTracerouteNodeFilterEnabled(settings.enabled);
     this.setAutoTracerouteNodes(settings.nodeNums);
@@ -3494,6 +3523,9 @@ class DatabaseService {
     }
     if (settings.expirationHours !== undefined) {
       this.setTracerouteExpirationHours(settings.expirationHours);
+    }
+    if (settings.sortByHops !== undefined) {
+      this.setTracerouteSortByHopsEnabled(settings.sortByHops);
     }
     logger.debug('✅ Updated all traceroute filter settings');
   }
