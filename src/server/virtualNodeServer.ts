@@ -472,9 +472,18 @@ export class VirtualNodeServer extends EventEmitter {
         await this.sendInitialConfig(clientId, toRadio.wantConfigId);
       } else if (toRadio.heartbeat) {
         // Handle heartbeat locally - don't forward to physical node
-        // Heartbeats are just keep-alive signals between client and VNS
-        logger.debug(`Virtual node: Received heartbeat from ${clientId}, handling locally`);
-        // No response needed for heartbeat - it just keeps the connection alive
+        // iOS clients expect a response packet within a timeout window or they disconnect
+        // Send a QueueStatus response to keep the connection alive
+        logger.debug(`Virtual node: Received heartbeat from ${clientId}, sending QueueStatus response`);
+        const queueStatusResponse = await meshtasticProtobufService.createQueueStatus({
+          res: 0,
+          free: 32,
+          maxlen: 32,
+          meshPacketId: 0,
+        });
+        if (queueStatusResponse) {
+          await this.sendToClient(clientId, queueStatusResponse);
+        }
       } else if (toRadio.disconnect) {
         // Handle disconnect request locally - don't forward to physical node
         logger.info(`Virtual node: Client ${clientId} requested disconnect`);

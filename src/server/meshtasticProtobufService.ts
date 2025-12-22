@@ -1085,6 +1085,44 @@ export class MeshtasticProtobufService {
   }
 
   /**
+   * Create QueueStatus FromRadio message
+   * Used as a heartbeat response to keep iOS clients connected
+   */
+  async createQueueStatus(options?: {
+    res?: number;
+    free?: number;
+    maxlen?: number;
+    meshPacketId?: number;
+  }): Promise<Uint8Array | null> {
+    const root = getProtobufRoot();
+    if (!root) {
+      logger.error('❌ Protobuf definitions not loaded');
+      return null;
+    }
+
+    try {
+      const FromRadio = root.lookupType('meshtastic.FromRadio');
+      const QueueStatus = root.lookupType('meshtastic.QueueStatus');
+
+      const queueStatus = QueueStatus.create({
+        res: options?.res ?? 0,
+        free: options?.free ?? 32,
+        maxlen: options?.maxlen ?? 32,
+        meshPacketId: options?.meshPacketId ?? 0,
+      });
+
+      const fromRadio = FromRadio.create({
+        queueStatus: queueStatus,
+      });
+
+      return FromRadio.encode(fromRadio).finish();
+    } catch (error) {
+      logger.error('❌ Failed to create QueueStatus:', error);
+      return null;
+    }
+  }
+
+  /**
    * Create FromRadio message wrapping a MeshPacket
    * Used for processing outgoing messages locally so they appear in the web UI
    *
