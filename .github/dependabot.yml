@@ -8,6 +8,7 @@ updates:
       day: "monday"
       time: "04:00"
     open-pull-requests-limit: 10
+    rebase-strategy: "auto"
     reviewers:
       - "yeraze"
     labels:
@@ -41,6 +42,7 @@ updates:
       interval: "weekly"
       day: "monday"
       time: "04:00"
+    rebase-strategy: "auto"
     reviewers:
       - "yeraze"
     labels:
@@ -54,6 +56,7 @@ updates:
       interval: "weekly"
       day: "monday"
       time: "04:00"
+    rebase-strategy: "auto"
     reviewers:
       - "yeraze"
     labels:
