@@ -131,6 +131,7 @@ export interface RawMessage {
   isLocalMessage?: boolean;
   hopStart?: number;
   hopLimit?: number;
+  relayNode?: number;
   replyId?: number;
   emoji?: number;
   deliveryState?: string;

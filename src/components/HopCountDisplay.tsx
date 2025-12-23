@@ -40,6 +40,7 @@ const HopCountDisplay: React.FC<HopCountDisplayProps> = ({
   }
 
   // Check if this hop count is clickable (has relay node info)
+  // relayNode is undefined/null when not set by the firmware, 0 is a valid relay byte (node ending in 0x00)
   const isClickable = relayNode !== undefined && relayNode !== null && onClick !== undefined;
 
   const clickableStyle: React.CSSProperties = isClickable
