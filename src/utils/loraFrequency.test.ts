@@ -189,10 +189,10 @@ describe('calculateLoRaFrequency', () => {
     });
 
     it('should calculate frequency for JP region (region 5)', () => {
-      // JP: freqStart = 920.8 MHz
-      // channelNum 1 = slot 0: 920.8 + 0.125 = 920.925 MHz
+      // JP: freqStart = 920.5 MHz (per firmware RDEF)
+      // channelNum 1 = slot 0: 920.5 + 0.125 = 920.625 MHz
       const result = calculateLoRaFrequency(5, 1, 0, 0);
-      expect(result).toBe('920.925 MHz');
+      expect(result).toBe('920.625 MHz');
     });
 
     it('should calculate frequency for LORA_24 region (region 13)', () => {
