@@ -89,6 +89,11 @@ export function calculateLoRaFrequency(
   // Calculate maximum number of channels that fit in the frequency range
   const maxChannels = Math.floor((freqEnd - freqStart) / channelSpacing);
 
+  // Validate channelNum (must be >= 0; 0 = hash algorithm, 1+ = explicit)
+  if (channelNum < 0) {
+    return 'Invalid channel';
+  }
+
   // Convert Meshtastic 1-based channelNum to 0-based slot index
   // Meshtastic uses: 0 = use hash algorithm (default to slot 0), 1+ = explicit channel
   // Firmware: channel_num = (channelNum ? channelNum - 1 : hash) % numChannels
