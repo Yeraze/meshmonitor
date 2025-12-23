@@ -3010,7 +3010,7 @@
     "automation.auto_announce.nodeinfo_channels_description": "",
     "automation.auto_traceroute.sort_by_hops": "",
     "position_override.private": "Posición Privada",
-    "position_override.private_description": "Solo visible para usuarios registrados de esta instancia de MeshMonitor. Los usuarios anónimos verán la posición original del nodo.",
+    "position_override.private_description": "Solo visible para usuarios con permiso para ver Posiciones Privadas (nodes_private) en esta instancia de MeshMonitor. Los usuarios sin ese permiso verán la posición original del nodo.",
     "nodes_private": "Posiciones Privadas",
     "nodes_private_description": "Permite ver posiciones privadas (overrides) en el mapa, historial y telemetría."
 }
