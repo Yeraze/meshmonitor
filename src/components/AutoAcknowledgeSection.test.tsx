@@ -632,7 +632,7 @@ describe.skip('AutoAcknowledgeSection Component', () => {
   });
 
   describe('Token Insertion Buttons', () => {
-    it('should render all 9 token insertion buttons', () => {
+    it('should render all 10 token insertion buttons', () => {
       render(<AutoAcknowledgeSection {...defaultProps} />);
 
       expect(screen.getByText(/\+ \{NODE_ID\}/)).toBeInTheDocument();
@@ -644,6 +644,7 @@ describe.skip('AutoAcknowledgeSection Component', () => {
       expect(screen.getByText(/\+ \{FEATURES\}/)).toBeInTheDocument();
       expect(screen.getByText(/\+ \{NODECOUNT\}/)).toBeInTheDocument();
       expect(screen.getByText(/\+ \{DIRECTCOUNT\}/)).toBeInTheDocument();
+      expect(screen.getByText(/\+ \{TRANSPORT\}/)).toBeInTheDocument();
     });
 
     it('should insert token when button is clicked', async () => {

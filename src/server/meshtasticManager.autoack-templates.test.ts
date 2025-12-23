@@ -776,4 +776,61 @@ describe('MeshtasticManager - Auto-Acknowledge Message Template Token Replacemen
       expect(result).toBe('3');
     });
   });
+
+  describe('{TRANSPORT} token replacement', () => {
+    it('should replace {TRANSPORT} with LoRa when viaMqtt is false', () => {
+      const template = 'Received via {TRANSPORT}';
+      const viaMqtt = false;
+      const transport = viaMqtt === true ? 'MQTT' : 'LoRa';
+
+      const result = template.replace(/{TRANSPORT}/g, transport);
+
+      expect(result).toBe('Received via LoRa');
+    });
+
+    it('should replace {TRANSPORT} with MQTT when viaMqtt is true', () => {
+      const template = 'Received via {TRANSPORT}';
+      const viaMqtt = true;
+      const transport = viaMqtt === true ? 'MQTT' : 'LoRa';
+
+      const result = template.replace(/{TRANSPORT}/g, transport);
+
+      expect(result).toBe('Received via MQTT');
+    });
+
+    it('should replace {TRANSPORT} with LoRa when viaMqtt is undefined', () => {
+      const template = 'Received via {TRANSPORT}';
+      const viaMqtt = undefined;
+      const transport = viaMqtt === true ? 'MQTT' : 'LoRa';
+
+      const result = template.replace(/{TRANSPORT}/g, transport);
+
+      expect(result).toBe('Received via LoRa');
+    });
+
+    it('should handle {TRANSPORT} with other tokens', () => {
+      const template = 'From {NODE_ID}, {NUMBER_HOPS} hops via {TRANSPORT}';
+      const nodeId = '!a1b2c3d4';
+      const numberHops = 3;
+      const viaMqtt = true;
+      const transport = viaMqtt === true ? 'MQTT' : 'LoRa';
+
+      let result = template;
+      result = result.replace(/{NODE_ID}/g, nodeId);
+      result = result.replace(/{NUMBER_HOPS}/g, numberHops.toString());
+      result = result.replace(/{TRANSPORT}/g, transport);
+
+      expect(result).toBe('From !a1b2c3d4, 3 hops via MQTT');
+    });
+
+    it('should replace multiple {TRANSPORT} tokens', () => {
+      const template = 'Transport: {TRANSPORT} - Received via {TRANSPORT}';
+      const viaMqtt = false;
+      const transport = viaMqtt === true ? 'MQTT' : 'LoRa';
+
+      const result = template.replace(/{TRANSPORT}/g, transport);
+
+      expect(result).toBe('Transport: LoRa - Received via LoRa');
+    });
+  });
 });
