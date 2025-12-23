@@ -1,4 +1,15 @@
 services:
+  tileserver:
+    image: maptiler/tileserver-gl-light:latest
+    container_name: tileserver
+    ports:
+      - "8082:8080"
+    restart: unless-stopped
+    volumes:
+      - ./tiles:/data
+    environment:
+      - TZ=America/New_York
+
   meshmonitor:
     build:
       context: .

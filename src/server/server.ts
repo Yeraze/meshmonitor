@@ -37,6 +37,7 @@ import { serverEventNotificationService } from './services/serverEventNotificati
 import { getUserNotificationPreferences, saveUserNotificationPreferences, applyNodeNamePrefix } from './utils/notificationFiltering.js';
 import { upgradeService } from './services/upgradeService.js';
 import { enhanceNodeForClient } from './utils/nodeEnhancer.js';
+import { dynamicCspMiddleware, refreshTileHostnameCache } from './middleware/dynamicCsp.js';
 
 const require = createRequire(import.meta.url);
 const packageJson = require('../../package.json');
@@ -148,38 +149,11 @@ if (env.trustProxyProvided) {
 // Use relaxed settings in development to avoid HTTPS enforcement
 // For Quick Start: default to HTTP-friendly (no HSTS) even in production
 // Only enable HSTS when COOKIE_SECURE explicitly set to 'true'
+// CSP is handled dynamically by dynamicCspMiddleware to support custom tile servers
 const helmetConfig =
   env.isProduction && env.cookieSecure
     ? {
-        contentSecurityPolicy: {
-          directives: {
-            defaultSrc: ["'self'"],
-            scriptSrc: ["'self'"],
-            styleSrc: ["'self'", "'unsafe-inline'"], // React uses inline styles
-            imgSrc: [
-              "'self'",
-              'data:',
-              'https:',
-              'https://*.tile.openstreetmap.org', // OpenStreetMap tiles
-              'https://*.basemaps.cartocdn.com', // CartoDB tiles
-              'https://*.tile.opentopomap.org', // OpenTopoMap tiles
-              'https://server.arcgisonline.com', // Esri tiles
-            ],
-            connectSrc: [
-              "'self'",
-              'https://*.tile.openstreetmap.org', // OpenStreetMap tiles
-              'https://*.basemaps.cartocdn.com', // CartoDB tiles
-              'https://*.tile.opentopomap.org', // OpenTopoMap tiles
-              'https://server.arcgisonline.com', // Esri tiles
-            ],
-            fontSrc: ["'self'"],
-            objectSrc: ["'none'"],
-            mediaSrc: ["'self'"],
-            frameSrc: ["'none'"],
-            baseUri: ["'self'"],
-            formAction: ["'self'"],
-          },
-        },
+        contentSecurityPolicy: false, // Handled by dynamicCspMiddleware
         hsts: {
           maxAge: 31536000, // 1 year
           includeSubDomains: true,
@@ -192,28 +166,8 @@ const helmetConfig =
         xssFilter: true,
       }
     : {
-        // Development or HTTP-only: Relaxed CSP, no HSTS, no upgrade-insecure-requests
-        contentSecurityPolicy: {
-          useDefaults: false, // Don't use default directives that include upgrade-insecure-requests
-          directives: {
-            defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-            styleSrc: ["'self'", "'unsafe-inline'"],
-            imgSrc: ["'self'", 'data:', 'http:', 'https:'],
-            connectSrc: [
-              "'self'",
-              'https://*.tile.openstreetmap.org', // OpenStreetMap tiles
-              'http://*.tile.openstreetmap.org', // HTTP fallback for development
-            ],
-            fontSrc: ["'self'"],
-            objectSrc: ["'none'"],
-            mediaSrc: ["'self'"],
-            frameSrc: ["'none'"],
-            baseUri: ["'self'"],
-            formAction: ["'self'"],
-            // upgradeInsecureRequests intentionally omitted for HTTP
-          },
-        },
+        // Development or HTTP-only: no HSTS
+        contentSecurityPolicy: false, // Handled by dynamicCspMiddleware
         hsts: false, // Disable HSTS when not using secure cookies or in development
         crossOriginOpenerPolicy: false, // Disable COOP for HTTP - browser ignores it on non-HTTPS anyway
         frameguard: {
@@ -224,6 +178,9 @@ const helmetConfig =
       };
 
 app.use(helmet(helmetConfig));
+
+// Dynamic CSP middleware - adds custom tile server hostnames from database
+app.use(dynamicCspMiddleware(env.isProduction, env.cookieSecure));
 
 // Security: CORS configuration with allowed origins
 const getAllowedOrigins = () => {
@@ -4373,6 +4330,12 @@ apiRouter.post('/settings', requirePermission('settings', 'write'), (req, res) =
 
     // Save to database
     databaseService.setSettings(filteredSettings);
+
+    // Refresh CSP cache if custom tilesets were updated
+    if ('customTilesets' in filteredSettings) {
+      refreshTileHostnameCache();
+      logger.debug('🗺️ Refreshed CSP tile hostname cache after customTilesets update');
+    }
 
     // Handle auto-welcome being enabled for the first time
     if ('autoWelcomeEnabled' in filteredSettings) {
