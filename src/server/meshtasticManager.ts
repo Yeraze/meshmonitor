@@ -1919,6 +1919,7 @@ class MeshtasticManager {
           rssi: meshPacket.rxRssi ?? undefined,
           hop_limit: meshPacket.hopLimit ?? undefined,
           hop_start: meshPacket.hopStart ?? undefined,
+          relay_node: meshPacket.relayNode ?? undefined,
           payload_size: meshPacket.decoded?.payload?.length ?? undefined,
           want_ack: meshPacket.wantAck ?? false,
           priority: meshPacket.priority ?? undefined,
@@ -2106,6 +2107,7 @@ class MeshtasticManager {
           rxTime: meshPacket.rxTime ? Number(meshPacket.rxTime) * 1000 : Date.now(),
           hopStart: hopStart,
           hopLimit: hopLimit,
+          relayNode: meshPacket.relayNode ?? undefined, // Last byte of the node that relayed this message
           replyId: replyId && replyId > 0 ? replyId : undefined,
           emoji: emoji,
           viaMqtt: meshPacket.viaMqtt === true, // Capture whether message was received via MQTT bridge
@@ -8260,6 +8262,7 @@ class MeshtasticManager {
       timestamp: new Date(msg.rxTime ?? msg.timestamp),
       hopStart: msg.hopStart,
       hopLimit: msg.hopLimit,
+      relayNode: msg.relayNode,
       replyId: msg.replyId,
       emoji: msg.emoji,
       viaMqtt: Boolean(msg.viaMqtt),

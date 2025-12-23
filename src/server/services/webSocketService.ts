@@ -32,6 +32,7 @@ function transformMessageForClient(msg: DbMessage): unknown {
     timestamp: new Date(msg.rxTime ?? msg.timestamp),  // Convert to Date (serializes as ISO string)
     hopStart: msg.hopStart,
     hopLimit: msg.hopLimit,
+    relayNode: msg.relayNode,
     replyId: msg.replyId,
     emoji: msg.emoji,
     rxSnr: msg.rxSnr,

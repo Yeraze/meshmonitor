@@ -925,6 +925,9 @@
   "relay_modal.potential_relays": "Potential Relay Nodes",
   "relay_modal.no_matches": "No nodes found matching relay byte {{byte}}. The relay node may not be in the node database yet.",
   "relay_modal.multiple_matches_note": "Note: Multiple nodes share the same lowest byte. The actual relay node is one of these.",
+  "relay_modal.direct": "Direct",
+  "relay_modal.hops_away": "{{count}} hop away",
+  "relay_modal.hops_away_plural": "{{count}} hops away",
 
   "route_segment.title": "Traceroutes Using Segment",
   "route_segment.segment": "Segment",
@@ -980,6 +983,7 @@
   "packet_monitor.broadcast": "Broadcast",
   "packet_monitor.encrypted": "<ENCRYPTED>",
   "packet_monitor.no_preview": "[No preview]",
+  "packet_monitor.click_for_relay": "Click to see potential relay nodes",
   "packet_monitor.details_title": "Packet Details (Full JSON)",
   "packet_monitor.settings.disabled_warning": "Packet logging is currently disabled. No packets will be stored. Enable it in the section header above to start collecting packet data.",
   "packet_monitor.settings.max_packets": "Maximum Packets to Store",
@@ -2050,6 +2054,7 @@
   "messages.hops_one": "{{count}} hop",
   "messages.hops_other": "{{count}} hops",
   "messages.signal_info": "Signal strength (SNR/RSSI) - Direct message",
+  "messages.click_for_relay": "Click to see potential relay nodes",
 
   "link_preview.loading": "Loading preview...",
   "link_preview.image_alt": "Link preview",

@@ -1529,6 +1529,7 @@ function transformDbMessageToMeshMessage(msg: DbMessage): MeshMessage {
     timestamp: new Date(msg.rxTime ?? msg.timestamp),
     hopStart: msg.hopStart,
     hopLimit: msg.hopLimit,
+    relayNode: msg.relayNode,
     replyId: msg.replyId,
     emoji: msg.emoji,
     rxSnr: msg.rxSnr,

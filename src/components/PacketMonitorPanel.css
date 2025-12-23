@@ -238,6 +238,19 @@
   text-decoration-style: solid;
 }
 
+.hops-link {
+  color: var(--primary-color);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  transition: all 0.2s;
+}
+
+.hops-link:hover {
+  color: var(--primary-color-hover, #3d8fff);
+  text-decoration-style: solid;
+}
+
 .packet-table .portnum {
   font-weight: 600;
   font-size: 11px;

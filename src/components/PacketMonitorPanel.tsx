@@ -6,10 +6,11 @@ import { PacketLog, PacketFilters } from '../types/packet';
 import { clearPackets, exportPackets } from '../services/packetApi';
 import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
-import { useDeviceConfig } from '../hooks/useServerData';
+import { useDeviceConfig, useNodes } from '../hooks/useServerData';
 import { usePackets } from '../hooks/usePackets';
 import { formatDateTime } from '../utils/datetime';
 import { ResourceType } from '../types/permission';
+import RelayNodeModal from './RelayNodeModal';
 import './PacketMonitorPanel.css';
 
 interface PacketMonitorPanelProps {
@@ -36,6 +37,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
   const { hasPermission, authStatus } = useAuth();
   const { timeFormat, dateFormat } = useSettings();
   const { config: deviceInfo } = useDeviceConfig();
+  const { nodes } = useNodes();
 
   // UI state (not data-related)
   const [autoScroll, setAutoScroll] = useState(() =>
@@ -51,6 +53,11 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
   const [hideOwnPackets, setHideOwnPackets] = useState(() =>
     safeJsonParse(localStorage.getItem('packetMonitor.hideOwnPackets'), true)
   );
+
+  // Relay node modal state
+  const [relayModalOpen, setRelayModalOpen] = useState(false);
+  const [selectedRelayNode, setSelectedRelayNode] = useState<number | null>(null);
+  const [selectedRxTime, setSelectedRxTime] = useState<Date | undefined>(undefined);
 
   const parentRef = useRef<HTMLDivElement>(null);
 
@@ -175,6 +182,25 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
       onNodeClick(nodeId);
     }
   };
+
+  // Handle relay node click - opens modal to show potential relay nodes
+  const handleRelayClick = (packet: PacketLog, event: React.MouseEvent) => {
+    event.stopPropagation(); // Prevent row click
+    if (packet.relay_node !== undefined && packet.relay_node !== null) {
+      setSelectedRelayNode(packet.relay_node);
+      setSelectedRxTime(new Date(packet.timestamp * 1000));
+      setRelayModalOpen(true);
+    }
+  };
+
+  // Map nodes to the format expected by RelayNodeModal
+  const mappedNodes = nodes.map(node => ({
+    nodeNum: node.nodeNum,
+    nodeId: node.user?.id || `!${node.nodeNum.toString(16).padStart(8, '0')}`,
+    longName: node.user?.longName || `Node ${node.nodeNum}`,
+    shortName: node.user?.shortName || node.nodeNum.toString(16).substring(0, 4),
+    hopsAway: node.hopsAway,
+  }));
 
   // Get port number color
   const getPortnumColor = (portnum: number): string => {
@@ -539,7 +565,21 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                             {packet.snr !== null && packet.snr !== undefined ? `${packet.snr.toFixed(1)}` : t('common.na')}
                           </td>
                           <td className="hops" style={{ width: '60px' }}>
-                            {hops !== null ? hops : t('common.na')}
+                            {hops !== null ? (
+                              packet.relay_node !== undefined && packet.relay_node !== null ? (
+                                <span
+                                  className="hops-link"
+                                  onClick={(e) => handleRelayClick(packet, e)}
+                                  title={t('packet_monitor.click_for_relay')}
+                                >
+                                  {hops}
+                                </span>
+                              ) : (
+                                hops
+                              )
+                            ) : (
+                              t('common.na')
+                            )}
                           </td>
                           <td className="size" style={{ width: '60px' }}>
                             {packet.payload_size ?? t('common.na')}
@@ -603,6 +643,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                     rssi: selectedPacket.rssi,
                     hop_limit: selectedPacket.hop_limit,
                     hop_start: selectedPacket.hop_start,
+                    relay_node: selectedPacket.relay_node,
                     payload_size: selectedPacket.payload_size,
                     want_ack: selectedPacket.want_ack,
                     priority: selectedPacket.priority,
@@ -633,6 +674,26 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
           </div>,
           document.body
         )}
+      {/* Relay node modal */}
+      {relayModalOpen && selectedRelayNode !== null && (
+        <RelayNodeModal
+          isOpen={relayModalOpen}
+          onClose={() => {
+            setRelayModalOpen(false);
+            setSelectedRelayNode(null);
+          }}
+          relayNode={selectedRelayNode}
+          rxTime={selectedRxTime}
+          nodes={mappedNodes}
+          onNodeClick={(nodeId) => {
+            setRelayModalOpen(false);
+            setSelectedRelayNode(null);
+            if (onNodeClick) {
+              onNodeClick(nodeId);
+            }
+          }}
+        />
+      )}
     </>
   );
 };
