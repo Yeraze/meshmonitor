@@ -61,3 +61,7 @@ meshmonitor-logs/
 desktop/src-tauri/target/
 desktop/src-tauri/binaries/
 desktop/resources/
+
+# Tile server data
+tiles/*.mbtiles
+tiles/*.pbf

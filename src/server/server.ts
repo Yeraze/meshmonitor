@@ -167,11 +167,13 @@ const helmetConfig =
             ],
             connectSrc: [
               "'self'",
+              'https:', // Allow HTTPS connections for custom tile servers
               'https://*.tile.openstreetmap.org', // OpenStreetMap tiles
               'https://*.basemaps.cartocdn.com', // CartoDB tiles
               'https://*.tile.opentopomap.org', // OpenTopoMap tiles
               'https://server.arcgisonline.com', // Esri tiles
             ],
+            workerSrc: ["'self'", 'blob:'], // MapLibre GL web workers for vector tiles
             fontSrc: ["'self'"],
             objectSrc: ["'none'"],
             mediaSrc: ["'self'"],
@@ -202,9 +204,12 @@ const helmetConfig =
             imgSrc: ["'self'", 'data:', 'http:', 'https:'],
             connectSrc: [
               "'self'",
+              'http:', // Allow HTTP connections for local tile servers
+              'https:', // Allow HTTPS connections for custom tile servers
               'https://*.tile.openstreetmap.org', // OpenStreetMap tiles
               'http://*.tile.openstreetmap.org', // HTTP fallback for development
             ],
+            workerSrc: ["'self'", 'blob:'], // MapLibre GL web workers for vector tiles
             fontSrc: ["'self'"],
             objectSrc: ["'none'"],
             mediaSrc: ["'self'"],
