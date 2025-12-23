@@ -1559,10 +1559,10 @@
     "users.password_locked_hint": "此账户已禁止修改密码",
     "users.deactivate_user": "停用用户",
     "users.cannot_deactivate_anonymous": "无法停用匿名用户",
-    "users.channel_primary": "频道 0（主频道）",
-    "users.channel_n": "频道 {{n}}",
-    "users.can_control_connection": "可控制连接",
-    "users.can_initiate_traceroutes": "可发起路由追踪",
+    "users.channel_primary": "",
+    "users.channel_n": "",
+    "users.can_control_connection": "",
+    "users.can_initiate_traceroutes": "",
     "users.read": "读取",
     "users.write": "写入",
     "users.save_permissions": "保存权限",
@@ -3001,5 +3001,7 @@
     "automation.auto_announce.nodeinfo_description": "",
     "automation.auto_announce.nodeinfo_channels": "",
     "automation.auto_announce.nodeinfo_channels_description": "",
-    "automation.auto_traceroute.sort_by_hops": ""
+    "automation.auto_traceroute.sort_by_hops": "",
+    "nodes_private": "",
+    "nodes_private_description": ""
 }
