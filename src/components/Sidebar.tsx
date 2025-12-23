@@ -52,10 +52,18 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   // Update CSS custom property when sidebar collapse state changes
   React.useEffect(() => {
-    document.documentElement.style.setProperty(
-      '--sidebar-width',
-      isCollapsed ? '60px' : '240px'
-    );
+    const updateSidebarWidth = () => {
+      const isMobile = window.matchMedia('(max-width: 768px)').matches;
+      const collapsedWidth = isMobile ? '48px' : '60px';
+      document.documentElement.style.setProperty(
+        '--sidebar-width',
+        isCollapsed ? collapsedWidth : '240px'
+      );
+    };
+
+    updateSidebarWidth();
+    window.addEventListener('resize', updateSidebarWidth);
+    return () => window.removeEventListener('resize', updateSidebarWidth);
   }, [isCollapsed]);
 
   const NavItem: React.FC<{
