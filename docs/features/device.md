@@ -1089,6 +1089,16 @@ Configure network settings including WiFi, NTP, and static IP addresses.
 
 **Side Effects**: Larger message size compared to protobuf
 
+### TLS Enabled
+
+**Description**: Enable TLS/SSL encryption for the MQTT connection.
+
+**Recommendation**: Always enable for public/internet MQTT brokers.
+
+**Effect**: Encrypts all MQTT traffic between the device and broker.
+
+**Side Effects**: Slightly higher power usage due to encryption overhead.
+
 ### MQTT Root Topic
 
 **Description**: Base topic for MQTT messages.
@@ -1098,6 +1108,54 @@ Configure network settings including WiFi, NTP, and static IP addresses.
 **Effect**: Customizes the MQTT topic hierarchy.
 
 **Use Cases**: Running multiple independent mesh networks on same MQTT broker
+
+### Proxy to Client (Client Proxy Mode)
+
+**Description**: Route MQTT traffic through a connected client application instead of directly from the node's WiFi.
+
+**Effect**: Instead of the node connecting directly to the MQTT broker, it sends MQTT packets to a connected client (mobile app, MeshMonitor, etc.) which then forwards them to the broker.
+
+**Use Cases**:
+- Nodes with unreliable WiFi (T-Deck, portable devices)
+- Serial or BLE-connected nodes that don't have WiFi
+- Centralized MQTT management through your server
+- More reliable connectivity via Docker containers with health checks
+
+::: tip MeshMonitor Integration
+When using MeshMonitor, enable this option and deploy the [MQTT Client Proxy sidecar](/configuration/mqtt-proxy). The proxy container handles all MQTT forwarding automatically.
+
+Credit: MQTT Proxy by [LN4CY](https://github.com/LN4CY/mqtt-proxy)
+:::
+
+**How It Works**:
+1. Node sends `mqttClientProxyMessage` to connected client
+2. Client (MQTT Proxy) publishes message to MQTT broker
+3. Client receives messages from broker and forwards to node
+4. Same protocol used by official Meshtastic mobile apps
+
+### Map Reporting
+
+**Description**: Enable periodic location reporting to the MQTT map service.
+
+**Effect**: Your node's position will be published to the configured MQTT broker for map display.
+
+**Use Cases**: Integration with [meshmap.net](https://meshmap.net) or custom mapping solutions.
+
+### Map Publish Interval
+
+**Description**: How often to publish location updates to the map.
+
+**Default**: 0 (use system default)
+
+**Range**: 0-4294967295 seconds
+
+### Map Position Precision
+
+**Description**: Position precision for map reporting.
+
+**Range**: 10-19 (higher = more precise)
+
+**Privacy Note**: Lower precision values share less exact location data.
 
 ### Related Meshtastic Documentation
 

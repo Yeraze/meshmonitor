@@ -2455,6 +2455,8 @@
   "mqtt_config.tls_description": "Enable TLS/SSL encryption for MQTT connection",
   "mqtt_config.proxy_to_client": "Proxy to Client",
   "mqtt_config.proxy_to_client_description": "Proxy MQTT packets through the connected phone app instead of direct WiFi connection",
+  "mqtt_config.proxy_to_client_meshmonitor_note": "For MeshMonitor: Enable this and set up the MQTT Proxy sidecar container.",
+  "mqtt_config.proxy_to_client_docs_link": "View setup instructions →",
   "mqtt_config.map_reporting": "Map Reporting",
   "mqtt_config.map_reporting_description": "Enable periodic location reporting to the MQTT map service",
   "mqtt_config.map_publish_interval": "Map Publish Interval (seconds)",

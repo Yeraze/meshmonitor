@@ -9,6 +9,7 @@ If you encounter any issues with your configuration:
 - **Connection issues**: See our [troubleshooting guides](/getting-started#troubleshooting)
 - **BLE setup**: Check the [BLE Bridge documentation](/configuration/ble-bridge)
 - **Serial/USB setup**: Check the [Serial Bridge documentation](/configuration/serial-bridge)
+- **MQTT Proxy setup**: Check the [MQTT Client Proxy documentation](/configuration/mqtt-proxy)
 - **Production deployment**: Review the [Production Deployment guide](/configuration/production)
 - **Reverse proxy**: See [Reverse Proxy Configuration](/configuration/reverse-proxy)
 
@@ -41,6 +42,13 @@ After deploying with the generated configuration:
 - **Virtual Node**: When enabled, allows multiple Meshtastic mobile apps to connect to MeshMonitor simultaneously without overwhelming your physical node. Highly recommended.
 - **Disable Anonymous Access**: When enabled, users must authenticate before accessing MeshMonitor. Useful for deployments accessible from the internet.
 
+### Additional Settings
+
+- **Automatic Self-Upgrade**: Enable one-click upgrades through the web UI with the upgrade watchdog sidecar.
+- **Offline Map Tiles**: Add TileServer GL for serving offline map tiles when internet connectivity is limited.
+- **Auto Responder Scripts**: Mount a scripts directory for custom automation scripts.
+- **MQTT Client Proxy**: Route MQTT traffic through MeshMonitor instead of your node's WiFi. Useful for nodes with unreliable connectivity or when using Serial/BLE connections. See [MQTT Client Proxy documentation](/configuration/mqtt-proxy).
+
 ## Advanced Topics
 
 For more complex deployments, check out these resources:
@@ -50,3 +58,4 @@ For more complex deployments, check out these resources:
 - [SSO/OIDC Authentication](/configuration/sso)
 - [Custom SSL Certificates](/configuration/reverse-proxy)
 - [Database Optimization](/configuration/production#database-optimization)
+- [MQTT Client Proxy](/configuration/mqtt-proxy) - Reliable MQTT for nodes with unreliable WiFi

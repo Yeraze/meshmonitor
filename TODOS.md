@@ -2,6 +2,36 @@
 
 ## Current Sprint
 
+### MQTT Client Proxy Integration (#1244)
+
+**Completed:**
+- [x] Add MQTT Proxy option to Docker Compose Configurator
+  - New checkbox in Additional Settings section
+  - Auto-enables Virtual Node when MQTT Proxy is selected
+  - Generates sidecar container configuration
+- [x] Add helper text to MQTT Client Proxy checkbox in Device Configuration
+  - New translation key for MeshMonitor-specific instructions
+  - Links to MQTT Proxy documentation
+- [x] Create comprehensive MQTT Proxy documentation page
+  - Overview and architecture diagram
+  - Setup instructions with prerequisites
+  - Configuration options table
+  - Troubleshooting guide
+  - Comparison with node's built-in MQTT
+- [x] Update device.md with complete MQTT configuration documentation
+  - Added TLS Enabled section
+  - Added Proxy to Client (Client Proxy Mode) section
+  - Added Map Reporting, Map Publish Interval, Map Position Precision sections
+- [x] Update translation files (en, de, fr, es, ru, zh_Hans)
+- [x] Add MQTT Proxy to VitePress sidebar navigation
+- [x] Update configurator.md with MQTT Proxy information
+- [x] Ensure LN4CY attribution throughout (credit in docker-compose, docs, UI)
+
+**Summary:**
+Integrated [LN4CY's MQTT Proxy](https://github.com/LN4CY/mqtt-proxy) as an optional Docker sidecar. The proxy routes MQTT traffic through MeshMonitor's Virtual Node instead of the node's WiFi, providing more reliable connectivity for nodes with poor WiFi (T-Deck, portable devices) or Serial/BLE connections.
+
+---
+
 ### Node List Filter on Messages Page (#1185)
 
 **Completed:**
