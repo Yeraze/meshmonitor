@@ -56,3 +56,8 @@ test-results.md
 
 # Log directories
 meshmonitor-logs/
+
+# Desktop (Tauri) build artifacts
+desktop/src-tauri/target/
+desktop/src-tauri/binaries/
+desktop/resources/
