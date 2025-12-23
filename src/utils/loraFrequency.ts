@@ -7,14 +7,18 @@
  * Where:
  * - freqStart: Region's starting frequency (MHz)
  * - bw: Bandwidth in kHz (e.g., 250 for LongFast, 125 for LongSlow)
- * - channel_num: Frequency slot (0-based)
+ * - channel_num: Frequency slot (0-based, derived from 1-based channelNum)
+ *
+ * Note: Meshtastic protobuf uses 1-based channelNum (1 = first channel, 0 = use hash algorithm).
+ * The firmware converts to 0-based internally: channel_num = channelNum - 1
+ * This function accepts the raw 1-based value from the device and converts it.
  *
  * References:
  * - https://github.com/meshtastic/firmware/blob/master/src/mesh/RadioInterface.cpp
  * - https://meshtastic.org/docs/overview/radio-settings/
  *
  * @param region - Region code (1=US, 2=EU_433, 3=EU_868, etc.)
- * @param channelNum - Channel number (frequency slot, 0-based)
+ * @param channelNum - Channel number from Meshtastic config (1-based, 0 = hash algorithm)
  * @param overrideFrequency - Override frequency in MHz (takes precedence if > 0)
  * @param frequencyOffset - Frequency offset in MHz to add to calculated frequency
  * @param bandwidth - Bandwidth in kHz (default 250 for LongFast preset)
@@ -45,7 +49,7 @@ export function calculateLoRaFrequency(
     6: [915.0, 928.0],      // ANZ: 915-928 MHz
     7: [920.0, 923.0],      // KR: 920-923 MHz
     8: [920.0, 925.0],      // TW: 920-925 MHz
-    9: [433.0, 434.79],     // RU: 433-434.79 MHz
+    9: [868.7, 869.2],      // RU: 868.7-869.2 MHz (per Meshtastic firmware)
     10: [865.0, 867.0],     // IN: 865-867 MHz
     11: [864.0, 868.0],     // NZ_865: 864-868 MHz
     12: [920.0, 925.0],     // TH: 920-925 MHz
@@ -85,15 +89,20 @@ export function calculateLoRaFrequency(
   // Calculate maximum number of channels that fit in the frequency range
   const maxChannels = Math.floor((freqEnd - freqStart) / channelSpacing);
 
-  // Validate channel number
-  if (channelNum < 0 || channelNum >= maxChannels) {
+  // Convert Meshtastic 1-based channelNum to 0-based slot index
+  // Meshtastic uses: 0 = use hash algorithm (default to slot 0), 1+ = explicit channel
+  // Firmware: channel_num = (channelNum ? channelNum - 1 : hash) % numChannels
+  const slotIndex = channelNum > 0 ? channelNum - 1 : 0;
+
+  // Validate slot index
+  if (slotIndex < 0 || slotIndex >= maxChannels) {
     return 'Invalid channel';
   }
 
   // Official Meshtastic formula from RadioInterface.cpp:
   // freq = freqStart + (bw / 2000) + (channel_num * (bw / 1000))
   const halfBwOffset = bw / 2000; // Half bandwidth in MHz
-  const calculatedFreq = freqStart + halfBwOffset + (channelNum * channelSpacing) + (frequencyOffset || 0);
+  const calculatedFreq = freqStart + halfBwOffset + (slotIndex * channelSpacing) + (frequencyOffset || 0);
 
   return `${calculatedFreq.toFixed(3)} MHz`;
 }
