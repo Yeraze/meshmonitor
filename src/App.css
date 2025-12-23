@@ -571,9 +571,9 @@ body {
   padding: 2rem;
   padding-top: calc(var(--header-height) + 2rem); /* Account for fixed header + desired padding */
   padding-bottom: max(2rem, env(safe-area-inset-bottom)); /* Account for iPhone home indicator */
-  width: calc(100% - 60px); /* Full width minus sidebar */
+  width: calc(100% - var(--sidebar-width)); /* Full width minus sidebar */
   margin: 0;
-  margin-left: 60px; /* Space for narrow sidebar */
+  margin-left: var(--sidebar-width); /* Space for narrow sidebar */
   flex: 1;
   transition: margin-left 0.3s ease;
   box-sizing: border-box;
@@ -1324,8 +1324,7 @@ body {
 
   .app-header {
     padding: 0.5rem;
-    height: 48px; /* Smaller header on mobile */
-    left: 48px; /* Account for collapsed sidebar */
+    /* height and left now use CSS variables that are updated in the :root above */
   }
 
   /* Adjust filter popup for sidebar on mobile */
@@ -2433,8 +2432,8 @@ body {
 /* Fullscreen Map Layout for Nodes */
 .nodes-split-view {
   position: fixed;
-  top: 60px; /* Below header */
-  left: 60px; /* After sidebar */
+  top: var(--header-height); /* Below header */
+  left: var(--sidebar-width); /* After sidebar */
   right: 0;
   bottom: 0;
   overflow: hidden;
