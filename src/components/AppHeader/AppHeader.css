@@ -6,9 +6,9 @@
   padding-top: max(1.5rem, env(safe-area-inset-top)); /* Account for iPhone notch/status bar */
   position: fixed;
   top: 0;
-  left: 60px;
+  left: var(--sidebar-width);
   right: 0;
-  height: 60px;
+  height: var(--header-height);
   display: flex;
   justify-content: space-between;
   align-items: center;
