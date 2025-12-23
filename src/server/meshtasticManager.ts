@@ -63,6 +63,7 @@ export interface DeviceInfo {
   latitudeOverride?: number;
   longitudeOverride?: number;
   altitudeOverride?: number;
+  positionOverrideIsPrivate?: boolean;
   positionIsOverride?: boolean;
 }
 
@@ -8242,6 +8243,9 @@ class MeshtasticManager {
       }
       if (node.altitudeOverride !== null && node.altitudeOverride !== undefined) {
         deviceInfo.altitudeOverride = node.altitudeOverride;
+      }
+      if (node.positionOverrideIsPrivate !== null && node.positionOverrideIsPrivate !== undefined) {
+        deviceInfo.positionOverrideIsPrivate = Boolean(node.positionOverrideIsPrivate);
       }
 
       return deviceInfo;

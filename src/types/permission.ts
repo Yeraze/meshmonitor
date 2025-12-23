@@ -22,7 +22,8 @@ export type ResourceType =
   | 'traceroute'
   | 'audit'
   | 'security'
-  | 'themes';
+  | 'themes'
+  | 'nodes_private';
 
 export type PermissionAction = 'read' | 'write';
 
@@ -78,6 +79,7 @@ export const RESOURCES: readonly ResourceDefinition[] = [
   { id: 'audit', name: 'Audit Log', description: 'View and manage audit logs (admin only)' },
   { id: 'security', name: 'Security', description: 'View security scan results and key management' },
   { id: 'themes', name: 'Custom Themes', description: 'Create and manage custom color themes' },
+  { id: 'nodes_private', name: 'Private Positions', description: 'View private node position overrides' },
 ] as const;
 
 // Default permissions for different user types
@@ -102,6 +104,7 @@ export const ADMIN_PERMISSIONS: PermissionSet = {
   audit: { read: true, write: true },
   security: { read: true, write: true },
   themes: { read: true, write: true },
+  nodes_private: { read: true, write: true },
 };
 
 export const DEFAULT_USER_PERMISSIONS: PermissionSet = {
@@ -125,4 +128,5 @@ export const DEFAULT_USER_PERMISSIONS: PermissionSet = {
   audit: { read: false, write: false },
   security: { read: false, write: false },
   themes: { read: true, write: false },
+  nodes_private: { read: false, write: false },
 };

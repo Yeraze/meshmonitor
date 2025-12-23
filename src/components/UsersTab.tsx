@@ -25,6 +25,13 @@ interface User {
   lastLoginAt: number | null;
 }
 
+const PERMISSION_KEYS = [
+  'dashboard', 'nodes', 'channel_0', 'channel_1', 'channel_2', 'channel_3', 
+  'channel_4', 'channel_5', 'channel_6', 'channel_7', 'messages', 'settings', 
+  'configuration', 'info', 'automation', 'connection', 'traceroute', 'audit', 
+  'security', 'nodes_private'
+] as const;
+
 const UsersTab: React.FC = () => {
   const { t } = useTranslation();
   const { authStatus } = useAuth();
@@ -77,27 +84,10 @@ const UsersTab: React.FC = () => {
 
       // If user is admin and no permissions returned, set all permissions
       if (user.isAdmin && Object.keys(response.permissions).length === 0) {
-        const allPermissions: PermissionSet = {
-          dashboard: { read: true, write: true },
-          nodes: { read: true, write: true },
-          channel_0: { read: true, write: true },
-          channel_1: { read: true, write: true },
-          channel_2: { read: true, write: true },
-          channel_3: { read: true, write: true },
-          channel_4: { read: true, write: true },
-          channel_5: { read: true, write: true },
-          channel_6: { read: true, write: true },
-          channel_7: { read: true, write: true },
-          messages: { read: true, write: true },
-          settings: { read: true, write: true },
-          configuration: { read: true, write: true },
-          info: { read: true, write: true },
-          automation: { read: true, write: true },
-          connection: { read: true, write: true },
-          traceroute: { read: true, write: true },
-          audit: { read: true, write: true },
-          security: { read: true, write: true }
-        };
+        const allPermissions: PermissionSet = {};
+        PERMISSION_KEYS.forEach(resource => {
+          allPermissions[resource] = { read: true, write: true };
+        });
         setPermissions(allPermissions);
       } else {
         setPermissions(response.permissions);
@@ -114,7 +104,7 @@ const UsersTab: React.FC = () => {
     try {
       // Filter out empty/undefined permissions and ensure valid structure
       const validPermissions: PermissionSet = {};
-      (['dashboard', 'nodes', 'channel_0', 'channel_1', 'channel_2', 'channel_3', 'channel_4', 'channel_5', 'channel_6', 'channel_7', 'messages', 'settings', 'configuration', 'info', 'automation', 'connection', 'traceroute', 'audit', 'security'] as const).forEach(resource => {
+      PERMISSION_KEYS.forEach(resource => {
         if (permissions[resource]) {
           validPermissions[resource] = {
             read: permissions[resource]?.read || false,
@@ -316,6 +306,21 @@ const UsersTab: React.FC = () => {
     return <div className="users-tab">{t('users.loading')}</div>;
   }
 
+  const labelMap: Record<string, string> = {
+    dashboard: t('nav.dashboard'),
+    nodes: t('nav.nodes'),
+    messages: t('nav.messages'),
+    settings: t('nav.settings'),
+    configuration: t('nav.configuration'),
+    info: t('nav.info'),
+    automation: t('nav.automation'),
+    audit: t('nav.audit'),
+    security: t('nav.security'),
+    nodes_private: t('nodes_private'),
+    connection: t('users.can_control_connection'),
+    traceroute: t('users.can_initiate_traceroutes'),
+  };
+
   return (
     <div className="users-tab">
       {error && <div className="error-message">{error}</div>}
@@ -444,12 +449,15 @@ const UsersTab: React.FC = () => {
 
             <h3>{t('users.permissions')}</h3>
             <div className="permissions-grid">
-              {(['dashboard', 'nodes', 'channel_0', 'channel_1', 'channel_2', 'channel_3', 'channel_4', 'channel_5', 'channel_6', 'channel_7', 'messages', 'settings', 'configuration', 'info', 'automation', 'connection', 'traceroute', 'audit', 'security'] as const).map(resource => {
-                // Format the label for display
+              {PERMISSION_KEYS.map(resource => {
+                // Get label from translated map or format it
                 let label = resource.charAt(0).toUpperCase() + resource.slice(1);
+                
                 if (resource.startsWith('channel_')) {
                   const channelNum = resource.split('_')[1];
                   label = channelNum === '0' ? t('users.channel_primary') : t('users.channel_n', { n: channelNum });
+                } else {
+                  label = labelMap[resource] || label;
                 }
 
                 return (

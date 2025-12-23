@@ -2982,6 +2982,8 @@
   "position_override.find_coordinates": "Find your GPS coordinates here",
   "position_override.save_success": "Position override saved successfully",
   "position_override.save_error": "Failed to save position override",
+  "position_override.private": "Private Position",
+  "position_override.private_description": "Only visible to logged in users of this MeshMonitor instance. Anonymous users will see the original node position.",
 
   "extnotif_config.title": "External Notification",
   "extnotif_config.view_docs": "View External Notification Documentation",
@@ -3195,5 +3197,8 @@
   "gpio_summary.i2s_sck": "I2S SCK",
   "gpio_summary.monitor_pin": "Monitor Pin",
   "gpio_summary.serial_rx": "Serial RX",
-  "gpio_summary.serial_tx": "Serial TX"
+  "gpio_summary.serial_tx": "Serial TX",
+ 
+  "nodes_private": "Private Positions",
+  "nodes_private_description": "Allows viewing private position overrides on the map, history, and telemetry."
 }

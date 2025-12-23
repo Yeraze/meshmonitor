@@ -15,6 +15,7 @@ import { migration as securityPermissionMigration } from '../migrations/016_add_
 import { migration as themesMigration } from '../migrations/022_add_custom_themes.js';
 import { migration as passwordLockedMigration } from '../migrations/023_add_password_locked_flag.js';
 import { migration as perChannelPermissionsMigration } from '../migrations/024_add_per_channel_permissions.js';
+import { migration as nodesPrivatePermissionMigration } from '../migrations/044_add_nodes_private_permission.js';
 
 describe('PermissionModel', () => {
   let db: Database.Database;
@@ -37,6 +38,7 @@ describe('PermissionModel', () => {
     themesMigration.up(db);
     passwordLockedMigration.up(db);
     perChannelPermissionsMigration.up(db);
+    nodesPrivatePermissionMigration.up(db);
 
     // Create model instances
     userModel = new UserModel(db);
@@ -227,6 +229,7 @@ describe('PermissionModel', () => {
       expect(permissionSet.info?.read).toBe(true);
       expect(permissionSet.connection?.read).toBe(true);
       expect(permissionSet.traceroute?.read).toBe(true);
+      expect(permissionSet.nodes_private?.read).toBe(false);
 
       // Check default write permissions (should be false)
       expect(permissionSet.dashboard?.write).toBe(false);
@@ -251,6 +254,7 @@ describe('PermissionModel', () => {
       expect(permissionSet.automation).toEqual({ read: true, write: true });
       expect(permissionSet.connection).toEqual({ read: true, write: true });
       expect(permissionSet.traceroute).toEqual({ read: true, write: true });
+      expect(permissionSet.nodes_private).toEqual({ read: true, write: true });
     });
   });
 

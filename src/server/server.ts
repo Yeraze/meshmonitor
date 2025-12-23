@@ -36,6 +36,7 @@ import { inactiveNodeNotificationService } from './services/inactiveNodeNotifica
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
 import { getUserNotificationPreferences, saveUserNotificationPreferences, applyNodeNamePrefix } from './utils/notificationFiltering.js';
 import { upgradeService } from './services/upgradeService.js';
+import { enhanceNodeForClient } from './utils/nodeEnhancer.js';
 
 const require = createRequire(import.meta.url);
 const packageJson = require('../../package.json');
@@ -691,66 +692,16 @@ apiRouter.use('/', linkPreviewRoutes);
 apiRouter.use('/', scriptContentRoutes);
 
 // API Routes
-apiRouter.get('/nodes', optionalAuth(), (_req, res) => {
+/**
+ * GET /api/nodes
+ * Returns all nodes in the mesh
+ */
+apiRouter.get('/nodes', optionalAuth(), (req, res) => {
   try {
     const nodes = meshtasticManager.getAllNodes();
-
-    // Get all estimated positions in a single batch query (fixes N+1 query problem)
-    // This is much more efficient than querying each node individually
     const estimatedPositions = databaseService.getAllNodesEstimatedPositions();
 
-    // Enhance nodes with position data using priority:
-    // 1. Position override (user-specified)
-    // 2. Regular GPS position
-    // 3. Estimated position
-    // Mobile status is now pre-computed in the database during packet processing
-    const enhancedNodes = nodes.map(node => {
-      if (!node.user?.id) return { ...node, isMobile: false, positionIsOverride: false };
-
-      let enhancedNode = { ...node, isMobile: node.mobile === 1, positionIsOverride: false };
-
-      // Priority 1: Check for position override
-      if (node.positionOverrideEnabled === 1 && node.latitudeOverride != null && node.longitudeOverride != null) {
-        enhancedNode.position = {
-          latitude: node.latitudeOverride,
-          longitude: node.longitudeOverride,
-          altitude: node.altitudeOverride ?? node.position?.altitude,
-        };
-        enhancedNode.positionIsOverride = true;
-        return enhancedNode;
-      }
-
-      // Priority 2: Use regular GPS position if available (already set in node.position)
-      if (node.position?.latitude && node.position?.longitude) {
-        return enhancedNode;
-      }
-
-      // Priority 3: If no regular position, check for estimated position
-      // Use batch-loaded estimated positions (O(1) lookup instead of DB query)
-      const estimatedPos = estimatedPositions.get(node.user.id);
-      if (estimatedPos) {
-        enhancedNode.position = {
-          latitude: estimatedPos.latitude,
-          longitude: estimatedPos.longitude,
-          altitude: node.position?.altitude,
-        };
-      }
-
-      return enhancedNode;
-    });
-
-    logger.debug(
-      '🔍 Sending nodes to frontend, sample node:',
-      enhancedNodes[0]
-        ? {
-            nodeNum: enhancedNodes[0].nodeNum,
-            longName: enhancedNodes[0].user?.longName,
-            role: enhancedNodes[0].user?.role,
-            hopsAway: enhancedNodes[0].hopsAway,
-            isMobile: enhancedNodes[0].isMobile,
-          }
-        : 'No nodes'
-    );
+    const enhancedNodes = nodes.map(node => enhanceNodeForClient(node, (req as any).user, estimatedPositions));
     res.json(enhancedNodes);
   } catch (error) {
     logger.error('Error fetching nodes:', error);
@@ -761,8 +712,30 @@ apiRouter.get('/nodes', optionalAuth(), (_req, res) => {
 apiRouter.get('/nodes/active', optionalAuth(), (req, res) => {
   try {
     const days = parseInt(req.query.days as string) || 7;
-    const nodes = databaseService.getActiveNodes(days);
-    res.json(nodes);
+    const dbNodes = databaseService.getActiveNodes(days);
+    
+    // Map raw DB nodes to DeviceInfo format then enhance
+    const maskedNodes = dbNodes.map(node => {
+      // Map basic fields
+      const deviceInfo: any = {
+        nodeNum: node.nodeNum,
+        user: { id: node.nodeId, longName: node.longName, shortName: node.shortName },
+        mobile: node.mobile,
+        positionOverrideEnabled: node.positionOverrideEnabled,
+        latitudeOverride: node.latitudeOverride,
+        longitudeOverride: node.longitudeOverride,
+        altitudeOverride: node.altitudeOverride,
+        positionOverrideIsPrivate: node.positionOverrideIsPrivate === 1
+      };
+
+      if (node.latitude && node.longitude) {
+        deviceInfo.position = { latitude: node.latitude, longitude: node.longitude, altitude: node.altitude };
+      }
+
+      return enhanceNodeForClient(deviceInfo, (req as any).user);
+    });
+
+    res.json(maskedNodes);
   } catch (error) {
     logger.error('Error fetching active nodes:', error);
     res.status(500).json({ error: 'Failed to fetch active nodes' });
@@ -778,6 +751,16 @@ apiRouter.get('/nodes/:nodeId/position-history', optionalAuth(), (req, res) => {
     // This ensures we capture movement that may have happened long ago
     const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : null;
     const cutoffTime = hoursParam ? Date.now() - hoursParam * 60 * 60 * 1000 : 0;
+
+    // Check privacy for position history
+    const nodeNum = parseInt(nodeId.replace('!', ''), 16);
+    const node = databaseService.getNode(nodeNum);
+    const isPrivate = node?.positionOverrideIsPrivate === 1;
+    const canViewPrivate = !!req.user && hasPermission(req.user, 'nodes_private', 'read');
+    if (isPrivate && !canViewPrivate) {
+      res.json([]);
+      return;
+    }
 
     // Get only position-related telemetry (lat/lon/alt) for the node - much more efficient!
     const positionTelemetry = databaseService.getPositionTelemetryByNode(nodeId, 1500, cutoffTime);
@@ -1184,6 +1167,17 @@ apiRouter.get('/nodes/:nodeId/position-override', optionalAuth(), (req, res) => 
       return;
     }
 
+    // CRITICAL: Mask coordinates for private overrides if user lacks permission
+    const canViewPrivate = !!req.user && hasPermission(req.user, 'nodes_private', 'read');
+    if (override.isPrivate && !canViewPrivate) {
+      const masked = { ...override };
+      delete masked.latitude;
+      delete masked.longitude;
+      delete masked.altitude;
+      res.json(masked);
+      return;
+    }
+
     res.json(override);
   } catch (error) {
     logger.error('Error getting node position override:', error);
@@ -1200,7 +1194,7 @@ apiRouter.get('/nodes/:nodeId/position-override', optionalAuth(), (req, res) => 
 apiRouter.post('/nodes/:nodeId/position-override', requirePermission('nodes', 'write'), (req, res) => {
   try {
     const { nodeId } = req.params;
-    const { enabled, latitude, longitude, altitude } = req.body;
+    const { enabled, latitude, longitude, altitude, isPrivate } = req.body;
 
     // Validate enabled parameter
     if (typeof enabled !== 'boolean') {
@@ -1208,6 +1202,17 @@ apiRouter.post('/nodes/:nodeId/position-override', requirePermission('nodes', 'w
         error: 'enabled must be a boolean',
         code: 'INVALID_PARAMETER_TYPE',
         details: 'Expected boolean value for enabled parameter',
+      };
+      res.status(400).json(errorResponse);
+      return;
+    }
+
+    // Validate isPrivate parameter if provided
+    if (isPrivate !== undefined && typeof isPrivate !== 'boolean') {
+      const errorResponse: ApiErrorResponse = {
+        error: 'isPrivate must be a boolean',
+        code: 'INVALID_PARAMETER_TYPE',
+        details: 'Expected boolean value for isPrivate parameter',
       };
       res.status(400).json(errorResponse);
       return;
@@ -1268,7 +1273,8 @@ apiRouter.post('/nodes/:nodeId/position-override', requirePermission('nodes', 'w
       enabled,
       enabled ? latitude : undefined,
       enabled ? longitude : undefined,
-      enabled ? altitude : undefined
+      enabled ? altitude : undefined,
+      enabled ? isPrivate : undefined
     );
 
     res.json({
@@ -1278,6 +1284,7 @@ apiRouter.post('/nodes/:nodeId/position-override', requirePermission('nodes', 'w
       latitude: enabled ? latitude : null,
       longitude: enabled ? longitude : null,
       altitude: enabled ? altitude : null,
+      isPrivate: enabled ? isPrivate : false,
     });
   } catch (error) {
     logger.error('Error setting node position override:', error);
@@ -2837,13 +2844,28 @@ apiRouter.get('/telemetry/:nodeId', optionalAuth(), (req, res) => {
     // Calculate cutoff timestamp for filtering
     const cutoffTime = Date.now() - hoursParam * 60 * 60 * 1000;
 
+    // Check if node has private position override
+    const nodeNum = parseInt(nodeId.replace('!', ''), 16);
+    const node = databaseService.getNode(nodeNum);
+    const isPrivate = node?.positionOverrideIsPrivate === 1;
+    const canViewPrivate = !!req.user && hasPermission(req.user, 'nodes_private', 'read');
+
     // Use averaged query for graph data to reduce data points
     // Dynamic bucketing automatically adjusts interval based on time range:
     // - 0-24h: 3-minute intervals (high detail)
     // - 1-7d: 30-minute intervals (medium detail)
     // - 7d+: 2-hour intervals (low detail, full coverage)
-    const recentTelemetry = databaseService.getTelemetryByNodeAveraged(nodeId, cutoffTime, undefined, hoursParam);
-    res.json(recentTelemetry);
+    const telemetry = databaseService.getTelemetryByNodeAveraged(nodeId, cutoffTime, undefined, hoursParam);
+
+    // Filter out location telemetry if private and unauthorized
+    let processedTelemetry = telemetry;
+    if (isPrivate && !canViewPrivate) {
+      processedTelemetry = telemetry.filter(t =>
+        !['latitude', 'longitude', 'altitude'].includes(t.telemetryType)
+      );
+    }
+
+    res.json(processedTelemetry);
   } catch (error) {
     logger.error('Error fetching telemetry:', error);
     res.status(500).json({ error: 'Failed to fetch telemetry' });
@@ -3012,52 +3034,9 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
     // 2. Nodes (always available with optionalAuth)
     try {
       const nodes = meshtasticManager.getAllNodes();
-
-      // Get all estimated positions in a single batch query (fixes N+1 query problem)
-      // This is much more efficient than querying each node individually
       const estimatedPositions = databaseService.getAllNodesEstimatedPositions();
 
-      // Enhance nodes with position data using priority:
-      // 1. Position override (user-specified)
-      // 2. Regular GPS position
-      // 3. Estimated position
-      // Mobile status is now pre-computed in the database during packet processing
-      const enhancedNodes = nodes.map(node => {
-        if (!node.user?.id) return { ...node, isMobile: false, positionIsOverride: false };
-
-        let enhancedNode = { ...node, isMobile: node.mobile === 1, positionIsOverride: false };
-
-        // Priority 1: Check for position override
-        if (node.positionOverrideEnabled === 1 && node.latitudeOverride != null && node.longitudeOverride != null) {
-          enhancedNode.position = {
-            latitude: node.latitudeOverride,
-            longitude: node.longitudeOverride,
-            altitude: node.altitudeOverride ?? node.position?.altitude,
-          };
-          enhancedNode.positionIsOverride = true;
-          return enhancedNode;
-        }
-
-        // Priority 2: Use regular GPS position if available (already set in node.position)
-        if (node.position?.latitude && node.position?.longitude) {
-          return enhancedNode;
-        }
-
-        // Priority 3: If no regular position, check for estimated position
-        // Use batch-loaded estimated positions (O(1) lookup instead of DB query)
-        const estimatedPos = estimatedPositions.get(node.user.id);
-        if (estimatedPos) {
-          enhancedNode.position = {
-            latitude: estimatedPos.latitude,
-            longitude: estimatedPos.longitude,
-            altitude: node.position?.altitude,
-          };
-        }
-
-        return enhancedNode;
-      });
-
-      result.nodes = enhancedNodes;
+      result.nodes = nodes.map(node => enhanceNodeForClient(node, (req as any).user, estimatedPositions));
     } catch (error) {
       logger.error('Error fetching nodes in poll:', error);
       result.nodes = [];

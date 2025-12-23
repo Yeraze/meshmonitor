@@ -20,6 +20,7 @@ import { migration as securityPermissionMigration } from '../migrations/016_add_
 import { migration as themesMigration } from '../migrations/022_add_custom_themes.js';
 import { migration as passwordLockedMigration } from '../migrations/023_add_password_locked_flag.js';
 import { migration as perChannelPermissionsMigration } from '../migrations/024_add_per_channel_permissions.js';
+import { migration as nodesPrivatePermissionMigration } from '../migrations/044_add_nodes_private_permission.js';
 import packetRoutes from './packetRoutes.js';
 
 // Mock the DatabaseService to prevent auto-initialization
@@ -68,6 +69,7 @@ describe('Packet Routes', () => {
     themesMigration.up(db);
     passwordLockedMigration.up(db);
     perChannelPermissionsMigration.up(db);
+    nodesPrivatePermissionMigration.up(db);
 
     userModel = new UserModel(db);
     permissionModel = new PermissionModel(db);
