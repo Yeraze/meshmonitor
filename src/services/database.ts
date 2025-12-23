@@ -97,7 +97,7 @@ export interface DbNode {
   positionOverrideEnabled?: number; // 0 = disabled, 1 = enabled
   latitudeOverride?: number; // Override latitude
   longitudeOverride?: number; // Override longitude
-  altitudeOverride?: number; // Override altitude
+  altitudeOverride?: number; // Override altitude  
   positionOverrideIsPrivate?: number; // Override privacy (0 = public, 1 = private)
   createdAt: number;
   updatedAt: number;
@@ -276,10 +276,10 @@ class DatabaseService {
   public permissionModel: PermissionModel;
   public apiTokenModel: APITokenModel;
 
-  constructor(customDbPath?: string) {
+  constructor() {
     logger.debug('🔧🔧🔧 DatabaseService constructor called');
     // Use DATABASE_PATH env var if set, otherwise default to /data/meshmonitor.db
-    const dbPath = customDbPath || getEnvironmentConfig().databasePath;
+    const dbPath = getEnvironmentConfig().databasePath;
 
     logger.debug('Initializing database at:', dbPath);
 
@@ -1186,30 +1186,10 @@ class DatabaseService {
       throw error;
     }
   }
-
-  private runNodesPrivatePermissionMigration(): void {
-    try {
-      const migrationKey = 'migration_043_nodes_private_permission';
-      const migrationCompleted = this.getSetting(migrationKey);
-
-      if (migrationCompleted === 'completed') {
-        logger.debug('✅ Nodes private permission migration already completed');
-        return;
-      }
-
-      logger.debug('Running migration 043: Add nodes_private resource to permissions table...');
-      nodesPrivatePermissionMigration.up(this.db);
-      this.setSetting(migrationKey, 'completed');
-      logger.debug('✅ Nodes private permission migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Failed to run nodes private permission migration:', error);
-      throw error;
-    }
-  }
-
+   
   private runPositionOverridePrivacyMigration(): void {
     try {
-      const migrationKey = 'migration_042_position_override_privacy';
+      const migrationKey = 'migration_043_position_override_privacy';
       const migrationCompleted = this.getSetting(migrationKey);
 
       if (migrationCompleted === 'completed') {
@@ -1217,12 +1197,32 @@ class DatabaseService {
         return;
       }
 
-      logger.debug('Running migration 042: Add position privacy column to nodes table...');
+      logger.debug('Running migration 043: Add position privacy column to nodes table...');
       positionOverridePrivacyMigration.up(this.db);
       this.setSetting(migrationKey, 'completed');
       logger.debug('✅ Position override privacy migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run position override privacy migration:', error);
+      throw error;
+    }
+  }
+  
+  private runNodesPrivatePermissionMigration(): void {
+    try {
+      const migrationKey = 'migration_044_nodes_private_permission';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Nodes private permission migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 044: Add nodes_private resource to permissions table...');
+      nodesPrivatePermissionMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Nodes private permission migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run nodes private permission migration:', error);
       throw error;
     }
   }
@@ -4050,7 +4050,7 @@ class DatabaseService {
     enabled: boolean,
     latitude?: number,
     longitude?: number,
-    altitude?: number,
+    altitude?: number,    
     isPrivate: boolean = false
   ): void {
     const now = Date.now();
