@@ -2754,6 +2754,19 @@ apiRouter.delete('/route-segments/record-holder', requirePermission('info', 'wri
   }
 });
 
+// Helper to get effective position (respecting overrides)
+const getEffectivePosition = (node: ReturnType<typeof databaseService.getNode>) => {
+  if (!node) return { latitude: undefined, longitude: undefined };
+
+  // Check for position override first
+  if (node.positionOverrideEnabled === 1 && node.latitudeOverride != null && node.longitudeOverride != null) {
+    return { latitude: node.latitudeOverride, longitude: node.longitudeOverride };
+  }
+
+  // Fall back to regular position
+  return { latitude: node.latitude, longitude: node.longitude };
+};
+
 // Get all neighbor info (latest per node pair)
 apiRouter.get('/neighbor-info', requirePermission('info', 'read'), (_req, res) => {
   try {
@@ -2769,6 +2782,8 @@ apiRouter.get('/neighbor-info', requirePermission('info', 'read'), (_req, res) =
       .map(ni => {
         const node = databaseService.getNode(ni.nodeNum);
         const neighbor = databaseService.getNode(ni.neighborNodeNum);
+        const nodePos = getEffectivePosition(node);
+        const neighborPos = getEffectivePosition(neighbor);
 
         return {
           ...ni,
@@ -2776,10 +2791,10 @@ apiRouter.get('/neighbor-info', requirePermission('info', 'read'), (_req, res) =
           nodeName: node?.longName || `Node !${ni.nodeNum.toString(16).padStart(8, '0')}`,
           neighborNodeId: neighbor?.nodeId || `!${ni.neighborNodeNum.toString(16).padStart(8, '0')}`,
           neighborName: neighbor?.longName || `Node !${ni.neighborNodeNum.toString(16).padStart(8, '0')}`,
-          nodeLatitude: node?.latitude,
-          nodeLongitude: node?.longitude,
-          neighborLatitude: neighbor?.latitude,
-          neighborLongitude: neighbor?.longitude,
+          nodeLatitude: nodePos.latitude,
+          nodeLongitude: nodePos.longitude,
+          neighborLatitude: neighborPos.latitude,
+          neighborLongitude: neighborPos.longitude,
           node,
           neighbor,
         };
@@ -2809,13 +2824,14 @@ apiRouter.get('/neighbor-info/:nodeNum', requirePermission('info', 'read'), (req
     // Enrich with node names
     const enrichedNeighborInfo = neighborInfo.map(ni => {
       const neighbor = databaseService.getNode(ni.neighborNodeNum);
+      const neighborPos = getEffectivePosition(neighbor);
 
       return {
         ...ni,
         neighborNodeId: neighbor?.nodeId || `!${ni.neighborNodeNum.toString(16).padStart(8, '0')}`,
         neighborName: neighbor?.longName || `Node !${ni.neighborNodeNum.toString(16).padStart(8, '0')}`,
-        neighborLatitude: neighbor?.latitude,
-        neighborLongitude: neighbor?.longitude,
+        neighborLatitude: neighborPos.latitude,
+        neighborLongitude: neighborPos.longitude,
       };
     });
 
