@@ -554,13 +554,20 @@ const createTestDatabase = () => {
       const expirationHours = this.getTracerouteExpirationHours();
       const EXPIRATION_MS = expirationHours * 60 * 60 * 1000;
 
+      // Get maxNodeAgeHours setting to filter only active nodes
+      // lastHeard is stored in seconds (Unix timestamp), so convert cutoff to seconds
+      const maxNodeAgeHours = parseInt(this.getSetting('maxNodeAgeHours') || '24');
+      const activeNodeCutoff = Math.floor(Date.now() / 1000) - (maxNodeAgeHours * 60 * 60);
+
       // Get all nodes that are eligible for traceroute based on their status
+      // Only consider nodes that have been heard within maxNodeAgeHours (active nodes)
       const stmt = this.db.prepare(`
         SELECT n.*,
           (SELECT COUNT(*) FROM traceroutes t
            WHERE t.fromNodeNum = ? AND t.toNodeNum = n.nodeNum) as hasTraceroute
         FROM nodes n
         WHERE n.nodeNum != ?
+          AND n.lastHeard > ?
           AND (
             -- Category 1: No traceroute exists, and (never requested OR requested > 3 hours ago)
             (
@@ -582,6 +589,7 @@ const createTestDatabase = () => {
       const eligibleNodes = stmt.all(
         localNodeNum,
         localNodeNum,
+        activeNodeCutoff,
         localNodeNum,
         now - THREE_HOURS_MS,
         localNodeNum,
@@ -1633,6 +1641,141 @@ describe('DatabaseService - Extended Coverage', () => {
 
       // Should return 24 hours as default
       expect(db.getTracerouteExpirationHours()).toBe(24);
+    });
+
+    it('should respect maxNodeAgeHours configuration to filter active nodes', () => {
+      const now = Date.now();
+      const nowSeconds = Math.floor(now / 1000);
+
+      // Set maxNodeAgeHours to 12 hours
+      db.setSetting('maxNodeAgeHours', '12');
+
+      // Create local node (999)
+      db.upsertNode({
+        nodeNum: 999,
+        nodeId: '!local',
+        longName: 'Local Node',
+        lastHeard: nowSeconds
+      });
+
+      // Node heard 10 hours ago - within 12 hour window (ACTIVE)
+      db.upsertNode({
+        nodeNum: 1,
+        nodeId: '!node1',
+        longName: 'Active Node 1',
+        lastHeard: nowSeconds - (10 * 60 * 60) // 10 hours ago in seconds
+      });
+
+      // Node heard 15 hours ago - outside 12 hour window (INACTIVE)
+      db.upsertNode({
+        nodeNum: 2,
+        nodeId: '!node2',
+        longName: 'Inactive Node 2',
+        lastHeard: nowSeconds - (15 * 60 * 60) // 15 hours ago in seconds
+      });
+
+      // Node heard 5 hours ago - within 12 hour window (ACTIVE)
+      db.upsertNode({
+        nodeNum: 3,
+        nodeId: '!node3',
+        longName: 'Active Node 3',
+        lastHeard: nowSeconds - (5 * 60 * 60) // 5 hours ago in seconds
+      });
+
+      // Get eligible node for traceroute
+      const selected = db.getNodeNeedingTraceroute(999);
+      
+      // Should select an active node (within 12 hour window)
+      expect(selected).toBeTruthy();
+      if (selected) {
+        // Should be one of the active nodes
+        expect(selected.nodeId === '!node1' || selected.nodeId === '!node3', 
+          `Expected active node (!node1 or !node3), got ${selected.nodeId}`).toBe(true);
+      }
+    });
+
+    it('should respect different maxNodeAgeHours values', () => {
+      const now = Date.now();
+      const nowSeconds = Math.floor(now / 1000);
+
+      // Set maxNodeAgeHours to 48 hours
+      db.setSetting('maxNodeAgeHours', '48');
+
+      // Create local node (999)
+      db.upsertNode({
+        nodeNum: 999,
+        nodeId: '!local',
+        longName: 'Local Node',
+        lastHeard: nowSeconds
+      });
+
+      // Node heard 24 hours ago - within 48 hour window (ACTIVE)
+      db.upsertNode({
+        nodeNum: 1,
+        nodeId: '!node1',
+        longName: 'Node 1',
+        lastHeard: nowSeconds - (24 * 60 * 60)
+      });
+
+      // Node heard 50 hours ago - outside 48 hour window (INACTIVE)
+      db.upsertNode({
+        nodeNum: 2,
+        nodeId: '!node2',
+        longName: 'Node 2',
+        lastHeard: nowSeconds - (50 * 60 * 60)
+      });
+
+      // Should select node 1 (active)
+      const selected = db.getNodeNeedingTraceroute(999);
+      
+      expect(selected).toBeTruthy();
+      if (selected) {
+        // Should be node1 (active), NOT node2 (inactive)
+        expect(selected.nodeId === '!node1', 
+          `Expected !node1 (24h ago, within 48h window), got ${selected.nodeId}`).toBe(true);
+      }
+    });
+
+    it('should use default 24 hours for maxNodeAgeHours if not configured', () => {
+      const now = Date.now();
+      const nowSeconds = Math.floor(now / 1000);
+
+      // Don't set maxNodeAgeHours - should default to 24
+      db.deleteAllSettings();
+
+      // Create local node (999)
+      db.upsertNode({
+        nodeNum: 999,
+        nodeId: '!local',
+        longName: 'Local Node',
+        lastHeard: nowSeconds
+      });
+
+      // Node heard 20 hours ago - within default 24 hour window (ACTIVE)
+      db.upsertNode({
+        nodeNum: 1,
+        nodeId: '!node1',
+        longName: 'Node 1',
+        lastHeard: nowSeconds - (20 * 60 * 60)
+      });
+
+      // Node heard 30 hours ago - outside default 24 hour window (INACTIVE)
+      db.upsertNode({
+        nodeNum: 2,
+        nodeId: '!node2',
+        longName: 'Node 2',
+        lastHeard: nowSeconds - (30 * 60 * 60)
+      });
+
+      // Should select node 1 (active with default 24h window)
+      const selected = db.getNodeNeedingTraceroute(999);
+      
+      expect(selected).toBeTruthy();
+      if (selected) {
+        // Should be node1 (active), NOT node2 (inactive)
+        expect(selected.nodeId === '!node1',
+          `Expected !node1 (20h ago, within 24h window), got ${selected.nodeId}`).toBe(true);
+      }
     });
   });
 
