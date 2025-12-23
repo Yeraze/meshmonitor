@@ -16,6 +16,7 @@ interface PositionOverride {
   latitude?: number;
   longitude?: number;
   altitude?: number;
+  isPrivate?: boolean;
 }
 
 interface PositionOverrideModalProps {
@@ -37,6 +38,7 @@ export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
 }) => {
   const { t } = useTranslation();
   const [enabled, setEnabled] = useState(false);
+  const [isPrivate, setIsPrivate] = useState(false);
   const [latitude, setLatitude] = useState<string>('');
   const [longitude, setLongitude] = useState<string>('');
   const [altitude, setAltitude] = useState<string>('');
@@ -69,6 +71,7 @@ export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
         })
         .then((data: PositionOverride) => {
           setEnabled(data.enabled);
+          setIsPrivate(data.isPrivate ?? false);
           setLatitude(data.latitude?.toString() ?? '');
           setLongitude(data.longitude?.toString() ?? '');
           setAltitude(data.altitude?.toString() ?? '');
@@ -77,6 +80,7 @@ export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
           console.error('Error loading position override:', err);
           // Reset to defaults if load fails
           setEnabled(false);
+          setIsPrivate(false);
           setLatitude('');
           setLongitude('');
           setAltitude('');
@@ -92,7 +96,7 @@ export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
   // Reset error state when values change
   useEffect(() => {
     setError(null);
-  }, [enabled, latitude, longitude, altitude]);
+  }, [enabled, latitude, longitude, altitude, isPrivate]);
 
   if (!isOpen || !selectedNode) return null;
 
@@ -137,6 +141,7 @@ export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
         latitude: enabled ? parseFloat(latitude) : undefined,
         longitude: enabled ? parseFloat(longitude) : undefined,
         altitude: enabled && altitude ? parseFloat(altitude) : undefined,
+        isPrivate: enabled ? isPrivate : undefined,
       });
       onClose();
     } catch (err) {
@@ -184,16 +189,35 @@ export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
                 {t('position_override.description')}
               </p>
 
-              <div className="position-override-checkbox">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={enabled}
-                    onChange={e => setEnabled(e.target.checked)}
-                    disabled={saving}
-                  />
-                  {t('position_override.use_position')}
-                </label>
+              <div className="position-override-checkbox-group">
+                <div className="position-override-checkbox">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={enabled}
+                      onChange={e => setEnabled(e.target.checked)}
+                      disabled={saving}
+                    />
+                    {t('position_override.use_position')}
+                  </label>
+                </div>
+
+                {enabled && (
+                  <div className="position-override-checkbox private-checkbox">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={isPrivate}
+                        onChange={e => setIsPrivate(e.target.checked)}
+                        disabled={saving}
+                      />
+                      {t('position_override.private')}
+                      <span className="field-description">
+                        {t('position_override.private_description')}
+                      </span>
+                    </label>
+                  </div>
+                )}
               </div>
 
               {enabled && (

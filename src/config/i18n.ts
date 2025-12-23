@@ -34,7 +34,7 @@ i18n
     load: 'currentOnly',
     preload: ['en'], // Always load English for fallback when translations are missing
     debug: process.env.NODE_ENV === 'development',
-
+    returnEmptyString: false, // Until all translations are available
     interpolation: {
       escapeValue: false, // React already escapes values
     },

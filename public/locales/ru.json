@@ -3001,5 +3001,7 @@
     "automation.auto_announce.nodeinfo_description": "",
     "automation.auto_announce.nodeinfo_channels": "",
     "automation.auto_announce.nodeinfo_channels_description": "",
-    "automation.auto_traceroute.sort_by_hops": ""
+    "automation.auto_traceroute.sort_by_hops": "",
+    "nodes_private": "",
+    "nodes_private_description": ""
 }

@@ -45,6 +45,8 @@ import { migration as recalculateEstimatedPositionsFixMigration } from '../serve
 import { migration as positionOverrideMigration } from '../server/migrations/040_add_position_override_to_nodes.js';
 import { migration as autoTracerouteLogMigration } from '../server/migrations/041_add_auto_traceroute_log.js';
 import { migration as relayNodePacketLogMigration } from '../server/migrations/042_add_relay_node_to_packet_log.js';
+import { migration as positionOverridePrivacyMigration } from '../server/migrations/043_add_position_override_privacy.js';
+import { migration as nodesPrivatePermissionMigration } from '../server/migrations/044_add_nodes_private_permission.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Configuration constants for traceroute history
@@ -95,7 +97,8 @@ export interface DbNode {
   positionOverrideEnabled?: number; // 0 = disabled, 1 = enabled
   latitudeOverride?: number; // Override latitude
   longitudeOverride?: number; // Override longitude
-  altitudeOverride?: number; // Override altitude
+  altitudeOverride?: number; // Override altitude  
+  positionOverrideIsPrivate?: number; // Override privacy (0 = public, 1 = private)
   createdAt: number;
   updatedAt: number;
 }
@@ -431,6 +434,8 @@ class DatabaseService {
     this.runRecalculateEstimatedPositionsMigration();
     this.runRecalculateEstimatedPositionsFixMigration();
     this.runPositionOverrideMigration();
+    this.runPositionOverridePrivacyMigration();
+    this.runNodesPrivatePermissionMigration();
     this.runAutoTracerouteLogMigration();
     this.runRelayNodePacketLogMigration();
     this.ensureAutomationDefaults();
@@ -1178,6 +1183,46 @@ class DatabaseService {
       logger.debug('✅ Position override migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run position override migration:', error);
+      throw error;
+    }
+  }
+   
+  private runPositionOverridePrivacyMigration(): void {
+    try {
+      const migrationKey = 'migration_043_position_override_privacy';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Position override privacy migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 043: Add position privacy column to nodes table...');
+      positionOverridePrivacyMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Position override privacy migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run position override privacy migration:', error);
+      throw error;
+    }
+  }
+  
+  private runNodesPrivatePermissionMigration(): void {
+    try {
+      const migrationKey = 'migration_044_nodes_private_permission';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Nodes private permission migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 044: Add nodes_private resource to permissions table...');
+      nodesPrivatePermissionMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Nodes private permission migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run nodes private permission migration:', error);
       throw error;
     }
   }
@@ -4005,7 +4050,8 @@ class DatabaseService {
     enabled: boolean,
     latitude?: number,
     longitude?: number,
-    altitude?: number
+    altitude?: number,    
+    isPrivate: boolean = false
   ): void {
     const now = Date.now();
     const stmt = this.db.prepare(`
@@ -4014,6 +4060,7 @@ class DatabaseService {
         latitudeOverride = ?,
         longitudeOverride = ?,
         altitudeOverride = ?,
+        positionOverrideIsPrivate = ?,
         updatedAt = ?
       WHERE nodeNum = ?
     `);
@@ -4022,6 +4069,7 @@ class DatabaseService {
       enabled && latitude !== undefined ? latitude : null,
       enabled && longitude !== undefined ? longitude : null,
       enabled && altitude !== undefined ? altitude : null,
+      enabled && isPrivate ? 1 : 0,
       now,
       nodeNum
     );
@@ -4032,7 +4080,7 @@ class DatabaseService {
       throw new Error(`Node ${nodeId} not found`);
     }
 
-    logger.debug(`📍 Node ${nodeNum} position override ${enabled ? 'enabled' : 'disabled'}${enabled ? ` (${latitude}, ${longitude}, ${altitude}m)` : ''}`);
+    logger.debug(`📍 Node ${nodeNum} position override ${enabled ? 'enabled' : 'disabled'}${enabled ? ` (${latitude}, ${longitude}, ${altitude}m)${isPrivate ? ' [PRIVATE]' : ''}` : ''}`);
   }
 
   getNodePositionOverride(nodeNum: number): {
@@ -4040,9 +4088,10 @@ class DatabaseService {
     latitude?: number;
     longitude?: number;
     altitude?: number;
+    isPrivate: boolean;
   } | null {
     const stmt = this.db.prepare(`
-      SELECT positionOverrideEnabled, latitudeOverride, longitudeOverride, altitudeOverride
+      SELECT positionOverrideEnabled, latitudeOverride, longitudeOverride, altitudeOverride, positionOverrideIsPrivate
       FROM nodes
       WHERE nodeNum = ?
     `);
@@ -4051,6 +4100,7 @@ class DatabaseService {
       latitudeOverride: number | null;
       longitudeOverride: number | null;
       altitudeOverride: number | null;
+      positionOverrideIsPrivate: number | null;
     } | undefined;
 
     if (!row) {
@@ -4062,6 +4112,7 @@ class DatabaseService {
       latitude: row.latitudeOverride ?? undefined,
       longitude: row.longitudeOverride ?? undefined,
       altitude: row.altitudeOverride ?? undefined,
+      isPrivate: row.positionOverrideIsPrivate === 1,
     };
   }
 
