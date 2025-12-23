@@ -8,6 +8,7 @@ interface Node {
   nodeId: string;
   longName: string;
   shortName: string;
+  hopsAway?: number;
 }
 
 interface RelayNodeModalProps {
@@ -33,33 +34,25 @@ const RelayNodeModal: React.FC<RelayNodeModalProps> = ({
 
   if (!isOpen) return null;
 
-  console.log('[RelayNodeModal] Props:', { relayNode, ackFromNode, rxTime, nodeCount: nodes.length });
-
   // If ackFromNode is provided (and not null), show that specific node
   // Otherwise, try to match relay_node:
   //   1. First try exact match (in case relay_node contains full node number)
   //   2. Fall back to matching lowest byte only
+  // Sort results by hopsAway ascending (closest nodes first)
   const matchingNodes = (ackFromNode !== undefined && ackFromNode !== null)
-    ? nodes.filter(node => {
-        console.log(`[ACK MODE] Comparing node ${node.longName} (${node.nodeNum}) vs ackFromNode=${ackFromNode}`);
-        return node.nodeNum === ackFromNode;
-      })
+    ? nodes.filter(node => node.nodeNum === ackFromNode)
     : (() => {
         // Try exact match first
         const exactMatches = nodes.filter(node => node.nodeNum === relayNode);
         if (exactMatches.length > 0) {
-          console.log(`[RELAY MODE - EXACT] Found ${exactMatches.length} exact match(es) for relayNode=${relayNode}`);
-          return exactMatches;
+          // Sort by hopsAway (ascending, closest first)
+          return exactMatches.sort((a, b) => (a.hopsAway ?? Infinity) - (b.hopsAway ?? Infinity));
         }
 
         // Fall back to byte matching
-        const byteMatches = nodes.filter(node => {
-          const lastByte = node.nodeNum & 0xFF;
-          console.log(`[RELAY MODE - BYTE] Comparing node ${node.longName} (${node.nodeNum}, 0x${node.nodeNum.toString(16)}) lastByte=0x${lastByte.toString(16)} vs relayNode=0x${relayNode.toString(16)}`);
-          return lastByte === relayNode;
-        });
-        console.log(`[RELAY MODE - BYTE] Found ${byteMatches.length} byte match(es) for relayNode=0x${relayNode.toString(16)}`);
-        return byteMatches;
+        const byteMatches = nodes.filter(node => (node.nodeNum & 0xFF) === relayNode);
+        // Sort by hopsAway (ascending, closest first)
+        return byteMatches.sort((a, b) => (a.hopsAway ?? Infinity) - (b.hopsAway ?? Infinity));
       })();
 
   const formatDateTime = (date?: Date) => {
@@ -67,8 +60,7 @@ const RelayNodeModal: React.FC<RelayNodeModalProps> = ({
     return date.toLocaleString();
   };
 
-  const handleNodeClick = (nodeId: string, e: React.MouseEvent) => {
-    e.preventDefault();
+  const handleNodeClick = (nodeId: string) => {
     onNodeClick(nodeId);
     onClose();
   };
@@ -116,19 +108,26 @@ const RelayNodeModal: React.FC<RelayNodeModalProps> = ({
                   <div
                     key={node.nodeId}
                     className="relay-node-item"
-                    onClick={(e) => handleNodeClick(node.nodeId, e)}
+                    onClick={() => handleNodeClick(node.nodeId)}
                     role="button"
                     tabIndex={0}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
-                        handleNodeClick(node.nodeId, e as unknown as React.MouseEvent);
+                        handleNodeClick(node.nodeId);
                       }
                     }}
                   >
                     <span className="node-name">
                       {node.longName} ({node.shortName})
                     </span>
+                    {node.hopsAway !== undefined && (
+                      <span className="node-hops">
+                        {node.hopsAway === 0
+                          ? t('relay_modal.direct')
+                          : t('relay_modal.hops_away', { count: node.hopsAway })}
+                      </span>
+                    )}
                     <span className="node-id">[{node.nodeId}]</span>
                   </div>
                 ))}

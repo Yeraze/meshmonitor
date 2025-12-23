@@ -44,6 +44,7 @@ import { migration as recalculateEstimatedPositionsMigration } from '../server/m
 import { migration as recalculateEstimatedPositionsFixMigration } from '../server/migrations/039_recalculate_estimated_positions_fix.js';
 import { migration as positionOverrideMigration } from '../server/migrations/040_add_position_override_to_nodes.js';
 import { migration as autoTracerouteLogMigration } from '../server/migrations/041_add_auto_traceroute_log.js';
+import { migration as relayNodePacketLogMigration } from '../server/migrations/042_add_relay_node_to_packet_log.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 
 // Configuration constants for traceroute history
@@ -113,6 +114,7 @@ export interface DbMessage {
   rxTime?: number;
   hopStart?: number;
   hopLimit?: number;
+  relayNode?: number;
   replyId?: number;
   emoji?: number;
   viaMqtt?: boolean;
@@ -215,6 +217,7 @@ export interface DbPacketLog {
   rssi?: number;
   hop_limit?: number;
   hop_start?: number;
+  relay_node?: number;
   payload_size?: number;
   want_ack?: boolean;
   priority?: number;
@@ -429,6 +432,7 @@ class DatabaseService {
     this.runRecalculateEstimatedPositionsFixMigration();
     this.runPositionOverrideMigration();
     this.runAutoTracerouteLogMigration();
+    this.runRelayNodePacketLogMigration();
     this.ensureAutomationDefaults();
     this.isInitialized = true;
   }
@@ -1216,6 +1220,27 @@ class DatabaseService {
       logger.debug('✅ Auto-traceroute log migration completed successfully');
     } catch (error) {
       logger.error('❌ Failed to run auto-traceroute log migration:', error);
+      throw error;
+    }
+  }
+
+  private runRelayNodePacketLogMigration(): void {
+    logger.debug('Running relay_node packet_log migration...');
+    try {
+      const migrationKey = 'migration_042_relay_node_packet_log';
+      const migrationCompleted = this.getSetting(migrationKey);
+
+      if (migrationCompleted === 'completed') {
+        logger.debug('✅ Relay node packet log migration already completed');
+        return;
+      }
+
+      logger.debug('Running migration 042: Add relay_node to packet_log table...');
+      relayNodePacketLogMigration.up(this.db);
+      this.setSetting(migrationKey, 'completed');
+      logger.debug('✅ Relay node packet log migration completed successfully');
+    } catch (error) {
+      logger.error('❌ Failed to run relay node packet log migration:', error);
       throw error;
     }
   }
@@ -2124,9 +2149,9 @@ class DatabaseService {
     const stmt = this.db.prepare(`
       INSERT OR IGNORE INTO messages (
         id, fromNodeNum, toNodeNum, fromNodeId, toNodeId,
-        text, channel, portnum, timestamp, rxTime, hopStart, hopLimit, replyId, emoji,
+        text, channel, portnum, timestamp, rxTime, hopStart, hopLimit, relayNode, replyId, emoji,
         requestId, ackFailed, routingErrorReceived, deliveryState, wantAck, viaMqtt, rxSnr, rxRssi, createdAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -2142,6 +2167,7 @@ class DatabaseService {
       messageData.rxTime ?? null,
       messageData.hopStart ?? null,
       messageData.hopLimit ?? null,
+      messageData.relayNode ?? null,
       messageData.replyId ?? null,
       messageData.emoji ?? null,
       (messageData as any).requestId ?? null,
@@ -4518,8 +4544,8 @@ class DatabaseService {
       INSERT INTO packet_log (
         packet_id, timestamp, from_node, from_node_id, to_node, to_node_id,
         channel, portnum, portnum_name, encrypted, snr, rssi, hop_limit, hop_start,
-        payload_size, want_ack, priority, payload_preview, metadata
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        relay_node, payload_size, want_ack, priority, payload_preview, metadata
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const result = stmt.run(
@@ -4537,6 +4563,7 @@ class DatabaseService {
       packet.rssi ?? null,
       packet.hop_limit ?? null,
       packet.hop_start ?? null,
+      packet.relay_node ?? null,
       packet.payload_size ?? null,
       packet.want_ack ? 1 : 0,
       packet.priority ?? null,
