@@ -187,6 +187,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     sample = sample.replace(/{DIRECTCOUNT}/g, '8');
     sample = sample.replace(/{SNR}/g, '7.5');
     sample = sample.replace(/{RSSI}/g, '-95');
+    sample = sample.replace(/{TRANSPORT}/g, 'LoRa'); // Sample transport type
 
     return sample;
   };
@@ -473,7 +474,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
           <label htmlFor="autoAckMessage">
             {t('automation.auto_ack.message_multihop')}
             <span className="setting-description">
-              {t('automation.auto_ack.message_multihop_description')} {t('automation.auto_ack.available_tokens')} {'{NODE_ID}'}, {'{NUMBER_HOPS}'}, {'{HOPS}'}, {'{RABBIT_HOPS}'}, {'{DATE}'}, {'{TIME}'}, {'{VERSION}'}, {'{DURATION}'}, {'{FEATURES}'}, {'{NODECOUNT}'}, {'{DIRECTCOUNT}'}, {'{LONG_NAME}'}, {'{SHORT_NAME}'}, {'{SNR}'}, {'{RSSI}'}
+              {t('automation.auto_ack.message_multihop_description')} {t('automation.auto_ack.available_tokens')} {'{NODE_ID}'}, {'{NUMBER_HOPS}'}, {'{HOPS}'}, {'{RABBIT_HOPS}'}, {'{DATE}'}, {'{TIME}'}, {'{VERSION}'}, {'{DURATION}'}, {'{FEATURES}'}, {'{NODECOUNT}'}, {'{DIRECTCOUNT}'}, {'{LONG_NAME}'}, {'{SHORT_NAME}'}, {'{SNR}'}, {'{RSSI}'}, {'{TRANSPORT}'}
             </span>
           </label>
           <textarea
@@ -715,6 +716,22 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
             >
               + {'{RSSI}'}
             </button>
+            <button
+              type="button"
+              onClick={() => insertToken('{TRANSPORT}')}
+              disabled={!localEnabled}
+              style={{
+                padding: '0.25rem 0.5rem',
+                fontSize: '12px',
+                background: 'var(--ctp-surface2)',
+                border: '1px solid var(--ctp-overlay0)',
+                borderRadius: '4px',
+                cursor: localEnabled ? 'pointer' : 'not-allowed',
+                opacity: localEnabled ? 1 : 0.5
+              }}
+            >
+              + {'{TRANSPORT}'}
+            </button>
           </div>
         </div>
 
@@ -744,7 +761,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
           <label htmlFor="autoAckMessageDirect">
             {t('automation.auto_ack.message_direct')}
             <span className="setting-description">
-              {t('automation.auto_ack.message_direct_description')} {t('automation.auto_ack.available_tokens')} {'{NODE_ID}'}, {'{HOPS}'}, {'{NUMBER_HOPS}'}, {'{RABBIT_HOPS}'}, {'{DATE}'}, {'{TIME}'}, {'{VERSION}'}, {'{DURATION}'}, {'{FEATURES}'}, {'{NODECOUNT}'}, {'{DIRECTCOUNT}'}, {'{LONG_NAME}'}, {'{SHORT_NAME}'}, {'{SNR}'}, {'{RSSI}'}
+              {t('automation.auto_ack.message_direct_description')} {t('automation.auto_ack.available_tokens')} {'{NODE_ID}'}, {'{HOPS}'}, {'{NUMBER_HOPS}'}, {'{RABBIT_HOPS}'}, {'{DATE}'}, {'{TIME}'}, {'{VERSION}'}, {'{DURATION}'}, {'{FEATURES}'}, {'{NODECOUNT}'}, {'{DIRECTCOUNT}'}, {'{LONG_NAME}'}, {'{SHORT_NAME}'}, {'{SNR}'}, {'{RSSI}'}, {'{TRANSPORT}'}
             </span>
           </label>
           <textarea

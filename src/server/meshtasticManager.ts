@@ -2137,7 +2137,7 @@ class MeshtasticManager {
         await this.checkAutoAcknowledge(message, messageText, channelIndex, isDirectMessage, fromNum, meshPacket.id, meshPacket.rxSnr, meshPacket.rxRssi);
 
         // Auto-respond to matching messages
-        await this.checkAutoResponder(messageText, channelIndex, isDirectMessage, fromNum, meshPacket.id, message.hopStart, message.hopLimit, meshPacket.rxSnr, meshPacket.rxRssi);
+        await this.checkAutoResponder(messageText, channelIndex, isDirectMessage, fromNum, meshPacket.id, message.hopStart, message.hopLimit, meshPacket.rxSnr, meshPacket.rxRssi, message.viaMqtt);
       }
     } catch (error) {
       logger.error('❌ Error processing text message:', error);
@@ -5627,7 +5627,7 @@ class MeshtasticManager {
         const receivedTime = formatTime(timestamp, timeFormat as '12' | '24');
 
         // Replace tokens in the message template
-        const ackText = await this.replaceAcknowledgementTokens(autoAckMessage, message.fromNodeId, fromNum, hopsTraveled, receivedDate, receivedTime, channelIndex, isDirectMessage, rxSnr, rxRssi);
+        const ackText = await this.replaceAcknowledgementTokens(autoAckMessage, message.fromNodeId, fromNum, hopsTraveled, receivedDate, receivedTime, channelIndex, isDirectMessage, rxSnr, rxRssi, message.viaMqtt);
 
         // Don't make it a reply if we're changing channels (DM when triggered by channel message)
         const replyId = (alwaysUseDM && !isDirectMessage) ? undefined : packetId;
@@ -5703,7 +5703,7 @@ class MeshtasticManager {
     return normalizedResolved;
   }
 
-  private async checkAutoResponder(messageText: string, channelIndex: number, isDirectMessage: boolean, fromNum: number, packetId?: number, hopStart?: number | null, hopLimit?: number | null, rxSnr?: number, rxRssi?: number): Promise<void> {
+  private async checkAutoResponder(messageText: string, channelIndex: number, isDirectMessage: boolean, fromNum: number, packetId?: number, hopStart?: number | null, hopLimit?: number | null, rxSnr?: number, rxRssi?: number, viaMqtt?: boolean): Promise<void> {
     try {
       // Get auto-responder settings from database
       const autoResponderEnabled = databaseService.getSetting('autoResponderEnabled');
@@ -5960,7 +5960,7 @@ class MeshtasticManager {
               logger.debug(`📥 HTTP response received: ${responseText.substring(0, 50)}...`);
 
               // Replace Auto Acknowledge tokens in HTTP response (Issue #1159)
-              responseText = await this.replaceAcknowledgementTokens(responseText, nodeId, fromNum, hopsTraveled, receivedDate, receivedTime, channelIndex, isDirectMessage, rxSnr, rxRssi);
+              responseText = await this.replaceAcknowledgementTokens(responseText, nodeId, fromNum, hopsTraveled, receivedDate, receivedTime, channelIndex, isDirectMessage, rxSnr, rxRssi, viaMqtt);
 
             } catch (error: any) {
               if (error.name === 'AbortError') {
@@ -6156,7 +6156,7 @@ class MeshtasticManager {
             });
 
             // Replace Auto Acknowledge tokens in text response (Issue #1159)
-            responseText = await this.replaceAcknowledgementTokens(responseText, nodeId, fromNum, hopsTraveled, receivedDate, receivedTime, channelIndex, isDirectMessage, rxSnr, rxRssi);
+            responseText = await this.replaceAcknowledgementTokens(responseText, nodeId, fromNum, hopsTraveled, receivedDate, receivedTime, channelIndex, isDirectMessage, rxSnr, rxRssi, viaMqtt);
           }
 
           // Handle multiline responses or truncate as needed
@@ -6653,7 +6653,7 @@ class MeshtasticManager {
     return result;
   }
 
-  private async replaceAcknowledgementTokens(message: string, nodeId: string, fromNum: number, numberHops: number, date: string, time: string, channelIndex: number, isDirectMessage: boolean, rxSnr?: number, rxRssi?: number): Promise<string> {
+  private async replaceAcknowledgementTokens(message: string, nodeId: string, fromNum: number, numberHops: number, date: string, time: string, channelIndex: number, isDirectMessage: boolean, rxSnr?: number, rxRssi?: number, viaMqtt?: boolean): Promise<string> {
     let result = message;
 
     // {NODE_ID} - Sender node ID
@@ -6788,6 +6788,12 @@ class MeshtasticManager {
         channelName = (channel?.name && channel.name.trim()) ? channel.name.trim() : channelIndex.toString();
       }
       result = result.replace(/{CHANNEL}/g, channelName);
+    }
+
+    // {TRANSPORT} - Transport type (LoRa or MQTT)
+    if (result.includes('{TRANSPORT}')) {
+      const transport = viaMqtt === true ? 'MQTT' : 'LoRa';
+      result = result.replace(/{TRANSPORT}/g, transport);
     }
 
     return result;
