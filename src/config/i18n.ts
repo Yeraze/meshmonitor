@@ -33,8 +33,8 @@ i18n
     fallbackLng: 'en',
     load: 'currentOnly',
     preload: ['en'], // Always load English for fallback when translations are missing
+    returnEmptyString: false, // Treat empty strings as missing translations (triggers fallback)
     debug: process.env.NODE_ENV === 'development',
-    returnEmptyString: false, // Until all translations are available
     interpolation: {
       escapeValue: false, // React already escapes values
     },
