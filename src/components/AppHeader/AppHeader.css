@@ -222,4 +222,12 @@
     width: 16px;
     height: 16px;
   }
+
+  .login-button {
+    padding: 4px 10px; /* Reduced height for mobile */
+    font-size: 0.8em;
+    gap: 4px;
+    line-height: 1;
+    margin-left: 8px;
+  }
 }

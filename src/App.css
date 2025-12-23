@@ -1311,10 +1311,10 @@ body {
 }
 
 @media (max-width: 768px) {
-  /* Update layout dimensions for mobile */
+  /* Update layout dimensions for mobile - !important needed to override theme-specific selectors */
   :root {
-    --header-height: 48px;
-    --sidebar-width: 48px;
+    --header-height: 40px !important;
+    --sidebar-width: 48px !important;
   }
 
   /* Reduce font size globally on mobile */
@@ -1323,7 +1323,7 @@ body {
   }
 
   .app-header {
-    padding: 0.5rem;
+    padding: 0.25rem 0.5rem;
     /* height and left now use CSS variables that are updated in the :root above */
   }
 
