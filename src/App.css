@@ -1618,10 +1618,16 @@ body {
     height: calc(8rem + env(safe-area-inset-bottom));
   }
 
-  /* Ensure body/html allow scrolling on mobile */
+  /* Ensure body/html allow scrolling on mobile for tabs that need it */
   body {
     overflow-y: auto !important;
     -webkit-overflow-scrolling: touch;
+  }
+
+  /* But prevent body scroll when split view or channels tab is active (they have their own scroll) */
+  body:has(.nodes-split-view),
+  body:has(.channels-tab-content) {
+    overflow: hidden !important;
   }
 }
 
@@ -3495,7 +3501,7 @@ body {
     flex: 1;
     display: flex;
     flex-direction: column;
-    overflow-y: auto; /* Allow the entire panel to scroll */
+    overflow-y: auto; /* Allow the entire panel to scroll for telemetry graphs below messages */
     min-height: 0;
     height: 100%;
   }
