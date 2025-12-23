@@ -206,6 +206,9 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
               <div style={{ flex: 1 }}>
                 <div>{t('mqtt_config.proxy_to_client')}</div>
                 <span className="setting-description">{t('mqtt_config.proxy_to_client_description')}</span>
+                <span className="setting-description" style={{ display: 'block', marginTop: '0.25rem', fontStyle: 'italic' }}>
+                  {t('mqtt_config.proxy_to_client_meshmonitor_note')}
+                </span>
               </div>
             </label>
           </div>

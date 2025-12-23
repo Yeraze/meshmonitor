@@ -62,6 +62,7 @@ export default defineConfig({
             { text: 'BLE Bridge', link: '/configuration/ble-bridge' },
             { text: 'Serial Bridge', link: '/configuration/serial-bridge' },
             { text: 'Virtual Node', link: '/configuration/virtual-node' },
+            { text: 'MQTT Client Proxy', link: '/configuration/mqtt-proxy' },
             { text: '🗺️ Custom Tile Servers', link: '/configuration/custom-tile-servers' },
             { text: 'SSO Setup', link: '/configuration/sso' },
             { text: 'Reverse Proxy', link: '/configuration/reverse-proxy' },

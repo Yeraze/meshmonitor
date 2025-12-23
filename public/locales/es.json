@@ -1239,6 +1239,7 @@
     "lora_config.channel_num_description": "",
     "auto_upgrade_test.toast_upgrade_failed": "",
     "mqtt_config.proxy_to_client_description": "",
+    "mqtt_config.proxy_to_client_meshmonitor_note": "",
     "security.badge_low_entropy": "",
     "admin_commands.bluetooth_mode_no_pin": "",
     "admin_commands.select_node_to_manage_description": "",

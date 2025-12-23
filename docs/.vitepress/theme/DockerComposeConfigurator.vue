@@ -311,6 +311,31 @@
         </p>
       </div>
 
+      <div class="form-group">
+        <label class="checkbox-label">
+          <input type="checkbox" v-model="config.enableMqttProxy" />
+          Enable MQTT Client Proxy Sidecar
+        </label>
+        <p class="field-help">
+          Adds an MQTT proxy container that routes MQTT traffic through MeshMonitor instead of directly from your node.
+          Useful when your node has unreliable WiFi or when you want MQTT without running mobile apps.
+          <a href="/configuration/mqtt-proxy" target="_blank">Learn more</a>
+        </p>
+      </div>
+
+      <div v-if="config.enableMqttProxy" class="info-box">
+        <strong>📡 MQTT Proxy Setup:</strong>
+        <ol>
+          <li>Configure MQTT on your node with <strong>Client Proxy mode enabled</strong></li>
+          <li>The proxy connects to MeshMonitor's Virtual Node (port {{ config.virtualNodePort }}) - Virtual Node is auto-enabled</li>
+          <li>It reads MQTT settings directly from your node - no duplicate configuration needed</li>
+          <li>Messages are forwarded bidirectionally between your mesh and the MQTT broker</li>
+        </ol>
+        <p style="margin-top: 1rem; font-size: 0.9rem;">
+          💡 <strong>Credit:</strong> MQTT Proxy by <a href="https://github.com/LN4CY/mqtt-proxy" target="_blank">LN4CY</a>
+        </p>
+      </div>
+
       <div v-if="config.enableAutoResponderScripts" class="info-box">
         <strong>🤖 Auto Responder Scripts Setup:</strong>
         <ol>
@@ -367,7 +392,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 
 const config = ref({
   connectionType: 'tcp',
@@ -388,11 +413,19 @@ const config = ref({
   enableAutoUpgrade: false,
   enableOfflineMaps: false,
   tileServerPort: 8081,
-  enableAutoResponderScripts: false
+  enableAutoResponderScripts: false,
+  enableMqttProxy: false
 })
 
 const copiedDockerCompose = ref(false)
 const copiedEnv = ref(false)
+
+// Auto-enable Virtual Node when MQTT Proxy is enabled (MQTT Proxy requires Virtual Node)
+watch(() => config.value.enableMqttProxy, (newValue) => {
+  if (newValue && !config.value.enableVirtualNode) {
+    config.value.enableVirtualNode = true
+  }
+})
 
 const accessUrl = computed(() => {
   if (config.value.deploymentMode === 'production-proxy') {
@@ -576,6 +609,33 @@ const dockerComposeYaml = computed(() => {
     lines.push('    environment:')
     lines.push('      - VERBOSE=true')
     lines.push('    command: --verbose')
+  }
+
+  // Add MQTT Proxy if enabled
+  if (config.value.enableMqttProxy) {
+    lines.push('')
+    lines.push('  # MQTT Client Proxy - routes MQTT through MeshMonitor instead of node WiFi')
+    lines.push('  # Credit: https://github.com/LN4CY/mqtt-proxy')
+    lines.push('  mqtt-proxy:')
+    lines.push('    image: ghcr.io/ln4cy/mqtt-proxy:master')
+    lines.push('    container_name: meshmonitor-mqtt-proxy')
+    lines.push('    restart: unless-stopped')
+    lines.push('    environment:')
+    lines.push('      - INTERFACE_TYPE=tcp')
+    lines.push('      - TCP_NODE_HOST=meshmonitor')
+    lines.push(`      - TCP_NODE_PORT=${config.value.virtualNodePort}`)
+    lines.push('      - LOG_LEVEL=INFO')
+    lines.push('      - TCP_TIMEOUT=300')
+    lines.push('      - CONFIG_WAIT_TIMEOUT=60')
+    lines.push('      - HEALTH_CHECK_ACTIVITY_TIMEOUT=300')
+    lines.push('    depends_on:')
+    lines.push('      - meshmonitor')
+    lines.push('    healthcheck:')
+    lines.push('      test: ["CMD-SHELL", "test -f /tmp/healthy && find /tmp/healthy -mmin -1 | grep -q healthy"]')
+    lines.push('      interval: 30s')
+    lines.push('      timeout: 10s')
+    lines.push('      retries: 3')
+    lines.push('      start_period: 60s')
   }
 
   lines.push('')

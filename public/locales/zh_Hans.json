@@ -2735,6 +2735,7 @@
     "mqtt_config.tls_description": "为 MQTT 连接启用 TLS/SSL 加密",
     "mqtt_config.proxy_to_client": "通过客户端代理",
     "mqtt_config.proxy_to_client_description": "通过已连接的手机应用代理 MQTT 数据包，而非直接使用 WiFi 连接",
+    "mqtt_config.proxy_to_client_meshmonitor_note": "MeshMonitor 用户：启用此选项并设置 MQTT 代理边车容器。请参阅文档了解设置说明。",
     "mqtt_config.map_reporting": "位置上报",
     "mqtt_config.map_reporting_description": "启用周期性位置上报到 MQTT 地图服务",
     "mqtt_config.map_publish_interval": "位置发布间隔（秒）",
