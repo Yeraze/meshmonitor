@@ -16,7 +16,43 @@
 }
 
 .position-override-checkbox {
+  margin-bottom: 1rem;
+}
+
+.position-override-checkbox-group {
   margin-bottom: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.private-checkbox {
+  margin-left: 1.5rem;
+  padding: 0.75rem;
+  background-color: var(--ctp-surface0);
+  border: 1px solid var(--ctp-surface1);
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.private-checkbox:hover {
+  border-color: var(--ctp-blue);
+}
+
+.private-checkbox label {
+  display: grid !important;
+  grid-template-columns: auto 1fr;
+  align-items: flex-start !important;
+  gap: 0.75rem !important;
+}
+
+.private-checkbox input {
+  margin-top: 3px;
+}
+
+.private-checkbox .field-description {
+  grid-column: 2;
+  margin-top: 0 !important;
 }
 
 .position-override-checkbox label {
