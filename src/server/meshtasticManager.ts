@@ -3497,7 +3497,8 @@ class MeshtasticManager {
         nodeId: nodeId,
         lastHeard: Math.min(nodeInfo.lastHeard || (Date.now() / 1000), Date.now() / 1000), // Cap at current time to prevent future timestamps
         snr: nodeInfo.snr,
-        rssi: 0, // Will be updated from mesh packet if available
+        // Note: NodeInfo protobuf doesn't include RSSI, only MeshPacket does
+        // RSSI will be updated from mesh packet if available
         hopsAway: nodeInfo.hopsAway !== undefined ? nodeInfo.hopsAway : undefined,
         channel: nodeInfo.channel !== undefined ? nodeInfo.channel : undefined
       };
