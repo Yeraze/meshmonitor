@@ -755,6 +755,11 @@ body {
   border-radius: 12px;
   padding: 1.5rem;
   border: 1px solid var(--ctp-surface1);
+  /* Desktop: constrain to viewport height */
+  min-height: 400px;
+  max-height: calc(100vh - var(--header-height) - 12rem);
+  display: flex;
+  flex-direction: column;
 }
 
 .dm-conversation-panel {
@@ -762,6 +767,12 @@ body {
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+}
+
+/* Desktop: constrain DM messages container height */
+.dm-conversation-panel .messages-container {
+  max-height: calc(100vh - var(--header-height) - 24rem);
+  min-height: 200px;
 }
 
 .no-selection {
@@ -1450,6 +1461,7 @@ body {
     border-radius: 6px;
     width: 100%;
     box-sizing: border-box;
+    max-height: none; /* Override desktop constraint */
   }
 
   .channel-conversation-section h3 {
@@ -2010,6 +2022,13 @@ body {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+}
+
+/* Desktop only: constrain channel conversation height */
+@media (min-width: 769px) {
+  .channel-conversation {
+    max-height: calc(100vh - var(--header-height) - 20rem);
+  }
 }
 
 /* iPhone-style Message Bubbles */
@@ -3510,6 +3529,12 @@ body {
     flex-direction: column;
     flex-shrink: 0;
     margin-bottom: 0.25rem; /* Reduced from 1rem */
+  }
+
+  /* Override desktop max-height for DM conversation on mobile */
+  .dm-conversation {
+    max-height: none;
+    min-height: 0;
   }
 
   /* Make DM conversation panel fill remaining space */
