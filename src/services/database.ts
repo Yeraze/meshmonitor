@@ -4534,7 +4534,9 @@ class DatabaseService {
     return rows.map(row => row.id);
   }
 
-  getUnreadCountsByChannel(userId: number | null): {[channelId: number]: number} {
+  getUnreadCountsByChannel(userId: number | null, localNodeId?: string): {[channelId: number]: number} {
+    // Only count incoming messages (exclude messages sent by our node)
+    const excludeOutgoing = localNodeId ? 'AND m.fromNodeId != ?' : '';
     const stmt = this.db.prepare(`
       SELECT m.channel, COUNT(*) as count
       FROM messages m
@@ -4542,12 +4544,20 @@ class DatabaseService {
       WHERE rm.message_id IS NULL
         AND m.channel != -1
         AND m.portnum = 1
+        ${excludeOutgoing}
       GROUP BY m.channel
     `);
 
-    const rows = userId === null
-      ? stmt.all() as Array<{ channel: number; count: number }>
-      : stmt.all(userId) as Array<{ channel: number; count: number }>;
+    let rows: Array<{ channel: number; count: number }>;
+    if (userId === null) {
+      rows = localNodeId
+        ? stmt.all(localNodeId) as Array<{ channel: number; count: number }>
+        : stmt.all() as Array<{ channel: number; count: number }>;
+    } else {
+      rows = localNodeId
+        ? stmt.all(userId, localNodeId) as Array<{ channel: number; count: number }>
+        : stmt.all(userId) as Array<{ channel: number; count: number }>;
+    }
 
     const counts: {[channelId: number]: number} = {};
     rows.forEach(row => {
@@ -4557,6 +4567,8 @@ class DatabaseService {
   }
 
   getUnreadDMCount(localNodeId: string, remoteNodeId: string, userId: number | null): number {
+    // Only count incoming DMs (messages FROM remote node TO local node)
+    // Exclude outgoing messages (messages FROM local node TO remote node)
     const stmt = this.db.prepare(`
       SELECT COUNT(*) as count
       FROM messages m
@@ -4564,12 +4576,13 @@ class DatabaseService {
       WHERE rm.message_id IS NULL
         AND m.portnum = 1
         AND m.channel = -1
-        AND ((m.fromNodeId = ? AND m.toNodeId = ?) OR (m.fromNodeId = ? AND m.toNodeId = ?))
+        AND m.fromNodeId = ?
+        AND m.toNodeId = ?
     `);
 
     const params = userId === null
-      ? [localNodeId, remoteNodeId, remoteNodeId, localNodeId]
-      : [userId, localNodeId, remoteNodeId, remoteNodeId, localNodeId];
+      ? [remoteNodeId, localNodeId]
+      : [userId, remoteNodeId, localNodeId];
 
     const result = stmt.get(...params) as { count: number };
     return Number(result.count);

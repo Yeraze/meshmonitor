@@ -1657,8 +1657,9 @@ apiRouter.get('/messages/unread-counts', optionalAuth(), (req, res) => {
     } = {};
 
     // Get channel unread counts if user has channels permission
+    // Only count incoming messages (exclude messages sent by our node)
     if (hasChannelsRead) {
-      result.channels = databaseService.getUnreadCountsByChannel(userId);
+      result.channels = databaseService.getUnreadCountsByChannel(userId, localNodeInfo?.nodeId);
     }
 
     // Get DM unread counts if user has messages permission
@@ -3048,7 +3049,8 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       } = {};
 
       // Get unread counts for all channels first
-      const allUnreadChannels = databaseService.getUnreadCountsByChannel(userId);
+      // Only count incoming messages (exclude messages sent by our node)
+      const allUnreadChannels = databaseService.getUnreadCountsByChannel(userId, localNodeInfo?.nodeId);
 
       // Filter channels based on per-channel read permission
       const filteredUnreadChannels: { [channelId: number]: number } = {};
