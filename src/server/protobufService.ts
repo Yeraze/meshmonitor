@@ -99,6 +99,63 @@ export interface MeshtasticMessage {
   };
 }
 
+/**
+ * Convert a dotted-decimal IP address string to a 32-bit unsigned integer
+ * e.g., "192.168.1.100" -> 3232235876
+ */
+export function ipStringToUint32(ip: string): number {
+  if (!ip || typeof ip !== 'string') return 0;
+  const parts = ip.split('.');
+  if (parts.length !== 4) return 0;
+
+  const octets = parts.map(p => parseInt(p, 10));
+  if (octets.some(o => isNaN(o) || o < 0 || o > 255)) return 0;
+
+  return ((octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3]) >>> 0;
+}
+
+/**
+ * Convert a 32-bit unsigned integer to a dotted-decimal IP address string
+ * e.g., 3232235876 -> "192.168.1.100"
+ */
+export function uint32ToIpString(num: number): string {
+  if (num === undefined || num === null || num === 0) return '';
+  // Ensure we're working with an unsigned 32-bit integer
+  const unsigned = num >>> 0;
+  return [
+    (unsigned >>> 24) & 0xFF,
+    (unsigned >>> 16) & 0xFF,
+    (unsigned >>> 8) & 0xFF,
+    unsigned & 0xFF
+  ].join('.');
+}
+
+/**
+ * Convert ipv4Config object from uint32 values to string format (for frontend display)
+ */
+export function convertIpv4ConfigToStrings(config: any): any {
+  if (!config) return config;
+  return {
+    ip: uint32ToIpString(config.ip),
+    gateway: uint32ToIpString(config.gateway),
+    subnet: uint32ToIpString(config.subnet),
+    dns: uint32ToIpString(config.dns)
+  };
+}
+
+/**
+ * Convert ipv4Config object from string format to uint32 values (for protobuf encoding)
+ */
+export function convertIpv4ConfigToUint32(config: any): any {
+  if (!config) return config;
+  return {
+    ip: ipStringToUint32(config.ip),
+    gateway: ipStringToUint32(config.gateway),
+    subnet: ipStringToUint32(config.subnet),
+    dns: ipStringToUint32(config.dns)
+  };
+}
+
 class ProtobufService {
   private root: protobuf.Root | null = null;
   private types: Map<string, protobuf.Type> = new Map();
@@ -1163,7 +1220,8 @@ class ProtobufService {
         networkConfig.addressMode = config.addressMode;
       }
       if (config.ipv4Config !== undefined) {
-        networkConfig.ipv4Config = config.ipv4Config;
+        // Convert string IP addresses to uint32 for protobuf encoding
+        networkConfig.ipv4Config = convertIpv4ConfigToUint32(config.ipv4Config);
       }
       if (config.rsyslogServer !== undefined) {
         networkConfig.rsyslogServer = config.rsyslogServer;
