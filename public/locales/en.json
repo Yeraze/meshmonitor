@@ -190,6 +190,7 @@
   "nodes.filter_nodes": "Filter nodes...",
   "nodes.toggle_filters": "Toggle filters",
   "nodes.hops": "Hops",
+  "nodes.signal_info_tooltip": "Signal strength for direct connection (SNR/RSSI)",
   "nodes.battery": "Battery",
   "nodes.voltage": "Voltage",
   "nodes.channel_utilization": "Channel Utilization",
