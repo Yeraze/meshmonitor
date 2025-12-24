@@ -684,6 +684,13 @@ export default function ChannelsTab({
                               onChange={e => setNewMessage(e.target.value)}
                               placeholder={t('channels.send_placeholder', { name: getChannelName(selectedChannel) })}
                               className="message-input"
+                              onFocus={e => {
+                                // On mobile, prevent iOS from scrolling the page excessively
+                                // Use a small delay to let iOS do its thing, then reset scroll
+                                setTimeout(() => {
+                                  e.target.scrollIntoView({ block: 'end', behavior: 'smooth' });
+                                }, 100);
+                              }}
                               onKeyPress={e => {
                                 if (e.key === 'Enter') {
                                   handleSendMessage(selectedChannel);
