@@ -2060,11 +2060,31 @@ function App() {
         }
 
         // Compute merged messages using setMessages callback to access current state
+        // Preserve older DM messages loaded via infinite scroll (similar to channel messages)
         const pendingIds = new Set(Array.from(pendingMessagesRef.current.keys()));
+        const pollMsgIds = new Set(processedMessages.map((m: MeshMessage) => m.id));
 
         setMessages(currentMessages => {
-          const pendingToKeep = (currentMessages || []).filter(m => pendingIds.has(m.id));
-          return [...processedMessages, ...pendingToKeep];
+          // Keep older messages that aren't in the poll (they were loaded via infinite scroll)
+          // Poll returns newest messages, so any messages not in poll are older
+          const olderMsgs = (currentMessages || []).filter(m => {
+            // If message is in poll results, don't keep it (poll version is authoritative)
+            if (pollMsgIds.has(m.id)) return false;
+
+            // For pending messages (temp IDs), only keep if still pending
+            if (m.id.toString().startsWith('temp_')) {
+              return pendingIds.has(m.id);
+            }
+
+            // Keep all other older messages (loaded via infinite scroll)
+            return true;
+          });
+
+          // Combine: older messages + poll messages (poll messages are newer/updated)
+          // Sort by timestamp to maintain order
+          const merged = [...olderMsgs, ...processedMessages];
+          merged.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+          return merged;
         });
 
         // Group messages by channel (use processedMessages since we don't need pending for channel groups)
