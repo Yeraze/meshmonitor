@@ -59,6 +59,23 @@ export function VectorTileLayer({ url, attribution, maxZoom = 14 }: VectorTileLa
           }
         },
         {
+          id: 'waterway',
+          type: 'line',
+          source: 'vector-tiles',
+          'source-layer': 'waterway',
+          paint: {
+            'line-color': '#a0c8f0',
+            'line-width': {
+              base: 1.3,
+              stops: [
+                [8, 1],
+                [14, 3],
+                [18, 6]
+              ]
+            }
+          }
+        },
+        {
           id: 'landuse',
           type: 'fill',
           source: 'vector-tiles',
@@ -94,6 +111,35 @@ export function VectorTileLayer({ url, attribution, maxZoom = 14 }: VectorTileLa
           paint: {
             'fill-color': '#d9d0c9',
             'fill-opacity': 0.7
+          }
+        },
+        {
+          id: 'aeroway-area',
+          type: 'fill',
+          source: 'vector-tiles',
+          'source-layer': 'aeroway',
+          filter: ['==', '$type', 'Polygon'],
+          paint: {
+            'fill-color': '#e8e8e8',
+            'fill-opacity': 0.8
+          }
+        },
+        {
+          id: 'aeroway-runway',
+          type: 'line',
+          source: 'vector-tiles',
+          'source-layer': 'aeroway',
+          filter: ['==', '$type', 'LineString'],
+          paint: {
+            'line-color': '#d0d0d0',
+            'line-width': {
+              base: 1.5,
+              stops: [
+                [10, 2],
+                [14, 8],
+                [18, 20]
+              ]
+            }
           }
         },
         {
@@ -139,6 +185,32 @@ export function VectorTileLayer({ url, attribution, maxZoom = 14 }: VectorTileLa
           }
         },
         {
+          id: 'road-label',
+          type: 'symbol',
+          source: 'vector-tiles',
+          'source-layer': 'transportation_name',
+          layout: {
+            'text-field': '{name}',
+            'text-font': ['Open Sans Regular'],
+            'symbol-placement': 'line',
+            'text-size': {
+              base: 1,
+              stops: [
+                [10, 10],
+                [14, 12],
+                [18, 14]
+              ]
+            },
+            'text-max-angle': 30,
+            'text-padding': 2
+          },
+          paint: {
+            'text-color': '#555',
+            'text-halo-color': '#fff',
+            'text-halo-width': 1.5
+          }
+        },
+        {
           id: 'place-label',
           type: 'symbol',
           source: 'vector-tiles',
@@ -156,6 +228,49 @@ export function VectorTileLayer({ url, attribution, maxZoom = 14 }: VectorTileLa
           },
           paint: {
             'text-color': '#333',
+            'text-halo-color': '#fff',
+            'text-halo-width': 1
+          }
+        },
+        {
+          id: 'water-label',
+          type: 'symbol',
+          source: 'vector-tiles',
+          'source-layer': 'water_name',
+          layout: {
+            'text-field': '{name}',
+            'text-font': ['Open Sans Regular'],
+            'text-size': {
+              base: 1,
+              stops: [
+                [8, 10],
+                [14, 14]
+              ]
+            }
+          },
+          paint: {
+            'text-color': '#5a8fc7',
+            'text-halo-color': '#fff',
+            'text-halo-width': 1
+          }
+        },
+        {
+          id: 'poi-label',
+          type: 'symbol',
+          source: 'vector-tiles',
+          'source-layer': 'poi',
+          minzoom: 14,
+          layout: {
+            'text-field': '{name}',
+            'text-font': ['Open Sans Regular'],
+            'text-size': 11,
+            'text-offset': [0, 0.8],
+            'text-anchor': 'top',
+            'icon-image': '',
+            'icon-size': 0.8
+          },
+          paint: {
+            'text-color': '#666',
             'text-halo-color': '#fff',
             'text-halo-width': 1
           }

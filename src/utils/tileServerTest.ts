@@ -13,13 +13,18 @@ import Pbf from 'pbf';
  */
 export const EXPECTED_VECTOR_LAYERS = [
   'water',
+  'waterway',
   'landuse',
   'landcover',
   'park',
   'building',
+  'aeroway',
   'transportation',
+  'transportation_name',
   'boundary',
-  'place'
+  'place',
+  'water_name',
+  'poi'
 ] as const;
 
 export interface TileTestResult {
