@@ -88,6 +88,8 @@ export interface BasicNodeInfo {
 export interface TelemetryNodeInfo extends BasicNodeInfo {
   lastHeard?: number;
   hopsAway?: number;
+  snr?: number;
+  rssi?: number;
 }
 
 /**

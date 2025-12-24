@@ -31,6 +31,8 @@ interface NodeStatusRow {
   name: string;
   lastHeard: number | null;
   hopsAway: number | null;
+  snr: number | null;
+  rssi: number | null;
 }
 
 const NodeStatusWidget: React.FC<NodeStatusWidgetProps> = ({
@@ -79,6 +81,8 @@ const NodeStatusWidget: React.FC<NodeStatusWidgetProps> = ({
           name: node?.user?.longName || node?.user?.shortName || nodeId,
           lastHeard: node?.lastHeard ?? null,
           hopsAway: node?.hopsAway ?? null,
+          snr: node?.snr ?? null,
+          rssi: node?.rssi ?? null,
         };
       })
       .sort((a, b) => {
@@ -188,7 +192,19 @@ const NodeStatusWidget: React.FC<NodeStatusWidgetProps> = ({
                 <tr key={row.nodeId}>
                   <td className="node-status-name">{row.name}</td>
                   <td className="node-status-time">{formatLastHeard(row.lastHeard)}</td>
-                  <td className="node-status-hops">{row.hopsAway !== null ? row.hopsAway : '-'}</td>
+                  <td className="node-status-hops">
+                    {row.hopsAway === 0 && (row.snr !== null || row.rssi !== null) ? (
+                      <span title={t('nodes.signal_info_tooltip')}>
+                        {row.snr !== null ? `${row.snr.toFixed(1)} dB` : ''}
+                        {row.snr !== null && row.rssi !== null ? ' / ' : ''}
+                        {row.rssi !== null ? `${row.rssi} dBm` : ''}
+                      </span>
+                    ) : row.hopsAway !== null ? (
+                      row.hopsAway
+                    ) : (
+                      '-'
+                    )}
+                  </td>
                   {canEdit && (
                     <td className="node-status-actions">
                       <button
