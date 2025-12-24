@@ -1097,13 +1097,8 @@ body {
   border-radius: 8px;
   padding: 1rem;
   background: var(--ctp-mantle);
-}
-
-/* Desktop: fixed max-height for messages container */
-@media (min-width: 769px) {
-  .messages-container {
-    max-height: 600px;
-  }
+  flex: 1;
+  min-height: 0;
 }
 
 .messages-container::-webkit-scrollbar {
@@ -1979,6 +1974,11 @@ body {
   border-radius: 12px;
   padding: 0.75rem;
   border: none;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .channel-conversation-section h3 {
@@ -2005,6 +2005,11 @@ body {
   border-radius: 8px;
   padding: 1rem;
   border: 1px solid var(--ctp-surface2);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* iPhone-style Message Bubbles */
@@ -2394,18 +2399,6 @@ body {
   font-size: 0.8rem;
 }
 
-/* Messages container adjustments - desktop only */
-@media (min-width: 769px) {
-  .messages-container {
-    flex: 1;
-    min-height: 300px;
-    max-height: 600px;
-    overflow-y: auto;
-    padding: 1rem;
-    display: flex;
-    flex-direction: column;
-  }
-}
 
 /* Hide scrollbar styling for a cleaner look */
 .messages-container::-webkit-scrollbar {
