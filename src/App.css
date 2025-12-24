@@ -1092,12 +1092,18 @@ body {
 }
 
 .messages-container {
-  max-height: 600px;
   overflow-y: auto;
   border: 1px solid var(--ctp-surface1);
   border-radius: 8px;
   padding: 1rem;
   background: var(--ctp-mantle);
+}
+
+/* Desktop: fixed max-height for messages container */
+@media (min-width: 769px) {
+  .messages-container {
+    max-height: 600px;
+  }
 }
 
 .messages-container::-webkit-scrollbar {
@@ -1349,8 +1355,12 @@ body {
     display: flex;
     flex-direction: column;
     /* Account for header + top padding + bottom padding + safe area */
+    /* Use dvh (dynamic viewport height) for proper behavior with virtual keyboard */
     height: calc(100vh - var(--header-height) - 0.5rem - max(0.5rem, env(safe-area-inset-bottom)));
+    height: calc(100dvh - var(--header-height) - 0.5rem - max(0.5rem, env(safe-area-inset-bottom)));
     overflow: hidden;
+    /* Prevent scroll chaining to body */
+    overscroll-behavior: contain;
   }
 
   /* Fixed header section */
@@ -1402,25 +1412,35 @@ body {
     flex: 1;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
     min-height: 0;
+    /* Prevent scroll chaining to parent */
+    overscroll-behavior: contain;
   }
 
   /* Messages container fills available space and scrolls */
   .messages-container {
-    flex: 1;
+    flex: 1 1 auto;
     overflow-y: auto;
     min-height: 0;
     max-height: none; /* Remove max-height on mobile */
+    /* Prevent scroll chaining */
+    overscroll-behavior: contain;
   }
 
-  /* Send form sticks to bottom */
+  /* Send form sticks to bottom of conversation container */
   .send-message-form {
     flex-shrink: 0;
+    position: sticky;
+    bottom: 0;
     margin-top: 0.5rem;
     padding-top: 0.5rem;
+    padding-bottom: env(safe-area-inset-bottom, 0);
     width: 100%;
     box-sizing: border-box;
+    background: var(--ctp-mantle);
+    z-index: 5;
   }
 
   /* Reduce padding on mobile for more space */
@@ -1579,7 +1599,9 @@ body {
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 !important;
+    /* Use dvh for proper behavior with virtual keyboard */
     max-height: calc(100vh - 1rem) !important;
+    max-height: calc(100dvh - 1rem) !important;
   }
 
   .modal-header {
@@ -2372,15 +2394,17 @@ body {
   font-size: 0.8rem;
 }
 
-/* Messages container adjustments */
-.messages-container {
-  flex: 1;
-  min-height: 300px;
-  max-height: 600px;
-  overflow-y: auto;
-  padding: 1rem;
-  display: flex;
-  flex-direction: column;
+/* Messages container adjustments - desktop only */
+@media (min-width: 769px) {
+  .messages-container {
+    flex: 1;
+    min-height: 300px;
+    max-height: 600px;
+    overflow-y: auto;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+  }
 }
 
 /* Hide scrollbar styling for a cleaner look */
@@ -3559,7 +3583,9 @@ body {
     right: auto;
     width: calc(100vw - 48px); /* Full width minus left sidebar */
     max-width: 360px;
+    /* Use dvh for proper behavior with virtual keyboard */
     max-height: calc(100vh - 120px);
+    max-height: calc(100dvh - 120px);
     border-radius: 12px;
   }
 
