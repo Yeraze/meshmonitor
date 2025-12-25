@@ -1504,6 +1504,31 @@ function App() {
     }
   }, [selectedChannel, activeTab]);
 
+  // Auto-load more channel messages if container doesn't have a scrollbar
+  // This fixes the case where a channel has no recent messages and infinite scroll never triggers
+  useEffect(() => {
+    if (activeTab === 'channels' && selectedChannel >= 0) {
+      // Skip if we're already loading or know there are no more messages
+      if (channelLoadingMore[selectedChannel] || channelHasMore[selectedChannel] === false) {
+        return;
+      }
+
+      // Check after a delay to allow the DOM to render
+      const checkTimer = setTimeout(() => {
+        const container = channelMessagesContainerRef.current;
+        if (container) {
+          // If container doesn't have a scrollbar, load more messages
+          const hasScrollbar = container.scrollHeight > container.clientHeight;
+          if (!hasScrollbar) {
+            loadMoreChannelMessages();
+          }
+        }
+      }, 200);
+
+      return () => clearTimeout(checkTimer);
+    }
+  }, [selectedChannel, activeTab, channelLoadingMore, channelHasMore, loadMoreChannelMessages]);
+
   // Force scroll to bottom when DM node changes OR when switching to messages tab
   useEffect(() => {
     if (activeTab === 'messages' && selectedDMNode && currentNodeId) {
@@ -1525,6 +1550,33 @@ function App() {
       }
     }
   }, [selectedDMNode, activeTab, currentNodeId]);
+
+  // Auto-load more DM messages if container doesn't have a scrollbar
+  // This fixes the case where a conversation has no recent messages and infinite scroll never triggers
+  useEffect(() => {
+    if (activeTab === 'messages' && selectedDMNode && currentNodeId) {
+      const dmKey = [currentNodeId, selectedDMNode].sort().join('_');
+
+      // Skip if we're already loading or know there are no more messages
+      if (dmLoadingMore[dmKey] || dmHasMore[dmKey] === false) {
+        return;
+      }
+
+      // Check after a delay to allow the DOM to render
+      const checkTimer = setTimeout(() => {
+        const container = dmMessagesContainerRef.current;
+        if (container) {
+          // If container doesn't have a scrollbar, load more messages
+          const hasScrollbar = container.scrollHeight > container.clientHeight;
+          if (!hasScrollbar) {
+            loadMoreDirectMessages();
+          }
+        }
+      }, 200);
+
+      return () => clearTimeout(checkTimer);
+    }
+  }, [selectedDMNode, activeTab, currentNodeId, dmLoadingMore, dmHasMore, loadMoreDirectMessages]);
 
   // Unread counts polling is now handled by useUnreadCounts hook in MessagingContext
 
