@@ -607,7 +607,7 @@
     "settings.confirm_purge_traceroutes_item4": "",
     "automation.response": "",
     "settings.restart_action": "",
-    "nav.admin_commands": "",
+    "nav.admin_commands": "Admin Befehle",
     "hardware.heltec_vision_master_e290": "",
     "nodes.sort_signal": "",
     "settings.theme_popular": "",
@@ -2274,7 +2274,7 @@
     "configuration.import_success": "",
     "telemetry_config.power_screen": "",
     "config.warning_title": "",
-    "auth.password_changed_required": "",
+    "auth.password_changed_required": "Alle Felder notwendig",
     "device_config.router_warning": "",
     "notifications.apprise_about_text": "",
     "backup_management.table_type": "",
@@ -3012,5 +3012,12 @@
     "automation.auto_announce.nodeinfo_channels_description": "",
     "automation.auto_traceroute.sort_by_hops": "",
     "nodes_private": "",
-    "nodes_private_description": ""
+    "nodes_private_description": "",
+    "packet_monitor.click_for_relay": "",
+    "position_override.private": "",
+    "relay_modal.hops_away_plural": "",
+    "messages.click_for_relay": "",
+    "relay_modal.direct": "",
+    "relay_modal.hops_away": "",
+    "position_override.private_description": ""
 }

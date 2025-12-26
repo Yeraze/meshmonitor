@@ -3014,5 +3014,10 @@
     "position_override.private": "Posición Privada",
     "position_override.private_description": "Solo visible para usuarios con permiso para ver Posiciones Privadas (nodes_private) en esta instancia de MeshMonitor. Los usuarios sin ese permiso verán la posición original del nodo.",
     "nodes_private": "Posiciones Privadas",
-    "nodes_private_description": "Permite ver posiciones privadas (overrides) en el mapa, historial y telemetría."
+    "nodes_private_description": "Permite ver posiciones privadas (overrides) en el mapa, historial y telemetría.",
+    "packet_monitor.click_for_relay": "",
+    "relay_modal.hops_away_plural": "",
+    "messages.click_for_relay": "",
+    "relay_modal.direct": "",
+    "relay_modal.hops_away": ""
 }
