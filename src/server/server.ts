@@ -2846,6 +2846,44 @@ apiRouter.get('/telemetry/:nodeId', optionalAuth(), (req, res) => {
   }
 });
 
+// Get packet rate statistics (packets per minute) for a node
+apiRouter.get('/telemetry/:nodeId/rates', optionalAuth(), (req, res) => {
+  try {
+    // Allow users with info read OR dashboard read
+    if (
+      !req.user?.isAdmin &&
+      !hasPermission(req.user!, 'info', 'read') &&
+      !hasPermission(req.user!, 'dashboard', 'read')
+    ) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
+    const { nodeId } = req.params;
+    const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 24;
+
+    // Calculate cutoff timestamp for filtering
+    const cutoffTime = Date.now() - hoursParam * 60 * 60 * 1000;
+
+    // The 7 packet statistics types we want rates for
+    const packetTypes = [
+      'numPacketsRx',
+      'numPacketsRxBad',
+      'numRxDupe',
+      'numPacketsTx',
+      'numTxDropped',
+      'numTxRelay',
+      'numTxRelayCanceled',
+    ];
+
+    const rates = databaseService.getPacketRates(nodeId, packetTypes, cutoffTime);
+
+    res.json(rates);
+  } catch (error) {
+    logger.error('Error fetching packet rates:', error);
+    res.status(500).json({ error: 'Failed to fetch packet rates' });
+  }
+});
+
 // Delete telemetry data for a specific node and type
 apiRouter.delete('/telemetry/:nodeId/:telemetryType', requireAuth(), requirePermission('info', 'write'), (req, res) => {
   try {

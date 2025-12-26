@@ -1408,6 +1408,12 @@
   "info.device_config_unavailable": "Device configuration not available. Ensure connection is established.",
   "info.local_telemetry": "Local Node Telemetry",
 
+  "info.packet_rate_graphs": "Packet Rate Trends (per minute)",
+  "info.rx_rates": "RX Rates (packets/min)",
+  "info.tx_rates": "TX Rates (packets/min)",
+  "info.no_rate_data": "Insufficient data for rate calculation. Need at least 2 data points.",
+  "info.rate_error": "Error loading packet rate data.",
+
   "info.secrets": "Secrets",
   "info.public_key": "Public Key:",
   "info.private_key": "Private Key:",

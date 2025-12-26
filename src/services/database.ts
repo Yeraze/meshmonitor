@@ -3009,6 +3009,107 @@ class DatabaseService {
     return telemetry.map(t => this.normalizeBigInts(t));
   }
 
+  /**
+   * Get packet rate statistics (packets per minute) for a node.
+   * Calculates the rate of change between consecutive telemetry samples.
+   *
+   * @param nodeId - The node ID to fetch rates for
+   * @param types - Array of telemetry types to calculate rates for
+   * @param sinceTimestamp - Only fetch data after this timestamp (optional)
+   * @returns Object mapping telemetry type to array of rate data points
+   */
+  getPacketRates(
+    nodeId: string,
+    types: string[],
+    sinceTimestamp?: number
+  ): Record<string, Array<{ timestamp: number; ratePerMinute: number }>> {
+    const result: Record<string, Array<{ timestamp: number; ratePerMinute: number }>> = {};
+
+    // Initialize result object for each type
+    for (const type of types) {
+      result[type] = [];
+    }
+
+    // Build query to fetch raw telemetry data ordered by timestamp ASC (oldest first)
+    // We need consecutive samples to calculate deltas
+    let query = `
+      SELECT telemetryType, timestamp, value
+      FROM telemetry
+      WHERE nodeId = ?
+        AND telemetryType IN (${types.map(() => '?').join(', ')})
+    `;
+    const params: (string | number)[] = [nodeId, ...types];
+
+    if (sinceTimestamp !== undefined) {
+      query += ` AND timestamp >= ?`;
+      params.push(sinceTimestamp);
+    }
+
+    query += ` ORDER BY telemetryType, timestamp ASC`;
+
+    const stmt = this.db.prepare(query);
+    const rows = stmt.all(...params) as Array<{
+      telemetryType: string;
+      timestamp: number;
+      value: number;
+    }>;
+
+    // Group by telemetry type
+    const groupedByType: Record<string, Array<{ timestamp: number; value: number }>> = {};
+    for (const row of rows) {
+      if (!groupedByType[row.telemetryType]) {
+        groupedByType[row.telemetryType] = [];
+      }
+      groupedByType[row.telemetryType].push({
+        timestamp: row.timestamp,
+        value: row.value,
+      });
+    }
+
+    // Calculate rates for each type
+    for (const [type, samples] of Object.entries(groupedByType)) {
+      const rates: Array<{ timestamp: number; ratePerMinute: number }> = [];
+
+      for (let i = 1; i < samples.length; i++) {
+        const deltaValue = samples[i].value - samples[i - 1].value;
+        const deltaTimeMs = samples[i].timestamp - samples[i - 1].timestamp;
+        const deltaTimeMinutes = deltaTimeMs / 60000;
+
+        // Skip counter resets (negative delta = device reboot)
+        if (deltaValue < 0) {
+          continue;
+        }
+
+        // Skip if time gap > 1 hour (stale data, likely a device restart)
+        if (deltaTimeMinutes > 60) {
+          continue;
+        }
+
+        // Skip if delta time is too small (avoid division issues)
+        if (deltaTimeMinutes < 0.1) {
+          continue;
+        }
+
+        const ratePerMinute = deltaValue / deltaTimeMinutes;
+
+        // Skip unreasonably high rates (likely artifact from reset)
+        // More than 1000 packets/minute is suspicious
+        if (ratePerMinute > 1000) {
+          continue;
+        }
+
+        rates.push({
+          timestamp: samples[i].timestamp,
+          ratePerMinute: Math.round(ratePerMinute * 100) / 100, // Round to 2 decimal places
+        });
+      }
+
+      result[type] = rates;
+    }
+
+    return result;
+  }
+
   insertTraceroute(tracerouteData: DbTraceroute): void {
     // Wrap in transaction to prevent race conditions
     const transaction = this.db.transaction(() => {
