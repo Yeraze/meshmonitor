@@ -489,6 +489,19 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                         <div className="node-name">
                           {node.isFavorite && <span className="favorite-indicator">⭐</span>}
                           <span className="node-name-text">{node.user?.longName || t('messages.node_fallback', { nodeNum: node.nodeNum })}</span>
+                          {node.hopsAway != null && (
+                            <span
+                              className="node-hops"
+                              title={t('nodes.hops_away')}
+                              style={{
+                                fontSize: '0.75rem',
+                                color: 'var(--ctp-subtext0)',
+                                marginLeft: '0.5rem',
+                              }}
+                            >
+                              🔗 {node.hopsAway}
+                            </span>
+                          )}
                         </div>
                         <div className="node-actions">
                           {(node.keyIsLowEntropy || node.duplicateKeyDetected) && (
