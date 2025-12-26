@@ -2064,6 +2064,7 @@
   "messages.hops_other": "{{count}} hops",
   "messages.signal_info": "Signal strength (SNR/RSSI) - Direct message",
   "messages.click_for_relay": "Click to see potential relay nodes",
+  "messages.via_mqtt": "Received via MQTT",
 
   "link_preview.loading": "Loading preview...",
   "link_preview.image_alt": "Link preview",

@@ -639,6 +639,7 @@ export default function ChannelsTab({
                                           rxSnr={msg.rxSnr}
                                           rxRssi={msg.rxRssi}
                                           relayNode={msg.relayNode}
+                                          viaMqtt={msg.viaMqtt}
                                           onClick={() => handleRelayClick(msg)}
                                         />
                                       </span>
