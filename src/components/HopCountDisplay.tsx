@@ -7,6 +7,7 @@ interface HopCountDisplayProps {
   rxSnr?: number;
   rxRssi?: number;
   relayNode?: number;
+  viaMqtt?: boolean;
   onClick?: () => void;
 }
 
@@ -23,20 +24,33 @@ const HopCountDisplay: React.FC<HopCountDisplayProps> = ({
   rxSnr,
   rxRssi,
   relayNode,
+  viaMqtt,
   onClick,
 }) => {
   const { t } = useTranslation();
 
-  // Return null if either hop value is missing
+  // MQTT indicator component
+  const MqttIndicator = viaMqtt ? (
+    <span
+      style={{ marginLeft: '4px', opacity: 0.8 }}
+      title={t('messages.via_mqtt')}
+      aria-label={t('messages.via_mqtt')}
+      role="img"
+    >
+      🌐
+    </span>
+  ) : null;
+
+  // Return null if either hop value is missing (but show MQTT indicator if present)
   if (hopStart === undefined || hopLimit === undefined) {
-    return null;
+    return MqttIndicator;
   }
 
   const hopCount = hopStart - hopLimit;
 
   // Guard against malformed data (negative hop counts)
   if (hopCount < 0) {
-    return null;
+    return MqttIndicator;
   }
 
   // Check if this hop count is clickable (has relay node info)
@@ -62,20 +76,26 @@ const HopCountDisplay: React.FC<HopCountDisplayProps> = ({
       parts.push(`${rxRssi} dBm`);
     }
     return (
-      <span style={{ fontSize: '0.75em', marginLeft: '4px', opacity: 0.7 }} title={t('messages.signal_info')}>
-        ({parts.join(' / ')})
-      </span>
+      <>
+        <span style={{ fontSize: '0.75em', marginLeft: '4px', opacity: 0.7 }} title={t('messages.signal_info')}>
+          ({parts.join(' / ')})
+        </span>
+        {MqttIndicator}
+      </>
     );
   }
 
   return (
-    <span
-      style={{ fontSize: '0.75em', marginLeft: '4px', opacity: isClickable ? 1 : 0.7, ...clickableStyle }}
-      onClick={isClickable ? onClick : undefined}
-      title={isClickable ? t('messages.click_for_relay') : undefined}
-    >
-      ({t('messages.hops', { count: hopCount })})
-    </span>
+    <>
+      <span
+        style={{ fontSize: '0.75em', marginLeft: '4px', opacity: isClickable ? 1 : 0.7, ...clickableStyle }}
+        onClick={isClickable ? onClick : undefined}
+        title={isClickable ? t('messages.click_for_relay') : undefined}
+      >
+        ({t('messages.hops', { count: hopCount })})
+      </span>
+      {MqttIndicator}
+    </>
   );
 };
 

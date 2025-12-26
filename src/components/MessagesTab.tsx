@@ -873,6 +873,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                 rxSnr={msg.rxSnr}
                                 rxRssi={msg.rxRssi}
                                 relayNode={msg.relayNode}
+                                viaMqtt={msg.viaMqtt}
                                 onClick={() => handleRelayClick(msg)}
                               />
                             </span>
@@ -989,6 +990,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                   rxSnr={msg.rxSnr}
                                   rxRssi={msg.rxRssi}
                                   relayNode={msg.relayNode}
+                                  viaMqtt={msg.viaMqtt}
                                   onClick={() => handleRelayClick(msg)}
                                 />
                               </span>
