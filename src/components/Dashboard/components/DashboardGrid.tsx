@@ -11,6 +11,7 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import TelemetryChart from '../../TelemetryChart';
+import PacketRateChart, { isPacketRateType } from '../../PacketRateChart';
 import NodeStatusWidget from '../../NodeStatusWidget';
 import TracerouteWidget from '../../TracerouteWidget';
 import {
@@ -150,6 +151,22 @@ const DashboardGrid: React.FC<DashboardGridProps> = ({
             {favorites.map(favorite => {
               const key = `${favorite.nodeId}-${favorite.telemetryType}`;
               const node = nodes.get(favorite.nodeId);
+
+              // Use PacketRateChart for packet rate types
+              if (isPacketRateType(favorite.telemetryType)) {
+                return (
+                  <PacketRateChart
+                    key={key}
+                    id={key}
+                    favorite={favorite}
+                    node={node}
+                    hours={hours}
+                    baseUrl={baseUrl}
+                    globalTimeRange={globalTimeRange}
+                    onRemove={onRemoveFavorite}
+                  />
+                );
+              }
 
               return (
                 <TelemetryChart

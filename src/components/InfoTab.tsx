@@ -8,6 +8,7 @@ import { TemperatureUnit } from '../utils/temperature';
 import { TimeFormat, DateFormat } from '../contexts/SettingsContext';
 import { formatDateTime } from '../utils/datetime';
 import TelemetryGraphs from './TelemetryGraphs';
+import PacketRateGraphs from './PacketRateGraphs';
 import { version } from '../../package.json';
 import apiService from '../services/api';
 import { formatDistance } from '../utils/distance';
@@ -665,6 +666,12 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
         <div className="info-section-full-width">
           <h3>{t('info.local_telemetry')}</h3>
           <TelemetryGraphs nodeId={currentNodeId} temperatureUnit={temperatureUnit} telemetryHours={telemetryHours} baseUrl={baseUrl} />
+        </div>
+      )}
+
+      {currentNodeId && connectionStatus === 'connected' && (
+        <div className="info-section-full-width">
+          <PacketRateGraphs nodeId={currentNodeId} telemetryHours={telemetryHours} baseUrl={baseUrl} />
         </div>
       )}
 
