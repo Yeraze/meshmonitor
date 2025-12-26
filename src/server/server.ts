@@ -7686,6 +7686,15 @@ if (BASE_URL) {
 
 // Error handling middleware
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  // Handle JSON parsing errors with a helpful message
+  if (err instanceof SyntaxError && 'body' in err) {
+    logger.warn('JSON parsing error:', err.message);
+    return res.status(400).json({
+      error: 'Bad Request',
+      message: 'Invalid JSON in request body. Please check your JSON syntax.',
+    });
+  }
+
   logger.error('Unhandled error:', err);
   res.status(500).json({
     error: 'Internal server error',
