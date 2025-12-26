@@ -2274,7 +2274,7 @@
     "configuration.import_success": "",
     "telemetry_config.power_screen": "",
     "config.warning_title": "",
-    "auth.password_changed_required": "",
+    "auth.password_changed_required": "Alle Felder notwendig",
     "device_config.router_warning": "",
     "notifications.apprise_about_text": "",
     "backup_management.table_type": "",
