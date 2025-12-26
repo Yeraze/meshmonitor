@@ -435,6 +435,278 @@ jobs:
       - name: Upload artifacts for debugging
         uses: actions/upload-artifact@v6
         with:
-          name: meshmonitor-desktop-macos-release
+          name: meshmonitor-desktop-macos-arm64-release
+          path: desktop/src-tauri/target/release/bundle/dmg/*.dmg
+          retention-days: 30
+
+  build-macos-x64:
+    runs-on: macos-14
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: 'desktop/src-tauri'
+
+      # Import Apple signing certificate into a temporary keychain
+      # This step is skipped if APPLE_CERTIFICATE is not set (unsigned build)
+      - name: Import Apple signing certificate
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          if [ -z "$APPLE_CERTIFICATE" ]; then
+            echo "APPLE_CERTIFICATE not set, skipping certificate import (unsigned build)"
+            exit 0
+          fi
+
+          # Create a temporary keychain for signing
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
+
+          # Create and configure the keychain
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # Decode and import the certificate
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$KEYCHAIN_PATH" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          rm "$RUNNER_TEMP/certificate.p12"
+
+          # Allow codesign to access the keychain without prompting
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # Add keychain to the search list
+          security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain-db
+
+          # Verify the certificate was imported
+          echo "Available signing identities:"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+      # Setup App Store Connect API key for notarization
+      # This step is skipped if APPLE_API_KEY_CONTENT is not set
+      - name: Setup notarization credentials
+        env:
+          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+        run: |
+          if [ -z "$APPLE_API_KEY_CONTENT" ]; then
+            echo "APPLE_API_KEY_CONTENT not set, skipping notarization setup (unsigned build)"
+            exit 0
+          fi
+
+          # Create the private_keys directory where notarytool looks for keys
+          mkdir -p ~/private_keys
+          echo "$APPLE_API_KEY_CONTENT" > ~/private_keys/AuthKey_${APPLE_API_KEY}.p8
+          chmod 600 ~/private_keys/AuthKey_${APPLE_API_KEY}.p8
+
+      - name: Install main project dependencies
+        run: npm ci
+
+      - name: Build main project (frontend)
+        run: npm run build
+
+      - name: Build server
+        run: |
+          npx tsc --project tsconfig.server.json
+          mkdir -p dist/server/routes/v1
+          cp src/server/routes/v1/openapi.yaml dist/server/routes/v1/
+
+      - name: Download Node.js for bundling (x64)
+        run: |
+          NODE_VERSION="v24.12.0"
+          EXPECTED_SHA256="b82ea4c62fd08e250cab59d625e75d77cc5b0a3d60c6698ebee4545c88a169c5"
+          curl -L -o node.tar.gz "https://nodejs.org/dist/${NODE_VERSION}/node-${NODE_VERSION}-darwin-x64.tar.gz"
+          echo "${EXPECTED_SHA256}  node.tar.gz" | shasum -a 256 -c -
+          tar -xzf node.tar.gz
+          mkdir -p desktop/resources/binaries
+          cp "node-${NODE_VERSION}-darwin-x64/bin/node" desktop/resources/binaries/node
+
+      # Sign the bundled Node.js binary so it passes notarization
+      - name: Sign bundled Node.js binary
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          if [ -z "$APPLE_SIGNING_IDENTITY" ]; then
+            echo "APPLE_SIGNING_IDENTITY not set, skipping Node.js signing"
+            exit 0
+          fi
+
+          echo "Signing Node.js binary with identity: $APPLE_SIGNING_IDENTITY"
+          codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" \
+            --timestamp desktop/resources/binaries/node
+
+          echo "Verifying signature..."
+          codesign --verify --verbose=2 desktop/resources/binaries/node
+
+      - name: Copy server files to Tauri resources
+        run: |
+          mkdir -p desktop/resources/dist
+          # Copy server-side compiled code
+          cp -r dist/server desktop/resources/dist/
+          cp -r dist/services desktop/resources/dist/
+          cp -r dist/utils desktop/resources/dist/
+          cp -r dist/types desktop/resources/dist/
+          cp -r dist/config desktop/resources/dist/
+          cp -r dist/constants desktop/resources/dist/
+          cp -r dist/contexts desktop/resources/dist/
+          # Copy frontend assets
+          cp -r dist/assets desktop/resources/dist/
+          cp -r dist/locales desktop/resources/dist/
+          # Copy pmtiles if it exists (may be in public or dist)
+          [ -d dist/pmtiles ] && cp -r dist/pmtiles desktop/resources/dist/ || true
+          [ -d public/pmtiles ] && cp -r public/pmtiles desktop/resources/dist/ || true
+          # Copy protobufs
+          cp -r protobufs desktop/resources/dist/
+          # Copy individual files
+          cp dist/index.html desktop/resources/dist/
+          cp dist/logo.png desktop/resources/dist/
+          cp dist/logo-original.png desktop/resources/dist/
+          cp dist/favicon.ico desktop/resources/dist/
+          cp dist/favicon-16x16.png desktop/resources/dist/
+          cp dist/favicon-32x32.png desktop/resources/dist/
+          cp dist/cors-detection.js desktop/resources/dist/
+          cp dist/cors-error.html desktop/resources/dist/
+          cp package.json desktop/resources/
+          cp package.json desktop/resources/dist/
+          # Copy node_modules
+          cp -r node_modules desktop/resources/dist/
+
+      # Sign all native binaries in node_modules for notarization
+      - name: Sign native binaries in node_modules
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          if [ -z "$APPLE_SIGNING_IDENTITY" ]; then
+            echo "APPLE_SIGNING_IDENTITY not set, skipping native binary signing"
+            exit 0
+          fi
+
+          echo "Finding and signing native binaries in node_modules..."
+
+          # Find all .node files (native Node.js addons)
+          find desktop/resources/dist/node_modules -name "*.node" -type f | while read -r file; do
+            echo "Signing: $file"
+            codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$file" || true
+          done
+
+          # Find all .bare files (bare modules)
+          find desktop/resources/dist/node_modules -name "*.bare" -type f | while read -r file; do
+            echo "Signing: $file"
+            codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$file" || true
+          done
+
+          # Find esbuild binaries
+          find desktop/resources/dist/node_modules -path "*/bin/esbuild" -type f | while read -r file; do
+            echo "Signing: $file"
+            codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$file" || true
+          done
+
+          # Find any other Mach-O binaries that might need signing
+          find desktop/resources/dist/node_modules -type f \( -perm -u+x -o -name "*.dylib" \) | while read -r file; do
+            # Check if it's a Mach-O binary
+            if file "$file" | grep -q "Mach-O"; then
+              echo "Signing Mach-O binary: $file"
+              codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$file" || true
+            fi
+          done
+
+          echo "Native binary signing complete"
+
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm install
+
+      # Build the Tauri app with signing and notarization if credentials are available
+      - name: Build Tauri app (release)
+        working-directory: desktop
+        env:
+          # Code signing - Tauri will use these if present
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          # Notarization credentials
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: npm run tauri:build -- --bundles dmg
+
+      - name: Get version from tag
+        id: get_version
+        run: |
+          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          VERSION="${TAG#v}"
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "TAG=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Rename DMG with version
+        id: rename_artifacts
+        run: |
+          VERSION="${{ steps.get_version.outputs.VERSION }}"
+          DMG_PATH=$(find desktop/src-tauri/target/release/bundle/dmg -name "*.dmg" | head -1)
+          if [ -n "$DMG_PATH" ]; then
+            NEW_NAME="MeshMonitor-Desktop-${VERSION}-x64.dmg"
+            DESTINATION="desktop/src-tauri/target/release/bundle/dmg/$NEW_NAME"
+            cp "$DMG_PATH" "$DESTINATION"
+            echo "DMG_PATH=$DESTINATION" >> $GITHUB_OUTPUT
+            echo "DMG_NAME=$NEW_NAME" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate checksums
+        id: checksums
+        run: |
+          VERSION="${{ steps.get_version.outputs.VERSION }}"
+          CHECKSUM_FILE="desktop-checksums-macos-x64-${VERSION}.txt"
+          DMG_PATH="${{ steps.rename_artifacts.outputs.DMG_PATH }}"
+
+          if [ -n "$DMG_PATH" ] && [ -f "$DMG_PATH" ]; then
+            HASH=$(shasum -a 256 "$DMG_PATH" | awk '{print $1}')
+            echo "$HASH  ${{ steps.rename_artifacts.outputs.DMG_NAME }}" >> "$CHECKSUM_FILE"
+          fi
+
+          echo "CHECKSUM_FILE=$CHECKSUM_FILE" >> $GITHUB_OUTPUT
+
+      - name: Upload DMG to release
+        if: steps.rename_artifacts.outputs.DMG_PATH
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.get_version.outputs.TAG }}
+          files: ${{ steps.rename_artifacts.outputs.DMG_PATH }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload checksums to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.get_version.outputs.TAG }}
+          files: ${{ steps.checksums.outputs.CHECKSUM_FILE }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifacts for debugging
+        uses: actions/upload-artifact@v6
+        with:
+          name: meshmonitor-desktop-macos-x64-release
           path: desktop/src-tauri/target/release/bundle/dmg/*.dmg
           retention-days: 30
