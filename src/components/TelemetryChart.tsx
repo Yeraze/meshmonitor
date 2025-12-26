@@ -20,7 +20,8 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useTelemetry, type TelemetryData } from '../hooks/useTelemetry';
 import { type TemperatureUnit, formatTemperature, getTemperatureUnit } from '../utils/temperature';
-import { formatChartAxisTimestamp } from '../utils/datetime';
+import { formatChartAxisTimestamp, formatTime } from '../utils/datetime';
+import { useSettings, type TimeFormat } from '../contexts/SettingsContext';
 import type { TelemetryNodeInfo } from '../types/device';
 import type { ChartData } from '../types/ui';
 
@@ -118,7 +119,8 @@ const prepareChartData = (
   isTemperature: boolean,
   temperatureUnit: TemperatureUnit,
   solarEstimates: Map<number, number>,
-  globalMinTime?: number
+  globalMinTime: number | undefined,
+  timeFormat: TimeFormat
 ): ChartData[] => {
   const allTimestamps = new Map<number, ChartData>();
 
@@ -135,10 +137,7 @@ const prepareChartData = (
     allTimestamps.set(item.timestamp, {
       timestamp: item.timestamp,
       value: isTemperature ? formatTemperature(item.value, 'C', temperatureUnit) : item.value,
-      time: new Date(item.timestamp).toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit',
-      }),
+      time: formatTime(new Date(item.timestamp), timeFormat),
     });
   });
 
@@ -155,10 +154,7 @@ const prepareChartData = (
         allTimestamps.set(timestamp, {
           timestamp,
           value: null,
-          time: new Date(timestamp).toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-          }),
+          time: formatTime(new Date(timestamp), timeFormat),
           solarEstimate: wattHours,
         });
       }
@@ -207,6 +203,7 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
     solarMonitoringEnabled = false,
   }) => {
     const { t } = useTranslation();
+    const { timeFormat } = useSettings();
 
     // Helper to get translated telemetry label
     const getTranslatedLabel = useCallback(
@@ -339,7 +336,7 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
     }
 
     // Prepare chart data
-    const chartData = prepareChartData(telemetryData, isTemperature, temperatureUnit, solarEstimates, globalMinTime);
+    const chartData = prepareChartData(telemetryData, isTemperature, temperatureUnit, solarEstimates, globalMinTime, timeFormat);
     const unit = isTemperature ? getTemperatureUnit(temperatureUnit) : telemetryData[0]?.unit || '';
 
     return (
@@ -380,7 +377,7 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
               type="number"
               domain={globalTimeRange || ['dataMin', 'dataMax']}
               tick={{ fontSize: 12 }}
-              tickFormatter={timestamp => formatChartAxisTimestamp(timestamp, globalTimeRange)}
+              tickFormatter={timestamp => formatChartAxisTimestamp(timestamp, globalTimeRange, timeFormat)}
             />
             <YAxis yAxisId="left" tick={{ fontSize: 12 }} domain={['auto', 'auto']} />
             <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 12 }} domain={['auto', 'auto']} hide={true} />

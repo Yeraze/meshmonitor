@@ -8,7 +8,7 @@ import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { useTelemetry, useSolarEstimates, type TelemetryData } from '../hooks/useTelemetry';
 import { useFavorites, useToggleFavorite } from '../hooks/useFavorites';
-import { formatChartAxisTimestamp } from '../utils/datetime';
+import { formatChartAxisTimestamp, formatTime } from '../utils/datetime';
 import { useSettings } from '../contexts/SettingsContext';
 import { ChartData } from '../types/ui';
 
@@ -61,7 +61,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
     const { t } = useTranslation();
     const csrfFetch = useCsrfFetch();
     const { showToast } = useToast();
-    const { solarMonitoringEnabled } = useSettings();
+    const { solarMonitoringEnabled, timeFormat } = useSettings();
     const [openMenu, setOpenMenu] = useState<string | null>(null);
     const [menuPosition, setMenuPosition] = useState<{
       x: number;
@@ -287,10 +287,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
         allTimestamps.set(item.timestamp, {
           timestamp: item.timestamp,
           value: isTemperature ? formatTemperature(item.value, 'C', temperatureUnit) : item.value,
-          time: new Date(item.timestamp).toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-          }),
+          time: formatTime(new Date(item.timestamp), timeFormat),
         });
       });
 
@@ -315,10 +312,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
             allTimestamps.set(timestamp, {
               timestamp,
               value: null, // null = solar-only (will be skipped by Line with connectNulls)
-              time: new Date(timestamp).toLocaleTimeString([], {
-                hour: '2-digit',
-                minute: '2-digit',
-              }),
+              time: formatTime(new Date(timestamp), timeFormat),
               solarEstimate: wattHours,
             });
           }
@@ -593,7 +587,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
                       type="number"
                       domain={globalTimeRange || ['dataMin', 'dataMax']}
                       tick={{ fontSize: 12 }}
-                      tickFormatter={timestamp => formatChartAxisTimestamp(timestamp, globalTimeRange)}
+                      tickFormatter={timestamp => formatChartAxisTimestamp(timestamp, globalTimeRange, timeFormat)}
                     />
                     <YAxis yAxisId="left" tick={{ fontSize: 12 }} domain={['auto', 'auto']} />
                     <YAxis

@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
+import { useSettings } from '../contexts/SettingsContext';
+import { formatTime, formatDate } from '../utils/datetime';
 import { Channel } from '../types/device';
 
 interface AutoAcknowledgeSectionProps {
@@ -60,6 +62,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   onReplyEnabledChange,
 }) => {
   const { t } = useTranslation();
+  const { timeFormat, dateFormat } = useSettings();
   const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();
   const [localEnabled, setLocalEnabled] = useState(enabled);
@@ -169,8 +172,8 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     sample = sample.replace(/{NUMBER_HOPS}/g, isDirect ? '0' : '3');
     sample = sample.replace(/{HOPS}/g, isDirect ? '0' : '3');
     sample = sample.replace(/{RABBIT_HOPS}/g, isDirect ? '🎯' : '🐇🐇🐇'); // 🎯 for direct, 3 rabbits for 3 hops
-    sample = sample.replace(/{DATE}/g, now.toLocaleDateString());
-    sample = sample.replace(/{TIME}/g, now.toLocaleTimeString());
+    sample = sample.replace(/{DATE}/g, formatDate(now, dateFormat));
+    sample = sample.replace(/{TIME}/g, formatTime(now, timeFormat));
     sample = sample.replace(/{VERSION}/g, '2.9.1');
     sample = sample.replace(/{DURATION}/g, '3d 12h');
     sample = sample.replace(/{LONG_NAME}/g, 'Meshtastic ABC1');
