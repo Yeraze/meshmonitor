@@ -3012,5 +3012,12 @@
     "automation.auto_announce.nodeinfo_channels_description": "",
     "automation.auto_traceroute.sort_by_hops": "",
     "nodes_private": "",
-    "nodes_private_description": ""
+    "nodes_private_description": "",
+    "packet_monitor.click_for_relay": "",
+    "position_override.private": "",
+    "relay_modal.hops_away_plural": "",
+    "messages.click_for_relay": "",
+    "relay_modal.direct": "",
+    "relay_modal.hops_away": "",
+    "position_override.private_description": ""
 }
