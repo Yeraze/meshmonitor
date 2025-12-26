@@ -21,6 +21,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      attestations: write
+      id-token: write
 
     steps:
       - name: Checkout repository
@@ -64,10 +66,8 @@ jobs:
             org.opencontainers.image.description=Web tool for monitoring a Meshtastic Node Deployment over TCP/HTTP
           cache-from: type=gha,scope=main
           cache-to: type=gha,mode=max,scope=main
-          provenance: false
-          sbom: false
-        env:
-          DOCKER_BUILD_RECORD_UPLOAD: false
+          provenance: true
+          sbom: true
         timeout-minutes: 40
 
   # Build for armv7 using Node.js 22 (Debian slim)
@@ -77,6 +77,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      attestations: write
+      id-token: write
 
     steps:
       - name: Checkout repository
@@ -120,10 +122,8 @@ jobs:
             org.opencontainers.image.description=Web tool for monitoring a Meshtastic Node Deployment over TCP/HTTP
           cache-from: type=gha,scope=armv7
           cache-to: type=gha,mode=max,scope=armv7
-          provenance: false
-          sbom: false
-        env:
-          DOCKER_BUILD_RECORD_UPLOAD: false
+          provenance: true
+          sbom: true
         timeout-minutes: 40
 
   # Create multi-arch manifest combining all platforms
