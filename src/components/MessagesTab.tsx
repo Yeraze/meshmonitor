@@ -5,7 +5,8 @@
  * Handles the Messages/DM tab with node list and conversation view.
  */
 
-import React, { useRef, useCallback, useState } from 'react';
+import React, { useRef, useCallback, useState, useMemo } from 'react';
+import { useResizable } from '../hooks/useResizable';
 import { useTranslation, Trans } from 'react-i18next';
 import { DeviceInfo } from '../types/device';
 import { MeshMessage } from '../types/message';
@@ -213,6 +214,25 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   const [relayModalOpen, setRelayModalOpen] = useState(false);
   const [selectedRelayNode, setSelectedRelayNode] = useState<number | null>(null);
   const [selectedRxTime, setSelectedRxTime] = useState<Date | undefined>(undefined);
+
+  // Resizable send section (only on desktop)
+  const {
+    size: sendSectionHeight,
+    isResizing: isSendSectionResizing,
+    handleMouseDown: handleSendSectionResizeStart,
+  } = useResizable({
+    id: 'dm-send-section-height',
+    defaultHeight: 280,
+    minHeight: 120,
+    maxHeight: 600,
+    direction: 'vertical',
+  });
+
+  // Detect if we're on mobile/tablet
+  const isMobileLayout = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    return window.innerWidth < 768;
+  }, []);
 
   // Map nodes to the format expected by RelayNodeModal
   const mappedNodes = nodes.map(node => ({
@@ -985,9 +1005,26 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
               )}
             </div>
 
-            {/* Send DM form */}
-            {connectionStatus === 'connected' && (
-              <div className="send-message-form">
+            {/* Resize Handle - Desktop only */}
+            {!isMobileLayout && (
+              <div
+                className={`dm-resize-handle ${isSendSectionResizing ? 'resizing' : ''}`}
+                onMouseDown={handleSendSectionResizeStart}
+                title={t('messages.resize_handle_title')}
+                role="separator"
+                aria-orientation="horizontal"
+                aria-label={t('messages.resize_handle_title')}
+              />
+            )}
+
+            {/* Send Section Container - wraps send form and info below */}
+            <div
+              className={`dm-send-section ${isSendSectionResizing ? 'resizing' : ''}`}
+              style={!isMobileLayout ? { height: `${sendSectionHeight}px` } : undefined}
+            >
+              {/* Send DM form */}
+              {connectionStatus === 'connected' && (
+                <div className="send-message-form">
                 {replyingTo && (
                   <div className="reply-indicator">
                     <div className="reply-indicator-content">
@@ -1039,6 +1076,11 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                     const age = Math.floor((Date.now() - recentTrace.timestamp) / (1000 * 60));
                     const ageStr = age < 60 ? `${age}m ago` : `${Math.floor(age / 60)}h ago`;
 
+                    // Check if traceroute failed (both directions have no valid data)
+                    const forwardFailed = !recentTrace.route || recentTrace.route === 'null';
+                    const returnFailed = !recentTrace.routeBack || recentTrace.routeBack === 'null';
+                    const isFailed = forwardFailed && returnFailed;
+
                     return (
                       <div className="traceroute-info" style={{ marginTop: '1rem' }}>
                         <div className="traceroute-route">
@@ -1063,7 +1105,18 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             distanceUnit
                           )}
                         </div>
-                        <div className="traceroute-age">{t('messages.last_traced', { time: ageStr })}</div>
+                        <div className="traceroute-age">
+                          {t('messages.last_traced', { time: ageStr })}
+                          {isFailed && (
+                            <span className="traceroute-failed-badge" style={{
+                              marginLeft: '0.5rem',
+                              color: 'var(--ctp-red)',
+                              fontWeight: 'bold'
+                            }}>
+                              ({t('messages.traceroute_failed')})
+                            </span>
+                          )}
+                        </div>
                       </div>
                     );
                   }
@@ -1227,12 +1280,14 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                 </div>
               )}
 
-            <TelemetryGraphs
-              nodeId={selectedDMNode}
-              temperatureUnit={temperatureUnit}
-              telemetryHours={telemetryVisualizationHours}
-              baseUrl={baseUrl}
-            />
+              <TelemetryGraphs
+                nodeId={selectedDMNode}
+                temperatureUnit={temperatureUnit}
+                telemetryHours={telemetryVisualizationHours}
+                baseUrl={baseUrl}
+              />
+            </div>
+            {/* End of dm-send-section */}
           </div>
         ) : (
           <div className="no-selection">

@@ -299,6 +299,8 @@
   "messages.traceroute_forward": "→ Forward:",
   "messages.traceroute_return": "← Return:",
   "messages.last_traced": "Last traced {{time}}",
+  "messages.traceroute_failed": "Failed",
+  "messages.resize_handle_title": "Drag to resize",
   "messages.security_issue_title": "Security Issue",
   "messages.issue_details": "Issue Details",
   "messages.low_entropy_warning": "This node uses a known low-entropy cryptographic key. ",

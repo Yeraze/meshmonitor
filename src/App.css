@@ -766,13 +766,61 @@ body {
   height: 100%;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+}
+
+/* Desktop: messages container fills remaining space */
+.dm-conversation-panel .messages-container {
+  flex: 1;
+  min-height: 100px;
   overflow-y: auto;
 }
 
-/* Desktop: constrain DM messages container height */
-.dm-conversation-panel .messages-container {
-  max-height: calc(100vh - var(--header-height) - 24rem);
-  min-height: 200px;
+/* DM Resize Handle - for resizing between messages and send section */
+.dm-resize-handle {
+  height: 8px;
+  cursor: ns-resize;
+  background: transparent;
+  transition: background 0.2s ease;
+  flex-shrink: 0;
+  position: relative;
+  margin: 0 -1rem;
+  padding: 0 1rem;
+}
+
+.dm-resize-handle:hover,
+.dm-resize-handle.resizing {
+  background: var(--primary-color, var(--ctp-blue));
+}
+
+.dm-resize-handle::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 40px;
+  height: 4px;
+  background: var(--border-color, var(--ctp-surface2));
+  border-radius: 2px;
+  transition: background 0.2s ease;
+}
+
+.dm-resize-handle:hover::before,
+.dm-resize-handle.resizing::before {
+  background: var(--primary-color, var(--ctp-blue));
+}
+
+/* DM Send Section - wrapper for send form and info below */
+.dm-send-section {
+  flex-shrink: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.dm-send-section.resizing {
+  pointer-events: none;
 }
 
 .no-selection {
