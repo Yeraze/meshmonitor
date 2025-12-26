@@ -245,17 +245,16 @@ export function shouldShowDateSeparator(
  *
  * @param timestamp - Timestamp in milliseconds
  * @param timeRange - Tuple of [minTimestamp, maxTimestamp] in milliseconds, or null
+ * @param timeFormat - '12' for 12-hour format, '24' for 24-hour format
  * @returns Formatted string like "Dec 9 14:32" (multi-day) or "14:32" (single day)
  */
 export function formatChartAxisTimestamp(
   timestamp: number,
-  timeRange: [number, number] | null
+  timeRange: [number, number] | null,
+  timeFormat: TimeFormat = '24'
 ): string {
   const date = new Date(timestamp);
-  const timeStr = date.toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  const timeStr = formatTime(date, timeFormat);
 
   // If no time range provided, default to time-only format
   if (!timeRange) {
