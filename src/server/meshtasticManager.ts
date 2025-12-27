@@ -6051,47 +6051,7 @@ class MeshtasticManager {
               const { promisify } = await import('util');
               const execFileAsync = promisify(execFile);
 
-              // Prepare environment variables
-              const scriptEnv: Record<string, string> = {
-                ...process.env as Record<string, string>,
-                MESSAGE: message.text,
-                FROM_NODE: String(message.fromNodeNum),
-                PACKET_ID: String(packetId),
-                TRIGGER: Array.isArray(trigger.trigger) ? trigger.trigger.join(', ') : trigger.trigger,
-                MATCHED_PATTERN: matchedPattern || '',
-              };
-
-              // Add sender node information environment variables
-              const fromNode = databaseService.getNode(message.fromNodeNum);
-              if (fromNode) {
-                // Add node names (Issue #1099)
-                if (fromNode.shortName) {
-                  scriptEnv.FROM_SHORT_NAME = fromNode.shortName;
-                }
-                if (fromNode.longName) {
-                  scriptEnv.FROM_LONG_NAME = fromNode.longName;
-                }
-                // Add location (FROM_LAT, FROM_LON)
-                if (fromNode.latitude != null && fromNode.longitude != null) {
-                  scriptEnv.FROM_LAT = String(fromNode.latitude);
-                  scriptEnv.FROM_LON = String(fromNode.longitude);
-                }
-              }
-
-              // Add location environment variables for the MeshMonitor node (MM_LAT, MM_LON)
-              const localNodeInfo = this.getLocalNodeInfo();
-              if (localNodeInfo) {
-                const mmNode = databaseService.getNode(localNodeInfo.nodeNum);
-                if (mmNode?.latitude != null && mmNode?.longitude != null) {
-                  scriptEnv.MM_LAT = String(mmNode.latitude);
-                  scriptEnv.MM_LON = String(mmNode.longitude);
-                }
-              }
-
-              // Add extracted parameters as PARAM_* environment variables
-              Object.entries(extractedParams).forEach(([key, value]) => {
-                scriptEnv[`PARAM_${key}`] = value;
-              });
+              const scriptEnv = this.createScriptEnvVariables(message, matchedPattern, extractedParams, trigger, packetId);
 
               // Execute script with 10-second timeout
               // Use resolvedPath (actual file path) instead of scriptPath (API format)
@@ -6231,6 +6191,59 @@ class MeshtasticManager {
     } catch (error) {
       logger.error('❌ Error in auto-responder:', error);
     }
+  }
+
+  /**
+   * Prepare environment variables
+   */
+  private createScriptEnvVariables(message: TextMessage, matchedPattern: string, extractedParams: Record<string, string>, trigger: any, packetId?: number) {
+    const scriptEnv: Record<string, string> = {
+      ...process.env as Record<string, string>,
+      MESSAGE: message.text,
+      FROM_NODE: String(message.fromNodeNum),
+      PACKET_ID: String(packetId),
+      TRIGGER: Array.isArray(trigger.trigger) ? trigger.trigger.join(', ') : trigger.trigger,
+      MATCHED_PATTERN: matchedPattern || '',
+    };
+
+    // Add sender node information environment variables
+    const fromNode = databaseService.getNode(message.fromNodeNum);
+    if (fromNode) {
+      // Add node names (Issue #1099)
+      if (fromNode.shortName) {
+        scriptEnv.FROM_SHORT_NAME = fromNode.shortName;
+      }
+      if (fromNode.longName) {
+        scriptEnv.FROM_LONG_NAME = fromNode.longName;
+      }
+      // Add location (FROM_LAT, FROM_LON)
+      if (fromNode.latitude != null && fromNode.longitude != null) {
+        scriptEnv.FROM_LAT = String(fromNode.latitude);
+        scriptEnv.FROM_LON = String(fromNode.longitude);
+      }
+    }
+
+    // Add location environment variables for the MeshMonitor node (MM_LAT, MM_LON)
+    const localNodeInfo = this.getLocalNodeInfo();
+    if (localNodeInfo) {
+      const mmNode = databaseService.getNode(localNodeInfo.nodeNum);
+      if (mmNode?.latitude != null && mmNode?.longitude != null) {
+        scriptEnv.MM_LAT = String(mmNode.latitude);
+        scriptEnv.MM_LON = String(mmNode.longitude);
+      }
+    }
+
+    // Add all message data as MSG_* environment variables
+    Object.entries(message).forEach(([key, value]) => {
+      scriptEnv[`MSG_${key}`] = String(value);
+    });
+
+    // Add extracted parameters as PARAM_* environment variables
+    Object.entries(extractedParams).forEach(([key, value]) => {
+      scriptEnv[`PARAM_${key}`] = value;
+    });
+
+    return scriptEnv;
   }
 
   /**
