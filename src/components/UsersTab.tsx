@@ -45,6 +45,8 @@ const UsersTab: React.FC = () => {
   const [showSetPasswordModal, setShowSetPasswordModal] = useState(false);
   const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
   const [userToDeactivate, setUserToDeactivate] = useState<User | null>(null);
+  const [showPermanentDeleteConfirm, setShowPermanentDeleteConfirm] = useState(false);
+  const [userToPermanentlyDelete, setUserToPermanentlyDelete] = useState<User | null>(null);
   const [passwordForm, setPasswordForm] = useState({
     newPassword: '',
     confirmPassword: ''
@@ -241,6 +243,38 @@ const UsersTab: React.FC = () => {
       setError(t('users.failed_deactivate'));
       setShowDeactivateConfirm(false);
       setUserToDeactivate(null);
+    }
+  };
+
+  const handlePermanentDeleteUser = async (user: User) => {
+    setUserToPermanentlyDelete(user);
+    setShowPermanentDeleteConfirm(true);
+  };
+
+  const confirmPermanentDeleteUser = async () => {
+    if (!userToPermanentlyDelete) return;
+
+    try {
+      await api.delete(`/api/users/${userToPermanentlyDelete.id}/permanent`);
+      await fetchUsers();
+      if (selectedUser?.id === userToPermanentlyDelete.id) {
+        setSelectedUser(null);
+      }
+      showToast(t('users.user_permanently_deleted', { username: userToPermanentlyDelete.username }), 'success');
+      setShowPermanentDeleteConfirm(false);
+      setUserToPermanentlyDelete(null);
+    } catch (err) {
+      logger.error('Failed to permanently delete user:', err);
+      if (err && typeof err === 'object' && 'message' in err) {
+        showToast(String(err.message), 'error');
+      } else if (err && typeof err === 'object' && 'status' in err && err.status === 403) {
+        showToast(t('users.insufficient_permissions_delete'), 'error');
+      } else {
+        showToast(t('users.failed_permanent_delete'), 'error');
+      }
+      setError(t('users.failed_permanent_delete'));
+      setShowPermanentDeleteConfirm(false);
+      setUserToPermanentlyDelete(null);
     }
   };
 
@@ -444,6 +478,15 @@ const UsersTab: React.FC = () => {
                 title={selectedUser.username === 'anonymous' ? t('users.cannot_deactivate_anonymous') : ''}
               >
                 {t('users.deactivate_user')}
+              </button>
+              <button
+                className="button button-secondary"
+                onClick={() => handlePermanentDeleteUser(selectedUser)}
+                disabled={selectedUser.id === authStatus.user?.id || selectedUser.username === 'anonymous'}
+                style={{ color: 'var(--ctp-red)', backgroundColor: 'var(--ctp-surface0)' }}
+                title={selectedUser.username === 'anonymous' ? t('users.cannot_delete_anonymous') : t('users.permanently_delete_hint')}
+              >
+                {t('users.permanently_delete')}
               </button>
             </div>
 
@@ -707,6 +750,47 @@ const UsersTab: React.FC = () => {
                   style={{ backgroundColor: 'var(--ctp-red)', borderColor: 'var(--ctp-red)' }}
                 >
                   {t('users.deactivate_user')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Permanent Delete User Confirmation Modal */}
+      {showPermanentDeleteConfirm && userToPermanentlyDelete && (
+        <div className="modal-overlay" onClick={() => setShowPermanentDeleteConfirm(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>{t('users.permanent_delete_confirm')}</h2>
+              <button className="close-button" onClick={() => setShowPermanentDeleteConfirm(false)}>×</button>
+            </div>
+
+            <div className="modal-body">
+              <p><Trans i18nKey="users.permanent_delete_confirm_text" values={{ username: userToPermanentlyDelete.username }} components={{ strong: <strong /> }} /></p>
+              <p style={{ color: 'var(--ctp-red)', marginTop: '1rem', fontWeight: 'bold' }}>
+                {t('users.permanent_delete_warning')}
+              </p>
+              <p style={{ marginTop: '0.5rem', fontSize: '0.9em', color: 'var(--ctp-subtext0)' }}>
+                {t('users.permanent_delete_details')}
+              </p>
+
+              <div className="modal-actions">
+                <button
+                  className="button button-secondary"
+                  onClick={() => {
+                    setShowPermanentDeleteConfirm(false);
+                    setUserToPermanentlyDelete(null);
+                  }}
+                >
+                  {t('common.cancel')}
+                </button>
+                <button
+                  className="button button-primary"
+                  onClick={confirmPermanentDeleteUser}
+                  style={{ backgroundColor: 'var(--ctp-red)', borderColor: 'var(--ctp-red)' }}
+                >
+                  {t('users.permanently_delete')}
                 </button>
               </div>
             </div>
