@@ -120,7 +120,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
 }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
-  const { customThemes, customTilesets } = useSettings();
+  const { customThemes, customTilesets, enableAudioNotifications, setEnableAudioNotifications } = useSettings();
   const { showIncompleteNodes, setShowIncompleteNodes } = useUI();
 
   // Local state for editing
@@ -985,6 +985,23 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               onMaxAgeHoursChange={setLocalPacketLogMaxAgeHours}
             />
           </div>
+        </div>
+
+        <div className="settings-section">
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={enableAudioNotifications}
+                onChange={(e) => setEnableAudioNotifications(e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              <span>{t('settings.enable_audio_notifications')}</span>
+            </label>
+          </h3>
+          <p className="setting-description">
+            {t('settings.enable_audio_notifications_description')}
+          </p>
         </div>
 
         <div className="settings-section">
