@@ -247,6 +247,7 @@ function App() {
     solarMonitoringLongitude,
     solarMonitoringAzimuth,
     solarMonitoringDeclination,
+    enableAudioNotifications,
     setMaxNodeAgeHours,
     setInactiveNodeThresholdHours,
     setInactiveNodeCheckIntervalMinutes,
@@ -503,19 +504,21 @@ function App() {
 
   // Play notification sound using Web Audio API
   const playNotificationSound = useCallback(() => {
+    // Check if audio notifications are enabled
+    if (!enableAudioNotifications) {
+      logger.debug('🔇 Audio notifications disabled, skipping sound');
+      return;
+    }
+
     try {
-      console.log('🔊 playNotificationSound called');
       logger.debug('🔊 playNotificationSound called');
 
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      console.log('🔊 AudioContext created, state:', audioContext.state);
       logger.debug('🔊 AudioContext created, state:', audioContext.state);
 
       // Resume context if suspended (browser autoplay policy)
       if (audioContext.state === 'suspended') {
-        audioContext.resume().then(() => {
-          console.log('🔊 AudioContext resumed');
-        });
+        audioContext.resume();
       }
 
       const oscillator = audioContext.createOscillator();
@@ -536,13 +539,18 @@ function App() {
       oscillator.start(audioContext.currentTime);
       oscillator.stop(audioContext.currentTime + 0.3);
 
-      console.log('🔊 Sound started successfully');
+      // Close AudioContext after sound finishes to prevent resource leak
+      oscillator.onended = () => {
+        audioContext.close().catch(() => {
+          // Ignore close errors
+        });
+      };
+
       logger.debug('🔊 Sound started successfully');
     } catch (error) {
-      console.error('❌ Failed to play notification sound:', error);
       logger.error('❌ Failed to play notification sound:', error);
     }
-  }, []);
+  }, [enableAudioNotifications]);
 
   // Update favicon with red dot when there are unread messages
   const updateFavicon = useCallback(

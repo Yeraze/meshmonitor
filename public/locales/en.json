@@ -1148,6 +1148,8 @@
   "settings.packet_monitor": "Packet Monitor",
   "settings.packet_monitor_desktop_only": "(Desktop Only)",
   "settings.packet_monitor_description": "Configure the mesh traffic monitor that displays all packets on the network. Requires both channels:read and messages:read permissions.",
+  "settings.enable_audio_notifications": "Enable Audio Notifications",
+  "settings.enable_audio_notifications_description": "Play a sound when new messages arrive. Disable this if you experience audio issues in your browser.",
   "settings.hide_incomplete_nodes": "Hide Incomplete Nodes",
   "settings.hide_incomplete_description": "Hide nodes missing name or hardware info. On secure channels (custom PSK), incomplete nodes haven't been verified as being on your channel.",
   "settings.solar_monitoring": "Solar Monitoring",

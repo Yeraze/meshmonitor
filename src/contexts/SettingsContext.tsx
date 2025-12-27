@@ -61,6 +61,7 @@ interface SettingsContextType {
   solarMonitoringLongitude: number;
   solarMonitoringAzimuth: number;
   solarMonitoringDeclination: number;
+  enableAudioNotifications: boolean;
   temporaryTileset: TilesetId | null;
   setTemporaryTileset: (tilesetId: TilesetId | null) => void;
   isLoading: boolean;
@@ -90,6 +91,7 @@ interface SettingsContextType {
   setSolarMonitoringLongitude: (longitude: number) => void;
   setSolarMonitoringAzimuth: (azimuth: number) => void;
   setSolarMonitoringDeclination: (declination: number) => void;
+  setEnableAudioNotifications: (enabled: boolean) => void;
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
@@ -210,6 +212,13 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   const [solarMonitoringLongitude, setSolarMonitoringLongitudeState] = useState<number>(0);
   const [solarMonitoringAzimuth, setSolarMonitoringAzimuthState] = useState<number>(0);
   const [solarMonitoringDeclination, setSolarMonitoringDeclinationState] = useState<number>(30);
+
+  // Audio notification setting - localStorage only
+  const [enableAudioNotifications, setEnableAudioNotificationsState] = useState<boolean>(() => {
+    const saved = localStorage.getItem('enableAudioNotifications');
+    // Default to true for backward compatibility
+    return saved === null ? true : saved === 'true';
+  });
 
   const [temporaryTileset, setTemporaryTileset] = useState<TilesetId | null>(null);
 
@@ -492,6 +501,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
 
   const setSolarMonitoringDeclination = (declination: number) => {
     setSolarMonitoringDeclinationState(declination);
+  };
+
+  const setEnableAudioNotifications = (enabled: boolean) => {
+    setEnableAudioNotificationsState(enabled);
+    localStorage.setItem('enableAudioNotifications', enabled.toString());
   };
 
   /**
@@ -856,6 +870,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     solarMonitoringLongitude,
     solarMonitoringAzimuth,
     solarMonitoringDeclination,
+    enableAudioNotifications,
     temporaryTileset,
     setTemporaryTileset,
     isLoading,
@@ -885,6 +900,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setSolarMonitoringLongitude,
     setSolarMonitoringAzimuth,
     setSolarMonitoringDeclination,
+    setEnableAudioNotifications,
   };
 
   return (
