@@ -179,6 +179,68 @@ router.delete('/:id', (req: Request, res: Response) => {
   }
 });
 
+// Permanently delete user (removes from database entirely)
+router.delete('/:id/permanent', (req: Request, res: Response) => {
+  try {
+    const userId = parseInt(req.params.id);
+
+    if (isNaN(userId)) {
+      return res.status(400).json({ error: 'Invalid user ID' });
+    }
+
+    // Prevent deleting yourself
+    if (userId === req.user!.id) {
+      return res.status(400).json({
+        error: 'Cannot delete your own account'
+      });
+    }
+
+    const user = databaseService.userModel.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Prevent deleting the anonymous user
+    if (user.username === 'anonymous') {
+      return res.status(400).json({
+        error: 'Cannot delete the anonymous user'
+      });
+    }
+
+    // Check if this is the last admin
+    if (user.isAdmin) {
+      const allUsers = databaseService.userModel.findAll();
+      const adminCount = allUsers.filter(u => u.isAdmin && u.isActive && u.id !== userId).length;
+      if (adminCount === 0) {
+        return res.status(400).json({
+          error: 'Cannot delete the last admin user'
+        });
+      }
+    }
+
+    // Permanently delete user (cascades to permissions, preferences, subscriptions, etc.)
+    databaseService.userModel.hardDelete(userId);
+
+    // Audit log
+    databaseService.auditLog(
+      req.user!.id,
+      'user_permanently_deleted',
+      'users',
+      JSON.stringify({ userId, username: user.username }),
+      req.ip || null
+    );
+
+    return res.json({
+      success: true,
+      message: 'User permanently deleted'
+    });
+  } catch (error) {
+    logger.error('Error permanently deleting user:', error);
+    return res.status(500).json({ error: 'Failed to permanently delete user' });
+  }
+});
+
 // Update admin status
 router.put('/:id/admin', (req: Request, res: Response) => {
   try {
