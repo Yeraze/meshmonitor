@@ -252,7 +252,40 @@ docker compose up -d
 
 **Problem:** You've lost access to the admin account and can't login.
 
-**Solution:** You need to wipe the database and start fresh.
+**Solution:** Use the built-in password reset script to reset the admin password without losing any data.
+
+#### For Docker Deployments:
+
+```bash
+docker compose exec meshmonitor node reset-admin.mjs
+```
+
+#### For Bare Metal Deployments:
+
+```bash
+node reset-admin.mjs
+```
+
+The script will generate a new random password and display it:
+
+```
+═══════════════════════════════════════════════════════════
+🔐 Admin password has been reset
+═══════════════════════════════════════════════════════════
+   Username: admin
+   Password: <new-random-password>
+
+   ⚠️  IMPORTANT: Save this password now!
+═══════════════════════════════════════════════════════════
+```
+
+After running this, log in with the new password and change it to something memorable in the Users tab.
+
+---
+
+### I need to completely reset MeshMonitor - how do I wipe the database?
+
+**⚠️ Warning:** This deletes ALL data including messages, nodes, user accounts, and settings. Only do this as a last resort.
 
 #### For Docker Deployments:
 
@@ -289,9 +322,6 @@ npm start
 - Default admin account will be recreated:
   - Username: `admin`
   - Password: `changeme`
-- **⚠️ All data will be lost:** messages, nodes, user accounts, settings
-
-**Alternative:** If you have SSH/shell access to the server and can read the SQLite database, you could manually reset the password hash, but this requires technical knowledge of bcrypt and SQL.
 
 ---
 
