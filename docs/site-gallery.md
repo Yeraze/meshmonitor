@@ -51,6 +51,14 @@ Running a public MeshMonitor instance? We'd love to feature it! **[File an issue
 
 ---
 
+### OLmesh.net - OberlausitzMesh Network
+- **URL**: [meshmonitor.olmesh.net](https://meshmonitor.olmesh.net)
+- **Network**: [OLmesh.net](https://olmesh.net/meshtastic)
+- **Location**: Saxony / Oberlausitz, Germany
+- **Description**: MeshMonitor for the OLmesh.net Community in Germany, covering the region of Saxony / Oberlausitz.
+
+---
+
 ## About the Site Gallery
 
 The Site Gallery showcases MeshMonitor instances that are publicly accessible. These sites demonstrate:
